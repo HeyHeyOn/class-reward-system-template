@@ -54,6 +54,22 @@ export async function getStudentRecordById(reader: SheetsReader, studentId: stri
   return null;
 }
 
+export async function getStudents(reader: SheetsReader): Promise<Student[]> {
+  const rows = await reader.getRows('Students');
+  const [headers, ...dataRows] = rows;
+
+  if (!headers) return [];
+
+  const headerIndex = createHeaderIndex(headers);
+  assertRequiredColumns(headerIndex, REQUIRED_STUDENT_COLUMNS, 'Students');
+
+  return dataRows
+    .map((row) => parseStudentRow(row, headerIndex))
+    .filter((student): student is Student => student !== null)
+    .filter((student) => student.status === 'ACTIVE')
+    .sort((a, b) => a.number - b.number || a.name.localeCompare(b.name));
+}
+
 export async function getActiveProducts(reader: SheetsReader): Promise<Product[]> {
   return (await getProductRecords(reader))
     .map((record) => record.product)

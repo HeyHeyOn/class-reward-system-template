@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getActiveProducts, getStudentById } from '@/server/sheetsRepository';
+import { getActiveProducts, getStudentById, getStudents } from '@/server/sheetsRepository';
 
 const sheetRows = {
   Students: [
@@ -34,6 +34,18 @@ describe('sheets repository', () => {
 
   it('returns null when studentId is not found', async () => {
     await expect(getStudentById(fakeReader, 'S999')).resolves.toBeNull();
+  });
+
+  it('returns active students sorted by student number for QR printing', async () => {
+    await expect(getStudents(fakeReader)).resolves.toEqual([
+      {
+        studentId: 'S001',
+        name: '김민준',
+        number: 1,
+        balance: 3500,
+        status: 'ACTIVE',
+      },
+    ]);
   });
 
   it('returns active products sorted by sortOrder', async () => {
