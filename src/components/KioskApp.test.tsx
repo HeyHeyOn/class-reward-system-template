@@ -35,6 +35,10 @@ describe('KioskApp', () => {
           return jsonResponse(studentBefore);
         }
 
+        if (url === '/api/students/WRONG') {
+          return jsonResponse({ error: '잘못된 QR 코드입니다.' }, { status: 404 });
+        }
+
         if (url === '/api/checkout' && init?.method === 'POST') {
           return jsonResponse({
             ok: true,
@@ -58,11 +62,12 @@ describe('KioskApp', () => {
     vi.unstubAllGlobals();
   });
 
-  it('starts on a full-screen shop page with separate product and cart blocks plus a small admin settings button', async () => {
+  it('renders a reference-style kiosk main screen with product cards, cart controls, clear button, and QR payment button', async () => {
     const { container } = render(<KioskApp />);
 
-    expect(await screen.findByRole('heading', { name: '상품 목록' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: '장바구니' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '학급 매점' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '상품 목록' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '장바구니 (0)' })).toBeTruthy();
     expect(screen.getByText('연필')).toBeTruthy();
     expect(screen.getByText('선택한 상품이 없습니다.')).toBeTruthy();
 
@@ -71,26 +76,30 @@ describe('KioskApp', () => {
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('h-screen');
     expect(container.querySelector('[data-testid="product-scroll-block"]')?.className).toContain('overflow-y-auto');
     expect(container.querySelector('[data-testid="cart-scroll-block"]')?.className).toContain('overflow-y-auto');
+
+    fireEvent.click(screen.getByRole('button', { name: '연필 300원 담기' }));
+    expect(screen.getByRole('heading', { name: '장바구니 (1)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '연필 수량 줄이기' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '연필 수량 늘리기' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '비우기' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'QR 결제' })).toBeTruthy();
   });
 
-  it('moves from cart to checkout page, opens QR payment popup, and completes payment after QR recognition', async () => {
+  it('keeps the main kiosk visible while checkout, processing, and complete steps appear as popups', async () => {
     render(<KioskApp />);
 
     expect(await screen.findByText('연필')).toBeTruthy();
-
     fireEvent.click(screen.getByRole('button', { name: '연필 300원 담기' }));
-    expectPageText('총 300원');
+    expectPageText('총 결제 금액300원');
 
-    fireEvent.click(screen.getByRole('button', { name: '결제 화면으로' }));
-    expect(await screen.findByRole('heading', { name: '결제 확인' })).toBeTruthy();
-    expect(screen.getByText('연필 × 1')).toBeTruthy();
-    expectPageText('합계 300원');
-
-    fireEvent.click(screen.getByRole('button', { name: 'QR로 결제하기' }));
-    expect(await screen.findByRole('dialog', { name: 'QR 결제' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
+    expect(await screen.findByRole('dialog', { name: '결제 확인' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '상품 목록' })).toBeTruthy();
+    expect(screen.getByText('결제하려면 카메라에 QR 코드를 인식해주세요.')).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
     fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 결제하기' }));
+    expect(await screen.findByRole('dialog', { name: '결제 중' })).toBeTruthy();
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith('/api/checkout', {
@@ -100,13 +109,27 @@ describe('KioskApp', () => {
       });
     });
 
-    expect(await screen.findByRole('heading', { name: '결제 완료' })).toBeTruthy();
-    expect(screen.getByText('김민준 · 1번')).toBeTruthy();
-    expectPageText('결제 금액 300원');
-    expectPageText('현재 잔액 3,200원');
+    expect(await screen.findByRole('dialog', { name: '결제 완료' })).toBeTruthy();
+    expect(screen.getByText('결제가 완료되었습니다.')).toBeTruthy();
+    expect(screen.getByText('결제자: 김민준')).toBeTruthy();
+    expectPageText('결제 후 잔액3,200원');
 
     fireEvent.click(screen.getByRole('button', { name: '처음으로' }));
-    expect(await screen.findByRole('heading', { name: '상품 목록' })).toBeTruthy();
-    expect(screen.getByText('선택한 상품이 없습니다.')).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '장바구니 (0)' })).toBeTruthy();
+  });
+
+  it('shows a payment failure popup when QR is invalid', async () => {
+    render(<KioskApp />);
+
+    expect(await screen.findByText('연필')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '연필 300원 담기' }));
+    fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
+
+    fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: 'WRONG' } });
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 결제하기' }));
+
+    expect(await screen.findByRole('dialog', { name: '결제 실패' })).toBeTruthy();
+    expect(screen.getByText('잘못된 QR 코드입니다.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '다시 시도' })).toBeTruthy();
   });
 });

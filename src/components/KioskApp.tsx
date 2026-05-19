@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import type { CartItem, Product, Student } from '@/domain/types';
 import { QrScanner } from './QrScanner';
 
-type KioskScreen = 'shop' | 'checkout' | 'complete';
+type PaymentStep = 'checkout' | 'processing' | 'failure' | 'complete';
 
 type CheckoutSuccess = {
   ok: true;
@@ -20,23 +20,39 @@ type PaymentResult = CheckoutSuccess & {
   studentNumber?: number;
 };
 
-type ApiError = { error?: string; message?: string };
+type ApiError = {
+  error?: string;
+  message?: string;
+  code?: string;
+  currentBalance?: number;
+  requiredAmount?: number;
+};
+
+type FailureState = {
+  title: string;
+  message: string;
+  detail?: string;
+};
 
 function isApiError(payload: unknown): payload is ApiError {
   return Boolean(payload && typeof payload === 'object' && ('error' in payload || 'message' in payload));
 }
 
+function formatWon(amount: number) {
+  return `${amount.toLocaleString()}원`;
+}
+
 export function KioskApp() {
-  const [screen, setScreen] = useState<KioskScreen>('shop');
   const [products, setProducts] = useState<Product[]>([]);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [manualQrValue, setManualQrValue] = useState('');
   const [message, setMessage] = useState('');
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
-  const [isLoadingStudent, setIsLoadingStudent] = useState(false);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
-  const [isQrPaymentOpen, setIsQrPaymentOpen] = useState(false);
+  const [paymentStep, setPaymentStep] = useState<PaymentStep | null>(null);
   const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
+  const [completedCartDetails, setCompletedCartDetails] = useState<CartDetail[]>([]);
+  const [failure, setFailure] = useState<FailureState | null>(null);
 
   useEffect(() => {
     let ignore = false;
@@ -86,75 +102,6 @@ export function KioskApp() {
   }, [cartItems, products]);
 
   const totalAmount = cartDetails.reduce((sum, item) => sum + item.subtotal, 0);
-  const totalQuantity = cartDetails.reduce((sum, item) => sum + item.quantity, 0);
-
-  async function completeCheckoutWithQrValue(qrValue: string) {
-    const studentId = qrValue.trim();
-
-    if (!studentId) {
-      setMessage('QR 값 또는 학생 ID를 입력해 주세요.');
-      return;
-    }
-
-    if (cartItems.length === 0) {
-      setMessage('장바구니가 비어 있습니다.');
-      return;
-    }
-
-    setIsLoadingStudent(true);
-    setIsCheckingOut(true);
-    setMessage('');
-
-    try {
-      const studentResponse = await fetch(`/api/students/${encodeURIComponent(studentId)}`, { cache: 'no-store' });
-      const studentPayload = (await studentResponse.json()) as Student | ApiError;
-
-      if (!studentResponse.ok || isApiError(studentPayload)) {
-        setMessage(
-          isApiError(studentPayload)
-            ? studentPayload.error || '학생 정보를 불러오지 못했습니다.'
-            : '학생 정보를 불러오지 못했습니다.',
-        );
-        return;
-      }
-
-      const checkoutResponse = await fetch('/api/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId: studentPayload.studentId, items: cartItems }),
-      });
-      const checkoutPayload = (await checkoutResponse.json()) as CheckoutSuccess | ApiError;
-
-      if (!checkoutResponse.ok || !('ok' in checkoutPayload) || checkoutPayload.ok !== true) {
-        setMessage(
-          ('message' in checkoutPayload && checkoutPayload.message) ||
-            ('error' in checkoutPayload && checkoutPayload.error) ||
-            '결제에 실패했습니다.',
-        );
-        return;
-      }
-
-      setProducts((currentProducts) =>
-        currentProducts.map((product) => {
-          const cartItem = cartItems.find((item) => item.productId === product.productId);
-          return cartItem ? { ...product, stock: product.stock - cartItem.quantity } : product;
-        }),
-      );
-      setPaymentResult({ ...checkoutPayload, studentNumber: studentPayload.number });
-      setCartItems([]);
-      setManualQrValue('');
-      setIsQrPaymentOpen(false);
-      setScreen('complete');
-    } finally {
-      setIsLoadingStudent(false);
-      setIsCheckingOut(false);
-    }
-  }
-
-  function handleManualQrSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    void completeCheckoutWithQrValue(manualQrValue);
-  }
 
   function addToCart(productId: string) {
     setMessage('');
@@ -189,252 +136,396 @@ export function KioskApp() {
     );
   }
 
-  function goToCheckout() {
+  function clearCart() {
+    setCartItems([]);
+    setMessage('');
+  }
+
+  function openCheckout() {
     if (cartItems.length === 0) {
       setMessage('장바구니가 비어 있습니다.');
       return;
     }
 
-    setMessage('');
-    setScreen('checkout');
+    setFailure(null);
+    setPaymentResult(null);
+    setManualQrValue('');
+    setPaymentStep('checkout');
+  }
+
+  async function completeCheckoutWithQrValue(qrValue: string) {
+    const studentId = qrValue.trim();
+
+    if (!studentId) {
+      setFailure({ title: '결제 실패', message: '잘못된 QR 코드입니다.' });
+      setPaymentStep('failure');
+      return;
+    }
+
+    if (cartItems.length === 0) {
+      setFailure({ title: '결제 실패', message: '장바구니가 비어 있습니다.' });
+      setPaymentStep('failure');
+      return;
+    }
+
+    setIsCheckingOut(true);
+    setFailure(null);
+    setPaymentStep('processing');
+
+    try {
+      const studentResponse = await fetch(`/api/students/${encodeURIComponent(studentId)}`, { cache: 'no-store' });
+      const studentPayload = (await studentResponse.json()) as Student | ApiError;
+
+      if (!studentResponse.ok || isApiError(studentPayload)) {
+        setFailure({
+          title: '결제 실패',
+          message: isApiError(studentPayload) ? studentPayload.error || '잘못된 QR 코드입니다.' : '잘못된 QR 코드입니다.',
+        });
+        setPaymentStep('failure');
+        return;
+      }
+
+      const checkoutResponse = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId: studentPayload.studentId, items: cartItems }),
+      });
+      const checkoutPayload = (await checkoutResponse.json()) as CheckoutSuccess | ApiError;
+
+      if (!checkoutResponse.ok || !('ok' in checkoutPayload) || checkoutPayload.ok !== true) {
+        const errorMessage =
+          ('message' in checkoutPayload && checkoutPayload.message) ||
+          ('error' in checkoutPayload && checkoutPayload.error) ||
+          '결제에 실패했습니다.';
+        const detail =
+          'currentBalance' in checkoutPayload && typeof checkoutPayload.currentBalance === 'number'
+            ? `현재 잔액: ${formatWon(checkoutPayload.currentBalance)}`
+            : undefined;
+
+        setFailure({ title: '결제 실패', message: errorMessage, detail });
+        setPaymentStep('failure');
+        return;
+      }
+
+      setProducts((currentProducts) =>
+        currentProducts.map((product) => {
+          const cartItem = cartItems.find((item) => item.productId === product.productId);
+          return cartItem ? { ...product, stock: product.stock - cartItem.quantity } : product;
+        }),
+      );
+      setPaymentResult({ ...checkoutPayload, studentNumber: studentPayload.number });
+      setCompletedCartDetails(cartDetails);
+      setCartItems([]);
+      setManualQrValue('');
+      setPaymentStep('complete');
+    } finally {
+      setIsCheckingOut(false);
+    }
+  }
+
+  function handleManualQrSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void completeCheckoutWithQrValue(manualQrValue);
   }
 
   function resetToShop() {
-    setScreen('shop');
+    setPaymentStep(null);
     setPaymentResult(null);
-    setCartItems([]);
+    setCompletedCartDetails([]);
+    setFailure(null);
     setManualQrValue('');
     setMessage('');
+    setCartItems([]);
+  }
+
+  function retryPayment() {
+    setFailure(null);
+    setManualQrValue('');
+    setPaymentStep('checkout');
   }
 
   return (
-    <main data-testid="kiosk-shell" className="h-screen overflow-hidden bg-[#f6f1e8] text-slate-950">
-      {screen === 'shop' ? (
-        <section className="relative mx-auto flex h-full w-full max-w-7xl flex-col gap-5 px-5 py-5 lg:px-8">
-          <header className="flex items-center justify-between rounded-[1.75rem] bg-white/90 px-5 py-4 shadow-sm ring-1 ring-black/5">
-            <div>
-              <p className="text-xs font-bold tracking-[0.28em] text-amber-700">CLASS STORE</p>
-              <h1 className="text-3xl font-black tracking-tight md:text-5xl">학급 매점</h1>
-            </div>
-            <a
-              href="/admin/settings"
-              aria-label="관리자 설정"
-              title="관리자 설정"
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-950 text-xl text-white shadow-lg transition hover:bg-slate-800"
-            >
-              ⚙
-            </a>
-          </header>
+    <main data-testid="kiosk-shell" className="h-screen overflow-hidden bg-[#dbeaf6] p-4 text-slate-950 md:p-6">
+      <section className="mx-auto flex h-full w-full max-w-[760px] flex-col gap-4">
+        <header className="relative rounded-[1.75rem] border border-slate-300/70 bg-white px-4 py-4 text-center shadow-sm">
+          <h1 className="text-4xl font-black tracking-tight md:text-5xl">학급 매점</h1>
+          <a
+            href="/admin/settings"
+            aria-label="관리자 설정"
+            title="관리자 설정"
+            className="absolute right-4 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-slate-100 text-xl text-slate-700 shadow-sm transition hover:bg-slate-200"
+          >
+            ⚙
+          </a>
+        </header>
 
-          <section className="flex min-h-0 flex-[3] flex-col rounded-[2rem] bg-white p-5 shadow-sm ring-1 ring-black/5">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-2xl font-black">상품 목록</h2>
-              <p className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-800">
-                {isLoadingProducts ? '불러오는 중' : 'Google Sheets 연동'}
-              </p>
-            </div>
-            <div data-testid="product-scroll-block" className="mt-4 min-h-0 flex-1 overflow-y-auto pr-2">
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {products.map((product) => (
-                  <button
-                    key={product.productId}
-                    onClick={() => addToCart(product.productId)}
-                    disabled={!product.isActive || product.stock <= 0}
-                    aria-label={`${product.name} ${product.price.toLocaleString()}원 담기`}
-                    className="min-h-36 rounded-[1.5rem] bg-slate-950 p-5 text-left text-white shadow-lg transition hover:-translate-y-0.5 hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
-                  >
-                    <p className="text-sm font-bold text-amber-200">{product.category || '기타'}</p>
-                    <p className="mt-2 text-3xl font-black">{product.name}</p>
-                    <div className="mt-5 flex items-end justify-between gap-3">
-                      <p className="text-2xl font-black text-amber-300">{product.price.toLocaleString()}원</p>
-                      <p className="rounded-full bg-white/10 px-3 py-1 text-sm font-bold">재고 {product.stock}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </section>
+        <section className="flex min-h-0 flex-[3] flex-col rounded-[1.75rem] border border-slate-300/70 bg-white/85 p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-2xl font-black">상품 목록</h2>
+            <p className="rounded-full bg-sky-100 px-3 py-1 text-sm font-black text-sky-700">
+              {isLoadingProducts ? '불러오는 중' : '시트 연동'}
+            </p>
+          </div>
 
-          <section className="flex min-h-0 flex-[2] flex-col rounded-[2rem] bg-slate-950 p-5 text-white shadow-xl">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-2xl font-black">장바구니</h2>
-              <p className="text-sm font-bold text-slate-300">{totalQuantity}개 · 총 {totalAmount.toLocaleString()}원</p>
-            </div>
-
-            <div data-testid="cart-scroll-block" className="mt-4 min-h-0 flex-1 overflow-y-auto pr-2">
-              {cartDetails.length === 0 ? (
-                <div className="flex h-full min-h-28 items-center justify-center rounded-[1.5rem] border-2 border-dashed border-white/15 bg-white/5 p-6 text-slate-300">
-                  선택한 상품이 없습니다.
-                </div>
-              ) : (
-                <div className="grid gap-3 md:grid-cols-2">
-                  {cartDetails.map((item) => (
-                    <div key={item.productId} className="flex items-center justify-between gap-3 rounded-[1.25rem] bg-white p-4 text-slate-950">
-                      <div>
-                        <p className="text-lg font-black">{item.name} × {item.quantity}</p>
-                        <p className="text-sm font-bold text-slate-500">
-                          {item.price.toLocaleString()}원 · 소계 {item.subtotal.toLocaleString()}원
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => removeFromCart(item.productId)}
-                        className="rounded-full bg-slate-100 px-4 py-2 text-sm font-black text-slate-700 hover:bg-slate-200"
-                      >
-                        빼기
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {message ? <p className="mt-3 rounded-2xl bg-amber-100 p-3 font-bold text-amber-900">{message}</p> : null}
-
-            <button
-              onClick={goToCheckout}
-              disabled={cartItems.length === 0}
-              className="mt-4 w-full rounded-[1.25rem] bg-emerald-500 py-4 text-xl font-black text-white shadow-lg transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-500"
-            >
-              결제 화면으로
-            </button>
-          </section>
-        </section>
-      ) : null}
-
-      {screen === 'checkout' ? (
-        <section className="mx-auto flex h-full w-full max-w-5xl flex-col px-5 py-6 lg:px-8">
-          <header className="flex items-center justify-between gap-4">
-            <button onClick={() => setScreen('shop')} className="rounded-full bg-white px-5 py-3 font-black shadow-sm ring-1 ring-black/5">
-              ← 상품으로
-            </button>
-            <a
-              href="/admin/settings"
-              aria-label="관리자 설정"
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-950 text-xl text-white shadow-lg"
-            >
-              ⚙
-            </a>
-          </header>
-
-          <div className="mt-6 flex min-h-0 flex-1 flex-col rounded-[2rem] bg-white p-7 shadow-xl ring-1 ring-black/5">
-            <h1 className="text-4xl font-black">결제 확인</h1>
-            <p className="mt-2 text-slate-600">장바구니 내용을 확인한 뒤 QR로 결제합니다.</p>
-
-            <div className="mt-6 min-h-0 flex-1 overflow-y-auto rounded-[1.5rem] bg-slate-50 p-4">
-              <div className="space-y-3">
-                {cartDetails.map((item) => (
-                  <div key={item.productId} className="flex items-center justify-between rounded-2xl bg-white p-4 shadow-sm">
-                    <div>
-                      <p className="text-xl font-black">{item.name} × {item.quantity}</p>
-                      <p className="text-sm font-bold text-slate-500">단가 {item.price.toLocaleString()}원</p>
-                    </div>
-                    <p className="text-xl font-black">{item.subtotal.toLocaleString()}원</p>
+          <div data-testid="product-scroll-block" className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              {products.map((product) => (
+                <button
+                  key={product.productId}
+                  onClick={() => addToCart(product.productId)}
+                  disabled={!product.isActive || product.stock <= 0}
+                  aria-label={`${product.name} ${formatWon(product.price)} 담기`}
+                  className="rounded-[1.1rem] border border-slate-300 bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <p className="text-xs font-black">{product.category || '기타'}</p>
+                  <div className="mt-2 flex aspect-[4/3] items-center justify-center bg-slate-200 text-5xl text-white">
+                    {product.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={product.imageUrl} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <span aria-hidden="true">▵</span>
+                    )}
                   </div>
-                ))}
-              </div>
+                  <p className="mt-2 truncate text-lg font-black">{product.name}</p>
+                  <div className="mt-1 flex items-end justify-between gap-2">
+                    <p className="text-xl font-black">{formatWon(product.price)}</p>
+                    <p className="rounded-full bg-sky-100 px-2 py-1 text-xs font-black text-slate-700">재고 {product.stock}</p>
+                  </div>
+                </button>
+              ))}
             </div>
+          </div>
+        </section>
 
-            <div className="mt-5 rounded-[1.5rem] bg-slate-950 p-5 text-white">
-              <p className="text-right text-3xl font-black">합계 {totalAmount.toLocaleString()}원</p>
-            </div>
-
-            {message ? <p className="mt-4 rounded-2xl bg-amber-100 p-3 font-bold text-amber-900">{message}</p> : null}
-
+        <section className="flex min-h-0 flex-[1.35] flex-col rounded-[1.75rem] border border-slate-300/70 bg-white/90 p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-2xl font-black">장바구니 ({cartDetails.length})</h2>
             <button
-              onClick={() => {
-                setMessage('');
-                setIsQrPaymentOpen(true);
-              }}
-              disabled={cartItems.length === 0 || isCheckingOut}
-              className="mt-5 w-full rounded-[1.5rem] bg-emerald-500 py-5 text-2xl font-black text-white shadow-lg transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-300"
+              onClick={clearCart}
+              disabled={cartItems.length === 0}
+              className="rounded-xl bg-sky-100 px-3 py-2 text-base font-black text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              QR로 결제하기
+              비우기
             </button>
           </div>
 
-          {isQrPaymentOpen ? (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
-              <section
-                role="dialog"
-                aria-modal="true"
-                aria-label="QR 결제"
-                className="w-full max-w-2xl rounded-[2rem] bg-slate-950 p-6 text-white shadow-2xl"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h2 className="text-3xl font-black">QR 결제</h2>
-                    <p className="mt-2 text-slate-300">학생 QR을 카메라에 보여 주세요. 인식되면 자동으로 결제됩니다.</p>
+          <div data-testid="cart-scroll-block" className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
+            {cartDetails.length === 0 ? (
+              <div className="flex h-full min-h-16 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-slate-500">
+                선택한 상품이 없습니다.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {cartDetails.map((item) => (
+                  <div key={item.productId} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+                    <p className="truncate text-lg font-black">{item.name}</p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        aria-label={`${item.name} 수량 줄이기`}
+                        onClick={() => removeFromCart(item.productId)}
+                        className="flex h-8 w-8 items-center justify-center rounded-md bg-sky-100 text-xl font-black text-sky-700"
+                      >
+                        −
+                      </button>
+                      <span className="w-7 text-center text-lg font-black">{item.quantity}</span>
+                      <button
+                        aria-label={`${item.name} 수량 늘리기`}
+                        onClick={() => addToCart(item.productId)}
+                        className="flex h-8 w-8 items-center justify-center rounded-md bg-sky-100 text-xl font-black text-sky-700"
+                      >
+                        +
+                      </button>
+                    </div>
+                    <p className="w-24 text-right text-lg font-black">{formatWon(item.subtotal)}</p>
                   </div>
-                  <button
-                    onClick={() => setIsQrPaymentOpen(false)}
-                    className="rounded-full bg-white/10 px-4 py-2 font-black text-white hover:bg-white/20"
-                  >
-                    닫기
-                  </button>
-                </div>
-
-                <div className="mt-5 flex flex-col items-center gap-4">
-                  <QrScanner onScan={completeCheckoutWithQrValue} />
-                  <form onSubmit={handleManualQrSubmit} className="flex w-full flex-col gap-3 rounded-[1.5rem] bg-white/10 p-4 md:flex-row">
-                    <label className="sr-only" htmlFor="manual-qr-value">
-                      QR 값 직접 입력
-                    </label>
-                    <input
-                      id="manual-qr-value"
-                      value={manualQrValue}
-                      onChange={(event) => setManualQrValue(event.target.value)}
-                      placeholder="예: S001"
-                      className="min-w-0 flex-1 rounded-2xl border border-white/20 bg-white px-4 py-4 text-lg font-bold text-slate-950 outline-none focus:border-amber-300"
-                    />
-                    <button
-                      type="submit"
-                      disabled={isLoadingStudent || isCheckingOut}
-                      className="rounded-2xl bg-amber-300 px-6 py-4 text-lg font-black text-slate-950 shadow-lg transition hover:bg-amber-200 disabled:cursor-wait disabled:bg-slate-300"
-                    >
-                      {isLoadingStudent || isCheckingOut ? '결제 중...' : 'QR 값으로 결제하기'}
-                    </button>
-                  </form>
-                </div>
-              </section>
-            </div>
-          ) : null}
-        </section>
-      ) : null}
-
-      {screen === 'complete' && paymentResult ? (
-        <section className="mx-auto flex h-full w-full max-w-4xl items-center justify-center px-5 py-6">
-          <div className="w-full rounded-[2.5rem] bg-white p-8 text-center shadow-2xl ring-1 ring-black/5">
-            <p className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 text-4xl">✓</p>
-            <h1 className="mt-6 text-5xl font-black">결제 완료</h1>
-            <p className="mt-3 text-lg text-slate-600">학급 화폐 결제가 정상 처리되었습니다.</p>
-
-            <div className="mt-8 grid gap-4 rounded-[2rem] bg-slate-50 p-5 text-left md:grid-cols-3">
-              <div className="rounded-[1.5rem] bg-white p-5 shadow-sm">
-                <p className="text-sm font-bold text-slate-500">결제자</p>
-                <p className="mt-2 text-2xl font-black">
-                  {paymentResult.studentName}
-                  {paymentResult.studentNumber ? ` · ${paymentResult.studentNumber}번` : ''}
-                </p>
+                ))}
               </div>
-              <div className="rounded-[1.5rem] bg-white p-5 shadow-sm">
-                <p className="text-sm font-bold text-slate-500">결제 금액</p>
-                <p className="mt-2 text-2xl font-black text-emerald-700">결제 금액 {paymentResult.totalAmount.toLocaleString()}원</p>
-              </div>
-              <div className="rounded-[1.5rem] bg-white p-5 shadow-sm">
-                <p className="text-sm font-bold text-slate-500">현재 잔액</p>
-                <p className="mt-2 text-2xl font-black text-amber-700">현재 잔액 {paymentResult.balanceAfter.toLocaleString()}원</p>
-              </div>
-            </div>
+            )}
+          </div>
 
+          {message ? <p className="mt-2 rounded-xl bg-amber-100 p-2 text-sm font-bold text-amber-900">{message}</p> : null}
+
+          <div className="mt-3 grid grid-cols-[1fr_auto] items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+            <p className="text-xl font-black">총 결제 금액</p>
+            <p className="text-3xl font-black text-sky-600">{formatWon(totalAmount)}</p>
             <button
-              onClick={resetToShop}
-              className="mt-8 w-full rounded-[1.5rem] bg-slate-950 py-5 text-2xl font-black text-white shadow-lg transition hover:bg-slate-800"
+              onClick={openCheckout}
+              disabled={cartItems.length === 0}
+              className="col-span-2 rounded-xl bg-sky-500 py-3 text-2xl font-black text-white shadow-sm transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:bg-slate-300 sm:col-span-1 sm:col-start-2"
             >
+              QR 결제
+            </button>
+          </div>
+        </section>
+      </section>
+
+      {paymentStep ? (
+        <PaymentModal
+          step={paymentStep}
+          cartDetails={cartDetails}
+          totalAmount={totalAmount}
+          manualQrValue={manualQrValue}
+          setManualQrValue={setManualQrValue}
+          onManualQrSubmit={handleManualQrSubmit}
+          onScan={completeCheckoutWithQrValue}
+          onCancel={() => setPaymentStep(null)}
+          onRetry={retryPayment}
+          onReset={resetToShop}
+          isCheckingOut={isCheckingOut}
+          paymentResult={paymentResult}
+          completedCartDetails={completedCartDetails}
+          failure={failure}
+        />
+      ) : null}
+    </main>
+  );
+}
+
+type CartDetail = CartItem & { name: string; price: number; stock: number; subtotal: number };
+
+type PaymentModalProps = {
+  step: PaymentStep;
+  cartDetails: CartDetail[];
+  totalAmount: number;
+  manualQrValue: string;
+  setManualQrValue: (value: string) => void;
+  onManualQrSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onScan: (decodedText: string) => void;
+  onCancel: () => void;
+  onRetry: () => void;
+  onReset: () => void;
+  isCheckingOut: boolean;
+  paymentResult: PaymentResult | null;
+  completedCartDetails: CartDetail[];
+  failure: FailureState | null;
+};
+
+function PaymentModal({
+  step,
+  cartDetails,
+  totalAmount,
+  manualQrValue,
+  setManualQrValue,
+  onManualQrSubmit,
+  onScan,
+  onCancel,
+  onRetry,
+  onReset,
+  isCheckingOut,
+  paymentResult,
+  completedCartDetails,
+  failure,
+}: PaymentModalProps) {
+  const dialogLabel = step === 'checkout' ? '결제 확인' : step === 'processing' ? '결제 중' : step === 'failure' ? '결제 실패' : '결제 완료';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4">
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label={dialogLabel}
+        className="w-full max-w-[720px] rounded-[1.75rem] bg-white p-4 shadow-2xl md:p-5"
+      >
+        {step === 'checkout' ? (
+          <>
+            <h2 className="text-3xl font-black">결제 확인</h2>
+            <CartSummary cartDetails={cartDetails} totalAmount={totalAmount} accent="text-sky-600" />
+            <div className="mt-5 grid gap-5 md:grid-cols-[1fr_180px] md:items-center">
+              <div className="rounded-[1.5rem] bg-black p-3">
+                <QrScanner onScan={onScan} />
+              </div>
+              <div className="text-center md:text-left">
+                <p className="text-2xl font-black leading-tight text-sky-600">결제하려면 카메라에 QR 코드를 인식해주세요.</p>
+                <button onClick={onCancel} className="mt-5 w-full rounded-xl bg-rose-400 py-3 text-xl font-black text-white">
+                  결제 취소
+                </button>
+              </div>
+            </div>
+            <form onSubmit={onManualQrSubmit} className="mt-4 flex flex-col gap-2 rounded-xl bg-slate-100 p-3 sm:flex-row">
+              <label className="sr-only" htmlFor="manual-qr-value">
+                QR 값 직접 입력
+              </label>
+              <input
+                id="manual-qr-value"
+                value={manualQrValue}
+                onChange={(event) => setManualQrValue(event.target.value)}
+                placeholder="카메라가 안 되면 예: S001"
+                className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-4 py-3 text-lg font-bold outline-none focus:border-sky-400"
+              />
+              <button type="submit" disabled={isCheckingOut} className="rounded-xl bg-sky-500 px-5 py-3 text-lg font-black text-white disabled:bg-slate-300">
+                QR 값으로 결제하기
+              </button>
+            </form>
+          </>
+        ) : null}
+
+        {step === 'processing' ? (
+          <div className="py-16 text-center">
+            <div className="mx-auto h-16 w-16 animate-spin rounded-full border-8 border-slate-200 border-t-sky-500" />
+            <h2 className="mt-8 text-4xl font-black">결제 중</h2>
+            <p className="mt-3 text-xl font-bold text-slate-500">학급 화폐 잔액과 재고를 확인하고 있습니다.</p>
+          </div>
+        ) : null}
+
+        {step === 'failure' ? (
+          <div className="py-8 text-center">
+            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-rose-100 text-5xl text-rose-500">!</div>
+            <h2 className="mt-6 text-4xl font-black">결제 실패</h2>
+            <p className="mt-4 text-2xl font-black text-rose-500">{failure?.message || '결제에 실패했습니다.'}</p>
+            {failure?.detail ? <p className="mt-2 text-xl font-black text-rose-400">{failure.detail}</p> : null}
+            <div className="mt-8 flex gap-3">
+              <button onClick={onCancel} className="flex-1 rounded-xl bg-slate-200 py-4 text-xl font-black text-slate-700">
+                결제 취소
+              </button>
+              <button onClick={onRetry} className="flex-1 rounded-xl bg-sky-500 py-4 text-xl font-black text-white">
+                다시 시도
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {step === 'complete' && paymentResult ? (
+          <div className="py-4 text-center">
+            <h2 className="text-4xl font-black">결제가 완료되었습니다.</h2>
+            <div className="mt-6 flex justify-between gap-4 text-lg font-bold">
+              <p>결제 일시: {new Date().toLocaleString('ko-KR', { hour12: false })}</p>
+              <p>결제자: {paymentResult.studentName}</p>
+            </div>
+            <CartSummary cartDetails={completedCartDetails} totalAmount={paymentResult.totalAmount} accent="text-slate-950" />
+            <div className="mt-5 space-y-3 text-left">
+              <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <p className="text-2xl font-black">총 결제 금액</p>
+                <p className="text-3xl font-black">{formatWon(paymentResult.totalAmount)}</p>
+              </div>
+              <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <p className="text-2xl font-black">결제 후 잔액</p>
+                <p className="text-3xl font-black text-sky-600">{formatWon(paymentResult.balanceAfter)}</p>
+              </div>
+            </div>
+            <button onClick={onReset} className="mt-7 rounded-xl bg-sky-400 px-12 py-4 text-4xl font-black text-white shadow-sm">
               처음으로
             </button>
           </div>
-        </section>
-      ) : null}
-    </main>
+        ) : null}
+      </section>
+    </div>
+  );
+}
+
+function CartSummary({ cartDetails, totalAmount, accent }: { cartDetails: CartDetail[]; totalAmount: number; accent: string }) {
+  return (
+    <div className="mt-4 space-y-3">
+      {cartDetails.map((item) => (
+        <div key={item.productId} className="grid grid-cols-[1fr_auto_auto] items-center gap-4 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          <p className="text-xl font-black">{item.name}</p>
+          <p className="text-xl font-black">× {item.quantity}</p>
+          <p className="w-28 text-right text-xl font-black">{formatWon(item.subtotal)}</p>
+        </div>
+      ))}
+      <div className="mt-5 flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <p className="text-2xl font-black">총 결제 금액</p>
+        <p className={`text-4xl font-black ${accent}`}>{formatWon(totalAmount)}</p>
+      </div>
+    </div>
   );
 }
