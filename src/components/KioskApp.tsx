@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import type { CartItem, Product, Student } from '@/domain/types';
+import { QrScanner } from './QrScanner';
 
 type CheckoutSuccess = {
   ok: true;
@@ -23,6 +24,7 @@ export function KioskApp() {
   const [products, setProducts] = useState<Product[]>([]);
   const [student, setStudent] = useState<Student | null>(null);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [manualQrValue, setManualQrValue] = useState('');
   const [message, setMessage] = useState('');
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
   const [isLoadingStudent, setIsLoadingStudent] = useState(false);
@@ -76,12 +78,19 @@ export function KioskApp() {
 
   const totalAmount = cartDetails.reduce((sum, item) => sum + item.subtotal, 0);
 
-  async function loadTestStudent() {
+  async function loadStudentByQrValue(qrValue: string) {
+    const studentId = qrValue.trim();
+
+    if (!studentId) {
+      setMessage('QR 값 또는 학생 ID를 입력해 주세요.');
+      return;
+    }
+
     setIsLoadingStudent(true);
     setMessage('');
 
     try {
-      const response = await fetch('/api/students/S001', { cache: 'no-store' });
+      const response = await fetch(`/api/students/${encodeURIComponent(studentId)}`, { cache: 'no-store' });
       const payload = (await response.json()) as Student | ApiError;
 
       if (!response.ok || isApiError(payload)) {
@@ -91,10 +100,16 @@ export function KioskApp() {
 
       setStudent(payload);
       setCartItems([]);
+      setManualQrValue('');
       setMessage(`${payload.name} 학생 정보를 불러왔습니다.`);
     } finally {
       setIsLoadingStudent(false);
     }
+  }
+
+  function handleManualQrSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void loadStudentByQrValue(manualQrValue);
   }
 
   function addToCart(productId: string) {
@@ -188,27 +203,33 @@ export function KioskApp() {
         <div className="grid flex-1 gap-8 lg:grid-cols-[1fr_420px]">
           <section className="rounded-[2rem] bg-slate-950 p-6 text-white shadow-xl">
             <div className="flex h-full min-h-[520px] flex-col items-center justify-center rounded-[1.5rem] border-4 border-dashed border-white/20 bg-white/5 p-8 text-center">
-              <div className="mb-8 grid h-52 w-52 place-items-center rounded-[2rem] bg-white text-slate-950 shadow-2xl">
-                <div className="grid h-40 w-40 grid-cols-3 gap-2">
-                  {Array.from({ length: 9 }).map((_, index) => (
-                    <div
-                      key={index}
-                      className={index % 2 === 0 ? 'rounded-lg bg-slate-950' : 'rounded-lg bg-amber-300'}
-                    />
-                  ))}
-                </div>
-              </div>
               <h2 className="text-4xl font-black">QR 코드를 보여 주세요</h2>
               <p className="mt-4 max-w-xl text-lg text-slate-300">
-                QR 인식기는 다음 단계에서 붙입니다. 지금은 테스트 학생으로 결제 흐름을 검증합니다.
+                카메라 권한을 허용하면 학생 QR을 자동으로 읽습니다. 카메라가 없으면 아래 입력칸에 QR 값을 넣어도 됩니다.
               </p>
-              <button
-                onClick={loadTestStudent}
-                disabled={isLoadingStudent}
-                className="mt-8 rounded-full bg-amber-300 px-8 py-4 text-xl font-black text-slate-950 shadow-lg transition hover:bg-amber-200 disabled:cursor-wait disabled:bg-slate-300"
-              >
-                {isLoadingStudent ? '불러오는 중...' : '테스트 학생 S001 불러오기'}
-              </button>
+
+              <div className="mt-8 flex w-full flex-col items-center gap-5">
+                <QrScanner onScan={loadStudentByQrValue} />
+                <form onSubmit={handleManualQrSubmit} className="flex w-full max-w-xl flex-col gap-3 rounded-[2rem] bg-white/10 p-4 md:flex-row">
+                  <label className="sr-only" htmlFor="manual-qr-value">
+                    QR 값 직접 입력
+                  </label>
+                  <input
+                    id="manual-qr-value"
+                    value={manualQrValue}
+                    onChange={(event) => setManualQrValue(event.target.value)}
+                    placeholder="예: S001"
+                    className="min-w-0 flex-1 rounded-2xl border border-white/20 bg-white px-4 py-4 text-lg font-bold text-slate-950 outline-none focus:border-amber-300"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isLoadingStudent}
+                    className="rounded-2xl bg-amber-300 px-6 py-4 text-lg font-black text-slate-950 shadow-lg transition hover:bg-amber-200 disabled:cursor-wait disabled:bg-slate-300"
+                  >
+                    {isLoadingStudent ? '불러오는 중...' : 'QR 값으로 학생 불러오기'}
+                  </button>
+                </form>
+              </div>
             </div>
           </section>
 

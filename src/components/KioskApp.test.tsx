@@ -53,12 +53,13 @@ describe('KioskApp', () => {
     vi.unstubAllGlobals();
   });
 
-  it('loads student and products, adds an item to cart, and posts checkout', async () => {
+  it('loads student from manual QR value and products, adds an item to cart, and posts checkout', async () => {
     render(<KioskApp />);
 
     expect(await screen.findByText('연필')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: '테스트 학생 S001 불러오기' }));
+    fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 학생 불러오기' }));
     expect(await screen.findByText('김민준 · 1번')).toBeTruthy();
     expect(screen.getByText('3,500')).toBeTruthy();
 
