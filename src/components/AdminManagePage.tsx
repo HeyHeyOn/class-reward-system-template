@@ -1,17 +1,41 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import type { Product, Student } from '@/domain/types';
 
 type StudentDraft = Student;
 type ProductDraft = Product;
 type SaveState = Record<string, string>;
 
+type NewStudentDraft = {
+  studentId: string;
+  name: string;
+  number: number;
+  balance: number;
+  status: Student['status'];
+};
+
+type NewProductDraft = {
+  productId: string;
+  name: string;
+  price: number;
+  stock: number;
+  isActive: boolean;
+  category: string;
+  sortOrder: number;
+};
+
+const EMPTY_STUDENT: NewStudentDraft = { studentId: '', name: '', number: 1, balance: 0, status: 'ACTIVE' };
+const EMPTY_PRODUCT: NewProductDraft = { productId: '', name: '', price: 0, stock: 0, isActive: true, category: '', sortOrder: 1 };
+
 export function AdminManagePage() {
   const [students, setStudents] = useState<StudentDraft[]>([]);
   const [products, setProducts] = useState<ProductDraft[]>([]);
   const [message, setMessage] = useState('학생/상품 목록을 불러오는 중입니다.');
   const [saveState, setSaveState] = useState<SaveState>({});
+  const [newStudent, setNewStudent] = useState<NewStudentDraft>(EMPTY_STUDENT);
+  const [newProduct, setNewProduct] = useState<NewProductDraft>(EMPTY_PRODUCT);
+  const [createMessages, addCreateMessages] = useState<string[]>([]);
 
   useEffect(() => {
     let ignore = false;
@@ -55,6 +79,10 @@ export function AdminManagePage() {
 
   function updateProduct(productId: string, patch: Partial<ProductDraft>) {
     setProducts((current) => current.map((product) => (product.productId === productId ? { ...product, ...patch } : product)));
+  }
+
+  function addCreateMessage(messageText: string) {
+    addCreateMessages((current) => [...current, messageText].slice(-4));
   }
 
   async function saveStudent(student: StudentDraft) {
@@ -115,6 +143,66 @@ export function AdminManagePage() {
     }
   }
 
+  async function createNewStudent(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    addCreateMessage('학생 추가 중...');
+
+    try {
+      const body = {
+        studentId: newStudent.studentId,
+        name: newStudent.name,
+        number: newStudent.number,
+        balance: newStudent.balance,
+        status: newStudent.status,
+      };
+      const response = await fetch('/api/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) throw new Error(payload.error ?? '학생을 추가하지 못했습니다.');
+
+      setStudents((current) => [...current, payload].sort((a, b) => a.number - b.number || a.name.localeCompare(b.name)));
+      setNewStudent(EMPTY_STUDENT);
+      addCreateMessage(`${payload.studentId} 추가 완료`);
+    } catch (error) {
+      addCreateMessage(error instanceof Error ? error.message : '학생을 추가하지 못했습니다.');
+    }
+  }
+
+  async function createNewProduct(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    addCreateMessage('상품 추가 중...');
+
+    try {
+      const body = {
+        productId: newProduct.productId,
+        name: newProduct.name,
+        price: newProduct.price,
+        stock: newProduct.stock,
+        isActive: newProduct.isActive,
+        category: newProduct.category,
+        sortOrder: newProduct.sortOrder,
+      };
+      const response = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) throw new Error(payload.error ?? '상품을 추가하지 못했습니다.');
+
+      setProducts((current) => [...current, payload].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)));
+      setNewProduct(EMPTY_PRODUCT);
+      addCreateMessage(`${payload.productId} 추가 완료`);
+    } catch (error) {
+      addCreateMessage(error instanceof Error ? error.message : '상품을 추가하지 못했습니다.');
+    }
+  }
+
   return (
     <main className="min-h-screen bg-[#f6f1e8] px-6 py-8 text-slate-950">
       <section className="mx-auto max-w-7xl">
@@ -129,6 +217,72 @@ export function AdminManagePage() {
           </div>
           {message ? <p className="mt-4 rounded-2xl bg-red-50 p-4 font-bold text-red-700">{message}</p> : null}
         </header>
+
+        <section className="mb-6 grid gap-6 xl:grid-cols-2">
+          <form className="rounded-[2rem] bg-white p-5 shadow-sm ring-1 ring-black/5" onSubmit={createNewStudent}>
+            <h2 className="text-2xl font-black">새 학생 추가</h2>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <label className="text-sm font-bold text-slate-700">
+                학생 ID
+                <input aria-label="새 학생 ID" className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3" onChange={(event) => setNewStudent((current) => ({ ...current, studentId: event.target.value }))} value={newStudent.studentId} />
+              </label>
+              <label className="text-sm font-bold text-slate-700">
+                이름
+                <input aria-label="새 학생 이름" className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3" onChange={(event) => setNewStudent((current) => ({ ...current, name: event.target.value }))} value={newStudent.name} />
+              </label>
+              <label className="text-sm font-bold text-slate-700">
+                번호
+                <input aria-label="새 학생 번호" className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3" onChange={(event) => setNewStudent((current) => ({ ...current, number: Number(event.target.value) }))} type="number" value={newStudent.number} />
+              </label>
+              <label className="text-sm font-bold text-slate-700">
+                초기 잔액
+                <input aria-label="새 학생 잔액" className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3" onChange={(event) => setNewStudent((current) => ({ ...current, balance: Number(event.target.value) }))} type="number" value={newStudent.balance} />
+              </label>
+            </div>
+            <button className="mt-4 w-full rounded-2xl bg-amber-600 py-3 font-black text-white" type="submit">새 학생 추가</button>
+          </form>
+
+          <form className="rounded-[2rem] bg-white p-5 shadow-sm ring-1 ring-black/5" onSubmit={createNewProduct}>
+            <h2 className="text-2xl font-black">새 상품 추가</h2>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <label className="text-sm font-bold text-slate-700">
+                상품 ID
+                <input aria-label="새 상품 ID" className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3" onChange={(event) => setNewProduct((current) => ({ ...current, productId: event.target.value }))} value={newProduct.productId} />
+              </label>
+              <label className="text-sm font-bold text-slate-700">
+                상품명
+                <input aria-label="새 상품명" className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3" onChange={(event) => setNewProduct((current) => ({ ...current, name: event.target.value }))} value={newProduct.name} />
+              </label>
+              <label className="text-sm font-bold text-slate-700">
+                가격
+                <input aria-label="새 상품 가격" className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3" onChange={(event) => setNewProduct((current) => ({ ...current, price: Number(event.target.value) }))} type="number" value={newProduct.price} />
+              </label>
+              <label className="text-sm font-bold text-slate-700">
+                재고
+                <input aria-label="새 상품 재고" className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3" onChange={(event) => setNewProduct((current) => ({ ...current, stock: Number(event.target.value) }))} type="number" value={newProduct.stock} />
+              </label>
+              <label className="text-sm font-bold text-slate-700">
+                카테고리
+                <input aria-label="새 상품 카테고리" className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3" onChange={(event) => setNewProduct((current) => ({ ...current, category: event.target.value }))} value={newProduct.category} />
+              </label>
+              <label className="text-sm font-bold text-slate-700">
+                정렬
+                <input aria-label="새 상품 정렬" className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3" onChange={(event) => setNewProduct((current) => ({ ...current, sortOrder: Number(event.target.value) }))} type="number" value={newProduct.sortOrder} />
+              </label>
+            </div>
+            <button className="mt-4 w-full rounded-2xl bg-amber-600 py-3 font-black text-white" type="submit">새 상품 추가</button>
+          </form>
+        </section>
+
+        {createMessages.length > 0 ? (
+          <div className="mb-6 space-y-2">
+            {createMessages.map((item, index) => (
+              <p className="rounded-2xl bg-amber-100 p-4 font-bold text-amber-900" key={`${item}-${index}`}>
+                {item}
+              </p>
+            ))}
+          </div>
+        ) : null}
 
         <div className="grid gap-6 xl:grid-cols-2">
           <section className="rounded-[2rem] bg-white p-5 shadow-sm ring-1 ring-black/5">

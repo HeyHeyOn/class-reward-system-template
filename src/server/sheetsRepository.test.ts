@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createProduct,
+  createStudent,
   getActiveProducts,
   getProducts,
   getStudentById,
@@ -134,6 +136,61 @@ describe('sheets repository', () => {
       { sheetName: 'Students', rowNumber: 2, columnName: 'number', value: 11 },
       { sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: 4000 },
       { sheetName: 'Students', rowNumber: 2, columnName: 'status', value: 'INACTIVE' },
+    ]);
+  });
+
+  it('appends a new student row with QR value matching studentId', async () => {
+    const appended: Array<{ sheetName: string; values: string[] }> = [];
+    const fakeStore = {
+      ...fakeReader,
+      async updateCell() {},
+      async appendRow(sheetName: 'Students' | 'Products', values: string[]) {
+        appended.push({ sheetName, values });
+      },
+    };
+
+    await expect(
+      createStudent(fakeStore, { studentId: 'S003', name: '박도윤', number: 3, balance: 0, status: 'ACTIVE' }),
+    ).resolves.toEqual({ studentId: 'S003', name: '박도윤', number: 3, balance: 0, status: 'ACTIVE' });
+
+    expect(appended).toEqual([
+      { sheetName: 'Students', values: ['S003', '박도윤', '3', '0', 'S003', 'ACTIVE', ''] },
+    ]);
+  });
+
+  it('appends a new product row with default imageUrl column', async () => {
+    const appended: Array<{ sheetName: string; values: string[] }> = [];
+    const fakeStore = {
+      ...fakeReader,
+      async updateCell() {},
+      async appendRow(sheetName: 'Students' | 'Products', values: string[]) {
+        appended.push({ sheetName, values });
+      },
+    };
+
+    await expect(
+      createProduct(fakeStore, {
+        productId: 'P004',
+        name: '간식쿠폰',
+        price: 1000,
+        stock: 5,
+        isActive: true,
+        category: '쿠폰',
+        sortOrder: 4,
+      }),
+    ).resolves.toEqual({
+      productId: 'P004',
+      name: '간식쿠폰',
+      price: 1000,
+      stock: 5,
+      isActive: true,
+      imageUrl: undefined,
+      category: '쿠폰',
+      sortOrder: 4,
+    });
+
+    expect(appended).toEqual([
+      { sheetName: 'Products', values: ['P004', '간식쿠폰', '1000', '5', 'TRUE', '', '쿠폰', '4'] },
     ]);
   });
 

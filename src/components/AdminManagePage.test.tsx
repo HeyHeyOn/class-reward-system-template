@@ -19,8 +19,14 @@ describe('AdminManagePage', () => {
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
 
-        if (url === '/api/students') return jsonResponse(students);
+        if (url === '/api/students') {
+          if (init?.method === 'POST') return jsonResponse({ studentId: 'S002', name: '이서연', number: 2, balance: 0, status: 'ACTIVE' });
+          return jsonResponse(students);
+        }
         if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+        if (url === '/api/products' && init?.method === 'POST') {
+          return jsonResponse({ productId: 'P002', name: '지우개', price: 500, stock: 10, isActive: true, category: '문구', sortOrder: 2 });
+        }
         if (url === '/api/students/S001' && init?.method === 'PATCH') {
           return jsonResponse({ ...students[0], name: '김민준 수정', balance: 4000 });
         }
@@ -67,5 +73,40 @@ describe('AdminManagePage', () => {
 
     expect(await screen.findByText('S001 저장 완료')).toBeTruthy();
     expect(await screen.findByText('P001 저장 완료')).toBeTruthy();
+  });
+
+  it('creates new student and product rows through POST APIs', async () => {
+    render(<AdminManagePage />);
+
+    await screen.findByDisplayValue('김민준');
+
+    fireEvent.change(screen.getByLabelText('새 학생 ID'), { target: { value: 'S002' } });
+    fireEvent.change(screen.getByLabelText('새 학생 이름'), { target: { value: '이서연' } });
+    fireEvent.change(screen.getByLabelText('새 학생 번호'), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: '새 학생 추가' }));
+
+    fireEvent.change(screen.getByLabelText('새 상품 ID'), { target: { value: 'P002' } });
+    fireEvent.change(screen.getByLabelText('새 상품명'), { target: { value: '지우개' } });
+    fireEvent.change(screen.getByLabelText('새 상품 가격'), { target: { value: '500' } });
+    fireEvent.change(screen.getByLabelText('새 상품 재고'), { target: { value: '10' } });
+    fireEvent.change(screen.getByLabelText('새 상품 카테고리'), { target: { value: '문구' } });
+    fireEvent.change(screen.getByLabelText('새 상품 정렬'), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: '새 상품 추가' }));
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith('/api/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId: 'S002', name: '이서연', number: 2, balance: 0, status: 'ACTIVE' }),
+      });
+      expect(fetch).toHaveBeenCalledWith('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId: 'P002', name: '지우개', price: 500, stock: 10, isActive: true, category: '문구', sortOrder: 2 }),
+      });
+    });
+
+    expect(await screen.findByText('S002 추가 완료')).toBeTruthy();
+    expect(await screen.findByText('P002 추가 완료')).toBeTruthy();
   });
 });

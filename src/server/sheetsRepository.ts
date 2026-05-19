@@ -34,6 +34,10 @@ export type StudentUpdate = {
   status: Student['status'];
 };
 
+export type StudentCreate = StudentUpdate & {
+  studentId: string;
+};
+
 export type ProductUpdate = {
   name: string;
   price: number;
@@ -41,6 +45,10 @@ export type ProductUpdate = {
   isActive: boolean;
   category?: string;
   sortOrder: number;
+};
+
+export type ProductCreate = ProductUpdate & {
+  productId: string;
 };
 
 const REQUIRED_STUDENT_COLUMNS = ['studentId', 'name', 'number', 'balance', 'status'];
@@ -112,6 +120,36 @@ export async function getProductRecords(reader: SheetsReader): Promise<ProductRe
     .sort((a, b) => a.product.sortOrder - b.product.sortOrder || a.product.name.localeCompare(b.product.name));
 }
 
+export async function createStudent(store: SheetsStore, create: StudentCreate): Promise<Student> {
+  const studentId = create.studentId.trim();
+  validateStudentId(studentId);
+  validateStudentUpdate(create);
+
+  if (await getStudentById(store, studentId)) {
+    throw new Error('이미 존재하는 학생 ID입니다.');
+  }
+
+  const student: Student = {
+    studentId,
+    name: create.name.trim(),
+    number: create.number,
+    balance: create.balance,
+    status: create.status,
+  };
+
+  await store.appendRow('Students', [
+    student.studentId,
+    student.name,
+    String(student.number),
+    String(student.balance),
+    student.studentId,
+    student.status,
+    '',
+  ]);
+
+  return student;
+}
+
 export async function updateStudentDetails(store: SheetsStore, studentId: string, update: StudentUpdate): Promise<Student> {
   const record = await getStudentRecordById(store, studentId);
 
@@ -128,6 +166,41 @@ export async function updateStudentDetails(store: SheetsStore, studentId: string
   await store.updateCell('Students', record.rowNumber, 'status', update.status);
 
   return { studentId, name, number: update.number, balance: update.balance, status: update.status };
+}
+
+export async function createProduct(store: SheetsStore, create: ProductCreate): Promise<Product> {
+  const productId = create.productId.trim();
+  validateProductId(productId);
+  validateProductUpdate(create);
+
+  if ((await getProductRecords(store)).some(({ product }) => product.productId === productId)) {
+    throw new Error('이미 존재하는 상품 ID입니다.');
+  }
+
+  const category = create.category?.trim() || undefined;
+  const product: Product = {
+    productId,
+    name: create.name.trim(),
+    price: create.price,
+    stock: create.stock,
+    isActive: create.isActive,
+    imageUrl: undefined,
+    category,
+    sortOrder: create.sortOrder,
+  };
+
+  await store.appendRow('Products', [
+    product.productId,
+    product.name,
+    String(product.price),
+    String(product.stock),
+    product.isActive ? 'TRUE' : 'FALSE',
+    '',
+    product.category ?? '',
+    String(product.sortOrder),
+  ]);
+
+  return product;
 }
 
 export async function updateProductDetails(store: SheetsStore, productId: string, update: ProductUpdate): Promise<Product> {
@@ -159,11 +232,19 @@ export async function updateProductDetails(store: SheetsStore, productId: string
   };
 }
 
+function validateStudentId(studentId: string) {
+  if (!studentId) throw new Error('학생 ID를 입력해 주세요.');
+}
+
 function validateStudentUpdate(update: StudentUpdate) {
   if (!update.name.trim()) throw new Error('학생 이름을 입력해 주세요.');
   if (!Number.isInteger(update.number) || update.number <= 0) throw new Error('학생 번호는 1 이상의 정수여야 합니다.');
   if (!Number.isInteger(update.balance) || update.balance < 0) throw new Error('잔액은 0 이상의 정수여야 합니다.');
   if (update.status !== 'ACTIVE' && update.status !== 'INACTIVE') throw new Error('학생 상태가 올바르지 않습니다.');
+}
+
+function validateProductId(productId: string) {
+  if (!productId) throw new Error('상품 ID를 입력해 주세요.');
 }
 
 function validateProductUpdate(update: ProductUpdate) {

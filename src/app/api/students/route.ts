@@ -1,5 +1,5 @@
-import { createConfiguredSheetsReader } from '@/server/googleSheets';
-import { getStudents } from '@/server/sheetsRepository';
+import { createConfiguredSheetsReader, createConfiguredSheetsStore } from '@/server/googleSheets';
+import { createStudent, getStudents } from '@/server/sheetsRepository';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,5 +13,25 @@ export async function GET() {
     const message = error instanceof Error ? error.message : '학생 목록을 불러오지 못했습니다.';
 
     return Response.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const store = await createConfiguredSheetsStore();
+    const payload = await request.json();
+    const student = await createStudent(store, {
+      studentId: String(payload.studentId ?? ''),
+      name: String(payload.name ?? ''),
+      number: Number(payload.number),
+      balance: Number(payload.balance),
+      status: payload.status,
+    });
+
+    return Response.json(student, { status: 201 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '학생을 추가하지 못했습니다.';
+
+    return Response.json({ error: message }, { status: 400 });
   }
 }
