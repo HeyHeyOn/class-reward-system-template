@@ -10,12 +10,15 @@
 - [x] 환경변수 샘플 작성
 - [x] 결제 미리보기 순수 로직 TDD 구현
 - [x] 초기 키오스크 랜딩 UI 작성
+- [x] 관리자 설정 화면 추가
+- [x] Google Sheets 주소/시트 ID 저장 API 추가
+- [x] 런타임 설정 파일 `data/settings.json` 구조 추가
 - [x] 테스트/린트/빌드 검증
 
 ## Next
 
-- [ ] Google Sheets 인증 방식 확정
-- [ ] 실제 Google Spreadsheet 생성 또는 기존 시트 연결
+- [ ] Google Sheets 서비스 계정 인증 연결
+- [ ] 저장된 시트 ID를 Google Sheets 클라이언트에서 사용
 - [ ] Students 시트 읽기 Repository 구현
 - [ ] Products 시트 읽기 Repository 구현
 - [ ] 거래 로그 append 구현
@@ -32,5 +35,3 @@
 
 - [ ] 로컬 실행 또는 웹 배포 여부
 - [ ] Google 서비스 계정 생성 여부
-- [ ] 실제 시트를 새로 만들지/기존 시트를 사용할지
-- [ ] 관리자 페이지를 MVP에 포함할지 여부

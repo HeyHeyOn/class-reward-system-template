@@ -13,13 +13,21 @@
 - Google Sheets 템플릿 CSV와 환경변수 샘플 작성 완료
 - 결제 미리보기 순수 로직 TDD 구현 완료
 - 초기 키오스크 랜딩 UI 작성 완료
+- 관리자 설정에서 Google Sheets 주소/시트 ID를 저장하는 구조 구현 완료
 
 ## 주요 문서
 
 - `docs/plans/2026-05-19-class-store-project-plan.md`
 - `docs/sheets-template.md`
+- `docs/admin-settings.md`
 - `templates/students.csv`
 - `templates/products.csv`
+
+## 설정 방식
+
+- 기본: `/admin/settings` 화면에서 Google Sheets 주소 또는 시트 ID 입력
+- 저장 위치: `data/settings.json` — Git 제외
+- fallback: `.env.local`의 `GOOGLE_SHEET_ID`
 
 ## 검증 상태
 
@@ -40,14 +48,13 @@
 
 ## 다음 작업
 
-1. Google Sheets 서비스 계정/시트 ID 연결
-2. Students/Products 시트 읽기 Repository 구현
+1. Google Sheets API 클라이언트 구현
+2. 저장된 시트 ID를 사용해 Students/Products 시트 읽기 Repository 구현
 3. Checkout API 구현
 4. QR 스캔 컴포넌트 연결
 5. 실제 시트 데이터로 키오스크 UI 연결
 
 ## 구현 전 결정 필요
 
-1. 실제 Google Sheets를 새로 만들지, 관리자님 기존 시트를 쓸지
-2. 서비스 계정 키를 새로 발급할지
-3. 배포 방식: 로컬 PC / Vercel / 태블릿 전용 접속
+1. 서비스 계정 키를 새로 발급할지
+2. 배포 방식: 로컬 PC / Vercel / 태블릿 전용 접속

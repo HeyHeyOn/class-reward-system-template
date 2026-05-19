@@ -15,9 +15,14 @@ export default function Home() {
             <h1 className="mt-2 text-4xl font-black tracking-tight md:text-6xl">학급 매점</h1>
             <p className="mt-3 text-lg text-slate-600">QR을 찍고, 상품을 담고, 학급 화폐로 결제합니다.</p>
           </div>
-          <div className="rounded-3xl bg-slate-950 px-6 py-4 text-white shadow-lg">
-            <p className="text-sm text-slate-300">현재 모드</p>
-            <p className="text-2xl font-black">MVP 준비 중</p>
+          <div className="flex flex-col gap-3 rounded-3xl bg-slate-950 px-6 py-4 text-white shadow-lg">
+            <div>
+              <p className="text-sm text-slate-300">현재 모드</p>
+              <p className="text-2xl font-black">MVP 준비 중</p>
+            </div>
+            <a href="/admin/settings" className="rounded-full bg-amber-300 px-4 py-2 text-center font-black text-slate-950">
+              관리자 설정
+            </a>
           </div>
         </header>
 
