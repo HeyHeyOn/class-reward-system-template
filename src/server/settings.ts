@@ -1,30 +1,33 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import type { SheetsReader, SheetsStore } from '@/server/sheetsRepository';
+import { getSheetSettings, saveSheetSetting } from '@/server/sheetsRepository';
 
 export type AppSettings = {
   spreadsheetId: string;
-  source: 'runtime' | 'env' | 'unset';
+  currencyUnit: string;
+  source: 'sheet' | 'env' | 'unset';
 };
 
-type SettingsEnv = Pick<NodeJS.ProcessEnv, 'GOOGLE_SHEET_ID'>;
+type SettingsEnv = { [key: string]: string | undefined; GOOGLE_SHEET_ID?: string };
 
 type SettingsOptions = {
-  settingsPath?: string;
   env?: SettingsEnv;
+  settingsReader?: SheetsReader;
 };
 
 type SaveSettingsOptions = {
-  settingsPath?: string;
+  settingsStore: SheetsStore;
   spreadsheetIdOrUrl: string;
+  currencyUnit?: string;
+  env?: SettingsEnv;
 };
 
 type ValidationResult =
   | { ok: true; spreadsheetId: string }
   | { ok: false; message: string };
 
-const DEFAULT_SETTINGS_PATH = join(process.cwd(), 'data', 'settings.json');
 const SHEETS_URL_ID_PATTERN = /\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/;
 const PLAIN_ID_PATTERN = /^[a-zA-Z0-9-_]{8,}$/;
+const DEFAULT_CURRENCY_UNIT = '원';
 
 export function extractSpreadsheetId(value: string): string | null {
   const trimmed = value.trim();
@@ -53,54 +56,65 @@ export function validateSpreadsheetId(value: string): ValidationResult {
   return { ok: true, spreadsheetId };
 }
 
+export function getEnvSpreadsheetId(env: SettingsEnv = process.env): string {
+  return env.GOOGLE_SHEET_ID?.trim() ?? '';
+}
+
 export async function getAppSettings(options: SettingsOptions = {}): Promise<AppSettings> {
-  const settingsPath = options.settingsPath ?? DEFAULT_SETTINGS_PATH;
-  const env = options.env ?? process.env;
+  const envSpreadsheetId = getEnvSpreadsheetId(options.env ?? process.env);
 
-  const runtimeSpreadsheetId = await readRuntimeSpreadsheetId(settingsPath);
-  if (runtimeSpreadsheetId) {
-    return { spreadsheetId: runtimeSpreadsheetId, source: 'runtime' };
+  if (!envSpreadsheetId) {
+    return { spreadsheetId: '', currencyUnit: DEFAULT_CURRENCY_UNIT, source: 'unset' };
   }
 
-  const envSpreadsheetId = env.GOOGLE_SHEET_ID?.trim();
-  if (envSpreadsheetId) {
-    return { spreadsheetId: envSpreadsheetId, source: 'env' };
+  if (options.settingsReader) {
+    try {
+      const sheetSettings = await getSheetSettings(options.settingsReader);
+      return {
+        spreadsheetId: envSpreadsheetId,
+        currencyUnit: normalizeCurrencyUnit(sheetSettings.currencyUnit),
+        source: 'sheet',
+      };
+    } catch (error) {
+      if (isMissingSettingsSheetError(error)) {
+        return { spreadsheetId: envSpreadsheetId, currencyUnit: DEFAULT_CURRENCY_UNIT, source: 'env' };
+      }
+      throw error;
+    }
   }
 
-  return { spreadsheetId: '', source: 'unset' };
+  return { spreadsheetId: envSpreadsheetId, currencyUnit: DEFAULT_CURRENCY_UNIT, source: 'env' };
 }
 
 export async function saveAppSettings(options: SaveSettingsOptions): Promise<AppSettings> {
-  const settingsPath = options.settingsPath ?? DEFAULT_SETTINGS_PATH;
+  const configuredSpreadsheetId = getEnvSpreadsheetId(options.env ?? process.env);
   const validation = validateSpreadsheetId(options.spreadsheetIdOrUrl);
 
   if (validation.ok === false) {
     throw new Error(validation.message);
   }
 
-  await mkdir(dirname(settingsPath), { recursive: true });
-  await writeFile(
-    settingsPath,
-    JSON.stringify({ spreadsheetId: validation.spreadsheetId }, null, 2),
-    'utf8',
-  );
+  if (!configuredSpreadsheetId) {
+    throw new Error('GOOGLE_SHEET_ID 환경변수가 설정되지 않았습니다. Vercel 환경변수에 기본 시트 ID를 등록해 주세요.');
+  }
 
-  return { spreadsheetId: validation.spreadsheetId, source: 'runtime' };
+  if (validation.spreadsheetId !== configuredSpreadsheetId) {
+    throw new Error('Vercel 배포판에서는 시트 ID를 관리자 화면에서 영구 변경할 수 없습니다. Vercel의 GOOGLE_SHEET_ID 환경변수를 변경한 뒤 재배포해 주세요.');
+  }
+
+  const currencyUnit = normalizeCurrencyUnit(options.currencyUnit);
+  await saveSheetSetting(options.settingsStore, { key: 'currencyUnit', value: currencyUnit });
+
+  return { spreadsheetId: configuredSpreadsheetId, currencyUnit, source: 'sheet' };
 }
 
-async function readRuntimeSpreadsheetId(settingsPath: string): Promise<string | null> {
-  try {
-    const raw = await readFile(settingsPath, 'utf8');
-    const parsed = JSON.parse(raw) as { spreadsheetId?: unknown };
+export function normalizeCurrencyUnit(value: unknown): string {
+  if (typeof value !== 'string') return DEFAULT_CURRENCY_UNIT;
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, 12) : DEFAULT_CURRENCY_UNIT;
+}
 
-    if (typeof parsed.spreadsheetId !== 'string') return null;
-
-    return extractSpreadsheetId(parsed.spreadsheetId);
-  } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-      return null;
-    }
-
-    throw error;
-  }
+function isMissingSettingsSheetError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return /Settings|Unable to parse range|not found/i.test(error.message);
 }

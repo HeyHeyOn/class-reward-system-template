@@ -24,6 +24,8 @@ describe('AdminManagePage', () => {
           return jsonResponse(students);
         }
         if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+        if (url === '/api/settings' && init?.method === 'POST') return jsonResponse({ spreadsheetId: 'sheet-new', currencyUnit: '별', source: 'runtime' });
+        if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', source: 'runtime' });
         if (url === '/api/products' && init?.method === 'POST') {
           return jsonResponse({ productId: 'P002', name: '지우개', price: 500, stock: 10, isActive: true, category: '문구', sortOrder: 2 });
         }
@@ -44,16 +46,54 @@ describe('AdminManagePage', () => {
     vi.unstubAllGlobals();
   });
 
+  it('renders unified admin tabs with kiosk-style design language', async () => {
+    const { container } = render(<AdminManagePage />);
+
+    expect(await screen.findByRole('heading', { name: '관리자 센터' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: '시트 설정' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: '학생 명단' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: '재고 관리' })).toBeTruthy();
+    expect(await screen.findByText('관리자 목록도 이 설정을 사용합니다: 학생 1명 · 상품 1개')).toBeTruthy();
+    expect(screen.getByRole('link', { name: /학생 QR 출력/ }).getAttribute('href')).toBe('/admin/student-qrs');
+    expect(screen.getByRole('link', { name: /결제 내역 확인/ }).getAttribute('href')).toBe('/admin/transactions');
+    expect(screen.getByDisplayValue('별')).toBeTruthy();
+    expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-[#dbeaf6]');
+    expect(container.querySelector('[data-testid="admin-tabs"]')?.className).toContain('rounded-[1.5rem]');
+  });
+
+  it('reloads admin lists from the shared sheet after saving sheet settings', async () => {
+    render(<AdminManagePage />);
+
+    await screen.findByText('관리자 목록도 이 설정을 사용합니다: 학생 1명 · 상품 1개');
+    fireEvent.change(screen.getByLabelText('Google Sheets 주소 또는 시트 ID'), { target: { value: 'sheet-new' } });
+    fireEvent.click(screen.getByRole('button', { name: '시트 ID 저장' }));
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ spreadsheetIdOrUrl: 'sheet-new', currencyUnit: '별' }),
+      });
+      expect(fetch).toHaveBeenCalledWith('/api/students', { cache: 'no-store' });
+      expect(fetch).toHaveBeenCalledWith('/api/products?includeInactive=1', { cache: 'no-store' });
+    });
+
+    expect(await screen.findByText('시트 ID를 저장했고, 관리자 목록도 같은 시트에서 다시 불러왔습니다.')).toBeTruthy();
+  });
+
   it('loads students and products, then saves edited values through PATCH APIs', async () => {
     render(<AdminManagePage />);
 
+    fireEvent.click(await screen.findByRole('tab', { name: '학생 명단' }));
     expect(await screen.findByDisplayValue('김민준')).toBeTruthy();
-    expect(await screen.findByDisplayValue('연필')).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('S001 이름'), { target: { value: '김민준 수정' } });
     fireEvent.change(screen.getByLabelText('S001 잔액'), { target: { value: '4000' } });
     fireEvent.click(screen.getByRole('button', { name: 'S001 학생 저장' }));
+    expect(await screen.findByText('S001 저장 완료')).toBeTruthy();
 
+    fireEvent.click(screen.getByRole('tab', { name: '재고 관리' }));
+    expect(await screen.findByDisplayValue('연필')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('P001 상품명'), { target: { value: '연필 세트' } });
     fireEvent.change(screen.getByLabelText('P001 가격'), { target: { value: '900' } });
     fireEvent.click(screen.getByRole('button', { name: 'P001 상품 저장' }));
@@ -71,13 +111,13 @@ describe('AdminManagePage', () => {
       });
     });
 
-    expect(await screen.findByText('S001 저장 완료')).toBeTruthy();
     expect(await screen.findByText('P001 저장 완료')).toBeTruthy();
   });
 
   it('creates new student and product rows through POST APIs', async () => {
     render(<AdminManagePage />);
 
+    fireEvent.click(await screen.findByRole('tab', { name: '학생 명단' }));
     await screen.findByDisplayValue('김민준');
 
     fireEvent.change(screen.getByLabelText('새 학생 ID'), { target: { value: 'S002' } });
@@ -85,6 +125,7 @@ describe('AdminManagePage', () => {
     fireEvent.change(screen.getByLabelText('새 학생 번호'), { target: { value: '2' } });
     fireEvent.click(screen.getByRole('button', { name: '새 학생 추가' }));
 
+    fireEvent.click(screen.getByRole('tab', { name: '재고 관리' }));
     fireEvent.change(screen.getByLabelText('새 상품 ID'), { target: { value: 'P002' } });
     fireEvent.change(screen.getByLabelText('새 상품명'), { target: { value: '지우개' } });
     fireEvent.change(screen.getByLabelText('새 상품 가격'), { target: { value: '500' } });

@@ -4,11 +4,19 @@ import { FormEvent, useEffect, useState } from 'react';
 
 type SettingsResponse = {
   spreadsheetId: string;
+  currencyUnit: string;
   source: 'runtime' | 'env' | 'unset';
 };
 
-export function SettingsForm() {
+type SettingsFormProps = {
+  linkedStudentCount?: number;
+  linkedProductCount?: number;
+  onSettingsSaved?: () => Promise<void> | void;
+};
+
+export function SettingsForm({ linkedStudentCount, linkedProductCount, onSettingsSaved }: SettingsFormProps) {
   const [spreadsheetIdOrUrl, setSpreadsheetIdOrUrl] = useState('');
+  const [currencyUnit, setCurrencyUnit] = useState('원');
   const [currentSettings, setCurrentSettings] = useState<SettingsResponse | null>(null);
   const [message, setMessage] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -23,6 +31,7 @@ export function SettingsForm() {
       if (!ignore) {
         setCurrentSettings(settings);
         setSpreadsheetIdOrUrl(settings.spreadsheetId);
+        setCurrencyUnit(settings.currencyUnit ?? '원');
       }
     }
 
@@ -44,7 +53,7 @@ export function SettingsForm() {
       const response = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ spreadsheetIdOrUrl }),
+        body: JSON.stringify({ spreadsheetIdOrUrl, currencyUnit }),
       });
       const payload = (await response.json()) as SettingsResponse | { error: string };
 
@@ -55,7 +64,9 @@ export function SettingsForm() {
 
       setCurrentSettings(payload);
       setSpreadsheetIdOrUrl(payload.spreadsheetId);
-      setMessage('시트 ID를 저장했습니다.');
+      setCurrencyUnit(payload.currencyUnit);
+      await onSettingsSaved?.();
+      setMessage('시트 ID를 저장했고, 관리자 목록도 같은 시트에서 다시 불러왔습니다.');
     } finally {
       setIsSaving(false);
     }
@@ -67,8 +78,8 @@ export function SettingsForm() {
         <p className="text-sm font-bold tracking-[0.2em] text-amber-700">GOOGLE SHEETS</p>
         <h2 className="text-3xl font-black">스프레드시트 연결</h2>
         <p className="text-slate-600">
-          Google Sheets 주소 전체 또는 `/d/` 사이의 시트 ID만 넣어도 됩니다. 저장된 값은 이 설치본의
-          `data/settings.json`에 보관됩니다.
+          Google Sheets 주소 전체 또는 `/d/` 사이의 시트 ID만 넣어도 됩니다. 저장할 때 서비스 계정으로 실제 접근 가능한지 확인한 뒤,
+          이 설치본의 `data/settings.json`에 보관합니다.
         </p>
       </div>
 
@@ -82,6 +93,17 @@ export function SettingsForm() {
         />
       </label>
 
+      <label className="mt-4 block">
+        <span className="text-sm font-bold text-slate-700">학급 화폐 단위</span>
+        <input
+          aria-label="학급 화폐 단위"
+          value={currencyUnit}
+          onChange={(event) => setCurrencyUnit(event.target.value)}
+          placeholder="원, 별, 포인트 등"
+          className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg outline-none transition focus:border-amber-500 focus:bg-white"
+        />
+      </label>
+
       <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
         <p>
           현재 상태:{' '}
@@ -90,6 +112,10 @@ export function SettingsForm() {
           </strong>
         </p>
         <p>설정 출처: {currentSettings?.source ?? '확인 중'}</p>
+        <p>화폐 단위: {currentSettings?.currencyUnit ?? currencyUnit}</p>
+        <p className="mt-2 font-bold text-sky-800">
+          관리자 목록도 이 설정을 사용합니다: 학생 {linkedStudentCount ?? 0}명 · 상품 {linkedProductCount ?? 0}개
+        </p>
       </div>
 
       {message ? <p className="mt-4 font-bold text-amber-700">{message}</p> : null}

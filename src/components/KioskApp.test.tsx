@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { KioskApp } from './KioskApp';
 
@@ -29,6 +29,10 @@ describe('KioskApp', () => {
 
         if (url === '/api/products') {
           return jsonResponse(products);
+        }
+
+        if (url === '/api/settings') {
+          return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', source: 'runtime' });
         }
 
         if (url === '/api/students/S001') {
@@ -71,13 +75,12 @@ describe('KioskApp', () => {
     expect(screen.getByText('연필')).toBeTruthy();
     expect(screen.getByText('선택한 상품이 없습니다.')).toBeTruthy();
 
-    const adminLink = screen.getByRole('link', { name: '관리자 설정' });
-    expect(adminLink.getAttribute('href')).toBe('/admin/settings');
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('h-screen');
+    expect(screen.queryByRole('link', { name: '관리자 설정' })).toBeNull();
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('min-h-screen');
     expect(container.querySelector('[data-testid="product-scroll-block"]')?.className).toContain('overflow-y-auto');
     expect(container.querySelector('[data-testid="cart-scroll-block"]')?.className).toContain('overflow-y-auto');
 
-    fireEvent.click(screen.getByRole('button', { name: '연필 300원 담기' }));
+    fireEvent.click(screen.getByRole('button', { name: '연필 300별 담기' }));
     expect(screen.getByRole('heading', { name: '장바구니 (1)' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '연필 수량 줄이기' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '연필 수량 늘리기' })).toBeTruthy();
@@ -89,8 +92,8 @@ describe('KioskApp', () => {
     render(<KioskApp />);
 
     expect(await screen.findByText('연필')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '연필 300원 담기' }));
-    expectPageText('총 결제 금액300원');
+    fireEvent.click(screen.getByRole('button', { name: '연필 300별 담기' }));
+    expectPageText('총 결제 금액300별');
 
     fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
     expect(await screen.findByRole('dialog', { name: '결제 확인' })).toBeTruthy();
@@ -109,10 +112,12 @@ describe('KioskApp', () => {
       });
     });
 
-    expect(await screen.findByRole('dialog', { name: '결제 완료' })).toBeTruthy();
+    const completeDialog = await screen.findByRole('dialog', { name: '결제 완료' });
+    expect(completeDialog).toBeTruthy();
     expect(screen.getByText('결제가 완료되었습니다.')).toBeTruthy();
     expect(screen.getByText('결제자: 김민준')).toBeTruthy();
-    expectPageText('결제 후 잔액3,200원');
+    expect(within(completeDialog).getAllByText('총 결제 금액')).toHaveLength(1);
+    expectPageText('결제 후 잔액3,200별');
 
     fireEvent.click(screen.getByRole('button', { name: '처음으로' }));
     expect(await screen.findByRole('heading', { name: '장바구니 (0)' })).toBeTruthy();
@@ -122,7 +127,7 @@ describe('KioskApp', () => {
     render(<KioskApp />);
 
     expect(await screen.findByText('연필')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '연필 300원 담기' }));
+    fireEvent.click(screen.getByRole('button', { name: '연필 300별 담기' }));
     fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
 
     fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: 'WRONG' } });
@@ -131,5 +136,36 @@ describe('KioskApp', () => {
     expect(await screen.findByRole('dialog', { name: '결제 실패' })).toBeTruthy();
     expect(screen.getByText('잘못된 QR 코드입니다.')).toBeTruthy();
     expect(screen.getByRole('button', { name: '다시 시도' })).toBeTruthy();
+  });
+
+  it('recovers from malformed QR/student lookup errors instead of staying on the processing popup', async () => {
+    vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse(products));
+    vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', source: 'runtime' }));
+    vi.mocked(fetch).mockImplementationOnce(async () => {
+      throw new SyntaxError('Unexpected token < in JSON');
+    });
+
+    render(<KioskApp />);
+
+    expect(await screen.findByText('연필')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '연필 300별 담기' }));
+    fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
+    fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: 'BROKEN-QR' } });
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 결제하기' }));
+
+    expect(await screen.findByRole('dialog', { name: '결제 실패' })).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: '결제 중' })).toBeNull();
+    expect(screen.getByText('잘못된 QR 코드입니다.')).toBeTruthy();
+  });
+
+  it('uses responsive kiosk layout classes for small screens and keeps the total/payment area aligned', async () => {
+    const { container } = render(<KioskApp />);
+
+    expect(await screen.findByText('연필')).toBeTruthy();
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('min-h-screen');
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('overflow-y-auto');
+    expect(container.querySelector('[data-testid="kiosk-content"]')?.className).toContain('lg:h-full');
+    expect(container.querySelector('[data-testid="checkout-total-bar"]')?.className).toContain('sm:flex-row');
+    expect(container.querySelector('[data-testid="checkout-button"]')?.className).toContain('sm:w-auto');
   });
 });

@@ -31,3 +31,16 @@ export type CheckoutLineItem = {
   quantity: number;
   subtotal: number;
 };
+
+export type Transaction = {
+  transactionId: string;
+  timestamp: string;
+  studentId: string;
+  studentName: string;
+  items: CheckoutLineItem[];
+  totalAmount: number;
+  balanceBefore: number;
+  balanceAfter: number;
+  status: string;
+  operator: string;
+};

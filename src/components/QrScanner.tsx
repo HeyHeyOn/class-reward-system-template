@@ -34,7 +34,7 @@ export function QrScanner({ onScan }: QrScannerProps) {
           scannerId,
           {
             fps: 10,
-            qrbox: { width: 240, height: 240 },
+            qrbox: { width: 200, height: 200 },
             rememberLastUsedCamera: true,
           },
           false,
@@ -67,7 +67,7 @@ export function QrScanner({ onScan }: QrScannerProps) {
   }, []);
 
   return (
-    <div className="w-full max-w-xl rounded-[2rem] bg-white p-4 text-slate-950 shadow-2xl">
+    <div className="w-full max-w-xl rounded-[1.5rem] bg-white p-3 text-slate-950 shadow-2xl sm:rounded-[2rem] sm:p-4">
       <div id={scannerId} className="overflow-hidden rounded-[1.5rem]" />
       <p className="mt-3 text-sm font-bold text-slate-600">{status}</p>
     </div>

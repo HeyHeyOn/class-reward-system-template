@@ -1,25 +1,11 @@
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   extractSpreadsheetId,
   getAppSettings,
   saveAppSettings,
   validateSpreadsheetId,
 } from '@/server/settings';
-
-let settingsPath: string;
-let tempDir: string;
-
-beforeEach(async () => {
-  tempDir = await mkdtemp(join(tmpdir(), 'class-store-settings-'));
-  settingsPath = join(tempDir, 'settings.json');
-});
-
-afterEach(async () => {
-  await rm(tempDir, { recursive: true, force: true });
-});
+import type { SheetName } from '@/server/sheetsRepository';
 
 describe('settings', () => {
   it('extracts spreadsheet id from a plain id or Google Sheets URL', () => {
@@ -37,28 +23,67 @@ describe('settings', () => {
     });
   });
 
-  it('uses env spreadsheet id when runtime settings file does not exist', async () => {
-    const settings = await getAppSettings({
-      settingsPath,
-      env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
-    });
+  it('uses env spreadsheet id and default currency unit when Settings sheet is unavailable', async () => {
+    const settings = await getAppSettings({ env: { GOOGLE_SHEET_ID: 'env-sheet-id' } });
 
-    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', source: 'env' });
+    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '원', source: 'env' });
   });
 
-  it('saves normalized spreadsheet id and prefers runtime settings over env', async () => {
-    const id = '1AbC_defGhijKlmnopQRstuVwxyz-1234567890';
-
-    await saveAppSettings({
-      settingsPath,
-      spreadsheetIdOrUrl: `https://docs.google.com/spreadsheets/d/${id}/edit#gid=0`,
-    });
-
+  it('reads currency unit from Settings sheet when present', async () => {
     const settings = await getAppSettings({
-      settingsPath,
       env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
+      settingsReader: {
+        async getRows(sheetName: SheetName) {
+          expect(sheetName).toBe('Settings');
+          return [
+            ['key', 'value'],
+            ['currencyUnit', '별'],
+          ];
+        },
+      },
     });
 
-    expect(settings).toEqual({ spreadsheetId: id, source: 'runtime' });
+    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '별', source: 'sheet' });
+  });
+
+  it('saves currency unit to Settings sheet and rejects changing deployment spreadsheet id', async () => {
+    const updates: Array<{ sheetName: SheetName; rowNumber: number; columnName: string; value: string | number }> = [];
+    const appends: Array<{ sheetName: SheetName; values: string[] }> = [];
+    const settingsStore = {
+      async getRows(sheetName: SheetName) {
+        expect(sheetName).toBe('Settings');
+        return [
+          ['key', 'value'],
+          ['currencyUnit', '원'],
+        ];
+      },
+      async updateCell(sheetName: SheetName, rowNumber: number, columnName: string, value: string | number) {
+        updates.push({ sheetName, rowNumber, columnName, value });
+      },
+      async appendRow(sheetName: SheetName, values: string[]) {
+        appends.push({ sheetName, values });
+      },
+    };
+
+    await expect(
+      saveAppSettings({
+        settingsStore,
+        spreadsheetIdOrUrl: 'env-sheet-id',
+        currencyUnit: '달란트',
+        env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
+      }),
+    ).resolves.toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '달란트', source: 'sheet' });
+
+    expect(updates).toEqual([{ sheetName: 'Settings', rowNumber: 2, columnName: 'value', value: '달란트' }]);
+    expect(appends).toEqual([]);
+
+    await expect(
+      saveAppSettings({
+        settingsStore,
+        spreadsheetIdOrUrl: 'other-sheet-id',
+        currencyUnit: '별',
+        env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
+      }),
+    ).rejects.toThrow('Vercel 배포판에서는 시트 ID를 관리자 화면에서 영구 변경할 수 없습니다.');
   });
 });

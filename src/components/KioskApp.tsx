@@ -38,8 +38,8 @@ function isApiError(payload: unknown): payload is ApiError {
   return Boolean(payload && typeof payload === 'object' && ('error' in payload || 'message' in payload));
 }
 
-function formatWon(amount: number) {
-  return `${amount.toLocaleString()}원`;
+function formatCurrency(amount: number, unit: string) {
+  return `${amount.toLocaleString()}${unit}`;
 }
 
 export function KioskApp() {
@@ -53,21 +53,27 @@ export function KioskApp() {
   const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
   const [completedCartDetails, setCompletedCartDetails] = useState<CartDetail[]>([]);
   const [failure, setFailure] = useState<FailureState | null>(null);
+  const [currencyUnit, setCurrencyUnit] = useState('원');
 
   useEffect(() => {
     let ignore = false;
 
     async function loadProducts() {
       setIsLoadingProducts(true);
-      const response = await fetch('/api/products', { cache: 'no-store' });
-      const payload = (await response.json()) as Product[] | ApiError;
+      const [productResponse, settingsResponse] = await Promise.all([
+        fetch('/api/products', { cache: 'no-store' }),
+        fetch('/api/settings', { cache: 'no-store' }),
+      ]);
+      const payload = (await productResponse.json()) as Product[] | ApiError;
+      const settings = await settingsResponse.json().catch(() => null) as { currencyUnit?: string } | null;
 
-      if (!response.ok || !Array.isArray(payload)) {
+      if (!productResponse.ok || !Array.isArray(payload)) {
         throw new Error('상품 정보를 불러오지 못했습니다.');
       }
 
       if (!ignore) {
         setProducts(payload);
+        if (settings?.currencyUnit) setCurrencyUnit(settings.currencyUnit);
       }
     }
 
@@ -154,6 +160,8 @@ export function KioskApp() {
   }
 
   async function completeCheckoutWithQrValue(qrValue: string) {
+    if (isCheckingOut) return;
+
     const studentId = qrValue.trim();
 
     if (!studentId) {
@@ -199,7 +207,7 @@ export function KioskApp() {
           '결제에 실패했습니다.';
         const detail =
           'currentBalance' in checkoutPayload && typeof checkoutPayload.currentBalance === 'number'
-            ? `현재 잔액: ${formatWon(checkoutPayload.currentBalance)}`
+            ? `현재 잔액: ${formatCurrency(checkoutPayload.currentBalance, currencyUnit)}`
             : undefined;
 
         setFailure({ title: '결제 실패', message: errorMessage, detail });
@@ -218,6 +226,9 @@ export function KioskApp() {
       setCartItems([]);
       setManualQrValue('');
       setPaymentStep('complete');
+    } catch {
+      setFailure({ title: '결제 실패', message: '잘못된 QR 코드입니다.' });
+      setPaymentStep('failure');
     } finally {
       setIsCheckingOut(false);
     }
@@ -245,21 +256,13 @@ export function KioskApp() {
   }
 
   return (
-    <main data-testid="kiosk-shell" className="h-screen overflow-hidden bg-[#dbeaf6] p-4 text-slate-950 md:p-6">
-      <section className="mx-auto flex h-full w-full max-w-[760px] flex-col gap-4">
-        <header className="relative rounded-[1.75rem] border border-slate-300/70 bg-white px-4 py-4 text-center shadow-sm">
-          <h1 className="text-4xl font-black tracking-tight md:text-5xl">학급 매점</h1>
-          <a
-            href="/admin/settings"
-            aria-label="관리자 설정"
-            title="관리자 설정"
-            className="absolute right-4 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-slate-100 text-xl text-slate-700 shadow-sm transition hover:bg-slate-200"
-          >
-            ⚙
-          </a>
+    <main data-testid="kiosk-shell" className="min-h-screen overflow-y-auto bg-[#dbeaf6] p-3 text-slate-950 sm:p-4 md:p-6 lg:h-screen lg:overflow-hidden">
+      <section data-testid="kiosk-content" className="mx-auto flex min-h-full w-full max-w-[900px] flex-col gap-3 sm:gap-4 lg:h-full">
+        <header className="relative rounded-[1.5rem] border border-slate-300/70 bg-white px-4 py-3 text-center shadow-sm sm:rounded-[1.75rem] sm:py-4">
+          <h1 className="pr-11 text-3xl font-black tracking-tight sm:pr-0 sm:text-4xl md:text-5xl">학급 매점</h1>
         </header>
 
-        <section className="flex min-h-0 flex-[3] flex-col rounded-[1.75rem] border border-slate-300/70 bg-white/85 p-4 shadow-sm">
+        <section className="flex min-h-[420px] flex-col rounded-[1.5rem] border border-slate-300/70 bg-white/85 p-3 shadow-sm sm:rounded-[1.75rem] sm:p-4 lg:min-h-0 lg:flex-[3]">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-2xl font-black">상품 목록</h2>
             <p className="rounded-full bg-sky-100 px-3 py-1 text-sm font-black text-sky-700">
@@ -268,13 +271,13 @@ export function KioskApp() {
           </div>
 
           <div data-testid="product-scroll-block" className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
               {products.map((product) => (
                 <button
                   key={product.productId}
                   onClick={() => addToCart(product.productId)}
                   disabled={!product.isActive || product.stock <= 0}
-                  aria-label={`${product.name} ${formatWon(product.price)} 담기`}
+                  aria-label={`${product.name} ${formatCurrency(product.price, currencyUnit)} 담기`}
                   className="rounded-[1.1rem] border border-slate-300 bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <p className="text-xs font-black">{product.category || '기타'}</p>
@@ -287,8 +290,8 @@ export function KioskApp() {
                     )}
                   </div>
                   <p className="mt-2 truncate text-lg font-black">{product.name}</p>
-                  <div className="mt-1 flex items-end justify-between gap-2">
-                    <p className="text-xl font-black">{formatWon(product.price)}</p>
+                  <div className="mt-1 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-2">
+                    <p className="text-lg font-black sm:text-xl">{formatCurrency(product.price, currencyUnit)}</p>
                     <p className="rounded-full bg-sky-100 px-2 py-1 text-xs font-black text-slate-700">재고 {product.stock}</p>
                   </div>
                 </button>
@@ -297,7 +300,7 @@ export function KioskApp() {
           </div>
         </section>
 
-        <section className="flex min-h-0 flex-[1.35] flex-col rounded-[1.75rem] border border-slate-300/70 bg-white/90 p-4 shadow-sm">
+        <section className="flex min-h-[260px] flex-col rounded-[1.5rem] border border-slate-300/70 bg-white/90 p-3 shadow-sm sm:rounded-[1.75rem] sm:p-4 lg:min-h-0 lg:flex-[1.35]">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-2xl font-black">장바구니 ({cartDetails.length})</h2>
             <button
@@ -317,7 +320,7 @@ export function KioskApp() {
             ) : (
               <div className="space-y-2">
                 {cartDetails.map((item) => (
-                  <div key={item.productId} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+                  <div key={item.productId} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:gap-3">
                     <p className="truncate text-lg font-black">{item.name}</p>
                     <div className="flex items-center gap-2">
                       <button
@@ -336,7 +339,7 @@ export function KioskApp() {
                         +
                       </button>
                     </div>
-                    <p className="w-24 text-right text-lg font-black">{formatWon(item.subtotal)}</p>
+                    <p className="col-span-2 text-right text-lg font-black sm:col-span-1 sm:w-24">{formatCurrency(item.subtotal, currencyUnit)}</p>
                   </div>
                 ))}
               </div>
@@ -345,13 +348,16 @@ export function KioskApp() {
 
           {message ? <p className="mt-2 rounded-xl bg-amber-100 p-2 text-sm font-bold text-amber-900">{message}</p> : null}
 
-          <div className="mt-3 grid grid-cols-[1fr_auto] items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-            <p className="text-xl font-black">총 결제 금액</p>
-            <p className="text-3xl font-black text-sky-600">{formatWon(totalAmount)}</p>
+          <div data-testid="checkout-total-bar" className="mt-3 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 sm:block">
+              <p className="text-lg font-black sm:text-xl">총 결제 금액</p>
+              <p className="text-3xl font-black text-sky-600">{formatCurrency(totalAmount, currencyUnit)}</p>
+            </div>
             <button
+              data-testid="checkout-button"
               onClick={openCheckout}
               disabled={cartItems.length === 0}
-              className="col-span-2 rounded-xl bg-sky-500 py-3 text-2xl font-black text-white shadow-sm transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:bg-slate-300 sm:col-span-1 sm:col-start-2"
+              className="w-full rounded-xl bg-sky-500 px-6 py-3 text-2xl font-black text-white shadow-sm transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:bg-slate-300 sm:w-auto sm:min-w-44"
             >
               QR 결제
             </button>
@@ -375,6 +381,7 @@ export function KioskApp() {
           paymentResult={paymentResult}
           completedCartDetails={completedCartDetails}
           failure={failure}
+          currencyUnit={currencyUnit}
         />
       ) : null}
     </main>
@@ -398,6 +405,7 @@ type PaymentModalProps = {
   paymentResult: PaymentResult | null;
   completedCartDetails: CartDetail[];
   failure: FailureState | null;
+  currencyUnit: string;
 };
 
 function PaymentModal({
@@ -415,27 +423,28 @@ function PaymentModal({
   paymentResult,
   completedCartDetails,
   failure,
+  currencyUnit,
 }: PaymentModalProps) {
   const dialogLabel = step === 'checkout' ? '결제 확인' : step === 'processing' ? '결제 중' : step === 'failure' ? '결제 실패' : '결제 완료';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/65 p-3 sm:p-4">
       <section
         role="dialog"
         aria-modal="true"
         aria-label={dialogLabel}
-        className="w-full max-w-[720px] rounded-[1.75rem] bg-white p-4 shadow-2xl md:p-5"
+        className="max-h-[calc(100vh-1.5rem)] w-full max-w-[720px] overflow-y-auto rounded-[1.5rem] bg-white p-4 shadow-2xl sm:max-h-[calc(100vh-2rem)] sm:rounded-[1.75rem] md:p-5"
       >
         {step === 'checkout' ? (
           <>
-            <h2 className="text-3xl font-black">결제 확인</h2>
-            <CartSummary cartDetails={cartDetails} totalAmount={totalAmount} accent="text-sky-600" />
+            <h2 className="text-2xl font-black sm:text-3xl">결제 확인</h2>
+            <CartSummary cartDetails={cartDetails} totalAmount={totalAmount} accent="text-sky-600" currencyUnit={currencyUnit} />
             <div className="mt-5 grid gap-5 md:grid-cols-[1fr_180px] md:items-center">
               <div className="rounded-[1.5rem] bg-black p-3">
                 <QrScanner onScan={onScan} />
               </div>
               <div className="text-center md:text-left">
-                <p className="text-2xl font-black leading-tight text-sky-600">결제하려면 카메라에 QR 코드를 인식해주세요.</p>
+                <p className="text-xl font-black leading-tight text-sky-600 sm:text-2xl">결제하려면 카메라에 QR 코드를 인식해주세요.</p>
                 <button onClick={onCancel} className="mt-5 w-full rounded-xl bg-rose-400 py-3 text-xl font-black text-white">
                   결제 취소
                 </button>
@@ -491,15 +500,15 @@ function PaymentModal({
               <p>결제 일시: {new Date().toLocaleString('ko-KR', { hour12: false })}</p>
               <p>결제자: {paymentResult.studentName}</p>
             </div>
-            <CartSummary cartDetails={completedCartDetails} totalAmount={paymentResult.totalAmount} accent="text-slate-950" />
+            <CartSummary cartDetails={completedCartDetails} totalAmount={paymentResult.totalAmount} accent="text-slate-950" showTotal={false} currencyUnit={currencyUnit} />
             <div className="mt-5 space-y-3 text-left">
               <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <p className="text-2xl font-black">총 결제 금액</p>
-                <p className="text-3xl font-black">{formatWon(paymentResult.totalAmount)}</p>
+                <p className="text-3xl font-black">{formatCurrency(paymentResult.totalAmount, currencyUnit)}</p>
               </div>
               <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <p className="text-2xl font-black">결제 후 잔액</p>
-                <p className="text-3xl font-black text-sky-600">{formatWon(paymentResult.balanceAfter)}</p>
+                <p className="text-3xl font-black text-sky-600">{formatCurrency(paymentResult.balanceAfter, currencyUnit)}</p>
               </div>
             </div>
             <button onClick={onReset} className="mt-7 rounded-xl bg-sky-400 px-12 py-4 text-4xl font-black text-white shadow-sm">
@@ -512,20 +521,34 @@ function PaymentModal({
   );
 }
 
-function CartSummary({ cartDetails, totalAmount, accent }: { cartDetails: CartDetail[]; totalAmount: number; accent: string }) {
+function CartSummary({
+  cartDetails,
+  totalAmount,
+  accent,
+  showTotal = true,
+  currencyUnit,
+}: {
+  cartDetails: CartDetail[];
+  totalAmount: number;
+  accent: string;
+  showTotal?: boolean;
+  currencyUnit: string;
+}) {
   return (
     <div className="mt-4 space-y-3">
       {cartDetails.map((item) => (
-        <div key={item.productId} className="grid grid-cols-[1fr_auto_auto] items-center gap-4 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-          <p className="text-xl font-black">{item.name}</p>
-          <p className="text-xl font-black">× {item.quantity}</p>
-          <p className="w-28 text-right text-xl font-black">{formatWon(item.subtotal)}</p>
+        <div key={item.productId} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:gap-4 sm:px-4">
+          <p className="truncate text-lg font-black sm:text-xl">{item.name}</p>
+          <p className="text-lg font-black sm:text-xl">× {item.quantity}</p>
+          <p className="col-span-2 text-right text-lg font-black sm:col-span-1 sm:w-28 sm:text-xl">{formatCurrency(item.subtotal, currencyUnit)}</p>
         </div>
       ))}
-      <div className="mt-5 flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <p className="text-2xl font-black">총 결제 금액</p>
-        <p className={`text-4xl font-black ${accent}`}>{formatWon(totalAmount)}</p>
-      </div>
+      {showTotal ? (
+        <div className="mt-5 flex flex-col gap-1 rounded-xl border border-slate-200 bg-white p-4 text-right shadow-sm sm:flex-row sm:items-center sm:justify-between sm:text-left">
+          <p className="text-xl font-black sm:text-2xl">총 결제 금액</p>
+          <p className={`text-3xl font-black sm:text-4xl ${accent}`}>{formatCurrency(totalAmount, currencyUnit)}</p>
+        </div>
+      ) : null}
     </div>
   );
 }

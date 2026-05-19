@@ -1,5 +1,5 @@
 import { google } from 'googleapis';
-import { getAppSettings } from '@/server/settings';
+import { getEnvSpreadsheetId } from '@/server/settings';
 import type { SheetName, SheetsStore } from '@/server/sheetsRepository';
 
 const SHEET_RANGES: Record<SheetName, string> = {
@@ -7,6 +7,7 @@ const SHEET_RANGES: Record<SheetName, string> = {
   Products: 'Products!A:Z',
   Transactions: 'Transactions!A:Z',
   Adjustments: 'Adjustments!A:Z',
+  Settings: 'Settings!A:Z',
 };
 
 export class GoogleSheetsStore implements SheetsStore {
@@ -14,12 +15,17 @@ export class GoogleSheetsStore implements SheetsStore {
 
   async getRows(sheetName: SheetName): Promise<string[][]> {
     const sheets = await createSheetsClient();
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: this.spreadsheetId,
-      range: SHEET_RANGES[sheetName],
-    });
+    try {
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId: this.spreadsheetId,
+        range: SHEET_RANGES[sheetName],
+      });
 
-    return normalizeRows(response.data.values ?? []);
+      return normalizeRows(response.data.values ?? []);
+    } catch (error) {
+      if (sheetName === 'Settings' && isMissingSheetError(error)) return [];
+      throw error;
+    }
   }
 
   async updateCell(sheetName: SheetName, rowNumber: number, columnName: string, value: string | number): Promise<void> {
@@ -41,24 +47,56 @@ export class GoogleSheetsStore implements SheetsStore {
 
   async appendRow(sheetName: SheetName, values: string[]): Promise<void> {
     const sheets = await createSheetsClient();
-    await sheets.spreadsheets.values.append({
+    try {
+      await sheets.spreadsheets.values.append({
+        spreadsheetId: this.spreadsheetId,
+        range: `${sheetName}!A:Z`,
+        valueInputOption: 'RAW',
+        insertDataOption: 'INSERT_ROWS',
+        requestBody: { values: [values] },
+      });
+    } catch (error) {
+      if (sheetName !== 'Settings' || !isMissingSheetError(error)) throw error;
+      await this.createSheet(sheetName);
+      await sheets.spreadsheets.values.append({
+        spreadsheetId: this.spreadsheetId,
+        range: `${sheetName}!A:Z`,
+        valueInputOption: 'RAW',
+        insertDataOption: 'INSERT_ROWS',
+        requestBody: { values: [values] },
+      });
+    }
+  }
+
+  private async createSheet(sheetName: SheetName): Promise<void> {
+    const sheets = await createSheetsClient();
+    await sheets.spreadsheets.batchUpdate({
       spreadsheetId: this.spreadsheetId,
-      range: `${sheetName}!A:Z`,
-      valueInputOption: 'RAW',
-      insertDataOption: 'INSERT_ROWS',
-      requestBody: { values: [values] },
+      requestBody: {
+        requests: [{ addSheet: { properties: { title: sheetName } } }],
+      },
     });
   }
 }
 
 export async function createConfiguredSheetsStore(): Promise<GoogleSheetsStore> {
-  const settings = await getAppSettings();
+  const spreadsheetId = getEnvSpreadsheetId();
 
-  if (!settings.spreadsheetId) {
-    throw new Error('Google Sheets ID가 설정되지 않았습니다. /admin/settings에서 시트 주소를 먼저 저장해 주세요.');
+  if (!spreadsheetId) {
+    throw new Error('Google Sheets ID가 설정되지 않았습니다. GOOGLE_SHEET_ID 환경변수를 설정해 주세요.');
   }
 
-  return new GoogleSheetsStore(settings.spreadsheetId);
+  return new GoogleSheetsStore(spreadsheetId);
+}
+
+export async function verifySpreadsheetAccess(spreadsheetId: string): Promise<void> {
+  try {
+    const store = new GoogleSheetsStore(spreadsheetId);
+    await Promise.all([store.getRows('Students'), store.getRows('Products')]);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : '알 수 없는 오류';
+    throw new Error(`해당 Google Sheets에 접근하지 못했습니다. 서비스 계정 공유 권한과 Students/Products 시트 이름을 확인해 주세요. (${detail})`);
+  }
 }
 
 export const createConfiguredSheetsReader = createConfiguredSheetsStore;
@@ -82,6 +120,11 @@ async function createSheetsClient() {
 
 function normalizeRows(rows: unknown[][]): string[][] {
   return rows.map((row) => row.map((cell) => String(cell ?? '')));
+}
+
+function isMissingSheetError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return /Unable to parse range|not found|Requested entity was not found/i.test(error.message);
 }
 
 function columnIndexToLetter(index: number): string {

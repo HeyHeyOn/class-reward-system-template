@@ -1,4 +1,4 @@
-import type { Product, Student } from '@/domain/types';
+import type { CheckoutLineItem, Product, Student, Transaction } from '@/domain/types';
 import {
   createHeaderIndex,
   parseProductRow,
@@ -6,7 +6,7 @@ import {
   requireColumns,
 } from '@/server/sheetsRows';
 
-export type SheetName = 'Students' | 'Products' | 'Transactions' | 'Adjustments';
+export type SheetName = 'Students' | 'Products' | 'Transactions' | 'Adjustments' | 'Settings';
 
 export type SheetsReader = {
   getRows(sheetName: SheetName): Promise<string[][]>;
@@ -53,6 +53,12 @@ export type ProductCreate = ProductUpdate & {
 
 const REQUIRED_STUDENT_COLUMNS = ['studentId', 'name', 'number', 'balance', 'status'];
 const REQUIRED_PRODUCT_COLUMNS = ['productId', 'name', 'price', 'stock', 'isActive'];
+const REQUIRED_TRANSACTION_COLUMNS = ['transactionId', 'timestamp', 'studentId', 'studentName', 'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator'];
+
+export type SheetSetting = {
+  key: string;
+  value: string;
+};
 
 export async function getStudentById(reader: SheetsReader, studentId: string): Promise<Student | null> {
   return (await getStudentRecordById(reader, studentId))?.student ?? null;
@@ -100,6 +106,71 @@ export async function getActiveProducts(reader: SheetsReader): Promise<Product[]
 
 export async function getProducts(reader: SheetsReader): Promise<Product[]> {
   return (await getProductRecords(reader)).map((record) => record.product);
+}
+
+export async function getTransactions(reader: SheetsReader): Promise<Transaction[]> {
+  const rows = await reader.getRows('Transactions');
+  const [headers, ...dataRows] = rows;
+
+  if (!headers) return [];
+
+  const headerIndex = createHeaderIndex(headers);
+  assertRequiredColumns(headerIndex, REQUIRED_TRANSACTION_COLUMNS, 'Transactions');
+
+  return dataRows
+    .map((row) => parseTransactionRow(row, headerIndex))
+    .filter((transaction): transaction is Transaction => transaction !== null)
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+}
+
+export async function getSheetSettings(reader: SheetsReader): Promise<Record<string, string>> {
+  const rows = await reader.getRows('Settings');
+  const [headers, ...dataRows] = rows;
+
+  if (!headers) return {};
+
+  const headerIndex = createHeaderIndex(headers);
+  const keyIndex = headerIndex.get('key');
+  const valueIndex = headerIndex.get('value');
+
+  if (keyIndex === undefined || valueIndex === undefined) {
+    throw new Error('Settings 시트에 필수 컬럼이 없습니다: key, value');
+  }
+
+  return Object.fromEntries(
+    dataRows
+      .map((row) => [String(row[keyIndex] ?? '').trim(), String(row[valueIndex] ?? '').trim()] as const)
+      .filter(([key]) => Boolean(key)),
+  );
+}
+
+export async function saveSheetSetting(store: SheetsStore, setting: SheetSetting): Promise<void> {
+  const key = setting.key.trim();
+  if (!key) throw new Error('설정 키를 입력해 주세요.');
+
+  const rows = await store.getRows('Settings');
+  const [headers, ...dataRows] = rows;
+
+  if (!headers) {
+    await store.appendRow('Settings', ['key', 'value']);
+    await store.appendRow('Settings', [key, setting.value]);
+    return;
+  }
+
+  const headerIndex = createHeaderIndex(headers);
+  const keyIndex = headerIndex.get('key');
+
+  if (keyIndex === undefined || headerIndex.get('value') === undefined) {
+    throw new Error('Settings 시트에 필수 컬럼이 없습니다: key, value');
+  }
+
+  const existingIndex = dataRows.findIndex((row) => String(row[keyIndex] ?? '').trim() === key);
+  if (existingIndex >= 0) {
+    await store.updateCell('Settings', existingIndex + 2, 'value', setting.value);
+    return;
+  }
+
+  await store.appendRow('Settings', [key, setting.value]);
 }
 
 export async function getProductRecords(reader: SheetsReader): Promise<ProductRecord[]> {
@@ -263,5 +334,54 @@ function assertRequiredColumns(
 
   if (result.ok === false) {
     throw new Error(`${sheetName} 시트에 필수 컬럼이 없습니다: ${result.missingColumns.join(', ')}`);
+  }
+}
+
+function parseTransactionRow(row: string[], headerIndex: Map<string, number>): Transaction | null {
+  const transactionId = getRowCell(row, headerIndex, 'transactionId');
+  const timestamp = getRowCell(row, headerIndex, 'timestamp');
+  const studentId = getRowCell(row, headerIndex, 'studentId');
+  const studentName = getRowCell(row, headerIndex, 'studentName');
+  const totalAmount = parseNumberValue(getRowCell(row, headerIndex, 'totalAmount'));
+  const balanceBefore = parseNumberValue(getRowCell(row, headerIndex, 'balanceBefore'));
+  const balanceAfter = parseNumberValue(getRowCell(row, headerIndex, 'balanceAfter'));
+
+  if (!transactionId || !timestamp || !studentId || !studentName || totalAmount === null || balanceBefore === null || balanceAfter === null) {
+    return null;
+  }
+
+  return {
+    transactionId,
+    timestamp,
+    studentId,
+    studentName,
+    items: parseTransactionItems(getRowCell(row, headerIndex, 'items') || getRowCell(row, headerIndex, 'itemJson') || getRowCell(row, headerIndex, 'products')),
+    totalAmount,
+    balanceBefore,
+    balanceAfter,
+    status: getRowCell(row, headerIndex, 'status') || 'UNKNOWN',
+    operator: getRowCell(row, headerIndex, 'operator') || 'unknown',
+  };
+}
+
+function getRowCell(row: string[], headerIndex: Map<string, number>, column: string): string {
+  const index = headerIndex.get(column);
+  if (index === undefined) return '';
+  return String(row[index] ?? '').trim();
+}
+
+function parseNumberValue(value: string): number | null {
+  if (!value) return null;
+  const parsed = Number(value.replace(/,/g, ''));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseTransactionItems(value: string): CheckoutLineItem[] {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is CheckoutLineItem => Boolean(item && typeof item === 'object' && 'productId' in item));
+  } catch {
+    return [];
   }
 }
