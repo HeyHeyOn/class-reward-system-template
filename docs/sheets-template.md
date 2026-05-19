@@ -52,3 +52,19 @@ adjustmentId,timestamp,studentId,amount,reason,balanceBefore,balanceAfter,operat
 - QR 코드에는 이름/잔액을 넣지 말고 `S001` 같은 학생ID만 넣습니다.
 - 앱은 이름이 아니라 `studentId` 기준으로 결제합니다.
 - 서비스 계정 방식을 쓸 경우 스프레드시트를 서비스 계정 이메일에 편집자로 공유해야 합니다.
+
+## 현재 구현된 읽기 API
+
+관리자 설정에서 시트 ID를 저장하고 서비스 계정 환경변수를 설정하면 아래 API가 시트를 읽습니다.
+
+```text
+GET /api/students/S001
+GET /api/products
+```
+
+필수 조건:
+
+- `/admin/settings`에서 Google Sheets 주소 또는 시트 ID 저장
+- `.env.local`에 `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_PRIVATE_KEY` 설정
+- 해당 스프레드시트를 서비스 계정 이메일에 편집자 또는 뷰어 이상으로 공유
+- 시트 이름과 헤더명을 문서와 동일하게 유지

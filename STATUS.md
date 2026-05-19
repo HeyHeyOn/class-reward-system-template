@@ -13,7 +13,9 @@
 - Google Sheets 템플릿 CSV와 환경변수 샘플 작성 완료
 - 결제 미리보기 순수 로직 TDD 구현 완료
 - 초기 키오스크 랜딩 UI 작성 완료
-- 관리자 설정에서 Google Sheets 주소/시트 ID를 저장하는 구조 구현 완료
+- 저장된 시트 ID를 Google Sheets API 클라이언트에서 사용하는 구조 구현 완료
+- Students/Products 시트 읽기 Repository 구현 완료
+- 학생 조회 API와 상품 목록 API 구현 완료
 
 ## 주요 문서
 
@@ -48,11 +50,10 @@
 
 ## 다음 작업
 
-1. Google Sheets API 클라이언트 구현
-2. 저장된 시트 ID를 사용해 Students/Products 시트 읽기 Repository 구현
-3. Checkout API 구현
-4. QR 스캔 컴포넌트 연결
-5. 실제 시트 데이터로 키오스크 UI 연결
+1. 결제 API 구현 — 잔액/재고 검증 후 업데이트, Transactions 로그 append
+2. QR 스캔 컴포넌트 연결
+3. 실제 시트 데이터로 키오스크 UI 연결
+4. 서비스 계정/실제 시트로 라이브 읽기 테스트
 
 ## 구현 전 결정 필요
 

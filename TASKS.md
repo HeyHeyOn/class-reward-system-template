@@ -17,14 +17,13 @@
 
 ## Next
 
-- [ ] Google Sheets 서비스 계정 인증 연결
-- [ ] 저장된 시트 ID를 Google Sheets 클라이언트에서 사용
-- [ ] Students 시트 읽기 Repository 구현
-- [ ] Products 시트 읽기 Repository 구현
+- [x] 저장된 시트 ID를 Google Sheets 클라이언트에서 사용
+- [x] Students 시트 읽기 Repository 구현
+- [x] Products 시트 읽기 Repository 구현
+- [x] 학생 조회 API 구현
+- [x] 상품 조회 API 구현
 - [ ] 거래 로그 append 구현
 - [ ] 잔액/재고 업데이트 구현
-- [ ] 학생 조회 API 구현
-- [ ] 상품 조회 API 구현
 - [ ] 결제 API 구현
 - [ ] QR 스캔 UI 구현
 - [ ] 키오스크 UI를 실제 API 데이터에 연결
