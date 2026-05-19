@@ -1,0 +1,5 @@
+productId,name,price,stock,isActive,imageUrl,category,sortOrder
+P001,연필,300,20,TRUE,,문구,1
+P002,지우개,500,15,TRUE,,문구,2
+P003,스티커,700,10,TRUE,,꾸미기,3
+P004,간식쿠폰,1000,5,TRUE,,쿠폰,4

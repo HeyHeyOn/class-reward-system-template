@@ -1,0 +1,4 @@
+studentId,name,number,balance,qrValue,status,note
+S001,김민준,1,3500,S001,ACTIVE,
+S002,이서연,2,1200,S002,ACTIVE,
+S003,박도윤,3,0,S003,ACTIVE,
