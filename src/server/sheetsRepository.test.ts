@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { getActiveProducts, getStudentById, getStudents } from '@/server/sheetsRepository';
+import {
+  getActiveProducts,
+  getProducts,
+  getStudentById,
+  getStudents,
+  updateProductDetails,
+  updateStudentDetails,
+} from '@/server/sheetsRepository';
 
 const sheetRows = {
   Students: [
@@ -48,6 +55,41 @@ describe('sheets repository', () => {
     ]);
   });
 
+  it('returns all products sorted by sortOrder for admin editing', async () => {
+    await expect(getProducts(fakeReader)).resolves.toEqual([
+      {
+        productId: 'P001',
+        name: '연필',
+        price: 300,
+        stock: 20,
+        isActive: true,
+        imageUrl: undefined,
+        category: '문구',
+        sortOrder: 1,
+      },
+      {
+        productId: 'P002',
+        name: '지우개',
+        price: 500,
+        stock: 15,
+        isActive: true,
+        imageUrl: undefined,
+        category: '문구',
+        sortOrder: 2,
+      },
+      {
+        productId: 'P003',
+        name: '판매중지',
+        price: 700,
+        stock: 10,
+        isActive: false,
+        imageUrl: undefined,
+        category: '문구',
+        sortOrder: 3,
+      },
+    ]);
+  });
+
   it('returns active products sorted by sortOrder', async () => {
     await expect(getActiveProducts(fakeReader)).resolves.toEqual([
       {
@@ -70,6 +112,68 @@ describe('sheets repository', () => {
         category: '문구',
         sortOrder: 2,
       },
+    ]);
+  });
+
+  it('updates editable student cells by row number', async () => {
+    const updates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
+    const fakeStore = {
+      ...fakeReader,
+      async updateCell(sheetName: 'Students' | 'Products', rowNumber: number, columnName: string, value: string | number) {
+        updates.push({ sheetName, rowNumber, columnName, value });
+      },
+      async appendRow() {},
+    };
+
+    await expect(
+      updateStudentDetails(fakeStore, 'S001', { name: '김민준 수정', number: 11, balance: 4000, status: 'INACTIVE' }),
+    ).resolves.toEqual({ studentId: 'S001', name: '김민준 수정', number: 11, balance: 4000, status: 'INACTIVE' });
+
+    expect(updates).toEqual([
+      { sheetName: 'Students', rowNumber: 2, columnName: 'name', value: '김민준 수정' },
+      { sheetName: 'Students', rowNumber: 2, columnName: 'number', value: 11 },
+      { sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: 4000 },
+      { sheetName: 'Students', rowNumber: 2, columnName: 'status', value: 'INACTIVE' },
+    ]);
+  });
+
+  it('updates editable product cells by row number', async () => {
+    const updates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
+    const fakeStore = {
+      ...fakeReader,
+      async updateCell(sheetName: 'Students' | 'Products', rowNumber: number, columnName: string, value: string | number) {
+        updates.push({ sheetName, rowNumber, columnName, value });
+      },
+      async appendRow() {},
+    };
+
+    await expect(
+      updateProductDetails(fakeStore, 'P001', {
+        name: '연필 세트',
+        price: 900,
+        stock: 12,
+        isActive: false,
+        category: '문구류',
+        sortOrder: 5,
+      }),
+    ).resolves.toEqual({
+      productId: 'P001',
+      name: '연필 세트',
+      price: 900,
+      stock: 12,
+      isActive: false,
+      imageUrl: undefined,
+      category: '문구류',
+      sortOrder: 5,
+    });
+
+    expect(updates).toEqual([
+      { sheetName: 'Products', rowNumber: 3, columnName: 'name', value: '연필 세트' },
+      { sheetName: 'Products', rowNumber: 3, columnName: 'price', value: 900 },
+      { sheetName: 'Products', rowNumber: 3, columnName: 'stock', value: 12 },
+      { sheetName: 'Products', rowNumber: 3, columnName: 'isActive', value: 'FALSE' },
+      { sheetName: 'Products', rowNumber: 3, columnName: 'category', value: '문구류' },
+      { sheetName: 'Products', rowNumber: 3, columnName: 'sortOrder', value: 5 },
     ]);
   });
 });

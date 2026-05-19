@@ -1,12 +1,14 @@
 import { createConfiguredSheetsReader } from '@/server/googleSheets';
-import { getActiveProducts } from '@/server/sheetsRepository';
+import { getActiveProducts, getProducts } from '@/server/sheetsRepository';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const url = new URL(request.url);
+    const includeInactive = url.searchParams.get('includeInactive') === '1';
     const reader = await createConfiguredSheetsReader();
-    const products = await getActiveProducts(reader);
+    const products = includeInactive ? await getProducts(reader) : await getActiveProducts(reader);
 
     return Response.json(products);
   } catch (error) {

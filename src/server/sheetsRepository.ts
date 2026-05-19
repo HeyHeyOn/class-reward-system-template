@@ -27,6 +27,22 @@ export type ProductRecord = {
   rowNumber: number;
 };
 
+export type StudentUpdate = {
+  name: string;
+  number: number;
+  balance: number;
+  status: Student['status'];
+};
+
+export type ProductUpdate = {
+  name: string;
+  price: number;
+  stock: number;
+  isActive: boolean;
+  category?: string;
+  sortOrder: number;
+};
+
 const REQUIRED_STUDENT_COLUMNS = ['studentId', 'name', 'number', 'balance', 'status'];
 const REQUIRED_PRODUCT_COLUMNS = ['productId', 'name', 'price', 'stock', 'isActive'];
 
@@ -71,9 +87,11 @@ export async function getStudents(reader: SheetsReader): Promise<Student[]> {
 }
 
 export async function getActiveProducts(reader: SheetsReader): Promise<Product[]> {
-  return (await getProductRecords(reader))
-    .map((record) => record.product)
-    .filter((product) => product.isActive);
+  return (await getProducts(reader)).filter((product) => product.isActive);
+}
+
+export async function getProducts(reader: SheetsReader): Promise<Product[]> {
+  return (await getProductRecords(reader)).map((record) => record.product);
 }
 
 export async function getProductRecords(reader: SheetsReader): Promise<ProductRecord[]> {
@@ -92,6 +110,67 @@ export async function getProductRecords(reader: SheetsReader): Promise<ProductRe
     })
     .filter((record): record is ProductRecord => Boolean(record))
     .sort((a, b) => a.product.sortOrder - b.product.sortOrder || a.product.name.localeCompare(b.product.name));
+}
+
+export async function updateStudentDetails(store: SheetsStore, studentId: string, update: StudentUpdate): Promise<Student> {
+  const record = await getStudentRecordById(store, studentId);
+
+  if (!record) {
+    throw new Error('학생을 찾을 수 없습니다.');
+  }
+
+  validateStudentUpdate(update);
+
+  const name = update.name.trim();
+  await store.updateCell('Students', record.rowNumber, 'name', name);
+  await store.updateCell('Students', record.rowNumber, 'number', update.number);
+  await store.updateCell('Students', record.rowNumber, 'balance', update.balance);
+  await store.updateCell('Students', record.rowNumber, 'status', update.status);
+
+  return { studentId, name, number: update.number, balance: update.balance, status: update.status };
+}
+
+export async function updateProductDetails(store: SheetsStore, productId: string, update: ProductUpdate): Promise<Product> {
+  const record = (await getProductRecords(store)).find(({ product }) => product.productId === productId);
+
+  if (!record) {
+    throw new Error('상품을 찾을 수 없습니다.');
+  }
+
+  validateProductUpdate(update);
+
+  const name = update.name.trim();
+  const category = update.category?.trim() || undefined;
+  await store.updateCell('Products', record.rowNumber, 'name', name);
+  await store.updateCell('Products', record.rowNumber, 'price', update.price);
+  await store.updateCell('Products', record.rowNumber, 'stock', update.stock);
+  await store.updateCell('Products', record.rowNumber, 'isActive', update.isActive ? 'TRUE' : 'FALSE');
+  await store.updateCell('Products', record.rowNumber, 'category', category ?? '');
+  await store.updateCell('Products', record.rowNumber, 'sortOrder', update.sortOrder);
+
+  return {
+    ...record.product,
+    name,
+    price: update.price,
+    stock: update.stock,
+    isActive: update.isActive,
+    category,
+    sortOrder: update.sortOrder,
+  };
+}
+
+function validateStudentUpdate(update: StudentUpdate) {
+  if (!update.name.trim()) throw new Error('학생 이름을 입력해 주세요.');
+  if (!Number.isInteger(update.number) || update.number <= 0) throw new Error('학생 번호는 1 이상의 정수여야 합니다.');
+  if (!Number.isInteger(update.balance) || update.balance < 0) throw new Error('잔액은 0 이상의 정수여야 합니다.');
+  if (update.status !== 'ACTIVE' && update.status !== 'INACTIVE') throw new Error('학생 상태가 올바르지 않습니다.');
+}
+
+function validateProductUpdate(update: ProductUpdate) {
+  if (!update.name.trim()) throw new Error('상품명을 입력해 주세요.');
+  if (!Number.isInteger(update.price) || update.price < 0) throw new Error('가격은 0 이상의 정수여야 합니다.');
+  if (!Number.isInteger(update.stock) || update.stock < 0) throw new Error('재고는 0 이상의 정수여야 합니다.');
+  if (!Number.isInteger(update.sortOrder)) throw new Error('정렬 순서는 정수여야 합니다.');
 }
 
 function assertRequiredColumns(
