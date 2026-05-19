@@ -12,10 +12,29 @@ export type SheetsReader = {
   getRows(sheetName: SheetName): Promise<string[][]>;
 };
 
+export type SheetsStore = SheetsReader & {
+  updateCell(sheetName: SheetName, rowNumber: number, columnName: string, value: string | number): Promise<void>;
+  appendRow(sheetName: SheetName, values: string[]): Promise<void>;
+};
+
+export type StudentRecord = {
+  student: Student;
+  rowNumber: number;
+};
+
+export type ProductRecord = {
+  product: Product;
+  rowNumber: number;
+};
+
 const REQUIRED_STUDENT_COLUMNS = ['studentId', 'name', 'number', 'balance', 'status'];
 const REQUIRED_PRODUCT_COLUMNS = ['productId', 'name', 'price', 'stock', 'isActive'];
 
 export async function getStudentById(reader: SheetsReader, studentId: string): Promise<Student | null> {
+  return (await getStudentRecordById(reader, studentId))?.student ?? null;
+}
+
+export async function getStudentRecordById(reader: SheetsReader, studentId: string): Promise<StudentRecord | null> {
   const rows = await reader.getRows('Students');
   const [headers, ...dataRows] = rows;
 
@@ -24,11 +43,11 @@ export async function getStudentById(reader: SheetsReader, studentId: string): P
   const headerIndex = createHeaderIndex(headers);
   assertRequiredColumns(headerIndex, REQUIRED_STUDENT_COLUMNS, 'Students');
 
-  for (const row of dataRows) {
-    const student = parseStudentRow(row, headerIndex);
+  for (let index = 0; index < dataRows.length; index += 1) {
+    const student = parseStudentRow(dataRows[index], headerIndex);
 
     if (student?.studentId === studentId) {
-      return student;
+      return { student, rowNumber: index + 2 };
     }
   }
 
@@ -36,6 +55,12 @@ export async function getStudentById(reader: SheetsReader, studentId: string): P
 }
 
 export async function getActiveProducts(reader: SheetsReader): Promise<Product[]> {
+  return (await getProductRecords(reader))
+    .map((record) => record.product)
+    .filter((product) => product.isActive);
+}
+
+export async function getProductRecords(reader: SheetsReader): Promise<ProductRecord[]> {
   const rows = await reader.getRows('Products');
   const [headers, ...dataRows] = rows;
 
@@ -45,9 +70,12 @@ export async function getActiveProducts(reader: SheetsReader): Promise<Product[]
   assertRequiredColumns(headerIndex, REQUIRED_PRODUCT_COLUMNS, 'Products');
 
   return dataRows
-    .map((row) => parseProductRow(row, headerIndex))
-    .filter((product): product is Product => Boolean(product?.isActive))
-    .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+    .map((row, index) => {
+      const product = parseProductRow(row, headerIndex);
+      return product ? { product, rowNumber: index + 2 } : null;
+    })
+    .filter((record): record is ProductRecord => Boolean(record))
+    .sort((a, b) => a.product.sortOrder - b.product.sortOrder || a.product.name.localeCompare(b.product.name));
 }
 
 function assertRequiredColumns(
