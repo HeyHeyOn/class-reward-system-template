@@ -1,3 +1,4 @@
+import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { createConfiguredSheetsReader, createConfiguredSheetsStore } from '@/server/googleSheets';
 import { deleteStudent, getStudentById, updateStudentDetails } from '@/server/sheetsRepository';
 
@@ -10,7 +11,7 @@ type RouteContext = {
 export async function GET(request: Request, context: RouteContext) {
   try {
     const { studentId } = await context.params;
-    const reader = await createConfiguredSheetsReader(request);
+    const reader = await createConfiguredSheetsReader();
     const student = await getStudentById(reader, decodeURIComponent(studentId));
 
     if (!student) {
@@ -26,9 +27,11 @@ export async function GET(request: Request, context: RouteContext) {
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
+  if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
+
   try {
     const { studentId } = await context.params;
-    const store = await createConfiguredSheetsStore(request);
+    const store = await createConfiguredSheetsStore();
     const payload = await request.json();
     const student = await updateStudentDetails(store, decodeURIComponent(studentId), {
       name: String(payload.name ?? ''),
@@ -47,9 +50,11 @@ export async function PATCH(request: Request, context: RouteContext) {
 
 
 export async function DELETE(request: Request, context: RouteContext) {
+  if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
+
   try {
     const { studentId } = await context.params;
-    const store = await createConfiguredSheetsStore(request);
+    const store = await createConfiguredSheetsStore();
     const result = await deleteStudent(store, decodeURIComponent(studentId));
 
     return Response.json(result);

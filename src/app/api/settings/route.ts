@@ -1,3 +1,4 @@
+import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { getAppSettings, saveAppSettings, validateSpreadsheetId } from '@/server/settings';
 import { createConfiguredSheetsStore, verifySpreadsheetAccess } from '@/server/googleSheets';
 
@@ -11,6 +12,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
+
   try {
     const body = (await request.json()) as { spreadsheetIdOrUrl?: unknown; currencyUnit?: unknown; appTitle?: unknown; adminPassword?: unknown };
 
@@ -23,8 +26,8 @@ export async function POST(request: Request) {
       return Response.json({ error: validation.message }, { status: 400 });
     }
 
-    await verifySpreadsheetAccess(validation.spreadsheetId, request);
-    const store = await createConfiguredSheetsStore(request);
+    await verifySpreadsheetAccess(validation.spreadsheetId);
+    const store = await createConfiguredSheetsStore();
     const settings = await saveAppSettings({
       settingsStore: store,
       spreadsheetIdOrUrl: validation.spreadsheetId,

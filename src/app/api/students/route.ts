@@ -1,3 +1,4 @@
+import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { createConfiguredSheetsReader, createConfiguredSheetsStore } from '@/server/googleSheets';
 import { createStudent, getStudents } from '@/server/sheetsRepository';
 
@@ -17,8 +18,10 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
+
   try {
-    const store = await createConfiguredSheetsStore(request);
+    const store = await createConfiguredSheetsStore();
     const payload = await request.json();
     const student = await createStudent(store, {
       studentId: String(payload.studentId ?? ''),

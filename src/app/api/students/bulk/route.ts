@@ -1,11 +1,14 @@
+import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { createConfiguredSheetsStore } from '@/server/googleSheets';
 import { bulkAdjustStudentBalances } from '@/server/sheetsRepository';
 
 export const dynamic = 'force-dynamic';
 
 export async function PATCH(request: Request) {
+  if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
+
   try {
-    const store = await createConfiguredSheetsStore(request);
+    const store = await createConfiguredSheetsStore();
     const payload = await request.json();
     const result = await bulkAdjustStudentBalances(store, {
       studentIds: Array.isArray(payload.studentIds) ? payload.studentIds.map((id: unknown) => String(id)) : [],

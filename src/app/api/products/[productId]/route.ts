@@ -1,3 +1,4 @@
+import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { createConfiguredSheetsStore } from '@/server/googleSheets';
 import { deleteProduct, updateProductDetails } from '@/server/sheetsRepository';
 
@@ -8,9 +9,11 @@ type RouteContext = {
 };
 
 export async function PATCH(request: Request, context: RouteContext) {
+  if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
+
   try {
     const { productId } = await context.params;
-    const store = await createConfiguredSheetsStore(request);
+    const store = await createConfiguredSheetsStore();
     const payload = await request.json();
     const product = await updateProductDetails(store, decodeURIComponent(productId), {
       name: String(payload.name ?? ''),
@@ -32,9 +35,11 @@ export async function PATCH(request: Request, context: RouteContext) {
 
 
 export async function DELETE(request: Request, context: RouteContext) {
+  if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
+
   try {
     const { productId } = await context.params;
-    const store = await createConfiguredSheetsStore(request);
+    const store = await createConfiguredSheetsStore();
     const result = await deleteProduct(store, decodeURIComponent(productId));
 
     return Response.json(result);

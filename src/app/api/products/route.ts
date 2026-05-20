@@ -1,3 +1,4 @@
+import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { createConfiguredSheetsReader, createConfiguredSheetsStore } from '@/server/googleSheets';
 import { createProduct, getActiveProducts, getProducts } from '@/server/sheetsRepository';
 
@@ -19,8 +20,10 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
+
   try {
-    const store = await createConfiguredSheetsStore(request);
+    const store = await createConfiguredSheetsStore();
     const payload = await request.json();
     const product = await createProduct(store, {
       productId: String(payload.productId ?? ''),
