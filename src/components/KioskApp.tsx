@@ -260,20 +260,20 @@ export function KioskApp() {
   return (
     <main data-testid="kiosk-shell" className="h-screen overflow-hidden bg-[#dbeaf6] p-2 text-slate-950 sm:p-3">
       <section data-testid="kiosk-content" className="mx-auto grid h-full w-full max-w-[1240px] grid-rows-[auto_minmax(0,1fr)] gap-2 sm:gap-3">
-        <header className="relative rounded-[1.5rem] border border-slate-300/70 bg-white px-4 py-3 text-center shadow-sm sm:rounded-[1.75rem] sm:py-4">
-          <h1 className="pr-11 text-2xl font-black tracking-tight sm:pr-0 sm:text-4xl md:text-5xl">{appTitle}</h1>
+        <header className="relative rounded-[1.25rem] border border-slate-300/70 bg-white px-3 py-2 text-center shadow-sm text-[clamp(0.75rem,2.6vw,1rem)] sm:rounded-[1.75rem] sm:px-4 sm:py-4">
+          <h1 data-testid="kiosk-title" className="pr-8 text-[clamp(1.25rem,6vw,3rem)] font-black leading-tight tracking-tight sm:pr-0">{appTitle}</h1>
         </header>
 
         <div data-testid="kiosk-main-grid" className="grid min-h-0 grid-rows-[minmax(0,2fr)_minmax(0,1fr)] gap-2 landscape:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] landscape:grid-rows-1 sm:gap-3">
-          <section className="flex min-h-0 flex-col rounded-[1.5rem] border border-slate-300/70 bg-white/85 p-3 shadow-sm sm:rounded-[1.75rem] sm:p-4 lg:min-h-0">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-2xl font-black">상품 목록</h2>
-            <p className="rounded-full bg-sky-100 px-3 py-1 text-sm font-black text-sky-700">
+          <section data-testid="products-panel" className="flex min-h-0 flex-col rounded-[1.25rem] border border-slate-300/70 bg-white/85 p-2 text-[clamp(0.68rem,2.1vw,1rem)] shadow-sm sm:rounded-[1.75rem] sm:p-4 lg:min-h-0">
+          <div className="flex items-center justify-between gap-2 sm:gap-3">
+            <h2 className="text-[clamp(1rem,4vw,1.5rem)] font-black leading-tight">상품 목록</h2>
+            <p className="rounded-full bg-sky-100 px-2 py-0.5 text-[clamp(0.62rem,2.2vw,0.875rem)] font-black text-sky-700 sm:px-3 sm:py-1">
               {isLoadingProducts ? '불러오는 중' : '시트 연동'}
             </p>
           </div>
 
-          <div data-testid="product-scroll-block" className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
+          <div data-testid="product-scroll-block" className="mt-2 min-h-0 flex-1 overflow-y-auto pr-1 sm:mt-3">
             <div data-testid="product-grid" className="grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-3">
               {products.map((product) => (
                 <button
@@ -281,10 +281,11 @@ export function KioskApp() {
                   onClick={() => addToCart(product.productId)}
                   disabled={!product.isActive || product.stock <= 0}
                   aria-label={`${product.name} ${formatCurrency(product.price, currencyUnit)} 담기`}
-                  className="rounded-[0.9rem] border border-slate-300 bg-white p-1.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 sm:p-3"
+                  data-testid="product-card"
+                  className="rounded-[0.8rem] border border-slate-300 bg-white p-1 text-left text-[clamp(0.62rem,2vw,1rem)] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 sm:rounded-[0.9rem] sm:p-3"
                 >
-                  <p className="truncate text-[10px] font-black sm:text-xs">{product.category || '기타'}</p>
-                  <div className="mt-2 flex aspect-[4/3] items-center justify-center bg-slate-200 text-5xl text-white">
+                  <p className="truncate text-[clamp(0.55rem,1.8vw,0.75rem)] font-black">{product.category || '기타'}</p>
+                  <div className="mt-1 flex aspect-[4/3] items-center justify-center rounded-md bg-slate-200 text-[clamp(1.5rem,8vw,3rem)] text-white sm:mt-2">
                     {product.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={product.imageUrl} alt={`${product.name} 이미지`} className="h-full w-full object-cover" />
@@ -292,10 +293,10 @@ export function KioskApp() {
                       <span aria-hidden="true">▵</span>
                     )}
                   </div>
-                  <p className="mt-1 truncate text-xs font-black sm:mt-2 sm:text-base md:text-lg">{product.name}</p>
+                  <p className="mt-1 truncate text-[clamp(0.62rem,2.4vw,1.125rem)] font-black leading-tight sm:mt-2">{product.name}</p>
                   <div className="mt-1 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-2">
-                    <p className="text-xs font-black sm:text-lg md:text-xl">{formatCurrency(product.price, currencyUnit)}</p>
-                    <p className="rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-black text-slate-700 sm:px-2 sm:py-1 sm:text-xs">재고 {product.stock}</p>
+                    <p className="text-[clamp(0.62rem,2.3vw,1.25rem)] font-black leading-tight">{formatCurrency(product.price, currencyUnit)}</p>
+                    <p className="rounded-full bg-sky-100 px-1 py-0.5 text-[clamp(0.55rem,1.8vw,0.75rem)] font-black leading-tight text-slate-700 sm:px-2 sm:py-1">재고 {product.stock}</p>
                   </div>
                 </button>
               ))}
@@ -303,37 +304,37 @@ export function KioskApp() {
           </div>
           </section>
 
-          <section className="flex min-h-0 flex-col rounded-[1.5rem] border border-slate-300/70 bg-white/90 p-3 shadow-sm sm:rounded-[1.75rem] sm:p-4 lg:min-h-0">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-2xl font-black">장바구니 ({cartDetails.length})</h2>
+          <section data-testid="cart-panel" className="flex min-h-0 flex-col rounded-[1.25rem] border border-slate-300/70 bg-white/90 p-2 text-[clamp(0.68rem,2.1vw,1rem)] shadow-sm sm:rounded-[1.75rem] sm:p-4 lg:min-h-0">
+          <div className="flex items-center justify-between gap-2 sm:gap-3">
+            <h2 className="text-[clamp(1rem,4vw,1.5rem)] font-black leading-tight">장바구니 ({cartDetails.length})</h2>
             <button
               onClick={clearCart}
               disabled={cartItems.length === 0}
-              className="rounded-xl bg-sky-100 px-3 py-2 text-base font-black text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-xl bg-sky-100 px-2 py-1.5 text-[clamp(0.75rem,2.6vw,1rem)] font-black text-slate-700 disabled:cursor-not-allowed disabled:opacity-40 sm:px-3 sm:py-2"
             >
               비우기
             </button>
           </div>
 
-          <div data-testid="cart-scroll-block" className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
+          <div data-testid="cart-scroll-block" className="mt-2 min-h-0 flex-1 overflow-y-auto pr-1 sm:mt-3">
             {cartDetails.length === 0 ? (
-              <div className="flex h-full min-h-16 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-slate-500">
+              <div className="flex h-full min-h-12 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-[clamp(0.75rem,2.8vw,1rem)] text-slate-500 sm:min-h-16">
                 선택한 상품이 없습니다.
               </div>
             ) : (
               <div className="space-y-2">
                 {cartDetails.map((item) => (
-                  <div key={item.productId} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:gap-3">
-                    <p className="truncate text-lg font-black">{item.name}</p>
-                    <div className="flex items-center gap-2">
+                  <div key={item.productId} data-testid="cart-item-row" className="grid grid-cols-[minmax(0,3fr)_minmax(0,1fr)] items-center gap-x-2 gap-y-1 rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-[clamp(0.68rem,2.2vw,1rem)] shadow-sm sm:grid-cols-[minmax(0,3fr)_minmax(0,1fr)_auto] sm:gap-x-3 sm:px-3 sm:py-2">
+                    <p data-testid="cart-item-name" className="min-w-0 truncate text-[clamp(0.75rem,2.8vw,1.125rem)] font-black leading-tight">{item.name}</p>
+                    <div data-testid="cart-quantity-controls" className="flex justify-self-start items-center gap-1 landscape:justify-self-start sm:gap-2">
                       <button
                         aria-label={`${item.name} 수량 줄이기`}
                         onClick={() => removeFromCart(item.productId)}
-                        className="flex h-8 w-8 items-center justify-center rounded-md bg-sky-100 text-xl font-black text-sky-700"
+                        className="flex h-[clamp(1.5rem,5vw,2rem)] w-[clamp(1.5rem,5vw,2rem)] items-center justify-center rounded-md bg-sky-100 text-[clamp(1rem,3vw,1.25rem)] font-black text-sky-700"
                       >
                         −
                       </button>
-                      <span className="w-7 text-center text-lg font-black">{item.quantity}</span>
+                      <span className="w-[clamp(1.25rem,4vw,1.75rem)] text-center text-[clamp(0.85rem,2.8vw,1.125rem)] font-black">{item.quantity}</span>
                       <button
                         aria-label={`${item.name} 수량 늘리기`}
                         onClick={() => addToCart(item.productId)}
@@ -342,25 +343,25 @@ export function KioskApp() {
                         +
                       </button>
                     </div>
-                    <p className="col-span-2 text-right text-lg font-black sm:col-span-1 sm:w-24">{formatCurrency(item.subtotal, currencyUnit)}</p>
+                    <p className="col-span-2 text-right text-[clamp(0.75rem,2.8vw,1.125rem)] font-black leading-tight sm:col-span-1 sm:w-20 md:w-24">{formatCurrency(item.subtotal, currencyUnit)}</p>
                   </div>
                 ))}
               </div>
             )}
           </div>
 
-          {message ? <p className="mt-2 rounded-xl bg-amber-100 p-2 text-sm font-bold text-amber-900">{message}</p> : null}
+          {message ? <p className="mt-2 rounded-xl bg-amber-100 p-2 text-[clamp(0.7rem,2.4vw,0.875rem)] font-bold text-amber-900">{message}</p> : null}
 
-          <div data-testid="checkout-total-bar" className="mt-3 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <div data-testid="checkout-total-bar" className="mt-2 flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-2 text-[clamp(0.7rem,2.4vw,1rem)] shadow-sm sm:mt-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:p-3">
             <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 sm:block">
-              <p className="text-lg font-black sm:text-xl">총 결제 금액</p>
-              <p className="text-3xl font-black text-sky-600">{formatCurrency(totalAmount, currencyUnit)}</p>
+              <p className="text-[clamp(0.8rem,2.8vw,1.25rem)] font-black leading-tight">총 결제 금액</p>
+              <p className="text-[clamp(1.2rem,5vw,1.875rem)] font-black leading-tight text-sky-600">{formatCurrency(totalAmount, currencyUnit)}</p>
             </div>
             <button
               data-testid="checkout-button"
               onClick={openCheckout}
               disabled={cartItems.length === 0}
-              className="w-full rounded-xl bg-sky-500 px-6 py-3 text-2xl font-black text-white shadow-sm transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:bg-slate-300 sm:w-auto sm:min-w-44"
+              className="w-full rounded-xl bg-sky-500 px-4 py-2.5 text-[clamp(1rem,4vw,1.5rem)] font-black text-white shadow-sm transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:bg-slate-300 sm:w-auto sm:min-w-44 sm:px-6 sm:py-3"
             >
               QR 결제
             </button>

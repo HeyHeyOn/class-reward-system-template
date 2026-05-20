@@ -170,7 +170,29 @@ describe('KioskApp', () => {
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('h-screen');
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('overflow-hidden');
     expect(container.querySelector('[data-testid="kiosk-content"]')?.className).toContain('h-full');
+    expect(container.querySelector('[data-testid="kiosk-title"]')?.className).toContain('text-[clamp(');
+    expect(container.querySelector('[data-testid="products-panel"]')?.className).toContain('text-[clamp(');
+    expect(container.querySelector('[data-testid="cart-panel"]')?.className).toContain('text-[clamp(');
+    expect(container.querySelector('[data-testid="product-card"]')?.className).toContain('text-[clamp(');
+    expect(container.querySelector('[data-testid="checkout-total-bar"]')?.className).toContain('text-[clamp(');
     expect(container.querySelector('[data-testid="checkout-total-bar"]')?.className).toContain('sm:flex-row');
+    expect(container.querySelector('[data-testid="checkout-button"]')?.className).toContain('text-[clamp(');
     expect(container.querySelector('[data-testid="checkout-button"]')?.className).toContain('sm:w-auto');
+  });
+
+  it('keeps cart item names visible by placing quantity controls around the three-quarter point in landscape', async () => {
+    const { container } = render(<KioskApp />);
+
+    expect(await screen.findByText('연필')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '연필 300별 담기' }));
+
+    const cartRow = container.querySelector('[data-testid="cart-item-row"]');
+    const cartName = container.querySelector('[data-testid="cart-item-name"]');
+    const quantityControls = container.querySelector('[data-testid="cart-quantity-controls"]');
+
+    expect(cartRow?.className).toContain('grid-cols-[minmax(0,3fr)_minmax(0,1fr)]');
+    expect(cartName?.className).toContain('min-w-0');
+    expect(quantityControls?.className).toContain('justify-self-start');
+    expect(quantityControls?.className).toContain('landscape:justify-self-start');
   });
 });
