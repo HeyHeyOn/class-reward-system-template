@@ -1,6 +1,7 @@
 import type { SheetsReader, SheetsStore } from '@/server/sheetsRepository';
 import { getSheetSettings, saveSheetSetting } from '@/server/sheetsRepository';
 import { saveAdminPassword } from '@/server/adminAuth';
+import { LATEST_SCHEMA_VERSION, SYSTEM_NAME_KO, SYSTEM_VERSION } from '@/generator/config/versions';
 
 export type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'black' | 'navy';
 
@@ -10,6 +11,9 @@ export type AppSettings = {
   appTitle: string;
   bankTitle: string;
   themeColor: ThemeColor;
+  schemaVersion: number;
+  systemVersion: string;
+  systemName: string;
   source: 'sheet' | 'env' | 'unset';
   adminPasswordConfigured?: boolean;
 };
@@ -42,6 +46,9 @@ const DEFAULT_CURRENCY_UNIT = '원';
 const DEFAULT_APP_TITLE = '학급 매점';
 const DEFAULT_BANK_TITLE = '학급 은행';
 const DEFAULT_THEME_COLOR: ThemeColor = 'blue';
+const DEFAULT_SCHEMA_VERSION = LATEST_SCHEMA_VERSION;
+const DEFAULT_SYSTEM_VERSION = SYSTEM_VERSION;
+const DEFAULT_SYSTEM_NAME = SYSTEM_NAME_KO;
 const THEME_COLORS = new Set<ThemeColor>(['blue', 'pink', 'yellow', 'green', 'purple', 'white', 'black', 'navy']);
 
 export function extractSpreadsheetId(value: string): string | null {
@@ -79,7 +86,7 @@ export async function getAppSettings(options: SettingsOptions = {}): Promise<App
   const envSpreadsheetId = getEnvSpreadsheetId(options.env ?? process.env);
 
   if (!envSpreadsheetId) {
-    return { spreadsheetId: '', currencyUnit: DEFAULT_CURRENCY_UNIT, appTitle: DEFAULT_APP_TITLE, bankTitle: DEFAULT_BANK_TITLE, themeColor: DEFAULT_THEME_COLOR, source: 'unset' };
+    return defaultAppSettings('', 'unset');
   }
 
   if (options.settingsReader) {
@@ -91,18 +98,21 @@ export async function getAppSettings(options: SettingsOptions = {}): Promise<App
         appTitle: normalizeAppTitle(sheetSettings.appTitle),
         bankTitle: normalizeBankTitle(sheetSettings.bankTitle),
         themeColor: normalizeThemeColor(sheetSettings.themeColor),
+        schemaVersion: normalizeSchemaVersion(sheetSettings.schemaVersion),
+        systemVersion: normalizeSystemVersion(sheetSettings.systemVersion),
+        systemName: normalizeSystemName(sheetSettings.systemName),
         source: 'sheet',
         ...(sheetSettings.adminPasswordHash ? { adminPasswordConfigured: true } : {}),
       };
     } catch (error) {
       if (isMissingSettingsSheetError(error)) {
-        return { spreadsheetId: envSpreadsheetId, currencyUnit: DEFAULT_CURRENCY_UNIT, appTitle: DEFAULT_APP_TITLE, bankTitle: DEFAULT_BANK_TITLE, themeColor: DEFAULT_THEME_COLOR, source: 'env' };
+        return defaultAppSettings(envSpreadsheetId, 'env');
       }
       throw error;
     }
   }
 
-  return { spreadsheetId: envSpreadsheetId, currencyUnit: DEFAULT_CURRENCY_UNIT, appTitle: DEFAULT_APP_TITLE, bankTitle: DEFAULT_BANK_TITLE, themeColor: DEFAULT_THEME_COLOR, source: 'env' };
+  return defaultAppSettings(envSpreadsheetId, 'env');
 }
 
 export async function saveAppSettings(options: SaveSettingsOptions): Promise<AppSettings> {
@@ -129,6 +139,9 @@ export async function saveAppSettings(options: SaveSettingsOptions): Promise<App
   await saveSheetSetting(options.settingsStore, { key: 'appTitle', value: appTitle });
   await saveSheetSetting(options.settingsStore, { key: 'bankTitle', value: bankTitle });
   await saveSheetSetting(options.settingsStore, { key: 'themeColor', value: themeColor });
+  await saveSheetSetting(options.settingsStore, { key: 'schemaVersion', value: String(DEFAULT_SCHEMA_VERSION) });
+  await saveSheetSetting(options.settingsStore, { key: 'systemVersion', value: DEFAULT_SYSTEM_VERSION });
+  await saveSheetSetting(options.settingsStore, { key: 'systemName', value: DEFAULT_SYSTEM_NAME });
   if (options.adminPassword?.trim()) {
     await saveAdminPassword(options.settingsStore, options.adminPassword);
   }
@@ -139,6 +152,9 @@ export async function saveAppSettings(options: SaveSettingsOptions): Promise<App
     appTitle,
     bankTitle,
     themeColor,
+    schemaVersion: DEFAULT_SCHEMA_VERSION,
+    systemVersion: DEFAULT_SYSTEM_VERSION,
+    systemName: DEFAULT_SYSTEM_NAME,
     source: 'sheet',
     ...(options.adminPassword?.trim() ? { adminPasswordConfigured: true } : {}),
   };
@@ -160,6 +176,37 @@ export function normalizeBankTitle(value: unknown): string {
   if (typeof value !== 'string') return DEFAULT_BANK_TITLE;
   const trimmed = value.trim();
   return trimmed ? trimmed.slice(0, 30) : DEFAULT_BANK_TITLE;
+}
+
+export function normalizeSchemaVersion(value: unknown): number {
+  const parsed = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SCHEMA_VERSION;
+}
+
+export function normalizeSystemVersion(value: unknown): string {
+  if (typeof value !== 'string') return DEFAULT_SYSTEM_VERSION;
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, 40) : DEFAULT_SYSTEM_VERSION;
+}
+
+export function normalizeSystemName(value: unknown): string {
+  if (typeof value !== 'string') return DEFAULT_SYSTEM_NAME;
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, 30) : DEFAULT_SYSTEM_NAME;
+}
+
+function defaultAppSettings(spreadsheetId: string, source: AppSettings['source']): AppSettings {
+  return {
+    spreadsheetId,
+    currencyUnit: DEFAULT_CURRENCY_UNIT,
+    appTitle: DEFAULT_APP_TITLE,
+    bankTitle: DEFAULT_BANK_TITLE,
+    themeColor: DEFAULT_THEME_COLOR,
+    schemaVersion: DEFAULT_SCHEMA_VERSION,
+    systemVersion: DEFAULT_SYSTEM_VERSION,
+    systemName: DEFAULT_SYSTEM_NAME,
+    source,
+  };
 }
 
 function isMissingSettingsSheetError(error: unknown): boolean {
