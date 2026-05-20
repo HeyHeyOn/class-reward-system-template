@@ -134,7 +134,7 @@ export function KioskApp() {
   const categories = useMemo(() => ['전체', ...Array.from(new Set(products.map((product) => product.category || '기타')))], [products]);
   const filteredProducts = selectedCategory === '전체' ? products : products.filter((product) => (product.category || '기타') === selectedCategory);
   const theme = THEME_STYLES[themeColor];
-  const quantityButtonClass = `relative z-10 flex h-[clamp(2.25rem,7vw,2.75rem)] w-[clamp(2.25rem,7vw,2.75rem)] min-h-10 min-w-10 shrink-0 touch-manipulation items-center justify-center rounded-lg ${theme.lightBg} text-[clamp(1.15rem,3.5vw,1.4rem)] font-black ${theme.accentText}`;
+  const quantityButtonClass = `relative z-10 flex h-[clamp(2rem,5vw,2.25rem)] w-[clamp(2rem,5vw,2.25rem)] shrink-0 touch-manipulation items-center justify-center rounded-lg ${theme.lightBg} text-[clamp(1rem,2.8vw,1.25rem)] font-black ${theme.accentText}`;
 
   function addToCart(productId: string) {
     setMessage('');
@@ -361,9 +361,9 @@ export function KioskApp() {
             ) : (
               <div className="space-y-2">
                 {cartDetails.map((item) => (
-                  <div key={item.productId} data-testid="cart-item-row" className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-[clamp(0.68rem,2.2vw,1rem)] shadow-sm sm:grid-cols-[minmax(0,1fr)_auto_minmax(5rem,45%)] sm:gap-x-3 sm:px-3 sm:py-2">
+                  <div key={item.productId} data-testid="cart-item-row" className="grid grid-cols-[minmax(0,2fr)_auto_minmax(3.5rem,1fr)] items-center gap-x-2 gap-y-1 rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-[clamp(0.68rem,2.2vw,1rem)] shadow-sm landscape:grid-cols-[minmax(0,2fr)_auto_minmax(3.5rem,1fr)] sm:gap-x-3 sm:px-3 sm:py-2">
                     <p data-testid="cart-item-name" className="min-w-0 truncate text-[clamp(0.75rem,2.8vw,1.125rem)] font-black leading-tight">{item.name}</p>
-                    <div data-testid="cart-quantity-controls" className="relative z-10 flex justify-self-start items-center gap-1 landscape:justify-self-start sm:gap-2">
+                    <div data-testid="cart-quantity-controls" className="relative z-10 flex justify-self-center items-center gap-1 sm:gap-1.5">
                       <button
                         aria-label={`${item.name} 수량 줄이기`}
                         onClick={() => removeFromCart(item.productId)}
@@ -371,7 +371,7 @@ export function KioskApp() {
                       >
                         −
                       </button>
-                      <span className="w-[clamp(1.25rem,4vw,1.75rem)] text-center text-[clamp(0.85rem,2.8vw,1.125rem)] font-black">{item.quantity}</span>
+                      <span className="w-[clamp(1rem,3vw,1.5rem)] text-center text-[clamp(0.85rem,2.8vw,1.125rem)] font-black">{item.quantity}</span>
                       <button
                         aria-label={`${item.name} 수량 늘리기`}
                         onClick={() => addToCart(item.productId)}
@@ -380,7 +380,7 @@ export function KioskApp() {
                         +
                       </button>
                     </div>
-                    <p data-testid="cart-item-subtotal" className="col-span-2 min-w-0 truncate text-right text-[clamp(0.75rem,2.8vw,1.125rem)] font-black leading-tight sm:col-span-1 sm:justify-self-end sm:whitespace-nowrap">{formatCurrency(item.subtotal, currencyUnit)}</p>
+                    <p data-testid="cart-item-subtotal" className="min-w-0 break-words text-right text-[clamp(0.75rem,2.8vw,1.125rem)] font-black leading-tight justify-self-end">{formatCurrency(item.subtotal, currencyUnit)}</p>
                   </div>
                 ))}
               </div>

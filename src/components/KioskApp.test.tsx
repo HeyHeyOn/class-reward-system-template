@@ -232,7 +232,7 @@ describe('KioskApp', () => {
     expect(container.querySelector('[data-testid="checkout-button"]')?.className).toContain('sm:w-auto');
   });
 
-  it('keeps cart item names visible by placing quantity controls around the three-quarter point in landscape', async () => {
+  it('keeps cart item names visible while controls sit near the middle-right and subtotal can wrap when long', async () => {
     const { container } = render(<KioskApp />);
 
     expect(await screen.findByText('연필')).toBeTruthy();
@@ -241,17 +241,21 @@ describe('KioskApp', () => {
     const cartRow = container.querySelector('[data-testid="cart-item-row"]');
     const cartName = container.querySelector('[data-testid="cart-item-name"]');
     const quantityControls = container.querySelector('[data-testid="cart-quantity-controls"]');
+    const subtotal = container.querySelector('[data-testid="cart-item-subtotal"]');
 
-    expect(cartRow?.className).toContain('grid-cols-[minmax(0,1fr)_auto]');
+    expect(cartRow?.className).toContain('grid-cols-[minmax(0,2fr)_auto_minmax(3.5rem,1fr)]');
+    expect(cartRow?.className).toContain('landscape:grid-cols-[minmax(0,2fr)_auto_minmax(3.5rem,1fr)]');
     expect(cartName?.className).toContain('min-w-0');
-    expect(quantityControls?.className).toContain('justify-self-start');
-    expect(quantityControls?.className).toContain('landscape:justify-self-start');
-    expect(cartRow?.className).toContain('sm:grid-cols-[minmax(0,1fr)_auto_minmax(5rem,45%)]');
+    expect(quantityControls?.className).toContain('justify-self-center');
+    expect(quantityControls?.className).not.toContain('justify-self-start');
     expect(quantityControls?.className).toContain('z-10');
-    expect(container.querySelector('[data-testid="cart-item-subtotal"]')?.className).toContain('truncate');
-    expect(container.querySelector('[data-testid="cart-item-subtotal"]')?.className).toContain('sm:whitespace-nowrap');
+    expect(subtotal?.className).toContain('break-words');
+    expect(subtotal?.className).not.toContain('truncate');
+    const decreaseButton = screen.getByRole('button', { name: '연필 수량 줄이기' });
     const increaseButton = screen.getByRole('button', { name: '연필 수량 늘리기' });
-    expect(increaseButton.className).toContain('min-w-10');
+    expect(decreaseButton.className).toBe(increaseButton.className);
+    expect(increaseButton.className).toContain('w-[clamp(2rem,5vw,2.25rem)]');
+    expect(increaseButton.className).not.toContain('min-w-10');
     expect(increaseButton.className).toContain('touch-manipulation');
   });
 });
