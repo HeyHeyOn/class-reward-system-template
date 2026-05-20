@@ -101,12 +101,16 @@ describe('KioskApp', () => {
   });
 
 
-  it('builds category tabs from product categories and filters the product grid', async () => {
-    render(<KioskApp />);
+  it('builds category tabs beside the product heading and filters the product grid', async () => {
+    const { container } = render(<KioskApp />);
 
     expect(await screen.findByRole('button', { name: '전체' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '문구' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '간식' })).toBeTruthy();
+    const tabs = container.querySelector('[data-testid="category-tabs"]');
+    expect(tabs?.className).toContain('flex-1');
+    expect(tabs?.className).toContain('overflow-x-auto');
+    expect(tabs?.className).toContain('whitespace-nowrap');
 
     fireEvent.click(screen.getByRole('button', { name: '간식' }));
     expect(screen.getByText('마이쮸')).toBeTruthy();
@@ -114,6 +118,15 @@ describe('KioskApp', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '전체' }));
     expect(screen.getByText('연필')).toBeTruthy();
+  });
+
+  it('applies the new navy theme from settings', async () => {
+    vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse(products));
+    vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '남색 매점', themeColor: 'navy', source: 'runtime' }));
+    const { container } = render(<KioskApp />);
+
+    expect(await screen.findByRole('heading', { name: '남색 매점' })).toBeTruthy();
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-blue-950');
   });
 
   it('reloads products and settings from the title refresh button', async () => {
@@ -229,9 +242,16 @@ describe('KioskApp', () => {
     const cartName = container.querySelector('[data-testid="cart-item-name"]');
     const quantityControls = container.querySelector('[data-testid="cart-quantity-controls"]');
 
-    expect(cartRow?.className).toContain('grid-cols-[minmax(0,3fr)_minmax(0,1fr)]');
+    expect(cartRow?.className).toContain('grid-cols-[minmax(0,1fr)_auto]');
     expect(cartName?.className).toContain('min-w-0');
     expect(quantityControls?.className).toContain('justify-self-start');
     expect(quantityControls?.className).toContain('landscape:justify-self-start');
+    expect(cartRow?.className).toContain('sm:grid-cols-[minmax(0,1fr)_auto_minmax(5rem,45%)]');
+    expect(quantityControls?.className).toContain('z-10');
+    expect(container.querySelector('[data-testid="cart-item-subtotal"]')?.className).toContain('truncate');
+    expect(container.querySelector('[data-testid="cart-item-subtotal"]')?.className).toContain('sm:whitespace-nowrap');
+    const increaseButton = screen.getByRole('button', { name: '연필 수량 늘리기' });
+    expect(increaseButton.className).toContain('min-w-10');
+    expect(increaseButton.className).toContain('touch-manipulation');
   });
 });

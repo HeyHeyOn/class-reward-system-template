@@ -144,6 +144,9 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
           <option value="yellow">노랑</option>
           <option value="green">초록</option>
           <option value="purple">보라</option>
+          <option value="white">흰색</option>
+          <option value="black">검은색</option>
+          <option value="navy">남색</option>
         </select>
       </label>
 

@@ -48,6 +48,24 @@ describe('settings', () => {
     expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '별', appTitle: '햇살반 매점', themeColor: 'purple', source: 'sheet' });
   });
 
+  it('accepts white, black, and navy theme colors from Settings sheet', async () => {
+    for (const themeColor of ['white', 'black', 'navy'] as const) {
+      const settings = await getAppSettings({
+        env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
+        settingsReader: {
+          async getRows() {
+            return [
+              ['key', 'value'],
+              ['themeColor', themeColor],
+            ];
+          },
+        },
+      });
+
+      expect(settings.themeColor).toBe(themeColor);
+    }
+  });
+
   it('saves currency unit and app title to Settings sheet and rejects changing deployment spreadsheet id', async () => {
     const updates: Array<{ sheetName: SheetName; rowNumber: number; columnName: string; value: string | number }> = [];
     const appends: Array<{ sheetName: SheetName; values: string[] }> = [];

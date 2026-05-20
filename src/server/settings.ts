@@ -2,7 +2,7 @@ import type { SheetsReader, SheetsStore } from '@/server/sheetsRepository';
 import { getSheetSettings, saveSheetSetting } from '@/server/sheetsRepository';
 import { saveAdminPassword } from '@/server/adminAuth';
 
-export type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple';
+export type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'black' | 'navy';
 
 export type AppSettings = {
   spreadsheetId: string;
@@ -39,7 +39,7 @@ const PLAIN_ID_PATTERN = /^[a-zA-Z0-9-_]{8,}$/;
 const DEFAULT_CURRENCY_UNIT = '원';
 const DEFAULT_APP_TITLE = '학급 매점';
 const DEFAULT_THEME_COLOR: ThemeColor = 'blue';
-const THEME_COLORS = new Set<ThemeColor>(['blue', 'pink', 'yellow', 'green', 'purple']);
+const THEME_COLORS = new Set<ThemeColor>(['blue', 'pink', 'yellow', 'green', 'purple', 'white', 'black', 'navy']);
 
 export function extractSpreadsheetId(value: string): string | null {
   const trimmed = value.trim();

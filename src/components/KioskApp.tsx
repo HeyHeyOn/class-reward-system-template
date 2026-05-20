@@ -34,20 +34,23 @@ type FailureState = {
   detail?: string;
 };
 
-type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple';
+type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'black' | 'navy';
 
 type KioskSettings = { currencyUnit?: string; appTitle?: string; themeColor?: ThemeColor };
 
-const THEME_STYLES: Record<ThemeColor, { shell: string; accentText: string; accentBg: string; lightBg: string; hoverBg: string; ring: string }> = {
-  blue: { shell: 'bg-sky-100', accentText: 'text-sky-700', accentBg: 'bg-sky-500', lightBg: 'bg-sky-100', hoverBg: 'hover:bg-sky-400', ring: 'focus:ring-sky-300' },
-  pink: { shell: 'bg-pink-100', accentText: 'text-pink-700', accentBg: 'bg-pink-500', lightBg: 'bg-pink-100', hoverBg: 'hover:bg-pink-400', ring: 'focus:ring-pink-300' },
-  yellow: { shell: 'bg-yellow-100', accentText: 'text-yellow-700', accentBg: 'bg-yellow-400', lightBg: 'bg-yellow-100', hoverBg: 'hover:bg-yellow-300', ring: 'focus:ring-yellow-300' },
-  green: { shell: 'bg-green-100', accentText: 'text-green-700', accentBg: 'bg-green-500', lightBg: 'bg-green-100', hoverBg: 'hover:bg-green-400', ring: 'focus:ring-green-300' },
-  purple: { shell: 'bg-purple-100', accentText: 'text-purple-700', accentBg: 'bg-purple-500', lightBg: 'bg-purple-100', hoverBg: 'hover:bg-purple-400', ring: 'focus:ring-purple-300' },
+const THEME_STYLES: Record<ThemeColor, { shell: string; accentText: string; accentBg: string; selectedText: string; lightBg: string; hoverBg: string; ring: string }> = {
+  blue: { shell: 'bg-sky-100', accentText: 'text-sky-700', accentBg: 'bg-sky-500', selectedText: 'text-white', lightBg: 'bg-sky-100', hoverBg: 'hover:bg-sky-400', ring: 'focus:ring-sky-300' },
+  pink: { shell: 'bg-pink-100', accentText: 'text-pink-700', accentBg: 'bg-pink-500', selectedText: 'text-white', lightBg: 'bg-pink-100', hoverBg: 'hover:bg-pink-400', ring: 'focus:ring-pink-300' },
+  yellow: { shell: 'bg-yellow-100', accentText: 'text-yellow-700', accentBg: 'bg-yellow-400', selectedText: 'text-slate-950', lightBg: 'bg-yellow-100', hoverBg: 'hover:bg-yellow-300', ring: 'focus:ring-yellow-300' },
+  green: { shell: 'bg-green-100', accentText: 'text-green-700', accentBg: 'bg-green-500', selectedText: 'text-white', lightBg: 'bg-green-100', hoverBg: 'hover:bg-green-400', ring: 'focus:ring-green-300' },
+  purple: { shell: 'bg-purple-100', accentText: 'text-purple-700', accentBg: 'bg-purple-500', selectedText: 'text-white', lightBg: 'bg-purple-100', hoverBg: 'hover:bg-purple-400', ring: 'focus:ring-purple-300' },
+  white: { shell: 'bg-white', accentText: 'text-slate-900', accentBg: 'bg-slate-950', selectedText: 'text-white', lightBg: 'bg-slate-100', hoverBg: 'hover:bg-slate-800', ring: 'focus:ring-slate-300' },
+  black: { shell: 'bg-slate-950', accentText: 'text-slate-950', accentBg: 'bg-slate-950', selectedText: 'text-white', lightBg: 'bg-slate-100', hoverBg: 'hover:bg-slate-800', ring: 'focus:ring-slate-300' },
+  navy: { shell: 'bg-blue-950', accentText: 'text-blue-900', accentBg: 'bg-blue-950', selectedText: 'text-white', lightBg: 'bg-blue-100', hoverBg: 'hover:bg-blue-900', ring: 'focus:ring-blue-300' },
 };
 
 function normalizeThemeColor(value: unknown): ThemeColor {
-  return value === 'pink' || value === 'yellow' || value === 'green' || value === 'purple' ? value : 'blue';
+  return value === 'pink' || value === 'yellow' || value === 'green' || value === 'purple' || value === 'white' || value === 'black' || value === 'navy' ? value : 'blue';
 }
 
 function isApiError(payload: unknown): payload is ApiError {
@@ -131,7 +134,7 @@ export function KioskApp() {
   const categories = useMemo(() => ['전체', ...Array.from(new Set(products.map((product) => product.category || '기타')))], [products]);
   const filteredProducts = selectedCategory === '전체' ? products : products.filter((product) => (product.category || '기타') === selectedCategory);
   const theme = THEME_STYLES[themeColor];
-  const quantityButtonClass = `flex h-[clamp(1.5rem,5vw,2rem)] w-[clamp(1.5rem,5vw,2rem)] shrink-0 items-center justify-center rounded-md ${theme.lightBg} text-[clamp(1rem,3vw,1.25rem)] font-black ${theme.accentText}`;
+  const quantityButtonClass = `relative z-10 flex h-[clamp(2.25rem,7vw,2.75rem)] w-[clamp(2.25rem,7vw,2.75rem)] min-h-10 min-w-10 shrink-0 touch-manipulation items-center justify-center rounded-lg ${theme.lightBg} text-[clamp(1.15rem,3.5vw,1.4rem)] font-black ${theme.accentText}`;
 
   function addToCart(productId: string) {
     setMessage('');
@@ -290,22 +293,21 @@ export function KioskApp() {
 
         <div data-testid="kiosk-main-grid" className="grid min-h-0 grid-rows-[minmax(0,2fr)_minmax(0,1fr)] gap-2 landscape:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] landscape:grid-rows-1 sm:gap-3">
           <section data-testid="products-panel" className="flex min-h-0 flex-col rounded-[1.25rem] border border-slate-300/70 bg-white/85 p-2 text-[clamp(0.68rem,2.1vw,1rem)] shadow-sm sm:rounded-[1.75rem] sm:p-4 lg:min-h-0">
-          <div className="flex items-center justify-between gap-2 sm:gap-3">
-            <h2 className="text-[clamp(1rem,4vw,1.5rem)] font-black leading-tight">상품 목록</h2>
-            {isLoadingProducts ? <p className={`rounded-full ${theme.lightBg} px-2 py-0.5 text-[clamp(0.62rem,2.2vw,0.875rem)] font-black ${theme.accentText} sm:px-3 sm:py-1`}>불러오는 중</p> : null}
-          </div>
-
-          <div data-testid="category-tabs" className="mt-2 flex shrink-0 gap-1 overflow-x-auto pb-1 sm:gap-2">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+            <h2 className="shrink-0 text-[clamp(1rem,4vw,1.5rem)] font-black leading-tight">상품 목록</h2>
+            <div data-testid="category-tabs" className="flex min-w-0 flex-1 shrink gap-1 overflow-x-auto whitespace-nowrap pb-1 sm:gap-2">
             {categories.map((category) => (
               <button
                 key={category}
                 type="button"
                 onClick={() => setSelectedCategory(category)}
-                className={`shrink-0 rounded-full px-2.5 py-1 text-[clamp(0.62rem,2.1vw,0.875rem)] font-black transition sm:px-3 ${selectedCategory === category ? `${theme.accentBg} text-white` : `${theme.lightBg} ${theme.accentText}`}`}
+                className={`shrink-0 rounded-full px-2.5 py-1 text-[clamp(0.62rem,2.1vw,0.875rem)] font-black transition sm:px-3 ${selectedCategory === category ? `${theme.accentBg} ${theme.selectedText}` : `${theme.lightBg} ${theme.accentText}`}`}
               >
                 {category}
               </button>
             ))}
+            </div>
+            {isLoadingProducts ? <p className={`shrink-0 rounded-full ${theme.lightBg} px-2 py-0.5 text-[clamp(0.62rem,2.2vw,0.875rem)] font-black ${theme.accentText} sm:px-3 sm:py-1`}>불러오는 중</p> : null}
           </div>
 
           <div data-testid="product-scroll-block" className="mt-1 min-h-0 flex-1 overflow-y-auto pr-1 sm:mt-2">
@@ -359,9 +361,9 @@ export function KioskApp() {
             ) : (
               <div className="space-y-2">
                 {cartDetails.map((item) => (
-                  <div key={item.productId} data-testid="cart-item-row" className="grid grid-cols-[minmax(0,3fr)_minmax(0,1fr)] items-center gap-x-2 gap-y-1 rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-[clamp(0.68rem,2.2vw,1rem)] shadow-sm sm:grid-cols-[minmax(0,3fr)_minmax(0,1fr)_auto] sm:gap-x-3 sm:px-3 sm:py-2">
+                  <div key={item.productId} data-testid="cart-item-row" className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-[clamp(0.68rem,2.2vw,1rem)] shadow-sm sm:grid-cols-[minmax(0,1fr)_auto_minmax(5rem,45%)] sm:gap-x-3 sm:px-3 sm:py-2">
                     <p data-testid="cart-item-name" className="min-w-0 truncate text-[clamp(0.75rem,2.8vw,1.125rem)] font-black leading-tight">{item.name}</p>
-                    <div data-testid="cart-quantity-controls" className="flex justify-self-start items-center gap-1 landscape:justify-self-start sm:gap-2">
+                    <div data-testid="cart-quantity-controls" className="relative z-10 flex justify-self-start items-center gap-1 landscape:justify-self-start sm:gap-2">
                       <button
                         aria-label={`${item.name} 수량 줄이기`}
                         onClick={() => removeFromCart(item.productId)}
@@ -378,7 +380,7 @@ export function KioskApp() {
                         +
                       </button>
                     </div>
-                    <p className="col-span-2 text-right text-[clamp(0.75rem,2.8vw,1.125rem)] font-black leading-tight sm:col-span-1 sm:w-20 md:w-24">{formatCurrency(item.subtotal, currencyUnit)}</p>
+                    <p data-testid="cart-item-subtotal" className="col-span-2 min-w-0 truncate text-right text-[clamp(0.75rem,2.8vw,1.125rem)] font-black leading-tight sm:col-span-1 sm:justify-self-end sm:whitespace-nowrap">{formatCurrency(item.subtotal, currencyUnit)}</p>
                   </div>
                 ))}
               </div>
