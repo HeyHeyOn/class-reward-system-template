@@ -20,6 +20,7 @@ function jsonResponse(payload: unknown, init?: ResponseInit) {
 
 describe('AdminManagePage', () => {
   beforeEach(() => {
+    vi.stubGlobal('alert', vi.fn());
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -104,7 +105,7 @@ describe('AdminManagePage', () => {
     fireEvent.change(screen.getByLabelText('S001 이름'), { target: { value: '김민준 수정' } });
     fireEvent.change(screen.getByLabelText('S001 잔액'), { target: { value: '4000' } });
     fireEvent.click(screen.getByRole('button', { name: 'S001 학생 저장' }));
-    expect(await screen.findByText('S001 저장 완료')).toBeTruthy();
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('S001 저장 완료'));
 
     fireEvent.click(screen.getByRole('tab', { name: '재고 관리' }));
     expect(await screen.findByDisplayValue('연필')).toBeTruthy();
@@ -125,7 +126,7 @@ describe('AdminManagePage', () => {
       });
     });
 
-    expect(await screen.findByText('P001 저장 완료')).toBeTruthy();
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('P001 저장 완료'));
   });
 
   it('supports dense selectable rows with bulk student balance editing and deletion', async () => {
@@ -147,7 +148,7 @@ describe('AdminManagePage', () => {
         body: JSON.stringify({ studentIds: ['S001', 'S002'], mode: 'set', amount: 5000 }),
       });
     });
-    expect(await screen.findByText('선택 학생 2명 수정 완료')).toBeTruthy();
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('선택 학생 2명 수정 완료'));
 
     fireEvent.click(screen.getByLabelText('S001 선택'));
     fireEvent.click(screen.getByRole('button', { name: 'S001 삭제' }));
@@ -193,7 +194,7 @@ describe('AdminManagePage', () => {
       });
     });
 
-    expect(await screen.findByText('S003 추가 완료')).toBeTruthy();
-    expect(await screen.findByText('P003 추가 완료')).toBeTruthy();
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('S003 추가 완료'));
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('P003 추가 완료'));
   });
 });

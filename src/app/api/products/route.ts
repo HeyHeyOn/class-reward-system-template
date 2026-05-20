@@ -7,7 +7,7 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const includeInactive = url.searchParams.get('includeInactive') === '1';
-    const reader = await createConfiguredSheetsReader(request);
+    const reader = await createConfiguredSheetsReader();
     const products = includeInactive ? await getProducts(reader) : await getActiveProducts(reader);
 
     return Response.json(products);

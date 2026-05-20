@@ -18,7 +18,7 @@ export async function POST(request: Request) {
       return Response.json({ error: validation.message }, { status: 400 });
     }
 
-    const store = await createConfiguredSheetsStore(request);
+    const store = await createConfiguredSheetsStore();
     const result = await processCheckout(store, {
       studentId: validation.studentId,
       items: validation.items,

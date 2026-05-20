@@ -1,10 +1,12 @@
 import type { SheetsReader, SheetsStore } from '@/server/sheetsRepository';
 import { getSheetSettings, saveSheetSetting } from '@/server/sheetsRepository';
+import { saveAdminPassword } from '@/server/adminAuth';
 
 export type AppSettings = {
   spreadsheetId: string;
   currencyUnit: string;
   source: 'sheet' | 'env' | 'unset';
+  adminPasswordConfigured?: boolean;
 };
 
 type SettingsEnv = { [key: string]: string | undefined; GOOGLE_SHEET_ID?: string };
@@ -18,6 +20,7 @@ type SaveSettingsOptions = {
   settingsStore: SheetsStore;
   spreadsheetIdOrUrl: string;
   currencyUnit?: string;
+  adminPassword?: string;
   env?: SettingsEnv;
 };
 
@@ -74,6 +77,7 @@ export async function getAppSettings(options: SettingsOptions = {}): Promise<App
         spreadsheetId: envSpreadsheetId,
         currencyUnit: normalizeCurrencyUnit(sheetSettings.currencyUnit),
         source: 'sheet',
+        ...(sheetSettings.adminPasswordHash ? { adminPasswordConfigured: true } : {}),
       };
     } catch (error) {
       if (isMissingSettingsSheetError(error)) {
@@ -104,8 +108,16 @@ export async function saveAppSettings(options: SaveSettingsOptions): Promise<App
 
   const currencyUnit = normalizeCurrencyUnit(options.currencyUnit);
   await saveSheetSetting(options.settingsStore, { key: 'currencyUnit', value: currencyUnit });
+  if (options.adminPassword?.trim()) {
+    await saveAdminPassword(options.settingsStore, options.adminPassword);
+  }
 
-  return { spreadsheetId: configuredSpreadsheetId, currencyUnit, source: 'sheet' };
+  return {
+    spreadsheetId: configuredSpreadsheetId,
+    currencyUnit,
+    source: 'sheet',
+    ...(options.adminPassword?.trim() ? { adminPasswordConfigured: true } : {}),
+  };
 }
 
 export function normalizeCurrencyUnit(value: unknown): string {

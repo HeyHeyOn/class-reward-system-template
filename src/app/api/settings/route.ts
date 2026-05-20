@@ -3,8 +3,8 @@ import { createConfiguredSheetsStore, verifySpreadsheetAccess } from '@/server/g
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: Request) {
-  const store = await createConfiguredSheetsStore(request);
+export async function GET() {
+  const store = await createConfiguredSheetsStore();
   const settings = await getAppSettings({ settingsReader: store });
 
   return Response.json(settings);
@@ -12,7 +12,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as { spreadsheetIdOrUrl?: unknown; currencyUnit?: unknown };
+    const body = (await request.json()) as { spreadsheetIdOrUrl?: unknown; currencyUnit?: unknown; adminPassword?: unknown };
 
     if (typeof body.spreadsheetIdOrUrl !== 'string') {
       return Response.json({ error: '시트 ID 또는 주소를 입력해 주세요.' }, { status: 400 });
@@ -29,6 +29,7 @@ export async function POST(request: Request) {
       settingsStore: store,
       spreadsheetIdOrUrl: validation.spreadsheetId,
       currencyUnit: typeof body.currencyUnit === 'string' ? body.currencyUnit : undefined,
+      adminPassword: typeof body.adminPassword === 'string' ? body.adminPassword : undefined,
     });
 
     return Response.json(settings);

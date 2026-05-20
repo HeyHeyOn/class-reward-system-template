@@ -6,6 +6,7 @@ type SettingsResponse = {
   spreadsheetId: string;
   currencyUnit: string;
   source: 'runtime' | 'env' | 'unset';
+  adminPasswordConfigured?: boolean;
 };
 
 type SettingsFormProps = {
@@ -19,6 +20,8 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
   const [currencyUnit, setCurrencyUnit] = useState('원');
   const [currentSettings, setCurrentSettings] = useState<SettingsResponse | null>(null);
   const [message, setMessage] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [savedAdminPassword, setSavedAdminPassword] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -53,7 +56,7 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
       const response = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ spreadsheetIdOrUrl, currencyUnit }),
+        body: JSON.stringify({ spreadsheetIdOrUrl, currencyUnit, adminPassword: adminPassword.trim() || undefined }),
       });
       const payload = (await response.json()) as SettingsResponse | { error: string };
 
@@ -65,6 +68,10 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
       setCurrentSettings(payload);
       setSpreadsheetIdOrUrl(payload.spreadsheetId);
       setCurrencyUnit(payload.currencyUnit);
+      if (adminPassword.trim()) {
+        setSavedAdminPassword(adminPassword.trim());
+        setAdminPassword('');
+      }
       await onSettingsSaved?.();
       setMessage('시트 ID를 저장했고, 관리자 목록도 같은 시트에서 다시 불러왔습니다.');
     } finally {
@@ -104,6 +111,28 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
         />
       </label>
 
+
+      <label className="mt-4 block">
+        <span className="text-sm font-bold text-slate-700">관리자 암호 설정</span>
+        <input
+          aria-label="관리자 암호 설정"
+          value={adminPassword}
+          onChange={(event) => setAdminPassword(event.target.value)}
+          placeholder={currentSettings?.adminPasswordConfigured ? '새 암호를 입력하면 변경됩니다' : '관리자 로그인 암호'}
+          className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg outline-none transition focus:border-amber-500 focus:bg-white"
+        />
+        <p className="mt-2 text-xs font-bold text-slate-500">암호는 해시로 Settings 시트에 저장됩니다. QR은 저장 직후 이 화면에서만 표시됩니다.</p>
+      </label>
+
+      {savedAdminPassword ? (
+        <div className="mt-4 rounded-2xl bg-sky-50 p-4 text-center">
+          <p className="text-sm font-black text-sky-900">관리자 QR 로그인 코드</p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="mx-auto mt-3 h-48 w-48 rounded-xl bg-white p-2" alt="관리자 로그인 QR" src={`/api/qrcode?value=${encodeURIComponent(`class-store-admin:${savedAdminPassword}`)}`} />
+          <p className="mt-2 text-xs font-bold text-slate-500">로그인 화면의 QR 로그인으로 인식하면 암호가 자동 입력됩니다.</p>
+        </div>
+      ) : null}
+
       <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
         <p>
           현재 상태:{' '}
@@ -113,6 +142,7 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
         </p>
         <p>설정 출처: {currentSettings?.source ?? '확인 중'}</p>
         <p>화폐 단위: {currentSettings?.currencyUnit ?? currencyUnit}</p>
+        <p>관리자 암호: {currentSettings?.adminPasswordConfigured ? '설정됨' : '미설정'}</p>
         <p className="mt-2 font-bold text-sky-800">
           관리자 목록도 이 설정을 사용합니다: 학생 {linkedStudentCount ?? 0}명 · 상품 {linkedProductCount ?? 0}개
         </p>

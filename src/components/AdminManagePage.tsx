@@ -8,7 +8,6 @@ import { SettingsForm } from './SettingsForm';
 
 type StudentDraft = Student;
 type ProductDraft = Product;
-type SaveState = Record<string, string>;
 type AdminTab = 'settings' | 'students' | 'products';
 type BulkMode = 'set' | 'add' | 'subtract';
 
@@ -48,10 +47,8 @@ export function AdminManagePage() {
   const [bulkMode, setBulkMode] = useState<BulkMode>('set');
   const [bulkAmount, setBulkAmount] = useState(0);
   const [message, setMessage] = useState('학생/상품 목록을 불러오는 중입니다.');
-  const [saveState, setSaveState] = useState<SaveState>({});
   const [newStudent, setNewStudent] = useState<NewStudentDraft>(EMPTY_STUDENT);
   const [newProduct, setNewProduct] = useState<NewProductDraft>(EMPTY_PRODUCT);
-  const [createMessages, addCreateMessages] = useState<string[]>([]);
 
   const loadLinkedSheetData = useCallback(async (options: { silent?: boolean; shouldApply?: () => boolean } = {}) => {
     const shouldApply = options.shouldApply ?? (() => true);
@@ -85,7 +82,7 @@ export function AdminManagePage() {
   useEffect(() => {
     let ignore = false;
 
-    loadLinkedSheetData({ shouldApply: () => !ignore });
+    void Promise.resolve().then(() => loadLinkedSheetData({ shouldApply: () => !ignore }));
 
     return () => {
       ignore = true;
@@ -109,8 +106,8 @@ export function AdminManagePage() {
     setProducts((current) => current.map((product) => (product.productId === productId ? { ...product, ...patch } : product)));
   }
 
-  function addCreateMessage(messageText: string) {
-    addCreateMessages((current) => [...current, messageText].slice(-4));
+  function notify(messageText: string) {
+    window.alert(messageText);
   }
 
   function toggleStudent(studentId: string) {
@@ -122,7 +119,6 @@ export function AdminManagePage() {
   }
 
   async function saveStudent(student: StudentDraft) {
-    setSaveState((current) => ({ ...current, [student.studentId]: '저장 중...' }));
     try {
       const body = { name: student.name, number: student.number, balance: student.balance, status: student.status };
       const response = await fetch(`/api/students/${encodeURIComponent(student.studentId)}`, {
@@ -133,32 +129,38 @@ export function AdminManagePage() {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? '학생 정보를 저장하지 못했습니다.');
       updateStudent(student.studentId, payload);
-      setSaveState((current) => ({ ...current, [student.studentId]: `${student.studentId} 저장 완료` }));
+      notify(`${student.studentId} 저장 완료`);
     } catch (error) {
-      setSaveState((current) => ({ ...current, [student.studentId]: error instanceof Error ? error.message : '학생 정보를 저장하지 못했습니다.' }));
+      notify(error instanceof Error ? error.message : '학생 정보를 저장하지 못했습니다.');
     }
   }
 
   async function deleteStudentRow(studentId: string) {
-    setSaveState((current) => ({ ...current, [studentId]: '삭제 중...' }));
     try {
       const response = await fetch(`/api/students/${encodeURIComponent(studentId)}`, { method: 'DELETE' });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? '학생을 삭제하지 못했습니다.');
       setStudents((current) => current.filter((student) => student.studentId !== studentId));
       setSelectedStudentIds((current) => current.filter((id) => id !== studentId));
-      setSaveState((current) => ({ ...current, [studentId]: `${studentId} 삭제 완료` }));
+      notify(`${studentId} 삭제 완료`);
     } catch (error) {
-      setSaveState((current) => ({ ...current, [studentId]: error instanceof Error ? error.message : '학생을 삭제하지 못했습니다.' }));
+      notify(error instanceof Error ? error.message : '학생을 삭제하지 못했습니다.');
     }
+  }
+
+  async function deleteSelectedStudents() {
+    if (selectedStudentIds.length === 0) return notify('선택된 학생이 없습니다.');
+    for (const studentId of selectedStudentIds) {
+      await deleteStudentRow(studentId);
+    }
+    notify(`선택 학생 ${selectedStudentIds.length}명 삭제 완료`);
   }
 
   async function applyBulkStudentBalance() {
     if (selectedStudentIds.length === 0) {
-      addCreateMessage('선택된 학생이 없습니다.');
+      notify('선택된 학생이 없습니다.');
       return;
     }
-    addCreateMessage('선택 학생 재화 수정 중...');
     try {
       const response = await fetch('/api/students/bulk', {
         method: 'PATCH',
@@ -169,14 +171,13 @@ export function AdminManagePage() {
       if (!response.ok) throw new Error(payload.error ?? '선택 학생 재화를 수정하지 못했습니다.');
       const balanceMap = new Map((payload as Array<{ studentId: string; balance: number }>).map((item) => [item.studentId, item.balance]));
       setStudents((current) => current.map((student) => balanceMap.has(student.studentId) ? { ...student, balance: balanceMap.get(student.studentId)! } : student));
-      addCreateMessage(`선택 학생 ${payload.length}명 수정 완료`);
+      notify(`선택 학생 ${payload.length}명 수정 완료`);
     } catch (error) {
-      addCreateMessage(error instanceof Error ? error.message : '선택 학생 재화를 수정하지 못했습니다.');
+      notify(error instanceof Error ? error.message : '선택 학생 재화를 수정하지 못했습니다.');
     }
   }
 
   async function saveProduct(product: ProductDraft) {
-    setSaveState((current) => ({ ...current, [product.productId]: '저장 중...' }));
     try {
       const body = {
         name: product.name,
@@ -194,29 +195,35 @@ export function AdminManagePage() {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? '상품 정보를 저장하지 못했습니다.');
       updateProduct(product.productId, payload);
-      setSaveState((current) => ({ ...current, [product.productId]: `${product.productId} 저장 완료` }));
+      notify(`${product.productId} 저장 완료`);
     } catch (error) {
-      setSaveState((current) => ({ ...current, [product.productId]: error instanceof Error ? error.message : '상품 정보를 저장하지 못했습니다.' }));
+      notify(error instanceof Error ? error.message : '상품 정보를 저장하지 못했습니다.');
     }
   }
 
   async function deleteProductRow(productId: string) {
-    setSaveState((current) => ({ ...current, [productId]: '삭제 중...' }));
     try {
       const response = await fetch(`/api/products/${encodeURIComponent(productId)}`, { method: 'DELETE' });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? '상품을 삭제하지 못했습니다.');
       setProducts((current) => current.filter((product) => product.productId !== productId));
       setSelectedProductIds((current) => current.filter((id) => id !== productId));
-      setSaveState((current) => ({ ...current, [productId]: `${productId} 삭제 완료` }));
+      notify(`${productId} 삭제 완료`);
     } catch (error) {
-      setSaveState((current) => ({ ...current, [productId]: error instanceof Error ? error.message : '상품을 삭제하지 못했습니다.' }));
+      notify(error instanceof Error ? error.message : '상품을 삭제하지 못했습니다.');
     }
+  }
+
+  async function deleteSelectedProducts() {
+    if (selectedProductIds.length === 0) return notify('선택된 상품이 없습니다.');
+    for (const productId of selectedProductIds) {
+      await deleteProductRow(productId);
+    }
+    notify(`선택 상품 ${selectedProductIds.length}개 삭제 완료`);
   }
 
   async function createNewStudent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    addCreateMessage('학생 추가 중...');
     try {
       const body = { studentId: newStudent.studentId, name: newStudent.name, number: newStudent.number, balance: newStudent.balance, status: newStudent.status };
       const response = await fetch('/api/students', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -224,15 +231,14 @@ export function AdminManagePage() {
       if (!response.ok) throw new Error(payload.error ?? '학생을 추가하지 못했습니다.');
       setStudents((current) => [...current, payload].sort((a, b) => a.number - b.number || a.name.localeCompare(b.name)));
       setNewStudent(EMPTY_STUDENT);
-      addCreateMessage(`${payload.studentId} 추가 완료`);
+      notify(`${payload.studentId} 추가 완료`);
     } catch (error) {
-      addCreateMessage(error instanceof Error ? error.message : '학생을 추가하지 못했습니다.');
+      notify(error instanceof Error ? error.message : '학생을 추가하지 못했습니다.');
     }
   }
 
   async function createNewProduct(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    addCreateMessage('상품 추가 중...');
     try {
       const body = {
         productId: newProduct.productId,
@@ -248,9 +254,9 @@ export function AdminManagePage() {
       if (!response.ok) throw new Error(payload.error ?? '상품을 추가하지 못했습니다.');
       setProducts((current) => [...current, payload].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)));
       setNewProduct(EMPTY_PRODUCT);
-      addCreateMessage(`${payload.productId} 추가 완료`);
+      notify(`${payload.productId} 추가 완료`);
     } catch (error) {
-      addCreateMessage(error instanceof Error ? error.message : '상품을 추가하지 못했습니다.');
+      notify(error instanceof Error ? error.message : '상품을 추가하지 못했습니다.');
     }
   }
 
@@ -271,12 +277,10 @@ export function AdminManagePage() {
           {message ? <p className="mt-3 rounded-2xl bg-rose-100 p-3 text-sm font-bold text-rose-700">{message}</p> : null}
         </header>
 
-        <section aria-label="관리자 바로가기" className="grid grid-cols-2 gap-2 rounded-[1.25rem] border border-slate-300/70 bg-white/90 p-2 shadow-sm">
-          <AdminLink href="/admin/student-qrs" title="학생 QR 출력" description="학생별 QR 카드" />
-          <AdminLink href="/admin/transactions" title="결제 내역 확인" description="거래 기록 확인" />
-        </section>
-
-        <nav data-testid="admin-tabs" role="tablist" aria-label="관리자 메뉴" className="grid grid-cols-3 gap-2 rounded-[1.5rem] border border-slate-300/70 bg-white/90 p-2 shadow-sm">
+        <nav data-testid="admin-tabs" role="tablist" aria-label="관리자 메뉴" className="grid grid-cols-3 gap-2 rounded-[1.5rem] border border-slate-300/70 bg-white/90 p-2 shadow-sm sm:grid-cols-6">
+          <AdminNavLink href="/" title="매점 바로가기" description="키오스크" />
+          <AdminNavLink href="/admin/student-qrs" title="학생 QR 출력" description="QR 카드" />
+          <AdminNavLink href="/admin/transactions" title="결제 내역 확인" description="거래 기록" />
           {tabs.map((tab) => {
             const selected = activeTab === tab.id;
             return (
@@ -287,24 +291,14 @@ export function AdminManagePage() {
                 aria-selected={selected}
                 aria-label={tab.label}
                 onClick={() => setActiveTab(tab.id)}
-                className={`rounded-[1rem] px-3 py-3 text-left transition ${selected ? 'bg-sky-500 text-white shadow-sm' : 'bg-sky-50 text-slate-700 hover:bg-sky-100'}`}
+                className={`rounded-[1rem] px-2 py-3 text-left transition ${selected ? 'bg-sky-500 text-white shadow-sm' : 'bg-sky-50 text-slate-700 hover:bg-sky-100'}`}
               >
-                <span className="block text-base font-black sm:text-lg">{tab.label}</span>
-                <span className={`mt-0.5 hidden text-xs font-bold sm:block ${selected ? 'text-sky-50' : 'text-slate-500'}`}>{tab.description}</span>
+                <span className="block text-sm font-black sm:text-base">{tab.label}</span>
+                <span className={`mt-0.5 hidden text-[11px] font-bold lg:block ${selected ? 'text-sky-50' : 'text-slate-500'}`}>{tab.description}</span>
               </button>
             );
           })}
         </nav>
-
-        {createMessages.length > 0 ? (
-          <div className="space-y-2">
-            {createMessages.map((item, index) => (
-              <p className="rounded-2xl bg-sky-100 p-3 text-sm font-bold text-sky-900" key={`${item}-${index}`}>
-                {item}
-              </p>
-            ))}
-          </div>
-        ) : null}
 
         {activeTab === 'settings' ? (
           <section role="tabpanel" aria-label="시트 설정" className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -345,6 +339,7 @@ export function AdminManagePage() {
                   </select>
                   <input aria-label="선택 학생 금액" value={bulkAmount} onChange={(event) => setBulkAmount(Number(event.target.value))} type="number" className="w-28 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold" />
                   <button type="button" onClick={applyBulkStudentBalance} className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-black text-white">선택 학생 재화 적용</button>
+                  <button type="button" onClick={deleteSelectedStudents} className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-black text-white">선택 학생 삭제</button>
                 </div>
               </div>
 
@@ -375,7 +370,6 @@ export function AdminManagePage() {
                     <button className="rounded-xl bg-rose-100 px-3 py-2 text-sm font-black text-rose-700" onClick={() => deleteStudentRow(student.studentId)} type="button">
                       {student.studentId} 삭제
                     </button>
-                    {saveState[student.studentId] ? <p className="text-xs font-bold text-sky-700 md:col-span-8 md:col-start-2">{saveState[student.studentId]}</p> : null}
                   </div>
                 ))}
               </div>
@@ -407,6 +401,7 @@ export function AdminManagePage() {
                   <input aria-label="전체 상품 선택" checked={allProductsSelected} onChange={(event) => setSelectedProductIds(event.target.checked ? products.map((product) => product.productId) : [])} type="checkbox" />
                   전체 선택 ({selectedProductIds.length}/{products.length})
                 </label>
+                <button type="button" onClick={deleteSelectedProducts} className="mt-2 rounded-xl bg-rose-600 px-4 py-2 text-sm font-black text-white">선택 상품 삭제</button>
               </div>
               <div data-testid="product-list" className="overflow-hidden rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
                 {products.map((product) => (
@@ -434,7 +429,6 @@ export function AdminManagePage() {
                     <button className="rounded-xl bg-rose-100 px-3 py-2 text-sm font-black text-rose-700 md:col-start-9" onClick={() => deleteProductRow(product.productId)} type="button">
                       {product.productId} 삭제
                     </button>
-                    {saveState[product.productId] ? <p className="text-xs font-bold text-sky-700 md:col-span-8 md:col-start-2">{saveState[product.productId]}</p> : null}
                   </div>
                 ))}
               </div>
@@ -446,11 +440,11 @@ export function AdminManagePage() {
   );
 }
 
-function AdminLink({ href, title, description }: { href: string; title: string; description: string }) {
+function AdminNavLink({ href, title, description }: { href: string; title: string; description: string }) {
   return (
-    <Link className="rounded-[1rem] bg-sky-50 px-3 py-3 text-left text-slate-700 transition hover:bg-sky-100" href={href}>
-      <span className="block text-base font-black sm:text-lg">{title}</span>
-      <span className="mt-0.5 block text-xs font-bold text-slate-500">{description}</span>
+    <Link className="rounded-[1rem] bg-sky-50 px-2 py-3 text-left text-slate-700 transition hover:bg-sky-100" href={href}>
+      <span className="block text-sm font-black sm:text-base">{title}</span>
+      <span className="mt-0.5 hidden text-[11px] font-bold text-slate-500 lg:block">{description}</span>
     </Link>
   );
 }
