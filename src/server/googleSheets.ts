@@ -1,6 +1,6 @@
 import { google } from 'googleapis';
 import { getEnvSpreadsheetId } from '@/server/settings';
-import { createUserSheetsAuth, isGoogleOAuthEnabled } from '@/server/googleOAuth';
+import { createDeploymentSheetsAuth, createUserSheetsAuth, isGoogleOAuthEnabled } from '@/server/googleOAuth';
 import type { SheetName, SheetsStore } from '@/server/sheetsRepository';
 
 const SHEET_RANGES: Record<SheetName, string> = {
@@ -149,7 +149,7 @@ export async function verifySpreadsheetAccess(spreadsheetId: string, request?: R
     await Promise.all([store.getRows('Students'), store.getRows('Products')]);
   } catch (error) {
     const detail = error instanceof Error ? error.message : '알 수 없는 오류';
-    throw new Error(`해당 Google Sheets에 접근하지 못했습니다. 서비스 계정 공유 권한과 Students/Products 시트 이름을 확인해 주세요. (${detail})`);
+    throw new Error(`해당 Google Sheets에 접근하지 못했습니다. OAuth refresh token 또는 서비스 계정 권한, Students/Products 시트 이름을 확인해 주세요. (${detail})`);
   }
 }
 
@@ -159,17 +159,21 @@ async function createSheetsClient(request?: Request) {
   if (request && isGoogleOAuthEnabled()) {
     const origin = new URL(request.url).origin;
     const userAuth = createUserSheetsAuth(request, origin);
-    if (!userAuth) {
-      throw new Error('Google 계정 로그인이 필요합니다. 관리자 로그인 화면에서 Google로 로그인해 주세요.');
+    if (userAuth) {
+      return google.sheets({ version: 'v4', auth: userAuth.auth });
     }
-    return google.sheets({ version: 'v4', auth: userAuth.auth });
+  }
+
+  const deploymentAuth = createDeploymentSheetsAuth();
+  if (deploymentAuth) {
+    return google.sheets({ version: 'v4', auth: deploymentAuth });
   }
 
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const privateKey = process.env.GOOGLE_PRIVATE_KEY?.split(String.raw`\n`).join('\n');
 
   if (!email || !privateKey) {
-    throw new Error('Google 서비스 계정 환경변수가 없습니다. GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_PRIVATE_KEY를 설정해 주세요.');
+    throw new Error('Google Sheets 인증 환경변수가 없습니다. OAuth 방식은 GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN을 설정하고, 서비스 계정 방식은 GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_PRIVATE_KEY를 설정해 주세요.');
   }
 
   const auth = new google.auth.JWT({

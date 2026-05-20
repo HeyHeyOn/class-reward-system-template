@@ -12,6 +12,7 @@ type GoogleAuthEnv = {
   [key: string]: string | undefined;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
+  GOOGLE_REFRESH_TOKEN?: string;
   AUTH_SECRET?: string;
   ADMIN_PASSWORD?: string;
 };
@@ -27,6 +28,19 @@ export function isGoogleOAuthEnabled(env: GoogleAuthEnv = process.env): boolean 
   return Boolean(env.GOOGLE_CLIENT_ID?.trim() && env.GOOGLE_CLIENT_SECRET?.trim());
 }
 
+export function isDeploymentGoogleOAuthEnabled(env: GoogleAuthEnv = process.env): boolean {
+  return Boolean(env.GOOGLE_CLIENT_ID?.trim() && env.GOOGLE_CLIENT_SECRET?.trim() && env.GOOGLE_REFRESH_TOKEN?.trim());
+}
+
+export function createDeploymentSheetsAuth(env: GoogleAuthEnv = process.env) {
+  const refreshToken = env.GOOGLE_REFRESH_TOKEN?.trim();
+  if (!refreshToken) return null;
+
+  const client = createGoogleOAuthClientWithoutRedirect(env);
+  client.setCredentials({ refresh_token: refreshToken });
+  return client;
+}
+
 export function createGoogleOAuthClient(origin: string, env: GoogleAuthEnv = process.env) {
   const clientId = env.GOOGLE_CLIENT_ID?.trim();
   const clientSecret = env.GOOGLE_CLIENT_SECRET?.trim();
@@ -36,6 +50,17 @@ export function createGoogleOAuthClient(origin: string, env: GoogleAuthEnv = pro
   }
 
   return new google.auth.OAuth2(clientId, clientSecret, getGoogleRedirectUri(origin));
+}
+
+export function createGoogleOAuthClientWithoutRedirect(env: GoogleAuthEnv = process.env) {
+  const clientId = env.GOOGLE_CLIENT_ID?.trim();
+  const clientSecret = env.GOOGLE_CLIENT_SECRET?.trim();
+
+  if (!clientId || !clientSecret) {
+    throw new Error('Google OAuth 환경변수가 없습니다. GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET를 설정해 주세요.');
+  }
+
+  return new google.auth.OAuth2(clientId, clientSecret);
 }
 
 export function getGoogleRedirectUri(origin: string): string {

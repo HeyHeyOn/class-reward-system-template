@@ -28,15 +28,16 @@ npm run dev
 ```text
 GOOGLE_SHEET_ID=
 
-# Google 계정 로그인 방식
+# OAuth refresh token 방식 권장: 학생/키오스크는 Google 로그인 없이 작동
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
+GOOGLE_REFRESH_TOKEN=
 AUTH_SECRET=
+ADMIN_PASSWORD=
 
-# 기존 서비스 계정 방식
+# 기존 서비스 계정 방식: OAuth refresh token이 없을 때 fallback
 GOOGLE_SERVICE_ACCOUNT_EMAIL=
 GOOGLE_PRIVATE_KEY=
-ADMIN_PASSWORD=
 ```
 
 ## Vercel 배포
