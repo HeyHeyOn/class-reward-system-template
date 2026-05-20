@@ -285,7 +285,7 @@ export function KioskApp() {
                   <div className="mt-2 flex aspect-[4/3] items-center justify-center bg-slate-200 text-5xl text-white">
                     {product.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={product.imageUrl} alt="" className="h-full w-full object-cover" />
+                      <img src={product.imageUrl} alt={`${product.name} 이미지`} className="h-full w-full object-cover" />
                     ) : (
                       <span aria-hidden="true">▵</span>
                     )}

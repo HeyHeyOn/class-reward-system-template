@@ -44,6 +44,7 @@ export type ProductUpdate = {
   price: number;
   stock: number;
   isActive: boolean;
+  imageUrl?: string;
   category?: string;
   sortOrder: number;
 };
@@ -295,6 +296,7 @@ export async function createProduct(store: SheetsStore, create: ProductCreate): 
     throw new Error('이미 존재하는 상품 ID입니다.');
   }
 
+  const imageUrl = create.imageUrl?.trim() || undefined;
   const category = create.category?.trim() || undefined;
   const product: Product = {
     productId,
@@ -302,7 +304,7 @@ export async function createProduct(store: SheetsStore, create: ProductCreate): 
     price: create.price,
     stock: create.stock,
     isActive: create.isActive,
-    imageUrl: undefined,
+    imageUrl,
     category,
     sortOrder: create.sortOrder,
   };
@@ -313,7 +315,7 @@ export async function createProduct(store: SheetsStore, create: ProductCreate): 
     String(product.price),
     String(product.stock),
     product.isActive ? 'TRUE' : 'FALSE',
-    '',
+    product.imageUrl ?? '',
     product.category ?? '',
     String(product.sortOrder),
   ]);
@@ -331,11 +333,13 @@ export async function updateProductDetails(store: SheetsStore, productId: string
   validateProductUpdate(update);
 
   const name = update.name.trim();
+  const imageUrl = update.imageUrl?.trim() || undefined;
   const category = update.category?.trim() || undefined;
   await store.updateCell('Products', record.rowNumber, 'name', name);
   await store.updateCell('Products', record.rowNumber, 'price', update.price);
   await store.updateCell('Products', record.rowNumber, 'stock', update.stock);
   await store.updateCell('Products', record.rowNumber, 'isActive', update.isActive ? 'TRUE' : 'FALSE');
+  await store.updateCell('Products', record.rowNumber, 'imageUrl', imageUrl ?? '');
   await store.updateCell('Products', record.rowNumber, 'category', category ?? '');
   await store.updateCell('Products', record.rowNumber, 'sortOrder', update.sortOrder);
 
@@ -345,6 +349,7 @@ export async function updateProductDetails(store: SheetsStore, productId: string
     price: update.price,
     stock: update.stock,
     isActive: update.isActive,
+    imageUrl,
     category,
     sortOrder: update.sortOrder,
   };

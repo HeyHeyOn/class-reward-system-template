@@ -25,12 +25,13 @@ type NewProductDraft = {
   price: number;
   stock: number;
   isActive: boolean;
+  imageUrl: string;
   category: string;
   sortOrder: number;
 };
 
 const EMPTY_STUDENT: NewStudentDraft = { studentId: '', name: '', number: 1, balance: 0, status: 'ACTIVE' };
-const EMPTY_PRODUCT: NewProductDraft = { productId: '', name: '', price: 0, stock: 0, isActive: true, category: '', sortOrder: 1 };
+const EMPTY_PRODUCT: NewProductDraft = { productId: '', name: '', price: 0, stock: 0, isActive: true, imageUrl: '', category: '', sortOrder: 1 };
 
 const tabs: Array<{ id: AdminTab; label: string; description: string }> = [
   { id: 'settings', label: '시트 설정', description: 'Google Sheets 연결' },
@@ -135,14 +136,14 @@ export function AdminManagePage() {
     }
   }
 
-  async function deleteStudentRow(studentId: string) {
+  async function deleteStudentRow(studentId: string, options: { silent?: boolean } = {}) {
     try {
       const response = await fetch(`/api/students/${encodeURIComponent(studentId)}`, { method: 'DELETE' });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? '학생을 삭제하지 못했습니다.');
       setStudents((current) => current.filter((student) => student.studentId !== studentId));
       setSelectedStudentIds((current) => current.filter((id) => id !== studentId));
-      notify(`${studentId} 삭제 완료`);
+      if (!options.silent) notify(`${studentId} 삭제 완료`);
     } catch (error) {
       notify(error instanceof Error ? error.message : '학생을 삭제하지 못했습니다.');
     }
@@ -150,10 +151,11 @@ export function AdminManagePage() {
 
   async function deleteSelectedStudents() {
     if (selectedStudentIds.length === 0) return notify('선택된 학생이 없습니다.');
+    const count = selectedStudentIds.length;
     for (const studentId of selectedStudentIds) {
-      await deleteStudentRow(studentId);
+      await deleteStudentRow(studentId, { silent: true });
     }
-    notify(`선택 학생 ${selectedStudentIds.length}명 삭제 완료`);
+    notify(`선택 학생 ${count}명 삭제 완료`);
   }
 
   async function applyBulkStudentBalance() {
@@ -184,6 +186,7 @@ export function AdminManagePage() {
         price: product.price,
         stock: product.stock,
         isActive: product.isActive,
+        imageUrl: product.imageUrl ?? '',
         category: product.category ?? '',
         sortOrder: product.sortOrder,
       };
@@ -201,14 +204,14 @@ export function AdminManagePage() {
     }
   }
 
-  async function deleteProductRow(productId: string) {
+  async function deleteProductRow(productId: string, options: { silent?: boolean } = {}) {
     try {
       const response = await fetch(`/api/products/${encodeURIComponent(productId)}`, { method: 'DELETE' });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? '상품을 삭제하지 못했습니다.');
       setProducts((current) => current.filter((product) => product.productId !== productId));
       setSelectedProductIds((current) => current.filter((id) => id !== productId));
-      notify(`${productId} 삭제 완료`);
+      if (!options.silent) notify(`${productId} 삭제 완료`);
     } catch (error) {
       notify(error instanceof Error ? error.message : '상품을 삭제하지 못했습니다.');
     }
@@ -216,10 +219,11 @@ export function AdminManagePage() {
 
   async function deleteSelectedProducts() {
     if (selectedProductIds.length === 0) return notify('선택된 상품이 없습니다.');
+    const count = selectedProductIds.length;
     for (const productId of selectedProductIds) {
-      await deleteProductRow(productId);
+      await deleteProductRow(productId, { silent: true });
     }
-    notify(`선택 상품 ${selectedProductIds.length}개 삭제 완료`);
+    notify(`선택 상품 ${count}개 삭제 완료`);
   }
 
   async function createNewStudent(event: FormEvent<HTMLFormElement>) {
@@ -246,6 +250,7 @@ export function AdminManagePage() {
         price: newProduct.price,
         stock: newProduct.stock,
         isActive: newProduct.isActive,
+        imageUrl: newProduct.imageUrl,
         category: newProduct.category,
         sortOrder: newProduct.sortOrder,
       };
@@ -389,6 +394,9 @@ export function AdminManagePage() {
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <TextInput label="새 상품 카테고리" value={newProduct.category} onChange={(value) => setNewProduct((current) => ({ ...current, category: value }))} compact />
+                  <TextInput label="새 상품 이미지 주소" value={newProduct.imageUrl} onChange={(value) => setNewProduct((current) => ({ ...current, imageUrl: value }))} compact />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
                   <NumberInput label="새 상품 정렬" value={newProduct.sortOrder} onChange={(value) => setNewProduct((current) => ({ ...current, sortOrder: value }))} compact />
                 </div>
                 <button className="w-full rounded-xl bg-sky-500 py-3 font-black text-white shadow-sm" type="submit">새 상품 추가</button>
@@ -405,7 +413,7 @@ export function AdminManagePage() {
               </div>
               <div data-testid="product-list" className="overflow-hidden rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
                 {products.map((product) => (
-                  <div className="grid gap-2 px-3 py-2 md:grid-cols-[32px_82px_minmax(120px,1fr)_92px_82px_96px_70px_76px_70px] md:items-center" key={product.productId}>
+                  <div className="grid gap-2 px-3 py-2 md:grid-cols-[32px_72px_minmax(110px,1fr)_82px_72px_90px_minmax(120px,1fr)_62px_70px_64px] md:items-center" key={product.productId}>
                     <label className="flex items-center gap-2 text-sm font-black md:justify-center">
                       <input aria-label={`${product.productId} 선택`} checked={selectedProductIds.includes(product.productId)} onChange={() => toggleProduct(product.productId)} type="checkbox" />
                       <span className="md:hidden">선택</span>
@@ -418,6 +426,7 @@ export function AdminManagePage() {
                     <NumberInput label={`${product.productId} 가격`} value={product.price} onChange={(value) => updateProduct(product.productId, { price: value })} compact />
                     <NumberInput label={`${product.productId} 재고`} value={product.stock} onChange={(value) => updateProduct(product.productId, { stock: value })} compact />
                     <TextInput label={`${product.productId} 카테고리`} value={product.category ?? ''} onChange={(value) => updateProduct(product.productId, { category: value })} compact />
+                    <TextInput label={`${product.productId} 이미지 주소`} value={product.imageUrl ?? ''} onChange={(value) => updateProduct(product.productId, { imageUrl: value })} compact />
                     <NumberInput label={`${product.productId} 정렬`} value={product.sortOrder} onChange={(value) => updateProduct(product.productId, { sortOrder: value })} compact />
                     <label className="flex items-center justify-center gap-2 rounded-xl bg-sky-50 px-2 py-2 text-sm font-bold text-slate-700">
                       <input aria-label={`${product.productId} 판매중`} checked={product.isActive} onChange={(event) => updateProduct(product.productId, { isActive: event.target.checked })} type="checkbox" />

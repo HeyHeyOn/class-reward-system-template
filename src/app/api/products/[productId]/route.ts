@@ -17,6 +17,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       price: Number(payload.price),
       stock: Number(payload.stock),
       isActive: Boolean(payload.isActive),
+      imageUrl: payload.imageUrl ? String(payload.imageUrl) : undefined,
       category: payload.category ? String(payload.category) : undefined,
       sortOrder: Number(payload.sortOrder),
     });

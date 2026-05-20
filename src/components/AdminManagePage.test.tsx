@@ -7,7 +7,7 @@ const students = [
   { studentId: 'S002', name: '이서연', number: 2, balance: 1500, status: 'ACTIVE' },
 ];
 const products = [
-  { productId: 'P001', name: '연필', price: 300, stock: 19, isActive: true, category: '문구', sortOrder: 1 },
+  { productId: 'P001', name: '연필', price: 300, stock: 19, isActive: true, imageUrl: 'https://example.com/pencil.png', category: '문구', sortOrder: 1 },
   { productId: 'P002', name: '지우개', price: 500, stock: 10, isActive: true, category: '문구', sortOrder: 2 },
 ];
 
@@ -34,13 +34,15 @@ describe('AdminManagePage', () => {
         if (url === '/api/settings' && init?.method === 'POST') return jsonResponse({ spreadsheetId: 'sheet-new', currencyUnit: '별', source: 'runtime' });
         if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', source: 'runtime' });
         if (url === '/api/products' && init?.method === 'POST') {
-          return jsonResponse({ productId: 'P003', name: '간식쿠폰', price: 1000, stock: 5, isActive: true, category: '쿠폰', sortOrder: 3 });
+          return jsonResponse({ productId: 'P003', name: '간식쿠폰', price: 1000, stock: 5, isActive: true, imageUrl: 'https://example.com/snack.png', category: '쿠폰', sortOrder: 3 });
         }
         if (url === '/api/students/S001' && init?.method === 'PATCH') {
           return jsonResponse({ ...students[0], name: '김민준 수정', balance: 4000 });
         }
         if (url === '/api/students/S001' && init?.method === 'DELETE') return jsonResponse({ studentId: 'S001' });
+        if (url === '/api/students/S002' && init?.method === 'DELETE') return jsonResponse({ studentId: 'S002' });
         if (url === '/api/products/P001' && init?.method === 'DELETE') return jsonResponse({ productId: 'P001' });
+        if (url === '/api/products/P002' && init?.method === 'DELETE') return jsonResponse({ productId: 'P002' });
         if (url === '/api/students/bulk' && init?.method === 'PATCH') {
           return jsonResponse([
             { studentId: 'S001', balance: 5000 },
@@ -48,7 +50,7 @@ describe('AdminManagePage', () => {
           ]);
         }
         if (url === '/api/products/P001' && init?.method === 'PATCH') {
-          return jsonResponse({ ...products[0], name: '연필 세트', price: 900 });
+          return jsonResponse({ ...products[0], name: '연필 세트', price: 900, imageUrl: 'https://example.com/new-pencil.png' });
         }
 
         return jsonResponse({ error: 'not found' }, { status: 404 });
@@ -111,6 +113,7 @@ describe('AdminManagePage', () => {
     expect(await screen.findByDisplayValue('연필')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('P001 상품명'), { target: { value: '연필 세트' } });
     fireEvent.change(screen.getByLabelText('P001 가격'), { target: { value: '900' } });
+    fireEvent.change(screen.getByLabelText('P001 이미지 주소'), { target: { value: 'https://example.com/new-pencil.png' } });
     fireEvent.click(screen.getByRole('button', { name: 'P001 상품 저장' }));
 
     await waitFor(() => {
@@ -122,7 +125,7 @@ describe('AdminManagePage', () => {
       expect(fetch).toHaveBeenCalledWith('/api/products/P001', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: '연필 세트', price: 900, stock: 19, isActive: true, category: '문구', sortOrder: 1 }),
+        body: JSON.stringify({ name: '연필 세트', price: 900, stock: 19, isActive: true, imageUrl: 'https://example.com/new-pencil.png', category: '문구', sortOrder: 1 }),
       });
     });
 
@@ -150,15 +153,27 @@ describe('AdminManagePage', () => {
     });
     await waitFor(() => expect(window.alert).toHaveBeenCalledWith('선택 학생 2명 수정 완료'));
 
-    fireEvent.click(screen.getByLabelText('S001 선택'));
-    fireEvent.click(screen.getByRole('button', { name: 'S001 삭제' }));
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/students/S001', { method: 'DELETE' }));
+    fireEvent.click(screen.getByRole('button', { name: '선택 학생 삭제' }));
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith('/api/students/S001', { method: 'DELETE' });
+      expect(fetch).toHaveBeenCalledWith('/api/students/S002', { method: 'DELETE' });
+    });
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('선택 학생 2명 삭제 완료'));
+    expect(window.alert).not.toHaveBeenCalledWith('S001 삭제 완료');
+    expect(window.alert).not.toHaveBeenCalledWith('S002 삭제 완료');
 
     fireEvent.click(screen.getByRole('tab', { name: '재고 관리' }));
     expect(await screen.findByDisplayValue('연필')).toBeTruthy();
     expect(container.querySelector('[data-testid="product-list"]')?.className).toContain('divide-y');
-    fireEvent.click(screen.getByRole('button', { name: 'P001 삭제' }));
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/products/P001', { method: 'DELETE' }));
+    fireEvent.click(screen.getByLabelText('전체 상품 선택'));
+    fireEvent.click(screen.getByRole('button', { name: '선택 상품 삭제' }));
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith('/api/products/P001', { method: 'DELETE' });
+      expect(fetch).toHaveBeenCalledWith('/api/products/P002', { method: 'DELETE' });
+    });
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('선택 상품 2개 삭제 완료'));
+    expect(window.alert).not.toHaveBeenCalledWith('P001 삭제 완료');
+    expect(window.alert).not.toHaveBeenCalledWith('P002 삭제 완료');
   });
 
   it('creates new student and product rows through POST APIs', async () => {
@@ -178,6 +193,7 @@ describe('AdminManagePage', () => {
     fireEvent.change(screen.getByLabelText('새 상품 가격'), { target: { value: '1000' } });
     fireEvent.change(screen.getByLabelText('새 상품 재고'), { target: { value: '5' } });
     fireEvent.change(screen.getByLabelText('새 상품 카테고리'), { target: { value: '쿠폰' } });
+    fireEvent.change(screen.getByLabelText('새 상품 이미지 주소'), { target: { value: 'https://example.com/snack.png' } });
     fireEvent.change(screen.getByLabelText('새 상품 정렬'), { target: { value: '3' } });
     fireEvent.click(screen.getByRole('button', { name: '새 상품 추가' }));
 
@@ -190,7 +206,7 @@ describe('AdminManagePage', () => {
       expect(fetch).toHaveBeenCalledWith('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId: 'P003', name: '간식쿠폰', price: 1000, stock: 5, isActive: true, category: '쿠폰', sortOrder: 3 }),
+        body: JSON.stringify({ productId: 'P003', name: '간식쿠폰', price: 1000, stock: 5, isActive: true, imageUrl: 'https://example.com/snack.png', category: '쿠폰', sortOrder: 3 }),
       });
     });
 

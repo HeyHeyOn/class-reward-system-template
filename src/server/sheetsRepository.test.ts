@@ -22,7 +22,7 @@ const sheetRows = {
   Products: [
     ['productId', 'name', 'price', 'stock', 'isActive', 'imageUrl', 'category', 'sortOrder'],
     ['P002', '지우개', '500', '15', 'TRUE', '', '문구', '2'],
-    ['P001', '연필', '300', '20', 'TRUE', '', '문구', '1'],
+    ['P001', '연필', '300', '20', 'TRUE', 'https://example.com/pencil.png', '문구', '1'],
     ['P003', '판매중지', '700', '10', 'FALSE', '', '문구', '3'],
   ],
 };
@@ -68,7 +68,7 @@ describe('sheets repository', () => {
         price: 300,
         stock: 20,
         isActive: true,
-        imageUrl: undefined,
+        imageUrl: 'https://example.com/pencil.png',
         category: '문구',
         sortOrder: 1,
       },
@@ -103,7 +103,7 @@ describe('sheets repository', () => {
         price: 300,
         stock: 20,
         isActive: true,
-        imageUrl: undefined,
+        imageUrl: 'https://example.com/pencil.png',
         category: '문구',
         sortOrder: 1,
       },
@@ -178,6 +178,7 @@ describe('sheets repository', () => {
         price: 1000,
         stock: 5,
         isActive: true,
+        imageUrl: 'https://example.com/snack.png',
         category: '쿠폰',
         sortOrder: 4,
       }),
@@ -187,13 +188,13 @@ describe('sheets repository', () => {
       price: 1000,
       stock: 5,
       isActive: true,
-      imageUrl: undefined,
+      imageUrl: 'https://example.com/snack.png',
       category: '쿠폰',
       sortOrder: 4,
     });
 
     expect(appended).toEqual([
-      { sheetName: 'Products', values: ['P004', '간식쿠폰', '1000', '5', 'TRUE', '', '쿠폰', '4'] },
+      { sheetName: 'Products', values: ['P004', '간식쿠폰', '1000', '5', 'TRUE', 'https://example.com/snack.png', '쿠폰', '4'] },
     ]);
   });
 
@@ -262,6 +263,7 @@ describe('sheets repository', () => {
         price: 900,
         stock: 12,
         isActive: false,
+        imageUrl: 'https://example.com/new-pencil.png',
         category: '문구류',
         sortOrder: 5,
       }),
@@ -271,7 +273,7 @@ describe('sheets repository', () => {
       price: 900,
       stock: 12,
       isActive: false,
-      imageUrl: undefined,
+      imageUrl: 'https://example.com/new-pencil.png',
       category: '문구류',
       sortOrder: 5,
     });
@@ -281,6 +283,7 @@ describe('sheets repository', () => {
       { sheetName: 'Products', rowNumber: 3, columnName: 'price', value: 900 },
       { sheetName: 'Products', rowNumber: 3, columnName: 'stock', value: 12 },
       { sheetName: 'Products', rowNumber: 3, columnName: 'isActive', value: 'FALSE' },
+      { sheetName: 'Products', rowNumber: 3, columnName: 'imageUrl', value: 'https://example.com/new-pencil.png' },
       { sheetName: 'Products', rowNumber: 3, columnName: 'category', value: '문구류' },
       { sheetName: 'Products', rowNumber: 3, columnName: 'sortOrder', value: 5 },
     ]);

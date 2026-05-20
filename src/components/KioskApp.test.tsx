@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { KioskApp } from './KioskApp';
 
 const products = [
-  { productId: 'P001', name: '연필', price: 300, stock: 20, isActive: true, category: '문구', sortOrder: 1 },
+  { productId: 'P001', name: '연필', price: 300, stock: 20, isActive: true, imageUrl: 'https://example.com/pencil.png', category: '문구', sortOrder: 1 },
   { productId: 'P002', name: '지우개', price: 500, stock: 15, isActive: true, category: '문구', sortOrder: 2 },
 ];
 
@@ -73,6 +73,7 @@ describe('KioskApp', () => {
     expect(screen.getByRole('heading', { name: '상품 목록' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '장바구니 (0)' })).toBeTruthy();
     expect(screen.getByText('연필')).toBeTruthy();
+    expect(screen.getByRole('img', { name: '연필 이미지' }).getAttribute('src')).toBe('https://example.com/pencil.png');
     expect(screen.getByText('선택한 상품이 없습니다.')).toBeTruthy();
 
     expect(screen.queryByRole('link', { name: '관리자 설정' })).toBeNull();
