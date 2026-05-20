@@ -5,11 +5,20 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import type { Product, Student } from '@/domain/types';
 import { SettingsForm } from './SettingsForm';
+import { QrScanner } from './QrScanner';
 
 type StudentDraft = Student;
 type ProductDraft = Product;
-type AdminTab = 'settings' | 'students' | 'products';
+type AdminTab = 'settings' | 'students' | 'products' | 'currency';
 type BulkMode = 'set' | 'add' | 'subtract';
+type CurrencyMode = 'add' | 'subtract';
+type CurrencyResult = {
+  status: 'success' | 'failure';
+  mode: CurrencyMode;
+  studentId: string;
+  amount: number;
+  message: string;
+};
 
 type NewStudentDraft = {
   studentId: string;
@@ -37,6 +46,7 @@ const tabs: Array<{ id: AdminTab; label: string; description: string }> = [
   { id: 'settings', label: '시트 설정', description: 'Google Sheets 연결' },
   { id: 'students', label: '학생 명단', description: '잔액과 상태 관리' },
   { id: 'products', label: '재고 관리', description: '상품과 가격 관리' },
+  { id: 'currency', label: '화폐 지급/회수', description: 'QR로 재화 조정' },
 ];
 
 export function AdminManagePage() {
@@ -51,6 +61,11 @@ export function AdminManagePage() {
   const [newStudent, setNewStudent] = useState<NewStudentDraft>(EMPTY_STUDENT);
   const [newProduct, setNewProduct] = useState<NewProductDraft>(EMPTY_PRODUCT);
   const [imageEditor, setImageEditor] = useState<{ productId: string; value: string } | null>(null);
+  const [currencyMode, setCurrencyMode] = useState<CurrencyMode>('add');
+  const [currencyAmount, setCurrencyAmount] = useState(0);
+  const [currencyScannerOpen, setCurrencyScannerOpen] = useState(false);
+  const [currencyManualId, setCurrencyManualId] = useState('');
+  const [currencyResult, setCurrencyResult] = useState<CurrencyResult | null>(null);
 
   const loadLinkedSheetData = useCallback(async (options: { silent?: boolean; shouldApply?: () => boolean } = {}) => {
     const shouldApply = options.shouldApply ?? (() => true);
@@ -120,20 +135,25 @@ export function AdminManagePage() {
     setSelectedProductIds((current) => current.includes(productId) ? current.filter((id) => id !== productId) : [...current, productId]);
   }
 
-  async function saveStudent(student: StudentDraft) {
+  async function saveAllStudents() {
     try {
-      const body = { name: student.name, number: student.number, balance: student.balance, status: student.status };
-      const response = await fetch(`/api/students/${encodeURIComponent(student.studentId)}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? '학생 정보를 저장하지 못했습니다.');
-      updateStudent(student.studentId, payload);
-      notify(`${student.studentId} 저장 완료`);
+      const savedStudents: StudentDraft[] = [];
+      for (const student of students) {
+        const body = { name: student.name, number: student.number, balance: student.balance, status: student.status };
+        const response = await fetch(`/api/students/${encodeURIComponent(student.studentId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? '학생 명단을 저장하지 못했습니다.');
+        savedStudents.push(payload);
+      }
+      const savedMap = new Map(savedStudents.map((student) => [student.studentId, student]));
+      setStudents((current) => current.map((student) => savedMap.get(student.studentId) ?? student));
+      notify(`학생 명단 ${savedStudents.length}명 저장 완료`);
     } catch (error) {
-      notify(error instanceof Error ? error.message : '학생 정보를 저장하지 못했습니다.');
+      notify(error instanceof Error ? error.message : '학생 명단을 저장하지 못했습니다.');
     }
   }
 
@@ -180,28 +200,33 @@ export function AdminManagePage() {
     }
   }
 
-  async function saveProduct(product: ProductDraft) {
+  async function saveAllProducts() {
     try {
-      const body = {
-        name: product.name,
-        price: product.price,
-        stock: product.stock,
-        isActive: product.isActive,
-        imageUrl: product.imageUrl ?? '',
-        category: product.category ?? '',
-        sortOrder: product.sortOrder,
-      };
-      const response = await fetch(`/api/products/${encodeURIComponent(product.productId)}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? '상품 정보를 저장하지 못했습니다.');
-      updateProduct(product.productId, payload);
-      notify(`${product.productId} 저장 완료`);
+      const savedProducts: ProductDraft[] = [];
+      for (const product of products) {
+        const body = {
+          name: product.name,
+          price: product.price,
+          stock: product.stock,
+          isActive: product.isActive,
+          imageUrl: product.imageUrl ?? '',
+          category: product.category ?? '',
+          sortOrder: product.sortOrder,
+        };
+        const response = await fetch(`/api/products/${encodeURIComponent(product.productId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? '재고 목록을 저장하지 못했습니다.');
+        savedProducts.push(payload);
+      }
+      const savedMap = new Map(savedProducts.map((product) => [product.productId, product]));
+      setProducts((current) => current.map((product) => savedMap.get(product.productId) ?? product));
+      notify(`재고 목록 ${savedProducts.length}개 저장 완료`);
     } catch (error) {
-      notify(error instanceof Error ? error.message : '상품 정보를 저장하지 못했습니다.');
+      notify(error instanceof Error ? error.message : '재고 목록을 저장하지 못했습니다.');
     }
   }
 
@@ -266,6 +291,48 @@ export function AdminManagePage() {
     }
   }
 
+  async function applyCurrencyToStudent(decodedText: string) {
+    const studentId = decodedText.trim();
+    if (!studentId) return;
+    setCurrencyScannerOpen(false);
+    try {
+      const response = await fetch('/api/students/bulk', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentIds: [studentId], mode: currencyMode, amount: currencyAmount }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? '화폐를 조정하지 못했습니다.');
+      const updatedBalance = Array.isArray(payload) ? payload.find((item: { studentId: string }) => item.studentId === studentId)?.balance : undefined;
+      if (typeof updatedBalance === 'number') {
+        updateStudent(studentId, { balance: updatedBalance });
+      }
+      setCurrencyResult({
+        status: 'success',
+        mode: currencyMode,
+        studentId,
+        amount: currencyAmount,
+        message: `${studentId} 학생에게 ${currencyAmount} ${currencyMode === 'add' ? '지급' : '회수'} 완료`,
+      });
+    } catch (error) {
+      setCurrencyResult({
+        status: 'failure',
+        mode: currencyMode,
+        studentId,
+        amount: currencyAmount,
+        message: error instanceof Error ? error.message : '화폐를 조정하지 못했습니다.',
+      });
+    }
+  }
+
+  function retryCurrencyScan() {
+    setCurrencyResult(null);
+    setCurrencyManualId('');
+    setCurrencyScannerOpen(true);
+  }
+
+  const currencyActionLabel = currencyMode === 'add' ? '지급' : '회수';
+
   return (
     <main data-testid="admin-shell" className="min-h-screen bg-[#dbeaf6] p-2 text-slate-950 sm:p-3 lg:p-5">
       <section className="mx-auto flex w-full max-w-[1280px] flex-col gap-3 lg:gap-4">
@@ -285,7 +352,6 @@ export function AdminManagePage() {
 
         <nav data-testid="admin-tabs" role="tablist" aria-label="관리자 메뉴" className="grid grid-cols-3 gap-2 rounded-[1.5rem] border border-slate-300/70 bg-white/90 p-2 shadow-sm sm:grid-cols-6">
           <AdminNavLink href="/" title="매점 바로가기" description="키오스크" />
-          <AdminNavLink href="/admin/student-qrs" title="학생 QR 출력" description="QR 카드" />
           <AdminNavLink href="/admin/transactions" title="결제 내역 확인" description="거래 기록" />
           {tabs.map((tab) => {
             const selected = activeTab === tab.id;
@@ -346,12 +412,23 @@ export function AdminManagePage() {
                   <input aria-label="선택 학생 금액" value={bulkAmount} onChange={(event) => setBulkAmount(Number(event.target.value))} type="number" className="w-28 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold" />
                   <button type="button" onClick={applyBulkStudentBalance} className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-black text-white">선택 학생 재화 적용</button>
                   <button type="button" onClick={deleteSelectedStudents} className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-black text-white">선택 학생 삭제</button>
+                  <button type="button" onClick={saveAllStudents} className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-black text-white">학생 명단 일괄 저장</button>
+                  <Link href="/admin/student-qrs" className="rounded-xl bg-amber-100 px-4 py-2 text-sm font-black text-amber-900">학생 QR 출력</Link>
                 </div>
               </div>
 
               <div data-testid="student-list" className="overflow-hidden rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
+                <div data-testid="student-header-row" className="grid grid-cols-[24px_44px_minmax(3.8rem,1fr)_34px_48px_46px_40px] items-center gap-0.5 bg-slate-100 px-1.5 py-1 text-[10px] font-black text-slate-500">
+                  <span>선택</span>
+                  <span>ID</span>
+                  <span>이름</span>
+                  <span>번호</span>
+                  <span>잔액</span>
+                  <span>상태</span>
+                  <span>삭제</span>
+                </div>
                 {students.map((student) => (
-                  <div data-testid="student-row" className="grid grid-cols-[24px_44px_minmax(3.8rem,1fr)_34px_48px_46px_38px_40px] items-center gap-0.5 px-1.5 py-1 text-[11px]" key={student.studentId}>
+                  <div data-testid="student-row" className="grid grid-cols-[24px_44px_minmax(3.8rem,1fr)_34px_48px_46px_40px] items-center gap-0.5 px-1.5 py-1 text-[11px]" key={student.studentId}>
                     <label className="flex items-center justify-center">
                       <input aria-label={`${student.studentId} 선택`} checked={selectedStudentIds.includes(student.studentId)} onChange={() => toggleStudent(student.studentId)} type="checkbox" />
                       <span className="sr-only">선택</span>
@@ -367,9 +444,6 @@ export function AdminManagePage() {
                         <option value="INACTIVE">비활성</option>
                       </select>
                     </label>
-                    <button aria-label={`${student.studentId} 학생 저장`} className="h-8 rounded-lg bg-slate-950 px-1 text-xs font-black text-white" onClick={() => saveStudent(student)} type="button">
-                      저장
-                    </button>
                     <button aria-label={`${student.studentId} 학생 삭제`} className="h-8 rounded-lg bg-rose-100 px-1 text-xs font-black text-rose-700" onClick={() => deleteStudentRow(student.studentId)} type="button">
                       삭제
                     </button>
@@ -408,10 +482,23 @@ export function AdminManagePage() {
                   전체 선택 ({selectedProductIds.length}/{products.length})
                 </label>
                 <button type="button" onClick={deleteSelectedProducts} className="mt-2 rounded-xl bg-rose-600 px-4 py-2 text-sm font-black text-white">선택 상품 삭제</button>
+                <button type="button" onClick={saveAllProducts} className="ml-2 mt-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-black text-white">재고 목록 일괄 저장</button>
               </div>
               <div data-testid="product-list" className="overflow-hidden rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
+                <div data-testid="product-header-row" className="grid grid-cols-[24px_30px_minmax(3rem,1fr)_32px_32px_36px_minmax(3rem,0.8fr)_28px_30px_34px] items-center gap-0.5 bg-slate-100 px-1.5 py-1 text-[10px] font-black text-slate-500">
+                  <span>선택</span>
+                  <span>ID</span>
+                  <span>상품명</span>
+                  <span>가격</span>
+                  <span>재고</span>
+                  <span>분류</span>
+                  <span>이미지</span>
+                  <span>순서</span>
+                  <span>판매</span>
+                  <span>삭제</span>
+                </div>
                 {products.map((product) => (
-                  <div data-testid="product-row" className="grid grid-cols-[24px_30px_minmax(3rem,1fr)_32px_32px_36px_minmax(3rem,0.8fr)_28px_30px_34px_34px] items-center gap-0.5 px-1.5 py-1 text-[11px]" key={product.productId}>
+                  <div data-testid="product-row" className="grid grid-cols-[24px_30px_minmax(3rem,1fr)_32px_32px_36px_minmax(3rem,0.8fr)_28px_30px_34px] items-center gap-0.5 px-1.5 py-1 text-[11px]" key={product.productId}>
                     <label className="flex items-center justify-center">
                       <input aria-label={`${product.productId} 선택`} checked={selectedProductIds.includes(product.productId)} onChange={() => toggleProduct(product.productId)} type="checkbox" />
                       <span className="sr-only">선택</span>
@@ -433,15 +520,30 @@ export function AdminManagePage() {
                     <label className="flex h-8 items-center justify-center rounded-lg bg-sky-50 text-[10px] font-bold text-slate-700">
                       <input aria-label={`${product.productId} 판매중`} checked={product.isActive} onChange={(event) => updateProduct(product.productId, { isActive: event.target.checked })} type="checkbox" />
                     </label>
-                    <button aria-label={`${product.productId} 상품 저장`} className="h-8 rounded-lg bg-slate-950 px-1 text-[10px] font-black text-white" onClick={() => saveProduct(product)} type="button">
-                      저장
-                    </button>
                     <button aria-label={`${product.productId} 상품 삭제`} className="h-8 rounded-lg bg-rose-100 px-1 text-[10px] font-black text-rose-700" onClick={() => deleteProductRow(product.productId)} type="button">
                       삭제
                     </button>
                   </div>
                 ))}
               </div>
+            </SectionCard>
+          </section>
+        ) : null}
+
+        {activeTab === 'currency' ? (
+          <section role="tabpanel" aria-label="화폐 지급/회수" className="mx-auto w-full max-w-xl">
+            <SectionCard title="화폐 지급/회수" description="금액과 지급/회수만 정한 뒤 학생 QR을 찍으면 바로 반영됩니다." compact>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => setCurrencyMode('add')} className={`rounded-2xl px-4 py-4 text-xl font-black ${currencyMode === 'add' ? 'bg-sky-500 text-white' : 'bg-sky-50 text-slate-700'}`}>지급</button>
+                <button type="button" onClick={() => setCurrencyMode('subtract')} className={`rounded-2xl px-4 py-4 text-xl font-black ${currencyMode === 'subtract' ? 'bg-rose-500 text-white' : 'bg-rose-50 text-slate-700'}`}>회수</button>
+              </div>
+              <label className="mt-3 block text-sm font-black text-slate-700">
+                <span>금액</span>
+                <input aria-label="지급/회수 금액" value={currencyAmount} onChange={(event) => setCurrencyAmount(Number(event.target.value))} type="number" min="0" className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-2xl font-black outline-none focus:border-sky-400" />
+              </label>
+              <button type="button" onClick={() => { setCurrencyResult(null); setCurrencyManualId(''); setCurrencyScannerOpen(true); }} className="mt-3 w-full rounded-2xl bg-slate-950 py-4 text-xl font-black text-white">
+                QR 인식 시작
+              </button>
             </SectionCard>
           </section>
         ) : null}
@@ -472,6 +574,37 @@ export function AdminManagePage() {
               >
                 이미지 주소 적용
               </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+      {currencyScannerOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <section role="dialog" aria-modal="true" aria-label="학생 QR 인식" className="w-full max-w-xl rounded-2xl bg-white p-4 shadow-2xl">
+            <h2 className="text-xl font-black">학생 QR 인식</h2>
+            <p className="mt-1 text-sm font-bold text-slate-500">{currencyAmount} {currencyActionLabel}할 학생 QR을 인식합니다.</p>
+            <div className="mt-4 flex justify-center">
+              <QrScanner onScan={applyCurrencyToStudent} />
+            </div>
+            <label className="mt-4 block text-sm font-bold text-slate-700">
+              <span>학생 QR 직접 입력</span>
+              <input aria-label="학생 QR 직접 입력" value={currencyManualId} onChange={(event) => setCurrencyManualId(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm outline-none focus:border-sky-400" placeholder="S001" />
+            </label>
+            <div className="mt-4 flex gap-2">
+              <button type="button" className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700" onClick={() => setCurrencyScannerOpen(false)}>취소</button>
+              <button type="button" className="flex-1 rounded-xl bg-sky-500 py-3 font-black text-white" onClick={() => applyCurrencyToStudent(currencyManualId)}>직접 입력 적용</button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+      {currencyResult ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <section role="dialog" aria-modal="true" aria-label={`화폐 ${currencyResult.mode === 'add' ? '지급' : '회수'} ${currencyResult.status === 'success' ? '성공' : '실패'}`} className="w-full max-w-md rounded-2xl bg-white p-5 text-center shadow-2xl">
+            <h2 className={`text-2xl font-black ${currencyResult.status === 'success' ? 'text-sky-700' : 'text-rose-700'}`}>화폐 {currencyResult.mode === 'add' ? '지급' : '회수'} {currencyResult.status === 'success' ? '성공' : '실패'}</h2>
+            <p className="mt-3 rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-700">{currencyResult.message}</p>
+            <div className="mt-4 flex gap-2">
+              <button type="button" className="flex-1 rounded-xl bg-slate-950 py-3 font-black text-white" onClick={retryCurrencyScan}>다시 시도</button>
+              <button type="button" className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700" onClick={() => setCurrencyResult(null)}>{currencyResult.status === 'success' ? '닫기' : '취소'}</button>
             </div>
           </section>
         </div>

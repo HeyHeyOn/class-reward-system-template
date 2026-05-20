@@ -39,6 +39,9 @@ describe('AdminManagePage', () => {
         if (url === '/api/students/S001' && init?.method === 'PATCH') {
           return jsonResponse({ ...students[0], name: '김민준 수정', balance: 4000 });
         }
+        if (url === '/api/students/S002' && init?.method === 'PATCH') {
+          return jsonResponse(students[1]);
+        }
         if (url === '/api/students/S001' && init?.method === 'DELETE') return jsonResponse({ studentId: 'S001' });
         if (url === '/api/students/S002' && init?.method === 'DELETE') return jsonResponse({ studentId: 'S002' });
         if (url === '/api/products/P001' && init?.method === 'DELETE') return jsonResponse({ productId: 'P001' });
@@ -51,6 +54,9 @@ describe('AdminManagePage', () => {
         }
         if (url === '/api/products/P001' && init?.method === 'PATCH') {
           return jsonResponse({ ...products[0], name: '연필 세트', price: 900, imageUrl: 'https://example.com/new-pencil.png' });
+        }
+        if (url === '/api/products/P002' && init?.method === 'PATCH') {
+          return jsonResponse(products[1]);
         }
 
         return jsonResponse({ error: 'not found' }, { status: 404 });
@@ -71,8 +77,9 @@ describe('AdminManagePage', () => {
     expect(screen.getByRole('tab', { name: '학생 명단' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: '재고 관리' })).toBeTruthy();
     expect(await screen.findByText('관리자 목록도 이 설정을 사용합니다: 학생 2명 · 상품 2개')).toBeTruthy();
-    expect(screen.getByRole('link', { name: /학생 QR 출력/ }).getAttribute('href')).toBe('/admin/student-qrs');
+    expect(screen.queryByRole('link', { name: /학생 QR 출력/ })).toBeNull();
     expect(screen.getByRole('link', { name: /결제 내역 확인/ }).getAttribute('href')).toBe('/admin/transactions');
+    expect(screen.getByRole('tab', { name: '화폐 지급/회수' })).toBeTruthy();
     expect(screen.getByDisplayValue('별')).toBeTruthy();
     expect(screen.getByDisplayValue('학급 매점')).toBeTruthy();
     expect(screen.getByLabelText('테마 색상')).toBeTruthy();
@@ -101,26 +108,33 @@ describe('AdminManagePage', () => {
     expect(await screen.findByText('시트 ID를 저장했고, 관리자 목록도 같은 시트에서 다시 불러왔습니다.')).toBeTruthy();
   });
 
-  it('loads students and products, then saves edited values through PATCH APIs', async () => {
+  it('uses top bulk save buttons and column headers instead of per-row save buttons', async () => {
     render(<AdminManagePage />);
 
     fireEvent.click(await screen.findByRole('tab', { name: '학생 명단' }));
     expect(await screen.findByDisplayValue('김민준')).toBeTruthy();
+    expect(screen.getByTestId('student-header-row').textContent).toContain('이름');
+    expect(screen.getByTestId('student-header-row').textContent).toContain('잔액');
+    expect(screen.queryByRole('button', { name: 'S001 학생 저장' })).toBeNull();
+    expect(screen.getByRole('link', { name: /학생 QR 출력/ }).getAttribute('href')).toBe('/admin/student-qrs');
 
     fireEvent.change(screen.getByLabelText('S001 이름'), { target: { value: '김민준 수정' } });
     fireEvent.change(screen.getByLabelText('S001 잔액'), { target: { value: '4000' } });
-    fireEvent.click(screen.getByRole('button', { name: 'S001 학생 저장' }));
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('S001 저장 완료'));
+    fireEvent.click(screen.getByRole('button', { name: '학생 명단 일괄 저장' }));
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('학생 명단 2명 저장 완료'));
 
     fireEvent.click(screen.getByRole('tab', { name: '재고 관리' }));
     expect(await screen.findByDisplayValue('연필')).toBeTruthy();
+    expect(screen.getByTestId('product-header-row').textContent).toContain('상품명');
+    expect(screen.getByTestId('product-header-row').textContent).toContain('이미지');
+    expect(screen.queryByRole('button', { name: 'P001 상품 저장' })).toBeNull();
     fireEvent.change(screen.getByLabelText('P001 상품명'), { target: { value: '연필 세트' } });
     fireEvent.change(screen.getByLabelText('P001 가격'), { target: { value: '900' } });
     fireEvent.click(screen.getByRole('button', { name: 'P001 이미지 주소 편집' }));
     expect(await screen.findByRole('dialog', { name: '이미지 주소 편집' })).toBeTruthy();
     fireEvent.change(screen.getByLabelText('이미지 주소 전체 입력'), { target: { value: 'https://example.com/new-pencil.png' } });
     fireEvent.click(screen.getByRole('button', { name: '이미지 주소 적용' }));
-    fireEvent.click(screen.getByRole('button', { name: 'P001 상품 저장' }));
+    fireEvent.click(screen.getByRole('button', { name: '재고 목록 일괄 저장' }));
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith('/api/students/S001', {
@@ -128,14 +142,24 @@ describe('AdminManagePage', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: '김민준 수정', number: 1, balance: 4000, status: 'ACTIVE' }),
       });
+      expect(fetch).toHaveBeenCalledWith('/api/students/S002', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: '이서연', number: 2, balance: 1500, status: 'ACTIVE' }),
+      });
       expect(fetch).toHaveBeenCalledWith('/api/products/P001', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: '연필 세트', price: 900, stock: 19, isActive: true, imageUrl: 'https://example.com/new-pencil.png', category: '문구', sortOrder: 1 }),
       });
+      expect(fetch).toHaveBeenCalledWith('/api/products/P002', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: '지우개', price: 500, stock: 10, isActive: true, imageUrl: '', category: '문구', sortOrder: 2 }),
+      });
     });
 
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('P001 저장 완료'));
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('재고 목록 2개 저장 완료'));
   });
 
   it('supports dense selectable rows with bulk student balance editing and deletion', async () => {
@@ -145,7 +169,7 @@ describe('AdminManagePage', () => {
     expect(await screen.findByDisplayValue('김민준')).toBeTruthy();
     expect(container.querySelector('[data-testid="student-list"]')?.className).toContain('divide-y');
     const studentRow = container.querySelector('[data-testid="student-row"]');
-    expect(studentRow?.className).toContain('grid-cols-[24px_44px_minmax(3.8rem,1fr)_34px_48px_46px_38px_40px]');
+    expect(studentRow?.className).toContain('grid-cols-[24px_44px_minmax(3.8rem,1fr)_34px_48px_46px_40px]');
     expect(studentRow?.className).toContain('items-center');
     expect(studentRow?.className).toContain('py-1');
     expect(studentRow?.className).not.toContain('md:grid-cols');
@@ -178,7 +202,7 @@ describe('AdminManagePage', () => {
     expect(await screen.findByDisplayValue('연필')).toBeTruthy();
     expect(container.querySelector('[data-testid="product-list"]')?.className).toContain('divide-y');
     const productRow = container.querySelector('[data-testid="product-row"]');
-    expect(productRow?.className).toContain('grid-cols-[24px_30px_minmax(3rem,1fr)_32px_32px_36px_minmax(3rem,0.8fr)_28px_30px_34px_34px]');
+    expect(productRow?.className).toContain('grid-cols-[24px_30px_minmax(3rem,1fr)_32px_32px_36px_minmax(3rem,0.8fr)_28px_30px_34px]');
     expect(productRow?.className).toContain('items-center');
     expect(productRow?.className).toContain('py-1');
     expect(productRow?.className).not.toContain('md:grid-cols');
@@ -235,5 +259,55 @@ describe('AdminManagePage', () => {
 
     await waitFor(() => expect(window.alert).toHaveBeenCalledWith('S003 추가 완료'));
     await waitFor(() => expect(window.alert).toHaveBeenCalledWith('P003 추가 완료'));
+  });
+
+  it('adjusts one scanned student from the currency grant/collect tab with retryable result popups', async () => {
+    render(<AdminManagePage />);
+
+    fireEvent.click(await screen.findByRole('tab', { name: '화폐 지급/회수' }));
+    expect(screen.getByRole('heading', { name: '화폐 지급/회수' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '지급' }));
+    fireEvent.change(screen.getByLabelText('지급/회수 금액'), { target: { value: '700' } });
+    fireEvent.click(screen.getByRole('button', { name: 'QR 인식 시작' }));
+    expect(await screen.findByRole('dialog', { name: '학생 QR 인식' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('학생 QR 직접 입력'), { target: { value: 'S001' } });
+    fireEvent.click(screen.getByRole('button', { name: '직접 입력 적용' }));
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith('/api/students/bulk', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentIds: ['S001'], mode: 'add', amount: 700 }),
+      });
+    });
+    expect(await screen.findByRole('dialog', { name: '화폐 지급 성공' })).toBeTruthy();
+    expect(screen.getByText('S001 학생에게 700 지급 완료')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '다시 시도' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '닫기' })).toBeTruthy();
+  });
+
+  it('shows a failure popup with retry and cancel when a scanned currency adjustment fails', async () => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/students') return jsonResponse(students);
+      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', themeColor: 'blue', source: 'runtime' });
+      if (url === '/api/students/bulk' && init?.method === 'PATCH') return jsonResponse({ error: '잔액은 0보다 작아질 수 없습니다.' }, { status: 400 });
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+
+    render(<AdminManagePage />);
+
+    fireEvent.click(await screen.findByRole('tab', { name: '화폐 지급/회수' }));
+    fireEvent.click(screen.getByRole('button', { name: '회수' }));
+    fireEvent.change(screen.getByLabelText('지급/회수 금액'), { target: { value: '9999' } });
+    fireEvent.click(screen.getByRole('button', { name: 'QR 인식 시작' }));
+    fireEvent.change(await screen.findByLabelText('학생 QR 직접 입력'), { target: { value: 'S002' } });
+    fireEvent.click(screen.getByRole('button', { name: '직접 입력 적용' }));
+
+    expect(await screen.findByRole('dialog', { name: '화폐 회수 실패' })).toBeTruthy();
+    expect(screen.getByText('잔액은 0보다 작아질 수 없습니다.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '다시 시도' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '취소' })).toBeTruthy();
   });
 });
