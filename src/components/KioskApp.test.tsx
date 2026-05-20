@@ -32,7 +32,7 @@ describe('KioskApp', () => {
         }
 
         if (url === '/api/settings') {
-          return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', source: 'runtime' });
+          return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '햇살반 매점', source: 'runtime' });
         }
 
         if (url === '/api/students/S001') {
@@ -69,7 +69,7 @@ describe('KioskApp', () => {
   it('renders a reference-style kiosk main screen with product cards, cart controls, clear button, and QR payment button', async () => {
     const { container } = render(<KioskApp />);
 
-    expect(await screen.findByRole('heading', { name: '학급 매점' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '햇살반 매점' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '상품 목록' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '장바구니 (0)' })).toBeTruthy();
     expect(screen.getByText('연필')).toBeTruthy();
@@ -77,7 +77,11 @@ describe('KioskApp', () => {
     expect(screen.getByText('선택한 상품이 없습니다.')).toBeTruthy();
 
     expect(screen.queryByRole('link', { name: '관리자 설정' })).toBeNull();
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('min-h-screen');
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('h-screen');
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('overflow-hidden');
+    expect(container.querySelector('[data-testid="kiosk-main-grid"]')?.className).toContain('grid-rows-[minmax(0,2fr)_minmax(0,1fr)]');
+    expect(container.querySelector('[data-testid="kiosk-main-grid"]')?.className).toContain('landscape:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]');
+    expect(container.querySelector('[data-testid="product-grid"]')?.className).toContain('grid-cols-3');
     expect(container.querySelector('[data-testid="product-scroll-block"]')?.className).toContain('overflow-y-auto');
     expect(container.querySelector('[data-testid="cart-scroll-block"]')?.className).toContain('overflow-y-auto');
 
@@ -163,9 +167,9 @@ describe('KioskApp', () => {
     const { container } = render(<KioskApp />);
 
     expect(await screen.findByText('연필')).toBeTruthy();
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('min-h-screen');
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('overflow-y-auto');
-    expect(container.querySelector('[data-testid="kiosk-content"]')?.className).toContain('lg:h-full');
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('h-screen');
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('overflow-hidden');
+    expect(container.querySelector('[data-testid="kiosk-content"]')?.className).toContain('h-full');
     expect(container.querySelector('[data-testid="checkout-total-bar"]')?.className).toContain('sm:flex-row');
     expect(container.querySelector('[data-testid="checkout-button"]')?.className).toContain('sm:w-auto');
   });

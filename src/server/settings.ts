@@ -5,6 +5,7 @@ import { saveAdminPassword } from '@/server/adminAuth';
 export type AppSettings = {
   spreadsheetId: string;
   currencyUnit: string;
+  appTitle: string;
   source: 'sheet' | 'env' | 'unset';
   adminPasswordConfigured?: boolean;
 };
@@ -21,6 +22,7 @@ type SaveSettingsOptions = {
   spreadsheetIdOrUrl: string;
   currencyUnit?: string;
   adminPassword?: string;
+  appTitle?: string;
   env?: SettingsEnv;
 };
 
@@ -31,6 +33,7 @@ type ValidationResult =
 const SHEETS_URL_ID_PATTERN = /\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/;
 const PLAIN_ID_PATTERN = /^[a-zA-Z0-9-_]{8,}$/;
 const DEFAULT_CURRENCY_UNIT = '원';
+const DEFAULT_APP_TITLE = '학급 매점';
 
 export function extractSpreadsheetId(value: string): string | null {
   const trimmed = value.trim();
@@ -67,7 +70,7 @@ export async function getAppSettings(options: SettingsOptions = {}): Promise<App
   const envSpreadsheetId = getEnvSpreadsheetId(options.env ?? process.env);
 
   if (!envSpreadsheetId) {
-    return { spreadsheetId: '', currencyUnit: DEFAULT_CURRENCY_UNIT, source: 'unset' };
+    return { spreadsheetId: '', currencyUnit: DEFAULT_CURRENCY_UNIT, appTitle: DEFAULT_APP_TITLE, source: 'unset' };
   }
 
   if (options.settingsReader) {
@@ -76,18 +79,19 @@ export async function getAppSettings(options: SettingsOptions = {}): Promise<App
       return {
         spreadsheetId: envSpreadsheetId,
         currencyUnit: normalizeCurrencyUnit(sheetSettings.currencyUnit),
+        appTitle: normalizeAppTitle(sheetSettings.appTitle),
         source: 'sheet',
         ...(sheetSettings.adminPasswordHash ? { adminPasswordConfigured: true } : {}),
       };
     } catch (error) {
       if (isMissingSettingsSheetError(error)) {
-        return { spreadsheetId: envSpreadsheetId, currencyUnit: DEFAULT_CURRENCY_UNIT, source: 'env' };
+        return { spreadsheetId: envSpreadsheetId, currencyUnit: DEFAULT_CURRENCY_UNIT, appTitle: DEFAULT_APP_TITLE, source: 'env' };
       }
       throw error;
     }
   }
 
-  return { spreadsheetId: envSpreadsheetId, currencyUnit: DEFAULT_CURRENCY_UNIT, source: 'env' };
+  return { spreadsheetId: envSpreadsheetId, currencyUnit: DEFAULT_CURRENCY_UNIT, appTitle: DEFAULT_APP_TITLE, source: 'env' };
 }
 
 export async function saveAppSettings(options: SaveSettingsOptions): Promise<AppSettings> {
@@ -107,7 +111,9 @@ export async function saveAppSettings(options: SaveSettingsOptions): Promise<App
   }
 
   const currencyUnit = normalizeCurrencyUnit(options.currencyUnit);
+  const appTitle = normalizeAppTitle(options.appTitle);
   await saveSheetSetting(options.settingsStore, { key: 'currencyUnit', value: currencyUnit });
+  await saveSheetSetting(options.settingsStore, { key: 'appTitle', value: appTitle });
   if (options.adminPassword?.trim()) {
     await saveAdminPassword(options.settingsStore, options.adminPassword);
   }
@@ -115,6 +121,7 @@ export async function saveAppSettings(options: SaveSettingsOptions): Promise<App
   return {
     spreadsheetId: configuredSpreadsheetId,
     currencyUnit,
+    appTitle,
     source: 'sheet',
     ...(options.adminPassword?.trim() ? { adminPasswordConfigured: true } : {}),
   };
@@ -124,6 +131,12 @@ export function normalizeCurrencyUnit(value: unknown): string {
   if (typeof value !== 'string') return DEFAULT_CURRENCY_UNIT;
   const trimmed = value.trim();
   return trimmed ? trimmed.slice(0, 12) : DEFAULT_CURRENCY_UNIT;
+}
+
+export function normalizeAppTitle(value: unknown): string {
+  if (typeof value !== 'string') return DEFAULT_APP_TITLE;
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, 30) : DEFAULT_APP_TITLE;
 }
 
 function isMissingSettingsSheetError(error: unknown): boolean {

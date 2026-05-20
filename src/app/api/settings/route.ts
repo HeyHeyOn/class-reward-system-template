@@ -12,7 +12,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as { spreadsheetIdOrUrl?: unknown; currencyUnit?: unknown; adminPassword?: unknown };
+    const body = (await request.json()) as { spreadsheetIdOrUrl?: unknown; currencyUnit?: unknown; appTitle?: unknown; adminPassword?: unknown };
 
     if (typeof body.spreadsheetIdOrUrl !== 'string') {
       return Response.json({ error: '시트 ID 또는 주소를 입력해 주세요.' }, { status: 400 });
@@ -29,6 +29,7 @@ export async function POST(request: Request) {
       settingsStore: store,
       spreadsheetIdOrUrl: validation.spreadsheetId,
       currencyUnit: typeof body.currencyUnit === 'string' ? body.currencyUnit : undefined,
+      appTitle: typeof body.appTitle === 'string' ? body.appTitle : undefined,
       adminPassword: typeof body.adminPassword === 'string' ? body.adminPassword : undefined,
     });
 

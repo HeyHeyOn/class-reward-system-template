@@ -54,6 +54,7 @@ export function KioskApp() {
   const [completedCartDetails, setCompletedCartDetails] = useState<CartDetail[]>([]);
   const [failure, setFailure] = useState<FailureState | null>(null);
   const [currencyUnit, setCurrencyUnit] = useState('원');
+  const [appTitle, setAppTitle] = useState('학급 매점');
 
   useEffect(() => {
     let ignore = false;
@@ -65,7 +66,7 @@ export function KioskApp() {
         fetch('/api/settings', { cache: 'no-store' }),
       ]);
       const payload = (await productResponse.json()) as Product[] | ApiError;
-      const settings = await settingsResponse.json().catch(() => null) as { currencyUnit?: string } | null;
+      const settings = await settingsResponse.json().catch(() => null) as { currencyUnit?: string; appTitle?: string } | null;
 
       if (!productResponse.ok || !Array.isArray(payload)) {
         throw new Error('상품 정보를 불러오지 못했습니다.');
@@ -74,6 +75,7 @@ export function KioskApp() {
       if (!ignore) {
         setProducts(payload);
         if (settings?.currencyUnit) setCurrencyUnit(settings.currencyUnit);
+        if (settings?.appTitle) setAppTitle(settings.appTitle);
       }
     }
 
@@ -256,14 +258,14 @@ export function KioskApp() {
   }
 
   return (
-    <main data-testid="kiosk-shell" className="min-h-screen overflow-y-auto bg-[#dbeaf6] p-2 text-slate-950 sm:p-3 md:p-4 lg:h-screen lg:overflow-hidden">
-      <section data-testid="kiosk-content" className="mx-auto grid min-h-full w-full max-w-[1240px] gap-3 lg:h-full lg:grid-rows-[auto_minmax(0,1fr)]">
+    <main data-testid="kiosk-shell" className="h-screen overflow-hidden bg-[#dbeaf6] p-2 text-slate-950 sm:p-3">
+      <section data-testid="kiosk-content" className="mx-auto grid h-full w-full max-w-[1240px] grid-rows-[auto_minmax(0,1fr)] gap-2 sm:gap-3">
         <header className="relative rounded-[1.5rem] border border-slate-300/70 bg-white px-4 py-3 text-center shadow-sm sm:rounded-[1.75rem] sm:py-4">
-          <h1 className="pr-11 text-3xl font-black tracking-tight sm:pr-0 sm:text-4xl md:text-5xl">학급 매점</h1>
+          <h1 className="pr-11 text-2xl font-black tracking-tight sm:pr-0 sm:text-4xl md:text-5xl">{appTitle}</h1>
         </header>
 
-        <div className="grid min-h-0 gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(340px,1fr)]">
-          <section className="flex min-h-[420px] flex-col rounded-[1.5rem] border border-slate-300/70 bg-white/85 p-3 shadow-sm sm:rounded-[1.75rem] sm:p-4 lg:min-h-0">
+        <div data-testid="kiosk-main-grid" className="grid min-h-0 grid-rows-[minmax(0,2fr)_minmax(0,1fr)] gap-2 landscape:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] landscape:grid-rows-1 sm:gap-3">
+          <section className="flex min-h-0 flex-col rounded-[1.5rem] border border-slate-300/70 bg-white/85 p-3 shadow-sm sm:rounded-[1.75rem] sm:p-4 lg:min-h-0">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-2xl font-black">상품 목록</h2>
             <p className="rounded-full bg-sky-100 px-3 py-1 text-sm font-black text-sky-700">
@@ -272,16 +274,16 @@ export function KioskApp() {
           </div>
 
           <div data-testid="product-scroll-block" className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 md:grid-cols-4 xl:grid-cols-5">
+            <div data-testid="product-grid" className="grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-3">
               {products.map((product) => (
                 <button
                   key={product.productId}
                   onClick={() => addToCart(product.productId)}
                   disabled={!product.isActive || product.stock <= 0}
                   aria-label={`${product.name} ${formatCurrency(product.price, currencyUnit)} 담기`}
-                  className="rounded-[1rem] border border-slate-300 bg-white p-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 sm:p-3"
+                  className="rounded-[0.9rem] border border-slate-300 bg-white p-1.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 sm:p-3"
                 >
-                  <p className="text-xs font-black">{product.category || '기타'}</p>
+                  <p className="truncate text-[10px] font-black sm:text-xs">{product.category || '기타'}</p>
                   <div className="mt-2 flex aspect-[4/3] items-center justify-center bg-slate-200 text-5xl text-white">
                     {product.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -290,10 +292,10 @@ export function KioskApp() {
                       <span aria-hidden="true">▵</span>
                     )}
                   </div>
-                  <p className="mt-2 truncate text-base font-black sm:text-lg">{product.name}</p>
+                  <p className="mt-1 truncate text-xs font-black sm:mt-2 sm:text-base md:text-lg">{product.name}</p>
                   <div className="mt-1 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-2">
-                    <p className="text-lg font-black sm:text-xl">{formatCurrency(product.price, currencyUnit)}</p>
-                    <p className="rounded-full bg-sky-100 px-2 py-1 text-xs font-black text-slate-700">재고 {product.stock}</p>
+                    <p className="text-xs font-black sm:text-lg md:text-xl">{formatCurrency(product.price, currencyUnit)}</p>
+                    <p className="rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-black text-slate-700 sm:px-2 sm:py-1 sm:text-xs">재고 {product.stock}</p>
                   </div>
                 </button>
               ))}
@@ -301,7 +303,7 @@ export function KioskApp() {
           </div>
           </section>
 
-          <section className="flex min-h-[260px] flex-col rounded-[1.5rem] border border-slate-300/70 bg-white/90 p-3 shadow-sm sm:rounded-[1.75rem] sm:p-4 lg:min-h-0">
+          <section className="flex min-h-0 flex-col rounded-[1.5rem] border border-slate-300/70 bg-white/90 p-3 shadow-sm sm:rounded-[1.75rem] sm:p-4 lg:min-h-0">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-2xl font-black">장바구니 ({cartDetails.length})</h2>
             <button

@@ -31,8 +31,8 @@ describe('AdminManagePage', () => {
           return jsonResponse(students);
         }
         if (url === '/api/products?includeInactive=1') return jsonResponse(products);
-        if (url === '/api/settings' && init?.method === 'POST') return jsonResponse({ spreadsheetId: 'sheet-new', currencyUnit: '별', source: 'runtime' });
-        if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', source: 'runtime' });
+        if (url === '/api/settings' && init?.method === 'POST') return jsonResponse({ spreadsheetId: 'sheet-new', currencyUnit: '별', appTitle: '햇살반 매점', source: 'runtime' });
+        if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', source: 'runtime' });
         if (url === '/api/products' && init?.method === 'POST') {
           return jsonResponse({ productId: 'P003', name: '간식쿠폰', price: 1000, stock: 5, isActive: true, imageUrl: 'https://example.com/snack.png', category: '쿠폰', sortOrder: 3 });
         }
@@ -74,6 +74,7 @@ describe('AdminManagePage', () => {
     expect(screen.getByRole('link', { name: /학생 QR 출력/ }).getAttribute('href')).toBe('/admin/student-qrs');
     expect(screen.getByRole('link', { name: /결제 내역 확인/ }).getAttribute('href')).toBe('/admin/transactions');
     expect(screen.getByDisplayValue('별')).toBeTruthy();
+    expect(screen.getByDisplayValue('학급 매점')).toBeTruthy();
     expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-[#dbeaf6]');
     expect(container.querySelector('[data-testid="admin-tabs"]')?.className).toContain('rounded-[1.5rem]');
   });
@@ -83,13 +84,14 @@ describe('AdminManagePage', () => {
 
     await screen.findByText('관리자 목록도 이 설정을 사용합니다: 학생 2명 · 상품 2개');
     fireEvent.change(screen.getByLabelText('Google Sheets 주소 또는 시트 ID'), { target: { value: 'sheet-new' } });
+    fireEvent.change(screen.getByLabelText('매점 제목'), { target: { value: '햇살반 매점' } });
     fireEvent.click(screen.getByRole('button', { name: '시트 ID 저장' }));
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ spreadsheetIdOrUrl: 'sheet-new', currencyUnit: '별' }),
+        body: JSON.stringify({ spreadsheetIdOrUrl: 'sheet-new', currencyUnit: '별', appTitle: '햇살반 매점' }),
       });
       expect(fetch).toHaveBeenCalledWith('/api/students', { cache: 'no-store' });
       expect(fetch).toHaveBeenCalledWith('/api/products?includeInactive=1', { cache: 'no-store' });

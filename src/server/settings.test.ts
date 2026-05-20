@@ -26,10 +26,10 @@ describe('settings', () => {
   it('uses env spreadsheet id and default currency unit when Settings sheet is unavailable', async () => {
     const settings = await getAppSettings({ env: { GOOGLE_SHEET_ID: 'env-sheet-id' } });
 
-    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '원', source: 'env' });
+    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '원', appTitle: '학급 매점', source: 'env' });
   });
 
-  it('reads currency unit from Settings sheet when present', async () => {
+  it('reads currency unit and app title from Settings sheet when present', async () => {
     const settings = await getAppSettings({
       env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
       settingsReader: {
@@ -38,15 +38,16 @@ describe('settings', () => {
           return [
             ['key', 'value'],
             ['currencyUnit', '별'],
+            ['appTitle', '햇살반 매점'],
           ];
         },
       },
     });
 
-    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '별', source: 'sheet' });
+    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '별', appTitle: '햇살반 매점', source: 'sheet' });
   });
 
-  it('saves currency unit to Settings sheet and rejects changing deployment spreadsheet id', async () => {
+  it('saves currency unit and app title to Settings sheet and rejects changing deployment spreadsheet id', async () => {
     const updates: Array<{ sheetName: SheetName; rowNumber: number; columnName: string; value: string | number }> = [];
     const appends: Array<{ sheetName: SheetName; values: string[] }> = [];
     const settingsStore = {
@@ -70,12 +71,13 @@ describe('settings', () => {
         settingsStore,
         spreadsheetIdOrUrl: 'env-sheet-id',
         currencyUnit: '달란트',
+        appTitle: '햇살반 매점',
         env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
       }),
-    ).resolves.toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '달란트', source: 'sheet' });
+    ).resolves.toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '달란트', appTitle: '햇살반 매점', source: 'sheet' });
 
     expect(updates).toEqual([{ sheetName: 'Settings', rowNumber: 2, columnName: 'value', value: '달란트' }]);
-    expect(appends).toEqual([]);
+    expect(appends).toEqual([{ sheetName: 'Settings', values: ['appTitle', '햇살반 매점'] }]);
 
     await expect(
       saveAppSettings({
