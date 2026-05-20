@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 import type { ClassTask } from '@/domain/types';
 import { QrScanner } from './QrScanner';
 
-type Settings = { currencyUnit?: string; appTitle?: string; themeColor?: string };
+type Settings = { currencyUnit?: string; appTitle?: string; bankTitle?: string; themeColor?: string };
 type BankView = 'home' | 'balance-scan' | 'balance-result' | 'tasks-list' | 'task-detail' | 'task-scan' | 'task-success' | 'task-failure';
 type BalanceResult = { studentId: string; name: string; balance: number } | null;
 type TaskResult = { message: string; balanceAfter?: number; reward?: number; studentName?: string } | null;
@@ -15,7 +15,7 @@ const themeClass: Record<string, string> = {
 };
 
 export function BankApp() {
-  const [settings, setSettings] = useState<Settings>({ currencyUnit: '원', appTitle: '학급 매점', themeColor: 'blue' });
+  const [settings, setSettings] = useState<Settings>({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue' });
   const [tasks, setTasks] = useState<ClassTask[]>([]);
   const [selectedTask, setSelectedTask] = useState<ClassTask | null>(null);
   const [view, setView] = useState<BankView>('home');
@@ -27,7 +27,7 @@ export function BankApp() {
 
   const currencyUnit = settings.currencyUnit || '원';
   const background = themeClass[settings.themeColor || 'blue'] ?? themeClass.blue;
-  const title = useMemo(() => `${settings.appTitle || '학급 매점'} 은행`, [settings.appTitle]);
+  const title = useMemo(() => settings.bankTitle || `${settings.appTitle || '학급 매점'} 은행`, [settings.appTitle, settings.bankTitle]);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -35,7 +35,7 @@ export function BankApp() {
       const payload = await response.json();
       if (response.ok) setSettings(payload);
     } catch {
-      setSettings({ currencyUnit: '원', appTitle: '학급 매점', themeColor: 'blue' });
+      setSettings({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue' });
     }
   }, []);
 

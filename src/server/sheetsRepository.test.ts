@@ -14,10 +14,13 @@ import {
   deleteProductsBatch,
   deleteStudent,
   deleteStudentsBatch,
+  deleteTasksBatch,
   updateProductDetails,
   updateProductDetailsBatch,
   updateStudentDetails,
   updateStudentDetailsBatch,
+  resetTaskCompletionsBatch,
+  updateTaskDetailsBatch,
 } from '@/server/sheetsRepository';
 
 const sheetRows = {
@@ -428,6 +431,68 @@ describe('sheets repository', () => {
     expect(appended[0]).toEqual({ sheetName: 'Tasks', values: ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'createdAt', 'updatedAt'] });
     expect(appended[1].sheetName).toBe('Tasks');
     expect(appended[1].values.slice(0, 7)).toEqual(['T003', '수학 학습지', '1장 풀기', '10', '1', 'TRUE', '3']);
+  });
+
+  it('batch updates tasks through one store call', async () => {
+    const batches: Array<{ sheetName: string; updates: Array<{ rowNumber: number; columnName: string; value: string | number }> }> = [];
+    const fakeStore = {
+      ...fakeReader,
+      async updateCell() {
+        throw new Error('single-cell update should not be used');
+      },
+      async updateCells(sheetName: 'Tasks', updates: Array<{ rowNumber: number; columnName: string; value: string | number }>) {
+        batches.push({ sheetName, updates });
+      },
+      async appendRow() {},
+    };
+
+    await expect(updateTaskDetailsBatch(fakeStore, [
+      { taskId: 'T001', title: '책 읽기 수정', description: '책 20분 읽기', reward: 7, maxCompletionsPerStudent: 3, isActive: true, sortOrder: 5 },
+      { taskId: 'T002', title: '비활성 과제', description: '숨김', reward: 2, maxCompletionsPerStudent: 1, isActive: false, sortOrder: 2 },
+    ])).resolves.toEqual([
+      { taskId: 'T002', title: '비활성 과제', description: '숨김', reward: 2, maxCompletionsPerStudent: 1, isActive: false, sortOrder: 2 },
+      { taskId: 'T001', title: '책 읽기 수정', description: '책 20분 읽기', reward: 7, maxCompletionsPerStudent: 3, isActive: true, sortOrder: 5 },
+    ]);
+
+    expect(batches).toEqual([
+      {
+        sheetName: 'Tasks',
+        updates: [
+          { rowNumber: 3, columnName: 'title', value: '책 읽기 수정' },
+          { rowNumber: 3, columnName: 'description', value: '책 20분 읽기' },
+          { rowNumber: 3, columnName: 'reward', value: 7 },
+          { rowNumber: 3, columnName: 'maxCompletionsPerStudent', value: 3 },
+          { rowNumber: 3, columnName: 'isActive', value: 'TRUE' },
+          { rowNumber: 3, columnName: 'sortOrder', value: 5 },
+          { rowNumber: 2, columnName: 'title', value: '비활성 과제' },
+          { rowNumber: 2, columnName: 'description', value: '숨김' },
+          { rowNumber: 2, columnName: 'reward', value: 2 },
+          { rowNumber: 2, columnName: 'maxCompletionsPerStudent', value: 1 },
+          { rowNumber: 2, columnName: 'isActive', value: 'FALSE' },
+          { rowNumber: 2, columnName: 'sortOrder', value: 2 },
+        ],
+      },
+    ]);
+  });
+
+  it('batch deletes tasks and resets selected task completion rows', async () => {
+    const deletedBatches: Array<{ sheetName: string; rowNumbers: number[] }> = [];
+    const fakeStore = {
+      ...fakeReader,
+      async updateCell() {},
+      async appendRow() {},
+      async deleteRows(sheetName: 'Tasks' | 'TaskCompletions', rowNumbers: number[]) {
+        deletedBatches.push({ sheetName, rowNumbers });
+      },
+    };
+
+    await expect(deleteTasksBatch(fakeStore, ['T001', 'T002', 'T001'])).resolves.toEqual({ taskIds: ['T001', 'T002'] });
+    await expect(resetTaskCompletionsBatch(fakeStore, ['T001'])).resolves.toEqual({ taskIds: ['T001'], deletedCount: 1 });
+
+    expect(deletedBatches).toEqual([
+      { sheetName: 'Tasks', rowNumbers: [3, 2] },
+      { sheetName: 'TaskCompletions', rowNumbers: [2] },
+    ]);
   });
 
   it('completes a task once, pays reward, and records completion', async () => {

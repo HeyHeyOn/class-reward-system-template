@@ -12,6 +12,7 @@ const products = [
 ];
 const tasks = [
   { taskId: 'T001', title: '책 읽기', description: '책 10분 읽기', reward: 5, maxCompletionsPerStudent: 2, isActive: true, sortOrder: 1 },
+  { taskId: 'T002', title: '수학 학습지', description: '1장 풀기', reward: 10, maxCompletionsPerStudent: 1, isActive: true, sortOrder: 2 },
 ];
 
 function jsonResponse(payload: unknown, init?: ResponseInit) {
@@ -35,14 +36,22 @@ describe('AdminManagePage', () => {
         }
         if (url === '/api/products?includeInactive=1') return jsonResponse(products);
         if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
-        if (url === '/api/settings' && init?.method === 'POST') return jsonResponse({ spreadsheetId: 'sheet-new', currencyUnit: '별', appTitle: '햇살반 매점', themeColor: 'purple', source: 'runtime' });
-        if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', themeColor: 'blue', source: 'runtime' });
+        if (url === '/api/settings' && init?.method === 'POST') return jsonResponse({ spreadsheetId: 'sheet-new', currencyUnit: '별', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'purple', source: 'runtime' });
+        if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue', source: 'runtime' });
         if (url === '/api/products' && init?.method === 'POST') {
           return jsonResponse({ productId: 'P003', name: '간식쿠폰', price: 1000, stock: 5, isActive: true, imageUrl: 'https://example.com/snack.png', category: '쿠폰', sortOrder: 3 });
         }
         if (url === '/api/tasks' && init?.method === 'POST') {
-          return jsonResponse({ taskId: 'T002', title: '수학 학습지', description: '1장 풀기', reward: 10, maxCompletionsPerStudent: 1, isActive: true, sortOrder: 2 });
+          return jsonResponse({ taskId: 'T003', title: '영어 단어', description: '5개 외우기', reward: 10, maxCompletionsPerStudent: 1, isActive: true, sortOrder: 3 });
         }
+        if (url === '/api/tasks/batch' && init?.method === 'PATCH') {
+          return jsonResponse([
+            { ...tasks[0], title: '책 읽기 수정', description: '책 20분 읽기', reward: 7 },
+            tasks[1],
+          ]);
+        }
+        if (url === '/api/tasks/batch' && init?.method === 'DELETE') return jsonResponse({ taskIds: ['T001', 'T002'] });
+        if (url === '/api/tasks/completions/reset' && init?.method === 'POST') return jsonResponse({ taskIds: ['T001', 'T002'], deletedCount: 3 });
         if (url === '/api/tasks/T001' && init?.method === 'PATCH') return jsonResponse({ ...tasks[0], title: '책 읽기 수정', reward: 7 });
         if (url === '/api/tasks/T001' && init?.method === 'DELETE') return jsonResponse({ taskId: 'T001' });
         if (url === '/api/students/batch' && init?.method === 'PATCH') {
@@ -107,6 +116,7 @@ describe('AdminManagePage', () => {
     expect(screen.getByRole('tab', { name: '화폐 지급/회수' })).toBeTruthy();
     expect(screen.getByDisplayValue('별')).toBeTruthy();
     expect(screen.getByDisplayValue('학급 매점')).toBeTruthy();
+    expect(screen.getByDisplayValue('학급 은행')).toBeTruthy();
     expect(screen.getByLabelText('테마 색상')).toBeTruthy();
     expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-[#dbeaf6]');
     expect(container.querySelector('[data-testid="admin-tabs"]')?.className).toContain('rounded-[1.5rem]');
@@ -118,13 +128,14 @@ describe('AdminManagePage', () => {
     await screen.findByText('관리자 목록도 이 설정을 사용합니다: 학생 2명 · 상품 2개');
     fireEvent.change(screen.getByLabelText('Google Sheets 주소 또는 시트 ID'), { target: { value: 'sheet-new' } });
     fireEvent.change(screen.getByLabelText('매점 제목'), { target: { value: '햇살반 매점' } });
+    fireEvent.change(screen.getByLabelText('은행 제목'), { target: { value: '햇살반 은행' } });
     fireEvent.click(screen.getByRole('button', { name: '시트 ID 저장' }));
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ spreadsheetIdOrUrl: 'sheet-new', currencyUnit: '별', appTitle: '햇살반 매점', themeColor: 'blue' }),
+        body: JSON.stringify({ spreadsheetIdOrUrl: 'sheet-new', currencyUnit: '별', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'blue' }),
       });
       expect(fetch).toHaveBeenCalledWith('/api/students', { cache: 'no-store' });
       expect(fetch).toHaveBeenCalledWith('/api/products?includeInactive=1', { cache: 'no-store' });
@@ -258,24 +269,70 @@ describe('AdminManagePage', () => {
 
 
 
-  it('manages bank tasks from the admin task tab', async () => {
-    render(<AdminManagePage />);
+  it('manages bank tasks with selectable rows, bulk save/delete, completion reset, and description popup', async () => {
+    const { container } = render(<AdminManagePage />);
     fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
     expect(await screen.findByDisplayValue('책 읽기')).toBeTruthy();
-    expect(screen.getByTestId('task-header-row').textContent).toContain('과제명');
+    expect(screen.getByTestId('task-header-row').textContent).toContain('선택');
+    expect(screen.getByTestId('task-header-row').textContent).toContain('상세');
+    expect(screen.getByTestId('task-header-row').textContent).not.toContain('저장');
+    expect(screen.queryByRole('button', { name: '저장' })).toBeNull();
+    const taskRow = container.querySelector('[data-testid="task-row"]');
+    expect(taskRow?.className).toContain('items-center');
+    expect(screen.queryByLabelText('T001 설명')).toBeNull();
+
     fireEvent.change(screen.getByLabelText('T001 과제명'), { target: { value: '책 읽기 수정' } });
     fireEvent.change(screen.getByLabelText('T001 보상'), { target: { value: '7' } });
-    fireEvent.click(screen.getByRole('button', { name: '저장' }));
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/T001', expect.objectContaining({ method: 'PATCH' })));
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('T001 과제 저장 완료'));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 상세 설정 편집' }));
+    expect(await screen.findByRole('dialog', { name: '과제 상세 설정 편집' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('과제 상세 설정 전체 입력'), { target: { value: '책 20분 읽기' } });
+    fireEvent.click(screen.getByRole('button', { name: '상세 설정 적용' }));
+    fireEvent.click(screen.getByRole('button', { name: '과제 목록 일괄 저장' }));
 
-    fireEvent.change(screen.getByLabelText('새 과제 ID'), { target: { value: 'T002' } });
-    fireEvent.change(screen.getByLabelText('새 과제명'), { target: { value: '수학 학습지' } });
-    fireEvent.change(screen.getByLabelText('새 과제 설명'), { target: { value: '1장 풀기' } });
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/batch', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tasks: [
+          { taskId: 'T001', title: '책 읽기 수정', description: '책 20분 읽기', reward: 7, maxCompletionsPerStudent: 2, isActive: true, sortOrder: 1 },
+          { taskId: 'T002', title: '수학 학습지', description: '1장 풀기', reward: 10, maxCompletionsPerStudent: 1, isActive: true, sortOrder: 2 },
+        ],
+      }),
+    }));
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('과제 목록 2개 저장 완료'));
+    expect(fetch).not.toHaveBeenCalledWith('/api/tasks/T001', expect.objectContaining({ method: 'PATCH' }));
+
+    fireEvent.click(screen.getByLabelText('전체 과제 선택'));
+    fireEvent.click(screen.getByRole('button', { name: '선택 과제 완료 기록 초기화' }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/completions/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taskIds: ['T001', 'T002'] }),
+    }));
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('선택 과제 2개 완료 기록 3건 초기화 완료'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'T001 완료 기록 초기화' }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/completions/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taskIds: ['T001'] }),
+    }));
+
+    fireEvent.click(screen.getByRole('button', { name: '선택 과제 삭제' }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/batch', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taskIds: ['T001', 'T002'] }),
+    }));
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('선택 과제 2개 삭제 완료'));
+
+    fireEvent.change(screen.getByLabelText('새 과제 ID'), { target: { value: 'T003' } });
+    fireEvent.change(screen.getByLabelText('새 과제명'), { target: { value: '영어 단어' } });
+    fireEvent.change(screen.getByLabelText('새 과제 설명'), { target: { value: '5개 외우기' } });
     fireEvent.change(screen.getByLabelText('새 과제 보상'), { target: { value: '10' } });
     fireEvent.click(screen.getByRole('button', { name: '새 과제 추가' }));
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks', expect.objectContaining({ method: 'POST' })));
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('T002 과제 추가 완료'));
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('T003 과제 추가 완료'));
   });
 
   it('creates new student and product rows through POST APIs', async () => {
@@ -347,7 +404,7 @@ describe('AdminManagePage', () => {
       if (url === '/api/students') return jsonResponse(students);
       if (url === '/api/products?includeInactive=1') return jsonResponse(products);
       if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
-      if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', themeColor: 'blue', source: 'runtime' });
+      if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue', source: 'runtime' });
       if (url === '/api/students/bulk' && init?.method === 'PATCH') return jsonResponse({ error: '잔액은 0보다 작아질 수 없습니다.' }, { status: 400 });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });

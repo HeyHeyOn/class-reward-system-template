@@ -8,6 +8,7 @@ export type AppSettings = {
   spreadsheetId: string;
   currencyUnit: string;
   appTitle: string;
+  bankTitle: string;
   themeColor: ThemeColor;
   source: 'sheet' | 'env' | 'unset';
   adminPasswordConfigured?: boolean;
@@ -26,6 +27,7 @@ type SaveSettingsOptions = {
   currencyUnit?: string;
   adminPassword?: string;
   appTitle?: string;
+  bankTitle?: string;
   themeColor?: string;
   env?: SettingsEnv;
 };
@@ -38,6 +40,7 @@ const SHEETS_URL_ID_PATTERN = /\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/;
 const PLAIN_ID_PATTERN = /^[a-zA-Z0-9-_]{8,}$/;
 const DEFAULT_CURRENCY_UNIT = '원';
 const DEFAULT_APP_TITLE = '학급 매점';
+const DEFAULT_BANK_TITLE = '학급 은행';
 const DEFAULT_THEME_COLOR: ThemeColor = 'blue';
 const THEME_COLORS = new Set<ThemeColor>(['blue', 'pink', 'yellow', 'green', 'purple', 'white', 'black', 'navy']);
 
@@ -76,7 +79,7 @@ export async function getAppSettings(options: SettingsOptions = {}): Promise<App
   const envSpreadsheetId = getEnvSpreadsheetId(options.env ?? process.env);
 
   if (!envSpreadsheetId) {
-    return { spreadsheetId: '', currencyUnit: DEFAULT_CURRENCY_UNIT, appTitle: DEFAULT_APP_TITLE, themeColor: DEFAULT_THEME_COLOR, source: 'unset' };
+    return { spreadsheetId: '', currencyUnit: DEFAULT_CURRENCY_UNIT, appTitle: DEFAULT_APP_TITLE, bankTitle: DEFAULT_BANK_TITLE, themeColor: DEFAULT_THEME_COLOR, source: 'unset' };
   }
 
   if (options.settingsReader) {
@@ -86,19 +89,20 @@ export async function getAppSettings(options: SettingsOptions = {}): Promise<App
         spreadsheetId: envSpreadsheetId,
         currencyUnit: normalizeCurrencyUnit(sheetSettings.currencyUnit),
         appTitle: normalizeAppTitle(sheetSettings.appTitle),
+        bankTitle: normalizeBankTitle(sheetSettings.bankTitle),
         themeColor: normalizeThemeColor(sheetSettings.themeColor),
         source: 'sheet',
         ...(sheetSettings.adminPasswordHash ? { adminPasswordConfigured: true } : {}),
       };
     } catch (error) {
       if (isMissingSettingsSheetError(error)) {
-        return { spreadsheetId: envSpreadsheetId, currencyUnit: DEFAULT_CURRENCY_UNIT, appTitle: DEFAULT_APP_TITLE, themeColor: DEFAULT_THEME_COLOR, source: 'env' };
+        return { spreadsheetId: envSpreadsheetId, currencyUnit: DEFAULT_CURRENCY_UNIT, appTitle: DEFAULT_APP_TITLE, bankTitle: DEFAULT_BANK_TITLE, themeColor: DEFAULT_THEME_COLOR, source: 'env' };
       }
       throw error;
     }
   }
 
-  return { spreadsheetId: envSpreadsheetId, currencyUnit: DEFAULT_CURRENCY_UNIT, appTitle: DEFAULT_APP_TITLE, themeColor: DEFAULT_THEME_COLOR, source: 'env' };
+  return { spreadsheetId: envSpreadsheetId, currencyUnit: DEFAULT_CURRENCY_UNIT, appTitle: DEFAULT_APP_TITLE, bankTitle: DEFAULT_BANK_TITLE, themeColor: DEFAULT_THEME_COLOR, source: 'env' };
 }
 
 export async function saveAppSettings(options: SaveSettingsOptions): Promise<AppSettings> {
@@ -119,9 +123,11 @@ export async function saveAppSettings(options: SaveSettingsOptions): Promise<App
 
   const currencyUnit = normalizeCurrencyUnit(options.currencyUnit);
   const appTitle = normalizeAppTitle(options.appTitle);
+  const bankTitle = normalizeBankTitle(options.bankTitle);
   const themeColor = normalizeThemeColor(options.themeColor);
   await saveSheetSetting(options.settingsStore, { key: 'currencyUnit', value: currencyUnit });
   await saveSheetSetting(options.settingsStore, { key: 'appTitle', value: appTitle });
+  await saveSheetSetting(options.settingsStore, { key: 'bankTitle', value: bankTitle });
   await saveSheetSetting(options.settingsStore, { key: 'themeColor', value: themeColor });
   if (options.adminPassword?.trim()) {
     await saveAdminPassword(options.settingsStore, options.adminPassword);
@@ -131,6 +137,7 @@ export async function saveAppSettings(options: SaveSettingsOptions): Promise<App
     spreadsheetId: configuredSpreadsheetId,
     currencyUnit,
     appTitle,
+    bankTitle,
     themeColor,
     source: 'sheet',
     ...(options.adminPassword?.trim() ? { adminPasswordConfigured: true } : {}),
@@ -147,6 +154,12 @@ export function normalizeAppTitle(value: unknown): string {
   if (typeof value !== 'string') return DEFAULT_APP_TITLE;
   const trimmed = value.trim();
   return trimmed ? trimmed.slice(0, 30) : DEFAULT_APP_TITLE;
+}
+
+export function normalizeBankTitle(value: unknown): string {
+  if (typeof value !== 'string') return DEFAULT_BANK_TITLE;
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, 30) : DEFAULT_BANK_TITLE;
 }
 
 function isMissingSettingsSheetError(error: unknown): boolean {

@@ -59,6 +59,7 @@ export function AdminManagePage() {
   const [tasks, setTasks] = useState<TaskDraft[]>([]);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   const [bulkMode, setBulkMode] = useState<BulkMode>('set');
   const [bulkAmount, setBulkAmount] = useState(0);
   const [message, setMessage] = useState('학생/상품 목록을 불러오는 중입니다.');
@@ -66,6 +67,7 @@ export function AdminManagePage() {
   const [newProduct, setNewProduct] = useState<NewProductDraft>(EMPTY_PRODUCT);
   const [newTask, setNewTask] = useState<TaskDraft>(EMPTY_TASK);
   const [imageEditor, setImageEditor] = useState<{ productId: string; value: string } | null>(null);
+  const [taskDescriptionEditor, setTaskDescriptionEditor] = useState<{ taskId: string; value: string } | null>(null);
   const [currencyMode, setCurrencyMode] = useState<CurrencyMode>('add');
   const [currencyAmount, setCurrencyAmount] = useState(0);
   const [currencyScannerOpen, setCurrencyScannerOpen] = useState(false);
@@ -95,6 +97,7 @@ export function AdminManagePage() {
       setTasks(taskPayload);
       setSelectedStudentIds((ids) => ids.filter((id) => studentPayload.some((student: Student) => student.studentId === id)));
       setSelectedProductIds((ids) => ids.filter((id) => productPayload.some((product: Product) => product.productId === id)));
+      setSelectedTaskIds((ids) => ids.filter((id) => taskPayload.some((task: ClassTask) => task.taskId === id)));
       setMessage('');
     } catch (error) {
       if (!shouldApply()) return;
@@ -124,6 +127,7 @@ export function AdminManagePage() {
 
   const allStudentsSelected = students.length > 0 && selectedStudentIds.length === students.length;
   const allProductsSelected = products.length > 0 && selectedProductIds.length === products.length;
+  const allTasksSelected = tasks.length > 0 && selectedTaskIds.length === tasks.length;
 
   function updateStudent(studentId: string, patch: Partial<StudentDraft>) {
     setStudents((current) => current.map((student) => (student.studentId === studentId ? { ...student, ...patch } : student)));
@@ -147,6 +151,10 @@ export function AdminManagePage() {
 
   function toggleProduct(productId: string) {
     setSelectedProductIds((current) => current.includes(productId) ? current.filter((id) => id !== productId) : [...current, productId]);
+  }
+
+  function toggleTask(taskId: string) {
+    setSelectedTaskIds((current) => current.includes(taskId) ? current.filter((id) => id !== taskId) : [...current, taskId]);
   }
 
   async function saveAllStudents() {
@@ -314,19 +322,31 @@ export function AdminManagePage() {
     }
   }
 
-  async function saveTask(task: TaskDraft) {
+  async function saveAllTasks() {
     try {
-      const response = await fetch(`/api/tasks/${encodeURIComponent(task.taskId)}`, {
+      const response = await fetch('/api/tasks/batch', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: task.title, description: task.description, reward: task.reward, maxCompletionsPerStudent: task.maxCompletionsPerStudent, isActive: task.isActive, sortOrder: task.sortOrder }),
+        body: JSON.stringify({
+          tasks: tasks.map((task) => ({
+            taskId: task.taskId,
+            title: task.title,
+            description: task.description,
+            reward: task.reward,
+            maxCompletionsPerStudent: task.maxCompletionsPerStudent,
+            isActive: task.isActive,
+            sortOrder: task.sortOrder,
+          })),
+        }),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? '과제를 저장하지 못했습니다.');
-      setTasks((current) => current.map((item) => item.taskId === payload.taskId ? payload : item).sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title)));
-      notify(`${payload.taskId} 과제 저장 완료`);
+      if (!response.ok) throw new Error(payload.error ?? '과제 목록을 저장하지 못했습니다.');
+      const savedTasks = payload as TaskDraft[];
+      const savedMap = new Map(savedTasks.map((task) => [task.taskId, task]));
+      setTasks((current) => current.map((task) => savedMap.get(task.taskId) ?? task).sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title)));
+      notify(`과제 목록 ${savedTasks.length}개 저장 완료`);
     } catch (error) {
-      notify(error instanceof Error ? error.message : '과제를 저장하지 못했습니다.');
+      notify(error instanceof Error ? error.message : '과제 목록을 저장하지 못했습니다.');
     }
   }
 
@@ -336,9 +356,46 @@ export function AdminManagePage() {
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? '과제를 삭제하지 못했습니다.');
       setTasks((current) => current.filter((task) => task.taskId !== taskId));
+      setSelectedTaskIds((current) => current.filter((id) => id !== taskId));
       notify(`${taskId} 과제 삭제 완료`);
     } catch (error) {
       notify(error instanceof Error ? error.message : '과제를 삭제하지 못했습니다.');
+    }
+  }
+
+  async function deleteSelectedTasks() {
+    if (selectedTaskIds.length === 0) return notify('선택된 과제가 없습니다.');
+    const idsToDelete = [...selectedTaskIds];
+    try {
+      const response = await fetch('/api/tasks/batch', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskIds: idsToDelete }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? '과제를 삭제하지 못했습니다.');
+      const deletedIds = Array.isArray(payload.taskIds) ? payload.taskIds : idsToDelete;
+      setTasks((current) => current.filter((task) => !deletedIds.includes(task.taskId)));
+      setSelectedTaskIds((current) => current.filter((id) => !deletedIds.includes(id)));
+      notify(`선택 과제 ${deletedIds.length}개 삭제 완료`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : '과제를 삭제하지 못했습니다.');
+    }
+  }
+
+  async function resetTaskCompletions(taskIds: string[], label: string) {
+    if (taskIds.length === 0) return notify('선택된 과제가 없습니다.');
+    try {
+      const response = await fetch('/api/tasks/completions/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskIds }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? '과제 완료 기록을 초기화하지 못했습니다.');
+      notify(`${label} 완료 기록 ${Number(payload.deletedCount ?? 0)}건 초기화 완료`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : '과제 완료 기록을 초기화하지 못했습니다.');
     }
   }
 
@@ -646,12 +703,25 @@ export function AdminManagePage() {
             </SectionCard>
 
             <SectionCard title="과제 설정" description="학생 은행 페이지에 노출될 과제와 완료 제한을 관리합니다." compact>
+              <div className="mb-3 rounded-2xl border border-slate-200 bg-sky-50/70 p-3">
+                <label className="flex w-fit items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-black">
+                  <input aria-label="전체 과제 선택" checked={allTasksSelected} onChange={(event) => setSelectedTaskIds(event.target.checked ? tasks.map((task) => task.taskId) : [])} type="checkbox" />
+                  전체 선택 ({selectedTaskIds.length}/{tasks.length})
+                </label>
+                <button type="button" onClick={deleteSelectedTasks} className="mt-2 rounded-xl bg-rose-600 px-4 py-2 text-sm font-black text-white">선택 과제 삭제</button>
+                <button type="button" onClick={() => resetTaskCompletions([...selectedTaskIds], `선택 과제 ${selectedTaskIds.length}개`)} className="ml-2 mt-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-black text-white">선택 과제 완료 기록 초기화</button>
+                <button type="button" onClick={saveAllTasks} className="ml-2 mt-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-black text-white">과제 목록 일괄 저장</button>
+              </div>
               <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
-                <div data-testid="task-header-row" className="grid grid-cols-[44px_minmax(5rem,1fr)_52px_54px_34px_40px_44px_40px] items-center gap-0.5 bg-slate-100 px-1.5 py-1 text-[10px] font-black text-slate-500">
-                  <span>ID</span><span>과제명</span><span>보상</span><span>횟수</span><span>순서</span><span>활성</span><span>저장</span><span>삭제</span>
+                <div data-testid="task-header-row" className="grid grid-cols-[24px_42px_minmax(5rem,1fr)_48px_46px_34px_38px_minmax(3rem,0.7fr)_46px_40px] items-center gap-0.5 bg-slate-100 px-1.5 py-1 text-[10px] font-black text-slate-500">
+                  <span>선택</span><span>ID</span><span>과제명</span><span>보상</span><span>횟수</span><span>순서</span><span>활성</span><span>상세</span><span>초기화</span><span>삭제</span>
                 </div>
                 {tasks.map((task) => (
-                  <div data-testid="task-row" key={task.taskId} className="grid grid-cols-[44px_minmax(5rem,1fr)_52px_54px_34px_40px_44px_40px] items-center gap-0.5 px-1.5 py-1 text-[11px]">
+                  <div data-testid="task-row" key={task.taskId} className="grid grid-cols-[24px_42px_minmax(5rem,1fr)_48px_46px_34px_38px_minmax(3rem,0.7fr)_46px_40px] items-center gap-0.5 px-1.5 py-1 text-[11px]">
+                    <label className="flex items-center justify-center">
+                      <input aria-label={`${task.taskId} 선택`} checked={selectedTaskIds.includes(task.taskId)} onChange={() => toggleTask(task.taskId)} type="checkbox" />
+                      <span className="sr-only">선택</span>
+                    </label>
                     <p className="min-w-0 truncate font-black text-sky-700">{task.taskId}</p>
                     <TextInput label={`${task.taskId} 과제명`} value={task.title} onChange={(value) => updateTask(task.taskId, { title: value })} dense />
                     <NumberInput label={`${task.taskId} 보상`} value={task.reward} onChange={(value) => updateTask(task.taskId, { reward: value })} dense />
@@ -660,12 +730,16 @@ export function AdminManagePage() {
                     <label className="flex h-8 items-center justify-center rounded-lg bg-sky-50 text-[10px] font-bold text-slate-700">
                       <input aria-label={`${task.taskId} 활성`} checked={task.isActive} onChange={(event) => updateTask(task.taskId, { isActive: event.target.checked })} type="checkbox" />
                     </label>
-                    <button type="button" onClick={() => saveTask(task)} className="h-8 rounded-lg bg-sky-100 px-1 text-[10px] font-black text-sky-700">저장</button>
+                    <button
+                      aria-label={`${task.taskId} 상세 설정 편집`}
+                      className="h-8 min-w-0 truncate rounded-lg border border-slate-200 bg-white px-1 text-left text-[10px] font-bold text-slate-600"
+                      onClick={() => setTaskDescriptionEditor({ taskId: task.taskId, value: task.description })}
+                      type="button"
+                    >
+                      {task.description ? '상세 있음' : '상세'}
+                    </button>
+                    <button type="button" aria-label={`${task.taskId} 완료 기록 초기화`} onClick={() => resetTaskCompletions([task.taskId], task.taskId)} className="h-8 rounded-lg bg-amber-100 px-1 text-[10px] font-black text-amber-800">초기화</button>
                     <button type="button" onClick={() => deleteTaskRow(task.taskId)} className="h-8 rounded-lg bg-rose-100 px-1 text-[10px] font-black text-rose-700">삭제</button>
-                    <label className="col-span-8 mt-1 block text-xs font-bold text-slate-700">
-                      <span className="sr-only">{task.taskId} 설명</span>
-                      <textarea aria-label={`${task.taskId} 설명`} value={task.description} onChange={(event) => updateTask(task.taskId, { description: event.target.value })} className="min-h-14 w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] outline-none transition focus:border-sky-400" />
-                    </label>
                   </div>
                 ))}
               </div>
@@ -716,6 +790,36 @@ export function AdminManagePage() {
                 }}
               >
                 이미지 주소 적용
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+      {taskDescriptionEditor ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <section role="dialog" aria-modal="true" aria-label="과제 상세 설정 편집" className="w-full max-w-xl rounded-2xl bg-white p-4 shadow-2xl">
+            <h2 className="text-xl font-black">과제 상세 설정 편집</h2>
+            <p className="mt-1 text-sm font-bold text-slate-500">긴 설명은 여기에서 편하게 입력하고 수정합니다.</p>
+            <label className="mt-4 block text-sm font-bold text-slate-700">
+              <span>과제 상세 설정 전체 입력</span>
+              <textarea
+                aria-label="과제 상세 설정 전체 입력"
+                className="mt-2 min-h-40 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm outline-none focus:border-sky-400"
+                value={taskDescriptionEditor.value}
+                onChange={(event) => setTaskDescriptionEditor((current) => current ? { ...current, value: event.target.value } : current)}
+              />
+            </label>
+            <div className="mt-4 flex gap-2">
+              <button type="button" className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700" onClick={() => setTaskDescriptionEditor(null)}>취소</button>
+              <button
+                type="button"
+                className="flex-1 rounded-xl bg-sky-500 py-3 font-black text-white"
+                onClick={() => {
+                  updateTask(taskDescriptionEditor.taskId, { description: taskDescriptionEditor.value });
+                  setTaskDescriptionEditor(null);
+                }}
+              >
+                상세 설정 적용
               </button>
             </div>
           </section>

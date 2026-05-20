@@ -14,7 +14,7 @@ describe('BankApp', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', currencyUnit: '별', themeColor: 'green' });
+      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '별빛 은행', currencyUnit: '별', themeColor: 'green' });
       if (url === '/api/tasks') return jsonResponse(tasks);
       if (url === '/api/bank/balance?studentId=S001') return jsonResponse({ studentId: 'S001', name: '김민준', number: 1, balance: 12 });
       if (url === '/api/tasks/T001/complete' && init?.method === 'POST') return jsonResponse({ task: tasks[0], student: { studentId: 'S001', name: '김민준', balance: 17 }, completedCount: 1, remainingCompletions: 1 });
@@ -26,7 +26,7 @@ describe('BankApp', () => {
 
   it('checks a student balance from the bank QR popup', async () => {
     render(<BankApp />);
-    expect(await screen.findByRole('heading', { name: '별빛 매점 은행' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '별빛 은행' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '잔액 확인' }));
     expect(await screen.findByRole('dialog', { name: '잔액 확인 QR 인식' })).toBeTruthy();
     fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
@@ -37,7 +37,7 @@ describe('BankApp', () => {
 
   it('shows tasks, opens detail, completes with QR, and returns to detail on close', async () => {
     render(<BankApp />);
-    await screen.findByRole('heading', { name: '별빛 매점 은행' });
+    await screen.findByRole('heading', { name: '별빛 은행' });
     fireEvent.click(screen.getByRole('button', { name: '과제 확인' }));
     expect(await screen.findByRole('dialog', { name: '과제 목록' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /책 10분 읽기/ }));

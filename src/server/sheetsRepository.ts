@@ -98,6 +98,10 @@ export type ProductBatchUpdate = ProductUpdate & {
   productId: string;
 };
 
+export type TaskBatchUpdate = TaskUpdate & {
+  taskId: string;
+};
+
 const REQUIRED_STUDENT_COLUMNS = ['studentId', 'name', 'number', 'balance', 'status'];
 const REQUIRED_PRODUCT_COLUMNS = ['productId', 'name', 'price', 'stock', 'isActive'];
 const REQUIRED_TRANSACTION_COLUMNS = ['transactionId', 'timestamp', 'studentId', 'studentName', 'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator'];
@@ -238,6 +242,79 @@ export async function updateTaskDetails(store: SheetsStore, taskId: string, upda
   await store.updateCell('Tasks', record.rowNumber, 'sortOrder', update.sortOrder);
   if ((await store.getRows('Tasks'))[0]?.includes('updatedAt')) await store.updateCell('Tasks', record.rowNumber, 'updatedAt', new Date().toISOString());
   return { taskId, title, description, reward: update.reward, maxCompletionsPerStudent: update.maxCompletionsPerStudent, isActive: update.isActive, sortOrder: update.sortOrder };
+}
+
+
+export async function updateTaskDetailsBatch(store: SheetsStore, updates: TaskBatchUpdate[]): Promise<ClassTask[]> {
+  await ensureTaskSheet(store);
+  if (!Array.isArray(updates) || updates.length === 0) throw new Error('저장할 과제가 없습니다.');
+
+  const recordsById = new Map((await getTaskRecords(store)).map((record) => [record.task.taskId, record]));
+  const normalized = updates.map((update) => ({ ...update, taskId: update.taskId.trim() }));
+  const duplicateIds = findDuplicates(normalized.map((update) => update.taskId));
+  if (duplicateIds.length > 0) throw new Error(`중복된 과제 ID가 있습니다: ${duplicateIds.join(', ')}`);
+
+  const taskRows = await store.getRows('Tasks');
+  const hasUpdatedAt = taskRows[0]?.includes('updatedAt') ?? false;
+  const now = new Date().toISOString();
+  const cellUpdates: SheetCellUpdate[] = [];
+  const tasks: ClassTask[] = [];
+
+  for (const update of normalized) {
+    validateTaskId(update.taskId);
+    validateTaskUpdate(update);
+    const record = recordsById.get(update.taskId);
+    if (!record) throw new Error(`과제를 찾을 수 없습니다: ${update.taskId}`);
+
+    const title = update.title.trim();
+    const description = update.description.trim();
+    cellUpdates.push(
+      { rowNumber: record.rowNumber, columnName: 'title', value: title },
+      { rowNumber: record.rowNumber, columnName: 'description', value: description },
+      { rowNumber: record.rowNumber, columnName: 'reward', value: update.reward },
+      { rowNumber: record.rowNumber, columnName: 'maxCompletionsPerStudent', value: update.maxCompletionsPerStudent },
+      { rowNumber: record.rowNumber, columnName: 'isActive', value: update.isActive ? 'TRUE' : 'FALSE' },
+      { rowNumber: record.rowNumber, columnName: 'sortOrder', value: update.sortOrder },
+    );
+    if (hasUpdatedAt) cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'updatedAt', value: now });
+    tasks.push({ taskId: update.taskId, title, description, reward: update.reward, maxCompletionsPerStudent: update.maxCompletionsPerStudent, isActive: update.isActive, sortOrder: update.sortOrder });
+  }
+
+  await applyCellUpdates(store, 'Tasks', cellUpdates);
+  return tasks.sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title));
+}
+
+export async function deleteTasksBatch(store: SheetsStore, taskIds: string[]): Promise<{ taskIds: string[] }> {
+  const uniqueIds = normalizeUniqueIds(taskIds);
+  if (uniqueIds.length === 0) throw new Error('선택된 과제가 없습니다.');
+  if (!store.deleteRows) throw new Error('현재 Sheets 저장소가 여러 행 삭제를 지원하지 않습니다.');
+
+  const recordsById = new Map((await getTaskRecords(store)).map((record) => [record.task.taskId, record]));
+  const missingIds = uniqueIds.filter((taskId) => !recordsById.has(taskId));
+  if (missingIds.length > 0) throw new Error(`과제를 찾을 수 없습니다: ${missingIds.join(', ')}`);
+
+  await store.deleteRows('Tasks', uniqueIds.map((taskId) => recordsById.get(taskId)!.rowNumber));
+  return { taskIds: uniqueIds };
+}
+
+export async function resetTaskCompletionsBatch(store: SheetsStore, taskIds: string[]): Promise<{ taskIds: string[]; deletedCount: number }> {
+  const uniqueIds = normalizeUniqueIds(taskIds);
+  if (uniqueIds.length === 0) throw new Error('선택된 과제가 없습니다.');
+  if (!store.deleteRows) throw new Error('현재 Sheets 저장소가 여러 행 삭제를 지원하지 않습니다.');
+  await ensureTaskCompletionSheet(store);
+
+  const rows = await store.getRows('TaskCompletions');
+  const [headers, ...dataRows] = rows;
+  if (!headers) return { taskIds: uniqueIds, deletedCount: 0 };
+  const headerIndex = createHeaderIndex(headers);
+  assertRequiredColumns(headerIndex, REQUIRED_TASK_COMPLETION_COLUMNS, 'TaskCompletions');
+  const taskIdIndex = headerIndex.get('taskId')!;
+  const rowNumbers = dataRows
+    .map((row, index) => uniqueIds.includes(String(row[taskIdIndex] ?? '').trim()) ? index + 2 : null)
+    .filter((rowNumber): rowNumber is number => rowNumber !== null);
+
+  if (rowNumbers.length > 0) await store.deleteRows('TaskCompletions', rowNumbers);
+  return { taskIds: uniqueIds, deletedCount: rowNumbers.length };
 }
 
 export async function deleteTask(store: SheetsStore, taskId: string): Promise<{ taskId: string }> {

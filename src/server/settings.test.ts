@@ -26,7 +26,7 @@ describe('settings', () => {
   it('uses env spreadsheet id and default currency unit when Settings sheet is unavailable', async () => {
     const settings = await getAppSettings({ env: { GOOGLE_SHEET_ID: 'env-sheet-id' } });
 
-    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '원', appTitle: '학급 매점', themeColor: 'blue', source: 'env' });
+    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue', source: 'env' });
   });
 
   it('reads currency unit and app title from Settings sheet when present', async () => {
@@ -39,13 +39,14 @@ describe('settings', () => {
             ['key', 'value'],
             ['currencyUnit', '별'],
             ['appTitle', '햇살반 매점'],
+            ['bankTitle', '햇살반 은행'],
             ['themeColor', 'purple'],
           ];
         },
       },
     });
 
-    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '별', appTitle: '햇살반 매점', themeColor: 'purple', source: 'sheet' });
+    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '별', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'purple', source: 'sheet' });
   });
 
   it('accepts white, black, and navy theme colors from Settings sheet', async () => {
@@ -91,14 +92,16 @@ describe('settings', () => {
         spreadsheetIdOrUrl: 'env-sheet-id',
         currencyUnit: '달란트',
         appTitle: '햇살반 매점',
+        bankTitle: '햇살반 은행',
         themeColor: 'green',
         env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
       }),
-    ).resolves.toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '달란트', appTitle: '햇살반 매점', themeColor: 'green', source: 'sheet' });
+    ).resolves.toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '달란트', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'green', source: 'sheet' });
 
     expect(updates).toEqual([{ sheetName: 'Settings', rowNumber: 2, columnName: 'value', value: '달란트' }]);
     expect(appends).toEqual([
       { sheetName: 'Settings', values: ['appTitle', '햇살반 매점'] },
+      { sheetName: 'Settings', values: ['bankTitle', '햇살반 은행'] },
       { sheetName: 'Settings', values: ['themeColor', 'green'] },
     ]);
 
