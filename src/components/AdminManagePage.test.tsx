@@ -277,6 +277,11 @@ describe('AdminManagePage', () => {
     expect(screen.getByTestId('task-header-row').textContent).toContain('상세');
     expect(screen.getByTestId('task-header-row').textContent).not.toContain('저장');
     expect(screen.queryByRole('button', { name: '저장' })).toBeNull();
+    expect(screen.getByTestId('task-panel').className).toContain('min-w-0');
+    expect(screen.getByTestId('new-task-card').className).toContain('min-w-0');
+    expect(screen.getByTestId('task-list-card').className).toContain('min-w-0');
+    expect(screen.getByTestId('task-list-scroll').className).toContain('overflow-x-auto');
+    expect(screen.getByTestId('task-bulk-actions').className).toContain('flex-wrap');
     const taskRow = container.querySelector('[data-testid="task-row"]');
     expect(taskRow?.className).toContain('items-center');
     expect(screen.queryByLabelText('T001 설명')).toBeNull();

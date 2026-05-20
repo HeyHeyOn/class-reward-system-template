@@ -680,7 +680,8 @@ export function AdminManagePage() {
         ) : null}
 
         {activeTab === 'tasks' ? (
-          <section role="tabpanel" aria-label="과제 설정" className="grid gap-3 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)]">
+          <section data-testid="task-panel" role="tabpanel" aria-label="과제 설정" className="grid min-w-0 gap-3 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)]">
+            <div data-testid="new-task-card" className="min-w-0">
             <SectionCard title="새 과제 추가" description="은행 페이지에서 학생이 완료할 보상 과제를 등록합니다." compact>
               <form onSubmit={createNewTask} className="space-y-2">
                 <TextInput label="새 과제 ID" value={newTask.taskId} onChange={(value) => setNewTask((current) => ({ ...current, taskId: value }))} compact />
@@ -689,7 +690,7 @@ export function AdminManagePage() {
                   <span>새 과제 설명</span>
                   <textarea aria-label="새 과제 설명" value={newTask.description} onChange={(event) => setNewTask((current) => ({ ...current, description: event.target.value }))} className="mt-1 min-h-24 w-full rounded-xl border border-slate-200 bg-white px-2 py-2 text-sm outline-none transition focus:border-sky-400" />
                 </label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-3">
                   <NumberInput label="새 과제 보상" value={newTask.reward} onChange={(value) => setNewTask((current) => ({ ...current, reward: value }))} compact />
                   <NumberInput label="새 과제 완료 가능 횟수" value={newTask.maxCompletionsPerStudent} onChange={(value) => setNewTask((current) => ({ ...current, maxCompletionsPerStudent: value }))} compact />
                   <NumberInput label="새 과제 정렬" value={newTask.sortOrder} onChange={(value) => setNewTask((current) => ({ ...current, sortOrder: value }))} compact />
@@ -701,18 +702,23 @@ export function AdminManagePage() {
                 <button className="w-full rounded-xl bg-sky-500 py-3 font-black text-white shadow-sm" type="submit">새 과제 추가</button>
               </form>
             </SectionCard>
+            </div>
 
+            <div data-testid="task-list-card" className="min-w-0">
             <SectionCard title="과제 설정" description="학생 은행 페이지에 노출될 과제와 완료 제한을 관리합니다." compact>
               <div className="mb-3 rounded-2xl border border-slate-200 bg-sky-50/70 p-3">
+                <div data-testid="task-bulk-actions" className="flex flex-wrap items-center gap-2">
                 <label className="flex w-fit items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-black">
                   <input aria-label="전체 과제 선택" checked={allTasksSelected} onChange={(event) => setSelectedTaskIds(event.target.checked ? tasks.map((task) => task.taskId) : [])} type="checkbox" />
                   전체 선택 ({selectedTaskIds.length}/{tasks.length})
                 </label>
-                <button type="button" onClick={deleteSelectedTasks} className="mt-2 rounded-xl bg-rose-600 px-4 py-2 text-sm font-black text-white">선택 과제 삭제</button>
-                <button type="button" onClick={() => resetTaskCompletions([...selectedTaskIds], `선택 과제 ${selectedTaskIds.length}개`)} className="ml-2 mt-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-black text-white">선택 과제 완료 기록 초기화</button>
-                <button type="button" onClick={saveAllTasks} className="ml-2 mt-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-black text-white">과제 목록 일괄 저장</button>
+                <button type="button" onClick={deleteSelectedTasks} className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-black text-white">선택 과제 삭제</button>
+                <button type="button" onClick={() => resetTaskCompletions([...selectedTaskIds], `선택 과제 ${selectedTaskIds.length}개`)} className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-black text-white">선택 과제 완료 기록 초기화</button>
+                <button type="button" onClick={saveAllTasks} className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-black text-white">과제 목록 일괄 저장</button>
+                </div>
               </div>
-              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
+              <div data-testid="task-list-scroll" className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+                <div className="min-w-[540px] divide-y divide-slate-100">
                 <div data-testid="task-header-row" className="grid grid-cols-[24px_42px_minmax(5rem,1fr)_48px_46px_34px_38px_minmax(3rem,0.7fr)_46px_40px] items-center gap-0.5 bg-slate-100 px-1.5 py-1 text-[10px] font-black text-slate-500">
                   <span>선택</span><span>ID</span><span>과제명</span><span>보상</span><span>횟수</span><span>순서</span><span>활성</span><span>상세</span><span>초기화</span><span>삭제</span>
                 </div>
@@ -742,8 +748,10 @@ export function AdminManagePage() {
                     <button type="button" onClick={() => deleteTaskRow(task.taskId)} className="h-8 rounded-lg bg-rose-100 px-1 text-[10px] font-black text-rose-700">삭제</button>
                   </div>
                 ))}
+                </div>
               </div>
             </SectionCard>
+            </div>
           </section>
         ) : null}
 
@@ -880,7 +888,7 @@ function SummaryCard({ label, value }: { label: string; value: string }) {
 
 function SectionCard({ title, description, children, compact = false }: { title: string; description: string; children: ReactNode; compact?: boolean }) {
   return (
-    <section className={`rounded-[1.25rem] border border-slate-300/70 bg-white/90 shadow-sm sm:rounded-[1.75rem] ${compact ? 'p-3 md:p-4' : 'p-4 md:p-5'}`}>
+    <section className={`min-w-0 overflow-hidden rounded-[1.25rem] border border-slate-300/70 bg-white/90 shadow-sm sm:rounded-[1.75rem] ${compact ? 'p-3 md:p-4' : 'p-4 md:p-5'}`}>
       <h2 className="text-xl font-black sm:text-2xl">{title}</h2>
       <p className="mt-1 text-xs font-bold text-slate-500 sm:text-sm">{description}</p>
       <div className="mt-3">{children}</div>
