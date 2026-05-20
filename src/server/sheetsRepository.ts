@@ -15,6 +15,7 @@ export type SheetsReader = {
 export type SheetsStore = SheetsReader & {
   updateCell(sheetName: SheetName, rowNumber: number, columnName: string, value: string | number): Promise<void>;
   appendRow(sheetName: SheetName, values: string[]): Promise<void>;
+  deleteRow?(sheetName: SheetName, rowNumber: number): Promise<void>;
 };
 
 export type StudentRecord = {
@@ -49,6 +50,14 @@ export type ProductUpdate = {
 
 export type ProductCreate = ProductUpdate & {
   productId: string;
+};
+
+export type StudentBulkBalanceMode = 'set' | 'add' | 'subtract';
+
+export type StudentBulkBalanceUpdate = {
+  studentIds: string[];
+  mode: StudentBulkBalanceMode;
+  amount: number;
 };
 
 const REQUIRED_STUDENT_COLUMNS = ['studentId', 'name', 'number', 'balance', 'status'];
@@ -239,6 +248,44 @@ export async function updateStudentDetails(store: SheetsStore, studentId: string
   return { studentId, name, number: update.number, balance: update.balance, status: update.status };
 }
 
+export async function deleteStudent(store: SheetsStore, studentId: string): Promise<{ studentId: string }> {
+  const record = await getStudentRecordById(store, studentId);
+  if (!record) throw new Error('학생을 찾을 수 없습니다.');
+  if (!store.deleteRow) throw new Error('현재 Sheets 저장소가 행 삭제를 지원하지 않습니다.');
+
+  await store.deleteRow('Students', record.rowNumber);
+  return { studentId };
+}
+
+export async function bulkAdjustStudentBalances(
+  store: SheetsStore,
+  update: StudentBulkBalanceUpdate,
+): Promise<Array<{ studentId: string; balance: number }>> {
+  validateStudentBulkBalanceUpdate(update);
+
+  const uniqueIds = Array.from(new Set(update.studentIds.map((id) => id.trim()).filter(Boolean)));
+  const records = await Promise.all(uniqueIds.map((studentId) => getStudentRecordById(store, studentId)));
+  const missingIds = uniqueIds.filter((_, index) => !records[index]);
+  if (missingIds.length > 0) throw new Error(`학생을 찾을 수 없습니다: ${missingIds.join(', ')}`);
+
+  const results: Array<{ studentId: string; balance: number }> = [];
+  for (const record of records) {
+    if (!record) continue;
+    const balance =
+      update.mode === 'set'
+        ? update.amount
+        : update.mode === 'add'
+          ? record.student.balance + update.amount
+          : record.student.balance - update.amount;
+
+    if (balance < 0) throw new Error(`${record.student.studentId} 학생의 잔액은 0보다 작아질 수 없습니다.`);
+    await store.updateCell('Students', record.rowNumber, 'balance', balance);
+    results.push({ studentId: record.student.studentId, balance });
+  }
+
+  return results;
+}
+
 export async function createProduct(store: SheetsStore, create: ProductCreate): Promise<Product> {
   const productId = create.productId.trim();
   validateProductId(productId);
@@ -303,6 +350,15 @@ export async function updateProductDetails(store: SheetsStore, productId: string
   };
 }
 
+export async function deleteProduct(store: SheetsStore, productId: string): Promise<{ productId: string }> {
+  const record = (await getProductRecords(store)).find(({ product }) => product.productId === productId);
+  if (!record) throw new Error('상품을 찾을 수 없습니다.');
+  if (!store.deleteRow) throw new Error('현재 Sheets 저장소가 행 삭제를 지원하지 않습니다.');
+
+  await store.deleteRow('Products', record.rowNumber);
+  return { productId };
+}
+
 function validateStudentId(studentId: string) {
   if (!studentId) throw new Error('학생 ID를 입력해 주세요.');
 }
@@ -312,6 +368,12 @@ function validateStudentUpdate(update: StudentUpdate) {
   if (!Number.isInteger(update.number) || update.number <= 0) throw new Error('학생 번호는 1 이상의 정수여야 합니다.');
   if (!Number.isInteger(update.balance) || update.balance < 0) throw new Error('잔액은 0 이상의 정수여야 합니다.');
   if (update.status !== 'ACTIVE' && update.status !== 'INACTIVE') throw new Error('학생 상태가 올바르지 않습니다.');
+}
+
+function validateStudentBulkBalanceUpdate(update: StudentBulkBalanceUpdate) {
+  if (!Array.isArray(update.studentIds) || update.studentIds.length === 0) throw new Error('선택된 학생이 없습니다.');
+  if (update.mode !== 'set' && update.mode !== 'add' && update.mode !== 'subtract') throw new Error('일괄 작업 방식이 올바르지 않습니다.');
+  if (!Number.isInteger(update.amount) || update.amount < 0) throw new Error('금액은 0 이상의 정수여야 합니다.');
 }
 
 function validateProductId(productId: string) {

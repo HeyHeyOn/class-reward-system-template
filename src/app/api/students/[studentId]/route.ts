@@ -1,5 +1,5 @@
 import { createConfiguredSheetsReader, createConfiguredSheetsStore } from '@/server/googleSheets';
-import { getStudentById, updateStudentDetails } from '@/server/sheetsRepository';
+import { deleteStudent, getStudentById, updateStudentDetails } from '@/server/sheetsRepository';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,6 +40,21 @@ export async function PATCH(request: Request, context: RouteContext) {
     return Response.json(student);
   } catch (error) {
     const message = error instanceof Error ? error.message : '학생 정보를 저장하지 못했습니다.';
+
+    return Response.json({ error: message }, { status: 400 });
+  }
+}
+
+
+export async function DELETE(request: Request, context: RouteContext) {
+  try {
+    const { studentId } = await context.params;
+    const store = await createConfiguredSheetsStore(request);
+    const result = await deleteStudent(store, decodeURIComponent(studentId));
+
+    return Response.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '학생을 삭제하지 못했습니다.';
 
     return Response.json({ error: message }, { status: 400 });
   }

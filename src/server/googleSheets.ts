@@ -69,6 +69,41 @@ export class GoogleSheetsStore implements SheetsStore {
     }
   }
 
+  async deleteRow(sheetName: SheetName, rowNumber: number): Promise<void> {
+    if (rowNumber <= 1) throw new Error('헤더 행은 삭제할 수 없습니다.');
+    const sheets = await createSheetsClient(this.request);
+    const sheetId = await this.getSheetId(sheetName);
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: this.spreadsheetId,
+      requestBody: {
+        requests: [
+          {
+            deleteDimension: {
+              range: {
+                sheetId,
+                dimension: 'ROWS',
+                startIndex: rowNumber - 1,
+                endIndex: rowNumber,
+              },
+            },
+          },
+        ],
+      },
+    });
+  }
+
+  private async getSheetId(sheetName: SheetName): Promise<number> {
+    const sheets = await createSheetsClient(this.request);
+    const response = await sheets.spreadsheets.get({
+      spreadsheetId: this.spreadsheetId,
+      fields: 'sheets.properties(sheetId,title)',
+    });
+    const sheet = response.data.sheets?.find((item) => item.properties?.title === sheetName);
+    const sheetId = sheet?.properties?.sheetId;
+    if (sheetId === undefined || sheetId === null) throw new Error(`${sheetName} 시트를 찾을 수 없습니다.`);
+    return sheetId;
+  }
+
   private async createSheet(sheetName: SheetName): Promise<void> {
     const sheets = await createSheetsClient(this.request);
     await sheets.spreadsheets.batchUpdate({

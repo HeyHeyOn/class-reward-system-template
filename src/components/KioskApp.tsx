@@ -256,13 +256,14 @@ export function KioskApp() {
   }
 
   return (
-    <main data-testid="kiosk-shell" className="min-h-screen overflow-y-auto bg-[#dbeaf6] p-3 text-slate-950 sm:p-4 md:p-6 lg:h-screen lg:overflow-hidden">
-      <section data-testid="kiosk-content" className="mx-auto flex min-h-full w-full max-w-[900px] flex-col gap-3 sm:gap-4 lg:h-full">
+    <main data-testid="kiosk-shell" className="min-h-screen overflow-y-auto bg-[#dbeaf6] p-2 text-slate-950 sm:p-3 md:p-4 lg:h-screen lg:overflow-hidden">
+      <section data-testid="kiosk-content" className="mx-auto grid min-h-full w-full max-w-[1240px] gap-3 lg:h-full lg:grid-rows-[auto_minmax(0,1fr)]">
         <header className="relative rounded-[1.5rem] border border-slate-300/70 bg-white px-4 py-3 text-center shadow-sm sm:rounded-[1.75rem] sm:py-4">
           <h1 className="pr-11 text-3xl font-black tracking-tight sm:pr-0 sm:text-4xl md:text-5xl">학급 매점</h1>
         </header>
 
-        <section className="flex min-h-[420px] flex-col rounded-[1.5rem] border border-slate-300/70 bg-white/85 p-3 shadow-sm sm:rounded-[1.75rem] sm:p-4 lg:min-h-0 lg:flex-[3]">
+        <div className="grid min-h-0 gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(340px,1fr)]">
+          <section className="flex min-h-[420px] flex-col rounded-[1.5rem] border border-slate-300/70 bg-white/85 p-3 shadow-sm sm:rounded-[1.75rem] sm:p-4 lg:min-h-0">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-2xl font-black">상품 목록</h2>
             <p className="rounded-full bg-sky-100 px-3 py-1 text-sm font-black text-sky-700">
@@ -271,14 +272,14 @@ export function KioskApp() {
           </div>
 
           <div data-testid="product-scroll-block" className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 md:grid-cols-4 xl:grid-cols-5">
               {products.map((product) => (
                 <button
                   key={product.productId}
                   onClick={() => addToCart(product.productId)}
                   disabled={!product.isActive || product.stock <= 0}
                   aria-label={`${product.name} ${formatCurrency(product.price, currencyUnit)} 담기`}
-                  className="rounded-[1.1rem] border border-slate-300 bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-[1rem] border border-slate-300 bg-white p-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 sm:p-3"
                 >
                   <p className="text-xs font-black">{product.category || '기타'}</p>
                   <div className="mt-2 flex aspect-[4/3] items-center justify-center bg-slate-200 text-5xl text-white">
@@ -289,7 +290,7 @@ export function KioskApp() {
                       <span aria-hidden="true">▵</span>
                     )}
                   </div>
-                  <p className="mt-2 truncate text-lg font-black">{product.name}</p>
+                  <p className="mt-2 truncate text-base font-black sm:text-lg">{product.name}</p>
                   <div className="mt-1 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-2">
                     <p className="text-lg font-black sm:text-xl">{formatCurrency(product.price, currencyUnit)}</p>
                     <p className="rounded-full bg-sky-100 px-2 py-1 text-xs font-black text-slate-700">재고 {product.stock}</p>
@@ -298,9 +299,9 @@ export function KioskApp() {
               ))}
             </div>
           </div>
-        </section>
+          </section>
 
-        <section className="flex min-h-[260px] flex-col rounded-[1.5rem] border border-slate-300/70 bg-white/90 p-3 shadow-sm sm:rounded-[1.75rem] sm:p-4 lg:min-h-0 lg:flex-[1.35]">
+          <section className="flex min-h-[260px] flex-col rounded-[1.5rem] border border-slate-300/70 bg-white/90 p-3 shadow-sm sm:rounded-[1.75rem] sm:p-4 lg:min-h-0">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-2xl font-black">장바구니 ({cartDetails.length})</h2>
             <button
@@ -362,7 +363,8 @@ export function KioskApp() {
               QR 결제
             </button>
           </div>
-        </section>
+          </section>
+        </div>
       </section>
 
       {paymentStep ? (

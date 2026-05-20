@@ -6,6 +6,9 @@ import {
   getProducts,
   getStudentById,
   getStudents,
+  bulkAdjustStudentBalances,
+  deleteProduct,
+  deleteStudent,
   updateProductDetails,
   updateStudentDetails,
 } from '@/server/sheetsRepository';
@@ -191,6 +194,55 @@ describe('sheets repository', () => {
 
     expect(appended).toEqual([
       { sheetName: 'Products', values: ['P004', '간식쿠폰', '1000', '5', 'TRUE', '', '쿠폰', '4'] },
+    ]);
+  });
+
+  it('deletes student and product rows by located sheet row number', async () => {
+    const deletedRows: Array<{ sheetName: string; rowNumber: number }> = [];
+    const fakeStore = {
+      ...fakeReader,
+      async updateCell() {},
+      async appendRow() {},
+      async deleteRow(sheetName: 'Students' | 'Products', rowNumber: number) {
+        deletedRows.push({ sheetName, rowNumber });
+      },
+    };
+
+    await expect(deleteStudent(fakeStore, 'S001')).resolves.toEqual({ studentId: 'S001' });
+    await expect(deleteProduct(fakeStore, 'P001')).resolves.toEqual({ productId: 'P001' });
+
+    expect(deletedRows).toEqual([
+      { sheetName: 'Students', rowNumber: 2 },
+      { sheetName: 'Products', rowNumber: 3 },
+    ]);
+  });
+
+  it('bulk adjusts selected student balances with set/add/subtract modes', async () => {
+    const updates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
+    const fakeStore = {
+      ...fakeReader,
+      async updateCell(sheetName: 'Students' | 'Products', rowNumber: number, columnName: string, value: string | number) {
+        updates.push({ sheetName, rowNumber, columnName, value });
+      },
+      async appendRow() {},
+    };
+
+    await expect(bulkAdjustStudentBalances(fakeStore, { studentIds: ['S001', 'S002'], mode: 'add', amount: 500 })).resolves.toEqual([
+      { studentId: 'S001', balance: 4000 },
+      { studentId: 'S002', balance: 1700 },
+    ]);
+    await expect(bulkAdjustStudentBalances(fakeStore, { studentIds: ['S001'], mode: 'subtract', amount: 1000 })).resolves.toEqual([
+      { studentId: 'S001', balance: 2500 },
+    ]);
+    await expect(bulkAdjustStudentBalances(fakeStore, { studentIds: ['S002'], mode: 'set', amount: 9000 })).resolves.toEqual([
+      { studentId: 'S002', balance: 9000 },
+    ]);
+
+    expect(updates).toEqual([
+      { sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: 4000 },
+      { sheetName: 'Students', rowNumber: 3, columnName: 'balance', value: 1700 },
+      { sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: 2500 },
+      { sheetName: 'Students', rowNumber: 3, columnName: 'balance', value: 9000 },
     ]);
   });
 

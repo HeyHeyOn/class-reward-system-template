@@ -2,8 +2,14 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdminManagePage } from './AdminManagePage';
 
-const students = [{ studentId: 'S001', name: '김민준', number: 1, balance: 3200, status: 'ACTIVE' }];
-const products = [{ productId: 'P001', name: '연필', price: 300, stock: 19, isActive: true, category: '문구', sortOrder: 1 }];
+const students = [
+  { studentId: 'S001', name: '김민준', number: 1, balance: 3200, status: 'ACTIVE' },
+  { studentId: 'S002', name: '이서연', number: 2, balance: 1500, status: 'ACTIVE' },
+];
+const products = [
+  { productId: 'P001', name: '연필', price: 300, stock: 19, isActive: true, category: '문구', sortOrder: 1 },
+  { productId: 'P002', name: '지우개', price: 500, stock: 10, isActive: true, category: '문구', sortOrder: 2 },
+];
 
 function jsonResponse(payload: unknown, init?: ResponseInit) {
   return new Response(JSON.stringify(payload), {
@@ -20,17 +26,25 @@ describe('AdminManagePage', () => {
         const url = String(input);
 
         if (url === '/api/students') {
-          if (init?.method === 'POST') return jsonResponse({ studentId: 'S002', name: '이서연', number: 2, balance: 0, status: 'ACTIVE' });
+          if (init?.method === 'POST') return jsonResponse({ studentId: 'S003', name: '박도윤', number: 3, balance: 0, status: 'ACTIVE' });
           return jsonResponse(students);
         }
         if (url === '/api/products?includeInactive=1') return jsonResponse(products);
         if (url === '/api/settings' && init?.method === 'POST') return jsonResponse({ spreadsheetId: 'sheet-new', currencyUnit: '별', source: 'runtime' });
         if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', source: 'runtime' });
         if (url === '/api/products' && init?.method === 'POST') {
-          return jsonResponse({ productId: 'P002', name: '지우개', price: 500, stock: 10, isActive: true, category: '문구', sortOrder: 2 });
+          return jsonResponse({ productId: 'P003', name: '간식쿠폰', price: 1000, stock: 5, isActive: true, category: '쿠폰', sortOrder: 3 });
         }
         if (url === '/api/students/S001' && init?.method === 'PATCH') {
           return jsonResponse({ ...students[0], name: '김민준 수정', balance: 4000 });
+        }
+        if (url === '/api/students/S001' && init?.method === 'DELETE') return jsonResponse({ studentId: 'S001' });
+        if (url === '/api/products/P001' && init?.method === 'DELETE') return jsonResponse({ productId: 'P001' });
+        if (url === '/api/students/bulk' && init?.method === 'PATCH') {
+          return jsonResponse([
+            { studentId: 'S001', balance: 5000 },
+            { studentId: 'S002', balance: 5000 },
+          ]);
         }
         if (url === '/api/products/P001' && init?.method === 'PATCH') {
           return jsonResponse({ ...products[0], name: '연필 세트', price: 900 });
@@ -53,7 +67,7 @@ describe('AdminManagePage', () => {
     expect(screen.getByRole('tab', { name: '시트 설정' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: '학생 명단' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: '재고 관리' })).toBeTruthy();
-    expect(await screen.findByText('관리자 목록도 이 설정을 사용합니다: 학생 1명 · 상품 1개')).toBeTruthy();
+    expect(await screen.findByText('관리자 목록도 이 설정을 사용합니다: 학생 2명 · 상품 2개')).toBeTruthy();
     expect(screen.getByRole('link', { name: /학생 QR 출력/ }).getAttribute('href')).toBe('/admin/student-qrs');
     expect(screen.getByRole('link', { name: /결제 내역 확인/ }).getAttribute('href')).toBe('/admin/transactions');
     expect(screen.getByDisplayValue('별')).toBeTruthy();
@@ -64,7 +78,7 @@ describe('AdminManagePage', () => {
   it('reloads admin lists from the shared sheet after saving sheet settings', async () => {
     render(<AdminManagePage />);
 
-    await screen.findByText('관리자 목록도 이 설정을 사용합니다: 학생 1명 · 상품 1개');
+    await screen.findByText('관리자 목록도 이 설정을 사용합니다: 학생 2명 · 상품 2개');
     fireEvent.change(screen.getByLabelText('Google Sheets 주소 또는 시트 ID'), { target: { value: 'sheet-new' } });
     fireEvent.click(screen.getByRole('button', { name: '시트 ID 저장' }));
 
@@ -114,40 +128,72 @@ describe('AdminManagePage', () => {
     expect(await screen.findByText('P001 저장 완료')).toBeTruthy();
   });
 
+  it('supports dense selectable rows with bulk student balance editing and deletion', async () => {
+    const { container } = render(<AdminManagePage />);
+
+    fireEvent.click(await screen.findByRole('tab', { name: '학생 명단' }));
+    expect(await screen.findByDisplayValue('김민준')).toBeTruthy();
+    expect(container.querySelector('[data-testid="student-list"]')?.className).toContain('divide-y');
+
+    fireEvent.click(screen.getByLabelText('전체 학생 선택'));
+    fireEvent.change(screen.getByLabelText('선택 학생 금액'), { target: { value: '5000' } });
+    fireEvent.change(screen.getByLabelText('선택 학생 작업'), { target: { value: 'set' } });
+    fireEvent.click(screen.getByRole('button', { name: '선택 학생 재화 적용' }));
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith('/api/students/bulk', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentIds: ['S001', 'S002'], mode: 'set', amount: 5000 }),
+      });
+    });
+    expect(await screen.findByText('선택 학생 2명 수정 완료')).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText('S001 선택'));
+    fireEvent.click(screen.getByRole('button', { name: 'S001 삭제' }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/students/S001', { method: 'DELETE' }));
+
+    fireEvent.click(screen.getByRole('tab', { name: '재고 관리' }));
+    expect(await screen.findByDisplayValue('연필')).toBeTruthy();
+    expect(container.querySelector('[data-testid="product-list"]')?.className).toContain('divide-y');
+    fireEvent.click(screen.getByRole('button', { name: 'P001 삭제' }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/products/P001', { method: 'DELETE' }));
+  });
+
   it('creates new student and product rows through POST APIs', async () => {
     render(<AdminManagePage />);
 
     fireEvent.click(await screen.findByRole('tab', { name: '학생 명단' }));
     await screen.findByDisplayValue('김민준');
 
-    fireEvent.change(screen.getByLabelText('새 학생 ID'), { target: { value: 'S002' } });
-    fireEvent.change(screen.getByLabelText('새 학생 이름'), { target: { value: '이서연' } });
-    fireEvent.change(screen.getByLabelText('새 학생 번호'), { target: { value: '2' } });
+    fireEvent.change(screen.getByLabelText('새 학생 ID'), { target: { value: 'S003' } });
+    fireEvent.change(screen.getByLabelText('새 학생 이름'), { target: { value: '박도윤' } });
+    fireEvent.change(screen.getByLabelText('새 학생 번호'), { target: { value: '3' } });
     fireEvent.click(screen.getByRole('button', { name: '새 학생 추가' }));
 
     fireEvent.click(screen.getByRole('tab', { name: '재고 관리' }));
-    fireEvent.change(screen.getByLabelText('새 상품 ID'), { target: { value: 'P002' } });
-    fireEvent.change(screen.getByLabelText('새 상품명'), { target: { value: '지우개' } });
-    fireEvent.change(screen.getByLabelText('새 상품 가격'), { target: { value: '500' } });
-    fireEvent.change(screen.getByLabelText('새 상품 재고'), { target: { value: '10' } });
-    fireEvent.change(screen.getByLabelText('새 상품 카테고리'), { target: { value: '문구' } });
-    fireEvent.change(screen.getByLabelText('새 상품 정렬'), { target: { value: '2' } });
+    fireEvent.change(screen.getByLabelText('새 상품 ID'), { target: { value: 'P003' } });
+    fireEvent.change(screen.getByLabelText('새 상품명'), { target: { value: '간식쿠폰' } });
+    fireEvent.change(screen.getByLabelText('새 상품 가격'), { target: { value: '1000' } });
+    fireEvent.change(screen.getByLabelText('새 상품 재고'), { target: { value: '5' } });
+    fireEvent.change(screen.getByLabelText('새 상품 카테고리'), { target: { value: '쿠폰' } });
+    fireEvent.change(screen.getByLabelText('새 상품 정렬'), { target: { value: '3' } });
     fireEvent.click(screen.getByRole('button', { name: '새 상품 추가' }));
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith('/api/students', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId: 'S002', name: '이서연', number: 2, balance: 0, status: 'ACTIVE' }),
+        body: JSON.stringify({ studentId: 'S003', name: '박도윤', number: 3, balance: 0, status: 'ACTIVE' }),
       });
       expect(fetch).toHaveBeenCalledWith('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId: 'P002', name: '지우개', price: 500, stock: 10, isActive: true, category: '문구', sortOrder: 2 }),
+        body: JSON.stringify({ productId: 'P003', name: '간식쿠폰', price: 1000, stock: 5, isActive: true, category: '쿠폰', sortOrder: 3 }),
       });
     });
 
-    expect(await screen.findByText('S002 추가 완료')).toBeTruthy();
-    expect(await screen.findByText('P002 추가 완료')).toBeTruthy();
+    expect(await screen.findByText('S003 추가 완료')).toBeTruthy();
+    expect(await screen.findByText('P003 추가 완료')).toBeTruthy();
   });
 });
