@@ -116,7 +116,10 @@ describe('AdminManagePage', () => {
     expect(await screen.findByDisplayValue('연필')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('P001 상품명'), { target: { value: '연필 세트' } });
     fireEvent.change(screen.getByLabelText('P001 가격'), { target: { value: '900' } });
-    fireEvent.change(screen.getByLabelText('P001 이미지 주소'), { target: { value: 'https://example.com/new-pencil.png' } });
+    fireEvent.click(screen.getByRole('button', { name: 'P001 이미지 주소 편집' }));
+    expect(await screen.findByRole('dialog', { name: '이미지 주소 편집' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('이미지 주소 전체 입력'), { target: { value: 'https://example.com/new-pencil.png' } });
+    fireEvent.click(screen.getByRole('button', { name: '이미지 주소 적용' }));
     fireEvent.click(screen.getByRole('button', { name: 'P001 상품 저장' }));
 
     await waitFor(() => {
@@ -141,6 +144,12 @@ describe('AdminManagePage', () => {
     fireEvent.click(await screen.findByRole('tab', { name: '학생 명단' }));
     expect(await screen.findByDisplayValue('김민준')).toBeTruthy();
     expect(container.querySelector('[data-testid="student-list"]')?.className).toContain('divide-y');
+    const studentRow = container.querySelector('[data-testid="student-row"]');
+    expect(studentRow?.className).toContain('grid-cols-[24px_44px_minmax(3.8rem,1fr)_34px_48px_46px_38px_40px]');
+    expect(studentRow?.className).toContain('items-center');
+    expect(studentRow?.className).toContain('py-1');
+    expect(studentRow?.className).not.toContain('md:grid-cols');
+    expect(container.querySelector('[data-testid="student-name-field"]')?.className).toContain('sr-only');
 
     fireEvent.click(screen.getByLabelText('전체 학생 선택'));
     fireEvent.change(screen.getByLabelText('선택 학생 금액'), { target: { value: '5000' } });
@@ -168,6 +177,17 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByRole('tab', { name: '재고 관리' }));
     expect(await screen.findByDisplayValue('연필')).toBeTruthy();
     expect(container.querySelector('[data-testid="product-list"]')?.className).toContain('divide-y');
+    const productRow = container.querySelector('[data-testid="product-row"]');
+    expect(productRow?.className).toContain('grid-cols-[24px_30px_minmax(3rem,1fr)_32px_32px_36px_minmax(3rem,0.8fr)_28px_30px_34px_34px]');
+    expect(productRow?.className).toContain('items-center');
+    expect(productRow?.className).toContain('py-1');
+    expect(productRow?.className).not.toContain('md:grid-cols');
+    expect(container.querySelector('[data-testid="product-name-field"]')?.className).toContain('sr-only');
+    const imageButton = screen.getByRole('button', { name: 'P001 이미지 주소 편집' });
+    expect(imageButton.className).toContain('truncate');
+    fireEvent.click(imageButton);
+    expect(await screen.findByRole('dialog', { name: '이미지 주소 편집' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
     fireEvent.click(screen.getByLabelText('전체 상품 선택'));
     fireEvent.click(screen.getByRole('button', { name: '선택 상품 삭제' }));
     await waitFor(() => {

@@ -50,6 +50,7 @@ export function AdminManagePage() {
   const [message, setMessage] = useState('학생/상품 목록을 불러오는 중입니다.');
   const [newStudent, setNewStudent] = useState<NewStudentDraft>(EMPTY_STUDENT);
   const [newProduct, setNewProduct] = useState<NewProductDraft>(EMPTY_PRODUCT);
+  const [imageEditor, setImageEditor] = useState<{ productId: string; value: string } | null>(null);
 
   const loadLinkedSheetData = useCallback(async (options: { silent?: boolean; shouldApply?: () => boolean } = {}) => {
     const shouldApply = options.shouldApply ?? (() => true);
@@ -350,30 +351,27 @@ export function AdminManagePage() {
 
               <div data-testid="student-list" className="overflow-hidden rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
                 {students.map((student) => (
-                  <div className="grid gap-2 px-3 py-2 md:grid-cols-[32px_86px_minmax(110px,1fr)_74px_110px_96px_88px_70px] md:items-center" key={student.studentId}>
-                    <label className="flex items-center gap-2 text-sm font-black md:justify-center">
+                  <div data-testid="student-row" className="grid grid-cols-[24px_44px_minmax(3.8rem,1fr)_34px_48px_46px_38px_40px] items-center gap-0.5 px-1.5 py-1 text-[11px]" key={student.studentId}>
+                    <label className="flex items-center justify-center">
                       <input aria-label={`${student.studentId} 선택`} checked={selectedStudentIds.includes(student.studentId)} onChange={() => toggleStudent(student.studentId)} type="checkbox" />
-                      <span className="md:hidden">선택</span>
+                      <span className="sr-only">선택</span>
                     </label>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-black text-sky-700">{student.studentId}</p>
-                      <p className="text-xs font-bold text-slate-500 md:hidden">{student.number}번 · {student.name}</p>
-                    </div>
-                    <TextInput label={`${student.studentId} 이름`} value={student.name} onChange={(value) => updateStudent(student.studentId, { name: value })} compact />
-                    <NumberInput label={`${student.studentId} 번호`} value={student.number} onChange={(value) => updateStudent(student.studentId, { number: value })} compact />
-                    <NumberInput label={`${student.studentId} 잔액`} value={student.balance} onChange={(value) => updateStudent(student.studentId, { balance: value })} compact />
-                    <label className="block text-xs font-bold text-slate-700">
-                      <span className="md:sr-only">상태</span>
-                      <select aria-label={`${student.studentId} 상태`} className="w-full rounded-xl border border-slate-200 bg-white px-2 py-2 text-sm" onChange={(event) => updateStudent(student.studentId, { status: event.target.value as Student['status'] })} value={student.status}>
+                    <p className="min-w-0 truncate font-black text-sky-700">{student.studentId}</p>
+                    <TextInput dataTestId="student-name-field" label={`${student.studentId} 이름`} value={student.name} onChange={(value) => updateStudent(student.studentId, { name: value })} dense />
+                    <NumberInput label={`${student.studentId} 번호`} value={student.number} onChange={(value) => updateStudent(student.studentId, { number: value })} dense />
+                    <NumberInput label={`${student.studentId} 잔액`} value={student.balance} onChange={(value) => updateStudent(student.studentId, { balance: value })} dense />
+                    <label className="block min-w-0 text-xs font-bold text-slate-700">
+                      <span className="sr-only">상태</span>
+                      <select aria-label={`${student.studentId} 상태`} className="h-8 w-full rounded-lg border border-slate-200 bg-white px-1 text-xs" onChange={(event) => updateStudent(student.studentId, { status: event.target.value as Student['status'] })} value={student.status}>
                         <option value="ACTIVE">활성</option>
                         <option value="INACTIVE">비활성</option>
                       </select>
                     </label>
-                    <button aria-label={`${student.studentId} 학생 저장`} className="rounded-xl bg-slate-950 px-3 py-2 text-sm font-black text-white" onClick={() => saveStudent(student)} type="button">
+                    <button aria-label={`${student.studentId} 학생 저장`} className="h-8 rounded-lg bg-slate-950 px-1 text-xs font-black text-white" onClick={() => saveStudent(student)} type="button">
                       저장
                     </button>
-                    <button className="rounded-xl bg-rose-100 px-3 py-2 text-sm font-black text-rose-700" onClick={() => deleteStudentRow(student.studentId)} type="button">
-                      {student.studentId} 삭제
+                    <button aria-label={`${student.studentId} 학생 삭제`} className="h-8 rounded-lg bg-rose-100 px-1 text-xs font-black text-rose-700" onClick={() => deleteStudentRow(student.studentId)} type="button">
+                      삭제
                     </button>
                   </div>
                 ))}
@@ -413,30 +411,33 @@ export function AdminManagePage() {
               </div>
               <div data-testid="product-list" className="overflow-hidden rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
                 {products.map((product) => (
-                  <div className="grid gap-2 px-3 py-2 md:grid-cols-[32px_72px_minmax(110px,1fr)_82px_72px_90px_minmax(120px,1fr)_62px_70px_64px] md:items-center" key={product.productId}>
-                    <label className="flex items-center gap-2 text-sm font-black md:justify-center">
+                  <div data-testid="product-row" className="grid grid-cols-[24px_30px_minmax(3rem,1fr)_32px_32px_36px_minmax(3rem,0.8fr)_28px_30px_34px_34px] items-center gap-0.5 px-1.5 py-1 text-[11px]" key={product.productId}>
+                    <label className="flex items-center justify-center">
                       <input aria-label={`${product.productId} 선택`} checked={selectedProductIds.includes(product.productId)} onChange={() => toggleProduct(product.productId)} type="checkbox" />
-                      <span className="md:hidden">선택</span>
+                      <span className="sr-only">선택</span>
                     </label>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-black text-sky-700">{product.productId}</p>
-                      <p className="text-xs font-bold text-slate-500 md:hidden">{product.name} · 재고 {product.stock}</p>
-                    </div>
-                    <TextInput label={`${product.productId} 상품명`} value={product.name} onChange={(value) => updateProduct(product.productId, { name: value })} compact />
-                    <NumberInput label={`${product.productId} 가격`} value={product.price} onChange={(value) => updateProduct(product.productId, { price: value })} compact />
-                    <NumberInput label={`${product.productId} 재고`} value={product.stock} onChange={(value) => updateProduct(product.productId, { stock: value })} compact />
-                    <TextInput label={`${product.productId} 카테고리`} value={product.category ?? ''} onChange={(value) => updateProduct(product.productId, { category: value })} compact />
-                    <TextInput label={`${product.productId} 이미지 주소`} value={product.imageUrl ?? ''} onChange={(value) => updateProduct(product.productId, { imageUrl: value })} compact />
-                    <NumberInput label={`${product.productId} 정렬`} value={product.sortOrder} onChange={(value) => updateProduct(product.productId, { sortOrder: value })} compact />
-                    <label className="flex items-center justify-center gap-2 rounded-xl bg-sky-50 px-2 py-2 text-sm font-bold text-slate-700">
+                    <p className="min-w-0 truncate font-black text-sky-700">{product.productId}</p>
+                    <TextInput dataTestId="product-name-field" label={`${product.productId} 상품명`} value={product.name} onChange={(value) => updateProduct(product.productId, { name: value })} dense />
+                    <NumberInput label={`${product.productId} 가격`} value={product.price} onChange={(value) => updateProduct(product.productId, { price: value })} dense />
+                    <NumberInput label={`${product.productId} 재고`} value={product.stock} onChange={(value) => updateProduct(product.productId, { stock: value })} dense />
+                    <TextInput label={`${product.productId} 카테고리`} value={product.category ?? ''} onChange={(value) => updateProduct(product.productId, { category: value })} dense />
+                    <button
+                      aria-label={`${product.productId} 이미지 주소 편집`}
+                      className="h-8 min-w-0 truncate rounded-lg border border-slate-200 bg-white px-1 text-left text-[10px] font-bold text-slate-600"
+                      onClick={() => setImageEditor({ productId: product.productId, value: product.imageUrl ?? '' })}
+                      type="button"
+                    >
+                      {product.imageUrl ? 'URL' : '이미지'}
+                    </button>
+                    <NumberInput label={`${product.productId} 정렬`} value={product.sortOrder} onChange={(value) => updateProduct(product.productId, { sortOrder: value })} dense />
+                    <label className="flex h-8 items-center justify-center rounded-lg bg-sky-50 text-[10px] font-bold text-slate-700">
                       <input aria-label={`${product.productId} 판매중`} checked={product.isActive} onChange={(event) => updateProduct(product.productId, { isActive: event.target.checked })} type="checkbox" />
-                      판매
                     </label>
-                    <button aria-label={`${product.productId} 상품 저장`} className="rounded-xl bg-slate-950 px-3 py-2 text-sm font-black text-white" onClick={() => saveProduct(product)} type="button">
+                    <button aria-label={`${product.productId} 상품 저장`} className="h-8 rounded-lg bg-slate-950 px-1 text-[10px] font-black text-white" onClick={() => saveProduct(product)} type="button">
                       저장
                     </button>
-                    <button className="rounded-xl bg-rose-100 px-3 py-2 text-sm font-black text-rose-700 md:col-start-9" onClick={() => deleteProductRow(product.productId)} type="button">
-                      {product.productId} 삭제
+                    <button aria-label={`${product.productId} 상품 삭제`} className="h-8 rounded-lg bg-rose-100 px-1 text-[10px] font-black text-rose-700" onClick={() => deleteProductRow(product.productId)} type="button">
+                      삭제
                     </button>
                   </div>
                 ))}
@@ -445,6 +446,36 @@ export function AdminManagePage() {
           </section>
         ) : null}
       </section>
+      {imageEditor ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <section role="dialog" aria-modal="true" aria-label="이미지 주소 편집" className="w-full max-w-xl rounded-2xl bg-white p-4 shadow-2xl">
+            <h2 className="text-xl font-black">이미지 주소 편집</h2>
+            <p className="mt-1 text-sm font-bold text-slate-500">긴 이미지 URL은 여기에서 편하게 붙여넣고 수정합니다.</p>
+            <label className="mt-4 block text-sm font-bold text-slate-700">
+              <span>이미지 주소 전체 입력</span>
+              <textarea
+                aria-label="이미지 주소 전체 입력"
+                className="mt-2 min-h-32 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm outline-none focus:border-sky-400"
+                value={imageEditor.value}
+                onChange={(event) => setImageEditor((current) => current ? { ...current, value: event.target.value } : current)}
+              />
+            </label>
+            <div className="mt-4 flex gap-2">
+              <button type="button" className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700" onClick={() => setImageEditor(null)}>취소</button>
+              <button
+                type="button"
+                className="flex-1 rounded-xl bg-sky-500 py-3 font-black text-white"
+                onClick={() => {
+                  updateProduct(imageEditor.productId, { imageUrl: imageEditor.value });
+                  setImageEditor(null);
+                }}
+              >
+                이미지 주소 적용
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }
@@ -477,20 +508,30 @@ function SectionCard({ title, description, children, compact = false }: { title:
   );
 }
 
-function TextInput({ label, value, onChange, compact = false }: { label: string; value: string; onChange: (value: string) => void; compact?: boolean }) {
+function TextInput({ label, value, onChange, compact = false, dense = false, dataTestId }: { label: string; value: string; onChange: (value: string) => void; compact?: boolean; dense?: boolean; dataTestId?: string }) {
+  const visibleLabel = label.replace(/^새 |^[SP]\d+ /, '');
+  const inputClass = dense
+    ? 'h-8 w-full rounded-lg border border-slate-200 bg-white px-1 text-[11px] outline-none transition focus:border-sky-400'
+    : `mt-1 w-full rounded-xl border border-slate-200 bg-white px-2 outline-none transition focus:border-sky-400 ${compact ? 'py-2 text-sm' : 'py-3'}`;
+
   return (
-    <label className="block text-xs font-bold text-slate-700">
-      <span>{label.replace(/^새 |^[SP]\d+ /, '')}</span>
-      <input aria-label={label} className={`mt-1 w-full rounded-xl border border-slate-200 bg-white px-2 outline-none transition focus:border-sky-400 ${compact ? 'py-2 text-sm' : 'py-3'}`} onChange={(event) => onChange(event.target.value)} value={value} />
+    <label className="block min-w-0 text-xs font-bold text-slate-700">
+      <span data-testid={dataTestId} className={dense ? 'sr-only' : undefined}>{visibleLabel}</span>
+      <input aria-label={label} className={inputClass} onChange={(event) => onChange(event.target.value)} value={value} />
     </label>
   );
 }
 
-function NumberInput({ label, value, onChange, compact = false }: { label: string; value: number; onChange: (value: number) => void; compact?: boolean }) {
+function NumberInput({ label, value, onChange, compact = false, dense = false }: { label: string; value: number; onChange: (value: number) => void; compact?: boolean; dense?: boolean }) {
+  const visibleLabel = label.replace(/^새 |^[SP]\d+ /, '');
+  const inputClass = dense
+    ? 'h-8 w-full rounded-lg border border-slate-200 bg-white px-1 text-[11px] outline-none transition focus:border-sky-400'
+    : `mt-1 w-full rounded-xl border border-slate-200 bg-white px-2 outline-none transition focus:border-sky-400 ${compact ? 'py-2 text-sm' : 'py-3'}`;
+
   return (
-    <label className="block text-xs font-bold text-slate-700">
-      <span>{label.replace(/^새 |^[SP]\d+ /, '')}</span>
-      <input aria-label={label} className={`mt-1 w-full rounded-xl border border-slate-200 bg-white px-2 outline-none transition focus:border-sky-400 ${compact ? 'py-2 text-sm' : 'py-3'}`} onChange={(event) => onChange(Number(event.target.value))} type="number" value={value} />
+    <label className="block min-w-0 text-xs font-bold text-slate-700">
+      <span className={dense ? 'sr-only' : undefined}>{visibleLabel}</span>
+      <input aria-label={label} className={inputClass} onChange={(event) => onChange(Number(event.target.value))} type="number" value={value} />
     </label>
   );
 }
