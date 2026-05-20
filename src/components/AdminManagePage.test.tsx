@@ -31,8 +31,8 @@ describe('AdminManagePage', () => {
           return jsonResponse(students);
         }
         if (url === '/api/products?includeInactive=1') return jsonResponse(products);
-        if (url === '/api/settings' && init?.method === 'POST') return jsonResponse({ spreadsheetId: 'sheet-new', currencyUnit: '별', appTitle: '햇살반 매점', source: 'runtime' });
-        if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', source: 'runtime' });
+        if (url === '/api/settings' && init?.method === 'POST') return jsonResponse({ spreadsheetId: 'sheet-new', currencyUnit: '별', appTitle: '햇살반 매점', themeColor: 'purple', source: 'runtime' });
+        if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', themeColor: 'blue', source: 'runtime' });
         if (url === '/api/products' && init?.method === 'POST') {
           return jsonResponse({ productId: 'P003', name: '간식쿠폰', price: 1000, stock: 5, isActive: true, imageUrl: 'https://example.com/snack.png', category: '쿠폰', sortOrder: 3 });
         }
@@ -75,6 +75,7 @@ describe('AdminManagePage', () => {
     expect(screen.getByRole('link', { name: /결제 내역 확인/ }).getAttribute('href')).toBe('/admin/transactions');
     expect(screen.getByDisplayValue('별')).toBeTruthy();
     expect(screen.getByDisplayValue('학급 매점')).toBeTruthy();
+    expect(screen.getByLabelText('테마 색상')).toBeTruthy();
     expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-[#dbeaf6]');
     expect(container.querySelector('[data-testid="admin-tabs"]')?.className).toContain('rounded-[1.5rem]');
   });
@@ -91,7 +92,7 @@ describe('AdminManagePage', () => {
       expect(fetch).toHaveBeenCalledWith('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ spreadsheetIdOrUrl: 'sheet-new', currencyUnit: '별', appTitle: '햇살반 매점' }),
+        body: JSON.stringify({ spreadsheetIdOrUrl: 'sheet-new', currencyUnit: '별', appTitle: '햇살반 매점', themeColor: 'blue' }),
       });
       expect(fetch).toHaveBeenCalledWith('/api/students', { cache: 'no-store' });
       expect(fetch).toHaveBeenCalledWith('/api/products?includeInactive=1', { cache: 'no-store' });

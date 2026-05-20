@@ -6,6 +6,7 @@ type SettingsResponse = {
   spreadsheetId: string;
   currencyUnit: string;
   appTitle: string;
+  themeColor: string;
   source: 'runtime' | 'env' | 'unset';
   adminPasswordConfigured?: boolean;
 };
@@ -20,6 +21,7 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
   const [spreadsheetIdOrUrl, setSpreadsheetIdOrUrl] = useState('');
   const [currencyUnit, setCurrencyUnit] = useState('원');
   const [appTitle, setAppTitle] = useState('학급 매점');
+  const [themeColor, setThemeColor] = useState('blue');
   const [currentSettings, setCurrentSettings] = useState<SettingsResponse | null>(null);
   const [message, setMessage] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
@@ -38,6 +40,7 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
         setSpreadsheetIdOrUrl(settings.spreadsheetId);
         setCurrencyUnit(settings.currencyUnit ?? '원');
         setAppTitle(settings.appTitle ?? '학급 매점');
+        setThemeColor(settings.themeColor ?? 'blue');
       }
     }
 
@@ -59,7 +62,7 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
       const response = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ spreadsheetIdOrUrl, currencyUnit, appTitle, adminPassword: adminPassword.trim() || undefined }),
+        body: JSON.stringify({ spreadsheetIdOrUrl, currencyUnit, appTitle, themeColor, adminPassword: adminPassword.trim() || undefined }),
       });
       const payload = (await response.json()) as SettingsResponse | { error: string };
 
@@ -72,6 +75,7 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
       setSpreadsheetIdOrUrl(payload.spreadsheetId);
       setCurrencyUnit(payload.currencyUnit);
       setAppTitle(payload.appTitle);
+      setThemeColor(payload.themeColor ?? 'blue');
       if (adminPassword.trim()) {
         setSavedAdminPassword(adminPassword.trim());
         setAdminPassword('');
@@ -126,6 +130,23 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
         />
       </label>
 
+
+      <label className="mt-4 block">
+        <span className="text-sm font-bold text-slate-700">테마 색상</span>
+        <select
+          aria-label="테마 색상"
+          value={themeColor}
+          onChange={(event) => setThemeColor(event.target.value)}
+          className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg font-bold outline-none transition focus:border-amber-500 focus:bg-white"
+        >
+          <option value="blue">파랑</option>
+          <option value="pink">분홍</option>
+          <option value="yellow">노랑</option>
+          <option value="green">초록</option>
+          <option value="purple">보라</option>
+        </select>
+      </label>
+
       <label className="mt-4 block">
         <span className="text-sm font-bold text-slate-700">관리자 암호 설정</span>
         <input
@@ -157,6 +178,7 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
         <p>설정 출처: {currentSettings?.source ?? '확인 중'}</p>
         <p>화폐 단위: {currentSettings?.currencyUnit ?? currencyUnit}</p>
         <p>매점 제목: {currentSettings?.appTitle ?? appTitle}</p>
+        <p>테마 색상: {currentSettings?.themeColor ?? themeColor}</p>
         <p>관리자 암호: {currentSettings?.adminPasswordConfigured ? '설정됨' : '미설정'}</p>
         <p className="mt-2 font-bold text-sky-800">
           관리자 목록도 이 설정을 사용합니다: 학생 {linkedStudentCount ?? 0}명 · 상품 {linkedProductCount ?? 0}개

@@ -2,10 +2,13 @@ import type { SheetsReader, SheetsStore } from '@/server/sheetsRepository';
 import { getSheetSettings, saveSheetSetting } from '@/server/sheetsRepository';
 import { saveAdminPassword } from '@/server/adminAuth';
 
+export type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple';
+
 export type AppSettings = {
   spreadsheetId: string;
   currencyUnit: string;
   appTitle: string;
+  themeColor: ThemeColor;
   source: 'sheet' | 'env' | 'unset';
   adminPasswordConfigured?: boolean;
 };
@@ -23,6 +26,7 @@ type SaveSettingsOptions = {
   currencyUnit?: string;
   adminPassword?: string;
   appTitle?: string;
+  themeColor?: string;
   env?: SettingsEnv;
 };
 
@@ -34,6 +38,8 @@ const SHEETS_URL_ID_PATTERN = /\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/;
 const PLAIN_ID_PATTERN = /^[a-zA-Z0-9-_]{8,}$/;
 const DEFAULT_CURRENCY_UNIT = '원';
 const DEFAULT_APP_TITLE = '학급 매점';
+const DEFAULT_THEME_COLOR: ThemeColor = 'blue';
+const THEME_COLORS = new Set<ThemeColor>(['blue', 'pink', 'yellow', 'green', 'purple']);
 
 export function extractSpreadsheetId(value: string): string | null {
   const trimmed = value.trim();
@@ -70,7 +76,7 @@ export async function getAppSettings(options: SettingsOptions = {}): Promise<App
   const envSpreadsheetId = getEnvSpreadsheetId(options.env ?? process.env);
 
   if (!envSpreadsheetId) {
-    return { spreadsheetId: '', currencyUnit: DEFAULT_CURRENCY_UNIT, appTitle: DEFAULT_APP_TITLE, source: 'unset' };
+    return { spreadsheetId: '', currencyUnit: DEFAULT_CURRENCY_UNIT, appTitle: DEFAULT_APP_TITLE, themeColor: DEFAULT_THEME_COLOR, source: 'unset' };
   }
 
   if (options.settingsReader) {
@@ -80,18 +86,19 @@ export async function getAppSettings(options: SettingsOptions = {}): Promise<App
         spreadsheetId: envSpreadsheetId,
         currencyUnit: normalizeCurrencyUnit(sheetSettings.currencyUnit),
         appTitle: normalizeAppTitle(sheetSettings.appTitle),
+        themeColor: normalizeThemeColor(sheetSettings.themeColor),
         source: 'sheet',
         ...(sheetSettings.adminPasswordHash ? { adminPasswordConfigured: true } : {}),
       };
     } catch (error) {
       if (isMissingSettingsSheetError(error)) {
-        return { spreadsheetId: envSpreadsheetId, currencyUnit: DEFAULT_CURRENCY_UNIT, appTitle: DEFAULT_APP_TITLE, source: 'env' };
+        return { spreadsheetId: envSpreadsheetId, currencyUnit: DEFAULT_CURRENCY_UNIT, appTitle: DEFAULT_APP_TITLE, themeColor: DEFAULT_THEME_COLOR, source: 'env' };
       }
       throw error;
     }
   }
 
-  return { spreadsheetId: envSpreadsheetId, currencyUnit: DEFAULT_CURRENCY_UNIT, appTitle: DEFAULT_APP_TITLE, source: 'env' };
+  return { spreadsheetId: envSpreadsheetId, currencyUnit: DEFAULT_CURRENCY_UNIT, appTitle: DEFAULT_APP_TITLE, themeColor: DEFAULT_THEME_COLOR, source: 'env' };
 }
 
 export async function saveAppSettings(options: SaveSettingsOptions): Promise<AppSettings> {
@@ -112,8 +119,10 @@ export async function saveAppSettings(options: SaveSettingsOptions): Promise<App
 
   const currencyUnit = normalizeCurrencyUnit(options.currencyUnit);
   const appTitle = normalizeAppTitle(options.appTitle);
+  const themeColor = normalizeThemeColor(options.themeColor);
   await saveSheetSetting(options.settingsStore, { key: 'currencyUnit', value: currencyUnit });
   await saveSheetSetting(options.settingsStore, { key: 'appTitle', value: appTitle });
+  await saveSheetSetting(options.settingsStore, { key: 'themeColor', value: themeColor });
   if (options.adminPassword?.trim()) {
     await saveAdminPassword(options.settingsStore, options.adminPassword);
   }
@@ -122,6 +131,7 @@ export async function saveAppSettings(options: SaveSettingsOptions): Promise<App
     spreadsheetId: configuredSpreadsheetId,
     currencyUnit,
     appTitle,
+    themeColor,
     source: 'sheet',
     ...(options.adminPassword?.trim() ? { adminPasswordConfigured: true } : {}),
   };
@@ -142,4 +152,10 @@ export function normalizeAppTitle(value: unknown): string {
 function isMissingSettingsSheetError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   return /Settings|Unable to parse range|not found/i.test(error.message);
+}
+
+export function normalizeThemeColor(value: unknown): ThemeColor {
+  if (typeof value !== 'string') return DEFAULT_THEME_COLOR;
+  const trimmed = value.trim() as ThemeColor;
+  return THEME_COLORS.has(trimmed) ? trimmed : DEFAULT_THEME_COLOR;
 }

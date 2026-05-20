@@ -26,7 +26,7 @@ describe('settings', () => {
   it('uses env spreadsheet id and default currency unit when Settings sheet is unavailable', async () => {
     const settings = await getAppSettings({ env: { GOOGLE_SHEET_ID: 'env-sheet-id' } });
 
-    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '원', appTitle: '학급 매점', source: 'env' });
+    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '원', appTitle: '학급 매점', themeColor: 'blue', source: 'env' });
   });
 
   it('reads currency unit and app title from Settings sheet when present', async () => {
@@ -39,12 +39,13 @@ describe('settings', () => {
             ['key', 'value'],
             ['currencyUnit', '별'],
             ['appTitle', '햇살반 매점'],
+            ['themeColor', 'purple'],
           ];
         },
       },
     });
 
-    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '별', appTitle: '햇살반 매점', source: 'sheet' });
+    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '별', appTitle: '햇살반 매점', themeColor: 'purple', source: 'sheet' });
   });
 
   it('saves currency unit and app title to Settings sheet and rejects changing deployment spreadsheet id', async () => {
@@ -72,12 +73,16 @@ describe('settings', () => {
         spreadsheetIdOrUrl: 'env-sheet-id',
         currencyUnit: '달란트',
         appTitle: '햇살반 매점',
+        themeColor: 'green',
         env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
       }),
-    ).resolves.toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '달란트', appTitle: '햇살반 매점', source: 'sheet' });
+    ).resolves.toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '달란트', appTitle: '햇살반 매점', themeColor: 'green', source: 'sheet' });
 
     expect(updates).toEqual([{ sheetName: 'Settings', rowNumber: 2, columnName: 'value', value: '달란트' }]);
-    expect(appends).toEqual([{ sheetName: 'Settings', values: ['appTitle', '햇살반 매점'] }]);
+    expect(appends).toEqual([
+      { sheetName: 'Settings', values: ['appTitle', '햇살반 매점'] },
+      { sheetName: 'Settings', values: ['themeColor', 'green'] },
+    ]);
 
     await expect(
       saveAppSettings({
