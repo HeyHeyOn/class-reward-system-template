@@ -1,9 +1,9 @@
 import { createConfiguredSheetsStore } from '@/server/googleSheets';
 import { getTransactions } from '@/server/sheetsRepository';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const store = await createConfiguredSheetsStore();
+    const store = await createConfiguredSheetsStore(request);
     const transactions = await getTransactions(store);
 
     return Response.json(transactions);

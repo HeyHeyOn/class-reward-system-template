@@ -10,7 +10,7 @@ type RouteContext = {
 export async function PATCH(request: Request, context: RouteContext) {
   try {
     const { productId } = await context.params;
-    const store = await createConfiguredSheetsStore();
+    const store = await createConfiguredSheetsStore(request);
     const payload = await request.json();
     const product = await updateProductDetails(store, decodeURIComponent(productId), {
       name: String(payload.name ?? ''),

@@ -7,7 +7,7 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const includeInactive = url.searchParams.get('includeInactive') === '1';
-    const reader = await createConfiguredSheetsReader();
+    const reader = await createConfiguredSheetsReader(request);
     const products = includeInactive ? await getProducts(reader) : await getActiveProducts(reader);
 
     return Response.json(products);
@@ -20,7 +20,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const store = await createConfiguredSheetsStore();
+    const store = await createConfiguredSheetsStore(request);
     const payload = await request.json();
     const product = await createProduct(store, {
       productId: String(payload.productId ?? ''),

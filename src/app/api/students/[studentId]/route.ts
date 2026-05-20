@@ -7,10 +7,10 @@ type RouteContext = {
   params: Promise<{ studentId: string }>;
 };
 
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
   try {
     const { studentId } = await context.params;
-    const reader = await createConfiguredSheetsReader();
+    const reader = await createConfiguredSheetsReader(request);
     const student = await getStudentById(reader, decodeURIComponent(studentId));
 
     if (!student) {
@@ -28,7 +28,7 @@ export async function GET(_request: Request, context: RouteContext) {
 export async function PATCH(request: Request, context: RouteContext) {
   try {
     const { studentId } = await context.params;
-    const store = await createConfiguredSheetsStore();
+    const store = await createConfiguredSheetsStore(request);
     const payload = await request.json();
     const student = await updateStudentDetails(store, decodeURIComponent(studentId), {
       name: String(payload.name ?? ''),

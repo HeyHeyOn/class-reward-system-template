@@ -14,6 +14,35 @@
 
 Vercel Project Settings → Environment Variables에 아래 값을 등록합니다.
 
+### Google 계정 로그인 방식 권장
+
+서비스 계정을 만들지 않고 각 선생님 Google 계정 권한으로 Sheets를 수정하려면 아래 값을 사용합니다.
+
+```text
+GOOGLE_SHEET_ID=스프레드시트 ID
+GOOGLE_CLIENT_ID=Google OAuth 클라이언트 ID
+GOOGLE_CLIENT_SECRET=Google OAuth 클라이언트 보안 비밀
+AUTH_SECRET=임의의 긴 랜덤 문자열
+```
+
+Google Cloud OAuth 클라이언트의 승인된 리디렉션 URI에는 배포 주소 기준 아래 값을 등록합니다.
+
+```text
+https://배포주소/api/google/callback
+```
+
+예:
+
+```text
+https://class-store-six.vercel.app/api/google/callback
+```
+
+Google 로그인 사용자는 해당 스프레드시트에 편집 권한이 있어야 합니다.
+
+### 기존 서비스 계정 방식도 지원
+
+기존처럼 서비스 계정을 쓰려면 아래 값을 사용합니다.
+
 ```text
 GOOGLE_SHEET_ID=스프레드시트 ID
 GOOGLE_SERVICE_ACCOUNT_EMAIL=서비스계정 이메일
@@ -21,13 +50,26 @@ GOOGLE_PRIVATE_KEY=서비스계정 private key
 ADMIN_PASSWORD=관리자 페이지 비밀번호
 ```
 
+`GOOGLE_CLIENT_ID`와 `GOOGLE_CLIENT_SECRET`이 설정되어 있으면 Google 계정 로그인 방식이 우선 적용됩니다.
+
 주의:
 
 - `GOOGLE_PRIVATE_KEY`는 채팅이나 문서에 노출하지 마세요.
-- Vercel에는 실제 줄바꿈 대신 `\n`이 포함된 형태로 넣어도 앱에서 처리합니다.
+- `GOOGLE_CLIENT_SECRET`, `AUTH_SECRET`, `GOOGLE_PRIVATE_KEY`는 채팅이나 공개 문서에 노출하지 마세요.
+- Vercel에는 실제 줄바꿈 대신 `\\n`이 포함된 형태로 넣어도 앱에서 처리합니다.
 - `ADMIN_PASSWORD`가 없으면 관리자 페이지 보호가 꺼집니다. 운영 배포에서는 반드시 설정하세요.
 
 ## Google Sheets 권한
+
+### Google 계정 로그인 방식
+
+1. Google Cloud에서 OAuth 클라이언트를 만듭니다.
+2. 승인된 리디렉션 URI에 `https://배포주소/api/google/callback`을 등록합니다.
+3. Vercel에 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AUTH_SECRET`을 등록합니다.
+4. 사용하는 선생님 Google 계정에 학급 매점 스프레드시트 **편집자** 권한을 부여합니다.
+5. `/admin/login`에서 Google 계정으로 로그인합니다.
+
+### 서비스 계정 방식
 
 1. Google Cloud에서 서비스 계정을 만듭니다.
 2. 서비스 계정 이메일을 복사합니다.

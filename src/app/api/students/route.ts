@@ -3,9 +3,9 @@ import { createStudent, getStudents } from '@/server/sheetsRepository';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const reader = await createConfiguredSheetsReader();
+    const reader = await createConfiguredSheetsReader(request);
     const students = await getStudents(reader);
 
     return Response.json(students);
@@ -18,7 +18,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const store = await createConfiguredSheetsStore();
+    const store = await createConfiguredSheetsStore(request);
     const payload = await request.json();
     const student = await createStudent(store, {
       studentId: String(payload.studentId ?? ''),

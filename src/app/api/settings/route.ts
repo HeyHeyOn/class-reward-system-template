@@ -3,8 +3,8 @@ import { createConfiguredSheetsStore, verifySpreadsheetAccess } from '@/server/g
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-  const store = await createConfiguredSheetsStore();
+export async function GET(request: Request) {
+  const store = await createConfiguredSheetsStore(request);
   const settings = await getAppSettings({ settingsReader: store });
 
   return Response.json(settings);
@@ -23,8 +23,8 @@ export async function POST(request: Request) {
       return Response.json({ error: validation.message }, { status: 400 });
     }
 
-    await verifySpreadsheetAccess(validation.spreadsheetId);
-    const store = await createConfiguredSheetsStore();
+    await verifySpreadsheetAccess(validation.spreadsheetId, request);
+    const store = await createConfiguredSheetsStore(request);
     const settings = await saveAppSettings({
       settingsStore: store,
       spreadsheetIdOrUrl: validation.spreadsheetId,

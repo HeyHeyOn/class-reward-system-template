@@ -1,5 +1,6 @@
 import { google } from 'googleapis';
 import { getEnvSpreadsheetId } from '@/server/settings';
+import { createUserSheetsAuth, isGoogleOAuthEnabled } from '@/server/googleOAuth';
 import type { SheetName, SheetsStore } from '@/server/sheetsRepository';
 
 const SHEET_RANGES: Record<SheetName, string> = {
@@ -11,10 +12,10 @@ const SHEET_RANGES: Record<SheetName, string> = {
 };
 
 export class GoogleSheetsStore implements SheetsStore {
-  constructor(private readonly spreadsheetId: string) {}
+  constructor(private readonly spreadsheetId: string, private readonly request?: Request) {}
 
   async getRows(sheetName: SheetName): Promise<string[][]> {
-    const sheets = await createSheetsClient();
+    const sheets = await createSheetsClient(this.request);
     try {
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId: this.spreadsheetId,
@@ -36,7 +37,7 @@ export class GoogleSheetsStore implements SheetsStore {
       throw new Error(`${sheetName} 시트에 ${columnName} 컬럼이 없습니다.`);
     }
 
-    const sheets = await createSheetsClient();
+    const sheets = await createSheetsClient(this.request);
     await sheets.spreadsheets.values.update({
       spreadsheetId: this.spreadsheetId,
       range: `${sheetName}!${columnIndexToLetter(columnIndex)}${rowNumber}`,
@@ -46,7 +47,7 @@ export class GoogleSheetsStore implements SheetsStore {
   }
 
   async appendRow(sheetName: SheetName, values: string[]): Promise<void> {
-    const sheets = await createSheetsClient();
+    const sheets = await createSheetsClient(this.request);
     try {
       await sheets.spreadsheets.values.append({
         spreadsheetId: this.spreadsheetId,
@@ -69,7 +70,7 @@ export class GoogleSheetsStore implements SheetsStore {
   }
 
   private async createSheet(sheetName: SheetName): Promise<void> {
-    const sheets = await createSheetsClient();
+    const sheets = await createSheetsClient(this.request);
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId: this.spreadsheetId,
       requestBody: {
@@ -79,19 +80,19 @@ export class GoogleSheetsStore implements SheetsStore {
   }
 }
 
-export async function createConfiguredSheetsStore(): Promise<GoogleSheetsStore> {
+export async function createConfiguredSheetsStore(request?: Request): Promise<GoogleSheetsStore> {
   const spreadsheetId = getEnvSpreadsheetId();
 
   if (!spreadsheetId) {
     throw new Error('Google Sheets ID가 설정되지 않았습니다. GOOGLE_SHEET_ID 환경변수를 설정해 주세요.');
   }
 
-  return new GoogleSheetsStore(spreadsheetId);
+  return new GoogleSheetsStore(spreadsheetId, request);
 }
 
-export async function verifySpreadsheetAccess(spreadsheetId: string): Promise<void> {
+export async function verifySpreadsheetAccess(spreadsheetId: string, request?: Request): Promise<void> {
   try {
-    const store = new GoogleSheetsStore(spreadsheetId);
+    const store = new GoogleSheetsStore(spreadsheetId, request);
     await Promise.all([store.getRows('Students'), store.getRows('Products')]);
   } catch (error) {
     const detail = error instanceof Error ? error.message : '알 수 없는 오류';
@@ -101,7 +102,16 @@ export async function verifySpreadsheetAccess(spreadsheetId: string): Promise<vo
 
 export const createConfiguredSheetsReader = createConfiguredSheetsStore;
 
-async function createSheetsClient() {
+async function createSheetsClient(request?: Request) {
+  if (request && isGoogleOAuthEnabled()) {
+    const origin = new URL(request.url).origin;
+    const userAuth = createUserSheetsAuth(request, origin);
+    if (!userAuth) {
+      throw new Error('Google 계정 로그인이 필요합니다. 관리자 로그인 화면에서 Google로 로그인해 주세요.');
+    }
+    return google.sheets({ version: 'v4', auth: userAuth.auth });
+  }
+
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const privateKey = process.env.GOOGLE_PRIVATE_KEY?.split(String.raw`\n`).join('\n');
 

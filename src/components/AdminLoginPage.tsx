@@ -7,7 +7,7 @@ export function AdminLoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [password, setPassword] = useState('');
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState(searchParams.get('error') ?? '');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -38,9 +38,22 @@ export function AdminLoginPage() {
       <section className="mx-auto max-w-md rounded-[2rem] bg-white p-8 shadow-[0_20px_60px_rgba(37,49,63,0.15)]">
         <p className="text-sm font-bold uppercase tracking-[0.3em] text-[#4f8fba]">Class Store Admin</p>
         <h1 className="mt-3 text-3xl font-black">관리자 로그인</h1>
-        <p className="mt-3 text-sm text-[#627184]">Vercel 운영 환경에서는 관리자 비밀번호로 관리 페이지를 보호합니다.</p>
+        <p className="mt-3 text-sm text-[#627184]">Google 계정으로 로그인하면 서비스 계정 없이 본인 권한으로 Google Sheets를 연동합니다. 기존 관리자 비밀번호 방식도 그대로 사용할 수 있습니다.</p>
 
-        <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
+        <a
+          className="mt-8 flex w-full items-center justify-center rounded-2xl bg-[#4285f4] px-5 py-3 text-center font-black text-white shadow-[0_10px_30px_rgba(66,133,244,0.25)]"
+          href="/api/google/login"
+        >
+          Google 계정으로 로그인
+        </a>
+
+        <div className="my-6 flex items-center gap-3 text-xs font-bold uppercase tracking-[0.2em] text-[#94a3b8]">
+          <span className="h-px flex-1 bg-[#e2e8f0]" />
+          <span>또는</span>
+          <span className="h-px flex-1 bg-[#e2e8f0]" />
+        </div>
+
+        <form className="space-y-4" onSubmit={handleSubmit}>
           <label className="block text-sm font-bold" htmlFor="admin-password">관리자 비밀번호</label>
           <input
             id="admin-password"
