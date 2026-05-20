@@ -36,6 +36,20 @@ describe('AdminManagePage', () => {
         if (url === '/api/products' && init?.method === 'POST') {
           return jsonResponse({ productId: 'P003', name: '간식쿠폰', price: 1000, stock: 5, isActive: true, imageUrl: 'https://example.com/snack.png', category: '쿠폰', sortOrder: 3 });
         }
+        if (url === '/api/students/batch' && init?.method === 'PATCH') {
+          return jsonResponse([
+            { ...students[0], name: '김민준 수정', balance: 4000 },
+            students[1],
+          ]);
+        }
+        if (url === '/api/students/batch' && init?.method === 'DELETE') return jsonResponse({ studentIds: ['S001', 'S002'] });
+        if (url === '/api/products/batch' && init?.method === 'PATCH') {
+          return jsonResponse([
+            { ...products[0], name: '연필 세트', price: 900, imageUrl: 'https://example.com/new-pencil.png' },
+            products[1],
+          ]);
+        }
+        if (url === '/api/products/batch' && init?.method === 'DELETE') return jsonResponse({ productIds: ['P001', 'P002'] });
         if (url === '/api/students/S001' && init?.method === 'PATCH') {
           return jsonResponse({ ...students[0], name: '김민준 수정', balance: 4000 });
         }
@@ -137,27 +151,29 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByRole('button', { name: '재고 목록 일괄 저장' }));
 
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith('/api/students/S001', {
+      expect(fetch).toHaveBeenCalledWith('/api/students/batch', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: '김민준 수정', number: 1, balance: 4000, status: 'ACTIVE' }),
+        body: JSON.stringify({
+          students: [
+            { studentId: 'S001', name: '김민준 수정', number: 1, balance: 4000, status: 'ACTIVE' },
+            { studentId: 'S002', name: '이서연', number: 2, balance: 1500, status: 'ACTIVE' },
+          ],
+        }),
       });
-      expect(fetch).toHaveBeenCalledWith('/api/students/S002', {
+      expect(fetch).toHaveBeenCalledWith('/api/products/batch', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: '이서연', number: 2, balance: 1500, status: 'ACTIVE' }),
-      });
-      expect(fetch).toHaveBeenCalledWith('/api/products/P001', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: '연필 세트', price: 900, stock: 19, isActive: true, imageUrl: 'https://example.com/new-pencil.png', category: '문구', sortOrder: 1 }),
-      });
-      expect(fetch).toHaveBeenCalledWith('/api/products/P002', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: '지우개', price: 500, stock: 10, isActive: true, imageUrl: '', category: '문구', sortOrder: 2 }),
+        body: JSON.stringify({
+          products: [
+            { productId: 'P001', name: '연필 세트', price: 900, stock: 19, isActive: true, imageUrl: 'https://example.com/new-pencil.png', category: '문구', sortOrder: 1 },
+            { productId: 'P002', name: '지우개', price: 500, stock: 10, isActive: true, imageUrl: '', category: '문구', sortOrder: 2 },
+          ],
+        }),
       });
     });
+    expect(fetch).not.toHaveBeenCalledWith('/api/students/S001', expect.objectContaining({ method: 'PATCH' }));
+    expect(fetch).not.toHaveBeenCalledWith('/api/products/P001', expect.objectContaining({ method: 'PATCH' }));
 
     await waitFor(() => expect(window.alert).toHaveBeenCalledWith('재고 목록 2개 저장 완료'));
   });
@@ -191,8 +207,11 @@ describe('AdminManagePage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '선택 학생 삭제' }));
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith('/api/students/S001', { method: 'DELETE' });
-      expect(fetch).toHaveBeenCalledWith('/api/students/S002', { method: 'DELETE' });
+      expect(fetch).toHaveBeenCalledWith('/api/students/batch', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentIds: ['S001', 'S002'] }),
+      });
     });
     await waitFor(() => expect(window.alert).toHaveBeenCalledWith('선택 학생 2명 삭제 완료'));
     expect(window.alert).not.toHaveBeenCalledWith('S001 삭제 완료');
@@ -215,8 +234,11 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByLabelText('전체 상품 선택'));
     fireEvent.click(screen.getByRole('button', { name: '선택 상품 삭제' }));
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith('/api/products/P001', { method: 'DELETE' });
-      expect(fetch).toHaveBeenCalledWith('/api/products/P002', { method: 'DELETE' });
+      expect(fetch).toHaveBeenCalledWith('/api/products/batch', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productIds: ['P001', 'P002'] }),
+      });
     });
     await waitFor(() => expect(window.alert).toHaveBeenCalledWith('선택 상품 2개 삭제 완료'));
     expect(window.alert).not.toHaveBeenCalledWith('P001 삭제 완료');

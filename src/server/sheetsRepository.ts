@@ -12,10 +12,18 @@ export type SheetsReader = {
   getRows(sheetName: SheetName): Promise<string[][]>;
 };
 
+export type SheetCellUpdate = {
+  rowNumber: number;
+  columnName: string;
+  value: string | number;
+};
+
 export type SheetsStore = SheetsReader & {
   updateCell(sheetName: SheetName, rowNumber: number, columnName: string, value: string | number): Promise<void>;
+  updateCells?(sheetName: SheetName, updates: SheetCellUpdate[]): Promise<void>;
   appendRow(sheetName: SheetName, values: string[]): Promise<void>;
   deleteRow?(sheetName: SheetName, rowNumber: number): Promise<void>;
+  deleteRows?(sheetName: SheetName, rowNumbers: number[]): Promise<void>;
 };
 
 export type StudentRecord = {
@@ -59,6 +67,14 @@ export type StudentBulkBalanceUpdate = {
   studentIds: string[];
   mode: StudentBulkBalanceMode;
   amount: number;
+};
+
+export type StudentBatchUpdate = StudentUpdate & {
+  studentId: string;
+};
+
+export type ProductBatchUpdate = ProductUpdate & {
+  productId: string;
 };
 
 const REQUIRED_STUDENT_COLUMNS = ['studentId', 'name', 'number', 'balance', 'status'];
@@ -249,6 +265,37 @@ export async function updateStudentDetails(store: SheetsStore, studentId: string
   return { studentId, name, number: update.number, balance: update.balance, status: update.status };
 }
 
+export async function updateStudentDetailsBatch(store: SheetsStore, updates: StudentBatchUpdate[]): Promise<Student[]> {
+  if (!Array.isArray(updates) || updates.length === 0) throw new Error('저장할 학생이 없습니다.');
+
+  const rows = await store.getRows('Students');
+  const recordsById = getStudentRecordsFromRows(rows);
+  const normalized = updates.map((update) => ({ ...update, studentId: update.studentId.trim() }));
+  const duplicateIds = findDuplicates(normalized.map((update) => update.studentId));
+  if (duplicateIds.length > 0) throw new Error(`중복된 학생 ID가 있습니다: ${duplicateIds.join(', ')}`);
+
+  const cellUpdates: SheetCellUpdate[] = [];
+  const students: Student[] = [];
+  for (const update of normalized) {
+    validateStudentId(update.studentId);
+    validateStudentUpdate(update);
+    const record = recordsById.get(update.studentId);
+    if (!record) throw new Error(`학생을 찾을 수 없습니다: ${update.studentId}`);
+
+    const name = update.name.trim();
+    cellUpdates.push(
+      { rowNumber: record.rowNumber, columnName: 'name', value: name },
+      { rowNumber: record.rowNumber, columnName: 'number', value: update.number },
+      { rowNumber: record.rowNumber, columnName: 'balance', value: update.balance },
+      { rowNumber: record.rowNumber, columnName: 'status', value: update.status },
+    );
+    students.push({ studentId: update.studentId, name, number: update.number, balance: update.balance, status: update.status });
+  }
+
+  await applyCellUpdates(store, 'Students', cellUpdates);
+  return students;
+}
+
 export async function deleteStudent(store: SheetsStore, studentId: string): Promise<{ studentId: string }> {
   const record = await getStudentRecordById(store, studentId);
   if (!record) throw new Error('학생을 찾을 수 없습니다.');
@@ -256,6 +303,20 @@ export async function deleteStudent(store: SheetsStore, studentId: string): Prom
 
   await store.deleteRow('Students', record.rowNumber);
   return { studentId };
+}
+
+export async function deleteStudentsBatch(store: SheetsStore, studentIds: string[]): Promise<{ studentIds: string[] }> {
+  const uniqueIds = normalizeUniqueIds(studentIds);
+  if (uniqueIds.length === 0) throw new Error('선택된 학생이 없습니다.');
+  if (!store.deleteRows) throw new Error('현재 Sheets 저장소가 여러 행 삭제를 지원하지 않습니다.');
+
+  const rows = await store.getRows('Students');
+  const recordsById = getStudentRecordsFromRows(rows);
+  const missingIds = uniqueIds.filter((studentId) => !recordsById.has(studentId));
+  if (missingIds.length > 0) throw new Error(`학생을 찾을 수 없습니다: ${missingIds.join(', ')}`);
+
+  await store.deleteRows('Students', uniqueIds.map((studentId) => recordsById.get(studentId)!.rowNumber));
+  return { studentIds: uniqueIds };
 }
 
 export async function bulkAdjustStudentBalances(
@@ -270,6 +331,7 @@ export async function bulkAdjustStudentBalances(
   if (missingIds.length > 0) throw new Error(`학생을 찾을 수 없습니다: ${missingIds.join(', ')}`);
 
   const results: Array<{ studentId: string; balance: number }> = [];
+  const cellUpdates: SheetCellUpdate[] = [];
   for (const record of records) {
     if (!record) continue;
     const balance =
@@ -280,10 +342,11 @@ export async function bulkAdjustStudentBalances(
           : record.student.balance - update.amount;
 
     if (balance < 0) throw new Error(`${record.student.studentId} 학생의 잔액은 0보다 작아질 수 없습니다.`);
-    await store.updateCell('Students', record.rowNumber, 'balance', balance);
+    cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'balance', value: balance });
     results.push({ studentId: record.student.studentId, balance });
   }
 
+  await applyCellUpdates(store, 'Students', cellUpdates);
   return results;
 }
 
@@ -355,6 +418,51 @@ export async function updateProductDetails(store: SheetsStore, productId: string
   };
 }
 
+export async function updateProductDetailsBatch(store: SheetsStore, updates: ProductBatchUpdate[]): Promise<Product[]> {
+  if (!Array.isArray(updates) || updates.length === 0) throw new Error('저장할 상품이 없습니다.');
+
+  const recordsById = new Map((await getProductRecords(store)).map((record) => [record.product.productId, record]));
+  const normalized = updates.map((update) => ({ ...update, productId: update.productId.trim() }));
+  const duplicateIds = findDuplicates(normalized.map((update) => update.productId));
+  if (duplicateIds.length > 0) throw new Error(`중복된 상품 ID가 있습니다: ${duplicateIds.join(', ')}`);
+
+  const cellUpdates: SheetCellUpdate[] = [];
+  const products: Product[] = [];
+  for (const update of normalized) {
+    validateProductId(update.productId);
+    validateProductUpdate(update);
+    const record = recordsById.get(update.productId);
+    if (!record) throw new Error(`상품을 찾을 수 없습니다: ${update.productId}`);
+
+    const name = update.name.trim();
+    const imageUrl = update.imageUrl?.trim() || undefined;
+    const category = update.category?.trim() || undefined;
+    cellUpdates.push(
+      { rowNumber: record.rowNumber, columnName: 'name', value: name },
+      { rowNumber: record.rowNumber, columnName: 'price', value: update.price },
+      { rowNumber: record.rowNumber, columnName: 'stock', value: update.stock },
+      { rowNumber: record.rowNumber, columnName: 'isActive', value: update.isActive ? 'TRUE' : 'FALSE' },
+      { rowNumber: record.rowNumber, columnName: 'imageUrl', value: imageUrl ?? '' },
+      { rowNumber: record.rowNumber, columnName: 'category', value: category ?? '' },
+      { rowNumber: record.rowNumber, columnName: 'sortOrder', value: update.sortOrder },
+    );
+    products.push({
+      ...record.product,
+      productId: update.productId,
+      name,
+      price: update.price,
+      stock: update.stock,
+      isActive: update.isActive,
+      imageUrl,
+      category,
+      sortOrder: update.sortOrder,
+    });
+  }
+
+  await applyCellUpdates(store, 'Products', cellUpdates);
+  return products.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+}
+
 export async function deleteProduct(store: SheetsStore, productId: string): Promise<{ productId: string }> {
   const record = (await getProductRecords(store)).find(({ product }) => product.productId === productId);
   if (!record) throw new Error('상품을 찾을 수 없습니다.');
@@ -362,6 +470,60 @@ export async function deleteProduct(store: SheetsStore, productId: string): Prom
 
   await store.deleteRow('Products', record.rowNumber);
   return { productId };
+}
+
+export async function deleteProductsBatch(store: SheetsStore, productIds: string[]): Promise<{ productIds: string[] }> {
+  const uniqueIds = normalizeUniqueIds(productIds);
+  if (uniqueIds.length === 0) throw new Error('선택된 상품이 없습니다.');
+  if (!store.deleteRows) throw new Error('현재 Sheets 저장소가 여러 행 삭제를 지원하지 않습니다.');
+
+  const recordsById = new Map((await getProductRecords(store)).map((record) => [record.product.productId, record]));
+  const missingIds = uniqueIds.filter((productId) => !recordsById.has(productId));
+  if (missingIds.length > 0) throw new Error(`상품을 찾을 수 없습니다: ${missingIds.join(', ')}`);
+
+  await store.deleteRows('Products', uniqueIds.map((productId) => recordsById.get(productId)!.rowNumber));
+  return { productIds: uniqueIds };
+}
+
+function getStudentRecordsFromRows(rows: string[][]): Map<string, StudentRecord> {
+  const [headers, ...dataRows] = rows;
+  const records = new Map<string, StudentRecord>();
+  if (!headers) return records;
+
+  const headerIndex = createHeaderIndex(headers);
+  assertRequiredColumns(headerIndex, REQUIRED_STUDENT_COLUMNS, 'Students');
+  dataRows.forEach((row, index) => {
+    const student = parseStudentRow(row, headerIndex);
+    if (student) records.set(student.studentId, { student, rowNumber: index + 2 });
+  });
+  return records;
+}
+
+async function applyCellUpdates(store: SheetsStore, sheetName: SheetName, updates: SheetCellUpdate[]): Promise<void> {
+  if (updates.length === 0) return;
+  if (store.updateCells) {
+    await store.updateCells(sheetName, updates);
+    return;
+  }
+
+  for (const update of updates) {
+    await store.updateCell(sheetName, update.rowNumber, update.columnName, update.value);
+  }
+}
+
+function normalizeUniqueIds(ids: string[]): string[] {
+  if (!Array.isArray(ids)) return [];
+  return Array.from(new Set(ids.map((id) => String(id).trim()).filter(Boolean)));
+}
+
+function findDuplicates(ids: string[]): string[] {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const id of ids) {
+    if (seen.has(id)) duplicates.add(id);
+    seen.add(id);
+  }
+  return Array.from(duplicates);
 }
 
 function validateStudentId(studentId: string) {

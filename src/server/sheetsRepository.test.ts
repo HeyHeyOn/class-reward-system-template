@@ -8,9 +8,13 @@ import {
   getStudents,
   bulkAdjustStudentBalances,
   deleteProduct,
+  deleteProductsBatch,
   deleteStudent,
+  deleteStudentsBatch,
   updateProductDetails,
+  updateProductDetailsBatch,
   updateStudentDetails,
+  updateStudentDetailsBatch,
 } from '@/server/sheetsRepository';
 
 const sheetRows = {
@@ -142,6 +146,46 @@ describe('sheets repository', () => {
     ]);
   });
 
+  it('batch updates students through one store call', async () => {
+    const batches: Array<{ sheetName: string; updates: Array<{ rowNumber: number; columnName: string; value: string | number }> }> = [];
+    const fakeStore = {
+      ...fakeReader,
+      async updateCell() {
+        throw new Error('single-cell update should not be used');
+      },
+      async updateCells(sheetName: 'Students' | 'Products', updates: Array<{ rowNumber: number; columnName: string; value: string | number }>) {
+        batches.push({ sheetName, updates });
+      },
+      async appendRow() {},
+    };
+
+    await expect(
+      updateStudentDetailsBatch(fakeStore, [
+        { studentId: 'S001', name: '김민준 수정', number: 11, balance: 4000, status: 'INACTIVE' },
+        { studentId: 'S002', name: '이서연', number: 22, balance: 9000, status: 'ACTIVE' },
+      ]),
+    ).resolves.toEqual([
+      { studentId: 'S001', name: '김민준 수정', number: 11, balance: 4000, status: 'INACTIVE' },
+      { studentId: 'S002', name: '이서연', number: 22, balance: 9000, status: 'ACTIVE' },
+    ]);
+
+    expect(batches).toEqual([
+      {
+        sheetName: 'Students',
+        updates: [
+          { rowNumber: 2, columnName: 'name', value: '김민준 수정' },
+          { rowNumber: 2, columnName: 'number', value: 11 },
+          { rowNumber: 2, columnName: 'balance', value: 4000 },
+          { rowNumber: 2, columnName: 'status', value: 'INACTIVE' },
+          { rowNumber: 3, columnName: 'name', value: '이서연' },
+          { rowNumber: 3, columnName: 'number', value: 22 },
+          { rowNumber: 3, columnName: 'balance', value: 9000 },
+          { rowNumber: 3, columnName: 'status', value: 'ACTIVE' },
+        ],
+      },
+    ]);
+  });
+
   it('appends a new student row with QR value matching studentId', async () => {
     const appended: Array<{ sheetName: string; values: string[] }> = [];
     const fakeStore = {
@@ -218,6 +262,26 @@ describe('sheets repository', () => {
     ]);
   });
 
+  it('batch deletes students and products by located sheet row numbers', async () => {
+    const deletedBatches: Array<{ sheetName: string; rowNumbers: number[] }> = [];
+    const fakeStore = {
+      ...fakeReader,
+      async updateCell() {},
+      async appendRow() {},
+      async deleteRows(sheetName: 'Students' | 'Products', rowNumbers: number[]) {
+        deletedBatches.push({ sheetName, rowNumbers });
+      },
+    };
+
+    await expect(deleteStudentsBatch(fakeStore, ['S001', 'S002', 'S001'])).resolves.toEqual({ studentIds: ['S001', 'S002'] });
+    await expect(deleteProductsBatch(fakeStore, ['P001', 'P002'])).resolves.toEqual({ productIds: ['P001', 'P002'] });
+
+    expect(deletedBatches).toEqual([
+      { sheetName: 'Students', rowNumbers: [2, 3] },
+      { sheetName: 'Products', rowNumbers: [3, 2] },
+    ]);
+  });
+
   it('bulk adjusts selected student balances with set/add/subtract modes', async () => {
     const updates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
     const fakeStore = {
@@ -286,6 +350,52 @@ describe('sheets repository', () => {
       { sheetName: 'Products', rowNumber: 3, columnName: 'imageUrl', value: 'https://example.com/new-pencil.png' },
       { sheetName: 'Products', rowNumber: 3, columnName: 'category', value: '문구류' },
       { sheetName: 'Products', rowNumber: 3, columnName: 'sortOrder', value: 5 },
+    ]);
+  });
+
+  it('batch updates products through one store call', async () => {
+    const batches: Array<{ sheetName: string; updates: Array<{ rowNumber: number; columnName: string; value: string | number }> }> = [];
+    const fakeStore = {
+      ...fakeReader,
+      async updateCell() {
+        throw new Error('single-cell update should not be used');
+      },
+      async updateCells(sheetName: 'Students' | 'Products', updates: Array<{ rowNumber: number; columnName: string; value: string | number }>) {
+        batches.push({ sheetName, updates });
+      },
+      async appendRow() {},
+    };
+
+    await expect(
+      updateProductDetailsBatch(fakeStore, [
+        { productId: 'P001', name: '연필 세트', price: 900, stock: 12, isActive: false, imageUrl: 'https://example.com/new-pencil.png', category: '문구류', sortOrder: 5 },
+        { productId: 'P002', name: '지우개 세트', price: 600, stock: 8, isActive: true, imageUrl: '', category: '문구', sortOrder: 2 },
+      ]),
+    ).resolves.toEqual([
+      { productId: 'P002', name: '지우개 세트', price: 600, stock: 8, isActive: true, imageUrl: undefined, category: '문구', sortOrder: 2 },
+      { productId: 'P001', name: '연필 세트', price: 900, stock: 12, isActive: false, imageUrl: 'https://example.com/new-pencil.png', category: '문구류', sortOrder: 5 },
+    ]);
+
+    expect(batches).toEqual([
+      {
+        sheetName: 'Products',
+        updates: [
+          { rowNumber: 3, columnName: 'name', value: '연필 세트' },
+          { rowNumber: 3, columnName: 'price', value: 900 },
+          { rowNumber: 3, columnName: 'stock', value: 12 },
+          { rowNumber: 3, columnName: 'isActive', value: 'FALSE' },
+          { rowNumber: 3, columnName: 'imageUrl', value: 'https://example.com/new-pencil.png' },
+          { rowNumber: 3, columnName: 'category', value: '문구류' },
+          { rowNumber: 3, columnName: 'sortOrder', value: 5 },
+          { rowNumber: 2, columnName: 'name', value: '지우개 세트' },
+          { rowNumber: 2, columnName: 'price', value: 600 },
+          { rowNumber: 2, columnName: 'stock', value: 8 },
+          { rowNumber: 2, columnName: 'isActive', value: 'TRUE' },
+          { rowNumber: 2, columnName: 'imageUrl', value: '' },
+          { rowNumber: 2, columnName: 'category', value: '문구' },
+          { rowNumber: 2, columnName: 'sortOrder', value: 2 },
+        ],
+      },
     ]);
   });
 });

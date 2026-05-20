@@ -30,19 +30,32 @@ export class GoogleSheetsStore implements SheetsStore {
   }
 
   async updateCell(sheetName: SheetName, rowNumber: number, columnName: string, value: string | number): Promise<void> {
+    await this.updateCells(sheetName, [{ rowNumber, columnName, value }]);
+  }
+
+  async updateCells(sheetName: SheetName, updates: Array<{ rowNumber: number; columnName: string; value: string | number }>): Promise<void> {
+    if (updates.length === 0) return;
     const headers = (await this.getRows(sheetName))[0] ?? [];
-    const columnIndex = headers.indexOf(columnName);
-
-    if (columnIndex === -1) {
-      throw new Error(`${sheetName} 시트에 ${columnName} 컬럼이 없습니다.`);
-    }
-
     const sheets = await createSheetsClient(this.request);
-    await sheets.spreadsheets.values.update({
+    const data = updates.map((update) => {
+      const columnIndex = headers.indexOf(update.columnName);
+
+      if (columnIndex === -1) {
+        throw new Error(`${sheetName} 시트에 ${update.columnName} 컬럼이 없습니다.`);
+      }
+
+      return {
+        range: `${sheetName}!${columnIndexToLetter(columnIndex)}${update.rowNumber}`,
+        values: [[update.value]],
+      };
+    });
+
+    await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: this.spreadsheetId,
-      range: `${sheetName}!${columnIndexToLetter(columnIndex)}${rowNumber}`,
-      valueInputOption: 'RAW',
-      requestBody: { values: [[value]] },
+      requestBody: {
+        valueInputOption: 'RAW',
+        data,
+      },
     });
   }
 
@@ -70,24 +83,29 @@ export class GoogleSheetsStore implements SheetsStore {
   }
 
   async deleteRow(sheetName: SheetName, rowNumber: number): Promise<void> {
-    if (rowNumber <= 1) throw new Error('헤더 행은 삭제할 수 없습니다.');
+    await this.deleteRows(sheetName, [rowNumber]);
+  }
+
+  async deleteRows(sheetName: SheetName, rowNumbers: number[]): Promise<void> {
+    const uniqueRows = Array.from(new Set(rowNumbers)).sort((a, b) => b - a);
+    if (uniqueRows.some((rowNumber) => rowNumber <= 1)) throw new Error('헤더 행은 삭제할 수 없습니다.');
+    if (uniqueRows.length === 0) return;
+
     const sheets = await createSheetsClient(this.request);
     const sheetId = await this.getSheetId(sheetName);
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId: this.spreadsheetId,
       requestBody: {
-        requests: [
-          {
-            deleteDimension: {
-              range: {
-                sheetId,
-                dimension: 'ROWS',
-                startIndex: rowNumber - 1,
-                endIndex: rowNumber,
-              },
+        requests: uniqueRows.map((rowNumber) => ({
+          deleteDimension: {
+            range: {
+              sheetId,
+              dimension: 'ROWS',
+              startIndex: rowNumber - 1,
+              endIndex: rowNumber,
             },
           },
-        ],
+        })),
       },
     });
   }

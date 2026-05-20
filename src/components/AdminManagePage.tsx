@@ -137,18 +137,22 @@ export function AdminManagePage() {
 
   async function saveAllStudents() {
     try {
-      const savedStudents: StudentDraft[] = [];
-      for (const student of students) {
-        const body = { name: student.name, number: student.number, balance: student.balance, status: student.status };
-        const response = await fetch(`/api/students/${encodeURIComponent(student.studentId)}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error ?? '학생 명단을 저장하지 못했습니다.');
-        savedStudents.push(payload);
-      }
+      const response = await fetch('/api/students/batch', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          students: students.map((student) => ({
+            studentId: student.studentId,
+            name: student.name,
+            number: student.number,
+            balance: student.balance,
+            status: student.status,
+          })),
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? '학생 명단을 저장하지 못했습니다.');
+      const savedStudents = payload as StudentDraft[];
       const savedMap = new Map(savedStudents.map((student) => [student.studentId, student]));
       setStudents((current) => current.map((student) => savedMap.get(student.studentId) ?? student));
       notify(`학생 명단 ${savedStudents.length}명 저장 완료`);
@@ -172,11 +176,22 @@ export function AdminManagePage() {
 
   async function deleteSelectedStudents() {
     if (selectedStudentIds.length === 0) return notify('선택된 학생이 없습니다.');
-    const count = selectedStudentIds.length;
-    for (const studentId of selectedStudentIds) {
-      await deleteStudentRow(studentId, { silent: true });
+    const idsToDelete = [...selectedStudentIds];
+    try {
+      const response = await fetch('/api/students/batch', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentIds: idsToDelete }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? '학생을 삭제하지 못했습니다.');
+      const deletedIds = Array.isArray(payload.studentIds) ? payload.studentIds : idsToDelete;
+      setStudents((current) => current.filter((student) => !deletedIds.includes(student.studentId)));
+      setSelectedStudentIds((current) => current.filter((id) => !deletedIds.includes(id)));
+      notify(`선택 학생 ${deletedIds.length}명 삭제 완료`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : '학생을 삭제하지 못했습니다.');
     }
-    notify(`선택 학생 ${count}명 삭제 완료`);
   }
 
   async function applyBulkStudentBalance() {
@@ -202,26 +217,25 @@ export function AdminManagePage() {
 
   async function saveAllProducts() {
     try {
-      const savedProducts: ProductDraft[] = [];
-      for (const product of products) {
-        const body = {
-          name: product.name,
-          price: product.price,
-          stock: product.stock,
-          isActive: product.isActive,
-          imageUrl: product.imageUrl ?? '',
-          category: product.category ?? '',
-          sortOrder: product.sortOrder,
-        };
-        const response = await fetch(`/api/products/${encodeURIComponent(product.productId)}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error ?? '재고 목록을 저장하지 못했습니다.');
-        savedProducts.push(payload);
-      }
+      const response = await fetch('/api/products/batch', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          products: products.map((product) => ({
+            productId: product.productId,
+            name: product.name,
+            price: product.price,
+            stock: product.stock,
+            isActive: product.isActive,
+            imageUrl: product.imageUrl ?? '',
+            category: product.category ?? '',
+            sortOrder: product.sortOrder,
+          })),
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? '재고 목록을 저장하지 못했습니다.');
+      const savedProducts = payload as ProductDraft[];
       const savedMap = new Map(savedProducts.map((product) => [product.productId, product]));
       setProducts((current) => current.map((product) => savedMap.get(product.productId) ?? product));
       notify(`재고 목록 ${savedProducts.length}개 저장 완료`);
@@ -245,11 +259,22 @@ export function AdminManagePage() {
 
   async function deleteSelectedProducts() {
     if (selectedProductIds.length === 0) return notify('선택된 상품이 없습니다.');
-    const count = selectedProductIds.length;
-    for (const productId of selectedProductIds) {
-      await deleteProductRow(productId, { silent: true });
+    const idsToDelete = [...selectedProductIds];
+    try {
+      const response = await fetch('/api/products/batch', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productIds: idsToDelete }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? '상품을 삭제하지 못했습니다.');
+      const deletedIds = Array.isArray(payload.productIds) ? payload.productIds : idsToDelete;
+      setProducts((current) => current.filter((product) => !deletedIds.includes(product.productId)));
+      setSelectedProductIds((current) => current.filter((id) => !deletedIds.includes(id)));
+      notify(`선택 상품 ${deletedIds.length}개 삭제 완료`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : '상품을 삭제하지 못했습니다.');
     }
-    notify(`선택 상품 ${count}개 삭제 완료`);
   }
 
   async function createNewStudent(event: FormEvent<HTMLFormElement>) {
