@@ -7,6 +7,9 @@ import {
   getStudentById,
   getStudents,
   bulkAdjustStudentBalances,
+  completeTaskForStudent,
+  createTask,
+  getTasks,
   deleteProduct,
   deleteProductsBatch,
   deleteStudent,
@@ -29,10 +32,19 @@ const sheetRows = {
     ['P001', '연필', '300', '20', 'TRUE', 'https://example.com/pencil.png', '문구', '1'],
     ['P003', '판매중지', '700', '10', 'FALSE', '', '문구', '3'],
   ],
+  Tasks: [
+    ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder'],
+    ['T002', '비활성 과제', '숨김', '2', '1', 'FALSE', '2'],
+    ['T001', '책 읽기', '책 10분 읽기', '5', '2', 'TRUE', '1'],
+  ],
+  TaskCompletions: [
+    ['completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note'],
+    ['TC-OLD', '2026-05-20T00:00:00.000Z', 'T001', 'S001', '김민준', '5', '3495', '3500', 'SUCCESS', ''],
+  ],
 };
 
 const fakeReader = {
-  async getRows(sheetName: 'Students' | 'Products') {
+  async getRows(sheetName: keyof typeof sheetRows) {
     return sheetRows[sheetName];
   },
 };
@@ -398,4 +410,49 @@ describe('sheets repository', () => {
       },
     ]);
   });
+
+  it('reads active tasks sorted by sort order', async () => {
+    await expect(getTasks(fakeReader)).resolves.toEqual([
+      { taskId: 'T001', title: '책 읽기', description: '책 10분 읽기', reward: 5, maxCompletionsPerStudent: 2, isActive: true, sortOrder: 1 },
+    ]);
+  });
+
+  it('creates task headers and appends a new task row', async () => {
+    const appended: Array<{ sheetName: string; values: string[] }> = [];
+    const fakeStore = {
+      async getRows(sheetName: keyof typeof sheetRows) { return sheetName === 'Tasks' ? [] : sheetRows[sheetName]; },
+      async updateCell() {},
+      async appendRow(sheetName: string, values: string[]) { appended.push({ sheetName, values }); },
+    };
+    await expect(createTask(fakeStore, { taskId: 'T003', title: '수학 학습지', description: '1장 풀기', reward: 10, maxCompletionsPerStudent: 1, isActive: true, sortOrder: 3 })).resolves.toMatchObject({ taskId: 'T003', title: '수학 학습지' });
+    expect(appended[0]).toEqual({ sheetName: 'Tasks', values: ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'createdAt', 'updatedAt'] });
+    expect(appended[1].sheetName).toBe('Tasks');
+    expect(appended[1].values.slice(0, 7)).toEqual(['T003', '수학 학습지', '1장 풀기', '10', '1', 'TRUE', '3']);
+  });
+
+  it('completes a task once, pays reward, and records completion', async () => {
+    const updates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
+    const appended: Array<{ sheetName: string; values: string[] }> = [];
+    const fakeStore = {
+      ...fakeReader,
+      async updateCell(sheetName: string, rowNumber: number, columnName: string, value: string | number) { updates.push({ sheetName, rowNumber, columnName, value }); },
+      async appendRow(sheetName: string, values: string[]) { appended.push({ sheetName, values }); },
+    };
+    await expect(completeTaskForStudent(fakeStore, 'T001', 'S001')).resolves.toMatchObject({ student: { studentId: 'S001', balance: 3505 }, completedCount: 2, remainingCompletions: 0 });
+    expect(updates).toContainEqual({ sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: 3505 });
+    expect(appended.some((row) => row.sheetName === 'TaskCompletions')).toBe(true);
+  });
+
+  it('rejects task completion after the per-student limit', async () => {
+    const fakeStore = {
+      async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'TaskCompletions') return [sheetRows.TaskCompletions[0], sheetRows.TaskCompletions[1], ['TC-OLD2', '2026-05-20T01:00:00.000Z', 'T001', 'S001', '김민준', '5', '3500', '3505', 'SUCCESS', '']];
+        return sheetRows[sheetName];
+      },
+      async updateCell() {},
+      async appendRow() {},
+    };
+    await expect(completeTaskForStudent(fakeStore, 'T001', 'S001')).rejects.toThrow('2번까지만');
+  });
+
 });

@@ -9,6 +9,8 @@ const SHEET_RANGES: Record<SheetName, string> = {
   Transactions: 'Transactions!A:Z',
   Adjustments: 'Adjustments!A:Z',
   Settings: 'Settings!A:Z',
+  Tasks: 'Tasks!A:Z',
+  TaskCompletions: 'TaskCompletions!A:Z',
 };
 
 export class GoogleSheetsStore implements SheetsStore {
@@ -24,7 +26,7 @@ export class GoogleSheetsStore implements SheetsStore {
 
       return normalizeRows(response.data.values ?? []);
     } catch (error) {
-      if (sheetName === 'Settings' && isMissingSheetError(error)) return [];
+      if (isAutoCreatableSheet(sheetName) && isMissingSheetError(error)) return [];
       throw error;
     }
   }
@@ -70,7 +72,7 @@ export class GoogleSheetsStore implements SheetsStore {
         requestBody: { values: [values] },
       });
     } catch (error) {
-      if (sheetName !== 'Settings' || !isMissingSheetError(error)) throw error;
+      if (!isAutoCreatableSheet(sheetName) || !isMissingSheetError(error)) throw error;
       await this.createSheet(sheetName);
       await sheets.spreadsheets.values.append({
         spreadsheetId: this.spreadsheetId,
@@ -192,6 +194,10 @@ function normalizeRows(rows: unknown[][]): string[][] {
 function isMissingSheetError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   return /Unable to parse range|not found|Requested entity was not found/i.test(error.message);
+}
+
+function isAutoCreatableSheet(sheetName: SheetName): boolean {
+  return sheetName === 'Settings' || sheetName === 'Tasks' || sheetName === 'TaskCompletions';
 }
 
 function columnIndexToLetter(index: number): string {

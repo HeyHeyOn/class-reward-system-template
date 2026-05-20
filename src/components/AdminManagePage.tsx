@@ -3,13 +3,14 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
-import type { Product, Student } from '@/domain/types';
+import type { ClassTask, Product, Student } from '@/domain/types';
 import { SettingsForm } from './SettingsForm';
 import { QrScanner } from './QrScanner';
 
 type StudentDraft = Student;
 type ProductDraft = Product;
-type AdminTab = 'settings' | 'students' | 'products' | 'currency';
+type TaskDraft = ClassTask;
+type AdminTab = 'settings' | 'students' | 'products' | 'tasks' | 'currency';
 type BulkMode = 'set' | 'add' | 'subtract';
 type CurrencyMode = 'add' | 'subtract';
 type CurrencyResult = {
@@ -41,11 +42,13 @@ type NewProductDraft = {
 
 const EMPTY_STUDENT: NewStudentDraft = { studentId: '', name: '', number: 1, balance: 0, status: 'ACTIVE' };
 const EMPTY_PRODUCT: NewProductDraft = { productId: '', name: '', price: 0, stock: 0, isActive: true, imageUrl: '', category: '', sortOrder: 1 };
+const EMPTY_TASK: TaskDraft = { taskId: '', title: '', description: '', reward: 0, maxCompletionsPerStudent: 1, isActive: true, sortOrder: 1 };
 
 const tabs: Array<{ id: AdminTab; label: string; description: string }> = [
   { id: 'settings', label: '시트 설정', description: 'Google Sheets 연결' },
   { id: 'students', label: '학생 명단', description: '잔액과 상태 관리' },
   { id: 'products', label: '재고 관리', description: '상품과 가격 관리' },
+  { id: 'tasks', label: '과제 설정', description: '은행 보상 과제' },
   { id: 'currency', label: '화폐 지급/회수', description: 'QR로 재화 조정' },
 ];
 
@@ -53,6 +56,7 @@ export function AdminManagePage() {
   const [activeTab, setActiveTab] = useState<AdminTab>('settings');
   const [students, setStudents] = useState<StudentDraft[]>([]);
   const [products, setProducts] = useState<ProductDraft[]>([]);
+  const [tasks, setTasks] = useState<TaskDraft[]>([]);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [bulkMode, setBulkMode] = useState<BulkMode>('set');
@@ -60,6 +64,7 @@ export function AdminManagePage() {
   const [message, setMessage] = useState('학생/상품 목록을 불러오는 중입니다.');
   const [newStudent, setNewStudent] = useState<NewStudentDraft>(EMPTY_STUDENT);
   const [newProduct, setNewProduct] = useState<NewProductDraft>(EMPTY_PRODUCT);
+  const [newTask, setNewTask] = useState<TaskDraft>(EMPTY_TASK);
   const [imageEditor, setImageEditor] = useState<{ productId: string; value: string } | null>(null);
   const [currencyMode, setCurrencyMode] = useState<CurrencyMode>('add');
   const [currencyAmount, setCurrencyAmount] = useState(0);
@@ -73,18 +78,21 @@ export function AdminManagePage() {
     if (!options.silent && shouldApply()) setMessage('학생/상품 목록을 불러오는 중입니다.');
 
     try {
-      const [studentResponse, productResponse] = await Promise.all([
+      const [studentResponse, productResponse, taskResponse] = await Promise.all([
         fetch('/api/students', { cache: 'no-store' }),
         fetch('/api/products?includeInactive=1', { cache: 'no-store' }),
+        fetch('/api/tasks?includeInactive=1', { cache: 'no-store' }),
       ]);
-      const [studentPayload, productPayload] = await Promise.all([studentResponse.json(), productResponse.json()]);
+      const [studentPayload, productPayload, taskPayload] = await Promise.all([studentResponse.json(), productResponse.json(), taskResponse.json()]);
 
       if (!studentResponse.ok) throw new Error(studentPayload.error ?? '학생 목록을 불러오지 못했습니다.');
       if (!productResponse.ok) throw new Error(productPayload.error ?? '상품 목록을 불러오지 못했습니다.');
+      if (!taskResponse.ok) throw new Error(taskPayload.error ?? '과제 목록을 불러오지 못했습니다.');
 
       if (!shouldApply()) return;
       setStudents(studentPayload);
       setProducts(productPayload);
+      setTasks(taskPayload);
       setSelectedStudentIds((ids) => ids.filter((id) => studentPayload.some((student: Student) => student.studentId === id)));
       setSelectedProductIds((ids) => ids.filter((id) => productPayload.some((product: Product) => product.productId === id)));
       setMessage('');
@@ -92,6 +100,7 @@ export function AdminManagePage() {
       if (!shouldApply()) return;
       setStudents([]);
       setProducts([]);
+      setTasks([]);
       setMessage(error instanceof Error ? error.message : '목록을 불러오지 못했습니다.');
     }
   }, []);
@@ -109,8 +118,9 @@ export function AdminManagePage() {
   const summary = useMemo(() => {
     const activeProducts = products.filter((product) => product.isActive).length;
     const totalStock = products.reduce((sum, product) => sum + product.stock, 0);
-    return { students: students.length, activeProducts, totalStock };
-  }, [products, students]);
+    const activeTasks = tasks.filter((task) => task.isActive).length;
+    return { students: students.length, activeProducts, totalStock, activeTasks };
+  }, [products, students, tasks]);
 
   const allStudentsSelected = students.length > 0 && selectedStudentIds.length === students.length;
   const allProductsSelected = products.length > 0 && selectedProductIds.length === products.length;
@@ -121,6 +131,10 @@ export function AdminManagePage() {
 
   function updateProduct(productId: string, patch: Partial<ProductDraft>) {
     setProducts((current) => current.map((product) => (product.productId === productId ? { ...product, ...patch } : product)));
+  }
+
+  function updateTask(taskId: string, patch: Partial<TaskDraft>) {
+    setTasks((current) => current.map((task) => (task.taskId === taskId ? { ...task, ...patch } : task)));
   }
 
   function notify(messageText: string) {
@@ -277,6 +291,57 @@ export function AdminManagePage() {
     }
   }
 
+  async function createNewTask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    try {
+      const body = {
+        taskId: newTask.taskId,
+        title: newTask.title,
+        description: newTask.description,
+        reward: newTask.reward,
+        maxCompletionsPerStudent: newTask.maxCompletionsPerStudent,
+        isActive: newTask.isActive,
+        sortOrder: newTask.sortOrder,
+      };
+      const response = await fetch('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? '과제를 추가하지 못했습니다.');
+      setTasks((current) => [...current, payload].sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title)));
+      setNewTask(EMPTY_TASK);
+      notify(`${payload.taskId} 과제 추가 완료`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : '과제를 추가하지 못했습니다.');
+    }
+  }
+
+  async function saveTask(task: TaskDraft) {
+    try {
+      const response = await fetch(`/api/tasks/${encodeURIComponent(task.taskId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: task.title, description: task.description, reward: task.reward, maxCompletionsPerStudent: task.maxCompletionsPerStudent, isActive: task.isActive, sortOrder: task.sortOrder }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? '과제를 저장하지 못했습니다.');
+      setTasks((current) => current.map((item) => item.taskId === payload.taskId ? payload : item).sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title)));
+      notify(`${payload.taskId} 과제 저장 완료`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : '과제를 저장하지 못했습니다.');
+    }
+  }
+
+  async function deleteTaskRow(taskId: string) {
+    try {
+      const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, { method: 'DELETE' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? '과제를 삭제하지 못했습니다.');
+      setTasks((current) => current.filter((task) => task.taskId !== taskId));
+      notify(`${taskId} 과제 삭제 완료`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : '과제를 삭제하지 못했습니다.');
+    }
+  }
+
   async function createNewStudent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     try {
@@ -367,16 +432,18 @@ export function AdminManagePage() {
           <p className="mx-auto mt-1 max-w-2xl text-xs font-bold text-slate-500 sm:text-sm md:text-base">
             태블릿과 스마트폰에서 빠르게 학생 잔액과 상품 재고를 관리합니다.
           </p>
-          <div className="mt-3 grid grid-cols-3 gap-2">
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <SummaryCard label="학생" value={`${summary.students}명`} />
             <SummaryCard label="판매 상품" value={`${summary.activeProducts}개`} />
             <SummaryCard label="전체 재고" value={`${summary.totalStock}개`} />
+            <SummaryCard label="활성 과제" value={`${summary.activeTasks}개`} />
           </div>
           {message ? <p className="mt-3 rounded-2xl bg-rose-100 p-3 text-sm font-bold text-rose-700">{message}</p> : null}
         </header>
 
-        <nav data-testid="admin-tabs" role="tablist" aria-label="관리자 메뉴" className="grid grid-cols-3 gap-2 rounded-[1.5rem] border border-slate-300/70 bg-white/90 p-2 shadow-sm sm:grid-cols-6">
+        <nav data-testid="admin-tabs" role="tablist" aria-label="관리자 메뉴" className="grid grid-cols-3 gap-2 rounded-[1.5rem] border border-slate-300/70 bg-white/90 p-2 shadow-sm sm:grid-cols-7">
           <AdminNavLink href="/" title="매점 바로가기" description="키오스크" />
+          <AdminNavLink href="/bank" title="은행 바로가기" description="학생 은행" />
           <AdminNavLink href="/admin/transactions" title="결제 내역 확인" description="거래 기록" />
           {tabs.map((tab) => {
             const selected = activeTab === tab.id;
@@ -548,6 +615,57 @@ export function AdminManagePage() {
                     <button aria-label={`${product.productId} 상품 삭제`} className="h-8 rounded-lg bg-rose-100 px-1 text-[10px] font-black text-rose-700" onClick={() => deleteProductRow(product.productId)} type="button">
                       삭제
                     </button>
+                  </div>
+                ))}
+              </div>
+            </SectionCard>
+          </section>
+        ) : null}
+
+        {activeTab === 'tasks' ? (
+          <section role="tabpanel" aria-label="과제 설정" className="grid gap-3 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)]">
+            <SectionCard title="새 과제 추가" description="은행 페이지에서 학생이 완료할 보상 과제를 등록합니다." compact>
+              <form onSubmit={createNewTask} className="space-y-2">
+                <TextInput label="새 과제 ID" value={newTask.taskId} onChange={(value) => setNewTask((current) => ({ ...current, taskId: value }))} compact />
+                <TextInput label="새 과제명" value={newTask.title} onChange={(value) => setNewTask((current) => ({ ...current, title: value }))} compact />
+                <label className="block text-xs font-bold text-slate-700">
+                  <span>새 과제 설명</span>
+                  <textarea aria-label="새 과제 설명" value={newTask.description} onChange={(event) => setNewTask((current) => ({ ...current, description: event.target.value }))} className="mt-1 min-h-24 w-full rounded-xl border border-slate-200 bg-white px-2 py-2 text-sm outline-none transition focus:border-sky-400" />
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <NumberInput label="새 과제 보상" value={newTask.reward} onChange={(value) => setNewTask((current) => ({ ...current, reward: value }))} compact />
+                  <NumberInput label="새 과제 완료 가능 횟수" value={newTask.maxCompletionsPerStudent} onChange={(value) => setNewTask((current) => ({ ...current, maxCompletionsPerStudent: value }))} compact />
+                  <NumberInput label="새 과제 정렬" value={newTask.sortOrder} onChange={(value) => setNewTask((current) => ({ ...current, sortOrder: value }))} compact />
+                </div>
+                <label className="flex items-center gap-2 rounded-xl bg-sky-50 px-3 py-2 text-sm font-black text-slate-700">
+                  <input aria-label="새 과제 활성" checked={newTask.isActive} onChange={(event) => setNewTask((current) => ({ ...current, isActive: event.target.checked }))} type="checkbox" />
+                  은행 페이지에 표시
+                </label>
+                <button className="w-full rounded-xl bg-sky-500 py-3 font-black text-white shadow-sm" type="submit">새 과제 추가</button>
+              </form>
+            </SectionCard>
+
+            <SectionCard title="과제 설정" description="학생 은행 페이지에 노출될 과제와 완료 제한을 관리합니다." compact>
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
+                <div data-testid="task-header-row" className="grid grid-cols-[44px_minmax(5rem,1fr)_52px_54px_34px_40px_44px_40px] items-center gap-0.5 bg-slate-100 px-1.5 py-1 text-[10px] font-black text-slate-500">
+                  <span>ID</span><span>과제명</span><span>보상</span><span>횟수</span><span>순서</span><span>활성</span><span>저장</span><span>삭제</span>
+                </div>
+                {tasks.map((task) => (
+                  <div data-testid="task-row" key={task.taskId} className="grid grid-cols-[44px_minmax(5rem,1fr)_52px_54px_34px_40px_44px_40px] items-center gap-0.5 px-1.5 py-1 text-[11px]">
+                    <p className="min-w-0 truncate font-black text-sky-700">{task.taskId}</p>
+                    <TextInput label={`${task.taskId} 과제명`} value={task.title} onChange={(value) => updateTask(task.taskId, { title: value })} dense />
+                    <NumberInput label={`${task.taskId} 보상`} value={task.reward} onChange={(value) => updateTask(task.taskId, { reward: value })} dense />
+                    <NumberInput label={`${task.taskId} 완료 가능 횟수`} value={task.maxCompletionsPerStudent} onChange={(value) => updateTask(task.taskId, { maxCompletionsPerStudent: value })} dense />
+                    <NumberInput label={`${task.taskId} 정렬`} value={task.sortOrder} onChange={(value) => updateTask(task.taskId, { sortOrder: value })} dense />
+                    <label className="flex h-8 items-center justify-center rounded-lg bg-sky-50 text-[10px] font-bold text-slate-700">
+                      <input aria-label={`${task.taskId} 활성`} checked={task.isActive} onChange={(event) => updateTask(task.taskId, { isActive: event.target.checked })} type="checkbox" />
+                    </label>
+                    <button type="button" onClick={() => saveTask(task)} className="h-8 rounded-lg bg-sky-100 px-1 text-[10px] font-black text-sky-700">저장</button>
+                    <button type="button" onClick={() => deleteTaskRow(task.taskId)} className="h-8 rounded-lg bg-rose-100 px-1 text-[10px] font-black text-rose-700">삭제</button>
+                    <label className="col-span-8 mt-1 block text-xs font-bold text-slate-700">
+                      <span className="sr-only">{task.taskId} 설명</span>
+                      <textarea aria-label={`${task.taskId} 설명`} value={task.description} onChange={(event) => updateTask(task.taskId, { description: event.target.value })} className="min-h-14 w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] outline-none transition focus:border-sky-400" />
+                    </label>
                   </div>
                 ))}
               </div>

@@ -44,3 +44,26 @@ export type Transaction = {
   status: string;
   operator: string;
 };
+
+export type ClassTask = {
+  taskId: string;
+  title: string;
+  description: string;
+  reward: number;
+  maxCompletionsPerStudent: number;
+  isActive: boolean;
+  sortOrder: number;
+};
+
+export type TaskCompletion = {
+  completionId: string;
+  timestamp: string;
+  taskId: string;
+  studentId: string;
+  studentName: string;
+  reward: number;
+  balanceBefore: number;
+  balanceAfter: number;
+  status: string;
+  note: string;
+};
