@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isGeneratorDeployment } from '@/server/deploymentMode';
 
 const ADMIN_SESSION_COOKIE = 'class_store_admin';
 const GOOGLE_AUTH_COOKIE = 'class_store_google_auth';
@@ -7,6 +8,17 @@ const SIGNED_SESSION_VERSION = 'v2';
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  if (isGeneratorDeployment() && isGeneratorBlockedRoute(pathname)) {
+    const generatorUrl = request.nextUrl.clone();
+    generatorUrl.pathname = '/admin/generator';
+    generatorUrl.search = '';
+    return NextResponse.redirect(generatorUrl);
+  }
+
+  if (isGeneratorDeployment() && pathname.startsWith('/api/') && isGeneratorBlockedApi(pathname)) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
 
   if (!pathname.startsWith('/admin') || pathname === '/admin/login') {
     return NextResponse.next();
@@ -28,8 +40,17 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*'],
+  matcher: ['/admin/:path*', '/bank', '/api/:path*'],
 };
+
+function isGeneratorBlockedRoute(pathname: string): boolean {
+  if (pathname === '/admin/generator') return false;
+  return pathname === '/bank' || pathname === '/admin' || pathname === '/admin/login' || pathname.startsWith('/admin/');
+}
+
+function isGeneratorBlockedApi(pathname: string): boolean {
+  return !pathname.startsWith('/api/google/') && !pathname.startsWith('/api/generator/');
+}
 
 async function isValidAdminSession(token: string): Promise<boolean> {
   const adminPassword = process.env.ADMIN_PASSWORD?.trim();
