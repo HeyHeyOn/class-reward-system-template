@@ -87,9 +87,12 @@ describe('AdminGeneratorPage', () => {
 
     expect(screen.getByRole('heading', { name: '기존 앱 업데이트 안내' })).toBeTruthy();
     expect(screen.getByText(/데이터가 들어 있는 Google 스프레드시트는 그대로 사용합니다/)).toBeTruthy();
-    expect(screen.getByText(/Vercel 대시보드에서 기존 프로젝트를 다시 배포하면 됩니다/)).toBeTruthy();
+    expect(screen.getByText(/Redeploy만 누르면 최신 템플릿을 가져오는 것이 아니라/)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Vercel 프로젝트 목록 열기' }).getAttribute('href')).toBe('https://vercel.com/dashboard');
     expect(screen.getByText(/class-store 또는 학급 보상 시스템 프로젝트를 선택/)).toBeTruthy();
+    expect(screen.getAllByText(/Settings → Git/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Git 저장소가 연결되어 있지 않음/)).toBeTruthy();
+    expect(screen.getByText(/Redeploy는 예전 업로드본을 다시 빌드할 뿐/)).toBeTruthy();
     expect(screen.getAllByText(/Deployments 탭/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Redeploy/).length).toBeGreaterThan(0);
     expect(screen.getByText(/환경변수를 다시 만들 필요는 없습니다/)).toBeTruthy();
