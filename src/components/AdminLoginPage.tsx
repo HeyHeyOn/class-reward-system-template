@@ -13,7 +13,7 @@ declare global {
   }
 }
 
-export function AdminLoginPage() {
+export function AdminLoginPage({ googleLoginEnabled = true }: { googleLoginEnabled?: boolean }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -108,13 +108,21 @@ export function AdminLoginPage() {
       <section className="mx-auto max-w-md rounded-[2rem] bg-white p-8 shadow-[0_20px_60px_rgba(37,49,63,0.15)]">
         <p className="text-sm font-bold uppercase tracking-[0.3em] text-[#4f8fba]">Class Store Admin</p>
         <h1 className="mt-3 text-3xl font-black">관리자 로그인</h1>
-        <p className="mt-3 text-sm text-[#627184]">Google 계정, 관리자 암호, 관리자 QR 중 편한 방법으로 로그인합니다.</p>
+        <p className="mt-3 text-sm text-[#627184]">{googleLoginEnabled ? 'Google 계정, 관리자 암호, 관리자 QR 중 편한 방법으로 로그인합니다.' : '관리자 암호 또는 관리자 QR로 로그인합니다.'}</p>
 
-        <a className="mt-8 flex w-full items-center justify-center rounded-2xl bg-[#4285f4] px-5 py-3 text-center font-black text-white shadow-[0_10px_30px_rgba(66,133,244,0.25)]" href="/api/google/login">
-          Google 계정으로 로그인
-        </a>
+        {googleLoginEnabled ? (
+          <>
+            <a className="mt-8 flex w-full items-center justify-center rounded-2xl bg-[#4285f4] px-5 py-3 text-center font-black text-white shadow-[0_10px_30px_rgba(66,133,244,0.25)]" href="/api/google/login">
+              Google 계정으로 로그인
+            </a>
 
-        <div className="my-6 flex items-center gap-3 text-xs font-bold uppercase tracking-[0.2em] text-[#94a3b8]"><span className="h-px flex-1 bg-[#e2e8f0]" /><span>또는</span><span className="h-px flex-1 bg-[#e2e8f0]" /></div>
+            <div className="my-6 flex items-center gap-3 text-xs font-bold uppercase tracking-[0.2em] text-[#94a3b8]"><span className="h-px flex-1 bg-[#e2e8f0]" /><span>또는</span><span className="h-px flex-1 bg-[#e2e8f0]" /></div>
+          </>
+        ) : (
+          <p className="mt-6 rounded-2xl bg-sky-50 px-4 py-3 text-sm font-bold text-sky-800">
+            이 배포 앱은 생성 시 연결된 Google Sheets 권한으로 동작합니다. 관리자 화면 접속은 관리자 비밀번호 또는 관리자 QR을 사용하세요.
+          </p>
+        )}
 
         <button type="button" onClick={isScanning ? stopScan : startScan} className="w-full rounded-2xl bg-sky-600 px-5 py-3 font-black text-white">
           {isScanning ? 'QR 인식 중지' : 'QR로 로그인'}
