@@ -24,6 +24,11 @@ type GeneratorCreateResult = {
   authMode: string;
   requiredVercelEnv: Array<{ name: string; value: string; secret: boolean }>;
   nextSteps: string[];
+  deploymentGuide?: {
+    ownership: string;
+    vercelImportUrl: string;
+    checklist: string[];
+  };
 };
 
 export function AdminGeneratorPage() {
@@ -33,6 +38,7 @@ export function AdminGeneratorPage() {
   const [currencyUnit, setCurrencyUnit] = useState('원');
   const [themeColor, setThemeColor] = useState('blue');
   const [adminPasswordConfigured, setAdminPasswordConfigured] = useState(false);
+  const [selfServiceAcknowledged, setSelfServiceAcknowledged] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState('');
   const [createResult, setCreateResult] = useState<GeneratorCreateResult | null>(null);
@@ -56,7 +62,7 @@ export function AdminGeneratorPage() {
       const response = await fetch('/api/generator/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ className, appTitle, bankTitle, currencyUnit, themeColor, adminPasswordConfigured }),
+        body: JSON.stringify({ className, appTitle, bankTitle, currencyUnit, themeColor, adminPasswordConfigured, selfServiceAcknowledged }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? '시스템을 생성하지 못했습니다.');
@@ -77,7 +83,7 @@ export function AdminGeneratorPage() {
               <p className="text-xs font-black tracking-[0.22em] text-purple-600">CLASS STORE GENERATOR</p>
               <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-5xl">시스템 생성기</h1>
               <p className="mt-2 max-w-2xl text-sm font-bold text-slate-500 sm:text-base">
-                새 학급 매점용 Google Sheets 템플릿을 실제 생성하고, 운영 배포에 필요한 설정값을 안내합니다.
+                선생님 개인 Google 계정에 Google Sheets 템플릿을 만들고, 선생님 개인 Vercel 배포까지 이어가도록 안내합니다.
               </p>
               <p className="mt-2 text-xs font-black text-purple-700">생성기 전용 도메인에서는 이 페이지가 루트 주소로 열립니다.</p>
             </div>
@@ -98,7 +104,7 @@ export function AdminGeneratorPage() {
         <section className="grid gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
           <form className="rounded-[1.75rem] border border-slate-300/70 bg-white p-5 shadow-sm" onSubmit={(event) => event.preventDefault()}>
             <h2 className="text-2xl font-black">새 시스템 기본값</h2>
-            <p className="mt-1 text-sm font-bold text-slate-500">생성 버튼을 누르면 새 Google Spreadsheet가 만들어집니다.</p>
+            <p className="mt-1 text-sm font-bold text-slate-500">생성 버튼을 누르면 새 Google Spreadsheet가 만들어지고 개인 Vercel 배포 안내가 표시됩니다.</p>
 
             <div className="mt-5 space-y-4">
               <GeneratorInput label="학급명" value={className} onChange={setClassName} placeholder="예: 4학년 1반" />
@@ -134,9 +140,28 @@ export function AdminGeneratorPage() {
               <p className="mt-1">학생 정보는 자동 수집하지 않고, 필수 시트/헤더/설정값만 만듭니다.</p>
             </div>
 
+            <section className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-950" aria-label="셀프서비스 배포 안내">
+              <p className="font-black">개인 계정 사용 안내</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5">
+                <li>운영 앱은 선생님 개인 Vercel 프로젝트에 배포됩니다.</li>
+                <li>데이터는 선생님 개인 Google 계정의 스프레드시트에 저장됩니다.</li>
+                <li>시스템 생성기는 초기 생성과 안내만 담당하며, 여러 학급 운영 앱을 대신 호스팅하지 않습니다.</li>
+                <li>관리자 암호, Google OAuth 값, Vercel 환경변수는 선생님 개인 계정에서 직접 관리해야 합니다.</li>
+              </ul>
+              <label className="mt-3 flex items-center gap-3 rounded-xl bg-white/70 px-3 py-3 font-black">
+                <input
+                  aria-label="위 내용을 충분히 숙지했습니다."
+                  type="checkbox"
+                  checked={selfServiceAcknowledged}
+                  onChange={(event) => setSelfServiceAcknowledged(event.target.checked)}
+                />
+                위 내용을 충분히 숙지했습니다.
+              </label>
+            </section>
+
             <button
               type="button"
-              disabled={isCreating}
+              disabled={isCreating || !selfServiceAcknowledged}
               onClick={handleCreate}
               className="mt-4 w-full rounded-2xl bg-purple-600 py-4 text-lg font-black text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
             >
@@ -171,7 +196,7 @@ export function AdminGeneratorPage() {
           <ul className="mt-3 grid gap-2 text-sm font-bold text-slate-600 sm:grid-cols-3">
             <li className="rounded-2xl bg-sky-50 p-3">Google Sheets에 필수 시트와 헤더를 실제 생성합니다.</li>
             <li className="rounded-2xl bg-sky-50 p-3">Settings 시트에 매점명, 은행명, 화폐 단위, 테마를 기록합니다.</li>
-            <li className="rounded-2xl bg-sky-50 p-3">Vercel 토큰 자동 조작은 하지 않고 필요한 환경변수 값을 안내합니다.</li>
+            <li className="rounded-2xl bg-sky-50 p-3">선생님 개인 Vercel에 배포하도록 가져오기 링크와 환경변수 값을 안내합니다.</li>
           </ul>
         </aside>
       </section>
@@ -205,6 +230,23 @@ function CreateResultPanel({ result }: { result: GeneratorCreateResult }) {
       <ol className="mt-4 list-decimal space-y-1 pl-5 text-sm font-bold text-slate-600">
         {result.nextSteps.map((step) => <li key={step}>{step}</li>)}
       </ol>
+      {result.deploymentGuide ? (
+        <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm font-bold text-slate-700">
+          <p className="text-slate-500">운영 소유 구조</p>
+          <p className="mt-1 text-lg font-black text-slate-950">{result.deploymentGuide.ownership}</p>
+          <a
+            className="mt-3 inline-flex rounded-2xl bg-sky-600 px-4 py-3 font-black text-white hover:bg-sky-700"
+            href={result.deploymentGuide.vercelImportUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            개인 Vercel에 배포 시작
+          </a>
+          <ol className="mt-3 list-decimal space-y-1 pl-5">
+            {result.deploymentGuide.checklist.map((item) => <li key={item}>{item}</li>)}
+          </ol>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -21,7 +21,7 @@ describe('AdminGeneratorPage', () => {
     expect(screen.getByLabelText('화폐 단위')).toHaveProperty('value', '원');
     expect(screen.getByLabelText('테마')).toHaveProperty('value', 'blue');
     expect(screen.getByText('실제 Google Sheets 템플릿 생성을 실행합니다.')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '새 학급 매점 시스템 생성' })).toHaveProperty('disabled', false);
+    expect(screen.getByRole('button', { name: '새 학급 매점 시스템 생성' })).toHaveProperty('disabled', true);
     expect(screen.getAllByText(/필수 시트와 헤더/).length).toBeGreaterThan(0);
     expect(screen.getByText(/Students/)).toBeTruthy();
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -50,7 +50,24 @@ describe('AdminGeneratorPage', () => {
     expect(preview).not.toContain('token');
   });
 
-  it('calls the create API and renders the generated spreadsheet report', async () => {
+  it('requires teachers to acknowledge personal-account deployment terms before creating', () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+
+    render(<AdminGeneratorPage />);
+
+    expect(screen.getByText(/운영 앱은 선생님 개인 Vercel 프로젝트에 배포됩니다/)).toBeTruthy();
+    expect(screen.getByText(/데이터는 선생님 개인 Google 계정의 스프레드시트에 저장됩니다/)).toBeTruthy();
+    const createButton = screen.getByRole('button', { name: '새 학급 매점 시스템 생성' });
+    expect(createButton).toHaveProperty('disabled', true);
+
+    fireEvent.click(screen.getByLabelText('위 내용을 충분히 숙지했습니다.'));
+
+    expect(createButton).toHaveProperty('disabled', false);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('calls the create API with self-service acknowledgement and renders the generated deployment guide', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -62,16 +79,27 @@ describe('AdminGeneratorPage', () => {
         authMode: 'google-login',
         requiredVercelEnv: [{ name: 'GOOGLE_SHEET_ID', value: 'sheet-123', secret: false }],
         nextSteps: ['학생과 상품을 입력합니다.'],
+        deploymentGuide: {
+          ownership: '선생님 개인 Google 계정 + 선생님 개인 Vercel 프로젝트',
+          vercelImportUrl: 'https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fexample%2Fclass-store-template',
+          checklist: ['개인 Vercel 계정으로 Import Project를 진행합니다.'],
+        },
       }),
     }));
 
     render(<AdminGeneratorPage />);
     fireEvent.change(screen.getByLabelText('학급명'), { target: { value: '4학년 1반' } });
+    fireEvent.click(screen.getByLabelText('위 내용을 충분히 숙지했습니다.'));
     fireEvent.click(screen.getByRole('button', { name: '새 학급 매점 시스템 생성' }));
 
     await waitFor(() => expect(screen.getByText('생성 완료')).toBeTruthy());
-    expect(fetch).toHaveBeenCalledWith('/api/generator/create', expect.objectContaining({ method: 'POST' }));
+    expect(fetch).toHaveBeenCalledWith('/api/generator/create', expect.objectContaining({
+      method: 'POST',
+      body: expect.stringContaining('"selfServiceAcknowledged":true'),
+    }));
     expect(screen.getByText('sheet-123')).toBeTruthy();
+    expect(screen.getByText('선생님 개인 Google 계정 + 선생님 개인 Vercel 프로젝트')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '개인 Vercel에 배포 시작' }).getAttribute('href')).toContain('vercel.com/new/clone');
   });
 
   it('links back to the admin center and Google login', () => {
@@ -80,6 +108,6 @@ describe('AdminGeneratorPage', () => {
     expect(screen.getByRole('link', { name: 'Google 로그인' }).getAttribute('href')).toBe('/api/google/login');
     expect(screen.getByRole('link', { name: '관리자 센터로 돌아가기' }).getAttribute('href')).toBe('/admin');
     expect(screen.getByRole('link', { name: '현재 운영 매점 열기' }).getAttribute('href')).toBe('/');
-    expect(screen.getByText(/Vercel 토큰 자동 조작은 하지 않고/)).toBeTruthy();
+    expect(screen.getByText(/선생님 개인 Vercel에 배포하도록/)).toBeTruthy();
   });
 });
