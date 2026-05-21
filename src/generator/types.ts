@@ -16,11 +16,20 @@ export type ClassRewardInstanceOptions = {
   adminPasswordConfigured: boolean;
 };
 
+export type DoctorTargetOptions = {
+  baseUrl?: string;
+  vercelProject?: string;
+};
+
+export type GeneratorOptions = Partial<ClassRewardInstanceOptions> & DoctorTargetOptions;
+
 export type GeneratorManifest = {
   systemVersion: string;
   settings: Array<{ key: string; value: string }>;
   sheets: Array<{ name: string; columns: string[] }>;
   vercelEnvNames: string[];
+  doctorRoutes?: string[];
+  doctorTarget?: Required<DoctorTargetOptions>;
 };
 
 export type GeneratorPlan = {
@@ -30,10 +39,10 @@ export type GeneratorPlan = {
   summary: string;
   actions: GeneratorAction[];
   risks: string[];
-  options?: ClassRewardInstanceOptions;
+  options?: GeneratorOptions;
   manifest?: GeneratorManifest;
 };
 
 export type CliResult =
   | { command: 'help'; dryRun: true; message?: string }
-  | { command: Exclude<GeneratorCommand, 'help'>; dryRun: boolean; args: string[]; options?: ClassRewardInstanceOptions };
+  | { command: Exclude<GeneratorCommand, 'help'>; dryRun: boolean; args: string[]; options?: GeneratorOptions };

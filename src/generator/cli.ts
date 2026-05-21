@@ -3,7 +3,7 @@ import { getDoctorCommandPlan } from './commands/doctor.ts';
 import { getUpdateCommandPlan } from './commands/update.ts';
 import { THEME_COLORS } from './config/schema.ts';
 import { GENERATOR_NAME_KO } from './config/versions.ts';
-import type { ClassRewardInstanceOptions, CliResult, GeneratorPlan } from './types.ts';
+import type { CliResult, GeneratorOptions, GeneratorPlan } from './types.ts';
 
 const COMMANDS = ['create', 'update', 'doctor'] as const;
 
@@ -42,19 +42,19 @@ export function renderCliResult(result: CliResult): string {
   return renderPlan(plan);
 }
 
-export function getPlanForCommand(command: RunnableCommand, dryRun = true, options?: ClassRewardInstanceOptions): GeneratorPlan {
+export function getPlanForCommand(command: RunnableCommand, dryRun = true, options?: GeneratorOptions): GeneratorPlan {
   switch (command) {
     case 'create':
       return getCreateCommandPlan({ dryRun, instanceOptions: options });
     case 'update':
       return getUpdateCommandPlan({ dryRun });
     case 'doctor':
-      return getDoctorCommandPlan({ dryRun });
+      return getDoctorCommandPlan({ dryRun, targetOptions: options });
   }
 }
 
-function parseOptions(args: string[]): { options: ClassRewardInstanceOptions } | { message: string } {
-  const options: Partial<ClassRewardInstanceOptions> = {};
+function parseOptions(args: string[]): { options: GeneratorOptions } | { message: string } {
+  const options: GeneratorOptions = {};
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     switch (arg) {
@@ -94,6 +94,20 @@ function parseOptions(args: string[]): { options: ClassRewardInstanceOptions } |
       case '--admin-password-set':
         options.adminPasswordConfigured = true;
         break;
+      case '--base-url': {
+        const baseUrl = readValue(args, index, arg);
+        if (baseUrl === undefined) return { message: `${arg} 값이 필요합니다.` };
+        const validation = validateProductionBaseUrl(baseUrl);
+        if (validation) return { message: validation };
+        options.baseUrl = baseUrl.replace(/\/$/, '');
+        index += 1;
+        break;
+      }
+      case '--vercel-project':
+        options.vercelProject = readValue(args, index, arg);
+        if (options.vercelProject === undefined) return { message: `${arg} 값이 필요합니다.` };
+        index += 1;
+        break;
       default:
         if (arg.startsWith('--')) return { message: `알 수 없는 옵션: ${arg}` };
         return { message: `알 수 없는 인자: ${arg}` };
@@ -108,8 +122,21 @@ function parseOptions(args: string[]): { options: ClassRewardInstanceOptions } |
       themeColor: options.themeColor ?? 'blue',
       className: options.className,
       adminPasswordConfigured: Boolean(options.adminPasswordConfigured),
+      baseUrl: options.baseUrl,
+      vercelProject: options.vercelProject,
     },
   };
+}
+
+function validateProductionBaseUrl(value: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return '올바른 URL을 입력해 주세요.';
+  }
+  if (parsed.protocol !== 'https:') return 'production doctor에는 https URL이 필요합니다.';
+  return null;
 }
 
 function sanitizeArgs(args: string[]): string[] {
@@ -143,16 +170,18 @@ function renderPlan(plan: GeneratorPlan): string {
   ].filter(Boolean).join('\n');
 }
 
-function renderOptions(options: ClassRewardInstanceOptions): string {
+function renderOptions(options: GeneratorOptions): string {
   return [
     '',
     '인스턴스 설정:',
     options.className ? `className: ${options.className}` : undefined,
-    `appTitle: ${options.appTitle}`,
-    `bankTitle: ${options.bankTitle}`,
-    `currencyUnit: ${options.currencyUnit}`,
-    `themeColor: ${options.themeColor}`,
-    `adminPasswordConfigured: ${options.adminPasswordConfigured ? 'yes' : 'no'}`,
+    options.appTitle ? `appTitle: ${options.appTitle}` : undefined,
+    options.bankTitle ? `bankTitle: ${options.bankTitle}` : undefined,
+    options.currencyUnit ? `currencyUnit: ${options.currencyUnit}` : undefined,
+    options.themeColor ? `themeColor: ${options.themeColor}` : undefined,
+    options.adminPasswordConfigured !== undefined ? `adminPasswordConfigured: ${options.adminPasswordConfigured ? 'yes' : 'no'}` : undefined,
+    options.baseUrl ? `baseUrl: ${options.baseUrl}` : undefined,
+    options.vercelProject ? `vercelProject: ${options.vercelProject}` : undefined,
   ].filter(Boolean).join('\n');
 }
 
@@ -160,12 +189,14 @@ function renderManifest(manifest: NonNullable<GeneratorPlan['manifest']>): strin
   return [
     '',
     `생성 manifest: ${manifest.systemVersion}`,
-    'Settings:',
+    manifest.settings.length ? 'Settings:' : undefined,
     ...manifest.settings.map((row) => `- ${row.key}: ${row.value}`),
-    'Sheets:',
+    manifest.sheets.length ? 'Sheets:' : undefined,
     ...manifest.sheets.map((sheet) => `- ${sheet.name}: ${sheet.columns.join(', ')}`),
+    manifest.doctorRoutes?.length ? 'Doctor routes:' : undefined,
+    ...(manifest.doctorRoutes?.map((route) => `- ${route}`) ?? []),
     `Vercel 환경변수: ${manifest.vercelEnvNames.join(', ')}`,
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 }
 
 function isRunnableCommand(value: string): value is RunnableCommand {

@@ -150,7 +150,7 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
       ]),
     );
 
-    expect(rendered).toContain('0.3.0-phase2');
+    expect(rendered).toContain('0.4.0-phase3');
     expect(rendered).toContain('인스턴스 설정');
     expect(rendered).toContain('className: 4학년 1반');
     expect(rendered).toContain('appTitle: 별빛 매점');
@@ -173,6 +173,61 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
       command: 'help',
       dryRun: true,
       message: expect.stringContaining('값이 필요합니다'),
+    });
+  });
+
+  it('parses Phase 3 doctor execute targets as read-only production checks', () => {
+    const result = parseClassRewardArgs([
+      'doctor',
+      '--execute',
+      '--base-url',
+      'https://class-store-six.vercel.app',
+      '--vercel-project',
+      'class-store',
+    ]);
+
+    expect(result).toMatchObject({
+      command: 'doctor',
+      dryRun: false,
+      options: {
+        baseUrl: 'https://class-store-six.vercel.app',
+        vercelProject: 'class-store',
+      },
+    });
+  });
+
+  it('renders a Phase 3 read-only doctor manifest for deployed instance verification', () => {
+    const rendered = renderCliResult(
+      parseClassRewardArgs([
+        'doctor',
+        '--execute',
+        '--base-url',
+        'https://class-store-six.vercel.app',
+        '--vercel-project',
+        'class-store',
+      ]),
+    );
+
+    expect(rendered).toContain('0.4.0-phase3');
+    expect(rendered).toContain('읽기 전용 production doctor');
+    expect(rendered).toContain('baseUrl: https://class-store-six.vercel.app');
+    expect(rendered).toContain('vercelProject: class-store');
+    expect(rendered).toContain('/api/settings');
+    expect(rendered).toContain('/api/products?includeInactive=1');
+    expect(rendered).toContain('/api/students');
+    expect(rendered).toContain('라이브 데이터 수정 없음');
+  });
+
+  it('rejects unsafe or invalid Phase 3 doctor target URLs', () => {
+    expect(parseClassRewardArgs(['doctor', '--execute', '--base-url', 'http://localhost:3000'])).toMatchObject({
+      command: 'help',
+      dryRun: true,
+      message: expect.stringContaining('https URL'),
+    });
+    expect(parseClassRewardArgs(['doctor', '--execute', '--base-url', 'not-a-url'])).toMatchObject({
+      command: 'help',
+      dryRun: true,
+      message: expect.stringContaining('올바른 URL'),
     });
   });
 });
