@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { parseClassRewardArgs, renderCliResult } from '@/generator/cli.ts';
 
@@ -31,7 +31,20 @@ type GeneratorCreateResult = {
   };
 };
 
+type GoogleSessionState = {
+  loading: boolean;
+  enabled: boolean;
+  authenticated: boolean;
+  email?: string;
+  name?: string;
+  error?: string;
+};
+
+type WizardStep = 'login' | 'choose' | 'notice' | 'settings' | 'deploy';
+
 export function AdminGeneratorPage() {
+  const [session, setSession] = useState<GoogleSessionState>({ loading: true, enabled: true, authenticated: false });
+  const [step, setStep] = useState<WizardStep>('login');
   const [className, setClassName] = useState('');
   const [appTitle, setAppTitle] = useState('학급 매점');
   const [bankTitle, setBankTitle] = useState('학급 은행');
@@ -42,6 +55,35 @@ export function AdminGeneratorPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState('');
   const [createResult, setCreateResult] = useState<GeneratorCreateResult | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadSession() {
+      try {
+        const response = await fetch('/api/google/session');
+        const data = await response.json();
+        if (cancelled) return;
+        const authenticated = Boolean(data.authenticated);
+        setSession({
+          loading: false,
+          enabled: data.enabled !== false,
+          authenticated,
+          email: typeof data.email === 'string' ? data.email : undefined,
+          name: typeof data.name === 'string' ? data.name : undefined,
+        });
+        setStep(authenticated ? 'choose' : 'login');
+      } catch {
+        if (!cancelled) {
+          setSession({ loading: false, enabled: true, authenticated: false, error: '로그인 상태를 확인하지 못했습니다.' });
+          setStep('login');
+        }
+      }
+    }
+    loadSession();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const preview = useMemo(() => {
     const args = ['create', '--dry-run'];
@@ -62,11 +104,12 @@ export function AdminGeneratorPage() {
       const response = await fetch('/api/generator/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ className, appTitle, bankTitle, currencyUnit, themeColor, adminPasswordConfigured, selfServiceAcknowledged }),
+        body: JSON.stringify({ className, appTitle, bankTitle, currencyUnit, themeColor, adminPasswordConfigured, selfServiceAcknowledged: true }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? '시스템을 생성하지 못했습니다.');
       setCreateResult(data as GeneratorCreateResult);
+      setStep('deploy');
     } catch (error) {
       setCreateError(error instanceof Error ? error.message : '시스템을 생성하지 못했습니다.');
     } finally {
@@ -76,139 +119,245 @@ export function AdminGeneratorPage() {
 
   return (
     <main className="min-h-screen bg-[#dbeaf6] p-3 text-slate-950 sm:p-5">
-      <section className="mx-auto flex w-full max-w-6xl flex-col gap-4">
+      <section className="mx-auto flex w-full max-w-4xl flex-col gap-4">
         <header className="rounded-[1.75rem] border border-slate-300/70 bg-white px-5 py-5 shadow-sm sm:px-7">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="text-xs font-black tracking-[0.22em] text-purple-600">CLASS STORE GENERATOR</p>
-              <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-5xl">시스템 생성기</h1>
-              <p className="mt-2 max-w-2xl text-sm font-bold text-slate-500 sm:text-base">
-                선생님 개인 Google 계정에 Google Sheets 템플릿을 만들고, 선생님 개인 Vercel 배포까지 이어가도록 안내합니다.
-              </p>
-              <p className="mt-2 text-xs font-black text-purple-700">생성기 전용 도메인에서는 이 페이지가 루트 주소로 열립니다.</p>
+          <p className="text-xs font-black tracking-[0.22em] text-purple-600">CLASS REWARD GENERATOR</p>
+          <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-5xl">학급 보상 시스템 생성기</h1>
+          <p className="mt-2 max-w-2xl text-sm font-bold text-slate-500 sm:text-base">
+            Google Sheets 템플릿을 만들고, 선생님 개인 Vercel에 배포하는 과정을 단계별로 안내합니다.
+          </p>
+          {session.authenticated ? (
+            <div className="mt-4 flex flex-wrap items-center gap-2 text-sm font-black">
+              <span className="rounded-full bg-emerald-50 px-3 py-2 text-emerald-700">Google 로그인됨: {session.email ?? session.name}</span>
+              <Link href="/api/google/logout" className="rounded-full bg-slate-100 px-3 py-2 text-slate-600 hover:bg-slate-200">로그아웃</Link>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Link href="/api/google/login" className="rounded-2xl bg-white px-4 py-3 text-sm font-black text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">
-                Google 로그인
-              </Link>
-              <Link href="/admin" className="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-200">
-                관리자 센터로 돌아가기
-              </Link>
-              <Link href="/" className="rounded-2xl bg-sky-500 px-4 py-3 text-sm font-black text-white hover:bg-sky-600">
-                현재 운영 매점 열기
-              </Link>
-            </div>
-          </div>
+          ) : null}
         </header>
 
-        <section className="grid gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
-          <form className="rounded-[1.75rem] border border-slate-300/70 bg-white p-5 shadow-sm" onSubmit={(event) => event.preventDefault()}>
-            <h2 className="text-2xl font-black">새 시스템 기본값</h2>
-            <p className="mt-1 text-sm font-bold text-slate-500">생성 버튼을 누르면 새 Google Spreadsheet가 만들어지고 개인 Vercel 배포 안내가 표시됩니다.</p>
+        <StepBar step={step} />
 
-            <div className="mt-5 space-y-4">
-              <GeneratorInput label="학급명" value={className} onChange={setClassName} placeholder="예: 4학년 1반" />
-              <GeneratorInput label="매점 이름" value={appTitle} onChange={setAppTitle} />
-              <GeneratorInput label="은행 이름" value={bankTitle} onChange={setBankTitle} />
-              <GeneratorInput label="화폐 단위" value={currencyUnit} onChange={setCurrencyUnit} />
-
-              <label className="block text-sm font-black text-slate-700">
-                테마
-                <select
-                  aria-label="테마"
-                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base font-bold outline-none transition focus:border-purple-500 focus:bg-white"
-                  value={themeColor}
-                  onChange={(event) => setThemeColor(event.target.value)}
-                >
-                  {THEMES.map((theme) => <option key={theme.value} value={theme.value}>{theme.label}</option>)}
-                </select>
-              </label>
-
-              <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-black text-slate-700">
-                <input
-                  aria-label="관리자 암호 설정 완료"
-                  type="checkbox"
-                  checked={adminPasswordConfigured}
-                  onChange={(event) => setAdminPasswordConfigured(event.target.checked)}
-                />
-                관리자 암호 설정 완료
-              </label>
-            </div>
-
-            <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-900">
-              <p className="font-black">실제 Google Sheets 템플릿 생성을 실행합니다.</p>
-              <p className="mt-1">학생 정보는 자동 수집하지 않고, 필수 시트/헤더/설정값만 만듭니다.</p>
-            </div>
-
-            <section className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-950" aria-label="셀프서비스 배포 안내">
-              <p className="font-black">개인 계정 사용 안내</p>
-              <ul className="mt-2 list-disc space-y-1 pl-5">
-                <li>운영 앱은 선생님 개인 Vercel 프로젝트에 배포됩니다.</li>
-                <li>데이터는 선생님 개인 Google 계정의 스프레드시트에 저장됩니다.</li>
-                <li>시스템 생성기는 초기 생성과 안내만 담당하며, 여러 학급 운영 앱을 대신 호스팅하지 않습니다.</li>
-                <li>관리자 암호, Google OAuth 값, Vercel 환경변수는 선생님 개인 계정에서 직접 관리해야 합니다.</li>
-              </ul>
-              <label className="mt-3 flex items-center gap-3 rounded-xl bg-white/70 px-3 py-3 font-black">
-                <input
-                  aria-label="위 내용을 충분히 숙지했습니다."
-                  type="checkbox"
-                  checked={selfServiceAcknowledged}
-                  onChange={(event) => setSelfServiceAcknowledged(event.target.checked)}
-                />
-                위 내용을 충분히 숙지했습니다.
-              </label>
-            </section>
-
-            <button
-              type="button"
-              disabled={isCreating || !selfServiceAcknowledged}
-              onClick={handleCreate}
-              className="mt-4 w-full rounded-2xl bg-purple-600 py-4 text-lg font-black text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
-            >
-              {isCreating ? '생성 중...' : '새 학급 매점 시스템 생성'}
-            </button>
-
-            {createError ? (
-              <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-black text-red-700" role="alert">
-                {createError}
-              </div>
-            ) : null}
-          </form>
-
-          <section className="rounded-[1.75rem] border border-slate-300/70 bg-slate-950 p-5 text-white shadow-sm">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <p className="text-xs font-black tracking-[0.22em] text-purple-300">CREATE MANIFEST</p>
-                <h2 className="text-2xl font-black">생성 계획 미리보기</h2>
-              </div>
-              <span className="rounded-full bg-emerald-400/15 px-3 py-1 text-xs font-black text-emerald-200">시트 생성 전 미리보기</span>
-            </div>
-            <pre data-testid="generator-preview" className="mt-4 max-h-[620px] overflow-auto whitespace-pre-wrap rounded-2xl bg-black/40 p-4 text-xs leading-6 text-slate-100 sm:text-sm">
-              {preview}
-            </pre>
-          </section>
-        </section>
-
-        {createResult ? <CreateResultPanel result={createResult} /> : null}
-
-        <aside className="rounded-[1.75rem] border border-slate-300/70 bg-white p-5 shadow-sm">
-          <h2 className="text-xl font-black">생성 범위</h2>
-          <ul className="mt-3 grid gap-2 text-sm font-bold text-slate-600 sm:grid-cols-3">
-            <li className="rounded-2xl bg-sky-50 p-3">Google Sheets에 필수 시트와 헤더를 실제 생성합니다.</li>
-            <li className="rounded-2xl bg-sky-50 p-3">Settings 시트에 매점명, 은행명, 화폐 단위, 테마를 기록합니다.</li>
-            <li className="rounded-2xl bg-sky-50 p-3">선생님 개인 Vercel에 배포하도록 가져오기 링크와 환경변수 값을 안내합니다.</li>
-          </ul>
-        </aside>
+        {session.loading ? <CenteredCard title="로그인 상태 확인 중" description="잠시만 기다려 주세요." /> : null}
+        {!session.loading && step === 'login' ? <LoginStep error={session.error} /> : null}
+        {!session.loading && step === 'choose' ? <ChooseStep onCreate={() => setStep('notice')} /> : null}
+        {!session.loading && step === 'notice' ? (
+          <NoticeStep
+            acknowledged={selfServiceAcknowledged}
+            onAcknowledgedChange={setSelfServiceAcknowledged}
+            onBack={() => setStep('choose')}
+            onNext={() => setStep('settings')}
+          />
+        ) : null}
+        {!session.loading && step === 'settings' ? (
+          <SettingsStep
+            classNameValue={className}
+            appTitle={appTitle}
+            bankTitle={bankTitle}
+            currencyUnit={currencyUnit}
+            themeColor={themeColor}
+            adminPasswordConfigured={adminPasswordConfigured}
+            preview={preview}
+            isCreating={isCreating}
+            createError={createError}
+            onClassNameChange={setClassName}
+            onAppTitleChange={setAppTitle}
+            onBankTitleChange={setBankTitle}
+            onCurrencyUnitChange={setCurrencyUnit}
+            onThemeColorChange={setThemeColor}
+            onAdminPasswordConfiguredChange={setAdminPasswordConfigured}
+            onBack={() => setStep('notice')}
+            onCreate={handleCreate}
+          />
+        ) : null}
+        {!session.loading && step === 'deploy' && createResult ? <CreateResultPanel result={createResult} /> : null}
       </section>
     </main>
+  );
+}
+
+function StepBar({ step }: { step: WizardStep }) {
+  const steps: Array<{ id: WizardStep; label: string }> = [
+    { id: 'login', label: '로그인' },
+    { id: 'choose', label: '선택' },
+    { id: 'notice', label: '확인' },
+    { id: 'settings', label: '설정' },
+    { id: 'deploy', label: '배포' },
+  ];
+  const activeIndex = steps.findIndex((item) => item.id === step);
+  return (
+    <ol className="grid grid-cols-5 gap-2 rounded-[1.25rem] bg-white p-2 text-center text-xs font-black text-slate-500 shadow-sm">
+      {steps.map((item, index) => (
+        <li key={item.id} className={`rounded-xl px-2 py-2 ${index <= activeIndex ? 'bg-purple-600 text-white' : 'bg-slate-100'}`}>{item.label}</li>
+      ))}
+    </ol>
+  );
+}
+
+function CenteredCard({ title, description }: { title: string; description: string }) {
+  return (
+    <section className="rounded-[1.75rem] border border-slate-300/70 bg-white p-8 text-center shadow-sm">
+      <h2 className="text-2xl font-black">{title}</h2>
+      <p className="mt-2 text-sm font-bold text-slate-500">{description}</p>
+    </section>
+  );
+}
+
+function LoginStep({ error }: { error?: string }) {
+  return (
+    <section className="rounded-[1.75rem] border border-slate-300/70 bg-white p-8 text-center shadow-sm">
+      <h2 className="text-2xl font-black">먼저 Google 로그인을 해 주세요</h2>
+      <p className="mx-auto mt-2 max-w-xl text-sm font-bold text-slate-500">
+        선생님 Google 계정에 새 스프레드시트를 만들기 위해 최초 1회 로그인이 필요합니다. 로그인 전에는 다른 설정을 보여주지 않습니다.
+      </p>
+      {error ? <p className="mt-3 rounded-2xl bg-red-50 p-3 text-sm font-black text-red-700">{error}</p> : null}
+      <Link href="/api/google/login" className="mt-6 inline-flex rounded-2xl bg-purple-600 px-6 py-4 text-lg font-black text-white hover:bg-purple-700">
+        Google로 시작하기
+      </Link>
+    </section>
+  );
+}
+
+function ChooseStep({ onCreate }: { onCreate: () => void }) {
+  return (
+    <section className="rounded-[1.75rem] border border-slate-300/70 bg-white p-6 shadow-sm">
+      <h2 className="text-2xl font-black">무엇을 할까요?</h2>
+      <p className="mt-2 text-sm font-bold text-slate-500">필요한 작업을 먼저 고르면, 그 작업에 필요한 설명만 단계별로 보여드립니다.</p>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        <button type="button" aria-label="새 시스템 생성하기" onClick={onCreate} className="rounded-3xl border border-purple-200 bg-purple-50 p-6 text-left hover:bg-purple-100">
+          <span className="text-xl font-black text-purple-800">새 시스템 생성하기</span>
+          <span className="mt-2 block text-sm font-bold text-purple-700">새 Google Sheet를 만들고 Vercel 배포까지 안내합니다.</span>
+        </button>
+        <button type="button" aria-label="기존 시스템 업데이트하기" className="rounded-3xl border border-slate-200 bg-slate-50 p-6 text-left opacity-80" aria-describedby="update-help">
+          <span className="text-xl font-black text-slate-700">기존 시스템 업데이트하기</span>
+          <span id="update-help" className="mt-2 block text-sm font-bold text-slate-500">준비 중입니다. 우선 새 시스템 생성 흐름부터 안정화합니다.</span>
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function NoticeStep({ acknowledged, onAcknowledgedChange, onBack, onNext }: { acknowledged: boolean; onAcknowledgedChange: (value: boolean) => void; onBack: () => void; onNext: () => void }) {
+  return (
+    <section className="rounded-[1.75rem] border border-amber-200 bg-white p-6 shadow-sm">
+      <h2 className="text-2xl font-black">시작 전에 확인해 주세요</h2>
+      <p className="mt-2 text-sm font-bold text-slate-500">이 생성기는 운영비를 줄이기 위해 선생님 개인 계정 기반 셀프 배포 방식을 사용합니다.</p>
+      <ul className="mt-5 space-y-3 text-sm font-bold text-slate-700">
+        <li className="rounded-2xl bg-amber-50 p-4">운영 앱은 선생님 개인 Vercel 프로젝트에 배포됩니다.</li>
+        <li className="rounded-2xl bg-amber-50 p-4">데이터는 선생님 개인 Google 계정의 스프레드시트에 저장됩니다.</li>
+        <li className="rounded-2xl bg-amber-50 p-4">생성기는 시트 생성과 배포 안내를 도와주며, 여러 학급 앱을 대신 호스팅하지 않습니다.</li>
+        <li className="rounded-2xl bg-amber-50 p-4">배포 중 막히면 오류 문구를 복사해 전달하면 이어서 도와드릴 수 있습니다.</li>
+      </ul>
+      <label className="mt-5 flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm font-black text-amber-950">
+        <input
+          aria-label="위 내용을 충분히 숙지했습니다."
+          type="checkbox"
+          checked={acknowledged}
+          onChange={(event) => onAcknowledgedChange(event.target.checked)}
+        />
+        위 내용을 충분히 숙지했습니다.
+      </label>
+      <div className="mt-5 flex flex-wrap gap-2">
+        <button type="button" onClick={onBack} className="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-200">이전</button>
+        <button type="button" disabled={!acknowledged} onClick={onNext} className="rounded-2xl bg-purple-600 px-4 py-3 text-sm font-black text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600">기본 설정으로 이동</button>
+      </div>
+    </section>
+  );
+}
+
+function SettingsStep(props: {
+  classNameValue: string;
+  appTitle: string;
+  bankTitle: string;
+  currencyUnit: string;
+  themeColor: string;
+  adminPasswordConfigured: boolean;
+  preview: string;
+  isCreating: boolean;
+  createError: string;
+  onClassNameChange: (value: string) => void;
+  onAppTitleChange: (value: string) => void;
+  onBankTitleChange: (value: string) => void;
+  onCurrencyUnitChange: (value: string) => void;
+  onThemeColorChange: (value: string) => void;
+  onAdminPasswordConfiguredChange: (value: boolean) => void;
+  onBack: () => void;
+  onCreate: () => void;
+}) {
+  return (
+    <section className="grid gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
+      <form className="rounded-[1.75rem] border border-slate-300/70 bg-white p-5 shadow-sm" onSubmit={(event) => event.preventDefault()}>
+        <h2 className="text-2xl font-black">시트 생성을 위한 기본 설정</h2>
+        <p className="mt-1 text-sm font-bold text-slate-500">입력한 값으로 Google Sheets 템플릿이 만들어집니다.</p>
+
+        <div className="mt-5 space-y-4">
+          <GeneratorInput label="학급명" value={props.classNameValue} onChange={props.onClassNameChange} placeholder="예: 4학년 1반" />
+          <GeneratorInput label="매점 이름" value={props.appTitle} onChange={props.onAppTitleChange} />
+          <GeneratorInput label="은행 이름" value={props.bankTitle} onChange={props.onBankTitleChange} />
+          <GeneratorInput label="화폐 단위" value={props.currencyUnit} onChange={props.onCurrencyUnitChange} />
+
+          <label className="block text-sm font-black text-slate-700">
+            테마
+            <select
+              aria-label="테마"
+              className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base font-bold outline-none transition focus:border-purple-500 focus:bg-white"
+              value={props.themeColor}
+              onChange={(event) => props.onThemeColorChange(event.target.value)}
+            >
+              {THEMES.map((theme) => <option key={theme.value} value={theme.value}>{theme.label}</option>)}
+            </select>
+          </label>
+
+          <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-black text-slate-700">
+            <input
+              aria-label="관리자 암호 설정 완료"
+              type="checkbox"
+              checked={props.adminPasswordConfigured}
+              onChange={(event) => props.onAdminPasswordConfiguredChange(event.target.checked)}
+            />
+            관리자 암호 설정 완료
+          </label>
+        </div>
+
+        <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-900">
+          <p className="font-black">실제 Google Sheets 템플릿 생성을 실행합니다.</p>
+          <p className="mt-1">학생 정보는 자동 수집하지 않고, 필수 시트/헤더/설정값만 만듭니다.</p>
+        </div>
+
+        <div className="mt-5 flex flex-wrap gap-2">
+          <button type="button" onClick={props.onBack} className="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-200">이전</button>
+          <button
+            type="button"
+            disabled={props.isCreating}
+            onClick={props.onCreate}
+            className="rounded-2xl bg-purple-600 px-4 py-3 text-sm font-black text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
+          >
+            {props.isCreating ? '생성 중...' : 'Google Sheets 생성하고 Vercel 안내 보기'}
+          </button>
+        </div>
+
+        {props.createError ? (
+          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-black text-red-700" role="alert">
+            {props.createError}
+          </div>
+        ) : null}
+      </form>
+
+      <section className="rounded-[1.75rem] border border-slate-300/70 bg-slate-950 p-5 text-white shadow-sm">
+        <p className="text-xs font-black tracking-[0.22em] text-purple-300">CREATE MANIFEST</p>
+        <h2 className="text-2xl font-black">생성 계획 미리보기</h2>
+        <pre data-testid="generator-preview" className="mt-4 max-h-[620px] overflow-auto whitespace-pre-wrap rounded-2xl bg-black/40 p-4 text-xs leading-6 text-slate-100 sm:text-sm">
+          {props.preview}
+        </pre>
+      </section>
+    </section>
   );
 }
 
 function CreateResultPanel({ result }: { result: GeneratorCreateResult }) {
   return (
     <section className="rounded-[1.75rem] border border-emerald-200 bg-white p-5 shadow-sm">
-      <p className="text-xs font-black tracking-[0.22em] text-emerald-600">CREATED</p>
+      <p className="text-xs font-black tracking-[0.22em] text-emerald-600">FINAL STEP</p>
       <h2 className="mt-1 text-2xl font-black">생성 완료</h2>
+      <p className="mt-2 text-sm font-bold text-slate-500">이제 아래 순서대로 Vercel에서 선생님 전용 URL을 만들면 됩니다.</p>
       <div className="mt-4 grid gap-3 text-sm font-bold text-slate-700 lg:grid-cols-2">
         <div className="rounded-2xl bg-emerald-50 p-4">
           <p className="text-slate-500">스프레드시트</p>
@@ -219,17 +368,6 @@ function CreateResultPanel({ result }: { result: GeneratorCreateResult }) {
           <code className="break-all text-slate-950">{result.spreadsheetId}</code>
         </div>
       </div>
-      <div className="mt-4 rounded-2xl bg-slate-950 p-4 text-sm font-bold text-white">
-        <p className="font-black text-purple-200">Vercel 환경변수</p>
-        <ul className="mt-2 space-y-1">
-          {result.requiredVercelEnv.map((env) => (
-            <li key={env.name}><code>{env.name}</code>: {env.value}</li>
-          ))}
-        </ul>
-      </div>
-      <ol className="mt-4 list-decimal space-y-1 pl-5 text-sm font-bold text-slate-600">
-        {result.nextSteps.map((step) => <li key={step}>{step}</li>)}
-      </ol>
       {result.deploymentGuide ? (
         <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm font-bold text-slate-700">
           <p className="text-slate-500">운영 소유 구조</p>
@@ -279,13 +417,6 @@ function CreateResultPanel({ result }: { result: GeneratorCreateResult }) {
               ))}
             </ul>
           </div>
-
-          <details className="mt-4 rounded-2xl bg-white p-4">
-            <summary className="cursor-pointer font-black text-slate-950">간단 체크리스트 다시 보기</summary>
-            <ol className="mt-3 list-decimal space-y-1 pl-5">
-              {result.deploymentGuide.checklist.map((item) => <li key={item}>{item}</li>)}
-            </ol>
-          </details>
         </div>
       ) : null}
     </section>
@@ -308,8 +439,8 @@ function GeneratorInput({ label, value, onChange, placeholder }: { label: string
       <input
         aria-label={label}
         className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base font-bold outline-none transition focus:border-purple-500 focus:bg-white"
-        placeholder={placeholder}
         value={value}
+        placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
       />
     </label>
