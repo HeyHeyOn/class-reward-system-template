@@ -40,7 +40,7 @@ type GoogleSessionState = {
   error?: string;
 };
 
-type WizardStep = 'login' | 'choose' | 'notice' | 'settings' | 'deploy';
+type WizardStep = 'login' | 'choose' | 'notice' | 'settings' | 'deploy' | 'update';
 
 export function AdminGeneratorPage() {
   const [session, setSession] = useState<GoogleSessionState>({ loading: true, enabled: true, authenticated: false });
@@ -138,7 +138,7 @@ export function AdminGeneratorPage() {
 
         {session.loading ? <CenteredCard title="로그인 상태 확인 중" description="잠시만 기다려 주세요." /> : null}
         {!session.loading && step === 'login' ? <LoginStep error={session.error} /> : null}
-        {!session.loading && step === 'choose' ? <ChooseStep onCreate={() => setStep('notice')} /> : null}
+        {!session.loading && step === 'choose' ? <ChooseStep onCreate={() => setStep('notice')} onUpdate={() => setStep('update')} /> : null}
         {!session.loading && step === 'notice' ? (
           <NoticeStep
             acknowledged={selfServiceAcknowledged}
@@ -169,6 +169,7 @@ export function AdminGeneratorPage() {
           />
         ) : null}
         {!session.loading && step === 'deploy' && createResult ? <CreateResultPanel result={createResult} /> : null}
+        {!session.loading && step === 'update' ? <UpdateGuide onBack={() => setStep('choose')} /> : null}
       </section>
     </main>
   );
@@ -181,10 +182,11 @@ function StepBar({ step }: { step: WizardStep }) {
     { id: 'notice', label: '확인' },
     { id: 'settings', label: '설정' },
     { id: 'deploy', label: '배포' },
+    { id: 'update', label: '업데이트' },
   ];
   const activeIndex = steps.findIndex((item) => item.id === step);
   return (
-    <ol className="grid grid-cols-5 gap-2 rounded-[1.25rem] bg-white p-2 text-center text-xs font-black text-slate-500 shadow-sm">
+    <ol className="grid grid-cols-3 gap-2 rounded-[1.25rem] bg-white p-2 text-center text-xs font-black text-slate-500 shadow-sm sm:grid-cols-6">
       {steps.map((item, index) => (
         <li key={item.id} className={`rounded-xl px-2 py-2 ${index <= activeIndex ? 'bg-purple-600 text-white' : 'bg-slate-100'}`}>{item.label}</li>
       ))}
@@ -216,7 +218,7 @@ function LoginStep({ error }: { error?: string }) {
   );
 }
 
-function ChooseStep({ onCreate }: { onCreate: () => void }) {
+function ChooseStep({ onCreate, onUpdate }: { onCreate: () => void; onUpdate: () => void }) {
   return (
     <section className="rounded-[1.75rem] border border-slate-300/70 bg-white p-6 shadow-sm">
       <h2 className="text-2xl font-black">무엇을 할까요?</h2>
@@ -226,10 +228,61 @@ function ChooseStep({ onCreate }: { onCreate: () => void }) {
           <span className="text-xl font-black text-purple-800">새 시스템 생성하기</span>
           <span className="mt-2 block text-sm font-bold text-purple-700">새 Google Sheet를 만들고 Vercel 배포까지 안내합니다.</span>
         </button>
-        <button type="button" aria-label="기존 시스템 업데이트하기" className="rounded-3xl border border-slate-200 bg-slate-50 p-6 text-left opacity-80" aria-describedby="update-help">
-          <span className="text-xl font-black text-slate-700">기존 시스템 업데이트하기</span>
-          <span id="update-help" className="mt-2 block text-sm font-bold text-slate-500">준비 중입니다. 우선 새 시스템 생성 흐름부터 안정화합니다.</span>
+        <button type="button" aria-label="기존 시스템 업데이트하기" onClick={onUpdate} className="rounded-3xl border border-sky-200 bg-sky-50 p-6 text-left hover:bg-sky-100" aria-describedby="update-help">
+          <span className="text-xl font-black text-sky-800">기존 시스템 업데이트하기</span>
+          <span id="update-help" className="mt-2 block text-sm font-bold text-sky-700">이미 만든 학급 앱을 최신 버전으로 다시 배포하는 방법을 안내합니다.</span>
         </button>
+      </div>
+    </section>
+  );
+}
+
+function UpdateGuide({ onBack }: { onBack: () => void }) {
+  return (
+    <section className="rounded-[1.75rem] border border-sky-200 bg-white p-6 shadow-sm">
+      <p className="text-xs font-black tracking-[0.22em] text-sky-600">UPDATE GUIDE</p>
+      <h2 className="mt-1 text-2xl font-black">기존 앱 업데이트 안내</h2>
+      <p className="mt-2 text-sm font-bold text-slate-500">
+        데이터가 들어 있는 Google 스프레드시트는 그대로 사용합니다. 보통 업데이트는 시트를 새로 만드는 일이 아니라, Vercel 대시보드에서 기존 프로젝트를 다시 배포하면 됩니다.
+      </p>
+      <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-900">
+        <p className="font-black">업데이트 전에 안심해도 되는 점</p>
+        <ul className="mt-2 list-disc space-y-1 pl-5">
+          <li>학생 명단, 재고, 거래 내역은 Google Sheets에 남아 있습니다.</li>
+          <li>환경변수를 다시 만들 필요는 없습니다. 기존 Vercel 프로젝트의 값을 그대로 사용합니다.</li>
+          <li>새 시스템 생성 버튼을 다시 누르지 않습니다. 그러면 새 시트가 생겨 기존 데이터와 분리됩니다.</li>
+        </ul>
+      </div>
+      <a
+        className="mt-5 inline-flex rounded-2xl bg-sky-600 px-5 py-3 font-black text-white hover:bg-sky-700"
+        href="https://vercel.com/dashboard"
+        target="_blank"
+        rel="noreferrer"
+      >
+        Vercel 프로젝트 목록 열기
+      </a>
+      <ol className="mt-5 space-y-3 text-sm font-bold text-slate-700">
+        <DeploymentStep title="1단계: 기존 프로젝트 찾기">
+          Vercel 대시보드에서 class-store 또는 학급 보상 시스템 프로젝트를 선택합니다. 새 프로젝트를 만들지 말고, 이미 학생들이 접속하던 주소의 프로젝트를 엽니다.
+        </DeploymentStep>
+        <DeploymentStep title="2단계: Deployments 탭 열기">
+          프로젝트 화면 상단 또는 왼쪽 메뉴에서 Deployments 탭을 엽니다. 최근 배포 목록이 보이면 정상입니다.
+        </DeploymentStep>
+        <DeploymentStep title="3단계: 최신 배포 다시 실행">
+          가장 최근 성공한 배포의 메뉴에서 Redeploy를 누릅니다. Vercel이 GitHub 템플릿의 최신 코드로 다시 빌드하면서 앱 기능이 업데이트됩니다.
+        </DeploymentStep>
+        <DeploymentStep title="4단계: 환경변수는 건드리지 않기">
+          GOOGLE_SHEET_ID, GOOGLE_REFRESH_TOKEN, ADMIN_PASSWORD 같은 값은 기존 그대로 둡니다. 값을 지우거나 새로 만들면 기존 앱이 시트를 읽지 못할 수 있습니다.
+        </DeploymentStep>
+        <DeploymentStep title="5단계: Ready 확인 후 기존 주소로 접속">
+          배포 상태가 Ready가 되면 기존 vercel.app 주소로 접속합니다. 주소가 바뀌지 않아야 학생용 QR이나 즐겨찾기를 다시 나눠줄 필요가 없습니다.
+        </DeploymentStep>
+      </ol>
+      <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-950">
+        업데이트 뒤에는 관리자 페이지에서 생성기 탭이 사라졌는지 확인하고, 학생 명단/재고 관리/과제 설정 상단 버튼명이 짧게 바뀌었는지 확인하세요.
+      </div>
+      <div className="mt-5 flex flex-wrap gap-2">
+        <button type="button" onClick={onBack} className="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-200">처음 선택으로 돌아가기</button>
       </div>
     </section>
   );

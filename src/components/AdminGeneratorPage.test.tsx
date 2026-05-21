@@ -78,6 +78,25 @@ describe('AdminGeneratorPage', () => {
     expect(screen.queryByLabelText('학급명')).toBeNull();
   });
 
+  it('shows a friendly Vercel redeploy guide for updating an existing system', async () => {
+    stubGeneratorFetch();
+
+    render(<AdminGeneratorPage />);
+    await waitFor(() => screen.getByRole('button', { name: '기존 시스템 업데이트하기' }));
+    fireEvent.click(screen.getByRole('button', { name: '기존 시스템 업데이트하기' }));
+
+    expect(screen.getByRole('heading', { name: '기존 앱 업데이트 안내' })).toBeTruthy();
+    expect(screen.getByText(/데이터가 들어 있는 Google 스프레드시트는 그대로 사용합니다/)).toBeTruthy();
+    expect(screen.getByText(/Vercel 대시보드에서 기존 프로젝트를 다시 배포하면 됩니다/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Vercel 프로젝트 목록 열기' }).getAttribute('href')).toBe('https://vercel.com/dashboard');
+    expect(screen.getByText(/class-store 또는 학급 보상 시스템 프로젝트를 선택/)).toBeTruthy();
+    expect(screen.getAllByText(/Deployments 탭/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Redeploy/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/환경변수를 다시 만들 필요는 없습니다/)).toBeTruthy();
+    expect(screen.getByText(/업데이트 뒤에는 관리자 페이지에서 생성기 탭이 사라졌는지 확인/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: '처음 선택으로 돌아가기' })).toBeTruthy();
+  });
+
   it('requires acknowledging the self-deployment notice before moving to settings', async () => {
     stubGeneratorFetch();
 
