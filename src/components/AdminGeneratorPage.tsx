@@ -268,19 +268,22 @@ function UpdateGuide({ onBack }: { onBack: () => void }) {
         <DeploymentStep title="2단계: Settings → Git 연결 상태 확인">
           프로젝트의 Settings → Git 화면에서 Git 저장소가 연결되어 있는지 확인합니다. Git 저장소가 연결되어 있지 않음 상태라면 Redeploy는 예전 업로드본을 다시 빌드할 뿐 최신 템플릿을 가져오지 못합니다.
         </DeploymentStep>
-        <DeploymentStep title="3단계: Git 저장소가 연결되어 있으면 Deployments 탭 열기">
-          연결된 저장소가 최신 템플릿 코드를 가지고 있다면 프로젝트 화면 상단 또는 왼쪽 메뉴에서 Deployments 탭을 엽니다. 최근 배포 목록이 보이면 정상입니다.
+        <DeploymentStep title="3단계: 연결된 GitHub 저장소 열기">
+          Settings → Git에 표시된 GitHub 저장소를 엽니다. Vercel은 원본 템플릿이 아니라 선생님 계정의 복사본 저장소를 배포하므로, 이 저장소를 먼저 최신화해야 합니다.
         </DeploymentStep>
-        <DeploymentStep title="4단계: 최신 배포 다시 실행">
-          가장 최근 성공한 배포의 메뉴에서 Redeploy를 누릅니다. 이때 연결된 Git 저장소가 최신 코드일 때만 앱 기능이 업데이트됩니다.
+        <DeploymentStep title="4단계: Actions → Update from template 실행">
+          GitHub 저장소에서 Actions → Update from template을 열고 Run workflow 버튼을 누릅니다. 성공하면 최신 템플릿 코드가 선생님 복사본 저장소에 커밋되고, Vercel이 자동으로 새 배포를 시작합니다.
         </DeploymentStep>
-        <DeploymentStep title="5단계: Git 연결이 없으면 관리자에게 재배포 요청">
+        <DeploymentStep title="5단계: Deployments 탭에서 새 배포 확인">
+          Vercel 프로젝트의 Deployments 탭을 열어 새 배포가 Ready가 되었는지 확인합니다. 자동 배포가 시작되지 않았다면 그때 최근 배포의 Redeploy를 누릅니다.
+        </DeploymentStep>
+        <DeploymentStep title="6단계: Git 연결이 없으면 관리자에게 재배포 요청">
           Git 연결이 없는 프로젝트는 Vercel 화면의 Redeploy만으로 업데이트할 수 없습니다. 기존 프로젝트 이름과 앱 주소를 관리자에게 전달해 최신 템플릿 코드를 같은 Vercel 프로젝트에 다시 배포해야 합니다.
         </DeploymentStep>
-        <DeploymentStep title="6단계: 환경변수는 건드리지 않기">
+        <DeploymentStep title="7단계: 환경변수는 건드리지 않기">
           GOOGLE_SHEET_ID, GOOGLE_REFRESH_TOKEN, ADMIN_PASSWORD 같은 값은 기존 그대로 둡니다. 값을 지우거나 새로 만들면 기존 앱이 시트를 읽지 못할 수 있습니다.
         </DeploymentStep>
-        <DeploymentStep title="7단계: Ready 확인 후 기존 주소로 접속">
+        <DeploymentStep title="8단계: Ready 확인 후 기존 주소로 접속">
           배포 상태가 Ready가 되면 기존 vercel.app 주소로 접속합니다. 주소가 바뀌지 않아야 학생용 QR이나 즐겨찾기를 다시 나눠줄 필요가 없습니다.
         </DeploymentStep>
       </ol>

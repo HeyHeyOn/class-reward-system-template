@@ -1,0 +1,56 @@
+name: Update from template
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    name: Update app code from template
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Configure Git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Add template remote
+        run: |
+          git remote remove template 2>/dev/null || true
+          git remote add template https://github.com/HeyHeyOn/class-reward-system-template.git
+          git fetch template master
+
+      - name: Apply latest template
+        run: |
+          set -euo pipefail
+          if git merge-base HEAD template/master >/dev/null 2>&1; then
+            git merge --no-edit template/master
+          else
+            echo "No shared Git history with the template; syncing files from template/master."
+            tmpdir="$(mktemp -d)"
+            git archive template/master | tar -x -C "$tmpdir"
+            rsync -a --delete --exclude='.git/' "$tmpdir"/ ./
+            rm -rf "$tmpdir"
+            if git diff --quiet; then
+              echo "Template files are already up to date."
+            else
+              git add -A
+              git commit -m "Update from class reward system template"
+            fi
+          fi
+
+      - name: Push updated app code
+        run: |
+          if git diff --quiet HEAD origin/${GITHUB_REF_NAME}; then
+            echo "No template updates to push."
+          else
+            git push origin HEAD:${GITHUB_REF_NAME}
+          fi

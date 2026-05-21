@@ -93,6 +93,8 @@ describe('AdminGeneratorPage', () => {
     expect(screen.getAllByText(/Settings → Git/).length).toBeGreaterThan(0);
     expect(screen.getByText(/Git 저장소가 연결되어 있지 않음/)).toBeTruthy();
     expect(screen.getByText(/Redeploy는 예전 업로드본을 다시 빌드할 뿐/)).toBeTruthy();
+    expect(screen.getByText(/GitHub 저장소에서 Actions → Update from template/)).toBeTruthy();
+    expect(screen.getByText(/Run workflow/)).toBeTruthy();
     expect(screen.getAllByText(/Deployments 탭/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Redeploy/).length).toBeGreaterThan(0);
     expect(screen.getByText(/환경변수를 다시 만들 필요는 없습니다/)).toBeTruthy();
