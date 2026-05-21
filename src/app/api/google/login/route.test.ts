@@ -11,9 +11,10 @@ import { GET } from './route';
 describe('GET /api/google/login', () => {
   afterEach(() => {
     delete process.env.GOOGLE_REFRESH_TOKEN;
+    delete process.env.NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT;
   });
 
-  it('does not start OAuth in self-deployed apps that already have a Sheets refresh token', async () => {
+  it('does not start OAuth in self-deployed system apps that already have a Sheets refresh token', async () => {
     process.env.GOOGLE_REFRESH_TOKEN = 'stored-refresh-token';
 
     const response = await GET(new Request('https://teacher-app.vercel.app/api/google/login'));
@@ -23,5 +24,17 @@ describe('GET /api/google/login', () => {
     expect(location).toContain('/admin/login?error=');
     expect(decodeURIComponent(location)).toContain('관리자 비밀번호 또는 관리자 QR');
     expect(location).not.toContain('accounts.google.com');
+  });
+
+  it('starts OAuth in the generator web page even when it has a Sheets refresh token for creating spreadsheets', async () => {
+    process.env.GOOGLE_REFRESH_TOKEN = 'generator-refresh-token';
+    process.env.NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT = 'generator';
+
+    const response = await GET(new Request('https://class-store-generator.vercel.app/api/google/login'));
+    const location = response.headers.get('location') ?? '';
+
+    expect(response.status).toBe(307);
+    expect(location).toContain('accounts.google.com');
+    expect(location).not.toContain('/admin/login');
   });
 });

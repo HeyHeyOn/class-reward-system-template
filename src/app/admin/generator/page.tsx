@@ -1,8 +1,9 @@
 import { notFound } from 'next/navigation';
 import { AdminGeneratorPage } from '@/components/AdminGeneratorPage';
+import { isSystemDeployment } from '@/server/deploymentMode';
 
 export default function Page() {
-  if (process.env.GOOGLE_REFRESH_TOKEN?.trim()) {
+  if (isSystemDeployment() && process.env.GOOGLE_REFRESH_TOKEN?.trim()) {
     notFound();
   }
 

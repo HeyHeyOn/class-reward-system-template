@@ -17,11 +17,20 @@ describe('/admin/generator page', () => {
     notFound.mockClear();
   });
 
-  it('is unavailable inside self-deployed class store apps', async () => {
+  it('is unavailable inside self-deployed system apps', async () => {
     vi.stubEnv('GOOGLE_REFRESH_TOKEN', 'teacher-refresh-token');
     const { default: Page } = await import('./page');
 
     expect(() => Page()).toThrow('NEXT_NOT_FOUND');
     expect(notFound).toHaveBeenCalledOnce();
+  });
+
+  it('stays available on the generator web page even when the generator owns a Sheets refresh token', async () => {
+    vi.stubEnv('GOOGLE_REFRESH_TOKEN', 'generator-refresh-token');
+    vi.stubEnv('NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT', 'generator');
+    const { default: Page } = await import('./page');
+
+    expect(() => Page()).not.toThrow();
+    expect(notFound).not.toHaveBeenCalled();
   });
 });
