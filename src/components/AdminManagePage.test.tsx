@@ -111,7 +111,7 @@ describe('AdminManagePage', () => {
     expect(await screen.findByText('관리자 목록도 이 설정을 사용합니다: 학생 2명 · 상품 2개')).toBeTruthy();
     expect(screen.queryByRole('link', { name: /학생 QR 출력/ })).toBeNull();
     expect(screen.getByRole('link', { name: /결제 내역 확인/ }).getAttribute('href')).toBe('/admin/transactions');
-    expect(screen.getByRole('link', { name: /시스템 생성기/ }).getAttribute('href')).toBe('/admin/generator');
+    expect(screen.queryByRole('link', { name: /시스템 생성기/ })).toBeNull();
     expect(screen.getByRole('link', { name: /은행 바로가기/ }).getAttribute('href')).toBe('/bank');
     expect(screen.getByRole('tab', { name: '과제 설정' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: '화폐 지급/회수' })).toBeTruthy();
@@ -153,11 +153,11 @@ describe('AdminManagePage', () => {
     expect(screen.getByTestId('student-header-row').textContent).toContain('이름');
     expect(screen.getByTestId('student-header-row').textContent).toContain('잔액');
     expect(screen.queryByRole('button', { name: 'S001 학생 저장' })).toBeNull();
-    expect(screen.getByRole('link', { name: /학생 QR 출력/ }).getAttribute('href')).toBe('/admin/student-qrs');
+    expect(screen.getByRole('link', { name: /QR 출력/ }).getAttribute('href')).toBe('/admin/student-qrs');
 
     fireEvent.change(screen.getByLabelText('S001 이름'), { target: { value: '김민준 수정' } });
     fireEvent.change(screen.getByLabelText('S001 잔액'), { target: { value: '4000' } });
-    fireEvent.click(screen.getByRole('button', { name: '학생 명단 일괄 저장' }));
+    fireEvent.click(screen.getByRole('button', { name: '저장' }));
     await waitFor(() => expect(window.alert).toHaveBeenCalledWith('학생 명단 2명 저장 완료'));
 
     fireEvent.click(screen.getByRole('tab', { name: '재고 관리' }));
@@ -171,7 +171,7 @@ describe('AdminManagePage', () => {
     expect(await screen.findByRole('dialog', { name: '이미지 주소 편집' })).toBeTruthy();
     fireEvent.change(screen.getByLabelText('이미지 주소 전체 입력'), { target: { value: 'https://example.com/new-pencil.png' } });
     fireEvent.click(screen.getByRole('button', { name: '이미지 주소 적용' }));
-    fireEvent.click(screen.getByRole('button', { name: '재고 목록 일괄 저장' }));
+    fireEvent.click(screen.getByRole('button', { name: '저장' }));
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith('/api/students/batch', {
@@ -217,7 +217,7 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByLabelText('전체 학생 선택'));
     fireEvent.change(screen.getByLabelText('선택 학생 금액'), { target: { value: '5000' } });
     fireEvent.change(screen.getByLabelText('선택 학생 작업'), { target: { value: 'set' } });
-    fireEvent.click(screen.getByRole('button', { name: '선택 학생 재화 적용' }));
+    fireEvent.click(screen.getByRole('button', { name: '화폐 수정' }));
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith('/api/students/bulk', {
@@ -228,7 +228,7 @@ describe('AdminManagePage', () => {
     });
     await waitFor(() => expect(window.alert).toHaveBeenCalledWith('선택 학생 2명 수정 완료'));
 
-    fireEvent.click(screen.getByRole('button', { name: '선택 학생 삭제' }));
+    fireEvent.click(screen.getByRole('button', { name: '삭제' }));
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith('/api/students/batch', {
         method: 'DELETE',
@@ -255,7 +255,7 @@ describe('AdminManagePage', () => {
     expect(await screen.findByRole('dialog', { name: '이미지 주소 편집' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '취소' }));
     fireEvent.click(screen.getByLabelText('전체 상품 선택'));
-    fireEvent.click(screen.getByRole('button', { name: '선택 상품 삭제' }));
+    fireEvent.click(screen.getByRole('button', { name: '삭제' }));
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith('/api/products/batch', {
         method: 'DELETE',
@@ -277,7 +277,7 @@ describe('AdminManagePage', () => {
     expect(screen.getByTestId('task-header-row').textContent).toContain('선택');
     expect(screen.getByTestId('task-header-row').textContent).toContain('상세');
     expect(screen.getByTestId('task-header-row').textContent).not.toContain('저장');
-    expect(screen.queryByRole('button', { name: '저장' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'T001 과제 저장' })).toBeNull();
     expect(screen.getByTestId('task-panel').className).toContain('min-w-0');
     expect(screen.getByTestId('new-task-card').className).toContain('min-w-0');
     expect(screen.getByTestId('task-list-card').className).toContain('min-w-0');
@@ -293,7 +293,7 @@ describe('AdminManagePage', () => {
     expect(await screen.findByRole('dialog', { name: '과제 상세 설정 편집' })).toBeTruthy();
     fireEvent.change(screen.getByLabelText('과제 상세 설정 전체 입력'), { target: { value: '책 20분 읽기' } });
     fireEvent.click(screen.getByRole('button', { name: '상세 설정 적용' }));
-    fireEvent.click(screen.getByRole('button', { name: '과제 목록 일괄 저장' }));
+    fireEvent.click(screen.getByRole('button', { name: '저장' }));
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/batch', {
       method: 'PATCH',
@@ -309,7 +309,7 @@ describe('AdminManagePage', () => {
     expect(fetch).not.toHaveBeenCalledWith('/api/tasks/T001', expect.objectContaining({ method: 'PATCH' }));
 
     fireEvent.click(screen.getByLabelText('전체 과제 선택'));
-    fireEvent.click(screen.getByRole('button', { name: '선택 과제 완료 기록 초기화' }));
+    fireEvent.click(screen.getByRole('button', { name: '초기화' }));
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/completions/reset', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -324,7 +324,7 @@ describe('AdminManagePage', () => {
       body: JSON.stringify({ taskIds: ['T001'] }),
     }));
 
-    fireEvent.click(screen.getByRole('button', { name: '선택 과제 삭제' }));
+    fireEvent.click(screen.getByRole('button', { name: '삭제' }));
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/batch', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },

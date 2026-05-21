@@ -498,11 +498,10 @@ export function AdminManagePage() {
           {message ? <p className="mt-3 rounded-2xl bg-rose-100 p-3 text-sm font-bold text-rose-700">{message}</p> : null}
         </header>
 
-        <nav data-testid="admin-tabs" role="tablist" aria-label="관리자 메뉴" className="grid grid-cols-3 gap-2 rounded-[1.5rem] border border-slate-300/70 bg-white/90 p-2 shadow-sm sm:grid-cols-7">
+        <nav data-testid="admin-tabs" role="tablist" aria-label="관리자 메뉴" className="grid grid-cols-3 gap-2 rounded-[1.5rem] border border-slate-300/70 bg-white/90 p-2 shadow-sm sm:grid-cols-6">
           <AdminNavLink href="/" title="매점 바로가기" description="키오스크" />
           <AdminNavLink href="/bank" title="은행 바로가기" description="학생 은행" />
           <AdminNavLink href="/admin/transactions" title="결제 내역 확인" description="거래 기록" />
-          <AdminNavLink href="/admin/generator" title="시스템 생성기" description="dry-run" />
           {tabs.map((tab) => {
             const selected = activeTab === tab.id;
             return (
@@ -560,10 +559,10 @@ export function AdminManagePage() {
                     <option value="subtract">금액 제거</option>
                   </select>
                   <input aria-label="선택 학생 금액" value={bulkAmount} onChange={(event) => setBulkAmount(Number(event.target.value))} type="number" className="w-28 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold" />
-                  <button type="button" onClick={applyBulkStudentBalance} className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-black text-white">선택 학생 재화 적용</button>
-                  <button type="button" onClick={deleteSelectedStudents} className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-black text-white">선택 학생 삭제</button>
-                  <button type="button" onClick={saveAllStudents} className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-black text-white">학생 명단 일괄 저장</button>
-                  <Link href="/admin/student-qrs" className="rounded-xl bg-amber-100 px-4 py-2 text-sm font-black text-amber-900">학생 QR 출력</Link>
+                  <button type="button" onClick={applyBulkStudentBalance} className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-black text-white">화폐 수정</button>
+                  <button type="button" onClick={deleteSelectedStudents} className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-black text-white">삭제</button>
+                  <button type="button" onClick={saveAllStudents} className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-black text-white">저장</button>
+                  <Link href="/admin/student-qrs" className="rounded-xl bg-amber-100 px-4 py-2 text-sm font-black text-amber-900">QR 출력</Link>
                 </div>
               </div>
 
@@ -631,8 +630,8 @@ export function AdminManagePage() {
                   <input aria-label="전체 상품 선택" checked={allProductsSelected} onChange={(event) => setSelectedProductIds(event.target.checked ? products.map((product) => product.productId) : [])} type="checkbox" />
                   전체 선택 ({selectedProductIds.length}/{products.length})
                 </label>
-                <button type="button" onClick={deleteSelectedProducts} className="mt-2 rounded-xl bg-rose-600 px-4 py-2 text-sm font-black text-white">선택 상품 삭제</button>
-                <button type="button" onClick={saveAllProducts} className="ml-2 mt-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-black text-white">재고 목록 일괄 저장</button>
+                <button type="button" onClick={deleteSelectedProducts} className="mt-2 rounded-xl bg-rose-600 px-4 py-2 text-sm font-black text-white">삭제</button>
+                <button type="button" onClick={saveAllProducts} className="ml-2 mt-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-black text-white">저장</button>
               </div>
               <div data-testid="product-list" className="overflow-hidden rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
                 <div data-testid="product-header-row" className="grid grid-cols-[24px_30px_minmax(3rem,1fr)_32px_32px_36px_minmax(3rem,0.8fr)_28px_30px_34px] items-center gap-0.5 bg-slate-100 px-1.5 py-1 text-[10px] font-black text-slate-500">
@@ -713,9 +712,9 @@ export function AdminManagePage() {
                   <input aria-label="전체 과제 선택" checked={allTasksSelected} onChange={(event) => setSelectedTaskIds(event.target.checked ? tasks.map((task) => task.taskId) : [])} type="checkbox" />
                   전체 선택 ({selectedTaskIds.length}/{tasks.length})
                 </label>
-                <button type="button" onClick={deleteSelectedTasks} className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-black text-white">선택 과제 삭제</button>
-                <button type="button" onClick={() => resetTaskCompletions([...selectedTaskIds], `선택 과제 ${selectedTaskIds.length}개`)} className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-black text-white">선택 과제 완료 기록 초기화</button>
-                <button type="button" onClick={saveAllTasks} className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-black text-white">과제 목록 일괄 저장</button>
+                <button type="button" onClick={deleteSelectedTasks} className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-black text-white">삭제</button>
+                <button type="button" onClick={() => resetTaskCompletions([...selectedTaskIds], `선택 과제 ${selectedTaskIds.length}개`)} className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-black text-white">초기화</button>
+                <button type="button" onClick={saveAllTasks} className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-black text-white">저장</button>
                 </div>
               </div>
               <div data-testid="task-list-scroll" className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
@@ -746,7 +745,7 @@ export function AdminManagePage() {
                       {task.description ? '상세 있음' : '상세'}
                     </button>
                     <button type="button" aria-label={`${task.taskId} 완료 기록 초기화`} onClick={() => resetTaskCompletions([task.taskId], task.taskId)} className="h-8 rounded-lg bg-amber-100 px-1 text-[10px] font-black text-amber-800">초기화</button>
-                    <button type="button" onClick={() => deleteTaskRow(task.taskId)} className="h-8 rounded-lg bg-rose-100 px-1 text-[10px] font-black text-rose-700">삭제</button>
+                    <button type="button" aria-label={`${task.taskId} 과제 삭제`} onClick={() => deleteTaskRow(task.taskId)} className="h-8 rounded-lg bg-rose-100 px-1 text-[10px] font-black text-rose-700">삭제</button>
                   </div>
                 ))}
                 </div>
