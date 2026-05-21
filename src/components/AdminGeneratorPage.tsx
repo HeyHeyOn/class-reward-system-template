@@ -394,8 +394,8 @@ function CreateResultPanel({ result }: { result: GeneratorCreateResult }) {
               <DeploymentStep title="4단계: 학급 보상 시스템 저장소 선택">
                 GitHub 연결이 끝나면 Import Git Repository 목록에서 학급 보상 시스템 템플릿 저장소를 찾고 Import를 누릅니다. 저장소가 보이지 않으면 검색창에 저장소 주소를 붙여넣거나, GitHub 권한 화면에서 해당 저장소 접근을 허용해야 합니다.
               </DeploymentStep>
-              <DeploymentStep title="5단계: 환경변수 입력">
-                GOOGLE_SHEET_ID 칸에는 아래 값을 그대로 붙여넣으세요. ADMIN_PASSWORD는 관리자 화면에서 쓸 비밀번호, AUTH_SECRET은 아무도 모르는 긴 임의 문자열로 정하면 됩니다.
+              <DeploymentStep title="5단계: 환경변수 6개 입력">
+                운영 앱이 생성된 시트를 읽고 쓰려면 6개 환경변수를 모두 입력해야 합니다. GOOGLE_SHEET_ID, GOOGLE_CLIENT_ID는 일반값이고, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN, ADMIN_PASSWORD, AUTH_SECRET은 비밀값입니다.
               </DeploymentStep>
               <DeploymentStep title="6단계: 배포 실행">
                 Deploy 버튼을 누른 뒤 Ready가 나올 때까지 기다립니다. 보통 1~3분 정도 걸립니다.
@@ -411,6 +411,9 @@ function CreateResultPanel({ result }: { result: GeneratorCreateResult }) {
 
           <div className="mt-4 rounded-2xl bg-white p-4">
             <p className="font-black text-slate-950">붙여넣을 값 요약</p>
+            <p className="mt-1 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-black text-red-700">
+              비밀값은 다른 사람에게 공유하지 말고 Vercel 환경변수 칸에만 붙여넣으세요. 화면 캡처를 공유할 때는 GOOGLE_CLIENT_SECRET과 GOOGLE_REFRESH_TOKEN을 가려야 합니다.
+            </p>
             <ul className="mt-2 space-y-2">
               {result.requiredVercelEnv.map((env) => (
                 <li key={env.name} className="rounded-xl bg-slate-50 p-3">

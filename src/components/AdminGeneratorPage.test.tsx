@@ -21,7 +21,14 @@ function stubGeneratorFetch(createResponse?: Record<string, unknown>) {
           title: '4학년 1반 - 학급 보상 시스템',
           initializedSheets: ['Students', 'Products'],
           authMode: 'google-login',
-          requiredVercelEnv: [{ name: 'GOOGLE_SHEET_ID', value: 'sheet-123', secret: false }],
+          requiredVercelEnv: [
+            { name: 'GOOGLE_SHEET_ID', value: 'sheet-123', secret: false },
+            { name: 'GOOGLE_CLIENT_ID', value: 'client-id-123.apps.googleusercontent.com', secret: false },
+            { name: 'GOOGLE_CLIENT_SECRET', value: 'client-secret-123', secret: true },
+            { name: 'GOOGLE_REFRESH_TOKEN', value: 'refresh-token-123', secret: true },
+            { name: 'ADMIN_PASSWORD', value: '생성 시 정한 관리자 암호', secret: true },
+            { name: 'AUTH_SECRET', value: '무작위 긴 문자열로 직접 설정', secret: true },
+          ],
           nextSteps: ['학생과 상품을 입력합니다.'],
           deploymentGuide: {
             ownership: '선생님 개인 Google 계정 + 선생님 개인 Vercel 프로젝트',
@@ -131,7 +138,12 @@ describe('AdminGeneratorPage', () => {
     expect(screen.getByText(/GitHub 계정으로 Vercel에 로그인합니다/)).toBeTruthy();
     expect(screen.getByText(/Continue with GitHub가 보이면 그 버튼을 누릅니다/)).toBeTruthy();
     expect(screen.getByText(/학급 보상 시스템 템플릿 저장소를 찾고 Import를 누릅니다/)).toBeTruthy();
-    expect(screen.getByText(/GOOGLE_SHEET_ID 칸에는 아래 값을 그대로 붙여넣으세요/)).toBeTruthy();
+    expect(screen.getByText(/운영 앱이 생성된 시트를 읽고 쓰려면 6개 환경변수를 모두 입력해야 합니다/)).toBeTruthy();
+    expect(screen.getByText('GOOGLE_CLIENT_ID')).toBeTruthy();
+    expect(screen.getByText('GOOGLE_CLIENT_SECRET (비밀값)')).toBeTruthy();
+    expect(screen.getByText('GOOGLE_REFRESH_TOKEN (비밀값)')).toBeTruthy();
+    expect(screen.getByText(/비밀값은 다른 사람에게 공유하지 말고 Vercel 환경변수 칸에만 붙여넣으세요/)).toBeTruthy();
+    expect(screen.getByText(/운영 앱이 생성된 시트를 읽고 쓰려면 6개 환경변수를 모두 입력해야 합니다/)).toBeTruthy();
     expect(screen.getByText(/Deploy 버튼을 누른 뒤 Ready가 나올 때까지 기다립니다/)).toBeTruthy();
     expect(screen.getByText(/배포 완료 후 제공되는 vercel.app 주소가 선생님 전용 URL입니다/)).toBeTruthy();
     expect(screen.getByText(/막히면 화면을 닫지 말고 오류 문구를 복사/)).toBeTruthy();
