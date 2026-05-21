@@ -6,6 +6,7 @@ import {
   validateSpreadsheetId,
 } from '@/server/settings';
 import type { SheetName } from '@/server/sheetsRepository';
+import { SYSTEM_VERSION } from '@/generator/config/versions';
 
 describe('settings', () => {
   it('extracts spreadsheet id from a plain id or Google Sheets URL', () => {
@@ -26,7 +27,7 @@ describe('settings', () => {
   it('uses env spreadsheet id and default currency unit when Settings sheet is unavailable', async () => {
     const settings = await getAppSettings({ env: { GOOGLE_SHEET_ID: 'env-sheet-id' } });
 
-    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue', schemaVersion: 1, systemVersion: '0.2.0-phase1', systemName: '학급 보상 시스템', source: 'env' });
+    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue', schemaVersion: 1, systemVersion: SYSTEM_VERSION, systemName: '학급 보상 시스템', source: 'env' });
   });
 
   it('reads currency unit and app title from Settings sheet when present', async () => {
@@ -99,7 +100,7 @@ describe('settings', () => {
         themeColor: 'green',
         env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
       }),
-    ).resolves.toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '달란트', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'green', schemaVersion: 1, systemVersion: '0.2.0-phase1', systemName: '학급 보상 시스템', source: 'sheet' });
+    ).resolves.toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '달란트', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'green', schemaVersion: 1, systemVersion: SYSTEM_VERSION, systemName: '학급 보상 시스템', source: 'sheet' });
 
     expect(updates).toEqual([{ sheetName: 'Settings', rowNumber: 2, columnName: 'value', value: '달란트' }]);
     expect(appends).toEqual([
@@ -107,7 +108,7 @@ describe('settings', () => {
       { sheetName: 'Settings', values: ['bankTitle', '햇살반 은행'] },
       { sheetName: 'Settings', values: ['themeColor', 'green'] },
       { sheetName: 'Settings', values: ['schemaVersion', '1'] },
-      { sheetName: 'Settings', values: ['systemVersion', '0.2.0-phase1'] },
+      { sheetName: 'Settings', values: ['systemVersion', SYSTEM_VERSION] },
       { sheetName: 'Settings', values: ['systemName', '학급 보상 시스템'] },
     ]);
 

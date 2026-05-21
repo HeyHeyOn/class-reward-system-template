@@ -7,6 +7,22 @@ export type GeneratorAction = {
   description: string;
 };
 
+export type ClassRewardInstanceOptions = {
+  className?: string;
+  appTitle: string;
+  bankTitle: string;
+  currencyUnit: string;
+  themeColor: string;
+  adminPasswordConfigured: boolean;
+};
+
+export type GeneratorManifest = {
+  systemVersion: string;
+  settings: Array<{ key: string; value: string }>;
+  sheets: Array<{ name: string; columns: string[] }>;
+  vercelEnvNames: string[];
+};
+
 export type GeneratorPlan = {
   command: Exclude<GeneratorCommand, 'help'>;
   mode: GeneratorMode;
@@ -14,8 +30,10 @@ export type GeneratorPlan = {
   summary: string;
   actions: GeneratorAction[];
   risks: string[];
+  options?: ClassRewardInstanceOptions;
+  manifest?: GeneratorManifest;
 };
 
 export type CliResult =
   | { command: 'help'; dryRun: true; message?: string }
-  | { command: Exclude<GeneratorCommand, 'help'>; dryRun: boolean; args: string[] };
+  | { command: Exclude<GeneratorCommand, 'help'>; dryRun: boolean; args: string[]; options?: ClassRewardInstanceOptions };

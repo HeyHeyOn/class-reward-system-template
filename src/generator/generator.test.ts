@@ -98,4 +98,81 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
     ]);
     expect(renderCliResult({ command: 'doctor', dryRun: true })).toContain('현재 인스턴스 상태 점검');
   });
+
+  it('parses Phase 2 create options into a safe instance configuration without exposing secrets', () => {
+    const result = parseClassRewardArgs([
+      'create',
+      '--dry-run',
+      '--class-name',
+      '4학년 1반',
+      '--app-title',
+      '별빛 매점',
+      '--bank-title',
+      '별빛 은행',
+      '--currency-unit',
+      '별',
+      '--theme',
+      'purple',
+      '--admin-password-set',
+    ]);
+
+    expect(result).toMatchObject({
+      command: 'create',
+      dryRun: true,
+      options: {
+        className: '4학년 1반',
+        appTitle: '별빛 매점',
+        bankTitle: '별빛 은행',
+        currencyUnit: '별',
+        themeColor: 'purple',
+        adminPasswordConfigured: true,
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain('password');
+  });
+
+  it('renders a Phase 2 create manifest with sheet headers, settings rows, and deployment env names', () => {
+    const rendered = renderCliResult(
+      parseClassRewardArgs([
+        'create',
+        '--dry-run',
+        '--class-name',
+        '4학년 1반',
+        '--app-title',
+        '별빛 매점',
+        '--bank-title',
+        '별빛 은행',
+        '--currency-unit',
+        '별',
+        '--theme',
+        'purple',
+        '--admin-password-set',
+      ]),
+    );
+
+    expect(rendered).toContain('0.3.0-phase2');
+    expect(rendered).toContain('인스턴스 설정');
+    expect(rendered).toContain('className: 4학년 1반');
+    expect(rendered).toContain('appTitle: 별빛 매점');
+    expect(rendered).toContain('bankTitle: 별빛 은행');
+    expect(rendered).toContain('currencyUnit: 별');
+    expect(rendered).toContain('themeColor: purple');
+    expect(rendered).toContain('Students: studentId, name, number, balance, status');
+    expect(rendered).toContain('Tasks: taskId, title, description, reward, maxCompletionsPerStudent, isActive, sortOrder');
+    expect(rendered).toContain('Vercel 환경변수: GOOGLE_SHEET_ID, ADMIN_PASSWORD, AUTH_SECRET');
+    expect(rendered).not.toContain('비밀번호');
+  });
+
+  it('rejects invalid Phase 2 create options before planning external work', () => {
+    expect(parseClassRewardArgs(['create', '--theme', 'rainbow'])).toMatchObject({
+      command: 'help',
+      dryRun: true,
+      message: expect.stringContaining('지원하지 않는 테마'),
+    });
+    expect(parseClassRewardArgs(['create', '--currency-unit', ''])).toMatchObject({
+      command: 'help',
+      dryRun: true,
+      message: expect.stringContaining('값이 필요합니다'),
+    });
+  });
 });
