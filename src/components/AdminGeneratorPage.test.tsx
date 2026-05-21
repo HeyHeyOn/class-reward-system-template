@@ -160,6 +160,8 @@ describe('AdminGeneratorPage', () => {
     expect(screen.getByText(/GitHub 계정으로 Vercel에 로그인합니다/)).toBeTruthy();
     expect(screen.getByText(/Continue with GitHub가 보이면 그 버튼을 누릅니다/)).toBeTruthy();
     expect(screen.getByText(/학급 보상 시스템 템플릿 저장소를 찾고 Import를 누릅니다/)).toBeTruthy();
+    expect(screen.getByText(/Vercel은 템플릿 원본이 아니라 선생님 GitHub 계정에 만든 복사본 저장소를 연결합니다/)).toBeTruthy();
+    expect(screen.getByText(/업데이트하려면 GitHub의 템플릿 동기화 워크플로를 실행한 뒤 Vercel이 다시 배포되도록 해야 합니다/)).toBeTruthy();
     expect(screen.getByText(/운영 앱이 생성된 시트를 읽고 쓰려면 6개 환경변수를 모두 입력해야 합니다/)).toBeTruthy();
     expect(screen.getByText('GOOGLE_CLIENT_ID')).toBeTruthy();
     expect(screen.getByText('GOOGLE_CLIENT_SECRET (비밀값)')).toBeTruthy();

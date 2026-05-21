@@ -453,13 +453,16 @@ function CreateResultPanel({ result }: { result: GeneratorCreateResult }) {
               <DeploymentStep title="4단계: 학급 보상 시스템 저장소 선택">
                 GitHub 연결이 끝나면 Import Git Repository 목록에서 학급 보상 시스템 템플릿 저장소를 찾고 Import를 누릅니다. 저장소가 보이지 않으면 검색창에 저장소 주소를 붙여넣거나, GitHub 권한 화면에서 해당 저장소 접근을 허용해야 합니다.
               </DeploymentStep>
-              <DeploymentStep title="5단계: 환경변수 6개 입력">
+              <DeploymentStep title="5단계: 연결되는 저장소 구조 이해">
+                Vercel은 템플릿 원본이 아니라 선생님 GitHub 계정에 만든 복사본 저장소를 연결합니다. 그래서 나중에 업데이트하려면 GitHub의 템플릿 동기화 워크플로를 실행한 뒤 Vercel이 다시 배포되도록 해야 합니다.
+              </DeploymentStep>
+              <DeploymentStep title="6단계: 환경변수 6개 입력">
                 운영 앱이 생성된 시트를 읽고 쓰려면 6개 환경변수를 모두 입력해야 합니다. GOOGLE_SHEET_ID, GOOGLE_CLIENT_ID는 일반값이고, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN, ADMIN_PASSWORD, AUTH_SECRET은 비밀값입니다.
               </DeploymentStep>
-              <DeploymentStep title="6단계: 배포 실행">
+              <DeploymentStep title="7단계: 배포 실행">
                 Deploy 버튼을 누른 뒤 Ready가 나올 때까지 기다립니다. 보통 1~3분 정도 걸립니다.
               </DeploymentStep>
-              <DeploymentStep title="7단계: 전용 URL 확인">
+              <DeploymentStep title="8단계: 전용 URL 확인">
                 배포 완료 후 제공되는 vercel.app 주소가 선생님 전용 URL입니다. 그 주소를 저장해두고 학생용 키오스크와 관리자 화면으로 사용하면 됩니다.
               </DeploymentStep>
             </ol>
