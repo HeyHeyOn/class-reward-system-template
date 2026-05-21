@@ -73,6 +73,7 @@ function createGeneratorSheetsAuth(request: Request) {
     const origin = new URL(request.url).origin;
     const userAuth = createUserSheetsAuth(request, origin);
     if (userAuth) return { auth: userAuth.auth, authMode: 'google-login' as const };
+    throw new Error('선생님 개인 Google 계정 로그인이 필요합니다. 먼저 Google 로그인 후 다시 생성해 주세요.');
   }
 
   const deploymentAuth = createDeploymentSheetsAuth();
