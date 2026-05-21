@@ -1,5 +1,5 @@
-import { KioskApp } from '@/components/KioskApp';
+import { HomePage } from '@/components/HomePage';
 
 export default function Home() {
-  return <KioskApp />;
+  return <HomePage />;
 }

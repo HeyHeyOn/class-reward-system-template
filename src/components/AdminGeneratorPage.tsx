@@ -45,6 +45,7 @@ export function AdminGeneratorPage() {
               <p className="mt-2 max-w-2xl text-sm font-bold text-slate-500 sm:text-base">
                 새 학급 매점 인스턴스를 만들기 전에 Google Sheets 구조와 배포 환경을 안전하게 미리 확인합니다.
               </p>
+              <p className="mt-2 text-xs font-black text-purple-700">생성기 전용 도메인에서는 이 페이지가 루트 주소로 열립니다.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Link href="/admin" className="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-200">
