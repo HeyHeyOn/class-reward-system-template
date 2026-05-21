@@ -8,11 +8,11 @@ export type ThemeColor = (typeof THEME_COLORS)[number];
 export const REQUIRED_SHEETS: Record<SheetName, string[]> = {
   Students: ['studentId', 'name', 'number', 'balance', 'status'],
   Products: ['productId', 'name', 'price', 'stock', 'isActive', 'imageUrl', 'category', 'sortOrder'],
-  Transactions: ['transactionId', 'timestamp', 'studentId', 'studentName', 'items', 'total', 'beforeBalance', 'afterBalance', 'status'],
+  Transactions: ['transactionId', 'timestamp', 'studentId', 'studentName', 'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator'],
   Adjustments: ['adjustmentId', 'timestamp', 'studentId', 'amount', 'mode', 'operator'],
   Settings: ['key', 'value'],
-  Tasks: ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder'],
-  TaskCompletions: ['completionId', 'timestamp', 'taskId', 'studentId', 'reward'],
+  Tasks: ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'createdAt', 'updatedAt'],
+  TaskCompletions: ['completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note'],
 };
 
 export const DEFAULT_SETTINGS: Array<{ key: string; value: string }> = [

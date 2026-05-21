@@ -15,6 +15,17 @@ const THEMES = [
   { value: 'navy', label: '남색' },
 ];
 
+type GeneratorCreateResult = {
+  ok: true;
+  spreadsheetId: string;
+  spreadsheetUrl: string;
+  title: string;
+  initializedSheets: string[];
+  authMode: string;
+  requiredVercelEnv: Array<{ name: string; value: string; secret: boolean }>;
+  nextSteps: string[];
+};
+
 export function AdminGeneratorPage() {
   const [className, setClassName] = useState('');
   const [appTitle, setAppTitle] = useState('학급 매점');
@@ -22,6 +33,9 @@ export function AdminGeneratorPage() {
   const [currencyUnit, setCurrencyUnit] = useState('원');
   const [themeColor, setThemeColor] = useState('blue');
   const [adminPasswordConfigured, setAdminPasswordConfigured] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
+  const [createResult, setCreateResult] = useState<GeneratorCreateResult | null>(null);
 
   const preview = useMemo(() => {
     const args = ['create', '--dry-run'];
@@ -34,6 +48,26 @@ export function AdminGeneratorPage() {
     return renderCliResult(parseClassRewardArgs(args));
   }, [adminPasswordConfigured, appTitle, bankTitle, className, currencyUnit, themeColor]);
 
+  async function handleCreate() {
+    setIsCreating(true);
+    setCreateError('');
+    setCreateResult(null);
+    try {
+      const response = await fetch('/api/generator/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ className, appTitle, bankTitle, currencyUnit, themeColor, adminPasswordConfigured }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? '시스템을 생성하지 못했습니다.');
+      setCreateResult(data as GeneratorCreateResult);
+    } catch (error) {
+      setCreateError(error instanceof Error ? error.message : '시스템을 생성하지 못했습니다.');
+    } finally {
+      setIsCreating(false);
+    }
+  }
+
   return (
     <main className="min-h-screen bg-[#dbeaf6] p-3 text-slate-950 sm:p-5">
       <section className="mx-auto flex w-full max-w-6xl flex-col gap-4">
@@ -43,11 +77,14 @@ export function AdminGeneratorPage() {
               <p className="text-xs font-black tracking-[0.22em] text-purple-600">CLASS STORE GENERATOR</p>
               <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-5xl">시스템 생성기</h1>
               <p className="mt-2 max-w-2xl text-sm font-bold text-slate-500 sm:text-base">
-                새 학급 매점 인스턴스를 만들기 전에 Google Sheets 구조와 배포 환경을 안전하게 미리 확인합니다.
+                새 학급 매점용 Google Sheets 템플릿을 실제 생성하고, 운영 배포에 필요한 설정값을 안내합니다.
               </p>
               <p className="mt-2 text-xs font-black text-purple-700">생성기 전용 도메인에서는 이 페이지가 루트 주소로 열립니다.</p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Link href="/api/google/login" className="rounded-2xl bg-white px-4 py-3 text-sm font-black text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">
+                Google 로그인
+              </Link>
               <Link href="/admin" className="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-200">
                 관리자 센터로 돌아가기
               </Link>
@@ -61,7 +98,7 @@ export function AdminGeneratorPage() {
         <section className="grid gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
           <form className="rounded-[1.75rem] border border-slate-300/70 bg-white p-5 shadow-sm" onSubmit={(event) => event.preventDefault()}>
             <h2 className="text-2xl font-black">새 시스템 기본값</h2>
-            <p className="mt-1 text-sm font-bold text-slate-500">이 단계는 dry-run 미리보기만 생성합니다.</p>
+            <p className="mt-1 text-sm font-bold text-slate-500">생성 버튼을 누르면 새 Google Spreadsheet가 만들어집니다.</p>
 
             <div className="mt-5 space-y-4">
               <GeneratorInput label="학급명" value={className} onChange={setClassName} placeholder="예: 4학년 1반" />
@@ -92,23 +129,34 @@ export function AdminGeneratorPage() {
               </label>
             </div>
 
-            <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-900">
-              <p className="font-black">실제 생성은 아직 비활성화되어 있습니다.</p>
-              <p className="mt-1">라이브 데이터 수정 없음 · 시트 생성 없음 · Vercel 설정 변경 없음</p>
+            <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-900">
+              <p className="font-black">실제 Google Sheets 템플릿 생성을 실행합니다.</p>
+              <p className="mt-1">학생 정보는 자동 수집하지 않고, 필수 시트/헤더/설정값만 만듭니다.</p>
             </div>
 
-            <button type="button" disabled className="mt-4 w-full rounded-2xl bg-slate-300 py-4 text-lg font-black text-slate-600">
-              실제 생성 준비 중
+            <button
+              type="button"
+              disabled={isCreating}
+              onClick={handleCreate}
+              className="mt-4 w-full rounded-2xl bg-purple-600 py-4 text-lg font-black text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
+            >
+              {isCreating ? '생성 중...' : '새 학급 매점 시스템 생성'}
             </button>
+
+            {createError ? (
+              <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-black text-red-700" role="alert">
+                {createError}
+              </div>
+            ) : null}
           </form>
 
           <section className="rounded-[1.75rem] border border-slate-300/70 bg-slate-950 p-5 text-white shadow-sm">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <p className="text-xs font-black tracking-[0.22em] text-purple-300">DRY-RUN MANIFEST</p>
+                <p className="text-xs font-black tracking-[0.22em] text-purple-300">CREATE MANIFEST</p>
                 <h2 className="text-2xl font-black">생성 계획 미리보기</h2>
               </div>
-              <span className="rounded-full bg-emerald-400/15 px-3 py-1 text-xs font-black text-emerald-200">라이브 데이터 수정 없음</span>
+              <span className="rounded-full bg-emerald-400/15 px-3 py-1 text-xs font-black text-emerald-200">시트 생성 전 미리보기</span>
             </div>
             <pre data-testid="generator-preview" className="mt-4 max-h-[620px] overflow-auto whitespace-pre-wrap rounded-2xl bg-black/40 p-4 text-xs leading-6 text-slate-100 sm:text-sm">
               {preview}
@@ -116,16 +164,48 @@ export function AdminGeneratorPage() {
           </section>
         </section>
 
+        {createResult ? <CreateResultPanel result={createResult} /> : null}
+
         <aside className="rounded-[1.75rem] border border-slate-300/70 bg-white p-5 shadow-sm">
-          <h2 className="text-xl font-black">4페이즈 범위</h2>
+          <h2 className="text-xl font-black">생성 범위</h2>
           <ul className="mt-3 grid gap-2 text-sm font-bold text-slate-600 sm:grid-cols-3">
-            <li className="rounded-2xl bg-sky-50 p-3">폼 입력값으로 create dry-run manifest를 즉시 렌더링합니다.</li>
-            <li className="rounded-2xl bg-sky-50 p-3">비밀값은 받지 않고 설정 여부만 표시합니다.</li>
-            <li className="rounded-2xl bg-sky-50 p-3">다음 단계는 승인 후 Google Sheets 템플릿 생성과 Vercel 환경 준비입니다.</li>
+            <li className="rounded-2xl bg-sky-50 p-3">Google Sheets에 필수 시트와 헤더를 실제 생성합니다.</li>
+            <li className="rounded-2xl bg-sky-50 p-3">Settings 시트에 매점명, 은행명, 화폐 단위, 테마를 기록합니다.</li>
+            <li className="rounded-2xl bg-sky-50 p-3">Vercel 토큰 자동 조작은 하지 않고 필요한 환경변수 값을 안내합니다.</li>
           </ul>
         </aside>
       </section>
     </main>
+  );
+}
+
+function CreateResultPanel({ result }: { result: GeneratorCreateResult }) {
+  return (
+    <section className="rounded-[1.75rem] border border-emerald-200 bg-white p-5 shadow-sm">
+      <p className="text-xs font-black tracking-[0.22em] text-emerald-600">CREATED</p>
+      <h2 className="mt-1 text-2xl font-black">생성 완료</h2>
+      <div className="mt-4 grid gap-3 text-sm font-bold text-slate-700 lg:grid-cols-2">
+        <div className="rounded-2xl bg-emerald-50 p-4">
+          <p className="text-slate-500">스프레드시트</p>
+          <a className="break-all text-emerald-700 underline" href={result.spreadsheetUrl} target="_blank" rel="noreferrer">{result.title}</a>
+        </div>
+        <div className="rounded-2xl bg-slate-50 p-4">
+          <p className="text-slate-500">GOOGLE_SHEET_ID</p>
+          <code className="break-all text-slate-950">{result.spreadsheetId}</code>
+        </div>
+      </div>
+      <div className="mt-4 rounded-2xl bg-slate-950 p-4 text-sm font-bold text-white">
+        <p className="font-black text-purple-200">Vercel 환경변수</p>
+        <ul className="mt-2 space-y-1">
+          {result.requiredVercelEnv.map((env) => (
+            <li key={env.name}><code>{env.name}</code>: {env.value}</li>
+          ))}
+        </ul>
+      </div>
+      <ol className="mt-4 list-decimal space-y-1 pl-5 text-sm font-bold text-slate-600">
+        {result.nextSteps.map((step) => <li key={step}>{step}</li>)}
+      </ol>
+    </section>
   );
 }
 

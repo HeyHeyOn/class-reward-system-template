@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AdminGeneratorPage } from './AdminGeneratorPage';
 
@@ -8,7 +8,7 @@ describe('AdminGeneratorPage', () => {
     vi.unstubAllGlobals();
   });
 
-  it('renders a safe generator page with dry-run defaults and no live create action', () => {
+  it('renders an executable generator page with dry-run preview and create action', () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
 
@@ -20,9 +20,9 @@ describe('AdminGeneratorPage', () => {
     expect(screen.getByLabelText('은행 이름')).toHaveProperty('value', '학급 은행');
     expect(screen.getByLabelText('화폐 단위')).toHaveProperty('value', '원');
     expect(screen.getByLabelText('테마')).toHaveProperty('value', 'blue');
-    expect(screen.getByText('실제 생성은 아직 비활성화되어 있습니다.')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '실제 생성 준비 중' })).toHaveProperty('disabled', true);
-    expect(screen.getAllByText(/라이브 데이터 수정 없음/).length).toBeGreaterThan(0);
+    expect(screen.getByText('실제 Google Sheets 템플릿 생성을 실행합니다.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '새 학급 매점 시스템 생성' })).toHaveProperty('disabled', false);
+    expect(screen.getAllByText(/필수 시트와 헤더/).length).toBeGreaterThan(0);
     expect(screen.getByText(/Students/)).toBeTruthy();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -50,11 +50,36 @@ describe('AdminGeneratorPage', () => {
     expect(preview).not.toContain('token');
   });
 
-  it('links back to the admin center and production doctor page guidance', () => {
+  it('calls the create API and renders the generated spreadsheet report', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        spreadsheetId: 'sheet-123',
+        spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/sheet-123/edit',
+        title: '4학년 1반 - 학급 보상 시스템',
+        initializedSheets: ['Students', 'Products'],
+        authMode: 'google-login',
+        requiredVercelEnv: [{ name: 'GOOGLE_SHEET_ID', value: 'sheet-123', secret: false }],
+        nextSteps: ['학생과 상품을 입력합니다.'],
+      }),
+    }));
+
+    render(<AdminGeneratorPage />);
+    fireEvent.change(screen.getByLabelText('학급명'), { target: { value: '4학년 1반' } });
+    fireEvent.click(screen.getByRole('button', { name: '새 학급 매점 시스템 생성' }));
+
+    await waitFor(() => expect(screen.getByText('생성 완료')).toBeTruthy());
+    expect(fetch).toHaveBeenCalledWith('/api/generator/create', expect.objectContaining({ method: 'POST' }));
+    expect(screen.getByText('sheet-123')).toBeTruthy();
+  });
+
+  it('links back to the admin center and Google login', () => {
     render(<AdminGeneratorPage />);
 
+    expect(screen.getByRole('link', { name: 'Google 로그인' }).getAttribute('href')).toBe('/api/google/login');
     expect(screen.getByRole('link', { name: '관리자 센터로 돌아가기' }).getAttribute('href')).toBe('/admin');
     expect(screen.getByRole('link', { name: '현재 운영 매점 열기' }).getAttribute('href')).toBe('/');
-    expect(screen.getByText(/다음 단계는 승인 후 Google Sheets 템플릿 생성/)).toBeTruthy();
+    expect(screen.getByText(/Vercel 토큰 자동 조작은 하지 않고/)).toBeTruthy();
   });
 });
