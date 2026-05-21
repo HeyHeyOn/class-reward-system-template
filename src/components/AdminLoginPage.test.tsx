@@ -14,8 +14,8 @@ describe('AdminLoginPage', () => {
     render(<AdminLoginPage googleLoginEnabled={false} />);
 
     expect(screen.queryByRole('link', { name: 'Google 계정으로 로그인' })).toBeNull();
-    expect(screen.getByText(/이 배포 앱은 생성 시 연결된 Google Sheets 권한으로 동작합니다/)).toBeTruthy();
-    expect(screen.getByLabelText('관리자 비밀번호')).toBeTruthy();
+    expect(screen.getAllByText(/Recovery 탭의 복구 코드/).length).toBeGreaterThan(0);
+    expect(screen.getByLabelText('관리자 비밀번호')).toHaveProperty('placeholder', '비밀번호 또는 복구 코드');
   });
 
   it('shows Google login when explicit Google login is enabled', () => {

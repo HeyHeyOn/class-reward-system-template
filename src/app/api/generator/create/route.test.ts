@@ -48,7 +48,9 @@ describe('POST /api/generator/create deployment env', () => {
     expect(envByName.GOOGLE_CLIENT_ID.value).toBe('client-id-123.apps.googleusercontent.com');
     expect(envByName.GOOGLE_CLIENT_SECRET.value).toBe('client-secret-123');
     expect(envByName.GOOGLE_REFRESH_TOKEN.value).toBe('refresh-token-123');
+    expect(envByName.ADMIN_PASSWORD.value).toBe('teacher@example.com');
     expect(envByName.ADMIN_PASSWORD.secret).toBe(true);
+    expect(envByName.AUTH_SECRET.value).toMatch(/^[A-Za-z0-9_-]{32,}$/);
     expect(envByName.AUTH_SECRET.secret).toBe(true);
     expect(data.deploymentGuide.vercelImportUrl).toContain('env=GOOGLE_SHEET_ID%2CGOOGLE_CLIENT_ID%2CGOOGLE_CLIENT_SECRET%2CGOOGLE_REFRESH_TOKEN%2CADMIN_PASSWORD%2CAUTH_SECRET');
     expect(data.deploymentGuide.checklist).toContain('GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN도 함께 입력해야 운영 앱이 시트를 읽고 쓸 수 있습니다.');

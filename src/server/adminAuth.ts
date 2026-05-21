@@ -34,7 +34,9 @@ export async function verifyAdminPasswordWithSettings(
   try {
     const settings = await getSheetSettings(reader);
     const savedHash = settings[ADMIN_PASSWORD_HASH_KEY]?.trim();
-    if (savedHash) return safeEqual(submittedHash, savedHash);
+    if (savedHash && safeEqual(submittedHash, savedHash)) return true;
+    const recoveryCodeHash = settings.recoveryCodeHash?.trim();
+    if (recoveryCodeHash && safeEqual(hashRecoveryCode(password), recoveryCodeHash)) return true;
   } catch {
     // Fall back to env-only auth when Settings is unavailable.
   }
@@ -90,6 +92,10 @@ function signPayload(payload: string, env: AdminAuthEnv): string {
 
 function hashValue(value: string): string {
   return createHash('sha256').update(value).digest('hex');
+}
+
+function hashRecoveryCode(value: string): string {
+  return hashValue(value.trim().toUpperCase());
 }
 
 function safeEqual(left: string, right: string): boolean {

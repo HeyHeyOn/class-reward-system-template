@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { createClassRewardSpreadsheet } from '@/generator/createSpreadsheet';
 import { normalizeClassRewardCreateOptions } from '@/generator/createOptions';
 import { THEME_COLORS } from '@/generator/config/schema';
@@ -36,7 +37,7 @@ export async function POST(request: Request) {
     }
 
     const result = await createClassRewardSpreadsheet(options, request);
-    const deploymentEnv = buildRequiredVercelEnv(result.spreadsheetId, options.adminPasswordConfigured, request);
+    const deploymentEnv = buildRequiredVercelEnv(result.spreadsheetId, request);
     return Response.json({
       ok: true,
       ...result,
@@ -59,7 +60,7 @@ function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-function buildRequiredVercelEnv(spreadsheetId: string, adminPasswordConfigured: boolean, request: Request) {
+function buildRequiredVercelEnv(spreadsheetId: string, request: Request) {
   const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
   const session = getGoogleSessionFromRequest(request);
@@ -73,8 +74,8 @@ function buildRequiredVercelEnv(spreadsheetId: string, adminPasswordConfigured: 
     { name: 'GOOGLE_CLIENT_ID', value: clientId, secret: false },
     { name: 'GOOGLE_CLIENT_SECRET', value: clientSecret, secret: true },
     { name: 'GOOGLE_REFRESH_TOKEN', value: session.refreshToken, secret: true },
-    { name: 'ADMIN_PASSWORD', value: adminPasswordConfigured ? '생성 시 정한 관리자 암호' : '배포 전에 직접 설정 필요', secret: true },
-    { name: 'AUTH_SECRET', value: '무작위 긴 문자열로 직접 설정', secret: true },
+    { name: 'ADMIN_PASSWORD', value: session.email, secret: true },
+    { name: 'AUTH_SECRET', value: randomBytes(32).toString('base64url'), secret: true },
   ];
 }
 
@@ -97,8 +98,8 @@ function buildDeploymentGuide(spreadsheetId: string) {
       templateRepositoryUrl ? '개인 Vercel 계정으로 Import Project를 진행합니다.' : '개인 Vercel 계정에서 New Project를 열고 학급 보상 시스템 템플릿 저장소를 Import합니다.',
       `GOOGLE_SHEET_ID에 ${spreadsheetId} 값을 입력합니다.`,
       'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN도 함께 입력해야 운영 앱이 시트를 읽고 쓸 수 있습니다.',
-      'ADMIN_PASSWORD는 관리자 페이지에서 사용할 비밀번호로 직접 정합니다.',
-      'AUTH_SECRET은 길고 무작위인 문자열로 직접 정합니다.',
+      'ADMIN_PASSWORD는 생성기에 로그인한 Google 이메일 주소로 자동 입력합니다. 배포 후 관리자 설정에서 변경할 수 있습니다.',
+      'AUTH_SECRET은 생성기가 만든 무작위 문자열을 그대로 붙여넣습니다. 외울 필요는 없습니다.',
       '배포 완료 후 /, /bank, /admin/login 주소가 열리는지 확인합니다.',
     ],
   };

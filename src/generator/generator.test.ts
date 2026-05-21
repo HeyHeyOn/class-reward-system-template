@@ -28,6 +28,7 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
       'Settings',
       'Tasks',
       'TaskCompletions',
+      'Recovery',
     ]);
     expect(REQUIRED_SHEETS.Students).toEqual(['studentId', 'name', 'number', 'balance', 'status']);
     expect(JSON.stringify({ REQUIRED_SHEETS, DEFAULT_SETTINGS })).not.toMatch(/import|csv|NEIS|나이스|자동 불러오기/iu);

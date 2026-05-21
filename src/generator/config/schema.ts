@@ -1,6 +1,6 @@
 import { LATEST_SCHEMA_VERSION, SYSTEM_NAME_KO, SYSTEM_VERSION } from './versions.ts';
 
-export type SheetName = 'Students' | 'Products' | 'Transactions' | 'Adjustments' | 'Settings' | 'Tasks' | 'TaskCompletions';
+export type SheetName = 'Students' | 'Products' | 'Transactions' | 'Adjustments' | 'Settings' | 'Tasks' | 'TaskCompletions' | 'Recovery';
 
 export const THEME_COLORS = ['blue', 'pink', 'yellow', 'green', 'purple', 'white', 'black', 'navy'] as const;
 export type ThemeColor = (typeof THEME_COLORS)[number];
@@ -13,6 +13,7 @@ export const REQUIRED_SHEETS: Record<SheetName, string[]> = {
   Settings: ['key', 'value'],
   Tasks: ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'createdAt', 'updatedAt'],
   TaskCompletions: ['completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note'],
+  Recovery: ['key', 'value'],
 };
 
 export const DEFAULT_SETTINGS: Array<{ key: string; value: string }> = [
