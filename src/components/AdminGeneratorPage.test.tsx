@@ -128,7 +128,9 @@ describe('AdminGeneratorPage', () => {
     expect(screen.getByText('선생님 개인 Google 계정 + 선생님 개인 Vercel 프로젝트')).toBeTruthy();
     expect(screen.getByRole('link', { name: '1단계: Vercel 배포 페이지 열기' }).getAttribute('href')).toContain('vercel.com/new/clone');
     expect(screen.getByRole('heading', { name: '이제 Vercel에서 이렇게 누르세요' })).toBeTruthy();
-    expect(screen.getByText(/GitHub 또는 Google 계정으로 Vercel에 로그인/)).toBeTruthy();
+    expect(screen.getByText(/GitHub 계정으로 Vercel에 로그인합니다/)).toBeTruthy();
+    expect(screen.getByText(/Continue with GitHub가 보이면 그 버튼을 누릅니다/)).toBeTruthy();
+    expect(screen.getByText(/학급 보상 시스템 템플릿 저장소를 찾고 Import를 누릅니다/)).toBeTruthy();
     expect(screen.getByText(/GOOGLE_SHEET_ID 칸에는 아래 값을 그대로 붙여넣으세요/)).toBeTruthy();
     expect(screen.getByText(/Deploy 버튼을 누른 뒤 Ready가 나올 때까지 기다립니다/)).toBeTruthy();
     expect(screen.getByText(/배포 완료 후 제공되는 vercel.app 주소가 선생님 전용 URL입니다/)).toBeTruthy();

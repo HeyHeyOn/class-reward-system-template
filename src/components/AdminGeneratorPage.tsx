@@ -386,18 +386,21 @@ function CreateResultPanel({ result }: { result: GeneratorCreateResult }) {
             </a>
             <ol className="mt-4 space-y-3">
               <DeploymentStep title="2단계: Vercel에 로그인">
-                GitHub 또는 Google 계정으로 Vercel에 로그인합니다. 처음 사용하는 경우 무료 Hobby 계정으로 시작하면 됩니다.
+                GitHub 계정으로 Vercel에 로그인합니다. Google로 Vercel에 로그인한 경우에도 프로젝트 가져오기 단계에서는 GitHub 연결을 한 번 더 요구할 수 있습니다.
               </DeploymentStep>
-              <DeploymentStep title="3단계: 프로젝트 가져오기">
-                Import 또는 Continue 버튼이 보이면 그대로 누릅니다. 저장소 이름은 자동으로 들어가므로 따로 코드를 내려받을 필요가 없습니다.
+              <DeploymentStep title="3단계: GitHub 연결하기">
+                화면에 Continue with GitHub가 보이면 그 버튼을 누릅니다. 이 버튼은 배포 버튼이 아니라, Vercel이 GitHub 저장소 목록을 볼 수 있도록 연결하는 단계입니다.
               </DeploymentStep>
-              <DeploymentStep title="4단계: 환경변수 입력">
+              <DeploymentStep title="4단계: 학급 보상 시스템 저장소 선택">
+                GitHub 연결이 끝나면 Import Git Repository 목록에서 학급 보상 시스템 템플릿 저장소를 찾고 Import를 누릅니다. 저장소가 보이지 않으면 검색창에 저장소 주소를 붙여넣거나, GitHub 권한 화면에서 해당 저장소 접근을 허용해야 합니다.
+              </DeploymentStep>
+              <DeploymentStep title="5단계: 환경변수 입력">
                 GOOGLE_SHEET_ID 칸에는 아래 값을 그대로 붙여넣으세요. ADMIN_PASSWORD는 관리자 화면에서 쓸 비밀번호, AUTH_SECRET은 아무도 모르는 긴 임의 문자열로 정하면 됩니다.
               </DeploymentStep>
-              <DeploymentStep title="5단계: 배포 실행">
+              <DeploymentStep title="6단계: 배포 실행">
                 Deploy 버튼을 누른 뒤 Ready가 나올 때까지 기다립니다. 보통 1~3분 정도 걸립니다.
               </DeploymentStep>
-              <DeploymentStep title="6단계: 전용 URL 확인">
+              <DeploymentStep title="7단계: 전용 URL 확인">
                 배포 완료 후 제공되는 vercel.app 주소가 선생님 전용 URL입니다. 그 주소를 저장해두고 학생용 키오스크와 관리자 화면으로 사용하면 됩니다.
               </DeploymentStep>
             </ol>
