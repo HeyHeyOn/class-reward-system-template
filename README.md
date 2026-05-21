@@ -1,6 +1,7 @@
-# 학급 매점
+# 학급 보상 시스템 / 학급 매점
 
-Google Sheets를 백엔드로 사용하는 학급 매점 키오스크 웹앱입니다.
+Google Sheets를 백엔드로 사용하는 학급 보상 시스템·학급 매점 키오스크 웹앱입니다.
+이 저장소는 선생님이 Vercel에서 가져와 개인 학급용 URL을 만들기 위한 템플릿 저장소로 사용할 수 있습니다.
 
 ## 주요 기능
 
@@ -42,7 +43,17 @@ GOOGLE_PRIVATE_KEY=
 
 ## Vercel 배포
 
-자세한 내용은 `docs/vercel-deploy-guide.md`를 확인하세요.
+이 저장소를 GitHub 템플릿 저장소로 공개한 뒤 Vercel에서 Import하면 선생님별 운영 앱을 만들 수 있습니다.
+
+필수 기본 환경변수:
+
+```text
+GOOGLE_SHEET_ID=생성기가 만든 스프레드시트 ID
+ADMIN_PASSWORD=관리자 페이지 비밀번호
+AUTH_SECRET=긴 무작위 문자열
+```
+
+Google Sheets 접근용 인증값은 OAuth refresh token 방식 또는 서비스 계정 방식 중 하나를 설정해야 합니다. 자세한 내용은 `docs/vercel-deploy-guide.md`를 확인하세요.
 
 ## Google Sheets 템플릿
 
