@@ -62,15 +62,17 @@ function optionalString(value: unknown): string | undefined {
 }
 
 function buildDeploymentGuide(spreadsheetId: string) {
-  const templateRepositoryUrl = process.env.NEXT_PUBLIC_CLASS_STORE_TEMPLATE_REPO?.trim() || 'https://github.com/your-org/class-store-template';
+  const templateRepositoryUrl = process.env.NEXT_PUBLIC_CLASS_STORE_TEMPLATE_REPO?.trim();
   const envDescription = '학급 매점 운영에 필요한 환경변수입니다. GOOGLE_SHEET_ID는 생성된 시트 ID를 넣고, ADMIN_PASSWORD와 AUTH_SECRET은 선생님이 직접 정합니다.';
-  const vercelImportUrl = `https://vercel.com/new/clone?repository-url=${encodeURIComponent(templateRepositoryUrl)}&env=GOOGLE_SHEET_ID,ADMIN_PASSWORD,AUTH_SECRET&envDescription=${encodeURIComponent(envDescription)}`;
+  const vercelImportUrl = templateRepositoryUrl
+    ? `https://vercel.com/new/clone?repository-url=${encodeURIComponent(templateRepositoryUrl)}&env=GOOGLE_SHEET_ID,ADMIN_PASSWORD,AUTH_SECRET&envDescription=${encodeURIComponent(envDescription)}`
+    : 'https://vercel.com/new';
 
   return {
     ownership: '선생님 개인 Google 계정 + 선생님 개인 Vercel 프로젝트',
     vercelImportUrl,
     checklist: [
-      '개인 Vercel 계정으로 Import Project를 진행합니다.',
+      templateRepositoryUrl ? '개인 Vercel 계정으로 Import Project를 진행합니다.' : '개인 Vercel 계정에서 New Project를 열고 학급 매점 템플릿 저장소를 Import합니다.',
       `GOOGLE_SHEET_ID에 ${spreadsheetId} 값을 입력합니다.`,
       'ADMIN_PASSWORD는 관리자 페이지에서 사용할 비밀번호로 직접 정합니다.',
       'AUTH_SECRET은 길고 무작위인 문자열로 직접 정합니다.',
