@@ -4,6 +4,7 @@ import {
   createStudent,
   getActiveProducts,
   getProducts,
+  getTransactions,
   getStudentById,
   getStudents,
   bulkAdjustStudentBalances,
@@ -34,6 +35,10 @@ const sheetRows = {
     ['P002', '지우개', '500', '15', 'TRUE', '', '문구', '2'],
     ['P001', '연필', '300', '20', 'TRUE', 'https://example.com/pencil.png', '문구', '1'],
     ['P003', '판매중지', '700', '10', 'FALSE', '', '문구', '3'],
+  ],
+  Transactions: [
+    ['transactionId', 'timestamp', 'studentId', 'studentName', 'items', 'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator'],
+    ['TR001', '2026-05-21T00:00:00.000Z', 'S001', '김민준', '[{"productId":"P001","name":"연필","price":300,"quantity":2,"subtotal":600}]', '600', '3500', '2900', 'COMPLETED', 'kiosk'],
   ],
   Tasks: [
     ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder'],
@@ -111,6 +116,41 @@ describe('sheets repository', () => {
         category: '문구',
         sortOrder: 3,
       },
+    ]);
+  });
+
+  it('reads transactions from the generated items column', async () => {
+    await expect(getTransactions(fakeReader)).resolves.toEqual([
+      {
+        transactionId: 'TR001',
+        timestamp: '2026-05-21T00:00:00.000Z',
+        studentId: 'S001',
+        studentName: '김민준',
+        items: [{ productId: 'P001', name: '연필', price: 300, quantity: 2, subtotal: 600 }],
+        totalAmount: 600,
+        balanceBefore: 3500,
+        balanceAfter: 2900,
+        status: 'COMPLETED',
+        operator: 'kiosk',
+      },
+    ]);
+  });
+
+  it('still reads legacy transactions that used itemsJson', async () => {
+    const legacyReader = {
+      async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'Transactions') {
+          return [
+            ['transactionId', 'timestamp', 'studentId', 'studentName', 'itemsJson', 'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator'],
+            ['TR002', '2026-05-21T01:00:00.000Z', 'S001', '김민준', '[{"productId":"P002","name":"지우개","price":500,"quantity":1,"subtotal":500}]', '500', '2900', '2400', 'COMPLETED', 'kiosk'],
+          ];
+        }
+        return sheetRows[sheetName];
+      },
+    };
+
+    await expect(getTransactions(legacyReader)).resolves.toMatchObject([
+      { transactionId: 'TR002', items: [{ productId: 'P002', name: '지우개', price: 500, quantity: 1, subtotal: 500 }] },
     ]);
   });
 
@@ -201,7 +241,30 @@ describe('sheets repository', () => {
     ]);
   });
 
-  it('appends a new student row with QR value matching studentId', async () => {
+  it('appends a new student row using only the generated Students schema columns', async () => {
+    const appended: Array<{ sheetName: string; values: string[] }> = [];
+    const fakeStore = {
+      ...fakeReader,
+      async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'Students') return [['studentId', 'name', 'number', 'balance', 'status']];
+        return sheetRows[sheetName];
+      },
+      async updateCell() {},
+      async appendRow(sheetName: 'Students' | 'Products', values: string[]) {
+        appended.push({ sheetName, values });
+      },
+    };
+
+    await expect(
+      createStudent(fakeStore, { studentId: 'S003', name: '박도윤', number: 3, balance: 0, status: 'ACTIVE' }),
+    ).resolves.toEqual({ studentId: 'S003', name: '박도윤', number: 3, balance: 0, status: 'ACTIVE' });
+
+    expect(appended).toEqual([
+      { sheetName: 'Students', values: ['S003', '박도윤', '3', '0', 'ACTIVE'] },
+    ]);
+  });
+
+  it('appends a new student row without shifting status in legacy QR-value sheets', async () => {
     const appended: Array<{ sheetName: string; values: string[] }> = [];
     const fakeStore = {
       ...fakeReader,

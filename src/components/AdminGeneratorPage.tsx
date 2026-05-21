@@ -273,6 +273,9 @@ function UpdateGuide({ onBack }: { onBack: () => void }) {
         </DeploymentStep>
         <DeploymentStep title="4단계: Actions → Update from template 실행">
           GitHub 저장소에서 Actions → Update from template을 열고 Run workflow 버튼을 누릅니다. 성공하면 최신 템플릿 코드가 선생님 복사본 저장소에 커밋되고, Vercel이 자동으로 새 배포를 시작합니다.
+          <span className="mt-2 block rounded-xl bg-amber-50 px-3 py-2 text-xs font-black text-amber-900">
+            Update from template이 보이지 않으면 기존 개인 배포 저장소는 워크플로 파일이 아직 복사되지 않은 상태입니다. 관리자에게 저장소 주소를 보내 워크플로 1회 추가를 요청하세요. 이후부터는 이 버튼으로 직접 업데이트할 수 있습니다.
+          </span>
         </DeploymentStep>
         <DeploymentStep title="5단계: Deployments 탭에서 새 배포 확인">
           Vercel 프로젝트의 Deployments 탭을 열어 새 배포가 Ready가 되었는지 확인합니다. 자동 배포가 시작되지 않았다면 그때 최근 배포의 Redeploy를 누릅니다.

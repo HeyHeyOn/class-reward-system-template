@@ -479,15 +479,8 @@ export async function createStudent(store: SheetsStore, create: StudentCreate): 
     status: create.status,
   };
 
-  await store.appendRow('Students', [
-    student.studentId,
-    student.name,
-    String(student.number),
-    String(student.balance),
-    student.studentId,
-    student.status,
-    '',
-  ]);
+  const studentRow = buildStudentAppendRow((await store.getRows('Students'))[0], student);
+  await store.appendRow('Students', studentRow);
 
   return student;
 }
@@ -730,6 +723,24 @@ export async function deleteProductsBatch(store: SheetsStore, productIds: string
   return { productIds: uniqueIds };
 }
 
+function buildStudentAppendRow(headers: string[] | undefined, student: Student): string[] {
+  if (!headers || headers.length === 0) {
+    return [student.studentId, student.name, String(student.number), String(student.balance), student.status];
+  }
+
+  const valuesByColumn: Record<string, string> = {
+    studentId: student.studentId,
+    name: student.name,
+    number: String(student.number),
+    balance: String(student.balance),
+    qrValue: student.studentId,
+    status: student.status,
+    note: '',
+  };
+
+  return headers.map((header) => valuesByColumn[header.trim()] ?? '');
+}
+
 function getStudentRecordsFromRows(rows: string[][]): Map<string, StudentRecord> {
   const [headers, ...dataRows] = rows;
   const records = new Map<string, StudentRecord>();
@@ -882,7 +893,7 @@ function parseTransactionRow(row: string[], headerIndex: Map<string, number>): T
     timestamp,
     studentId,
     studentName,
-    items: parseTransactionItems(getRowCell(row, headerIndex, 'items') || getRowCell(row, headerIndex, 'itemJson') || getRowCell(row, headerIndex, 'products')),
+    items: parseTransactionItems(getRowCell(row, headerIndex, 'items') || getRowCell(row, headerIndex, 'itemsJson') || getRowCell(row, headerIndex, 'itemJson') || getRowCell(row, headerIndex, 'products')),
     totalAmount,
     balanceBefore,
     balanceAfter,

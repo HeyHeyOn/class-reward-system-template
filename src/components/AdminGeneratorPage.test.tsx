@@ -95,6 +95,8 @@ describe('AdminGeneratorPage', () => {
     expect(screen.getByText(/Redeploy는 예전 업로드본을 다시 빌드할 뿐/)).toBeTruthy();
     expect(screen.getByText(/GitHub 저장소에서 Actions → Update from template/)).toBeTruthy();
     expect(screen.getByText(/Run workflow/)).toBeTruthy();
+    expect(screen.getByText(/Update from template이 보이지 않으면/)).toBeTruthy();
+    expect(screen.getByText(/기존 개인 배포 저장소는 워크플로 파일이 아직 복사되지 않은 상태/)).toBeTruthy();
     expect(screen.getAllByText(/Deployments 탭/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Redeploy/).length).toBeGreaterThan(0);
     expect(screen.getByText(/환경변수를 다시 만들 필요는 없습니다/)).toBeTruthy();

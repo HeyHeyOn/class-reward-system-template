@@ -39,7 +39,7 @@ const baseRows: Record<string, string[][]> = {
     ['P002', '지우개', '500', '15', 'TRUE', '', '문구', '2'],
   ],
   Transactions: [
-    ['transactionId', 'timestamp', 'studentId', 'studentName', 'itemsJson', 'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator'],
+    ['transactionId', 'timestamp', 'studentId', 'studentName', 'items', 'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator'],
   ],
   Adjustments: [['adjustmentId', 'timestamp', 'studentId', 'amount', 'reason', 'balanceBefore', 'balanceAfter', 'operator']],
 };
