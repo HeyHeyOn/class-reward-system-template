@@ -502,6 +502,7 @@ export function AdminManagePage() {
           <AdminNavLink href="/" title="매점 바로가기" description="키오스크" />
           <AdminNavLink href="/bank" title="은행 바로가기" description="학생 은행" />
           <AdminNavLink href="/admin/transactions" title="결제 내역 확인" description="거래 기록" />
+          <AdminNavLink href="/admin/generator" title="시스템 생성기" description="dry-run" />
           {tabs.map((tab) => {
             const selected = activeTab === tab.id;
             return (

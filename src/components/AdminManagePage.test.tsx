@@ -111,6 +111,7 @@ describe('AdminManagePage', () => {
     expect(await screen.findByText('관리자 목록도 이 설정을 사용합니다: 학생 2명 · 상품 2개')).toBeTruthy();
     expect(screen.queryByRole('link', { name: /학생 QR 출력/ })).toBeNull();
     expect(screen.getByRole('link', { name: /결제 내역 확인/ }).getAttribute('href')).toBe('/admin/transactions');
+    expect(screen.getByRole('link', { name: /시스템 생성기/ }).getAttribute('href')).toBe('/admin/generator');
     expect(screen.getByRole('link', { name: /은행 바로가기/ }).getAttribute('href')).toBe('/bank');
     expect(screen.getByRole('tab', { name: '과제 설정' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: '화폐 지급/회수' })).toBeTruthy();
