@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { parseClassRewardArgs, renderCliResult } from '@/generator/cli.ts';
 
@@ -234,20 +234,70 @@ function CreateResultPanel({ result }: { result: GeneratorCreateResult }) {
         <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm font-bold text-slate-700">
           <p className="text-slate-500">운영 소유 구조</p>
           <p className="mt-1 text-lg font-black text-slate-950">{result.deploymentGuide.ownership}</p>
-          <a
-            className="mt-3 inline-flex rounded-2xl bg-sky-600 px-4 py-3 font-black text-white hover:bg-sky-700"
-            href={result.deploymentGuide.vercelImportUrl}
-            target="_blank"
-            rel="noreferrer"
-          >
-            개인 Vercel에 배포 시작
-          </a>
-          <ol className="mt-3 list-decimal space-y-1 pl-5">
-            {result.deploymentGuide.checklist.map((item) => <li key={item}>{item}</li>)}
-          </ol>
+
+          <div className="mt-4 rounded-2xl border border-sky-200 bg-white p-4">
+            <h3 className="text-xl font-black text-slate-950">이제 Vercel에서 이렇게 누르세요</h3>
+            <p className="mt-1 text-slate-600">아래 순서대로 하면 선생님 전용 URL까지 만들 수 있습니다. 중간에 영어 화면이 나와도 버튼 이름만 따라가면 됩니다.</p>
+            <a
+              className="mt-4 inline-flex rounded-2xl bg-sky-600 px-4 py-3 font-black text-white hover:bg-sky-700"
+              href={result.deploymentGuide.vercelImportUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              1단계: Vercel 배포 페이지 열기
+            </a>
+            <ol className="mt-4 space-y-3">
+              <DeploymentStep title="2단계: Vercel에 로그인">
+                GitHub 또는 Google 계정으로 Vercel에 로그인합니다. 처음 사용하는 경우 무료 Hobby 계정으로 시작하면 됩니다.
+              </DeploymentStep>
+              <DeploymentStep title="3단계: 프로젝트 가져오기">
+                Import 또는 Continue 버튼이 보이면 그대로 누릅니다. 저장소 이름은 자동으로 들어가므로 따로 코드를 내려받을 필요가 없습니다.
+              </DeploymentStep>
+              <DeploymentStep title="4단계: 환경변수 입력">
+                GOOGLE_SHEET_ID 칸에는 아래 값을 그대로 붙여넣으세요. ADMIN_PASSWORD는 관리자 화면에서 쓸 비밀번호, AUTH_SECRET은 아무도 모르는 긴 임의 문자열로 정하면 됩니다.
+              </DeploymentStep>
+              <DeploymentStep title="5단계: 배포 실행">
+                Deploy 버튼을 누른 뒤 Ready가 나올 때까지 기다립니다. 보통 1~3분 정도 걸립니다.
+              </DeploymentStep>
+              <DeploymentStep title="6단계: 전용 URL 확인">
+                배포 완료 후 제공되는 vercel.app 주소가 선생님 전용 URL입니다. 그 주소를 저장해두고 학생용 키오스크와 관리자 화면으로 사용하면 됩니다.
+              </DeploymentStep>
+            </ol>
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-amber-950">
+              막히면 화면을 닫지 말고 오류 문구를 복사해서 관리자에게 전달하세요. 특히 Environment Variables, Deploy, Ready, Error 문구가 중요합니다.
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl bg-white p-4">
+            <p className="font-black text-slate-950">붙여넣을 값 요약</p>
+            <ul className="mt-2 space-y-2">
+              {result.requiredVercelEnv.map((env) => (
+                <li key={env.name} className="rounded-xl bg-slate-50 p-3">
+                  <p className="text-slate-500">{env.name}{env.secret ? ' (비밀값)' : ''}</p>
+                  <code className="break-all text-slate-950">{env.value}</code>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <details className="mt-4 rounded-2xl bg-white p-4">
+            <summary className="cursor-pointer font-black text-slate-950">간단 체크리스트 다시 보기</summary>
+            <ol className="mt-3 list-decimal space-y-1 pl-5">
+              {result.deploymentGuide.checklist.map((item) => <li key={item}>{item}</li>)}
+            </ol>
+          </details>
         </div>
       ) : null}
     </section>
+  );
+}
+
+function DeploymentStep({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <li className="rounded-2xl bg-slate-50 p-3">
+      <p className="font-black text-slate-950">{title}</p>
+      <p className="mt-1 text-slate-600">{children}</p>
+    </li>
   );
 }
 

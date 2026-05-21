@@ -97,9 +97,15 @@ describe('AdminGeneratorPage', () => {
       method: 'POST',
       body: expect.stringContaining('"selfServiceAcknowledged":true'),
     }));
-    expect(screen.getByText('sheet-123')).toBeTruthy();
+    expect(screen.getAllByText('sheet-123').length).toBeGreaterThan(0);
     expect(screen.getByText('선생님 개인 Google 계정 + 선생님 개인 Vercel 프로젝트')).toBeTruthy();
-    expect(screen.getByRole('link', { name: '개인 Vercel에 배포 시작' }).getAttribute('href')).toContain('vercel.com/new/clone');
+    expect(screen.getByRole('link', { name: '1단계: Vercel 배포 페이지 열기' }).getAttribute('href')).toContain('vercel.com/new/clone');
+    expect(screen.getByRole('heading', { name: '이제 Vercel에서 이렇게 누르세요' })).toBeTruthy();
+    expect(screen.getByText(/GitHub 또는 Google 계정으로 Vercel에 로그인/)).toBeTruthy();
+    expect(screen.getByText(/GOOGLE_SHEET_ID 칸에는 아래 값을 그대로 붙여넣으세요/)).toBeTruthy();
+    expect(screen.getByText(/Deploy 버튼을 누른 뒤 Ready가 나올 때까지 기다립니다/)).toBeTruthy();
+    expect(screen.getByText(/배포 완료 후 제공되는 vercel.app 주소가 선생님 전용 URL입니다/)).toBeTruthy();
+    expect(screen.getByText(/막히면 화면을 닫지 말고 오류 문구를 복사/)).toBeTruthy();
   });
 
   it('links back to the admin center and Google login', () => {
