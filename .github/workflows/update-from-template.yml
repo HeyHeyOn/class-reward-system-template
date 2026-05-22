@@ -49,8 +49,16 @@ jobs:
 
       - name: Push updated app code
         run: |
-          if git diff --quiet HEAD origin/${GITHUB_REF_NAME}; then
+          set -euo pipefail
+          git fetch origin "${GITHUB_REF_NAME}"
+          if git diff --quiet HEAD "origin/${GITHUB_REF_NAME}"; then
             echo "No template updates to push."
-          else
-            git push origin HEAD:${GITHUB_REF_NAME}
+            exit 0
           fi
+
+          if ! git merge-base --is-ancestor "origin/${GITHUB_REF_NAME}" HEAD; then
+            echo "Remote branch moved while this workflow was running; rebasing before push."
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
+          fi
+
+          git push origin "HEAD:${GITHUB_REF_NAME}"
