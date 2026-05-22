@@ -24,3 +24,46 @@ body {
 button {
   cursor: pointer;
 }
+
+@media print {
+  body.qr-selection-printing {
+    background: white !important;
+  }
+
+  body.qr-selection-printing * {
+    visibility: hidden !important;
+  }
+
+  body.qr-selection-printing [data-qr-print-root],
+  body.qr-selection-printing [data-qr-print-root] * {
+    visibility: visible !important;
+  }
+
+  body.qr-selection-printing [data-qr-print-root] {
+    position: absolute !important;
+    inset: 0 !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: white !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+
+  body.qr-selection-printing [data-qr-print-controls] {
+    display: none !important;
+  }
+
+  body.qr-selection-printing [data-qr-print-grid] {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 12px !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+}

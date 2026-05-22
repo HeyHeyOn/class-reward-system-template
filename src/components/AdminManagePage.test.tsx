@@ -195,10 +195,14 @@ describe('AdminManagePage', () => {
 
     fireEvent.click(screen.getByLabelText('S001 선택'));
     fireEvent.click(screen.getByRole('button', { name: '선택 학생 QR 발급' }));
-    expect(await screen.findByRole('dialog', { name: '선택 학생 QR 발급' })).toBeTruthy();
+    const qrDialog = await screen.findByRole('dialog', { name: '선택 학생 QR 발급' });
+    expect(qrDialog).toBeTruthy();
+    expect(qrDialog.getAttribute('data-qr-print-root')).not.toBeNull();
+    expect(document.body.classList.contains('qr-selection-printing')).toBe(true);
     expect(screen.getByAltText('김민준 QR 코드').getAttribute('src')).toBe('/api/qrcode?value=S001');
     expect(screen.queryByAltText('이서연 QR 코드')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '닫기' }));
+    expect(document.body.classList.contains('qr-selection-printing')).toBe(false);
 
     fireEvent.change(screen.getByLabelText('S001 이름'), { target: { value: '김민준 수정' } });
     fireEvent.change(screen.getByLabelText('S001 잔액'), { target: { value: '4000' } });
