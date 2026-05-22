@@ -22,6 +22,7 @@ export function TransactionsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [currencyUnit, setCurrencyUnit] = useState('원');
   const [message, setMessage] = useState('결제 내역을 불러오는 중입니다.');
+  const [cancelingId, setCancelingId] = useState<string | null>(null);
 
   useEffect(() => {
     let ignore = false;
@@ -53,7 +54,28 @@ export function TransactionsPage() {
     };
   }, []);
 
-  const totalSales = useMemo(() => transactions.reduce((sum, transaction) => sum + transaction.totalAmount, 0), [transactions]);
+  const totalSales = useMemo(() => transactions.filter((transaction) => transaction.status !== 'CANCELLED').reduce((sum, transaction) => sum + transaction.totalAmount, 0), [transactions]);
+
+  async function cancelPayment(transaction: Transaction) {
+    if (transaction.status !== 'COMPLETED') return;
+    if (!window.confirm(`${transaction.studentName} 학생의 ${formatCurrency(transaction.totalAmount, currencyUnit)} 결제를 취소하고 환불할까요?`)) return;
+
+    setCancelingId(transaction.transactionId);
+    setMessage('');
+    try {
+      const response = await fetch(`/api/transactions/${encodeURIComponent(transaction.transactionId)}/cancel`, { method: 'POST' });
+      const payload = (await response.json()) as Transaction | ApiError;
+      if (!response.ok || 'error' in payload) {
+        throw new Error('error' in payload && payload.error ? payload.error : '결제를 취소하지 못했습니다.');
+      }
+      const cancelledTransaction = payload as Transaction;
+      setTransactions((current) => current.map((item) => item.transactionId === transaction.transactionId ? cancelledTransaction : item));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '결제를 취소하지 못했습니다.');
+    } finally {
+      setCancelingId(null);
+    }
+  }
 
   return (
     <main className="min-h-screen bg-[#dbeaf6] p-3 text-slate-950 sm:p-4 md:p-6">
@@ -76,15 +98,34 @@ export function TransactionsPage() {
           <h2 className="text-2xl font-black">최근 결제</h2>
           <div className="mt-4 grid gap-3">
             {transactions.length === 0 && !message ? <p className="rounded-2xl bg-sky-50 p-5 font-bold text-slate-600">아직 결제 내역이 없습니다.</p> : null}
-            {transactions.map((transaction) => (
-              <article className="rounded-3xl border border-slate-200 bg-sky-50/60 p-4" key={transaction.transactionId}>
+            {transactions.map((transaction) => {
+              const isCancelled = transaction.status === 'CANCELLED';
+              const canCancel = transaction.status === 'COMPLETED';
+              return (
+              <article className={`rounded-3xl border p-4 ${isCancelled ? 'border-rose-200 bg-rose-50/70 opacity-80' : 'border-slate-200 bg-sky-50/60'}`} key={transaction.transactionId}>
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
-                    <strong className="text-lg font-black">{transaction.studentName}</strong>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <strong className="text-lg font-black">{transaction.studentName}</strong>
+                      {isCancelled ? <span className="rounded-full bg-rose-100 px-3 py-1 text-xs font-black text-rose-700">취소됨</span> : null}
+                    </div>
                     <p className="text-sm font-bold text-slate-500">{transaction.studentId} · {formatTimestamp(transaction.timestamp)}</p>
                     <p className="text-xs font-bold text-slate-400">{transaction.transactionId} · {transaction.status} · {transaction.operator}</p>
                   </div>
-                  <p className="text-2xl font-black text-sky-700">{formatCurrency(transaction.totalAmount, currencyUnit)}</p>
+                  <div className="flex flex-col items-end gap-2">
+                    <p className={`text-2xl font-black ${isCancelled ? 'text-rose-700 line-through' : 'text-sky-700'}`}>{formatCurrency(transaction.totalAmount, currencyUnit)}</p>
+                    {canCancel ? (
+                      <button
+                        aria-label={`${transaction.transactionId} 결제 취소`}
+                        className="rounded-xl bg-rose-500 px-3 py-2 text-xs font-black text-white disabled:bg-rose-200"
+                        disabled={cancelingId === transaction.transactionId}
+                        onClick={() => cancelPayment(transaction)}
+                        type="button"
+                      >
+                        {cancelingId === transaction.transactionId ? '취소 중' : '결제 취소'}
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2 text-sm font-bold text-slate-600">
                   {transaction.items.map((item) => (
@@ -96,7 +137,8 @@ export function TransactionsPage() {
                   <p>결제 후 잔액: {formatCurrency(transaction.balanceAfter, currencyUnit)}</p>
                 </div>
               </article>
-            ))}
+            );
+            })}
           </div>
         </section>
       </section>

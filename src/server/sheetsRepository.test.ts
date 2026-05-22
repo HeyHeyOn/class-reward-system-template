@@ -8,6 +8,7 @@ import {
   getStudentById,
   getStudents,
   bulkAdjustStudentBalances,
+  cancelTransaction,
   completeTaskForStudent,
   createTask,
   getTasks,
@@ -152,6 +153,37 @@ describe('sheets repository', () => {
     await expect(getTransactions(legacyReader)).resolves.toMatchObject([
       { transactionId: 'TR002', items: [{ productId: 'P002', name: '지우개', price: 500, quantity: 1, subtotal: 500 }] },
     ]);
+  });
+
+  it('cancels a completed checkout by refunding balance, restoring stock, and marking the transaction', async () => {
+    const updates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
+    const fakeStore = {
+      ...fakeReader,
+      async updateCell(sheetName: 'Students' | 'Products' | 'Transactions', rowNumber: number, columnName: string, value: string | number) {
+        updates.push({ sheetName, rowNumber, columnName, value });
+      },
+      async appendRow() {},
+    };
+
+    await expect(cancelTransaction(fakeStore, 'TR001')).resolves.toMatchObject({ transactionId: 'TR001', status: 'CANCELLED' });
+    expect(updates).toEqual([
+      { sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: 4100 },
+      { sheetName: 'Products', rowNumber: 3, columnName: 'stock', value: 22 },
+      { sheetName: 'Transactions', rowNumber: 2, columnName: 'status', value: 'CANCELLED' },
+    ]);
+  });
+
+  it('rejects cancelling a transaction twice', async () => {
+    const cancelledReader = {
+      async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'Transactions') return [sheetRows.Transactions[0], [...sheetRows.Transactions[1].slice(0, 8), 'CANCELLED', 'kiosk']];
+        return sheetRows[sheetName];
+      },
+      async updateCell() {},
+      async appendRow() {},
+    };
+
+    await expect(cancelTransaction(cancelledReader, 'TR001')).rejects.toThrow('이미 취소된 결제입니다.');
   });
 
   it('returns active products sorted by sortOrder', async () => {

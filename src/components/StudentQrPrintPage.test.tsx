@@ -38,6 +38,7 @@ describe('StudentQrPrintPage', () => {
     const seoyeonQr = screen.getByRole('img', { name: '이서연 QR 코드' });
     expect(seoyeonQr.getAttribute('src')).toBe('/api/qrcode?value=S002');
     expect(screen.getByText('2번 · S002')).toBeTruthy();
+    expect(screen.getAllByText((_, element) => element?.textContent === '학급 은행 및 매점에서이 QR을 스캔해 주세요.')).toHaveLength(2);
   });
 
   it('prints the current QR card page', async () => {

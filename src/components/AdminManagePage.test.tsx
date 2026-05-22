@@ -208,7 +208,7 @@ describe('AdminManagePage', () => {
     expect(await screen.findByDisplayValue('김민준')).toBeTruthy();
     expect(container.querySelector('[data-testid="student-list"]')?.className).toContain('divide-y');
     const studentRow = container.querySelector('[data-testid="student-row"]');
-    expect(studentRow?.className).toContain('grid-cols-[24px_44px_minmax(3.8rem,1fr)_34px_48px_46px_40px]');
+    expect(studentRow?.className).toContain('grid-cols-[24px_44px_minmax(3.8rem,1fr)_42px_72px_46px_40px]');
     expect(studentRow?.className).toContain('items-center');
     expect(studentRow?.className).toContain('py-1');
     expect(studentRow?.className).not.toContain('md:grid-cols');
@@ -244,7 +244,7 @@ describe('AdminManagePage', () => {
     expect(await screen.findByDisplayValue('연필')).toBeTruthy();
     expect(container.querySelector('[data-testid="product-list"]')?.className).toContain('divide-y');
     const productRow = container.querySelector('[data-testid="product-row"]');
-    expect(productRow?.className).toContain('grid-cols-[24px_30px_minmax(3rem,1fr)_32px_32px_36px_minmax(3rem,0.8fr)_28px_30px_34px]');
+    expect(productRow?.className).toContain('grid-cols-[24px_30px_minmax(3rem,1fr)_56px_48px_36px_minmax(3rem,0.8fr)_40px_30px_34px]');
     expect(productRow?.className).toContain('items-center');
     expect(productRow?.className).toContain('py-1');
     expect(productRow?.className).not.toContain('md:grid-cols');
@@ -284,6 +284,7 @@ describe('AdminManagePage', () => {
     expect(screen.getByTestId('task-list-scroll').className).toContain('overflow-x-auto');
     expect(screen.getByTestId('task-bulk-actions').className).toContain('flex-wrap');
     const taskRow = container.querySelector('[data-testid="task-row"]');
+    expect(taskRow?.className).toContain('grid-cols-[24px_42px_minmax(5rem,1fr)_64px_64px_48px_38px_minmax(3rem,0.7fr)_46px_40px]');
     expect(taskRow?.className).toContain('items-center');
     expect(screen.queryByLabelText('T001 설명')).toBeNull();
 

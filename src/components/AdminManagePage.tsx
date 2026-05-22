@@ -567,7 +567,7 @@ export function AdminManagePage() {
               </div>
 
               <div data-testid="student-list" className="overflow-hidden rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
-                <div data-testid="student-header-row" className="grid grid-cols-[24px_44px_minmax(3.8rem,1fr)_34px_48px_46px_40px] items-center gap-0.5 bg-slate-100 px-1.5 py-1 text-[10px] font-black text-slate-500">
+                <div data-testid="student-header-row" className="grid grid-cols-[24px_44px_minmax(3.8rem,1fr)_42px_72px_46px_40px] items-center gap-0.5 bg-slate-100 px-1.5 py-1 text-[10px] font-black text-slate-500">
                   <span>선택</span>
                   <span>ID</span>
                   <span>이름</span>
@@ -577,7 +577,7 @@ export function AdminManagePage() {
                   <span>삭제</span>
                 </div>
                 {students.map((student) => (
-                  <div data-testid="student-row" className="grid grid-cols-[24px_44px_minmax(3.8rem,1fr)_34px_48px_46px_40px] items-center gap-0.5 px-1.5 py-1 text-[11px]" key={student.studentId}>
+                  <div data-testid="student-row" className="grid grid-cols-[24px_44px_minmax(3.8rem,1fr)_42px_72px_46px_40px] items-center gap-0.5 px-1.5 py-1 text-[11px]" key={student.studentId}>
                     <label className="flex items-center justify-center">
                       <input aria-label={`${student.studentId} 선택`} checked={selectedStudentIds.includes(student.studentId)} onChange={() => toggleStudent(student.studentId)} type="checkbox" />
                       <span className="sr-only">선택</span>
@@ -634,7 +634,7 @@ export function AdminManagePage() {
                 <button type="button" onClick={saveAllProducts} className="ml-2 mt-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-black text-white">저장</button>
               </div>
               <div data-testid="product-list" className="overflow-hidden rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
-                <div data-testid="product-header-row" className="grid grid-cols-[24px_30px_minmax(3rem,1fr)_32px_32px_36px_minmax(3rem,0.8fr)_28px_30px_34px] items-center gap-0.5 bg-slate-100 px-1.5 py-1 text-[10px] font-black text-slate-500">
+                <div data-testid="product-header-row" className="grid grid-cols-[24px_30px_minmax(3rem,1fr)_56px_48px_36px_minmax(3rem,0.8fr)_40px_30px_34px] items-center gap-0.5 bg-slate-100 px-1.5 py-1 text-[10px] font-black text-slate-500">
                   <span>선택</span>
                   <span>ID</span>
                   <span>상품명</span>
@@ -647,7 +647,7 @@ export function AdminManagePage() {
                   <span>삭제</span>
                 </div>
                 {products.map((product) => (
-                  <div data-testid="product-row" className="grid grid-cols-[24px_30px_minmax(3rem,1fr)_32px_32px_36px_minmax(3rem,0.8fr)_28px_30px_34px] items-center gap-0.5 px-1.5 py-1 text-[11px]" key={product.productId}>
+                  <div data-testid="product-row" className="grid grid-cols-[24px_30px_minmax(3rem,1fr)_56px_48px_36px_minmax(3rem,0.8fr)_40px_30px_34px] items-center gap-0.5 px-1.5 py-1 text-[11px]" key={product.productId}>
                     <label className="flex items-center justify-center">
                       <input aria-label={`${product.productId} 선택`} checked={selectedProductIds.includes(product.productId)} onChange={() => toggleProduct(product.productId)} type="checkbox" />
                       <span className="sr-only">선택</span>
@@ -719,11 +719,11 @@ export function AdminManagePage() {
               </div>
               <div data-testid="task-list-scroll" className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
                 <div className="min-w-[540px] divide-y divide-slate-100">
-                <div data-testid="task-header-row" className="grid grid-cols-[24px_42px_minmax(5rem,1fr)_48px_46px_34px_38px_minmax(3rem,0.7fr)_46px_40px] items-center gap-0.5 bg-slate-100 px-1.5 py-1 text-[10px] font-black text-slate-500">
+                <div data-testid="task-header-row" className="grid grid-cols-[24px_42px_minmax(5rem,1fr)_64px_64px_48px_38px_minmax(3rem,0.7fr)_46px_40px] items-center gap-0.5 bg-slate-100 px-1.5 py-1 text-[10px] font-black text-slate-500">
                   <span>선택</span><span>ID</span><span>과제명</span><span>보상</span><span>횟수</span><span>순서</span><span>활성</span><span>상세</span><span>초기화</span><span>삭제</span>
                 </div>
                 {tasks.map((task) => (
-                  <div data-testid="task-row" key={task.taskId} className="grid grid-cols-[24px_42px_minmax(5rem,1fr)_48px_46px_34px_38px_minmax(3rem,0.7fr)_46px_40px] items-center gap-0.5 px-1.5 py-1 text-[11px]">
+                  <div data-testid="task-row" key={task.taskId} className="grid grid-cols-[24px_42px_minmax(5rem,1fr)_64px_64px_48px_38px_minmax(3rem,0.7fr)_46px_40px] items-center gap-0.5 px-1.5 py-1 text-[11px]">
                     <label className="flex items-center justify-center">
                       <input aria-label={`${task.taskId} 선택`} checked={selectedTaskIds.includes(task.taskId)} onChange={() => toggleTask(task.taskId)} type="checkbox" />
                       <span className="sr-only">선택</span>

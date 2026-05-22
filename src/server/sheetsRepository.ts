@@ -36,6 +36,11 @@ export type ProductRecord = {
   rowNumber: number;
 };
 
+export type TransactionRecord = {
+  transaction: Transaction;
+  rowNumber: number;
+};
+
 export type StudentUpdate = {
   name: string;
   number: number;
@@ -380,6 +385,10 @@ export async function completeTaskForStudent(store: SheetsStore, taskId: string,
 }
 
 export async function getTransactions(reader: SheetsReader): Promise<Transaction[]> {
+  return (await getTransactionRecords(reader)).map((record) => record.transaction);
+}
+
+export async function getTransactionRecords(reader: SheetsReader): Promise<TransactionRecord[]> {
   const rows = await reader.getRows('Transactions');
   const [headers, ...dataRows] = rows;
 
@@ -389,9 +398,42 @@ export async function getTransactions(reader: SheetsReader): Promise<Transaction
   assertRequiredColumns(headerIndex, REQUIRED_TRANSACTION_COLUMNS, 'Transactions');
 
   return dataRows
-    .map((row) => parseTransactionRow(row, headerIndex))
-    .filter((transaction): transaction is Transaction => transaction !== null)
-    .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    .map((row, index) => {
+      const transaction = parseTransactionRow(row, headerIndex);
+      return transaction ? { transaction, rowNumber: index + 2 } : null;
+    })
+    .filter((record): record is TransactionRecord => record !== null)
+    .sort((a, b) => b.transaction.timestamp.localeCompare(a.transaction.timestamp));
+}
+
+export async function cancelTransaction(store: SheetsStore, transactionId: string): Promise<Transaction> {
+  const normalizedId = transactionId.trim();
+  if (!normalizedId) throw new Error('결제 ID를 입력해 주세요.');
+
+  const transactionRecord = (await getTransactionRecords(store)).find((record) => record.transaction.transactionId === normalizedId);
+  if (!transactionRecord) throw new Error('결제 내역을 찾을 수 없습니다.');
+
+  const transaction = transactionRecord.transaction;
+  if (transaction.status === 'CANCELLED') throw new Error('이미 취소된 결제입니다.');
+  if (transaction.status !== 'COMPLETED') throw new Error('완료된 결제만 취소할 수 있습니다.');
+
+  const studentRecord = await getStudentRecordById(store, transaction.studentId);
+  if (!studentRecord) throw new Error('학생 정보를 찾을 수 없습니다.');
+
+  const productsById = new Map((await getProductRecords(store)).map((record) => [record.product.productId, record]));
+  const productUpdates: SheetCellUpdate[] = [];
+  for (const item of transaction.items) {
+    const productRecord = productsById.get(item.productId);
+    if (productRecord) {
+      productUpdates.push({ rowNumber: productRecord.rowNumber, columnName: 'stock', value: productRecord.product.stock + item.quantity });
+    }
+  }
+
+  await store.updateCell('Students', studentRecord.rowNumber, 'balance', studentRecord.student.balance + transaction.totalAmount);
+  await applyCellUpdates(store, 'Products', productUpdates);
+  await store.updateCell('Transactions', transactionRecord.rowNumber, 'status', 'CANCELLED');
+
+  return { ...transaction, status: 'CANCELLED' };
 }
 
 export async function getSheetSettings(reader: SheetsReader): Promise<Record<string, string>> {
