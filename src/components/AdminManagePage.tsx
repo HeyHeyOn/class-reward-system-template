@@ -1,16 +1,19 @@
 'use client';
 
+/* eslint-disable @next/next/no-img-element */
+
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import type { ClassTask, Product, Student } from '@/domain/types';
 import { SettingsForm } from './SettingsForm';
 import { QrScanner } from './QrScanner';
+import { TransactionsPanel } from './TransactionsPage';
 
 type StudentDraft = Student;
 type ProductDraft = Product;
 type TaskDraft = ClassTask;
-type AdminTab = 'settings' | 'students' | 'products' | 'tasks' | 'currency';
+type AdminTab = 'settings' | 'students' | 'products' | 'tasks' | 'transactions' | 'currency';
 type BulkMode = 'set' | 'add' | 'subtract';
 type CurrencyMode = 'add' | 'subtract';
 type CurrencyResult = {
@@ -49,6 +52,7 @@ const tabs: Array<{ id: AdminTab; label: string; description: string }> = [
   { id: 'students', label: '학생 명단', description: '잔액과 상태 관리' },
   { id: 'products', label: '재고 관리', description: '상품과 가격 관리' },
   { id: 'tasks', label: '과제 설정', description: '은행 보상 과제' },
+  { id: 'transactions', label: '결제 내역 확인', description: '거래 기록' },
   { id: 'currency', label: '화폐 지급/회수', description: 'QR로 재화 조정' },
 ];
 
@@ -68,6 +72,7 @@ export function AdminManagePage() {
   const [newTask, setNewTask] = useState<TaskDraft>(EMPTY_TASK);
   const [imageEditor, setImageEditor] = useState<{ productId: string; value: string } | null>(null);
   const [taskDescriptionEditor, setTaskDescriptionEditor] = useState<{ taskId: string; value: string } | null>(null);
+  const [qrPrintStudents, setQrPrintStudents] = useState<StudentDraft[] | null>(null);
   const [currencyMode, setCurrencyMode] = useState<CurrencyMode>('add');
   const [currencyAmount, setCurrencyAmount] = useState(0);
   const [currencyScannerOpen, setCurrencyScannerOpen] = useState(false);
@@ -499,25 +504,7 @@ export function AdminManagePage() {
         </header>
 
         <nav data-testid="admin-tabs" role="tablist" aria-label="관리자 메뉴" className="grid grid-cols-2 gap-2 rounded-[1.5rem] border border-slate-300/70 bg-white/90 p-2 shadow-sm sm:grid-cols-4 lg:grid-cols-8">
-          {tabs.slice(0, 4).map((tab) => {
-            const selected = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                aria-label={tab.label}
-                onClick={() => setActiveTab(tab.id)}
-                className={`rounded-[1rem] px-2 py-3 text-left transition ${selected ? 'bg-sky-500 text-white shadow-sm' : 'bg-sky-50 text-slate-700 hover:bg-sky-100'}`}
-              >
-                <span className="block text-sm font-black sm:text-base">{tab.label}</span>
-                <span className={`mt-0.5 hidden text-[11px] font-bold lg:block ${selected ? 'text-sky-50' : 'text-slate-500'}`}>{tab.description}</span>
-              </button>
-            );
-          })}
-          <AdminNavLink href="/admin/transactions" title="결제 내역 확인" description="거래 기록" />
-          {tabs.slice(4).map((tab) => {
+          {tabs.map((tab) => {
             const selected = activeTab === tab.id;
             return (
               <button
@@ -579,7 +566,14 @@ export function AdminManagePage() {
                   <button type="button" onClick={applyBulkStudentBalance} className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-black text-white">화폐 수정</button>
                   <button type="button" onClick={deleteSelectedStudents} className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-black text-white">삭제</button>
                   <button type="button" onClick={saveAllStudents} className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-black text-white">저장</button>
-                  <Link href="/admin/student-qrs" className="rounded-xl bg-amber-100 px-4 py-2 text-sm font-black text-amber-900">QR 출력</Link>
+                  <button
+                    type="button"
+                    disabled={selectedStudentIds.length === 0}
+                    onClick={() => setQrPrintStudents(students.filter((student) => selectedStudentIds.includes(student.studentId)))}
+                    className="rounded-xl bg-amber-100 px-4 py-2 text-sm font-black text-amber-900 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                  >
+                    선택 학생 QR 발급
+                  </button>
                 </div>
               </div>
 
@@ -772,6 +766,12 @@ export function AdminManagePage() {
           </section>
         ) : null}
 
+        {activeTab === 'transactions' ? (
+          <section role="tabpanel" aria-label="결제 내역 확인">
+            <TransactionsPanel embedded />
+          </section>
+        ) : null}
+
         {activeTab === 'currency' ? (
           <section role="tabpanel" aria-label="화폐 지급/회수" className="mx-auto w-full max-w-xl">
             <SectionCard title="화폐 지급/회수" description="금액과 지급/회수만 정한 뒤 학생 QR을 찍으면 바로 반영됩니다." compact>
@@ -816,6 +816,25 @@ export function AdminManagePage() {
               >
                 이미지 주소 적용
               </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+      {qrPrintStudents ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <section role="dialog" aria-modal="true" aria-label="선택 학생 QR 발급" className="flex max-h-[90vh] w-full max-w-4xl flex-col rounded-2xl bg-white p-4 shadow-2xl">
+            <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
+              <div>
+                <h2 className="text-xl font-black">선택 학생 QR 발급</h2>
+                <p className="mt-1 text-sm font-bold text-slate-500">선택한 학생 {qrPrintStudents.length}명의 QR만 출력합니다.</p>
+              </div>
+              <div className="flex gap-2">
+                <button type="button" className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-black text-white" onClick={() => window.print()}>인쇄</button>
+                <button type="button" className="rounded-xl bg-slate-200 px-4 py-2 text-sm font-black text-slate-700" onClick={() => setQrPrintStudents(null)}>닫기</button>
+              </div>
+            </div>
+            <div className="mt-4 grid overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
+              {qrPrintStudents.map((student) => <StudentQrCard key={student.studentId} student={student} />)}
             </div>
           </section>
         </div>
@@ -891,6 +910,22 @@ function AdminNavLink({ href, title, description }: { href: string; title: strin
       <span className="block text-sm font-black sm:text-base">{title}</span>
       <span className="mt-0.5 hidden text-[11px] font-bold text-slate-500 lg:block">{description}</span>
     </Link>
+  );
+}
+
+function StudentQrCard({ student }: { student: Student }) {
+  return (
+    <article className="break-inside-avoid rounded-3xl border-2 border-slate-200 bg-white p-5 text-center shadow-sm print:rounded-2xl print:border print:p-4 print:shadow-none">
+      <div className="mx-auto mb-4 flex h-48 w-48 items-center justify-center rounded-3xl border border-slate-100 bg-white p-3 print:h-40 print:w-40">
+        <img alt={`${student.name} QR 코드`} className="h-full w-full" src={`/api/qrcode?value=${encodeURIComponent(student.studentId)}`} />
+      </div>
+      <h3 className="text-2xl font-black">{student.name}</h3>
+      <p className="mt-1 text-lg font-bold text-slate-600">{student.number}번 · {student.studentId}</p>
+      <p className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900 print:bg-white print:p-0 print:text-slate-700">
+        학급 은행 및 매점에서<br />
+        이 QR을 스캔해 주세요.
+      </p>
+    </article>
   );
 }
 

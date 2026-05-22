@@ -14,6 +14,20 @@ const tasks = [
   { taskId: 'T001', title: '책 읽기', description: '책 10분 읽기', reward: 5, maxCompletionsPerStudent: 2, isActive: true, sortOrder: 1 },
   { taskId: 'T002', title: '수학 학습지', description: '1장 풀기', reward: 10, maxCompletionsPerStudent: 1, isActive: true, sortOrder: 2 },
 ];
+const transactions = [
+  {
+    transactionId: 'TX001',
+    timestamp: '2026-05-22T01:00:00.000Z',
+    studentId: 'S001',
+    studentName: '김민준',
+    items: [{ productId: 'P001', name: '연필', price: 300, quantity: 2, lineTotal: 600 }],
+    totalAmount: 600,
+    balanceBefore: 3200,
+    balanceAfter: 2600,
+    status: 'COMPLETED',
+    operator: 'kiosk',
+  },
+];
 
 function jsonResponse(payload: unknown, init?: ResponseInit) {
   return new Response(JSON.stringify(payload), {
@@ -36,6 +50,7 @@ describe('AdminManagePage', () => {
         }
         if (url === '/api/products?includeInactive=1') return jsonResponse(products);
         if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
+        if (url === '/api/transactions') return jsonResponse(transactions);
         if (url === '/api/settings' && init?.method === 'POST') return jsonResponse({ spreadsheetId: 'sheet-new', currencyUnit: '별', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'purple', source: 'runtime' });
         if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue', source: 'runtime' });
         if (url === '/api/products' && init?.method === 'POST') {
@@ -119,7 +134,8 @@ describe('AdminManagePage', () => {
     expect(screen.getByRole('tab', { name: '재고 관리' })).toBeTruthy();
     expect(await screen.findByText('관리자 목록도 이 설정을 사용합니다: 학생 2명 · 상품 2개')).toBeTruthy();
     expect(screen.queryByRole('link', { name: /학생 QR 출력/ })).toBeNull();
-    expect(screen.getByRole('link', { name: /결제 내역 확인/ }).getAttribute('href')).toBe('/admin/transactions');
+    expect(screen.getByRole('tab', { name: '결제 내역 확인' })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /결제 내역 확인/ })).toBeNull();
     expect(screen.queryByRole('link', { name: /시스템 생성기/ })).toBeNull();
     expect(screen.getByRole('link', { name: /은행 바로가기/ }).getAttribute('href')).toBe('/bank');
     expect(screen.getByRole('tab', { name: '과제 설정' })).toBeTruthy();
@@ -130,6 +146,18 @@ describe('AdminManagePage', () => {
     expect(screen.getByLabelText('테마 색상')).toBeTruthy();
     expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-[#dbeaf6]');
     expect(container.querySelector('[data-testid="admin-tabs"]')?.className).toContain('rounded-[1.5rem]');
+  });
+
+  it('shows payment history inside the admin page as a tab', async () => {
+    render(<AdminManagePage />);
+
+    fireEvent.click(await screen.findByRole('tab', { name: '결제 내역 확인' }));
+
+    expect(await screen.findByRole('heading', { name: '최근 결제' })).toBeTruthy();
+    expect(screen.getByText('김민준')).toBeTruthy();
+    expect(screen.getByText('연필 × 2')).toBeTruthy();
+    expect(screen.getAllByText('600별').length).toBeGreaterThan(0);
+    expect(fetch).toHaveBeenCalledWith('/api/transactions', { cache: 'no-store' });
   });
 
   it('reloads admin lists from the shared sheet after saving sheet settings', async () => {
@@ -162,7 +190,15 @@ describe('AdminManagePage', () => {
     expect(screen.getByTestId('student-header-row').textContent).toContain('이름');
     expect(screen.getByTestId('student-header-row').textContent).toContain('잔액');
     expect(screen.queryByRole('button', { name: 'S001 학생 저장' })).toBeNull();
-    expect(screen.getByRole('link', { name: /QR 출력/ }).getAttribute('href')).toBe('/admin/student-qrs');
+    expect(screen.queryByRole('link', { name: /QR 출력/ })).toBeNull();
+    expect(screen.getByRole('button', { name: '선택 학생 QR 발급' })).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText('S001 선택'));
+    fireEvent.click(screen.getByRole('button', { name: '선택 학생 QR 발급' }));
+    expect(await screen.findByRole('dialog', { name: '선택 학생 QR 발급' })).toBeTruthy();
+    expect(screen.getByAltText('김민준 QR 코드').getAttribute('src')).toBe('/api/qrcode?value=S001');
+    expect(screen.queryByAltText('이서연 QR 코드')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '닫기' }));
 
     fireEvent.change(screen.getByLabelText('S001 이름'), { target: { value: '김민준 수정' } });
     fireEvent.change(screen.getByLabelText('S001 잔액'), { target: { value: '4000' } });
