@@ -770,11 +770,9 @@ export function AdminManagePage() {
           </section>
         ) : null}
 
-        {activeTab === 'transactions' ? (
-          <section role="tabpanel" aria-label="결제 내역 확인">
-            <TransactionsPanel embedded />
-          </section>
-        ) : null}
+        <section role="tabpanel" aria-label="결제 내역 확인" hidden={activeTab !== 'transactions'}>
+          <TransactionsPanel embedded />
+        </section>
 
         {activeTab === 'currency' ? (
           <section role="tabpanel" aria-label="화폐 지급/회수" className="mx-auto w-full max-w-xl">

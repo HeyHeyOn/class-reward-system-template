@@ -148,8 +148,11 @@ describe('AdminManagePage', () => {
     expect(container.querySelector('[data-testid="admin-tabs"]')?.className).toContain('rounded-[1.5rem]');
   });
 
-  it('shows payment history inside the admin page as a tab', async () => {
+  it('preloads payment history before the payment tab is opened', async () => {
     render(<AdminManagePage />);
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/transactions', { cache: 'no-store' }));
+    expect(screen.queryByRole('heading', { name: '최근 결제' })).toBeNull();
 
     fireEvent.click(await screen.findByRole('tab', { name: '결제 내역 확인' }));
 
@@ -157,7 +160,6 @@ describe('AdminManagePage', () => {
     expect(screen.getByText('김민준')).toBeTruthy();
     expect(screen.getByText('연필 × 2')).toBeTruthy();
     expect(screen.getAllByText('600별').length).toBeGreaterThan(0);
-    expect(fetch).toHaveBeenCalledWith('/api/transactions', { cache: 'no-store' });
   });
 
   it('reloads admin lists from the shared sheet after saving sheet settings', async () => {
