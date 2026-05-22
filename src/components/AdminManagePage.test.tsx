@@ -197,9 +197,11 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByRole('button', { name: '선택 학생 QR 발급' }));
     const qrDialog = await screen.findByRole('dialog', { name: '선택 학생 QR 발급' });
     expect(qrDialog).toBeTruthy();
-    expect(qrDialog.getAttribute('data-qr-print-root')).not.toBeNull();
     expect(document.body.classList.contains('qr-selection-printing')).toBe(true);
-    expect(screen.getByAltText('김민준 QR 코드').getAttribute('src')).toBe('/api/qrcode?value=S001');
+    const printDocument = document.querySelector('[data-qr-print-document]');
+    expect(printDocument).toBeTruthy();
+    expect(printDocument?.querySelector('[data-qr-print-grid]')).toBeTruthy();
+    expect(screen.getAllByAltText('김민준 QR 코드')[0].getAttribute('src')).toBe('/api/qrcode?value=S001');
     expect(screen.queryByAltText('이서연 QR 코드')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '닫기' }));
     expect(document.body.classList.contains('qr-selection-printing')).toBe(false);

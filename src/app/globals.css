@@ -25,37 +25,28 @@ button {
   cursor: pointer;
 }
 
+[data-qr-print-document] {
+  display: none;
+}
+
 @media print {
+  [data-qr-print-document] {
+    display: none !important;
+  }
+
   body.qr-selection-printing {
     background: white !important;
   }
 
-  body.qr-selection-printing * {
-    visibility: hidden !important;
-  }
-
-  body.qr-selection-printing [data-qr-print-root],
-  body.qr-selection-printing [data-qr-print-root] * {
-    visibility: visible !important;
-  }
-
-  body.qr-selection-printing [data-qr-print-root] {
-    position: absolute !important;
-    inset: 0 !important;
-    display: block !important;
-    width: 100% !important;
-    max-width: none !important;
-    max-height: none !important;
-    overflow: visible !important;
-    border: 0 !important;
-    border-radius: 0 !important;
-    background: white !important;
-    padding: 0 !important;
-    box-shadow: none !important;
-  }
-
-  body.qr-selection-printing [data-qr-print-controls] {
+  body.qr-selection-printing main > :not([data-qr-print-document]) {
     display: none !important;
+  }
+
+  body.qr-selection-printing [data-qr-print-document] {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
   }
 
   body.qr-selection-printing [data-qr-print-grid] {

@@ -825,9 +825,9 @@ export function AdminManagePage() {
         </div>
       ) : null}
       {qrPrintStudents ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <section data-qr-print-root role="dialog" aria-modal="true" aria-label="선택 학생 QR 발급" className="flex max-h-[90vh] w-full max-w-4xl flex-col rounded-2xl bg-white p-4 shadow-2xl">
-            <div data-qr-print-controls className="flex flex-wrap items-center justify-between gap-2 print:hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 print:hidden">
+          <section role="dialog" aria-modal="true" aria-label="선택 학생 QR 발급" className="flex max-h-[90vh] w-full max-w-4xl flex-col rounded-2xl bg-white p-4 shadow-2xl">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h2 className="text-xl font-black">선택 학생 QR 발급</h2>
                 <p className="mt-1 text-sm font-bold text-slate-500">선택한 학생 {qrPrintStudents.length}명의 QR만 출력합니다.</p>
@@ -837,11 +837,18 @@ export function AdminManagePage() {
                 <button type="button" className="rounded-xl bg-slate-200 px-4 py-2 text-sm font-black text-slate-700" onClick={() => setQrPrintStudents(null)}>닫기</button>
               </div>
             </div>
-            <div data-qr-print-grid className="mt-4 grid overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-4 grid gap-4 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
               {qrPrintStudents.map((student) => <StudentQrCard key={student.studentId} student={student} />)}
             </div>
           </section>
         </div>
+      ) : null}
+      {qrPrintStudents ? (
+        <section data-qr-print-document aria-label="선택 학생 QR 인쇄 영역">
+          <div data-qr-print-grid className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 print:grid-cols-3 print:gap-3">
+            {qrPrintStudents.map((student) => <StudentQrCard key={`print-${student.studentId}`} student={student} />)}
+          </div>
+        </section>
       ) : null}
       {taskDescriptionEditor ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
