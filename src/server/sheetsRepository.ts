@@ -408,28 +408,29 @@ export async function getTransactionRecords(reader: SheetsReader): Promise<Trans
 
 export async function cancelTransaction(store: SheetsStore, transactionId: string): Promise<Transaction> {
   const normalizedId = transactionId.trim();
-  if (!normalizedId) throw new Error('결제 ID를 입력해 주세요.');
+  if (!normalizedId) throw new Error('거래 ID를 입력해 주세요.');
 
   const transactionRecord = (await getTransactionRecords(store)).find((record) => record.transaction.transactionId === normalizedId);
-  if (!transactionRecord) throw new Error('결제 내역을 찾을 수 없습니다.');
+  if (!transactionRecord) throw new Error('거래 내역을 찾을 수 없습니다.');
 
   const transaction = transactionRecord.transaction;
-  if (transaction.status === 'CANCELLED') throw new Error('이미 취소된 결제입니다.');
-  if (transaction.status !== 'COMPLETED') throw new Error('완료된 결제만 취소할 수 있습니다.');
+  if (transaction.status === 'CANCELLED') throw new Error('이미 취소된 거래입니다.');
 
   const studentRecord = await getStudentRecordById(store, transaction.studentId);
   if (!studentRecord) throw new Error('학생 정보를 찾을 수 없습니다.');
 
   const productsById = new Map((await getProductRecords(store)).map((record) => [record.product.productId, record]));
   const productUpdates: SheetCellUpdate[] = [];
-  for (const item of transaction.items) {
-    const productRecord = productsById.get(item.productId);
-    if (productRecord) {
-      productUpdates.push({ rowNumber: productRecord.rowNumber, columnName: 'stock', value: productRecord.product.stock + item.quantity });
+  if (transaction.totalAmount > 0) {
+    for (const item of transaction.items) {
+      const productRecord = productsById.get(item.productId);
+      if (productRecord) {
+        productUpdates.push({ rowNumber: productRecord.rowNumber, columnName: 'stock', value: productRecord.product.stock + item.quantity });
+      }
     }
   }
 
-  await store.updateCell('Students', studentRecord.rowNumber, 'balance', studentRecord.student.balance + transaction.totalAmount);
+  await store.updateCell('Students', studentRecord.rowNumber, 'balance', transaction.balanceBefore);
   await applyCellUpdates(store, 'Products', productUpdates);
   await store.updateCell('Transactions', transactionRecord.rowNumber, 'status', 'CANCELLED');
 
@@ -627,6 +628,12 @@ export async function bulkAdjustStudentBalances(
   }
 
   await applyCellUpdates(store, 'Students', cellUpdates);
+  for (const record of records) {
+    if (!record) continue;
+    const result = results.find((item) => item.studentId === record.student.studentId);
+    if (!result) continue;
+    await appendBalanceAdjustmentTransaction(store, record.student, record.student.balance, result.balance, update.mode);
+  }
   return results;
 }
 
@@ -763,6 +770,39 @@ export async function deleteProductsBatch(store: SheetsStore, productIds: string
 
   await store.deleteRows('Products', uniqueIds.map((productId) => recordsById.get(productId)!.rowNumber));
   return { productIds: uniqueIds };
+}
+
+async function appendBalanceAdjustmentTransaction(
+  store: SheetsStore,
+  student: Student,
+  balanceBefore: number,
+  balanceAfter: number,
+  mode: StudentBulkBalanceMode,
+): Promise<void> {
+  const delta = balanceAfter - balanceBefore;
+  if (delta === 0 && mode !== 'set') return;
+  const timestamp = new Date().toISOString();
+  const label = mode === 'add' ? '관리자 지급' : mode === 'subtract' ? '관리자 회수' : '관리자 잔액 지정';
+  const transactionAmount = -delta;
+  const item = {
+    productId: `ADMIN-${mode.toUpperCase()}`,
+    name: label,
+    price: transactionAmount,
+    quantity: 1,
+    subtotal: transactionAmount,
+  };
+  await store.appendRow('Transactions', [
+    `ADMIN-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    timestamp,
+    student.studentId,
+    student.name,
+    JSON.stringify([item]),
+    String(transactionAmount),
+    String(balanceBefore),
+    String(balanceAfter),
+    'ADMIN_ADJUSTMENT',
+    'admin',
+  ]);
 }
 
 function buildStudentAppendRow(headers: string[] | undefined, student: Student): string[] {

@@ -25,7 +25,16 @@ describe('BankApp', () => {
       const url = String(input);
       if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '별빛 은행', currencyUnit: '별', themeColor: 'green' });
       if (url === '/api/tasks') return jsonResponse(tasks);
-      if (url === '/api/bank/balance?studentId=S001') return jsonResponse({ studentId: 'S001', name: '김민준', number: 1, balance: 12 });
+      if (url === '/api/bank/balance?studentId=S001') return jsonResponse({
+        studentId: 'S001',
+        name: '김민준',
+        number: 1,
+        balance: 12,
+        transactions: [
+          { transactionId: 'T001', timestamp: '2026-05-21T00:00:00.000Z', studentId: 'S001', studentName: '김민준', items: [{ productId: 'P001', name: '연필', price: 3, quantity: 2, subtotal: 6 }], totalAmount: 6, balanceBefore: 18, balanceAfter: 12, status: 'COMPLETED', operator: 'kiosk' },
+          { transactionId: 'T002', timestamp: '2026-05-21T01:00:00.000Z', studentId: 'S001', studentName: '김민준', items: [{ productId: 'TASK', name: '책 읽기', price: -5, quantity: 1, subtotal: -5 }], totalAmount: -5, balanceBefore: 12, balanceAfter: 17, status: 'TASK_REWARD', operator: 'bank' },
+        ],
+      });
       if (url === '/api/tasks/T001/complete' && init?.method === 'POST') return jsonResponse({ task: tasks[0], student: { studentId: 'S001', name: '김민준', balance: 17 }, completedCount: 1, remainingCompletions: 1 });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     }));
@@ -42,6 +51,12 @@ describe('BankApp', () => {
     fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 잔액 확인' }));
     expect(await screen.findByRole('dialog', { name: '잔액 확인' })).toBeTruthy();
     expect(document.body.textContent).toContain('김민준 학생의 현재 잔액은 12별입니다.');
+    expect(screen.getByRole('heading', { name: '최근 거래' })).toBeTruthy();
+    expect(document.body.textContent).toContain('-6별');
+    expect(document.body.textContent).toContain('+5별');
+    expect(document.body.textContent).toContain('연필 × 2');
+    expect(document.body.textContent).not.toContain('T001');
+    expect(screen.queryByRole('button', { name: /거래 취소/ })).toBeNull();
   });
 
   it('shows a loading popup while loading tasks from the bank home', async () => {

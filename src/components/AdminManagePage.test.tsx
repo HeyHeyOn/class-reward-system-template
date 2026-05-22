@@ -122,7 +122,7 @@ describe('AdminManagePage', () => {
     expect(await screen.findByRole('heading', { name: '학급 보상 시스템 관리' })).toBeTruthy();
     expect(screen.getByText('Class Reward System Admin')).toBeTruthy();
     const adminTabs = screen.getByTestId('admin-tabs');
-    const expectedMenuOrder = ['시트 설정', '학생 명단', '재고 관리', '과제 설정', '결제 내역 확인', '화폐 지급/회수', '매점 바로가기', '은행 바로가기'];
+    const expectedMenuOrder = ['시트 설정', '학생 명단', '재고 관리', '과제 설정', '거래 내역 확인', '화폐 지급/회수', '매점 바로가기', '은행 바로가기'];
     let previousIndex = -1;
     for (const menu of expectedMenuOrder) {
       const currentIndex = adminTabs.textContent?.indexOf(menu) ?? -1;
@@ -134,8 +134,8 @@ describe('AdminManagePage', () => {
     expect(screen.getByRole('tab', { name: '재고 관리' })).toBeTruthy();
     expect(await screen.findByText('관리자 목록도 이 설정을 사용합니다: 학생 2명 · 상품 2개')).toBeTruthy();
     expect(screen.queryByRole('link', { name: /학생 QR 출력/ })).toBeNull();
-    expect(screen.getByRole('tab', { name: '결제 내역 확인' })).toBeTruthy();
-    expect(screen.queryByRole('link', { name: /결제 내역 확인/ })).toBeNull();
+    expect(screen.getByRole('tab', { name: '거래 내역 확인' })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /거래 내역 확인/ })).toBeNull();
     expect(screen.queryByRole('link', { name: /시스템 생성기/ })).toBeNull();
     expect(screen.getByRole('link', { name: /은행 바로가기/ }).getAttribute('href')).toBe('/bank');
     expect(screen.getByRole('tab', { name: '과제 설정' })).toBeTruthy();
@@ -152,14 +152,14 @@ describe('AdminManagePage', () => {
     render(<AdminManagePage />);
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/transactions', { cache: 'no-store' }));
-    expect(screen.queryByRole('heading', { name: '최근 결제' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: '최근 거래' })).toBeNull();
 
-    fireEvent.click(await screen.findByRole('tab', { name: '결제 내역 확인' }));
+    fireEvent.click(await screen.findByRole('tab', { name: '거래 내역 확인' }));
 
-    expect(await screen.findByRole('heading', { name: '최근 결제' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '최근 거래' })).toBeTruthy();
     expect(screen.getByText('김민준')).toBeTruthy();
     expect(screen.getByText('연필 × 2')).toBeTruthy();
-    expect(screen.getAllByText('600별').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('-600별').length).toBeGreaterThan(0);
   });
 
   it('reloads admin lists from the shared sheet after saving sheet settings', async () => {

@@ -2,13 +2,31 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { ClassTask } from '@/domain/types';
+import type { ClassTask, Transaction } from '@/domain/types';
 import { QrScanner } from './QrScanner';
 
 type Settings = { currencyUnit?: string; appTitle?: string; bankTitle?: string; themeColor?: string };
 type BankView = 'home' | 'balance-scan' | 'balance-result' | 'tasks-list' | 'task-detail' | 'task-scan' | 'task-success' | 'task-failure';
-type BalanceResult = { studentId: string; name: string; balance: number } | null;
+type BalanceResult = { studentId: string; name: string; balance: number; transactions?: Transaction[] } | null;
 type TaskResult = { message: string; balanceAfter?: number; reward?: number; studentName?: string } | null;
+
+function formatTransactionAmount(transaction: Transaction, unit: string) {
+  const delta = transaction.balanceAfter - transaction.balanceBefore;
+  const sign = delta > 0 ? '+' : delta < 0 ? '-' : '';
+  return `${sign}${Math.abs(delta).toLocaleString()}${unit}`;
+}
+
+function getTransactionTone(transaction: Transaction) {
+  if (transaction.status === 'CANCELLED') return 'cancelled';
+  const delta = transaction.balanceAfter - transaction.balanceBefore;
+  return delta > 0 ? 'income' : 'expense';
+}
+
+function formatTransactionDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
+}
 
 const themeClass: Record<string, string> = {
   blue: 'bg-sky-100', pink: 'bg-pink-100', yellow: 'bg-amber-100', green: 'bg-emerald-100', purple: 'bg-purple-100', white: 'bg-white', black: 'bg-slate-950', navy: 'bg-blue-950',
@@ -147,7 +165,40 @@ export function BankApp() {
 
       {view === 'balance-result' ? (
         <ResultDialog title={errorMessage ? '잔액 확인 실패' : '잔액 확인'} tone={errorMessage ? 'failure' : 'success'} onClose={() => setView('home')}>
-          {errorMessage ? <p>{errorMessage}</p> : <p>{balanceResult?.name} 학생의 현재 잔액은 <strong>{balanceResult?.balance.toLocaleString()}{currencyUnit}</strong>입니다.</p>}
+          {errorMessage ? (
+            <p>{errorMessage}</p>
+          ) : (
+            <div className="text-left">
+              <p className="text-center">{balanceResult?.name} 학생의 현재 잔액은 <strong>{balanceResult?.balance.toLocaleString()}{currencyUnit}</strong>입니다.</p>
+              <section className="mt-4 rounded-2xl bg-white p-3 text-left">
+                <h3 className="text-base font-black text-slate-800">최근 거래</h3>
+                {balanceResult?.transactions?.length ? (
+                  <div className="mt-2 space-y-2">
+                    {balanceResult.transactions.map((transaction) => {
+                      const tone = getTransactionTone(transaction);
+                      const rowClass = tone === 'cancelled'
+                        ? 'bg-slate-100 text-slate-500'
+                        : tone === 'income'
+                          ? 'bg-rose-50 text-rose-700'
+                          : 'bg-sky-50 text-sky-700';
+                      const itemLabel = transaction.items.length > 0
+                        ? transaction.items.map((item) => `${item.name} × ${item.quantity}`).join(', ')
+                        : '거래';
+                      return (
+                        <div key={transaction.transactionId} className={`rounded-xl px-3 py-2 text-sm font-black ${rowClass}`}>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="min-w-0 truncate text-slate-700">{itemLabel}</span>
+                            <span className="shrink-0">{formatTransactionAmount(transaction, currencyUnit)}</span>
+                          </div>
+                          <p className="mt-1 text-xs font-bold text-slate-500">{formatTransactionDate(transaction.timestamp)} · 잔액 {transaction.balanceAfter.toLocaleString()}{currencyUnit}{tone === 'cancelled' ? ' · 취소됨' : ''}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : <p className="mt-2 rounded-xl bg-slate-50 p-3 text-sm font-bold text-slate-500">아직 거래 내역이 없습니다.</p>}
+              </section>
+            </div>
+          )}
         </ResultDialog>
       ) : null}
 

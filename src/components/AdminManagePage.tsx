@@ -52,7 +52,7 @@ const tabs: Array<{ id: AdminTab; label: string; description: string }> = [
   { id: 'students', label: '학생 명단', description: '잔액과 상태 관리' },
   { id: 'products', label: '재고 관리', description: '상품과 가격 관리' },
   { id: 'tasks', label: '과제 설정', description: '은행 보상 과제' },
-  { id: 'transactions', label: '결제 내역 확인', description: '거래 기록' },
+  { id: 'transactions', label: '거래 내역 확인', description: '거래 기록' },
   { id: 'currency', label: '화폐 지급/회수', description: 'QR로 재화 조정' },
 ];
 
@@ -770,7 +770,7 @@ export function AdminManagePage() {
           </section>
         ) : null}
 
-        <section role="tabpanel" aria-label="결제 내역 확인" hidden={activeTab !== 'transactions'}>
+        <section role="tabpanel" aria-label="거래 내역 확인" hidden={activeTab !== 'transactions'}>
           <TransactionsPanel embedded />
         </section>
 

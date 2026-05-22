@@ -167,8 +167,35 @@ describe('sheets repository', () => {
 
     await expect(cancelTransaction(fakeStore, 'TR001')).resolves.toMatchObject({ transactionId: 'TR001', status: 'CANCELLED' });
     expect(updates).toEqual([
-      { sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: 4100 },
+      { sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: 3500 },
       { sheetName: 'Products', rowNumber: 3, columnName: 'stock', value: 22 },
+      { sheetName: 'Transactions', rowNumber: 2, columnName: 'status', value: 'CANCELLED' },
+    ]);
+  });
+
+  it('cancels an income transaction by restoring the previous balance and marking it cancelled', async () => {
+    const updates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
+    const incomeStore = {
+      ...fakeReader,
+      async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'Transactions') {
+          return [
+            sheetRows.Transactions[0],
+            ['TASK-TC001', '2026-05-21T02:00:00.000Z', 'S001', '김민준', '[{"productId":"T001","name":"책 읽기","price":-5,"quantity":1,"subtotal":-5}]', '-5', '3500', '3505', 'TASK_REWARD', 'bank'],
+          ];
+        }
+        if (sheetName === 'Students') return [sheetRows.Students[0], ['S001', '김민준', '1', '3505', 'S001', 'ACTIVE', '']];
+        return sheetRows[sheetName];
+      },
+      async updateCell(sheetName: 'Students' | 'Products' | 'Transactions', rowNumber: number, columnName: string, value: string | number) {
+        updates.push({ sheetName, rowNumber, columnName, value });
+      },
+      async appendRow() {},
+    };
+
+    await expect(cancelTransaction(incomeStore, 'TASK-TC001')).resolves.toMatchObject({ transactionId: 'TASK-TC001', status: 'CANCELLED' });
+    expect(updates).toEqual([
+      { sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: 3500 },
       { sheetName: 'Transactions', rowNumber: 2, columnName: 'status', value: 'CANCELLED' },
     ]);
   });
@@ -183,7 +210,7 @@ describe('sheets repository', () => {
       async appendRow() {},
     };
 
-    await expect(cancelTransaction(cancelledReader, 'TR001')).rejects.toThrow('이미 취소된 결제입니다.');
+    await expect(cancelTransaction(cancelledReader, 'TR001')).rejects.toThrow('이미 취소된 거래입니다.');
   });
 
   it('returns active products sorted by sortOrder', async () => {
@@ -392,14 +419,15 @@ describe('sheets repository', () => {
     ]);
   });
 
-  it('bulk adjusts selected student balances with set/add/subtract modes', async () => {
+  it('bulk adjusts selected student balances with set/add/subtract modes and records transactions', async () => {
     const updates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
+    const appended: Array<{ sheetName: string; values: string[] }> = [];
     const fakeStore = {
       ...fakeReader,
       async updateCell(sheetName: 'Students' | 'Products', rowNumber: number, columnName: string, value: string | number) {
         updates.push({ sheetName, rowNumber, columnName, value });
       },
-      async appendRow() {},
+      async appendRow(sheetName: string, values: string[]) { appended.push({ sheetName, values }); },
     };
 
     await expect(bulkAdjustStudentBalances(fakeStore, { studentIds: ['S001', 'S002'], mode: 'add', amount: 500 })).resolves.toEqual([
@@ -419,6 +447,12 @@ describe('sheets repository', () => {
       { sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: 2500 },
       { sheetName: 'Students', rowNumber: 3, columnName: 'balance', value: 9000 },
     ]);
+    expect(appended.filter((row) => row.sheetName === 'Transactions')).toHaveLength(4);
+    expect(appended[0].values[4]).toContain('관리자 지급');
+    expect(appended[0].values.slice(5, 8)).toEqual(['-500', '3500', '4000']);
+    expect(appended[2].values[4]).toContain('관리자 회수');
+    expect(appended[2].values.slice(5, 8)).toEqual(['1000', '3500', '2500']);
+    expect(appended[3].values[4]).toContain('관리자 잔액 지정');
   });
 
   it('updates editable product cells by row number', async () => {
