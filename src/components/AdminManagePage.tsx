@@ -484,8 +484,8 @@ export function AdminManagePage() {
     <main data-testid="admin-shell" className="min-h-screen bg-[#dbeaf6] p-2 text-slate-950 sm:p-3 lg:p-5">
       <section className="mx-auto flex w-full max-w-[1280px] flex-col gap-3 lg:gap-4">
         <header className="rounded-[1.25rem] border border-slate-300/70 bg-white px-4 py-4 text-center shadow-sm sm:rounded-[1.75rem] md:px-6">
-          <p className="text-xs font-black tracking-[0.22em] text-sky-600 sm:text-sm">CLASS STORE ADMIN</p>
-          <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl md:text-5xl">관리자 센터</h1>
+          <p className="text-xs font-black tracking-[0.22em] text-sky-600 sm:text-sm">Class Reward System Admin</p>
+          <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl md:text-5xl">학급 보상 시스템 관리</h1>
           <p className="mx-auto mt-1 max-w-2xl text-xs font-bold text-slate-500 sm:text-sm md:text-base">
             태블릿과 스마트폰에서 빠르게 학생 잔액과 상품 재고를 관리합니다.
           </p>
@@ -498,11 +498,8 @@ export function AdminManagePage() {
           {message ? <p className="mt-3 rounded-2xl bg-rose-100 p-3 text-sm font-bold text-rose-700">{message}</p> : null}
         </header>
 
-        <nav data-testid="admin-tabs" role="tablist" aria-label="관리자 메뉴" className="grid grid-cols-3 gap-2 rounded-[1.5rem] border border-slate-300/70 bg-white/90 p-2 shadow-sm sm:grid-cols-6">
-          <AdminNavLink href="/" title="매점 바로가기" description="키오스크" />
-          <AdminNavLink href="/bank" title="은행 바로가기" description="학생 은행" />
-          <AdminNavLink href="/admin/transactions" title="결제 내역 확인" description="거래 기록" />
-          {tabs.map((tab) => {
+        <nav data-testid="admin-tabs" role="tablist" aria-label="관리자 메뉴" className="grid grid-cols-2 gap-2 rounded-[1.5rem] border border-slate-300/70 bg-white/90 p-2 shadow-sm sm:grid-cols-4 lg:grid-cols-8">
+          {tabs.slice(0, 4).map((tab) => {
             const selected = activeTab === tab.id;
             return (
               <button
@@ -519,6 +516,26 @@ export function AdminManagePage() {
               </button>
             );
           })}
+          <AdminNavLink href="/admin/transactions" title="결제 내역 확인" description="거래 기록" />
+          {tabs.slice(4).map((tab) => {
+            const selected = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                aria-label={tab.label}
+                onClick={() => setActiveTab(tab.id)}
+                className={`rounded-[1rem] px-2 py-3 text-left transition ${selected ? 'bg-sky-500 text-white shadow-sm' : 'bg-sky-50 text-slate-700 hover:bg-sky-100'}`}
+              >
+                <span className="block text-sm font-black sm:text-base">{tab.label}</span>
+                <span className={`mt-0.5 hidden text-[11px] font-bold lg:block ${selected ? 'text-sky-50' : 'text-slate-500'}`}>{tab.description}</span>
+              </button>
+            );
+          })}
+          <AdminNavLink href="/" title="매점 바로가기" description="키오스크" />
+          <AdminNavLink href="/bank" title="은행 바로가기" description="학생 은행" />
         </nav>
 
         {activeTab === 'settings' ? (

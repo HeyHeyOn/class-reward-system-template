@@ -24,6 +24,7 @@ export function BankApp() {
   const [taskResult, setTaskResult] = useState<TaskResult>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingDialog, setLoadingDialog] = useState<{ title: string; message: string } | null>(null);
 
   const currencyUnit = settings.currencyUnit || '원';
   const background = themeClass[settings.themeColor || 'blue'] ?? themeClass.blue;
@@ -41,6 +42,7 @@ export function BankApp() {
 
   const loadTasks = useCallback(async () => {
     setLoading(true);
+    setLoadingDialog({ title: '과제 목록 불러오는 중', message: '과제 목록을 불러오는 중입니다.' });
     setErrorMessage('');
     try {
       const response = await fetch('/api/tasks', { cache: 'no-store' });
@@ -53,6 +55,7 @@ export function BankApp() {
       setView('tasks-list');
     } finally {
       setLoading(false);
+      setLoadingDialog(null);
     }
   }, []);
 
@@ -82,6 +85,7 @@ export function BankApp() {
     const studentId = decodedText.trim();
     if (!studentId || !selectedTask) return;
     setLoading(true);
+    setLoadingDialog({ title: '과제 완료 처리 중', message: 'QR을 인식했습니다. 보상을 지급하는 중입니다.' });
     setErrorMessage('');
     try {
       const response = await fetch(`/api/tasks/${encodeURIComponent(selectedTask.taskId)}/complete`, {
@@ -103,6 +107,7 @@ export function BankApp() {
       setView('task-failure');
     } finally {
       setLoading(false);
+      setLoadingDialog(null);
       setManualQr('');
     }
   }
@@ -133,6 +138,8 @@ export function BankApp() {
           <button type="button" onClick={loadTasks} className="rounded-[1.5rem] bg-emerald-500 px-5 py-12 text-3xl font-black text-white shadow-sm">과제 확인</button>
         </section>
       </section>
+
+      {loadingDialog ? <LoadingDialog title={loadingDialog.title} message={loadingDialog.message} /> : null}
 
       {view === 'balance-scan' ? (
         <ScanDialog title="잔액 확인 QR 인식" description="학생 개인 QR 코드를 카메라에 보여 주세요." manualValue={manualQr} onManualChange={setManualQr} onClose={() => setView('home')} onSubmit={() => checkBalance(manualQr)} onScan={checkBalance} submitLabel="QR 값으로 잔액 확인" />
@@ -188,6 +195,18 @@ export function BankApp() {
         </ResultDialog>
       ) : null}
     </main>
+  );
+}
+
+function LoadingDialog({ title, message }: { title: string; message: string }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 text-slate-950">
+      <section role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-md rounded-[2rem] bg-white p-6 text-center shadow-2xl">
+        <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-emerald-500" aria-hidden="true" />
+        <h2 className="mt-4 text-2xl font-black">{title}</h2>
+        <p className="mt-2 rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-600">{message}</p>
+      </section>
+    </div>
   );
 }
 

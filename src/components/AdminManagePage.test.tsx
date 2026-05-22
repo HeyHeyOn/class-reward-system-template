@@ -104,7 +104,16 @@ describe('AdminManagePage', () => {
   it('renders unified admin tabs with kiosk-style design language', async () => {
     const { container } = render(<AdminManagePage />);
 
-    expect(await screen.findByRole('heading', { name: '관리자 센터' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '학급 보상 시스템 관리' })).toBeTruthy();
+    expect(screen.getByText('Class Reward System Admin')).toBeTruthy();
+    const adminTabs = screen.getByTestId('admin-tabs');
+    const expectedMenuOrder = ['시트 설정', '학생 명단', '재고 관리', '과제 설정', '결제 내역 확인', '화폐 지급/회수', '매점 바로가기', '은행 바로가기'];
+    let previousIndex = -1;
+    for (const menu of expectedMenuOrder) {
+      const currentIndex = adminTabs.textContent?.indexOf(menu) ?? -1;
+      expect(currentIndex).toBeGreaterThan(previousIndex);
+      previousIndex = currentIndex;
+    }
     expect(screen.getByRole('tab', { name: '시트 설정' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: '학생 명단' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: '재고 관리' })).toBeTruthy();
