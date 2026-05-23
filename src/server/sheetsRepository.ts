@@ -397,16 +397,30 @@ export async function getTransactionRecords(reader: SheetsReader): Promise<Trans
   const headerIndex = createHeaderIndex(headers);
   assertRequiredColumns(headerIndex, REQUIRED_TRANSACTION_COLUMNS, 'Transactions');
 
-  return dataRows
+  const records = dataRows
     .map((row, index) => {
       const transaction = parseTransactionRow(row, headerIndex);
       return transaction ? { transaction, rowNumber: index + 2 } : null;
     })
-    .filter((record): record is TransactionRecord => record !== null)
+    .filter((record): record is TransactionRecord => record !== null);
+
+  const cancelledAtByOriginalId = new Map<string, string>();
+  for (const record of records) {
+    const originalId = record.transaction.operator.startsWith('cancel:') ? record.transaction.operator.slice('cancel:'.length) : '';
+    if (originalId) cancelledAtByOriginalId.set(originalId, record.transaction.timestamp);
+  }
+
+  return records
+    .map((record) => ({
+      ...record,
+      transaction: record.transaction.status === 'CANCELLED' && cancelledAtByOriginalId.has(record.transaction.transactionId)
+        ? { ...record.transaction, cancelledAt: cancelledAtByOriginalId.get(record.transaction.transactionId) }
+        : record.transaction,
+    }))
     .sort((a, b) => b.transaction.timestamp.localeCompare(a.transaction.timestamp));
 }
 
-export async function cancelTransaction(store: SheetsStore, transactionId: string): Promise<Transaction> {
+export async function cancelTransaction(store: SheetsStore, transactionId: string): Promise<{ cancelledTransaction: Transaction; reversalTransaction: Transaction }> {
   const normalizedId = transactionId.trim();
   if (!normalizedId) throw new Error('거래 ID를 입력해 주세요.');
 
@@ -430,11 +444,47 @@ export async function cancelTransaction(store: SheetsStore, transactionId: strin
     }
   }
 
-  await store.updateCell('Students', studentRecord.rowNumber, 'balance', transaction.balanceBefore);
+  const cancelledAt = new Date().toISOString();
+  const reversalDelta = transaction.balanceBefore - transaction.balanceAfter;
+  const reversalBalanceAfter = studentRecord.student.balance + reversalDelta;
+  if (reversalBalanceAfter < 0) throw new Error('거래 취소 후 잔액은 0보다 작아질 수 없습니다.');
+  const reversalTotalAmount = -reversalDelta;
+  const reversalTransaction: Transaction = {
+    transactionId: `CANCEL-${transaction.transactionId}-${Date.now().toString(36)}`,
+    timestamp: cancelledAt,
+    studentId: transaction.studentId,
+    studentName: transaction.studentName,
+    items: [{
+      productId: `CANCEL-${transaction.transactionId}`,
+      name: '거래 취소',
+      price: reversalTotalAmount,
+      quantity: 1,
+      subtotal: reversalTotalAmount,
+    }],
+    totalAmount: reversalTotalAmount,
+    balanceBefore: studentRecord.student.balance,
+    balanceAfter: reversalBalanceAfter,
+    status: 'CANCEL_REVERSAL',
+    operator: `cancel:${transaction.transactionId}`,
+  };
+
+  await store.updateCell('Students', studentRecord.rowNumber, 'balance', reversalBalanceAfter);
   await applyCellUpdates(store, 'Products', productUpdates);
   await store.updateCell('Transactions', transactionRecord.rowNumber, 'status', 'CANCELLED');
+  await store.appendRow('Transactions', [
+    reversalTransaction.transactionId,
+    reversalTransaction.timestamp,
+    reversalTransaction.studentId,
+    reversalTransaction.studentName,
+    JSON.stringify(reversalTransaction.items),
+    String(reversalTransaction.totalAmount),
+    String(reversalTransaction.balanceBefore),
+    String(reversalTransaction.balanceAfter),
+    reversalTransaction.status,
+    reversalTransaction.operator,
+  ]);
 
-  return { ...transaction, status: 'CANCELLED' };
+  return { cancelledTransaction: { ...transaction, status: 'CANCELLED', cancelledAt }, reversalTransaction };
 }
 
 export async function getSheetSettings(reader: SheetsReader): Promise<Record<string, string>> {

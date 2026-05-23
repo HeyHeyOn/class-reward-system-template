@@ -157,15 +157,25 @@ describe('sheets repository', () => {
 
   it('cancels a completed checkout by refunding balance, restoring stock, and marking the transaction', async () => {
     const updates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
+    const appended: Array<{ sheetName: string; values: string[] }> = [];
     const fakeStore = {
       ...fakeReader,
+      async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'Students') return [sheetRows.Students[0], ['S001', '김민준', '1', '2900', 'S001', 'ACTIVE', ''], sheetRows.Students[2]];
+        return sheetRows[sheetName];
+      },
       async updateCell(sheetName: 'Students' | 'Products' | 'Transactions', rowNumber: number, columnName: string, value: string | number) {
         updates.push({ sheetName, rowNumber, columnName, value });
       },
-      async appendRow() {},
+      async appendRow(sheetName: 'Transactions', values: string[]) {
+        appended.push({ sheetName, values });
+      },
     };
 
-    await expect(cancelTransaction(fakeStore, 'TR001')).resolves.toMatchObject({ transactionId: 'TR001', status: 'CANCELLED' });
+    await expect(cancelTransaction(fakeStore, 'TR001')).resolves.toMatchObject({
+      cancelledTransaction: { transactionId: 'TR001', status: 'CANCELLED' },
+      reversalTransaction: { status: 'CANCEL_REVERSAL', totalAmount: -600, balanceBefore: 2900, balanceAfter: 3500 },
+    });
     expect(updates).toEqual([
       { sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: 3500 },
       { sheetName: 'Products', rowNumber: 3, columnName: 'stock', value: 22 },
@@ -175,6 +185,7 @@ describe('sheets repository', () => {
 
   it('cancels an income transaction by restoring the previous balance and marking it cancelled', async () => {
     const updates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
+    const appended: Array<{ sheetName: string; values: string[] }> = [];
     const incomeStore = {
       ...fakeReader,
       async getRows(sheetName: keyof typeof sheetRows) {
@@ -190,10 +201,15 @@ describe('sheets repository', () => {
       async updateCell(sheetName: 'Students' | 'Products' | 'Transactions', rowNumber: number, columnName: string, value: string | number) {
         updates.push({ sheetName, rowNumber, columnName, value });
       },
-      async appendRow() {},
+      async appendRow(sheetName: 'Transactions', values: string[]) {
+        appended.push({ sheetName, values });
+      },
     };
 
-    await expect(cancelTransaction(incomeStore, 'TASK-TC001')).resolves.toMatchObject({ transactionId: 'TASK-TC001', status: 'CANCELLED' });
+    await expect(cancelTransaction(incomeStore, 'TASK-TC001')).resolves.toMatchObject({
+      cancelledTransaction: { transactionId: 'TASK-TC001', status: 'CANCELLED' },
+      reversalTransaction: { status: 'CANCEL_REVERSAL', totalAmount: 5, balanceBefore: 3505, balanceAfter: 3500 },
+    });
     expect(updates).toEqual([
       { sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: 3500 },
       { sheetName: 'Transactions', rowNumber: 2, columnName: 'status', value: 'CANCELLED' },

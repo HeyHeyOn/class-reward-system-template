@@ -6,6 +6,7 @@ import type { Transaction } from '@/domain/types';
 
 type SettingsResponse = { currencyUnit?: string };
 type ApiError = { error?: string };
+type CancelTransactionResponse = { cancelledTransaction: Transaction; reversalTransaction: Transaction } | Transaction;
 
 function formatCurrency(amount: number, unit: string) {
   return `${amount.toLocaleString()}${unit}`;
@@ -26,7 +27,7 @@ function getTransactionTone(transaction: Transaction) {
 function formatTimestamp(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString('ko-KR', { hour12: false });
+  return date.toLocaleString('ko-KR', { hour12: false }).replace(/(오전|오후) /, '');
 }
 
 export function TransactionsPage() {
@@ -91,12 +92,17 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean }) 
     setMessage('');
     try {
       const response = await fetch(`/api/transactions/${encodeURIComponent(transaction.transactionId)}/cancel`, { method: 'POST' });
-      const payload = (await response.json()) as Transaction | ApiError;
+      const payload = (await response.json()) as CancelTransactionResponse | ApiError;
       if (!response.ok || 'error' in payload) {
         throw new Error('error' in payload && payload.error ? payload.error : '거래를 취소하지 못했습니다.');
       }
-      const cancelledTransaction = payload as Transaction;
-      setTransactions((current) => current.map((item) => item.transactionId === transaction.transactionId ? cancelledTransaction : item));
+      const successPayload = payload as CancelTransactionResponse;
+      const cancelledTransaction: Transaction = 'cancelledTransaction' in successPayload ? successPayload.cancelledTransaction : successPayload;
+      const reversalTransaction: Transaction | null = 'reversalTransaction' in successPayload ? successPayload.reversalTransaction : null;
+      setTransactions((current) => {
+        const updated = current.map((item) => item.transactionId === transaction.transactionId ? cancelledTransaction : item);
+        return reversalTransaction ? [reversalTransaction, ...updated] : updated;
+      });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '거래를 취소하지 못했습니다.');
     } finally {
@@ -121,7 +127,7 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean }) 
           {transactions.map((transaction) => {
             const tone = getTransactionTone(transaction);
             const isCancelled = tone === 'cancelled';
-            const canCancel = !isCancelled;
+            const canCancel = !isCancelled && transaction.status !== 'CANCEL_REVERSAL';
             const rowClass = isCancelled
               ? 'border-slate-300 bg-slate-100 opacity-80'
               : tone === 'income'
@@ -142,6 +148,7 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean }) 
                     </div>
                     <p className="text-sm font-bold text-slate-500">{transaction.studentId} · {formatTimestamp(transaction.timestamp)}</p>
                     <p className="text-xs font-bold text-slate-400">{transaction.transactionId} · {transaction.status} · {transaction.operator}</p>
+                    {transaction.cancelledAt ? <p className="mt-1 text-xs font-black text-slate-500">취소 일시: {formatTimestamp(transaction.cancelledAt)}</p> : null}
                   </div>
                   <div className="flex flex-col items-end gap-2">
                     <p className={`text-2xl font-black ${amountClass}`}>{formatSignedStudentAmount(transaction, currencyUnit)}</p>

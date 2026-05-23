@@ -36,6 +36,12 @@ function jsonResponse(payload: unknown, init?: ResponseInit) {
   });
 }
 
+function deferredResponse(payload: unknown) {
+  let resolve!: () => void;
+  const gate = new Promise<void>((res) => { resolve = res; });
+  return { resolve, response: gate.then(() => jsonResponse(payload)) };
+}
+
 describe('AdminManagePage', () => {
   beforeEach(() => {
     vi.stubGlobal('alert', vi.fn());
@@ -431,6 +437,33 @@ describe('AdminManagePage', () => {
 
     await waitFor(() => expect(window.alert).toHaveBeenCalledWith('S003 추가 완료'));
     await waitFor(() => expect(window.alert).toHaveBeenCalledWith('P003 추가 완료'));
+  });
+
+  it('shows a loading popup after recognizing a currency QR before the result popup', async () => {
+    const currencyRequest = deferredResponse([{ studentId: 'S001', balance: 3900 }]);
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/students') return jsonResponse(students);
+      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
+      if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue', source: 'runtime' });
+      if (url === '/api/students/bulk' && init?.method === 'PATCH') return currencyRequest.response;
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+
+    render(<AdminManagePage />);
+
+    fireEvent.click(await screen.findByRole('tab', { name: '화폐 지급/회수' }));
+    fireEvent.click(screen.getByRole('button', { name: '지급' }));
+    fireEvent.change(screen.getByLabelText('지급/회수 금액'), { target: { value: '700' } });
+    fireEvent.click(screen.getByRole('button', { name: 'QR 인식 시작' }));
+    fireEvent.change(await screen.findByLabelText('학생 QR 직접 입력'), { target: { value: 'S001' } });
+    fireEvent.click(screen.getByRole('button', { name: '직접 입력 적용' }));
+
+    expect(await screen.findByRole('dialog', { name: '화폐 지급 처리 중' })).toBeTruthy();
+    expect(document.body.textContent).toContain('QR을 인식했습니다. 화폐를 지급하는 중입니다.');
+    currencyRequest.resolve();
+    expect(await screen.findByRole('dialog', { name: '화폐 지급 성공' })).toBeTruthy();
   });
 
   it('adjusts one scanned student from the currency grant/collect tab with retryable result popups', async () => {

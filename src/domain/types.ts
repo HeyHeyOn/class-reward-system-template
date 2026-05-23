@@ -43,6 +43,7 @@ export type Transaction = {
   balanceAfter: number;
   status: string;
   operator: string;
+  cancelledAt?: string;
 };
 
 export type ClassTask = {

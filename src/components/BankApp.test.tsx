@@ -59,6 +59,28 @@ describe('BankApp', () => {
     expect(screen.queryByRole('button', { name: /거래 취소/ })).toBeNull();
   });
 
+  it('shows a loading popup after recognizing a balance QR before the balance result', async () => {
+    const balanceRequest = deferredResponse({ studentId: 'S001', name: '김민준', number: 1, balance: 12, transactions: [] });
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '별빛 은행', currencyUnit: '별', themeColor: 'green' });
+      if (url === '/api/tasks') return jsonResponse(tasks);
+      if (url === '/api/bank/balance?studentId=S001') return balanceRequest.response;
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    }));
+
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    fireEvent.click(screen.getByRole('button', { name: '잔액 확인' }));
+    fireEvent.change(await screen.findByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 잔액 확인' }));
+
+    expect(await screen.findByRole('dialog', { name: '잔액 확인 중' })).toBeTruthy();
+    expect(document.body.textContent).toContain('QR을 인식했습니다. 잔액을 불러오는 중입니다.');
+    balanceRequest.resolve();
+    expect(await screen.findByRole('dialog', { name: '잔액 확인' })).toBeTruthy();
+  });
+
   it('shows a loading popup while loading tasks from the bank home', async () => {
     const taskRequest = deferredResponse(tasks);
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {

@@ -78,6 +78,7 @@ export function AdminManagePage() {
   const [currencyScannerOpen, setCurrencyScannerOpen] = useState(false);
   const [currencyManualId, setCurrencyManualId] = useState('');
   const [currencyResult, setCurrencyResult] = useState<CurrencyResult | null>(null);
+  const [currencyLoading, setCurrencyLoading] = useState(false);
 
   const loadLinkedSheetData = useCallback(async (options: { silent?: boolean; shouldApply?: () => boolean } = {}) => {
     const shouldApply = options.shouldApply ?? (() => true);
@@ -451,6 +452,7 @@ export function AdminManagePage() {
     const studentId = decodedText.trim();
     if (!studentId) return;
     setCurrencyScannerOpen(false);
+    setCurrencyLoading(true);
     try {
       const response = await fetch('/api/students/bulk', {
         method: 'PATCH',
@@ -478,6 +480,8 @@ export function AdminManagePage() {
         amount: currencyAmount,
         message: error instanceof Error ? error.message : '화폐를 조정하지 못했습니다.',
       });
+    } finally {
+      setCurrencyLoading(false);
     }
   }
 
@@ -878,6 +882,9 @@ export function AdminManagePage() {
           </section>
         </div>
       ) : null}
+      {currencyLoading ? (
+        <LoadingDialog title={`화폐 ${currencyActionLabel} 처리 중`} message={`QR을 인식했습니다. 화폐를 ${currencyActionLabel}하는 중입니다.`} />
+      ) : null}
       {currencyScannerOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <section role="dialog" aria-modal="true" aria-label="학생 QR 인식" className="w-full max-w-xl rounded-2xl bg-white p-4 shadow-2xl">
@@ -910,6 +917,18 @@ export function AdminManagePage() {
         </div>
       ) : null}
     </main>
+  );
+}
+
+function LoadingDialog({ title, message }: { title: string; message: string }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+      <section role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-2xl">
+        <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-sky-500" aria-hidden="true" />
+        <h2 className="mt-4 text-2xl font-black">{title}</h2>
+        <p className="mt-2 rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-600">{message}</p>
+      </section>
+    </div>
   );
 }
 

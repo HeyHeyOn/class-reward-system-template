@@ -23,11 +23,13 @@ export function AdminLoginPage({ googleLoginEnabled = true }: { googleLoginEnabl
   const [qrText, setQrText] = useState('');
   const [message, setMessage] = useState(searchParams.get('error') ?? '');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submittingFromQr, setSubmittingFromQr] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
 
   useEffect(() => () => stopScan(), []);
 
-  async function submitPassword(value = password) {
+  async function submitPassword(value = password, fromQr = false) {
+    setSubmittingFromQr(fromQr);
     setIsSubmitting(true);
     setMessage('');
 
@@ -77,7 +79,7 @@ export function AdminLoginPage({ googleLoginEnabled = true }: { googleLoginEnabl
           stopScan();
           const normalized = normalizeQrPassword(value);
           setPassword(normalized);
-          await submitPassword(normalized);
+          await submitPassword(normalized, true);
           return;
         }
         scanTimerRef.current = window.setTimeout(scan, 350);
@@ -100,11 +102,17 @@ export function AdminLoginPage({ googleLoginEnabled = true }: { googleLoginEnabl
   function applyQrText() {
     const normalized = normalizeQrPassword(qrText);
     setPassword(normalized);
-    void submitPassword(normalized);
+    void submitPassword(normalized, true);
   }
 
   return (
     <main className="min-h-screen bg-[#dbeaf6] px-4 py-10 text-[#25313f]">
+      {isSubmitting ? (
+        <LoadingDialog
+          title="관리자 로그인 확인 중"
+          message={submittingFromQr ? 'QR을 인식했습니다. 관리자 권한을 확인하는 중입니다.' : '관리자 권한을 확인하는 중입니다.'}
+        />
+      ) : null}
       <section className="mx-auto max-w-md rounded-[2rem] bg-white p-8 shadow-[0_20px_60px_rgba(37,49,63,0.15)]">
         <p className="text-sm font-bold uppercase tracking-[0.3em] text-[#4f8fba]">Class Store Admin</p>
         <h1 className="mt-3 text-3xl font-black">관리자 로그인</h1>
@@ -144,6 +152,18 @@ export function AdminLoginPage({ googleLoginEnabled = true }: { googleLoginEnabl
         </form>
       </section>
     </main>
+  );
+}
+
+function LoadingDialog({ title, message }: { title: string; message: string }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 text-slate-950">
+      <section role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-md rounded-[2rem] bg-white p-6 text-center shadow-2xl">
+        <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-sky-500" aria-hidden="true" />
+        <h2 className="mt-4 text-2xl font-black">{title}</h2>
+        <p className="mt-2 rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-600">{message}</p>
+      </section>
+    </div>
   );
 }
 

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AdminLoginPage } from './AdminLoginPage';
 
@@ -7,8 +7,17 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
+function deferredResponse(payload: unknown) {
+  let resolve!: () => void;
+  const gate = new Promise<void>((res) => { resolve = res; });
+  return {
+    resolve,
+    response: gate.then(() => new Response(JSON.stringify(payload), { status: 200, headers: { 'Content-Type': 'application/json' } })),
+  };
+}
+
 describe('AdminLoginPage', () => {
-  afterEach(() => cleanup());
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
   it('hides Google login when the deployed app already uses a stored Sheets refresh token', () => {
     render(<AdminLoginPage googleLoginEnabled={false} />);
@@ -24,5 +33,19 @@ describe('AdminLoginPage', () => {
     render(<AdminLoginPage googleLoginEnabled />);
 
     expect(screen.getByRole('link', { name: 'Google 계정으로 로그인' }).getAttribute('href')).toBe('/api/google/login');
+  });
+
+  it('shows a loading dialog after applying a pasted admin QR login value', async () => {
+    const loginRequest = deferredResponse({});
+    vi.stubGlobal('fetch', vi.fn(async () => loginRequest.response));
+
+    render(<AdminLoginPage googleLoginEnabled={false} />);
+    fireEvent.change(screen.getByLabelText('QR 로그인 값'), { target: { value: 'class-store-admin:secret' } });
+    fireEvent.click(screen.getByRole('button', { name: '적용' }));
+
+    expect(await screen.findByRole('dialog', { name: '관리자 로그인 확인 중' })).toBeTruthy();
+    expect(document.body.textContent).toContain('QR을 인식했습니다. 관리자 권한을 확인하는 중입니다.');
+    loginRequest.resolve();
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/admin/login', expect.objectContaining({ method: 'POST' })));
   });
 });

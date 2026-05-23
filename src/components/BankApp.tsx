@@ -83,6 +83,7 @@ export function BankApp() {
     const studentId = decodedText.trim();
     if (!studentId) return;
     setLoading(true);
+    setLoadingDialog({ title: '잔액 확인 중', message: 'QR을 인식했습니다. 잔액을 불러오는 중입니다.' });
     setErrorMessage('');
     try {
       const response = await fetch(`/api/bank/balance?studentId=${encodeURIComponent(studentId)}`, { cache: 'no-store' });
@@ -95,6 +96,7 @@ export function BankApp() {
       setView('balance-result');
     } finally {
       setLoading(false);
+      setLoadingDialog(null);
       setManualQr('');
     }
   }
@@ -190,7 +192,7 @@ export function BankApp() {
                             <span className="min-w-0 truncate text-slate-700">{itemLabel}</span>
                             <span className="shrink-0">{formatTransactionAmount(transaction, currencyUnit)}</span>
                           </div>
-                          <p className="mt-1 text-xs font-bold text-slate-500">{formatTransactionDate(transaction.timestamp)} · 잔액 {transaction.balanceAfter.toLocaleString()}{currencyUnit}{tone === 'cancelled' ? ' · 취소됨' : ''}</p>
+                          <p className="mt-1 text-xs font-bold text-slate-500">{formatTransactionDate(transaction.timestamp)} · 잔액 {transaction.balanceAfter.toLocaleString()}{currencyUnit}{tone === 'cancelled' ? ' · 취소됨' : ''}{transaction.cancelledAt ? ` · 취소 ${formatTransactionDate(transaction.cancelledAt)}` : ''}</p>
                         </div>
                       );
                     })}
