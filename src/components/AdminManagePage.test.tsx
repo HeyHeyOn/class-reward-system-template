@@ -127,7 +127,11 @@ describe('AdminManagePage', () => {
 
     expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
     expect(screen.getByText('Class Reward System')).toBeTruthy();
-    expect(screen.getByRole('img', { name: '학급 보상 시스템 로고' })).toBeTruthy();
+    const logo = screen.getByRole('img', { name: '학급 보상 시스템 로고' });
+    expect(logo).toBeTruthy();
+    expect(logo.getAttribute('src')).toBe('/class-reward-system-icon.png');
+    expect(logo.className).not.toMatch(/bg-|shadow|rounded|mask-image/);
+    expect(logo.parentElement?.className).not.toMatch(/bg-|shadow|rounded/);
     const adminTabs = screen.getByTestId('admin-tabs');
     const expectedMenuOrder = ['시트 설정', '학생 명단', '재고 관리', '과제 설정', '거래 내역 확인', '화폐 지급/회수', '매점 바로가기', '은행 바로가기'];
     let previousIndex = -1;

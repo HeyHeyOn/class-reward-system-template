@@ -49,15 +49,15 @@ const EMPTY_STUDENT: NewStudentDraft = { studentId: '', name: '', number: 1, bal
 const EMPTY_PRODUCT: NewProductDraft = { productId: '', name: '', price: 0, stock: 0, isActive: true, imageUrl: '', category: '', sortOrder: 1 };
 const EMPTY_TASK: TaskDraft = { taskId: '', title: '', description: '', reward: 0, maxCompletionsPerStudent: 1, isActive: true, sortOrder: 1 };
 
-const ADMIN_THEME: Record<ThemeColor, { shell: string; accentText: string; accentBg: string; selectedTab: string; idleTab: string; statBg: string; logoBg: string }> = {
-  blue: { shell: 'bg-sky-100', accentText: 'text-sky-700', accentBg: 'bg-sky-500', selectedTab: 'bg-sky-500 text-white', idleTab: 'bg-sky-50 text-slate-700 hover:bg-sky-100', statBg: 'bg-sky-50', logoBg: 'bg-sky-500' },
-  pink: { shell: 'bg-pink-100', accentText: 'text-pink-700', accentBg: 'bg-pink-500', selectedTab: 'bg-pink-500 text-white', idleTab: 'bg-pink-50 text-slate-700 hover:bg-pink-100', statBg: 'bg-pink-50', logoBg: 'bg-pink-500' },
-  yellow: { shell: 'bg-amber-100', accentText: 'text-amber-700', accentBg: 'bg-amber-400', selectedTab: 'bg-amber-400 text-slate-950', idleTab: 'bg-amber-50 text-slate-700 hover:bg-amber-100', statBg: 'bg-amber-50', logoBg: 'bg-amber-400' },
-  green: { shell: 'bg-emerald-100', accentText: 'text-emerald-700', accentBg: 'bg-emerald-500', selectedTab: 'bg-emerald-500 text-white', idleTab: 'bg-emerald-50 text-slate-700 hover:bg-emerald-100', statBg: 'bg-emerald-50', logoBg: 'bg-emerald-500' },
-  purple: { shell: 'bg-purple-100', accentText: 'text-purple-700', accentBg: 'bg-purple-500', selectedTab: 'bg-purple-500 text-white', idleTab: 'bg-purple-50 text-slate-700 hover:bg-purple-100', statBg: 'bg-purple-50', logoBg: 'bg-purple-500' },
-  white: { shell: 'bg-slate-100', accentText: 'text-slate-800', accentBg: 'bg-slate-950', selectedTab: 'bg-slate-950 text-white', idleTab: 'bg-white text-slate-700 hover:bg-slate-200', statBg: 'bg-slate-50', logoBg: 'bg-slate-950' },
-  black: { shell: 'bg-slate-950', accentText: 'text-slate-900', accentBg: 'bg-slate-950', selectedTab: 'bg-slate-950 text-white', idleTab: 'bg-slate-100 text-slate-700 hover:bg-slate-200', statBg: 'bg-slate-100', logoBg: 'bg-slate-950' },
-  navy: { shell: 'bg-blue-950', accentText: 'text-blue-900', accentBg: 'bg-blue-950', selectedTab: 'bg-blue-950 text-white', idleTab: 'bg-blue-50 text-slate-700 hover:bg-blue-100', statBg: 'bg-blue-50', logoBg: 'bg-blue-950' },
+const ADMIN_THEME: Record<ThemeColor, { shell: string; accentText: string; accentBg: string; selectedTab: string; idleTab: string; statBg: string }> = {
+  blue: { shell: 'bg-sky-100', accentText: 'text-sky-700', accentBg: 'bg-sky-500', selectedTab: 'bg-sky-500 text-white', idleTab: 'bg-sky-50 text-slate-700 hover:bg-sky-100', statBg: 'bg-sky-50' },
+  pink: { shell: 'bg-pink-100', accentText: 'text-pink-700', accentBg: 'bg-pink-500', selectedTab: 'bg-pink-500 text-white', idleTab: 'bg-pink-50 text-slate-700 hover:bg-pink-100', statBg: 'bg-pink-50' },
+  yellow: { shell: 'bg-amber-100', accentText: 'text-amber-700', accentBg: 'bg-amber-400', selectedTab: 'bg-amber-400 text-slate-950', idleTab: 'bg-amber-50 text-slate-700 hover:bg-amber-100', statBg: 'bg-amber-50' },
+  green: { shell: 'bg-emerald-100', accentText: 'text-emerald-700', accentBg: 'bg-emerald-500', selectedTab: 'bg-emerald-500 text-white', idleTab: 'bg-emerald-50 text-slate-700 hover:bg-emerald-100', statBg: 'bg-emerald-50' },
+  purple: { shell: 'bg-purple-100', accentText: 'text-purple-700', accentBg: 'bg-purple-500', selectedTab: 'bg-purple-500 text-white', idleTab: 'bg-purple-50 text-slate-700 hover:bg-purple-100', statBg: 'bg-purple-50' },
+  white: { shell: 'bg-slate-100', accentText: 'text-slate-800', accentBg: 'bg-slate-950', selectedTab: 'bg-slate-950 text-white', idleTab: 'bg-white text-slate-700 hover:bg-slate-200', statBg: 'bg-slate-50' },
+  black: { shell: 'bg-slate-950', accentText: 'text-slate-900', accentBg: 'bg-slate-950', selectedTab: 'bg-slate-950 text-white', idleTab: 'bg-slate-100 text-slate-700 hover:bg-slate-200', statBg: 'bg-slate-100' },
+  navy: { shell: 'bg-blue-950', accentText: 'text-blue-900', accentBg: 'bg-blue-950', selectedTab: 'bg-blue-950 text-white', idleTab: 'bg-blue-50 text-slate-700 hover:bg-blue-100', statBg: 'bg-blue-50' },
 };
 
 function normalizeThemeColor(value: unknown): ThemeColor {
@@ -534,8 +534,8 @@ export function AdminManagePage() {
       <section className="mx-auto flex w-full max-w-[1280px] flex-col gap-3 lg:gap-4">
         <header className="rounded-[1.25rem] border border-slate-300/70 bg-white px-4 py-4 text-center shadow-sm sm:rounded-[1.75rem] md:px-6">
           <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <span className={`inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${theme.logoBg} shadow-sm`}>
-              <span role="img" aria-label="학급 보상 시스템 로고" className="h-10 w-10 bg-white [mask-image:url('/class-reward-system-icon.png')] [mask-position:center] [mask-repeat:no-repeat] [mask-size:contain]" />
+            <span className="inline-flex h-16 w-16 shrink-0 items-center justify-center">
+              <img src="/class-reward-system-icon.png" alt="학급 보상 시스템 로고" className="h-16 w-16 object-contain" />
             </span>
             <div>
               <p className={`text-xs font-black tracking-[0.22em] ${theme.accentText} sm:text-sm`}>Class Reward System</p>
