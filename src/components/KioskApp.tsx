@@ -42,7 +42,7 @@ const THEME_STYLES: Record<ThemeColor, { shell: string; accentText: string; acce
   blue: { shell: 'bg-sky-50', accentText: 'text-sky-700', accentBg: 'bg-sky-300', selectedText: 'text-sky-950', lightBg: 'bg-sky-50', hoverBg: 'hover:bg-sky-200', ring: 'focus:ring-sky-200' },
   pink: { shell: 'bg-pink-50', accentText: 'text-pink-700', accentBg: 'bg-pink-200', selectedText: 'text-pink-950', lightBg: 'bg-pink-50', hoverBg: 'hover:bg-pink-100', ring: 'focus:ring-pink-200' },
   yellow: { shell: 'bg-yellow-50', accentText: 'text-yellow-700', accentBg: 'bg-yellow-200', selectedText: 'text-yellow-950', lightBg: 'bg-yellow-50', hoverBg: 'hover:bg-yellow-100', ring: 'focus:ring-yellow-200' },
-  green: { shell: 'bg-green-50', accentText: 'text-green-700', accentBg: 'bg-green-200', selectedText: 'text-green-950', lightBg: 'bg-green-50', hoverBg: 'hover:bg-green-100', ring: 'focus:ring-green-200' },
+  green: { shell: 'bg-[#F3FCEE]', accentText: 'text-[#3C7A2C]', accentBg: 'bg-[#B6E39F]', selectedText: 'text-[#214D18]', lightBg: 'bg-[#F3FCEE]', hoverBg: 'hover:bg-[#D8F0CC]', ring: 'focus:ring-[#B6E39F]' },
   purple: { shell: 'bg-purple-50', accentText: 'text-purple-700', accentBg: 'bg-purple-200', selectedText: 'text-purple-950', lightBg: 'bg-purple-50', hoverBg: 'hover:bg-purple-100', ring: 'focus:ring-purple-200' },
   white: { shell: 'bg-slate-100', accentText: 'text-slate-900', accentBg: 'bg-slate-300', selectedText: 'text-slate-950', lightBg: 'bg-slate-200', hoverBg: 'hover:bg-slate-300', ring: 'focus:ring-slate-300' },
   black: { shell: 'bg-slate-900', accentText: 'text-slate-900', accentBg: 'bg-slate-700', selectedText: 'text-white', lightBg: 'bg-slate-100', hoverBg: 'hover:bg-slate-600', ring: 'focus:ring-slate-400' },

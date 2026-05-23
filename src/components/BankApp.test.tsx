@@ -64,14 +64,14 @@ describe('BankApp', () => {
     const { container } = render(<BankApp />);
 
     expect(await screen.findByRole('heading', { name: '별빛 은행' })).toBeTruthy();
-    expect(container.querySelector('[data-testid="bank-shell"]')?.className).toContain('bg-green-50');
+    expect(container.querySelector('[data-testid="bank-shell"]')?.className).toContain('bg-[#F3FCEE]');
+    expect(container.querySelector('[data-testid="bank-shell"]')?.className).not.toContain('bg-green-50');
     expect(container.querySelector('[data-testid="bank-shell"]')?.className).not.toContain('bg-lime-50');
-    expect(container.querySelector('[data-testid="bank-shell"]')?.className).not.toContain('bg-emerald-100');
-    expect(screen.getByText('CLASS BANK').className).toContain('text-green-700');
-    expect(screen.getByRole('button', { name: '잔액 확인' }).className).toContain('bg-green-200');
-    expect(screen.getByRole('button', { name: '과제 확인' }).className).toContain('bg-green-100');
-    expect(screen.getByRole('button', { name: '잔액 확인' }).className).not.toContain('bg-green-100');
-    expect(screen.getByRole('button', { name: '과제 확인' }).className).not.toContain('bg-green-200');
+    expect(screen.getByText('CLASS BANK').className).toContain('text-[#3C7A2C]');
+    expect(screen.getByRole('button', { name: '잔액 확인' }).className).toContain('bg-[#B6E39F]');
+    expect(screen.getByRole('button', { name: '과제 확인' }).className).toContain('bg-[#D8F0CC]');
+    expect(screen.getByRole('button', { name: '잔액 확인' }).className).not.toContain('bg-[#D8F0CC]');
+    expect(screen.getByRole('button', { name: '과제 확인' }).className).not.toContain('bg-[#B6E39F]');
     expect(screen.getByRole('button', { name: '잔액 확인' }).className).not.toContain('bg-sky-500');
     expect(screen.getByRole('button', { name: '과제 확인' }).className).not.toContain('bg-emerald-500');
   });
@@ -100,7 +100,7 @@ describe('BankApp', () => {
     fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 잔액 확인' }));
     expect(await screen.findByRole('dialog', { name: '잔액 확인' })).toBeTruthy();
     expect(document.body.textContent).toContain('김민준 학생의 현재 잔액은 12별입니다.');
-    expect(screen.getByRole('heading', { name: '최근 거래' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '최근 거래 (2)' })).toBeTruthy();
     expect(document.body.textContent).toContain('-6별');
     expect(document.body.textContent).toContain('+5별');
     expect(document.body.textContent).toContain('연필 × 2');
@@ -122,7 +122,31 @@ describe('BankApp', () => {
     const transactionBlock = screen.getByTestId('bank-recent-transactions');
     expect(transactionBlock.className).toContain('max-h-72');
     expect(transactionBlock.className).toContain('overflow-y-auto');
-    expect(transactionBlock.className).toContain('aspect-square');
+    expect(transactionBlock.className).not.toContain('aspect-square');
+    expect(transactionBlock.className).toContain('mx-auto');
+    expect(transactionBlock.className).toContain('max-w-sm');
+  });
+
+  it('filters balance transactions between all, income, and expense tabs', async () => {
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    fireEvent.click(screen.getByRole('button', { name: '잔액 확인' }));
+    fireEvent.change(await screen.findByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 잔액 확인' }));
+
+    expect(await screen.findByRole('heading', { name: '최근 거래 (2)' })).toBeTruthy();
+    expect(screen.getByText('연필 × 2')).toBeTruthy();
+    expect(screen.getByText('책 읽기 × 1')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '수입' }));
+    expect(await screen.findByRole('heading', { name: '최근 거래 (1)' })).toBeTruthy();
+    expect(screen.queryByText('연필 × 2')).toBeNull();
+    expect(screen.getByText('책 읽기 × 1')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '지출' }));
+    expect(await screen.findByRole('heading', { name: '최근 거래 (1)' })).toBeTruthy();
+    expect(screen.getByText('연필 × 2')).toBeTruthy();
+    expect(screen.queryByText('책 읽기 × 1')).toBeNull();
   });
 
   it('shows a loading popup after recognizing a balance QR before the balance result', async () => {

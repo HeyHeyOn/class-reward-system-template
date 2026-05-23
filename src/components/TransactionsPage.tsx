@@ -7,6 +7,7 @@ import type { Transaction } from '@/domain/types';
 type SettingsResponse = { currencyUnit?: string };
 type ApiError = { error?: string };
 type CancelTransactionResponse = { cancelledTransaction: Transaction; reversalTransaction: Transaction } | Transaction;
+type TransactionFilter = 'all' | 'income' | 'expense';
 
 function formatCurrency(amount: number, unit: string) {
   return `${amount.toLocaleString()}${unit}`;
@@ -46,11 +47,12 @@ export function TransactionsPage() {
   );
 }
 
-export function TransactionsPanel({ embedded = false, summaryToneClass = 'bg-sky-50', summaryAccentClass = 'text-sky-700' }: { embedded?: boolean; summaryToneClass?: string; summaryAccentClass?: string }) {
+export function TransactionsPanel({ embedded = false }: { embedded?: boolean; summaryToneClass?: string; summaryAccentClass?: string }) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [currencyUnit, setCurrencyUnit] = useState('원');
   const [message, setMessage] = useState('거래 내역을 불러오는 중입니다.');
   const [cancelingId, setCancelingId] = useState<string | null>(null);
+  const [transactionFilter, setTransactionFilter] = useState<TransactionFilter>('all');
 
   useEffect(() => {
     let ignore = false;
@@ -82,7 +84,10 @@ export function TransactionsPanel({ embedded = false, summaryToneClass = 'bg-sky
     };
   }, []);
 
-  const netExpense = useMemo(() => transactions.filter((transaction) => transaction.status !== 'CANCELLED').reduce((sum, transaction) => sum + transaction.totalAmount, 0), [transactions]);
+  const filteredTransactions = useMemo(() => {
+    if (transactionFilter === 'all') return transactions;
+    return transactions.filter((transaction) => getTransactionTone(transaction) === transactionFilter);
+  }, [transactions, transactionFilter]);
 
   async function cancelTransaction(transaction: Transaction) {
     if (transaction.status === 'CANCELLED') return;
@@ -112,19 +117,16 @@ export function TransactionsPanel({ embedded = false, summaryToneClass = 'bg-sky
 
   return (
     <div className={embedded ? 'grid gap-4' : 'grid gap-4'}>
-      <div className="grid gap-2 sm:grid-cols-3">
-        <SummaryCard label="거래 건수" value={`${transactions.length}건`} toneClass={summaryToneClass} accentClass={summaryAccentClass} />
-        <SummaryCard label="순 지출" value={formatCurrency(netExpense, currencyUnit)} toneClass={summaryToneClass} accentClass={summaryAccentClass} />
-        <SummaryCard label="화폐 단위" value={currencyUnit} toneClass={summaryToneClass} accentClass={summaryAccentClass} />
-      </div>
-
       {message ? <p className="rounded-2xl bg-white p-4 font-bold text-slate-700 shadow-sm">{message}</p> : null}
 
       <section className="rounded-[1.75rem] border border-slate-300/70 bg-white/90 p-4 shadow-sm md:p-5">
-        <h2 className="text-2xl font-black">최근 거래</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-2xl font-black">최근 거래 ({filteredTransactions.length})</h2>
+          <TransactionFilterTabs value={transactionFilter} onChange={setTransactionFilter} />
+        </div>
         <div className="mt-4 grid gap-3">
-          {transactions.length === 0 && !message ? <p className="rounded-2xl bg-sky-50 p-5 font-bold text-slate-600">아직 거래 내역이 없습니다.</p> : null}
-          {transactions.map((transaction) => {
+          {filteredTransactions.length === 0 && !message ? <p className="rounded-2xl bg-sky-50 p-5 font-bold text-slate-600">표시할 거래 내역이 없습니다.</p> : null}
+          {filteredTransactions.map((transaction) => {
             const tone = getTransactionTone(transaction);
             const isCancelled = tone === 'cancelled';
             const canCancel = !isCancelled && transaction.status !== 'CANCEL_REVERSAL';
@@ -183,11 +185,23 @@ export function TransactionsPanel({ embedded = false, summaryToneClass = 'bg-sky
   );
 }
 
-function SummaryCard({ label, value, toneClass, accentClass }: { label: string; value: string; toneClass: string; accentClass: string }) {
+function TransactionFilterTabs({ value, onChange }: { value: TransactionFilter; onChange: (value: TransactionFilter) => void }) {
   return (
-    <div className={`rounded-2xl ${toneClass} px-4 py-3 text-left`}>
-      <p className="text-xs font-black text-slate-500">{label}</p>
-      <p className={`mt-1 text-2xl font-black ${accentClass}`}>{value}</p>
+    <div className="flex rounded-full bg-slate-100 p-1 text-sm font-black text-slate-600" role="group" aria-label="거래 필터">
+      {([
+        ['all', '전체'],
+        ['income', '수입'],
+        ['expense', '지출'],
+      ] as const).map(([id, label]) => (
+        <button
+          key={id}
+          className={`rounded-full px-4 py-2 ${value === id ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500'}`}
+          onClick={() => onChange(id)}
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
     </div>
   );
 }

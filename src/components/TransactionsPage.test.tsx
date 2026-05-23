@@ -111,11 +111,17 @@ describe('TransactionsPage', () => {
     vi.unstubAllGlobals();
   });
 
-  it('uses transaction wording, signed student-perspective amounts, and income/expense/cancel colors', async () => {
+  it('uses transaction wording, signed student-perspective amounts, filter tabs, and income/expense/cancel colors', async () => {
     const { container } = render(<TransactionsPage />);
 
     expect(await screen.findByRole('heading', { name: '거래 내역 확인' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: '최근 거래' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '최근 거래 (4)' })).toBeTruthy();
+    expect(screen.queryByText('거래 건수')).toBeNull();
+    expect(screen.queryByText('순 지출')).toBeNull();
+    expect(screen.queryByText('화폐 단위')).toBeNull();
+    expect(screen.getByRole('button', { name: '전체' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '수입' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '지출' })).toBeTruthy();
     expect(screen.getByText('-600별')).toBeTruthy();
     expect(screen.getAllByText('+500별').length).toBeGreaterThan(0);
     expect(container.querySelector('[data-testid="transaction-row-T001"]')?.className).toContain('bg-sky-50');
@@ -127,6 +133,29 @@ describe('TransactionsPage', () => {
     expect(screen.getByRole('button', { name: 'T001 거래 취소' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'T002 거래 취소' })).toBeTruthy();
     expect(screen.queryByText(/결제/)).toBeNull();
+  });
+
+  it('filters transaction rows by all, income, and expense tabs', async () => {
+    render(<TransactionsPage />);
+
+    expect(await screen.findByRole('heading', { name: '최근 거래 (4)' })).toBeTruthy();
+    expect(screen.getByTestId('transaction-row-T001')).toBeTruthy();
+    expect(screen.getByTestId('transaction-row-T002')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '수입' }));
+    expect(await screen.findByRole('heading', { name: '최근 거래 (2)' })).toBeTruthy();
+    expect(screen.queryByTestId('transaction-row-T001')).toBeNull();
+    expect(screen.getByTestId('transaction-row-T002')).toBeTruthy();
+    expect(screen.getByTestId('transaction-row-CANCEL-T003')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '지출' }));
+    expect(await screen.findByRole('heading', { name: '최근 거래 (1)' })).toBeTruthy();
+    expect(screen.getByTestId('transaction-row-T001')).toBeTruthy();
+    expect(screen.queryByTestId('transaction-row-T002')).toBeNull();
+    expect(screen.queryByTestId('transaction-row-T003')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '전체' }));
+    expect(await screen.findByRole('heading', { name: '최근 거래 (4)' })).toBeTruthy();
   });
 
   it('cancels income and expense transactions and updates the row status', async () => {

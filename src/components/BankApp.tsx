@@ -29,6 +29,8 @@ function formatTransactionAmount(transaction: Transaction, unit: string) {
   return `${sign}${Math.abs(delta).toLocaleString()}${unit}`;
 }
 
+type TransactionFilter = 'all' | 'income' | 'expense';
+
 function getTransactionTone(transaction: Transaction) {
   if (transaction.status === 'CANCELLED') return 'cancelled';
   const delta = transaction.balanceAfter - transaction.balanceBefore;
@@ -45,7 +47,7 @@ const BANK_THEME: Record<ThemeColor, { shell: string; accentText: string; accent
   blue: { shell: 'bg-sky-50', accentText: 'text-sky-700', accentBg: 'bg-sky-200', accentBgAlt: 'bg-sky-100', softBg: 'bg-sky-50', focusBorder: 'focus:border-sky-200' },
   pink: { shell: 'bg-pink-50', accentText: 'text-pink-700', accentBg: 'bg-pink-200', accentBgAlt: 'bg-pink-100', softBg: 'bg-pink-50', focusBorder: 'focus:border-pink-200' },
   yellow: { shell: 'bg-yellow-50', accentText: 'text-yellow-700', accentBg: 'bg-yellow-200', accentBgAlt: 'bg-yellow-100', softBg: 'bg-yellow-50', focusBorder: 'focus:border-yellow-200' },
-  green: { shell: 'bg-green-50', accentText: 'text-green-700', accentBg: 'bg-green-200', accentBgAlt: 'bg-green-100', softBg: 'bg-green-50', focusBorder: 'focus:border-green-200' },
+  green: { shell: 'bg-[#F3FCEE]', accentText: 'text-[#3C7A2C]', accentBg: 'bg-[#B6E39F]', accentBgAlt: 'bg-[#D8F0CC]', softBg: 'bg-[#F3FCEE]', focusBorder: 'focus:border-[#B6E39F]' },
   purple: { shell: 'bg-purple-50', accentText: 'text-purple-700', accentBg: 'bg-purple-200', accentBgAlt: 'bg-purple-100', softBg: 'bg-purple-50', focusBorder: 'focus:border-purple-200' },
   white: { shell: 'bg-slate-100', accentText: 'text-slate-700', accentBg: 'bg-slate-300', accentBgAlt: 'bg-slate-200', softBg: 'bg-slate-50', focusBorder: 'focus:border-slate-300' },
   black: { shell: 'bg-slate-900', accentText: 'text-slate-700', accentBg: 'bg-slate-300', accentBgAlt: 'bg-slate-200', softBg: 'bg-slate-100', focusBorder: 'focus:border-slate-400' },
@@ -64,6 +66,7 @@ export function BankApp() {
   const [manualQr, setManualQr] = useState('');
   const [balanceResult, setBalanceResult] = useState<BalanceResult>(null);
   const [taskResult, setTaskResult] = useState<TaskResult>(null);
+  const [transactionFilter, setTransactionFilter] = useState<TransactionFilter>('all');
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingDialog, setLoadingDialog] = useState<{ title: string; message: string } | null>(null);
@@ -72,6 +75,11 @@ export function BankApp() {
   const currencyUnit = settings.currencyUnit || '원';
   const theme = BANK_THEME[normalizeThemeColor(settings.themeColor)];
   const title = useMemo(() => settings.bankTitle || `${settings.appTitle || '학급 매점'} 은행`, [settings.appTitle, settings.bankTitle]);
+  const filteredBalanceTransactions = useMemo(() => {
+    const transactions = balanceResult?.transactions ?? [];
+    if (transactionFilter === 'all') return transactions;
+    return transactions.filter((transaction) => getTransactionTone(transaction) === transactionFilter);
+  }, [balanceResult?.transactions, transactionFilter]);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -117,6 +125,7 @@ export function BankApp() {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? '잔액을 불러오지 못했습니다.');
       setBalanceResult(payload);
+      setTransactionFilter('all');
       setView('balance-result');
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '잔액을 불러오지 못했습니다.');
@@ -203,11 +212,14 @@ export function BankApp() {
           ) : (
             <div className="text-left">
               <p data-testid="bank-balance-sentence" className="text-center text-xl font-black leading-snug text-slate-800 sm:text-2xl">{balanceResult?.name} 학생의 현재 잔액은 <strong className={theme.accentText}>{balanceResult?.balance.toLocaleString()}{currencyUnit}</strong>입니다.</p>
-              <section data-testid="bank-recent-transactions" className="mt-4 aspect-square max-h-72 overflow-y-auto rounded-2xl bg-white p-3 text-left">
-                <h3 className="text-base font-black text-slate-800">최근 거래</h3>
-                {balanceResult?.transactions?.length ? (
+              <section data-testid="bank-recent-transactions" className="mx-auto mt-4 max-h-72 w-full max-w-sm overflow-y-auto rounded-2xl bg-white p-3 text-left">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-base font-black text-slate-800">최근 거래 ({filteredBalanceTransactions.length})</h3>
+                  <TransactionFilterTabs value={transactionFilter} onChange={setTransactionFilter} />
+                </div>
+                {filteredBalanceTransactions.length ? (
                   <div className="mt-2 space-y-2">
-                    {balanceResult.transactions.map((transaction) => {
+                    {filteredBalanceTransactions.map((transaction) => {
                       const tone = getTransactionTone(transaction);
                       const rowClass = tone === 'cancelled'
                         ? 'bg-slate-100 text-slate-500'
@@ -279,6 +291,27 @@ export function BankApp() {
         </ResultDialog>
       ) : null}
     </main>
+  );
+}
+
+function TransactionFilterTabs({ value, onChange }: { value: TransactionFilter; onChange: (value: TransactionFilter) => void }) {
+  return (
+    <div className="flex rounded-full bg-slate-100 p-1 text-xs font-black text-slate-600" role="group" aria-label="거래 필터">
+      {([
+        ['all', '전체'],
+        ['income', '수입'],
+        ['expense', '지출'],
+      ] as const).map(([id, label]) => (
+        <button
+          key={id}
+          type="button"
+          onClick={() => onChange(id)}
+          className={`rounded-full px-2 py-1 ${value === id ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500'}`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
   );
 }
 

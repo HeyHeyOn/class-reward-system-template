@@ -162,7 +162,7 @@ describe('KioskApp', () => {
   it('uses a soft yellow, balanced green, and darker black kiosk shell when selected', async () => {
     for (const [themeColor, expectedShell, rejectedShell] of [
       ['yellow', 'bg-yellow-50', 'bg-yellow-100'],
-      ['green', 'bg-green-50', 'bg-lime-50'],
+      ['green', 'bg-[#F3FCEE]', 'bg-green-50'],
       ['black', 'bg-slate-900', 'bg-slate-100'],
     ] as const) {
       cleanup();

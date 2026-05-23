@@ -177,8 +177,8 @@ describe('AdminManagePage', () => {
     const { container, unmount } = render(<AdminManagePage />);
 
     expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
-    expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-green-50');
-    expect(container.querySelector('[data-testid="admin-shell"]')?.className).not.toContain('bg-lime-50');
+    expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-[#F3FCEE]');
+    expect(container.querySelector('[data-testid="admin-shell"]')?.className).not.toContain('bg-green-50');
     unmount();
 
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
@@ -222,11 +222,11 @@ describe('AdminManagePage', () => {
     render(<AdminManagePage />);
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/transactions', { cache: 'no-store' }));
-    expect(screen.queryByRole('heading', { name: '최근 거래' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: '최근 거래 (1)' })).toBeNull();
 
     fireEvent.click(await screen.findByRole('tab', { name: '거래 내역 확인' }));
 
-    expect(await screen.findByRole('heading', { name: '최근 거래' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '최근 거래 (1)' })).toBeTruthy();
     expect(screen.getByText('김민준')).toBeTruthy();
     expect(screen.getByText('연필 × 2')).toBeTruthy();
     expect(screen.getAllByText('-600별').length).toBeGreaterThan(0);
