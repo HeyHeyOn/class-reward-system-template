@@ -42,14 +42,14 @@ function formatTransactionDate(value: string) {
 }
 
 const BANK_THEME: Record<ThemeColor, { shell: string; accentText: string; accentBg: string; accentBgAlt: string; softBg: string; focusBorder: string }> = {
-  blue: { shell: 'bg-sky-50', accentText: 'text-sky-700', accentBg: 'bg-sky-200', accentBgAlt: 'bg-sky-200', softBg: 'bg-sky-50', focusBorder: 'focus:border-sky-200' },
-  pink: { shell: 'bg-pink-50', accentText: 'text-pink-700', accentBg: 'bg-pink-200', accentBgAlt: 'bg-pink-200', softBg: 'bg-pink-50', focusBorder: 'focus:border-pink-200' },
-  yellow: { shell: 'bg-yellow-50', accentText: 'text-yellow-700', accentBg: 'bg-yellow-200', accentBgAlt: 'bg-yellow-200', softBg: 'bg-yellow-50', focusBorder: 'focus:border-yellow-200' },
-  green: { shell: 'bg-lime-50', accentText: 'text-lime-700', accentBg: 'bg-lime-200', accentBgAlt: 'bg-lime-200', softBg: 'bg-lime-50', focusBorder: 'focus:border-lime-200' },
-  purple: { shell: 'bg-purple-50', accentText: 'text-purple-700', accentBg: 'bg-purple-200', accentBgAlt: 'bg-purple-200', softBg: 'bg-purple-50', focusBorder: 'focus:border-purple-200' },
-  white: { shell: 'bg-slate-100', accentText: 'text-slate-700', accentBg: 'bg-slate-300', accentBgAlt: 'bg-slate-300', softBg: 'bg-slate-50', focusBorder: 'focus:border-slate-300' },
-  black: { shell: 'bg-slate-900', accentText: 'text-slate-700', accentBg: 'bg-slate-300', accentBgAlt: 'bg-slate-300', softBg: 'bg-slate-100', focusBorder: 'focus:border-slate-400' },
-  navy: { shell: 'bg-blue-950', accentText: 'text-blue-800', accentBg: 'bg-blue-200', accentBgAlt: 'bg-blue-200', softBg: 'bg-blue-50', focusBorder: 'focus:border-blue-300' },
+  blue: { shell: 'bg-sky-50', accentText: 'text-sky-700', accentBg: 'bg-sky-200', accentBgAlt: 'bg-sky-100', softBg: 'bg-sky-50', focusBorder: 'focus:border-sky-200' },
+  pink: { shell: 'bg-pink-50', accentText: 'text-pink-700', accentBg: 'bg-pink-200', accentBgAlt: 'bg-pink-100', softBg: 'bg-pink-50', focusBorder: 'focus:border-pink-200' },
+  yellow: { shell: 'bg-yellow-50', accentText: 'text-yellow-700', accentBg: 'bg-yellow-200', accentBgAlt: 'bg-yellow-100', softBg: 'bg-yellow-50', focusBorder: 'focus:border-yellow-200' },
+  green: { shell: 'bg-green-50', accentText: 'text-green-700', accentBg: 'bg-green-200', accentBgAlt: 'bg-green-100', softBg: 'bg-green-50', focusBorder: 'focus:border-green-200' },
+  purple: { shell: 'bg-purple-50', accentText: 'text-purple-700', accentBg: 'bg-purple-200', accentBgAlt: 'bg-purple-100', softBg: 'bg-purple-50', focusBorder: 'focus:border-purple-200' },
+  white: { shell: 'bg-slate-100', accentText: 'text-slate-700', accentBg: 'bg-slate-300', accentBgAlt: 'bg-slate-200', softBg: 'bg-slate-50', focusBorder: 'focus:border-slate-300' },
+  black: { shell: 'bg-slate-900', accentText: 'text-slate-700', accentBg: 'bg-slate-300', accentBgAlt: 'bg-slate-200', softBg: 'bg-slate-100', focusBorder: 'focus:border-slate-400' },
+  navy: { shell: 'bg-blue-950', accentText: 'text-blue-800', accentBg: 'bg-blue-200', accentBgAlt: 'bg-blue-100', softBg: 'bg-blue-50', focusBorder: 'focus:border-blue-300' },
 };
 
 function normalizeThemeColor(value: unknown): ThemeColor {
@@ -202,8 +202,8 @@ export function BankApp() {
             <p>{errorMessage}</p>
           ) : (
             <div className="text-left">
-              <p className="text-center">{balanceResult?.name} 학생의 현재 잔액은 <strong>{balanceResult?.balance.toLocaleString()}{currencyUnit}</strong>입니다.</p>
-              <section className="mt-4 rounded-2xl bg-white p-3 text-left">
+              <p data-testid="bank-balance-sentence" className="text-center text-xl font-black leading-snug text-slate-800 sm:text-2xl">{balanceResult?.name} 학생의 현재 잔액은 <strong className={theme.accentText}>{balanceResult?.balance.toLocaleString()}{currencyUnit}</strong>입니다.</p>
+              <section data-testid="bank-recent-transactions" className="mt-4 aspect-square max-h-72 overflow-y-auto rounded-2xl bg-white p-3 text-left">
                 <h3 className="text-base font-black text-slate-800">최근 거래</h3>
                 {balanceResult?.transactions?.length ? (
                   <div className="mt-2 space-y-2">

@@ -60,15 +60,18 @@ describe('BankApp', () => {
     expect(container.querySelector('[data-testid="bank-shell"]')?.className).toContain('bg-slate-100');
   });
 
-  it('applies the selected pastel theme to the bank shell and primary actions', async () => {
+  it('applies the selected green pastel theme to the bank shell with distinct primary actions', async () => {
     const { container } = render(<BankApp />);
 
     expect(await screen.findByRole('heading', { name: '별빛 은행' })).toBeTruthy();
-    expect(container.querySelector('[data-testid="bank-shell"]')?.className).toContain('bg-lime-50');
+    expect(container.querySelector('[data-testid="bank-shell"]')?.className).toContain('bg-green-50');
+    expect(container.querySelector('[data-testid="bank-shell"]')?.className).not.toContain('bg-lime-50');
     expect(container.querySelector('[data-testid="bank-shell"]')?.className).not.toContain('bg-emerald-100');
-    expect(screen.getByText('CLASS BANK').className).toContain('text-lime-700');
-    expect(screen.getByRole('button', { name: '잔액 확인' }).className).toContain('bg-lime-200');
-    expect(screen.getByRole('button', { name: '과제 확인' }).className).toContain('bg-lime-200');
+    expect(screen.getByText('CLASS BANK').className).toContain('text-green-700');
+    expect(screen.getByRole('button', { name: '잔액 확인' }).className).toContain('bg-green-200');
+    expect(screen.getByRole('button', { name: '과제 확인' }).className).toContain('bg-green-100');
+    expect(screen.getByRole('button', { name: '잔액 확인' }).className).not.toContain('bg-green-100');
+    expect(screen.getByRole('button', { name: '과제 확인' }).className).not.toContain('bg-green-200');
     expect(screen.getByRole('button', { name: '잔액 확인' }).className).not.toContain('bg-sky-500');
     expect(screen.getByRole('button', { name: '과제 확인' }).className).not.toContain('bg-emerald-500');
   });
@@ -103,6 +106,23 @@ describe('BankApp', () => {
     expect(document.body.textContent).toContain('연필 × 2');
     expect(document.body.textContent).not.toContain('T001');
     expect(screen.queryByRole('button', { name: /거래 취소/ })).toBeNull();
+  });
+
+  it('emphasizes the balance sentence and keeps recent transactions in a scrollable compact block', async () => {
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    fireEvent.click(screen.getByRole('button', { name: '잔액 확인' }));
+    fireEvent.change(await screen.findByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 잔액 확인' }));
+
+    expect(await screen.findByRole('dialog', { name: '잔액 확인' })).toBeTruthy();
+    const balanceSentence = screen.getByTestId('bank-balance-sentence');
+    expect(balanceSentence.className).toContain('text-xl');
+    expect(balanceSentence.className).toContain('sm:text-2xl');
+    const transactionBlock = screen.getByTestId('bank-recent-transactions');
+    expect(transactionBlock.className).toContain('max-h-72');
+    expect(transactionBlock.className).toContain('overflow-y-auto');
+    expect(transactionBlock.className).toContain('aspect-square');
   });
 
   it('shows a loading popup after recognizing a balance QR before the balance result', async () => {

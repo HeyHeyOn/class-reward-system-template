@@ -164,7 +164,7 @@ describe('AdminManagePage', () => {
     expect(screen.queryByText('GOOGLE SHEETS')).toBeNull();
   });
 
-  it('uses a softer lime admin theme and a darker black admin shell when selected', async () => {
+  it('uses a softer balanced green admin theme and a darker black admin shell when selected', async () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/students') return jsonResponse(students);
@@ -177,8 +177,8 @@ describe('AdminManagePage', () => {
     const { container, unmount } = render(<AdminManagePage />);
 
     expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
-    expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-lime-50');
-    expect(container.querySelector('[data-testid="admin-shell"]')?.className).not.toContain('bg-emerald-50');
+    expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-green-50');
+    expect(container.querySelector('[data-testid="admin-shell"]')?.className).not.toContain('bg-lime-50');
     unmount();
 
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {

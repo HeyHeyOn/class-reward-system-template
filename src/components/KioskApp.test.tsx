@@ -159,10 +159,10 @@ describe('KioskApp', () => {
     expect(screen.getByRole('button', { name: '전체' }).className).not.toContain('bg-pink-500');
   });
 
-  it('uses a soft yellow, lime-green, and darker black kiosk shell when selected', async () => {
+  it('uses a soft yellow, balanced green, and darker black kiosk shell when selected', async () => {
     for (const [themeColor, expectedShell, rejectedShell] of [
       ['yellow', 'bg-yellow-50', 'bg-yellow-100'],
-      ['green', 'bg-lime-50', 'bg-emerald-100'],
+      ['green', 'bg-green-50', 'bg-lime-50'],
       ['black', 'bg-slate-900', 'bg-slate-100'],
     ] as const) {
       cleanup();
