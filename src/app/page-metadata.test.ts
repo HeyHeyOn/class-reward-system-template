@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const appDir = join(process.cwd(), 'src', 'app');
+const publicDir = join(process.cwd(), 'public');
 
 function readAppFile(relativePath: string) {
   return readFileSync(join(appDir, relativePath), 'utf8');
@@ -30,10 +31,11 @@ describe('browser tab metadata', () => {
   });
 
   it('uses the uploaded icon as the shared browser icon source', () => {
-    for (const fileName of ['favicon.ico', 'icon.png', 'apple-icon.png', 'class-reward-system-icon.png']) {
+    for (const fileName of ['favicon.ico', 'icon.png', 'apple-icon.png']) {
       const icon = statSync(join(appDir, fileName));
       expect(icon.size, fileName).toBeGreaterThan(500);
     }
+    expect(statSync(join(publicDir, 'class-reward-system-icon.png')).size).toBeGreaterThan(500);
 
     const layout = readAppFile('layout.tsx');
     expect(layout).toContain("icon: '/icon.png'");
