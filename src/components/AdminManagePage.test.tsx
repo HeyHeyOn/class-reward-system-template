@@ -129,21 +129,21 @@ describe('AdminManagePage', () => {
     expect(screen.getByText('Class Reward System')).toBeTruthy();
     const logo = screen.getByRole('img', { name: '학급 보상 시스템 로고' });
     expect(logo).toBeTruthy();
-    expect(logo.className).toContain('bg-sky-700');
+    expect(logo.className).toContain('bg-sky-600');
     expect(logo.className).toContain("[mask-image:url('/class-reward-system-icon.png')]");
     expect(logo.className).not.toContain('bg-white');
     expect(logo.parentElement?.className).not.toMatch(/bg-|shadow|rounded/);
     const adminTabs = screen.getByTestId('admin-tabs');
-    const expectedMenuOrder = ['시트 설정', '학생 명단', '재고 관리', '과제 설정', '거래 내역 확인', '화폐 지급/회수', '매점 바로가기', '은행 바로가기'];
+    const expectedMenuOrder = ['시스템 설정', '학생 관리', '매점 관리', '과제 설정', '거래 내역 확인', '화폐 지급/회수', '매점 바로가기', '은행 바로가기'];
     let previousIndex = -1;
     for (const menu of expectedMenuOrder) {
       const currentIndex = adminTabs.textContent?.indexOf(menu) ?? -1;
       expect(currentIndex).toBeGreaterThan(previousIndex);
       previousIndex = currentIndex;
     }
-    expect(screen.getByRole('tab', { name: '시트 설정' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: '학생 명단' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: '재고 관리' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: '시스템 설정' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: '학생 관리' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: '매점 관리' })).toBeTruthy();
     expect(await screen.findByText('관리자 목록도 이 설정을 사용합니다: 학생 2명 · 상품 2개')).toBeTruthy();
     expect(screen.queryByRole('link', { name: /학생 QR 출력/ })).toBeNull();
     expect(screen.getByRole('tab', { name: '거래 내역 확인' })).toBeTruthy();
@@ -156,8 +156,12 @@ describe('AdminManagePage', () => {
     expect(screen.getByDisplayValue('학급 매점')).toBeTruthy();
     expect(screen.getByDisplayValue('학급 은행')).toBeTruthy();
     expect(screen.getByLabelText('테마 색상')).toBeTruthy();
-    expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-sky-100');
+    expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-sky-50');
     expect(container.querySelector('[data-testid="admin-tabs"]')?.className).toContain('rounded-[1.5rem]');
+    expect(screen.queryByText('Google Sheets 연결')).toBeNull();
+    expect(screen.queryByText('잔액과 상태 관리')).toBeNull();
+    expect(screen.queryByText('스프레드시트 연결')).toBeNull();
+    expect(screen.queryByText('GOOGLE SHEETS')).toBeNull();
   });
 
   it('shows a full screen loading dialog until admin sheet data and theme are loaded', async () => {
@@ -178,7 +182,7 @@ describe('AdminManagePage', () => {
 
     studentGate.resolve();
     expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
-    expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-slate-100');
+    expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-slate-50');
   });
 
   it('preloads payment history before the payment tab is opened', async () => {
@@ -202,7 +206,7 @@ describe('AdminManagePage', () => {
     fireEvent.change(screen.getByLabelText('Google Sheets 주소 또는 시트 ID'), { target: { value: 'sheet-new' } });
     fireEvent.change(screen.getByLabelText('매점 제목'), { target: { value: '햇살반 매점' } });
     fireEvent.change(screen.getByLabelText('은행 제목'), { target: { value: '햇살반 은행' } });
-    fireEvent.click(screen.getByRole('button', { name: '시트 ID 저장' }));
+    fireEvent.click(screen.getByRole('button', { name: '시스템 설정 저장' }));
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith('/api/settings', {
@@ -214,13 +218,13 @@ describe('AdminManagePage', () => {
       expect(fetch).toHaveBeenCalledWith('/api/products?includeInactive=1', { cache: 'no-store' });
     });
 
-    expect(await screen.findByText('시트 ID를 저장했고, 관리자 목록도 같은 시트에서 다시 불러왔습니다.')).toBeTruthy();
+    expect(await screen.findByText('시스템 설정을 저장했고, 관리자 목록도 같은 시트에서 다시 불러왔습니다.')).toBeTruthy();
   });
 
   it('uses top bulk save buttons and column headers instead of per-row save buttons', async () => {
     render(<AdminManagePage />);
 
-    fireEvent.click(await screen.findByRole('tab', { name: '학생 명단' }));
+    fireEvent.click(await screen.findByRole('tab', { name: '학생 관리' }));
     expect(await screen.findByDisplayValue('김민준')).toBeTruthy();
     expect(screen.getByTestId('student-header-row').textContent).toContain('이름');
     expect(screen.getByTestId('student-header-row').textContent).toContain('잔액');
@@ -243,21 +247,24 @@ describe('AdminManagePage', () => {
 
     fireEvent.change(screen.getByLabelText('S001 이름'), { target: { value: '김민준 수정' } });
     fireEvent.change(screen.getByLabelText('S001 잔액'), { target: { value: '4000' } });
-    fireEvent.click(screen.getByRole('button', { name: '저장' }));
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('학생 명단 2명 저장 완료'));
+    fireEvent.click(screen.getByRole('button', { name: '선택 저장' }));
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('선택 학생 1명 저장 완료'));
 
-    fireEvent.click(screen.getByRole('tab', { name: '재고 관리' }));
+    fireEvent.click(screen.getByRole('tab', { name: '매점 관리' }));
     expect(await screen.findByDisplayValue('연필')).toBeTruthy();
     expect(screen.getByTestId('product-header-row').textContent).toContain('상품명');
+    expect(screen.getByTestId('product-header-row').textContent).not.toContain('ID');
     expect(screen.getByTestId('product-header-row').textContent).toContain('이미지');
     expect(screen.queryByRole('button', { name: 'P001 상품 저장' })).toBeNull();
     fireEvent.change(screen.getByLabelText('P001 상품명'), { target: { value: '연필 세트' } });
     fireEvent.change(screen.getByLabelText('P001 가격'), { target: { value: '900' } });
+    expect(screen.getByRole('button', { name: '선택 저장' })).toHaveProperty('disabled', true);
+    fireEvent.click(screen.getByLabelText('P001 선택'));
     fireEvent.click(screen.getByRole('button', { name: 'P001 이미지 주소 편집' }));
     expect(await screen.findByRole('dialog', { name: '이미지 주소 편집' })).toBeTruthy();
     fireEvent.change(screen.getByLabelText('이미지 주소 전체 입력'), { target: { value: 'https://example.com/new-pencil.png' } });
     fireEvent.click(screen.getByRole('button', { name: '이미지 주소 적용' }));
-    fireEvent.click(screen.getByRole('button', { name: '저장' }));
+    fireEvent.click(screen.getByRole('button', { name: '선택 저장' }));
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith('/api/students/batch', {
@@ -266,8 +273,7 @@ describe('AdminManagePage', () => {
         body: JSON.stringify({
           students: [
             { studentId: 'S001', name: '김민준 수정', number: 1, balance: 4000, status: 'ACTIVE' },
-            { studentId: 'S002', name: '이서연', number: 2, balance: 1500, status: 'ACTIVE' },
-          ],
+            ],
         }),
       });
       expect(fetch).toHaveBeenCalledWith('/api/products/batch', {
@@ -276,21 +282,20 @@ describe('AdminManagePage', () => {
         body: JSON.stringify({
           products: [
             { productId: 'P001', name: '연필 세트', price: 900, stock: 19, isActive: true, imageUrl: 'https://example.com/new-pencil.png', category: '문구', sortOrder: 1 },
-            { productId: 'P002', name: '지우개', price: 500, stock: 10, isActive: true, imageUrl: '', category: '문구', sortOrder: 2 },
-          ],
+            ],
         }),
       });
     });
     expect(fetch).not.toHaveBeenCalledWith('/api/students/S001', expect.objectContaining({ method: 'PATCH' }));
     expect(fetch).not.toHaveBeenCalledWith('/api/products/P001', expect.objectContaining({ method: 'PATCH' }));
 
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('재고 목록 2개 저장 완료'));
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('선택 상품 1개 저장 완료'));
   });
 
   it('supports dense selectable rows with bulk student balance editing and deletion', async () => {
     const { container } = render(<AdminManagePage />);
 
-    fireEvent.click(await screen.findByRole('tab', { name: '학생 명단' }));
+    fireEvent.click(await screen.findByRole('tab', { name: '학생 관리' }));
     expect(await screen.findByDisplayValue('김민준')).toBeTruthy();
     expect(container.querySelector('[data-testid="student-list"]')?.className).toContain('divide-y');
     const studentRow = container.querySelector('[data-testid="student-row"]');
@@ -326,11 +331,11 @@ describe('AdminManagePage', () => {
     expect(window.alert).not.toHaveBeenCalledWith('S001 삭제 완료');
     expect(window.alert).not.toHaveBeenCalledWith('S002 삭제 완료');
 
-    fireEvent.click(screen.getByRole('tab', { name: '재고 관리' }));
+    fireEvent.click(screen.getByRole('tab', { name: '매점 관리' }));
     expect(await screen.findByDisplayValue('연필')).toBeTruthy();
     expect(container.querySelector('[data-testid="product-list"]')?.className).toContain('divide-y');
     const productRow = container.querySelector('[data-testid="product-row"]');
-    expect(productRow?.className).toContain('grid-cols-[24px_30px_minmax(3rem,1fr)_56px_48px_36px_minmax(3rem,0.8fr)_40px_30px_34px]');
+    expect(productRow?.className).toContain('grid-cols-[24px_minmax(3rem,1fr)_56px_48px_36px_minmax(3rem,0.8fr)_40px_30px_34px]');
     expect(productRow?.className).toContain('items-center');
     expect(productRow?.className).toContain('py-1');
     expect(productRow?.className).not.toContain('md:grid-cols');
@@ -361,6 +366,7 @@ describe('AdminManagePage', () => {
     fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
     expect(await screen.findByDisplayValue('책 읽기')).toBeTruthy();
     expect(screen.getByTestId('task-header-row').textContent).toContain('선택');
+    expect(screen.getByTestId('task-header-row').textContent).not.toContain('ID');
     expect(screen.getByTestId('task-header-row').textContent).toContain('상세');
     expect(screen.getByTestId('task-header-row').textContent).not.toContain('저장');
     expect(screen.queryByRole('button', { name: 'T001 과제 저장' })).toBeNull();
@@ -370,7 +376,7 @@ describe('AdminManagePage', () => {
     expect(screen.getByTestId('task-list-scroll').className).toContain('overflow-x-auto');
     expect(screen.getByTestId('task-bulk-actions').className).toContain('flex-wrap');
     const taskRow = container.querySelector('[data-testid="task-row"]');
-    expect(taskRow?.className).toContain('grid-cols-[24px_42px_minmax(5rem,1fr)_64px_64px_48px_38px_minmax(3rem,0.7fr)_46px_40px]');
+    expect(taskRow?.className).toContain('grid-cols-[24px_minmax(5rem,1fr)_64px_64px_48px_38px_minmax(3rem,0.7fr)_46px_40px]');
     expect(taskRow?.className).toContain('items-center');
     expect(screen.queryByLabelText('T001 설명')).toBeNull();
 
@@ -380,7 +386,9 @@ describe('AdminManagePage', () => {
     expect(await screen.findByRole('dialog', { name: '과제 상세 설정 편집' })).toBeTruthy();
     fireEvent.change(screen.getByLabelText('과제 상세 설정 전체 입력'), { target: { value: '책 20분 읽기' } });
     fireEvent.click(screen.getByRole('button', { name: '상세 설정 적용' }));
-    fireEvent.click(screen.getByRole('button', { name: '저장' }));
+    expect(screen.getByRole('button', { name: '선택 저장' })).toHaveProperty('disabled', true);
+    fireEvent.click(screen.getByLabelText('T001 선택'));
+    fireEvent.click(screen.getByRole('button', { name: '선택 저장' }));
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/batch', {
       method: 'PATCH',
@@ -388,11 +396,10 @@ describe('AdminManagePage', () => {
       body: JSON.stringify({
         tasks: [
           { taskId: 'T001', title: '책 읽기 수정', description: '책 20분 읽기', reward: 7, maxCompletionsPerStudent: 2, isActive: true, sortOrder: 1 },
-          { taskId: 'T002', title: '수학 학습지', description: '1장 풀기', reward: 10, maxCompletionsPerStudent: 1, isActive: true, sortOrder: 2 },
-        ],
+          ],
       }),
     }));
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('과제 목록 2개 저장 완료'));
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('선택 과제 1개 저장 완료'));
     expect(fetch).not.toHaveBeenCalledWith('/api/tasks/T001', expect.objectContaining({ method: 'PATCH' }));
 
     fireEvent.click(screen.getByLabelText('전체 과제 선택'));
@@ -419,8 +426,7 @@ describe('AdminManagePage', () => {
     }));
     await waitFor(() => expect(window.alert).toHaveBeenCalledWith('선택 과제 2개 삭제 완료'));
 
-    fireEvent.change(screen.getByLabelText('새 과제 ID'), { target: { value: 'T003' } });
-    fireEvent.change(screen.getByLabelText('새 과제명'), { target: { value: '영어 단어' } });
+        fireEvent.change(screen.getByLabelText('새 과제명'), { target: { value: '영어 단어' } });
     fireEvent.change(screen.getByLabelText('새 과제 설명'), { target: { value: '5개 외우기' } });
     fireEvent.change(screen.getByLabelText('새 과제 보상'), { target: { value: '10' } });
     fireEvent.click(screen.getByRole('button', { name: '새 과제 추가' }));
@@ -431,7 +437,7 @@ describe('AdminManagePage', () => {
   it('creates new student and product rows through POST APIs', async () => {
     render(<AdminManagePage />);
 
-    fireEvent.click(await screen.findByRole('tab', { name: '학생 명단' }));
+    fireEvent.click(await screen.findByRole('tab', { name: '학생 관리' }));
     await screen.findByDisplayValue('김민준');
 
     fireEvent.change(screen.getByLabelText('새 학생 ID'), { target: { value: 'S003' } });
@@ -439,9 +445,8 @@ describe('AdminManagePage', () => {
     fireEvent.change(screen.getByLabelText('새 학생 번호'), { target: { value: '3' } });
     fireEvent.click(screen.getByRole('button', { name: '새 학생 추가' }));
 
-    fireEvent.click(screen.getByRole('tab', { name: '재고 관리' }));
-    fireEvent.change(screen.getByLabelText('새 상품 ID'), { target: { value: 'P003' } });
-    fireEvent.change(screen.getByLabelText('새 상품명'), { target: { value: '간식쿠폰' } });
+    fireEvent.click(screen.getByRole('tab', { name: '매점 관리' }));
+        fireEvent.change(screen.getByLabelText('새 상품명'), { target: { value: '간식쿠폰' } });
     fireEvent.change(screen.getByLabelText('새 상품 가격'), { target: { value: '1000' } });
     fireEvent.change(screen.getByLabelText('새 상품 재고'), { target: { value: '5' } });
     fireEvent.change(screen.getByLabelText('새 상품 카테고리'), { target: { value: '쿠폰' } });

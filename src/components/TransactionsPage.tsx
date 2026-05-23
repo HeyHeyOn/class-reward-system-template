@@ -46,7 +46,7 @@ export function TransactionsPage() {
   );
 }
 
-export function TransactionsPanel({ embedded = false }: { embedded?: boolean }) {
+export function TransactionsPanel({ embedded = false, summaryToneClass = 'bg-sky-50', summaryAccentClass = 'text-sky-700' }: { embedded?: boolean; summaryToneClass?: string; summaryAccentClass?: string }) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [currencyUnit, setCurrencyUnit] = useState('원');
   const [message, setMessage] = useState('거래 내역을 불러오는 중입니다.');
@@ -113,9 +113,9 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean }) 
   return (
     <div className={embedded ? 'grid gap-4' : 'grid gap-4'}>
       <div className="grid gap-2 sm:grid-cols-3">
-        <SummaryCard label="거래 건수" value={`${transactions.length}건`} />
-        <SummaryCard label="순 지출"      value={formatCurrency(netExpense, currencyUnit)}/>
-        <SummaryCard label="화폐 단위" value={currencyUnit} />
+        <SummaryCard label="거래 건수" value={`${transactions.length}건`} toneClass={summaryToneClass} accentClass={summaryAccentClass} />
+        <SummaryCard label="순 지출" value={formatCurrency(netExpense, currencyUnit)} toneClass={summaryToneClass} accentClass={summaryAccentClass} />
+        <SummaryCard label="화폐 단위" value={currencyUnit} toneClass={summaryToneClass} accentClass={summaryAccentClass} />
       </div>
 
       {message ? <p className="rounded-2xl bg-white p-4 font-bold text-slate-700 shadow-sm">{message}</p> : null}
@@ -183,11 +183,11 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean }) 
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: string }) {
+function SummaryCard({ label, value, toneClass, accentClass }: { label: string; value: string; toneClass: string; accentClass: string }) {
   return (
-    <div className="rounded-2xl bg-sky-50 px-4 py-3 text-left">
+    <div className={`rounded-2xl ${toneClass} px-4 py-3 text-left`}>
       <p className="text-xs font-black text-slate-500">{label}</p>
-      <p className="mt-1 text-2xl font-black text-sky-700">{value}</p>
+      <p className={`mt-1 text-2xl font-black ${accentClass}`}>{value}</p>
     </div>
   );
 }

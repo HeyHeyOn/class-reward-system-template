@@ -85,7 +85,7 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
         setAdminPassword('');
       }
       await onSettingsSaved?.();
-      setMessage('시트 ID를 저장했고, 관리자 목록도 같은 시트에서 다시 불러왔습니다.');
+      setMessage('시스템 설정을 저장했고, 관리자 목록도 같은 시트에서 다시 불러왔습니다.');
     } finally {
       setIsSaving(false);
     }
@@ -93,15 +93,6 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
 
   return (
     <form onSubmit={handleSubmit} className="rounded-[2rem] bg-white p-6 shadow-sm ring-1 ring-black/5">
-      <div className="space-y-2">
-        <p className="text-sm font-bold tracking-[0.2em] text-amber-700">GOOGLE SHEETS</p>
-        <h2 className="text-3xl font-black">스프레드시트 연결</h2>
-        <p className="text-slate-600">
-          Google Sheets 주소 전체 또는 `/d/` 사이의 시트 ID만 넣어도 됩니다. 저장할 때 서비스 계정으로 실제 접근 가능한지 확인한 뒤,
-          이 설치본의 `data/settings.json`에 보관합니다.
-        </p>
-      </div>
-
       <label className="mt-6 block">
         <span className="text-sm font-bold text-slate-700">Google Sheets 주소 또는 시트 ID</span>
         <input
@@ -211,7 +202,7 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
         disabled={isSaving}
         className="mt-6 w-full rounded-2xl bg-slate-950 py-4 text-xl font-black text-white shadow-lg transition hover:bg-slate-800 disabled:cursor-wait disabled:bg-slate-400"
       >
-        {isSaving ? '저장 중...' : '시트 ID 저장'}
+        {isSaving ? '저장 중...' : '시스템 설정 저장'}
       </button>
     </form>
   );
