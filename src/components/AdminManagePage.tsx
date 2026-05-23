@@ -16,6 +16,8 @@ type TaskDraft = ClassTask;
 type AdminTab = 'settings' | 'students' | 'products' | 'tasks' | 'transactions' | 'currency';
 type BulkMode = 'set' | 'add' | 'subtract';
 type CurrencyMode = 'add' | 'subtract';
+type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'black' | 'navy';
+type Settings = { currencyUnit?: string; appTitle?: string; bankTitle?: string; themeColor?: ThemeColor };
 type CurrencyResult = {
   status: 'success' | 'failure';
   mode: CurrencyMode;
@@ -46,6 +48,21 @@ type NewProductDraft = {
 const EMPTY_STUDENT: NewStudentDraft = { studentId: '', name: '', number: 1, balance: 0, status: 'ACTIVE' };
 const EMPTY_PRODUCT: NewProductDraft = { productId: '', name: '', price: 0, stock: 0, isActive: true, imageUrl: '', category: '', sortOrder: 1 };
 const EMPTY_TASK: TaskDraft = { taskId: '', title: '', description: '', reward: 0, maxCompletionsPerStudent: 1, isActive: true, sortOrder: 1 };
+
+const ADMIN_THEME: Record<ThemeColor, { shell: string; accentText: string; accentBg: string; selectedTab: string; idleTab: string; statBg: string; logoBg: string }> = {
+  blue: { shell: 'bg-sky-100', accentText: 'text-sky-700', accentBg: 'bg-sky-500', selectedTab: 'bg-sky-500 text-white', idleTab: 'bg-sky-50 text-slate-700 hover:bg-sky-100', statBg: 'bg-sky-50', logoBg: 'bg-sky-500' },
+  pink: { shell: 'bg-pink-100', accentText: 'text-pink-700', accentBg: 'bg-pink-500', selectedTab: 'bg-pink-500 text-white', idleTab: 'bg-pink-50 text-slate-700 hover:bg-pink-100', statBg: 'bg-pink-50', logoBg: 'bg-pink-500' },
+  yellow: { shell: 'bg-amber-100', accentText: 'text-amber-700', accentBg: 'bg-amber-400', selectedTab: 'bg-amber-400 text-slate-950', idleTab: 'bg-amber-50 text-slate-700 hover:bg-amber-100', statBg: 'bg-amber-50', logoBg: 'bg-amber-400' },
+  green: { shell: 'bg-emerald-100', accentText: 'text-emerald-700', accentBg: 'bg-emerald-500', selectedTab: 'bg-emerald-500 text-white', idleTab: 'bg-emerald-50 text-slate-700 hover:bg-emerald-100', statBg: 'bg-emerald-50', logoBg: 'bg-emerald-500' },
+  purple: { shell: 'bg-purple-100', accentText: 'text-purple-700', accentBg: 'bg-purple-500', selectedTab: 'bg-purple-500 text-white', idleTab: 'bg-purple-50 text-slate-700 hover:bg-purple-100', statBg: 'bg-purple-50', logoBg: 'bg-purple-500' },
+  white: { shell: 'bg-slate-100', accentText: 'text-slate-800', accentBg: 'bg-slate-950', selectedTab: 'bg-slate-950 text-white', idleTab: 'bg-white text-slate-700 hover:bg-slate-200', statBg: 'bg-slate-50', logoBg: 'bg-slate-950' },
+  black: { shell: 'bg-slate-950', accentText: 'text-slate-900', accentBg: 'bg-slate-950', selectedTab: 'bg-slate-950 text-white', idleTab: 'bg-slate-100 text-slate-700 hover:bg-slate-200', statBg: 'bg-slate-100', logoBg: 'bg-slate-950' },
+  navy: { shell: 'bg-blue-950', accentText: 'text-blue-900', accentBg: 'bg-blue-950', selectedTab: 'bg-blue-950 text-white', idleTab: 'bg-blue-50 text-slate-700 hover:bg-blue-100', statBg: 'bg-blue-50', logoBg: 'bg-blue-950' },
+};
+
+function normalizeThemeColor(value: unknown): ThemeColor {
+  return value === 'blue' || value === 'pink' || value === 'yellow' || value === 'green' || value === 'purple' || value === 'black' || value === 'navy' ? value : 'white';
+}
 
 const tabs: Array<{ id: AdminTab; label: string; description: string }> = [
   { id: 'settings', label: '시트 설정', description: 'Google Sheets 연결' },
@@ -79,25 +96,37 @@ export function AdminManagePage() {
   const [currencyManualId, setCurrencyManualId] = useState('');
   const [currencyResult, setCurrencyResult] = useState<CurrencyResult | null>(null);
   const [currencyLoading, setCurrencyLoading] = useState(false);
+  const [settings, setSettings] = useState<Settings>({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white' });
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   const loadLinkedSheetData = useCallback(async (options: { silent?: boolean; shouldApply?: () => boolean } = {}) => {
     const shouldApply = options.shouldApply ?? (() => true);
 
-    if (!options.silent && shouldApply()) setMessage('학생/상품 목록을 불러오는 중입니다.');
+    if (!options.silent && shouldApply()) {
+      setIsInitialLoading(true);
+      setMessage('학생/상품 목록을 불러오는 중입니다.');
+    }
 
     try {
-      const [studentResponse, productResponse, taskResponse] = await Promise.all([
+      const [studentResponse, productResponse, taskResponse, settingsResponse] = await Promise.all([
         fetch('/api/students', { cache: 'no-store' }),
         fetch('/api/products?includeInactive=1', { cache: 'no-store' }),
         fetch('/api/tasks?includeInactive=1', { cache: 'no-store' }),
+        fetch('/api/settings', { cache: 'no-store' }),
       ]);
-      const [studentPayload, productPayload, taskPayload] = await Promise.all([studentResponse.json(), productResponse.json(), taskResponse.json()]);
+      const [studentPayload, productPayload, taskPayload, settingsPayload] = await Promise.all([studentResponse.json(), productResponse.json(), taskResponse.json(), settingsResponse.json().catch(() => null)]);
 
       if (!studentResponse.ok) throw new Error(studentPayload.error ?? '학생 목록을 불러오지 못했습니다.');
       if (!productResponse.ok) throw new Error(productPayload.error ?? '상품 목록을 불러오지 못했습니다.');
       if (!taskResponse.ok) throw new Error(taskPayload.error ?? '과제 목록을 불러오지 못했습니다.');
 
       if (!shouldApply()) return;
+      setSettings({
+        currencyUnit: settingsPayload?.currencyUnit ?? '원',
+        appTitle: settingsPayload?.appTitle ?? '학급 매점',
+        bankTitle: settingsPayload?.bankTitle ?? '학급 은행',
+        themeColor: normalizeThemeColor(settingsPayload?.themeColor),
+      });
       setStudents(studentPayload);
       setProducts(productPayload);
       setTasks(taskPayload);
@@ -105,12 +134,14 @@ export function AdminManagePage() {
       setSelectedProductIds((ids) => ids.filter((id) => productPayload.some((product: Product) => product.productId === id)));
       setSelectedTaskIds((ids) => ids.filter((id) => taskPayload.some((task: ClassTask) => task.taskId === id)));
       setMessage('');
+      setIsInitialLoading(false);
     } catch (error) {
       if (!shouldApply()) return;
       setStudents([]);
       setProducts([]);
       setTasks([]);
       setMessage(error instanceof Error ? error.message : '목록을 불러오지 못했습니다.');
+      setIsInitialLoading(false);
     }
   }, []);
 
@@ -492,21 +523,33 @@ export function AdminManagePage() {
   }
 
   const currencyActionLabel = currencyMode === 'add' ? '지급' : '회수';
+  const theme = ADMIN_THEME[settings.themeColor ?? 'white'] ?? ADMIN_THEME.white;
+
+  if (isInitialLoading) {
+    return <LoadingScreen title="시트 정보 불러오는 중" message="관리자 데이터와 테마 설정을 불러오는 중입니다." />;
+  }
 
   return (
-    <main data-testid="admin-shell" className="min-h-screen bg-[#dbeaf6] p-2 text-slate-950 sm:p-3 lg:p-5">
+    <main data-testid="admin-shell" className={`min-h-screen ${theme.shell} p-2 text-slate-950 sm:p-3 lg:p-5`}>
       <section className="mx-auto flex w-full max-w-[1280px] flex-col gap-3 lg:gap-4">
         <header className="rounded-[1.25rem] border border-slate-300/70 bg-white px-4 py-4 text-center shadow-sm sm:rounded-[1.75rem] md:px-6">
-          <p className="text-xs font-black tracking-[0.22em] text-sky-600 sm:text-sm">Class Reward System Admin</p>
-          <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl md:text-5xl">학급 보상 시스템 관리</h1>
+          <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <span className={`inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${theme.logoBg} shadow-sm`}>
+              <span role="img" aria-label="학급 보상 시스템 로고" className="h-10 w-10 bg-white [mask-image:url('/class-reward-system-icon.png')] [mask-position:center] [mask-repeat:no-repeat] [mask-size:contain]" />
+            </span>
+            <div>
+              <p className={`text-xs font-black tracking-[0.22em] ${theme.accentText} sm:text-sm`}>Class Reward System</p>
+              <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl md:text-5xl">학급 보상 시스템</h1>
+            </div>
+          </div>
           <p className="mx-auto mt-1 max-w-2xl text-xs font-bold text-slate-500 sm:text-sm md:text-base">
             태블릿과 스마트폰에서 빠르게 학생 잔액과 상품 재고를 관리합니다.
           </p>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <SummaryCard label="학생" value={`${summary.students}명`} />
-            <SummaryCard label="판매 상품" value={`${summary.activeProducts}개`} />
-            <SummaryCard label="전체 재고" value={`${summary.totalStock}개`} />
-            <SummaryCard label="활성 과제" value={`${summary.activeTasks}개`} />
+            <SummaryCard label="학생" value={`${summary.students}명`} toneClass={theme.statBg} accentClass={theme.accentText} />
+            <SummaryCard label="판매 상품" value={`${summary.activeProducts}개`} toneClass={theme.statBg} accentClass={theme.accentText} />
+            <SummaryCard label="전체 재고" value={`${summary.totalStock}개`} toneClass={theme.statBg} accentClass={theme.accentText} />
+            <SummaryCard label="활성 과제" value={`${summary.activeTasks}개`} toneClass={theme.statBg} accentClass={theme.accentText} />
           </div>
           {message ? <p className="mt-3 rounded-2xl bg-rose-100 p-3 text-sm font-bold text-rose-700">{message}</p> : null}
         </header>
@@ -522,15 +565,15 @@ export function AdminManagePage() {
                 aria-selected={selected}
                 aria-label={tab.label}
                 onClick={() => setActiveTab(tab.id)}
-                className={`rounded-[1rem] px-2 py-3 text-left transition ${selected ? 'bg-sky-500 text-white shadow-sm' : 'bg-sky-50 text-slate-700 hover:bg-sky-100'}`}
+                className={`rounded-[1rem] px-2 py-3 text-left transition ${selected ? `${theme.selectedTab} shadow-sm` : theme.idleTab}`}
               >
                 <span className="block text-sm font-black sm:text-base">{tab.label}</span>
                 <span className={`mt-0.5 hidden text-[11px] font-bold lg:block ${selected ? 'text-sky-50' : 'text-slate-500'}`}>{tab.description}</span>
               </button>
             );
           })}
-          <AdminNavLink href="/" title="매점 바로가기" description="키오스크" />
-          <AdminNavLink href="/bank" title="은행 바로가기" description="학생 은행" />
+          <AdminNavLink href="/" title="매점 바로가기" description="키오스크" className={theme.idleTab} />
+          <AdminNavLink href="/bank" title="은행 바로가기" description="학생 은행" className={theme.idleTab} />
         </nav>
 
         {activeTab === 'settings' ? (
@@ -920,6 +963,18 @@ export function AdminManagePage() {
   );
 }
 
+function LoadingScreen({ title, message }: { title: string; message: string }) {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-slate-100 p-4 text-slate-950">
+      <section role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-2xl">
+        <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-slate-950" aria-hidden="true" />
+        <h1 className="mt-4 text-2xl font-black">{title}</h1>
+        <p className="mt-2 rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-600">{message}</p>
+      </section>
+    </main>
+  );
+}
+
 function LoadingDialog({ title, message }: { title: string; message: string }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
@@ -932,9 +987,9 @@ function LoadingDialog({ title, message }: { title: string; message: string }) {
   );
 }
 
-function AdminNavLink({ href, title, description }: { href: string; title: string; description: string }) {
+function AdminNavLink({ href, title, description, className }: { href: string; title: string; description: string; className: string }) {
   return (
-    <Link className="rounded-[1rem] bg-sky-50 px-2 py-3 text-left text-slate-700 transition hover:bg-sky-100" href={href}>
+    <Link className={`rounded-[1rem] px-2 py-3 text-left transition ${className}`} href={href}>
       <span className="block text-sm font-black sm:text-base">{title}</span>
       <span className="mt-0.5 hidden text-[11px] font-bold text-slate-500 lg:block">{description}</span>
     </Link>
@@ -957,11 +1012,11 @@ function StudentQrCard({ student }: { student: Student }) {
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: string }) {
+function SummaryCard({ label, value, toneClass, accentClass }: { label: string; value: string; toneClass: string; accentClass: string }) {
   return (
-    <div className="rounded-2xl bg-sky-50 px-3 py-2 text-left sm:px-4 sm:py-3">
+    <div className={`rounded-2xl ${toneClass} px-3 py-2 text-left sm:px-4 sm:py-3`}>
       <p className="text-[11px] font-black text-slate-500 sm:text-xs">{label}</p>
-      <p className="mt-1 text-xl font-black text-sky-700 sm:text-2xl">{value}</p>
+      <p className={`mt-1 text-xl font-black ${accentClass} sm:text-2xl`}>{value}</p>
     </div>
   );
 }

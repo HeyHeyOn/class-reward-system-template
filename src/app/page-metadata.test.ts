@@ -13,13 +13,13 @@ describe('browser tab metadata', () => {
     const expectedTitles: Array<[string, string]> = [
       ['page.tsx', '학급 매점'],
       [join('bank', 'page.tsx'), '학급 은행'],
-      [join('admin', 'login', 'page.tsx'), '관리자 로그인'],
-      [join('admin', 'page.tsx'), '관리자 센터'],
-      [join('admin', 'manage', 'page.tsx'), '관리자 관리'],
-      [join('admin', 'settings', 'page.tsx'), '설정'],
-      [join('admin', 'student-qrs', 'page.tsx'), '학생 QR 카드 인쇄'],
-      [join('admin', 'transactions', 'page.tsx'), '거래 내역 확인'],
-      [join('admin', 'generator', 'page.tsx'), 'CRS 생성기'],
+      [join('admin', 'login', 'page.tsx'), '학급 보상 시스템'],
+      [join('admin', 'page.tsx'), '학급 보상 시스템'],
+      [join('admin', 'manage', 'page.tsx'), '학급 보상 시스템'],
+      [join('admin', 'settings', 'page.tsx'), '학급 보상 시스템'],
+      [join('admin', 'student-qrs', 'page.tsx'), '학급 보상 시스템'],
+      [join('admin', 'transactions', 'page.tsx'), '학급 보상 시스템'],
+      [join('admin', 'generator', 'page.tsx'), '학급 보상 시스템'],
     ];
 
     for (const [relativePath, title] of expectedTitles) {
@@ -30,7 +30,7 @@ describe('browser tab metadata', () => {
   });
 
   it('uses the uploaded icon as the shared browser icon source', () => {
-    for (const fileName of ['favicon.ico', 'icon.png', 'apple-icon.png']) {
+    for (const fileName of ['favicon.ico', 'icon.png', 'apple-icon.png', 'class-reward-system-icon.png']) {
       const icon = statSync(join(appDir, fileName));
       expect(icon.size, fileName).toBeGreaterThan(500);
     }

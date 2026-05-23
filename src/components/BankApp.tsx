@@ -10,6 +10,18 @@ type BankView = 'home' | 'balance-scan' | 'balance-result' | 'tasks-list' | 'tas
 type BalanceResult = { studentId: string; name: string; balance: number; transactions?: Transaction[] } | null;
 type TaskResult = { message: string; balanceAfter?: number; reward?: number; studentName?: string } | null;
 
+function LoadingScreen({ title, message }: { title: string; message: string }) {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-slate-100 p-4 text-slate-950">
+      <section role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-2xl">
+        <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-slate-950" aria-hidden="true" />
+        <h1 className="mt-4 text-2xl font-black">{title}</h1>
+        <p className="mt-2 rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-600">{message}</p>
+      </section>
+    </main>
+  );
+}
+
 function formatTransactionAmount(transaction: Transaction, unit: string) {
   const delta = transaction.balanceAfter - transaction.balanceBefore;
   const sign = delta > 0 ? '+' : delta < 0 ? '-' : '';
@@ -29,11 +41,11 @@ function formatTransactionDate(value: string) {
 }
 
 const themeClass: Record<string, string> = {
-  blue: 'bg-sky-100', pink: 'bg-pink-100', yellow: 'bg-amber-100', green: 'bg-emerald-100', purple: 'bg-purple-100', white: 'bg-white', black: 'bg-slate-950', navy: 'bg-blue-950',
+  blue: 'bg-sky-100', pink: 'bg-pink-100', yellow: 'bg-amber-100', green: 'bg-emerald-100', purple: 'bg-purple-100', white: 'bg-slate-100', black: 'bg-slate-950', navy: 'bg-blue-950',
 };
 
 export function BankApp() {
-  const [settings, setSettings] = useState<Settings>({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue' });
+  const [settings, setSettings] = useState<Settings>({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white' });
   const [tasks, setTasks] = useState<ClassTask[]>([]);
   const [selectedTask, setSelectedTask] = useState<ClassTask | null>(null);
   const [view, setView] = useState<BankView>('home');
@@ -43,9 +55,10 @@ export function BankApp() {
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingDialog, setLoadingDialog] = useState<{ title: string; message: string } | null>(null);
+  const [isSettingsLoading, setIsSettingsLoading] = useState(true);
 
   const currencyUnit = settings.currencyUnit || '원';
-  const background = themeClass[settings.themeColor || 'blue'] ?? themeClass.blue;
+  const background = themeClass[settings.themeColor || 'white'] ?? themeClass.white;
   const title = useMemo(() => settings.bankTitle || `${settings.appTitle || '학급 매점'} 은행`, [settings.appTitle, settings.bankTitle]);
 
   const loadSettings = useCallback(async () => {
@@ -54,7 +67,9 @@ export function BankApp() {
       const payload = await response.json();
       if (response.ok) setSettings(payload);
     } catch {
-      setSettings({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue' });
+      setSettings({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white' });
+    } finally {
+      setIsSettingsLoading(false);
     }
   }, []);
 
@@ -142,6 +157,10 @@ export function BankApp() {
 
   function openTaskScan() {
     setManualQr(''); setTaskResult(null); setErrorMessage(''); setView('task-scan');
+  }
+
+  if (isSettingsLoading) {
+    return <LoadingScreen title="시트 정보 불러오는 중" message="은행 제목과 테마 설정을 불러오는 중입니다." />;
   }
 
   return (

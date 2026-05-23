@@ -42,6 +42,24 @@ describe('BankApp', () => {
 
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
+  it('shows a loading dialog until bank settings are loaded', async () => {
+    const settingsRequest = deferredResponse({ appTitle: '별빛 매점', bankTitle: '별빛 은행', currencyUnit: '별', themeColor: 'white' });
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/settings') return settingsRequest.response;
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    }));
+
+    const { container } = render(<BankApp />);
+
+    expect(screen.getByRole('dialog', { name: '시트 정보 불러오는 중' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: '별빛 은행' })).toBeNull();
+
+    settingsRequest.resolve();
+    expect(await screen.findByRole('heading', { name: '별빛 은행' })).toBeTruthy();
+    expect(container.querySelector('[data-testid="bank-shell"]')?.className).toContain('bg-slate-100');
+  });
+
   it('checks a student balance from the bank QR popup', async () => {
     render(<BankApp />);
     expect(await screen.findByRole('heading', { name: '별빛 은행' })).toBeTruthy();

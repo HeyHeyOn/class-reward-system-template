@@ -125,8 +125,9 @@ describe('AdminManagePage', () => {
   it('renders unified admin tabs with kiosk-style design language', async () => {
     const { container } = render(<AdminManagePage />);
 
-    expect(await screen.findByRole('heading', { name: '학급 보상 시스템 관리' })).toBeTruthy();
-    expect(screen.getByText('Class Reward System Admin')).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
+    expect(screen.getByText('Class Reward System')).toBeTruthy();
+    expect(screen.getByRole('img', { name: '학급 보상 시스템 로고' })).toBeTruthy();
     const adminTabs = screen.getByTestId('admin-tabs');
     const expectedMenuOrder = ['시트 설정', '학생 명단', '재고 관리', '과제 설정', '거래 내역 확인', '화폐 지급/회수', '매점 바로가기', '은행 바로가기'];
     let previousIndex = -1;
@@ -150,8 +151,29 @@ describe('AdminManagePage', () => {
     expect(screen.getByDisplayValue('학급 매점')).toBeTruthy();
     expect(screen.getByDisplayValue('학급 은행')).toBeTruthy();
     expect(screen.getByLabelText('테마 색상')).toBeTruthy();
-    expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-[#dbeaf6]');
+    expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-sky-100');
     expect(container.querySelector('[data-testid="admin-tabs"]')?.className).toContain('rounded-[1.5rem]');
+  });
+
+  it('shows a full screen loading dialog until admin sheet data and theme are loaded', async () => {
+    const studentGate = deferredResponse(students);
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/students') return studentGate.response;
+      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
+      if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', source: 'runtime' });
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+
+    const { container } = render(<AdminManagePage />);
+
+    expect(screen.getByRole('dialog', { name: '시트 정보 불러오는 중' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: '학급 보상 시스템' })).toBeNull();
+
+    studentGate.resolve();
+    expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
+    expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-slate-100');
   });
 
   it('preloads payment history before the payment tab is opened', async () => {

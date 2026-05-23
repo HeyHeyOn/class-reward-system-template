@@ -27,7 +27,7 @@ describe('settings', () => {
   it('uses env spreadsheet id and default currency unit when Settings sheet is unavailable', async () => {
     const settings = await getAppSettings({ env: { GOOGLE_SHEET_ID: 'env-sheet-id' } });
 
-    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue', schemaVersion: 1, systemVersion: SYSTEM_VERSION, systemName: '학급 보상 시스템', source: 'env' });
+    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', schemaVersion: 1, systemVersion: SYSTEM_VERSION, systemName: '학급 보상 시스템', source: 'env' });
   });
 
   it('reads currency unit and app title from Settings sheet when present', async () => {

@@ -44,13 +44,13 @@ const THEME_STYLES: Record<ThemeColor, { shell: string; accentText: string; acce
   yellow: { shell: 'bg-yellow-100', accentText: 'text-yellow-700', accentBg: 'bg-yellow-400', selectedText: 'text-slate-950', lightBg: 'bg-yellow-100', hoverBg: 'hover:bg-yellow-300', ring: 'focus:ring-yellow-300' },
   green: { shell: 'bg-green-100', accentText: 'text-green-700', accentBg: 'bg-green-500', selectedText: 'text-white', lightBg: 'bg-green-100', hoverBg: 'hover:bg-green-400', ring: 'focus:ring-green-300' },
   purple: { shell: 'bg-purple-100', accentText: 'text-purple-700', accentBg: 'bg-purple-500', selectedText: 'text-white', lightBg: 'bg-purple-100', hoverBg: 'hover:bg-purple-400', ring: 'focus:ring-purple-300' },
-  white: { shell: 'bg-white', accentText: 'text-slate-900', accentBg: 'bg-slate-950', selectedText: 'text-white', lightBg: 'bg-slate-100', hoverBg: 'hover:bg-slate-800', ring: 'focus:ring-slate-300' },
+  white: { shell: 'bg-slate-100', accentText: 'text-slate-900', accentBg: 'bg-slate-950', selectedText: 'text-white', lightBg: 'bg-slate-200', hoverBg: 'hover:bg-slate-800', ring: 'focus:ring-slate-300' },
   black: { shell: 'bg-slate-950', accentText: 'text-slate-950', accentBg: 'bg-slate-950', selectedText: 'text-white', lightBg: 'bg-slate-100', hoverBg: 'hover:bg-slate-800', ring: 'focus:ring-slate-300' },
   navy: { shell: 'bg-blue-950', accentText: 'text-blue-900', accentBg: 'bg-blue-950', selectedText: 'text-white', lightBg: 'bg-blue-100', hoverBg: 'hover:bg-blue-900', ring: 'focus:ring-blue-300' },
 };
 
 function normalizeThemeColor(value: unknown): ThemeColor {
-  return value === 'pink' || value === 'yellow' || value === 'green' || value === 'purple' || value === 'white' || value === 'black' || value === 'navy' ? value : 'blue';
+  return value === 'blue' || value === 'pink' || value === 'yellow' || value === 'green' || value === 'purple' || value === 'white' || value === 'black' || value === 'navy' ? value : 'white';
 }
 
 function isApiError(payload: unknown): payload is ApiError {
@@ -74,7 +74,7 @@ export function KioskApp() {
   const [failure, setFailure] = useState<FailureState | null>(null);
   const [currencyUnit, setCurrencyUnit] = useState('원');
   const [appTitle, setAppTitle] = useState('학급 매점');
-  const [themeColor, setThemeColor] = useState<ThemeColor>('blue');
+  const [themeColor, setThemeColor] = useState<ThemeColor>('white');
   const [selectedCategory, setSelectedCategory] = useState('전체');
 
   const loadProducts = useCallback(async (options: { shouldApply?: () => boolean } = {}) => {
@@ -134,6 +134,11 @@ export function KioskApp() {
   const categories = useMemo(() => ['전체', ...Array.from(new Set(products.map((product) => product.category || '기타')))], [products]);
   const filteredProducts = selectedCategory === '전체' ? products : products.filter((product) => (product.category || '기타') === selectedCategory);
   const theme = THEME_STYLES[themeColor];
+
+  if (isLoadingProducts) {
+    return <LoadingScreen title="시트 정보 불러오는 중" message="매점 상품과 테마 설정을 불러오는 중입니다." />;
+  }
+
   const quantityButtonClass = `relative z-10 flex h-[clamp(2rem,5vw,2.25rem)] w-[clamp(2rem,5vw,2.25rem)] shrink-0 touch-manipulation items-center justify-center rounded-lg ${theme.lightBg} text-[clamp(1rem,2.8vw,1.25rem)] font-black ${theme.accentText}`;
 
   function addToCart(productId: string) {
@@ -427,6 +432,18 @@ export function KioskApp() {
           themeColor={themeColor}
         />
       ) : null}
+    </main>
+  );
+}
+
+function LoadingScreen({ title, message }: { title: string; message: string }) {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-slate-100 p-4 text-slate-950">
+      <section role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-2xl">
+        <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-slate-950" aria-hidden="true" />
+        <h1 className="mt-4 text-2xl font-black">{title}</h1>
+        <p className="mt-2 rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-600">{message}</p>
+      </section>
     </main>
   );
 }

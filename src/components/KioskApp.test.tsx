@@ -120,6 +120,25 @@ describe('KioskApp', () => {
     expect(screen.getByText('연필')).toBeTruthy();
   });
 
+  it('shows a loading dialog until products and settings are loaded', async () => {
+    let resolveProducts!: () => void;
+    const productGate = new Promise<void>((resolve) => { resolveProducts = resolve; });
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/products') return productGate.then(() => jsonResponse(products));
+      if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', themeColor: 'white', source: 'runtime' });
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+
+    const { container } = render(<KioskApp />);
+
+    expect(screen.getByRole('dialog', { name: '시트 정보 불러오는 중' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: '상품 목록' })).toBeNull();
+    resolveProducts();
+    expect(await screen.findByRole('heading', { name: '학급 매점' })).toBeTruthy();
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-slate-100');
+  });
+
   it('applies the new navy theme from settings', async () => {
     vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse(products));
     vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '남색 매점', themeColor: 'navy', source: 'runtime' }));
