@@ -1,5 +1,7 @@
 import { Suspense } from 'react';
 import { AdminLoginPage } from '@/components/AdminLoginPage';
+
+export const metadata = { title: '관리자 로그인' };
 import { isGeneratorDeployment } from '@/server/deploymentMode';
 
 export default function AdminLoginRoute() {
