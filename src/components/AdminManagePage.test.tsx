@@ -129,7 +129,7 @@ describe('AdminManagePage', () => {
     expect(screen.getByText('Class Reward System')).toBeTruthy();
     const logo = screen.getByRole('img', { name: '학급 보상 시스템 로고' });
     expect(logo).toBeTruthy();
-    expect(logo.className).toContain('bg-sky-600');
+    expect(logo.className).toContain('bg-sky-500');
     expect(logo.className).toContain("[mask-image:url('/class-reward-system-icon.png')]");
     expect(logo.className).not.toContain('bg-white');
     expect(logo.parentElement?.className).not.toMatch(/bg-|shadow|rounded/);
@@ -164,9 +164,42 @@ describe('AdminManagePage', () => {
     expect(screen.queryByText('GOOGLE SHEETS')).toBeNull();
   });
 
+  it('uses a softer lime admin theme and a darker black admin shell when selected', async () => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/students') return jsonResponse(students);
+      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
+      if (url === '/api/transactions') return jsonResponse([]);
+      if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'green', source: 'runtime' });
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+    const { container, unmount } = render(<AdminManagePage />);
+
+    expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
+    expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-lime-50');
+    expect(container.querySelector('[data-testid="admin-shell"]')?.className).not.toContain('bg-emerald-50');
+    unmount();
+
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/students') return jsonResponse(students);
+      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
+      if (url === '/api/transactions') return jsonResponse([]);
+      if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'black', source: 'runtime' });
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+    const secondRender = render(<AdminManagePage />);
+
+    expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
+    expect(secondRender.container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-slate-900');
+    expect(secondRender.container.querySelector('[data-testid="admin-shell"]')?.className).not.toContain('bg-slate-100');
+  });
+
   it('shows a full screen loading dialog until admin sheet data and theme are loaded', async () => {
     const studentGate = deferredResponse(students);
-    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/students') return studentGate.response;
       if (url === '/api/products?includeInactive=1') return jsonResponse(products);

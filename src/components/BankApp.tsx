@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import type { ClassTask, Transaction } from '@/domain/types';
 import { QrScanner } from './QrScanner';
 
+type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'black' | 'navy';
 type Settings = { currencyUnit?: string; appTitle?: string; bankTitle?: string; themeColor?: string };
 type BankView = 'home' | 'balance-scan' | 'balance-result' | 'tasks-list' | 'task-detail' | 'task-scan' | 'task-success' | 'task-failure';
 type BalanceResult = { studentId: string; name: string; balance: number; transactions?: Transaction[] } | null;
@@ -40,9 +41,20 @@ function formatTransactionDate(value: string) {
   return date.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
 }
 
-const themeClass: Record<string, string> = {
-  blue: 'bg-sky-100', pink: 'bg-pink-100', yellow: 'bg-amber-100', green: 'bg-emerald-100', purple: 'bg-purple-100', white: 'bg-slate-100', black: 'bg-slate-950', navy: 'bg-blue-950',
+const BANK_THEME: Record<ThemeColor, { shell: string; accentText: string; accentBg: string; accentBgAlt: string; softBg: string; focusBorder: string }> = {
+  blue: { shell: 'bg-sky-50', accentText: 'text-sky-700', accentBg: 'bg-sky-200', accentBgAlt: 'bg-sky-200', softBg: 'bg-sky-50', focusBorder: 'focus:border-sky-200' },
+  pink: { shell: 'bg-pink-50', accentText: 'text-pink-700', accentBg: 'bg-pink-200', accentBgAlt: 'bg-pink-200', softBg: 'bg-pink-50', focusBorder: 'focus:border-pink-200' },
+  yellow: { shell: 'bg-yellow-50', accentText: 'text-yellow-700', accentBg: 'bg-yellow-200', accentBgAlt: 'bg-yellow-200', softBg: 'bg-yellow-50', focusBorder: 'focus:border-yellow-200' },
+  green: { shell: 'bg-lime-50', accentText: 'text-lime-700', accentBg: 'bg-lime-200', accentBgAlt: 'bg-lime-200', softBg: 'bg-lime-50', focusBorder: 'focus:border-lime-200' },
+  purple: { shell: 'bg-purple-50', accentText: 'text-purple-700', accentBg: 'bg-purple-200', accentBgAlt: 'bg-purple-200', softBg: 'bg-purple-50', focusBorder: 'focus:border-purple-200' },
+  white: { shell: 'bg-slate-100', accentText: 'text-slate-700', accentBg: 'bg-slate-300', accentBgAlt: 'bg-slate-300', softBg: 'bg-slate-50', focusBorder: 'focus:border-slate-300' },
+  black: { shell: 'bg-slate-900', accentText: 'text-slate-700', accentBg: 'bg-slate-300', accentBgAlt: 'bg-slate-300', softBg: 'bg-slate-100', focusBorder: 'focus:border-slate-400' },
+  navy: { shell: 'bg-blue-950', accentText: 'text-blue-800', accentBg: 'bg-blue-200', accentBgAlt: 'bg-blue-200', softBg: 'bg-blue-50', focusBorder: 'focus:border-blue-300' },
 };
+
+function normalizeThemeColor(value: unknown): ThemeColor {
+  return value === 'blue' || value === 'pink' || value === 'yellow' || value === 'green' || value === 'purple' || value === 'black' || value === 'navy' ? value : 'white';
+}
 
 export function BankApp() {
   const [settings, setSettings] = useState<Settings>({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white' });
@@ -58,7 +70,7 @@ export function BankApp() {
   const [isSettingsLoading, setIsSettingsLoading] = useState(true);
 
   const currencyUnit = settings.currencyUnit || '원';
-  const background = themeClass[settings.themeColor || 'white'] ?? themeClass.white;
+  const theme = BANK_THEME[normalizeThemeColor(settings.themeColor)];
   const title = useMemo(() => settings.bankTitle || `${settings.appTitle || '학급 매점'} 은행`, [settings.appTitle, settings.bankTitle]);
 
   const loadSettings = useCallback(async () => {
@@ -164,17 +176,17 @@ export function BankApp() {
   }
 
   return (
-    <main data-testid="bank-shell" className={`min-h-screen ${background} p-4 text-slate-950 ${settings.themeColor === 'black' || settings.themeColor === 'navy' ? 'text-white' : ''}`}>
+    <main data-testid="bank-shell" className={`min-h-screen ${theme.shell} p-4 text-slate-950`}>
       <section className="mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col justify-center gap-5">
         <header className="rounded-[2rem] border border-white/50 bg-white/90 p-5 text-center text-slate-950 shadow-lg">
-          <p className="text-xs font-black tracking-[0.25em] text-sky-600">CLASS BANK</p>
+          <p className={`text-xs font-black tracking-[0.25em] ${theme.accentText}`}>CLASS BANK</p>
           <h1 className="mt-2 text-4xl font-black sm:text-5xl">{title}</h1>
           <p className="mt-2 text-sm font-bold text-slate-500">QR로 잔액을 확인하고 과제 보상을 받을 수 있어요.</p>
         </header>
 
         <section className="grid gap-4 rounded-[2rem] bg-white/90 p-5 shadow-lg sm:grid-cols-2">
-          <button type="button" onClick={openBalanceScan} className="rounded-[1.5rem] bg-sky-500 px-5 py-12 text-3xl font-black text-white shadow-sm">잔액 확인</button>
-          <button type="button" onClick={loadTasks} className="rounded-[1.5rem] bg-emerald-500 px-5 py-12 text-3xl font-black text-white shadow-sm">과제 확인</button>
+          <button type="button" onClick={openBalanceScan} className={`rounded-[1.5rem] ${theme.accentBg} px-5 py-12 text-3xl font-black text-slate-950 shadow-sm`}>잔액 확인</button>
+          <button type="button" onClick={loadTasks} className={`rounded-[1.5rem] ${theme.accentBgAlt} px-5 py-12 text-3xl font-black text-slate-950 shadow-sm`}>과제 확인</button>
         </section>
       </section>
 
@@ -230,7 +242,7 @@ export function BankApp() {
           {!loading && !errorMessage && tasks.length === 0 ? <p className="rounded-2xl bg-slate-50 p-4 font-bold text-slate-600">현재 받을 수 있는 과제가 없습니다.</p> : null}
           <div className="space-y-2">
             {tasks.map((task) => (
-              <button key={task.taskId} type="button" onClick={() => openTaskDetail(task)} className="w-full rounded-2xl border border-slate-200 bg-sky-50 p-4 text-left font-black text-slate-800">
+              <button key={task.taskId} type="button" onClick={() => openTaskDetail(task)} className={`w-full rounded-2xl border border-slate-200 ${theme.softBg} p-4 text-left font-black text-slate-800`}>
                 <span className="block text-lg">{task.title}</span>
                 <span className="mt-1 block text-sm text-slate-500">보상 {task.reward.toLocaleString()}{currencyUnit} · {task.maxCompletionsPerStudent}회까지</span>
               </button>
@@ -246,7 +258,7 @@ export function BankApp() {
             <p className="rounded-2xl bg-amber-50 p-4 font-black text-amber-800">보상<br />{selectedTask.reward.toLocaleString()}{currencyUnit}</p>
             <p className="rounded-2xl bg-sky-50 p-4 font-black text-sky-800">가능 횟수<br />{selectedTask.maxCompletionsPerStudent}회</p>
           </div>
-          <button type="button" onClick={openTaskScan} className="mt-4 w-full rounded-2xl bg-emerald-500 py-4 text-xl font-black text-white">완료하기</button>
+          <button type="button" onClick={openTaskScan} className={`mt-4 w-full rounded-2xl ${theme.accentBg} py-4 text-xl font-black text-slate-950`}>완료하기</button>
         </Modal>
       ) : null}
 

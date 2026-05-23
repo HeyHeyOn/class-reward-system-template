@@ -39,14 +39,14 @@ type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'b
 type KioskSettings = { currencyUnit?: string; appTitle?: string; themeColor?: ThemeColor };
 
 const THEME_STYLES: Record<ThemeColor, { shell: string; accentText: string; accentBg: string; selectedText: string; lightBg: string; hoverBg: string; ring: string }> = {
-  blue: { shell: 'bg-sky-100', accentText: 'text-sky-700', accentBg: 'bg-sky-500', selectedText: 'text-white', lightBg: 'bg-sky-100', hoverBg: 'hover:bg-sky-400', ring: 'focus:ring-sky-300' },
-  pink: { shell: 'bg-pink-100', accentText: 'text-pink-700', accentBg: 'bg-pink-500', selectedText: 'text-white', lightBg: 'bg-pink-100', hoverBg: 'hover:bg-pink-400', ring: 'focus:ring-pink-300' },
-  yellow: { shell: 'bg-yellow-100', accentText: 'text-yellow-700', accentBg: 'bg-yellow-400', selectedText: 'text-slate-950', lightBg: 'bg-yellow-100', hoverBg: 'hover:bg-yellow-300', ring: 'focus:ring-yellow-300' },
-  green: { shell: 'bg-green-100', accentText: 'text-green-700', accentBg: 'bg-green-500', selectedText: 'text-white', lightBg: 'bg-green-100', hoverBg: 'hover:bg-green-400', ring: 'focus:ring-green-300' },
-  purple: { shell: 'bg-purple-100', accentText: 'text-purple-700', accentBg: 'bg-purple-500', selectedText: 'text-white', lightBg: 'bg-purple-100', hoverBg: 'hover:bg-purple-400', ring: 'focus:ring-purple-300' },
-  white: { shell: 'bg-slate-100', accentText: 'text-slate-900', accentBg: 'bg-slate-950', selectedText: 'text-white', lightBg: 'bg-slate-200', hoverBg: 'hover:bg-slate-800', ring: 'focus:ring-slate-300' },
-  black: { shell: 'bg-slate-950', accentText: 'text-slate-950', accentBg: 'bg-slate-950', selectedText: 'text-white', lightBg: 'bg-slate-100', hoverBg: 'hover:bg-slate-800', ring: 'focus:ring-slate-300' },
-  navy: { shell: 'bg-blue-950', accentText: 'text-blue-900', accentBg: 'bg-blue-950', selectedText: 'text-white', lightBg: 'bg-blue-100', hoverBg: 'hover:bg-blue-900', ring: 'focus:ring-blue-300' },
+  blue: { shell: 'bg-sky-50', accentText: 'text-sky-700', accentBg: 'bg-sky-300', selectedText: 'text-sky-950', lightBg: 'bg-sky-50', hoverBg: 'hover:bg-sky-200', ring: 'focus:ring-sky-200' },
+  pink: { shell: 'bg-pink-50', accentText: 'text-pink-700', accentBg: 'bg-pink-200', selectedText: 'text-pink-950', lightBg: 'bg-pink-50', hoverBg: 'hover:bg-pink-100', ring: 'focus:ring-pink-200' },
+  yellow: { shell: 'bg-yellow-50', accentText: 'text-yellow-700', accentBg: 'bg-yellow-200', selectedText: 'text-yellow-950', lightBg: 'bg-yellow-50', hoverBg: 'hover:bg-yellow-100', ring: 'focus:ring-yellow-200' },
+  green: { shell: 'bg-lime-50', accentText: 'text-lime-700', accentBg: 'bg-lime-200', selectedText: 'text-lime-950', lightBg: 'bg-lime-50', hoverBg: 'hover:bg-lime-100', ring: 'focus:ring-lime-200' },
+  purple: { shell: 'bg-purple-50', accentText: 'text-purple-700', accentBg: 'bg-purple-200', selectedText: 'text-purple-950', lightBg: 'bg-purple-50', hoverBg: 'hover:bg-purple-100', ring: 'focus:ring-purple-200' },
+  white: { shell: 'bg-slate-100', accentText: 'text-slate-900', accentBg: 'bg-slate-300', selectedText: 'text-slate-950', lightBg: 'bg-slate-200', hoverBg: 'hover:bg-slate-300', ring: 'focus:ring-slate-300' },
+  black: { shell: 'bg-slate-900', accentText: 'text-slate-900', accentBg: 'bg-slate-700', selectedText: 'text-white', lightBg: 'bg-slate-100', hoverBg: 'hover:bg-slate-600', ring: 'focus:ring-slate-400' },
+  navy: { shell: 'bg-blue-950', accentText: 'text-blue-900', accentBg: 'bg-blue-800', selectedText: 'text-white', lightBg: 'bg-blue-100', hoverBg: 'hover:bg-blue-700', ring: 'focus:ring-blue-300' },
 };
 
 function normalizeThemeColor(value: unknown): ThemeColor {

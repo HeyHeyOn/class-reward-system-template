@@ -81,7 +81,7 @@ describe('KioskApp', () => {
 
     expect(screen.queryByRole('link', { name: '관리자 설정' })).toBeNull();
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('h-screen');
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-pink-100');
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-pink-50');
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('overflow-hidden');
     expect(container.querySelector('[data-testid="kiosk-main-grid"]')?.className).toContain('grid-rows-[minmax(0,2fr)_minmax(0,1fr)]');
     expect(container.querySelector('[data-testid="kiosk-main-grid"]')?.className).toContain('landscape:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]');
@@ -146,6 +146,37 @@ describe('KioskApp', () => {
 
     expect(await screen.findByRole('heading', { name: '남색 매점' })).toBeTruthy();
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-blue-950');
+  });
+
+  it('applies softer pastel theme classes from settings on the kiosk', async () => {
+    vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse(products));
+    vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '분홍 매점', themeColor: 'pink', source: 'runtime' }));
+    const { container } = render(<KioskApp />);
+
+    expect(await screen.findByRole('heading', { name: '분홍 매점' })).toBeTruthy();
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-pink-50');
+    expect(screen.getByRole('button', { name: '전체' }).className).toContain('bg-pink-200');
+    expect(screen.getByRole('button', { name: '전체' }).className).not.toContain('bg-pink-500');
+  });
+
+  it('uses a soft yellow, lime-green, and darker black kiosk shell when selected', async () => {
+    for (const [themeColor, expectedShell, rejectedShell] of [
+      ['yellow', 'bg-yellow-50', 'bg-yellow-100'],
+      ['green', 'bg-lime-50', 'bg-emerald-100'],
+      ['black', 'bg-slate-900', 'bg-slate-100'],
+    ] as const) {
+      cleanup();
+      vi.mocked(fetch).mockReset();
+      vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse(products));
+      vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: `${themeColor} 매점`, themeColor, source: 'runtime' }));
+
+      const { container } = render(<KioskApp />);
+
+      expect(await screen.findByRole('heading', { name: `${themeColor} 매점` })).toBeTruthy();
+      const shellClass = container.querySelector('[data-testid="kiosk-shell"]')?.className ?? '';
+      expect(shellClass).toContain(expectedShell);
+      expect(shellClass).not.toContain(rejectedShell);
+    }
   });
 
   it('reloads products and settings from the title refresh button', async () => {
@@ -236,7 +267,7 @@ describe('KioskApp', () => {
 
     expect(await screen.findByText('연필')).toBeTruthy();
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('h-screen');
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-pink-100');
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-pink-50');
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('overflow-hidden');
     expect(container.querySelector('[data-testid="kiosk-content"]')?.className).toContain('h-full');
     expect(container.querySelector('[data-testid="kiosk-title"]')?.className).toContain('text-[clamp(');
