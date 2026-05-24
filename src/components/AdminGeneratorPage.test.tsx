@@ -2,19 +2,22 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AdminGeneratorPage } from './AdminGeneratorPage';
 
-function stubGeneratorFetch(createResponse?: Record<string, unknown>) {
+function stubGeneratorFetch(options?: { authenticated?: boolean; createResponse?: Record<string, unknown> }) {
+  const authenticated = options?.authenticated ?? true;
   const fetchSpy = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url === '/api/google/session') {
       return {
         ok: true,
-        json: async () => ({ enabled: true, authenticated: true, email: 'teacher@example.com', name: '김선생님' }),
+        json: async () => authenticated
+          ? ({ enabled: true, authenticated: true, email: 'teacher@example.com', name: '김선생님' })
+          : ({ enabled: true, authenticated: false }),
       };
     }
     if (url === '/api/generator/create' && init?.method === 'POST') {
       return {
         ok: true,
-        json: async () => createResponse ?? ({
+        json: async () => options?.createResponse ?? ({
           ok: true,
           spreadsheetId: 'sheet-123',
           spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/sheet-123/edit',
@@ -26,8 +29,8 @@ function stubGeneratorFetch(createResponse?: Record<string, unknown>) {
             { name: 'GOOGLE_CLIENT_ID', value: 'client-id-123.apps.googleusercontent.com', secret: false },
             { name: 'GOOGLE_CLIENT_SECRET', value: 'client-secret-123', secret: true },
             { name: 'GOOGLE_REFRESH_TOKEN', value: 'refresh-token-123', secret: true },
-            { name: 'ADMIN_PASSWORD', value: '생성 시 정한 관리자 암호', secret: true },
-            { name: 'AUTH_SECRET', value: '무작위 긴 문자열로 직접 설정', secret: true },
+            { name: 'ADMIN_PASSWORD', value: 'teacher@example.com', secret: true },
+            { name: 'AUTH_SECRET', value: 'random-auth-secret', secret: true },
           ],
           nextSteps: ['학생과 상품을 입력합니다.'],
           deploymentGuide: {
@@ -44,140 +47,141 @@ function stubGeneratorFetch(createResponse?: Record<string, unknown>) {
   return fetchSpy;
 }
 
+async function goToCreateNotice() {
+  await waitFor(() => screen.getByRole('button', { name: '새 시스템 생성하기' }));
+  fireEvent.click(screen.getByRole('button', { name: '새 시스템 생성하기' }));
+}
+
+async function passNotice() {
+  fireEvent.click(screen.getByLabelText('위 안내를 읽었으며 개인 서버 URL, 비밀번호, 구글 시트 관리 책임을 이해했습니다.'));
+  fireEvent.click(screen.getByRole('button', { name: 'Google 로그인으로 이동' }));
+}
+
+async function goThroughAuthenticatedCreateSteps() {
+  await goToCreateNotice();
+  await passNotice();
+  fireEvent.click(screen.getByRole('button', { name: 'Google 로그인 완료, 다음' }));
+  expect(screen.getByRole('heading', { name: 'Vercel 로그인하기' })).toBeTruthy();
+  expect(screen.getByRole('link', { name: 'Vercel 열기' }).getAttribute('href')).toBe('https://vercel.com/login');
+  fireEvent.click(screen.getByRole('button', { name: '로그인/가입을 완료했습니다' }));
+  expect(screen.getByRole('heading', { name: 'GitHub 로그인하기' })).toBeTruthy();
+  expect(screen.getByRole('link', { name: 'GitHub 열기' }).getAttribute('href')).toBe('https://github.com/login');
+  fireEvent.click(screen.getByRole('button', { name: '로그인/가입을 완료했습니다' }));
+}
+
 describe('AdminGeneratorPage', () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
   });
 
-  it('shows only the Google login start page when the teacher is not authenticated', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ enabled: true, authenticated: false }),
-    }));
+  it('starts with the system explanation and create-or-update choice before Google login', async () => {
+    stubGeneratorFetch({ authenticated: false });
 
     const { container } = render(<AdminGeneratorPage />);
 
     await waitFor(() => expect(screen.getByRole('heading', { name: '학급 보상 시스템 생성기' })).toBeTruthy());
     expect(container.querySelector('main')?.className).toContain('bg-slate-100');
-    expect(container.querySelector('main')?.className).not.toContain('bg-[#dbeaf6]');
-    expect(container.innerHTML).not.toContain('purple');
-    expect(screen.getByText(/먼저 Google 로그인을 해 주세요/)).toBeTruthy();
-
-    expect(screen.queryByText('시스템 생성하기')).toBeNull();
+    expect(screen.getByRole('heading', { name: '학급 보상 시스템 만들기' })).toBeTruthy();
+    expect(screen.getByText(/구글 스프레드시트와 개인 Vercel 서버를 이용해/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: '새 시스템 생성하기' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '기존 시스템 업데이트하기' })).toBeTruthy();
+    expect(screen.queryByText(/먼저 Google 로그인을 해 주세요/)).toBeNull();
     expect(screen.queryByText('관리자 센터로 돌아가기')).toBeNull();
     expect(screen.queryByText('현재 운영 매점 열기')).toBeNull();
   });
 
-  it('after login shows a simple create-or-update choice before any long instructions', async () => {
-    stubGeneratorFetch();
-
-    render(<AdminGeneratorPage />);
-
-    await waitFor(() => expect(screen.getByText(/teacher@example.com/)).toBeTruthy());
-    expect(screen.getByRole('heading', { name: '무엇을 할까요?' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '새 시스템 생성하기' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '기존 시스템 업데이트하기' })).toBeTruthy();
-    expect(screen.queryByLabelText('학급명')).toBeNull();
-  });
-
-  it('shows a friendly Vercel redeploy guide for updating an existing system', async () => {
-    stubGeneratorFetch();
+  it('allows update guidance without Google authentication', async () => {
+    stubGeneratorFetch({ authenticated: false });
 
     render(<AdminGeneratorPage />);
     await waitFor(() => screen.getByRole('button', { name: '기존 시스템 업데이트하기' }));
     fireEvent.click(screen.getByRole('button', { name: '기존 시스템 업데이트하기' }));
 
-    expect(screen.getByRole('heading', { name: '기존 앱 업데이트 안내' })).toBeTruthy();
-    expect(screen.getByText(/데이터가 들어 있는 Google 스프레드시트는 그대로 사용합니다/)).toBeTruthy();
-    expect(screen.getByText(/Redeploy만 누르면 최신 템플릿을 가져오는 것이 아니라/)).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Vercel 프로젝트 목록 열기' }).getAttribute('href')).toBe('https://vercel.com/dashboard');
-    expect(screen.getByText(/class-store 또는 학급 보상 시스템 프로젝트를 선택/)).toBeTruthy();
-    expect(screen.getAllByText(/Settings → Git/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/Git 저장소가 연결되어 있지 않음/)).toBeTruthy();
-    expect(screen.getByText(/Redeploy는 예전 업로드본을 다시 빌드할 뿐/)).toBeTruthy();
-    expect(screen.getByText(/GitHub 저장소에서 Actions → Update from template/)).toBeTruthy();
-    expect(screen.getByText(/Run workflow/)).toBeTruthy();
-    expect(screen.getByText(/Update from template이 보이지 않으면/)).toBeTruthy();
-    expect(screen.getByText(/기존 개인 배포 저장소는 워크플로 파일이 아직 복사되지 않은 상태/)).toBeTruthy();
-    expect(screen.getAllByText(/Deployments 탭/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Redeploy/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/환경변수를 다시 만들 필요는 없습니다/)).toBeTruthy();
-    expect(screen.getByText(/업데이트 뒤에는 관리자 페이지에서 생성기 탭이 사라졌는지 확인/)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '시스템 업데이트하기' })).toBeTruthy();
+    expect(screen.getByText(/기존 시스템 업데이트는 Google 로그인이 필요하지 않습니다/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'GitHub 열기' }).getAttribute('href')).toBe('https://github.com');
+    expect(screen.getByText(/1단계: GitHub에 로그인하세요/)).toBeTruthy();
+    expect(screen.getByText(/2단계: 자신의 학급 보상 시스템 저장소\(repository\)로 이동하세요/)).toBeTruthy();
+    expect(screen.getByText(/3단계: Actions 탭으로 이동하세요/)).toBeTruthy();
+    expect(screen.getByText(/4단계: Update from template 워크플로우를 선택하세요/)).toBeTruthy();
+    expect(screen.getByText(/5단계: Run workflow를 눌러 업데이트 워크플로우를 시작하세요/)).toBeTruthy();
+    expect(screen.getByText(/6단계: 실행 완료 후 2~3분 정도 기다리세요/)).toBeTruthy();
+    expect(screen.getByText(/기존 Google Sheet와 Vercel 환경변수는 그대로/)).toBeTruthy();
     expect(screen.getByRole('button', { name: '처음 선택으로 돌아가기' })).toBeTruthy();
   });
 
-  it('requires acknowledging the self-deployment notice before moving to settings', async () => {
-    stubGeneratorFetch();
+  it('requires acknowledging the detailed notice before the Google login step', async () => {
+    stubGeneratorFetch({ authenticated: false });
 
     render(<AdminGeneratorPage />);
-    await waitFor(() => screen.getByRole('button', { name: '새 시스템 생성하기' }));
-    fireEvent.click(screen.getByRole('button', { name: '새 시스템 생성하기' }));
+    await goToCreateNotice();
 
-    expect(screen.getByRole('heading', { name: '시작 전에 확인해 주세요' })).toBeTruthy();
-    expect(screen.getByText(/운영 앱은 선생님 개인 Vercel 프로젝트에 배포됩니다/)).toBeTruthy();
-    const nextButton = screen.getByRole('button', { name: '기본 설정으로 이동' });
+    expect(screen.getByRole('heading', { name: '중요한 일러두기' })).toBeTruthy();
+    expect(screen.getByText(/학급 보상 시스템은 개인 서버를 이용하여 작동하는 온라인 웹 애플리케이션입니다/)).toBeTruthy();
+    expect(screen.getByText(/Google, Vercel, GitHub 세 사이트의 로그인을 필요로 합니다/)).toBeTruthy();
+    expect(screen.getByText(/개인 서버 URL과 암호가 함께 유출될 경우/)).toBeTruthy();
+    const nextButton = screen.getByRole('button', { name: 'Google 로그인으로 이동' });
     expect(nextButton).toHaveProperty('disabled', true);
 
-    fireEvent.click(screen.getByLabelText('위 내용을 충분히 숙지했습니다.'));
+    fireEvent.click(screen.getByLabelText('위 안내를 읽었으며 개인 서버 URL, 비밀번호, 구글 시트 관리 책임을 이해했습니다.'));
     expect(nextButton).toHaveProperty('disabled', false);
   });
 
-  it('renders the settings page with dry-run preview and creates the spreadsheet only after the wizard steps', async () => {
-    const fetchSpy = stubGeneratorFetch();
+  it('places Google login after the notice and blocks creation steps until authenticated', async () => {
+    stubGeneratorFetch({ authenticated: false });
 
     render(<AdminGeneratorPage />);
-    await waitFor(() => screen.getByRole('button', { name: '새 시스템 생성하기' }));
-    fireEvent.click(screen.getByRole('button', { name: '새 시스템 생성하기' }));
-    fireEvent.click(screen.getByLabelText('위 내용을 충분히 숙지했습니다.'));
-    fireEvent.click(screen.getByRole('button', { name: '기본 설정으로 이동' }));
+    await goToCreateNotice();
+    await passNotice();
 
-    expect(screen.getByRole('heading', { name: '시트 생성을 위한 기본 설정' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Google 로그인하기' })).toBeTruthy();
+    expect(screen.getByText(/이용하실 Google 계정으로 로그인하여 스프레드시트 권한을 부여/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Google로 로그인하기' }).getAttribute('href')).toBe('/api/google/login');
+    expect(screen.getByRole('button', { name: 'Google 로그인 완료, 다음' })).toHaveProperty('disabled', true);
+    expect(screen.queryByRole('heading', { name: 'Vercel 로그인하기' })).toBeNull();
+  });
+
+  it('renders Vercel and GitHub preparation steps before the settings/create page', async () => {
+    stubGeneratorFetch({ authenticated: true });
+
+    render(<AdminGeneratorPage />);
+    await goThroughAuthenticatedCreateSteps();
+
+    expect(screen.getByRole('heading', { name: 'Vercel 배포 준비하기' })).toBeTruthy();
     expect(screen.getByLabelText('학급명')).toBeTruthy();
     expect(screen.getByLabelText('매점 이름')).toHaveProperty('value', '학급 매점');
     expect(screen.getByLabelText('은행 이름')).toHaveProperty('value', '학급 은행');
     expect(screen.getByLabelText('화폐 단위')).toHaveProperty('value', '원');
     expect(screen.getByLabelText('테마')).toHaveProperty('value', 'white');
     expect(screen.getByText(/Students/)).toBeTruthy();
+  });
 
+  it('creates the spreadsheet and renders the final Vercel clone/deploy guide', async () => {
+    const fetchSpy = stubGeneratorFetch({ authenticated: true });
+
+    render(<AdminGeneratorPage />);
+    await goThroughAuthenticatedCreateSteps();
     fireEvent.change(screen.getByLabelText('학급명'), { target: { value: '4학년 1반' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Google Sheets 생성하고 Vercel 안내 보기' }));
+    fireEvent.click(screen.getByRole('button', { name: '주요 환경변수 만들고 배포 안내 보기' }));
 
-    await waitFor(() => expect(screen.getByText('생성 완료')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('학급 보상 시스템 구축 완료')).toBeTruthy());
     expect(fetchSpy).toHaveBeenCalledWith('/api/generator/create', expect.objectContaining({
       method: 'POST',
       body: expect.stringContaining('"selfServiceAcknowledged":true'),
     }));
-  });
-
-  it('renders a final step-by-step Vercel deployment guide after creation', async () => {
-    stubGeneratorFetch();
-
-    render(<AdminGeneratorPage />);
-    await waitFor(() => screen.getByRole('button', { name: '새 시스템 생성하기' }));
-    fireEvent.click(screen.getByRole('button', { name: '새 시스템 생성하기' }));
-    fireEvent.click(screen.getByLabelText('위 내용을 충분히 숙지했습니다.'));
-    fireEvent.click(screen.getByRole('button', { name: '기본 설정으로 이동' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Google Sheets 생성하고 Vercel 안내 보기' }));
-
-    await waitFor(() => expect(screen.getByText('생성 완료')).toBeTruthy());
     expect(screen.getAllByText('sheet-123').length).toBeGreaterThan(0);
     expect(screen.getByText('선생님 개인 Google 계정 + 선생님 개인 Vercel 프로젝트')).toBeTruthy();
-    expect(screen.getByRole('link', { name: '1단계: Vercel 배포 페이지 열기' }).getAttribute('href')).toContain('vercel.com/new/clone');
-    expect(screen.getByRole('heading', { name: '이제 Vercel에서 이렇게 누르세요' })).toBeTruthy();
-    expect(screen.getByText(/GitHub 계정으로 Vercel에 로그인합니다/)).toBeTruthy();
-    expect(screen.getByText(/Continue with GitHub가 보이면 그 버튼을 누릅니다/)).toBeTruthy();
-    expect(screen.getByText(/학급 보상 시스템 템플릿 저장소를 찾고 Import를 누릅니다/)).toBeTruthy();
-    expect(screen.getByText(/Vercel은 템플릿 원본이 아니라 선생님 GitHub 계정에 만든 복사본 저장소를 연결합니다/)).toBeTruthy();
-    expect(screen.getByText(/업데이트하려면 GitHub의 템플릿 동기화 워크플로를 실행한 뒤 Vercel이 다시 배포되도록 해야 합니다/)).toBeTruthy();
-    expect(screen.getByText(/운영 앱이 생성된 시트를 읽고 쓰려면 6개 환경변수를 모두 입력해야 합니다/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Vercel 배포 페이지 열기' }).getAttribute('href')).toContain('vercel.com/new/clone');
+    expect(screen.getByRole('heading', { name: 'Vercel에서 GitHub 프로젝트 복제 및 배포하기' })).toBeTruthy();
+    expect(screen.getByText(/복제할 학급 보상 시스템 템플릿과 연결할 GitHub 계정을 확인/)).toBeTruthy();
+    expect(screen.getByText(/아래 값들을 Vercel Environment Variables에 붙여넣고 Deploy 버튼을 누릅니다/)).toBeTruthy();
+    expect(screen.getByText(/보통 2~3분 정도 걸립니다/)).toBeTruthy();
+    expect(screen.getByText(/도메인 주소를 복사해 보관합니다/)).toBeTruthy();
+    expect(screen.getByText(/초기 비밀번호는 사용한 Google 계정 메일 주소입니다/)).toBeTruthy();
     expect(screen.getByText('GOOGLE_CLIENT_ID')).toBeTruthy();
     expect(screen.getByText('GOOGLE_CLIENT_SECRET (비밀값)')).toBeTruthy();
     expect(screen.getByText('GOOGLE_REFRESH_TOKEN (비밀값)')).toBeTruthy();
     expect(screen.getByText(/비밀값은 다른 사람에게 공유하지 말고 Vercel 환경변수 칸에만 붙여넣으세요/)).toBeTruthy();
-    expect(screen.getByText(/운영 앱이 생성된 시트를 읽고 쓰려면 6개 환경변수를 모두 입력해야 합니다/)).toBeTruthy();
-    expect(screen.getByText(/Deploy 버튼을 누른 뒤 Ready가 나올 때까지 기다립니다/)).toBeTruthy();
-    expect(screen.getByText(/배포 완료 후 제공되는 vercel.app 주소가 선생님 전용 URL입니다/)).toBeTruthy();
-    expect(screen.getByText(/막히면 화면을 닫지 말고 오류 문구를 복사/)).toBeTruthy();
   });
 });
