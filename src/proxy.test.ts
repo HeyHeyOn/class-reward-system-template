@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
-import { middleware } from './middleware';
+import { proxy } from './proxy';
 
-describe('middleware deployment routing', () => {
+describe('proxy deployment routing', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
   });
@@ -12,7 +12,7 @@ describe('middleware deployment routing', () => {
     async (path) => {
       vi.stubEnv('NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT', 'generator');
 
-      const response = await middleware(new NextRequest(`https://class-store-generator.vercel.app${path}`));
+      const response = await proxy(new NextRequest(`https://class-store-generator.vercel.app${path}`));
 
       expect(response.status).toBe(404);
       expect(response.headers.get('location')).toBeNull();
@@ -22,7 +22,7 @@ describe('middleware deployment routing', () => {
   it('keeps the generator page available in generator-only deployment', async () => {
     vi.stubEnv('NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT', 'generator');
 
-    const response = await middleware(new NextRequest('https://class-store-generator.vercel.app/admin/generator'));
+    const response = await proxy(new NextRequest('https://class-store-generator.vercel.app/admin/generator'));
 
     expect(response.status).toBe(200);
     expect(response.headers.get('location')).toBeNull();
@@ -33,7 +33,7 @@ describe('middleware deployment routing', () => {
     async (path) => {
       vi.stubEnv('NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT', 'generator');
 
-      const response = await middleware(new NextRequest(`https://class-store-generator.vercel.app${path}`));
+      const response = await proxy(new NextRequest(`https://class-store-generator.vercel.app${path}`));
 
       expect(response.status).toBe(404);
       expect(response.headers.get('location')).toBeNull();
@@ -45,7 +45,7 @@ describe('middleware deployment routing', () => {
     async (path) => {
       vi.stubEnv('NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT', 'generator');
 
-      const response = await middleware(new NextRequest(`https://class-store-generator.vercel.app${path}`));
+      const response = await proxy(new NextRequest(`https://class-store-generator.vercel.app${path}`));
 
       expect(response.status).toBe(200);
       expect(response.headers.get('location')).toBeNull();
@@ -56,7 +56,7 @@ describe('middleware deployment routing', () => {
     vi.stubEnv('NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT', 'system');
     vi.stubEnv('ADMIN_PASSWORD', 'secret');
 
-    const response = await middleware(new NextRequest('https://class-store.vercel.app/admin/generator'));
+    const response = await proxy(new NextRequest('https://class-store.vercel.app/admin/generator'));
 
     expect(response.status).toBe(404);
     expect(response.headers.get('location')).toBeNull();
@@ -65,7 +65,7 @@ describe('middleware deployment routing', () => {
   it('returns 404 for generator APIs in system deployments', async () => {
     vi.stubEnv('NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT', 'system');
 
-    const response = await middleware(new NextRequest('https://class-store.vercel.app/api/generator/create'));
+    const response = await proxy(new NextRequest('https://class-store.vercel.app/api/generator/create'));
 
     expect(response.status).toBe(404);
     expect(response.headers.get('location')).toBeNull();

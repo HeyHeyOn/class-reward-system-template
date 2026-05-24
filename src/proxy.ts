@@ -6,7 +6,7 @@ const GOOGLE_AUTH_COOKIE = 'class_store_google_auth';
 const SESSION_VERSION = 'v1';
 const SIGNED_SESSION_VERSION = 'v2';
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (isGeneratorDeployment() && isGeneratorBlockedRoute(pathname)) {
