@@ -128,6 +128,10 @@ describe('TransactionsPage', () => {
     expect(container.querySelector('[data-testid="transaction-row-T002"]')?.className).toContain('bg-rose-50');
     expect(container.querySelector('[data-testid="transaction-row-T003"]')?.className).toContain('bg-slate-100');
     expect(container.querySelector('[data-testid="transaction-row-CANCEL-T003"]')?.className).toContain('bg-rose-50');
+    expect(screen.getByTestId('transaction-amount-T003').className).toContain('text-sky-700');
+    expect(screen.getByTestId('transaction-amount-T003').className).not.toContain('line-through');
+    expect(screen.getByTestId('transaction-cancelled-label-T003').className).toContain('rounded-xl');
+    expect(screen.getByTestId('transaction-cancelled-label-T003').className).toContain('text-xs');
     expect(screen.getByText(/취소 일시:/).textContent).toContain('2026. 5. 21. 11시 30분 0초');
     expect(screen.getAllByText('+500별').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'T001 거래 취소' })).toBeTruthy();
@@ -149,10 +153,10 @@ describe('TransactionsPage', () => {
     expect(screen.getByTestId('transaction-row-CANCEL-T003')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '지출' }));
-    expect(await screen.findByRole('heading', { name: '최근 거래 (1)' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '최근 거래 (2)' })).toBeTruthy();
     expect(screen.getByTestId('transaction-row-T001')).toBeTruthy();
     expect(screen.queryByTestId('transaction-row-T002')).toBeNull();
-    expect(screen.queryByTestId('transaction-row-T003')).toBeNull();
+    expect(screen.getByTestId('transaction-row-T003')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '전체' }));
     expect(await screen.findByRole('heading', { name: '최근 거래 (4)' })).toBeTruthy();

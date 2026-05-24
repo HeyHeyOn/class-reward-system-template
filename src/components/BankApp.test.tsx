@@ -33,6 +33,7 @@ describe('BankApp', () => {
         transactions: [
           { transactionId: 'T001', timestamp: '2026-05-21T00:00:00.000Z', studentId: 'S001', studentName: '김민준', items: [{ productId: 'P001', name: '연필', price: 3, quantity: 2, subtotal: 6 }], totalAmount: 6, balanceBefore: 18, balanceAfter: 12, status: 'COMPLETED', operator: 'kiosk' },
           { transactionId: 'T002', timestamp: '2026-05-21T01:00:00.000Z', studentId: 'S001', studentName: '김민준', items: [{ productId: 'TASK', name: '책 읽기', price: -5, quantity: 1, subtotal: -5 }], totalAmount: -5, balanceBefore: 12, balanceAfter: 17, status: 'TASK_REWARD', operator: 'bank' },
+          { transactionId: 'T003', timestamp: '2026-05-21T02:00:00.000Z', studentId: 'S001', studentName: '김민준', items: [{ productId: 'P002', name: '지우개', price: 2, quantity: 1, subtotal: 2 }], totalAmount: 2, balanceBefore: 17, balanceAfter: 15, status: 'CANCELLED', operator: 'kiosk', cancelledAt: '2026-05-21T02:30:00.000Z' },
         ],
       });
       if (url === '/api/tasks/T001/complete' && init?.method === 'POST') return jsonResponse({ task: tasks[0], student: { studentId: 'S001', name: '김민준', balance: 17 }, completedCount: 1, remainingCompletions: 1 });
@@ -68,11 +69,11 @@ describe('BankApp', () => {
     expect(container.querySelector('[data-testid="bank-shell"]')?.className).not.toContain('bg-green-50');
     expect(container.querySelector('[data-testid="bank-shell"]')?.className).not.toContain('bg-lime-50');
     expect(screen.getByText('CLASS BANK').className).toContain('text-[#3C7A2C]');
-    expect(screen.getByRole('button', { name: '잔액 확인' }).className).toContain('bg-[#B6E39F]');
+    expect(screen.getByRole('button', { name: '내 계좌' }).className).toContain('bg-[#B6E39F]');
     expect(screen.getByRole('button', { name: '과제 확인' }).className).toContain('bg-[#D8F0CC]');
-    expect(screen.getByRole('button', { name: '잔액 확인' }).className).not.toContain('bg-[#D8F0CC]');
+    expect(screen.getByRole('button', { name: '내 계좌' }).className).not.toContain('bg-[#D8F0CC]');
     expect(screen.getByRole('button', { name: '과제 확인' }).className).not.toContain('bg-[#B6E39F]');
-    expect(screen.getByRole('button', { name: '잔액 확인' }).className).not.toContain('bg-sky-500');
+    expect(screen.getByRole('button', { name: '내 계좌' }).className).not.toContain('bg-sky-500');
     expect(screen.getByRole('button', { name: '과제 확인' }).className).not.toContain('bg-emerald-500');
   });
 
@@ -94,13 +95,13 @@ describe('BankApp', () => {
   it('checks a student balance from the bank QR popup', async () => {
     render(<BankApp />);
     expect(await screen.findByRole('heading', { name: '별빛 은행' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '잔액 확인' }));
-    expect(await screen.findByRole('dialog', { name: '잔액 확인 QR 인식' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '내 계좌' }));
+    expect(await screen.findByRole('dialog', { name: '내 계좌 QR 인식' })).toBeTruthy();
     fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
-    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 잔액 확인' }));
-    expect(await screen.findByRole('dialog', { name: '잔액 확인' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 내 계좌 확인' }));
+    expect(await screen.findByRole('dialog', { name: '내 계좌' })).toBeTruthy();
     expect(document.body.textContent).toContain('김민준 학생의 현재 잔액은 12별입니다.');
-    expect(screen.getByRole('heading', { name: '최근 거래 (2)' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '최근 거래 (3)' })).toBeTruthy();
     expect(document.body.textContent).toContain('-6별');
     expect(document.body.textContent).toContain('+5별');
     expect(document.body.textContent).toContain('연필 × 2');
@@ -111,11 +112,11 @@ describe('BankApp', () => {
   it('emphasizes the balance sentence and keeps recent transactions in a scrollable compact block', async () => {
     render(<BankApp />);
     await screen.findByRole('heading', { name: '별빛 은행' });
-    fireEvent.click(screen.getByRole('button', { name: '잔액 확인' }));
+    fireEvent.click(screen.getByRole('button', { name: '내 계좌' }));
     fireEvent.change(await screen.findByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
-    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 잔액 확인' }));
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 내 계좌 확인' }));
 
-    expect(await screen.findByRole('dialog', { name: '잔액 확인' })).toBeTruthy();
+    expect(await screen.findByRole('dialog', { name: '내 계좌' })).toBeTruthy();
     const balanceSentence = screen.getByTestId('bank-balance-sentence');
     expect(balanceSentence.className).toContain('text-xl');
     expect(balanceSentence.className).toContain('sm:text-2xl');
@@ -130,13 +131,14 @@ describe('BankApp', () => {
   it('filters balance transactions between all, income, and expense tabs', async () => {
     render(<BankApp />);
     await screen.findByRole('heading', { name: '별빛 은행' });
-    fireEvent.click(screen.getByRole('button', { name: '잔액 확인' }));
+    fireEvent.click(screen.getByRole('button', { name: '내 계좌' }));
     fireEvent.change(await screen.findByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
-    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 잔액 확인' }));
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 내 계좌 확인' }));
 
-    expect(await screen.findByRole('heading', { name: '최근 거래 (2)' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '최근 거래 (3)' })).toBeTruthy();
     expect(screen.getByText('연필 × 2')).toBeTruthy();
     expect(screen.getByText('책 읽기 × 1')).toBeTruthy();
+    expect(screen.getByTestId('bank-transaction-amount-T003').className).toContain('text-sky-700');
 
     fireEvent.click(screen.getByRole('button', { name: '수입' }));
     expect(await screen.findByRole('heading', { name: '최근 거래 (1)' })).toBeTruthy();
@@ -144,8 +146,9 @@ describe('BankApp', () => {
     expect(screen.getByText('책 읽기 × 1')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '지출' }));
-    expect(await screen.findByRole('heading', { name: '최근 거래 (1)' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '최근 거래 (2)' })).toBeTruthy();
     expect(screen.getByText('연필 × 2')).toBeTruthy();
+    expect(screen.getByText('지우개 × 1')).toBeTruthy();
     expect(screen.queryByText('책 읽기 × 1')).toBeNull();
   });
 
@@ -161,14 +164,14 @@ describe('BankApp', () => {
 
     render(<BankApp />);
     await screen.findByRole('heading', { name: '별빛 은행' });
-    fireEvent.click(screen.getByRole('button', { name: '잔액 확인' }));
+    fireEvent.click(screen.getByRole('button', { name: '내 계좌' }));
     fireEvent.change(await screen.findByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
-    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 잔액 확인' }));
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 내 계좌 확인' }));
 
-    expect(await screen.findByRole('dialog', { name: '잔액 확인 중' })).toBeTruthy();
-    expect(document.body.textContent).toContain('QR을 인식했습니다. 잔액을 불러오는 중입니다.');
+    expect(await screen.findByRole('dialog', { name: '내 계좌 확인 중' })).toBeTruthy();
+    expect(document.body.textContent).toContain('QR을 인식했습니다. 내 계좌를 불러오는 중입니다.');
     balanceRequest.resolve();
-    expect(await screen.findByRole('dialog', { name: '잔액 확인' })).toBeTruthy();
+    expect(await screen.findByRole('dialog', { name: '내 계좌' })).toBeTruthy();
   });
 
   it('shows a loading popup while loading tasks from the bank home', async () => {

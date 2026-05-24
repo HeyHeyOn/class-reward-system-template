@@ -19,6 +19,13 @@ function deferredResponse(payload: unknown) {
 describe('AdminLoginPage', () => {
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
+  it('uses the default white theme shell instead of the old blue background', () => {
+    const { container } = render(<AdminLoginPage googleLoginEnabled />);
+
+    expect(container.querySelector('main')?.className).toContain('bg-slate-100');
+    expect(container.querySelector('main')?.className).not.toContain('bg-[#dbeaf6]');
+  });
+
   it('hides Google login when the deployed app already uses a stored Sheets refresh token', () => {
     render(<AdminLoginPage googleLoginEnabled={false} />);
 

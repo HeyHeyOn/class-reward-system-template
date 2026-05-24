@@ -106,7 +106,7 @@ export function AdminLoginPage({ googleLoginEnabled = true }: { googleLoginEnabl
   }
 
   return (
-    <main className="min-h-screen bg-[#dbeaf6] px-4 py-10 text-[#25313f]">
+    <main className="min-h-screen bg-slate-100 px-4 py-10 text-[#25313f]">
       {isSubmitting ? (
         <LoadingDialog
           title="관리자 로그인 확인 중"

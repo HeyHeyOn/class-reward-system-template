@@ -49,7 +49,7 @@ export function AdminGeneratorPage() {
   const [appTitle, setAppTitle] = useState('학급 매점');
   const [bankTitle, setBankTitle] = useState('학급 은행');
   const [currencyUnit, setCurrencyUnit] = useState('원');
-  const [themeColor, setThemeColor] = useState('blue');
+  const [themeColor, setThemeColor] = useState('white');
   const [adminPasswordConfigured, setAdminPasswordConfigured] = useState(false);
   const [selfServiceAcknowledged, setSelfServiceAcknowledged] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -118,7 +118,7 @@ export function AdminGeneratorPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#dbeaf6] p-3 text-slate-950 sm:p-5">
+    <main className="min-h-screen bg-slate-100 p-3 text-slate-950 sm:p-5">
       <section className="mx-auto flex w-full max-w-4xl flex-col gap-4">
         <header className="rounded-[1.75rem] border border-slate-300/70 bg-white px-5 py-5 shadow-sm sm:px-7">
           <p className="text-xs font-black tracking-[0.22em] text-purple-600">CLASS REWARD GENERATOR</p>

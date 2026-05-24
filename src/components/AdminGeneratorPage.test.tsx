@@ -56,9 +56,11 @@ describe('AdminGeneratorPage', () => {
       json: async () => ({ enabled: true, authenticated: false }),
     }));
 
-    render(<AdminGeneratorPage />);
+    const { container } = render(<AdminGeneratorPage />);
 
     await waitFor(() => expect(screen.getByRole('heading', { name: '학급 보상 시스템 생성기' })).toBeTruthy());
+    expect(container.querySelector('main')?.className).toContain('bg-slate-100');
+    expect(container.querySelector('main')?.className).not.toContain('bg-[#dbeaf6]');
     expect(screen.getByText(/먼저 Google 로그인을 해 주세요/)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Google로 시작하기' }).getAttribute('href')).toBe('/api/google/login');
     expect(screen.queryByText('시스템 생성하기')).toBeNull();
@@ -134,6 +136,7 @@ describe('AdminGeneratorPage', () => {
     expect(screen.getByLabelText('매점 이름')).toHaveProperty('value', '학급 매점');
     expect(screen.getByLabelText('은행 이름')).toHaveProperty('value', '학급 은행');
     expect(screen.getByLabelText('화폐 단위')).toHaveProperty('value', '원');
+    expect(screen.getByLabelText('테마')).toHaveProperty('value', 'white');
     expect(screen.getByText(/Students/)).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('학급명'), { target: { value: '4학년 1반' } });

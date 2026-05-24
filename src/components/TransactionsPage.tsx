@@ -25,6 +25,11 @@ function getTransactionTone(transaction: Transaction) {
   return delta > 0 ? 'income' : 'expense';
 }
 
+function getTransactionAmountTone(transaction: Transaction) {
+  const delta = transaction.balanceAfter - transaction.balanceBefore;
+  return delta > 0 ? 'income' : 'expense';
+}
+
 function formatTimestamp(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -86,7 +91,7 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
 
   const filteredTransactions = useMemo(() => {
     if (transactionFilter === 'all') return transactions;
-    return transactions.filter((transaction) => getTransactionTone(transaction) === transactionFilter);
+    return transactions.filter((transaction) => getTransactionAmountTone(transaction) === transactionFilter);
   }, [transactions, transactionFilter]);
 
   async function cancelTransaction(transaction: Transaction) {
@@ -128,6 +133,7 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
           {filteredTransactions.length === 0 && !message ? <p className="rounded-2xl bg-sky-50 p-5 font-bold text-slate-600">표시할 거래 내역이 없습니다.</p> : null}
           {filteredTransactions.map((transaction) => {
             const tone = getTransactionTone(transaction);
+            const amountTone = getTransactionAmountTone(transaction);
             const isCancelled = tone === 'cancelled';
             const canCancel = !isCancelled && transaction.status !== 'CANCEL_REVERSAL';
             const rowClass = isCancelled
@@ -135,9 +141,7 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
               : tone === 'income'
                 ? 'border-rose-200 bg-rose-50'
                 : 'border-sky-200 bg-sky-50';
-            const amountClass = isCancelled
-              ? 'text-slate-500 line-through'
-              : tone === 'income'
+            const amountClass = amountTone === 'income'
                 ? 'text-rose-700'
                 : 'text-sky-700';
             return (
@@ -146,14 +150,13 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <strong className="text-lg font-black">{transaction.studentName}</strong>
-                      {isCancelled ? <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-black text-slate-600">취소됨</span> : null}
                     </div>
                     <p className="text-sm font-bold text-slate-500">{transaction.studentId} · {formatTimestamp(transaction.timestamp)}</p>
                     <p className="text-xs font-bold text-slate-400">{transaction.transactionId} · {transaction.status} · {transaction.operator}</p>
                     {transaction.cancelledAt ? <p className="mt-1 text-xs font-black text-slate-500">취소 일시: {formatTimestamp(transaction.cancelledAt)}</p> : null}
                   </div>
                   <div className="flex flex-col items-end gap-2">
-                    <p className={`text-2xl font-black ${amountClass}`}>{formatSignedStudentAmount(transaction, currencyUnit)}</p>
+                    <p data-testid={`transaction-amount-${transaction.transactionId}`} className={`text-2xl font-black ${amountClass}`}>{formatSignedStudentAmount(transaction, currencyUnit)}</p>
                     {canCancel ? (
                       <button
                         aria-label={`${transaction.transactionId} 거래 취소`}
@@ -164,6 +167,8 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
                       >
                         {cancelingId === transaction.transactionId ? '취소 중' : '거래 취소'}
                       </button>
+                    ) : isCancelled ? (
+                      <span data-testid={`transaction-cancelled-label-${transaction.transactionId}`} className="rounded-xl bg-slate-200 px-3 py-2 text-xs font-black text-slate-600">취소됨</span>
                     ) : null}
                   </div>
                 </div>

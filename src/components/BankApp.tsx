@@ -37,6 +37,11 @@ function getTransactionTone(transaction: Transaction) {
   return delta > 0 ? 'income' : 'expense';
 }
 
+function getTransactionAmountTone(transaction: Transaction) {
+  const delta = transaction.balanceAfter - transaction.balanceBefore;
+  return delta > 0 ? 'income' : 'expense';
+}
+
 function formatTransactionDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -78,7 +83,7 @@ export function BankApp() {
   const filteredBalanceTransactions = useMemo(() => {
     const transactions = balanceResult?.transactions ?? [];
     if (transactionFilter === 'all') return transactions;
-    return transactions.filter((transaction) => getTransactionTone(transaction) === transactionFilter);
+    return transactions.filter((transaction) => getTransactionAmountTone(transaction) === transactionFilter);
   }, [balanceResult?.transactions, transactionFilter]);
 
   const loadSettings = useCallback(async () => {
@@ -118,7 +123,7 @@ export function BankApp() {
     const studentId = decodedText.trim();
     if (!studentId) return;
     setLoading(true);
-    setLoadingDialog({ title: '잔액 확인 중', message: 'QR을 인식했습니다. 잔액을 불러오는 중입니다.' });
+    setLoadingDialog({ title: '내 계좌 확인 중', message: 'QR을 인식했습니다. 내 계좌를 불러오는 중입니다.' });
     setErrorMessage('');
     try {
       const response = await fetch(`/api/bank/balance?studentId=${encodeURIComponent(studentId)}`, { cache: 'no-store' });
@@ -194,7 +199,7 @@ export function BankApp() {
         </header>
 
         <section className="grid gap-4 rounded-[2rem] bg-white/90 p-5 shadow-lg sm:grid-cols-2">
-          <button type="button" onClick={openBalanceScan} className={`rounded-[1.5rem] ${theme.accentBg} px-5 py-12 text-3xl font-black text-slate-950 shadow-sm`}>잔액 확인</button>
+          <button type="button" onClick={openBalanceScan} className={`rounded-[1.5rem] ${theme.accentBg} px-5 py-12 text-3xl font-black text-slate-950 shadow-sm`}>내 계좌</button>
           <button type="button" onClick={loadTasks} className={`rounded-[1.5rem] ${theme.accentBgAlt} px-5 py-12 text-3xl font-black text-slate-950 shadow-sm`}>과제 확인</button>
         </section>
       </section>
@@ -202,11 +207,11 @@ export function BankApp() {
       {loadingDialog ? <LoadingDialog title={loadingDialog.title} message={loadingDialog.message} /> : null}
 
       {view === 'balance-scan' ? (
-        <ScanDialog title="잔액 확인 QR 인식" description="학생 개인 QR 코드를 카메라에 보여 주세요." manualValue={manualQr} onManualChange={setManualQr} onClose={() => setView('home')} onSubmit={() => checkBalance(manualQr)} onScan={checkBalance} submitLabel="QR 값으로 잔액 확인" />
+        <ScanDialog title="내 계좌 QR 인식" description="학생 개인 QR 코드를 카메라에 보여 주세요." manualValue={manualQr} onManualChange={setManualQr} onClose={() => setView('home')} onSubmit={() => checkBalance(manualQr)} onScan={checkBalance} submitLabel="QR 값으로 내 계좌 확인" />
       ) : null}
 
       {view === 'balance-result' ? (
-        <ResultDialog title={errorMessage ? '잔액 확인 실패' : '잔액 확인'} tone={errorMessage ? 'failure' : 'success'} onClose={() => setView('home')}>
+        <ResultDialog title={errorMessage ? '내 계좌 확인 실패' : '내 계좌'} tone={errorMessage ? 'failure' : 'success'} onClose={() => setView('home')}>
           {errorMessage ? (
             <p>{errorMessage}</p>
           ) : (
@@ -221,11 +226,13 @@ export function BankApp() {
                   <div className="mt-2 space-y-2">
                     {filteredBalanceTransactions.map((transaction) => {
                       const tone = getTransactionTone(transaction);
+                      const amountTone = getTransactionAmountTone(transaction);
                       const rowClass = tone === 'cancelled'
                         ? 'bg-slate-100 text-slate-500'
                         : tone === 'income'
                           ? 'bg-rose-50 text-rose-700'
                           : 'bg-sky-50 text-sky-700';
+                      const amountClass = amountTone === 'income' ? 'text-rose-700' : 'text-sky-700';
                       const itemLabel = transaction.items.length > 0
                         ? transaction.items.map((item) => `${item.name} × ${item.quantity}`).join(', ')
                         : '거래';
@@ -233,7 +240,7 @@ export function BankApp() {
                         <div key={transaction.transactionId} className={`rounded-xl px-3 py-2 text-sm font-black ${rowClass}`}>
                           <div className="flex items-center justify-between gap-2">
                             <span className="min-w-0 truncate text-slate-700">{itemLabel}</span>
-                            <span className="shrink-0">{formatTransactionAmount(transaction, currencyUnit)}</span>
+                            <span data-testid={`bank-transaction-amount-${transaction.transactionId}`} className={`shrink-0 ${amountClass}`}>{formatTransactionAmount(transaction, currencyUnit)}</span>
                           </div>
                           <p className="mt-1 text-xs font-bold text-slate-500">{formatTransactionDate(transaction.timestamp)} · 잔액 {transaction.balanceAfter.toLocaleString()}{currencyUnit}{tone === 'cancelled' ? ' · 취소됨' : ''}{transaction.cancelledAt ? ` · 취소 ${formatTransactionDate(transaction.cancelledAt)}` : ''}</p>
                         </div>
