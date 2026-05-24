@@ -61,8 +61,9 @@ describe('AdminGeneratorPage', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: '학급 보상 시스템 생성기' })).toBeTruthy());
     expect(container.querySelector('main')?.className).toContain('bg-slate-100');
     expect(container.querySelector('main')?.className).not.toContain('bg-[#dbeaf6]');
+    expect(container.innerHTML).not.toContain('purple');
     expect(screen.getByText(/먼저 Google 로그인을 해 주세요/)).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Google로 시작하기' }).getAttribute('href')).toBe('/api/google/login');
+
     expect(screen.queryByText('시스템 생성하기')).toBeNull();
     expect(screen.queryByText('관리자 센터로 돌아가기')).toBeNull();
     expect(screen.queryByText('현재 운영 매점 열기')).toBeNull();

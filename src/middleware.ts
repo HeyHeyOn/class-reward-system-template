@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isGeneratorDeployment } from '@/server/deploymentMode';
+import { isGeneratorDeployment, isSystemDeployment } from '@/server/deploymentMode';
 
 const ADMIN_SESSION_COOKIE = 'class_store_admin';
 const GOOGLE_AUTH_COOKIE = 'class_store_google_auth';
@@ -10,13 +10,18 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (isGeneratorDeployment() && isGeneratorBlockedRoute(pathname)) {
-    const generatorUrl = request.nextUrl.clone();
-    generatorUrl.pathname = '/admin/generator';
-    generatorUrl.search = '';
-    return NextResponse.redirect(generatorUrl);
+    return NextResponse.rewrite(new URL('/404', request.url), { status: 404 });
   }
 
   if (isGeneratorDeployment() && pathname.startsWith('/api/') && isGeneratorBlockedApi(pathname)) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
+  if (isSystemDeployment() && pathname === '/admin/generator') {
+    return NextResponse.rewrite(new URL('/404', request.url), { status: 404 });
+  }
+
+  if (isSystemDeployment() && pathname.startsWith('/api/generator/')) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 

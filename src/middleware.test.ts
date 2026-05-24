@@ -8,14 +8,14 @@ describe('middleware deployment routing', () => {
   });
 
   it.each(['/admin', '/admin/login', '/admin/manage', '/admin/student-qrs', '/bank'])(
-    'redirects generator-only deployment route %s back to the generator page',
+    'returns 404 for system page route %s in generator-only deployment',
     async (path) => {
       vi.stubEnv('NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT', 'generator');
 
       const response = await middleware(new NextRequest(`https://class-store-generator.vercel.app${path}`));
 
-      expect(response.status).toBe(307);
-      expect(response.headers.get('location')).toBe('https://class-store-generator.vercel.app/admin/generator');
+      expect(response.status).toBe(404);
+      expect(response.headers.get('location')).toBeNull();
     },
   );
 
@@ -51,4 +51,23 @@ describe('middleware deployment routing', () => {
       expect(response.headers.get('location')).toBeNull();
     },
   );
+
+  it('returns 404 for generator page routes in system deployments before admin auth', async () => {
+    vi.stubEnv('NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT', 'system');
+    vi.stubEnv('ADMIN_PASSWORD', 'secret');
+
+    const response = await middleware(new NextRequest('https://class-store.vercel.app/admin/generator'));
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get('location')).toBeNull();
+  });
+
+  it('returns 404 for generator APIs in system deployments', async () => {
+    vi.stubEnv('NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT', 'system');
+
+    const response = await middleware(new NextRequest('https://class-store.vercel.app/api/generator/create'));
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get('location')).toBeNull();
+  });
 });

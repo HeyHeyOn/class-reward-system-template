@@ -18,7 +18,14 @@ describe('/admin/generator page', () => {
   });
 
   it('is unavailable inside self-deployed system apps', async () => {
-    vi.stubEnv('GOOGLE_REFRESH_TOKEN', 'teacher-refresh-token');
+    vi.stubEnv('NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT', 'system');
+    const { default: Page } = await import('./page');
+
+    expect(() => Page()).toThrow('NEXT_NOT_FOUND');
+    expect(notFound).toHaveBeenCalledOnce();
+  });
+
+  it('is unavailable inside template/system apps even without a refresh token', async () => {
     const { default: Page } = await import('./page');
 
     expect(() => Page()).toThrow('NEXT_NOT_FOUND');

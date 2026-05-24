@@ -25,8 +25,14 @@ describe('browser tab metadata', () => {
 
     for (const [relativePath, title] of expectedTitles) {
       const source = readAppFile(relativePath);
-      expect(source, relativePath).toContain('export const metadata');
-      expect(source, relativePath).toContain(`title: '${title}'`);
+      if (relativePath === 'page.tsx') {
+        expect(source, relativePath).toContain('export function generateMetadata');
+        expect(source, relativePath).toContain("'학급 보상 시스템 생성기'");
+        expect(source, relativePath).toContain("'학급 매점'");
+      } else {
+        expect(source, relativePath).toContain('export const metadata');
+        expect(source, relativePath).toContain(`title: '${title}'`);
+      }
     }
   });
 

@@ -121,7 +121,7 @@ export function AdminGeneratorPage() {
     <main className="min-h-screen bg-slate-100 p-3 text-slate-950 sm:p-5">
       <section className="mx-auto flex w-full max-w-4xl flex-col gap-4">
         <header className="rounded-[1.75rem] border border-slate-300/70 bg-white px-5 py-5 shadow-sm sm:px-7">
-          <p className="text-xs font-black tracking-[0.22em] text-purple-600">CLASS REWARD GENERATOR</p>
+          <p className="text-xs font-black tracking-[0.22em] text-slate-500">CLASS REWARD GENERATOR</p>
           <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-5xl">학급 보상 시스템 생성기</h1>
           <p className="mt-2 max-w-2xl text-sm font-bold text-slate-500 sm:text-base">
             Google Sheets 템플릿을 만들고, 선생님 개인 Vercel에 배포하는 과정을 단계별로 안내합니다.
@@ -188,7 +188,7 @@ function StepBar({ step }: { step: WizardStep }) {
   return (
     <ol className="grid grid-cols-3 gap-2 rounded-[1.25rem] bg-white p-2 text-center text-xs font-black text-slate-500 shadow-sm sm:grid-cols-6">
       {steps.map((item, index) => (
-        <li key={item.id} className={`rounded-xl px-2 py-2 ${index <= activeIndex ? 'bg-purple-600 text-white' : 'bg-slate-100'}`}>{item.label}</li>
+        <li key={item.id} className={`rounded-xl px-2 py-2 ${index <= activeIndex ? 'bg-slate-950 text-white' : 'bg-slate-100'}`}>{item.label}</li>
       ))}
     </ol>
   );
@@ -211,7 +211,7 @@ function LoginStep({ error }: { error?: string }) {
         선생님 Google 계정에 새 스프레드시트를 만들기 위해 최초 1회 로그인이 필요합니다. 로그인 전에는 다른 설정을 보여주지 않습니다.
       </p>
       {error ? <p className="mt-3 rounded-2xl bg-red-50 p-3 text-sm font-black text-red-700">{error}</p> : null}
-      <Link href="/api/google/login" className="mt-6 inline-flex rounded-2xl bg-purple-600 px-6 py-4 text-lg font-black text-white hover:bg-purple-700">
+      <Link href="/api/google/login" className="mt-6 inline-flex rounded-2xl bg-slate-950 px-6 py-4 text-lg font-black text-white hover:bg-slate-800">
         Google로 시작하기
       </Link>
     </section>
@@ -224,9 +224,9 @@ function ChooseStep({ onCreate, onUpdate }: { onCreate: () => void; onUpdate: ()
       <h2 className="text-2xl font-black">무엇을 할까요?</h2>
       <p className="mt-2 text-sm font-bold text-slate-500">필요한 작업을 먼저 고르면, 그 작업에 필요한 설명만 단계별로 보여드립니다.</p>
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
-        <button type="button" aria-label="새 시스템 생성하기" onClick={onCreate} className="rounded-3xl border border-purple-200 bg-purple-50 p-6 text-left hover:bg-purple-100">
-          <span className="text-xl font-black text-purple-800">새 시스템 생성하기</span>
-          <span className="mt-2 block text-sm font-bold text-purple-700">새 Google Sheet를 만들고 Vercel 배포까지 안내합니다.</span>
+        <button type="button" aria-label="새 시스템 생성하기" onClick={onCreate} className="rounded-3xl border border-slate-300 bg-slate-50 p-6 text-left hover:bg-slate-100">
+          <span className="text-xl font-black text-slate-950">새 시스템 생성하기</span>
+          <span className="mt-2 block text-sm font-bold text-slate-600">새 Google Sheet를 만들고 Vercel 배포까지 안내합니다.</span>
         </button>
         <button type="button" aria-label="기존 시스템 업데이트하기" onClick={onUpdate} className="rounded-3xl border border-sky-200 bg-sky-50 p-6 text-left hover:bg-sky-100" aria-describedby="update-help">
           <span className="text-xl font-black text-sky-800">기존 시스템 업데이트하기</span>
@@ -322,7 +322,7 @@ function NoticeStep({ acknowledged, onAcknowledgedChange, onBack, onNext }: { ac
       </label>
       <div className="mt-5 flex flex-wrap gap-2">
         <button type="button" onClick={onBack} className="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-200">이전</button>
-        <button type="button" disabled={!acknowledged} onClick={onNext} className="rounded-2xl bg-purple-600 px-4 py-3 text-sm font-black text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600">기본 설정으로 이동</button>
+        <button type="button" disabled={!acknowledged} onClick={onNext} className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600">기본 설정으로 이동</button>
       </div>
     </section>
   );
@@ -363,7 +363,7 @@ function SettingsStep(props: {
             테마
             <select
               aria-label="테마"
-              className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base font-bold outline-none transition focus:border-purple-500 focus:bg-white"
+              className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base font-bold outline-none transition focus:border-slate-500 focus:bg-white"
               value={props.themeColor}
               onChange={(event) => props.onThemeColorChange(event.target.value)}
             >
@@ -393,7 +393,7 @@ function SettingsStep(props: {
             type="button"
             disabled={props.isCreating}
             onClick={props.onCreate}
-            className="rounded-2xl bg-purple-600 px-4 py-3 text-sm font-black text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
+            className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
           >
             {props.isCreating ? '생성 중...' : 'Google Sheets 생성하고 Vercel 안내 보기'}
           </button>
@@ -407,7 +407,7 @@ function SettingsStep(props: {
       </form>
 
       <section className="rounded-[1.75rem] border border-slate-300/70 bg-slate-950 p-5 text-white shadow-sm">
-        <p className="text-xs font-black tracking-[0.22em] text-purple-300">CREATE MANIFEST</p>
+        <p className="text-xs font-black tracking-[0.22em] text-slate-300">CREATE MANIFEST</p>
         <h2 className="text-2xl font-black">생성 계획 미리보기</h2>
         <pre data-testid="generator-preview" className="mt-4 max-h-[620px] overflow-auto whitespace-pre-wrap rounded-2xl bg-black/40 p-4 text-xs leading-6 text-slate-100 sm:text-sm">
           {props.preview}
@@ -512,7 +512,7 @@ function GeneratorInput({ label, value, onChange, placeholder }: { label: string
       {label}
       <input
         aria-label={label}
-        className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base font-bold outline-none transition focus:border-purple-500 focus:bg-white"
+        className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base font-bold outline-none transition focus:border-slate-500 focus:bg-white"
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
