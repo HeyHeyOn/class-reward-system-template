@@ -48,15 +48,15 @@ function formatTransactionDate(value: string) {
   return date.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
 }
 
-const BANK_THEME: Record<ThemeColor, { shell: string; accentText: string; accentBg: string; accentBgAlt: string; softBg: string; focusBorder: string }> = {
-  blue: { shell: 'bg-[#EDF5FA]', accentText: 'text-[#365F78]', accentBg: 'bg-[#B8D0E0]', accentBgAlt: 'bg-[#D8E9F2]', softBg: 'bg-[#EDF5FA]', focusBorder: 'focus:border-[#B8D0E0]' },
-  pink: { shell: 'bg-[#FAEDED]', accentText: 'text-[#8F5555]', accentBg: 'bg-[#F0C7C7]', accentBgAlt: 'bg-[#F4DADA]', softBg: 'bg-[#FAEDED]', focusBorder: 'focus:border-[#F0C7C7]' },
-  yellow: { shell: 'bg-[#FCFAE6]', accentText: 'text-[#766D1E]', accentBg: 'bg-[#F5EDA6]', accentBgAlt: 'bg-[#F8F2BF]', softBg: 'bg-[#FCFAE6]', focusBorder: 'focus:border-[#F5EDA6]' },
-  green: { shell: 'bg-[#DCF5C9]', accentText: 'text-[#505999]', accentBg: 'bg-[#A5C78B]', accentBgAlt: 'bg-[#DCF5C9]', softBg: 'bg-[#DCF5C9]', focusBorder: 'focus:border-[#A5C78B]' },
-  purple: { shell: 'bg-[#F7EDFC]', accentText: 'text-[#76518A]', accentBg: 'bg-[#BB99CC]', accentBgAlt: 'bg-[#E8D6F0]', softBg: 'bg-[#F7EDFC]', focusBorder: 'focus:border-[#BB99CC]' },
-  white: { shell: 'bg-[#FCFCFC]', accentText: 'text-[#1F1F1F]', accentBg: 'bg-[#1F1F1F] text-[#FCFCFC]', accentBgAlt: 'bg-white text-[#1F1F1F]', softBg: 'bg-white', focusBorder: 'focus:border-[#1F1F1F]' },
-  black: { shell: 'bg-[#1F1F1F]', accentText: 'text-[#FCFCFC]', accentBg: 'bg-[#FCFCFC] text-[#1F1F1F]', accentBgAlt: 'bg-[#2B2B2B] text-[#FCFCFC]', softBg: 'bg-[#2B2B2B]', focusBorder: 'focus:border-[#FCFCFC]' },
-  navy: { shell: 'bg-[#8F97CF]', accentText: 'text-[#30376F]', accentBg: 'bg-[#505999] text-[#FCFCFC]', accentBgAlt: 'bg-[#D5D9F2]', softBg: 'bg-[#D5D9F2]', focusBorder: 'focus:border-[#505999]' },
+const BANK_THEME: Record<ThemeColor, { shell: string; accentText: string; accentBg: string; accentBgAlt: string; accentBorder: string; accentBorderAlt: string; softBg: string; focusBorder: string }> = {
+  blue: { shell: 'bg-[#EDF5FA]', accentText: 'text-[#365F78]', accentBg: 'bg-[#B8D0E0] text-[#1F1F1F]', accentBgAlt: 'bg-[#D8E9F2] text-[#1F1F1F]', accentBorder: 'border-[#B8D0E0]', accentBorderAlt: 'border-[#B8D0E0]', softBg: 'bg-[#EDF5FA]', focusBorder: 'focus:border-[#B8D0E0]' },
+  pink: { shell: 'bg-[#FAEDED]', accentText: 'text-[#8F5555]', accentBg: 'bg-[#F0C7C7] text-[#1F1F1F]', accentBgAlt: 'bg-[#F4DADA] text-[#1F1F1F]', accentBorder: 'border-[#F0C7C7]', accentBorderAlt: 'border-[#F0C7C7]', softBg: 'bg-[#FAEDED]', focusBorder: 'focus:border-[#F0C7C7]' },
+  yellow: { shell: 'bg-[#FCFAE6]', accentText: 'text-[#766D1E]', accentBg: 'bg-[#F5EDA6] text-[#1F1F1F]', accentBgAlt: 'bg-[#F8F2BF] text-[#1F1F1F]', accentBorder: 'border-[#F5EDA6]', accentBorderAlt: 'border-[#F5EDA6]', softBg: 'bg-[#FCFAE6]', focusBorder: 'focus:border-[#F5EDA6]' },
+  green: { shell: 'bg-[#DCF5C9]', accentText: 'text-[#505999]', accentBg: 'bg-[#A5C78B] text-[#1F1F1F]', accentBgAlt: 'bg-[#DCF5C9] text-[#1F1F1F]', accentBorder: 'border-[#A5C78B]', accentBorderAlt: 'border-[#A5C78B]', softBg: 'bg-[#DCF5C9]', focusBorder: 'focus:border-[#A5C78B]' },
+  purple: { shell: 'bg-[#F7EDFC]', accentText: 'text-[#76518A]', accentBg: 'bg-[#BB99CC] text-[#1F1F1F]', accentBgAlt: 'bg-[#E8D6F0] text-[#1F1F1F]', accentBorder: 'border-[#BB99CC]', accentBorderAlt: 'border-[#BB99CC]', softBg: 'bg-[#F7EDFC]', focusBorder: 'focus:border-[#BB99CC]' },
+  white: { shell: 'bg-[#FCFCFC]', accentText: 'text-[#1F1F1F]', accentBg: 'bg-[#1F1F1F] text-[#FCFCFC]', accentBgAlt: 'bg-white text-[#1F1F1F]', accentBorder: 'border-[#1F1F1F]', accentBorderAlt: 'border-[#1F1F1F]', softBg: 'bg-white', focusBorder: 'focus:border-[#1F1F1F]' },
+  black: { shell: 'bg-[#1F1F1F]', accentText: 'text-[#FCFCFC]', accentBg: 'bg-[#FCFCFC] text-[#1F1F1F]', accentBgAlt: 'bg-[#2B2B2B] text-[#FCFCFC]', accentBorder: 'border-[#FCFCFC]', accentBorderAlt: 'border-[#FCFCFC]', softBg: 'bg-[#2B2B2B]', focusBorder: 'focus:border-[#FCFCFC]' },
+  navy: { shell: 'bg-[#8F97CF]', accentText: 'text-[#30376F]', accentBg: 'bg-[#505999] text-[#FCFCFC]', accentBgAlt: 'bg-[#D5D9F2] text-[#1F1F1F]', accentBorder: 'border-[#505999]', accentBorderAlt: 'border-[#505999]', softBg: 'bg-[#D5D9F2]', focusBorder: 'focus:border-[#505999]' },
 };
 
 function normalizeThemeColor(value: unknown): ThemeColor {
@@ -199,8 +199,8 @@ export function BankApp() {
         </header>
 
         <section className="grid gap-4 rounded-[2rem] bg-white/90 p-5 shadow-lg sm:grid-cols-2">
-          <button type="button" onClick={openBalanceScan} className={`rounded-[1.5rem] border border-sky-200 ${theme.accentBg} px-5 py-12 text-3xl font-black text-sky-950 shadow-sm`}>내 계좌</button>
-          <button type="button" onClick={loadTasks} className={`rounded-[1.5rem] border border-indigo-300 ${theme.accentBgAlt} px-5 py-12 text-3xl font-black text-indigo-950 shadow-sm`}>과제 확인</button>
+          <button type="button" onClick={openBalanceScan} className={`rounded-[1.5rem] border ${theme.accentBorder} ${theme.accentBg} px-5 py-12 text-3xl font-black shadow-sm`}>내 계좌</button>
+          <button type="button" onClick={loadTasks} className={`rounded-[1.5rem] border ${theme.accentBorderAlt} ${theme.accentBgAlt} px-5 py-12 text-3xl font-black shadow-sm`}>과제 확인</button>
         </section>
       </section>
 
@@ -277,7 +277,7 @@ export function BankApp() {
             <p className="rounded-2xl bg-amber-50 p-4 font-black text-amber-800">보상<br />{selectedTask.reward.toLocaleString()}{currencyUnit}</p>
             <p className="rounded-2xl bg-sky-50 p-4 font-black text-sky-800">가능 횟수<br />{selectedTask.maxCompletionsPerStudent}회</p>
           </div>
-          <button type="button" onClick={openTaskScan} className={`mt-4 w-full rounded-2xl ${theme.accentBg} py-4 text-xl font-black text-slate-950`}>완료하기</button>
+          <button type="button" onClick={openTaskScan} className={`mt-4 w-full rounded-2xl ${theme.accentBg} py-4 text-xl font-black`}>완료하기</button>
         </Modal>
       ) : null}
 
@@ -355,7 +355,7 @@ function ScanDialog({ title, description, manualValue, onManualChange, onClose, 
         <div className="mt-4 flex justify-center"><QrScanner onScan={onScan} /></div>
         <label className="mt-4 block text-sm font-bold text-slate-700">
           <span>QR 값 직접 입력</span>
-          <input aria-label="QR 값 직접 입력" value={manualValue} onChange={(event) => onManualChange(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 outline-none focus:border-sky-400" placeholder="S001" />
+          <input aria-label="QR 값 직접 입력" value={manualValue} onChange={(event) => onManualChange(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 text-slate-950 outline-none focus:border-sky-400" placeholder="S001" />
         </label>
         <div className="mt-4 flex gap-2">
           <button type="button" onClick={onClose} className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700">취소</button>

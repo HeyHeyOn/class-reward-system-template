@@ -161,7 +161,7 @@ describe('AdminManagePage', () => {
     expect(bankLink.textContent).toContain('↗');
     expect(screen.getByRole('tab', { name: '과제 설정' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: '화폐 지급/회수' })).toBeTruthy();
-    expect(screen.getByDisplayValue('별')).toBeTruthy();
+    expect(await screen.findByDisplayValue('별')).toBeTruthy();
     expect(screen.getByDisplayValue('학급 매점')).toBeTruthy();
     expect(screen.getByDisplayValue('학급 은행')).toBeTruthy();
     expect(screen.getByLabelText('테마 색상')).toBeTruthy();
@@ -204,6 +204,12 @@ describe('AdminManagePage', () => {
     expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
     expect(secondRender.container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-[#1F1F1F]');
     expect(secondRender.container.querySelector('[data-testid="admin-shell"]')?.className).not.toContain('bg-slate-100');
+    expect(screen.getByLabelText('매점 제목').className).toContain('bg-slate-50');
+    expect(screen.getByLabelText('매점 제목').className).toContain('text-slate-950');
+    fireEvent.click(screen.getByRole('tab', { name: '학생 관리' }));
+    expect(await screen.findByLabelText('S001 이름')).toBeTruthy();
+    expect(screen.getByLabelText('S001 이름').className).toContain('bg-white');
+    expect(screen.getByLabelText('S001 이름').className).toContain('text-slate-950');
   });
 
 

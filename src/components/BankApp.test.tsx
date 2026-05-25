@@ -92,6 +92,49 @@ describe('BankApp', () => {
     expect(container.querySelector('[data-testid="bank-shell"]')?.className).not.toContain('bg-black');
   });
 
+  it('keeps white and black bank theme action buttons readable and theme-colored', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '흰색 은행', currencyUnit: '별', themeColor: 'white' });
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    }));
+    const { unmount } = render(<BankApp />);
+
+    expect(await screen.findByRole('heading', { name: '흰색 은행' })).toBeTruthy();
+    const whiteBalanceButton = screen.getByRole('button', { name: '내 계좌' });
+    const whiteTasksButton = screen.getByRole('button', { name: '과제 확인' });
+    expect(whiteBalanceButton.className).toContain('bg-[#1F1F1F]');
+    expect(whiteBalanceButton.className).toContain('text-[#FCFCFC]');
+    expect(whiteBalanceButton.className).toContain('border-[#1F1F1F]');
+    expect(whiteBalanceButton.className).not.toContain('text-sky-950');
+    expect(whiteBalanceButton.className).not.toContain('border-sky-200');
+    expect(whiteTasksButton.className).toContain('bg-white');
+    expect(whiteTasksButton.className).toContain('text-[#1F1F1F]');
+    expect(whiteTasksButton.className).toContain('border-[#1F1F1F]');
+    expect(whiteTasksButton.className).not.toContain('text-indigo-950');
+    expect(whiteTasksButton.className).not.toContain('border-indigo-300');
+    unmount();
+
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '검정 은행', currencyUnit: '별', themeColor: 'black' });
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    }));
+    render(<BankApp />);
+
+    expect(await screen.findByRole('heading', { name: '검정 은행' })).toBeTruthy();
+    const blackBalanceButton = screen.getByRole('button', { name: '내 계좌' });
+    const blackTasksButton = screen.getByRole('button', { name: '과제 확인' });
+    expect(blackBalanceButton.className).toContain('bg-[#FCFCFC]');
+    expect(blackBalanceButton.className).toContain('text-[#1F1F1F]');
+    expect(blackBalanceButton.className).toContain('border-[#FCFCFC]');
+    expect(blackTasksButton.className).toContain('bg-[#2B2B2B]');
+    expect(blackTasksButton.className).toContain('text-[#FCFCFC]');
+    expect(blackTasksButton.className).toContain('border-[#FCFCFC]');
+    expect(blackBalanceButton.className).not.toContain('text-sky-950');
+    expect(blackTasksButton.className).not.toContain('text-indigo-950');
+  });
+
   it('checks a student balance from the bank QR popup', async () => {
     render(<BankApp />);
     expect(await screen.findByRole('heading', { name: '별빛 은행' })).toBeTruthy();

@@ -627,12 +627,12 @@ export function AdminManagePage() {
                     <input aria-label="전체 학생 선택" checked={allStudentsSelected} onChange={(event) => setSelectedStudentIds(event.target.checked ? students.map((student) => student.studentId) : [])} type="checkbox" />
                     전체 선택 ({selectedStudentIds.length}/{students.length})
                   </label>
-                  <select aria-label="선택 학생 작업" value={bulkMode} onChange={(event) => setBulkMode(event.target.value as BulkMode)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold">
+                  <select aria-label="선택 학생 작업" value={bulkMode} onChange={(event) => setBulkMode(event.target.value as BulkMode)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-950">
                     <option value="set">특정 값으로 설정</option>
                     <option value="add">금액 추가</option>
                     <option value="subtract">금액 제거</option>
                   </select>
-                  <input aria-label="선택 학생 금액" value={bulkAmount} onChange={(event) => setBulkAmount(Number(event.target.value))} type="number" className="w-28 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold" />
+                  <input aria-label="선택 학생 금액" value={bulkAmount} onChange={(event) => setBulkAmount(Number(event.target.value))} type="number" className="w-28 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-950" />
                   <button type="button" disabled={selectedStudentIds.length === 0} onClick={applyBulkStudentBalance} className={`rounded-xl bg-slate-950 px-4 py-2 text-sm font-black text-white ${disabledActionClass}`}>화폐 수정</button>
                   <button type="button" disabled={selectedStudentIds.length === 0} onClick={deleteSelectedStudents} className={`rounded-xl bg-rose-500 px-4 py-2 text-sm font-black text-white ${disabledActionClass}`}>삭제</button>
                   <button type="button" disabled={selectedStudentIds.length === 0} onClick={saveSelectedStudents} className={`rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black ${theme.actionText} ${disabledActionClass}`}>선택 저장</button>
@@ -669,7 +669,7 @@ export function AdminManagePage() {
                     <NumberInput label={`${student.studentId} 잔액`} value={student.balance} onChange={(value) => updateStudent(student.studentId, { balance: value })} dense />
                     <label className="block min-w-0 text-xs font-bold text-slate-700">
                       <span className="sr-only">상태</span>
-                      <select aria-label={`${student.studentId} 상태`} className="h-8 w-full rounded-lg border border-slate-200 bg-white px-1 text-xs" onChange={(event) => updateStudent(student.studentId, { status: event.target.value as Student['status'] })} value={student.status}>
+                      <select aria-label={`${student.studentId} 상태`} className="h-8 w-full rounded-lg border border-slate-200 bg-white px-1 text-xs text-slate-950" onChange={(event) => updateStudent(student.studentId, { status: event.target.value as Student['status'] })} value={student.status}>
                         <option value="ACTIVE">활성</option>
                         <option value="INACTIVE">비활성</option>
                       </select>
@@ -765,7 +765,7 @@ export function AdminManagePage() {
                 <TextInput label="새 과제명" value={newTask.title} onChange={(value) => setNewTask((current) => ({ ...current, title: value }))} compact />
                 <label className="block text-xs font-bold text-slate-700">
                   <span>새 과제 설명</span>
-                  <textarea aria-label="새 과제 설명" value={newTask.description} onChange={(event) => setNewTask((current) => ({ ...current, description: event.target.value }))} className="mt-1 min-h-24 w-full rounded-xl border border-slate-200 bg-white px-2 py-2 text-sm outline-none transition focus:border-slate-300" />
+                  <textarea aria-label="새 과제 설명" value={newTask.description} onChange={(event) => setNewTask((current) => ({ ...current, description: event.target.value }))} className="mt-1 min-h-24 w-full rounded-xl border border-slate-200 bg-white px-2 py-2 text-sm text-slate-950 outline-none transition focus:border-slate-300" />
                 </label>
                 <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-3">
                   <NumberInput label="새 과제 보상" value={newTask.reward} onChange={(value) => setNewTask((current) => ({ ...current, reward: value }))} compact />
@@ -844,7 +844,7 @@ export function AdminManagePage() {
               </div>
               <label className="mt-3 block text-sm font-black text-slate-700">
                 <span>금액</span>
-                <input aria-label="지급/회수 금액" value={currencyAmount} onChange={(event) => setCurrencyAmount(Number(event.target.value))} type="number" min="0" className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-2xl font-black outline-none focus:border-slate-300" />
+                <input aria-label="지급/회수 금액" value={currencyAmount} onChange={(event) => setCurrencyAmount(Number(event.target.value))} type="number" min="0" className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-2xl font-black text-slate-950 outline-none focus:border-slate-300" />
               </label>
               <button type="button" onClick={() => { setCurrencyResult(null); setCurrencyManualId(''); setCurrencyScannerOpen(true); }} className="mt-3 w-full rounded-2xl bg-slate-950 py-4 text-xl font-black text-white">
                 QR 인식 시작
@@ -862,7 +862,7 @@ export function AdminManagePage() {
               <span>이미지 주소 전체 입력</span>
               <textarea
                 aria-label="이미지 주소 전체 입력"
-                className="mt-2 min-h-32 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm outline-none focus:border-slate-300"
+                className="mt-2 min-h-32 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-950 outline-none focus:border-slate-300"
                 value={imageEditor.value}
                 onChange={(event) => setImageEditor((current) => current ? { ...current, value: event.target.value } : current)}
               />
@@ -918,7 +918,7 @@ export function AdminManagePage() {
               <span>과제 상세 설정 전체 입력</span>
               <textarea
                 aria-label="과제 상세 설정 전체 입력"
-                className="mt-2 min-h-40 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm outline-none focus:border-slate-300"
+                className="mt-2 min-h-40 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-950 outline-none focus:border-slate-300"
                 value={taskDescriptionEditor.value}
                 onChange={(event) => setTaskDescriptionEditor((current) => current ? { ...current, value: event.target.value } : current)}
               />
@@ -952,7 +952,7 @@ export function AdminManagePage() {
             </div>
             <label className="mt-4 block text-sm font-bold text-slate-700">
               <span>학생 QR 직접 입력</span>
-              <input aria-label="학생 QR 직접 입력" value={currencyManualId} onChange={(event) => setCurrencyManualId(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm outline-none focus:border-slate-300" placeholder="S001" />
+              <input aria-label="학생 QR 직접 입력" value={currencyManualId} onChange={(event) => setCurrencyManualId(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-950 outline-none focus:border-slate-300" placeholder="S001" />
             </label>
             <div className="mt-4 flex gap-2">
               <button type="button" className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700" onClick={() => setCurrencyScannerOpen(false)}>취소</button>
@@ -1050,8 +1050,8 @@ function SectionCard({ title, description, action, children, compact = false }: 
 function TextInput({ label, value, onChange, compact = false, dense = false, dataTestId }: { label: string; value: string; onChange: (value: string) => void; compact?: boolean; dense?: boolean; dataTestId?: string }) {
   const visibleLabel = label.replace(/^새 |^[SP]\d+ /, '');
   const inputClass = dense
-    ? 'h-8 w-full rounded-lg border border-slate-200 bg-white px-1 text-[11px] outline-none transition focus:border-slate-300'
-    : `mt-1 w-full rounded-xl border border-slate-200 bg-white px-2 outline-none transition focus:border-slate-300 ${compact ? 'py-2 text-sm' : 'py-3'}`;
+    ? 'h-8 w-full rounded-lg border border-slate-200 bg-white px-1 text-[11px] text-slate-950 outline-none transition focus:border-slate-300'
+    : `mt-1 w-full rounded-xl border border-slate-200 bg-white px-2 text-slate-950 outline-none transition focus:border-slate-300 ${compact ? 'py-2 text-sm' : 'py-3'}`;
 
   return (
     <label className="block min-w-0 text-xs font-bold text-slate-700">
@@ -1064,8 +1064,8 @@ function TextInput({ label, value, onChange, compact = false, dense = false, dat
 function NumberInput({ label, value, onChange, compact = false, dense = false }: { label: string; value: number; onChange: (value: number) => void; compact?: boolean; dense?: boolean }) {
   const visibleLabel = label.replace(/^새 |^[SP]\d+ /, '');
   const inputClass = dense
-    ? 'h-8 w-full rounded-lg border border-slate-200 bg-white px-1 text-[11px] outline-none transition focus:border-slate-300'
-    : `mt-1 w-full rounded-xl border border-slate-200 bg-white px-2 outline-none transition focus:border-slate-300 ${compact ? 'py-2 text-sm' : 'py-3'}`;
+    ? 'h-8 w-full rounded-lg border border-slate-200 bg-white px-1 text-[11px] text-slate-950 outline-none transition focus:border-slate-300'
+    : `mt-1 w-full rounded-xl border border-slate-200 bg-white px-2 text-slate-950 outline-none transition focus:border-slate-300 ${compact ? 'py-2 text-sm' : 'py-3'}`;
 
   return (
     <label className="block min-w-0 text-xs font-bold text-slate-700">

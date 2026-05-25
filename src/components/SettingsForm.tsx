@@ -99,7 +99,7 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
           value={spreadsheetIdOrUrl}
           onChange={(event) => setSpreadsheetIdOrUrl(event.target.value)}
           placeholder="https://docs.google.com/spreadsheets/d/.../edit"
-          className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg outline-none transition focus:border-amber-500 focus:bg-white"
+          className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg text-slate-950 outline-none transition focus:border-amber-500 focus:bg-white"
         />
       </label>
 
@@ -110,7 +110,7 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
           value={currencyUnit}
           onChange={(event) => setCurrencyUnit(event.target.value)}
           placeholder="원, 별, 포인트 등"
-          className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg outline-none transition focus:border-amber-500 focus:bg-white"
+          className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg text-slate-950 outline-none transition focus:border-amber-500 focus:bg-white"
         />
       </label>
 
@@ -121,7 +121,7 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
           value={appTitle}
           onChange={(event) => setAppTitle(event.target.value)}
           placeholder="학급 매점"
-          className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg outline-none transition focus:border-amber-500 focus:bg-white"
+          className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg text-slate-950 outline-none transition focus:border-amber-500 focus:bg-white"
         />
       </label>
 
@@ -132,7 +132,7 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
           value={bankTitle}
           onChange={(event) => setBankTitle(event.target.value)}
           placeholder="학급 은행"
-          className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg outline-none transition focus:border-amber-500 focus:bg-white"
+          className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg text-slate-950 outline-none transition focus:border-amber-500 focus:bg-white"
         />
       </label>
 
@@ -143,7 +143,7 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
           aria-label="테마 색상"
           value={themeColor}
           onChange={(event) => setThemeColor(event.target.value)}
-          className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg font-bold outline-none transition focus:border-amber-500 focus:bg-white"
+          className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg font-bold text-slate-950 outline-none transition focus:border-amber-500 focus:bg-white"
         >
           <option value="blue">파랑</option>
           <option value="pink">분홍</option>
@@ -163,7 +163,7 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
           value={adminPassword}
           onChange={(event) => setAdminPassword(event.target.value)}
           placeholder={currentSettings?.adminPasswordConfigured ? '새 암호를 입력하면 변경됩니다' : '관리자 로그인 암호'}
-          className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg outline-none transition focus:border-amber-500 focus:bg-white"
+          className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg text-slate-950 outline-none transition focus:border-amber-500 focus:bg-white"
         />
         <p className="mt-2 text-xs font-bold text-slate-500">암호는 해시로 Settings 시트에 저장됩니다. QR은 저장 직후 이 화면에서만 표시됩니다.</p>
       </label>
