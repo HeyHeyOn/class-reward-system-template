@@ -81,7 +81,7 @@ describe('KioskApp', () => {
 
     expect(screen.queryByRole('link', { name: '관리자 설정' })).toBeNull();
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('h-screen');
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-pink-50');
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-[#FAEDED]');
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('overflow-hidden');
     expect(container.querySelector('[data-testid="kiosk-main-grid"]')?.className).toContain('grid-rows-[minmax(0,2fr)_minmax(0,1fr)]');
     expect(container.querySelector('[data-testid="kiosk-main-grid"]')?.className).toContain('landscape:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]');
@@ -136,7 +136,7 @@ describe('KioskApp', () => {
     expect(screen.queryByRole('heading', { name: '상품 목록' })).toBeNull();
     resolveProducts();
     expect(await screen.findByRole('heading', { name: '학급 매점' })).toBeTruthy();
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-slate-100');
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-[#FCFCFC]');
   });
 
   it('applies the new navy theme from settings', async () => {
@@ -145,7 +145,7 @@ describe('KioskApp', () => {
     const { container } = render(<KioskApp />);
 
     expect(await screen.findByRole('heading', { name: '남색 매점' })).toBeTruthy();
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-blue-950');
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-[#8F97CF]');
   });
 
   it('applies softer pastel theme classes from settings on the kiosk', async () => {
@@ -154,16 +154,16 @@ describe('KioskApp', () => {
     const { container } = render(<KioskApp />);
 
     expect(await screen.findByRole('heading', { name: '분홍 매점' })).toBeTruthy();
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-pink-50');
-    expect(screen.getByRole('button', { name: '전체' }).className).toContain('bg-pink-200');
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-[#FAEDED]');
+    expect(screen.getByRole('button', { name: '전체' }).className).toContain('bg-[#F0C7C7]');
     expect(screen.getByRole('button', { name: '전체' }).className).not.toContain('bg-pink-500');
   });
 
   it('uses a soft yellow, balanced green, and darker black kiosk shell when selected', async () => {
     for (const [themeColor, expectedShell, rejectedShell] of [
-      ['yellow', 'bg-yellow-50', 'bg-yellow-100'],
-      ['green', 'bg-[#F3FCEE]', 'bg-green-50'],
-      ['black', 'bg-slate-900', 'bg-slate-100'],
+      ['yellow', 'bg-[#FCFAE6]', 'bg-yellow-100'],
+      ['green', 'bg-[#DCF5C9]', 'bg-green-50'],
+      ['black', 'bg-[#1F1F1F]', 'bg-slate-100'],
     ] as const) {
       cleanup();
       vi.mocked(fetch).mockReset();
@@ -267,7 +267,7 @@ describe('KioskApp', () => {
 
     expect(await screen.findByText('연필')).toBeTruthy();
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('h-screen');
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-pink-50');
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-[#FAEDED]');
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('overflow-hidden');
     expect(container.querySelector('[data-testid="kiosk-content"]')?.className).toContain('h-full');
     expect(container.querySelector('[data-testid="kiosk-title"]')?.className).toContain('text-[clamp(');

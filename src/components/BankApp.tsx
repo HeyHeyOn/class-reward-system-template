@@ -49,14 +49,14 @@ function formatTransactionDate(value: string) {
 }
 
 const BANK_THEME: Record<ThemeColor, { shell: string; accentText: string; accentBg: string; accentBgAlt: string; softBg: string; focusBorder: string }> = {
-  blue: { shell: 'bg-sky-50', accentText: 'text-sky-700', accentBg: 'bg-sky-200', accentBgAlt: 'bg-sky-100', softBg: 'bg-sky-50', focusBorder: 'focus:border-sky-200' },
-  pink: { shell: 'bg-pink-50', accentText: 'text-pink-700', accentBg: 'bg-pink-200', accentBgAlt: 'bg-pink-100', softBg: 'bg-pink-50', focusBorder: 'focus:border-pink-200' },
-  yellow: { shell: 'bg-yellow-50', accentText: 'text-yellow-700', accentBg: 'bg-yellow-200', accentBgAlt: 'bg-yellow-100', softBg: 'bg-yellow-50', focusBorder: 'focus:border-yellow-200' },
-  green: { shell: 'bg-[#F3FCEE]', accentText: 'text-[#3C7A2C]', accentBg: 'bg-[#B6E39F]', accentBgAlt: 'bg-[#D8F0CC]', softBg: 'bg-[#F3FCEE]', focusBorder: 'focus:border-[#B6E39F]' },
-  purple: { shell: 'bg-purple-50', accentText: 'text-purple-700', accentBg: 'bg-purple-200', accentBgAlt: 'bg-purple-100', softBg: 'bg-purple-50', focusBorder: 'focus:border-purple-200' },
-  white: { shell: 'bg-slate-100', accentText: 'text-slate-700', accentBg: 'bg-sky-100', accentBgAlt: 'bg-indigo-300', softBg: 'bg-slate-50', focusBorder: 'focus:border-slate-300' },
-  black: { shell: 'bg-slate-900', accentText: 'text-slate-700', accentBg: 'bg-slate-300', accentBgAlt: 'bg-slate-200', softBg: 'bg-slate-100', focusBorder: 'focus:border-slate-400' },
-  navy: { shell: 'bg-blue-950', accentText: 'text-blue-800', accentBg: 'bg-blue-200', accentBgAlt: 'bg-blue-100', softBg: 'bg-blue-50', focusBorder: 'focus:border-blue-300' },
+  blue: { shell: 'bg-[#EDF5FA]', accentText: 'text-[#365F78]', accentBg: 'bg-[#B8D0E0]', accentBgAlt: 'bg-[#D8E9F2]', softBg: 'bg-[#EDF5FA]', focusBorder: 'focus:border-[#B8D0E0]' },
+  pink: { shell: 'bg-[#FAEDED]', accentText: 'text-[#8F5555]', accentBg: 'bg-[#F0C7C7]', accentBgAlt: 'bg-[#F4DADA]', softBg: 'bg-[#FAEDED]', focusBorder: 'focus:border-[#F0C7C7]' },
+  yellow: { shell: 'bg-[#FCFAE6]', accentText: 'text-[#766D1E]', accentBg: 'bg-[#F5EDA6]', accentBgAlt: 'bg-[#F8F2BF]', softBg: 'bg-[#FCFAE6]', focusBorder: 'focus:border-[#F5EDA6]' },
+  green: { shell: 'bg-[#DCF5C9]', accentText: 'text-[#505999]', accentBg: 'bg-[#A5C78B]', accentBgAlt: 'bg-[#DCF5C9]', softBg: 'bg-[#DCF5C9]', focusBorder: 'focus:border-[#A5C78B]' },
+  purple: { shell: 'bg-[#F7EDFC]', accentText: 'text-[#76518A]', accentBg: 'bg-[#BB99CC]', accentBgAlt: 'bg-[#E8D6F0]', softBg: 'bg-[#F7EDFC]', focusBorder: 'focus:border-[#BB99CC]' },
+  white: { shell: 'bg-[#FCFCFC]', accentText: 'text-[#1F1F1F]', accentBg: 'bg-[#1F1F1F] text-[#FCFCFC]', accentBgAlt: 'bg-white text-[#1F1F1F]', softBg: 'bg-white', focusBorder: 'focus:border-[#1F1F1F]' },
+  black: { shell: 'bg-[#1F1F1F]', accentText: 'text-[#FCFCFC]', accentBg: 'bg-[#FCFCFC] text-[#1F1F1F]', accentBgAlt: 'bg-[#2B2B2B] text-[#FCFCFC]', softBg: 'bg-[#2B2B2B]', focusBorder: 'focus:border-[#FCFCFC]' },
+  navy: { shell: 'bg-[#8F97CF]', accentText: 'text-[#30376F]', accentBg: 'bg-[#505999] text-[#FCFCFC]', accentBgAlt: 'bg-[#D5D9F2]', softBg: 'bg-[#D5D9F2]', focusBorder: 'focus:border-[#505999]' },
 };
 
 function normalizeThemeColor(value: unknown): ThemeColor {

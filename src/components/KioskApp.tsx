@@ -39,14 +39,14 @@ type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'b
 type KioskSettings = { currencyUnit?: string; appTitle?: string; themeColor?: ThemeColor };
 
 const THEME_STYLES: Record<ThemeColor, { shell: string; accentText: string; accentBg: string; selectedText: string; lightBg: string; hoverBg: string; ring: string }> = {
-  blue: { shell: 'bg-sky-50', accentText: 'text-sky-700', accentBg: 'bg-sky-300', selectedText: 'text-sky-950', lightBg: 'bg-sky-50', hoverBg: 'hover:bg-sky-200', ring: 'focus:ring-sky-200' },
-  pink: { shell: 'bg-pink-50', accentText: 'text-pink-700', accentBg: 'bg-pink-200', selectedText: 'text-pink-950', lightBg: 'bg-pink-50', hoverBg: 'hover:bg-pink-100', ring: 'focus:ring-pink-200' },
-  yellow: { shell: 'bg-yellow-50', accentText: 'text-yellow-700', accentBg: 'bg-yellow-200', selectedText: 'text-yellow-950', lightBg: 'bg-yellow-50', hoverBg: 'hover:bg-yellow-100', ring: 'focus:ring-yellow-200' },
-  green: { shell: 'bg-[#F3FCEE]', accentText: 'text-[#3C7A2C]', accentBg: 'bg-[#B6E39F]', selectedText: 'text-[#214D18]', lightBg: 'bg-[#F3FCEE]', hoverBg: 'hover:bg-[#D8F0CC]', ring: 'focus:ring-[#B6E39F]' },
-  purple: { shell: 'bg-purple-50', accentText: 'text-purple-700', accentBg: 'bg-purple-200', selectedText: 'text-purple-950', lightBg: 'bg-purple-50', hoverBg: 'hover:bg-purple-100', ring: 'focus:ring-purple-200' },
-  white: { shell: 'bg-slate-100', accentText: 'text-slate-900', accentBg: 'bg-slate-700', selectedText: 'text-white', lightBg: 'bg-slate-200', hoverBg: 'hover:bg-slate-800', ring: 'focus:ring-slate-300' },
-  black: { shell: 'bg-slate-900', accentText: 'text-slate-900', accentBg: 'bg-slate-700', selectedText: 'text-white', lightBg: 'bg-slate-100', hoverBg: 'hover:bg-slate-600', ring: 'focus:ring-slate-400' },
-  navy: { shell: 'bg-blue-950', accentText: 'text-blue-900', accentBg: 'bg-blue-800', selectedText: 'text-white', lightBg: 'bg-blue-100', hoverBg: 'hover:bg-blue-700', ring: 'focus:ring-blue-300' },
+  blue: { shell: 'bg-[#EDF5FA]', accentText: 'text-[#365F78]', accentBg: 'bg-[#B8D0E0]', selectedText: 'text-[#1F1F1F]', lightBg: 'bg-[#EDF5FA]', hoverBg: 'hover:bg-[#D8E9F2]', ring: 'focus:ring-[#B8D0E0]' },
+  pink: { shell: 'bg-[#FAEDED]', accentText: 'text-[#8F5555]', accentBg: 'bg-[#F0C7C7]', selectedText: 'text-[#1F1F1F]', lightBg: 'bg-[#FAEDED]', hoverBg: 'hover:bg-[#F4DADA]', ring: 'focus:ring-[#F0C7C7]' },
+  yellow: { shell: 'bg-[#FCFAE6]', accentText: 'text-[#766D1E]', accentBg: 'bg-[#F5EDA6]', selectedText: 'text-[#1F1F1F]', lightBg: 'bg-[#FCFAE6]', hoverBg: 'hover:bg-[#F8F2BF]', ring: 'focus:ring-[#F5EDA6]' },
+  green: { shell: 'bg-[#DCF5C9]', accentText: 'text-[#4F7138]', accentBg: 'bg-[#A5C78B]', selectedText: 'text-[#1F1F1F]', lightBg: 'bg-[#DCF5C9]', hoverBg: 'hover:bg-[#C3E5AE]', ring: 'focus:ring-[#A5C78B]' },
+  purple: { shell: 'bg-[#F7EDFC]', accentText: 'text-[#76518A]', accentBg: 'bg-[#BB99CC]', selectedText: 'text-[#1F1F1F]', lightBg: 'bg-[#F7EDFC]', hoverBg: 'hover:bg-[#E8D6F0]', ring: 'focus:ring-[#BB99CC]' },
+  white: { shell: 'bg-[#FCFCFC]', accentText: 'text-[#1F1F1F]', accentBg: 'bg-[#1F1F1F]', selectedText: 'text-[#FCFCFC]', lightBg: 'bg-white', hoverBg: 'hover:bg-[#2B2B2B]', ring: 'focus:ring-[#1F1F1F]' },
+  black: { shell: 'bg-[#1F1F1F]', accentText: 'text-[#FCFCFC]', accentBg: 'bg-[#FCFCFC]', selectedText: 'text-[#1F1F1F]', lightBg: 'bg-[#2B2B2B]', hoverBg: 'hover:bg-white', ring: 'focus:ring-[#FCFCFC]' },
+  navy: { shell: 'bg-[#8F97CF]', accentText: 'text-[#30376F]', accentBg: 'bg-[#505999]', selectedText: 'text-[#FCFCFC]', lightBg: 'bg-[#D5D9F2]', hoverBg: 'hover:bg-[#414986]', ring: 'focus:ring-[#505999]' },
 };
 
 function normalizeThemeColor(value: unknown): ThemeColor {

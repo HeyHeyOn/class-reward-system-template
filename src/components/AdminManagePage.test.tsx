@@ -129,7 +129,7 @@ describe('AdminManagePage', () => {
     expect(screen.getByText('Class Reward System')).toBeTruthy();
     const logo = screen.getByRole('img', { name: '학급 보상 시스템 로고' });
     expect(logo).toBeTruthy();
-    expect(logo.className).toContain('bg-sky-500');
+    expect(logo.className).toContain('bg-[#365F78]');
     expect(logo.className).toContain("[mask-image:url('/class-reward-system-icon.png')]");
     expect(logo.className).not.toContain('bg-white');
     expect(logo.parentElement?.className).not.toMatch(/bg-|shadow|rounded/);
@@ -149,14 +149,23 @@ describe('AdminManagePage', () => {
     expect(screen.getByRole('tab', { name: '거래 내역 확인' })).toBeTruthy();
     expect(screen.queryByRole('link', { name: /거래 내역 확인/ })).toBeNull();
     expect(screen.queryByRole('link', { name: /시스템 생성기/ })).toBeNull();
-    expect(screen.getByRole('link', { name: /은행 바로가기/ }).getAttribute('href')).toBe('/bank');
+    const storeLink = screen.getByRole('link', { name: /매점 바로가기/ });
+    const bankLink = screen.getByRole('link', { name: /은행 바로가기/ });
+    expect(storeLink.getAttribute('href')).toBe('/');
+    expect(storeLink.getAttribute('target')).toBe('_blank');
+    expect(storeLink.getAttribute('rel')).toContain('noopener');
+    expect(storeLink.textContent).toContain('↗');
+    expect(bankLink.getAttribute('href')).toBe('/bank');
+    expect(bankLink.getAttribute('target')).toBe('_blank');
+    expect(bankLink.getAttribute('rel')).toContain('noopener');
+    expect(bankLink.textContent).toContain('↗');
     expect(screen.getByRole('tab', { name: '과제 설정' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: '화폐 지급/회수' })).toBeTruthy();
     expect(screen.getByDisplayValue('별')).toBeTruthy();
     expect(screen.getByDisplayValue('학급 매점')).toBeTruthy();
     expect(screen.getByDisplayValue('학급 은행')).toBeTruthy();
     expect(screen.getByLabelText('테마 색상')).toBeTruthy();
-    expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-sky-50');
+    expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-[#EDF5FA]');
     expect(container.querySelector('[data-testid="admin-tabs"]')?.className).toContain('rounded-[1.5rem]');
     expect(screen.queryByText('Google Sheets 연결')).toBeNull();
     expect(screen.queryByText('잔액과 상태 관리')).toBeNull();
@@ -177,7 +186,7 @@ describe('AdminManagePage', () => {
     const { container, unmount } = render(<AdminManagePage />);
 
     expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
-    expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-[#F3FCEE]');
+    expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-[#DCF5C9]');
     expect(container.querySelector('[data-testid="admin-shell"]')?.className).not.toContain('bg-green-50');
     unmount();
 
@@ -193,8 +202,39 @@ describe('AdminManagePage', () => {
     const secondRender = render(<AdminManagePage />);
 
     expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
-    expect(secondRender.container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-slate-900');
+    expect(secondRender.container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-[#1F1F1F]');
     expect(secondRender.container.querySelector('[data-testid="admin-shell"]')?.className).not.toContain('bg-slate-100');
+  });
+
+
+  it('keeps the one-time admin QR visible while linked sheet data reloads after password save', async () => {
+    const reloadGate = deferredResponse(students);
+    let studentCalls = 0;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/students') {
+        studentCalls += 1;
+        return studentCalls === 1 ? jsonResponse(students) : reloadGate.response;
+      }
+      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
+      if (url === '/api/transactions') return jsonResponse([]);
+      if (url === '/api/settings' && init?.method === 'POST') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', source: 'runtime', adminPasswordConfigured: true });
+      if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', source: 'runtime' });
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+
+    render(<AdminManagePage />);
+    await screen.findByRole('heading', { name: '학급 보상 시스템' });
+    fireEvent.change(screen.getByLabelText('관리자 암호 설정'), { target: { value: 'new-admin-pass' } });
+    fireEvent.click(screen.getByRole('button', { name: '시스템 설정 저장' }));
+
+    expect(await screen.findByText('관리자 QR 로그인 코드')).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: '시트 정보 불러오는 중' })).toBeNull();
+    expect(screen.getByRole('img', { name: '관리자 로그인 QR' }).getAttribute('src')).toContain('class-store-admin%3Anew-admin-pass');
+
+    reloadGate.resolve();
+    await waitFor(() => expect(screen.getByText(/시스템 설정을 저장/)).toBeTruthy());
   });
 
   it('shows a full screen loading dialog until admin sheet data and theme are loaded', async () => {
@@ -215,7 +255,7 @@ describe('AdminManagePage', () => {
 
     studentGate.resolve();
     expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
-    expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-slate-50');
+    expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-[#FCFCFC]');
   });
 
   it('preloads payment history before the payment tab is opened', async () => {

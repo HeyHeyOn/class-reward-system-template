@@ -18,7 +18,7 @@ type BulkMode = 'set' | 'add' | 'subtract';
 type CurrencyMode = 'add' | 'subtract';
 type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'black' | 'navy';
 type Settings = { currencyUnit?: string; appTitle?: string; bankTitle?: string; themeColor?: ThemeColor };
-type AdminTheme = { shell: string; accentText: string; accentBg: string; selectedTab: string; idleTab: string; statBg: string; logoColor: string; softBg: string; focusBorder: string };
+type AdminTheme = { shell: string; pageText: string; accentText: string; accentBg: string; actionText: string; selectedTab: string; idleTab: string; statBg: string; logoColor: string; softBg: string; focusBorder: string };
 const disabledActionClass = 'disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none';
 type CurrencyResult = {
   status: 'success' | 'failure';
@@ -51,14 +51,14 @@ const EMPTY_PRODUCT: NewProductDraft = { name: '', price: 0, stock: 0, isActive:
 const EMPTY_TASK: Omit<TaskDraft, 'taskId'> = { title: '', description: '', reward: 0, maxCompletionsPerStudent: 1, isActive: true, sortOrder: 1 };
 
 const ADMIN_THEME: Record<ThemeColor, AdminTheme> = {
-  blue: { shell: 'bg-sky-50', accentText: 'text-sky-700', accentBg: 'bg-sky-300', selectedTab: 'bg-sky-200 text-sky-950', idleTab: 'bg-sky-50 text-slate-700 hover:bg-sky-100', statBg: 'bg-sky-50', logoColor: 'bg-sky-500', softBg: 'bg-sky-50/70', focusBorder: 'focus:border-sky-200' },
-  pink: { shell: 'bg-pink-50', accentText: 'text-pink-700', accentBg: 'bg-pink-200', selectedTab: 'bg-pink-200 text-pink-950', idleTab: 'bg-pink-50 text-slate-700 hover:bg-pink-100', statBg: 'bg-pink-50', logoColor: 'bg-pink-400', softBg: 'bg-pink-50/70', focusBorder: 'focus:border-pink-200' },
-  yellow: { shell: 'bg-yellow-50', accentText: 'text-yellow-700', accentBg: 'bg-yellow-200', selectedTab: 'bg-yellow-200 text-yellow-950', idleTab: 'bg-yellow-50 text-slate-700 hover:bg-yellow-100', statBg: 'bg-yellow-50', logoColor: 'bg-yellow-500', softBg: 'bg-yellow-50/70', focusBorder: 'focus:border-yellow-200' },
-  green: { shell: 'bg-[#F3FCEE]', accentText: 'text-[#3C7A2C]', accentBg: 'bg-[#B6E39F]', selectedTab: 'bg-[#B6E39F] text-[#214D18]', idleTab: 'bg-[#F3FCEE] text-slate-700 hover:bg-[#D8F0CC]', statBg: 'bg-[#F3FCEE]', logoColor: 'bg-[#6FAE55]', softBg: 'bg-[#F3FCEE]/70', focusBorder: 'focus:border-[#B6E39F]' },
-  purple: { shell: 'bg-purple-50', accentText: 'text-purple-700', accentBg: 'bg-purple-200', selectedTab: 'bg-purple-200 text-purple-950', idleTab: 'bg-purple-50 text-slate-700 hover:bg-purple-100', statBg: 'bg-purple-50', logoColor: 'bg-purple-500', softBg: 'bg-purple-50/70', focusBorder: 'focus:border-purple-200' },
-  white: { shell: 'bg-slate-50', accentText: 'text-slate-700', accentBg: 'bg-slate-300', selectedTab: 'bg-slate-200 text-slate-950', idleTab: 'bg-white text-slate-700 hover:bg-slate-100', statBg: 'bg-slate-50', logoColor: 'bg-slate-700', softBg: 'bg-slate-50/80', focusBorder: 'focus:border-slate-300' },
-  black: { shell: 'bg-slate-900', accentText: 'text-slate-700', accentBg: 'bg-slate-300', selectedTab: 'bg-slate-700 text-white', idleTab: 'bg-slate-100 text-slate-700 hover:bg-slate-200', statBg: 'bg-slate-100', logoColor: 'bg-slate-700', softBg: 'bg-slate-100/80', focusBorder: 'focus:border-slate-400' },
-  navy: { shell: 'bg-indigo-50', accentText: 'text-indigo-800', accentBg: 'bg-indigo-200', selectedTab: 'bg-indigo-200 text-indigo-950', idleTab: 'bg-indigo-50 text-slate-700 hover:bg-indigo-100', statBg: 'bg-indigo-50', logoColor: 'bg-indigo-700', softBg: 'bg-indigo-50/70', focusBorder: 'focus:border-indigo-200' },
+  blue: { shell: 'bg-[#EDF5FA]', pageText: 'text-slate-950', accentText: 'text-[#365F78]', accentBg: 'bg-[#B8D0E0]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#B8D0E0] text-[#1F1F1F]', idleTab: 'bg-[#EDF5FA] text-slate-800 hover:bg-[#D8E9F2]', statBg: 'bg-[#EDF5FA]', logoColor: 'bg-[#365F78]', softBg: 'bg-[#EDF5FA]/80', focusBorder: 'focus:border-[#B8D0E0]' },
+  pink: { shell: 'bg-[#FAEDED]', pageText: 'text-slate-950', accentText: 'text-[#8F5555]', accentBg: 'bg-[#F0C7C7]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#F0C7C7] text-[#1F1F1F]', idleTab: 'bg-[#FAEDED] text-slate-800 hover:bg-[#F4DADA]', statBg: 'bg-[#FAEDED]', logoColor: 'bg-[#B97878]', softBg: 'bg-[#FAEDED]/80', focusBorder: 'focus:border-[#F0C7C7]' },
+  yellow: { shell: 'bg-[#FCFAE6]', pageText: 'text-slate-950', accentText: 'text-[#766D1E]', accentBg: 'bg-[#F5EDA6]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#F5EDA6] text-[#1F1F1F]', idleTab: 'bg-[#FCFAE6] text-slate-800 hover:bg-[#F8F2BF]', statBg: 'bg-[#FCFAE6]', logoColor: 'bg-[#A99D37]', softBg: 'bg-[#FCFAE6]/80', focusBorder: 'focus:border-[#F5EDA6]' },
+  green: { shell: 'bg-[#DCF5C9]', pageText: 'text-slate-950', accentText: 'text-[#4F7138]', accentBg: 'bg-[#A5C78B]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#A5C78B] text-[#1F1F1F]', idleTab: 'bg-[#DCF5C9] text-slate-800 hover:bg-[#C3E5AE]', statBg: 'bg-[#DCF5C9]', logoColor: 'bg-[#6B8E50]', softBg: 'bg-[#DCF5C9]/80', focusBorder: 'focus:border-[#A5C78B]' },
+  purple: { shell: 'bg-[#F7EDFC]', pageText: 'text-slate-950', accentText: 'text-[#76518A]', accentBg: 'bg-[#BB99CC]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#BB99CC] text-[#1F1F1F]', idleTab: 'bg-[#F7EDFC] text-slate-800 hover:bg-[#E8D6F0]', statBg: 'bg-[#F7EDFC]', logoColor: 'bg-[#76518A]', softBg: 'bg-[#F7EDFC]/80', focusBorder: 'focus:border-[#BB99CC]' },
+  white: { shell: 'bg-[#FCFCFC]', pageText: 'text-[#1F1F1F]', accentText: 'text-[#1F1F1F]', accentBg: 'bg-[#1F1F1F]', actionText: 'text-[#FCFCFC]', selectedTab: 'bg-[#1F1F1F] text-[#FCFCFC]', idleTab: 'bg-[#FCFCFC] text-[#1F1F1F] hover:bg-white', statBg: 'bg-white', logoColor: 'bg-[#1F1F1F]', softBg: 'bg-white', focusBorder: 'focus:border-[#1F1F1F]' },
+  black: { shell: 'bg-[#1F1F1F]', pageText: 'text-[#FCFCFC]', accentText: 'text-[#FCFCFC]', accentBg: 'bg-[#FCFCFC]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#FCFCFC] text-[#1F1F1F]', idleTab: 'bg-[#2B2B2B] text-[#FCFCFC] hover:bg-[#3A3A3A]', statBg: 'bg-[#2B2B2B]', logoColor: 'bg-[#FCFCFC]', softBg: 'bg-[#2B2B2B]', focusBorder: 'focus:border-[#FCFCFC]' },
+  navy: { shell: 'bg-[#8F97CF]', pageText: 'text-[#1F1F1F]', accentText: 'text-[#30376F]', accentBg: 'bg-[#505999]', actionText: 'text-[#FCFCFC]', selectedTab: 'bg-[#505999] text-[#FCFCFC]', idleTab: 'bg-[#D5D9F2] text-[#1F1F1F] hover:bg-[#C1C6EA]', statBg: 'bg-[#D5D9F2]', logoColor: 'bg-[#505999]', softBg: 'bg-[#D5D9F2]/80', focusBorder: 'focus:border-[#505999]' },
 };
 
 function normalizeThemeColor(value: unknown): ThemeColor {
@@ -550,7 +550,7 @@ export function AdminManagePage() {
   }
 
   return (
-    <main data-testid="admin-shell" className={`min-h-screen ${theme.shell} p-2 text-slate-950 sm:p-3 lg:p-5`}>
+    <main data-testid="admin-shell" className={`min-h-screen ${theme.shell} ${theme.pageText} p-2 sm:p-3 lg:p-5`}>
       <section className="mx-auto flex w-full max-w-[1280px] flex-col gap-3 lg:gap-4">
         <header className="rounded-[1.25rem] border border-slate-300/70 bg-white px-4 py-4 text-center shadow-sm sm:rounded-[1.75rem] md:px-6">
           <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -600,7 +600,7 @@ export function AdminManagePage() {
             <SettingsForm
               linkedStudentCount={students.length}
               linkedProductCount={products.length}
-              onSettingsSaved={() => loadLinkedSheetData()}
+              onSettingsSaved={() => loadLinkedSheetData({ silent: true })}
             />
             <InfoPanel />
           </section>
@@ -616,11 +616,11 @@ export function AdminManagePage() {
                   <NumberInput label="새 학생 번호" value={newStudent.number} onChange={(value) => setNewStudent((current) => ({ ...current, number: value }))} compact />
                   <NumberInput label="새 학생 잔액" value={newStudent.balance} onChange={(value) => setNewStudent((current) => ({ ...current, balance: value }))} compact />
                 </div>
-                <button className={`w-full rounded-xl ${theme.accentBg} py-3 font-black text-slate-950 shadow-sm`} type="submit">새 학생 추가</button>
+                <button className={`w-full rounded-xl ${theme.accentBg} py-3 font-black ${theme.actionText} shadow-sm`} type="submit">새 학생 추가</button>
               </form>
             </SectionCard>
 
-            <SectionCard title="학생 명단" action={<button type="button" onClick={saveAllStudents} className={`rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black text-slate-950 shadow-sm`}>전체 저장</button>} compact>
+            <SectionCard title="학생 명단" action={<button type="button" onClick={saveAllStudents} className={`rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black ${theme.actionText} shadow-sm`}>전체 저장</button>} compact>
               <div className={`mb-3 rounded-2xl border border-slate-200 ${theme.softBg} p-3`}>
                 <div className="flex flex-wrap items-center gap-2">
                   <label className="flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-black">
@@ -635,7 +635,7 @@ export function AdminManagePage() {
                   <input aria-label="선택 학생 금액" value={bulkAmount} onChange={(event) => setBulkAmount(Number(event.target.value))} type="number" className="w-28 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold" />
                   <button type="button" disabled={selectedStudentIds.length === 0} onClick={applyBulkStudentBalance} className={`rounded-xl bg-slate-950 px-4 py-2 text-sm font-black text-white ${disabledActionClass}`}>화폐 수정</button>
                   <button type="button" disabled={selectedStudentIds.length === 0} onClick={deleteSelectedStudents} className={`rounded-xl bg-rose-500 px-4 py-2 text-sm font-black text-white ${disabledActionClass}`}>삭제</button>
-                  <button type="button" disabled={selectedStudentIds.length === 0} onClick={saveSelectedStudents} className={`rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black text-slate-950 ${disabledActionClass}`}>선택 저장</button>
+                  <button type="button" disabled={selectedStudentIds.length === 0} onClick={saveSelectedStudents} className={`rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black ${theme.actionText} ${disabledActionClass}`}>선택 저장</button>
                   <button
                     type="button"
                     disabled={selectedStudentIds.length === 0}
@@ -700,18 +700,18 @@ export function AdminManagePage() {
                 <div className="grid grid-cols-2 gap-2">
                   <NumberInput label="새 상품 정렬" value={newProduct.sortOrder} onChange={(value) => setNewProduct((current) => ({ ...current, sortOrder: value }))} compact />
                 </div>
-                <button className={`w-full rounded-xl ${theme.accentBg} py-3 font-black text-slate-950 shadow-sm`} type="submit">새 상품 추가</button>
+                <button className={`w-full rounded-xl ${theme.accentBg} py-3 font-black ${theme.actionText} shadow-sm`} type="submit">새 상품 추가</button>
               </form>
             </SectionCard>
 
-            <SectionCard title="상품 · 재고 관리" action={<button type="button" onClick={saveAllProducts} className={`rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black text-slate-950 shadow-sm`}>전체 저장</button>} compact>
+            <SectionCard title="상품 · 재고 관리" action={<button type="button" onClick={saveAllProducts} className={`rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black ${theme.actionText} shadow-sm`}>전체 저장</button>} compact>
               <div className={`mb-3 rounded-2xl border border-slate-200 ${theme.softBg} p-3`}>
                 <label className="flex w-fit items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-black">
                   <input aria-label="전체 상품 선택" checked={allProductsSelected} onChange={(event) => setSelectedProductIds(event.target.checked ? products.map((product) => product.productId) : [])} type="checkbox" />
                   전체 선택 ({selectedProductIds.length}/{products.length})
                 </label>
                 <button type="button" disabled={selectedProductIds.length === 0} onClick={deleteSelectedProducts} className={`mt-2 rounded-xl bg-rose-500 px-4 py-2 text-sm font-black text-white ${disabledActionClass}`}>삭제</button>
-                <button type="button" disabled={selectedProductIds.length === 0} onClick={saveSelectedProducts} className={`ml-2 mt-2 rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black text-slate-950 ${disabledActionClass}`}>선택 저장</button>
+                <button type="button" disabled={selectedProductIds.length === 0} onClick={saveSelectedProducts} className={`ml-2 mt-2 rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black ${theme.actionText} ${disabledActionClass}`}>선택 저장</button>
               </div>
               <div data-testid="product-list" className="overflow-hidden rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
                 <div data-testid="product-header-row" className="grid grid-cols-[24px_minmax(3rem,1fr)_56px_48px_36px_minmax(3rem,0.8fr)_40px_30px_34px] items-center gap-0.5 bg-slate-100 px-1.5 py-1 text-[10px] font-black text-slate-500">
@@ -776,13 +776,13 @@ export function AdminManagePage() {
                   <input aria-label="새 과제 활성" checked={newTask.isActive} onChange={(event) => setNewTask((current) => ({ ...current, isActive: event.target.checked }))} type="checkbox" />
                   은행 페이지에 표시
                 </label>
-                <button className={`w-full rounded-xl ${theme.accentBg} py-3 font-black text-slate-950 shadow-sm`} type="submit">새 과제 추가</button>
+                <button className={`w-full rounded-xl ${theme.accentBg} py-3 font-black ${theme.actionText} shadow-sm`} type="submit">새 과제 추가</button>
               </form>
             </SectionCard>
             </div>
 
             <div data-testid="task-list-card" className="min-w-0">
-            <SectionCard title="과제 설정" action={<button type="button" onClick={saveAllTasks} className={`rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black text-slate-950 shadow-sm`}>전체 저장</button>} compact>
+            <SectionCard title="과제 설정" action={<button type="button" onClick={saveAllTasks} className={`rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black ${theme.actionText} shadow-sm`}>전체 저장</button>} compact>
               <div className={`mb-3 rounded-2xl border border-slate-200 ${theme.softBg} p-3`}>
                 <div data-testid="task-bulk-actions" className="flex flex-wrap items-center gap-2">
                 <label className="flex w-fit items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-black">
@@ -791,7 +791,7 @@ export function AdminManagePage() {
                 </label>
                 <button type="button" disabled={selectedTaskIds.length === 0} onClick={deleteSelectedTasks} className={`rounded-xl bg-rose-500 px-4 py-2 text-sm font-black text-white ${disabledActionClass}`}>삭제</button>
                 <button type="button" disabled={selectedTaskIds.length === 0} onClick={() => resetTaskCompletions([...selectedTaskIds], `선택 과제 ${selectedTaskIds.length}개`)} className={`rounded-xl bg-amber-300 px-4 py-2 text-sm font-black text-amber-950 ${disabledActionClass}`}>초기화</button>
-                <button type="button" disabled={selectedTaskIds.length === 0} onClick={saveSelectedTasks} className={`rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black text-slate-950 ${disabledActionClass}`}>선택 저장</button>
+                <button type="button" disabled={selectedTaskIds.length === 0} onClick={saveSelectedTasks} className={`rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black ${theme.actionText} ${disabledActionClass}`}>선택 저장</button>
                 </div>
               </div>
               <div data-testid="task-list-scroll" className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
@@ -839,7 +839,7 @@ export function AdminManagePage() {
           <section role="tabpanel" aria-label="화폐 지급/회수" className="mx-auto w-full max-w-xl">
             <SectionCard title="화폐 지급/회수" description="금액과 지급/회수만 정한 뒤 학생 QR을 찍으면 바로 반영됩니다." compact>
               <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setCurrencyMode('add')} className={`rounded-2xl px-4 py-4 text-xl font-black ${currencyMode === 'add' ? `${theme.accentBg} text-slate-950` : `${theme.softBg} text-slate-700`}`}>지급</button>
+                <button type="button" onClick={() => setCurrencyMode('add')} className={`rounded-2xl px-4 py-4 text-xl font-black ${currencyMode === 'add' ? `${theme.accentBg} ${theme.actionText}` : `${theme.softBg} text-slate-700`}`}>지급</button>
                 <button type="button" onClick={() => setCurrencyMode('subtract')} className={`rounded-2xl px-4 py-4 text-xl font-black ${currencyMode === 'subtract' ? 'bg-rose-500 text-white' : 'bg-rose-50 text-slate-700'}`}>회수</button>
               </div>
               <label className="mt-3 block text-sm font-black text-slate-700">
@@ -871,7 +871,7 @@ export function AdminManagePage() {
               <button type="button" className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700" onClick={() => setImageEditor(null)}>취소</button>
               <button
                 type="button"
-                className={`flex-1 rounded-xl ${theme.accentBg} py-3 font-black text-slate-950`}
+                className={`flex-1 rounded-xl ${theme.accentBg} py-3 font-black ${theme.actionText}`}
                 onClick={() => {
                   updateProduct(imageEditor.productId, { imageUrl: imageEditor.value });
                   setImageEditor(null);
@@ -927,7 +927,7 @@ export function AdminManagePage() {
               <button type="button" className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700" onClick={() => setTaskDescriptionEditor(null)}>취소</button>
               <button
                 type="button"
-                className={`flex-1 rounded-xl ${theme.accentBg} py-3 font-black text-slate-950`}
+                className={`flex-1 rounded-xl ${theme.accentBg} py-3 font-black ${theme.actionText}`}
                 onClick={() => {
                   updateTask(taskDescriptionEditor.taskId, { description: taskDescriptionEditor.value });
                   setTaskDescriptionEditor(null);
@@ -956,7 +956,7 @@ export function AdminManagePage() {
             </label>
             <div className="mt-4 flex gap-2">
               <button type="button" className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700" onClick={() => setCurrencyScannerOpen(false)}>취소</button>
-              <button type="button" className={`flex-1 rounded-xl ${theme.accentBg} py-3 font-black text-slate-950`} onClick={() => applyCurrencyToStudent(currencyManualId)}>직접 입력 적용</button>
+              <button type="button" className={`flex-1 rounded-xl ${theme.accentBg} py-3 font-black ${theme.actionText}`} onClick={() => applyCurrencyToStudent(currencyManualId)}>직접 입력 적용</button>
             </div>
           </section>
         </div>
@@ -1003,8 +1003,8 @@ function LoadingDialog({ title, message }: { title: string; message: string }) {
 
 function AdminNavLink({ href, title, className }: { href: string; title: string; className: string }) {
   return (
-    <Link aria-label={title} className={`rounded-[1rem] px-2 py-3 text-left transition ${className}`} href={href}>
-      <span className="block text-sm font-black sm:text-base">{title}</span>
+    <Link aria-label={`${title} 새 탭 열림`} target="_blank" rel="noopener noreferrer" className={`rounded-[1rem] px-2 py-3 text-left transition ${className}`} href={href}>
+      <span className="flex items-center gap-1 text-sm font-black sm:text-base">{title}<span aria-hidden="true">↗</span></span>
     </Link>
   );
 }

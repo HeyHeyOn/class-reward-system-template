@@ -58,21 +58,21 @@ describe('BankApp', () => {
 
     settingsRequest.resolve();
     expect(await screen.findByRole('heading', { name: '별빛 은행' })).toBeTruthy();
-    expect(container.querySelector('[data-testid="bank-shell"]')?.className).toContain('bg-slate-100');
+    expect(container.querySelector('[data-testid="bank-shell"]')?.className).toContain('bg-[#FCFCFC]');
   });
 
   it('applies the selected green pastel theme to the bank shell with distinct primary actions', async () => {
     const { container } = render(<BankApp />);
 
     expect(await screen.findByRole('heading', { name: '별빛 은행' })).toBeTruthy();
-    expect(container.querySelector('[data-testid="bank-shell"]')?.className).toContain('bg-[#F3FCEE]');
+    expect(container.querySelector('[data-testid="bank-shell"]')?.className).toContain('bg-[#DCF5C9]');
     expect(container.querySelector('[data-testid="bank-shell"]')?.className).not.toContain('bg-green-50');
     expect(container.querySelector('[data-testid="bank-shell"]')?.className).not.toContain('bg-lime-50');
-    expect(screen.getByText('CLASS BANK').className).toContain('text-[#3C7A2C]');
-    expect(screen.getByRole('button', { name: '내 계좌' }).className).toContain('bg-[#B6E39F]');
-    expect(screen.getByRole('button', { name: '과제 확인' }).className).toContain('bg-[#D8F0CC]');
-    expect(screen.getByRole('button', { name: '내 계좌' }).className).not.toContain('bg-[#D8F0CC]');
-    expect(screen.getByRole('button', { name: '과제 확인' }).className).not.toContain('bg-[#B6E39F]');
+    expect(screen.getByText('CLASS BANK').className).toContain('text-[#505999]');
+    expect(screen.getByRole('button', { name: '내 계좌' }).className).toContain('bg-[#A5C78B]');
+    expect(screen.getByRole('button', { name: '과제 확인' }).className).toContain('bg-[#DCF5C9]');
+    expect(screen.getByRole('button', { name: '내 계좌' }).className).not.toContain('bg-[#DCF5C9]');
+    expect(screen.getByRole('button', { name: '과제 확인' }).className).not.toContain('bg-[#A5C78B]');
     expect(screen.getByRole('button', { name: '내 계좌' }).className).not.toContain('bg-sky-500');
     expect(screen.getByRole('button', { name: '과제 확인' }).className).not.toContain('bg-emerald-500');
   });
@@ -87,7 +87,7 @@ describe('BankApp', () => {
     const { container } = render(<BankApp />);
 
     expect(await screen.findByRole('heading', { name: '검정 은행' })).toBeTruthy();
-    expect(container.querySelector('[data-testid="bank-shell"]')?.className).toContain('bg-slate-900');
+    expect(container.querySelector('[data-testid="bank-shell"]')?.className).toContain('bg-[#1F1F1F]');
     expect(container.querySelector('[data-testid="bank-shell"]')?.className).not.toContain('bg-slate-100');
     expect(container.querySelector('[data-testid="bank-shell"]')?.className).not.toContain('bg-black');
   });
