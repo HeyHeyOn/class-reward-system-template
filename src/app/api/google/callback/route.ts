@@ -12,7 +12,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state') ?? '';
-  const response = NextResponse.redirect(new URL(isGeneratorDeployment() ? '/admin/generator' : '/admin', request.url));
+  const response = NextResponse.redirect(new URL(isGeneratorDeployment() ? '/admin/generator?step=google' : '/admin', request.url));
 
   try {
     if (!code) throw new Error(url.searchParams.get('error_description') || url.searchParams.get('error') || 'Google 인증 코드가 없습니다.');

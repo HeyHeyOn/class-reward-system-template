@@ -40,11 +40,14 @@ type GoogleSessionState = {
   error?: string;
 };
 
-type WizardStep = 'choose' | 'notice' | 'google' | 'vercel' | 'github' | 'settings' | 'deploy' | 'update';
+type WizardStep = 'choose' | 'notice' | 'google' | 'vercel' | 'github' | 'settings' | 'deploy' | 'links' | 'update';
 
 export function AdminGeneratorPage() {
-  const [session, setSession] = useState<GoogleSessionState>({ loading: true, enabled: true, authenticated: false });
-  const [step, setStep] = useState<WizardStep>('choose');
+  const [session, setSession] = useState<GoogleSessionState>({ loading: false, enabled: true, authenticated: false });
+  const [step, setStep] = useState<WizardStep>(() => {
+    if (typeof window === 'undefined') return 'choose';
+    return new URLSearchParams(window.location.search).get('step') === 'google' ? 'google' : 'choose';
+  });
   const [className, setClassName] = useState('');
   const [appTitle, setAppTitle] = useState('학급 매점');
   const [bankTitle, setBankTitle] = useState('학급 은행');
@@ -57,25 +60,24 @@ export function AdminGeneratorPage() {
   const [createResult, setCreateResult] = useState<GeneratorCreateResult | null>(null);
 
   useEffect(() => {
+    if (step !== 'google') return;
     let cancelled = false;
     async function loadSession() {
+      setSession((current) => ({ ...current, loading: true, error: undefined }));
       try {
         const response = await fetch('/api/google/session');
         const data = await response.json();
         if (cancelled) return;
-        const authenticated = Boolean(data.authenticated);
         setSession({
           loading: false,
           enabled: data.enabled !== false,
-          authenticated,
+          authenticated: Boolean(data.authenticated),
           email: typeof data.email === 'string' ? data.email : undefined,
           name: typeof data.name === 'string' ? data.name : undefined,
         });
-        setStep((current) => current);
       } catch {
         if (!cancelled) {
           setSession({ loading: false, enabled: true, authenticated: false, error: '로그인 상태를 확인하지 못했습니다.' });
-          setStep((current) => current);
         }
       }
     }
@@ -83,7 +85,7 @@ export function AdminGeneratorPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [step]);
 
   const preview = useMemo(() => {
     const args = ['create', '--dry-run'];
@@ -136,9 +138,8 @@ export function AdminGeneratorPage() {
 
         <StepBar step={step} />
 
-        {session.loading ? <CenteredCard title="로그인 상태 확인 중" description="잠시만 기다려 주세요." /> : null}
-        {!session.loading && step === 'choose' ? <ChooseStep onCreate={() => setStep('notice')} onUpdate={() => setStep('update')} /> : null}
-        {!session.loading && step === 'notice' ? (
+        {step === 'choose' ? <ChooseStep onCreate={() => setStep('notice')} onUpdate={() => setStep('update')} /> : null}
+        {step === 'notice' ? (
           <NoticeStep
             acknowledged={selfServiceAcknowledged}
             onAcknowledgedChange={setSelfServiceAcknowledged}
@@ -146,10 +147,10 @@ export function AdminGeneratorPage() {
             onNext={() => setStep('google')}
           />
         ) : null}
-        {!session.loading && step === 'google' ? (
+        {step === 'google' ? (
           <GoogleLoginStep session={session} onBack={() => setStep('notice')} onNext={() => setStep('vercel')} />
         ) : null}
-        {!session.loading && step === 'vercel' ? (
+        {step === 'vercel' ? (
           <ExternalAccountStep
             eyebrow="VERCEL ACCOUNT"
             title="Vercel 로그인하기"
@@ -160,7 +161,7 @@ export function AdminGeneratorPage() {
             onNext={() => setStep('github')}
           />
         ) : null}
-        {!session.loading && step === 'github' ? (
+        {step === 'github' ? (
           <ExternalAccountStep
             eyebrow="GITHUB ACCOUNT"
             title="GitHub 로그인하기"
@@ -171,7 +172,7 @@ export function AdminGeneratorPage() {
             onNext={() => setStep('settings')}
           />
         ) : null}
-        {!session.loading && step === 'settings' ? (
+        {step === 'settings' ? (
           <SettingsStep
             classNameValue={className}
             appTitle={appTitle}
@@ -192,8 +193,9 @@ export function AdminGeneratorPage() {
             onCreate={handleCreate}
           />
         ) : null}
-        {!session.loading && step === 'deploy' && createResult ? <CreateResultPanel result={createResult} /> : null}
-        {!session.loading && step === 'update' ? <UpdateGuide onBack={() => setStep('choose')} /> : null}
+        {step === 'deploy' && createResult ? <CreateResultPanel result={createResult} onNext={() => setStep('links')} /> : null}
+        {step === 'links' && createResult ? <SystemLinksPanel onBack={() => setStep('deploy')} /> : null}
+        {step === 'update' ? <UpdateGuide onBack={() => setStep('choose')} /> : null}
       </section>
     </main>
   );
@@ -207,7 +209,8 @@ function StepBar({ step }: { step: WizardStep }) {
     { id: 'vercel', label: 'Vercel' },
     { id: 'github', label: 'GitHub' },
     { id: 'settings', label: '생성' },
-    { id: 'deploy', label: '완료' },
+    { id: 'deploy', label: '배포' },
+    { id: 'links', label: '주소' },
     { id: 'update', label: '업데이트' },
   ];
   const activeIndex = steps.findIndex((item) => item.id === step);
@@ -217,15 +220,6 @@ function StepBar({ step }: { step: WizardStep }) {
         <li key={item.id} className={`rounded-xl px-2 py-2 ${index <= activeIndex ? 'bg-slate-950 text-white' : 'bg-slate-100'}`}>{item.label}</li>
       ))}
     </ol>
-  );
-}
-
-function CenteredCard({ title, description }: { title: string; description: string }) {
-  return (
-    <section className="rounded-[1.75rem] border border-slate-300/70 bg-white p-8 text-center shadow-sm">
-      <h2 className="text-2xl font-black">{title}</h2>
-      <p className="mt-2 text-sm font-bold text-slate-500">{description}</p>
-    </section>
   );
 }
 
@@ -491,7 +485,7 @@ function SettingsStep(props: {
   );
 }
 
-function CreateResultPanel({ result }: { result: GeneratorCreateResult }) {
+function CreateResultPanel({ result, onNext }: { result: GeneratorCreateResult; onNext: () => void }) {
   return (
     <section className="rounded-[1.75rem] border border-emerald-200 bg-white p-5 shadow-sm">
       <p className="text-xs font-black tracking-[0.22em] text-emerald-600">FINAL STEP</p>
@@ -513,8 +507,8 @@ function CreateResultPanel({ result }: { result: GeneratorCreateResult }) {
           <p className="mt-1 text-lg font-black text-slate-950">{result.deploymentGuide.ownership}</p>
 
           <div className="mt-4 rounded-2xl border border-sky-200 bg-white p-4">
-            <h3 className="text-xl font-black text-slate-950">Vercel에서 GitHub 프로젝트 복제 및 배포하기</h3>
-            <p className="mt-1 text-slate-600">아래 순서대로 하면 선생님 전용 URL까지 만들 수 있습니다. 중간에 영어 화면이 나와도 버튼 이름만 따라가면 됩니다.</p>
+            <h3 className="text-xl font-black text-slate-950">Vercel에서 우리 반 앱 열기</h3>
+            <p className="mt-1 text-slate-600">아래 버튼을 열고 화면 안내에 따라 진행하세요. 중간에 영어 화면이 나와도 중요한 버튼 이름만 따라가면 됩니다.</p>
             <a
               className="mt-4 inline-flex rounded-2xl bg-sky-600 px-4 py-3 font-black text-white hover:bg-sky-700"
               href={result.deploymentGuide.vercelImportUrl}
@@ -524,20 +518,20 @@ function CreateResultPanel({ result }: { result: GeneratorCreateResult }) {
               Vercel 배포 페이지 열기
             </a>
             <ol className="mt-4 space-y-3">
-              <DeploymentStep title="1단계: 복제할 템플릿과 GitHub 계정 확인">
-                복제할 학급 보상 시스템 템플릿과 연결할 GitHub 계정을 확인하고, 저장소 이름을 입력합니다.
+              <DeploymentStep title="1단계: 프로젝트 가져오기">
+                Vercel 화면에서 GitHub 계정을 연결하고 학급 보상 시스템 프로젝트를 가져옵니다.
               </DeploymentStep>
-              <DeploymentStep title="2단계: 주요 환경변수 붙여넣기">
-                아래 값들을 Vercel Environment Variables에 붙여넣고 Deploy 버튼을 누릅니다. 비밀값은 외부에 공유하지 마세요.
+              <DeploymentStep title="2단계: 아래 값 붙여넣기">
+                아래 값들을 Vercel 환경변수 칸에 하나씩 붙여넣고 Deploy 버튼을 누릅니다. 비밀값은 외부에 공유하지 마세요.
               </DeploymentStep>
               <DeploymentStep title="3단계: 배포 완료까지 기다리기">
                 배포가 완료될 때까지 기다립니다. 보통 2~3분 정도 걸립니다.
               </DeploymentStep>
-              <DeploymentStep title="4단계: 도메인 주소 확인">
-                배포가 완료되면 대시보드로 들어가서 도메인 주소를 복사해 보관합니다.
+              <DeploymentStep title="4단계: 접속 주소 복사">
+                배포가 완료되면 Vercel이 보여주는 접속 주소를 복사합니다. 다음 단계에서 붙여넣으면 관리자·매점·은행 주소를 자동으로 만들어 드립니다.
               </DeploymentStep>
               <DeploymentStep title="5단계: 시스템 주소 확인">
-                관리자 페이지, 학급 매점, 학급 은행 주소를 확인합니다. 초기 비밀번호는 사용한 Google 계정 메일 주소입니다.
+                초기 비밀번호는 사용한 Google 계정 메일 주소입니다. 배포 뒤 다음 버튼을 눌러 주소와 QR 코드를 만드세요.
               </DeploymentStep>
               <DeploymentStep title="6단계: 보안 정보 보관">
                 관리자 페이지 주소와 비밀번호는 절대로 유출하지 마세요. 이후 시스템 설정 탭에서 비밀번호를 수정할 수 있습니다.
@@ -552,21 +546,108 @@ function CreateResultPanel({ result }: { result: GeneratorCreateResult }) {
           </div>
 
           <div className="mt-4 rounded-2xl bg-white p-4">
-            <p className="font-black text-slate-950">붙여넣을 값 요약</p>
+            <p className="font-black text-slate-950">Vercel에 붙여넣을 값</p>
             <p className="mt-1 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-black text-red-700">
               비밀값은 다른 사람에게 공유하지 말고 Vercel 환경변수 칸에만 붙여넣으세요. 화면 캡처를 공유할 때는 GOOGLE_CLIENT_SECRET과 GOOGLE_REFRESH_TOKEN을 가려야 합니다.
             </p>
             <ul className="mt-2 space-y-2">
-              {result.requiredVercelEnv.map((env) => (
-                <li key={env.name} className="rounded-xl bg-slate-50 p-3">
-                  <p className="text-slate-500">{env.name}{env.secret ? ' (비밀값)' : ''}</p>
-                  <code className="break-all text-slate-950">{env.value}</code>
-                </li>
-              ))}
+              {result.requiredVercelEnv.map((env) => <EnvValueRow key={env.name} env={env} />)}
             </ul>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button type="button" onClick={onNext} className="rounded-2xl bg-slate-950 px-5 py-3 font-black text-white hover:bg-slate-800">배포 주소 붙여넣고 QR 만들기</button>
           </div>
         </div>
       ) : null}
+    </section>
+  );
+}
+
+function EnvValueRow({ env }: { env: { name: string; value: string; secret: boolean } }) {
+  const [visible, setVisible] = useState(false);
+  const shownValue = env.secret && !visible ? '••••••••••••••••••••••••' : env.value;
+  return (
+    <li className="rounded-xl bg-slate-50 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-slate-500">{env.name}{env.secret ? ' (비밀값)' : ''}</p>
+        <div className="flex gap-1">
+          {env.secret ? (
+            <button type="button" aria-label={`${env.name} 값 보기`} onClick={() => setVisible((current) => !current)} className="rounded-lg bg-white px-2 py-1 text-xs font-black text-slate-700 shadow-sm">
+              {visible ? '🙈' : '👁'}
+            </button>
+          ) : null}
+          <button type="button" aria-label={`${env.name} 복사`} onClick={() => void navigator.clipboard?.writeText(env.value)} className="rounded-lg bg-slate-900 px-2 py-1 text-xs font-black text-white">복사</button>
+        </div>
+      </div>
+      <code className="mt-2 block break-all rounded-lg bg-white p-2 text-slate-950">{shownValue}</code>
+    </li>
+  );
+}
+
+function normalizeDeploymentUrl(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const url = new URL(withProtocol);
+    url.pathname = url.pathname.replace(/\/$/, '');
+    url.search = '';
+    url.hash = '';
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return '';
+  }
+}
+
+function SystemLinksPanel({ onBack }: { onBack: () => void }) {
+  const [rawUrl, setRawUrl] = useState('');
+  const baseUrl = normalizeDeploymentUrl(rawUrl);
+  const links = baseUrl ? [
+    { label: '관리자 페이지', href: `${baseUrl}/admin`, note: '선생님만 사용합니다.' },
+    { label: '매점 페이지', href: baseUrl, note: '학생들이 물건을 살 때 사용합니다.' },
+    { label: '은행 페이지', href: `${baseUrl}/bank`, note: '학생들이 잔액과 과제를 확인합니다.' },
+  ] : [];
+
+  return (
+    <section className="rounded-[1.75rem] border border-sky-200 bg-white p-5 shadow-sm">
+      <p className="text-xs font-black tracking-[0.22em] text-sky-600">SYSTEM LINKS</p>
+      <h2 className="mt-1 text-2xl font-black">접속 주소와 QR 코드 만들기</h2>
+      <p className="mt-2 text-sm font-bold text-slate-500">Vercel 배포가 끝난 뒤 나온 주소를 붙여넣으면 필요한 주소를 자동으로 정리합니다.</p>
+      <label className="mt-5 block text-sm font-black text-slate-700">
+        Vercel 접속 주소
+        <input aria-label="Vercel 접속 주소" value={rawUrl} onChange={(event) => setRawUrl(event.target.value)} placeholder="예: https://my-class-store.vercel.app" className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base font-bold outline-none focus:border-sky-400 focus:bg-white" />
+      </label>
+      {!baseUrl && rawUrl.trim() ? <p className="mt-2 rounded-xl bg-rose-50 p-3 text-sm font-black text-rose-700">주소 형식을 확인해 주세요.</p> : null}
+      {links.length ? (
+        <div className="mt-5 grid gap-3 lg:grid-cols-3">
+          {links.map((link) => <GeneratedLinkCard key={link.label} {...link} />)}
+        </div>
+      ) : (
+        <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-600">주소를 붙여넣으면 관리자·매점·은행 주소와 QR 코드가 여기에 표시됩니다.</div>
+      )}
+      <div className="mt-5 flex flex-wrap gap-2">
+        <button type="button" onClick={onBack} className="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-200">이전</button>
+      </div>
+    </section>
+  );
+}
+
+function GeneratedLinkCard({ label, href, note }: { label: string; href: string; note: string }) {
+  const qrSrc = `/api/qrcode?value=${encodeURIComponent(href)}`;
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      <h3 className="text-lg font-black text-slate-950">{label}</h3>
+      <p className="mt-1 text-xs font-bold text-slate-500">{note}</p>
+      <a href={href} target="_blank" rel="noreferrer" className="mt-2 block break-all text-sm font-black text-sky-700 underline">{href}</a>
+      <div className="mt-3 rounded-2xl bg-white p-3 text-center">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={qrSrc} alt={`${label} QR 코드`} className="mx-auto h-36 w-36" />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" onClick={() => void navigator.clipboard?.writeText(href)} className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-black text-white">주소 복사</button>
+        <a href={qrSrc} download={`${label}.svg`} className="rounded-xl bg-white px-3 py-2 text-xs font-black text-slate-700 shadow-sm">QR 이미지 저장</a>
+      </div>
     </section>
   );
 }

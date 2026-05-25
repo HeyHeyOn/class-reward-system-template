@@ -54,7 +54,7 @@ const BANK_THEME: Record<ThemeColor, { shell: string; accentText: string; accent
   yellow: { shell: 'bg-yellow-50', accentText: 'text-yellow-700', accentBg: 'bg-yellow-200', accentBgAlt: 'bg-yellow-100', softBg: 'bg-yellow-50', focusBorder: 'focus:border-yellow-200' },
   green: { shell: 'bg-[#F3FCEE]', accentText: 'text-[#3C7A2C]', accentBg: 'bg-[#B6E39F]', accentBgAlt: 'bg-[#D8F0CC]', softBg: 'bg-[#F3FCEE]', focusBorder: 'focus:border-[#B6E39F]' },
   purple: { shell: 'bg-purple-50', accentText: 'text-purple-700', accentBg: 'bg-purple-200', accentBgAlt: 'bg-purple-100', softBg: 'bg-purple-50', focusBorder: 'focus:border-purple-200' },
-  white: { shell: 'bg-slate-100', accentText: 'text-slate-700', accentBg: 'bg-slate-300', accentBgAlt: 'bg-slate-200', softBg: 'bg-slate-50', focusBorder: 'focus:border-slate-300' },
+  white: { shell: 'bg-slate-100', accentText: 'text-slate-700', accentBg: 'bg-sky-100', accentBgAlt: 'bg-indigo-300', softBg: 'bg-slate-50', focusBorder: 'focus:border-slate-300' },
   black: { shell: 'bg-slate-900', accentText: 'text-slate-700', accentBg: 'bg-slate-300', accentBgAlt: 'bg-slate-200', softBg: 'bg-slate-100', focusBorder: 'focus:border-slate-400' },
   navy: { shell: 'bg-blue-950', accentText: 'text-blue-800', accentBg: 'bg-blue-200', accentBgAlt: 'bg-blue-100', softBg: 'bg-blue-50', focusBorder: 'focus:border-blue-300' },
 };
@@ -199,8 +199,8 @@ export function BankApp() {
         </header>
 
         <section className="grid gap-4 rounded-[2rem] bg-white/90 p-5 shadow-lg sm:grid-cols-2">
-          <button type="button" onClick={openBalanceScan} className={`rounded-[1.5rem] ${theme.accentBg} px-5 py-12 text-3xl font-black text-slate-950 shadow-sm`}>내 계좌</button>
-          <button type="button" onClick={loadTasks} className={`rounded-[1.5rem] ${theme.accentBgAlt} px-5 py-12 text-3xl font-black text-slate-950 shadow-sm`}>과제 확인</button>
+          <button type="button" onClick={openBalanceScan} className={`rounded-[1.5rem] border border-sky-200 ${theme.accentBg} px-5 py-12 text-3xl font-black text-sky-950 shadow-sm`}>내 계좌</button>
+          <button type="button" onClick={loadTasks} className={`rounded-[1.5rem] border border-indigo-300 ${theme.accentBgAlt} px-5 py-12 text-3xl font-black text-indigo-950 shadow-sm`}>과제 확인</button>
         </section>
       </section>
 
@@ -219,7 +219,7 @@ export function BankApp() {
               <p data-testid="bank-balance-sentence" className="text-center text-xl font-black leading-snug text-slate-800 sm:text-2xl">{balanceResult?.name} 학생의 현재 잔액은 <strong className={theme.accentText}>{balanceResult?.balance.toLocaleString()}{currencyUnit}</strong>입니다.</p>
               <section data-testid="bank-recent-transactions" className="mx-auto mt-4 max-h-72 w-full max-w-sm overflow-y-auto rounded-2xl bg-white p-3 text-left">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-base font-black text-slate-800">최근 거래 ({filteredBalanceTransactions.length})</h3>
+                  <h3 className="text-base font-black text-slate-800">거래 내역 ({filteredBalanceTransactions.length})</h3>
                   <TransactionFilterTabs value={transactionFilter} onChange={setTransactionFilter} />
                 </div>
                 {filteredBalanceTransactions.length ? (

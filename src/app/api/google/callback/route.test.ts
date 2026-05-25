@@ -20,7 +20,7 @@ describe('GET /api/google/callback', () => {
     const location = response.headers.get('location') ?? '';
 
     expect(response.status).toBe(307);
-    expect(location).toBe('https://class-store-generator.vercel.app/admin/generator');
+    expect(location).toBe('https://class-store-generator.vercel.app/admin/generator?step=google');
   });
 
   it('returns system users to the admin center after Google OAuth', async () => {

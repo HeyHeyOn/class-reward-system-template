@@ -60,6 +60,7 @@ async function passNotice() {
 async function goThroughAuthenticatedCreateSteps() {
   await goToCreateNotice();
   await passNotice();
+  await waitFor(() => expect(screen.getByText(/Google 로그인 완료: teacher@example.com/)).toBeTruthy());
   fireEvent.click(screen.getByRole('button', { name: 'Google 로그인 완료, 다음' }));
   expect(screen.getByRole('heading', { name: 'Vercel 로그인하기' })).toBeTruthy();
   expect(screen.getByRole('link', { name: 'Vercel 열기' }).getAttribute('href')).toBe('https://vercel.com/login');
@@ -86,6 +87,7 @@ describe('AdminGeneratorPage', () => {
     expect(screen.getByText(/구글 스프레드시트와 개인 Vercel 서버를 이용해/)).toBeTruthy();
     expect(screen.getByRole('button', { name: '새 시스템 생성하기' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '기존 시스템 업데이트하기' })).toBeTruthy();
+    expect(fetch).not.toHaveBeenCalledWith('/api/google/session');
     expect(screen.queryByText(/먼저 Google 로그인을 해 주세요/)).toBeNull();
     expect(screen.queryByText('관리자 센터로 돌아가기')).toBeNull();
     expect(screen.queryByText('현재 운영 매점 열기')).toBeNull();
@@ -173,15 +175,27 @@ describe('AdminGeneratorPage', () => {
     expect(screen.getAllByText('sheet-123').length).toBeGreaterThan(0);
     expect(screen.getByText('선생님 개인 Google 계정 + 선생님 개인 Vercel 프로젝트')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Vercel 배포 페이지 열기' }).getAttribute('href')).toContain('vercel.com/new/clone');
-    expect(screen.getByRole('heading', { name: 'Vercel에서 GitHub 프로젝트 복제 및 배포하기' })).toBeTruthy();
-    expect(screen.getByText(/복제할 학급 보상 시스템 템플릿과 연결할 GitHub 계정을 확인/)).toBeTruthy();
-    expect(screen.getByText(/아래 값들을 Vercel Environment Variables에 붙여넣고 Deploy 버튼을 누릅니다/)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Vercel에서 우리 반 앱 열기' })).toBeTruthy();
+    expect(screen.getByText(/Vercel 화면에서 GitHub 계정을 연결하고 학급 보상 시스템 프로젝트를 가져옵니다/)).toBeTruthy();
+    expect(screen.getByText(/아래 값들을 Vercel 환경변수 칸에 하나씩 붙여넣고 Deploy 버튼을 누릅니다/)).toBeTruthy();
     expect(screen.getByText(/보통 2~3분 정도 걸립니다/)).toBeTruthy();
-    expect(screen.getByText(/도메인 주소를 복사해 보관합니다/)).toBeTruthy();
+    expect(screen.getByText(/Vercel이 보여주는 접속 주소를 복사합니다/)).toBeTruthy();
     expect(screen.getByText(/초기 비밀번호는 사용한 Google 계정 메일 주소입니다/)).toBeTruthy();
     expect(screen.getByText('GOOGLE_CLIENT_ID')).toBeTruthy();
     expect(screen.getByText('GOOGLE_CLIENT_SECRET (비밀값)')).toBeTruthy();
     expect(screen.getByText('GOOGLE_REFRESH_TOKEN (비밀값)')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'GOOGLE_CLIENT_SECRET 복사' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'GOOGLE_CLIENT_SECRET 값 보기' })).toBeTruthy();
     expect(screen.getByText(/비밀값은 다른 사람에게 공유하지 말고 Vercel 환경변수 칸에만 붙여넣으세요/)).toBeTruthy();
+    expect(screen.queryByText('client-secret-123')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'GOOGLE_CLIENT_SECRET 값 보기' }));
+    expect(screen.getByText('client-secret-123')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '배포 주소 붙여넣고 QR 만들기' }));
+    expect(screen.getByRole('heading', { name: '접속 주소와 QR 코드 만들기' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Vercel 접속 주소'), { target: { value: 'https://sunny-class.vercel.app' } });
+    expect(screen.getByRole('heading', { name: '관리자 페이지' })).toBeTruthy();
+    expect(screen.getByText('https://sunny-class.vercel.app/admin')).toBeTruthy();
+    expect(screen.getByRole('img', { name: '매점 페이지 QR 코드' }).getAttribute('src')).toBe('/api/qrcode?value=https%3A%2F%2Fsunny-class.vercel.app');
+    expect(screen.getAllByText('QR 이미지 저장')).toHaveLength(3);
   });
 });
