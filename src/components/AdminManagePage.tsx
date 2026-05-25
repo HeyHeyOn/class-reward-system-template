@@ -18,7 +18,7 @@ type BulkMode = 'set' | 'add' | 'subtract';
 type CurrencyMode = 'add' | 'subtract';
 type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'black' | 'navy';
 type Settings = { currencyUnit?: string; appTitle?: string; bankTitle?: string; themeColor?: ThemeColor };
-type AdminTheme = { shell: string; pageText: string; accentText: string; accentBg: string; actionText: string; selectedTab: string; idleTab: string; statBg: string; logoColor: string; softBg: string; focusBorder: string };
+type AdminTheme = { shell: string; pageText: string; accentText: string; accentBg: string; actionText: string; selectedTab: string; idleTab: string; statBg: string; logoColor: string; softBg: string; softText: string; focusBorder: string };
 const disabledActionClass = 'disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none';
 type CurrencyResult = {
   status: 'success' | 'failure';
@@ -51,14 +51,14 @@ const EMPTY_PRODUCT: NewProductDraft = { name: '', price: 0, stock: 0, isActive:
 const EMPTY_TASK: Omit<TaskDraft, 'taskId'> = { title: '', description: '', reward: 0, maxCompletionsPerStudent: 1, isActive: true, sortOrder: 1 };
 
 const ADMIN_THEME: Record<ThemeColor, AdminTheme> = {
-  blue: { shell: 'bg-[#EDF5FA]', pageText: 'text-slate-950', accentText: 'text-[#365F78]', accentBg: 'bg-[#B8D0E0]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#B8D0E0] text-[#1F1F1F]', idleTab: 'bg-[#EDF5FA] text-slate-800 hover:bg-[#D8E9F2]', statBg: 'bg-[#EDF5FA]', logoColor: 'bg-[#365F78]', softBg: 'bg-[#EDF5FA]/80', focusBorder: 'focus:border-[#B8D0E0]' },
-  pink: { shell: 'bg-[#FAEDED]', pageText: 'text-slate-950', accentText: 'text-[#8F5555]', accentBg: 'bg-[#F0C7C7]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#F0C7C7] text-[#1F1F1F]', idleTab: 'bg-[#FAEDED] text-slate-800 hover:bg-[#F4DADA]', statBg: 'bg-[#FAEDED]', logoColor: 'bg-[#B97878]', softBg: 'bg-[#FAEDED]/80', focusBorder: 'focus:border-[#F0C7C7]' },
-  yellow: { shell: 'bg-[#FCFAE6]', pageText: 'text-slate-950', accentText: 'text-[#766D1E]', accentBg: 'bg-[#F5EDA6]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#F5EDA6] text-[#1F1F1F]', idleTab: 'bg-[#FCFAE6] text-slate-800 hover:bg-[#F8F2BF]', statBg: 'bg-[#FCFAE6]', logoColor: 'bg-[#A99D37]', softBg: 'bg-[#FCFAE6]/80', focusBorder: 'focus:border-[#F5EDA6]' },
-  green: { shell: 'bg-[#DCF5C9]', pageText: 'text-slate-950', accentText: 'text-[#4F7138]', accentBg: 'bg-[#A5C78B]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#A5C78B] text-[#1F1F1F]', idleTab: 'bg-[#DCF5C9] text-slate-800 hover:bg-[#C3E5AE]', statBg: 'bg-[#DCF5C9]', logoColor: 'bg-[#6B8E50]', softBg: 'bg-[#DCF5C9]/80', focusBorder: 'focus:border-[#A5C78B]' },
-  purple: { shell: 'bg-[#F7EDFC]', pageText: 'text-slate-950', accentText: 'text-[#76518A]', accentBg: 'bg-[#BB99CC]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#BB99CC] text-[#1F1F1F]', idleTab: 'bg-[#F7EDFC] text-slate-800 hover:bg-[#E8D6F0]', statBg: 'bg-[#F7EDFC]', logoColor: 'bg-[#76518A]', softBg: 'bg-[#F7EDFC]/80', focusBorder: 'focus:border-[#BB99CC]' },
-  white: { shell: 'bg-[#FCFCFC]', pageText: 'text-[#1F1F1F]', accentText: 'text-[#1F1F1F]', accentBg: 'bg-[#1F1F1F]', actionText: 'text-[#FCFCFC]', selectedTab: 'bg-[#1F1F1F] text-[#FCFCFC]', idleTab: 'bg-[#FCFCFC] text-[#1F1F1F] hover:bg-white', statBg: 'bg-white', logoColor: 'bg-[#1F1F1F]', softBg: 'bg-white', focusBorder: 'focus:border-[#1F1F1F]' },
-  black: { shell: 'bg-[#1F1F1F]', pageText: 'text-[#FCFCFC]', accentText: 'text-[#FCFCFC]', accentBg: 'bg-[#FCFCFC]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#FCFCFC] text-[#1F1F1F]', idleTab: 'bg-[#2B2B2B] text-[#FCFCFC] hover:bg-[#3A3A3A]', statBg: 'bg-[#2B2B2B]', logoColor: 'bg-[#FCFCFC]', softBg: 'bg-[#2B2B2B]', focusBorder: 'focus:border-[#FCFCFC]' },
-  navy: { shell: 'bg-[#8F97CF]', pageText: 'text-[#1F1F1F]', accentText: 'text-[#30376F]', accentBg: 'bg-[#505999]', actionText: 'text-[#FCFCFC]', selectedTab: 'bg-[#505999] text-[#FCFCFC]', idleTab: 'bg-[#D5D9F2] text-[#1F1F1F] hover:bg-[#C1C6EA]', statBg: 'bg-[#D5D9F2]', logoColor: 'bg-[#505999]', softBg: 'bg-[#D5D9F2]/80', focusBorder: 'focus:border-[#505999]' },
+  blue: { shell: 'bg-[#EDF5FA]', pageText: 'text-slate-950', accentText: 'text-[#365F78]', accentBg: 'bg-[#B8D0E0]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#B8D0E0] text-[#1F1F1F]', idleTab: 'bg-[#EDF5FA] text-slate-800 hover:bg-[#D8E9F2]', statBg: 'bg-[#EDF5FA]', logoColor: 'bg-[#365F78]', softBg: 'bg-[#EDF5FA]/80', softText: 'text-slate-700', focusBorder: 'focus:border-[#B8D0E0]' },
+  pink: { shell: 'bg-[#FAEDED]', pageText: 'text-slate-950', accentText: 'text-[#8F5555]', accentBg: 'bg-[#F0C7C7]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#F0C7C7] text-[#1F1F1F]', idleTab: 'bg-[#FAEDED] text-slate-800 hover:bg-[#F4DADA]', statBg: 'bg-[#FAEDED]', logoColor: 'bg-[#B97878]', softBg: 'bg-[#FAEDED]/80', softText: 'text-slate-700', focusBorder: 'focus:border-[#F0C7C7]' },
+  yellow: { shell: 'bg-[#FCFAE6]', pageText: 'text-slate-950', accentText: 'text-[#766D1E]', accentBg: 'bg-[#F5EDA6]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#F5EDA6] text-[#1F1F1F]', idleTab: 'bg-[#FCFAE6] text-slate-800 hover:bg-[#F8F2BF]', statBg: 'bg-[#FCFAE6]', logoColor: 'bg-[#A99D37]', softBg: 'bg-[#FCFAE6]/80', softText: 'text-slate-700', focusBorder: 'focus:border-[#F5EDA6]' },
+  green: { shell: 'bg-[#DCF5C9]', pageText: 'text-slate-950', accentText: 'text-[#4F7138]', accentBg: 'bg-[#A5C78B]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#A5C78B] text-[#1F1F1F]', idleTab: 'bg-[#DCF5C9] text-slate-800 hover:bg-[#C3E5AE]', statBg: 'bg-[#DCF5C9]', logoColor: 'bg-[#6B8E50]', softBg: 'bg-[#DCF5C9]/80', softText: 'text-slate-700', focusBorder: 'focus:border-[#A5C78B]' },
+  purple: { shell: 'bg-[#F7EDFC]', pageText: 'text-slate-950', accentText: 'text-[#76518A]', accentBg: 'bg-[#BB99CC]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#BB99CC] text-[#1F1F1F]', idleTab: 'bg-[#F7EDFC] text-slate-800 hover:bg-[#E8D6F0]', statBg: 'bg-[#F7EDFC]', logoColor: 'bg-[#76518A]', softBg: 'bg-[#F7EDFC]/80', softText: 'text-slate-700', focusBorder: 'focus:border-[#BB99CC]' },
+  white: { shell: 'bg-[#FCFCFC]', pageText: 'text-[#1F1F1F]', accentText: 'text-[#1F1F1F]', accentBg: 'bg-[#1F1F1F]', actionText: 'text-[#FCFCFC]', selectedTab: 'bg-[#1F1F1F] text-[#FCFCFC]', idleTab: 'bg-[#FCFCFC] text-[#1F1F1F] hover:bg-white', statBg: 'bg-white', logoColor: 'bg-[#1F1F1F]', softBg: 'bg-white', softText: 'text-[#1F1F1F]', focusBorder: 'focus:border-[#1F1F1F]' },
+  black: { shell: 'bg-[#1F1F1F]', pageText: 'text-[#FCFCFC]', accentText: 'text-[#FCFCFC]', accentBg: 'bg-[#FCFCFC]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#FCFCFC] text-[#1F1F1F]', idleTab: 'bg-[#2B2B2B] text-[#FCFCFC] hover:bg-[#3A3A3A]', statBg: 'bg-[#2B2B2B]', logoColor: 'bg-[#FCFCFC]', softBg: 'bg-[#2B2B2B]', softText: 'text-[#FCFCFC]', focusBorder: 'focus:border-[#FCFCFC]' },
+  navy: { shell: 'bg-[#DCE8F4]', pageText: 'text-[#1F1F1F]', accentText: 'text-[#2F5D82]', accentBg: 'bg-[#7FA6C7]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#7FA6C7] text-[#1F1F1F]', idleTab: 'bg-[#EEF5FA] text-[#1F1F1F] hover:bg-[#C8DCEC]', statBg: 'bg-[#EEF5FA]', logoColor: 'bg-[#3F6F95]', softBg: 'bg-[#EEF5FA]/80', softText: 'text-slate-700', focusBorder: 'focus:border-[#7FA6C7]' },
 };
 
 function normalizeThemeColor(value: unknown): ThemeColor {
@@ -552,14 +552,14 @@ export function AdminManagePage() {
   return (
     <main data-testid="admin-shell" className={`min-h-screen ${theme.shell} ${theme.pageText} p-2 sm:p-3 lg:p-5`}>
       <section className="mx-auto flex w-full max-w-[1280px] flex-col gap-3 lg:gap-4">
-        <header className="rounded-[1.25rem] border border-slate-300/70 bg-white px-4 py-4 text-center shadow-sm sm:rounded-[1.75rem] md:px-6">
+        <header className="rounded-[1.25rem] border border-slate-300/70 bg-white px-4 py-4 text-center text-slate-950 shadow-sm sm:rounded-[1.75rem] md:px-6">
           <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
             <span className="inline-flex h-16 w-16 shrink-0 items-center justify-center">
               <span role="img" aria-label="학급 보상 시스템 로고" className={`h-16 w-16 ${theme.logoColor} [mask-image:url('/class-reward-system-icon.png')] [mask-position:center] [mask-repeat:no-repeat] [mask-size:contain]`} />
             </span>
             <div>
               <p className={`text-xs font-black tracking-[0.22em] ${theme.accentText} sm:text-sm`}>Class Reward System</p>
-              <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl md:text-5xl">학급 보상 시스템</h1>
+              <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl md:text-5xl">학급 보상 시스템</h1>
             </div>
           </div>
           <p className="mx-auto mt-1 max-w-2xl text-xs font-bold text-slate-500 sm:text-sm md:text-base">
@@ -744,7 +744,7 @@ export function AdminManagePage() {
                       {product.imageUrl ? 'URL' : '이미지'}
                     </button>
                     <NumberInput label={`${product.productId} 정렬`} value={product.sortOrder} onChange={(value) => updateProduct(product.productId, { sortOrder: value })} dense />
-                    <label className={`flex h-8 items-center justify-center rounded-lg ${theme.softBg} text-[10px] font-bold text-slate-700`}>
+                    <label className={`flex h-8 items-center justify-center rounded-lg ${theme.softBg} text-[10px] font-bold ${theme.softText}`}>
                       <input aria-label={`${product.productId} 판매중`} checked={product.isActive} onChange={(event) => updateProduct(product.productId, { isActive: event.target.checked })} type="checkbox" />
                     </label>
                     <button aria-label={`${product.productId} 상품 삭제`} className="h-8 rounded-lg bg-rose-100 px-1 text-[10px] font-black text-rose-700" onClick={() => deleteProductRow(product.productId)} type="button">
@@ -772,7 +772,7 @@ export function AdminManagePage() {
                   <NumberInput label="새 과제 완료 가능 횟수" value={newTask.maxCompletionsPerStudent} onChange={(value) => setNewTask((current) => ({ ...current, maxCompletionsPerStudent: value }))} compact />
                   <NumberInput label="새 과제 정렬" value={newTask.sortOrder} onChange={(value) => setNewTask((current) => ({ ...current, sortOrder: value }))} compact />
                 </div>
-                <label className={`flex items-center gap-2 rounded-xl ${theme.softBg} px-3 py-2 text-sm font-black text-slate-700`}>
+                <label className={`flex items-center gap-2 rounded-xl ${theme.softBg} px-3 py-2 text-sm font-black ${theme.softText}`}>
                   <input aria-label="새 과제 활성" checked={newTask.isActive} onChange={(event) => setNewTask((current) => ({ ...current, isActive: event.target.checked }))} type="checkbox" />
                   은행 페이지에 표시
                 </label>
@@ -809,7 +809,7 @@ export function AdminManagePage() {
                     <NumberInput label={`${task.taskId} 보상`} value={task.reward} onChange={(value) => updateTask(task.taskId, { reward: value })} dense />
                     <NumberInput label={`${task.taskId} 완료 가능 횟수`} value={task.maxCompletionsPerStudent} onChange={(value) => updateTask(task.taskId, { maxCompletionsPerStudent: value })} dense />
                     <NumberInput label={`${task.taskId} 정렬`} value={task.sortOrder} onChange={(value) => updateTask(task.taskId, { sortOrder: value })} dense />
-                    <label className={`flex h-8 items-center justify-center rounded-lg ${theme.softBg} text-[10px] font-bold text-slate-700`}>
+                    <label className={`flex h-8 items-center justify-center rounded-lg ${theme.softBg} text-[10px] font-bold ${theme.softText}`}>
                       <input aria-label={`${task.taskId} 활성`} checked={task.isActive} onChange={(event) => updateTask(task.taskId, { isActive: event.target.checked })} type="checkbox" />
                     </label>
                     <button
@@ -839,7 +839,7 @@ export function AdminManagePage() {
           <section role="tabpanel" aria-label="화폐 지급/회수" className="mx-auto w-full max-w-xl">
             <SectionCard title="화폐 지급/회수" description="금액과 지급/회수만 정한 뒤 학생 QR을 찍으면 바로 반영됩니다." compact>
               <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setCurrencyMode('add')} className={`rounded-2xl px-4 py-4 text-xl font-black ${currencyMode === 'add' ? `${theme.accentBg} ${theme.actionText}` : `${theme.softBg} text-slate-700`}`}>지급</button>
+                <button type="button" onClick={() => setCurrencyMode('add')} className={`rounded-2xl px-4 py-4 text-xl font-black ${currencyMode === 'add' ? `${theme.accentBg} ${theme.actionText}` : `${theme.softBg} ${theme.softText}`}`}>지급</button>
                 <button type="button" onClick={() => setCurrencyMode('subtract')} className={`rounded-2xl px-4 py-4 text-xl font-black ${currencyMode === 'subtract' ? 'bg-rose-500 text-white' : 'bg-rose-50 text-slate-700'}`}>회수</button>
               </div>
               <label className="mt-3 block text-sm font-black text-slate-700">
@@ -1036,9 +1036,9 @@ function SummaryCard({ label, value, toneClass, accentClass }: { label: string; 
 
 function SectionCard({ title, description, action, children, compact = false }: { title: string; description?: string; action?: ReactNode; children: ReactNode; compact?: boolean }) {
   return (
-    <section className={`min-w-0 overflow-hidden rounded-[1.25rem] border border-slate-300/70 bg-white/90 shadow-sm sm:rounded-[1.75rem] ${compact ? 'p-3 md:p-4' : 'p-4 md:p-5'}`}>
+    <section className={`min-w-0 overflow-hidden rounded-[1.25rem] border border-slate-300/70 bg-white/90 text-slate-950 shadow-sm sm:rounded-[1.75rem] ${compact ? 'p-3 md:p-4' : 'p-4 md:p-5'}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-xl font-black sm:text-2xl">{title}</h2>
+        <h2 className="text-xl font-black text-slate-950 sm:text-2xl">{title}</h2>
         {action}
       </div>
       {description ? <p className="mt-1 text-xs font-bold text-slate-500 sm:text-sm">{description}</p> : null}
@@ -1077,8 +1077,8 @@ function NumberInput({ label, value, onChange, compact = false, dense = false }:
 
 function InfoPanel() {
   return (
-    <aside className="rounded-[1.25rem] border border-slate-300/70 bg-white/90 p-4 shadow-sm sm:rounded-[1.75rem] md:p-5">
-      <h2 className="text-xl font-black sm:text-2xl">사용 전 확인</h2>
+    <aside className="rounded-[1.25rem] border border-slate-300/70 bg-white/90 p-4 text-slate-950 shadow-sm sm:rounded-[1.75rem] md:p-5">
+      <h2 className="text-xl font-black text-slate-950 sm:text-2xl">사용 전 확인</h2>
       <ul className="mt-3 space-y-2 text-sm font-bold text-slate-600">
         <li>• Students, Products, Transactions, Adjustments 시트가 필요합니다.</li>
         <li>• Google 로그인 계정 또는 서비스 계정에 스프레드시트 편집 권한이 필요합니다.</li>

@@ -135,6 +135,37 @@ describe('BankApp', () => {
     expect(blackTasksButton.className).not.toContain('text-indigo-950');
   });
 
+  it('uses a blue-leaning low-saturation navy bank palette', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '남색 은행', currencyUnit: '별', themeColor: 'navy' });
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    }));
+    const { container } = render(<BankApp />);
+
+    expect(await screen.findByRole('heading', { name: '남색 은행' })).toBeTruthy();
+    expect(container.querySelector('[data-testid="bank-shell"]')?.className).toContain('bg-[#DCE8F4]');
+    expect(screen.getByText('CLASS BANK').className).toContain('text-[#2F5D82]');
+    expect(screen.getByRole('button', { name: '내 계좌' }).className).toContain('bg-[#7FA6C7]');
+    expect(container.querySelector('[data-testid="bank-shell"]')?.className).not.toContain('bg-[#8F97CF]');
+  });
+
+  it('keeps black bank task-list cards readable on dark local backgrounds', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '검정 은행', currencyUnit: '별', themeColor: 'black' });
+      if (url === '/api/tasks') return jsonResponse(tasks);
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    }));
+    render(<BankApp />);
+
+    expect(await screen.findByRole('heading', { name: '검정 은행' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '과제 확인' }));
+    const taskButton = await screen.findByRole('button', { name: /책 10분 읽기/ });
+    expect(taskButton.className).toContain('bg-[#2B2B2B]');
+    expect(taskButton.className).toContain('text-[#FCFCFC]');
+  });
+
   it('checks a student balance from the bank QR popup', async () => {
     render(<BankApp />);
     expect(await screen.findByRole('heading', { name: '별빛 은행' })).toBeTruthy();

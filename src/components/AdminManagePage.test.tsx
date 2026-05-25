@@ -204,12 +204,35 @@ describe('AdminManagePage', () => {
     expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
     expect(secondRender.container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-[#1F1F1F]');
     expect(secondRender.container.querySelector('[data-testid="admin-shell"]')?.className).not.toContain('bg-slate-100');
+    expect(screen.getByRole('heading', { name: '학급 보상 시스템' }).className).toContain('text-slate-950');
+    expect(screen.getByRole('heading', { name: '사용 전 확인' }).className).toContain('text-slate-950');
     expect(screen.getByLabelText('매점 제목').className).toContain('bg-slate-50');
     expect(screen.getByLabelText('매점 제목').className).toContain('text-slate-950');
     fireEvent.click(screen.getByRole('tab', { name: '학생 관리' }));
     expect(await screen.findByLabelText('S001 이름')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '새 학생 추가' }).className).toContain('text-slate-950');
+    expect(screen.getByRole('heading', { name: '학생 명단' }).className).toContain('text-slate-950');
     expect(screen.getByLabelText('S001 이름').className).toContain('bg-white');
     expect(screen.getByLabelText('S001 이름').className).toContain('text-slate-950');
+  });
+
+  it('uses a blue-leaning low-saturation navy admin palette', async () => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/students') return jsonResponse(students);
+      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
+      if (url === '/api/transactions') return jsonResponse([]);
+      if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'navy', source: 'runtime' });
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+    const { container } = render(<AdminManagePage />);
+
+    expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
+    expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-[#DCE8F4]');
+    expect(screen.getByRole('tab', { name: '시스템 설정' }).className).toContain('bg-[#7FA6C7]');
+    expect(screen.getByRole('img', { name: '학급 보상 시스템 로고' }).className).toContain('bg-[#3F6F95]');
+    expect(container.querySelector('[data-testid="admin-shell"]')?.className).not.toContain('bg-[#8F97CF]');
   });
 
 

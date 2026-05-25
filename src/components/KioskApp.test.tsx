@@ -145,7 +145,23 @@ describe('KioskApp', () => {
     const { container } = render(<KioskApp />);
 
     expect(await screen.findByRole('heading', { name: '남색 매점' })).toBeTruthy();
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-[#8F97CF]');
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-[#DCE8F4]');
+    expect(screen.getByRole('button', { name: '전체' }).className).toContain('bg-[#7FA6C7]');
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).not.toContain('bg-[#8F97CF]');
+  });
+
+  it('keeps black kiosk theme cart action buttons readable on dark local backgrounds', async () => {
+    vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse(products));
+    vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '검정 매점', themeColor: 'black', source: 'runtime' }));
+    render(<KioskApp />);
+
+    expect(await screen.findByRole('heading', { name: '검정 매점' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '연필 300별 담기' }));
+    expect(screen.getByRole('button', { name: '비우기' }).className).toContain('bg-[#2B2B2B]');
+    expect(screen.getByRole('button', { name: '비우기' }).className).toContain('text-[#FCFCFC]');
+    expect(screen.getByText('재고 20').className).toContain('text-[#FCFCFC]');
+    expect(screen.getByRole('button', { name: 'QR 결제' }).className).toContain('bg-[#FCFCFC]');
+    expect(screen.getByRole('button', { name: 'QR 결제' }).className).toContain('text-[#1F1F1F]');
   });
 
   it('applies softer pastel theme classes from settings on the kiosk', async () => {

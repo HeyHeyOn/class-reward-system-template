@@ -48,15 +48,15 @@ function formatTransactionDate(value: string) {
   return date.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
 }
 
-const BANK_THEME: Record<ThemeColor, { shell: string; accentText: string; accentBg: string; accentBgAlt: string; accentBorder: string; accentBorderAlt: string; softBg: string; focusBorder: string }> = {
-  blue: { shell: 'bg-[#EDF5FA]', accentText: 'text-[#365F78]', accentBg: 'bg-[#B8D0E0] text-[#1F1F1F]', accentBgAlt: 'bg-[#D8E9F2] text-[#1F1F1F]', accentBorder: 'border-[#B8D0E0]', accentBorderAlt: 'border-[#B8D0E0]', softBg: 'bg-[#EDF5FA]', focusBorder: 'focus:border-[#B8D0E0]' },
-  pink: { shell: 'bg-[#FAEDED]', accentText: 'text-[#8F5555]', accentBg: 'bg-[#F0C7C7] text-[#1F1F1F]', accentBgAlt: 'bg-[#F4DADA] text-[#1F1F1F]', accentBorder: 'border-[#F0C7C7]', accentBorderAlt: 'border-[#F0C7C7]', softBg: 'bg-[#FAEDED]', focusBorder: 'focus:border-[#F0C7C7]' },
-  yellow: { shell: 'bg-[#FCFAE6]', accentText: 'text-[#766D1E]', accentBg: 'bg-[#F5EDA6] text-[#1F1F1F]', accentBgAlt: 'bg-[#F8F2BF] text-[#1F1F1F]', accentBorder: 'border-[#F5EDA6]', accentBorderAlt: 'border-[#F5EDA6]', softBg: 'bg-[#FCFAE6]', focusBorder: 'focus:border-[#F5EDA6]' },
-  green: { shell: 'bg-[#DCF5C9]', accentText: 'text-[#505999]', accentBg: 'bg-[#A5C78B] text-[#1F1F1F]', accentBgAlt: 'bg-[#DCF5C9] text-[#1F1F1F]', accentBorder: 'border-[#A5C78B]', accentBorderAlt: 'border-[#A5C78B]', softBg: 'bg-[#DCF5C9]', focusBorder: 'focus:border-[#A5C78B]' },
-  purple: { shell: 'bg-[#F7EDFC]', accentText: 'text-[#76518A]', accentBg: 'bg-[#BB99CC] text-[#1F1F1F]', accentBgAlt: 'bg-[#E8D6F0] text-[#1F1F1F]', accentBorder: 'border-[#BB99CC]', accentBorderAlt: 'border-[#BB99CC]', softBg: 'bg-[#F7EDFC]', focusBorder: 'focus:border-[#BB99CC]' },
-  white: { shell: 'bg-[#FCFCFC]', accentText: 'text-[#1F1F1F]', accentBg: 'bg-[#1F1F1F] text-[#FCFCFC]', accentBgAlt: 'bg-white text-[#1F1F1F]', accentBorder: 'border-[#1F1F1F]', accentBorderAlt: 'border-[#1F1F1F]', softBg: 'bg-white', focusBorder: 'focus:border-[#1F1F1F]' },
-  black: { shell: 'bg-[#1F1F1F]', accentText: 'text-[#FCFCFC]', accentBg: 'bg-[#FCFCFC] text-[#1F1F1F]', accentBgAlt: 'bg-[#2B2B2B] text-[#FCFCFC]', accentBorder: 'border-[#FCFCFC]', accentBorderAlt: 'border-[#FCFCFC]', softBg: 'bg-[#2B2B2B]', focusBorder: 'focus:border-[#FCFCFC]' },
-  navy: { shell: 'bg-[#8F97CF]', accentText: 'text-[#30376F]', accentBg: 'bg-[#505999] text-[#FCFCFC]', accentBgAlt: 'bg-[#D5D9F2] text-[#1F1F1F]', accentBorder: 'border-[#505999]', accentBorderAlt: 'border-[#505999]', softBg: 'bg-[#D5D9F2]', focusBorder: 'focus:border-[#505999]' },
+const BANK_THEME: Record<ThemeColor, { shell: string; accentText: string; accentBg: string; accentBgAlt: string; accentBorder: string; accentBorderAlt: string; softBg: string; softText: string; focusBorder: string }> = {
+  blue: { shell: 'bg-[#EDF5FA]', accentText: 'text-[#365F78]', accentBg: 'bg-[#B8D0E0] text-[#1F1F1F]', accentBgAlt: 'bg-[#D8E9F2] text-[#1F1F1F]', accentBorder: 'border-[#B8D0E0]', accentBorderAlt: 'border-[#B8D0E0]', softBg: 'bg-[#EDF5FA]', softText: 'text-slate-800', focusBorder: 'focus:border-[#B8D0E0]' },
+  pink: { shell: 'bg-[#FAEDED]', accentText: 'text-[#8F5555]', accentBg: 'bg-[#F0C7C7] text-[#1F1F1F]', accentBgAlt: 'bg-[#F4DADA] text-[#1F1F1F]', accentBorder: 'border-[#F0C7C7]', accentBorderAlt: 'border-[#F0C7C7]', softBg: 'bg-[#FAEDED]', softText: 'text-slate-800', focusBorder: 'focus:border-[#F0C7C7]' },
+  yellow: { shell: 'bg-[#FCFAE6]', accentText: 'text-[#766D1E]', accentBg: 'bg-[#F5EDA6] text-[#1F1F1F]', accentBgAlt: 'bg-[#F8F2BF] text-[#1F1F1F]', accentBorder: 'border-[#F5EDA6]', accentBorderAlt: 'border-[#F5EDA6]', softBg: 'bg-[#FCFAE6]', softText: 'text-slate-800', focusBorder: 'focus:border-[#F5EDA6]' },
+  green: { shell: 'bg-[#DCF5C9]', accentText: 'text-[#505999]', accentBg: 'bg-[#A5C78B] text-[#1F1F1F]', accentBgAlt: 'bg-[#DCF5C9] text-[#1F1F1F]', accentBorder: 'border-[#A5C78B]', accentBorderAlt: 'border-[#A5C78B]', softBg: 'bg-[#DCF5C9]', softText: 'text-slate-800', focusBorder: 'focus:border-[#A5C78B]' },
+  purple: { shell: 'bg-[#F7EDFC]', accentText: 'text-[#76518A]', accentBg: 'bg-[#BB99CC] text-[#1F1F1F]', accentBgAlt: 'bg-[#E8D6F0] text-[#1F1F1F]', accentBorder: 'border-[#BB99CC]', accentBorderAlt: 'border-[#BB99CC]', softBg: 'bg-[#F7EDFC]', softText: 'text-slate-800', focusBorder: 'focus:border-[#BB99CC]' },
+  white: { shell: 'bg-[#FCFCFC]', accentText: 'text-[#1F1F1F]', accentBg: 'bg-[#1F1F1F] text-[#FCFCFC]', accentBgAlt: 'bg-white text-[#1F1F1F]', accentBorder: 'border-[#1F1F1F]', accentBorderAlt: 'border-[#1F1F1F]', softBg: 'bg-white', softText: 'text-[#1F1F1F]', focusBorder: 'focus:border-[#1F1F1F]' },
+  black: { shell: 'bg-[#1F1F1F]', accentText: 'text-[#FCFCFC]', accentBg: 'bg-[#FCFCFC] text-[#1F1F1F]', accentBgAlt: 'bg-[#2B2B2B] text-[#FCFCFC]', accentBorder: 'border-[#FCFCFC]', accentBorderAlt: 'border-[#FCFCFC]', softBg: 'bg-[#2B2B2B]', softText: 'text-[#FCFCFC]', focusBorder: 'focus:border-[#FCFCFC]' },
+  navy: { shell: 'bg-[#DCE8F4]', accentText: 'text-[#2F5D82]', accentBg: 'bg-[#7FA6C7] text-[#1F1F1F]', accentBgAlt: 'bg-[#EEF5FA] text-[#1F1F1F]', accentBorder: 'border-[#7FA6C7]', accentBorderAlt: 'border-[#7FA6C7]', softBg: 'bg-[#EEF5FA]', softText: 'text-slate-800', focusBorder: 'focus:border-[#7FA6C7]' },
 };
 
 function normalizeThemeColor(value: unknown): ThemeColor {
@@ -261,9 +261,9 @@ export function BankApp() {
           {!loading && !errorMessage && tasks.length === 0 ? <p className="rounded-2xl bg-slate-50 p-4 font-bold text-slate-600">현재 받을 수 있는 과제가 없습니다.</p> : null}
           <div className="space-y-2">
             {tasks.map((task) => (
-              <button key={task.taskId} type="button" onClick={() => openTaskDetail(task)} className={`w-full rounded-2xl border border-slate-200 ${theme.softBg} p-4 text-left font-black text-slate-800`}>
+              <button key={task.taskId} type="button" onClick={() => openTaskDetail(task)} className={`w-full rounded-2xl border border-slate-200 ${theme.softBg} p-4 text-left font-black ${theme.softText}`}>
                 <span className="block text-lg">{task.title}</span>
-                <span className="mt-1 block text-sm text-slate-500">보상 {task.reward.toLocaleString()}{currencyUnit} · {task.maxCompletionsPerStudent}회까지</span>
+                <span className={`mt-1 block text-sm ${normalizeThemeColor(settings.themeColor) === 'black' ? 'text-slate-300' : 'text-slate-500'}`}>보상 {task.reward.toLocaleString()}{currencyUnit} · {task.maxCompletionsPerStudent}회까지</span>
               </button>
             ))}
           </div>

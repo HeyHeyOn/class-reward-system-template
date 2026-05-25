@@ -38,15 +38,15 @@ type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'b
 
 type KioskSettings = { currencyUnit?: string; appTitle?: string; themeColor?: ThemeColor };
 
-const THEME_STYLES: Record<ThemeColor, { shell: string; accentText: string; accentBg: string; selectedText: string; lightBg: string; hoverBg: string; ring: string }> = {
-  blue: { shell: 'bg-[#EDF5FA]', accentText: 'text-[#365F78]', accentBg: 'bg-[#B8D0E0]', selectedText: 'text-[#1F1F1F]', lightBg: 'bg-[#EDF5FA]', hoverBg: 'hover:bg-[#D8E9F2]', ring: 'focus:ring-[#B8D0E0]' },
-  pink: { shell: 'bg-[#FAEDED]', accentText: 'text-[#8F5555]', accentBg: 'bg-[#F0C7C7]', selectedText: 'text-[#1F1F1F]', lightBg: 'bg-[#FAEDED]', hoverBg: 'hover:bg-[#F4DADA]', ring: 'focus:ring-[#F0C7C7]' },
-  yellow: { shell: 'bg-[#FCFAE6]', accentText: 'text-[#766D1E]', accentBg: 'bg-[#F5EDA6]', selectedText: 'text-[#1F1F1F]', lightBg: 'bg-[#FCFAE6]', hoverBg: 'hover:bg-[#F8F2BF]', ring: 'focus:ring-[#F5EDA6]' },
-  green: { shell: 'bg-[#DCF5C9]', accentText: 'text-[#4F7138]', accentBg: 'bg-[#A5C78B]', selectedText: 'text-[#1F1F1F]', lightBg: 'bg-[#DCF5C9]', hoverBg: 'hover:bg-[#C3E5AE]', ring: 'focus:ring-[#A5C78B]' },
-  purple: { shell: 'bg-[#F7EDFC]', accentText: 'text-[#76518A]', accentBg: 'bg-[#BB99CC]', selectedText: 'text-[#1F1F1F]', lightBg: 'bg-[#F7EDFC]', hoverBg: 'hover:bg-[#E8D6F0]', ring: 'focus:ring-[#BB99CC]' },
-  white: { shell: 'bg-[#FCFCFC]', accentText: 'text-[#1F1F1F]', accentBg: 'bg-[#1F1F1F]', selectedText: 'text-[#FCFCFC]', lightBg: 'bg-white', hoverBg: 'hover:bg-[#2B2B2B]', ring: 'focus:ring-[#1F1F1F]' },
-  black: { shell: 'bg-[#1F1F1F]', accentText: 'text-[#FCFCFC]', accentBg: 'bg-[#FCFCFC]', selectedText: 'text-[#1F1F1F]', lightBg: 'bg-[#2B2B2B]', hoverBg: 'hover:bg-white', ring: 'focus:ring-[#FCFCFC]' },
-  navy: { shell: 'bg-[#8F97CF]', accentText: 'text-[#30376F]', accentBg: 'bg-[#505999]', selectedText: 'text-[#FCFCFC]', lightBg: 'bg-[#D5D9F2]', hoverBg: 'hover:bg-[#414986]', ring: 'focus:ring-[#505999]' },
+const THEME_STYLES: Record<ThemeColor, { shell: string; accentText: string; accentBg: string; selectedText: string; lightBg: string; lightText: string; hoverBg: string; ring: string }> = {
+  blue: { shell: 'bg-[#EDF5FA]', accentText: 'text-[#365F78]', accentBg: 'bg-[#B8D0E0]', selectedText: 'text-[#1F1F1F]', lightBg: 'bg-[#EDF5FA]', lightText: 'text-slate-700', hoverBg: 'hover:bg-[#D8E9F2]', ring: 'focus:ring-[#B8D0E0]' },
+  pink: { shell: 'bg-[#FAEDED]', accentText: 'text-[#8F5555]', accentBg: 'bg-[#F0C7C7]', selectedText: 'text-[#1F1F1F]', lightBg: 'bg-[#FAEDED]', lightText: 'text-slate-700', hoverBg: 'hover:bg-[#F4DADA]', ring: 'focus:ring-[#F0C7C7]' },
+  yellow: { shell: 'bg-[#FCFAE6]', accentText: 'text-[#766D1E]', accentBg: 'bg-[#F5EDA6]', selectedText: 'text-[#1F1F1F]', lightBg: 'bg-[#FCFAE6]', lightText: 'text-slate-700', hoverBg: 'hover:bg-[#F8F2BF]', ring: 'focus:ring-[#F5EDA6]' },
+  green: { shell: 'bg-[#DCF5C9]', accentText: 'text-[#4F7138]', accentBg: 'bg-[#A5C78B]', selectedText: 'text-[#1F1F1F]', lightBg: 'bg-[#DCF5C9]', lightText: 'text-slate-700', hoverBg: 'hover:bg-[#C3E5AE]', ring: 'focus:ring-[#A5C78B]' },
+  purple: { shell: 'bg-[#F7EDFC]', accentText: 'text-[#76518A]', accentBg: 'bg-[#BB99CC]', selectedText: 'text-[#1F1F1F]', lightBg: 'bg-[#F7EDFC]', lightText: 'text-slate-700', hoverBg: 'hover:bg-[#E8D6F0]', ring: 'focus:ring-[#BB99CC]' },
+  white: { shell: 'bg-[#FCFCFC]', accentText: 'text-[#1F1F1F]', accentBg: 'bg-[#1F1F1F]', selectedText: 'text-[#FCFCFC]', lightBg: 'bg-white', lightText: 'text-[#1F1F1F]', hoverBg: 'hover:bg-[#2B2B2B]', ring: 'focus:ring-[#1F1F1F]' },
+  black: { shell: 'bg-[#1F1F1F]', accentText: 'text-[#FCFCFC]', accentBg: 'bg-[#FCFCFC]', selectedText: 'text-[#1F1F1F]', lightBg: 'bg-[#2B2B2B]', lightText: 'text-[#FCFCFC]', hoverBg: 'hover:bg-white', ring: 'focus:ring-[#FCFCFC]' },
+  navy: { shell: 'bg-[#DCE8F4]', accentText: 'text-[#2F5D82]', accentBg: 'bg-[#7FA6C7]', selectedText: 'text-[#1F1F1F]', lightBg: 'bg-[#EEF5FA]', lightText: 'text-slate-700', hoverBg: 'hover:bg-[#C8DCEC]', ring: 'focus:ring-[#7FA6C7]' },
 };
 
 function normalizeThemeColor(value: unknown): ThemeColor {
@@ -338,7 +338,7 @@ export function KioskApp() {
                   <p className="mt-1 truncate text-[clamp(0.62rem,2.4vw,1.125rem)] font-black leading-tight sm:mt-2">{product.name}</p>
                   <div data-testid="product-card-footer" className="mt-1 flex flex-row items-end justify-between gap-1 sm:gap-2">
                     <p className="min-w-0 truncate text-[clamp(0.62rem,2.3vw,1.25rem)] font-black leading-tight">{formatCurrency(product.price, currencyUnit)}</p>
-                    <p data-testid="product-card-stock" className={`shrink-0 whitespace-nowrap rounded-full ${theme.lightBg} px-1 py-0.5 text-[clamp(0.55rem,1.8vw,0.75rem)] font-black leading-tight text-slate-700 sm:px-2 sm:py-1`}>재고 {product.stock}</p>
+                    <p data-testid="product-card-stock" className={`shrink-0 whitespace-nowrap rounded-full ${theme.lightBg} px-1 py-0.5 text-[clamp(0.55rem,1.8vw,0.75rem)] font-black leading-tight ${theme.lightText} sm:px-2 sm:py-1`}>재고 {product.stock}</p>
                   </div>
                 </button>
               ))}
@@ -352,7 +352,7 @@ export function KioskApp() {
             <button
               onClick={clearCart}
               disabled={cartItems.length === 0}
-              className={`rounded-xl ${theme.lightBg} px-2 py-1.5 text-[clamp(0.75rem,2.6vw,1rem)] font-black text-slate-700 disabled:cursor-not-allowed disabled:opacity-40 sm:px-3 sm:py-2`}
+              className={`rounded-xl ${theme.lightBg} px-2 py-1.5 text-[clamp(0.75rem,2.6vw,1rem)] font-black ${theme.lightText} disabled:cursor-not-allowed disabled:opacity-40 sm:px-3 sm:py-2`}
             >
               비우기
             </button>
@@ -403,7 +403,7 @@ export function KioskApp() {
               data-testid="checkout-button"
               onClick={openCheckout}
               disabled={cartItems.length === 0}
-              className={`w-full rounded-xl ${theme.accentBg} px-4 py-2.5 text-[clamp(1rem,4vw,1.5rem)] font-black text-white shadow-sm transition ${theme.hoverBg} disabled:cursor-not-allowed disabled:bg-slate-300 sm:w-auto sm:min-w-44 sm:px-6 sm:py-3`}
+              className={`w-full rounded-xl ${theme.accentBg} px-4 py-2.5 text-[clamp(1rem,4vw,1.5rem)] font-black ${theme.selectedText} shadow-sm transition ${theme.hoverBg} disabled:cursor-not-allowed disabled:bg-slate-300 sm:w-auto sm:min-w-44 sm:px-6 sm:py-3`}
             >
               QR 결제
             </button>
@@ -574,7 +574,7 @@ function PaymentModal({
                 <p className={`text-3xl font-black ${theme.accentText}`}>{formatCurrency(paymentResult.balanceAfter, currencyUnit)}</p>
               </div>
             </div>
-            <button onClick={onReset} className={`mt-7 rounded-xl ${theme.accentBg} px-12 py-4 text-4xl font-black text-white shadow-sm`}>
+            <button onClick={onReset} className={`mt-7 rounded-xl ${theme.accentBg} px-12 py-4 text-4xl font-black ${theme.selectedText} shadow-sm`}>
               처음으로
             </button>
           </div>
