@@ -6,7 +6,7 @@ export const THEME_COLORS = ['blue', 'pink', 'yellow', 'green', 'purple', 'white
 export type ThemeColor = (typeof THEME_COLORS)[number];
 
 export const REQUIRED_SHEETS: Record<SheetName, string[]> = {
-  Students: ['studentId', 'name', 'number', 'balance', 'status'],
+  Students: ['studentId', 'name', 'balance', 'status'],
   Products: ['productId', 'name', 'price', 'stock', 'isActive', 'imageUrl', 'category', 'sortOrder'],
   Transactions: ['transactionId', 'timestamp', 'studentId', 'studentName', 'items', 'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator'],
   Adjustments: ['adjustmentId', 'timestamp', 'studentId', 'amount', 'mode', 'operator'],

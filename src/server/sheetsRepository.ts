@@ -21,6 +21,7 @@ export type SheetCellUpdate = {
 export type SheetsStore = SheetsReader & {
   updateCell(sheetName: SheetName, rowNumber: number, columnName: string, value: string | number): Promise<void>;
   updateCells?(sheetName: SheetName, updates: SheetCellUpdate[]): Promise<void>;
+  updateHeaderRow?(sheetName: SheetName, headers: string[]): Promise<void>;
   appendRow(sheetName: SheetName, values: string[]): Promise<void>;
   deleteRow?(sheetName: SheetName, rowNumber: number): Promise<void>;
   deleteRows?(sheetName: SheetName, rowNumbers: number[]): Promise<void>;
@@ -948,12 +949,34 @@ function validateProductUpdate(update: ProductUpdate) {
 
 async function ensureTaskSheet(store: SheetsStore): Promise<void> {
   const rows = await store.getRows('Tasks');
-  if (!rows[0]) await store.appendRow('Tasks', TASK_HEADERS);
+  const headers = rows[0];
+  if (!headers) {
+    await store.appendRow('Tasks', TASK_HEADERS);
+    return;
+  }
+
+  await ensureSheetHeaders(store, 'Tasks', TASK_HEADERS, headers);
 }
 
 async function ensureTaskCompletionSheet(store: SheetsStore): Promise<void> {
   const rows = await store.getRows('TaskCompletions');
-  if (!rows[0]) await store.appendRow('TaskCompletions', TASK_COMPLETION_HEADERS);
+  const headers = rows[0];
+  if (!headers) {
+    await store.appendRow('TaskCompletions', TASK_COMPLETION_HEADERS);
+    return;
+  }
+
+  await ensureSheetHeaders(store, 'TaskCompletions', TASK_COMPLETION_HEADERS, headers);
+}
+
+async function ensureSheetHeaders(store: SheetsStore, sheetName: SheetName, requiredHeaders: string[], currentHeaders: string[]): Promise<void> {
+  const normalizedCurrent = currentHeaders.map((header) => header.trim()).filter(Boolean);
+  const missingHeaders = requiredHeaders.filter((header) => !normalizedCurrent.includes(header));
+  if (missingHeaders.length === 0) return;
+  if (!store.updateHeaderRow) {
+    throw new Error(`${sheetName} 시트에 새 기능용 컬럼이 없습니다: ${missingHeaders.join(', ')}`);
+  }
+  await store.updateHeaderRow(sheetName, [...normalizedCurrent, ...missingHeaders]);
 }
 
 function validateTaskId(taskId: string) {

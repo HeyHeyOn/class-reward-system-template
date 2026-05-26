@@ -30,7 +30,8 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
       'TaskCompletions',
       'Recovery',
     ]);
-    expect(REQUIRED_SHEETS.Students).toEqual(['studentId', 'name', 'number', 'balance', 'status']);
+    expect(REQUIRED_SHEETS.Students).toEqual(['studentId', 'name', 'balance', 'status']);
+    expect(REQUIRED_SHEETS.Tasks).toEqual(['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'allowedStudentIds', 'createdAt', 'updatedAt']);
     expect(REQUIRED_SHEETS.Transactions).toEqual(['transactionId', 'timestamp', 'studentId', 'studentName', 'items', 'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator']);
     expect(JSON.stringify({ REQUIRED_SHEETS, DEFAULT_SETTINGS })).not.toMatch(/import|csv|NEIS|나이스|자동 불러오기/iu);
   });
@@ -159,8 +160,8 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
     expect(rendered).toContain('bankTitle: 별빛 은행');
     expect(rendered).toContain('currencyUnit: 별');
     expect(rendered).toContain('themeColor: purple');
-    expect(rendered).toContain('Students: studentId, name, number, balance, status');
-    expect(rendered).toContain('Tasks: taskId, title, description, reward, maxCompletionsPerStudent, isActive, sortOrder');
+    expect(rendered).toContain('Students: studentId, name, balance, status');
+    expect(rendered).toContain('Tasks: taskId, title, description, reward, maxCompletionsPerStudent, isActive, sortOrder, allowedStudentIds, createdAt, updatedAt');
     expect(rendered).toContain('Vercel 환경변수: GOOGLE_SHEET_ID, ADMIN_PASSWORD, AUTH_SECRET');
     expect(rendered).not.toContain('비밀번호');
   });

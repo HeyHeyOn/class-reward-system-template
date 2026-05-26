@@ -61,6 +61,17 @@ export class GoogleSheetsStore implements SheetsStore {
     });
   }
 
+  async updateHeaderRow(sheetName: SheetName, headers: string[]): Promise<void> {
+    if (headers.length === 0) return;
+    const sheets = await createSheetsClient(this.request);
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: this.spreadsheetId,
+      range: `${sheetName}!A1:${columnIndexToLetter(headers.length - 1)}1`,
+      valueInputOption: 'RAW',
+      requestBody: { values: [headers] },
+    });
+  }
+
   async appendRow(sheetName: SheetName, values: string[]): Promise<void> {
     const sheets = await createSheetsClient(this.request);
     try {

@@ -22,6 +22,7 @@ import {
   updateStudentDetails,
   updateStudentDetailsBatch,
   resetTaskCompletionsBatch,
+  updateTaskDetails,
   updateTaskDetailsBatch,
 } from '@/server/sheetsRepository';
 
@@ -588,6 +589,7 @@ describe('sheets repository', () => {
       async updateCell() {
         throw new Error('single-cell update should not be used');
       },
+      async updateHeaderRow() {},
       async updateCells(sheetName: 'Tasks', updates: Array<{ rowNumber: number; columnName: string; value: string | number }>) {
         batches.push({ sheetName, updates });
       },
@@ -628,6 +630,7 @@ describe('sheets repository', () => {
     const fakeStore = {
       ...fakeReader,
       async updateCell() {},
+      async updateHeaderRow() {},
       async appendRow() {},
       async deleteRows(sheetName: 'Tasks' | 'TaskCompletions', rowNumbers: number[]) {
         deletedBatches.push({ sheetName, rowNumbers });
@@ -643,6 +646,53 @@ describe('sheets repository', () => {
     ]);
   });
 
+
+
+  it('migrates legacy task headers before saving assignments so restrictions persist', async () => {
+    const rows = {
+      ...sheetRows,
+      Tasks: [
+        ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder'],
+        ['T010', '지정 과제', '선택 학생만', '10', '1', 'TRUE', '1'],
+      ],
+      Students: [sheetRows.Students[0], sheetRows.Students[1], ['S002', '이서연', '1200', 'S002', 'ACTIVE', '']],
+      TaskCompletions: [sheetRows.TaskCompletions[0]],
+    };
+    const headerUpdates: Array<{ sheetName: string; headers: string[] }> = [];
+    const cellUpdates: Array<{ rowNumber: number; columnName: string; value: string | number }> = [];
+    const appended: Array<{ sheetName: string; values: string[] }> = [];
+    const store = {
+      async getRows(sheetName: keyof typeof rows) { return rows[sheetName]; },
+      async updateCell(_sheetName: string, rowNumber: number, columnName: string, value: string | number) {
+        cellUpdates.push({ rowNumber, columnName, value });
+        const columnIndex = rows.Tasks[0].indexOf(columnName);
+        if (columnIndex >= 0) rows.Tasks[rowNumber - 1][columnIndex] = String(value);
+      },
+      async updateHeaderRow(sheetName: keyof typeof rows, headers: string[]) {
+        headerUpdates.push({ sheetName, headers });
+        rows[sheetName][0] = headers;
+      },
+      async appendRow(sheetName: string, values: string[]) { appended.push({ sheetName, values }); },
+    };
+
+    await expect(updateTaskDetails(store, 'T010', {
+      title: '지정 과제',
+      description: '선택 학생만',
+      reward: 10,
+      maxCompletionsPerStudent: 1,
+      isActive: true,
+      sortOrder: 1,
+      allowedStudentIds: ['S001'],
+    })).resolves.toMatchObject({ allowedStudentIds: ['S001'] });
+
+    expect(headerUpdates).toEqual([
+      { sheetName: 'Tasks', headers: ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'allowedStudentIds', 'createdAt', 'updatedAt'] },
+    ]);
+    expect(cellUpdates).toContainEqual({ rowNumber: 2, columnName: 'allowedStudentIds', value: 'S001' });
+
+    await expect(completeTaskForStudent(store, 'T010', 'S002')).rejects.toThrow('허가되지 않은 과제입니다.');
+    expect(appended.some((row) => row.sheetName === 'TaskCompletions')).toBe(false);
+  });
 
 
   it('stores task assignment student IDs only and rejects unassigned students', async () => {
@@ -665,6 +715,7 @@ describe('sheets repository', () => {
     const store = {
       ...taskReader,
       async updateCell() {},
+      async updateHeaderRow() {},
       async appendRow(sheetName: string, values: string[]) { appended.push({ sheetName, values }); },
     };
 
@@ -679,6 +730,7 @@ describe('sheets repository', () => {
     const fakeStore = {
       ...fakeReader,
       async updateCell(sheetName: string, rowNumber: number, columnName: string, value: string | number) { updates.push({ sheetName, rowNumber, columnName, value }); },
+      async updateHeaderRow() {},
       async appendRow(sheetName: string, values: string[]) { appended.push({ sheetName, values }); },
     };
     await expect(completeTaskForStudent(fakeStore, 'T001', 'S001')).resolves.toMatchObject({ student: { studentId: 'S001', balance: 3505 }, completedCount: 2, remainingCompletions: 0 });
@@ -693,6 +745,7 @@ describe('sheets repository', () => {
         return sheetRows[sheetName];
       },
       async updateCell() {},
+      async updateHeaderRow() {},
       async appendRow() {},
     };
     await expect(completeTaskForStudent(fakeStore, 'T001', 'S001')).rejects.toThrow('2번까지만');
