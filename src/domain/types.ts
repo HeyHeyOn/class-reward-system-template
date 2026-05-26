@@ -3,7 +3,6 @@ export type StudentStatus = 'ACTIVE' | 'INACTIVE';
 export type Student = {
   studentId: string;
   name: string;
-  number: number;
   balance: number;
   status: StudentStatus;
 };
@@ -54,6 +53,7 @@ export type ClassTask = {
   maxCompletionsPerStudent: number;
   isActive: boolean;
   sortOrder: number;
+  allowedStudentIds: string[];
 };
 
 export type TaskCompletion = {

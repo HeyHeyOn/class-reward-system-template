@@ -253,7 +253,7 @@ export function KioskApp() {
           return cartItem ? { ...product, stock: product.stock - cartItem.quantity } : product;
         }),
       );
-      setPaymentResult({ ...checkoutPayload, studentNumber: studentPayload.number });
+      setPaymentResult(checkoutPayload);
       setCompletedCartDetails(cartDetails);
       setCartItems([]);
       setManualQrValue('');

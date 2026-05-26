@@ -26,7 +26,6 @@ export async function POST(request: Request) {
     const student = await createStudent(store, {
       studentId: String(payload.studentId ?? ''),
       name: String(payload.name ?? ''),
-      number: Number(payload.number),
       balance: Number(payload.balance),
       status: payload.status,
     });

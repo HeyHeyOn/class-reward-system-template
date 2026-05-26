@@ -33,6 +33,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       maxCompletionsPerStudent: Number(payload.maxCompletionsPerStudent),
       isActive: Boolean(payload.isActive),
       sortOrder: Number(payload.sortOrder),
+      allowedStudentIds: Array.isArray(payload.allowedStudentIds) ? payload.allowedStudentIds.map((id: unknown) => String(id)) : [],
     });
     return Response.json(task);
   } catch (error) {

@@ -98,7 +98,7 @@ export function StudentQrPrintPage() {
               </div>
               <h2 className="text-2xl font-black">{student.name}</h2>
               <p className="mt-1 text-lg font-bold text-slate-600">
-                {student.number}번 · {student.studentId}
+                {student.studentId}
               </p>
               <p className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900 print:bg-white print:p-0 print:text-slate-700">
                 학급 은행 및 매점에서<br />

@@ -19,6 +19,7 @@ export async function PATCH(request: Request) {
           maxCompletionsPerStudent: Number(task.maxCompletionsPerStudent),
           isActive: Boolean(task.isActive),
           sortOrder: Number(task.sortOrder),
+          allowedStudentIds: Array.isArray(task.allowedStudentIds) ? task.allowedStudentIds.map((id: unknown) => String(id)) : [],
         }))
       : [];
     const result = await updateTaskDetailsBatch(store, tasks);

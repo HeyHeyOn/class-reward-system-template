@@ -27,9 +27,9 @@ import {
 
 const sheetRows = {
   Students: [
-    ['studentId', 'name', 'number', 'balance', 'qrValue', 'status', 'note'],
-    ['S001', '김민준', '1', '3500', 'S001', 'ACTIVE', ''],
-    ['S002', '이서연', '2', '1200', 'S002', 'INACTIVE', ''],
+    ['studentId', 'name', 'balance', 'qrValue', 'status', 'note'],
+    ['S001', '김민준', '3500', 'S001', 'ACTIVE', ''],
+    ['S002', '이서연', '1200', 'S002', 'INACTIVE', ''],
   ],
   Products: [
     ['productId', 'name', 'price', 'stock', 'isActive', 'imageUrl', 'category', 'sortOrder'],
@@ -59,12 +59,19 @@ const fakeReader = {
 };
 
 describe('sheets repository', () => {
-  it('finds a student by studentId', async () => {
-    await expect(getStudentById(fakeReader, 'S001')).resolves.toEqual({
-      studentId: 'S001',
-      name: '김민준',
-      number: 1,
-      balance: 3500,
+  it('finds a student by studentId without requiring student number', async () => {
+    const minimalReader = {
+      async getRows() {
+        return [
+          ['studentId', 'name', 'balance', 'status'],
+          ['S010', '강하늘', '900', 'ACTIVE'],
+        ];
+      },
+    };
+    await expect(getStudentById(minimalReader, 'S010')).resolves.toEqual({
+      studentId: 'S010',
+      name: '강하늘',
+      balance: 900,
       status: 'ACTIVE',
     });
   });
@@ -78,7 +85,6 @@ describe('sheets repository', () => {
       {
         studentId: 'S001',
         name: '김민준',
-        number: 1,
         balance: 3500,
         status: 'ACTIVE',
       },
@@ -161,7 +167,7 @@ describe('sheets repository', () => {
     const fakeStore = {
       ...fakeReader,
       async getRows(sheetName: keyof typeof sheetRows) {
-        if (sheetName === 'Students') return [sheetRows.Students[0], ['S001', '김민준', '1', '2900', 'S001', 'ACTIVE', ''], sheetRows.Students[2]];
+        if (sheetName === 'Students') return [sheetRows.Students[0], ['S001', '김민준', '2900', 'S001', 'ACTIVE', ''], sheetRows.Students[2]];
         return sheetRows[sheetName];
       },
       async updateCell(sheetName: 'Students' | 'Products' | 'Transactions', rowNumber: number, columnName: string, value: string | number) {
@@ -195,7 +201,7 @@ describe('sheets repository', () => {
             ['TASK-TC001', '2026-05-21T02:00:00.000Z', 'S001', '김민준', '[{"productId":"T001","name":"책 읽기","price":-5,"quantity":1,"subtotal":-5}]', '-5', '3500', '3505', 'TASK_REWARD', 'bank'],
           ];
         }
-        if (sheetName === 'Students') return [sheetRows.Students[0], ['S001', '김민준', '1', '3505', 'S001', 'ACTIVE', '']];
+        if (sheetName === 'Students') return [sheetRows.Students[0], ['S001', '김민준', '3505', 'S001', 'ACTIVE', '']];
         return sheetRows[sheetName];
       },
       async updateCell(sheetName: 'Students' | 'Products' | 'Transactions', rowNumber: number, columnName: string, value: string | number) {
@@ -254,7 +260,7 @@ describe('sheets repository', () => {
     ]);
   });
 
-  it('updates editable student cells by row number', async () => {
+  it('updates editable student cells by row number without student number', async () => {
     const updates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
     const fakeStore = {
       ...fakeReader,
@@ -265,12 +271,11 @@ describe('sheets repository', () => {
     };
 
     await expect(
-      updateStudentDetails(fakeStore, 'S001', { name: '김민준 수정', number: 11, balance: 4000, status: 'INACTIVE' }),
-    ).resolves.toEqual({ studentId: 'S001', name: '김민준 수정', number: 11, balance: 4000, status: 'INACTIVE' });
+      updateStudentDetails(fakeStore, 'S001', { name: '김민준 수정', balance: 4000, status: 'INACTIVE' }),
+    ).resolves.toEqual({ studentId: 'S001', name: '김민준 수정', balance: 4000, status: 'INACTIVE' });
 
     expect(updates).toEqual([
       { sheetName: 'Students', rowNumber: 2, columnName: 'name', value: '김민준 수정' },
-      { sheetName: 'Students', rowNumber: 2, columnName: 'number', value: 11 },
       { sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: 4000 },
       { sheetName: 'Students', rowNumber: 2, columnName: 'status', value: 'INACTIVE' },
     ]);
@@ -291,12 +296,12 @@ describe('sheets repository', () => {
 
     await expect(
       updateStudentDetailsBatch(fakeStore, [
-        { studentId: 'S001', name: '김민준 수정', number: 11, balance: 4000, status: 'INACTIVE' },
-        { studentId: 'S002', name: '이서연', number: 22, balance: 9000, status: 'ACTIVE' },
+        { studentId: 'S001', name: '김민준 수정', balance: 4000, status: 'INACTIVE' },
+        { studentId: 'S002', name: '이서연', balance: 9000, status: 'ACTIVE' },
       ]),
     ).resolves.toEqual([
-      { studentId: 'S001', name: '김민준 수정', number: 11, balance: 4000, status: 'INACTIVE' },
-      { studentId: 'S002', name: '이서연', number: 22, balance: 9000, status: 'ACTIVE' },
+      { studentId: 'S001', name: '김민준 수정', balance: 4000, status: 'INACTIVE' },
+      { studentId: 'S002', name: '이서연', balance: 9000, status: 'ACTIVE' },
     ]);
 
     expect(batches).toEqual([
@@ -304,11 +309,9 @@ describe('sheets repository', () => {
         sheetName: 'Students',
         updates: [
           { rowNumber: 2, columnName: 'name', value: '김민준 수정' },
-          { rowNumber: 2, columnName: 'number', value: 11 },
           { rowNumber: 2, columnName: 'balance', value: 4000 },
           { rowNumber: 2, columnName: 'status', value: 'INACTIVE' },
           { rowNumber: 3, columnName: 'name', value: '이서연' },
-          { rowNumber: 3, columnName: 'number', value: 22 },
           { rowNumber: 3, columnName: 'balance', value: 9000 },
           { rowNumber: 3, columnName: 'status', value: 'ACTIVE' },
         ],
@@ -321,7 +324,7 @@ describe('sheets repository', () => {
     const fakeStore = {
       ...fakeReader,
       async getRows(sheetName: keyof typeof sheetRows) {
-        if (sheetName === 'Students') return [['studentId', 'name', 'number', 'balance', 'status']];
+        if (sheetName === 'Students') return [['studentId', 'name', 'balance', 'status']];
         return sheetRows[sheetName];
       },
       async updateCell() {},
@@ -331,11 +334,11 @@ describe('sheets repository', () => {
     };
 
     await expect(
-      createStudent(fakeStore, { studentId: 'S003', name: '박도윤', number: 3, balance: 0, status: 'ACTIVE' }),
-    ).resolves.toEqual({ studentId: 'S003', name: '박도윤', number: 3, balance: 0, status: 'ACTIVE' });
+      createStudent(fakeStore, { studentId: 'S003', name: '박도윤', balance: 0, status: 'ACTIVE' }),
+    ).resolves.toEqual({ studentId: 'S003', name: '박도윤', balance: 0, status: 'ACTIVE' });
 
     expect(appended).toEqual([
-      { sheetName: 'Students', values: ['S003', '박도윤', '3', '0', 'ACTIVE'] },
+      { sheetName: 'Students', values: ['S003', '박도윤', '0', 'ACTIVE'] },
     ]);
   });
 
@@ -350,11 +353,11 @@ describe('sheets repository', () => {
     };
 
     await expect(
-      createStudent(fakeStore, { studentId: 'S003', name: '박도윤', number: 3, balance: 0, status: 'ACTIVE' }),
-    ).resolves.toEqual({ studentId: 'S003', name: '박도윤', number: 3, balance: 0, status: 'ACTIVE' });
+      createStudent(fakeStore, { studentId: 'S003', name: '박도윤', balance: 0, status: 'ACTIVE' }),
+    ).resolves.toEqual({ studentId: 'S003', name: '박도윤', balance: 0, status: 'ACTIVE' });
 
     expect(appended).toEqual([
-      { sheetName: 'Students', values: ['S003', '박도윤', '3', '0', 'S003', 'ACTIVE', ''] },
+      { sheetName: 'Students', values: ['S003', '박도윤', '0', 'S003', 'ACTIVE', ''] },
     ]);
   });
 
@@ -561,7 +564,7 @@ describe('sheets repository', () => {
 
   it('reads active tasks sorted by sort order', async () => {
     await expect(getTasks(fakeReader)).resolves.toEqual([
-      { taskId: 'T001', title: '책 읽기', description: '책 10분 읽기', reward: 5, maxCompletionsPerStudent: 2, isActive: true, sortOrder: 1 },
+      { taskId: 'T001', title: '책 읽기', description: '책 10분 읽기', reward: 5, maxCompletionsPerStudent: 2, isActive: true, sortOrder: 1, allowedStudentIds: [] },
     ]);
   });
 
@@ -573,9 +576,9 @@ describe('sheets repository', () => {
       async appendRow(sheetName: string, values: string[]) { appended.push({ sheetName, values }); },
     };
     await expect(createTask(fakeStore, { taskId: 'T003', title: '수학 학습지', description: '1장 풀기', reward: 10, maxCompletionsPerStudent: 1, isActive: true, sortOrder: 3 })).resolves.toMatchObject({ taskId: 'T003', title: '수학 학습지' });
-    expect(appended[0]).toEqual({ sheetName: 'Tasks', values: ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'createdAt', 'updatedAt'] });
+    expect(appended[0]).toEqual({ sheetName: 'Tasks', values: ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'allowedStudentIds', 'createdAt', 'updatedAt'] });
     expect(appended[1].sheetName).toBe('Tasks');
-    expect(appended[1].values.slice(0, 7)).toEqual(['T003', '수학 학습지', '1장 풀기', '10', '1', 'TRUE', '3']);
+    expect(appended[1].values.slice(0, 8)).toEqual(['T003', '수학 학습지', '1장 풀기', '10', '1', 'TRUE', '3', '']);
   });
 
   it('batch updates tasks through one store call', async () => {
@@ -592,11 +595,11 @@ describe('sheets repository', () => {
     };
 
     await expect(updateTaskDetailsBatch(fakeStore, [
-      { taskId: 'T001', title: '책 읽기 수정', description: '책 20분 읽기', reward: 7, maxCompletionsPerStudent: 3, isActive: true, sortOrder: 5 },
-      { taskId: 'T002', title: '비활성 과제', description: '숨김', reward: 2, maxCompletionsPerStudent: 1, isActive: false, sortOrder: 2 },
+      { taskId: 'T001', title: '책 읽기 수정', description: '책 20분 읽기', reward: 7, maxCompletionsPerStudent: 3, isActive: true, sortOrder: 5, allowedStudentIds: [] },
+      { taskId: 'T002', title: '비활성 과제', description: '숨김', reward: 2, maxCompletionsPerStudent: 1, isActive: false, sortOrder: 2, allowedStudentIds: [] },
     ])).resolves.toEqual([
-      { taskId: 'T002', title: '비활성 과제', description: '숨김', reward: 2, maxCompletionsPerStudent: 1, isActive: false, sortOrder: 2 },
-      { taskId: 'T001', title: '책 읽기 수정', description: '책 20분 읽기', reward: 7, maxCompletionsPerStudent: 3, isActive: true, sortOrder: 5 },
+      { taskId: 'T002', title: '비활성 과제', description: '숨김', reward: 2, maxCompletionsPerStudent: 1, isActive: false, sortOrder: 2, allowedStudentIds: [] },
+      { taskId: 'T001', title: '책 읽기 수정', description: '책 20분 읽기', reward: 7, maxCompletionsPerStudent: 3, isActive: true, sortOrder: 5, allowedStudentIds: [] },
     ]);
 
     expect(batches).toEqual([
@@ -638,6 +641,36 @@ describe('sheets repository', () => {
       { sheetName: 'Tasks', rowNumbers: [3, 2] },
       { sheetName: 'TaskCompletions', rowNumbers: [2] },
     ]);
+  });
+
+
+
+  it('stores task assignment student IDs only and rejects unassigned students', async () => {
+    const taskReader = {
+      async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'Tasks') return [
+          ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'allowedStudentIds'],
+          ['T010', '지정 과제', '선택 학생만', '10', '1', 'TRUE', '1', 'S001, S003'],
+        ];
+        if (sheetName === 'Students') return [sheetRows.Students[0], sheetRows.Students[1], ['S002', '이서연', '1200', 'S002', 'ACTIVE', '']];
+        return sheetRows[sheetName];
+      },
+    };
+
+    await expect(getTasks(taskReader)).resolves.toEqual([
+      { taskId: 'T010', title: '지정 과제', description: '선택 학생만', reward: 10, maxCompletionsPerStudent: 1, isActive: true, sortOrder: 1, allowedStudentIds: ['S001', 'S003'] },
+    ]);
+
+    const appended: Array<{ sheetName: string; values: string[] }> = [];
+    const store = {
+      ...taskReader,
+      async updateCell() {},
+      async appendRow(sheetName: string, values: string[]) { appended.push({ sheetName, values }); },
+    };
+
+    await expect(completeTaskForStudent(store, 'T010', 'S002')).rejects.toThrow('허가되지 않은 과제입니다.');
+    await expect(completeTaskForStudent(store, 'T010', 'S001')).resolves.toMatchObject({ student: { studentId: 'S001' } });
+    expect(appended.some((row) => row.sheetName === 'TaskCompletions')).toBe(true);
   });
 
   it('completes a task once, pays reward, and records completion', async () => {

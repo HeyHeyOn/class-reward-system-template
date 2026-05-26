@@ -35,7 +35,6 @@ export async function PATCH(request: Request, context: RouteContext) {
     const payload = await request.json();
     const student = await updateStudentDetails(store, decodeURIComponent(studentId), {
       name: String(payload.name ?? ''),
-      number: Number(payload.number),
       balance: Number(payload.balance),
       status: payload.status,
     });

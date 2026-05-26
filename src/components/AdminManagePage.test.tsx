@@ -3,16 +3,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdminManagePage } from './AdminManagePage';
 
 const students = [
-  { studentId: 'S001', name: '김민준', number: 1, balance: 3200, status: 'ACTIVE' },
-  { studentId: 'S002', name: '이서연', number: 2, balance: 1500, status: 'ACTIVE' },
+  { studentId: 'S001', name: '김민준', balance: 3200, status: 'ACTIVE' },
+  { studentId: 'S002', name: '이서연', balance: 1500, status: 'ACTIVE' },
 ];
 const products = [
   { productId: 'P001', name: '연필', price: 300, stock: 19, isActive: true, imageUrl: 'https://example.com/pencil.png', category: '문구', sortOrder: 1 },
   { productId: 'P002', name: '지우개', price: 500, stock: 10, isActive: true, category: '문구', sortOrder: 2 },
 ];
 const tasks = [
-  { taskId: 'T001', title: '책 읽기', description: '책 10분 읽기', reward: 5, maxCompletionsPerStudent: 2, isActive: true, sortOrder: 1 },
-  { taskId: 'T002', title: '수학 학습지', description: '1장 풀기', reward: 10, maxCompletionsPerStudent: 1, isActive: true, sortOrder: 2 },
+  { taskId: 'T001', title: '책 읽기', description: '책 10분 읽기', reward: 5, maxCompletionsPerStudent: 2, isActive: true, sortOrder: 1, allowedStudentIds: ['S001'] },
+  { taskId: 'T002', title: '수학 학습지', description: '1장 풀기', reward: 10, maxCompletionsPerStudent: 1, isActive: true, sortOrder: 2, allowedStudentIds: [] },
 ];
 const transactions = [
   {
@@ -51,7 +51,7 @@ describe('AdminManagePage', () => {
         const url = String(input);
 
         if (url === '/api/students') {
-          if (init?.method === 'POST') return jsonResponse({ studentId: 'S003', name: '박도윤', number: 3, balance: 0, status: 'ACTIVE' });
+          if (init?.method === 'POST') return jsonResponse({ studentId: 'S003', name: '박도윤', balance: 0, status: 'ACTIVE' });
           return jsonResponse(students);
         }
         if (url === '/api/products?includeInactive=1') return jsonResponse(products);
@@ -63,7 +63,7 @@ describe('AdminManagePage', () => {
           return jsonResponse({ productId: 'P003', name: '간식쿠폰', price: 1000, stock: 5, isActive: true, imageUrl: 'https://example.com/snack.png', category: '쿠폰', sortOrder: 3 });
         }
         if (url === '/api/tasks' && init?.method === 'POST') {
-          return jsonResponse({ taskId: 'T003', title: '영어 단어', description: '5개 외우기', reward: 10, maxCompletionsPerStudent: 1, isActive: true, sortOrder: 3 });
+          return jsonResponse({ taskId: 'T003', title: '영어 단어', description: '5개 외우기', reward: 10, maxCompletionsPerStudent: 1, isActive: true, sortOrder: 3, allowedStudentIds: [] });
         }
         if (url === '/api/tasks/batch' && init?.method === 'PATCH') {
           return jsonResponse([
@@ -120,6 +120,49 @@ describe('AdminManagePage', () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+  });
+
+
+  it('removes student number fields and prints QR cards with ID only', async () => {
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '학생 관리' }));
+
+    expect(screen.queryByLabelText('새 학생 번호')).toBeNull();
+    expect(screen.queryByText('번호')).toBeNull();
+    expect(screen.queryByLabelText('S001 번호')).toBeNull();
+
+    fireEvent.click(screen.getByLabelText('S001 선택'));
+    fireEvent.click(screen.getByRole('button', { name: '선택 학생 QR 발급' }));
+
+    expect(screen.getByRole('dialog', { name: '선택 학생 QR 발급' })).toBeTruthy();
+    expect(screen.getAllByText('S001').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/1번/)).toBeNull();
+  });
+
+  it('assigns tasks to selected student IDs from the add-task and task-row buttons', async () => {
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+
+    fireEvent.click(screen.getByRole('button', { name: '새 과제 과제 부여' }));
+    expect(screen.getByText('아무 학생도 선택하지 않으면 모든 학생이 참여할 수 있습니다. 저장되는 값은 학생 ID뿐입니다.')).toBeTruthy();
+    expect(screen.getByLabelText('전체 학생 과제 부여 선택')).toBeTruthy();
+    expect(screen.getByLabelText('S001 김민준 과제 부여')).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('S001 김민준 과제 부여'));
+    fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
+
+    fireEvent.change(screen.getByLabelText('새 과제명'), { target: { value: '영어 단어' } });
+    fireEvent.change(screen.getByLabelText('새 과제 설명'), { target: { value: '5개 외우기' } });
+    fireEvent.change(screen.getByLabelText('새 과제 보상'), { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: '새 과제 추가' }));
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks', expect.objectContaining({
+      method: 'POST',
+      body: expect.stringContaining('"allowedStudentIds":["S001"]'),
+    })));
+
+    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
+    expect((screen.getByLabelText('S001 김민준 과제 부여') as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByLabelText('S002 이서연 과제 부여') as HTMLInputElement).checked).toBe(false);
   });
 
   it('renders unified admin tabs with kiosk-style design language', async () => {
@@ -374,7 +417,7 @@ describe('AdminManagePage', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           students: [
-            { studentId: 'S001', name: '김민준 수정', number: 1, balance: 4000, status: 'ACTIVE' },
+            { studentId: 'S001', name: '김민준 수정', balance: 4000, status: 'ACTIVE' },
             ],
         }),
       });
@@ -401,7 +444,7 @@ describe('AdminManagePage', () => {
     expect(await screen.findByDisplayValue('김민준')).toBeTruthy();
     expect(container.querySelector('[data-testid="student-list"]')?.className).toContain('divide-y');
     const studentRow = container.querySelector('[data-testid="student-row"]');
-    expect(studentRow?.className).toContain('grid-cols-[24px_44px_minmax(3.8rem,1fr)_42px_72px_46px_40px]');
+    expect(studentRow?.className).toContain('grid-cols-[24px_56px_minmax(4rem,1fr)_78px_52px_42px]');
     expect(studentRow?.className).toContain('items-center');
     expect(studentRow?.className).toContain('py-1');
     expect(studentRow?.className).not.toContain('md:grid-cols');
@@ -478,7 +521,7 @@ describe('AdminManagePage', () => {
     expect(screen.getByTestId('task-list-scroll').className).toContain('overflow-x-auto');
     expect(screen.getByTestId('task-bulk-actions').className).toContain('flex-wrap');
     const taskRow = container.querySelector('[data-testid="task-row"]');
-    expect(taskRow?.className).toContain('grid-cols-[24px_minmax(5rem,1fr)_64px_64px_48px_38px_minmax(3rem,0.7fr)_46px_40px]');
+    expect(taskRow?.className).toContain('grid-cols-[24px_minmax(5rem,1fr)_64px_64px_48px_38px_52px_minmax(3rem,0.7fr)_46px_40px]');
     expect(taskRow?.className).toContain('items-center');
     expect(screen.queryByLabelText('T001 설명')).toBeNull();
 
@@ -497,7 +540,7 @@ describe('AdminManagePage', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         tasks: [
-          { taskId: 'T001', title: '책 읽기 수정', description: '책 20분 읽기', reward: 7, maxCompletionsPerStudent: 2, isActive: true, sortOrder: 1 },
+          { taskId: 'T001', title: '책 읽기 수정', description: '책 20분 읽기', reward: 7, maxCompletionsPerStudent: 2, isActive: true, sortOrder: 1, allowedStudentIds: ['S001'] },
           ],
       }),
     }));
@@ -544,7 +587,6 @@ describe('AdminManagePage', () => {
 
     fireEvent.change(screen.getByLabelText('새 학생 ID'), { target: { value: 'S003' } });
     fireEvent.change(screen.getByLabelText('새 학생 이름'), { target: { value: '박도윤' } });
-    fireEvent.change(screen.getByLabelText('새 학생 번호'), { target: { value: '3' } });
     fireEvent.click(screen.getByRole('button', { name: '새 학생 추가' }));
 
     fireEvent.click(screen.getByRole('tab', { name: '매점 관리' }));
@@ -560,7 +602,7 @@ describe('AdminManagePage', () => {
       expect(fetch).toHaveBeenCalledWith('/api/students', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId: 'S003', name: '박도윤', number: 3, balance: 0, status: 'ACTIVE' }),
+        body: JSON.stringify({ studentId: 'S003', name: '박도윤', balance: 0, status: 'ACTIVE' }),
       });
       expect(fetch).toHaveBeenCalledWith('/api/products', {
         method: 'POST',

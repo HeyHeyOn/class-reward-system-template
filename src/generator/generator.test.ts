@@ -98,7 +98,7 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
       'check-settings-version',
       'check-production-routes',
     ]);
-    expect(renderCliResult({ command: 'doctor', dryRun: true })).toContain('현재 인스턴스 상태 점검');
+    expect(renderCliResult({ command: 'doctor', dryRun: true, args: [] })).toContain('현재 인스턴스 상태 점검');
   });
 
   it('parses Phase 2 create options into a safe instance configuration without exposing secrets', () => {

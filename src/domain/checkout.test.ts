@@ -5,7 +5,6 @@ import type { Product, Student } from '@/domain/types';
 const activeStudent: Student = {
   studentId: 'S001',
   name: '김민준',
-  number: 1,
   balance: 3500,
   status: 'ACTIVE',
 };

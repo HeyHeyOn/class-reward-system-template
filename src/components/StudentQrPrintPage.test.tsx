@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StudentQrPrintPage } from './StudentQrPrintPage';
 
 const students = [
-  { studentId: 'S001', name: '김민준', number: 1, balance: 3200, status: 'ACTIVE' },
-  { studentId: 'S002', name: '이서연', number: 2, balance: 1200, status: 'ACTIVE' },
+  { studentId: 'S001', name: '김민준', balance: 3200, status: 'ACTIVE' },
+  { studentId: 'S002', name: '이서연', balance: 1200, status: 'ACTIVE' },
 ];
 
 function jsonResponse(payload: unknown, init?: ResponseInit) {
@@ -33,11 +33,11 @@ describe('StudentQrPrintPage', () => {
 
     const minjunQr = screen.getByRole('img', { name: '김민준 QR 코드' });
     expect(minjunQr.getAttribute('src')).toBe('/api/qrcode?value=S001');
-    expect(screen.getByText('1번 · S001')).toBeTruthy();
+    expect(screen.getByText('S001')).toBeTruthy();
 
     const seoyeonQr = screen.getByRole('img', { name: '이서연 QR 코드' });
     expect(seoyeonQr.getAttribute('src')).toBe('/api/qrcode?value=S002');
-    expect(screen.getByText('2번 · S002')).toBeTruthy();
+    expect(screen.getByText('S002')).toBeTruthy();
     expect(screen.getAllByText((_, element) => element?.textContent === '학급 은행 및 매점에서이 QR을 스캔해 주세요.')).toHaveLength(2);
   });
 

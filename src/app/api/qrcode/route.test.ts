@@ -8,7 +8,7 @@ vi.mock('qrcode', () => ({
 
 describe('GET /api/qrcode', () => {
   beforeEach(() => {
-    vi.mocked(QRCode.toString).mockResolvedValue('<svg>QR</svg>');
+    vi.mocked(QRCode.toString as unknown as () => Promise<string>).mockResolvedValue('<svg>QR</svg>');
   });
 
   it('returns an SVG QR code for the provided value', async () => {

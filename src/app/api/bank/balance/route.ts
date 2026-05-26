@@ -17,7 +17,7 @@ export async function GET(request: Request) {
       .filter((transaction) => transaction.studentId === student.studentId)
       .slice(0, 10);
 
-    return Response.json({ studentId: student.studentId, name: student.name, number: student.number, balance: student.balance, transactions });
+    return Response.json({ studentId: student.studentId, name: student.name, balance: student.balance, transactions });
   } catch (error) {
     const message = error instanceof Error ? error.message : '잔액을 불러오지 못했습니다.';
     return Response.json({ error: message }, { status: 500 });

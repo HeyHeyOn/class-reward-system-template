@@ -31,7 +31,6 @@ type CurrencyResult = {
 type NewStudentDraft = {
   studentId: string;
   name: string;
-  number: number;
   balance: number;
   status: Student['status'];
 };
@@ -46,9 +45,9 @@ type NewProductDraft = {
   sortOrder: number;
 };
 
-const EMPTY_STUDENT: NewStudentDraft = { studentId: '', name: '', number: 1, balance: 0, status: 'ACTIVE' };
+const EMPTY_STUDENT: NewStudentDraft = { studentId: '', name: '', balance: 0, status: 'ACTIVE' };
 const EMPTY_PRODUCT: NewProductDraft = { name: '', price: 0, stock: 0, isActive: true, imageUrl: '', category: '', sortOrder: 1 };
-const EMPTY_TASK: Omit<TaskDraft, 'taskId'> = { title: '', description: '', reward: 0, maxCompletionsPerStudent: 1, isActive: true, sortOrder: 1 };
+const EMPTY_TASK: Omit<TaskDraft, 'taskId'> = { title: '', description: '', reward: 0, maxCompletionsPerStudent: 1, isActive: true, sortOrder: 1, allowedStudentIds: [] };
 
 const ADMIN_THEME: Record<ThemeColor, AdminTheme> = {
   blue: { shell: 'bg-[#EDF5FA]', pageText: 'text-slate-950', accentText: 'text-[#365F78]', accentBg: 'bg-[#B8D0E0]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#B8D0E0] text-[#1F1F1F]', idleTab: 'bg-[#EDF5FA] text-slate-800 hover:bg-[#D8E9F2]', statBg: 'bg-[#EDF5FA]', logoColor: 'bg-[#365F78]', softBg: 'bg-[#EDF5FA]/80', softText: 'text-slate-700', focusBorder: 'focus:border-[#B8D0E0]' },
@@ -90,6 +89,7 @@ export function AdminManagePage() {
   const [newTask, setNewTask] = useState<Omit<TaskDraft, 'taskId'>>(EMPTY_TASK);
   const [imageEditor, setImageEditor] = useState<{ productId: string; value: string } | null>(null);
   const [taskDescriptionEditor, setTaskDescriptionEditor] = useState<{ taskId: string; value: string } | null>(null);
+  const [taskAssignmentEditor, setTaskAssignmentEditor] = useState<{ taskId: string | null; selectedIds: string[] } | null>(null);
   const [qrPrintStudents, setQrPrintStudents] = useState<StudentDraft[] | null>(null);
   const [currencyMode, setCurrencyMode] = useState<CurrencyMode>('add');
   const [currencyAmount, setCurrencyAmount] = useState(0);
@@ -199,8 +199,34 @@ export function AdminManagePage() {
     setSelectedTaskIds((current) => current.includes(taskId) ? current.filter((id) => id !== taskId) : [...current, taskId]);
   }
 
+  function sortStudentsById(list: StudentDraft[]) {
+    return [...list].sort((a, b) => a.studentId.localeCompare(b.studentId, 'ko-KR', { numeric: true }) || a.name.localeCompare(b.name));
+  }
+
+  function openTaskAssignmentEditor(taskId: string | null, selectedIds: string[]) {
+    setTaskAssignmentEditor({ taskId, selectedIds: [...selectedIds] });
+  }
+
+  function toggleTaskAssignmentStudent(studentId: string) {
+    setTaskAssignmentEditor((current) => {
+      if (!current) return current;
+      const selectedIds = current.selectedIds.includes(studentId) ? current.selectedIds.filter((id) => id !== studentId) : [...current.selectedIds, studentId];
+      return { ...current, selectedIds };
+    });
+  }
+
+  function saveTaskAssignment() {
+    if (!taskAssignmentEditor) return;
+    if (taskAssignmentEditor.taskId) {
+      updateTask(taskAssignmentEditor.taskId, { allowedStudentIds: taskAssignmentEditor.selectedIds });
+    } else {
+      setNewTask((current) => ({ ...current, allowedStudentIds: taskAssignmentEditor.selectedIds }));
+    }
+    setTaskAssignmentEditor(null);
+  }
+
   function buildStudentPayload(list: StudentDraft[]) {
-    return list.map((student) => ({ studentId: student.studentId, name: student.name, number: student.number, balance: student.balance, status: student.status }));
+    return list.map((student) => ({ studentId: student.studentId, name: student.name, balance: student.balance, status: student.status }));
   }
 
   function buildProductPayload(list: ProductDraft[]) {
@@ -208,7 +234,7 @@ export function AdminManagePage() {
   }
 
   function buildTaskPayload(list: TaskDraft[]) {
-    return list.map((task) => ({ taskId: task.taskId, title: task.title, description: task.description, reward: task.reward, maxCompletionsPerStudent: task.maxCompletionsPerStudent, isActive: task.isActive, sortOrder: task.sortOrder }));
+    return list.map((task) => ({ taskId: task.taskId, title: task.title, description: task.description, reward: task.reward, maxCompletionsPerStudent: task.maxCompletionsPerStudent, isActive: task.isActive, sortOrder: task.sortOrder, allowedStudentIds: task.allowedStudentIds ?? [] }));
   }
 
   function nextPrefixedId(existingIds: string[], prefix: 'P' | 'T') {
@@ -399,6 +425,7 @@ export function AdminManagePage() {
         maxCompletionsPerStudent: newTask.maxCompletionsPerStudent,
         isActive: newTask.isActive,
         sortOrder: newTask.sortOrder,
+        allowedStudentIds: newTask.allowedStudentIds ?? [],
       };
       const response = await fetch('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const payload = await response.json();
@@ -463,11 +490,11 @@ export function AdminManagePage() {
   async function createNewStudent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     try {
-      const body = { studentId: newStudent.studentId, name: newStudent.name, number: newStudent.number, balance: newStudent.balance, status: newStudent.status };
+      const body = { studentId: newStudent.studentId, name: newStudent.name, balance: newStudent.balance, status: newStudent.status };
       const response = await fetch('/api/students', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? '학생을 추가하지 못했습니다.');
-      setStudents((current) => [...current, payload].sort((a, b) => a.number - b.number || a.name.localeCompare(b.name)));
+      setStudents((current) => sortStudentsById([...current, payload]));
       setNewStudent(EMPTY_STUDENT);
       notify(`${payload.studentId} 추가 완료`);
     } catch (error) {
@@ -612,10 +639,7 @@ export function AdminManagePage() {
               <form onSubmit={createNewStudent} className="space-y-2">
                 <TextInput label="새 학생 ID" value={newStudent.studentId} onChange={(value) => setNewStudent((current) => ({ ...current, studentId: value }))} compact />
                 <TextInput label="새 학생 이름" value={newStudent.name} onChange={(value) => setNewStudent((current) => ({ ...current, name: value }))} compact />
-                <div className="grid grid-cols-2 gap-2">
-                  <NumberInput label="새 학생 번호" value={newStudent.number} onChange={(value) => setNewStudent((current) => ({ ...current, number: value }))} compact />
-                  <NumberInput label="새 학생 잔액" value={newStudent.balance} onChange={(value) => setNewStudent((current) => ({ ...current, balance: value }))} compact />
-                </div>
+                <NumberInput label="새 학생 잔액" value={newStudent.balance} onChange={(value) => setNewStudent((current) => ({ ...current, balance: value }))} compact />
                 <button className={`w-full rounded-xl ${theme.accentBg} py-3 font-black ${theme.actionText} shadow-sm`} type="submit">새 학생 추가</button>
               </form>
             </SectionCard>
@@ -648,24 +672,22 @@ export function AdminManagePage() {
               </div>
 
               <div data-testid="student-list" className="overflow-hidden rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
-                <div data-testid="student-header-row" className="grid grid-cols-[24px_44px_minmax(3.8rem,1fr)_42px_72px_46px_40px] items-center gap-0.5 bg-slate-100 px-1.5 py-1 text-[10px] font-black text-slate-500">
+                <div data-testid="student-header-row" className="grid grid-cols-[24px_56px_minmax(4rem,1fr)_78px_52px_42px] items-center gap-0.5 bg-slate-100 px-1.5 py-1 text-[10px] font-black text-slate-500">
                   <span>선택</span>
                   <span>ID</span>
                   <span>이름</span>
-                  <span>번호</span>
                   <span>잔액</span>
                   <span>상태</span>
                   <span>삭제</span>
                 </div>
                 {students.map((student) => (
-                  <div data-testid="student-row" className="grid grid-cols-[24px_44px_minmax(3.8rem,1fr)_42px_72px_46px_40px] items-center gap-0.5 px-1.5 py-1 text-[11px]" key={student.studentId}>
+                  <div data-testid="student-row" className="grid grid-cols-[24px_56px_minmax(4rem,1fr)_78px_52px_42px] items-center gap-0.5 px-1.5 py-1 text-[11px]" key={student.studentId}>
                     <label className="flex items-center justify-center">
                       <input aria-label={`${student.studentId} 선택`} checked={selectedStudentIds.includes(student.studentId)} onChange={() => toggleStudent(student.studentId)} type="checkbox" />
                       <span className="sr-only">선택</span>
                     </label>
                     <p className={`min-w-0 truncate font-black ${theme.accentText}`}>{student.studentId}</p>
                     <TextInput dataTestId="student-name-field" label={`${student.studentId} 이름`} value={student.name} onChange={(value) => updateStudent(student.studentId, { name: value })} dense />
-                    <NumberInput label={`${student.studentId} 번호`} value={student.number} onChange={(value) => updateStudent(student.studentId, { number: value })} dense />
                     <NumberInput label={`${student.studentId} 잔액`} value={student.balance} onChange={(value) => updateStudent(student.studentId, { balance: value })} dense />
                     <label className="block min-w-0 text-xs font-bold text-slate-700">
                       <span className="sr-only">상태</span>
@@ -776,6 +798,7 @@ export function AdminManagePage() {
                   <input aria-label="새 과제 활성" checked={newTask.isActive} onChange={(event) => setNewTask((current) => ({ ...current, isActive: event.target.checked }))} type="checkbox" />
                   은행 페이지에 표시
                 </label>
+                <button type="button" aria-label="새 과제 과제 부여" onClick={() => openTaskAssignmentEditor(null, newTask.allowedStudentIds ?? [])} className="w-full rounded-xl bg-sky-100 py-3 font-black text-sky-800">과제 부여{newTask.allowedStudentIds.length ? ` (${newTask.allowedStudentIds.length}명)` : ''}</button>
                 <button className={`w-full rounded-xl ${theme.accentBg} py-3 font-black ${theme.actionText} shadow-sm`} type="submit">새 과제 추가</button>
               </form>
             </SectionCard>
@@ -796,11 +819,11 @@ export function AdminManagePage() {
               </div>
               <div data-testid="task-list-scroll" className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
                 <div className="min-w-[540px] divide-y divide-slate-100">
-                <div data-testid="task-header-row" className="grid grid-cols-[24px_minmax(5rem,1fr)_64px_64px_48px_38px_minmax(3rem,0.7fr)_46px_40px] items-center gap-0.5 bg-slate-100 px-1.5 py-1 text-[10px] font-black text-slate-500">
-                  <span>선택</span><span>과제명</span><span>보상</span><span>횟수</span><span>순서</span><span>활성</span><span>상세</span><span>초기화</span><span>삭제</span>
+                <div data-testid="task-header-row" className="grid grid-cols-[24px_minmax(5rem,1fr)_64px_64px_48px_38px_52px_minmax(3rem,0.7fr)_46px_40px] items-center gap-0.5 bg-slate-100 px-1.5 py-1 text-[10px] font-black text-slate-500">
+                  <span>선택</span><span>과제명</span><span>보상</span><span>횟수</span><span>순서</span><span>활성</span><span>부여</span><span>상세</span><span>초기화</span><span>삭제</span>
                 </div>
                 {tasks.map((task) => (
-                  <div data-testid="task-row" key={task.taskId} className="grid grid-cols-[24px_minmax(5rem,1fr)_64px_64px_48px_38px_minmax(3rem,0.7fr)_46px_40px] items-center gap-0.5 px-1.5 py-1 text-[11px]">
+                  <div data-testid="task-row" key={task.taskId} className="grid grid-cols-[24px_minmax(5rem,1fr)_64px_64px_48px_38px_52px_minmax(3rem,0.7fr)_46px_40px] items-center gap-0.5 px-1.5 py-1 text-[11px]">
                     <label className="flex items-center justify-center">
                       <input aria-label={`${task.taskId} 선택`} checked={selectedTaskIds.includes(task.taskId)} onChange={() => toggleTask(task.taskId)} type="checkbox" />
                       <span className="sr-only">선택</span>
@@ -812,6 +835,7 @@ export function AdminManagePage() {
                     <label className={`flex h-8 items-center justify-center rounded-lg ${theme.softBg} text-[10px] font-bold ${theme.softText}`}>
                       <input aria-label={`${task.taskId} 활성`} checked={task.isActive} onChange={(event) => updateTask(task.taskId, { isActive: event.target.checked })} type="checkbox" />
                     </label>
+                    <button type="button" aria-label={`${task.taskId} 과제 부여`} onClick={() => openTaskAssignmentEditor(task.taskId, task.allowedStudentIds ?? [])} className="h-8 rounded-lg bg-sky-100 px-1 text-[10px] font-black text-sky-800">과제 부여</button>
                     <button
                       aria-label={`${task.taskId} 상세 설정 편집`}
                       className="h-8 min-w-0 truncate rounded-lg border border-slate-200 bg-white px-1 text-left text-[10px] font-bold text-slate-600"
@@ -908,6 +932,32 @@ export function AdminManagePage() {
             {qrPrintStudents.map((student) => <StudentQrCard key={`print-${student.studentId}`} student={student} />)}
           </div>
         </section>
+      ) : null}
+
+      {taskAssignmentEditor ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <section role="dialog" aria-modal="true" aria-label="과제 부여" className="w-full max-w-xl rounded-2xl bg-white p-4 text-slate-950 shadow-2xl">
+            <h2 className="text-xl font-black">과제 부여</h2>
+            <p className="mt-1 rounded-2xl bg-sky-50 p-3 text-sm font-bold text-sky-800">아무 학생도 선택하지 않으면 모든 학생이 참여할 수 있습니다. 저장되는 값은 학생 ID뿐입니다.</p>
+            <label className="mt-3 flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-sm font-black">
+              <input aria-label="전체 학생 과제 부여 선택" checked={students.length > 0 && taskAssignmentEditor.selectedIds.length === students.length} onChange={(event) => setTaskAssignmentEditor((current) => current ? { ...current, selectedIds: event.target.checked ? students.map((student) => student.studentId) : [] } : current)} type="checkbox" />
+              전체 선택 ({taskAssignmentEditor.selectedIds.length}/{students.length})
+            </label>
+            <div className="mt-3 max-h-72 space-y-1 overflow-y-auto rounded-2xl border border-slate-200 p-2">
+              {sortStudentsById(students).map((student) => (
+                <label key={student.studentId} className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold hover:bg-slate-50">
+                  <input aria-label={`${student.studentId} ${student.name} 과제 부여`} checked={taskAssignmentEditor.selectedIds.includes(student.studentId)} onChange={() => toggleTaskAssignmentStudent(student.studentId)} type="checkbox" />
+                  <span className="font-black">{student.studentId}</span>
+                  <span>{student.name}</span>
+                </label>
+              ))}
+            </div>
+            <div className="mt-4 flex gap-2">
+              <button type="button" className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700" onClick={() => setTaskAssignmentEditor(null)}>취소</button>
+              <button type="button" className={`flex-1 rounded-xl ${theme.accentBg} py-3 font-black ${theme.actionText}`} onClick={saveTaskAssignment}>과제 부여 저장</button>
+            </div>
+          </section>
+        </div>
       ) : null}
       {taskDescriptionEditor ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -1016,7 +1066,7 @@ function StudentQrCard({ student }: { student: Student }) {
         <img alt={`${student.name} QR 코드`} className="h-full w-full" src={`/api/qrcode?value=${encodeURIComponent(student.studentId)}`} />
       </div>
       <h3 className="text-2xl font-black">{student.name}</h3>
-      <p className="mt-1 text-lg font-bold text-slate-600">{student.number}번 · {student.studentId}</p>
+      <p className="mt-1 text-lg font-bold text-slate-600">{student.studentId}</p>
       <p className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900 print:bg-white print:p-0 print:text-slate-700">
         학급 은행 및 매점에서<br />
         이 QR을 스캔해 주세요.

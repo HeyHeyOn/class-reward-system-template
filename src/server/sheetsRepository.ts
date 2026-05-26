@@ -43,7 +43,6 @@ export type TransactionRecord = {
 
 export type StudentUpdate = {
   name: string;
-  number: number;
   balance: number;
   status: Student['status'];
 };
@@ -73,6 +72,7 @@ export type TaskUpdate = {
   maxCompletionsPerStudent: number;
   isActive: boolean;
   sortOrder: number;
+  allowedStudentIds?: string[];
 };
 
 export type TaskCreate = TaskUpdate & {
@@ -107,12 +107,12 @@ export type TaskBatchUpdate = TaskUpdate & {
   taskId: string;
 };
 
-const REQUIRED_STUDENT_COLUMNS = ['studentId', 'name', 'number', 'balance', 'status'];
+const REQUIRED_STUDENT_COLUMNS = ['studentId', 'name', 'balance', 'status'];
 const REQUIRED_PRODUCT_COLUMNS = ['productId', 'name', 'price', 'stock', 'isActive'];
 const REQUIRED_TRANSACTION_COLUMNS = ['transactionId', 'timestamp', 'studentId', 'studentName', 'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator'];
 const REQUIRED_TASK_COLUMNS = ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder'];
 const REQUIRED_TASK_COMPLETION_COLUMNS = ['completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note'];
-const TASK_HEADERS = ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'createdAt', 'updatedAt'];
+const TASK_HEADERS = ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'allowedStudentIds', 'createdAt', 'updatedAt'];
 const TASK_COMPLETION_HEADERS = ['completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note'];
 
 export type SheetSetting = {
@@ -157,7 +157,7 @@ export async function getStudents(reader: SheetsReader): Promise<Student[]> {
     .map((row) => parseStudentRow(row, headerIndex))
     .filter((student): student is Student => student !== null)
     .filter((student) => student.status === 'ACTIVE')
-    .sort((a, b) => a.number - b.number || a.name.localeCompare(b.name));
+    .sort((a, b) => a.studentId.localeCompare(b.studentId, 'ko-KR', { numeric: true }) || a.name.localeCompare(b.name));
 }
 
 export async function getActiveProducts(reader: SheetsReader): Promise<Product[]> {
@@ -227,8 +227,9 @@ export async function createTask(store: SheetsStore, create: TaskCreate): Promis
     maxCompletionsPerStudent: create.maxCompletionsPerStudent,
     isActive: create.isActive,
     sortOrder: create.sortOrder,
+    allowedStudentIds: normalizeUniqueIds(create.allowedStudentIds ?? []),
   };
-  await store.appendRow('Tasks', [task.taskId, task.title, task.description, String(task.reward), String(task.maxCompletionsPerStudent), task.isActive ? 'TRUE' : 'FALSE', String(task.sortOrder), now, now]);
+  await store.appendRow('Tasks', [task.taskId, task.title, task.description, String(task.reward), String(task.maxCompletionsPerStudent), task.isActive ? 'TRUE' : 'FALSE', String(task.sortOrder), task.allowedStudentIds.join(','), now, now]);
   return task;
 }
 
@@ -245,8 +246,11 @@ export async function updateTaskDetails(store: SheetsStore, taskId: string, upda
   await store.updateCell('Tasks', record.rowNumber, 'maxCompletionsPerStudent', update.maxCompletionsPerStudent);
   await store.updateCell('Tasks', record.rowNumber, 'isActive', update.isActive ? 'TRUE' : 'FALSE');
   await store.updateCell('Tasks', record.rowNumber, 'sortOrder', update.sortOrder);
-  if ((await store.getRows('Tasks'))[0]?.includes('updatedAt')) await store.updateCell('Tasks', record.rowNumber, 'updatedAt', new Date().toISOString());
-  return { taskId, title, description, reward: update.reward, maxCompletionsPerStudent: update.maxCompletionsPerStudent, isActive: update.isActive, sortOrder: update.sortOrder };
+  const taskRows = await store.getRows('Tasks');
+  const allowedStudentIds = normalizeUniqueIds(update.allowedStudentIds ?? []);
+  if (taskRows[0]?.includes('allowedStudentIds')) await store.updateCell('Tasks', record.rowNumber, 'allowedStudentIds', allowedStudentIds.join(','));
+  if (taskRows[0]?.includes('updatedAt')) await store.updateCell('Tasks', record.rowNumber, 'updatedAt', new Date().toISOString());
+  return { taskId, title, description, reward: update.reward, maxCompletionsPerStudent: update.maxCompletionsPerStudent, isActive: update.isActive, sortOrder: update.sortOrder, allowedStudentIds };
 }
 
 
@@ -281,8 +285,11 @@ export async function updateTaskDetailsBatch(store: SheetsStore, updates: TaskBa
       { rowNumber: record.rowNumber, columnName: 'isActive', value: update.isActive ? 'TRUE' : 'FALSE' },
       { rowNumber: record.rowNumber, columnName: 'sortOrder', value: update.sortOrder },
     );
+    const allowedStudentIds = normalizeUniqueIds(update.allowedStudentIds ?? []);
+    const hasAllowedStudentIds = taskRows[0]?.includes('allowedStudentIds') ?? false;
+    if (hasAllowedStudentIds) cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'allowedStudentIds', value: allowedStudentIds.join(',') });
     if (hasUpdatedAt) cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'updatedAt', value: now });
-    tasks.push({ taskId: update.taskId, title, description, reward: update.reward, maxCompletionsPerStudent: update.maxCompletionsPerStudent, isActive: update.isActive, sortOrder: update.sortOrder });
+    tasks.push({ taskId: update.taskId, title, description, reward: update.reward, maxCompletionsPerStudent: update.maxCompletionsPerStudent, isActive: update.isActive, sortOrder: update.sortOrder, allowedStudentIds });
   }
 
   await applyCellUpdates(store, 'Tasks', cellUpdates);
@@ -337,6 +344,7 @@ export async function completeTaskForStudent(store: SheetsStore, taskId: string,
   if (!task || !task.isActive) throw new Error('완료할 수 있는 과제가 아닙니다.');
   const studentRecord = await getStudentRecordById(store, studentId.trim());
   if (!studentRecord || studentRecord.student.status !== 'ACTIVE') throw new Error('학생 정보를 찾을 수 없습니다.');
+  if (task.allowedStudentIds.length > 0 && !task.allowedStudentIds.includes(studentRecord.student.studentId)) throw new Error('허가되지 않은 과제입니다.');
 
   const completions = await getTaskCompletions(store);
   const completedCount = completions.filter((completion) => completion.taskId === task.taskId && completion.studentId === studentRecord.student.studentId && completion.status === 'SUCCESS').length;
@@ -567,7 +575,6 @@ export async function createStudent(store: SheetsStore, create: StudentCreate): 
   const student: Student = {
     studentId,
     name: create.name.trim(),
-    number: create.number,
     balance: create.balance,
     status: create.status,
   };
@@ -589,11 +596,10 @@ export async function updateStudentDetails(store: SheetsStore, studentId: string
 
   const name = update.name.trim();
   await store.updateCell('Students', record.rowNumber, 'name', name);
-  await store.updateCell('Students', record.rowNumber, 'number', update.number);
   await store.updateCell('Students', record.rowNumber, 'balance', update.balance);
   await store.updateCell('Students', record.rowNumber, 'status', update.status);
 
-  return { studentId, name, number: update.number, balance: update.balance, status: update.status };
+  return { studentId, name, balance: update.balance, status: update.status };
 }
 
 export async function updateStudentDetailsBatch(store: SheetsStore, updates: StudentBatchUpdate[]): Promise<Student[]> {
@@ -616,11 +622,10 @@ export async function updateStudentDetailsBatch(store: SheetsStore, updates: Stu
     const name = update.name.trim();
     cellUpdates.push(
       { rowNumber: record.rowNumber, columnName: 'name', value: name },
-      { rowNumber: record.rowNumber, columnName: 'number', value: update.number },
       { rowNumber: record.rowNumber, columnName: 'balance', value: update.balance },
       { rowNumber: record.rowNumber, columnName: 'status', value: update.status },
     );
-    students.push({ studentId: update.studentId, name, number: update.number, balance: update.balance, status: update.status });
+    students.push({ studentId: update.studentId, name, balance: update.balance, status: update.status });
   }
 
   await applyCellUpdates(store, 'Students', cellUpdates);
@@ -857,13 +862,12 @@ async function appendBalanceAdjustmentTransaction(
 
 function buildStudentAppendRow(headers: string[] | undefined, student: Student): string[] {
   if (!headers || headers.length === 0) {
-    return [student.studentId, student.name, String(student.number), String(student.balance), student.status];
+    return [student.studentId, student.name, String(student.balance), student.status];
   }
 
   const valuesByColumn: Record<string, string> = {
     studentId: student.studentId,
     name: student.name,
-    number: String(student.number),
     balance: String(student.balance),
     qrValue: student.studentId,
     status: student.status,
@@ -920,7 +924,6 @@ function validateStudentId(studentId: string) {
 
 function validateStudentUpdate(update: StudentUpdate) {
   if (!update.name.trim()) throw new Error('학생 이름을 입력해 주세요.');
-  if (!Number.isInteger(update.number) || update.number <= 0) throw new Error('학생 번호는 1 이상의 정수여야 합니다.');
   if (!Number.isInteger(update.balance) || update.balance < 0) throw new Error('잔액은 0 이상의 정수여야 합니다.');
   if (update.status !== 'ACTIVE' && update.status !== 'INACTIVE') throw new Error('학생 상태가 올바르지 않습니다.');
 }
@@ -991,7 +994,12 @@ function parseTaskRow(row: string[], headerIndex: Map<string, number>): ClassTas
     maxCompletionsPerStudent,
     isActive: parseBooleanValue(getRowCell(row, headerIndex, 'isActive')),
     sortOrder,
+    allowedStudentIds: parseAllowedStudentIds(getRowCell(row, headerIndex, 'allowedStudentIds')),
   };
+}
+
+function parseAllowedStudentIds(value: string): string[] {
+  return normalizeUniqueIds(value.split(/[\n,;]/).map((id) => id.trim()));
 }
 
 function parseTaskCompletionRow(row: string[], headerIndex: Map<string, number>): TaskCompletion | null {

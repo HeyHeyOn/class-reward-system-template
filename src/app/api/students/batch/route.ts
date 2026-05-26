@@ -14,7 +14,6 @@ export async function PATCH(request: Request) {
       ? payload.students.map((student: Record<string, unknown>) => ({
           studentId: String(student.studentId ?? ''),
           name: String(student.name ?? ''),
-          number: Number(student.number),
           balance: Number(student.balance),
           status: student.status,
         }))

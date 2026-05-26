@@ -8,11 +8,11 @@ import {
 
 describe('sheets row parsing', () => {
   it('creates a header index and verifies required columns', () => {
-    const headers = ['studentId', 'name', 'number', 'balance', 'qrValue', 'status', 'note'];
+    const headers = ['studentId', 'name', 'balance', 'status', 'note'];
     const headerIndex = createHeaderIndex(headers);
 
     expect(headerIndex.get('studentId')).toBe(0);
-    expect(headerIndex.get('balance')).toBe(3);
+    expect(headerIndex.get('balance')).toBe(2);
     expect(requireColumns(headerIndex, ['studentId', 'name', 'balance'])).toEqual({ ok: true });
   });
 
@@ -26,29 +26,27 @@ describe('sheets row parsing', () => {
   });
 
   it('parses a student row into a Student object', () => {
-    const headerIndex = createHeaderIndex(['studentId', 'name', 'number', 'balance', 'qrValue', 'status', 'note']);
+    const headerIndex = createHeaderIndex(['studentId', 'name', 'balance', 'status', 'note']);
 
-    expect(parseStudentRow(['S001', '김민준', '1', '3500', 'S001', 'ACTIVE', ''], headerIndex)).toEqual({
+    expect(parseStudentRow(['S001', '김민준', '3500', 'ACTIVE', ''], headerIndex)).toEqual({
       studentId: 'S001',
       name: '김민준',
-      number: 1,
       balance: 3500,
       status: 'ACTIVE',
     });
   });
 
   it('returns null for inactive or malformed student rows', () => {
-    const headerIndex = createHeaderIndex(['studentId', 'name', 'number', 'balance', 'status']);
+    const headerIndex = createHeaderIndex(['studentId', 'name', 'balance', 'status']);
 
-    expect(parseStudentRow(['S002', '이서연', '2', '1200', 'INACTIVE'], headerIndex)).toEqual({
+    expect(parseStudentRow(['S002', '이서연', '1200', 'INACTIVE'], headerIndex)).toEqual({
       studentId: 'S002',
       name: '이서연',
-      number: 2,
       balance: 1200,
       status: 'INACTIVE',
     });
-    expect(parseStudentRow(['', '이름없음', '3', '100', 'ACTIVE'], headerIndex)).toBeNull();
-    expect(parseStudentRow(['S003', '박도윤', '3', 'not-number', 'ACTIVE'], headerIndex)).toBeNull();
+    expect(parseStudentRow(['', '이름없음', '100', 'ACTIVE'], headerIndex)).toBeNull();
+    expect(parseStudentRow(['S003', '박도윤', 'not-number', 'ACTIVE'], headerIndex)).toBeNull();
   });
 
   it('parses a product row into a Product object', () => {

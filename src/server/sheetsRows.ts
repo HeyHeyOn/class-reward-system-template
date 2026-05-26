@@ -23,18 +23,16 @@ export function requireColumns(headerIndex: HeaderIndex, requiredColumns: string
 export function parseStudentRow(row: string[], headerIndex: HeaderIndex): Student | null {
   const studentId = getCell(row, headerIndex, 'studentId');
   const name = getCell(row, headerIndex, 'name');
-  const number = parseNumberCell(getCell(row, headerIndex, 'number'));
   const balance = parseNumberCell(getCell(row, headerIndex, 'balance'));
   const status = parseStudentStatus(getCell(row, headerIndex, 'status'));
 
-  if (!studentId || !name || number === null || balance === null || !status) {
+  if (!studentId || !name || balance === null || !status) {
     return null;
   }
 
   return {
     studentId,
     name,
-    number,
     balance,
     status,
   };
