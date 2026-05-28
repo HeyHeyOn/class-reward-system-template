@@ -166,7 +166,21 @@ describe('AdminManagePage', () => {
   });
 
 
-  it('assigns a selected task to a scanned student QR with retryable popups', async () => {
+  it('assigns a selected task to a scanned student QR, saves it immediately, and shows saving progress', async () => {
+    const savedTasks = [tasks[0], { ...tasks[1], allowedStudentIds: ['S002'] }];
+    const qrTaskSave = deferredResponse(savedTasks);
+    const baseFetch = fetch as unknown as ReturnType<typeof vi.fn>;
+    baseFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/students') return jsonResponse(students);
+      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
+      if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue', source: 'runtime' });
+      if (url === '/api/transactions') return jsonResponse(transactions);
+      if (url === '/api/tasks/batch' && init?.method === 'PATCH') return qrTaskSave.response;
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+
     render(<AdminManagePage />);
     fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
 
@@ -182,6 +196,15 @@ describe('AdminManagePage', () => {
 
     expect(await screen.findByRole('dialog', { name: 'QR 인식 중' })).toBeTruthy();
     expect(screen.getByText('QR을 인식했습니다. 과제를 부여하는 중입니다.')).toBeTruthy();
+    expect(await screen.findByRole('dialog', { name: '변경 사항 저장 중' })).toBeTruthy();
+    expect(screen.getByText('변경 사항을 저장하는 중입니다.')).toBeTruthy();
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/batch', expect.objectContaining({
+      method: 'PATCH',
+      body: expect.stringContaining('"taskId":"T002"'),
+    })));
+    expect((baseFetch.mock.calls.find(([url, init]) => String(url) === '/api/tasks/batch' && init?.method === 'PATCH')?.[1] as RequestInit).body).toContain('"allowedStudentIds":["S002"]');
+    qrTaskSave.resolve();
+
     expect(await screen.findByRole('dialog', { name: 'QR 과제 부여 성공' })).toBeTruthy();
     expect(screen.getByText('과제가 부여되었습니다.')).toBeTruthy();
     expect(screen.getByRole('button', { name: '다시 찍기' })).toBeTruthy();

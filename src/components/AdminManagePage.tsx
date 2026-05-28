@@ -350,9 +350,29 @@ export function AdminManagePage() {
       return;
     }
 
-    updateTask(task.taskId, { allowedStudentIds: [...(task.allowedStudentIds ?? []), student.studentId] });
-    setQrTaskResult({ status: 'success', taskId, message: '과제가 부여되었습니다.' });
+    const updatedTasks = tasks.map((item) => (
+      item.taskId === task.taskId
+        ? { ...item, allowedStudentIds: [...(item.allowedStudentIds ?? []), student.studentId] }
+        : item
+    ));
+
     setQrTaskLoading(false);
+    setIsSavingChanges(true);
+    try {
+      const response = await fetch('/api/tasks/batch', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tasks: buildTaskPayload(updatedTasks) }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? '과제 부여 내용을 저장하지 못했습니다.');
+      setTasks(Array.isArray(payload) ? payload : updatedTasks);
+      setQrTaskResult({ status: 'success', taskId, message: '과제가 부여되었습니다.' });
+    } catch (error) {
+      setQrTaskResult({ status: 'failure', taskId, message: error instanceof Error ? error.message : '과제 부여 내용을 저장하지 못했습니다.' });
+    } finally {
+      setIsSavingChanges(false);
+    }
   }
 
   function buildStudentPayload(list: StudentDraft[]) {
