@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import type { Transaction } from '@/domain/types';
 
@@ -57,42 +57,58 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
   const [currencyUnit, setCurrencyUnit] = useState('원');
   const [message, setMessage] = useState('거래 내역을 불러오는 중입니다.');
   const [cancelingId, setCancelingId] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [transactionFilter, setTransactionFilter] = useState<TransactionFilter>('all');
+
+  const loadTransactions = useCallback(async (options: { shouldApply?: () => boolean } = {}) => {
+    const shouldApply = options.shouldApply ?? (() => true);
+    const [transactionsResponse, settingsResponse] = await Promise.all([
+      fetch('/api/transactions', { cache: 'no-store' }),
+      fetch('/api/settings', { cache: 'no-store' }),
+    ]);
+    const transactionsPayload = (await transactionsResponse.json()) as Transaction[] | ApiError;
+    const settingsPayload = (await settingsResponse.json().catch(() => null)) as SettingsResponse | null;
+
+    if (!transactionsResponse.ok || !Array.isArray(transactionsPayload)) {
+      throw new Error('error' in transactionsPayload && transactionsPayload.error ? transactionsPayload.error : '거래 내역을 불러오지 못했습니다.');
+    }
+
+    if (!shouldApply()) return;
+    setTransactions(transactionsPayload);
+    if (settingsPayload?.currencyUnit) setCurrencyUnit(settingsPayload.currencyUnit);
+    setMessage('');
+  }, []);
 
   useEffect(() => {
     let ignore = false;
 
-    async function load() {
-      const [transactionsResponse, settingsResponse] = await Promise.all([
-        fetch('/api/transactions', { cache: 'no-store' }),
-        fetch('/api/settings', { cache: 'no-store' }),
-      ]);
-      const transactionsPayload = (await transactionsResponse.json()) as Transaction[] | ApiError;
-      const settingsPayload = (await settingsResponse.json().catch(() => null)) as SettingsResponse | null;
-
-      if (!transactionsResponse.ok || !Array.isArray(transactionsPayload)) {
-        throw new Error('error' in transactionsPayload && transactionsPayload.error ? transactionsPayload.error : '거래 내역을 불러오지 못했습니다.');
-      }
-
-      if (ignore) return;
-      setTransactions(transactionsPayload);
-      if (settingsPayload?.currencyUnit) setCurrencyUnit(settingsPayload.currencyUnit);
-      setMessage('');
-    }
-
-    load().catch((error) => {
-      if (!ignore) setMessage(error instanceof Error ? error.message : '거래 내역을 불러오지 못했습니다.');
-    });
+    void Promise.resolve()
+      .then(() => loadTransactions({ shouldApply: () => !ignore }))
+      .catch((error) => {
+        if (!ignore) setMessage(error instanceof Error ? error.message : '거래 내역을 불러오지 못했습니다.');
+      });
 
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [loadTransactions]);
 
   const filteredTransactions = useMemo(() => {
     if (transactionFilter === 'all') return transactions;
     return transactions.filter((transaction) => getTransactionAmountTone(transaction) === transactionFilter);
   }, [transactions, transactionFilter]);
+
+  async function refreshTransactions() {
+    setIsRefreshing(true);
+    setMessage('');
+    try {
+      await loadTransactions();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '거래 내역을 불러오지 못했습니다.');
+    } finally {
+      setIsRefreshing(false);
+    }
+  }
 
   async function cancelTransaction(transaction: Transaction) {
     if (transaction.status === 'CANCELLED') return;
@@ -120,13 +136,17 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
     }
   }
 
+
   return (
     <div className={embedded ? 'grid gap-4' : 'grid gap-4'}>
       {message ? <p className="rounded-2xl bg-white p-4 font-bold text-slate-700 shadow-sm">{message}</p> : null}
 
       <section className="rounded-[1.75rem] border border-slate-300/70 bg-white/90 p-4 shadow-sm md:p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-2xl font-black">최근 거래 ({filteredTransactions.length})</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-2xl font-black">최근 거래 ({filteredTransactions.length})</h2>
+            <button type="button" aria-label="최근 거래 새로고침" onClick={refreshTransactions} className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-black text-slate-700 shadow-sm">새로고침</button>
+          </div>
           <TransactionFilterTabs value={transactionFilter} onChange={setTransactionFilter} />
         </div>
         <div className="mt-4 grid gap-3">
@@ -186,6 +206,8 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
           })}
         </div>
       </section>
+      {cancelingId ? <LoadingDialog title="거래 취소 중" message="거래를 취소하는 중입니다." /> : null}
+      {isRefreshing ? <LoadingDialog title="새로고침 중" message="새로고침하는 중입니다." /> : null}
     </div>
   );
 }
@@ -207,6 +229,19 @@ function TransactionFilterTabs({ value, onChange }: { value: TransactionFilter; 
           {label}
         </button>
       ))}
+    </div>
+  );
+}
+
+
+function LoadingDialog({ title, message }: { title: string; message: string }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+      <section role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-2xl">
+        <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-sky-500" aria-hidden="true" />
+        <h2 className="mt-4 text-2xl font-black">{title}</h2>
+        <p className="mt-2 rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-600">{message}</p>
+      </section>
     </div>
   );
 }

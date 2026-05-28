@@ -109,6 +109,8 @@ export function AdminManagePage() {
   const [qrTaskResult, setQrTaskResult] = useState<QrTaskAssignmentResult | null>(null);
   const [settings, setSettings] = useState<Settings>({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white' });
   const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isSavingChanges, setIsSavingChanges] = useState(false);
+  const [isRefreshingLists, setIsRefreshingLists] = useState(false);
 
   const loadLinkedSheetData = useCallback(async (options: { silent?: boolean; shouldApply?: () => boolean } = {}) => {
     const shouldApply = options.shouldApply ?? (() => true);
@@ -197,6 +199,81 @@ export function AdminManagePage() {
     window.alert(messageText);
   }
 
+  async function refreshStudents() {
+    setIsRefreshingLists(true);
+    try {
+      const [studentResponse, settingsResponse] = await Promise.all([
+        fetch('/api/students', { cache: 'no-store' }),
+        fetch('/api/settings', { cache: 'no-store' }),
+      ]);
+      const [studentPayload, settingsPayload] = await Promise.all([studentResponse.json(), settingsResponse.json().catch(() => null)]);
+      if (!studentResponse.ok) throw new Error(studentPayload.error ?? '학생 목록을 불러오지 못했습니다.');
+      setStudents(studentPayload);
+      setSelectedStudentIds((ids) => ids.filter((id) => studentPayload.some((student: Student) => student.studentId === id)));
+      setSettings({
+        currencyUnit: settingsPayload?.currencyUnit ?? '원',
+        appTitle: settingsPayload?.appTitle ?? '학급 매점',
+        bankTitle: settingsPayload?.bankTitle ?? '학급 은행',
+        themeColor: normalizeThemeColor(settingsPayload?.themeColor),
+      });
+      setMessage('');
+    } catch (error) {
+      notify(error instanceof Error ? error.message : '학생 목록을 불러오지 못했습니다.');
+    } finally {
+      setIsRefreshingLists(false);
+    }
+  }
+
+  async function refreshProducts() {
+    setIsRefreshingLists(true);
+    try {
+      const [productResponse, settingsResponse] = await Promise.all([
+        fetch('/api/products?includeInactive=1', { cache: 'no-store' }),
+        fetch('/api/settings', { cache: 'no-store' }),
+      ]);
+      const [productPayload, settingsPayload] = await Promise.all([productResponse.json(), settingsResponse.json().catch(() => null)]);
+      if (!productResponse.ok) throw new Error(productPayload.error ?? '상품 목록을 불러오지 못했습니다.');
+      setProducts(productPayload);
+      setSelectedProductIds((ids) => ids.filter((id) => productPayload.some((product: Product) => product.productId === id)));
+      setSettings({
+        currencyUnit: settingsPayload?.currencyUnit ?? '원',
+        appTitle: settingsPayload?.appTitle ?? '학급 매점',
+        bankTitle: settingsPayload?.bankTitle ?? '학급 은행',
+        themeColor: normalizeThemeColor(settingsPayload?.themeColor),
+      });
+      setMessage('');
+    } catch (error) {
+      notify(error instanceof Error ? error.message : '상품 목록을 불러오지 못했습니다.');
+    } finally {
+      setIsRefreshingLists(false);
+    }
+  }
+
+  async function refreshTasks() {
+    setIsRefreshingLists(true);
+    try {
+      const [taskResponse, settingsResponse] = await Promise.all([
+        fetch('/api/tasks?includeInactive=1', { cache: 'no-store' }),
+        fetch('/api/settings', { cache: 'no-store' }),
+      ]);
+      const [taskPayload, settingsPayload] = await Promise.all([taskResponse.json(), settingsResponse.json().catch(() => null)]);
+      if (!taskResponse.ok) throw new Error(taskPayload.error ?? '과제 목록을 불러오지 못했습니다.');
+      setTasks(taskPayload);
+      setSelectedTaskIds((ids) => ids.filter((id) => taskPayload.some((task: ClassTask) => task.taskId === id)));
+      setSettings({
+        currencyUnit: settingsPayload?.currencyUnit ?? '원',
+        appTitle: settingsPayload?.appTitle ?? '학급 매점',
+        bankTitle: settingsPayload?.bankTitle ?? '학급 은행',
+        themeColor: normalizeThemeColor(settingsPayload?.themeColor),
+      });
+      setMessage('');
+    } catch (error) {
+      notify(error instanceof Error ? error.message : '과제 목록을 불러오지 못했습니다.');
+    } finally {
+      setIsRefreshingLists(false);
+    }
+  }
+
   function toggleStudent(studentId: string) {
     setSelectedStudentIds((current) => current.includes(studentId) ? current.filter((id) => id !== studentId) : [...current, studentId]);
   }
@@ -253,7 +330,7 @@ export function AdminManagePage() {
     if (!studentId || !taskId) return;
     setQrTaskScan(null);
     setQrTaskLoading(true);
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
 
     const task = tasks.find((item) => item.taskId === taskId);
     const student = students.find((item) => item.studentId === studentId && item.status === 'ACTIVE');
@@ -309,6 +386,7 @@ export function AdminManagePage() {
   }
 
   async function saveStudentRows(rows: StudentDraft[], label: string) {
+    setIsSavingChanges(true);
     try {
       const response = await fetch('/api/students/batch', {
         method: 'PATCH',
@@ -323,6 +401,8 @@ export function AdminManagePage() {
       notify(`${label} ${rows.length}명 저장 완료`);
     } catch (error) {
       notify(error instanceof Error ? error.message : '학생 명단을 저장하지 못했습니다.');
+    } finally {
+      setIsSavingChanges(false);
     }
   }
 
@@ -336,6 +416,7 @@ export function AdminManagePage() {
   }
 
   async function saveProductRows(rows: ProductDraft[], label: string) {
+    setIsSavingChanges(true);
     try {
       const response = await fetch('/api/products/batch', {
         method: 'PATCH',
@@ -350,6 +431,8 @@ export function AdminManagePage() {
       notify(`${label} ${rows.length}개 저장 완료`);
     } catch (error) {
       notify(error instanceof Error ? error.message : '매점 목록을 저장하지 못했습니다.');
+    } finally {
+      setIsSavingChanges(false);
     }
   }
 
@@ -363,6 +446,7 @@ export function AdminManagePage() {
   }
 
   async function saveTaskRows(rows: TaskDraft[], label: string) {
+    setIsSavingChanges(true);
     try {
       const response = await fetch('/api/tasks/batch', {
         method: 'PATCH',
@@ -377,6 +461,8 @@ export function AdminManagePage() {
       notify(`${label} ${rows.length}개 저장 완료`);
     } catch (error) {
       notify(error instanceof Error ? error.message : '과제 목록을 저장하지 못했습니다.');
+    } finally {
+      setIsSavingChanges(false);
     }
   }
 
@@ -697,7 +783,16 @@ export function AdminManagePage() {
               </form>
             </SectionCard>
 
-            <SectionCard title="학생 명단" action={<button type="button" onClick={saveAllStudents} className={`rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black ${theme.actionText} shadow-sm`}>전체 저장</button>} compact>
+            <SectionCard
+              title="학생 명단"
+              action={(
+                <div className="flex flex-wrap items-center gap-2">
+                  <button type="button" aria-label="학생 명단 새로고침" onClick={refreshStudents} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 shadow-sm">새로고침</button>
+                  <button type="button" onClick={saveAllStudents} className={`rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black ${theme.actionText} shadow-sm`}>전체 저장</button>
+                </div>
+              )}
+              compact
+            >
               <div className={`mb-3 rounded-2xl border border-slate-200 ${theme.softBg} p-3`}>
                 <div className="flex flex-wrap items-center gap-2">
                   <label className="flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-black">
@@ -779,7 +874,12 @@ export function AdminManagePage() {
               </form>
             </SectionCard>
 
-            <SectionCard title="상품 · 재고 관리" action={<button type="button" onClick={saveAllProducts} className={`rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black ${theme.actionText} shadow-sm`}>전체 저장</button>} compact>
+            <SectionCard title="상품 · 재고 관리" action={(
+              <div className="flex flex-wrap gap-2">
+                <button type="button" aria-label="상품 · 재고 관리 새로고침" onClick={refreshProducts} className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-black text-slate-700 shadow-sm">새로고침</button>
+                <button type="button" onClick={saveAllProducts} className={`rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black ${theme.actionText} shadow-sm`}>전체 저장</button>
+              </div>
+            )} compact>
               <div className={`mb-3 rounded-2xl border border-slate-200 ${theme.softBg} p-3`}>
                 <label className="flex w-fit items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-black">
                   <input aria-label="전체 상품 선택" checked={allProductsSelected} onChange={(event) => setSelectedProductIds(event.target.checked ? products.map((product) => product.productId) : [])} type="checkbox" />
@@ -860,6 +960,7 @@ export function AdminManagePage() {
             <div data-testid="task-list-card" className="min-w-0">
             <SectionCard title="과제 설정" action={(
               <div className="flex flex-wrap gap-2">
+                <button type="button" aria-label="과제 설정 새로고침" onClick={refreshTasks} className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-black text-slate-700 shadow-sm">새로고침</button>
                 <button type="button" onClick={() => { setQrTaskResult(null); setQrTaskScan(null); setQrTaskPickerOpen(true); }} className="rounded-xl bg-sky-100 px-4 py-2 text-sm font-black text-sky-800 shadow-sm">QR 과제 부여</button>
                 <button type="button" onClick={saveAllTasks} className={`rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black ${theme.actionText} shadow-sm`}>전체 저장</button>
               </div>
@@ -935,6 +1036,8 @@ export function AdminManagePage() {
           </section>
         ) : null}
       </section>
+      {isSavingChanges ? <LoadingDialog title="변경 사항 저장 중" message="변경 사항을 저장하는 중입니다." /> : null}
+      {isRefreshingLists ? <LoadingDialog title="새로고침 중" message="새로고침하는 중입니다." /> : null}
       {imageEditor ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <section role="dialog" aria-modal="true" aria-label="이미지 주소 편집" className="w-full max-w-xl rounded-2xl bg-white p-4 shadow-2xl">

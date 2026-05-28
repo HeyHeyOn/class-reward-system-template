@@ -61,6 +61,12 @@ function jsonResponse(payload: unknown, init?: ResponseInit) {
   });
 }
 
+function deferredResponse(payload: unknown) {
+  let resolve!: () => void;
+  const gate = new Promise<void>((res) => { resolve = res; });
+  return { resolve, response: gate.then(() => jsonResponse(payload)) };
+}
+
 describe('TransactionsPage', () => {
   beforeEach(() => {
     vi.stubGlobal('confirm', vi.fn(() => true));
@@ -160,6 +166,51 @@ describe('TransactionsPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '전체' }));
     expect(await screen.findByRole('heading', { name: '최근 거래 (4)' })).toBeTruthy();
+  });
+
+  it('shows loading popups while cancelling and refreshing transactions', async () => {
+    const cancelDeferred = deferredResponse({
+      cancelledTransaction: { ...transactions[0], status: 'CANCELLED', cancelledAt: '2026-05-21T03:00:00.000Z' },
+      reversalTransaction: {
+        transactionId: 'CANCEL-T001',
+        timestamp: '2026-05-21T03:00:00.000Z',
+        studentId: 'S001',
+        studentName: '김민준',
+        items: [{ productId: 'CANCEL-T001', name: '거래 취소', price: -600, quantity: 1, subtotal: -600 }],
+        totalAmount: -600,
+        balanceBefore: 2900,
+        balanceAfter: 3500,
+        status: 'CANCEL_REVERSAL',
+        operator: 'cancel:T001',
+      },
+    });
+    let transactionFetchCount = 0;
+    const refreshDeferred = deferredResponse([transactions[1]]);
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/transactions' && !init?.method) {
+        transactionFetchCount += 1;
+        return transactionFetchCount === 1 ? jsonResponse(transactions) : refreshDeferred.response;
+      }
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별' });
+      if (url === '/api/transactions/T001/cancel' && init?.method === 'POST') return cancelDeferred.response;
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+
+    render(<TransactionsPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'T001 거래 취소' }));
+    expect(await screen.findByRole('dialog', { name: '거래 취소 중' })).toBeTruthy();
+    expect(screen.getByText('거래를 취소하는 중입니다.')).toBeTruthy();
+    cancelDeferred.resolve();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '거래 취소 중' })).toBeNull());
+
+    fireEvent.click(screen.getByRole('button', { name: '최근 거래 새로고침' }));
+    expect(await screen.findByRole('dialog', { name: '새로고침 중' })).toBeTruthy();
+    expect(screen.getByText('새로고침하는 중입니다.')).toBeTruthy();
+    refreshDeferred.resolve();
+    expect(await screen.findByRole('heading', { name: '최근 거래 (1)' })).toBeTruthy();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '새로고침 중' })).toBeNull());
   });
 
   it('cancels income and expense transactions and updates the row status', async () => {

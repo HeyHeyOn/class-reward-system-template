@@ -213,6 +213,101 @@ describe('AdminManagePage', () => {
     expect(screen.getByText('잘못된 QR입니다.')).toBeTruthy();
   });
 
+  it('shows loading popups while saving student, product, and task changes', async () => {
+    const studentSave = deferredResponse([{ ...students[0], name: '김민준 수정', balance: 3200 }, students[1]]);
+    const productSave = deferredResponse([{ ...products[0], name: '연필 세트' }, products[1]]);
+    const taskSave = deferredResponse([{ ...tasks[0], title: '책 읽기 수정' }, tasks[1]]);
+    const baseFetch = fetch as unknown as ReturnType<typeof vi.fn>;
+    baseFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/students') return jsonResponse(students);
+      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue' });
+      if (url === '/api/transactions') return jsonResponse(transactions);
+      if (url === '/api/students/batch' && init?.method === 'PATCH') return studentSave.response;
+      if (url === '/api/products/batch' && init?.method === 'PATCH') return productSave.response;
+      if (url === '/api/tasks/batch' && init?.method === 'PATCH') return taskSave.response;
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '학생 관리' }));
+    fireEvent.click(screen.getByLabelText('S001 선택'));
+    fireEvent.click(screen.getByRole('button', { name: '선택 저장' }));
+    expect(await screen.findByRole('dialog', { name: '변경 사항 저장 중' })).toBeTruthy();
+    expect(screen.getByText('변경 사항을 저장하는 중입니다.')).toBeTruthy();
+    studentSave.resolve();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '변경 사항 저장 중' })).toBeNull());
+
+    fireEvent.click(screen.getByRole('tab', { name: '매점 관리' }));
+    fireEvent.click(screen.getByRole('button', { name: '전체 저장' }));
+    expect(await screen.findByRole('dialog', { name: '변경 사항 저장 중' })).toBeTruthy();
+    productSave.resolve();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '변경 사항 저장 중' })).toBeNull());
+
+    fireEvent.click(screen.getByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: '전체 저장' }));
+    expect(await screen.findByRole('dialog', { name: '변경 사항 저장 중' })).toBeTruthy();
+    taskSave.resolve();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '변경 사항 저장 중' })).toBeNull());
+  });
+
+  it('refreshes student, product, and task lists with a loading popup from section headers', async () => {
+    const refreshedStudents = [{ ...students[0], name: '김민준 새로고침', balance: 4100 }, students[1]];
+    const refreshedProducts = [{ ...products[0], name: '연필 리필', stock: 30 }, products[1]];
+    const refreshedTasks = [{ ...tasks[0], title: '책 읽기 새로고침' }, tasks[1]];
+    let studentFetchCount = 0;
+    let productFetchCount = 0;
+    let taskFetchCount = 0;
+    const studentRefresh = deferredResponse(refreshedStudents);
+    const productRefresh = deferredResponse(refreshedProducts);
+    const taskRefresh = deferredResponse(refreshedTasks);
+    const baseFetch = fetch as unknown as ReturnType<typeof vi.fn>;
+    baseFetch.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/students') {
+        studentFetchCount += 1;
+        return studentFetchCount === 1 ? jsonResponse(students) : studentRefresh.response;
+      }
+      if (url === '/api/products?includeInactive=1') {
+        productFetchCount += 1;
+        return productFetchCount === 1 ? jsonResponse(products) : productRefresh.response;
+      }
+      if (url === '/api/tasks?includeInactive=1') {
+        taskFetchCount += 1;
+        return taskFetchCount === 1 ? jsonResponse(tasks) : taskRefresh.response;
+      }
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue' });
+      if (url === '/api/transactions') return jsonResponse(transactions);
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '학생 관리' }));
+    fireEvent.click(screen.getByRole('button', { name: '학생 명단 새로고침' }));
+    expect(await screen.findByRole('dialog', { name: '새로고침 중' })).toBeTruthy();
+    expect(screen.getByText('새로고침하는 중입니다.')).toBeTruthy();
+    studentRefresh.resolve();
+    await screen.findByDisplayValue('김민준 새로고침');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '새로고침 중' })).toBeNull());
+
+    fireEvent.click(screen.getByRole('tab', { name: '매점 관리' }));
+    fireEvent.click(screen.getByRole('button', { name: '상품 · 재고 관리 새로고침' }));
+    expect(await screen.findByRole('dialog', { name: '새로고침 중' })).toBeTruthy();
+    expect(screen.getByText('새로고침하는 중입니다.')).toBeTruthy();
+    productRefresh.resolve();
+    await screen.findByDisplayValue('연필 리필');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '새로고침 중' })).toBeNull());
+
+    fireEvent.click(screen.getByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: '과제 설정 새로고침' }));
+    expect(await screen.findByRole('dialog', { name: '새로고침 중' })).toBeTruthy();
+    taskRefresh.resolve();
+    await screen.findByDisplayValue('책 읽기 새로고침');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '새로고침 중' })).toBeNull());
+  });
+
   it('renders unified admin tabs with kiosk-style design language', async () => {
     const { container } = render(<AdminManagePage />);
 
