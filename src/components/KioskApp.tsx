@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import type { CartItem, Product, Student } from '@/domain/types';
+import { getFontFamilyCss, type FontFamily } from '@/lib/fontSettings';
 import { QrScanner } from './QrScanner';
 
 type PaymentStep = 'checkout' | 'processing' | 'failure' | 'complete';
@@ -36,7 +37,7 @@ type FailureState = {
 
 type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'black' | 'navy';
 
-type KioskSettings = { currencyUnit?: string; appTitle?: string; themeColor?: ThemeColor };
+type KioskSettings = { currencyUnit?: string; appTitle?: string; themeColor?: ThemeColor; fontFamily?: FontFamily };
 
 const THEME_STYLES: Record<ThemeColor, { shell: string; accentText: string; accentBg: string; selectedText: string; lightBg: string; lightText: string; hoverBg: string; ring: string }> = {
   blue: { shell: 'bg-[#EDF5FA]', accentText: 'text-[#365F78]', accentBg: 'bg-[#B8D0E0]', selectedText: 'text-[#1F1F1F]', lightBg: 'bg-[#EDF5FA]', lightText: 'text-slate-700', hoverBg: 'hover:bg-[#D8E9F2]', ring: 'focus:ring-[#B8D0E0]' },
@@ -75,6 +76,7 @@ export function KioskApp() {
   const [currencyUnit, setCurrencyUnit] = useState('원');
   const [appTitle, setAppTitle] = useState('학급 매점');
   const [themeColor, setThemeColor] = useState<ThemeColor>('white');
+  const [fontFamily, setFontFamily] = useState<FontFamily>('default');
   const [selectedCategory, setSelectedCategory] = useState('전체');
 
   const loadProducts = useCallback(async (options: { shouldApply?: () => boolean } = {}) => {
@@ -97,6 +99,7 @@ export function KioskApp() {
       if (settings?.currencyUnit) setCurrencyUnit(settings.currencyUnit);
       if (settings?.appTitle) setAppTitle(settings.appTitle);
       setThemeColor(normalizeThemeColor(settings?.themeColor));
+      setFontFamily(settings?.fontFamily ?? 'default');
       setMessage('');
     } catch (error) {
       if (options.shouldApply?.() !== false) setMessage(error instanceof Error ? error.message : '상품 정보를 불러오지 못했습니다.');
@@ -134,6 +137,8 @@ export function KioskApp() {
   const categories = useMemo(() => ['전체', ...Array.from(new Set(products.map((product) => product.category || '기타')))], [products]);
   const filteredProducts = selectedCategory === '전체' ? products : products.filter((product) => (product.category || '기타') === selectedCategory);
   const theme = THEME_STYLES[themeColor];
+  const fontFamilyCss = getFontFamilyCss(fontFamily);
+  const fontFamilyStyle = fontFamilyCss ? { fontFamily: fontFamilyCss } : undefined;
 
   if (isLoadingProducts) {
     return <LoadingScreen title="시트 정보 불러오는 중" message="매점 상품과 테마 설정을 불러오는 중입니다." />;
@@ -288,7 +293,7 @@ export function KioskApp() {
   }
 
   return (
-    <main data-testid="kiosk-shell" className={`h-screen overflow-hidden ${theme.shell} p-2 text-slate-950 sm:p-3`}>
+    <main data-testid="kiosk-shell" style={fontFamilyStyle} className={`h-screen overflow-hidden ${theme.shell} p-2 text-slate-950 sm:p-3`}>
       <section data-testid="kiosk-content" className="mx-auto grid h-full w-full max-w-[1240px] grid-rows-[auto_minmax(0,1fr)] gap-2 sm:gap-3">
         <header className="relative grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center rounded-[1.25rem] border border-slate-300/70 bg-white px-2 py-2 text-center text-[clamp(0.75rem,2.6vw,1rem)] shadow-sm sm:grid-cols-[3rem_minmax(0,1fr)_3rem] sm:rounded-[1.75rem] sm:px-4 sm:py-4">
           <div aria-hidden="true" />

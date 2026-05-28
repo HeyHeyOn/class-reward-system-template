@@ -27,7 +27,7 @@ describe('settings', () => {
   it('uses env spreadsheet id and default currency unit when Settings sheet is unavailable', async () => {
     const settings = await getAppSettings({ env: { GOOGLE_SHEET_ID: 'env-sheet-id' } });
 
-    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', schemaVersion: 1, systemVersion: SYSTEM_VERSION, systemName: '학급 보상 시스템', source: 'env' });
+    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', fontFamily: 'default', schemaVersion: 1, systemVersion: SYSTEM_VERSION, systemName: '학급 보상 시스템', source: 'env' });
   });
 
   it('reads currency unit and app title from Settings sheet when present', async () => {
@@ -42,6 +42,7 @@ describe('settings', () => {
             ['appTitle', '햇살반 매점'],
             ['bankTitle', '햇살반 은행'],
             ['themeColor', 'purple'],
+            ['fontFamily', 'school-safe-notice'],
             ['schemaVersion', '1'],
             ['systemVersion', '0.2.0-phase1'],
             ['systemName', '햇살반 보상 시스템'],
@@ -50,7 +51,7 @@ describe('settings', () => {
       },
     });
 
-    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '별', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'purple', schemaVersion: 1, systemVersion: '0.2.0-phase1', systemName: '햇살반 보상 시스템', source: 'sheet' });
+    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '별', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'purple', fontFamily: 'school-safe-notice', schemaVersion: 1, systemVersion: '0.2.0-phase1', systemName: '햇살반 보상 시스템', source: 'sheet' });
   });
 
   it('accepts white, black, and navy theme colors from Settings sheet', async () => {
@@ -98,15 +99,17 @@ describe('settings', () => {
         appTitle: '햇살반 매점',
         bankTitle: '햇살반 은행',
         themeColor: 'green',
+        fontFamily: 'school-safe-board-marker',
         env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
       }),
-    ).resolves.toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '달란트', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'green', schemaVersion: 1, systemVersion: SYSTEM_VERSION, systemName: '학급 보상 시스템', source: 'sheet' });
+    ).resolves.toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '달란트', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'green', fontFamily: 'school-safe-board-marker', schemaVersion: 1, systemVersion: SYSTEM_VERSION, systemName: '학급 보상 시스템', source: 'sheet' });
 
     expect(updates).toEqual([{ sheetName: 'Settings', rowNumber: 2, columnName: 'value', value: '달란트' }]);
     expect(appends).toEqual([
       { sheetName: 'Settings', values: ['appTitle', '햇살반 매점'] },
       { sheetName: 'Settings', values: ['bankTitle', '햇살반 은행'] },
       { sheetName: 'Settings', values: ['themeColor', 'green'] },
+      { sheetName: 'Settings', values: ['fontFamily', 'school-safe-board-marker'] },
       { sheetName: 'Settings', values: ['schemaVersion', '1'] },
       { sheetName: 'Settings', values: ['systemVersion', SYSTEM_VERSION] },
       { sheetName: 'Settings', values: ['systemName', '학급 보상 시스템'] },

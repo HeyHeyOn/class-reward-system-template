@@ -1,5 +1,29 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: 'NanumBarunGothic';
+  src: url('/fonts/nanum-barun-gothic.ttf') format('truetype');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SchoolSafeBoardMarker';
+  src: url('/fonts/school-safe-board-marker-r.ttf') format('truetype');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SchoolSafeNotice';
+  src: url('/fonts/school-safe-notice-r.ttf') format('truetype');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SchoolSafePoster';
+  src: url('/fonts/school-safe-poster-b.ttf') format('truetype');
+  font-display: swap;
+}
+
 :root {
   --background: #f6f1e8;
   --foreground: #0f172a;

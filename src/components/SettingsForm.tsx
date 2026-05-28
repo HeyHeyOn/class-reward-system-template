@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
+import { FONT_FAMILY_OPTIONS, normalizeFontFamily, type FontFamily } from '@/lib/fontSettings';
 
 type SettingsResponse = {
   spreadsheetId: string;
@@ -8,6 +9,7 @@ type SettingsResponse = {
   appTitle: string;
   bankTitle: string;
   themeColor: string;
+  fontFamily: FontFamily;
   source: 'runtime' | 'env' | 'unset';
   adminPasswordConfigured?: boolean;
 };
@@ -24,6 +26,7 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
   const [appTitle, setAppTitle] = useState('학급 매점');
   const [bankTitle, setBankTitle] = useState('학급 은행');
   const [themeColor, setThemeColor] = useState('blue');
+  const [fontFamily, setFontFamily] = useState<FontFamily>('default');
   const [currentSettings, setCurrentSettings] = useState<SettingsResponse | null>(null);
   const [message, setMessage] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
@@ -44,6 +47,7 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
         setAppTitle(settings.appTitle ?? '학급 매점');
         setBankTitle(settings.bankTitle ?? '학급 은행');
         setThemeColor(settings.themeColor ?? 'blue');
+        setFontFamily(normalizeFontFamily(settings.fontFamily));
       }
     }
 
@@ -65,7 +69,7 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
       const response = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ spreadsheetIdOrUrl, currencyUnit, appTitle, bankTitle, themeColor, adminPassword: adminPassword.trim() || undefined }),
+        body: JSON.stringify({ spreadsheetIdOrUrl, currencyUnit, appTitle, bankTitle, themeColor, fontFamily, adminPassword: adminPassword.trim() || undefined }),
       });
       const payload = (await response.json()) as SettingsResponse | { error: string };
 
@@ -80,6 +84,7 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
       setAppTitle(payload.appTitle);
       setBankTitle(payload.bankTitle);
       setThemeColor(payload.themeColor ?? 'blue');
+      setFontFamily(normalizeFontFamily(payload.fontFamily));
       if (adminPassword.trim()) {
         setSavedAdminPassword(adminPassword.trim());
         setAdminPassword('');
@@ -157,6 +162,20 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
       </label>
 
       <label className="mt-4 block">
+        <span className="text-sm font-bold text-slate-700">글꼴</span>
+        <select
+          aria-label="글꼴"
+          value={fontFamily}
+          onChange={(event) => setFontFamily(normalizeFontFamily(event.target.value))}
+          className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg font-bold text-slate-950 outline-none transition focus:border-amber-500 focus:bg-white"
+        >
+          {FONT_FAMILY_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+      </label>
+
+      <label className="mt-4 block">
         <span className="text-sm font-bold text-slate-700">관리자 암호 설정</span>
         <input
           aria-label="관리자 암호 설정"
@@ -189,6 +208,7 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
         <p>매점 제목: {currentSettings?.appTitle ?? appTitle}</p>
         <p>은행 제목: {currentSettings?.bankTitle ?? bankTitle}</p>
         <p>테마 색상: {currentSettings?.themeColor ?? themeColor}</p>
+        <p>글꼴: {FONT_FAMILY_OPTIONS.find((option) => option.value === (currentSettings?.fontFamily ?? fontFamily))?.label ?? '기본 글꼴'}</p>
         <p>관리자 암호: {currentSettings?.adminPasswordConfigured ? '설정됨' : '미설정'}</p>
         <p className="mt-2 font-bold text-sky-800">
           관리자 목록도 이 설정을 사용합니다: 학생 {linkedStudentCount ?? 0}명 · 상품 {linkedProductCount ?? 0}개

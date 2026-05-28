@@ -33,7 +33,7 @@ describe('KioskApp', () => {
         }
 
         if (url === '/api/settings') {
-          return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '햇살반 매점', themeColor: 'pink', source: 'runtime' });
+          return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '햇살반 매점', themeColor: 'pink', fontFamily: 'school-safe-notice', source: 'runtime' });
         }
 
         if (url === '/api/students/S001') {
@@ -82,6 +82,7 @@ describe('KioskApp', () => {
     expect(screen.queryByRole('link', { name: '관리자 설정' })).toBeNull();
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('h-screen');
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-[#FAEDED]');
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain('SchoolSafeNotice');
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('overflow-hidden');
     expect(container.querySelector('[data-testid="kiosk-main-grid"]')?.className).toContain('grid-rows-[minmax(0,2fr)_minmax(0,1fr)]');
     expect(container.querySelector('[data-testid="kiosk-main-grid"]')?.className).toContain('landscape:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]');

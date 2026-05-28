@@ -2,6 +2,7 @@ import type { SheetsReader, SheetsStore } from '@/server/sheetsRepository';
 import { getSheetSettings, saveSheetSetting } from '@/server/sheetsRepository';
 import { saveAdminPassword } from '@/server/adminAuth';
 import { LATEST_SCHEMA_VERSION, SYSTEM_NAME_KO, SYSTEM_VERSION } from '@/generator/config/versions';
+import { normalizeFontFamily, type FontFamily } from '@/lib/fontSettings';
 
 export type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'black' | 'navy';
 
@@ -11,6 +12,7 @@ export type AppSettings = {
   appTitle: string;
   bankTitle: string;
   themeColor: ThemeColor;
+  fontFamily: FontFamily;
   schemaVersion: number;
   systemVersion: string;
   systemName: string;
@@ -33,6 +35,7 @@ type SaveSettingsOptions = {
   appTitle?: string;
   bankTitle?: string;
   themeColor?: string;
+  fontFamily?: string;
   env?: SettingsEnv;
 };
 
@@ -98,6 +101,7 @@ export async function getAppSettings(options: SettingsOptions = {}): Promise<App
         appTitle: normalizeAppTitle(sheetSettings.appTitle),
         bankTitle: normalizeBankTitle(sheetSettings.bankTitle),
         themeColor: normalizeThemeColor(sheetSettings.themeColor),
+        fontFamily: normalizeFontFamily(sheetSettings.fontFamily),
         schemaVersion: normalizeSchemaVersion(sheetSettings.schemaVersion),
         systemVersion: normalizeSystemVersion(sheetSettings.systemVersion),
         systemName: normalizeSystemName(sheetSettings.systemName),
@@ -135,10 +139,12 @@ export async function saveAppSettings(options: SaveSettingsOptions): Promise<App
   const appTitle = normalizeAppTitle(options.appTitle);
   const bankTitle = normalizeBankTitle(options.bankTitle);
   const themeColor = normalizeThemeColor(options.themeColor);
+  const fontFamily = normalizeFontFamily(options.fontFamily);
   await saveSheetSetting(options.settingsStore, { key: 'currencyUnit', value: currencyUnit });
   await saveSheetSetting(options.settingsStore, { key: 'appTitle', value: appTitle });
   await saveSheetSetting(options.settingsStore, { key: 'bankTitle', value: bankTitle });
   await saveSheetSetting(options.settingsStore, { key: 'themeColor', value: themeColor });
+  await saveSheetSetting(options.settingsStore, { key: 'fontFamily', value: fontFamily });
   await saveSheetSetting(options.settingsStore, { key: 'schemaVersion', value: String(DEFAULT_SCHEMA_VERSION) });
   await saveSheetSetting(options.settingsStore, { key: 'systemVersion', value: DEFAULT_SYSTEM_VERSION });
   await saveSheetSetting(options.settingsStore, { key: 'systemName', value: DEFAULT_SYSTEM_NAME });
@@ -152,6 +158,7 @@ export async function saveAppSettings(options: SaveSettingsOptions): Promise<App
     appTitle,
     bankTitle,
     themeColor,
+    fontFamily,
     schemaVersion: DEFAULT_SCHEMA_VERSION,
     systemVersion: DEFAULT_SYSTEM_VERSION,
     systemName: DEFAULT_SYSTEM_NAME,
@@ -202,6 +209,7 @@ function defaultAppSettings(spreadsheetId: string, source: AppSettings['source']
     appTitle: DEFAULT_APP_TITLE,
     bankTitle: DEFAULT_BANK_TITLE,
     themeColor: DEFAULT_THEME_COLOR,
+    fontFamily: 'default',
     schemaVersion: DEFAULT_SCHEMA_VERSION,
     systemVersion: DEFAULT_SYSTEM_VERSION,
     systemName: DEFAULT_SYSTEM_NAME,

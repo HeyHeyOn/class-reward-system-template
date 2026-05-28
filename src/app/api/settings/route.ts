@@ -15,7 +15,7 @@ export async function POST(request: Request) {
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
   try {
-    const body = (await request.json()) as { spreadsheetIdOrUrl?: unknown; currencyUnit?: unknown; appTitle?: unknown; bankTitle?: unknown; adminPassword?: unknown; themeColor?: unknown };
+    const body = (await request.json()) as { spreadsheetIdOrUrl?: unknown; currencyUnit?: unknown; appTitle?: unknown; bankTitle?: unknown; adminPassword?: unknown; themeColor?: unknown; fontFamily?: unknown };
 
     if (typeof body.spreadsheetIdOrUrl !== 'string') {
       return Response.json({ error: '시트 ID 또는 주소를 입력해 주세요.' }, { status: 400 });
@@ -35,6 +35,7 @@ export async function POST(request: Request) {
       appTitle: typeof body.appTitle === 'string' ? body.appTitle : undefined,
       bankTitle: typeof body.bankTitle === 'string' ? body.bankTitle : undefined,
       themeColor: typeof body.themeColor === 'string' ? body.themeColor : undefined,
+      fontFamily: typeof body.fontFamily === 'string' ? body.fontFamily : undefined,
       adminPassword: typeof body.adminPassword === 'string' ? body.adminPassword : undefined,
     });
 

@@ -23,7 +23,7 @@ describe('BankApp', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '별빛 은행', currencyUnit: '별', themeColor: 'green' });
+      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '별빛 은행', currencyUnit: '별', themeColor: 'green', fontFamily: 'nanum-barun-gothic' });
       if (url === '/api/tasks') return jsonResponse(tasks);
       if (url === '/api/bank/balance?studentId=S001') return jsonResponse({
         studentId: 'S001',
@@ -66,6 +66,7 @@ describe('BankApp', () => {
 
     expect(await screen.findByRole('heading', { name: '별빛 은행' })).toBeTruthy();
     expect(container.querySelector('[data-testid="bank-shell"]')?.className).toContain('bg-[#DCF5C9]');
+    expect(container.querySelector('[data-testid="bank-shell"]')?.getAttribute('style')).toContain('NanumBarunGothic');
     expect(container.querySelector('[data-testid="bank-shell"]')?.className).not.toContain('bg-green-50');
     expect(container.querySelector('[data-testid="bank-shell"]')?.className).not.toContain('bg-lime-50');
     expect(screen.getByText('CLASS BANK').className).toContain('text-[#505999]');

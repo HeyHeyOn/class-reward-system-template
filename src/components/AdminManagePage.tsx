@@ -9,6 +9,7 @@ import type { ClassTask, Product, Student } from '@/domain/types';
 import { SettingsForm } from './SettingsForm';
 import { QrScanner } from './QrScanner';
 import { TransactionsPanel } from './TransactionsPage';
+import { getFontFamilyCss, type FontFamily } from '@/lib/fontSettings';
 
 type StudentDraft = Student;
 type ProductDraft = Product;
@@ -17,7 +18,7 @@ type AdminTab = 'settings' | 'students' | 'products' | 'tasks' | 'transactions' 
 type BulkMode = 'set' | 'add' | 'subtract';
 type CurrencyMode = 'add' | 'subtract';
 type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'black' | 'navy';
-type Settings = { currencyUnit?: string; appTitle?: string; bankTitle?: string; themeColor?: ThemeColor };
+type Settings = { currencyUnit?: string; appTitle?: string; bankTitle?: string; themeColor?: ThemeColor; fontFamily?: FontFamily };
 type AdminTheme = { shell: string; pageText: string; accentText: string; accentBg: string; actionText: string; selectedTab: string; idleTab: string; statBg: string; logoColor: string; softBg: string; softText: string; focusBorder: string };
 const disabledActionClass = 'disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none';
 type CurrencyResult = {
@@ -107,7 +108,7 @@ export function AdminManagePage() {
   const [qrTaskScan, setQrTaskScan] = useState<{ taskId: string; manualId: string } | null>(null);
   const [qrTaskLoading, setQrTaskLoading] = useState(false);
   const [qrTaskResult, setQrTaskResult] = useState<QrTaskAssignmentResult | null>(null);
-  const [settings, setSettings] = useState<Settings>({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white' });
+  const [settings, setSettings] = useState<Settings>({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', fontFamily: 'default' });
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isSavingChanges, setIsSavingChanges] = useState(false);
   const [isRefreshingLists, setIsRefreshingLists] = useState(false);
@@ -139,6 +140,7 @@ export function AdminManagePage() {
         appTitle: settingsPayload?.appTitle ?? '학급 매점',
         bankTitle: settingsPayload?.bankTitle ?? '학급 은행',
         themeColor: normalizeThemeColor(settingsPayload?.themeColor),
+        fontFamily: settingsPayload?.fontFamily ?? 'default',
       });
       setStudents(studentPayload);
       setProducts(productPayload);
@@ -215,6 +217,7 @@ export function AdminManagePage() {
         appTitle: settingsPayload?.appTitle ?? '학급 매점',
         bankTitle: settingsPayload?.bankTitle ?? '학급 은행',
         themeColor: normalizeThemeColor(settingsPayload?.themeColor),
+        fontFamily: settingsPayload?.fontFamily ?? 'default',
       });
       setMessage('');
     } catch (error) {
@@ -240,6 +243,7 @@ export function AdminManagePage() {
         appTitle: settingsPayload?.appTitle ?? '학급 매점',
         bankTitle: settingsPayload?.bankTitle ?? '학급 은행',
         themeColor: normalizeThemeColor(settingsPayload?.themeColor),
+        fontFamily: settingsPayload?.fontFamily ?? 'default',
       });
       setMessage('');
     } catch (error) {
@@ -265,6 +269,7 @@ export function AdminManagePage() {
         appTitle: settingsPayload?.appTitle ?? '학급 매점',
         bankTitle: settingsPayload?.bankTitle ?? '학급 은행',
         themeColor: normalizeThemeColor(settingsPayload?.themeColor),
+        fontFamily: settingsPayload?.fontFamily ?? 'default',
       });
       setMessage('');
     } catch (error) {
@@ -417,7 +422,7 @@ export function AdminManagePage() {
       if (!response.ok) throw new Error(payload.error ?? '학생 명단을 저장하지 못했습니다.');
       const savedStudents = payload as StudentDraft[];
       const savedMap = new Map(savedStudents.map((student) => [student.studentId, student]));
-      setStudents((current) => current.map((student) => savedMap.get(student.studentId) ?? student));
+      setStudents((current) => current.map((student) => savedMap.has(student.studentId) ? { ...student, ...savedMap.get(student.studentId) } : student));
       notify(`${label} ${rows.length}명 저장 완료`);
     } catch (error) {
       notify(error instanceof Error ? error.message : '학생 명단을 저장하지 못했습니다.');
@@ -447,7 +452,7 @@ export function AdminManagePage() {
       if (!response.ok) throw new Error(payload.error ?? '매점 목록을 저장하지 못했습니다.');
       const savedProducts = payload as ProductDraft[];
       const savedMap = new Map(savedProducts.map((product) => [product.productId, product]));
-      setProducts((current) => current.map((product) => savedMap.get(product.productId) ?? product));
+      setProducts((current) => current.map((product) => savedMap.has(product.productId) ? { ...product, ...savedMap.get(product.productId) } : product));
       notify(`${label} ${rows.length}개 저장 완료`);
     } catch (error) {
       notify(error instanceof Error ? error.message : '매점 목록을 저장하지 못했습니다.');
@@ -477,7 +482,7 @@ export function AdminManagePage() {
       if (!response.ok) throw new Error(payload.error ?? '과제 목록을 저장하지 못했습니다.');
       const savedTasks = payload as TaskDraft[];
       const savedMap = new Map(savedTasks.map((task) => [task.taskId, task]));
-      setTasks((current) => current.map((task) => savedMap.get(task.taskId) ?? task).sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title)));
+      setTasks((current) => current.map((task) => savedMap.has(task.taskId) ? { ...task, ...savedMap.get(task.taskId) } : task).sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title)));
       notify(`${label} ${rows.length}개 저장 완료`);
     } catch (error) {
       notify(error instanceof Error ? error.message : '과제 목록을 저장하지 못했습니다.');
@@ -730,13 +735,15 @@ export function AdminManagePage() {
 
   const currencyActionLabel = currencyMode === 'add' ? '지급' : '회수';
   const theme = ADMIN_THEME[settings.themeColor ?? 'white'] ?? ADMIN_THEME.white;
+  const fontFamilyCss = getFontFamilyCss(settings.fontFamily);
+  const fontFamilyStyle = fontFamilyCss ? { fontFamily: fontFamilyCss } : undefined;
 
   if (isInitialLoading) {
     return <LoadingScreen title="시트 정보 불러오는 중" message="관리자 데이터와 테마 설정을 불러오는 중입니다." />;
   }
 
   return (
-    <main data-testid="admin-shell" className={`min-h-screen ${theme.shell} ${theme.pageText} p-2 sm:p-3 lg:p-5`}>
+    <main data-testid="admin-shell" style={fontFamilyStyle} className={`min-h-screen ${theme.shell} ${theme.pageText} p-2 sm:p-3 lg:p-5`}>
       <section className="mx-auto flex w-full max-w-[1280px] flex-col gap-3 lg:gap-4">
         <header className="rounded-[1.25rem] border border-slate-300/70 bg-white px-4 py-4 text-center text-slate-950 shadow-sm sm:rounded-[1.75rem] md:px-6">
           <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -859,7 +866,7 @@ export function AdminManagePage() {
                     <NumberInput label={`${student.studentId} 잔액`} value={student.balance} onChange={(value) => updateStudent(student.studentId, { balance: value })} dense />
                     <label className="block min-w-0 text-xs font-bold text-slate-700">
                       <span className="sr-only">상태</span>
-                      <select aria-label={`${student.studentId} 상태`} className="h-8 w-full rounded-lg border border-slate-200 bg-white px-1 text-xs text-slate-950" onChange={(event) => updateStudent(student.studentId, { status: event.target.value as Student['status'] })} value={student.status}>
+                      <select aria-label={`${student.studentId} 상태`} className="h-8 w-full rounded-lg border border-slate-200 bg-white px-1 text-xs text-slate-950" onChange={(event) => updateStudent(student.studentId, { status: event.target.value as Student['status'] })} value={student.status ?? 'ACTIVE'}>
                         <option value="ACTIVE">활성</option>
                         <option value="INACTIVE">비활성</option>
                       </select>
@@ -940,7 +947,7 @@ export function AdminManagePage() {
                     </button>
                     <NumberInput label={`${product.productId} 정렬`} value={product.sortOrder} onChange={(value) => updateProduct(product.productId, { sortOrder: value })} dense />
                     <label className={`flex h-8 items-center justify-center rounded-lg ${theme.softBg} text-[10px] font-bold ${theme.softText}`}>
-                      <input aria-label={`${product.productId} 판매중`} checked={product.isActive} onChange={(event) => updateProduct(product.productId, { isActive: event.target.checked })} type="checkbox" />
+                      <input aria-label={`${product.productId} 판매중`} checked={Boolean(product.isActive)} onChange={(event) => updateProduct(product.productId, { isActive: event.target.checked })} type="checkbox" />
                     </label>
                     <button aria-label={`${product.productId} 상품 삭제`} className="h-8 rounded-lg bg-rose-100 px-1 text-[10px] font-black text-rose-700" onClick={() => deleteProductRow(product.productId)} type="button">
                       삭제
@@ -1012,7 +1019,7 @@ export function AdminManagePage() {
                     <NumberInput label={`${task.taskId} 완료 가능 횟수`} value={task.maxCompletionsPerStudent} onChange={(value) => updateTask(task.taskId, { maxCompletionsPerStudent: value })} dense />
                     <NumberInput label={`${task.taskId} 정렬`} value={task.sortOrder} onChange={(value) => updateTask(task.taskId, { sortOrder: value })} dense />
                     <label className={`flex h-8 items-center justify-center rounded-lg ${theme.softBg} text-[10px] font-bold ${theme.softText}`}>
-                      <input aria-label={`${task.taskId} 활성`} checked={task.isActive} onChange={(event) => updateTask(task.taskId, { isActive: event.target.checked })} type="checkbox" />
+                      <input aria-label={`${task.taskId} 활성`} checked={Boolean(task.isActive)} onChange={(event) => updateTask(task.taskId, { isActive: event.target.checked })} type="checkbox" />
                     </label>
                     <button type="button" aria-label={`${task.taskId} 과제 부여`} onClick={() => openTaskAssignmentEditor(task.taskId, task.allowedStudentIds ?? [])} className="h-8 rounded-lg bg-sky-100 px-1 text-[10px] font-black text-sky-800">과제 부여</button>
                     <button
@@ -1327,7 +1334,7 @@ function SectionCard({ title, description, action, children, compact = false }: 
   );
 }
 
-function TextInput({ label, value, onChange, compact = false, dense = false, dataTestId }: { label: string; value: string; onChange: (value: string) => void; compact?: boolean; dense?: boolean; dataTestId?: string }) {
+function TextInput({ label, value, onChange, compact = false, dense = false, dataTestId }: { label: string; value?: string; onChange: (value: string) => void; compact?: boolean; dense?: boolean; dataTestId?: string }) {
   const visibleLabel = label.replace(/^새 |^[SP]\d+ /, '');
   const inputClass = dense
     ? 'h-8 w-full rounded-lg border border-slate-200 bg-white px-1 text-[11px] text-slate-950 outline-none transition focus:border-slate-300'
@@ -1336,21 +1343,22 @@ function TextInput({ label, value, onChange, compact = false, dense = false, dat
   return (
     <label className="block min-w-0 text-xs font-bold text-slate-700">
       <span data-testid={dataTestId} className={dense ? 'sr-only' : undefined}>{visibleLabel}</span>
-      <input aria-label={label} className={inputClass} onChange={(event) => onChange(event.target.value)} value={value} />
+      <input aria-label={label} className={inputClass} onChange={(event) => onChange(event.target.value)} value={value ?? ''} />
     </label>
   );
 }
 
-function NumberInput({ label, value, onChange, compact = false, dense = false }: { label: string; value: number; onChange: (value: number) => void; compact?: boolean; dense?: boolean }) {
+function NumberInput({ label, value, onChange, compact = false, dense = false }: { label: string; value?: number; onChange: (value: number) => void; compact?: boolean; dense?: boolean }) {
   const visibleLabel = label.replace(/^새 |^[SP]\d+ /, '');
   const inputClass = dense
     ? 'h-8 w-full rounded-lg border border-slate-200 bg-white px-1 text-[11px] text-slate-950 outline-none transition focus:border-slate-300'
     : `mt-1 w-full rounded-xl border border-slate-200 bg-white px-2 text-slate-950 outline-none transition focus:border-slate-300 ${compact ? 'py-2 text-sm' : 'py-3'}`;
+  const safeValue = typeof value === 'number' && Number.isFinite(value) ? value : 0;
 
   return (
     <label className="block min-w-0 text-xs font-bold text-slate-700">
       <span className={dense ? 'sr-only' : undefined}>{visibleLabel}</span>
-      <input aria-label={label} className={inputClass} onChange={(event) => onChange(Number(event.target.value))} type="number" value={value} />
+      <input aria-label={label} className={inputClass} onChange={(event) => onChange(Number(event.target.value))} type="number" value={safeValue} />
     </label>
   );
 }

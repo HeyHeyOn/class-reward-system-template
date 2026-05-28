@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { ClassTask, Transaction } from '@/domain/types';
+import { getFontFamilyCss, type FontFamily } from '@/lib/fontSettings';
 import { QrScanner } from './QrScanner';
 
 type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'black' | 'navy';
-type Settings = { currencyUnit?: string; appTitle?: string; bankTitle?: string; themeColor?: string };
+type Settings = { currencyUnit?: string; appTitle?: string; bankTitle?: string; themeColor?: string; fontFamily?: FontFamily };
 type BankView = 'home' | 'balance-scan' | 'balance-result' | 'tasks-list' | 'task-detail' | 'task-scan' | 'task-success' | 'task-failure';
 type BalanceResult = { studentId: string; name: string; balance: number; transactions?: Transaction[] } | null;
 type TaskResult = { message: string; balanceAfter?: number; reward?: number; studentName?: string } | null;
@@ -64,7 +65,7 @@ function normalizeThemeColor(value: unknown): ThemeColor {
 }
 
 export function BankApp() {
-  const [settings, setSettings] = useState<Settings>({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white' });
+  const [settings, setSettings] = useState<Settings>({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', fontFamily: 'default' });
   const [tasks, setTasks] = useState<ClassTask[]>([]);
   const [selectedTask, setSelectedTask] = useState<ClassTask | null>(null);
   const [view, setView] = useState<BankView>('home');
@@ -79,6 +80,8 @@ export function BankApp() {
 
   const currencyUnit = settings.currencyUnit || '원';
   const theme = BANK_THEME[normalizeThemeColor(settings.themeColor)];
+  const fontFamilyCss = getFontFamilyCss(settings.fontFamily);
+  const fontFamilyStyle = fontFamilyCss ? { fontFamily: fontFamilyCss } : undefined;
   const title = useMemo(() => settings.bankTitle || `${settings.appTitle || '학급 매점'} 은행`, [settings.appTitle, settings.bankTitle]);
   const filteredBalanceTransactions = useMemo(() => {
     const transactions = balanceResult?.transactions ?? [];
@@ -92,7 +95,7 @@ export function BankApp() {
       const payload = await response.json();
       if (response.ok) setSettings(payload);
     } catch {
-      setSettings({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white' });
+      setSettings({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', fontFamily: 'default' });
     } finally {
       setIsSettingsLoading(false);
     }
@@ -190,7 +193,7 @@ export function BankApp() {
   }
 
   return (
-    <main data-testid="bank-shell" className={`min-h-screen ${theme.shell} p-4 text-slate-950`}>
+    <main data-testid="bank-shell" style={fontFamilyStyle} className={`min-h-screen ${theme.shell} p-4 text-slate-950`}>
       <section className="mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col justify-center gap-5">
         <header className="rounded-[2rem] border border-white/50 bg-white/90 p-5 text-center text-slate-950 shadow-lg">
           <p className={`text-xs font-black tracking-[0.25em] ${theme.accentText}`}>CLASS BANK</p>

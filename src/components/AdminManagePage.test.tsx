@@ -57,8 +57,8 @@ describe('AdminManagePage', () => {
         if (url === '/api/products?includeInactive=1') return jsonResponse(products);
         if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
         if (url === '/api/transactions') return jsonResponse(transactions);
-        if (url === '/api/settings' && init?.method === 'POST') return jsonResponse({ spreadsheetId: 'sheet-new', currencyUnit: '별', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'purple', source: 'runtime' });
-        if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue', source: 'runtime' });
+        if (url === '/api/settings' && init?.method === 'POST') return jsonResponse({ spreadsheetId: 'sheet-new', currencyUnit: '별', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'purple', fontFamily: 'school-safe-poster', source: 'runtime' });
+        if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue', fontFamily: 'school-safe-board-marker', source: 'runtime' });
         if (url === '/api/products' && init?.method === 'POST') {
           return jsonResponse({ productId: 'P003', name: '간식쿠폰', price: 1000, stock: 5, isActive: true, imageUrl: 'https://example.com/snack.png', category: '쿠폰', sortOrder: 3 });
         }
@@ -374,12 +374,29 @@ describe('AdminManagePage', () => {
     expect(screen.getByDisplayValue('학급 매점')).toBeTruthy();
     expect(screen.getByDisplayValue('학급 은행')).toBeTruthy();
     expect(screen.getByLabelText('테마 색상')).toBeTruthy();
+    expect(screen.getByLabelText('글꼴')).toBeTruthy();
+    expect(screen.getByDisplayValue('학교안심 보드마카')).toBeTruthy();
     expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-[#EDF5FA]');
+    expect(container.querySelector('[data-testid="admin-shell"]')?.getAttribute('style')).toContain('SchoolSafeBoardMarker');
     expect(container.querySelector('[data-testid="admin-tabs"]')?.className).toContain('rounded-[1.5rem]');
     expect(screen.queryByText('Google Sheets 연결')).toBeNull();
     expect(screen.queryByText('잔액과 상태 관리')).toBeNull();
     expect(screen.queryByText('스프레드시트 연결')).toBeNull();
     expect(screen.queryByText('GOOGLE SHEETS')).toBeNull();
+  });
+
+  it('saves the selected font family from system settings', async () => {
+    render(<AdminManagePage />);
+
+    expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('글꼴'), { target: { value: 'school-safe-poster' } });
+    fireEvent.click(screen.getByRole('button', { name: '시스템 설정 저장' }));
+
+    await waitFor(() => {
+      const settingsPost = vi.mocked(fetch).mock.calls.find(([input, init]) => String(input) === '/api/settings' && init?.method === 'POST');
+      expect(settingsPost).toBeTruthy();
+      expect(JSON.parse(String(settingsPost?.[1]?.body))).toMatchObject({ fontFamily: 'school-safe-poster' });
+    });
   });
 
   it('uses a softer balanced green admin theme and a darker black admin shell when selected', async () => {
@@ -523,7 +540,7 @@ describe('AdminManagePage', () => {
       expect(fetch).toHaveBeenCalledWith('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ spreadsheetIdOrUrl: 'sheet-new', currencyUnit: '별', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'blue' }),
+        body: JSON.stringify({ spreadsheetIdOrUrl: 'sheet-new', currencyUnit: '별', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'blue', fontFamily: 'school-safe-board-marker' }),
       });
       expect(fetch).toHaveBeenCalledWith('/api/students', { cache: 'no-store' });
       expect(fetch).toHaveBeenCalledWith('/api/products?includeInactive=1', { cache: 'no-store' });
