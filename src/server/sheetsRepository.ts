@@ -345,7 +345,8 @@ export async function completeTaskForStudent(store: SheetsStore, taskId: string,
   if (!task || !task.isActive) throw new Error('완료할 수 있는 과제가 아닙니다.');
   const studentRecord = await getStudentRecordById(store, studentId.trim());
   if (!studentRecord || studentRecord.student.status !== 'ACTIVE') throw new Error('학생 정보를 찾을 수 없습니다.');
-  if (task.allowedStudentIds.length > 0 && !task.allowedStudentIds.includes(studentRecord.student.studentId)) throw new Error('허가되지 않은 과제입니다.');
+  if (task.allowedStudentIds.length === 0) throw new Error('부여된 학생이 없습니다.');
+  if (!task.allowedStudentIds.includes(studentRecord.student.studentId)) throw new Error('허가되지 않은 과제입니다.');
 
   const completions = await getTaskCompletions(store);
   const completedCount = completions.filter((completion) => completion.taskId === task.taskId && completion.studentId === studentRecord.student.studentId && completion.status === 'SUCCESS').length;

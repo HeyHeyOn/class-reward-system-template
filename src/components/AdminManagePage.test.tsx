@@ -144,7 +144,7 @@ describe('AdminManagePage', () => {
     fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
 
     fireEvent.click(screen.getByRole('button', { name: '새 과제 과제 부여' }));
-    expect(screen.getByText('아무 학생도 선택하지 않으면 모든 학생이 참여할 수 있습니다. 저장되는 값은 학생 ID뿐입니다.')).toBeTruthy();
+    expect(screen.getByText('선택된 학생만 이 과제를 완료할 수 있습니다. 아무 학생도 선택하지 않으면 아무도 완료할 수 없습니다.')).toBeTruthy();
     expect(screen.getByLabelText('전체 학생 과제 부여 선택')).toBeTruthy();
     expect(screen.getByLabelText('S001 김민준 과제 부여')).toBeTruthy();
     fireEvent.click(screen.getByLabelText('S001 김민준 과제 부여'));
@@ -163,6 +163,54 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
     expect((screen.getByLabelText('S001 김민준 과제 부여') as HTMLInputElement).checked).toBe(true);
     expect((screen.getByLabelText('S002 이서연 과제 부여') as HTMLInputElement).checked).toBe(false);
+  });
+
+
+  it('assigns a selected task to a scanned student QR with retryable popups', async () => {
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'QR 과제 부여' }));
+    expect(screen.getByRole('dialog', { name: 'QR 과제 부여' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '책 읽기 과제 선택' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '수학 학습지 과제 선택' }));
+    expect(screen.getByRole('dialog', { name: '수학 학습지 QR 과제 부여' })).toBeTruthy();
+    expect(screen.getByText('수학 학습지')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('과제 부여 학생 QR 직접 입력'), { target: { value: 'S002' } });
+    fireEvent.click(screen.getByRole('button', { name: '직접 입력 적용' }));
+
+    expect(await screen.findByRole('dialog', { name: 'QR 인식 중' })).toBeTruthy();
+    expect(screen.getByText('QR을 인식했습니다. 과제를 부여하는 중입니다.')).toBeTruthy();
+    expect(await screen.findByRole('dialog', { name: 'QR 과제 부여 성공' })).toBeTruthy();
+    expect(screen.getByText('과제가 부여되었습니다.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '다시 찍기' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '닫기' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'T002 과제 부여' }));
+    expect((screen.getByLabelText('S002 이서연 과제 부여') as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('shows a specific failure when QR task assignment scans a duplicate or invalid QR', async () => {
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'QR 과제 부여' }));
+    fireEvent.click(screen.getByRole('button', { name: '책 읽기 과제 선택' }));
+    fireEvent.change(screen.getByLabelText('과제 부여 학생 QR 직접 입력'), { target: { value: 'S001' } });
+    fireEvent.click(screen.getByRole('button', { name: '직접 입력 적용' }));
+
+    expect(await screen.findByRole('dialog', { name: 'QR 과제 부여 실패' })).toBeTruthy();
+    expect(screen.getByText('이미 이 과제가 부여된 학생입니다.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '다시 시도' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '취소' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '다시 시도' }));
+    fireEvent.change(screen.getByLabelText('과제 부여 학생 QR 직접 입력'), { target: { value: 'UNKNOWN' } });
+    fireEvent.click(screen.getByRole('button', { name: '직접 입력 적용' }));
+
+    expect(await screen.findByRole('dialog', { name: 'QR 과제 부여 실패' })).toBeTruthy();
+    expect(screen.getByText('잘못된 QR입니다.')).toBeTruthy();
   });
 
   it('renders unified admin tabs with kiosk-style design language', async () => {

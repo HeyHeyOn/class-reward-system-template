@@ -28,6 +28,12 @@ type CurrencyResult = {
   message: string;
 };
 
+type QrTaskAssignmentResult = {
+  status: 'success' | 'failure';
+  taskId: string;
+  message: string;
+};
+
 type NewStudentDraft = {
   studentId: string;
   name: string;
@@ -97,6 +103,10 @@ export function AdminManagePage() {
   const [currencyManualId, setCurrencyManualId] = useState('');
   const [currencyResult, setCurrencyResult] = useState<CurrencyResult | null>(null);
   const [currencyLoading, setCurrencyLoading] = useState(false);
+  const [qrTaskPickerOpen, setQrTaskPickerOpen] = useState(false);
+  const [qrTaskScan, setQrTaskScan] = useState<{ taskId: string; manualId: string } | null>(null);
+  const [qrTaskLoading, setQrTaskLoading] = useState(false);
+  const [qrTaskResult, setQrTaskResult] = useState<QrTaskAssignmentResult | null>(null);
   const [settings, setSettings] = useState<Settings>({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white' });
   const [isInitialLoading, setIsInitialLoading] = useState(true);
 
@@ -223,6 +233,49 @@ export function AdminManagePage() {
       setNewTask((current) => ({ ...current, allowedStudentIds: taskAssignmentEditor.selectedIds }));
     }
     setTaskAssignmentEditor(null);
+  }
+
+  function openQrTaskScan(taskId: string) {
+    setQrTaskPickerOpen(false);
+    setQrTaskResult(null);
+    setQrTaskScan({ taskId, manualId: '' });
+  }
+
+  function returnToQrTaskPicker() {
+    setQrTaskResult(null);
+    setQrTaskScan(null);
+    setQrTaskPickerOpen(true);
+  }
+
+  async function assignTaskByQr(decodedText: string) {
+    const studentId = decodedText.trim();
+    const taskId = qrTaskScan?.taskId;
+    if (!studentId || !taskId) return;
+    setQrTaskScan(null);
+    setQrTaskLoading(true);
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+
+    const task = tasks.find((item) => item.taskId === taskId);
+    const student = students.find((item) => item.studentId === studentId && item.status === 'ACTIVE');
+    if (!task) {
+      setQrTaskResult({ status: 'failure', taskId, message: '과제를 찾을 수 없습니다.' });
+      setQrTaskLoading(false);
+      return;
+    }
+    if (!student) {
+      setQrTaskResult({ status: 'failure', taskId, message: '잘못된 QR입니다.' });
+      setQrTaskLoading(false);
+      return;
+    }
+    if ((task.allowedStudentIds ?? []).includes(student.studentId)) {
+      setQrTaskResult({ status: 'failure', taskId, message: '이미 이 과제가 부여된 학생입니다.' });
+      setQrTaskLoading(false);
+      return;
+    }
+
+    updateTask(task.taskId, { allowedStudentIds: [...(task.allowedStudentIds ?? []), student.studentId] });
+    setQrTaskResult({ status: 'success', taskId, message: '과제가 부여되었습니다.' });
+    setQrTaskLoading(false);
   }
 
   function buildStudentPayload(list: StudentDraft[]) {
@@ -805,7 +858,12 @@ export function AdminManagePage() {
             </div>
 
             <div data-testid="task-list-card" className="min-w-0">
-            <SectionCard title="과제 설정" action={<button type="button" onClick={saveAllTasks} className={`rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black ${theme.actionText} shadow-sm`}>전체 저장</button>} compact>
+            <SectionCard title="과제 설정" action={(
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => { setQrTaskResult(null); setQrTaskScan(null); setQrTaskPickerOpen(true); }} className="rounded-xl bg-sky-100 px-4 py-2 text-sm font-black text-sky-800 shadow-sm">QR 과제 부여</button>
+                <button type="button" onClick={saveAllTasks} className={`rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black ${theme.actionText} shadow-sm`}>전체 저장</button>
+              </div>
+            )} compact>
               <div className={`mb-3 rounded-2xl border border-slate-200 ${theme.softBg} p-3`}>
                 <div data-testid="task-bulk-actions" className="flex flex-wrap items-center gap-2">
                 <label className="flex w-fit items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-black">
@@ -934,11 +992,60 @@ export function AdminManagePage() {
         </section>
       ) : null}
 
+      {qrTaskPickerOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <section role="dialog" aria-modal="true" aria-label="QR 과제 부여" className="flex max-h-[90vh] w-full max-w-xl flex-col rounded-2xl bg-white p-4 text-slate-950 shadow-2xl">
+            <h2 className="text-xl font-black">QR 과제 부여</h2>
+            <p className="mt-1 text-sm font-bold text-slate-500">QR로 부여할 과제를 선택해 주세요.</p>
+            <div className="mt-4 max-h-80 space-y-2 overflow-y-auto">
+              {tasks.map((task) => (
+                <button key={task.taskId} type="button" aria-label={`${task.title} 과제 선택`} onClick={() => openQrTaskScan(task.taskId)} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left font-black text-slate-800 hover:bg-sky-50">
+                  <span className="block text-base">{task.title}</span>
+                  <span className="mt-1 block text-xs font-bold text-slate-500">부여 학생 {(task.allowedStudentIds ?? []).length}명 · 보상 {task.reward}{settings.currencyUnit ?? '원'}</span>
+                </button>
+              ))}
+            </div>
+            <button type="button" className="mt-4 w-full rounded-xl bg-slate-200 py-3 font-black text-slate-700" onClick={() => setQrTaskPickerOpen(false)}>닫기</button>
+          </section>
+        </div>
+      ) : null}
+      {qrTaskScan ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <section role="dialog" aria-modal="true" aria-label={`${tasks.find((task) => task.taskId === qrTaskScan.taskId)?.title ?? '과제'} QR 과제 부여`} className="w-full max-w-xl rounded-2xl bg-white p-4 text-slate-950 shadow-2xl">
+            <h2 className="text-xl font-black">학생 QR 인식</h2>
+            <p className="mt-1 rounded-2xl bg-sky-50 p-3 text-sm font-bold text-sky-800"><strong>{tasks.find((task) => task.taskId === qrTaskScan.taskId)?.title ?? '선택한 과제'}</strong> 과제를 부여 중입니다.</p>
+            <div className="mt-4 flex justify-center">
+              <QrScanner onScan={assignTaskByQr} />
+            </div>
+            <label className="mt-4 block text-sm font-bold text-slate-700">
+              <span>학생 QR 직접 입력</span>
+              <input aria-label="과제 부여 학생 QR 직접 입력" value={qrTaskScan.manualId} onChange={(event) => setQrTaskScan((current) => current ? { ...current, manualId: event.target.value } : current)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-950 outline-none focus:border-slate-300" placeholder="S001" />
+            </label>
+            <div className="mt-4 flex gap-2">
+              <button type="button" className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700" onClick={returnToQrTaskPicker}>취소</button>
+              <button type="button" className={`flex-1 rounded-xl ${theme.accentBg} py-3 font-black ${theme.actionText}`} onClick={() => assignTaskByQr(qrTaskScan.manualId)}>직접 입력 적용</button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+      {qrTaskLoading ? <LoadingDialog title="QR 인식 중" message="QR을 인식했습니다. 과제를 부여하는 중입니다." /> : null}
+      {qrTaskResult ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <section role="dialog" aria-modal="true" aria-label={`QR 과제 부여 ${qrTaskResult.status === 'success' ? '성공' : '실패'}`} className="w-full max-w-md rounded-2xl bg-white p-5 text-center text-slate-950 shadow-2xl">
+            <h2 className={`text-2xl font-black ${qrTaskResult.status === 'success' ? theme.accentText : 'text-rose-700'}`}>QR 과제 부여 {qrTaskResult.status === 'success' ? '성공' : '실패'}</h2>
+            <p className="mt-3 rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-700">{qrTaskResult.message}</p>
+            <div className="mt-4 flex gap-2">
+              <button type="button" className="flex-1 rounded-xl bg-slate-950 py-3 font-black text-white" onClick={() => openQrTaskScan(qrTaskResult.taskId)}>{qrTaskResult.status === 'success' ? '다시 찍기' : '다시 시도'}</button>
+              <button type="button" className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700" onClick={returnToQrTaskPicker}>{qrTaskResult.status === 'success' ? '닫기' : '취소'}</button>
+            </div>
+          </section>
+        </div>
+      ) : null}
       {taskAssignmentEditor ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <section role="dialog" aria-modal="true" aria-label="과제 부여" className="w-full max-w-xl rounded-2xl bg-white p-4 text-slate-950 shadow-2xl">
             <h2 className="text-xl font-black">과제 부여</h2>
-            <p className="mt-1 rounded-2xl bg-sky-50 p-3 text-sm font-bold text-sky-800">아무 학생도 선택하지 않으면 모든 학생이 참여할 수 있습니다. 저장되는 값은 학생 ID뿐입니다.</p>
+            <p className="mt-1 rounded-2xl bg-sky-50 p-3 text-sm font-bold text-sky-800">선택된 학생만 이 과제를 완료할 수 있습니다. 아무 학생도 선택하지 않으면 아무도 완료할 수 없습니다.</p>
             <label className="mt-3 flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-sm font-black">
               <input aria-label="전체 학생 과제 부여 선택" checked={students.length > 0 && taskAssignmentEditor.selectedIds.length === students.length} onChange={(event) => setTaskAssignmentEditor((current) => current ? { ...current, selectedIds: event.target.checked ? students.map((student) => student.studentId) : [] } : current)} type="checkbox" />
               전체 선택 ({taskAssignmentEditor.selectedIds.length}/{students.length})

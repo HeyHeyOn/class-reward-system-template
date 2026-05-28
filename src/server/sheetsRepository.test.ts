@@ -43,9 +43,9 @@ const sheetRows = {
     ['TR001', '2026-05-21T00:00:00.000Z', 'S001', '김민준', '[{"productId":"P001","name":"연필","price":300,"quantity":2,"subtotal":600}]', '600', '3500', '2900', 'COMPLETED', 'kiosk'],
   ],
   Tasks: [
-    ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder'],
-    ['T002', '비활성 과제', '숨김', '2', '1', 'FALSE', '2'],
-    ['T001', '책 읽기', '책 10분 읽기', '5', '2', 'TRUE', '1'],
+    ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'allowedStudentIds'],
+    ['T002', '비활성 과제', '숨김', '2', '1', 'FALSE', '2', ''],
+    ['T001', '책 읽기', '책 10분 읽기', '5', '2', 'TRUE', '1', 'S001'],
   ],
   TaskCompletions: [
     ['completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note'],
@@ -565,7 +565,7 @@ describe('sheets repository', () => {
 
   it('reads active tasks sorted by sort order', async () => {
     await expect(getTasks(fakeReader)).resolves.toEqual([
-      { taskId: 'T001', title: '책 읽기', description: '책 10분 읽기', reward: 5, maxCompletionsPerStudent: 2, isActive: true, sortOrder: 1, allowedStudentIds: [] },
+      { taskId: 'T001', title: '책 읽기', description: '책 10분 읽기', reward: 5, maxCompletionsPerStudent: 2, isActive: true, sortOrder: 1, allowedStudentIds: ['S001'] },
     ]);
   });
 
@@ -614,12 +614,14 @@ describe('sheets repository', () => {
           { rowNumber: 3, columnName: 'maxCompletionsPerStudent', value: 3 },
           { rowNumber: 3, columnName: 'isActive', value: 'TRUE' },
           { rowNumber: 3, columnName: 'sortOrder', value: 5 },
+          { rowNumber: 3, columnName: 'allowedStudentIds', value: '' },
           { rowNumber: 2, columnName: 'title', value: '비활성 과제' },
           { rowNumber: 2, columnName: 'description', value: '숨김' },
           { rowNumber: 2, columnName: 'reward', value: 2 },
           { rowNumber: 2, columnName: 'maxCompletionsPerStudent', value: 1 },
           { rowNumber: 2, columnName: 'isActive', value: 'FALSE' },
           { rowNumber: 2, columnName: 'sortOrder', value: 2 },
+          { rowNumber: 2, columnName: 'allowedStudentIds', value: '' },
         ],
       },
     ]);
@@ -722,6 +724,24 @@ describe('sheets repository', () => {
     await expect(completeTaskForStudent(store, 'T010', 'S002')).rejects.toThrow('허가되지 않은 과제입니다.');
     await expect(completeTaskForStudent(store, 'T010', 'S001')).resolves.toMatchObject({ student: { studentId: 'S001' } });
     expect(appended.some((row) => row.sheetName === 'TaskCompletions')).toBe(true);
+  });
+
+
+  it('rejects completion when a task has no assigned students', async () => {
+    const fakeStore = {
+      async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'Tasks') return [
+          ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'allowedStudentIds'],
+          ['T099', '미부여 과제', '아직 학생을 고르지 않음', '10', '1', 'TRUE', '1', ''],
+        ];
+        return sheetRows[sheetName];
+      },
+      async updateCell() {},
+      async updateHeaderRow() {},
+      async appendRow() {},
+    };
+
+    await expect(completeTaskForStudent(fakeStore, 'T099', 'S001')).rejects.toThrow('부여된 학생이 없습니다.');
   });
 
   it('completes a task once, pays reward, and records completion', async () => {
