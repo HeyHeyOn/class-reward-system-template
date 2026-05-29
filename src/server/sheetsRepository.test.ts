@@ -283,6 +283,23 @@ describe('sheets repository', () => {
     ]);
   });
 
+  it('allows admin student balance edits to set a negative balance', async () => {
+    const updates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
+    const fakeStore = {
+      ...fakeReader,
+      async updateCell(sheetName: 'Students' | 'Products', rowNumber: number, columnName: string, value: string | number) {
+        updates.push({ sheetName, rowNumber, columnName, value });
+      },
+      async appendRow() {},
+    };
+
+    await expect(
+      updateStudentDetails(fakeStore, 'S001', { name: '김민준', balance: -1, status: 'ACTIVE' }),
+    ).resolves.toEqual({ studentId: 'S001', name: '김민준', balance: -1, status: 'ACTIVE' });
+
+    expect(updates).toContainEqual({ sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: -1 });
+  });
+
   it('batch updates students through one store call', async () => {
     const batches: Array<{ sheetName: string; updates: Array<{ rowNumber: number; columnName: string; value: string | number }> }> = [];
     const fakeStore = {
@@ -474,6 +491,28 @@ describe('sheets repository', () => {
     expect(appended[2].values[4]).toContain('관리자 회수');
     expect(appended[2].values.slice(5, 8)).toEqual(['1000', '3500', '2500']);
     expect(appended[3].values[4]).toContain('관리자 잔액 지정');
+  });
+
+  it('allows admin bulk reclaim to make a selected student balance negative', async () => {
+    const updates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
+    const appended: Array<{ sheetName: string; values: string[] }> = [];
+    const fakeStore = {
+      ...fakeReader,
+      async updateCell(sheetName: 'Students' | 'Products', rowNumber: number, columnName: string, value: string | number) {
+        updates.push({ sheetName, rowNumber, columnName, value });
+      },
+      async appendRow(sheetName: string, values: string[]) { appended.push({ sheetName, values }); },
+    };
+
+    await expect(bulkAdjustStudentBalances(fakeStore, { studentIds: ['S002'], mode: 'subtract', amount: 1500 })).resolves.toEqual([
+      { studentId: 'S002', balance: -300 },
+    ]);
+
+    expect(updates).toEqual([
+      { sheetName: 'Students', rowNumber: 3, columnName: 'balance', value: -300 },
+    ]);
+    expect(appended[0].values[4]).toContain('관리자 회수');
+    expect(appended[0].values.slice(5, 8)).toEqual(['1500', '1200', '-300']);
   });
 
   it('updates editable product cells by row number', async () => {
@@ -779,6 +818,30 @@ describe('sheets repository', () => {
     await expect(completeTaskForStudent(fakeStore, 'T001', 'S001')).resolves.toMatchObject({ student: { studentId: 'S001', balance: 3505 }, completedCount: 2, remainingCompletions: 0 });
     expect(updates).toContainEqual({ sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: 3505 });
     expect(appended.some((row) => row.sheetName === 'TaskCompletions')).toBe(true);
+  });
+
+  it('applies task rewards against a negative balance first', async () => {
+    const updates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
+    const appended: Array<{ sheetName: string; values: string[] }> = [];
+    const fakeStore = {
+      ...fakeReader,
+      async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'Students') return [sheetRows.Students[0], ['S001', '김민준', '-1', 'S001', 'ACTIVE', '']];
+        if (sheetName === 'Tasks') return [sheetRows.Tasks[0], ['T001', '책 읽기', '책 10분 읽기', '2', '2', 'TRUE', '1', 'S001']];
+        if (sheetName === 'TaskCompletions') return [sheetRows.TaskCompletions[0]];
+        return sheetRows[sheetName];
+      },
+      async updateCell(sheetName: string, rowNumber: number, columnName: string, value: string | number) { updates.push({ sheetName, rowNumber, columnName, value }); },
+      async updateHeaderRow() {},
+      async appendRow(sheetName: string, values: string[]) { appended.push({ sheetName, values }); },
+    };
+
+    await expect(completeTaskForStudent(fakeStore, 'T001', 'S001')).resolves.toMatchObject({
+      student: { studentId: 'S001', balance: 1 },
+      completion: { balanceBefore: -1, balanceAfter: 1, reward: 2 },
+    });
+    expect(updates).toContainEqual({ sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: 1 });
+    expect(appended.find((row) => row.sheetName === 'TaskCompletions')?.values.slice(5, 8)).toEqual(['2', '-1', '1']);
   });
 
   it('ignores completions from a deleted previous task when the reused task ID has a newer createdAt', async () => {

@@ -695,7 +695,6 @@ export async function bulkAdjustStudentBalances(
           ? record.student.balance + update.amount
           : record.student.balance - update.amount;
 
-    if (balance < 0) throw new Error(`${record.student.studentId} 학생의 잔액은 0보다 작아질 수 없습니다.`);
     cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'balance', value: balance });
     results.push({ studentId: record.student.studentId, balance });
   }
@@ -942,7 +941,7 @@ function validateStudentId(studentId: string) {
 
 function validateStudentUpdate(update: StudentUpdate) {
   if (!update.name.trim()) throw new Error('학생 이름을 입력해 주세요.');
-  if (!Number.isInteger(update.balance) || update.balance < 0) throw new Error('잔액은 0 이상의 정수여야 합니다.');
+  if (!Number.isInteger(update.balance)) throw new Error('잔액은 정수여야 합니다.');
   if (update.status !== 'ACTIVE' && update.status !== 'INACTIVE') throw new Error('학생 상태가 올바르지 않습니다.');
 }
 

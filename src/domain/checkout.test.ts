@@ -76,6 +76,22 @@ describe('createCheckoutPreview', () => {
     });
   });
 
+  it('rejects checkout for a student with a negative admin-adjusted balance', () => {
+    const result = createCheckoutPreview({
+      student: { ...activeStudent, balance: -1 },
+      products,
+      cartItems: [{ productId: 'P001', quantity: 1 }],
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      code: 'INSUFFICIENT_BALANCE',
+      message: '잔액이 부족합니다.',
+      currentBalance: -1,
+      requiredAmount: 300,
+    });
+  });
+
   it('rejects checkout when requested quantity exceeds stock', () => {
     const result = createCheckoutPreview({
       student: activeStudent,

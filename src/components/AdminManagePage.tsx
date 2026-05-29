@@ -801,7 +801,7 @@ export function AdminManagePage() {
 
         {activeTab === 'students' ? (
           <section role="tabpanel" aria-label="학생 관리" className="grid gap-3 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)]">
-            <SectionCard title="새 학생 추가" description="QR ID와 초기 잔액을 등록합니다." compact>
+            <SectionCard title="새 학생 추가" description="관리자 화면에서는 초기 잔액을 음수로도 지정할 수 있습니다." compact>
               <form onSubmit={createNewStudent} className="space-y-2">
                 <TextInput label="새 학생 ID" value={newStudent.studentId} onChange={(value) => setNewStudent((current) => ({ ...current, studentId: value }))} compact />
                 <TextInput label="새 학생 이름" value={newStudent.name} onChange={(value) => setNewStudent((current) => ({ ...current, name: value }))} compact />
@@ -832,6 +832,7 @@ export function AdminManagePage() {
                     <option value="subtract">금액 제거</option>
                   </select>
                   <input aria-label="선택 학생 금액" value={bulkAmount} onChange={(event) => setBulkAmount(Number(event.target.value))} type="number" className="w-28 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-950" />
+                  <span className="text-xs font-bold text-slate-500">회수 후 음수 잔액 가능</span>
                   <button type="button" disabled={selectedStudentIds.length === 0} onClick={applyBulkStudentBalance} className={`rounded-xl bg-slate-950 px-4 py-2 text-sm font-black text-white ${disabledActionClass}`}>화폐 수정</button>
                   <button type="button" disabled={selectedStudentIds.length === 0} onClick={deleteSelectedStudents} className={`rounded-xl bg-rose-500 px-4 py-2 text-sm font-black text-white ${disabledActionClass}`}>삭제</button>
                   <button type="button" disabled={selectedStudentIds.length === 0} onClick={saveSelectedStudents} className={`rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black ${theme.actionText} ${disabledActionClass}`}>선택 저장</button>
@@ -1047,7 +1048,7 @@ export function AdminManagePage() {
 
         {activeTab === 'currency' ? (
           <section role="tabpanel" aria-label="화폐 지급/회수" className="mx-auto w-full max-w-xl">
-            <SectionCard title="화폐 지급/회수" description="금액과 지급/회수만 정한 뒤 학생 QR을 찍으면 바로 반영됩니다." compact>
+            <SectionCard title="화폐 지급/회수" description="회수 금액이 현재 잔액보다 커도 관리자 화면에서는 음수 잔액으로 기록됩니다." compact>
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => setCurrencyMode('add')} className={`rounded-2xl px-4 py-4 text-xl font-black ${currencyMode === 'add' ? `${theme.accentBg} ${theme.actionText}` : `${theme.softBg} ${theme.softText}`}`}>지급</button>
                 <button type="button" onClick={() => setCurrencyMode('subtract')} className={`rounded-2xl px-4 py-4 text-xl font-black ${currencyMode === 'subtract' ? 'bg-rose-500 text-white' : 'bg-rose-50 text-slate-700'}`}>회수</button>
