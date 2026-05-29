@@ -337,7 +337,8 @@ export function KioskApp() {
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={product.imageUrl} alt={`${product.name} 이미지`} className="h-full w-full object-cover" />
                     ) : (
-                      <span aria-hidden="true">▵</span>
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src="/class-reward-system-icon.png" alt={`${product.name} 기본 이미지`} className="h-full w-full object-contain p-2 sm:p-3" />
                     )}
                   </div>
                   <p className="mt-1 truncate text-[clamp(0.62rem,2.4vw,1.125rem)] font-black leading-tight sm:mt-2">{product.name}</p>

@@ -75,6 +75,9 @@ describe('KioskApp', () => {
     expect(screen.getByRole('heading', { name: '장바구니 (0)' })).toBeTruthy();
     expect(screen.getByText('연필')).toBeTruthy();
     expect(screen.getByRole('img', { name: '연필 이미지' }).getAttribute('src')).toBe('https://example.com/pencil.png');
+    const fallbackLogo = screen.getByRole('img', { name: '지우개 기본 이미지' });
+    expect(fallbackLogo.getAttribute('src')).toBe('/class-reward-system-icon.png');
+    expect(screen.queryByText('▵')).toBeNull();
     expect(screen.getByText('선택한 상품이 없습니다.')).toBeTruthy();
     expect(screen.getByRole('button', { name: '새로고침' })).toBeTruthy();
     expect(screen.queryByText('시트 연동')).toBeNull();
