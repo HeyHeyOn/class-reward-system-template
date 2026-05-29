@@ -16,6 +16,7 @@ import {
   deleteProductsBatch,
   deleteStudent,
   deleteStudentsBatch,
+  deleteTask,
   deleteTasksBatch,
   updateProductDetails,
   updateProductDetailsBatch,
@@ -639,13 +640,35 @@ describe('sheets repository', () => {
       },
     };
 
-    await expect(deleteTasksBatch(fakeStore, ['T001', 'T002', 'T001'])).resolves.toEqual({ taskIds: ['T001', 'T002'] });
+    await expect(deleteTasksBatch(fakeStore, ['T001', 'T002', 'T001'])).resolves.toEqual({ taskIds: ['T001', 'T002'], deletedCompletionCount: 1 });
     await expect(resetTaskCompletionsBatch(fakeStore, ['T001'])).resolves.toEqual({ taskIds: ['T001'], deletedCount: 1 });
 
     expect(deletedBatches).toEqual([
+      { sheetName: 'TaskCompletions', rowNumbers: [2] },
       { sheetName: 'Tasks', rowNumbers: [3, 2] },
       { sheetName: 'TaskCompletions', rowNumbers: [2] },
     ]);
+  });
+
+  it('deletes a single task together with its completion rows', async () => {
+    const deletedRows: Array<{ sheetName: string; rowNumber: number }> = [];
+    const deletedBatches: Array<{ sheetName: string; rowNumbers: number[] }> = [];
+    const fakeStore = {
+      ...fakeReader,
+      async updateCell() {},
+      async updateHeaderRow() {},
+      async appendRow() {},
+      async deleteRow(sheetName: 'Tasks' | 'TaskCompletions', rowNumber: number) {
+        deletedRows.push({ sheetName, rowNumber });
+      },
+      async deleteRows(sheetName: 'Tasks' | 'TaskCompletions', rowNumbers: number[]) {
+        deletedBatches.push({ sheetName, rowNumbers });
+      },
+    };
+
+    await expect(deleteTask(fakeStore, 'T001')).resolves.toEqual({ taskId: 'T001', deletedCompletionCount: 1 });
+    expect(deletedBatches).toEqual([{ sheetName: 'TaskCompletions', rowNumbers: [2] }]);
+    expect(deletedRows).toEqual([{ sheetName: 'Tasks', rowNumber: 3 }]);
   });
 
 
@@ -758,9 +781,38 @@ describe('sheets repository', () => {
     expect(appended.some((row) => row.sheetName === 'TaskCompletions')).toBe(true);
   });
 
-  it('rejects task completion after the per-student limit', async () => {
+  it('ignores completions from a deleted previous task when the reused task ID has a newer createdAt', async () => {
+    const updates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
+    const appended: Array<{ sheetName: string; values: string[] }> = [];
     const fakeStore = {
       async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'Tasks') return [
+          ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'allowedStudentIds', 'createdAt', 'updatedAt'],
+          ['T001', '새 과제', '삭제 후 같은 ID로 다시 생성됨', '5', '1', 'TRUE', '1', 'S001', '2026-05-21T00:00:00.000Z', '2026-05-21T00:00:00.000Z'],
+        ];
+        if (sheetName === 'TaskCompletions') return [
+          sheetRows.TaskCompletions[0],
+          ['TC-OLD', '2026-05-20T00:00:00.000Z', 'T001', 'S001', '김민준', '5', '3495', '3500', 'SUCCESS', ''],
+        ];
+        return sheetRows[sheetName];
+      },
+      async updateCell(sheetName: string, rowNumber: number, columnName: string, value: string | number) { updates.push({ sheetName, rowNumber, columnName, value }); },
+      async updateHeaderRow() {},
+      async appendRow(sheetName: string, values: string[]) { appended.push({ sheetName, values }); },
+    };
+
+    await expect(completeTaskForStudent(fakeStore, 'T001', 'S001')).resolves.toMatchObject({ completedCount: 1, remainingCompletions: 0 });
+    expect(updates).toContainEqual({ sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: 3505 });
+    expect(appended.some((row) => row.sheetName === 'TaskCompletions')).toBe(true);
+  });
+
+  it('rejects task completion after the per-student limit for the current task instance', async () => {
+    const fakeStore = {
+      async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'Tasks') return [
+          ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'allowedStudentIds', 'createdAt', 'updatedAt'],
+          ['T001', '책 읽기', '책 10분 읽기', '5', '2', 'TRUE', '1', 'S001', '2026-05-19T00:00:00.000Z', '2026-05-19T00:00:00.000Z'],
+        ];
         if (sheetName === 'TaskCompletions') return [sheetRows.TaskCompletions[0], sheetRows.TaskCompletions[1], ['TC-OLD2', '2026-05-20T01:00:00.000Z', 'T001', 'S001', '김민준', '5', '3500', '3505', 'SUCCESS', '']];
         return sheetRows[sheetName];
       },

@@ -54,6 +54,7 @@ export type ClassTask = {
   isActive: boolean;
   sortOrder: number;
   allowedStudentIds: string[];
+  createdAt?: string;
 };
 
 export type TaskCompletion = {

@@ -229,6 +229,7 @@ export async function createTask(store: SheetsStore, create: TaskCreate): Promis
     isActive: create.isActive,
     sortOrder: create.sortOrder,
     allowedStudentIds: normalizeUniqueIds(create.allowedStudentIds ?? []),
+    createdAt: now,
   };
   await store.appendRow('Tasks', [task.taskId, task.title, task.description, String(task.reward), String(task.maxCompletionsPerStudent), task.isActive ? 'TRUE' : 'FALSE', String(task.sortOrder), task.allowedStudentIds.join(','), now, now]);
   return task;
@@ -297,7 +298,7 @@ export async function updateTaskDetailsBatch(store: SheetsStore, updates: TaskBa
   return tasks.sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title));
 }
 
-export async function deleteTasksBatch(store: SheetsStore, taskIds: string[]): Promise<{ taskIds: string[] }> {
+export async function deleteTasksBatch(store: SheetsStore, taskIds: string[]): Promise<{ taskIds: string[]; deletedCompletionCount: number }> {
   const uniqueIds = normalizeUniqueIds(taskIds);
   if (uniqueIds.length === 0) throw new Error('선택된 과제가 없습니다.');
   if (!store.deleteRows) throw new Error('현재 Sheets 저장소가 여러 행 삭제를 지원하지 않습니다.');
@@ -306,36 +307,51 @@ export async function deleteTasksBatch(store: SheetsStore, taskIds: string[]): P
   const missingIds = uniqueIds.filter((taskId) => !recordsById.has(taskId));
   if (missingIds.length > 0) throw new Error(`과제를 찾을 수 없습니다: ${missingIds.join(', ')}`);
 
+  const deletedCompletionCount = await deleteTaskCompletionRowsForTaskIds(store, uniqueIds);
   await store.deleteRows('Tasks', uniqueIds.map((taskId) => recordsById.get(taskId)!.rowNumber));
-  return { taskIds: uniqueIds };
+  return { taskIds: uniqueIds, deletedCompletionCount };
 }
 
 export async function resetTaskCompletionsBatch(store: SheetsStore, taskIds: string[]): Promise<{ taskIds: string[]; deletedCount: number }> {
   const uniqueIds = normalizeUniqueIds(taskIds);
   if (uniqueIds.length === 0) throw new Error('선택된 과제가 없습니다.');
   if (!store.deleteRows) throw new Error('현재 Sheets 저장소가 여러 행 삭제를 지원하지 않습니다.');
+  const deletedCount = await deleteTaskCompletionRowsForTaskIds(store, uniqueIds);
+  return { taskIds: uniqueIds, deletedCount };
+}
+
+export async function deleteTask(store: SheetsStore, taskId: string): Promise<{ taskId: string; deletedCompletionCount: number }> {
+  const record = await getTaskRecordById(store, taskId);
+  if (!record) throw new Error('과제를 찾을 수 없습니다.');
+  if (!store.deleteRow) throw new Error('현재 Sheets 저장소가 행 삭제를 지원하지 않습니다.');
+  const deletedCompletionCount = await deleteTaskCompletionRowsForTaskIds(store, [taskId]);
+  await store.deleteRow('Tasks', record.rowNumber);
+  return { taskId, deletedCompletionCount };
+}
+
+async function deleteTaskCompletionRowsForTaskIds(store: SheetsStore, taskIds: string[]): Promise<number> {
   await ensureTaskCompletionSheet(store);
 
   const rows = await store.getRows('TaskCompletions');
   const [headers, ...dataRows] = rows;
-  if (!headers) return { taskIds: uniqueIds, deletedCount: 0 };
+  if (!headers) return 0;
+
   const headerIndex = createHeaderIndex(headers);
   assertRequiredColumns(headerIndex, REQUIRED_TASK_COMPLETION_COLUMNS, 'TaskCompletions');
   const taskIdIndex = headerIndex.get('taskId')!;
   const rowNumbers = dataRows
-    .map((row, index) => uniqueIds.includes(String(row[taskIdIndex] ?? '').trim()) ? index + 2 : null)
+    .map((row, index) => taskIds.includes(String(row[taskIdIndex] ?? '').trim()) ? index + 2 : null)
     .filter((rowNumber): rowNumber is number => rowNumber !== null);
 
-  if (rowNumbers.length > 0) await store.deleteRows('TaskCompletions', rowNumbers);
-  return { taskIds: uniqueIds, deletedCount: rowNumbers.length };
-}
-
-export async function deleteTask(store: SheetsStore, taskId: string): Promise<{ taskId: string }> {
-  const record = await getTaskRecordById(store, taskId);
-  if (!record) throw new Error('과제를 찾을 수 없습니다.');
-  if (!store.deleteRow) throw new Error('현재 Sheets 저장소가 행 삭제를 지원하지 않습니다.');
-  await store.deleteRow('Tasks', record.rowNumber);
-  return { taskId };
+  if (rowNumbers.length === 0) return 0;
+  if (store.deleteRows) {
+    await store.deleteRows('TaskCompletions', rowNumbers);
+  } else if (store.deleteRow) {
+    for (const rowNumber of [...rowNumbers].sort((a, b) => b - a)) await store.deleteRow('TaskCompletions', rowNumber);
+  } else {
+    throw new Error('현재 Sheets 저장소가 완료 기록 삭제를 지원하지 않습니다.');
+  }
+  return rowNumbers.length;
 }
 
 export async function completeTaskForStudent(store: SheetsStore, taskId: string, studentId: string): Promise<TaskCompletionResult> {
@@ -349,7 +365,7 @@ export async function completeTaskForStudent(store: SheetsStore, taskId: string,
   if (!task.allowedStudentIds.includes(studentRecord.student.studentId)) throw new Error('허가되지 않은 과제입니다.');
 
   const completions = await getTaskCompletions(store);
-  const completedCount = completions.filter((completion) => completion.taskId === task.taskId && completion.studentId === studentRecord.student.studentId && completion.status === 'SUCCESS').length;
+  const completedCount = completions.filter((completion) => isCompletionForTaskInstance(completion, task) && completion.studentId === studentRecord.student.studentId && completion.status === 'SUCCESS').length;
   if (completedCount >= task.maxCompletionsPerStudent) {
     throw new Error(`이 과제는 학생 1명당 ${task.maxCompletionsPerStudent}번까지만 완료할 수 있습니다.`);
   }
@@ -1010,6 +1026,7 @@ function parseTaskRow(row: string[], headerIndex: Map<string, number>): ClassTas
   const maxCompletionsPerStudent = parseNumberValue(getRowCell(row, headerIndex, 'maxCompletionsPerStudent'));
   const sortOrder = parseNumberValue(getRowCell(row, headerIndex, 'sortOrder')) ?? 0;
   if (!taskId || !title || reward === null || maxCompletionsPerStudent === null) return null;
+  const createdAt = getRowCell(row, headerIndex, 'createdAt');
   return {
     taskId,
     title,
@@ -1019,7 +1036,18 @@ function parseTaskRow(row: string[], headerIndex: Map<string, number>): ClassTas
     isActive: parseBooleanValue(getRowCell(row, headerIndex, 'isActive')),
     sortOrder,
     allowedStudentIds: parseAllowedStudentIds(getRowCell(row, headerIndex, 'allowedStudentIds')),
+    ...(createdAt ? { createdAt } : {}),
   };
+}
+
+function isCompletionForTaskInstance(completion: TaskCompletion, task: ClassTask): boolean {
+  if (completion.taskId !== task.taskId) return false;
+  if (!task.createdAt) return true;
+
+  const completionTimestamp = Date.parse(completion.timestamp);
+  const taskCreatedAt = Date.parse(task.createdAt);
+  if (!Number.isFinite(completionTimestamp) || !Number.isFinite(taskCreatedAt)) return true;
+  return completionTimestamp >= taskCreatedAt;
 }
 
 function parseAllowedStudentIds(value: string): string[] {
