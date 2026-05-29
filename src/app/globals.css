@@ -24,6 +24,30 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: 'SchoolSafeDictation';
+  src: url('/fonts/school-safe-dictation-l.ttf') format('truetype');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SchoolSafeChalk';
+  src: url('/fonts/school-safe-chalk-r.ttf') format('truetype');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SchoolSafeSans';
+  src: url('/fonts/school-safe-sans-m.ttf') format('truetype');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SchoolSafeSpace';
+  src: url('/fonts/school-safe-space-r.ttf') format('truetype');
+  font-display: swap;
+}
+
 :root {
   --background: #f6f1e8;
   --foreground: #0f172a;
