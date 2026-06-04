@@ -73,7 +73,10 @@ describe('AdminManagePage', () => {
         }
         if (url === '/api/tasks/batch' && init?.method === 'DELETE') return jsonResponse({ taskIds: ['T001', 'T002'] });
         if (url === '/api/tasks/completions/reset' && init?.method === 'POST') return jsonResponse({ taskIds: ['T001', 'T002'], deletedCount: 3 });
-        if (url === '/api/tasks/T001' && init?.method === 'PATCH') return jsonResponse({ ...tasks[0], title: '책 읽기 수정', reward: 7 });
+        if (url === '/api/tasks/T001' && init?.method === 'PATCH') {
+          const body = JSON.parse(String(init.body ?? '{}'));
+          return jsonResponse({ ...tasks[0], ...body });
+        }
         if (url === '/api/tasks/T001' && init?.method === 'DELETE') return jsonResponse({ taskId: 'T001' });
         if (url === '/api/students/batch' && init?.method === 'PATCH') {
           return jsonResponse([
@@ -139,7 +142,7 @@ describe('AdminManagePage', () => {
     expect(screen.queryByText(/1번/)).toBeNull();
   });
 
-  it('assigns tasks to selected student IDs from the add-task and task-row buttons', async () => {
+  it('assigns tasks to selected student IDs and immediately saves existing task assignments', async () => {
     render(<AdminManagePage />);
     fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
 
@@ -163,6 +166,17 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
     expect((screen.getByLabelText('S001 김민준 과제 부여') as HTMLInputElement).checked).toBe(true);
     expect((screen.getByLabelText('S002 이서연 과제 부여') as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(screen.getByLabelText('S002 이서연 과제 부여'));
+    fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/T001', expect.objectContaining({
+      method: 'PATCH',
+      body: expect.stringContaining('"allowedStudentIds":["S001","S002"]'),
+    })));
+    expect(alert).toHaveBeenCalledWith('과제 부여 저장 완료');
+
+    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
+    expect((screen.getByLabelText('S002 이서연 과제 부여') as HTMLInputElement).checked).toBe(true);
   });
 
 

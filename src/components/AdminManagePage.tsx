@@ -307,14 +307,39 @@ export function AdminManagePage() {
     });
   }
 
-  function saveTaskAssignment() {
+  async function saveTaskAssignment() {
     if (!taskAssignmentEditor) return;
-    if (taskAssignmentEditor.taskId) {
-      updateTask(taskAssignmentEditor.taskId, { allowedStudentIds: taskAssignmentEditor.selectedIds });
-    } else {
+    if (!taskAssignmentEditor.taskId) {
       setNewTask((current) => ({ ...current, allowedStudentIds: taskAssignmentEditor.selectedIds }));
+      setTaskAssignmentEditor(null);
+      return;
     }
-    setTaskAssignmentEditor(null);
+
+    const task = tasks.find((item) => item.taskId === taskAssignmentEditor.taskId);
+    if (!task) {
+      notify('과제를 찾을 수 없습니다.');
+      setTaskAssignmentEditor(null);
+      return;
+    }
+
+    const updatedTask = { ...task, allowedStudentIds: taskAssignmentEditor.selectedIds };
+    setIsSavingChanges(true);
+    try {
+      const response = await fetch(`/api/tasks/${encodeURIComponent(updatedTask.taskId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildTaskPayload([updatedTask])[0]),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? '과제 부여 내용을 저장하지 못했습니다.');
+      setTasks((current) => current.map((item) => item.taskId === updatedTask.taskId ? { ...item, ...(payload as TaskDraft) } : item).sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title)));
+      setTaskAssignmentEditor(null);
+      notify('과제 부여 저장 완료');
+    } catch (error) {
+      notify(error instanceof Error ? error.message : '과제 부여 내용을 저장하지 못했습니다.');
+    } finally {
+      setIsSavingChanges(false);
+    }
   }
 
   function openQrTaskScan(taskId: string) {
