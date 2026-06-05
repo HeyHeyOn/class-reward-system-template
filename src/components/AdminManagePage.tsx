@@ -327,13 +327,6 @@ export function AdminManagePage() {
     });
   }
 
-  function toggleTaskAssignmentCompletion(studentId: string) {
-    setTaskAssignmentEditor((current) => {
-      if (!current || !current.selectedIds.includes(studentId)) return current;
-      const completedIds = current.completedIds.includes(studentId) ? current.completedIds.filter((id) => id !== studentId) : [...current.completedIds, studentId];
-      return { ...current, completedIds };
-    });
-  }
 
   async function saveTaskAssignment() {
     if (!taskAssignmentEditor) return;
@@ -1240,20 +1233,42 @@ export function AdminManagePage() {
               <input aria-label="전체 학생 과제 부여 선택" checked={students.length > 0 && taskAssignmentEditor.selectedIds.length === students.length} onChange={(event) => setTaskAssignmentEditor((current) => current ? { ...current, selectedIds: event.target.checked ? students.map((student) => student.studentId) : [], completedIds: event.target.checked ? current.completedIds : [] } : current)} type="checkbox" />
               전체 선택 ({taskAssignmentEditor.selectedIds.length}/{students.length})
             </label>
-            <div className="mt-3 grid grid-cols-[1fr_auto_auto] gap-2 px-3 text-xs font-black text-slate-500">
-              <span>학생</span>
+            <div className="mt-3 grid grid-cols-[auto_1fr_auto] gap-3 px-3 text-xs font-black text-slate-500">
               <span>부여</span>
+              <span>학생</span>
               <span>완료 여부</span>
             </div>
             <div className="mt-2 max-h-72 space-y-1 overflow-y-auto rounded-2xl border border-slate-200 p-2">
               {taskAssignmentEditor.isLoading ? <p className="p-3 text-sm font-bold text-slate-500">과제 부여 상태를 불러오는 중입니다.</p> : null}
               {sortStudentsById(students).map((student) => {
                 const assigned = taskAssignmentEditor.selectedIds.includes(student.studentId);
+                const completed = taskAssignmentEditor.completedIds.includes(student.studentId);
+                const completionClass = completed
+                  ? 'border-blue-600 bg-blue-600 text-white'
+                  : 'border-slate-200 bg-slate-200 text-slate-700';
                 return (
-                  <div key={student.studentId} className="grid grid-cols-[1fr_auto_auto] items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold hover:bg-slate-50">
-                    <span className="min-w-0"><span className="font-black">{student.studentId}</span> <span>{student.name}</span></span>
+                  <div key={student.studentId} data-testid={`task-assignment-row-${student.studentId}`} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-xl px-3 py-2 text-sm font-bold hover:bg-slate-50">
                     <input aria-label={`${student.studentId} ${student.name} 과제 부여`} checked={assigned} onChange={() => toggleTaskAssignmentStudent(student.studentId)} type="checkbox" />
-                    <input aria-label={`${student.studentId} ${student.name} 완료`} checked={taskAssignmentEditor.completedIds.includes(student.studentId)} disabled={!assigned} onChange={() => toggleTaskAssignmentCompletion(student.studentId)} type="checkbox" />
+                    <span className="min-w-0"><span className="font-black">{student.studentId}</span> <span>{student.name}</span></span>
+                    <select
+                      aria-label={`${student.studentId} ${student.name} 완료 여부`}
+                      className={`h-9 rounded-full border px-3 text-xs font-black shadow-sm outline-none transition ${completionClass} disabled:cursor-not-allowed disabled:opacity-60`}
+                      disabled={!assigned}
+                      onChange={(event) => {
+                        const shouldComplete = event.target.value === 'completed';
+                        setTaskAssignmentEditor((current) => {
+                          if (!current) return current;
+                          const completedIds = shouldComplete
+                            ? Array.from(new Set([...current.completedIds, student.studentId]))
+                            : current.completedIds.filter((id) => id !== student.studentId);
+                          return { ...current, completedIds };
+                        });
+                      }}
+                      value={completed ? 'completed' : 'incomplete'}
+                    >
+                      <option value="completed">완료</option>
+                      <option value="incomplete">미완료</option>
+                    </select>
                   </div>
                 );
               })}

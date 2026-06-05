@@ -180,11 +180,22 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
     expect(await screen.findByText('완료 여부')).toBeTruthy();
     expect((screen.getByLabelText('S001 김민준 과제 부여') as HTMLInputElement).checked).toBe(true);
-    expect((screen.getByLabelText('S001 김민준 완료') as HTMLInputElement).checked).toBe(true);
+    const s001Row = screen.getByTestId('task-assignment-row-S001');
+    expect(s001Row.innerHTML.indexOf('aria-label=\"S001 김민준 과제 부여\"')).toBeLessThan(s001Row.innerHTML.indexOf('김민준'));
+    const s001Completion = screen.getByLabelText('S001 김민준 완료 여부') as HTMLSelectElement;
+    expect(s001Completion.tagName).toBe('SELECT');
+    expect(s001Completion.value).toBe('completed');
+    expect(s001Completion.className).toContain('bg-blue');
     expect((screen.getByLabelText('S002 이서연 과제 부여') as HTMLInputElement).checked).toBe(false);
-    expect((screen.getByLabelText('S002 이서연 완료') as HTMLInputElement).disabled).toBe(true);
+    const s002Row = screen.getByTestId('task-assignment-row-S002');
+    expect(s002Row.innerHTML.indexOf('aria-label=\"S002 이서연 과제 부여\"')).toBeLessThan(s002Row.innerHTML.indexOf('이서연'));
+    const s002Completion = screen.getByLabelText('S002 이서연 완료 여부') as HTMLSelectElement;
+    expect(s002Completion.tagName).toBe('SELECT');
+    expect(s002Completion.value).toBe('incomplete');
+    expect(s002Completion.className).toContain('bg-slate');
+    expect(s002Completion.disabled).toBe(true);
     fireEvent.click(screen.getByLabelText('S002 이서연 과제 부여'));
-    fireEvent.click(screen.getByLabelText('S002 이서연 완료'));
+    fireEvent.change(screen.getByLabelText('S002 이서연 완료 여부'), { target: { value: 'completed' } });
     fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/T001/assignments', expect.objectContaining({
@@ -197,7 +208,9 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
     expect(await screen.findByText('완료 여부')).toBeTruthy();
     expect((screen.getByLabelText('S002 이서연 과제 부여') as HTMLInputElement).checked).toBe(true);
-    expect((screen.getByLabelText('S002 이서연 완료') as HTMLInputElement).checked).toBe(true);
+    const reopenedS002Completion = screen.getByLabelText('S002 이서연 완료 여부') as HTMLSelectElement;
+    expect(reopenedS002Completion.value).toBe('completed');
+    expect(reopenedS002Completion.className).toContain('bg-blue');
   });
 
 
