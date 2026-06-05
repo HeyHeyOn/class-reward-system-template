@@ -619,9 +619,43 @@ describe('sheets repository', () => {
       async appendRow(sheetName: string, values: string[]) { appended.push({ sheetName, values }); },
     };
     await expect(createTask(fakeStore, { taskId: 'T003', title: '수학 학습지', description: '1장 풀기', reward: 10, maxCompletionsPerStudent: 1, isActive: true, sortOrder: 3 })).resolves.toMatchObject({ taskId: 'T003', title: '수학 학습지' });
-    expect(appended[0]).toEqual({ sheetName: 'Tasks', values: ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'allowedStudentIds', 'createdAt', 'updatedAt'] });
+    expect(appended[0]).toEqual({ sheetName: 'Tasks', values: ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'createdAt', 'updatedAt', 'allowedStudentIds'] });
     expect(appended[1].sheetName).toBe('Tasks');
-    expect(appended[1].values.slice(0, 8)).toEqual(['T003', '수학 학습지', '1장 풀기', '10', '1', 'TRUE', '3', '']);
+    expect(appended[1].values.slice(0, 7)).toEqual(['T003', '수학 학습지', '1장 풀기', '10', '1', 'TRUE', '3']);
+    expect(appended[1].values[7]).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(appended[1].values[8]).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(appended[1].values[9]).toBe('');
+  });
+
+  it('appends new task values by the live Tasks header order', async () => {
+    const appended: Array<{ sheetName: string; values: string[] }> = [];
+    const fakeStore = {
+      async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'Tasks') return [[
+          'taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'createdAt', 'updatedAt', 'allowedStudentIds',
+        ]];
+        return sheetRows[sheetName];
+      },
+      async updateCell() {},
+      async updateHeaderRow() {},
+      async appendRow(sheetName: string, values: string[]) { appended.push({ sheetName, values }); },
+    };
+
+    await expect(createTask(fakeStore, {
+      taskId: 'T004',
+      title: '일기 쓰기',
+      description: '하루 정리',
+      reward: 8,
+      maxCompletionsPerStudent: 1,
+      isActive: true,
+      sortOrder: 4,
+      allowedStudentIds: ['5630', 'S002'],
+    })).resolves.toMatchObject({ allowedStudentIds: ['5630', 'S002'] });
+
+    expect(appended).toHaveLength(1);
+    expect(appended[0].values[7]).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(appended[0].values[8]).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(appended[0].values[9]).toBe('5630,S002');
   });
 
   it('batch updates tasks through one store call', async () => {
@@ -752,7 +786,7 @@ describe('sheets repository', () => {
     })).resolves.toMatchObject({ allowedStudentIds: ['S001'] });
 
     expect(headerUpdates).toEqual([
-      { sheetName: 'Tasks', headers: ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'allowedStudentIds', 'createdAt', 'updatedAt'] },
+      { sheetName: 'Tasks', headers: ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'createdAt', 'updatedAt', 'allowedStudentIds'] },
     ]);
     expect(cellUpdates).toContainEqual({ rowNumber: 2, columnName: 'allowedStudentIds', value: 'S001' });
 
@@ -764,6 +798,25 @@ describe('sheets repository', () => {
 
   it('reads task assignment and completion status from legacy sheets without createdAt', async () => {
     await expect(getTaskAssignmentStatus(fakeReader, 'T001')).resolves.toEqual({
+      taskId: 'T001',
+      students: [
+        { studentId: 'S001', name: '김민준', assigned: true, completed: true },
+      ],
+    });
+  });
+
+  it('does not treat malformed numeric createdAt values as a task-instance boundary', async () => {
+    const reader = {
+      async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'Tasks') return [
+          ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'createdAt', 'updatedAt', 'allowedStudentIds'],
+          ['T001', '책 읽기', '책 10분 읽기', '5', '2', 'TRUE', '1', '5630', '2026-06-05T00:00:00.000Z', 'S001'],
+        ];
+        return sheetRows[sheetName];
+      },
+    };
+
+    await expect(getTaskAssignmentStatus(reader, 'T001')).resolves.toEqual({
       taskId: 'T001',
       students: [
         { studentId: 'S001', name: '김민준', assigned: true, completed: true },

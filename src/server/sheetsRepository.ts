@@ -113,7 +113,7 @@ const REQUIRED_PRODUCT_COLUMNS = ['productId', 'name', 'price', 'stock', 'isActi
 const REQUIRED_TRANSACTION_COLUMNS = ['transactionId', 'timestamp', 'studentId', 'studentName', 'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator'];
 const REQUIRED_TASK_COLUMNS = ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder'];
 const REQUIRED_TASK_COMPLETION_COLUMNS = ['completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note'];
-const TASK_HEADERS = ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'allowedStudentIds', 'createdAt', 'updatedAt'];
+const TASK_HEADERS = ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'createdAt', 'updatedAt', 'allowedStudentIds'];
 const TASK_COMPLETION_HEADERS = ['completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note'];
 
 export type SheetSetting = {
@@ -308,7 +308,9 @@ export async function createTask(store: SheetsStore, create: TaskCreate): Promis
     allowedStudentIds: normalizeUniqueIds(create.allowedStudentIds ?? []),
     createdAt: now,
   };
-  await store.appendRow('Tasks', [task.taskId, task.title, task.description, String(task.reward), String(task.maxCompletionsPerStudent), task.isActive ? 'TRUE' : 'FALSE', String(task.sortOrder), task.allowedStudentIds.join(','), now, now]);
+  const taskRows = await store.getRows('Tasks');
+  const headers = taskRows[0] ?? TASK_HEADERS;
+  await store.appendRow('Tasks', buildTaskAppendRow(headers, task, now));
   return task;
 }
 
@@ -1122,6 +1124,22 @@ function assertRequiredColumns(
   }
 }
 
+function buildTaskAppendRow(headers: string[], task: ClassTask, timestamp: string): string[] {
+  const valuesByHeader: Record<string, string> = {
+    taskId: task.taskId,
+    title: task.title,
+    description: task.description,
+    reward: String(task.reward),
+    maxCompletionsPerStudent: String(task.maxCompletionsPerStudent),
+    isActive: task.isActive ? 'TRUE' : 'FALSE',
+    sortOrder: String(task.sortOrder),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    allowedStudentIds: task.allowedStudentIds.join(','),
+  };
+  return headers.map((header) => valuesByHeader[header.trim()] ?? '');
+}
+
 function parseTaskRow(row: string[], headerIndex: Map<string, number>): ClassTask | null {
   const taskId = getRowCell(row, headerIndex, 'taskId');
   const title = getRowCell(row, headerIndex, 'title');
@@ -1163,12 +1181,19 @@ function buildTaskAssignmentStatus(task: ClassTask, students: Student[], complet
 
 function isCompletionForTaskInstance(completion: TaskCompletion, task: ClassTask): boolean {
   if (completion.taskId !== task.taskId) return false;
-  if (!task.createdAt) return true;
+  const taskCreatedAt = parseIsoTimestamp(task.createdAt);
+  if (taskCreatedAt === null) return true;
 
-  const completionTimestamp = Date.parse(completion.timestamp);
-  const taskCreatedAt = Date.parse(task.createdAt);
-  if (!Number.isFinite(completionTimestamp) || !Number.isFinite(taskCreatedAt)) return true;
+  const completionTimestamp = parseIsoTimestamp(completion.timestamp);
+  if (completionTimestamp === null) return true;
   return completionTimestamp >= taskCreatedAt;
+}
+
+function parseIsoTimestamp(value?: string): number | null {
+  const trimmed = value?.trim() ?? '';
+  if (!/^\d{4}-\d{2}-\d{2}T/.test(trimmed)) return null;
+  const parsed = Date.parse(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function parseAllowedStudentIds(value: string): string[] {
