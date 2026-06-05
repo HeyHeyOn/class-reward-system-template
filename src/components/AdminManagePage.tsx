@@ -96,7 +96,7 @@ export function AdminManagePage() {
   const [newTask, setNewTask] = useState<Omit<TaskDraft, 'taskId'>>(EMPTY_TASK);
   const [imageEditor, setImageEditor] = useState<{ productId: string; value: string } | null>(null);
   const [taskDescriptionEditor, setTaskDescriptionEditor] = useState<{ taskId: string; value: string } | null>(null);
-  const [taskAssignmentEditor, setTaskAssignmentEditor] = useState<{ taskId: string | null; selectedIds: string[] } | null>(null);
+  const [taskAssignmentEditor, setTaskAssignmentEditor] = useState<{ taskId: string | null; selectedIds: string[]; completedIds: string[]; isLoading?: boolean } | null>(null);
   const [qrPrintStudents, setQrPrintStudents] = useState<StudentDraft[] | null>(null);
   const [currencyMode, setCurrencyMode] = useState<CurrencyMode>('add');
   const [currencyAmount, setCurrencyAmount] = useState(0);
@@ -296,14 +296,42 @@ export function AdminManagePage() {
   }
 
   function openTaskAssignmentEditor(taskId: string | null, selectedIds: string[]) {
-    setTaskAssignmentEditor({ taskId, selectedIds: [...selectedIds] });
+    setTaskAssignmentEditor({ taskId, selectedIds: [...selectedIds], completedIds: [], isLoading: Boolean(taskId) });
+    if (!taskId) return;
+
+    void fetch(`/api/tasks/${encodeURIComponent(taskId)}/assignments`, { cache: 'no-store' })
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? '과제 부여 상태를 불러오지 못했습니다.');
+        const statusRows = Array.isArray(payload.students) ? payload.students : [];
+        setTaskAssignmentEditor((current) => current?.taskId === taskId ? {
+          ...current,
+          selectedIds: statusRows.filter((row: { assigned?: boolean }) => row.assigned).map((row: { studentId: string }) => row.studentId),
+          completedIds: statusRows.filter((row: { completed?: boolean }) => row.completed).map((row: { studentId: string }) => row.studentId),
+          isLoading: false,
+        } : current);
+      })
+      .catch((error) => {
+        notify(error instanceof Error ? error.message : '과제 부여 상태를 불러오지 못했습니다.');
+        setTaskAssignmentEditor((current) => current?.taskId === taskId ? { ...current, isLoading: false } : current);
+      });
   }
 
   function toggleTaskAssignmentStudent(studentId: string) {
     setTaskAssignmentEditor((current) => {
       if (!current) return current;
-      const selectedIds = current.selectedIds.includes(studentId) ? current.selectedIds.filter((id) => id !== studentId) : [...current.selectedIds, studentId];
-      return { ...current, selectedIds };
+      const isSelected = current.selectedIds.includes(studentId);
+      const selectedIds = isSelected ? current.selectedIds.filter((id) => id !== studentId) : [...current.selectedIds, studentId];
+      const completedIds = isSelected ? current.completedIds.filter((id) => id !== studentId) : current.completedIds;
+      return { ...current, selectedIds, completedIds };
+    });
+  }
+
+  function toggleTaskAssignmentCompletion(studentId: string) {
+    setTaskAssignmentEditor((current) => {
+      if (!current || !current.selectedIds.includes(studentId)) return current;
+      const completedIds = current.completedIds.includes(studentId) ? current.completedIds.filter((id) => id !== studentId) : [...current.completedIds, studentId];
+      return { ...current, completedIds };
     });
   }
 
@@ -325,14 +353,20 @@ export function AdminManagePage() {
     const updatedTask = { ...task, allowedStudentIds: taskAssignmentEditor.selectedIds };
     setIsSavingChanges(true);
     try {
-      const response = await fetch(`/api/tasks/${encodeURIComponent(updatedTask.taskId)}`, {
+      const response = await fetch(`/api/tasks/${encodeURIComponent(updatedTask.taskId)}/assignments`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildTaskPayload([updatedTask])[0]),
+        body: JSON.stringify({
+          assignedStudentIds: taskAssignmentEditor.selectedIds,
+          completedStudentIds: taskAssignmentEditor.completedIds.filter((id) => taskAssignmentEditor.selectedIds.includes(id)),
+        }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? '과제 부여 내용을 저장하지 못했습니다.');
-      setTasks((current) => current.map((item) => item.taskId === updatedTask.taskId ? { ...item, ...(payload as TaskDraft) } : item).sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title)));
+      const assignedStudentIds = Array.isArray(payload.students)
+        ? payload.students.filter((row: { assigned?: boolean }) => row.assigned).map((row: { studentId: string }) => row.studentId)
+        : taskAssignmentEditor.selectedIds;
+      setTasks((current) => current.map((item) => item.taskId === updatedTask.taskId ? { ...item, allowedStudentIds: assignedStudentIds } : item));
       setTaskAssignmentEditor(null);
       notify('과제 부여 저장 완료');
     } catch (error) {
@@ -1203,17 +1237,26 @@ export function AdminManagePage() {
             <h2 className="text-xl font-black">과제 부여</h2>
             <p className="mt-1 rounded-2xl bg-sky-50 p-3 text-sm font-bold text-sky-800">선택된 학생만 이 과제를 완료할 수 있습니다. 아무 학생도 선택하지 않으면 아무도 완료할 수 없습니다.</p>
             <label className="mt-3 flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-sm font-black">
-              <input aria-label="전체 학생 과제 부여 선택" checked={students.length > 0 && taskAssignmentEditor.selectedIds.length === students.length} onChange={(event) => setTaskAssignmentEditor((current) => current ? { ...current, selectedIds: event.target.checked ? students.map((student) => student.studentId) : [] } : current)} type="checkbox" />
+              <input aria-label="전체 학생 과제 부여 선택" checked={students.length > 0 && taskAssignmentEditor.selectedIds.length === students.length} onChange={(event) => setTaskAssignmentEditor((current) => current ? { ...current, selectedIds: event.target.checked ? students.map((student) => student.studentId) : [], completedIds: event.target.checked ? current.completedIds : [] } : current)} type="checkbox" />
               전체 선택 ({taskAssignmentEditor.selectedIds.length}/{students.length})
             </label>
-            <div className="mt-3 max-h-72 space-y-1 overflow-y-auto rounded-2xl border border-slate-200 p-2">
-              {sortStudentsById(students).map((student) => (
-                <label key={student.studentId} className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold hover:bg-slate-50">
-                  <input aria-label={`${student.studentId} ${student.name} 과제 부여`} checked={taskAssignmentEditor.selectedIds.includes(student.studentId)} onChange={() => toggleTaskAssignmentStudent(student.studentId)} type="checkbox" />
-                  <span className="font-black">{student.studentId}</span>
-                  <span>{student.name}</span>
-                </label>
-              ))}
+            <div className="mt-3 grid grid-cols-[1fr_auto_auto] gap-2 px-3 text-xs font-black text-slate-500">
+              <span>학생</span>
+              <span>부여</span>
+              <span>완료 여부</span>
+            </div>
+            <div className="mt-2 max-h-72 space-y-1 overflow-y-auto rounded-2xl border border-slate-200 p-2">
+              {taskAssignmentEditor.isLoading ? <p className="p-3 text-sm font-bold text-slate-500">과제 부여 상태를 불러오는 중입니다.</p> : null}
+              {sortStudentsById(students).map((student) => {
+                const assigned = taskAssignmentEditor.selectedIds.includes(student.studentId);
+                return (
+                  <div key={student.studentId} className="grid grid-cols-[1fr_auto_auto] items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold hover:bg-slate-50">
+                    <span className="min-w-0"><span className="font-black">{student.studentId}</span> <span>{student.name}</span></span>
+                    <input aria-label={`${student.studentId} ${student.name} 과제 부여`} checked={assigned} onChange={() => toggleTaskAssignmentStudent(student.studentId)} type="checkbox" />
+                    <input aria-label={`${student.studentId} ${student.name} 완료`} checked={taskAssignmentEditor.completedIds.includes(student.studentId)} disabled={!assigned} onChange={() => toggleTaskAssignmentCompletion(student.studentId)} type="checkbox" />
+                  </div>
+                );
+              })}
             </div>
             <div className="mt-4 flex gap-2">
               <button type="button" className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700" onClick={() => setTaskAssignmentEditor(null)}>취소</button>

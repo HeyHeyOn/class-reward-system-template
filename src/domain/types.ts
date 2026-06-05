@@ -69,3 +69,15 @@ export type TaskCompletion = {
   status: string;
   note: string;
 };
+
+export type TaskAssignmentStudentStatus = {
+  studentId: string;
+  name: string;
+  assigned: boolean;
+  completed: boolean;
+};
+
+export type TaskAssignmentStatus = {
+  taskId: string;
+  students: TaskAssignmentStudentStatus[];
+};

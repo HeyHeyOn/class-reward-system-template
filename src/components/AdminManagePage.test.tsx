@@ -44,6 +44,10 @@ function deferredResponse(payload: unknown) {
 
 describe('AdminManagePage', () => {
   beforeEach(() => {
+    let t001AssignmentStatus = [
+      { studentId: 'S001', name: '김민준', assigned: true, completed: true },
+      { studentId: 'S002', name: '이서연', assigned: false, completed: false },
+    ];
     vi.stubGlobal('alert', vi.fn());
     vi.stubGlobal(
       'fetch',
@@ -73,6 +77,16 @@ describe('AdminManagePage', () => {
         }
         if (url === '/api/tasks/batch' && init?.method === 'DELETE') return jsonResponse({ taskIds: ['T001', 'T002'] });
         if (url === '/api/tasks/completions/reset' && init?.method === 'POST') return jsonResponse({ taskIds: ['T001', 'T002'], deletedCount: 3 });
+        if (url === '/api/tasks/T001/assignments' && init?.method === 'PATCH') {
+          t001AssignmentStatus = [
+            { studentId: 'S001', name: '김민준', assigned: true, completed: true },
+            { studentId: 'S002', name: '이서연', assigned: true, completed: true },
+          ];
+          return jsonResponse({ taskId: 'T001', students: t001AssignmentStatus });
+        }
+        if (url === '/api/tasks/T001/assignments') {
+          return jsonResponse({ taskId: 'T001', students: t001AssignmentStatus });
+        }
         if (url === '/api/tasks/T001' && init?.method === 'PATCH') {
           const body = JSON.parse(String(init.body ?? '{}'));
           return jsonResponse({ ...tasks[0], ...body });
@@ -164,19 +178,26 @@ describe('AdminManagePage', () => {
     })));
 
     fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
+    expect(await screen.findByText('완료 여부')).toBeTruthy();
     expect((screen.getByLabelText('S001 김민준 과제 부여') as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByLabelText('S001 김민준 완료') as HTMLInputElement).checked).toBe(true);
     expect((screen.getByLabelText('S002 이서연 과제 부여') as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByLabelText('S002 이서연 완료') as HTMLInputElement).disabled).toBe(true);
     fireEvent.click(screen.getByLabelText('S002 이서연 과제 부여'));
+    fireEvent.click(screen.getByLabelText('S002 이서연 완료'));
     fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
 
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/T001', expect.objectContaining({
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/T001/assignments', expect.objectContaining({
       method: 'PATCH',
-      body: expect.stringContaining('"allowedStudentIds":["S001","S002"]'),
+      body: expect.stringContaining('"assignedStudentIds":["S001","S002"]'),
     })));
+    expect(((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.find(([url, init]) => String(url) === '/api/tasks/T001/assignments' && init?.method === 'PATCH')?.[1] as RequestInit).body).toContain('"completedStudentIds":["S001","S002"]');
     expect(alert).toHaveBeenCalledWith('과제 부여 저장 완료');
 
     fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
+    expect(await screen.findByText('완료 여부')).toBeTruthy();
     expect((screen.getByLabelText('S002 이서연 과제 부여') as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByLabelText('S002 이서연 완료') as HTMLInputElement).checked).toBe(true);
   });
 
 
