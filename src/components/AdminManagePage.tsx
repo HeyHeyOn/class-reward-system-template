@@ -96,7 +96,7 @@ export function AdminManagePage() {
   const [newTask, setNewTask] = useState<Omit<TaskDraft, 'taskId'>>(EMPTY_TASK);
   const [imageEditor, setImageEditor] = useState<{ productId: string; value: string } | null>(null);
   const [taskDescriptionEditor, setTaskDescriptionEditor] = useState<{ taskId: string; value: string } | null>(null);
-  const [taskAssignmentEditor, setTaskAssignmentEditor] = useState<{ taskId: string | null; selectedIds: string[]; completedIds: string[]; isLoading?: boolean } | null>(null);
+  const [taskAssignmentEditor, setTaskAssignmentEditor] = useState<{ taskId: string | null; selectedIds: string[]; assignedIds: string[]; completedIds: string[]; isLoading?: boolean } | null>(null);
   const [qrPrintStudents, setQrPrintStudents] = useState<StudentDraft[] | null>(null);
   const [currencyMode, setCurrencyMode] = useState<CurrencyMode>('add');
   const [currencyAmount, setCurrencyAmount] = useState(0);
@@ -295,8 +295,8 @@ export function AdminManagePage() {
     return [...list].sort((a, b) => a.studentId.localeCompare(b.studentId, 'ko-KR', { numeric: true }) || a.name.localeCompare(b.name));
   }
 
-  function openTaskAssignmentEditor(taskId: string | null, selectedIds: string[]) {
-    setTaskAssignmentEditor({ taskId, selectedIds: [...selectedIds], completedIds: [], isLoading: Boolean(taskId) });
+  function openTaskAssignmentEditor(taskId: string | null, assignedIds: string[]) {
+    setTaskAssignmentEditor({ taskId, selectedIds: [], assignedIds: [...assignedIds], completedIds: [], isLoading: Boolean(taskId) });
     if (!taskId) return;
 
     void fetch(`/api/tasks/${encodeURIComponent(taskId)}/assignments`, { cache: 'no-store' })
@@ -306,7 +306,8 @@ export function AdminManagePage() {
         const statusRows = Array.isArray(payload.students) ? payload.students : [];
         setTaskAssignmentEditor((current) => current?.taskId === taskId ? {
           ...current,
-          selectedIds: statusRows.filter((row: { assigned?: boolean }) => row.assigned).map((row: { studentId: string }) => row.studentId),
+          selectedIds: [],
+          assignedIds: statusRows.filter((row: { assigned?: boolean }) => row.assigned).map((row: { studentId: string }) => row.studentId),
           completedIds: statusRows.filter((row: { completed?: boolean }) => row.completed).map((row: { studentId: string }) => row.studentId),
           isLoading: false,
         } : current);
@@ -326,6 +327,35 @@ export function AdminManagePage() {
     });
   }
 
+
+  function toggleTaskAssignmentAssigned(studentId: string) {
+    setTaskAssignmentEditor((current) => {
+      if (!current) return current;
+      const isAssigned = current.assignedIds.includes(studentId);
+      const assignedIds = isAssigned ? current.assignedIds.filter((id) => id !== studentId) : [...current.assignedIds, studentId];
+      return { ...current, assignedIds };
+    });
+  }
+
+  function toggleTaskAssignmentCompleted(studentId: string) {
+    setTaskAssignmentEditor((current) => {
+      if (!current) return current;
+      const isCompleted = current.completedIds.includes(studentId);
+      const completedIds = isCompleted ? current.completedIds.filter((id) => id !== studentId) : [...current.completedIds, studentId];
+      return { ...current, completedIds };
+    });
+  }
+
+  function setSelectedTaskAssignmentAssigned(status: 'assigned' | 'unassigned') {
+    setTaskAssignmentEditor((current) => {
+      if (!current) return current;
+      if (status === 'assigned') {
+        return { ...current, assignedIds: Array.from(new Set([...current.assignedIds, ...current.selectedIds])) };
+      }
+      return { ...current, assignedIds: current.assignedIds.filter((id) => !current.selectedIds.includes(id)) };
+    });
+  }
+
   function setSelectedTaskAssignmentCompletion(status: 'completed' | 'incomplete') {
     setTaskAssignmentEditor((current) => {
       if (!current) return current;
@@ -340,7 +370,7 @@ export function AdminManagePage() {
   async function saveTaskAssignment() {
     if (!taskAssignmentEditor) return;
     if (!taskAssignmentEditor.taskId) {
-      setNewTask((current) => ({ ...current, allowedStudentIds: taskAssignmentEditor.selectedIds }));
+      setNewTask((current) => ({ ...current, allowedStudentIds: taskAssignmentEditor.assignedIds }));
       setTaskAssignmentEditor(null);
       return;
     }
@@ -352,14 +382,14 @@ export function AdminManagePage() {
       return;
     }
 
-    const updatedTask = { ...task, allowedStudentIds: taskAssignmentEditor.selectedIds };
+    const updatedTask = { ...task, allowedStudentIds: taskAssignmentEditor.assignedIds };
     setIsSavingChanges(true);
     try {
       const response = await fetch(`/api/tasks/${encodeURIComponent(updatedTask.taskId)}/assignments`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          assignedStudentIds: taskAssignmentEditor.selectedIds,
+          assignedStudentIds: taskAssignmentEditor.assignedIds,
           completedStudentIds: taskAssignmentEditor.completedIds,
         }),
       });
@@ -367,7 +397,7 @@ export function AdminManagePage() {
       if (!response.ok) throw new Error(payload.error ?? '과제 부여 내용을 저장하지 못했습니다.');
       const assignedStudentIds = Array.isArray(payload.students)
         ? payload.students.filter((row: { assigned?: boolean }) => row.assigned).map((row: { studentId: string }) => row.studentId)
-        : taskAssignmentEditor.selectedIds;
+        : taskAssignmentEditor.assignedIds;
       setTasks((current) => current.map((item) => item.taskId === updatedTask.taskId ? { ...item, allowedStudentIds: assignedStudentIds } : item));
       setTaskAssignmentEditor(null);
       notify('과제 부여 저장 완료');
@@ -1249,59 +1279,66 @@ export function AdminManagePage() {
             <p className="mt-1 rounded-2xl bg-sky-50 p-3 text-sm font-bold text-sky-800">선택된 학생만 이 과제를 완료할 수 있습니다. 아무 학생도 선택하지 않으면 아무도 완료할 수 없습니다.</p>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-100 px-3 py-2 text-sm font-black">
               <label className="flex items-center gap-2">
-                <input aria-label="전체 학생 과제 부여 선택" checked={students.length > 0 && taskAssignmentEditor.selectedIds.length === students.length} onChange={(event) => setTaskAssignmentEditor((current) => current ? { ...current, selectedIds: event.target.checked ? students.map((student) => student.studentId) : [] } : current)} type="checkbox" />
-                전체 선택 ({taskAssignmentEditor.selectedIds.length}/{students.length})
+                <input aria-label="전체 학생 행 선택" checked={students.length > 0 && taskAssignmentEditor.selectedIds.length === students.length} onChange={(event) => setTaskAssignmentEditor((current) => current ? { ...current, selectedIds: event.target.checked ? students.map((student) => student.studentId) : [] } : current)} type="checkbox" />
+                행 선택 ({taskAssignmentEditor.selectedIds.length}/{students.length})
               </label>
-              <select
-                aria-label="선택 학생 완료 여부 일괄 변경"
-                className="h-9 rounded-full border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 shadow-sm outline-none disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={taskAssignmentEditor.selectedIds.length === 0}
-                onChange={(event) => {
-                  if (event.target.value === 'completed' || event.target.value === 'incomplete') setSelectedTaskAssignmentCompletion(event.target.value);
-                }}
-                value=""
-              >
-                <option value="">완료 상태 변경</option>
-                <option value="completed">선택 학생 완료</option>
-                <option value="incomplete">선택 학생 미완료</option>
-              </select>
+              <div className="flex flex-wrap gap-2">
+                <select
+                  aria-label="선택 학생 부여 상태 일괄 변경"
+                  className="h-9 rounded-full border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 shadow-sm outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={taskAssignmentEditor.selectedIds.length === 0}
+                  onChange={(event) => {
+                    if (event.target.value === 'assigned' || event.target.value === 'unassigned') setSelectedTaskAssignmentAssigned(event.target.value);
+                  }}
+                  value=""
+                >
+                  <option value="">부여 상태 변경</option>
+                  <option value="assigned">선택 학생 부여</option>
+                  <option value="unassigned">선택 학생 미부여</option>
+                </select>
+                <select
+                  aria-label="선택 학생 완료 여부 일괄 변경"
+                  className="h-9 rounded-full border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 shadow-sm outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={taskAssignmentEditor.selectedIds.length === 0}
+                  onChange={(event) => {
+                    if (event.target.value === 'completed' || event.target.value === 'incomplete') setSelectedTaskAssignmentCompletion(event.target.value);
+                  }}
+                  value=""
+                >
+                  <option value="">완료 상태 변경</option>
+                  <option value="completed">선택 학생 완료</option>
+                  <option value="incomplete">선택 학생 미완료</option>
+                </select>
+              </div>
             </div>
-            <div className="mt-3 grid grid-cols-[auto_1fr_auto] gap-3 px-3 text-xs font-black text-slate-500">
-              <span>부여</span>
+            <div className="mt-3 grid grid-cols-[auto_1fr_auto_auto] gap-3 px-3 text-xs font-black text-slate-500">
+              <span>선택</span>
               <span>학생</span>
+              <span>부여 여부</span>
               <span>완료 여부</span>
             </div>
-            <div className="mt-2 max-h-72 space-y-1 overflow-y-auto rounded-2xl border border-slate-200 p-2">
-              {taskAssignmentEditor.isLoading ? <p className="p-3 text-sm font-bold text-slate-500">과제 부여 상태를 불러오는 중입니다.</p> : null}
+            <div className="relative mt-2 max-h-72 space-y-1 overflow-y-auto rounded-2xl border border-slate-200 p-2">
+              {taskAssignmentEditor.isLoading ? (
+                <div role="status" aria-label="과제 부여 상태 불러오는 중" className="absolute inset-2 z-10 flex items-center justify-center rounded-2xl bg-white/90 p-4 text-center text-sm font-black text-slate-600 shadow-sm">
+                  부여·완료 정보를 불러오는 중입니다.
+                </div>
+              ) : null}
               {sortStudentsById(students).map((student) => {
-                const assigned = taskAssignmentEditor.selectedIds.includes(student.studentId);
+                const selected = taskAssignmentEditor.selectedIds.includes(student.studentId);
+                const assigned = taskAssignmentEditor.assignedIds.includes(student.studentId);
                 const completed = taskAssignmentEditor.completedIds.includes(student.studentId);
+                const assignmentClass = assigned
+                  ? 'border-green-600 bg-green-600 text-white'
+                  : 'border-slate-200 bg-slate-200 text-slate-700';
                 const completionClass = completed
                   ? 'border-blue-600 bg-blue-600 text-white'
                   : 'border-slate-200 bg-slate-200 text-slate-700';
                 return (
-                  <div key={student.studentId} data-testid={`task-assignment-row-${student.studentId}`} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-xl px-3 py-2 text-sm font-bold hover:bg-slate-50">
-                    <input aria-label={`${student.studentId} ${student.name} 과제 부여`} checked={assigned} onChange={() => toggleTaskAssignmentStudent(student.studentId)} type="checkbox" />
+                  <div key={student.studentId} data-testid={`task-assignment-row-${student.studentId}`} className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-3 rounded-xl px-3 py-2 text-sm font-bold hover:bg-slate-50">
+                    <input aria-label={`${student.studentId} ${student.name} 행 선택`} checked={selected} onChange={() => toggleTaskAssignmentStudent(student.studentId)} type="checkbox" />
                     <span className="min-w-0"><span className="font-black">{student.studentId}</span> <span>{student.name}</span></span>
-                    <select
-                      aria-label={`${student.studentId} ${student.name} 완료 여부`}
-                      className={`h-9 rounded-full border px-3 text-xs font-black shadow-sm outline-none transition ${completionClass} disabled:cursor-not-allowed disabled:opacity-60`}
-                      disabled={!assigned}
-                      onChange={(event) => {
-                        const shouldComplete = event.target.value === 'completed';
-                        setTaskAssignmentEditor((current) => {
-                          if (!current) return current;
-                          const completedIds = shouldComplete
-                            ? Array.from(new Set([...current.completedIds, student.studentId]))
-                            : current.completedIds.filter((id) => id !== student.studentId);
-                          return { ...current, completedIds };
-                        });
-                      }}
-                      value={completed ? 'completed' : 'incomplete'}
-                    >
-                      <option value="completed">완료</option>
-                      <option value="incomplete">미완료</option>
-                    </select>
+                    <button type="button" aria-label={`${student.studentId} ${student.name} 부여 상태`} className={`h-9 min-w-16 rounded-full border px-3 text-xs font-black shadow-sm transition ${assignmentClass}`} onClick={() => toggleTaskAssignmentAssigned(student.studentId)}>{assigned ? '부여' : '미부여'}</button>
+                    <button type="button" aria-label={`${student.studentId} ${student.name} 완료 상태`} className={`h-9 min-w-16 rounded-full border px-3 text-xs font-black shadow-sm transition ${completionClass}`} onClick={() => toggleTaskAssignmentCompleted(student.studentId)}>{completed ? '완료' : '미완료'}</button>
                   </div>
                 );
               })}

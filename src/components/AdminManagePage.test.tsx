@@ -84,10 +84,15 @@ describe('AdminManagePage', () => {
           return jsonResponse({ taskIds: ['T001', 'T002'], deletedCount: 3 });
         }
         if (url === '/api/tasks/T001/assignments' && init?.method === 'PATCH') {
-          t001AssignmentStatus = [
-            { studentId: 'S001', name: '김민준', assigned: true, completed: true },
-            { studentId: 'S002', name: '이서연', assigned: true, completed: true },
-          ];
+          const body = JSON.parse(String(init.body ?? '{}'));
+          const assignedIds = Array.isArray(body.assignedStudentIds) ? body.assignedStudentIds : [];
+          const completedIds = Array.isArray(body.completedStudentIds) ? body.completedStudentIds : [];
+          t001AssignmentStatus = students.map((student) => ({
+            studentId: student.studentId,
+            name: student.name,
+            assigned: assignedIds.includes(student.studentId),
+            completed: completedIds.includes(student.studentId),
+          }));
           return jsonResponse({ taskId: 'T001', students: t001AssignmentStatus });
         }
         if (url === '/api/tasks/T001/assignments') {
@@ -168,9 +173,10 @@ describe('AdminManagePage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '새 과제 과제 부여' }));
     expect(screen.getByText('선택된 학생만 이 과제를 완료할 수 있습니다. 아무 학생도 선택하지 않으면 아무도 완료할 수 없습니다.')).toBeTruthy();
-    expect(screen.getByLabelText('전체 학생 과제 부여 선택')).toBeTruthy();
-    expect(screen.getByLabelText('S001 김민준 과제 부여')).toBeTruthy();
-    fireEvent.click(screen.getByLabelText('S001 김민준 과제 부여'));
+    expect(screen.getByLabelText('전체 학생 행 선택')).toBeTruthy();
+    expect(screen.getByLabelText('S001 김민준 행 선택')).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('S001 김민준 행 선택'));
+    fireEvent.change(screen.getByLabelText('선택 학생 부여 상태 일괄 변경'), { target: { value: 'assigned' } });
     fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
 
     fireEvent.change(screen.getByLabelText('새 과제명'), { target: { value: '영어 단어' } });
@@ -184,30 +190,36 @@ describe('AdminManagePage', () => {
     })));
 
     fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
+    expect(screen.getByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeTruthy();
     expect(await screen.findByText('완료 여부')).toBeTruthy();
-    expect((screen.getByLabelText('S001 김민준 과제 부여') as HTMLInputElement).checked).toBe(true);
+    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
+    expect((screen.getByLabelText('S001 김민준 행 선택') as HTMLInputElement).checked).toBe(false);
+    const s001Assignment = screen.getByRole('button', { name: 'S001 김민준 부여 상태' });
+    expect(s001Assignment.textContent).toContain('부여');
+    expect(s001Assignment.className).toContain('bg-green');
     const s001Row = screen.getByTestId('task-assignment-row-S001');
-    expect(s001Row.innerHTML.indexOf('aria-label=\"S001 김민준 과제 부여\"')).toBeLessThan(s001Row.innerHTML.indexOf('김민준'));
-    const s001Completion = screen.getByLabelText('S001 김민준 완료 여부') as HTMLSelectElement;
-    expect(s001Completion.tagName).toBe('SELECT');
-    expect(s001Completion.value).toBe('completed');
+    expect(s001Row.innerHTML.indexOf('aria-label=\"S001 김민준 행 선택\"')).toBeLessThan(s001Row.innerHTML.indexOf('김민준'));
+    const s001Completion = screen.getByRole('button', { name: 'S001 김민준 완료 상태' });
+    expect(s001Completion.tagName).toBe('BUTTON');
+    expect(s001Completion.textContent).toContain('완료');
     expect(s001Completion.className).toContain('bg-blue');
-    fireEvent.click(screen.getByLabelText('S001 김민준 과제 부여'));
-    expect((screen.getByLabelText('S001 김민준 과제 부여') as HTMLInputElement).checked).toBe(false);
-    expect((screen.getByLabelText('S001 김민준 완료 여부') as HTMLSelectElement).value).toBe('completed');
-    fireEvent.click(screen.getByLabelText('S001 김민준 과제 부여'));
-    expect((screen.getByLabelText('S002 이서연 과제 부여') as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(s001Assignment);
+    expect(screen.getByRole('button', { name: 'S001 김민준 부여 상태' }).textContent).toContain('미부여');
+    expect(screen.getByRole('button', { name: 'S001 김민준 완료 상태' }).textContent).toContain('완료');
+    fireEvent.click(screen.getByRole('button', { name: 'S001 김민준 부여 상태' }));
+    expect((screen.getByLabelText('S002 이서연 행 선택') as HTMLInputElement).checked).toBe(false);
     const s002Row = screen.getByTestId('task-assignment-row-S002');
-    expect(s002Row.innerHTML.indexOf('aria-label=\"S002 이서연 과제 부여\"')).toBeLessThan(s002Row.innerHTML.indexOf('이서연'));
-    const s002Completion = screen.getByLabelText('S002 이서연 완료 여부') as HTMLSelectElement;
-    expect(s002Completion.tagName).toBe('SELECT');
-    expect(s002Completion.value).toBe('incomplete');
+    expect(s002Row.innerHTML.indexOf('aria-label=\"S002 이서연 행 선택\"')).toBeLessThan(s002Row.innerHTML.indexOf('이서연'));
+    const s002Completion = screen.getByRole('button', { name: 'S002 이서연 완료 상태' });
+    expect(s002Completion.tagName).toBe('BUTTON');
+    expect(s002Completion.textContent).toContain('미완료');
     expect(s002Completion.className).toContain('bg-slate');
-    expect(s002Completion.disabled).toBe(true);
-    fireEvent.click(screen.getByLabelText('S002 이서연 과제 부여'));
-    fireEvent.click(screen.getByLabelText('S001 김민준 과제 부여'));
+    fireEvent.click(screen.getByLabelText('S002 이서연 행 선택'));
+    fireEvent.change(screen.getByLabelText('선택 학생 부여 상태 일괄 변경'), { target: { value: 'assigned' } });
+    fireEvent.click(screen.getByLabelText('S001 김민준 행 선택'));
     fireEvent.change(screen.getByLabelText('선택 학생 완료 여부 일괄 변경'), { target: { value: 'completed' } });
-    expect((screen.getByLabelText('S002 이서연 완료 여부') as HTMLSelectElement).value).toBe('completed');
+    expect(screen.getByRole('button', { name: 'S002 이서연 완료 상태' }).textContent).toContain('완료');
+    fireEvent.click(screen.getByRole('button', { name: 'S001 김민준 부여 상태' }));
     fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/T001/assignments', expect.objectContaining({
@@ -220,17 +232,17 @@ describe('AdminManagePage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
     expect(await screen.findByText('완료 여부')).toBeTruthy();
-    expect((screen.getByLabelText('S002 이서연 과제 부여') as HTMLInputElement).checked).toBe(true);
-    const reopenedS002Completion = screen.getByLabelText('S002 이서연 완료 여부') as HTMLSelectElement;
-    expect(reopenedS002Completion.value).toBe('completed');
+    expect(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }).textContent).toContain('부여');
+    const reopenedS002Completion = screen.getByRole('button', { name: 'S002 이서연 완료 상태' });
+    expect(reopenedS002Completion.textContent).toContain('완료');
     expect(reopenedS002Completion.className).toContain('bg-blue');
     fireEvent.click(screen.getByRole('button', { name: '취소' }));
     fireEvent.click(screen.getByRole('button', { name: 'T001 완료 기록 초기화' }));
     await waitFor(() => expect(alert).toHaveBeenCalledWith('T001 완료 기록 3건 초기화 완료'));
     fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
     expect(await screen.findByText('완료 여부')).toBeTruthy();
-    expect((screen.getByLabelText('S001 김민준 과제 부여') as HTMLInputElement).checked).toBe(false);
-    expect((screen.getByLabelText('S001 김민준 완료 여부') as HTMLSelectElement).value).toBe('incomplete');
+    expect(screen.getByRole('button', { name: 'S001 김민준 부여 상태' }).textContent).toContain('미부여');
+    expect(screen.getByRole('button', { name: 'S001 김민준 완료 상태' }).textContent).toContain('미완료');
   });
 
 
@@ -279,7 +291,7 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByRole('button', { name: '닫기' }));
 
     fireEvent.click(screen.getByRole('button', { name: 'T002 과제 부여' }));
-    expect((screen.getByLabelText('S002 이서연 과제 부여') as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }).textContent).toContain('부여');
   });
 
   it('shows a specific failure when QR task assignment scans a duplicate or invalid QR', async () => {
