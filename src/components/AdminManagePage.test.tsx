@@ -192,6 +192,10 @@ describe('AdminManagePage', () => {
     expect(s001Completion.tagName).toBe('SELECT');
     expect(s001Completion.value).toBe('completed');
     expect(s001Completion.className).toContain('bg-blue');
+    fireEvent.click(screen.getByLabelText('S001 김민준 과제 부여'));
+    expect((screen.getByLabelText('S001 김민준 과제 부여') as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByLabelText('S001 김민준 완료 여부') as HTMLSelectElement).value).toBe('completed');
+    fireEvent.click(screen.getByLabelText('S001 김민준 과제 부여'));
     expect((screen.getByLabelText('S002 이서연 과제 부여') as HTMLInputElement).checked).toBe(false);
     const s002Row = screen.getByTestId('task-assignment-row-S002');
     expect(s002Row.innerHTML.indexOf('aria-label=\"S002 이서연 과제 부여\"')).toBeLessThan(s002Row.innerHTML.indexOf('이서연'));
@@ -201,15 +205,17 @@ describe('AdminManagePage', () => {
     expect(s002Completion.className).toContain('bg-slate');
     expect(s002Completion.disabled).toBe(true);
     fireEvent.click(screen.getByLabelText('S002 이서연 과제 부여'));
+    fireEvent.click(screen.getByLabelText('S001 김민준 과제 부여'));
     fireEvent.change(screen.getByLabelText('선택 학생 완료 여부 일괄 변경'), { target: { value: 'completed' } });
     expect((screen.getByLabelText('S002 이서연 완료 여부') as HTMLSelectElement).value).toBe('completed');
     fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/T001/assignments', expect.objectContaining({
       method: 'PATCH',
-      body: expect.stringContaining('"assignedStudentIds":["S001","S002"]'),
+      body: expect.stringContaining('"assignedStudentIds":["S002"]'),
     })));
-    expect(((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.find(([url, init]) => String(url) === '/api/tasks/T001/assignments' && init?.method === 'PATCH')?.[1] as RequestInit).body).toContain('"completedStudentIds":["S001","S002"]');
+    const assignmentPatchBody = String(((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.find(([url, init]) => String(url) === '/api/tasks/T001/assignments' && init?.method === 'PATCH')?.[1] as RequestInit).body);
+    expect(assignmentPatchBody).toContain('"completedStudentIds":["S001","S002"]');
     expect(alert).toHaveBeenCalledWith('과제 부여 저장 완료');
 
     fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));

@@ -235,7 +235,7 @@ export async function updateTaskAssignmentStatus(store: SheetsStore, taskId: str
   const students = await getStudents(store);
   const studentsById = new Map(students.map((student) => [student.studentId, student]));
   const assignedStudentIds = normalizeUniqueIds(update.assignedStudentIds).filter((id) => studentsById.has(id));
-  const completedStudentIds = normalizeUniqueIds(update.completedStudentIds).filter((id) => assignedStudentIds.includes(id) && studentsById.has(id));
+  const completedStudentIds = normalizeUniqueIds(update.completedStudentIds).filter((id) => studentsById.has(id));
 
   await store.updateCell('Tasks', record.rowNumber, 'allowedStudentIds', assignedStudentIds.join(','));
 

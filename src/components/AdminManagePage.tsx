@@ -322,8 +322,7 @@ export function AdminManagePage() {
       if (!current) return current;
       const isSelected = current.selectedIds.includes(studentId);
       const selectedIds = isSelected ? current.selectedIds.filter((id) => id !== studentId) : [...current.selectedIds, studentId];
-      const completedIds = isSelected ? current.completedIds.filter((id) => id !== studentId) : current.completedIds;
-      return { ...current, selectedIds, completedIds };
+      return { ...current, selectedIds };
     });
   }
 
@@ -361,7 +360,7 @@ export function AdminManagePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           assignedStudentIds: taskAssignmentEditor.selectedIds,
-          completedStudentIds: taskAssignmentEditor.completedIds.filter((id) => taskAssignmentEditor.selectedIds.includes(id)),
+          completedStudentIds: taskAssignmentEditor.completedIds,
         }),
       });
       const payload = await response.json();
@@ -1250,7 +1249,7 @@ export function AdminManagePage() {
             <p className="mt-1 rounded-2xl bg-sky-50 p-3 text-sm font-bold text-sky-800">선택된 학생만 이 과제를 완료할 수 있습니다. 아무 학생도 선택하지 않으면 아무도 완료할 수 없습니다.</p>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-100 px-3 py-2 text-sm font-black">
               <label className="flex items-center gap-2">
-                <input aria-label="전체 학생 과제 부여 선택" checked={students.length > 0 && taskAssignmentEditor.selectedIds.length === students.length} onChange={(event) => setTaskAssignmentEditor((current) => current ? { ...current, selectedIds: event.target.checked ? students.map((student) => student.studentId) : [], completedIds: event.target.checked ? current.completedIds : [] } : current)} type="checkbox" />
+                <input aria-label="전체 학생 과제 부여 선택" checked={students.length > 0 && taskAssignmentEditor.selectedIds.length === students.length} onChange={(event) => setTaskAssignmentEditor((current) => current ? { ...current, selectedIds: event.target.checked ? students.map((student) => student.studentId) : [] } : current)} type="checkbox" />
                 전체 선택 ({taskAssignmentEditor.selectedIds.length}/{students.length})
               </label>
               <select

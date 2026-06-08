@@ -855,18 +855,18 @@ describe('sheets repository', () => {
     };
 
     await expect(updateTaskAssignmentStatus(store, 'T001', {
-      assignedStudentIds: ['S001', 'S002'],
-      completedStudentIds: ['S002'],
+      assignedStudentIds: ['S002'],
+      completedStudentIds: ['S001', 'S002'],
     })).resolves.toEqual({
       taskId: 'T001',
       students: [
-        { studentId: 'S001', name: '김민준', assigned: true, completed: false },
+        { studentId: 'S001', name: '김민준', assigned: false, completed: true },
         { studentId: 'S002', name: '이서연', assigned: true, completed: true },
       ],
     });
 
-    expect(cellUpdates).toContainEqual({ sheetName: 'Tasks', rowNumber: 2, columnName: 'allowedStudentIds', value: 'S001,S002' });
-    expect(deletedBatches).toEqual([{ sheetName: 'TaskCompletions', rowNumbers: [2] }]);
+    expect(cellUpdates).toContainEqual({ sheetName: 'Tasks', rowNumber: 2, columnName: 'allowedStudentIds', value: 'S002' });
+    expect(deletedBatches).toEqual([]);
     expect(appended).toHaveLength(1);
     expect(appended[0].sheetName).toBe('TaskCompletions');
     expect(appended[0].values.slice(2, 10)).toEqual(['T001', 'S002', '이서연', '5', '1200', '1200', 'SUCCESS', 'admin-assignment-status']);
