@@ -76,7 +76,13 @@ describe('AdminManagePage', () => {
           ]);
         }
         if (url === '/api/tasks/batch' && init?.method === 'DELETE') return jsonResponse({ taskIds: ['T001', 'T002'] });
-        if (url === '/api/tasks/completions/reset' && init?.method === 'POST') return jsonResponse({ taskIds: ['T001', 'T002'], deletedCount: 3 });
+        if (url === '/api/tasks/completions/reset' && init?.method === 'POST') {
+          t001AssignmentStatus = [
+            { studentId: 'S001', name: '김민준', assigned: false, completed: false },
+            { studentId: 'S002', name: '이서연', assigned: false, completed: false },
+          ];
+          return jsonResponse({ taskIds: ['T001', 'T002'], deletedCount: 3 });
+        }
         if (url === '/api/tasks/T001/assignments' && init?.method === 'PATCH') {
           t001AssignmentStatus = [
             { studentId: 'S001', name: '김민준', assigned: true, completed: true },
@@ -195,7 +201,8 @@ describe('AdminManagePage', () => {
     expect(s002Completion.className).toContain('bg-slate');
     expect(s002Completion.disabled).toBe(true);
     fireEvent.click(screen.getByLabelText('S002 이서연 과제 부여'));
-    fireEvent.change(screen.getByLabelText('S002 이서연 완료 여부'), { target: { value: 'completed' } });
+    fireEvent.change(screen.getByLabelText('선택 학생 완료 여부 일괄 변경'), { target: { value: 'completed' } });
+    expect((screen.getByLabelText('S002 이서연 완료 여부') as HTMLSelectElement).value).toBe('completed');
     fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/T001/assignments', expect.objectContaining({
@@ -211,6 +218,13 @@ describe('AdminManagePage', () => {
     const reopenedS002Completion = screen.getByLabelText('S002 이서연 완료 여부') as HTMLSelectElement;
     expect(reopenedS002Completion.value).toBe('completed');
     expect(reopenedS002Completion.className).toContain('bg-blue');
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 완료 기록 초기화' }));
+    await waitFor(() => expect(alert).toHaveBeenCalledWith('T001 완료 기록 3건 초기화 완료'));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
+    expect(await screen.findByText('완료 여부')).toBeTruthy();
+    expect((screen.getByLabelText('S001 김민준 과제 부여') as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByLabelText('S001 김민준 완료 여부') as HTMLSelectElement).value).toBe('incomplete');
   });
 
 

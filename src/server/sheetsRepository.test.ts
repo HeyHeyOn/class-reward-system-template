@@ -703,11 +703,12 @@ describe('sheets repository', () => {
     ]);
   });
 
-  it('batch deletes tasks and resets selected task completion rows', async () => {
+  it('batch deletes tasks and resets selected task assignment and completion rows', async () => {
     const deletedBatches: Array<{ sheetName: string; rowNumbers: number[] }> = [];
+    const cellUpdates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
     const fakeStore = {
       ...fakeReader,
-      async updateCell() {},
+      async updateCell(sheetName: string, rowNumber: number, columnName: string, value: string | number) { cellUpdates.push({ sheetName, rowNumber, columnName, value }); },
       async updateHeaderRow() {},
       async appendRow() {},
       async deleteRows(sheetName: 'Tasks' | 'TaskCompletions', rowNumbers: number[]) {
@@ -723,6 +724,7 @@ describe('sheets repository', () => {
       { sheetName: 'Tasks', rowNumbers: [3, 2] },
       { sheetName: 'TaskCompletions', rowNumbers: [2] },
     ]);
+    expect(cellUpdates).toContainEqual({ sheetName: 'Tasks', rowNumber: 3, columnName: 'allowedStudentIds', value: '' });
   });
 
   it('deletes a single task together with its completion rows', async () => {

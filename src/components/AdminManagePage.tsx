@@ -327,6 +327,16 @@ export function AdminManagePage() {
     });
   }
 
+  function setSelectedTaskAssignmentCompletion(status: 'completed' | 'incomplete') {
+    setTaskAssignmentEditor((current) => {
+      if (!current) return current;
+      if (status === 'completed') {
+        return { ...current, completedIds: Array.from(new Set([...current.completedIds, ...current.selectedIds])) };
+      }
+      return { ...current, completedIds: current.completedIds.filter((id) => !current.selectedIds.includes(id)) };
+    });
+  }
+
 
   async function saveTaskAssignment() {
     if (!taskAssignmentEditor) return;
@@ -697,6 +707,8 @@ export function AdminManagePage() {
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? '과제 완료 기록을 초기화하지 못했습니다.');
+      const resetTaskIds = Array.isArray(payload.taskIds) ? payload.taskIds.map((id: unknown) => String(id)) : taskIds;
+      setTasks((current) => current.map((task) => resetTaskIds.includes(task.taskId) ? { ...task, allowedStudentIds: [] } : task));
       notify(`${label} 완료 기록 ${Number(payload.deletedCount ?? 0)}건 초기화 완료`);
     } catch (error) {
       notify(error instanceof Error ? error.message : '과제 완료 기록을 초기화하지 못했습니다.');
@@ -1236,10 +1248,25 @@ export function AdminManagePage() {
           <section role="dialog" aria-modal="true" aria-label="과제 부여" className="w-full max-w-xl rounded-2xl bg-white p-4 text-slate-950 shadow-2xl">
             <h2 className="text-xl font-black">과제 부여</h2>
             <p className="mt-1 rounded-2xl bg-sky-50 p-3 text-sm font-bold text-sky-800">선택된 학생만 이 과제를 완료할 수 있습니다. 아무 학생도 선택하지 않으면 아무도 완료할 수 없습니다.</p>
-            <label className="mt-3 flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-sm font-black">
-              <input aria-label="전체 학생 과제 부여 선택" checked={students.length > 0 && taskAssignmentEditor.selectedIds.length === students.length} onChange={(event) => setTaskAssignmentEditor((current) => current ? { ...current, selectedIds: event.target.checked ? students.map((student) => student.studentId) : [], completedIds: event.target.checked ? current.completedIds : [] } : current)} type="checkbox" />
-              전체 선택 ({taskAssignmentEditor.selectedIds.length}/{students.length})
-            </label>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-100 px-3 py-2 text-sm font-black">
+              <label className="flex items-center gap-2">
+                <input aria-label="전체 학생 과제 부여 선택" checked={students.length > 0 && taskAssignmentEditor.selectedIds.length === students.length} onChange={(event) => setTaskAssignmentEditor((current) => current ? { ...current, selectedIds: event.target.checked ? students.map((student) => student.studentId) : [], completedIds: event.target.checked ? current.completedIds : [] } : current)} type="checkbox" />
+                전체 선택 ({taskAssignmentEditor.selectedIds.length}/{students.length})
+              </label>
+              <select
+                aria-label="선택 학생 완료 여부 일괄 변경"
+                className="h-9 rounded-full border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 shadow-sm outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={taskAssignmentEditor.selectedIds.length === 0}
+                onChange={(event) => {
+                  if (event.target.value === 'completed' || event.target.value === 'incomplete') setSelectedTaskAssignmentCompletion(event.target.value);
+                }}
+                value=""
+              >
+                <option value="">완료 상태 변경</option>
+                <option value="completed">선택 학생 완료</option>
+                <option value="incomplete">선택 학생 미완료</option>
+              </select>
+            </div>
             <div className="mt-3 grid grid-cols-[auto_1fr_auto] gap-3 px-3 text-xs font-black text-slate-500">
               <span>부여</span>
               <span>학생</span>

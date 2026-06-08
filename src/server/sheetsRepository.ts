@@ -395,7 +395,19 @@ export async function resetTaskCompletionsBatch(store: SheetsStore, taskIds: str
   const uniqueIds = normalizeUniqueIds(taskIds);
   if (uniqueIds.length === 0) throw new Error('선택된 과제가 없습니다.');
   if (!store.deleteRows) throw new Error('현재 Sheets 저장소가 여러 행 삭제를 지원하지 않습니다.');
+  await ensureTaskSheet(store);
+  const recordsById = new Map((await getTaskRecords(store)).map((record) => [record.task.taskId, record]));
+  const missingIds = uniqueIds.filter((taskId) => !recordsById.has(taskId));
+  if (missingIds.length > 0) throw new Error(`과제를 찾을 수 없습니다: ${missingIds.join(', ')}`);
   const deletedCount = await deleteTaskCompletionRowsForTaskIds(store, uniqueIds);
+  const taskRows = await store.getRows('Tasks');
+  if (taskRows[0]?.includes('allowedStudentIds')) {
+    await applyCellUpdates(store, 'Tasks', uniqueIds.map((taskId) => ({
+      rowNumber: recordsById.get(taskId)!.rowNumber,
+      columnName: 'allowedStudentIds',
+      value: '',
+    })));
+  }
   return { taskIds: uniqueIds, deletedCount };
 }
 
