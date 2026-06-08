@@ -105,6 +105,37 @@ describe('KioskApp', () => {
   });
 
 
+  it('moves sold-out products to the bottom and visually dims them', async () => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/products') {
+        return jsonResponse([
+          { productId: 'P001', name: '품절 연필', price: 300, stock: 0, isActive: true, category: '문구', sortOrder: 1 },
+          { productId: 'P002', name: '판매 지우개', price: 500, stock: 5, isActive: true, category: '문구', sortOrder: 2 },
+          { productId: 'P003', name: '판매 마이쮸', price: 100, stock: 8, isActive: true, category: '간식', sortOrder: 3 },
+        ]);
+      }
+      if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '햇살반 매점', themeColor: 'pink', source: 'runtime' });
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+
+    const { container } = render(<KioskApp />);
+
+    expect(await screen.findByText('품절 연필')).toBeTruthy();
+    const productCards = screen.getAllByTestId('product-card');
+    expect(productCards.map((card) => card.textContent)).toEqual([
+      expect.stringContaining('판매 지우개'),
+      expect.stringContaining('판매 마이쮸'),
+      expect.stringContaining('품절 연필'),
+    ]);
+    expect(productCards[2].className).toContain('brightness-75');
+    expect(productCards[2].className).toContain('grayscale');
+    expect(productCards[2].className).toContain('disabled:opacity-75');
+    expect(container.querySelector('[data-testid="product-grid"]')?.textContent?.lastIndexOf('품절 연필')).toBeGreaterThan(
+      container.querySelector('[data-testid="product-grid"]')?.textContent?.lastIndexOf('판매 마이쮸') ?? -1,
+    );
+  });
+
   it('builds category tabs beside the product heading and filters the product grid', async () => {
     const { container } = render(<KioskApp />);
 

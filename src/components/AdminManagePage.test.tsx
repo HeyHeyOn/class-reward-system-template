@@ -383,7 +383,8 @@ describe('AdminManagePage', () => {
     const { container } = render(<AdminManagePage />);
 
     expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
-    expect(screen.getByText('Class Reward System')).toBeTruthy();
+    expect(screen.queryByText('Class Reward System')).toBeNull();
+    expect(screen.queryByText('태블릿과 스마트폰에서 빠르게 학생 잔액과 상품 재고를 관리합니다.')).toBeNull();
     const logo = screen.getByRole('img', { name: '학급 보상 시스템 로고' });
     expect(logo).toBeTruthy();
     expect(logo.className).toContain('bg-[#365F78]');
@@ -418,6 +419,7 @@ describe('AdminManagePage', () => {
     expect(bankLink.textContent).toContain('↗');
     expect(screen.getByRole('tab', { name: '과제 설정' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: '화폐 지급/회수' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: '사용 전 확인' })).toBeNull();
     expect(await screen.findByDisplayValue('별')).toBeTruthy();
     expect(screen.getByDisplayValue('학급 매점')).toBeTruthy();
     expect(screen.getByDisplayValue('학급 은행')).toBeTruthy();
@@ -431,6 +433,35 @@ describe('AdminManagePage', () => {
     expect(screen.queryByText('잔액과 상태 관리')).toBeNull();
     expect(screen.queryByText('스프레드시트 연결')).toBeNull();
     expect(screen.queryByText('GOOGLE SHEETS')).toBeNull();
+  });
+
+  it('uses the updated admin transaction, currency, and product image helper wording', async () => {
+    render(<AdminManagePage />);
+
+    expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('tab', { name: '거래 내역 확인' }));
+    expect(await screen.findByRole('heading', { name: '거래 내역 (1)' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: '최근 거래 (1)' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('tab', { name: '화폐 지급/회수' }));
+    expect(screen.queryByText('회수 금액이 현재 잔액보다 커도 관리자 화면에서는 음수 잔액으로 기록됩니다.')).toBeNull();
+    expect(screen.getByText(/QR코드를 인식하여 화폐를 지급하거나 회수할 수 있습니다\./)).toBeTruthy();
+    expect(screen.getByText(/회수하는 금액이 잔액보다 큰 경우/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('tab', { name: '매점 관리' }));
+    fireEvent.click(screen.getByRole('button', { name: 'P001 이미지 주소 편집' }));
+    expect(screen.getByRole('dialog', { name: '상품 이미지 등록' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '상품 이미지 등록' })).toBeTruthy();
+    expect(screen.getByText('※ 상품 이미지 등록하는 방법')).toBeTruthy();
+    expect(screen.getByText('① 구글 이미지 검색 등으로 원하는 상품 이미지를 찾습니다.')).toBeTruthy();
+    expect(screen.getByText("② 원하는 이미지를 마우스로 우클릭(모바일에서는 꾹 누르기)하고 '이미지 주소 복사'를 선택합니다.")).toBeTruthy();
+    expect(screen.getByText("③ 복사한 이미지 주소를 아래 창에 붙여넣고 '상품 이미지 적용' 버튼을 누릅니다.")).toBeTruthy();
+    expect(screen.getByText("④ '전체 저장'을 눌러 상품 이미지를 저장 및 적용합니다.")).toBeTruthy();
+    expect(screen.getByRole('button', { name: '상품 이미지 적용' })).toBeTruthy();
+    expect(screen.queryByText('이미지 주소 편집')).toBeNull();
+    expect(screen.queryByText('긴 이미지 URL은 여기에서 편하게 붙여넣고 수정합니다.')).toBeNull();
+    expect(screen.queryByRole('button', { name: '이미지 주소 적용' })).toBeNull();
   });
 
   it('saves the selected font family from system settings', async () => {
@@ -479,7 +510,7 @@ describe('AdminManagePage', () => {
     expect(secondRender.container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-[#1F1F1F]');
     expect(secondRender.container.querySelector('[data-testid="admin-shell"]')?.className).not.toContain('bg-slate-100');
     expect(screen.getByRole('heading', { name: '학급 보상 시스템' }).className).toContain('text-slate-950');
-    expect(screen.getByRole('heading', { name: '사용 전 확인' }).className).toContain('text-slate-950');
+    expect(screen.queryByRole('heading', { name: '사용 전 확인' })).toBeNull();
     expect(screen.getByLabelText('매점 제목').className).toContain('bg-slate-50');
     expect(screen.getByLabelText('매점 제목').className).toContain('text-slate-950');
     fireEvent.click(screen.getByRole('tab', { name: '학생 관리' }));
@@ -565,11 +596,11 @@ describe('AdminManagePage', () => {
     render(<AdminManagePage />);
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/transactions', { cache: 'no-store' }));
-    expect(screen.queryByRole('heading', { name: '최근 거래 (1)' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: '거래 내역 (1)' })).toBeNull();
 
     fireEvent.click(await screen.findByRole('tab', { name: '거래 내역 확인' }));
 
-    expect(await screen.findByRole('heading', { name: '최근 거래 (1)' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '거래 내역 (1)' })).toBeTruthy();
     expect(screen.getByText('김민준')).toBeTruthy();
     expect(screen.getByText('연필 × 2')).toBeTruthy();
     expect(screen.getAllByText('-600별').length).toBeGreaterThan(0);
@@ -637,9 +668,9 @@ describe('AdminManagePage', () => {
     expect(screen.getByRole('button', { name: '선택 저장' })).toHaveProperty('disabled', true);
     fireEvent.click(screen.getByLabelText('P001 선택'));
     fireEvent.click(screen.getByRole('button', { name: 'P001 이미지 주소 편집' }));
-    expect(await screen.findByRole('dialog', { name: '이미지 주소 편집' })).toBeTruthy();
+    expect(await screen.findByRole('dialog', { name: '상품 이미지 등록' })).toBeTruthy();
     fireEvent.change(screen.getByLabelText('이미지 주소 전체 입력'), { target: { value: 'https://example.com/new-pencil.png' } });
-    fireEvent.click(screen.getByRole('button', { name: '이미지 주소 적용' }));
+    fireEvent.click(screen.getByRole('button', { name: '상품 이미지 적용' }));
     fireEvent.click(screen.getByRole('button', { name: '선택 저장' }));
 
     await waitFor(() => {
@@ -719,7 +750,7 @@ describe('AdminManagePage', () => {
     const imageButton = screen.getByRole('button', { name: 'P001 이미지 주소 편집' });
     expect(imageButton.className).toContain('truncate');
     fireEvent.click(imageButton);
-    expect(await screen.findByRole('dialog', { name: '이미지 주소 편집' })).toBeTruthy();
+    expect(await screen.findByRole('dialog', { name: '상품 이미지 등록' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '취소' }));
     fireEvent.click(screen.getByLabelText('전체 상품 선택'));
     fireEvent.click(screen.getByRole('button', { name: '삭제' }));

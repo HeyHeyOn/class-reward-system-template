@@ -803,13 +803,9 @@ export function AdminManagePage() {
               <span role="img" aria-label="학급 보상 시스템 로고" className={`h-16 w-16 ${theme.logoColor} [mask-image:url('/class-reward-system-icon.png')] [mask-position:center] [mask-repeat:no-repeat] [mask-size:contain]`} />
             </span>
             <div>
-              <p className={`text-xs font-black tracking-[0.22em] ${theme.accentText} sm:text-sm`}>Class Reward System</p>
-              <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl md:text-5xl">학급 보상 시스템</h1>
+              <h1 className="text-3xl font-black tracking-tight text-slate-950 sm:text-4xl md:text-5xl">학급 보상 시스템</h1>
             </div>
           </div>
-          <p className="mx-auto mt-1 max-w-2xl text-xs font-bold text-slate-500 sm:text-sm md:text-base">
-            태블릿과 스마트폰에서 빠르게 학생 잔액과 상품 재고를 관리합니다.
-          </p>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <SummaryCard label="학생" value={`${summary.students}명`} toneClass={theme.statBg} accentClass={theme.accentText} />
             <SummaryCard label="판매 상품" value={`${summary.activeProducts}개`} toneClass={theme.statBg} accentClass={theme.accentText} />
@@ -841,13 +837,12 @@ export function AdminManagePage() {
         </nav>
 
         {activeTab === 'settings' ? (
-          <section role="tabpanel" aria-label="시스템 설정" className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <section role="tabpanel" aria-label="시스템 설정" className="grid gap-3">
             <SettingsForm
               linkedStudentCount={students.length}
               linkedProductCount={products.length}
               onSettingsSaved={() => loadLinkedSheetData({ silent: true })}
             />
-            <InfoPanel />
           </section>
         ) : null}
 
@@ -1099,8 +1094,8 @@ export function AdminManagePage() {
         </section>
 
         {activeTab === 'currency' ? (
-          <section role="tabpanel" aria-label="화폐 지급/회수" className="mx-auto w-full max-w-xl">
-            <SectionCard title="화폐 지급/회수" description="회수 금액이 현재 잔액보다 커도 관리자 화면에서는 음수 잔액으로 기록됩니다." compact>
+          <section role="tabpanel" aria-label="화폐 지급/회수" className="mx-auto grid w-full max-w-5xl gap-3 lg:grid-cols-[minmax(0,1fr)_360px]">
+            <SectionCard title="화폐 지급/회수" compact>
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => setCurrencyMode('add')} className={`rounded-2xl px-4 py-4 text-xl font-black ${currencyMode === 'add' ? `${theme.accentBg} ${theme.actionText}` : `${theme.softBg} ${theme.softText}`}`}>지급</button>
                 <button type="button" onClick={() => setCurrencyMode('subtract')} className={`rounded-2xl px-4 py-4 text-xl font-black ${currencyMode === 'subtract' ? 'bg-rose-500 text-white' : 'bg-rose-50 text-slate-700'}`}>회수</button>
@@ -1113,6 +1108,12 @@ export function AdminManagePage() {
                 QR 인식 시작
               </button>
             </SectionCard>
+            <SectionCard title="이용 안내" compact>
+              <ul className="space-y-3 text-sm font-bold leading-relaxed text-slate-600 sm:text-base">
+                <li>• QR코드를 인식하여 화폐를 지급하거나 회수할 수 있습니다.</li>
+                <li>• 회수하는 금액이 잔액보다 큰 경우, 차액만큼 잔액이 음수로 표시됩니다. (예: 잔액 10인 학생에게 15만큼 회수하는 경우 잔액이 -5로 기록됨)</li>
+              </ul>
+            </SectionCard>
           </section>
         ) : null}
       </section>
@@ -1120,9 +1121,15 @@ export function AdminManagePage() {
       {isRefreshingLists ? <LoadingDialog title="새로고침 중" message="새로고침하는 중입니다." /> : null}
       {imageEditor ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <section role="dialog" aria-modal="true" aria-label="이미지 주소 편집" className="w-full max-w-xl rounded-2xl bg-white p-4 shadow-2xl">
-            <h2 className="text-xl font-black">이미지 주소 편집</h2>
-            <p className="mt-1 text-sm font-bold text-slate-500">긴 이미지 URL은 여기에서 편하게 붙여넣고 수정합니다.</p>
+          <section role="dialog" aria-modal="true" aria-label="상품 이미지 등록" className="w-full max-w-xl rounded-2xl bg-white p-4 shadow-2xl">
+            <h2 className="text-xl font-black">상품 이미지 등록</h2>
+            <div className="mt-2 space-y-1 rounded-2xl bg-slate-50 p-3 text-sm font-bold leading-relaxed text-slate-600">
+              <p>※ 상품 이미지 등록하는 방법</p>
+              <p>① 구글 이미지 검색 등으로 원하는 상품 이미지를 찾습니다.</p>
+              <p>② 원하는 이미지를 마우스로 우클릭(모바일에서는 꾹 누르기)하고 &apos;이미지 주소 복사&apos;를 선택합니다.</p>
+              <p>③ 복사한 이미지 주소를 아래 창에 붙여넣고 &apos;상품 이미지 적용&apos; 버튼을 누릅니다.</p>
+              <p>④ &apos;전체 저장&apos;을 눌러 상품 이미지를 저장 및 적용합니다.</p>
+            </div>
             <label className="mt-4 block text-sm font-bold text-slate-700">
               <span>이미지 주소 전체 입력</span>
               <textarea
@@ -1142,7 +1149,7 @@ export function AdminManagePage() {
                   setImageEditor(null);
                 }}
               >
-                이미지 주소 적용
+                상품 이미지 적용
               </button>
             </div>
           </section>
@@ -1444,18 +1451,5 @@ function NumberInput({ label, value, onChange, compact = false, dense = false }:
       <span className={dense ? 'sr-only' : undefined}>{visibleLabel}</span>
       <input aria-label={label} className={inputClass} onChange={(event) => onChange(Number(event.target.value))} type="number" value={safeValue} />
     </label>
-  );
-}
-
-function InfoPanel() {
-  return (
-    <aside className="rounded-[1.25rem] border border-slate-300/70 bg-white/90 p-4 text-slate-950 shadow-sm sm:rounded-[1.75rem] md:p-5">
-      <h2 className="text-xl font-black text-slate-950 sm:text-2xl">사용 전 확인</h2>
-      <ul className="mt-3 space-y-2 text-sm font-bold text-slate-600">
-        <li>• Students, Products, Transactions, Adjustments 시트가 필요합니다.</li>
-        <li>• Google 로그인 계정 또는 서비스 계정에 스프레드시트 편집 권한이 필요합니다.</li>
-        <li>• QR 코드에는 이름이 아니라 S001 같은 studentId만 넣습니다.</li>
-      </ul>
-    </aside>
   );
 }

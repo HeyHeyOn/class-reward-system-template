@@ -69,7 +69,11 @@ describe('BankApp', () => {
     expect(container.querySelector('[data-testid="bank-shell"]')?.getAttribute('style')).toContain('NanumBarunGothic');
     expect(container.querySelector('[data-testid="bank-shell"]')?.className).not.toContain('bg-green-50');
     expect(container.querySelector('[data-testid="bank-shell"]')?.className).not.toContain('bg-lime-50');
-    expect(screen.getByText('CLASS BANK').className).toContain('text-[#505999]');
+    expect(screen.queryByText('CLASS BANK')).toBeNull();
+    expect(screen.getByText('- 내 계좌 버튼을 눌러 잔액과 거래 내역을 확인할 수 있어요.')).toBeTruthy();
+    expect(screen.getByText('- 과제 확인 버튼을 눌러 과제를 확인하고 완료할 수 있어요.')).toBeTruthy();
+    expect(screen.getByText('(※ 일부 과제는 허용된 학생만 완료할 수 있습니다.)')).toBeTruthy();
+    expect(screen.queryByText('QR로 잔액을 확인하고 과제 보상을 받을 수 있어요.')).toBeNull();
     expect(screen.getByRole('button', { name: '내 계좌' }).className).toContain('bg-[#A5C78B]');
     expect(screen.getByRole('button', { name: '과제 확인' }).className).toContain('bg-[#DCF5C9]');
     expect(screen.getByRole('button', { name: '내 계좌' }).className).not.toContain('bg-[#DCF5C9]');
@@ -146,7 +150,7 @@ describe('BankApp', () => {
 
     expect(await screen.findByRole('heading', { name: '남색 은행' })).toBeTruthy();
     expect(container.querySelector('[data-testid="bank-shell"]')?.className).toContain('bg-[#DCE8F4]');
-    expect(screen.getByText('CLASS BANK').className).toContain('text-[#2F5D82]');
+    expect(screen.queryByText('CLASS BANK')).toBeNull();
     expect(screen.getByRole('button', { name: '내 계좌' }).className).toContain('bg-[#7FA6C7]');
     expect(container.querySelector('[data-testid="bank-shell"]')?.className).not.toContain('bg-[#8F97CF]');
   });

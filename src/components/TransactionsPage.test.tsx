@@ -121,7 +121,7 @@ describe('TransactionsPage', () => {
     const { container } = render(<TransactionsPage />);
 
     expect(await screen.findByRole('heading', { name: '거래 내역 확인' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: '최근 거래 (4)' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '거래 내역 (4)' })).toBeTruthy();
     expect(screen.queryByText('거래 건수')).toBeNull();
     expect(screen.queryByText('순 지출')).toBeNull();
     expect(screen.queryByText('화폐 단위')).toBeNull();
@@ -148,24 +148,24 @@ describe('TransactionsPage', () => {
   it('filters transaction rows by all, income, and expense tabs', async () => {
     render(<TransactionsPage />);
 
-    expect(await screen.findByRole('heading', { name: '최근 거래 (4)' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '거래 내역 (4)' })).toBeTruthy();
     expect(screen.getByTestId('transaction-row-T001')).toBeTruthy();
     expect(screen.getByTestId('transaction-row-T002')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '수입' }));
-    expect(await screen.findByRole('heading', { name: '최근 거래 (2)' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '거래 내역 (2)' })).toBeTruthy();
     expect(screen.queryByTestId('transaction-row-T001')).toBeNull();
     expect(screen.getByTestId('transaction-row-T002')).toBeTruthy();
     expect(screen.getByTestId('transaction-row-CANCEL-T003')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '지출' }));
-    expect(await screen.findByRole('heading', { name: '최근 거래 (2)' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '거래 내역 (2)' })).toBeTruthy();
     expect(screen.getByTestId('transaction-row-T001')).toBeTruthy();
     expect(screen.queryByTestId('transaction-row-T002')).toBeNull();
     expect(screen.getByTestId('transaction-row-T003')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '전체' }));
-    expect(await screen.findByRole('heading', { name: '최근 거래 (4)' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '거래 내역 (4)' })).toBeTruthy();
   });
 
   it('shows loading popups while cancelling and refreshing transactions', async () => {
@@ -205,11 +205,11 @@ describe('TransactionsPage', () => {
     cancelDeferred.resolve();
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '거래 취소 중' })).toBeNull());
 
-    fireEvent.click(screen.getByRole('button', { name: '최근 거래 새로고침' }));
+    fireEvent.click(screen.getByRole('button', { name: '거래 내역 새로고침' }));
     expect(await screen.findByRole('dialog', { name: '새로고침 중' })).toBeTruthy();
     expect(screen.getByText('새로고침하는 중입니다.')).toBeTruthy();
     refreshDeferred.resolve();
-    expect(await screen.findByRole('heading', { name: '최근 거래 (1)' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '거래 내역 (1)' })).toBeTruthy();
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '새로고침 중' })).toBeNull());
   });
 

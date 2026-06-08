@@ -196,9 +196,12 @@ export function BankApp() {
     <main data-testid="bank-shell" style={fontFamilyStyle} className={`min-h-screen ${theme.shell} p-4 text-slate-950`}>
       <section className="mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col justify-center gap-5">
         <header className="rounded-[2rem] border border-white/50 bg-white/90 p-5 text-center text-slate-950 shadow-lg">
-          <p className={`text-xs font-black tracking-[0.25em] ${theme.accentText}`}>CLASS BANK</p>
-          <h1 className="mt-2 text-4xl font-black sm:text-5xl">{title}</h1>
-          <p className="mt-2 text-sm font-bold text-slate-500">QR로 잔액을 확인하고 과제 보상을 받을 수 있어요.</p>
+          <h1 className="text-4xl font-black sm:text-5xl">{title}</h1>
+          <div className="mt-3 space-y-1 text-sm font-bold text-slate-500">
+            <p>- 내 계좌 버튼을 눌러 잔액과 거래 내역을 확인할 수 있어요.</p>
+            <p>- 과제 확인 버튼을 눌러 과제를 확인하고 완료할 수 있어요.</p>
+            <p>(※ 일부 과제는 허용된 학생만 완료할 수 있습니다.)</p>
+          </div>
         </header>
 
         <section className="grid gap-4 rounded-[2rem] bg-white/90 p-5 shadow-lg sm:grid-cols-2">

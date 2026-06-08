@@ -135,7 +135,15 @@ export function KioskApp() {
 
   const totalAmount = cartDetails.reduce((sum, item) => sum + item.subtotal, 0);
   const categories = useMemo(() => ['전체', ...Array.from(new Set(products.map((product) => product.category || '기타')))], [products]);
-  const filteredProducts = selectedCategory === '전체' ? products : products.filter((product) => (product.category || '기타') === selectedCategory);
+  const filteredProducts = useMemo(() => {
+    const categoryProducts = selectedCategory === '전체' ? products : products.filter((product) => (product.category || '기타') === selectedCategory);
+    return [...categoryProducts].sort((a, b) => {
+      const aSoldOut = a.stock <= 0;
+      const bSoldOut = b.stock <= 0;
+      if (aSoldOut !== bSoldOut) return aSoldOut ? 1 : -1;
+      return a.sortOrder - b.sortOrder || a.name.localeCompare(b.name);
+    });
+  }, [products, selectedCategory]);
   const theme = THEME_STYLES[themeColor];
   const fontFamilyCss = getFontFamilyCss(fontFamily);
   const fontFamilyStyle = fontFamilyCss ? { fontFamily: fontFamilyCss } : undefined;
@@ -322,14 +330,16 @@ export function KioskApp() {
 
           <div data-testid="product-scroll-block" className="mt-1 min-h-0 flex-1 overflow-y-auto pr-1 sm:mt-2">
             <div data-testid="product-grid" className="grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-3">
-              {filteredProducts.map((product) => (
+              {filteredProducts.map((product) => {
+                const isSoldOut = product.stock <= 0;
+                return (
                 <button
                   key={product.productId}
                   onClick={() => addToCart(product.productId)}
-                  disabled={!product.isActive || product.stock <= 0}
+                  disabled={!product.isActive || isSoldOut}
                   aria-label={`${product.name} ${formatCurrency(product.price, currencyUnit)} 담기`}
                   data-testid="product-card"
-                  className="rounded-[0.8rem] border border-slate-300 bg-white p-1 text-left text-[clamp(0.62rem,2vw,1rem)] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 sm:rounded-[0.9rem] sm:p-3"
+                  className={`rounded-[0.8rem] border border-slate-300 bg-white p-1 text-left text-[clamp(0.62rem,2vw,1rem)] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed sm:rounded-[0.9rem] sm:p-3 ${isSoldOut ? 'brightness-75 grayscale disabled:opacity-75' : 'disabled:opacity-50'}`}
                 >
                   <p className="truncate text-[clamp(0.55rem,1.8vw,0.75rem)] font-black">{product.category || '기타'}</p>
                   <div className="mt-1 flex aspect-[4/3] items-center justify-center rounded-md bg-slate-200 text-[clamp(1.5rem,8vw,3rem)] text-white sm:mt-2">
@@ -347,7 +357,8 @@ export function KioskApp() {
                     <p data-testid="product-card-stock" className={`shrink-0 whitespace-nowrap rounded-full ${theme.lightBg} px-1 py-0.5 text-[clamp(0.55rem,1.8vw,0.75rem)] font-black leading-tight ${theme.lightText} sm:px-2 sm:py-1`}>재고 {product.stock}</p>
                   </div>
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
           </section>
