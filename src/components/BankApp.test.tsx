@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BankApp } from './BankApp';
 
 const tasks = [
-  { taskId: 'T001', title: '책 10분 읽기', description: '책을 10분 읽었으면 완료', reward: 5, maxCompletionsPerStudent: 2, isActive: true, sortOrder: 1 },
+  { taskId: 'T001', title: '책 10분 읽기', description: '책을 10분 읽었으면 완료', reward: 5, isActive: true, sortOrder: 1 },
 ];
 
 function jsonResponse(payload: unknown, init?: ResponseInit) {
@@ -36,7 +36,7 @@ describe('BankApp', () => {
           { transactionId: 'T003', timestamp: '2026-05-21T02:00:00.000Z', studentId: 'S001', studentName: '김민준', items: [{ productId: 'P002', name: '지우개', price: 2, quantity: 1, subtotal: 2 }], totalAmount: 2, balanceBefore: 17, balanceAfter: 15, status: 'CANCELLED', operator: 'kiosk', cancelledAt: '2026-05-21T02:30:00.000Z' },
         ],
       });
-      if (url === '/api/tasks/T001/complete' && init?.method === 'POST') return jsonResponse({ task: tasks[0], student: { studentId: 'S001', name: '김민준', balance: 17 }, completedCount: 1, remainingCompletions: 1 });
+      if (url === '/api/tasks/T001/complete' && init?.method === 'POST') return jsonResponse({ task: tasks[0], student: { studentId: 'S001', name: '김민준', balance: 17 } });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     }));
   });
@@ -274,7 +274,7 @@ describe('BankApp', () => {
   });
 
   it('shows a loading popup while completing a task after QR recognition', async () => {
-    const completeRequest = deferredResponse({ task: tasks[0], student: { studentId: 'S001', name: '김민준', balance: 17 }, completedCount: 1, remainingCompletions: 1 });
+    const completeRequest = deferredResponse({ task: tasks[0], student: { studentId: 'S001', name: '김민준', balance: 17 } });
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '별빛 은행', currencyUnit: '별', themeColor: 'green', qrManualInputEnabled: true });

@@ -269,7 +269,7 @@ export function BankApp() {
             {tasks.map((task) => (
               <button key={task.taskId} type="button" onClick={() => openTaskDetail(task)} className={`w-full rounded-2xl border border-slate-200 ${theme.softBg} p-4 text-left font-black ${theme.softText}`}>
                 <span className="block text-lg">{task.title}</span>
-                <span className={`mt-1 block text-sm ${normalizeThemeColor(settings.themeColor) === 'black' ? 'text-slate-300' : 'text-slate-500'}`}>보상 {task.reward.toLocaleString()}{currencyUnit} · {task.maxCompletionsPerStudent}회까지</span>
+                <span className={`mt-1 block text-sm ${normalizeThemeColor(settings.themeColor) === 'black' ? 'text-slate-300' : 'text-slate-500'}`}>보상 {task.reward.toLocaleString()}{currencyUnit}</span>
               </button>
             ))}
           </div>
@@ -281,7 +281,7 @@ export function BankApp() {
           <p className="whitespace-pre-wrap rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-700">{selectedTask.description || '과제 설명이 없습니다.'}</p>
           <div className="mt-3 grid grid-cols-2 gap-2 text-center">
             <p className="rounded-2xl bg-amber-50 p-4 font-black text-amber-800">보상<br />{selectedTask.reward.toLocaleString()}{currencyUnit}</p>
-            <p className="rounded-2xl bg-sky-50 p-4 font-black text-sky-800">가능 횟수<br />{selectedTask.maxCompletionsPerStudent}회</p>
+            <p className="rounded-2xl bg-sky-50 p-4 font-black text-sky-800">완료 기준<br />학생당 1회</p>
           </div>
           <button type="button" onClick={openTaskScan} className={`mt-4 w-full rounded-2xl ${theme.accentBg} py-4 text-xl font-black`}>완료하기</button>
         </Modal>

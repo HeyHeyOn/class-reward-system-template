@@ -50,7 +50,6 @@ export type ClassTask = {
   title: string;
   description: string;
   reward: number;
-  maxCompletionsPerStudent: number;
   isActive: boolean;
   sortOrder: number;
   allowedStudentIds: string[];

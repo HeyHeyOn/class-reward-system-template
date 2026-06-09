@@ -70,7 +70,6 @@ export type TaskUpdate = {
   title: string;
   description: string;
   reward: number;
-  maxCompletionsPerStudent: number;
   isActive: boolean;
   sortOrder: number;
   allowedStudentIds?: string[];
@@ -84,8 +83,6 @@ export type TaskCompletionResult = {
   task: ClassTask;
   student: Student;
   completion: TaskCompletion;
-  completedCount: number;
-  remainingCompletions: number;
 };
 
 export type StudentBulkBalanceMode = 'set' | 'add' | 'subtract';
@@ -111,9 +108,9 @@ export type TaskBatchUpdate = TaskUpdate & {
 const REQUIRED_STUDENT_COLUMNS = ['studentId', 'name', 'balance', 'status'];
 const REQUIRED_PRODUCT_COLUMNS = ['productId', 'name', 'price', 'stock', 'isActive'];
 const REQUIRED_TRANSACTION_COLUMNS = ['transactionId', 'timestamp', 'studentId', 'studentName', 'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator'];
-const REQUIRED_TASK_COLUMNS = ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder'];
+const REQUIRED_TASK_COLUMNS = ['taskId', 'title', 'description', 'reward', 'isActive', 'sortOrder'];
 const REQUIRED_TASK_COMPLETION_COLUMNS = ['completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note'];
-const TASK_HEADERS = ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'createdAt', 'updatedAt', 'allowedStudentIds'];
+const TASK_HEADERS = ['taskId', 'title', 'description', 'reward', 'isActive', 'sortOrder', 'createdAt', 'updatedAt', 'allowedStudentIds'];
 const TASK_COMPLETION_HEADERS = ['completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note'];
 
 export type SheetSetting = {
@@ -302,7 +299,6 @@ export async function createTask(store: SheetsStore, create: TaskCreate): Promis
     title: create.title.trim(),
     description: create.description.trim(),
     reward: create.reward,
-    maxCompletionsPerStudent: create.maxCompletionsPerStudent,
     isActive: create.isActive,
     sortOrder: create.sortOrder,
     allowedStudentIds: normalizeUniqueIds(create.allowedStudentIds ?? []),
@@ -324,14 +320,13 @@ export async function updateTaskDetails(store: SheetsStore, taskId: string, upda
   await store.updateCell('Tasks', record.rowNumber, 'title', title);
   await store.updateCell('Tasks', record.rowNumber, 'description', description);
   await store.updateCell('Tasks', record.rowNumber, 'reward', update.reward);
-  await store.updateCell('Tasks', record.rowNumber, 'maxCompletionsPerStudent', update.maxCompletionsPerStudent);
   await store.updateCell('Tasks', record.rowNumber, 'isActive', update.isActive ? 'TRUE' : 'FALSE');
   await store.updateCell('Tasks', record.rowNumber, 'sortOrder', update.sortOrder);
   const taskRows = await store.getRows('Tasks');
   const allowedStudentIds = normalizeUniqueIds(update.allowedStudentIds ?? []);
   if (taskRows[0]?.includes('allowedStudentIds')) await store.updateCell('Tasks', record.rowNumber, 'allowedStudentIds', allowedStudentIds.join(','));
   if (taskRows[0]?.includes('updatedAt')) await store.updateCell('Tasks', record.rowNumber, 'updatedAt', new Date().toISOString());
-  return { taskId, title, description, reward: update.reward, maxCompletionsPerStudent: update.maxCompletionsPerStudent, isActive: update.isActive, sortOrder: update.sortOrder, allowedStudentIds };
+  return { taskId, title, description, reward: update.reward, isActive: update.isActive, sortOrder: update.sortOrder, allowedStudentIds };
 }
 
 
@@ -362,7 +357,6 @@ export async function updateTaskDetailsBatch(store: SheetsStore, updates: TaskBa
       { rowNumber: record.rowNumber, columnName: 'title', value: title },
       { rowNumber: record.rowNumber, columnName: 'description', value: description },
       { rowNumber: record.rowNumber, columnName: 'reward', value: update.reward },
-      { rowNumber: record.rowNumber, columnName: 'maxCompletionsPerStudent', value: update.maxCompletionsPerStudent },
       { rowNumber: record.rowNumber, columnName: 'isActive', value: update.isActive ? 'TRUE' : 'FALSE' },
       { rowNumber: record.rowNumber, columnName: 'sortOrder', value: update.sortOrder },
     );
@@ -370,7 +364,7 @@ export async function updateTaskDetailsBatch(store: SheetsStore, updates: TaskBa
     const hasAllowedStudentIds = taskRows[0]?.includes('allowedStudentIds') ?? false;
     if (hasAllowedStudentIds) cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'allowedStudentIds', value: allowedStudentIds.join(',') });
     if (hasUpdatedAt) cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'updatedAt', value: now });
-    tasks.push({ taskId: update.taskId, title, description, reward: update.reward, maxCompletionsPerStudent: update.maxCompletionsPerStudent, isActive: update.isActive, sortOrder: update.sortOrder, allowedStudentIds });
+    tasks.push({ taskId: update.taskId, title, description, reward: update.reward, isActive: update.isActive, sortOrder: update.sortOrder, allowedStudentIds });
   }
 
   await applyCellUpdates(store, 'Tasks', cellUpdates);
@@ -483,10 +477,8 @@ export async function completeTaskForStudent(store: SheetsStore, taskId: string,
   if (!task.allowedStudentIds.includes(studentRecord.student.studentId)) throw new Error('허가되지 않은 과제입니다.');
 
   const completions = await getTaskCompletions(store);
-  const completedCount = completions.filter((completion) => isCompletionForTaskInstance(completion, task) && completion.studentId === studentRecord.student.studentId && completion.status === 'SUCCESS').length;
-  if (completedCount >= task.maxCompletionsPerStudent) {
-    throw new Error(`이 과제는 학생 1명당 ${task.maxCompletionsPerStudent}번까지만 완료할 수 있습니다.`);
-  }
+  const alreadyCompleted = completions.some((completion) => isCompletionForTaskInstance(completion, task) && completion.studentId === studentRecord.student.studentId && completion.status === 'SUCCESS');
+  if (alreadyCompleted) throw new Error('이미 완료한 과제입니다.');
 
   const balanceBefore = studentRecord.student.balance;
   const balanceAfter = balanceBefore + task.reward;
@@ -523,8 +515,6 @@ export async function completeTaskForStudent(store: SheetsStore, taskId: string,
     task,
     student: { ...studentRecord.student, balance: balanceAfter },
     completion,
-    completedCount: completedCount + 1,
-    remainingCompletions: Math.max(0, task.maxCompletionsPerStudent - completedCount - 1),
   };
 }
 
@@ -1120,7 +1110,6 @@ function validateTaskId(taskId: string) {
 function validateTaskUpdate(update: TaskUpdate) {
   if (!update.title.trim()) throw new Error('과제명을 입력해 주세요.');
   if (!Number.isInteger(update.reward) || update.reward < 0) throw new Error('보상은 0 이상의 정수여야 합니다.');
-  if (!Number.isInteger(update.maxCompletionsPerStudent) || update.maxCompletionsPerStudent <= 0) throw new Error('학생당 완료 가능 횟수는 1 이상의 정수여야 합니다.');
   if (!Number.isInteger(update.sortOrder)) throw new Error('정렬 순서는 정수여야 합니다.');
 }
 
@@ -1142,7 +1131,7 @@ function buildTaskAppendRow(headers: string[], task: ClassTask, timestamp: strin
     title: task.title,
     description: task.description,
     reward: String(task.reward),
-    maxCompletionsPerStudent: String(task.maxCompletionsPerStudent),
+    maxCompletionsPerStudent: '1',
     isActive: task.isActive ? 'TRUE' : 'FALSE',
     sortOrder: String(task.sortOrder),
     createdAt: timestamp,
@@ -1156,16 +1145,14 @@ function parseTaskRow(row: string[], headerIndex: Map<string, number>): ClassTas
   const taskId = getRowCell(row, headerIndex, 'taskId');
   const title = getRowCell(row, headerIndex, 'title');
   const reward = parseNumberValue(getRowCell(row, headerIndex, 'reward'));
-  const maxCompletionsPerStudent = parseNumberValue(getRowCell(row, headerIndex, 'maxCompletionsPerStudent'));
   const sortOrder = parseNumberValue(getRowCell(row, headerIndex, 'sortOrder')) ?? 0;
-  if (!taskId || !title || reward === null || maxCompletionsPerStudent === null) return null;
+  if (!taskId || !title || reward === null) return null;
   const createdAt = getRowCell(row, headerIndex, 'createdAt');
   return {
     taskId,
     title,
     description: getRowCell(row, headerIndex, 'description'),
     reward,
-    maxCompletionsPerStudent,
     isActive: parseBooleanValue(getRowCell(row, headerIndex, 'isActive')),
     sortOrder,
     allowedStudentIds: parseAllowedStudentIds(getRowCell(row, headerIndex, 'allowedStudentIds')),

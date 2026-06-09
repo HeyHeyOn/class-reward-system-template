@@ -16,7 +16,6 @@ export async function PATCH(request: Request) {
           title: String(task.title ?? ''),
           description: String(task.description ?? ''),
           reward: Number(task.reward),
-          maxCompletionsPerStudent: Number(task.maxCompletionsPerStudent),
           isActive: Boolean(task.isActive),
           sortOrder: Number(task.sortOrder),
           allowedStudentIds: Array.isArray(task.allowedStudentIds) ? task.allowedStudentIds.map((id: unknown) => String(id)) : [],

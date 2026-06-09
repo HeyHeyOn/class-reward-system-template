@@ -54,7 +54,7 @@ type NewProductDraft = {
 
 const EMPTY_STUDENT: NewStudentDraft = { studentId: '', name: '', balance: 0, status: 'ACTIVE' };
 const EMPTY_PRODUCT: NewProductDraft = { name: '', price: 0, stock: 0, isActive: true, imageUrl: '', category: '', sortOrder: 1 };
-const EMPTY_TASK: Omit<TaskDraft, 'taskId'> = { title: '', description: '', reward: 0, maxCompletionsPerStudent: 1, isActive: true, sortOrder: 1, allowedStudentIds: [] };
+const EMPTY_TASK: Omit<TaskDraft, 'taskId'> = { title: '', description: '', reward: 0, isActive: true, sortOrder: 1, allowedStudentIds: [] };
 
 const ADMIN_THEME: Record<ThemeColor, AdminTheme> = {
   blue: { shell: 'bg-[#EDF5FA]', pageText: 'text-slate-950', accentText: 'text-[#365F78]', accentBg: 'bg-[#B8D0E0]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#B8D0E0] text-[#1F1F1F]', idleTab: 'bg-[#EDF5FA] text-slate-800 hover:bg-[#D8E9F2]', statBg: 'bg-[#EDF5FA]', logoColor: 'bg-[#365F78]', softBg: 'bg-[#EDF5FA]/80', softText: 'text-slate-700', focusBorder: 'focus:border-[#B8D0E0]' },
@@ -484,7 +484,7 @@ export function AdminManagePage() {
   }
 
   function buildTaskPayload(list: TaskDraft[]) {
-    return list.map((task) => ({ taskId: task.taskId, title: task.title, description: task.description, reward: task.reward, maxCompletionsPerStudent: task.maxCompletionsPerStudent, isActive: task.isActive, sortOrder: task.sortOrder, allowedStudentIds: task.allowedStudentIds ?? [] }));
+    return list.map((task) => ({ taskId: task.taskId, title: task.title, description: task.description, reward: task.reward, isActive: task.isActive, sortOrder: task.sortOrder, allowedStudentIds: task.allowedStudentIds ?? [] }));
   }
 
   function nextPrefixedId(existingIds: string[], prefix: 'P' | 'T') {
@@ -681,7 +681,6 @@ export function AdminManagePage() {
         title: newTask.title,
         description: newTask.description,
         reward: newTask.reward,
-        maxCompletionsPerStudent: newTask.maxCompletionsPerStudent,
         isActive: newTask.isActive,
         sortOrder: newTask.sortOrder,
         allowedStudentIds: newTask.allowedStudentIds ?? [],
@@ -1062,9 +1061,8 @@ export function AdminManagePage() {
                   <span>새 과제 설명</span>
                   <textarea aria-label="새 과제 설명" value={newTask.description} onChange={(event) => setNewTask((current) => ({ ...current, description: event.target.value }))} className="mt-1 min-h-24 w-full rounded-xl border border-slate-200 bg-white px-2 py-2 text-sm text-slate-950 outline-none transition focus:border-slate-300" />
                 </label>
-                <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-3">
+                <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
                   <NumberInput label="새 과제 보상" value={newTask.reward} onChange={(value) => setNewTask((current) => ({ ...current, reward: value }))} compact />
-                  <NumberInput label="새 과제 완료 가능 횟수" value={newTask.maxCompletionsPerStudent} onChange={(value) => setNewTask((current) => ({ ...current, maxCompletionsPerStudent: value }))} compact />
                   <NumberInput label="새 과제 정렬" value={newTask.sortOrder} onChange={(value) => setNewTask((current) => ({ ...current, sortOrder: value }))} compact />
                 </div>
                 <label className={`flex items-center gap-2 rounded-xl ${theme.softBg} px-3 py-2 text-sm font-black ${theme.softText}`}>
@@ -1098,18 +1096,17 @@ export function AdminManagePage() {
               </div>
               <div data-testid="task-list-scroll" className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
                 <div className="min-w-[540px] divide-y divide-slate-100">
-                <div data-testid="task-header-row" className="grid grid-cols-[24px_minmax(5rem,1fr)_64px_64px_48px_38px_52px_minmax(3rem,0.7fr)_46px_40px] items-center gap-0.5 bg-slate-100 px-1.5 py-1 text-[10px] font-black text-slate-500">
-                  <span>선택</span><span>과제명</span><span>보상</span><span>횟수</span><span>순서</span><span>활성</span><span>부여</span><span>상세</span><span>초기화</span><span>삭제</span>
+                <div data-testid="task-header-row" className="grid grid-cols-[24px_minmax(5rem,1fr)_64px_48px_38px_52px_minmax(3rem,0.7fr)_46px_40px] items-center gap-0.5 bg-slate-100 px-1.5 py-1 text-[10px] font-black text-slate-500">
+                  <span>선택</span><span>과제명</span><span>보상</span><span>순서</span><span>활성</span><span>부여</span><span>상세</span><span>초기화</span><span>삭제</span>
                 </div>
                 {tasks.map((task) => (
-                  <div data-testid="task-row" key={task.taskId} className="grid grid-cols-[24px_minmax(5rem,1fr)_64px_64px_48px_38px_52px_minmax(3rem,0.7fr)_46px_40px] items-center gap-0.5 px-1.5 py-1 text-[11px]">
+                  <div data-testid="task-row" key={task.taskId} className="grid grid-cols-[24px_minmax(5rem,1fr)_64px_48px_38px_52px_minmax(3rem,0.7fr)_46px_40px] items-center gap-0.5 px-1.5 py-1 text-[11px]">
                     <label className="flex items-center justify-center">
                       <input aria-label={`${task.taskId} 선택`} checked={selectedTaskIds.includes(task.taskId)} onChange={() => toggleTask(task.taskId)} type="checkbox" />
                       <span className="sr-only">선택</span>
                     </label>
                     <TextInput label={`${task.taskId} 과제명`} value={task.title} onChange={(value) => updateTask(task.taskId, { title: value })} dense />
                     <NumberInput label={`${task.taskId} 보상`} value={task.reward} onChange={(value) => updateTask(task.taskId, { reward: value })} dense />
-                    <NumberInput label={`${task.taskId} 완료 가능 횟수`} value={task.maxCompletionsPerStudent} onChange={(value) => updateTask(task.taskId, { maxCompletionsPerStudent: value })} dense />
                     <NumberInput label={`${task.taskId} 정렬`} value={task.sortOrder} onChange={(value) => updateTask(task.taskId, { sortOrder: value })} dense />
                     <label className={`flex h-8 items-center justify-center rounded-lg ${theme.softBg} text-[10px] font-bold ${theme.softText}`}>
                       <input aria-label={`${task.taskId} 활성`} checked={Boolean(task.isActive)} onChange={(event) => updateTask(task.taskId, { isActive: event.target.checked })} type="checkbox" />

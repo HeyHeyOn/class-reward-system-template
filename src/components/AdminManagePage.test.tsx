@@ -11,8 +11,8 @@ const products = [
   { productId: 'P002', name: '지우개', price: 500, stock: 10, isActive: true, category: '문구', sortOrder: 2 },
 ];
 const tasks = [
-  { taskId: 'T001', title: '책 읽기', description: '책 10분 읽기', reward: 5, maxCompletionsPerStudent: 2, isActive: true, sortOrder: 1, allowedStudentIds: ['S001'] },
-  { taskId: 'T002', title: '수학 학습지', description: '1장 풀기', reward: 10, maxCompletionsPerStudent: 1, isActive: true, sortOrder: 2, allowedStudentIds: [] },
+  { taskId: 'T001', title: '책 읽기', description: '책 10분 읽기', reward: 5, isActive: true, sortOrder: 1, allowedStudentIds: ['S001'] },
+  { taskId: 'T002', title: '수학 학습지', description: '1장 풀기', reward: 10, isActive: true, sortOrder: 2, allowedStudentIds: [] },
 ];
 const transactions = [
   {
@@ -67,7 +67,7 @@ describe('AdminManagePage', () => {
           return jsonResponse({ productId: 'P003', name: '간식쿠폰', price: 1000, stock: 5, isActive: true, imageUrl: 'https://example.com/snack.png', category: '쿠폰', sortOrder: 3 });
         }
         if (url === '/api/tasks' && init?.method === 'POST') {
-          return jsonResponse({ taskId: 'T003', title: '영어 단어', description: '5개 외우기', reward: 10, maxCompletionsPerStudent: 1, isActive: true, sortOrder: 3, allowedStudentIds: [] });
+          return jsonResponse({ taskId: 'T003', title: '영어 단어', description: '5개 외우기', reward: 10, isActive: true, sortOrder: 3, allowedStudentIds: [] });
         }
         if (url === '/api/tasks/batch' && init?.method === 'PATCH') {
           return jsonResponse([
@@ -815,7 +815,7 @@ describe('AdminManagePage', () => {
     expect(screen.getByTestId('task-list-scroll').className).toContain('overflow-x-auto');
     expect(screen.getByTestId('task-bulk-actions').className).toContain('flex-wrap');
     const taskRow = container.querySelector('[data-testid="task-row"]');
-    expect(taskRow?.className).toContain('grid-cols-[24px_minmax(5rem,1fr)_64px_64px_48px_38px_52px_minmax(3rem,0.7fr)_46px_40px]');
+    expect(taskRow?.className).toContain('grid-cols-[24px_minmax(5rem,1fr)_64px_48px_38px_52px_minmax(3rem,0.7fr)_46px_40px]');
     expect(taskRow?.className).toContain('items-center');
     expect(screen.queryByLabelText('T001 설명')).toBeNull();
 
@@ -834,7 +834,7 @@ describe('AdminManagePage', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         tasks: [
-          { taskId: 'T001', title: '책 읽기 수정', description: '책 20분 읽기', reward: 7, maxCompletionsPerStudent: 2, isActive: true, sortOrder: 1, allowedStudentIds: ['S001'] },
+          { taskId: 'T001', title: '책 읽기 수정', description: '책 20분 읽기', reward: 7, isActive: true, sortOrder: 1, allowedStudentIds: ['S001'] },
           ],
       }),
     }));
