@@ -7,7 +7,7 @@ import { getFontFamilyCss, type FontFamily } from '@/lib/fontSettings';
 import { QrScanner } from './QrScanner';
 
 type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'black' | 'navy';
-type Settings = { currencyUnit?: string; appTitle?: string; bankTitle?: string; themeColor?: string; fontFamily?: FontFamily };
+type Settings = { currencyUnit?: string; appTitle?: string; bankTitle?: string; themeColor?: string; fontFamily?: FontFamily; qrManualInputEnabled?: boolean };
 type BankView = 'home' | 'balance-scan' | 'balance-result' | 'tasks-list' | 'task-detail' | 'task-scan' | 'task-success' | 'task-failure';
 type BalanceResult = { studentId: string; name: string; balance: number; transactions?: Transaction[] } | null;
 type TaskResult = { message: string; balanceAfter?: number; reward?: number; studentName?: string } | null;
@@ -65,7 +65,7 @@ function normalizeThemeColor(value: unknown): ThemeColor {
 }
 
 export function BankApp() {
-  const [settings, setSettings] = useState<Settings>({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', fontFamily: 'default' });
+  const [settings, setSettings] = useState<Settings>({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', fontFamily: 'default', qrManualInputEnabled: false });
   const [tasks, setTasks] = useState<ClassTask[]>([]);
   const [selectedTask, setSelectedTask] = useState<ClassTask | null>(null);
   const [view, setView] = useState<BankView>('home');
@@ -95,7 +95,7 @@ export function BankApp() {
       const payload = await response.json();
       if (response.ok) setSettings(payload);
     } catch {
-      setSettings({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', fontFamily: 'default' });
+      setSettings({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', fontFamily: 'default', qrManualInputEnabled: false });
     } finally {
       setIsSettingsLoading(false);
     }
@@ -213,7 +213,7 @@ export function BankApp() {
       {loadingDialog ? <LoadingDialog title={loadingDialog.title} message={loadingDialog.message} /> : null}
 
       {view === 'balance-scan' ? (
-        <ScanDialog title="내 계좌 QR 인식" description="학생 개인 QR 코드를 카메라에 보여 주세요." manualValue={manualQr} onManualChange={setManualQr} onClose={() => setView('home')} onSubmit={() => checkBalance(manualQr)} onScan={checkBalance} submitLabel="QR 값으로 내 계좌 확인" />
+        <ScanDialog title="내 계좌 QR 인식" description="학생 개인 QR 코드를 카메라에 보여 주세요." manualValue={manualQr} onManualChange={setManualQr} onClose={() => setView('home')} onSubmit={() => checkBalance(manualQr)} onScan={checkBalance} submitLabel="QR 값으로 내 계좌 확인" manualInputEnabled={Boolean(settings.qrManualInputEnabled)} />
       ) : null}
 
       {view === 'balance-result' ? (
@@ -288,7 +288,7 @@ export function BankApp() {
       ) : null}
 
       {view === 'task-scan' && selectedTask ? (
-        <ScanDialog title="과제 완료 QR 인식" description={`${selectedTask.title} 완료 보상을 받을 학생 QR을 인식합니다.`} manualValue={manualQr} onManualChange={setManualQr} onClose={() => setView('task-detail')} onSubmit={() => completeSelectedTask(manualQr)} onScan={completeSelectedTask} submitLabel="QR 값으로 완료하기" />
+        <ScanDialog title="과제 완료 QR 인식" description={`${selectedTask.title} 완료 보상을 받을 학생 QR을 인식합니다.`} manualValue={manualQr} onManualChange={setManualQr} onClose={() => setView('task-detail')} onSubmit={() => completeSelectedTask(manualQr)} onScan={completeSelectedTask} submitLabel="QR 값으로 완료하기" manualInputEnabled={Boolean(settings.qrManualInputEnabled)} />
       ) : null}
 
       {view === 'task-success' ? (
@@ -352,21 +352,30 @@ function Modal({ title, children, onClose, closeLabel }: { title: string; childr
   );
 }
 
-function ScanDialog({ title, description, manualValue, onManualChange, onClose, onSubmit, onScan, submitLabel }: { title: string; description: string; manualValue: string; onManualChange: (value: string) => void; onClose: () => void; onSubmit: () => void; onScan: (value: string) => void; submitLabel: string }) {
+function ScanDialog({ title, description, manualValue, onManualChange, onClose, onSubmit, onScan, submitLabel, manualInputEnabled }: { title: string; description: string; manualValue: string; onManualChange: (value: string) => void; onClose: () => void; onSubmit: () => void; onScan: (value: string) => void; submitLabel: string; manualInputEnabled: boolean }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 text-slate-950">
       <section role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-xl rounded-[2rem] bg-white p-5 shadow-2xl">
         <h2 className="text-2xl font-black">{title}</h2>
         <p className="mt-1 text-sm font-bold text-slate-500">{description}</p>
         <div className="mt-4 flex justify-center"><QrScanner onScan={onScan} /></div>
-        <label className="mt-4 block text-sm font-bold text-slate-700">
-          <span>QR 값 직접 입력</span>
-          <input aria-label="QR 값 직접 입력" value={manualValue} onChange={(event) => onManualChange(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 text-slate-950 outline-none focus:border-sky-400" placeholder="S001" />
-        </label>
-        <div className="mt-4 flex gap-2">
-          <button type="button" onClick={onClose} className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700">취소</button>
-          <button type="button" onClick={onSubmit} className="flex-1 rounded-xl bg-sky-500 py-3 font-black text-white">{submitLabel}</button>
-        </div>
+        {manualInputEnabled ? (
+          <>
+            <label className="mt-4 block text-sm font-bold text-slate-700">
+              <span>QR 값 직접 입력</span>
+              <input aria-label="QR 값 직접 입력" value={manualValue} onChange={(event) => onManualChange(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 text-slate-950 outline-none focus:border-sky-400" placeholder="S001" />
+            </label>
+            <div className="mt-4 flex gap-2">
+              <button type="button" onClick={onClose} className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700">취소</button>
+              <button type="button" onClick={onSubmit} className="flex-1 rounded-xl bg-sky-500 py-3 font-black text-white">{submitLabel}</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="mt-4 rounded-xl bg-slate-100 p-3 text-center text-sm font-black text-slate-600">QR 직접 입력은 시스템 설정에서 차단되어 있습니다. 카메라로 학생 QR을 인식해 주세요.</p>
+            <button type="button" onClick={onClose} className="mt-4 w-full rounded-xl bg-slate-200 py-3 font-black text-slate-700">취소</button>
+          </>
+        )}
       </section>
     </div>
   );

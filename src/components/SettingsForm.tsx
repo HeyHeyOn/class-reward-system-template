@@ -10,6 +10,7 @@ type SettingsResponse = {
   bankTitle: string;
   themeColor: string;
   fontFamily: FontFamily;
+  qrManualInputEnabled: boolean;
   source: 'runtime' | 'env' | 'unset';
   adminPasswordConfigured?: boolean;
 };
@@ -27,6 +28,7 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
   const [bankTitle, setBankTitle] = useState('학급 은행');
   const [themeColor, setThemeColor] = useState('blue');
   const [fontFamily, setFontFamily] = useState<FontFamily>('default');
+  const [qrManualInputEnabled, setQrManualInputEnabled] = useState(false);
   const [currentSettings, setCurrentSettings] = useState<SettingsResponse | null>(null);
   const [message, setMessage] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
@@ -48,6 +50,7 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
         setBankTitle(settings.bankTitle ?? '학급 은행');
         setThemeColor(settings.themeColor ?? 'blue');
         setFontFamily(normalizeFontFamily(settings.fontFamily));
+        setQrManualInputEnabled(Boolean(settings.qrManualInputEnabled));
       }
     }
 
@@ -69,7 +72,7 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
       const response = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ spreadsheetIdOrUrl, currencyUnit, appTitle, bankTitle, themeColor, fontFamily, adminPassword: adminPassword.trim() || undefined }),
+        body: JSON.stringify({ spreadsheetIdOrUrl, currencyUnit, appTitle, bankTitle, themeColor, fontFamily, qrManualInputEnabled, adminPassword: adminPassword.trim() || undefined }),
       });
       const payload = (await response.json()) as SettingsResponse | { error: string };
 
@@ -85,6 +88,7 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
       setBankTitle(payload.bankTitle);
       setThemeColor(payload.themeColor ?? 'blue');
       setFontFamily(normalizeFontFamily(payload.fontFamily));
+      setQrManualInputEnabled(Boolean(payload.qrManualInputEnabled));
       if (adminPassword.trim()) {
         setSavedAdminPassword(adminPassword.trim());
         setAdminPassword('');
@@ -175,6 +179,20 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
         </select>
       </label>
 
+      <label className="mt-4 flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+        <input
+          aria-label="QR 값 직접 입력 허용"
+          type="checkbox"
+          checked={qrManualInputEnabled}
+          onChange={(event) => setQrManualInputEnabled(event.target.checked)}
+          className="mt-1 h-5 w-5 rounded border-slate-300 accent-slate-950"
+        />
+        <span>
+          <span className="block text-sm font-black text-slate-800">QR 값 직접 입력 허용</span>
+          <span className="mt-1 block text-xs font-bold text-slate-500">꺼두면 매점 결제와 은행/과제 화면에서 카메라 QR 인식만 사용할 수 있어, 다른 학생 번호를 직접 입력하는 악용을 줄일 수 있습니다.</span>
+        </span>
+      </label>
+
       <label className="mt-4 block">
         <span className="text-sm font-bold text-slate-700">관리자 암호 설정</span>
         <input
@@ -209,6 +227,7 @@ export function SettingsForm({ linkedStudentCount, linkedProductCount, onSetting
         <p>은행 제목: {currentSettings?.bankTitle ?? bankTitle}</p>
         <p>테마 색상: {currentSettings?.themeColor ?? themeColor}</p>
         <p>글꼴: {FONT_FAMILY_OPTIONS.find((option) => option.value === (currentSettings?.fontFamily ?? fontFamily))?.label ?? '기본 글꼴'}</p>
+        <p>QR 직접 입력: {(currentSettings?.qrManualInputEnabled ?? qrManualInputEnabled) ? '허용' : '차단'}</p>
         <p>관리자 암호: {currentSettings?.adminPasswordConfigured ? '설정됨' : '미설정'}</p>
         <p className="mt-2 font-bold text-sky-800">
           관리자 목록도 이 설정을 사용합니다: 학생 {linkedStudentCount ?? 0}명 · 상품 {linkedProductCount ?? 0}개

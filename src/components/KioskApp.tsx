@@ -37,7 +37,7 @@ type FailureState = {
 
 type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'black' | 'navy';
 
-type KioskSettings = { currencyUnit?: string; appTitle?: string; themeColor?: ThemeColor; fontFamily?: FontFamily };
+type KioskSettings = { currencyUnit?: string; appTitle?: string; themeColor?: ThemeColor; fontFamily?: FontFamily; qrManualInputEnabled?: boolean };
 
 const THEME_STYLES: Record<ThemeColor, { shell: string; accentText: string; accentBg: string; selectedText: string; lightBg: string; lightText: string; hoverBg: string; ring: string }> = {
   blue: { shell: 'bg-[#EDF5FA]', accentText: 'text-[#365F78]', accentBg: 'bg-[#B8D0E0]', selectedText: 'text-[#1F1F1F]', lightBg: 'bg-[#EDF5FA]', lightText: 'text-slate-700', hoverBg: 'hover:bg-[#D8E9F2]', ring: 'focus:ring-[#B8D0E0]' },
@@ -77,6 +77,7 @@ export function KioskApp() {
   const [appTitle, setAppTitle] = useState('학급 매점');
   const [themeColor, setThemeColor] = useState<ThemeColor>('white');
   const [fontFamily, setFontFamily] = useState<FontFamily>('default');
+  const [qrManualInputEnabled, setQrManualInputEnabled] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('전체');
 
   const loadProducts = useCallback(async (options: { shouldApply?: () => boolean } = {}) => {
@@ -100,6 +101,7 @@ export function KioskApp() {
       if (settings?.appTitle) setAppTitle(settings.appTitle);
       setThemeColor(normalizeThemeColor(settings?.themeColor));
       setFontFamily(settings?.fontFamily ?? 'default');
+      setQrManualInputEnabled(Boolean(settings?.qrManualInputEnabled));
       setMessage('');
     } catch (error) {
       if (options.shouldApply?.() !== false) setMessage(error instanceof Error ? error.message : '상품 정보를 불러오지 못했습니다.');
@@ -447,6 +449,7 @@ export function KioskApp() {
           failure={failure}
           currencyUnit={currencyUnit}
           themeColor={themeColor}
+          qrManualInputEnabled={qrManualInputEnabled}
         />
       ) : null}
     </main>
@@ -484,6 +487,7 @@ type PaymentModalProps = {
   failure: FailureState | null;
   currencyUnit: string;
   themeColor: ThemeColor;
+  qrManualInputEnabled: boolean;
 };
 
 function PaymentModal({
@@ -503,6 +507,7 @@ function PaymentModal({
   failure,
   currencyUnit,
   themeColor,
+  qrManualInputEnabled,
 }: PaymentModalProps) {
   const theme = THEME_STYLES[themeColor];
   const dialogLabel = step === 'checkout' ? '결제 확인' : step === 'processing' ? '결제 중' : step === 'failure' ? '결제 실패' : '결제 완료';
@@ -530,21 +535,25 @@ function PaymentModal({
                 </button>
               </div>
             </div>
-            <form onSubmit={onManualQrSubmit} className="mt-4 flex flex-col gap-2 rounded-xl bg-slate-100 p-3 sm:flex-row">
-              <label className="sr-only" htmlFor="manual-qr-value">
-                QR 값 직접 입력
-              </label>
-              <input
-                id="manual-qr-value"
-                value={manualQrValue}
-                onChange={(event) => setManualQrValue(event.target.value)}
-                placeholder="카메라가 안 되면 예: S001"
-                className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-4 py-3 text-lg font-bold outline-none focus:border-sky-400"
-              />
-              <button type="submit" disabled={isCheckingOut} className="rounded-xl bg-sky-500 px-5 py-3 text-lg font-black text-white disabled:bg-slate-300">
-                QR 값으로 결제하기
-              </button>
-            </form>
+            {qrManualInputEnabled ? (
+              <form onSubmit={onManualQrSubmit} className="mt-4 flex flex-col gap-2 rounded-xl bg-slate-100 p-3 sm:flex-row">
+                <label className="sr-only" htmlFor="manual-qr-value">
+                  QR 값 직접 입력
+                </label>
+                <input
+                  id="manual-qr-value"
+                  value={manualQrValue}
+                  onChange={(event) => setManualQrValue(event.target.value)}
+                  placeholder="카메라가 안 되면 예: S001"
+                  className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-4 py-3 text-lg font-bold outline-none focus:border-sky-400"
+                />
+                <button type="submit" disabled={isCheckingOut} className="rounded-xl bg-sky-500 px-5 py-3 text-lg font-black text-white disabled:bg-slate-300">
+                  QR 값으로 결제하기
+                </button>
+              </form>
+            ) : (
+              <p className="mt-4 rounded-xl bg-slate-100 p-3 text-center text-sm font-black text-slate-600">QR 직접 입력은 시스템 설정에서 차단되어 있습니다. 카메라로 학생 QR을 인식해 주세요.</p>
+            )}
           </>
         ) : null}
 

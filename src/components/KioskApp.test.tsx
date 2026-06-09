@@ -33,7 +33,7 @@ describe('KioskApp', () => {
         }
 
         if (url === '/api/settings') {
-          return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '햇살반 매점', themeColor: 'pink', fontFamily: 'school-safe-notice', source: 'runtime' });
+          return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '햇살반 매점', themeColor: 'pink', fontFamily: 'school-safe-notice', qrManualInputEnabled: true, source: 'runtime' });
         }
 
         if (url === '/api/students/S001') {
@@ -115,7 +115,7 @@ describe('KioskApp', () => {
           { productId: 'P003', name: '판매 마이쮸', price: 100, stock: 8, isActive: true, category: '간식', sortOrder: 3 },
         ]);
       }
-      if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '햇살반 매점', themeColor: 'pink', source: 'runtime' });
+      if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '햇살반 매점', themeColor: 'pink', qrManualInputEnabled: true, source: 'runtime' });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
 
@@ -161,7 +161,7 @@ describe('KioskApp', () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/products') return productGate.then(() => jsonResponse(products));
-      if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', themeColor: 'white', source: 'runtime' });
+      if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', themeColor: 'white', qrManualInputEnabled: true, source: 'runtime' });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
 
@@ -176,7 +176,7 @@ describe('KioskApp', () => {
 
   it('applies the new navy theme from settings', async () => {
     vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse(products));
-    vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '남색 매점', themeColor: 'navy', source: 'runtime' }));
+    vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '남색 매점', themeColor: 'navy', qrManualInputEnabled: true, source: 'runtime' }));
     const { container } = render(<KioskApp />);
 
     expect(await screen.findByRole('heading', { name: '남색 매점' })).toBeTruthy();
@@ -187,7 +187,7 @@ describe('KioskApp', () => {
 
   it('keeps black kiosk theme cart action buttons readable on dark local backgrounds', async () => {
     vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse(products));
-    vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '검정 매점', themeColor: 'black', source: 'runtime' }));
+    vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '검정 매점', themeColor: 'black', qrManualInputEnabled: true, source: 'runtime' }));
     render(<KioskApp />);
 
     expect(await screen.findByRole('heading', { name: '검정 매점' })).toBeTruthy();
@@ -201,7 +201,7 @@ describe('KioskApp', () => {
 
   it('applies softer pastel theme classes from settings on the kiosk', async () => {
     vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse(products));
-    vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '분홍 매점', themeColor: 'pink', source: 'runtime' }));
+    vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '분홍 매점', themeColor: 'pink', qrManualInputEnabled: true, source: 'runtime' }));
     const { container } = render(<KioskApp />);
 
     expect(await screen.findByRole('heading', { name: '분홍 매점' })).toBeTruthy();
@@ -295,7 +295,7 @@ describe('KioskApp', () => {
 
   it('recovers from malformed QR/student lookup errors instead of staying on the processing popup', async () => {
     vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse(products));
-    vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', source: 'runtime' }));
+    vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', qrManualInputEnabled: true, source: 'runtime' }));
     vi.mocked(fetch).mockImplementationOnce(async () => {
       throw new SyntaxError('Unexpected token < in JSON');
     });

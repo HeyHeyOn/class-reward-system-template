@@ -24,4 +24,5 @@ export const DEFAULT_SETTINGS: Array<{ key: string; value: string }> = [
   { key: 'bankTitle', value: '학급 은행' },
   { key: 'currencyUnit', value: '원' },
   { key: 'themeColor', value: 'blue' },
+  { key: 'qrManualInputEnabled', value: 'FALSE' },
 ];

@@ -13,6 +13,7 @@ export type AppSettings = {
   bankTitle: string;
   themeColor: ThemeColor;
   fontFamily: FontFamily;
+  qrManualInputEnabled: boolean;
   schemaVersion: number;
   systemVersion: string;
   systemName: string;
@@ -36,6 +37,7 @@ type SaveSettingsOptions = {
   bankTitle?: string;
   themeColor?: string;
   fontFamily?: string;
+  qrManualInputEnabled?: boolean;
   env?: SettingsEnv;
 };
 
@@ -52,6 +54,7 @@ const DEFAULT_THEME_COLOR: ThemeColor = 'white';
 const DEFAULT_SCHEMA_VERSION = LATEST_SCHEMA_VERSION;
 const DEFAULT_SYSTEM_VERSION = SYSTEM_VERSION;
 const DEFAULT_SYSTEM_NAME = SYSTEM_NAME_KO;
+const DEFAULT_QR_MANUAL_INPUT_ENABLED = false;
 const THEME_COLORS = new Set<ThemeColor>(['blue', 'pink', 'yellow', 'green', 'purple', 'white', 'black', 'navy']);
 
 export function extractSpreadsheetId(value: string): string | null {
@@ -102,6 +105,7 @@ export async function getAppSettings(options: SettingsOptions = {}): Promise<App
         bankTitle: normalizeBankTitle(sheetSettings.bankTitle),
         themeColor: normalizeThemeColor(sheetSettings.themeColor),
         fontFamily: normalizeFontFamily(sheetSettings.fontFamily),
+        qrManualInputEnabled: normalizeQrManualInputEnabled(sheetSettings.qrManualInputEnabled),
         schemaVersion: normalizeSchemaVersion(sheetSettings.schemaVersion),
         systemVersion: normalizeSystemVersion(sheetSettings.systemVersion),
         systemName: normalizeSystemName(sheetSettings.systemName),
@@ -140,11 +144,13 @@ export async function saveAppSettings(options: SaveSettingsOptions): Promise<App
   const bankTitle = normalizeBankTitle(options.bankTitle);
   const themeColor = normalizeThemeColor(options.themeColor);
   const fontFamily = normalizeFontFamily(options.fontFamily);
+  const qrManualInputEnabled = normalizeQrManualInputEnabled(options.qrManualInputEnabled);
   await saveSheetSetting(options.settingsStore, { key: 'currencyUnit', value: currencyUnit });
   await saveSheetSetting(options.settingsStore, { key: 'appTitle', value: appTitle });
   await saveSheetSetting(options.settingsStore, { key: 'bankTitle', value: bankTitle });
   await saveSheetSetting(options.settingsStore, { key: 'themeColor', value: themeColor });
   await saveSheetSetting(options.settingsStore, { key: 'fontFamily', value: fontFamily });
+  await saveSheetSetting(options.settingsStore, { key: 'qrManualInputEnabled', value: qrManualInputEnabled ? 'TRUE' : 'FALSE' });
   await saveSheetSetting(options.settingsStore, { key: 'schemaVersion', value: String(DEFAULT_SCHEMA_VERSION) });
   await saveSheetSetting(options.settingsStore, { key: 'systemVersion', value: DEFAULT_SYSTEM_VERSION });
   await saveSheetSetting(options.settingsStore, { key: 'systemName', value: DEFAULT_SYSTEM_NAME });
@@ -159,6 +165,7 @@ export async function saveAppSettings(options: SaveSettingsOptions): Promise<App
     bankTitle,
     themeColor,
     fontFamily,
+    qrManualInputEnabled,
     schemaVersion: DEFAULT_SCHEMA_VERSION,
     systemVersion: DEFAULT_SYSTEM_VERSION,
     systemName: DEFAULT_SYSTEM_NAME,
@@ -183,6 +190,15 @@ export function normalizeBankTitle(value: unknown): string {
   if (typeof value !== 'string') return DEFAULT_BANK_TITLE;
   const trimmed = value.trim();
   return trimmed ? trimmed.slice(0, 30) : DEFAULT_BANK_TITLE;
+}
+
+export function normalizeQrManualInputEnabled(value: unknown): boolean {
+  if (typeof value === 'boolean') return value;
+  if (typeof value !== 'string') return DEFAULT_QR_MANUAL_INPUT_ENABLED;
+  const trimmed = value.trim().toLowerCase();
+  if (['true', '1', 'yes', 'y', 'on', 'enabled', '허용', '켜기'].includes(trimmed)) return true;
+  if (['false', '0', 'no', 'n', 'off', 'disabled', '차단', '끄기'].includes(trimmed)) return false;
+  return DEFAULT_QR_MANUAL_INPUT_ENABLED;
 }
 
 export function normalizeSchemaVersion(value: unknown): number {
@@ -210,6 +226,7 @@ function defaultAppSettings(spreadsheetId: string, source: AppSettings['source']
     bankTitle: DEFAULT_BANK_TITLE,
     themeColor: DEFAULT_THEME_COLOR,
     fontFamily: 'default',
+    qrManualInputEnabled: DEFAULT_QR_MANUAL_INPUT_ENABLED,
     schemaVersion: DEFAULT_SCHEMA_VERSION,
     systemVersion: DEFAULT_SYSTEM_VERSION,
     systemName: DEFAULT_SYSTEM_NAME,

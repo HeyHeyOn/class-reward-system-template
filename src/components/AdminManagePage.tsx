@@ -18,7 +18,7 @@ type AdminTab = 'settings' | 'students' | 'products' | 'tasks' | 'transactions' 
 type BulkMode = 'set' | 'add' | 'subtract';
 type CurrencyMode = 'add' | 'subtract';
 type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'black' | 'navy';
-type Settings = { currencyUnit?: string; appTitle?: string; bankTitle?: string; themeColor?: ThemeColor; fontFamily?: FontFamily };
+type Settings = { currencyUnit?: string; appTitle?: string; bankTitle?: string; themeColor?: ThemeColor; fontFamily?: FontFamily; qrManualInputEnabled?: boolean };
 type AdminTheme = { shell: string; pageText: string; accentText: string; accentBg: string; actionText: string; selectedTab: string; idleTab: string; statBg: string; logoColor: string; softBg: string; softText: string; focusBorder: string };
 const disabledActionClass = 'disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none';
 type CurrencyResult = {
@@ -108,7 +108,7 @@ export function AdminManagePage() {
   const [qrTaskScan, setQrTaskScan] = useState<{ taskId: string; manualId: string } | null>(null);
   const [qrTaskLoading, setQrTaskLoading] = useState(false);
   const [qrTaskResult, setQrTaskResult] = useState<QrTaskAssignmentResult | null>(null);
-  const [settings, setSettings] = useState<Settings>({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', fontFamily: 'default' });
+  const [settings, setSettings] = useState<Settings>({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', fontFamily: 'default', qrManualInputEnabled: false });
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isSavingChanges, setIsSavingChanges] = useState(false);
   const [isRefreshingLists, setIsRefreshingLists] = useState(false);
@@ -141,6 +141,7 @@ export function AdminManagePage() {
         bankTitle: settingsPayload?.bankTitle ?? '학급 은행',
         themeColor: normalizeThemeColor(settingsPayload?.themeColor),
         fontFamily: settingsPayload?.fontFamily ?? 'default',
+        qrManualInputEnabled: Boolean(settingsPayload?.qrManualInputEnabled),
       });
       setStudents(studentPayload);
       setProducts(productPayload);
@@ -218,6 +219,7 @@ export function AdminManagePage() {
         bankTitle: settingsPayload?.bankTitle ?? '학급 은행',
         themeColor: normalizeThemeColor(settingsPayload?.themeColor),
         fontFamily: settingsPayload?.fontFamily ?? 'default',
+        qrManualInputEnabled: Boolean(settingsPayload?.qrManualInputEnabled),
       });
       setMessage('');
     } catch (error) {
@@ -244,6 +246,7 @@ export function AdminManagePage() {
         bankTitle: settingsPayload?.bankTitle ?? '학급 은행',
         themeColor: normalizeThemeColor(settingsPayload?.themeColor),
         fontFamily: settingsPayload?.fontFamily ?? 'default',
+        qrManualInputEnabled: Boolean(settingsPayload?.qrManualInputEnabled),
       });
       setMessage('');
     } catch (error) {
@@ -270,6 +273,7 @@ export function AdminManagePage() {
         bankTitle: settingsPayload?.bankTitle ?? '학급 은행',
         themeColor: normalizeThemeColor(settingsPayload?.themeColor),
         fontFamily: settingsPayload?.fontFamily ?? 'default',
+        qrManualInputEnabled: Boolean(settingsPayload?.qrManualInputEnabled),
       });
       setMessage('');
     } catch (error) {

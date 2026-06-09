@@ -23,7 +23,7 @@ describe('BankApp', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '별빛 은행', currencyUnit: '별', themeColor: 'green', fontFamily: 'nanum-barun-gothic' });
+      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '별빛 은행', currencyUnit: '별', themeColor: 'green', fontFamily: 'nanum-barun-gothic', qrManualInputEnabled: true });
       if (url === '/api/tasks') return jsonResponse(tasks);
       if (url === '/api/bank/balance?studentId=S001') return jsonResponse({
         studentId: 'S001',
@@ -44,7 +44,7 @@ describe('BankApp', () => {
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
   it('shows a loading dialog until bank settings are loaded', async () => {
-    const settingsRequest = deferredResponse({ appTitle: '별빛 매점', bankTitle: '별빛 은행', currencyUnit: '별', themeColor: 'white' });
+    const settingsRequest = deferredResponse({ appTitle: '별빛 매점', bankTitle: '별빛 은행', currencyUnit: '별', themeColor: 'white', qrManualInputEnabled: true });
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/settings') return settingsRequest.response;
@@ -85,7 +85,7 @@ describe('BankApp', () => {
   it('uses a darker but not pure-black shell for the black bank theme', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '검정 은행', currencyUnit: '별', themeColor: 'black' });
+      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '검정 은행', currencyUnit: '별', themeColor: 'black', qrManualInputEnabled: true });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     }));
 
@@ -100,7 +100,7 @@ describe('BankApp', () => {
   it('keeps white and black bank theme action buttons readable and theme-colored', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '흰색 은행', currencyUnit: '별', themeColor: 'white' });
+      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '흰색 은행', currencyUnit: '별', themeColor: 'white', qrManualInputEnabled: true });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     }));
     const { unmount } = render(<BankApp />);
@@ -122,7 +122,7 @@ describe('BankApp', () => {
 
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '검정 은행', currencyUnit: '별', themeColor: 'black' });
+      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '검정 은행', currencyUnit: '별', themeColor: 'black', qrManualInputEnabled: true });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     }));
     render(<BankApp />);
@@ -143,7 +143,7 @@ describe('BankApp', () => {
   it('uses a blue-leaning low-saturation navy bank palette', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '남색 은행', currencyUnit: '별', themeColor: 'navy' });
+      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '남색 은행', currencyUnit: '별', themeColor: 'navy', qrManualInputEnabled: true });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     }));
     const { container } = render(<BankApp />);
@@ -158,7 +158,7 @@ describe('BankApp', () => {
   it('keeps black bank task-list cards readable on dark local backgrounds', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '검정 은행', currencyUnit: '별', themeColor: 'black' });
+      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '검정 은행', currencyUnit: '별', themeColor: 'black', qrManualInputEnabled: true });
       if (url === '/api/tasks') return jsonResponse(tasks);
       return jsonResponse({ error: 'not found' }, { status: 404 });
     }));
@@ -235,7 +235,7 @@ describe('BankApp', () => {
     const balanceRequest = deferredResponse({ studentId: 'S001', name: '김민준', number: 1, balance: 12, transactions: [] });
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '별빛 은행', currencyUnit: '별', themeColor: 'green' });
+      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '별빛 은행', currencyUnit: '별', themeColor: 'green', qrManualInputEnabled: true });
       if (url === '/api/tasks') return jsonResponse(tasks);
       if (url === '/api/bank/balance?studentId=S001') return balanceRequest.response;
       return jsonResponse({ error: 'not found' }, { status: 404 });
@@ -257,7 +257,7 @@ describe('BankApp', () => {
     const taskRequest = deferredResponse(tasks);
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '별빛 은행', currencyUnit: '별', themeColor: 'green' });
+      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '별빛 은행', currencyUnit: '별', themeColor: 'green', qrManualInputEnabled: true });
       if (url === '/api/tasks') return taskRequest.response;
       return jsonResponse({ error: 'not found' }, { status: 404 });
     }));
@@ -277,7 +277,7 @@ describe('BankApp', () => {
     const completeRequest = deferredResponse({ task: tasks[0], student: { studentId: 'S001', name: '김민준', balance: 17 }, completedCount: 1, remainingCompletions: 1 });
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '별빛 은행', currencyUnit: '별', themeColor: 'green' });
+      if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '별빛 은행', currencyUnit: '별', themeColor: 'green', qrManualInputEnabled: true });
       if (url === '/api/tasks') return jsonResponse(tasks);
       if (url === '/api/tasks/T001/complete' && init?.method === 'POST') return completeRequest.response;
       return jsonResponse({ error: 'not found' }, { status: 404 });

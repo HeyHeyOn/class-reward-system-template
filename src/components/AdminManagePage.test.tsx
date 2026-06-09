@@ -651,7 +651,7 @@ describe('AdminManagePage', () => {
       expect(fetch).toHaveBeenCalledWith('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ spreadsheetIdOrUrl: 'sheet-new', currencyUnit: '별', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'blue', fontFamily: 'school-safe-board-marker' }),
+        body: JSON.stringify({ spreadsheetIdOrUrl: 'sheet-new', currencyUnit: '별', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'blue', fontFamily: 'school-safe-board-marker', qrManualInputEnabled: false }),
       });
       expect(fetch).toHaveBeenCalledWith('/api/students', { cache: 'no-store' });
       expect(fetch).toHaveBeenCalledWith('/api/products?includeInactive=1', { cache: 'no-store' });
