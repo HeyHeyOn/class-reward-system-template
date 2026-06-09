@@ -278,11 +278,8 @@ export function BankApp() {
 
       {view === 'task-detail' && selectedTask ? (
         <Modal title={selectedTask.title} onClose={() => setView('tasks-list')} closeLabel="닫기">
-          <p className="whitespace-pre-wrap rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-700">{selectedTask.description || '과제 설명이 없습니다.'}</p>
-          <div className="mt-3 grid grid-cols-2 gap-2 text-center">
-            <p className="rounded-2xl bg-amber-50 p-4 font-black text-amber-800">보상<br />{selectedTask.reward.toLocaleString()}{currencyUnit}</p>
-            <p className="rounded-2xl bg-sky-50 p-4 font-black text-sky-800">완료 기준<br />학생당 1회</p>
-          </div>
+          <p data-testid="bank-task-description" className="whitespace-pre-wrap rounded-2xl bg-slate-50 p-5 text-lg font-bold leading-relaxed text-slate-700">{selectedTask.description || '과제 설명이 없습니다.'}</p>
+          <p className="mt-3 rounded-2xl bg-amber-50 p-4 text-center font-black text-amber-800">보상<br />{selectedTask.reward.toLocaleString()}{currencyUnit}</p>
           <button type="button" onClick={openTaskScan} className={`mt-4 w-full rounded-2xl ${theme.accentBg} py-4 text-xl font-black`}>완료하기</button>
         </Modal>
       ) : null}

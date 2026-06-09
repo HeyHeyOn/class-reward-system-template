@@ -155,6 +155,30 @@ describe('BankApp', () => {
     expect(container.querySelector('[data-testid="bank-shell"]')?.className).not.toContain('bg-[#8F97CF]');
   });
 
+  it('shows task rewards without any completion-count wording and uses a larger detail description', async () => {
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    fireEvent.click(screen.getByRole('button', { name: '과제 확인' }));
+
+    expect(await screen.findByRole('dialog', { name: '과제 목록' })).toBeTruthy();
+    expect(document.body.textContent).toContain('보상 5별');
+    expect(document.body.textContent).not.toContain('회까지');
+    expect(document.body.textContent).not.toContain('가능 횟수');
+    expect(document.body.textContent).not.toContain('가능횟수');
+
+    fireEvent.click(screen.getByRole('button', { name: /책 10분 읽기/ }));
+    expect(await screen.findByRole('dialog', { name: '책 10분 읽기' })).toBeTruthy();
+    const description = screen.getByTestId('bank-task-description');
+    expect(description.className).toContain('text-lg');
+    expect(description.className).toContain('leading-relaxed');
+    expect(document.body.textContent).toContain('보상5별');
+    expect(document.body.textContent).not.toContain('회까지');
+    expect(document.body.textContent).not.toContain('가능 횟수');
+    expect(document.body.textContent).not.toContain('가능횟수');
+    expect(document.body.textContent).not.toContain('학생당 1회');
+    expect(document.body.textContent).not.toContain('완료 기준');
+  });
+
   it('keeps black bank task-list cards readable on dark local backgrounds', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
