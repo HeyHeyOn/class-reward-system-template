@@ -1,4 +1,5 @@
 import type { ClassTask, Product, Student, TaskAssignmentStatus, TaskCompletion, Transaction } from '@/domain/types';
+import { evaluateTaskCompletion, isCompletionForTaskInstance } from '@/domain/taskCompletionPolicy';
 import {
   buildTaskAppendRow,
   buildTaskCompletionAppendRow,
@@ -482,11 +483,11 @@ export async function completeTaskForStudent(store: SheetsStore, taskId: string,
 
   const completionRows = await store.getRows('TaskCompletions');
   const completions = parseTaskCompletions(completionRows);
-  const alreadyCompleted = completions.some((completion) => isCompletionForTaskInstance(completion, task) && completion.studentId === studentRecord.student.studentId && completion.status === 'SUCCESS');
-  if (alreadyCompleted) throw new Error('이미 완료한 과제입니다.');
+  const policyResult = evaluateTaskCompletion({ task, student: studentRecord.student, completions });
+  if (!policyResult.ok) throw new Error(policyResult.message);
 
   const balanceBefore = studentRecord.student.balance;
-  const balanceAfter = balanceBefore + task.reward;
+  const balanceAfter = policyResult.balanceAfter;
   const timestamp = new Date().toISOString();
   const completion: TaskCompletion = {
     completionId: `TC-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -1156,21 +1157,4 @@ function buildTaskAssignmentStatus(task: ClassTask, students: Student[], complet
       completed: completedStudentIds.has(student.studentId),
     })),
   };
-}
-
-function isCompletionForTaskInstance(completion: TaskCompletion, task: ClassTask): boolean {
-  if (completion.taskId !== task.taskId) return false;
-  const taskCreatedAt = parseIsoTimestamp(task.createdAt);
-  if (taskCreatedAt === null) return true;
-
-  const completionTimestamp = parseIsoTimestamp(completion.timestamp);
-  if (completionTimestamp === null) return true;
-  return completionTimestamp >= taskCreatedAt;
-}
-
-function parseIsoTimestamp(value?: string): number | null {
-  const trimmed = value?.trim() ?? '';
-  if (!/^\d{4}-\d{2}-\d{2}T/.test(trimmed)) return null;
-  const parsed = Date.parse(trimmed);
-  return Number.isFinite(parsed) ? parsed : null;
 }
