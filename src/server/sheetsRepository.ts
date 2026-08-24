@@ -1,10 +1,14 @@
-import type { CheckoutLineItem, ClassTask, Product, Student, TaskAssignmentStatus, TaskCompletion, Transaction } from '@/domain/types';
+import type { ClassTask, Product, Student, TaskAssignmentStatus, TaskCompletion, Transaction } from '@/domain/types';
 import {
   buildTaskAppendRow,
+  buildTaskCompletionAppendRow,
+  buildTransactionAppendRow,
   createHeaderIndex,
   parseProductRow,
   parseStudentRow,
+  parseTaskCompletionRow,
   parseTaskRow,
+  parseTransactionRow,
   requireColumns,
 } from '@/server/sheetsRows';
 import type {
@@ -105,6 +109,7 @@ const REQUIRED_TASK_COLUMNS = ['taskId', 'title', 'description', 'reward', 'isAc
 const REQUIRED_TASK_COMPLETION_COLUMNS = ['completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note'];
 const TASK_HEADERS = ['taskId', 'title', 'description', 'reward', 'isActive', 'sortOrder', 'createdAt', 'updatedAt', 'allowedStudentIds'];
 const TASK_COMPLETION_HEADERS = ['completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note'];
+const TRANSACTION_HEADERS = ['transactionId', 'timestamp', 'studentId', 'studentName', 'items', 'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator'];
 
 export type SheetSetting = {
   key: string;
@@ -191,7 +196,10 @@ export async function getTaskRecords(reader: SheetsReader): Promise<Array<{ task
 }
 
 export async function getTaskCompletions(reader: SheetsReader): Promise<TaskCompletion[]> {
-  const rows = await reader.getRows('TaskCompletions');
+  return parseTaskCompletions(await reader.getRows('TaskCompletions'));
+}
+
+function parseTaskCompletions(rows: string[][]): TaskCompletion[] {
   const [headers, ...dataRows] = rows;
   if (!headers) return [];
 
@@ -229,7 +237,8 @@ export async function updateTaskAssignmentStatus(store: SheetsStore, taskId: str
 
   await store.updateCell('Tasks', record.rowNumber, 'allowedStudentIds', assignedStudentIds.join(','));
 
-  const currentCompletions = await getTaskCompletions(store);
+  const completionRows = await store.getRows('TaskCompletions');
+  const currentCompletions = parseTaskCompletions(completionRows);
   const existingCompletedIds = new Set(
     currentCompletions
       .filter((completion) => isCompletionForTaskInstance(completion, record.task) && completion.status === 'SUCCESS')
@@ -239,22 +248,24 @@ export async function updateTaskAssignmentStatus(store: SheetsStore, taskId: str
   if (idsToDelete.length > 0) await deleteTaskCompletionRowsForTaskStudentIds(store, record.task, idsToDelete);
 
   const timestamp = new Date().toISOString();
+  const completionHeaders = completionRows[0] ?? TASK_COMPLETION_HEADERS;
   for (const studentId of completedStudentIds) {
     if (existingCompletedIds.has(studentId)) continue;
     const student = studentsById.get(studentId);
     if (!student) continue;
-    await store.appendRow('TaskCompletions', [
-      `TC-ADMIN-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    const completion: TaskCompletion = {
+      completionId: `TC-ADMIN-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       timestamp,
-      record.task.taskId,
-      student.studentId,
-      student.name,
-      String(record.task.reward),
-      String(student.balance),
-      String(student.balance),
-      'SUCCESS',
-      'admin-assignment-status',
-    ]);
+      taskId: record.task.taskId,
+      studentId: student.studentId,
+      studentName: student.name,
+      reward: record.task.reward,
+      balanceBefore: student.balance,
+      balanceAfter: student.balance,
+      status: 'SUCCESS',
+      note: 'admin-assignment-status',
+    };
+    await store.appendRow('TaskCompletions', buildTaskCompletionAppendRow(completionHeaders, completion));
   }
 
   const refreshedCompletions = currentCompletions
@@ -469,7 +480,8 @@ export async function completeTaskForStudent(store: SheetsStore, taskId: string,
   if (task.allowedStudentIds.length === 0) throw new Error('부여된 학생이 없습니다.');
   if (!task.allowedStudentIds.includes(studentRecord.student.studentId)) throw new Error('허가되지 않은 과제입니다.');
 
-  const completions = await getTaskCompletions(store);
+  const completionRows = await store.getRows('TaskCompletions');
+  const completions = parseTaskCompletions(completionRows);
   const alreadyCompleted = completions.some((completion) => isCompletionForTaskInstance(completion, task) && completion.studentId === studentRecord.student.studentId && completion.status === 'SUCCESS');
   if (alreadyCompleted) throw new Error('이미 완료한 과제입니다.');
 
@@ -488,21 +500,29 @@ export async function completeTaskForStudent(store: SheetsStore, taskId: string,
     status: 'SUCCESS',
     note: 'bank-self-completion',
   };
+  const completionHeaders = completionRows[0] ?? TASK_COMPLETION_HEADERS;
+  let transactionHeaders = TRANSACTION_HEADERS;
+  try {
+    transactionHeaders = (await store.getRows('Transactions'))[0] ?? TRANSACTION_HEADERS;
+  } catch {
+    // Transaction logging is best effort; still try the canonical schema below.
+  }
 
   await store.updateCell('Students', studentRecord.rowNumber, 'balance', balanceAfter);
-  await store.appendRow('TaskCompletions', [completion.completionId, timestamp, task.taskId, completion.studentId, completion.studentName, String(task.reward), String(balanceBefore), String(balanceAfter), completion.status, completion.note]);
-  await store.appendRow('Transactions', [
-    `TASK-${completion.completionId}`,
+  await store.appendRow('TaskCompletions', buildTaskCompletionAppendRow(completionHeaders, completion));
+  const rewardTransaction: Transaction = {
+    transactionId: `TASK-${completion.completionId}`,
     timestamp,
-    completion.studentId,
-    completion.studentName,
-    JSON.stringify([{ productId: task.taskId, name: task.title, price: -task.reward, quantity: 1, subtotal: -task.reward }]),
-    String(-task.reward),
-    String(balanceBefore),
-    String(balanceAfter),
-    'TASK_REWARD',
-    'bank',
-  ]).catch(() => undefined);
+    studentId: completion.studentId,
+    studentName: completion.studentName,
+    items: [{ productId: task.taskId, name: task.title, price: -task.reward, quantity: 1, subtotal: -task.reward }],
+    totalAmount: -task.reward,
+    balanceBefore,
+    balanceAfter,
+    status: 'TASK_REWARD',
+    operator: 'bank',
+  };
+  await store.appendRow('Transactions', buildTransactionAppendRow(transactionHeaders, rewardTransaction)).catch(() => undefined);
 
   return {
     task,
@@ -516,7 +536,10 @@ export async function getTransactions(reader: SheetsReader): Promise<Transaction
 }
 
 export async function getTransactionRecords(reader: SheetsReader): Promise<TransactionRecord[]> {
-  const rows = await reader.getRows('Transactions');
+  return parseTransactionRecords(await reader.getRows('Transactions'));
+}
+
+function parseTransactionRecords(rows: string[][]): TransactionRecord[] {
   const [headers, ...dataRows] = rows;
 
   if (!headers) return [];
@@ -551,7 +574,8 @@ export async function cancelTransaction(store: SheetsStore, transactionId: strin
   const normalizedId = transactionId.trim();
   if (!normalizedId) throw new Error('거래 ID를 입력해 주세요.');
 
-  const transactionRecord = (await getTransactionRecords(store)).find((record) => record.transaction.transactionId === normalizedId);
+  const transactionRows = await store.getRows('Transactions');
+  const transactionRecord = parseTransactionRecords(transactionRows).find((record) => record.transaction.transactionId === normalizedId);
   if (!transactionRecord) throw new Error('거래 내역을 찾을 수 없습니다.');
 
   const transaction = transactionRecord.transaction;
@@ -598,18 +622,8 @@ export async function cancelTransaction(store: SheetsStore, transactionId: strin
   await store.updateCell('Students', studentRecord.rowNumber, 'balance', reversalBalanceAfter);
   await applyCellUpdates(store, 'Products', productUpdates);
   await store.updateCell('Transactions', transactionRecord.rowNumber, 'status', 'CANCELLED');
-  await store.appendRow('Transactions', [
-    reversalTransaction.transactionId,
-    reversalTransaction.timestamp,
-    reversalTransaction.studentId,
-    reversalTransaction.studentName,
-    JSON.stringify(reversalTransaction.items),
-    String(reversalTransaction.totalAmount),
-    String(reversalTransaction.balanceBefore),
-    String(reversalTransaction.balanceAfter),
-    reversalTransaction.status,
-    reversalTransaction.operator,
-  ]);
+  const transactionHeaders = transactionRows[0] ?? TRANSACTION_HEADERS;
+  await store.appendRow('Transactions', buildTransactionAppendRow(transactionHeaders, reversalTransaction));
 
   return { cancelledTransaction: { ...transaction, status: 'CANCELLED', cancelledAt }, reversalTransaction };
 }
@@ -800,12 +814,18 @@ export async function bulkAdjustStudentBalances(
     results.push({ studentId: record.student.studentId, balance });
   }
 
+  let transactionHeaders = TRANSACTION_HEADERS;
+  try {
+    transactionHeaders = (await store.getRows('Transactions'))[0] ?? TRANSACTION_HEADERS;
+  } catch {
+    // Preserve bulk-adjustment availability by appending with the canonical schema.
+  }
   await applyCellUpdates(store, 'Students', cellUpdates);
   for (const record of records) {
     if (!record) continue;
     const result = results.find((item) => item.studentId === record.student.studentId);
     if (!result) continue;
-    await appendBalanceAdjustmentTransaction(store, record.student, record.student.balance, result.balance, update.mode);
+    await appendBalanceAdjustmentTransaction(store, transactionHeaders, record.student, record.student.balance, result.balance, update.mode);
   }
   return results;
 }
@@ -947,6 +967,7 @@ export async function deleteProductsBatch(store: SheetsStore, productIds: string
 
 async function appendBalanceAdjustmentTransaction(
   store: SheetsStore,
+  transactionHeaders: string[],
   student: Student,
   balanceBefore: number,
   balanceAfter: number,
@@ -964,18 +985,19 @@ async function appendBalanceAdjustmentTransaction(
     quantity: 1,
     subtotal: transactionAmount,
   };
-  await store.appendRow('Transactions', [
-    `ADMIN-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  const transaction: Transaction = {
+    transactionId: `ADMIN-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     timestamp,
-    student.studentId,
-    student.name,
-    JSON.stringify([item]),
-    String(transactionAmount),
-    String(balanceBefore),
-    String(balanceAfter),
-    'ADMIN_ADJUSTMENT',
-    'admin',
-  ]);
+    studentId: student.studentId,
+    studentName: student.name,
+    items: [item],
+    totalAmount: transactionAmount,
+    balanceBefore,
+    balanceAfter,
+    status: 'ADMIN_ADJUSTMENT',
+    operator: 'admin',
+  };
+  await store.appendRow('Transactions', buildTransactionAppendRow(transactionHeaders, transaction));
 }
 
 function buildStudentAppendRow(headers: string[] | undefined, student: Student): string[] {
@@ -1151,66 +1173,4 @@ function parseIsoTimestamp(value?: string): number | null {
   if (!/^\d{4}-\d{2}-\d{2}T/.test(trimmed)) return null;
   const parsed = Date.parse(trimmed);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function parseTaskCompletionRow(row: string[], headerIndex: Map<string, number>): TaskCompletion | null {
-  const completionId = getRowCell(row, headerIndex, 'completionId');
-  const timestamp = getRowCell(row, headerIndex, 'timestamp');
-  const taskId = getRowCell(row, headerIndex, 'taskId');
-  const studentId = getRowCell(row, headerIndex, 'studentId');
-  const studentName = getRowCell(row, headerIndex, 'studentName');
-  const reward = parseNumberValue(getRowCell(row, headerIndex, 'reward'));
-  const balanceBefore = parseNumberValue(getRowCell(row, headerIndex, 'balanceBefore'));
-  const balanceAfter = parseNumberValue(getRowCell(row, headerIndex, 'balanceAfter'));
-  if (!completionId || !timestamp || !taskId || !studentId || !studentName || reward === null || balanceBefore === null || balanceAfter === null) return null;
-  return { completionId, timestamp, taskId, studentId, studentName, reward, balanceBefore, balanceAfter, status: getRowCell(row, headerIndex, 'status') || 'UNKNOWN', note: getRowCell(row, headerIndex, 'note') };
-}
-
-function parseTransactionRow(row: string[], headerIndex: Map<string, number>): Transaction | null {
-  const transactionId = getRowCell(row, headerIndex, 'transactionId');
-  const timestamp = getRowCell(row, headerIndex, 'timestamp');
-  const studentId = getRowCell(row, headerIndex, 'studentId');
-  const studentName = getRowCell(row, headerIndex, 'studentName');
-  const totalAmount = parseNumberValue(getRowCell(row, headerIndex, 'totalAmount'));
-  const balanceBefore = parseNumberValue(getRowCell(row, headerIndex, 'balanceBefore'));
-  const balanceAfter = parseNumberValue(getRowCell(row, headerIndex, 'balanceAfter'));
-
-  if (!transactionId || !timestamp || !studentId || !studentName || totalAmount === null || balanceBefore === null || balanceAfter === null) {
-    return null;
-  }
-
-  return {
-    transactionId,
-    timestamp,
-    studentId,
-    studentName,
-    items: parseTransactionItems(getRowCell(row, headerIndex, 'items') || getRowCell(row, headerIndex, 'itemsJson') || getRowCell(row, headerIndex, 'itemJson') || getRowCell(row, headerIndex, 'products')),
-    totalAmount,
-    balanceBefore,
-    balanceAfter,
-    status: getRowCell(row, headerIndex, 'status') || 'UNKNOWN',
-    operator: getRowCell(row, headerIndex, 'operator') || 'unknown',
-  };
-}
-
-function getRowCell(row: string[], headerIndex: Map<string, number>, column: string): string {
-  const index = headerIndex.get(column);
-  if (index === undefined) return '';
-  return String(row[index] ?? '').trim();
-}
-
-function parseNumberValue(value: string): number | null {
-  if (!value) return null;
-  const parsed = Number(value.replace(/,/g, ''));
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function parseTransactionItems(value: string): CheckoutLineItem[] {
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is CheckoutLineItem => Boolean(item && typeof item === 'object' && 'productId' in item));
-  } catch {
-    return [];
-  }
 }

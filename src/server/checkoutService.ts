@@ -1,5 +1,6 @@
-import type { CartItem, CheckoutLineItem } from '@/domain/types';
+import type { CartItem, CheckoutLineItem, Transaction } from '@/domain/types';
 import { createCheckoutPreview, type CheckoutPreviewResult } from '@/domain/checkout';
+import { buildTransactionAppendRow } from '@/server/sheetsRows';
 import {
   getProductRecords,
   getStudentRecordById,
@@ -65,6 +66,15 @@ export async function processCheckout(
   const transactionId = input.transactionIdFactory?.() ?? createTransactionId(input.now?.() ?? new Date());
   const timestamp = (input.now?.() ?? new Date()).toISOString();
   const operator = input.operator ?? 'kiosk';
+  let transactionHeaders = [
+    'transactionId', 'timestamp', 'studentId', 'studentName', 'items',
+    'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator',
+  ];
+  try {
+    transactionHeaders = (await store.getRows('Transactions'))[0] ?? transactionHeaders;
+  } catch {
+    // Preserve checkout availability by appending with the canonical schema.
+  }
 
   await store.updateCell('Students', studentRecord.rowNumber, 'balance', preview.balanceAfter);
 
@@ -76,18 +86,19 @@ export async function processCheckout(
     await store.updateCell('Products', productRecord.rowNumber, 'stock', productRecord.product.stock - item.quantity);
   }
 
-  await store.appendRow('Transactions', [
+  const transaction: Transaction = {
     transactionId,
     timestamp,
-    studentRecord.student.studentId,
-    studentRecord.student.name,
-    JSON.stringify(preview.items),
-    String(preview.totalAmount),
-    String(preview.balanceBefore),
-    String(preview.balanceAfter),
-    'COMPLETED',
+    studentId: studentRecord.student.studentId,
+    studentName: studentRecord.student.name,
+    items: preview.items,
+    totalAmount: preview.totalAmount,
+    balanceBefore: preview.balanceBefore,
+    balanceAfter: preview.balanceAfter,
+    status: 'COMPLETED',
     operator,
-  ]);
+  };
+  await store.appendRow('Transactions', buildTransactionAppendRow(transactionHeaders, transaction));
 
   return {
     ok: true,

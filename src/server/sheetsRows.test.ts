@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildTaskCompletionAppendRow,
   buildTaskAppendRow,
+  buildTransactionAppendRow,
   createHeaderIndex,
   parseAllowedStudentIds,
   parseProductRow,
   parseStudentRow,
+  parseTaskCompletionRow,
   parseTaskRow,
+  parseTransactionRow,
   requireColumns,
 } from '@/server/sheetsRows';
 
@@ -143,6 +147,63 @@ describe('sheets row parsing', () => {
     }, timestamp)).toEqual([
       '순서 확인', 'T011', '1', 'S002,S001', '8', timestamp,
       '실제 헤더 기준', 'FALSE', '4', timestamp, '',
+    ]);
+  });
+
+  it('parses canonical transaction items and preserves the legacy fallback precedence', () => {
+    const headers = [
+      'transactionId', 'timestamp', 'studentId', 'studentName', 'items', 'itemsJson', 'itemJson', 'products',
+      'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator',
+    ];
+    const headerIndex = createHeaderIndex(headers);
+    const item = (productId: string) => JSON.stringify([{ productId, name: productId, price: 1, quantity: 1, subtotal: 1 }]);
+    const row = (values: string[]) => [
+      'TR-1', '2026-05-21T00:00:00.000Z', 'S001', '김민준', ...values,
+      '1', '10', '9', 'COMPLETED', 'kiosk',
+    ];
+
+    expect(parseTransactionRow(row([item('canonical'), item('itemsJson'), item('itemJson'), item('products')]), headerIndex)?.items[0].productId).toBe('canonical');
+    expect(parseTransactionRow(row(['', item('itemsJson'), item('itemJson'), item('products')]), headerIndex)?.items[0].productId).toBe('itemsJson');
+    expect(parseTransactionRow(row(['', '', item('itemJson'), item('products')]), headerIndex)?.items[0].productId).toBe('itemJson');
+    expect(parseTransactionRow(row(['', '', '', item('products')]), headerIndex)?.items[0].productId).toBe('products');
+  });
+
+  it('keeps malformed transaction item JSON as an empty item list without falling through', () => {
+    const headers = [
+      'transactionId', 'timestamp', 'studentId', 'studentName', 'items', 'itemsJson',
+      'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator',
+    ];
+    const row = [
+      'TR-2', '2026-05-21T00:00:00.000Z', 'S001', '김민준', '{broken',
+      '[{"productId":"legacy"}]', '1', '10', '9', 'COMPLETED', 'kiosk',
+    ];
+
+    expect(parseTransactionRow(row, createHeaderIndex(headers))?.items).toEqual([]);
+  });
+
+  it('parses a task completion by live headers and serializes both ledger row types by live header order', () => {
+    const completionHeaders = [
+      'note', 'status', 'balanceAfter', 'studentName', 'completionId', 'reward',
+      'taskId', 'timestamp', 'balanceBefore', 'studentId',
+    ];
+    const completion = {
+      completionId: 'TC-1', timestamp: '2026-05-21T00:00:00.000Z', taskId: 'T001', studentId: 'S001',
+      studentName: '김민준', reward: 5, balanceBefore: 10, balanceAfter: 15,
+      status: 'SUCCESS', note: 'bank-self-completion',
+    };
+    const completionRow = ['bank-self-completion', 'SUCCESS', '15', '김민준', 'TC-1', '5', 'T001', completion.timestamp, '10', 'S001'];
+
+    expect(parseTaskCompletionRow(completionRow, createHeaderIndex(completionHeaders))).toEqual(completion);
+    expect(buildTaskCompletionAppendRow(completionHeaders, completion)).toEqual(completionRow);
+
+    const transaction = {
+      transactionId: 'TR-3', timestamp: completion.timestamp, studentId: 'S001', studentName: '김민준',
+      items: [{ productId: 'P001', name: '연필', price: 3, quantity: 2, subtotal: 6 }],
+      totalAmount: 6, balanceBefore: 10, balanceAfter: 4, status: 'COMPLETED', operator: 'kiosk',
+    };
+    const transactionHeaders = ['operator', 'balanceAfter', 'items', 'transactionId', 'status', 'studentName', 'totalAmount', 'timestamp', 'studentId', 'balanceBefore'];
+    expect(buildTransactionAppendRow(transactionHeaders, transaction)).toEqual([
+      'kiosk', '4', JSON.stringify(transaction.items), 'TR-3', 'COMPLETED', '김민준', '6', completion.timestamp, 'S001', '10',
     ]);
   });
 });

@@ -168,9 +168,11 @@ describe('sheets repository', () => {
   it('cancels a completed checkout by refunding balance, restoring stock, and marking the transaction', async () => {
     const updates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
     const appended: Array<{ sheetName: string; values: string[] }> = [];
+    let transactionReads = 0;
     const fakeStore = {
       ...fakeReader,
       async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'Transactions') transactionReads += 1;
         if (sheetName === 'Students') return [sheetRows.Students[0], ['S001', '김민준', '2900', 'S001', 'ACTIVE', ''], sheetRows.Students[2]];
         return sheetRows[sheetName];
       },
@@ -191,6 +193,15 @@ describe('sheets repository', () => {
       { sheetName: 'Products', rowNumber: 3, columnName: 'stock', value: 22 },
       { sheetName: 'Transactions', rowNumber: 2, columnName: 'status', value: 'CANCELLED' },
     ]);
+    expect(transactionReads).toBe(1);
+    expect(appended).toHaveLength(1);
+    expect(appended[0].sheetName).toBe('Transactions');
+    expect(appended[0].values[2]).toBe('S001');
+    expect(appended[0].values[3]).toBe('김민준');
+    expect(JSON.parse(appended[0].values[4])).toEqual([
+      expect.objectContaining({ productId: 'CANCEL-TR001', name: '거래 취소', quantity: 1, subtotal: -600 }),
+    ]);
+    expect(appended[0].values.slice(5, 10)).toEqual(['-600', '2900', '3500', 'CANCEL_REVERSAL', 'cancel:TR001']);
   });
 
   it('cancels an income transaction by restoring the previous balance and marking it cancelled', async () => {
@@ -515,6 +526,100 @@ describe('sheets repository', () => {
     ]);
     expect(appended[0].values[4]).toContain('관리자 회수');
     expect(appended[0].values.slice(5, 8)).toEqual(['1500', '1200', '-300']);
+  });
+
+  it('reads Transactions only once for a bulk balance adjustment batch', async () => {
+    let transactionReads = 0;
+    const fakeStore = {
+      ...fakeReader,
+      async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'Transactions') transactionReads += 1;
+        return sheetRows[sheetName];
+      },
+      async updateCell() {},
+      async appendRow() {},
+    };
+
+    await bulkAdjustStudentBalances(fakeStore, { studentIds: ['S001', 'S002'], mode: 'add', amount: 100 });
+    expect(transactionReads).toBe(1);
+  });
+
+  it('falls back to canonical transaction headers when a bulk adjustment header read fails', async () => {
+    const events: string[] = [];
+    const updates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
+    const appended: Array<{ sheetName: string; values: string[] }> = [];
+    let transactionReads = 0;
+    const fakeStore = {
+      ...fakeReader,
+      async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'Transactions') {
+          transactionReads += 1;
+          events.push('read:Transactions');
+          throw new Error('Transactions header read failed');
+        }
+        return sheetRows[sheetName];
+      },
+      async updateCell(sheetName: string, rowNumber: number, columnName: string, value: string | number) {
+        events.push(`update:${sheetName}`);
+        updates.push({ sheetName, rowNumber, columnName, value });
+      },
+      async appendRow(sheetName: string, values: string[]) {
+        events.push(`append:${sheetName}`);
+        appended.push({ sheetName, values });
+      },
+    };
+
+    await expect(bulkAdjustStudentBalances(fakeStore, {
+      studentIds: ['S001', 'S002'],
+      mode: 'add',
+      amount: 100,
+    })).resolves.toEqual([
+      { studentId: 'S001', balance: 3600 },
+      { studentId: 'S002', balance: 1300 },
+    ]);
+    expect(transactionReads).toBe(1);
+    expect(events).toEqual([
+      'read:Transactions',
+      'update:Students',
+      'update:Students',
+      'append:Transactions',
+      'append:Transactions',
+    ]);
+    expect(updates).toEqual([
+      { sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: 3600 },
+      { sheetName: 'Students', rowNumber: 3, columnName: 'balance', value: 1300 },
+    ]);
+    expect(appended).toHaveLength(2);
+    expect(appended[0]).toEqual({
+      sheetName: 'Transactions',
+      values: [
+        expect.stringMatching(/^ADMIN-/),
+        expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+        'S001',
+        '김민준',
+        JSON.stringify([{ productId: 'ADMIN-ADD', name: '관리자 지급', price: -100, quantity: 1, subtotal: -100 }]),
+        '-100',
+        '3500',
+        '3600',
+        'ADMIN_ADJUSTMENT',
+        'admin',
+      ],
+    });
+    expect(appended[1]).toEqual({
+      sheetName: 'Transactions',
+      values: [
+        expect.stringMatching(/^ADMIN-/),
+        expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+        'S002',
+        '이서연',
+        JSON.stringify([{ productId: 'ADMIN-ADD', name: '관리자 지급', price: -100, quantity: 1, subtotal: -100 }]),
+        '-100',
+        '1200',
+        '1300',
+        'ADMIN_ADJUSTMENT',
+        'admin',
+      ],
+    });
   });
 
   it('updates editable product cells by row number', async () => {
@@ -868,6 +973,26 @@ describe('sheets repository', () => {
     expect(appended[0].values.slice(2, 10)).toEqual(['T001', 'S002', '이서연', '5', '1200', '1200', 'SUCCESS', 'admin-assignment-status']);
   });
 
+  it('does not reread TaskCompletions when assignment status adds no completion', async () => {
+    let completionReads = 0;
+    const store = {
+      ...fakeReader,
+      async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'TaskCompletions') completionReads += 1;
+        return sheetRows[sheetName];
+      },
+      async updateCell() {},
+      async updateHeaderRow() {},
+      async appendRow() {},
+    };
+
+    await updateTaskAssignmentStatus(store, 'T001', {
+      assignedStudentIds: ['S001'],
+      completedStudentIds: ['S001'],
+    });
+    expect(completionReads).toBe(2);
+  });
+
   it('stores task assignment student IDs only and rejects unassigned students', async () => {
     const taskReader = {
       async getRows(sheetName: keyof typeof sheetRows) {
@@ -931,6 +1056,49 @@ describe('sheets repository', () => {
     await expect(completeTaskForStudent(fakeStore, 'T001', 'S001')).resolves.toMatchObject({ student: { studentId: 'S001', balance: 3505 } });
     expect(updates).toContainEqual({ sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: 3505 });
     expect(appended.some((row) => row.sheetName === 'TaskCompletions')).toBe(true);
+  });
+
+  it('obtains the TaskCompletions header before changing a student balance', async () => {
+    const events: string[] = [];
+    let completionReads = 0;
+    const fakeStore = {
+      ...fakeReader,
+      async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'TaskCompletions') {
+          completionReads += 1;
+          events.push('read:TaskCompletions');
+          return [sheetRows.TaskCompletions[0]];
+        }
+        return sheetRows[sheetName];
+      },
+      async updateCell() { events.push('update'); },
+      async updateHeaderRow() {},
+      async appendRow() {},
+    };
+
+    await expect(completeTaskForStudent(fakeStore, 'T001', 'S001')).resolves.toMatchObject({ student: { balance: 3505 } });
+    expect(completionReads).toBe(2);
+    expect(events).toEqual(['read:TaskCompletions', 'read:TaskCompletions', 'update']);
+  });
+
+  it('attempts a canonical task reward transaction append when its header read fails', async () => {
+    const appended: Array<{ sheetName: string; values: string[] }> = [];
+    const fakeStore = {
+      ...fakeReader,
+      async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'TaskCompletions') return [sheetRows.TaskCompletions[0]];
+        if (sheetName === 'Transactions') throw new Error('Transactions header read failed');
+        return sheetRows[sheetName];
+      },
+      async updateCell() {},
+      async updateHeaderRow() {},
+      async appendRow(sheetName: string, values: string[]) { appended.push({ sheetName, values }); },
+    };
+
+    await expect(completeTaskForStudent(fakeStore, 'T001', 'S001')).resolves.toMatchObject({ student: { balance: 3505 } });
+    expect(appended.find((row) => row.sheetName === 'Transactions')?.values.slice(2, 10)).toEqual([
+      'S001', '김민준', expect.stringContaining('T001'), '-5', '3500', '3505', 'TASK_REWARD', 'bank',
+    ]);
   });
 
   it('applies task rewards against a negative balance first', async () => {

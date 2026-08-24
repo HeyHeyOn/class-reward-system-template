@@ -90,6 +90,78 @@ describe('processCheckout', () => {
     });
   });
 
+  it('appends a transaction using the live Transactions header order', async () => {
+    const transactionHeaders = [
+      'operator', 'status', 'balanceAfter', 'balanceBefore', 'totalAmount',
+      'items', 'studentName', 'studentId', 'timestamp', 'transactionId',
+    ];
+    const store = new FakeSheetsStore({ ...baseRows, Transactions: [transactionHeaders] });
+
+    const result = await processCheckout(store, {
+      studentId: 'S001',
+      items: [{ productId: 'P001', quantity: 1 }],
+      operator: 'teacher',
+      now: () => new Date('2026-05-19T02:00:00.000Z'),
+      transactionIdFactory: () => 'T-LIVE-ORDER',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(store.appends[0]).toEqual({
+      sheetName: 'Transactions',
+      values: [
+        'teacher', 'COMPLETED', '3200', '3500', '300',
+        JSON.stringify([{ productId: 'P001', name: '연필', price: 300, quantity: 1, subtotal: 300 }]),
+        '김민준', 'S001', '2026-05-19T02:00:00.000Z', 'T-LIVE-ORDER',
+      ],
+    });
+  });
+
+  it('falls back to canonical transaction headers when the pre-mutation header read fails', async () => {
+    const store = new FakeSheetsStore(baseRows);
+    const getRows = store.getRows.bind(store);
+    const events: string[] = [];
+    store.getRows = async (sheetName) => {
+      if (sheetName === 'Transactions') {
+        events.push('read:Transactions');
+        throw new Error('Transactions header read failed');
+      }
+      return getRows(sheetName);
+    };
+    const updateCell = store.updateCell.bind(store);
+    store.updateCell = async (...args) => {
+      events.push(`update:${args[0]}`);
+      return updateCell(...args);
+    };
+
+    await expect(processCheckout(store, {
+      studentId: 'S001',
+      items: [{ productId: 'P001', quantity: 1 }],
+      operator: 'kiosk',
+      now: () => new Date('2026-05-19T02:00:00.000Z'),
+      transactionIdFactory: () => 'T-FALLBACK',
+    })).resolves.toMatchObject({ ok: true, balanceBefore: 3500, balanceAfter: 3200 });
+    expect(events).toEqual(['read:Transactions', 'update:Students', 'update:Products']);
+    expect(store.updates).toEqual([
+      { sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: 3200 },
+      { sheetName: 'Products', rowNumber: 2, columnName: 'stock', value: 19 },
+    ]);
+    expect(store.appends).toEqual([{
+      sheetName: 'Transactions',
+      values: [
+        'T-FALLBACK',
+        '2026-05-19T02:00:00.000Z',
+        'S001',
+        '김민준',
+        JSON.stringify([{ productId: 'P001', name: '연필', price: 300, quantity: 1, subtotal: 300 }]),
+        '300',
+        '3500',
+        '3200',
+        'COMPLETED',
+        'kiosk',
+      ],
+    }]);
+  });
+
   it('does not update sheets when balance is insufficient', async () => {
     const store = new FakeSheetsStore({
       ...baseRows,
