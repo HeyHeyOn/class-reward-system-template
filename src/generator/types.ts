@@ -29,6 +29,11 @@ export type GeneratorManifest = {
   sheets: Array<{ name: string; columns: string[] }>;
   vercelEnvNames: string[];
   doctorRoutes?: string[];
+  doctorSheets?: ReadonlyArray<{
+    name: string;
+    columns: readonly string[];
+    headerRange: string;
+  }>;
   doctorTarget?: Required<DoctorTargetOptions>;
 };
 

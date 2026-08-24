@@ -1,9 +1,17 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import { parseClassRewardArgs, renderCliResult } from './cli';
 import { getCreateCommandPlan } from './commands/create';
-import { getDoctorCommandPlan } from './commands/doctor';
+import { DOCTOR_SHEETS, getDoctorCommandPlan } from './commands/doctor';
 import { getUpdateCommandPlan } from './commands/update';
-import { DEFAULT_SETTINGS, REQUIRED_SHEETS } from './config/schema';
+import {
+  DEFAULT_SETTINGS,
+  GENERATED_SHEET_NAMES,
+  OPERATIONAL_SHEET_NAMES,
+  REQUIRED_SHEETS,
+  type GeneratedSheetName,
+  type OperationalSheetName,
+  type SheetName,
+} from './config/schema';
 import { GENERATOR_NAME_KO, LATEST_SCHEMA_VERSION, SYSTEM_NAME_KO } from './config/versions';
 
 describe('학급 보상 시스템 생성기 Phase 1', () => {
@@ -34,6 +42,59 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
     expect(REQUIRED_SHEETS.Tasks).toEqual(['taskId', 'title', 'description', 'reward', 'isActive', 'sortOrder', 'createdAt', 'updatedAt', 'allowedStudentIds']);
     expect(REQUIRED_SHEETS.Transactions).toEqual(['transactionId', 'timestamp', 'studentId', 'studentName', 'items', 'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator']);
     expect(JSON.stringify({ REQUIRED_SHEETS, DEFAULT_SETTINGS })).not.toMatch(/import|csv|NEIS|나이스|자동 불러오기/iu);
+  });
+
+  it('separates the eight-sheet generated schema from the seven-sheet operational compatibility alias', () => {
+    expect(GENERATED_SHEET_NAMES).toEqual([
+      'Students',
+      'Products',
+      'Transactions',
+      'Adjustments',
+      'Settings',
+      'Tasks',
+      'TaskCompletions',
+      'Recovery',
+    ]);
+    expect(OPERATIONAL_SHEET_NAMES).toEqual([
+      'Students',
+      'Products',
+      'Transactions',
+      'Adjustments',
+      'Settings',
+      'Tasks',
+      'TaskCompletions',
+    ]);
+    expect(OPERATIONAL_SHEET_NAMES).toEqual(GENERATED_SHEET_NAMES.filter((name) => name !== 'Recovery'));
+    expectTypeOf<GeneratedSheetName>().toEqualTypeOf<(typeof GENERATED_SHEET_NAMES)[number]>();
+    expectTypeOf<OperationalSheetName>().toEqualTypeOf<(typeof OPERATIONAL_SHEET_NAMES)[number]>();
+    expectTypeOf<SheetName>().toEqualTypeOf<OperationalSheetName>();
+    expectTypeOf<'Recovery'>().toMatchTypeOf<GeneratedSheetName>();
+    expectTypeOf<'Recovery'>().not.toMatchTypeOf<OperationalSheetName>();
+  });
+
+  it('publishes a machine-readable header-only doctor contract without Recovery values', () => {
+    expect(DOCTOR_SHEETS.map(({ name }) => name)).toEqual(GENERATED_SHEET_NAMES);
+    expect(DOCTOR_SHEETS.every(({ name, headerRange }) => headerRange === `${name}!1:1`)).toBe(true);
+
+    const recoveryCheck = DOCTOR_SHEETS.find(({ name }) => name === 'Recovery');
+    expect(recoveryCheck).toEqual({
+      name: 'Recovery',
+      columns: ['key', 'value'],
+      headerRange: 'Recovery!1:1',
+    });
+    expect(Object.keys(recoveryCheck ?? {}).sort()).toEqual(['columns', 'headerRange', 'name']);
+    expect(recoveryCheck).not.toHaveProperty('value');
+    expect(recoveryCheck).not.toHaveProperty('values');
+    expect(recoveryCheck).not.toHaveProperty('data');
+
+    const executePlan = getDoctorCommandPlan({ dryRun: false });
+    expect(executePlan.manifest?.doctorSheets).toEqual(DOCTOR_SHEETS);
+    expect(executePlan.manifest?.doctorSheets?.every(({ name, headerRange }) => headerRange === `${name}!1:1`)).toBe(true);
+
+    const planText = JSON.stringify(executePlan);
+    expect(planText).toContain('Recovery');
+    expect(planText).toContain('헤더');
+    expect(planText).not.toMatch(/Recovery[^.]*(값을 읽|값 출력|value read|value output)/iu);
   });
 
   it('routes create, update, and doctor commands with dry-run-first command plans', () => {

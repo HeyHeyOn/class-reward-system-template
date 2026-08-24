@@ -1,11 +1,35 @@
 import { LATEST_SCHEMA_VERSION, SYSTEM_NAME_KO, SYSTEM_VERSION } from './versions.ts';
 
-export type SheetName = 'Students' | 'Products' | 'Transactions' | 'Adjustments' | 'Settings' | 'Tasks' | 'TaskCompletions' | 'Recovery';
+export const GENERATED_SHEET_NAMES = [
+  'Students',
+  'Products',
+  'Transactions',
+  'Adjustments',
+  'Settings',
+  'Tasks',
+  'TaskCompletions',
+  'Recovery',
+] as const;
+export type GeneratedSheetName = (typeof GENERATED_SHEET_NAMES)[number];
+
+export const OPERATIONAL_SHEET_NAMES = [
+  'Students',
+  'Products',
+  'Transactions',
+  'Adjustments',
+  'Settings',
+  'Tasks',
+  'TaskCompletions',
+] as const satisfies readonly Exclude<GeneratedSheetName, 'Recovery'>[];
+export type OperationalSheetName = (typeof OPERATIONAL_SHEET_NAMES)[number];
+
+/** @deprecated Use OperationalSheetName. Kept until the Task 3 repository type move. */
+export type SheetName = OperationalSheetName;
 
 export const THEME_COLORS = ['blue', 'pink', 'yellow', 'green', 'purple', 'white', 'black', 'navy'] as const;
 export type ThemeColor = (typeof THEME_COLORS)[number];
 
-export const REQUIRED_SHEETS: Record<SheetName, string[]> = {
+export const REQUIRED_SHEETS: Record<GeneratedSheetName, string[]> = {
   Students: ['studentId', 'name', 'balance', 'status'],
   Products: ['productId', 'name', 'price', 'stock', 'isActive', 'imageUrl', 'category', 'sortOrder'],
   Transactions: ['transactionId', 'timestamp', 'studentId', 'studentName', 'items', 'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator'],
