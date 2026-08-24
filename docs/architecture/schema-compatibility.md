@@ -2,6 +2,12 @@
 
 이 문서는 신규 생성 스키마, 일반 런타임 접근 범위, 레거시 데이터 호환 정책을 분리해 정의합니다.
 
+금전 작업의 다단계 쓰기 순서, 부분 실패 위험, idempotency 및 향후 outbox 목표는 [금전 작업 신뢰성 계약](./money-operation-contracts.md)을 참고합니다. 두 문서의 범위는 다음처럼 구분합니다.
+
+- 이 문서는 시트/컬럼의 생성, 접근 범위, 레거시 데이터 보존과 마이그레이션 호환성을 정합니다.
+- 신뢰성 계약은 여러 시트에 걸친 효과의 순서, operation 수명주기, 재시도·동시성·감사 완결성을 정합니다.
+- R0에는 신뢰성 계약의 operation/outbox 저장소나 관련 신규 스키마가 없습니다. 향후 이를 추가하려면 이 문서의 비파괴 호환 원칙과 별도 스키마/API 마이그레이션 검토를 함께 충족해야 합니다.
+
 ## 스키마 범위
 
 - **신규 생성 스키마(`GeneratedSheetName`)**: `Students`, `Products`, `Transactions`, `Adjustments`, `Settings`, `Tasks`, `TaskCompletions`, `Recovery`의 8개 시트입니다.
