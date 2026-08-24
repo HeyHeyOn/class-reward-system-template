@@ -5,27 +5,18 @@ import {
   parseStudentRow,
   requireColumns,
 } from '@/server/sheetsRows';
+import type {
+  OperationalSheetName,
+  SheetCellUpdate,
+  TabularReader,
+  TabularStore,
+} from '@/server/storage/tabularStore';
 
-export type SheetName = 'Students' | 'Products' | 'Transactions' | 'Adjustments' | 'Settings' | 'Tasks' | 'TaskCompletions';
-
-export type SheetsReader = {
-  getRows(sheetName: SheetName): Promise<string[][]>;
-};
-
-export type SheetCellUpdate = {
-  rowNumber: number;
-  columnName: string;
-  value: string | number;
-};
-
-export type SheetsStore = SheetsReader & {
-  updateCell(sheetName: SheetName, rowNumber: number, columnName: string, value: string | number): Promise<void>;
-  updateCells?(sheetName: SheetName, updates: SheetCellUpdate[]): Promise<void>;
-  updateHeaderRow?(sheetName: SheetName, headers: string[]): Promise<void>;
-  appendRow(sheetName: SheetName, values: string[]): Promise<void>;
-  deleteRow?(sheetName: SheetName, rowNumber: number): Promise<void>;
-  deleteRows?(sheetName: SheetName, rowNumbers: number[]): Promise<void>;
-};
+// Temporary compatibility aliases keep the repository's existing public type API intact.
+export type SheetName = OperationalSheetName;
+export type SheetsReader = TabularReader;
+export type SheetsStore = TabularStore;
+export type { SheetCellUpdate };
 
 export type StudentRecord = {
   student: Student;

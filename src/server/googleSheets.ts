@@ -1,9 +1,9 @@
 import { google } from 'googleapis';
 import { getEnvSpreadsheetId } from '@/server/settings';
 import { createDeploymentSheetsAuth, createUserSheetsAuth, isGoogleOAuthEnabled } from '@/server/googleOAuth';
-import type { SheetName, SheetsStore } from '@/server/sheetsRepository';
+import type { OperationalSheetName, SheetCellUpdate, TabularStore } from '@/server/storage/tabularStore';
 
-const SHEET_RANGES: Record<SheetName, string> = {
+const SHEET_RANGES: Record<OperationalSheetName, string> = {
   Students: 'Students!A:Z',
   Products: 'Products!A:Z',
   Transactions: 'Transactions!A:Z',
@@ -13,10 +13,10 @@ const SHEET_RANGES: Record<SheetName, string> = {
   TaskCompletions: 'TaskCompletions!A:Z',
 };
 
-export class GoogleSheetsStore implements SheetsStore {
+export class GoogleSheetsStore implements TabularStore {
   constructor(private readonly spreadsheetId: string, private readonly request?: Request) {}
 
-  async getRows(sheetName: SheetName): Promise<string[][]> {
+  async getRows(sheetName: OperationalSheetName): Promise<string[][]> {
     const sheets = await createSheetsClient(this.request);
     try {
       const response = await sheets.spreadsheets.values.get({
@@ -31,11 +31,11 @@ export class GoogleSheetsStore implements SheetsStore {
     }
   }
 
-  async updateCell(sheetName: SheetName, rowNumber: number, columnName: string, value: string | number): Promise<void> {
+  async updateCell(sheetName: OperationalSheetName, rowNumber: number, columnName: string, value: string | number): Promise<void> {
     await this.updateCells(sheetName, [{ rowNumber, columnName, value }]);
   }
 
-  async updateCells(sheetName: SheetName, updates: Array<{ rowNumber: number; columnName: string; value: string | number }>): Promise<void> {
+  async updateCells(sheetName: OperationalSheetName, updates: SheetCellUpdate[]): Promise<void> {
     if (updates.length === 0) return;
     const headers = (await this.getRows(sheetName))[0] ?? [];
     const sheets = await createSheetsClient(this.request);
@@ -61,7 +61,7 @@ export class GoogleSheetsStore implements SheetsStore {
     });
   }
 
-  async updateHeaderRow(sheetName: SheetName, headers: string[]): Promise<void> {
+  async updateHeaderRow(sheetName: OperationalSheetName, headers: string[]): Promise<void> {
     if (headers.length === 0) return;
     const sheets = await createSheetsClient(this.request);
     await sheets.spreadsheets.values.update({
@@ -72,7 +72,7 @@ export class GoogleSheetsStore implements SheetsStore {
     });
   }
 
-  async appendRow(sheetName: SheetName, values: string[]): Promise<void> {
+  async appendRow(sheetName: OperationalSheetName, values: string[]): Promise<void> {
     const sheets = await createSheetsClient(this.request);
     try {
       await sheets.spreadsheets.values.append({
@@ -95,11 +95,11 @@ export class GoogleSheetsStore implements SheetsStore {
     }
   }
 
-  async deleteRow(sheetName: SheetName, rowNumber: number): Promise<void> {
+  async deleteRow(sheetName: OperationalSheetName, rowNumber: number): Promise<void> {
     await this.deleteRows(sheetName, [rowNumber]);
   }
 
-  async deleteRows(sheetName: SheetName, rowNumbers: number[]): Promise<void> {
+  async deleteRows(sheetName: OperationalSheetName, rowNumbers: number[]): Promise<void> {
     const uniqueRows = Array.from(new Set(rowNumbers)).sort((a, b) => b - a);
     if (uniqueRows.some((rowNumber) => rowNumber <= 1)) throw new Error('헤더 행은 삭제할 수 없습니다.');
     if (uniqueRows.length === 0) return;
@@ -123,7 +123,7 @@ export class GoogleSheetsStore implements SheetsStore {
     });
   }
 
-  private async getSheetId(sheetName: SheetName): Promise<number> {
+  private async getSheetId(sheetName: OperationalSheetName): Promise<number> {
     const sheets = await createSheetsClient(this.request);
     const response = await sheets.spreadsheets.get({
       spreadsheetId: this.spreadsheetId,
@@ -135,7 +135,7 @@ export class GoogleSheetsStore implements SheetsStore {
     return sheetId;
   }
 
-  private async createSheet(sheetName: SheetName): Promise<void> {
+  private async createSheet(sheetName: OperationalSheetName): Promise<void> {
     const sheets = await createSheetsClient(this.request);
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId: this.spreadsheetId,
@@ -207,7 +207,7 @@ function isMissingSheetError(error: unknown): boolean {
   return /Unable to parse range|not found|Requested entity was not found/i.test(error.message);
 }
 
-function isAutoCreatableSheet(sheetName: SheetName): boolean {
+function isAutoCreatableSheet(sheetName: OperationalSheetName): boolean {
   return sheetName === 'Settings' || sheetName === 'Tasks' || sheetName === 'TaskCompletions';
 }
 

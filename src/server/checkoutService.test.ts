@@ -1,28 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import { processCheckout } from '@/server/checkoutService';
-import type { SheetName, SheetsStore } from '@/server/sheetsRepository';
+import type { OperationalSheetName, TabularStore } from '@/server/storage/tabularStore';
 
-class FakeSheetsStore implements SheetsStore {
+class FakeSheetsStore implements TabularStore {
   public rows: Record<string, string[][]>;
-  public updates: Array<{ sheetName: SheetName; rowNumber: number; columnName: string; value: string | number }> = [];
-  public appends: Array<{ sheetName: SheetName; values: string[] }> = [];
+  public updates: Array<{ sheetName: OperationalSheetName; rowNumber: number; columnName: string; value: string | number }> = [];
+  public appends: Array<{ sheetName: OperationalSheetName; values: string[] }> = [];
 
   constructor(rows: Record<string, string[][]>) {
     this.rows = structuredClone(rows);
   }
 
-  async getRows(sheetName: SheetName): Promise<string[][]> {
+  async getRows(sheetName: OperationalSheetName): Promise<string[][]> {
     return this.rows[sheetName];
   }
 
-  async updateCell(sheetName: SheetName, rowNumber: number, columnName: string, value: string | number): Promise<void> {
+  async updateCell(sheetName: OperationalSheetName, rowNumber: number, columnName: string, value: string | number): Promise<void> {
     this.updates.push({ sheetName, rowNumber, columnName, value });
     const headers = this.rows[sheetName][0];
     const columnIndex = headers.indexOf(columnName);
     this.rows[sheetName][rowNumber - 1][columnIndex] = String(value);
   }
 
-  async appendRow(sheetName: SheetName, values: string[]): Promise<void> {
+  async appendRow(sheetName: OperationalSheetName, values: string[]): Promise<void> {
     this.appends.push({ sheetName, values });
     this.rows[sheetName].push(values);
   }

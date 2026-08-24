@@ -4,8 +4,8 @@ import {
   getProductRecords,
   getStudentRecordById,
   type ProductRecord,
-  type SheetsStore,
 } from '@/server/sheetsRepository';
+import type { TabularStore } from '@/server/storage/tabularStore';
 
 export type ProcessCheckoutInput = {
   studentId: string;
@@ -33,7 +33,7 @@ export type ProcessCheckoutResult =
   | { ok: false; code: 'STUDENT_INACTIVE'; message: string };
 
 export async function processCheckout(
-  store: SheetsStore,
+  store: TabularStore,
   input: ProcessCheckoutInput,
 ): Promise<ProcessCheckoutResult> {
   const studentRecord = await getStudentRecordById(store, input.studentId);
