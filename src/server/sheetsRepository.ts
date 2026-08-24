@@ -1,8 +1,10 @@
 import type { CheckoutLineItem, ClassTask, Product, Student, TaskAssignmentStatus, TaskCompletion, Transaction } from '@/domain/types';
 import {
+  buildTaskAppendRow,
   createHeaderIndex,
   parseProductRow,
   parseStudentRow,
+  parseTaskRow,
   requireColumns,
 } from '@/server/sheetsRows';
 import type {
@@ -1116,41 +1118,6 @@ function assertRequiredColumns(
   }
 }
 
-function buildTaskAppendRow(headers: string[], task: ClassTask, timestamp: string): string[] {
-  const valuesByHeader: Record<string, string> = {
-    taskId: task.taskId,
-    title: task.title,
-    description: task.description,
-    reward: String(task.reward),
-    maxCompletionsPerStudent: '1',
-    isActive: task.isActive ? 'TRUE' : 'FALSE',
-    sortOrder: String(task.sortOrder),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    allowedStudentIds: task.allowedStudentIds.join(','),
-  };
-  return headers.map((header) => valuesByHeader[header.trim()] ?? '');
-}
-
-function parseTaskRow(row: string[], headerIndex: Map<string, number>): ClassTask | null {
-  const taskId = getRowCell(row, headerIndex, 'taskId');
-  const title = getRowCell(row, headerIndex, 'title');
-  const reward = parseNumberValue(getRowCell(row, headerIndex, 'reward'));
-  const sortOrder = parseNumberValue(getRowCell(row, headerIndex, 'sortOrder')) ?? 0;
-  if (!taskId || !title || reward === null) return null;
-  const createdAt = getRowCell(row, headerIndex, 'createdAt');
-  return {
-    taskId,
-    title,
-    description: getRowCell(row, headerIndex, 'description'),
-    reward,
-    isActive: parseBooleanValue(getRowCell(row, headerIndex, 'isActive')),
-    sortOrder,
-    allowedStudentIds: parseAllowedStudentIds(getRowCell(row, headerIndex, 'allowedStudentIds')),
-    ...(createdAt ? { createdAt } : {}),
-  };
-}
-
 function buildTaskAssignmentStatus(task: ClassTask, students: Student[], completions: TaskCompletion[]): TaskAssignmentStatus {
   const completedStudentIds = new Set(
     completions
@@ -1184,10 +1151,6 @@ function parseIsoTimestamp(value?: string): number | null {
   if (!/^\d{4}-\d{2}-\d{2}T/.test(trimmed)) return null;
   const parsed = Date.parse(trimmed);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function parseAllowedStudentIds(value: string): string[] {
-  return normalizeUniqueIds(value.split(/[\n,;]/).map((id) => id.trim()));
 }
 
 function parseTaskCompletionRow(row: string[], headerIndex: Map<string, number>): TaskCompletion | null {
@@ -1240,10 +1203,6 @@ function parseNumberValue(value: string): number | null {
   if (!value) return null;
   const parsed = Number(value.replace(/,/g, ''));
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function parseBooleanValue(value: string): boolean {
-  return /^(true|1|yes|y|활성)$/i.test(value.trim());
 }
 
 function parseTransactionItems(value: string): CheckoutLineItem[] {
