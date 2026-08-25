@@ -167,6 +167,6 @@ key | value
 - 기존 시트나 컬럼을 삭제·덮어쓰기·이름 변경하는 파괴적 자동 마이그레이션은 수행하지 않습니다.
 - 일반 GET/query는 schema를 쓰지 않습니다. read adapter가 누락된 `TaskAssignments`를 `[]`로 반환할 때만 레거시 배정 fallback을 사용하며, 다른 read 오류나 존재하는 시트의 잘못된 필수 헤더는 숨기지 않고 실패합니다. 반복 과제의 schedule·시간대·배정·완료 mutation 직전에는 additive migrator가 `Tasks`/`TaskCompletions`의 누락 canonical 컬럼을 뒤에 추가하고, 누락된 `TaskAssignments`를 race-safe하게 생성합니다. 기존 행과 알 수 없는 trailing column은 보존합니다.
 - 학급 시간대 변경은 `Settings`와 반복 과제 schedule 셀을 한 provider 요청으로 갱신하는 atomic cross-sheet capability가 있는 저장소에서만 수행합니다. capability가 없으면 migration이나 설정 쓰기 전에 거부합니다.
-- 과제 삭제는 `Tasks` 정의 행만 삭제합니다. 별도 삭제 snapshot 이벤트는 append하지 않으며 기존 assignment/completion 원장은 보존합니다. legacy seed/carry의 결정적 ID에도 Sheets unique constraint는 없으므로 여러 서버 instance의 동시 materialize에서는 같은 ID의 중복 행이 생길 수 있습니다.
+- 과제 삭제는 `Tasks` 정의 행만 삭제합니다. 별도 삭제 snapshot 이벤트는 append하지 않으며 기존 assignment/completion 원장은 보존합니다. assignment `LEGACY_SEED`/`CARRY_FORWARD`는 결정적 ID지만 Sheets unique constraint가 없어 여러 서버 instance에서 같은 ID의 중복 행이 생길 수 있습니다. completion `CARRY_FORWARD`는 무작위 ID를 사용하므로 동시 materialize 시 서로 다른 ID의 의미상 중복 이벤트가 생길 수 있습니다.
 - canonical 스키마로 전면 재작성하는 작업은 사용자 동의와 백업이 있는 별도 절차로만 수행합니다.
 - 레거시 컬럼과 시트의 상세 원칙은 [스키마 호환성 정책](architecture/schema-compatibility.md)을 따릅니다.
