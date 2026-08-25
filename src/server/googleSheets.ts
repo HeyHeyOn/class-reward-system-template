@@ -4,6 +4,7 @@ import { createDeploymentSheetsAuth, createUserSheetsAuth, isGoogleOAuthEnabled 
 import {
   MigrationConflictError,
   SheetProviderError,
+  type CrossSheetCellUpdate,
   type HeaderWritePrecondition,
   type OperationalSheetName,
   type RecurringSchemaMigrationStore,
@@ -13,14 +14,14 @@ import {
 } from '@/server/storage/tabularStore';
 
 const SHEET_RANGES: Record<OperationalSheetName, string> = {
-  Students: 'Students!A:Z',
-  Products: 'Products!A:Z',
-  Transactions: 'Transactions!A:Z',
-  Adjustments: 'Adjustments!A:Z',
-  Settings: 'Settings!A:Z',
-  Tasks: 'Tasks!A:A',
-  TaskAssignments: 'TaskAssignments!A:A',
-  TaskCompletions: 'TaskCompletions!A:A',
+  Students: a1Range('Students', 'A:Z'),
+  Products: a1Range('Products', 'A:Z'),
+  Transactions: a1Range('Transactions', 'A:Z'),
+  Adjustments: a1Range('Adjustments', 'A:Z'),
+  Settings: a1Range('Settings', 'A:Z'),
+  Tasks: a1Range('Tasks', 'A:A'),
+  TaskAssignments: a1Range('TaskAssignments', 'A:A'),
+  TaskCompletions: a1Range('TaskCompletions', 'A:A'),
 };
 
 export class GoogleSheetsStore implements TabularStore, RecurringSchemaMigrationStore {
@@ -56,7 +57,7 @@ export class GoogleSheetsStore implements TabularStore, RecurringSchemaMigration
       }
 
       return {
-        range: `${sheetName}!${columnIndexToLetter(columnIndex)}${update.rowNumber}`,
+        range: a1Range(sheetName, `${columnIndexToLetter(columnIndex)}${update.rowNumber}`),
         values: [[update.value]],
       };
     });
@@ -70,12 +71,35 @@ export class GoogleSheetsStore implements TabularStore, RecurringSchemaMigration
     });
   }
 
+  async updateCellsAtomicallyAcrossSheets(updates: CrossSheetCellUpdate[]): Promise<void> {
+    if (updates.length === 0) return;
+    for (const update of updates) {
+      if (!Number.isSafeInteger(update.rowNumber) || update.rowNumber < 1) {
+        throw new RangeError(`Invalid one-based row number: ${update.rowNumber}`);
+      }
+      if (!Number.isSafeInteger(update.columnNumber) || update.columnNumber < 1) {
+        throw new RangeError(`Invalid one-based column number: ${update.columnNumber}`);
+      }
+    }
+    const sheets = await createSheetsClient(this.request);
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: this.spreadsheetId,
+      requestBody: {
+        valueInputOption: 'RAW',
+        data: updates.map((update) => ({
+          range: a1Range(update.sheetName, `${columnIndexToLetter(update.columnNumber - 1)}${update.rowNumber}`),
+          values: [[update.value]],
+        })),
+      },
+    });
+  }
+
   async updateHeaderRow(sheetName: OperationalSheetName, headers: string[]): Promise<void> {
     if (headers.length === 0) return;
     const sheets = await createSheetsClient(this.request);
     await sheets.spreadsheets.values.update({
       spreadsheetId: this.spreadsheetId,
-      range: `${sheetName}!A1:${columnIndexToLetter(headers.length - 1)}1`,
+      range: a1Range(sheetName, `A1:${columnIndexToLetter(headers.length - 1)}1`),
       valueInputOption: 'RAW',
       requestBody: { values: [headers] },
     });
@@ -189,7 +213,7 @@ export class GoogleSheetsStore implements TabularStore, RecurringSchemaMigration
     const sheets = await createSheetsClient(this.request);
     await sheets.spreadsheets.values.update({
       spreadsheetId: this.spreadsheetId,
-      range: `${sheetName}!${columnIndexToLetter(startColumn)}1:${columnIndexToLetter(startColumn + headers.length - 1)}1`,
+      range: a1Range(sheetName, `${columnIndexToLetter(startColumn)}1:${columnIndexToLetter(startColumn + headers.length - 1)}1`),
       valueInputOption: 'RAW', requestBody: { values: [[...headers]] },
     });
   }
@@ -208,7 +232,7 @@ export class GoogleSheetsStore implements TabularStore, RecurringSchemaMigration
     const sheets = await createSheetsClient(this.request);
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: this.spreadsheetId,
-      range: `${sheetName}!A1:${columnIndexToLetter(expected.header.length - 1)}1`,
+      range: a1Range(sheetName, `A1:${columnIndexToLetter(expected.header.length - 1)}1`),
     });
     const current = normalizeRows(response.data.values ?? [])[0] ?? [];
     if (current.length !== expected.header.length
@@ -234,7 +258,7 @@ export class GoogleSheetsStore implements TabularStore, RecurringSchemaMigration
     const sheets = await createSheetsClient(this.request);
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: this.spreadsheetId,
-      range: `${sheetName}!A1:${columnIndexToLetter(requiredColumnCount - 1)}1`,
+      range: a1Range(sheetName, `A1:${columnIndexToLetter(requiredColumnCount - 1)}1`),
     });
     const current = normalizeRows(response.data.values ?? [])[0] ?? [];
     if (current.length !== expected.header.length
@@ -246,7 +270,7 @@ export class GoogleSheetsStore implements TabularStore, RecurringSchemaMigration
     // adjacent to the update so every detectable race fails before any write.
     await sheets.spreadsheets.values.update({
       spreadsheetId: this.spreadsheetId,
-      range: `${sheetName}!${columnIndexToLetter(expected.header.length)}1:${columnIndexToLetter(requiredColumnCount - 1)}1`,
+      range: a1Range(sheetName, `${columnIndexToLetter(expected.header.length)}1:${columnIndexToLetter(requiredColumnCount - 1)}1`),
       valueInputOption: 'RAW', requestBody: { values: [[...headers]] },
     });
   }
@@ -261,9 +285,9 @@ export class GoogleSheetsStore implements TabularStore, RecurringSchemaMigration
     if (!isRecurringSheet(sheetName)) return SHEET_RANGES[sheetName];
     const lookup = await this.lookupSheet(sheetName);
     if (!lookup.found) return null;
-    const header = await sheets.spreadsheets.values.get({ spreadsheetId: this.spreadsheetId, range: `${sheetName}!1:1` });
+    const header = await sheets.spreadsheets.values.get({ spreadsheetId: this.spreadsheetId, range: a1Range(sheetName, '1:1') });
     const width = Math.max(1, header.data.values?.[0]?.length ?? 0);
-    return `${sheetName}!A:${columnIndexToLetter(width - 1)}`;
+    return a1Range(sheetName, `A:${columnIndexToLetter(width - 1)}`);
   }
 
   private async appendToRange(
@@ -371,6 +395,11 @@ function assertValidColumnIndex(index: number): void {
   if (!Number.isSafeInteger(index) || index < 0) {
     throw new RangeError(`Invalid zero-based column index: ${index}`);
   }
+}
+
+/** Quotes an A1 sheet title and doubles embedded apostrophes per the Sheets grammar. */
+function a1Range(sheetTitle: string, cells: string): string {
+  return `'${sheetTitle.split("'").join("''")}'!${cells}`;
 }
 
 function columnIndexToLetter(index: number): string {

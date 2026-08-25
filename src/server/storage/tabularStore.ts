@@ -14,6 +14,14 @@ export type SheetCellUpdate = {
   value: string | number;
 };
 
+/** A one-based physical cell address suitable for one provider-level atomic request. */
+export type CrossSheetCellUpdate = {
+  sheetName: OperationalSheetName;
+  rowNumber: number;
+  columnNumber: number;
+  value: string | number;
+};
+
 export type SheetInfo = {
   sheetId: number;
   title: OperationalSheetName;
@@ -62,11 +70,23 @@ export type TabularStore = TabularReader & {
     value: string | number,
   ): Promise<void>;
   updateCells?(sheetName: OperationalSheetName, updates: SheetCellUpdate[]): Promise<void>;
+  updateCellsAtomicallyAcrossSheets?(updates: CrossSheetCellUpdate[]): Promise<void>;
   updateHeaderRow?(sheetName: OperationalSheetName, headers: string[]): Promise<void>;
   appendRow(sheetName: OperationalSheetName, values: string[]): Promise<void>;
   deleteRow?(sheetName: OperationalSheetName, rowNumber: number): Promise<void>;
   deleteRows?(sheetName: OperationalSheetName, rowNumbers: number[]): Promise<void>;
 };
+
+/** Never emulates atomicity by looping primitive writes. */
+export async function updateCellsAtomicallyAcrossSheets(
+  store: TabularStore,
+  updates: CrossSheetCellUpdate[],
+): Promise<void> {
+  if (!store.updateCellsAtomicallyAcrossSheets) {
+    throw new Error('현재 Sheets 저장소가 원자적 다중 시트 업데이트를 지원하지 않습니다.');
+  }
+  await store.updateCellsAtomicallyAcrossSheets(updates);
+}
 
 /** Capabilities required by the explicit recurring-schema migration command. */
 export interface RecurringSchemaMigrationStore extends TabularStore {

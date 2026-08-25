@@ -1,4 +1,6 @@
 import type { SheetsReader, SheetsStore } from '@/server/sheetsRepository';
+import type { RecurringSchemaMigrationStore } from '@/server/storage/tabularStore';
+import { changeClassTimeZone, type ClassTimeZoneChangeResult } from '@/server/repositories/sheets/taskScheduleCommands';
 import { getSheetSettings, saveSheetSetting } from '@/server/sheetsRepository';
 import { saveAdminPassword } from '@/server/adminAuth';
 import { SYSTEM_NAME_KO, SYSTEM_VERSION } from '@/generator/config/versions';
@@ -98,6 +100,15 @@ export function validateClassTimeZone(value: unknown): ClassTimeZoneValidationRe
     return { ok: false, message: '올바른 IANA 시간대를 입력해 주세요.' };
   }
   return { ok: true, classTimeZone };
+}
+
+export async function updateClassTimeZone(
+  store: RecurringSchemaMigrationStore,
+  value: unknown,
+): Promise<ClassTimeZoneChangeResult> {
+  const validation = validateClassTimeZone(value);
+  if (validation.ok === false) throw new Error(validation.message);
+  return changeClassTimeZone(store, validation.classTimeZone);
 }
 
 export function getEnvSpreadsheetId(env: SettingsEnv = process.env): string {

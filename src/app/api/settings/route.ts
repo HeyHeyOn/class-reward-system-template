@@ -1,33 +1,75 @@
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
-import { getAppSettings, saveAppSettings, validateSpreadsheetId } from '@/server/settings';
+import {
+  getAppSettings,
+  saveAppSettings,
+  updateClassTimeZone,
+  validateClassTimeZone,
+  validateSpreadsheetId,
+} from '@/server/settings';
 import { createConfiguredSheetsStore, verifySpreadsheetAccess } from '@/server/googleSheets';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-  const store = await createConfiguredSheetsStore();
-  const settings = await getAppSettings({ settingsReader: store });
+const SAVE_SETTINGS_ERROR = '설정을 저장하지 못했습니다.';
+const INVALID_JSON_ERROR = '올바른 요청 내용을 입력해 주세요.';
 
+async function parseRequestJson(request: Request): Promise<{ ok: true; body: Record<string, unknown> } | { ok: false }> {
+  try {
+    const value: unknown = await request.json();
+    return { ok: true, body: value !== null && typeof value === 'object' && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : {} };
+  } catch {
+    return { ok: false };
+  }
+}
+
+export async function GET(request: Request) {
+  const store = await createConfiguredSheetsStore(request);
+  const settings = await getAppSettings({ settingsReader: store });
   return Response.json(settings);
+}
+
+export async function PATCH(request: Request) {
+  if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
+
+  const parsed = await parseRequestJson(request);
+  if (!parsed.ok) return Response.json({ error: INVALID_JSON_ERROR }, { status: 400 });
+
+  const validation = validateClassTimeZone(parsed.body.classTimeZone);
+  if (validation.ok === false) {
+    return Response.json({ error: validation.message }, { status: 400 });
+  }
+
+  try {
+    const store = await createConfiguredSheetsStore(request);
+    const settings = await getAppSettings({ settingsReader: store });
+    await updateClassTimeZone(store, validation.classTimeZone);
+    return Response.json({ ...settings, classTimeZone: validation.classTimeZone });
+  } catch {
+    return Response.json({ error: SAVE_SETTINGS_ERROR }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
+  const parsed = await parseRequestJson(request);
+  if (!parsed.ok) return Response.json({ error: INVALID_JSON_ERROR }, { status: 400 });
+  const body = parsed.body;
+
+  if (typeof body.spreadsheetIdOrUrl !== 'string') {
+    return Response.json({ error: '시트 ID 또는 주소를 입력해 주세요.' }, { status: 400 });
+  }
+
+  const validation = validateSpreadsheetId(body.spreadsheetIdOrUrl);
+  if (validation.ok === false) {
+    return Response.json({ error: validation.message }, { status: 400 });
+  }
+
   try {
-    const body = (await request.json()) as { spreadsheetIdOrUrl?: unknown; currencyUnit?: unknown; appTitle?: unknown; bankTitle?: unknown; adminPassword?: unknown; themeColor?: unknown; fontFamily?: unknown; qrManualInputEnabled?: unknown };
-
-    if (typeof body.spreadsheetIdOrUrl !== 'string') {
-      return Response.json({ error: '시트 ID 또는 주소를 입력해 주세요.' }, { status: 400 });
-    }
-
-    const validation = validateSpreadsheetId(body.spreadsheetIdOrUrl);
-    if (validation.ok === false) {
-      return Response.json({ error: validation.message }, { status: 400 });
-    }
-
-    await verifySpreadsheetAccess(validation.spreadsheetId);
-    const store = await createConfiguredSheetsStore();
+    await verifySpreadsheetAccess(validation.spreadsheetId, request);
+    const store = await createConfiguredSheetsStore(request);
     const settings = await saveAppSettings({
       settingsStore: store,
       spreadsheetIdOrUrl: validation.spreadsheetId,
@@ -41,9 +83,7 @@ export async function POST(request: Request) {
     });
 
     return Response.json(settings);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : '설정을 저장하지 못했습니다.';
-
-    return Response.json({ error: message }, { status: 400 });
+  } catch {
+    return Response.json({ error: SAVE_SETTINGS_ERROR }, { status: 500 });
   }
 }

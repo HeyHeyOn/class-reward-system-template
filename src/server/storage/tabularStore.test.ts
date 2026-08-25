@@ -1,5 +1,6 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
+  updateCellsAtomicallyAcrossSheets,
   MigrationConflictError,
   SheetProviderError,
   type OperationalSheetName,
@@ -94,5 +95,15 @@ describe('tabular store port', () => {
   it('keeps migration capabilities on an explicit required extension port', () => {
     expectTypeOf<RecurringSchemaMigrationStore>().toMatchTypeOf<TabularStore>();
     expectTypeOf<RecurringSchemaMigrationStore['createSheetWithHeader']>().toBeFunction();
+  });
+
+  it('rejects cross-sheet atomic updates when an adapter lacks the primitive, without falling back', async () => {
+    const adapter = new InMemoryTabularStore({});
+
+    await expect(updateCellsAtomicallyAcrossSheets(adapter, [
+      { sheetName: 'Settings', rowNumber: 2, columnNumber: 2, value: 'UTC' },
+      { sheetName: 'Tasks', rowNumber: 2, columnNumber: 13, value: 'UTC' },
+    ])).rejects.toThrow('원자적 다중 시트 업데이트를 지원하지 않습니다');
+    expect(adapter.updates).toEqual([]);
   });
 });

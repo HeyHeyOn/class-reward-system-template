@@ -84,7 +84,7 @@ describe('GoogleSheetsStore auth and recurring ranges', () => {
       spreadsheetId: 'sheet-123',
       requestBody: {
         valueInputOption: 'RAW',
-        data: [{ range: 'Settings!B2', values: [['별']] }],
+        data: [{ range: "'Settings'!B2", values: [['별']] }],
       },
     });
   });
@@ -98,7 +98,7 @@ describe('GoogleSheetsStore auth and recurring ranges', () => {
     expect(googleMocks.oauth2SetCredentials).toHaveBeenCalledWith({ refresh_token: 'refresh-token' });
     expect(googleMocks.JWT).not.toHaveBeenCalled();
     expect(googleMocks.sheets).toHaveBeenCalledWith({ version: 'v4', auth: googleMocks.oauth2Instances[0] });
-    expect(googleMocks.sheetsValuesGet).toHaveBeenCalledWith({ spreadsheetId: 'sheet-123', range: 'Students!A:Z' });
+    expect(googleMocks.sheetsValuesGet).toHaveBeenCalledWith({ spreadsheetId: 'sheet-123', range: "'Students'!A:Z" });
   });
 
   it('does not auto-create or append when structured lookup says TaskAssignments is missing', async () => {
@@ -144,8 +144,8 @@ describe('GoogleSheetsStore auth and recurring ranges', () => {
   it('uses live A:AC width for >26-column Tasks read, append, and update without dropping a legacy tail', async () => {
     const rows = [taskHeader, [...taskHeader.map((_, index) => `value${index + 1}`)]];
     googleMocks.sheetsValuesGet.mockImplementation(async ({ range }: { range: string }) => {
-      if (range === 'Tasks!1:1') return { data: { values: [taskHeader] } };
-      if (range === 'Tasks!A:AC') return { data: { values: rows } };
+      if (range === "'Tasks'!1:1") return { data: { values: [taskHeader] } };
+      if (range === "'Tasks'!A:AC") return { data: { values: rows } };
       throw new Error(`unexpected range ${range}`);
     });
     const store = new GoogleSheetsStore('sheet-123');
@@ -155,14 +155,38 @@ describe('GoogleSheetsStore auth and recurring ranges', () => {
     await store.updateCell('Tasks', 2, 'legacyCustom', 'preserved');
 
     expect(googleMocks.sheetsApi.spreadsheets.values.append).toHaveBeenCalledWith(expect.objectContaining({
-      spreadsheetId: 'sheet-123', range: 'Tasks!A:AC',
+      spreadsheetId: 'sheet-123', range: "'Tasks'!A:AC",
     }));
     expect(googleMocks.sheetsApi.spreadsheets.values.batchUpdate).toHaveBeenCalledWith({
       spreadsheetId: 'sheet-123',
-      requestBody: { valueInputOption: 'RAW', data: [{ range: 'Tasks!AC2', values: [['preserved']] }] },
+      requestBody: { valueInputOption: 'RAW', data: [{ range: "'Tasks'!AC2", values: [['preserved']] }] },
     });
     expect(googleMocks.sheetsApi.spreadsheets.values.update).not.toHaveBeenCalled();
     expect(googleMocks.sheetsApi.spreadsheets.batchUpdate).not.toHaveBeenCalled();
+  });
+
+  it('updates cells across Settings and Tasks in exactly one RAW values.batchUpdate request', async () => {
+    const store = new GoogleSheetsStore('sheet-123');
+
+    await store.updateCellsAtomicallyAcrossSheets([
+      { sheetName: 'Settings', rowNumber: 4, columnNumber: 2, value: 'America/New_York' },
+      { sheetName: 'Tasks', rowNumber: 2, columnNumber: 13, value: 'America/New_York' },
+      { sheetName: 'Tasks', rowNumber: 2, columnNumber: 20, value: 3 },
+    ]);
+
+    expect(googleMocks.sheetsApi.spreadsheets.values.batchUpdate).toHaveBeenCalledTimes(1);
+    expect(googleMocks.sheetsApi.spreadsheets.values.batchUpdate).toHaveBeenCalledWith({
+      spreadsheetId: 'sheet-123',
+      requestBody: {
+        valueInputOption: 'RAW',
+        data: [
+          { range: "'Settings'!B4", values: [['America/New_York']] },
+          { range: "'Tasks'!M2", values: [['America/New_York']] },
+          { range: "'Tasks'!T2", values: [[3]] },
+        ],
+      },
+    });
+    expect(googleMocks.sheetsValuesGet).not.toHaveBeenCalled();
   });
 
   it('creates a new assignment sheet and exact A1:O1 header in one atomic batch request', async () => {
@@ -220,10 +244,10 @@ describe('GoogleSheetsStore auth and recurring ranges', () => {
     );
 
     expect(googleMocks.sheetsValuesGet).toHaveBeenCalledWith({
-      spreadsheetId: 'sheet-123', range: 'Tasks!A1:C1',
+      spreadsheetId: 'sheet-123', range: "'Tasks'!A1:C1",
     });
     expect(googleMocks.sheetsApi.spreadsheets.values.update).toHaveBeenCalledWith({
-      spreadsheetId: 'sheet-123', range: 'Tasks!C1:C1', valueInputOption: 'RAW',
+      spreadsheetId: 'sheet-123', range: "'Tasks'!C1:C1", valueInputOption: 'RAW',
       requestBody: { values: [['newHeader']] },
     });
   });
@@ -258,7 +282,7 @@ describe('GoogleSheetsStore auth and recurring ranges', () => {
     const store = new GoogleSheetsStore('sheet-123');
     await store.writeHeaderCells('Tasks', startColumn, ['header']);
     expect(googleMocks.sheetsApi.spreadsheets.values.update).toHaveBeenCalledWith(expect.objectContaining({
-      range: `Tasks!${letter}1:${letter}1`,
+      range: `'Tasks'!${letter}1:${letter}1`,
     }));
   });
 
