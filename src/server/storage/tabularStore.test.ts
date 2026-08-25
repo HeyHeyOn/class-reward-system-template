@@ -1,9 +1,12 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import type {
-  OperationalSheetName,
-  SheetCellUpdate,
-  TabularReader,
-  TabularStore,
+import {
+  MigrationConflictError,
+  SheetProviderError,
+  type OperationalSheetName,
+  type RecurringSchemaMigrationStore,
+  type SheetCellUpdate,
+  type TabularReader,
+  type TabularStore,
 } from '@/server/storage/tabularStore';
 
 class InMemoryTabularStore implements TabularStore {
@@ -77,5 +80,19 @@ describe('tabular store port', () => {
       // @ts-expect-error Recovery is intentionally outside the operational store port.
       void reader.getRows('Recovery');
     }
+  });
+
+  it('exposes structured provider reasons and an explicit retryable migration conflict', () => {
+    expect(new SheetProviderError('SHEET_ALREADY_EXISTS')).toMatchObject({
+      name: 'SheetProviderError', reason: 'SHEET_ALREADY_EXISTS',
+    });
+    expect(new MigrationConflictError('Tasks', 'header raced')).toMatchObject({
+      name: 'MigrationConflictError', sheetName: 'Tasks', retryable: true,
+    });
+  });
+
+  it('keeps migration capabilities on an explicit required extension port', () => {
+    expectTypeOf<RecurringSchemaMigrationStore>().toMatchTypeOf<TabularStore>();
+    expectTypeOf<RecurringSchemaMigrationStore['createSheetWithHeader']>().toBeFunction();
   });
 });

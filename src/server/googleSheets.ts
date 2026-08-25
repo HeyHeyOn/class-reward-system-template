@@ -1,7 +1,16 @@
 import { google } from 'googleapis';
 import { getEnvSpreadsheetId } from '@/server/settings';
 import { createDeploymentSheetsAuth, createUserSheetsAuth, isGoogleOAuthEnabled } from '@/server/googleOAuth';
-import type { OperationalSheetName, SheetCellUpdate, TabularStore } from '@/server/storage/tabularStore';
+import {
+  MigrationConflictError,
+  SheetProviderError,
+  type HeaderWritePrecondition,
+  type OperationalSheetName,
+  type RecurringSchemaMigrationStore,
+  type SheetCellUpdate,
+  type SheetLookupResult,
+  type TabularStore,
+} from '@/server/storage/tabularStore';
 
 const SHEET_RANGES: Record<OperationalSheetName, string> = {
   Students: 'Students!A:Z',
@@ -9,25 +18,24 @@ const SHEET_RANGES: Record<OperationalSheetName, string> = {
   Transactions: 'Transactions!A:Z',
   Adjustments: 'Adjustments!A:Z',
   Settings: 'Settings!A:Z',
-  Tasks: 'Tasks!A:AB',
-  TaskAssignments: 'TaskAssignments!A:O',
-  TaskCompletions: 'TaskCompletions!A:S',
+  Tasks: 'Tasks!A:A',
+  TaskAssignments: 'TaskAssignments!A:A',
+  TaskCompletions: 'TaskCompletions!A:A',
 };
 
-export class GoogleSheetsStore implements TabularStore {
+export class GoogleSheetsStore implements TabularStore, RecurringSchemaMigrationStore {
   constructor(private readonly spreadsheetId: string, private readonly request?: Request) {}
 
   async getRows(sheetName: OperationalSheetName): Promise<string[][]> {
     const sheets = await createSheetsClient(this.request);
     try {
-      const response = await sheets.spreadsheets.values.get({
-        spreadsheetId: this.spreadsheetId,
-        range: SHEET_RANGES[sheetName],
-      });
-
+      const range = await this.resolveLiveRange(sheets, sheetName);
+      if (!range) return [];
+      const response = await sheets.spreadsheets.values.get({ spreadsheetId: this.spreadsheetId, range });
       return normalizeRows(response.data.values ?? []);
     } catch (error) {
-      if (isAutoCreatableSheet(sheetName) && isMissingSheetError(error)) return [];
+      // Legacy optional sheets read as empty, but reads never create or migrate them.
+      if (isLegacyAutoCreatableSheet(sheetName) && isMissingSheetError(error)) return [];
       throw error;
     }
   }
@@ -75,24 +83,16 @@ export class GoogleSheetsStore implements TabularStore {
 
   async appendRow(sheetName: OperationalSheetName, values: string[]): Promise<void> {
     const sheets = await createSheetsClient(this.request);
+    let range: string | null = null;
     try {
-      await sheets.spreadsheets.values.append({
-        spreadsheetId: this.spreadsheetId,
-        range: SHEET_RANGES[sheetName],
-        valueInputOption: 'RAW',
-        insertDataOption: 'INSERT_ROWS',
-        requestBody: { values: [values] },
-      });
+      range = await this.resolveLiveRange(sheets, sheetName);
+      if (!range) throw new MissingSheetError(sheetName);
+      await this.appendToRange(sheets, range, values);
     } catch (error) {
-      if (!isAutoCreatableSheet(sheetName) || !isMissingSheetError(error)) throw error;
-      await this.createSheet(sheetName);
-      await sheets.spreadsheets.values.append({
-        spreadsheetId: this.spreadsheetId,
-        range: SHEET_RANGES[sheetName],
-        valueInputOption: 'RAW',
-        insertDataOption: 'INSERT_ROWS',
-        requestBody: { values: [values] },
-      });
+      if (!isLegacyAutoCreatableSheet(sheetName)
+        || (!(error instanceof MissingSheetError) && !isMissingSheetError(error))) throw error;
+      await this.createLegacySheet(sheets, sheetName);
+      await this.appendToRange(sheets, range ?? SHEET_RANGES[sheetName], values);
     }
   }
 
@@ -124,25 +124,169 @@ export class GoogleSheetsStore implements TabularStore {
     });
   }
 
-  private async getSheetId(sheetName: OperationalSheetName): Promise<number> {
+  async lookupSheet(sheetName: OperationalSheetName): Promise<SheetLookupResult> {
     const sheets = await createSheetsClient(this.request);
     const response = await sheets.spreadsheets.get({
       spreadsheetId: this.spreadsheetId,
-      fields: 'sheets.properties(sheetId,title)',
+      fields: 'sheets.properties(sheetId,title,gridProperties.columnCount)',
     });
     const sheet = response.data.sheets?.find((item) => item.properties?.title === sheetName);
     const sheetId = sheet?.properties?.sheetId;
-    if (sheetId === undefined || sheetId === null) throw new Error(`${sheetName} 시트를 찾을 수 없습니다.`);
-    return sheetId;
+    if (sheetId === undefined || sheetId === null) return { found: false, reason: 'SHEET_NOT_FOUND' };
+    return { found: true, info: { sheetId, title: sheetName, columnCount: sheet?.properties?.gridProperties?.columnCount ?? 0 } };
   }
 
-  private async createSheet(sheetName: OperationalSheetName): Promise<void> {
+  async createSheetWithHeader(sheetName: OperationalSheetName, headers: readonly string[]): Promise<void> {
+    if (headers.length === 0) throw new RangeError('header must contain at least one column');
     const sheets = await createSheetsClient(this.request);
+    // Supplying the ID lets addSheet and updateCells share one atomic batch request.
+    const sheetId = Math.floor(Math.random() * 2_000_000_000) + 1;
+    try {
+      await sheets.spreadsheets.batchUpdate({ spreadsheetId: this.spreadsheetId, requestBody: {
+        requests: [
+          { addSheet: { properties: {
+            sheetId, title: sheetName, gridProperties: { columnCount: headers.length },
+          } } },
+          { updateCells: {
+            range: {
+              sheetId, startRowIndex: 0, endRowIndex: 1,
+              startColumnIndex: 0, endColumnIndex: headers.length,
+            },
+            rows: [{ values: headers.map((value) => ({ userEnteredValue: { stringValue: value } })) }],
+            fields: 'userEnteredValue',
+          } },
+        ],
+      } });
+    } catch (error) {
+      try {
+        const lookup = await this.lookupSheet(sheetName);
+        if (lookup.found) {
+          throw new SheetProviderError('SHEET_ALREADY_EXISTS', `${sheetName} exists after failed create batch`);
+        }
+      } catch (lookupError) {
+        if (lookupError instanceof SheetProviderError) throw lookupError;
+      }
+      throw error;
+    }
+  }
+
+  async ensureColumnCount(sheetName: OperationalSheetName, expectedColumnCount: number, requiredColumnCount: number): Promise<void> {
+    if (requiredColumnCount <= expectedColumnCount) return;
+    const lookup = await this.lookupSheet(sheetName);
+    if (!lookup.found || lookup.info.columnCount !== expectedColumnCount) {
+      throw new MigrationConflictError(sheetName, 'grid width changed before expansion');
+    }
+    const sheets = await createSheetsClient(this.request);
+    await sheets.spreadsheets.batchUpdate({ spreadsheetId: this.spreadsheetId, requestBody: { requests: [{
+      appendDimension: { sheetId: lookup.info.sheetId, dimension: 'COLUMNS', length: requiredColumnCount - expectedColumnCount },
+    }] } });
+  }
+
+  async writeHeaderCells(sheetName: OperationalSheetName, startColumn: number, headers: readonly string[]): Promise<void> {
+    if (headers.length === 0) return;
+    assertValidColumnIndex(startColumn);
+    assertValidColumnIndex(startColumn + headers.length - 1);
+    const sheets = await createSheetsClient(this.request);
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: this.spreadsheetId,
+      range: `${sheetName}!${columnIndexToLetter(startColumn)}1:${columnIndexToLetter(startColumn + headers.length - 1)}1`,
+      valueInputOption: 'RAW', requestBody: { values: [[...headers]] },
+    });
+  }
+
+  async verifyHeaderCells(
+    sheetName: OperationalSheetName,
+    expected: HeaderWritePrecondition,
+  ): Promise<void> {
+    const lookup = await this.lookupSheet(sheetName);
+    if (!lookup.found || lookup.info.sheetId !== expected.sheetId
+      || lookup.info.columnCount !== expected.columnCount) {
+      throw new MigrationConflictError(sheetName, 'sheet identity or grid width changed before expansion');
+    }
+    if (expected.header.length === 0) return;
+
+    const sheets = await createSheetsClient(this.request);
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: this.spreadsheetId,
+      range: `${sheetName}!A1:${columnIndexToLetter(expected.header.length - 1)}1`,
+    });
+    const current = normalizeRows(response.data.values ?? [])[0] ?? [];
+    if (current.length !== expected.header.length
+      || !current.every((value, index) => value === expected.header[index])) {
+      throw new MigrationConflictError(sheetName, 'expected header changed before expansion');
+    }
+  }
+
+  async verifyAndWriteHeaderCells(
+    sheetName: OperationalSheetName,
+    expected: HeaderWritePrecondition,
+    headers: string[],
+  ): Promise<void> {
+    if (headers.length === 0) return;
+    const requiredColumnCount = expected.header.length + headers.length;
+    const lookup = await this.lookupSheet(sheetName);
+    if (!lookup.found || lookup.info.sheetId !== expected.sheetId
+      || lookup.info.columnCount !== expected.columnCount
+      || lookup.info.columnCount < requiredColumnCount) {
+      throw new MigrationConflictError(sheetName, 'sheet identity or grid width changed before header update');
+    }
+
+    const sheets = await createSheetsClient(this.request);
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: this.spreadsheetId,
+      range: `${sheetName}!A1:${columnIndexToLetter(requiredColumnCount - 1)}1`,
+    });
+    const current = normalizeRows(response.data.values ?? [])[0] ?? [];
+    if (current.length !== expected.header.length
+      || !current.every((value, index) => value === expected.header[index])) {
+      throw new MigrationConflictError(sheetName, 'expected header changed or destination cells are occupied');
+    }
+
+    // Sheets has no compare-and-set for values. Keep this verification directly
+    // adjacent to the update so every detectable race fails before any write.
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: this.spreadsheetId,
+      range: `${sheetName}!${columnIndexToLetter(expected.header.length)}1:${columnIndexToLetter(requiredColumnCount - 1)}1`,
+      valueInputOption: 'RAW', requestBody: { values: [[...headers]] },
+    });
+  }
+
+  private async getSheetId(sheetName: OperationalSheetName): Promise<number> {
+    const lookup = await this.lookupSheet(sheetName);
+    if (!lookup.found) throw new Error(`${sheetName} 시트를 찾을 수 없습니다.`);
+    return lookup.info.sheetId;
+  }
+
+  private async resolveLiveRange(sheets: Awaited<ReturnType<typeof createSheetsClient>>, sheetName: OperationalSheetName): Promise<string | null> {
+    if (!isRecurringSheet(sheetName)) return SHEET_RANGES[sheetName];
+    const lookup = await this.lookupSheet(sheetName);
+    if (!lookup.found) return null;
+    const header = await sheets.spreadsheets.values.get({ spreadsheetId: this.spreadsheetId, range: `${sheetName}!1:1` });
+    const width = Math.max(1, header.data.values?.[0]?.length ?? 0);
+    return `${sheetName}!A:${columnIndexToLetter(width - 1)}`;
+  }
+
+  private async appendToRange(
+    sheets: Awaited<ReturnType<typeof createSheetsClient>>,
+    range: string,
+    values: string[],
+  ): Promise<void> {
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: this.spreadsheetId,
+      range,
+      valueInputOption: 'RAW',
+      insertDataOption: 'INSERT_ROWS',
+      requestBody: { values: [values] },
+    });
+  }
+
+  private async createLegacySheet(
+    sheets: Awaited<ReturnType<typeof createSheetsClient>>,
+    sheetName: OperationalSheetName,
+  ): Promise<void> {
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId: this.spreadsheetId,
-      requestBody: {
-        requests: [{ addSheet: { properties: { title: sheetName } } }],
-      },
+      requestBody: { requests: [{ addSheet: { properties: { title: sheetName } } }] },
     });
   }
 }
@@ -203,16 +347,34 @@ function normalizeRows(rows: unknown[][]): string[][] {
   return rows.map((row) => row.map((cell) => String(cell ?? '')));
 }
 
+function isRecurringSheet(sheetName: OperationalSheetName): boolean {
+  return sheetName === 'Tasks' || sheetName === 'TaskAssignments' || sheetName === 'TaskCompletions';
+}
+
+class MissingSheetError extends Error {
+  constructor(sheetName: OperationalSheetName) {
+    super(`${sheetName} sheet is missing`);
+    this.name = 'MissingSheetError';
+  }
+}
+
 function isMissingSheetError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   return /Unable to parse range|not found|Requested entity was not found/i.test(error.message);
 }
 
-function isAutoCreatableSheet(sheetName: OperationalSheetName): boolean {
+function isLegacyAutoCreatableSheet(sheetName: OperationalSheetName): boolean {
   return sheetName === 'Settings' || sheetName === 'Tasks' || sheetName === 'TaskCompletions';
 }
 
+function assertValidColumnIndex(index: number): void {
+  if (!Number.isSafeInteger(index) || index < 0) {
+    throw new RangeError(`Invalid zero-based column index: ${index}`);
+  }
+}
+
 function columnIndexToLetter(index: number): string {
+  assertValidColumnIndex(index);
   let dividend = index + 1;
   let columnName = '';
 

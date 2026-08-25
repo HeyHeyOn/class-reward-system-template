@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GoogleSheetsStore } from '@/server/googleSheets';
+import { TASK_ASSIGNMENT_HEADERS } from '@/server/repositories/sheets/recurringSchemaMigrator';
 import { saveSheetSetting } from '@/server/sheetsRepository';
+import { MigrationConflictError } from '@/server/storage/tabularStore';
 
 const googleMocks = vi.hoisted(() => {
   const oauth2SetCredentials = vi.fn();
@@ -12,6 +14,7 @@ const googleMocks = vi.hoisted(() => {
         get: sheetsValuesGet,
         batchUpdate: vi.fn(),
         append: vi.fn(),
+        update: vi.fn(),
       },
       batchUpdate: vi.fn(),
       get: vi.fn(),
@@ -42,7 +45,19 @@ vi.mock('googleapis', () => ({
   },
 }));
 
-describe('GoogleSheetsStore auth', () => {
+const taskHeader = Array.from({ length: 29 }, (_, index) => index === 28 ? 'legacyCustom' : `column${index + 1}`);
+
+function mockSheetMetadata(columnCount = 29) {
+  googleMocks.sheetsApi.spreadsheets.get.mockResolvedValue({
+    data: { sheets: [
+      { properties: { sheetId: 7, title: 'Tasks', gridProperties: { columnCount } } },
+      { properties: { sheetId: 8, title: 'TaskCompletions', gridProperties: { columnCount: 19 } } },
+      { properties: { sheetId: 9, title: 'TaskAssignments', gridProperties: { columnCount: 15 } } },
+    ] },
+  });
+}
+
+describe('GoogleSheetsStore auth and recurring ranges', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     googleMocks.oauth2Instances.length = 0;
@@ -52,6 +67,9 @@ describe('GoogleSheetsStore auth', () => {
     process.env.GOOGLE_CLIENT_SECRET = 'client-secret';
     process.env.GOOGLE_REFRESH_TOKEN = 'refresh-token';
     googleMocks.sheetsValuesGet.mockResolvedValue({ data: { values: [['studentId'], ['S001']] } });
+    googleMocks.sheetsApi.spreadsheets.values.append.mockResolvedValue({});
+    googleMocks.sheetsApi.spreadsheets.values.update.mockResolvedValue({});
+    mockSheetMetadata();
   });
 
   it('updates an existing setting through the adapter when its value header has surrounding whitespace', async () => {
@@ -83,34 +101,176 @@ describe('GoogleSheetsStore auth', () => {
     expect(googleMocks.sheetsValuesGet).toHaveBeenCalledWith({ spreadsheetId: 'sheet-123', range: 'Students!A:Z' });
   });
 
-  it('uses the canonical assignment range and does not auto-create a missing TaskAssignments sheet', async () => {
-    const missingSheet = new Error('Unable to parse range: TaskAssignments!A:O');
-    googleMocks.sheetsApi.spreadsheets.values.append.mockRejectedValueOnce(missingSheet);
+  it('does not auto-create or append when structured lookup says TaskAssignments is missing', async () => {
+    googleMocks.sheetsApi.spreadsheets.get.mockResolvedValue({ data: { sheets: [] } });
     const store = new GoogleSheetsStore('sheet-123');
 
-    await expect(store.appendRow('TaskAssignments', ['A-1'])).rejects.toBe(missingSheet);
-    expect(googleMocks.sheetsApi.spreadsheets.values.append).toHaveBeenCalledWith({
-      spreadsheetId: 'sheet-123', range: 'TaskAssignments!A:O', valueInputOption: 'RAW',
-      insertDataOption: 'INSERT_ROWS', requestBody: { values: [['A-1']] },
+    await expect(store.appendRow('TaskAssignments', ['A-1'])).rejects.toThrow('TaskAssignments sheet is missing');
+    expect(googleMocks.sheetsApi.spreadsheets.values.append).not.toHaveBeenCalled();
+    expect(googleMocks.sheetsApi.spreadsheets.batchUpdate).not.toHaveBeenCalled();
+    await expect(store.lookupSheet('TaskAssignments')).resolves.toEqual({ found: false, reason: 'SHEET_NOT_FOUND' });
+  });
+
+  it.each(['Settings', 'Tasks', 'TaskCompletions'] as const)(
+    'preserves missing %s reads as write-free empty results',
+    async (sheetName) => {
+      googleMocks.sheetsValuesGet.mockRejectedValueOnce(new Error('Unable to parse range'));
+      const store = new GoogleSheetsStore('sheet-123');
+
+      await expect(store.getRows(sheetName)).resolves.toEqual([]);
+      expect(googleMocks.sheetsApi.spreadsheets.batchUpdate).not.toHaveBeenCalled();
+      expect(googleMocks.sheetsApi.spreadsheets.values.append).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['Settings', 'Tasks', 'TaskCompletions'] as const)(
+    'preserves missing %s append creation and retries the append',
+    async (sheetName) => {
+      googleMocks.sheetsApi.spreadsheets.values.append
+        .mockRejectedValueOnce(new Error('Unable to parse range'))
+        .mockResolvedValueOnce({});
+      const store = new GoogleSheetsStore('sheet-123');
+
+      await store.appendRow(sheetName, ['legacy-compatible']);
+
+      expect(googleMocks.sheetsApi.spreadsheets.batchUpdate).toHaveBeenCalledWith({
+        spreadsheetId: 'sheet-123',
+        requestBody: { requests: [{ addSheet: { properties: { title: sheetName } } }] },
+      });
+      expect(googleMocks.sheetsApi.spreadsheets.values.append).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it('uses live A:AC width for >26-column Tasks read, append, and update without dropping a legacy tail', async () => {
+    const rows = [taskHeader, [...taskHeader.map((_, index) => `value${index + 1}`)]];
+    googleMocks.sheetsValuesGet.mockImplementation(async ({ range }: { range: string }) => {
+      if (range === 'Tasks!1:1') return { data: { values: [taskHeader] } };
+      if (range === 'Tasks!A:AC') return { data: { values: rows } };
+      throw new Error(`unexpected range ${range}`);
     });
+    const store = new GoogleSheetsStore('sheet-123');
+
+    await expect(store.getRows('Tasks')).resolves.toEqual(rows);
+    await store.appendRow('Tasks', Array.from({ length: 29 }, (_, index) => `new${index + 1}`));
+    await store.updateCell('Tasks', 2, 'legacyCustom', 'preserved');
+
+    expect(googleMocks.sheetsApi.spreadsheets.values.append).toHaveBeenCalledWith(expect.objectContaining({
+      spreadsheetId: 'sheet-123', range: 'Tasks!A:AC',
+    }));
+    expect(googleMocks.sheetsApi.spreadsheets.values.batchUpdate).toHaveBeenCalledWith({
+      spreadsheetId: 'sheet-123',
+      requestBody: { valueInputOption: 'RAW', data: [{ range: 'Tasks!AC2', values: [['preserved']] }] },
+    });
+    expect(googleMocks.sheetsApi.spreadsheets.values.update).not.toHaveBeenCalled();
     expect(googleMocks.sheetsApi.spreadsheets.batchUpdate).not.toHaveBeenCalled();
   });
 
-  it.each([
-    ['Tasks', 'Tasks!A:AB'],
-    ['TaskCompletions', 'TaskCompletions!A:S'],
-    ['TaskAssignments', 'TaskAssignments!A:O'],
-  ] as const)('uses the fixed schema-v2 range for reading and appending %s', async (sheetName, range) => {
-    googleMocks.sheetsApi.spreadsheets.values.append.mockResolvedValueOnce({});
+  it('creates a new assignment sheet and exact A1:O1 header in one atomic batch request', async () => {
+    const store = new GoogleSheetsStore('sheet-123');
+    await store.createSheetWithHeader('TaskAssignments', TASK_ASSIGNMENT_HEADERS);
+
+    const call = googleMocks.sheetsApi.spreadsheets.batchUpdate.mock.calls[0][0];
+    const requests = call.requestBody.requests;
+    expect(requests).toHaveLength(2);
+    expect(requests[0]).toMatchObject({ addSheet: { properties: {
+      title: 'TaskAssignments', gridProperties: { columnCount: 15 },
+    } } });
+    expect(requests[1]).toEqual({ updateCells: {
+      range: {
+        sheetId: requests[0].addSheet.properties.sheetId,
+        startRowIndex: 0,
+        endRowIndex: 1,
+        startColumnIndex: 0,
+        endColumnIndex: 15,
+      },
+      rows: [{ values: TASK_ASSIGNMENT_HEADERS.map((value) => ({ userEnteredValue: { stringValue: value } })) }],
+      fields: 'userEnteredValue',
+    } });
+    expect(googleMocks.sheetsApi.spreadsheets.values.update).not.toHaveBeenCalled();
+  });
+
+  it('authoritatively maps any failed create batch to already-exists when title lookup finds the sheet', async () => {
+    googleMocks.sheetsApi.spreadsheets.batchUpdate.mockRejectedValue({
+      response: { status: 400, data: { error: { status: 'INVALID_ARGUMENT', message: 'bad request' } } },
+    });
+    mockSheetMetadata(29);
     const store = new GoogleSheetsStore('sheet-123');
 
-    await store.getRows(sheetName);
-    await store.appendRow(sheetName, ['value']);
-
-    expect(googleMocks.sheetsValuesGet).toHaveBeenLastCalledWith({ spreadsheetId: 'sheet-123', range });
-    expect(googleMocks.sheetsApi.spreadsheets.values.append).toHaveBeenLastCalledWith({
-      spreadsheetId: 'sheet-123', range, valueInputOption: 'RAW', insertDataOption: 'INSERT_ROWS',
-      requestBody: { values: [['value']] },
+    await expect(store.createSheetWithHeader('TaskAssignments', TASK_ASSIGNMENT_HEADERS)).rejects.toMatchObject({
+      name: 'SheetProviderError', reason: 'SHEET_ALREADY_EXISTS',
     });
+  });
+
+  it('rethrows the original failed create error when authoritative lookup confirms the title is absent', async () => {
+    const original = { response: { status: 400, data: { error: { status: 'INVALID_ARGUMENT' } } } };
+    googleMocks.sheetsApi.spreadsheets.batchUpdate.mockRejectedValue(original);
+    googleMocks.sheetsApi.spreadsheets.get.mockResolvedValue({ data: { sheets: [] } });
+    const store = new GoogleSheetsStore('sheet-123');
+
+    await expect(store.createSheetWithHeader('TaskAssignments', TASK_ASSIGNMENT_HEADERS)).rejects.toBe(original);
+  });
+
+  it('verifies the exact current and target header range immediately before an extension update', async () => {
+    const store = new GoogleSheetsStore('sheet-123');
+    const expected = ['taskId', 'title'];
+    googleMocks.sheetsValuesGet.mockResolvedValue({ data: { values: [expected] } });
+
+    await store.verifyAndWriteHeaderCells(
+      'Tasks', { sheetId: 7, columnCount: 29, header: expected }, ['newHeader'],
+    );
+
+    expect(googleMocks.sheetsValuesGet).toHaveBeenCalledWith({
+      spreadsheetId: 'sheet-123', range: 'Tasks!A1:C1',
+    });
+    expect(googleMocks.sheetsApi.spreadsheets.values.update).toHaveBeenCalledWith({
+      spreadsheetId: 'sheet-123', range: 'Tasks!C1:C1', valueInputOption: 'RAW',
+      requestBody: { values: [['newHeader']] },
+    });
+  });
+
+  it('re-reads metadata and the current header and refuses a mismatched prefix before extension write', async () => {
+    const store = new GoogleSheetsStore('sheet-123');
+    const expected = ['taskId', 'title'];
+    googleMocks.sheetsValuesGet.mockResolvedValue({ data: { values: [['taskId', 'racedTitle']] } });
+
+    await expect(store.verifyAndWriteHeaderCells(
+      'Tasks', { sheetId: 7, columnCount: 29, header: expected }, ['newHeader'],
+    ))
+      .rejects.toMatchObject({ name: 'MigrationConflictError', sheetName: 'Tasks', retryable: true });
+    expect(googleMocks.sheetsApi.spreadsheets.values.update).not.toHaveBeenCalled();
+  });
+
+  it('refuses occupied right-side target cells before extension write', async () => {
+    const store = new GoogleSheetsStore('sheet-123');
+    const expected = ['taskId', 'title'];
+    googleMocks.sheetsValuesGet.mockResolvedValue({ data: { values: [['taskId', 'title', 'concurrentOwner']] } });
+
+    await expect(store.verifyAndWriteHeaderCells(
+      'Tasks', { sheetId: 7, columnCount: 29, header: expected }, ['newHeader'],
+    ))
+      .rejects.toBeInstanceOf(MigrationConflictError);
+    expect(googleMocks.sheetsApi.spreadsheets.values.update).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [25, 'Z'], [26, 'AA'], [51, 'AZ'], [52, 'BA'],
+  ])('converts zero-based column %i to A1 column %s', async (startColumn, letter) => {
+    const store = new GoogleSheetsStore('sheet-123');
+    await store.writeHeaderCells('Tasks', startColumn, ['header']);
+    expect(googleMocks.sheetsApi.spreadsheets.values.update).toHaveBeenCalledWith(expect.objectContaining({
+      range: `Tasks!${letter}1:${letter}1`,
+    }));
+  });
+
+  it.each([-1, -26, 1.5])('rejects invalid zero-based column index %s', async (startColumn) => {
+    const store = new GoogleSheetsStore('sheet-123');
+    await expect(store.writeHeaderCells('Tasks', startColumn, ['header'])).rejects.toThrow('column index');
+    expect(googleMocks.sheetsApi.spreadsheets.values.update).not.toHaveBeenCalled();
+  });
+
+  it('reports a retryable migration conflict if grid width changes before expansion', async () => {
+    const store = new GoogleSheetsStore('sheet-123');
+    await expect(store.ensureColumnCount('Tasks', 26, 28)).rejects.toBeInstanceOf(MigrationConflictError);
+    expect(googleMocks.sheetsApi.spreadsheets.batchUpdate).not.toHaveBeenCalled();
   });
 });
