@@ -3,9 +3,10 @@ import {
   extractSpreadsheetId,
   getAppSettings,
   saveAppSettings,
+  validateClassTimeZone,
   validateSpreadsheetId,
 } from '@/server/settings';
-import type { SheetName } from '@/server/sheetsRepository';
+import type { SheetName, SheetsReader, SheetsStore } from '@/server/sheetsRepository';
 import { SYSTEM_VERSION } from '@/generator/config/versions';
 
 describe('settings', () => {
@@ -27,7 +28,7 @@ describe('settings', () => {
   it('uses env spreadsheet id and default currency unit when Settings sheet is unavailable', async () => {
     const settings = await getAppSettings({ env: { GOOGLE_SHEET_ID: 'env-sheet-id' } });
 
-    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', fontFamily: 'default', qrManualInputEnabled: false, schemaVersion: 1, systemVersion: SYSTEM_VERSION, systemName: '학급 보상 시스템', source: 'env' });
+    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', fontFamily: 'default', qrManualInputEnabled: false, classTimeZone: 'Asia/Seoul', schemaVersion: 1, systemVersion: SYSTEM_VERSION, systemName: '학급 보상 시스템', source: 'env' });
   });
 
   it('reads currency unit and app title from Settings sheet when present', async () => {
@@ -44,6 +45,7 @@ describe('settings', () => {
             ['themeColor', 'purple'],
             ['fontFamily', 'school-safe-notice'],
             ['qrManualInputEnabled', 'TRUE'],
+            ['classTimeZone', 'America/New_York'],
             ['schemaVersion', '1'],
             ['systemVersion', '0.2.0-phase1'],
             ['systemName', '햇살반 보상 시스템'],
@@ -52,7 +54,7 @@ describe('settings', () => {
       },
     });
 
-    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '별', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'purple', fontFamily: 'school-safe-notice', qrManualInputEnabled: true, schemaVersion: 1, systemVersion: '0.2.0-phase1', systemName: '햇살반 보상 시스템', source: 'sheet' });
+    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '별', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'purple', fontFamily: 'school-safe-notice', qrManualInputEnabled: true, classTimeZone: 'America/New_York', schemaVersion: 1, systemVersion: '0.2.0-phase1', systemName: '햇살반 보상 시스템', source: 'sheet' });
   });
 
   it('accepts white, black, and navy theme colors from Settings sheet', async () => {
@@ -73,10 +75,29 @@ describe('settings', () => {
     }
   });
 
+  it('falls back invalid legacy class time zones on read without writing', async () => {
+    const settingsReader: SheetsReader = {
+      async getRows() { return [['key', 'value'], ['classTimeZone', '+09:00']]; },
+    };
+    const settings = await getAppSettings({
+      env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
+      settingsReader,
+    });
+    expect(settings.classTimeZone).toBe('Asia/Seoul');
+  });
+
+  it.each(['Mars/Olympus', '+09:00', '-0500', ''])('rejects invalid new class time zone %s', (value) => {
+    expect(validateClassTimeZone(value).ok).toBe(false);
+  });
+
+  it.each(['Asia/Seoul', 'America/New_York', 'UTC', 'Etc/GMT+9'])('accepts named IANA class time zone %s', (value) => {
+    expect(validateClassTimeZone(value)).toEqual({ ok: true, classTimeZone: value });
+  });
+
   it('saves currency unit and app title to Settings sheet and rejects changing deployment spreadsheet id', async () => {
     const updates: Array<{ sheetName: SheetName; rowNumber: number; columnName: string; value: string | number }> = [];
     const appends: Array<{ sheetName: SheetName; values: string[] }> = [];
-    const settingsStore = {
+    const settingsStore: SheetsStore = {
       async getRows(sheetName: SheetName) {
         expect(sheetName).toBe('Settings');
         return [
@@ -102,9 +123,10 @@ describe('settings', () => {
         themeColor: 'green',
         fontFamily: 'school-safe-board-marker',
         qrManualInputEnabled: true,
+        classTimeZone: 'Asia/Tokyo',
         env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
       }),
-    ).resolves.toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '달란트', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'green', fontFamily: 'school-safe-board-marker', qrManualInputEnabled: true, schemaVersion: 1, systemVersion: SYSTEM_VERSION, systemName: '학급 보상 시스템', source: 'sheet' });
+    ).resolves.toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '달란트', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'green', fontFamily: 'school-safe-board-marker', qrManualInputEnabled: true, classTimeZone: 'Asia/Tokyo', schemaVersion: 1, systemVersion: SYSTEM_VERSION, systemName: '학급 보상 시스템', source: 'sheet' });
 
     expect(updates).toEqual([{ sheetName: 'Settings', rowNumber: 2, columnName: 'value', value: '달란트' }]);
     expect(appends).toEqual([
@@ -113,6 +135,7 @@ describe('settings', () => {
       { sheetName: 'Settings', values: ['themeColor', 'green'] },
       { sheetName: 'Settings', values: ['fontFamily', 'school-safe-board-marker'] },
       { sheetName: 'Settings', values: ['qrManualInputEnabled', 'TRUE'] },
+      { sheetName: 'Settings', values: ['classTimeZone', 'Asia/Tokyo'] },
       { sheetName: 'Settings', values: ['schemaVersion', '1'] },
       { sheetName: 'Settings', values: ['systemVersion', SYSTEM_VERSION] },
       { sheetName: 'Settings', values: ['systemName', '학급 보상 시스템'] },
@@ -126,5 +149,55 @@ describe('settings', () => {
         env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
       }),
     ).rejects.toThrow('Vercel 배포판에서는 시트 ID를 관리자 화면에서 영구 변경할 수 없습니다.');
+  });
+
+  it('preserves an existing class time zone when an older settings route omits it', async () => {
+    const timeZoneWrites: string[] = [];
+    const settingsStore: SheetsStore = {
+      async getRows() {
+        return [['key', 'value'], ['classTimeZone', 'America/New_York']];
+      },
+      async updateCell(_sheetName: SheetName, rowNumber: number, _columnName: string, value: string | number) {
+        if (rowNumber === 2) timeZoneWrites.push(String(value));
+      },
+      async appendRow(_sheetName: SheetName, values: string[]) {
+        if (values[0] === 'classTimeZone') timeZoneWrites.push(values[1]);
+      },
+    };
+
+    const result = await saveAppSettings({
+      settingsStore,
+      spreadsheetIdOrUrl: 'env-sheet-id',
+      appTitle: '제목만 변경',
+      env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
+    });
+
+    expect(result.classTimeZone).toBe('America/New_York');
+    expect(timeZoneWrites).toEqual([]);
+  });
+
+  it.each([undefined, '', '+09:00'])('returns the Seoul fallback without repairing omitted legacy time zone %s', async (legacyValue) => {
+    const timeZoneWrites: string[] = [];
+    const settingsStore: SheetsStore = {
+      async getRows() {
+        return [['key', 'value'], ...(legacyValue === undefined ? [] : [['classTimeZone', legacyValue]])];
+      },
+      async updateCell(_sheetName: SheetName, rowNumber: number, _columnName: string, value: string | number) {
+        if (rowNumber === 2) timeZoneWrites.push(String(value));
+      },
+      async appendRow(_sheetName: SheetName, values: string[]) {
+        if (values[0] === 'classTimeZone') timeZoneWrites.push(values[1]);
+      },
+    };
+
+    const result = await saveAppSettings({
+      settingsStore,
+      spreadsheetIdOrUrl: 'env-sheet-id',
+      appTitle: '제목만 변경',
+      env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
+    });
+
+    expect(result.classTimeZone).toBe('Asia/Seoul');
+    expect(timeZoneWrites).toEqual([]);
   });
 });

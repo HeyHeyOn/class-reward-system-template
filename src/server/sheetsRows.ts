@@ -7,6 +7,7 @@ import type {
   TaskCompletion,
   Transaction,
 } from '@/domain/types';
+import { parseTaskScheduleCells, serializeTaskScheduleCells } from '@/domain/taskSchedule';
 
 export type HeaderIndex = Map<string, number>;
 
@@ -72,7 +73,7 @@ export function parseProductRow(row: string[], headerIndex: HeaderIndex): Produc
   };
 }
 
-export function parseTaskRow(row: string[], headerIndex: HeaderIndex): ClassTask | null {
+export function parseTaskRow(row: string[], headerIndex: HeaderIndex, classTimeZone = 'Asia/Seoul'): ClassTask | null {
   const taskId = getRowCell(row, headerIndex, 'taskId');
   const title = getRowCell(row, headerIndex, 'title');
   const reward = parseNumberCell(getRowCell(row, headerIndex, 'reward'));
@@ -81,6 +82,10 @@ export function parseTaskRow(row: string[], headerIndex: HeaderIndex): ClassTask
   if (!taskId || !title || reward === null) return null;
 
   const createdAt = getRowCell(row, headerIndex, 'createdAt');
+  const schedule = parseTaskScheduleCells(
+    Object.fromEntries(Array.from(headerIndex, ([header, index]) => [header, String(row[index] ?? '').trim()])),
+    { taskId, createdAt, classTimeZone },
+  );
   return {
     taskId,
     title,
@@ -89,6 +94,10 @@ export function parseTaskRow(row: string[], headerIndex: HeaderIndex): ClassTask
     isActive: parseTaskBooleanCell(getRowCell(row, headerIndex, 'isActive')),
     sortOrder,
     allowedStudentIds: parseAllowedStudentIds(getRowCell(row, headerIndex, 'allowedStudentIds')),
+    taskInstanceId: schedule.taskInstanceId,
+    schedule: schedule.currentSchedule,
+    pendingSchedule: schedule.pendingSchedule,
+    ...(schedule.readWarnings ? { scheduleReadWarnings: schedule.readWarnings } : {}),
     ...(createdAt ? { createdAt } : {}),
   };
 }
@@ -97,18 +106,27 @@ export function parseAllowedStudentIds(value: string): string[] {
   return Array.from(new Set(value.split(/[\n,;]/).map((id) => id.trim()).filter(Boolean)));
 }
 
-export function buildTaskAppendRow(headers: string[], task: ClassTask, timestamp: string): string[] {
+export function buildTaskAppendRow(headers: string[], task: ClassTask, timestamp: string, existingRow?: string[]): string[] {
   const valuesByHeader: Record<string, string> = {
+    ...Object.fromEntries(headers.map((header, index) => [header.trim(), String(existingRow?.[index] ?? '')])),
     taskId: task.taskId,
     title: task.title,
     description: task.description,
     reward: String(task.reward),
-    maxCompletionsPerStudent: '1',
+    maxCompletionsPerStudent: existingRow ? String(existingRow[headers.findIndex((header) => header.trim() === 'maxCompletionsPerStudent')] ?? '') : '1',
     isActive: task.isActive ? 'TRUE' : 'FALSE',
     sortOrder: String(task.sortOrder),
     createdAt: timestamp,
     updatedAt: timestamp,
     allowedStudentIds: task.allowedStudentIds.join(','),
+    ...(task.taskInstanceId && task.schedule
+      ? serializeTaskScheduleCells({
+          taskInstanceId: task.taskInstanceId,
+          currentSchedule: task.schedule,
+          pendingSchedule: task.pendingSchedule ?? null,
+          ...(task.scheduleReadWarnings ? { readWarnings: task.scheduleReadWarnings } : {}),
+        })
+      : {}),
   };
 
   return headers.map((header) => valuesByHeader[header.trim()] ?? '');

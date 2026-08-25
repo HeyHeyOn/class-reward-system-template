@@ -105,6 +105,12 @@ describe('sheets row parsing', () => {
       sortOrder: 2,
       allowedStudentIds: ['S002', 'S001'],
       createdAt: '2026-05-21T00:00:00.000Z',
+      taskInstanceId: 'legacy:T001:2026-05-21T00:00:00.000Z',
+      schedule: {
+        ruleVersion: 1, effectiveFrom: '2026-05-21T00:00:00.000Z', timeZone: 'Asia/Seoul',
+        recurrence: { type: 'NONE' }, resetCompletionOnCycle: false, resetAssignmentOnCycle: false,
+      },
+      pendingSchedule: null,
     });
   });
 
@@ -125,6 +131,12 @@ describe('sheets row parsing', () => {
       isActive: true,
       sortOrder: 1,
       allowedStudentIds: ['S001'],
+      taskInstanceId: 'legacy:T010:1970-01-01T00:00:00.000Z',
+      schedule: {
+        ruleVersion: 1, effectiveFrom: '1970-01-01T00:00:00.000Z', timeZone: 'Asia/Seoul',
+        recurrence: { type: 'NONE' }, resetCompletionOnCycle: false, resetAssignmentOnCycle: false,
+      },
+      pendingSchedule: null,
     });
   });
 
@@ -148,6 +160,57 @@ describe('sheets row parsing', () => {
       '순서 확인', 'T011', '1', 'S002,S001', '8', timestamp,
       '실제 헤더 기준', 'FALSE', '4', timestamp, '',
     ]);
+  });
+
+  it('parses and serializes versioned schedules in permuted live header order', () => {
+    const headers = [
+      'pendingRecurrenceWeekday', 'title', 'recurrenceType', 'taskId', 'pendingRuleVersion',
+      'ruleVersion', 'taskInstanceId', 'scheduleEffectiveFrom', 'recurrenceTimeZone', 'recurrenceTime',
+      'resetCompletionOnCycle', 'resetAssignmentOnCycle', 'pendingEffectiveFrom', 'pendingTimeZone',
+      'pendingRecurrenceType', 'pendingRecurrenceTime', 'pendingResetCompletionOnCycle',
+      'pendingResetAssignmentOnCycle', 'description', 'reward', 'isActive', 'sortOrder', 'createdAt',
+      'allowedStudentIds', 'maxCompletionsPerStudent', 'unknownTrailing',
+    ];
+    const row = [
+      '5', '예약 과제', 'DAILY', 'T100', '2', '1', 'instance-100', '2026-08-01T00:00:00Z',
+      'Asia/Seoul', '09:00', 'TRUE', 'FALSE', '2026-08-02T00:00:00Z', 'America/New_York',
+      'WEEKLY', '08:30', 'FALSE', 'TRUE', '설명', '10', 'TRUE', '1', '2026-08-01T00:00:00Z',
+      'S001', '7', 'keep-me',
+    ];
+    const task = parseTaskRow(row, createHeaderIndex(headers), 'Asia/Seoul');
+    expect(task).toMatchObject({
+      taskInstanceId: 'instance-100',
+      schedule: { ruleVersion: 1, recurrence: { type: 'DAILY', time: '09:00' } },
+      pendingSchedule: { ruleVersion: 2, recurrence: { type: 'WEEKLY', weekday: 5, time: '08:30' } },
+    });
+    expect(buildTaskAppendRow(headers, task!, '2026-08-03T00:00:00Z', row)).toEqual([
+      '5', '예약 과제', 'DAILY', 'T100', '2', '1', 'instance-100', '2026-08-01T00:00:00.000Z',
+      'Asia/Seoul', '09:00', 'TRUE', 'FALSE', '2026-08-02T00:00:00.000Z', 'America/New_York',
+      'WEEKLY', '08:30', 'FALSE', 'TRUE', '설명', '10', 'TRUE', '1', '2026-08-03T00:00:00Z',
+      'S001', '7', 'keep-me',
+    ]);
+  });
+
+  it('interprets a legacy task with deterministic schedule defaults without adding columns', () => {
+    const headers = ['taskId', 'title', 'description', 'reward', 'isActive', 'sortOrder', 'createdAt', 'allowedStudentIds'];
+    expect(parseTaskRow(['T-L', '레거시', '', '1', 'TRUE', '1', 'broken', ''], createHeaderIndex(headers), 'Asia/Tokyo'))
+      .toMatchObject({
+        taskInstanceId: 'legacy:T-L:1970-01-01T00:00:00.000Z',
+        schedule: { ruleVersion: 1, effectiveFrom: '1970-01-01T00:00:00.000Z', timeZone: 'Asia/Tokyo', recurrence: { type: 'NONE' } },
+        pendingSchedule: null,
+      });
+  });
+
+  it('forwards malformed schedule diagnostics to ClassTask and blocks accidental repair writes', () => {
+    const headers = [
+      'taskId', 'title', 'description', 'reward', 'isActive', 'sortOrder', 'taskInstanceId', 'ruleVersion',
+    ];
+    const task = parseTaskRow(
+      ['T-BAD', '손상', '', '1', 'TRUE', '1', 'instance-bad', 'broken'],
+      createHeaderIndex(headers),
+    );
+    expect(task?.scheduleReadWarnings).toEqual(['INVALID_CURRENT_SCHEDULE']);
+    expect(() => buildTaskAppendRow(headers, task!, '2026-08-03T00:00:00Z')).toThrow();
   });
 
   it('parses canonical transaction items and preserves the legacy fallback precedence', () => {

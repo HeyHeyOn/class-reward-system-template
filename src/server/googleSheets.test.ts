@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GoogleSheetsStore } from '@/server/googleSheets';
+import { saveSheetSetting } from '@/server/sheetsRepository';
 
 const googleMocks = vi.hoisted(() => {
   const oauth2SetCredentials = vi.fn();
@@ -51,6 +52,23 @@ describe('GoogleSheetsStore auth', () => {
     process.env.GOOGLE_CLIENT_SECRET = 'client-secret';
     process.env.GOOGLE_REFRESH_TOKEN = 'refresh-token';
     googleMocks.sheetsValuesGet.mockResolvedValue({ data: { values: [['studentId'], ['S001']] } });
+  });
+
+  it('updates an existing setting through the adapter when its value header has surrounding whitespace', async () => {
+    googleMocks.sheetsValuesGet.mockResolvedValue({
+      data: { values: [['key', ' value '], ['currencyUnit', '원']] },
+    });
+    const store = new GoogleSheetsStore('sheet-123');
+
+    await saveSheetSetting(store, { key: 'currencyUnit', value: '별' });
+
+    expect(googleMocks.sheetsApi.spreadsheets.values.batchUpdate).toHaveBeenCalledWith({
+      spreadsheetId: 'sheet-123',
+      requestBody: {
+        valueInputOption: 'RAW',
+        data: [{ range: 'Settings!B2', values: [['별']] }],
+      },
+    });
   });
 
   it('uses a deployment refresh token for public sheet access without service account credentials', async () => {

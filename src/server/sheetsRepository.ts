@@ -1,4 +1,5 @@
 import type { ClassTask, Product, Student, TaskAssignmentStatus, TaskCompletion, Transaction } from '@/domain/types';
+import { normalizeLegacyTimeZone } from '@/domain/taskSchedule';
 import { evaluateTaskCompletion, isCompletionForTaskInstance } from '@/domain/taskCompletionPolicy';
 import {
   buildTaskAppendRow,
@@ -109,6 +110,13 @@ const REQUIRED_TRANSACTION_COLUMNS = ['transactionId', 'timestamp', 'studentId',
 const REQUIRED_TASK_COLUMNS = ['taskId', 'title', 'description', 'reward', 'isActive', 'sortOrder'];
 const REQUIRED_TASK_COMPLETION_COLUMNS = ['completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note'];
 const TASK_HEADERS = ['taskId', 'title', 'description', 'reward', 'isActive', 'sortOrder', 'createdAt', 'updatedAt', 'allowedStudentIds'];
+const VERSIONED_TASK_SCHEDULE_HEADERS = [
+  'taskInstanceId', 'ruleVersion', 'scheduleEffectiveFrom', 'recurrenceTimeZone', 'recurrenceType',
+  'recurrenceTime', 'recurrenceWeekday', 'recurrenceDayOfMonth', 'resetCompletionOnCycle',
+  'resetAssignmentOnCycle', 'pendingRuleVersion', 'pendingEffectiveFrom', 'pendingTimeZone',
+  'pendingRecurrenceType', 'pendingRecurrenceTime', 'pendingRecurrenceWeekday',
+  'pendingRecurrenceDayOfMonth', 'pendingResetCompletionOnCycle', 'pendingResetAssignmentOnCycle',
+] as const;
 const TASK_COMPLETION_HEADERS = ['completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note'];
 const TRANSACTION_HEADERS = ['transactionId', 'timestamp', 'studentId', 'studentName', 'items', 'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator'];
 
@@ -187,12 +195,23 @@ export async function getTaskRecords(reader: SheetsReader): Promise<Array<{ task
 
   const headerIndex = createHeaderIndex(headers);
   assertRequiredColumns(headerIndex, REQUIRED_TASK_COLUMNS, 'Tasks');
-  return dataRows
+  assertVersionedTaskScheduleHeaders(headerIndex);
+  const parseRecords = (classTimeZone: string) => dataRows
     .map((row, index) => {
-      const task = parseTaskRow(row, headerIndex);
+      const task = parseTaskRow(row, headerIndex, classTimeZone);
       return task ? { task, rowNumber: index + 2 } : null;
     })
-    .filter((record): record is { task: ClassTask; rowNumber: number } => Boolean(record))
+    .filter((record): record is { task: ClassTask; rowNumber: number } => Boolean(record));
+
+  let records = parseRecords(normalizeLegacyTimeZone(undefined));
+  const needsLegacyProjection = records.some(({ task }) =>
+    task.taskInstanceId?.startsWith('legacy:')
+    || task.scheduleReadWarnings?.includes('INVALID_CURRENT_SCHEDULE'));
+  if (needsLegacyProjection) {
+    const settings = await getSheetSettings(reader);
+    records = parseRecords(normalizeLegacyTimeZone(settings.classTimeZone));
+  }
+  return records
     .sort((a, b) => a.task.sortOrder - b.task.sortOrder || a.task.title.localeCompare(b.task.title));
 }
 
@@ -299,6 +318,26 @@ export async function createTask(store: SheetsStore, create: TaskCreate): Promis
   validateTaskUpdate(create);
   if (await getTaskById(store, taskId)) throw new Error('이미 존재하는 과제 ID입니다.');
   const now = new Date().toISOString();
+  const taskRows = await store.getRows('Tasks');
+  const headers = taskRows[0] ?? TASK_HEADERS;
+  const taskHeaderIndex = createHeaderIndex(headers);
+  const hasVersionedScheduleColumns = assertVersionedTaskScheduleHeaders(taskHeaderIndex);
+  let versionedSchedule: Pick<ClassTask, 'taskInstanceId' | 'schedule' | 'pendingSchedule'> | undefined;
+  if (hasVersionedScheduleColumns) {
+    const classTimeZone = normalizeLegacyTimeZone((await getSheetSettings(store)).classTimeZone);
+    versionedSchedule = {
+      taskInstanceId: crypto.randomUUID(),
+      schedule: {
+        ruleVersion: 1,
+        effectiveFrom: now,
+        timeZone: classTimeZone,
+        recurrence: { type: 'NONE' },
+        resetCompletionOnCycle: false,
+        resetAssignmentOnCycle: false,
+      },
+      pendingSchedule: null,
+    };
+  }
   const task: ClassTask = {
     taskId,
     title: create.title.trim(),
@@ -308,9 +347,8 @@ export async function createTask(store: SheetsStore, create: TaskCreate): Promis
     sortOrder: create.sortOrder,
     allowedStudentIds: normalizeUniqueIds(create.allowedStudentIds ?? []),
     createdAt: now,
+    ...versionedSchedule,
   };
-  const taskRows = await store.getRows('Tasks');
-  const headers = taskRows[0] ?? TASK_HEADERS;
   await store.appendRow('Tasks', buildTaskAppendRow(headers, task, now));
   return task;
 }
@@ -665,18 +703,24 @@ export async function saveSheetSetting(store: SheetsStore, setting: SheetSetting
 
   const headerIndex = createHeaderIndex(headers);
   const keyIndex = headerIndex.get('key');
+  const valueIndex = headerIndex.get('value');
 
-  if (keyIndex === undefined || headerIndex.get('value') === undefined) {
+  if (keyIndex === undefined || valueIndex === undefined) {
     throw new Error('Settings 시트에 필수 컬럼이 없습니다: key, value');
   }
 
   const existingIndex = dataRows.findIndex((row) => String(row[keyIndex] ?? '').trim() === key);
   if (existingIndex >= 0) {
-    await store.updateCell('Settings', existingIndex + 2, 'value', setting.value);
+    await store.updateCell('Settings', existingIndex + 2, headers[valueIndex], setting.value);
     return;
   }
 
-  await store.appendRow('Settings', [key, setting.value]);
+  await store.appendRow('Settings', headers.map((header) => {
+    const normalizedHeader = header.trim();
+    if (normalizedHeader === 'key') return key;
+    if (normalizedHeader === 'value') return setting.value;
+    return '';
+  }));
 }
 
 export async function getProductRecords(reader: SheetsReader): Promise<ProductRecord[]> {
@@ -1127,6 +1171,16 @@ function validateTaskUpdate(update: TaskUpdate) {
   if (!update.title.trim()) throw new Error('과제명을 입력해 주세요.');
   if (!Number.isInteger(update.reward) || update.reward < 0) throw new Error('보상은 0 이상의 정수여야 합니다.');
   if (!Number.isInteger(update.sortOrder)) throw new Error('정렬 순서는 정수여야 합니다.');
+}
+
+function assertVersionedTaskScheduleHeaders(headerIndex: ReadonlyMap<string, number>): boolean {
+  const presentCount = VERSIONED_TASK_SCHEDULE_HEADERS
+    .filter((header) => headerIndex.has(header))
+    .length;
+  if (presentCount > 0 && presentCount < VERSIONED_TASK_SCHEDULE_HEADERS.length) {
+    throw new Error('Tasks 시트의 versioned schedule 헤더가 불완전합니다.');
+  }
+  return presentCount === VERSIONED_TASK_SCHEDULE_HEADERS.length;
 }
 
 function assertRequiredColumns(

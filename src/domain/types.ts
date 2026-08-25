@@ -54,6 +54,12 @@ export type ClassTask = {
   sortOrder: number;
   allowedStudentIds: string[];
   createdAt?: string;
+  /** Always populated by the sheet codec; optional for legacy API callers constructing tasks. */
+  taskInstanceId?: string;
+  schedule?: TaskSchedule;
+  pendingSchedule?: TaskSchedule | null;
+  /** Present only when persisted versioned schedule cells were malformed and a read fallback was used. */
+  scheduleReadWarnings?: TaskScheduleReadWarning[];
 };
 
 export type TaskCompletion = {
@@ -102,3 +108,7 @@ export type TaskSchedule = {
   resetCompletionOnCycle: boolean;
   resetAssignmentOnCycle: boolean;
 };
+
+export type TaskScheduleReadWarning =
+  | 'INVALID_CURRENT_SCHEDULE'
+  | 'INVALID_PENDING_SCHEDULE';

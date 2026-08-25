@@ -27,6 +27,7 @@ import {
   updateTaskDetailsBatch,
   getTaskAssignmentStatus,
   updateTaskAssignmentStatus,
+  saveSheetSetting,
 } from '@/server/sheetsRepository';
 
 const sheetRows = {
@@ -53,6 +54,10 @@ const sheetRows = {
   TaskCompletions: [
     ['completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note'],
     ['TC-OLD', '2026-05-20T00:00:00.000Z', 'T001', 'S001', '김민준', '5', '3495', '3500', 'SUCCESS', ''],
+  ],
+  Settings: [
+    ['key', 'value'],
+    ['classTimeZone', 'Asia/Seoul'],
   ],
 };
 
@@ -712,8 +717,47 @@ describe('sheets repository', () => {
 
   it('reads active tasks sorted by sort order', async () => {
     await expect(getTasks(fakeReader)).resolves.toEqual([
-      { taskId: 'T001', title: '책 읽기', description: '책 10분 읽기', reward: 5, isActive: true, sortOrder: 1, allowedStudentIds: ['S001'] },
+      {
+        taskId: 'T001', title: '책 읽기', description: '책 10분 읽기', reward: 5, isActive: true,
+        sortOrder: 1, allowedStudentIds: ['S001'],
+        taskInstanceId: 'legacy:T001:1970-01-01T00:00:00.000Z',
+        schedule: {
+          ruleVersion: 1, effectiveFrom: '1970-01-01T00:00:00.000Z', timeZone: 'Asia/Seoul',
+          recurrence: { type: 'NONE' }, resetCompletionOnCycle: false, resetAssignmentOnCycle: false,
+        },
+        pendingSchedule: null,
+      },
     ]);
+  });
+
+  it('projects legacy tasks with the actual normalized class time zone from Settings', async () => {
+    const reader = {
+      async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'Settings') return [['key', 'value'], ['classTimeZone', 'America/New_York']];
+        return sheetRows[sheetName];
+      },
+    };
+    await expect(getTasks(reader)).resolves.toMatchObject([
+      { taskId: 'T001', schedule: { timeZone: 'America/New_York', recurrence: { type: 'NONE' } } },
+    ]);
+  });
+
+  it('propagates Settings operational and structural errors when legacy task projection needs it', async () => {
+    const networkFailure = {
+      async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'Settings') throw new Error('Settings network failure');
+        return sheetRows[sheetName];
+      },
+    };
+    await expect(getTasks(networkFailure)).rejects.toThrow('Settings network failure');
+
+    const badHeader = {
+      async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'Settings') return [['wrong', 'header']];
+        return sheetRows[sheetName];
+      },
+    };
+    await expect(getTasks(badHeader)).rejects.toThrow('Settings 시트에 필수 컬럼이 없습니다');
   });
 
   it('creates task headers and appends a new task row', async () => {
@@ -760,6 +804,172 @@ describe('sheets repository', () => {
     expect(appended[0].values[7]).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(appended[0].values[8]).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(appended[0].values[9]).toBe('5630,S002');
+  });
+
+  it.each([
+    ['America/New_York', 'America/New_York'],
+    ['+09:00', 'Asia/Seoul'],
+  ])('persists a UUID and version 1 NONE schedule with normalized Settings time zone %s', async (storedTimeZone, expectedTimeZone) => {
+    const scheduleHeaders = [
+      'taskInstanceId', 'ruleVersion', 'scheduleEffectiveFrom', 'recurrenceTimeZone', 'recurrenceType',
+      'recurrenceTime', 'recurrenceWeekday', 'recurrenceDayOfMonth', 'resetCompletionOnCycle',
+      'resetAssignmentOnCycle', 'pendingRuleVersion', 'pendingEffectiveFrom', 'pendingTimeZone',
+      'pendingRecurrenceType', 'pendingRecurrenceTime', 'pendingRecurrenceWeekday',
+      'pendingRecurrenceDayOfMonth', 'pendingResetCompletionOnCycle', 'pendingResetAssignmentOnCycle',
+    ];
+    const rows: Record<string, string[][]> = {
+      Tasks: [[
+        'taskId', 'title', 'description', 'reward', 'isActive', 'sortOrder', 'createdAt', 'updatedAt',
+        'allowedStudentIds', ...scheduleHeaders,
+      ]],
+      Settings: [['key', 'value'], ['classTimeZone', storedTimeZone]],
+    };
+    const store = {
+      async getRows(sheetName: string) { return rows[sheetName] ?? []; },
+      async updateCell() {},
+      async updateHeaderRow() { throw new Error('extended header must not be migrated'); },
+      async appendRow(sheetName: string, values: string[]) { rows[sheetName].push(values); },
+    };
+
+    const created = await createTask(store, {
+      taskId: 'T-UUID', title: '새 과제', description: '설명', reward: 3, isActive: true, sortOrder: 1,
+    });
+    expect(created.taskInstanceId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    expect(created.schedule).toEqual({
+      ruleVersion: 1,
+      effectiveFrom: created.createdAt,
+      timeZone: expectedTimeZone,
+      recurrence: { type: 'NONE' },
+      resetCompletionOnCycle: false,
+      resetAssignmentOnCycle: false,
+    });
+    expect(created.pendingSchedule).toBeNull();
+    await expect(getTasks(store)).resolves.toEqual([created]);
+  });
+
+  it('rejects a partially extended Tasks schedule header without appending an incomplete row', async () => {
+    let appends = 0;
+    const store = {
+      async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'Tasks') return [[
+          'taskId', 'title', 'description', 'reward', 'isActive', 'sortOrder', 'createdAt', 'updatedAt',
+          'allowedStudentIds', 'recurrenceType',
+        ]];
+        return sheetRows[sheetName];
+      },
+      async updateCell() {},
+      async appendRow() { appends += 1; },
+    };
+
+    await expect(createTask(store, {
+      taskId: 'T-PARTIAL', title: '불완전 헤더', description: '', reward: 1, isActive: true, sortOrder: 1,
+    })).rejects.toThrow('Tasks 시트의 versioned schedule 헤더가 불완전합니다.');
+    expect(appends).toBe(0);
+  });
+
+  it('fails closed when reading a Tasks sheet with only part of the versioned schedule header', async () => {
+    const reader = {
+      async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'Tasks') return [[
+          'taskId', 'title', 'description', 'reward', 'isActive', 'sortOrder', 'recurrenceType',
+        ], [
+          'T-PARTIAL', '불완전 헤더', '', '1', 'TRUE', '1', 'NONE',
+        ]];
+        return sheetRows[sheetName];
+      },
+    };
+
+    await expect(getTasks(reader)).rejects.toThrow('Tasks 시트의 versioned schedule 헤더가 불완전합니다.');
+  });
+
+  it('recognizes a complete whitespace-padded versioned header and writes values in its live order', async () => {
+    const scheduleHeaders = [
+      'taskInstanceId', 'ruleVersion', 'scheduleEffectiveFrom', 'recurrenceTimeZone', 'recurrenceType',
+      'recurrenceTime', 'recurrenceWeekday', 'recurrenceDayOfMonth', 'resetCompletionOnCycle',
+      'resetAssignmentOnCycle', 'pendingRuleVersion', 'pendingEffectiveFrom', 'pendingTimeZone',
+      'pendingRecurrenceType', 'pendingRecurrenceTime', 'pendingRecurrenceWeekday',
+      'pendingRecurrenceDayOfMonth', 'pendingResetCompletionOnCycle', 'pendingResetAssignmentOnCycle',
+    ];
+    const headers = [
+      ' unknown ', ' title ', ...scheduleHeaders.map((header) => ` ${header} `),
+      ' taskId ', ' description ', ' reward ', ' isActive ', ' sortOrder ', ' createdAt ', ' updatedAt ',
+      ' allowedStudentIds ',
+    ];
+    const taskRows = [headers];
+    const appended: string[][] = [];
+    const store = {
+      async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'Tasks') return taskRows;
+        return sheetRows[sheetName];
+      },
+      async updateCell() {},
+      async appendRow(sheetName: string, values: string[]) {
+        appended.push(values);
+        if (sheetName === 'Tasks') taskRows.push(values);
+      },
+    };
+
+    const created = await createTask(store, {
+      taskId: 'T-PADDED', title: '공백 헤더', description: '설명', reward: 4, isActive: true, sortOrder: 9,
+    });
+    expect(created.taskInstanceId).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(created.schedule).toMatchObject({ ruleVersion: 1, timeZone: 'Asia/Seoul', recurrence: { type: 'NONE' } });
+    expect(appended).toHaveLength(1);
+    expect(appended[0][headers.indexOf(' unknown ')]).toBe('');
+    expect(appended[0][headers.indexOf(' taskId ')]).toBe('T-PADDED');
+    expect(appended[0][headers.indexOf(' taskInstanceId ')]).toBe(created.taskInstanceId);
+    expect(appended[0][headers.indexOf(' recurrenceType ')]).toBe('NONE');
+    await expect(getTasks(store)).resolves.toMatchObject([{
+      taskId: 'T-PADDED', taskInstanceId: created.taskInstanceId,
+      schedule: { ruleVersion: 1, effectiveFrom: created.schedule?.effectiveFrom, recurrence: { type: 'NONE' } },
+    }]);
+  });
+
+  it('appends and updates Settings values by normalized live header coordinates', async () => {
+    const appends: string[][] = [];
+    const updates: Array<{ rowNumber: number; columnName: string; value: string | number }> = [];
+    const rows = [
+      [' unknown ', ' value ', ' key ', 'audit'],
+      ['preserve', 'old', 'existing', 'metadata'],
+    ];
+    const store = {
+      async getRows() { return rows; },
+      async updateCell(_sheetName: string, rowNumber: number, columnName: string, value: string | number) {
+        updates.push({ rowNumber, columnName, value });
+      },
+      async appendRow(_sheetName: string, values: string[]) { appends.push(values); },
+    };
+
+    await saveSheetSetting(store, { key: 'newSetting', value: 'new-value' });
+    await saveSheetSetting(store, { key: 'existing', value: 'updated-value' });
+
+    expect(appends).toEqual([['', 'new-value', 'newSetting', '']]);
+    expect(updates).toEqual([{ rowNumber: 2, columnName: ' value ', value: 'updated-value' }]);
+  });
+
+  it('propagates Settings read failures from createTask and never appends', async () => {
+    let appends = 0;
+    const headers = [
+      'taskId', 'title', 'description', 'reward', 'isActive', 'sortOrder', 'createdAt', 'updatedAt',
+      'allowedStudentIds', 'taskInstanceId', 'ruleVersion', 'scheduleEffectiveFrom', 'recurrenceTimeZone',
+      'recurrenceType', 'recurrenceTime', 'recurrenceWeekday', 'recurrenceDayOfMonth',
+      'resetCompletionOnCycle', 'resetAssignmentOnCycle', 'pendingRuleVersion', 'pendingEffectiveFrom',
+      'pendingTimeZone', 'pendingRecurrenceType', 'pendingRecurrenceTime', 'pendingRecurrenceWeekday',
+      'pendingRecurrenceDayOfMonth', 'pendingResetCompletionOnCycle', 'pendingResetAssignmentOnCycle',
+    ];
+    const store = {
+      async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'Tasks') return [headers];
+        if (sheetName === 'Settings') throw new Error('Settings unavailable');
+        return sheetRows[sheetName];
+      },
+      async updateCell() {},
+      async appendRow() { appends += 1; },
+    };
+    await expect(createTask(store, {
+      taskId: 'T-FAIL', title: '실패', description: '', reward: 1, isActive: true, sortOrder: 1,
+    })).rejects.toThrow('Settings unavailable');
+    expect(appends).toBe(0);
   });
 
   it('batch updates tasks through one store call', async () => {
@@ -1006,7 +1216,16 @@ describe('sheets repository', () => {
     };
 
     await expect(getTasks(taskReader)).resolves.toEqual([
-      { taskId: 'T010', title: '지정 과제', description: '선택 학생만', reward: 10, isActive: true, sortOrder: 1, allowedStudentIds: ['S001', 'S003'] },
+      {
+        taskId: 'T010', title: '지정 과제', description: '선택 학생만', reward: 10, isActive: true,
+        sortOrder: 1, allowedStudentIds: ['S001', 'S003'],
+        taskInstanceId: 'legacy:T010:1970-01-01T00:00:00.000Z',
+        schedule: {
+          ruleVersion: 1, effectiveFrom: '1970-01-01T00:00:00.000Z', timeZone: 'Asia/Seoul',
+          recurrence: { type: 'NONE' }, resetCompletionOnCycle: false, resetAssignmentOnCycle: false,
+        },
+        pendingSchedule: null,
+      },
     ]);
 
     const appended: Array<{ sheetName: string; values: string[] }> = [];

@@ -25,19 +25,38 @@ const cycle = (currentSchedule: TaskSchedule, now: string, taskCreatedAt = '2023
   getTaskCycle({ taskInstanceId: 'task-1', schedule: currentSchedule, taskCreatedAt, now });
 
 describe('getTaskCycle', () => {
-  it('gives NONE one permanent, instance-specific cycle and falls back to the epoch', () => {
+  it('gives NONE one permanent, instance-specific cycle using the later valid start', () => {
     const none = schedule({ type: 'NONE' });
     expect(cycle(none, '2030-01-01T00:00:00Z')).toEqual({
-      cycleId: 'v1|task-1|r1|2023-12-01T00:00:00Z',
-      startsAt: '2023-12-01T00:00:00Z',
+      cycleId: 'v1|task-1|r1|2024-01-01T00:00:00Z',
+      startsAt: '2024-01-01T00:00:00Z',
       endsAt: null,
       nextResetAt: null,
     });
     expect(cycle(none, '2030-01-01T00:00:00Z', 'invalid').startsAt)
-      .toBe('1970-01-01T00:00:00Z');
+      .toBe('2024-01-01T00:00:00Z');
     expect(getTaskCycle({
       taskInstanceId: 'task-2', schedule: none, taskCreatedAt: undefined, now: '2030-01-01T00:00:00Z',
-    }).cycleId).toBe('v1|task-2|r1|1970-01-01T00:00:00Z');
+    }).cycleId).toBe('v1|task-2|r1|2024-01-01T00:00:00Z');
+  });
+
+  it('starts a NONE schedule at the later of task creation and schedule effectiveFrom', () => {
+    const legacy = schedule({ type: 'NONE' }, { effectiveFrom: '1970-01-01T00:00:00Z' });
+    expect(cycle(legacy, '2030-01-01T00:00:00Z', '2023-12-01T00:00:00Z').startsAt)
+      .toBe('2023-12-01T00:00:00Z');
+
+    const transitioned = schedule({ type: 'NONE' }, {
+      ruleVersion: 2,
+      effectiveFrom: '2024-02-01T00:00:00Z',
+    });
+    expect(() => cycle(transitioned, '2024-01-31T23:59:59.999Z', '2023-12-01T00:00:00Z'))
+      .toThrow('now must not be before effectiveFrom');
+    expect(cycle(transitioned, '2024-02-01T00:00:00Z', '2023-12-01T00:00:00Z')).toMatchObject({
+      startsAt: '2024-02-01T00:00:00Z',
+      cycleId: 'v1|task-1|r2|2024-02-01T00:00:00Z',
+    });
+    expect(cycle(transitioned, '2024-02-01T00:00:00.001Z', '2023-12-01T00:00:00Z').startsAt)
+      .toBe('2024-02-01T00:00:00Z');
   });
 
   it.each([

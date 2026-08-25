@@ -3,6 +3,8 @@ import { getSheetSettings, saveSheetSetting } from '@/server/sheetsRepository';
 import { saveAdminPassword } from '@/server/adminAuth';
 import { LATEST_SCHEMA_VERSION, SYSTEM_NAME_KO, SYSTEM_VERSION } from '@/generator/config/versions';
 import { normalizeFontFamily, type FontFamily } from '@/lib/fontSettings';
+import { DEFAULT_CLASS_TIME_ZONE, normalizeLegacyTimeZone } from '@/domain/taskSchedule';
+import { isValidNamedTimeZone } from '@/domain/timeZone';
 
 export type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'black' | 'navy';
 
@@ -14,6 +16,7 @@ export type AppSettings = {
   themeColor: ThemeColor;
   fontFamily: FontFamily;
   qrManualInputEnabled: boolean;
+  classTimeZone: string;
   schemaVersion: number;
   systemVersion: string;
   systemName: string;
@@ -38,11 +41,16 @@ type SaveSettingsOptions = {
   themeColor?: string;
   fontFamily?: string;
   qrManualInputEnabled?: boolean;
+  classTimeZone?: string;
   env?: SettingsEnv;
 };
 
 type ValidationResult =
   | { ok: true; spreadsheetId: string }
+  | { ok: false; message: string };
+
+export type ClassTimeZoneValidationResult =
+  | { ok: true; classTimeZone: string }
   | { ok: false; message: string };
 
 const SHEETS_URL_ID_PATTERN = /\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/;
@@ -84,6 +92,14 @@ export function validateSpreadsheetId(value: string): ValidationResult {
   return { ok: true, spreadsheetId };
 }
 
+export function validateClassTimeZone(value: unknown): ClassTimeZoneValidationResult {
+  const classTimeZone = typeof value === 'string' ? value.trim() : '';
+  if (!isValidNamedTimeZone(classTimeZone)) {
+    return { ok: false, message: '올바른 IANA 시간대를 입력해 주세요.' };
+  }
+  return { ok: true, classTimeZone };
+}
+
 export function getEnvSpreadsheetId(env: SettingsEnv = process.env): string {
   return env.GOOGLE_SHEET_ID?.trim() ?? '';
 }
@@ -106,6 +122,7 @@ export async function getAppSettings(options: SettingsOptions = {}): Promise<App
         themeColor: normalizeThemeColor(sheetSettings.themeColor),
         fontFamily: normalizeFontFamily(sheetSettings.fontFamily),
         qrManualInputEnabled: normalizeQrManualInputEnabled(sheetSettings.qrManualInputEnabled),
+        classTimeZone: normalizeLegacyTimeZone(sheetSettings.classTimeZone),
         schemaVersion: normalizeSchemaVersion(sheetSettings.schemaVersion),
         systemVersion: normalizeSystemVersion(sheetSettings.systemVersion),
         systemName: normalizeSystemName(sheetSettings.systemName),
@@ -145,12 +162,24 @@ export async function saveAppSettings(options: SaveSettingsOptions): Promise<App
   const themeColor = normalizeThemeColor(options.themeColor);
   const fontFamily = normalizeFontFamily(options.fontFamily);
   const qrManualInputEnabled = normalizeQrManualInputEnabled(options.qrManualInputEnabled);
+  let classTimeZone: string;
+  if (options.classTimeZone === undefined) {
+    const sheetSettings = await getSheetSettings(options.settingsStore);
+    classTimeZone = normalizeLegacyTimeZone(sheetSettings.classTimeZone);
+  } else {
+    const classTimeZoneValidation = validateClassTimeZone(options.classTimeZone);
+    if (classTimeZoneValidation.ok === false) throw new Error(classTimeZoneValidation.message);
+    classTimeZone = classTimeZoneValidation.classTimeZone;
+  }
   await saveSheetSetting(options.settingsStore, { key: 'currencyUnit', value: currencyUnit });
   await saveSheetSetting(options.settingsStore, { key: 'appTitle', value: appTitle });
   await saveSheetSetting(options.settingsStore, { key: 'bankTitle', value: bankTitle });
   await saveSheetSetting(options.settingsStore, { key: 'themeColor', value: themeColor });
   await saveSheetSetting(options.settingsStore, { key: 'fontFamily', value: fontFamily });
   await saveSheetSetting(options.settingsStore, { key: 'qrManualInputEnabled', value: qrManualInputEnabled ? 'TRUE' : 'FALSE' });
+  if (options.classTimeZone !== undefined) {
+    await saveSheetSetting(options.settingsStore, { key: 'classTimeZone', value: classTimeZone });
+  }
   await saveSheetSetting(options.settingsStore, { key: 'schemaVersion', value: String(DEFAULT_SCHEMA_VERSION) });
   await saveSheetSetting(options.settingsStore, { key: 'systemVersion', value: DEFAULT_SYSTEM_VERSION });
   await saveSheetSetting(options.settingsStore, { key: 'systemName', value: DEFAULT_SYSTEM_NAME });
@@ -166,6 +195,7 @@ export async function saveAppSettings(options: SaveSettingsOptions): Promise<App
     themeColor,
     fontFamily,
     qrManualInputEnabled,
+    classTimeZone,
     schemaVersion: DEFAULT_SCHEMA_VERSION,
     systemVersion: DEFAULT_SYSTEM_VERSION,
     systemName: DEFAULT_SYSTEM_NAME,
@@ -227,6 +257,7 @@ function defaultAppSettings(spreadsheetId: string, source: AppSettings['source']
     themeColor: DEFAULT_THEME_COLOR,
     fontFamily: 'default',
     qrManualInputEnabled: DEFAULT_QR_MANUAL_INPUT_ENABLED,
+    classTimeZone: DEFAULT_CLASS_TIME_ZONE,
     schemaVersion: DEFAULT_SCHEMA_VERSION,
     systemVersion: DEFAULT_SYSTEM_VERSION,
     systemName: DEFAULT_SYSTEM_NAME,

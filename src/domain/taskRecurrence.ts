@@ -1,4 +1,5 @@
 import { Temporal } from '@js-temporal/polyfill';
+import { isValidNamedTimeZone } from './timeZone';
 import type { TaskRecurrence, TaskSchedule } from './types';
 
 export type TaskCycle = {
@@ -28,18 +29,18 @@ export function getTaskCycle({
   taskCreatedAt?: string;
   now: string;
 }): TaskCycle {
-  validateSchedule(schedule);
+  schedule = validateSchedule(schedule);
   const nowInstant = parseRequiredInstant(now, 'now');
-
-  if (schedule.recurrence.type === 'NONE') {
-    const startsAt = parseOptionalInstant(taskCreatedAt)?.toString()
-      ?? Temporal.Instant.fromEpochMilliseconds(0).toString();
-    return makeCycle(taskInstanceId, schedule.ruleVersion, startsAt, null);
-  }
-
   const effectiveFrom = parseRequiredInstant(schedule.effectiveFrom, 'effectiveFrom');
   if (Temporal.Instant.compare(nowInstant, effectiveFrom) < 0) {
     throw new TaskRecurrenceValidationError('now must not be before effectiveFrom');
+  }
+
+  if (schedule.recurrence.type === 'NONE') {
+    const createdAt = parseOptionalInstant(taskCreatedAt)
+      ?? Temporal.Instant.fromEpochMilliseconds(0);
+    const startsAt = (Temporal.Instant.compare(createdAt, effectiveFrom) >= 0 ? createdAt : effectiveFrom).toString();
+    return makeCycle(taskInstanceId, schedule.ruleVersion, startsAt, null);
   }
 
   const boundaries = naturalBoundariesAround(
@@ -66,7 +67,7 @@ export function getNextNaturalTaskBoundary({
   timeZone: string;
   after: string;
 }): string {
-  validateTimeZone(timeZone);
+  timeZone = validateTimeZone(timeZone);
   validateRecurrence(recurrence);
   if (recurrence.type === 'NONE') {
     throw new TaskRecurrenceValidationError('NONE has no natural boundary');
@@ -92,13 +93,14 @@ function makeCycle(
   };
 }
 
-function validateSchedule(schedule: TaskSchedule): void {
+function validateSchedule(schedule: TaskSchedule): TaskSchedule {
   if (!Number.isInteger(schedule.ruleVersion) || schedule.ruleVersion < 1) {
     throw new TaskRecurrenceValidationError('ruleVersion must be a positive integer');
   }
   parseRequiredInstant(schedule.effectiveFrom, 'effectiveFrom');
-  validateTimeZone(schedule.timeZone);
+  const timeZone = validateTimeZone(schedule.timeZone);
   validateRecurrence(schedule.recurrence);
+  return { ...schedule, timeZone };
 }
 
 function validateRecurrence(recurrence: TaskRecurrence): void {
@@ -133,22 +135,11 @@ function validateRecurrence(recurrence: TaskRecurrence): void {
   }
 }
 
-function validateTimeZone(timeZone: string): void {
-  if (/^[+-]\d{2}(?::?\d{2})?$/.test(timeZone)) {
+function validateTimeZone(timeZone: string): string {
+  if (!isValidNamedTimeZone(timeZone)) {
     throw new TaskRecurrenceValidationError('timeZone must be a valid IANA time zone');
   }
-  try {
-    Temporal.ZonedDateTime.from({
-      timeZone,
-      year: 2000,
-      month: 1,
-      day: 1,
-      hour: 0,
-      minute: 0,
-    });
-  } catch {
-    throw new TaskRecurrenceValidationError('timeZone must be a valid IANA time zone');
-  }
+  return timeZone.trim();
 }
 
 function parseTime(time: string): { hour: number; minute: number } {
