@@ -1,6 +1,5 @@
 import { resolveTaskSchedule, serializeTaskScheduleCells, validateTaskSchedule } from '@/domain/taskSchedule';
 import { isValidNamedTimeZone } from '@/domain/timeZone';
-import type { TaskSchedule } from '@/domain/types';
 import { getTaskRecords } from '@/server/sheetsRepository';
 import {
   type CrossSheetCellUpdate,
@@ -71,10 +70,7 @@ export async function changeClassTimeZone(
         throw new Error(`과제 일정 데이터가 손상되었습니다 (${task.scheduleReadWarnings[0]}). 일정을 먼저 복구해 주세요.`);
       }
       if (!task.schedule) continue;
-      const persistedSchedules = [task.schedule, task.pendingSchedule].filter(
-        (schedule): schedule is TaskSchedule => schedule !== null && schedule !== undefined,
-      );
-      if (persistedSchedules.some((schedule) => Date.parse(changedAt) < Date.parse(schedule.effectiveFrom))) {
+      if (Date.parse(changedAt) < Date.parse(task.schedule.effectiveFrom)) {
         throw new Error('시간대 변경 시각은 과제 일정의 effectiveFrom보다 이를 수 없습니다. 변경 순서를 확인해 주세요.');
       }
       if (!task.taskInstanceId) continue;
@@ -83,12 +79,18 @@ export async function changeClassTimeZone(
         pendingSchedule: task.pendingSchedule ?? null,
         now: changedAt,
       });
-      if (effectiveSchedule.recurrence.type === 'NONE') continue;
-      if (effectiveSchedule.timeZone === classTimeZone) continue;
+      const hasFuturePending = task.pendingSchedule !== null
+        && task.pendingSchedule !== undefined
+        && Date.parse(task.pendingSchedule.effectiveFrom) > Date.parse(changedAt);
+      if (effectiveSchedule.recurrence.type === 'NONE' && !hasFuturePending) continue;
+      if (effectiveSchedule.timeZone === classTimeZone && !hasFuturePending) continue;
 
       const pendingSchedule = validateTaskSchedule({
         ...effectiveSchedule,
-        ruleVersion: effectiveSchedule.ruleVersion + 1,
+        ruleVersion: Math.max(
+          task.schedule.ruleVersion,
+          task.pendingSchedule?.ruleVersion ?? 0,
+        ) + 1,
         effectiveFrom: changedAt,
         timeZone: classTimeZone,
       });

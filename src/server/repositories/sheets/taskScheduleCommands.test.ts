@@ -144,24 +144,72 @@ describe('atomic classroom timezone schedule command', () => {
     expect(store.rows).toEqual(before);
   });
 
-  it('rejects an instant before a future finite pending schedule when the current schedule is NONE', async () => {
+  it('atomically applies timezone immediately as v3 and supersedes a future v2 pending schedule', async () => {
     const store = new AtomicFake();
+    const currentV1: TaskSchedule = { ...current, ruleVersion: 1 };
     const futurePending: TaskSchedule = {
-      ...current,
-      ruleVersion: none.ruleVersion + 1,
+      ...currentV1,
+      ruleVersion: 2,
       effectiveFrom: '2026-08-25T09:01:00.000Z',
-      recurrence: { type: 'DAILY', time: '09:01' },
+      recurrence: { type: 'WEEKLY', time: '09:01', weekday: 1 },
+      resetCompletionOnCycle: false,
+      resetAssignmentOnCycle: true,
     };
-    store.rows.Tasks![1] = [...taskRow('T1', 'instance-1', none, futurePending), 'preserve-me'];
-    const settingsBefore = structuredClone(store.rows.Settings);
-    const tasksBefore = structuredClone(store.rows.Tasks);
+    store.rows.Tasks![1] = [...taskRow('T1', 'instance-1', currentV1, futurePending), 'preserve-me'];
 
-    await expect(changeClassTimeZone(store, 'UTC', { now: () => '2026-08-25T09:00:00.000Z' }))
-      .rejects.toThrow(/순서|effectiveFrom/);
+    const immediateAt = '2026-08-25T09:00:00.000Z';
+    await expect(changeClassTimeZone(store, 'UTC', { now: () => immediateAt })).resolves.toEqual({
+      classTimeZone: 'UTC', changedAt: immediateAt, updatedTaskCount: 1,
+    });
 
-    expect(store.rows.Settings).toEqual(settingsBefore);
-    expect(store.rows.Tasks).toEqual(tasksBefore);
-    expect(store.atomicCalls).toEqual([]);
+    expect(store.atomicCalls).toHaveLength(1);
+    expect(store.atomicCalls[0].some((update) => update.sheetName === 'Settings')).toBe(true);
+    expect(store.atomicCalls[0].some((update) => update.sheetName === 'Tasks')).toBe(true);
+    const task = (await getTaskRecords(store))[0].task;
+    expect(task.schedule).toMatchObject({
+      ruleVersion: 1,
+      recurrence: { type: 'DAILY', time: '09:00' },
+      resetCompletionOnCycle: true,
+      resetAssignmentOnCycle: false,
+    });
+    expect(task.pendingSchedule).toEqual({
+      ruleVersion: 3,
+      effectiveFrom: immediateAt,
+      timeZone: 'UTC',
+      recurrence: { type: 'DAILY', time: '09:00' },
+      resetCompletionOnCycle: true,
+      resetAssignmentOnCycle: false,
+    });
+    expect(store.rows.Tasks![1].at(-1)).toBe('preserve-me');
+  });
+
+  it('supersedes a future recurring pending schedule even when the currently effective recurrence is NONE', async () => {
+    const store = new AtomicFake();
+    const noneCurrent: TaskSchedule = { ...none, ruleVersion: 1 };
+    const futureRecurring: TaskSchedule = {
+      ...current,
+      ruleVersion: 2,
+      effectiveFrom: '2026-08-25T09:01:00.000Z',
+      timeZone: 'UTC',
+    };
+    store.rows.Tasks![1] = [...taskRow('T1', 'instance-1', noneCurrent, futureRecurring), 'preserve-me'];
+
+    const immediateAt = '2026-08-25T09:00:00.000Z';
+    await expect(changeClassTimeZone(store, 'America/New_York', { now: () => immediateAt })).resolves.toEqual({
+      classTimeZone: 'America/New_York', changedAt: immediateAt, updatedTaskCount: 1,
+    });
+
+    const task = (await getTaskRecords(store))[0].task;
+    expect(task.schedule).toMatchObject({ ruleVersion: 1, recurrence: { type: 'NONE' } });
+    expect(task.pendingSchedule).toEqual({
+      ruleVersion: 3,
+      effectiveFrom: immediateAt,
+      timeZone: 'America/New_York',
+      recurrence: { type: 'NONE' },
+      resetCompletionOnCycle: false,
+      resetAssignmentOnCycle: false,
+    });
+    expect(store.rows.Tasks![1].at(-1)).toBe('preserve-me');
   });
 
   it('uses effective pending state, updates only finite recurrence, and upserts a missing setting in one call', async () => {

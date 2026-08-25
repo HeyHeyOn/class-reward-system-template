@@ -115,15 +115,25 @@ export type TaskAssignment = {
   note: string;
 };
 
+export type TaskCycleStateStudentOrigin = 'EVENT' | 'CARRY' | 'LEGACY' | 'DEFAULT';
+
 export type TaskAssignmentStudentStatus = {
   studentId: string;
   name: string;
   assigned: boolean;
   completed: boolean;
+  assignmentOrigin?: TaskCycleStateStudentOrigin;
+  /** Physical assignment ledger source when an event backs this projected state. */
+  assignmentSource?: TaskAssignmentSource;
+  completionOrigin?: TaskCycleStateStudentOrigin;
 };
 
 export type TaskAssignmentStatus = {
   taskId: string;
+  cycleId?: string;
+  startsAt?: string;
+  endsAt?: string | null;
+  transition?: 'PERMANENT' | 'INITIAL_CYCLE' | 'SCHEDULE_CHANGE_FIRST_CYCLE' | 'NATURAL_BOUNDARY';
   students: TaskAssignmentStudentStatus[];
 };
 

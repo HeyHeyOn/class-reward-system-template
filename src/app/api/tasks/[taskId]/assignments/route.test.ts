@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createConfiguredSheetsStore } from '@/server/googleSheets';
-import { updateTaskAssignmentStatus } from '@/server/sheetsRepository';
-import { PATCH } from './route';
+import { createConfiguredSheetsReader, createConfiguredSheetsStore } from '@/server/googleSheets';
+import { getTaskAssignmentStatus, updateTaskAssignmentStatus } from '@/server/sheetsRepository';
+import { GET, PATCH } from './route';
 
 vi.mock('@/server/apiAuth', () => ({ isAuthorizedAdminRequest: () => true, unauthorizedAdminResponse: () => new Response(null, { status: 401 }) }));
 vi.mock('@/server/googleSheets', () => ({ createConfiguredSheetsReader: vi.fn(), createConfiguredSheetsStore: vi.fn() }));
@@ -10,6 +10,25 @@ vi.mock('@/server/sheetsRepository', () => ({ getTaskAssignmentStatus: vi.fn(), 
 describe('PATCH /api/tasks/[taskId]/assignments', () => {
   beforeEach(() => vi.clearAllMocks());
   afterEach(() => vi.restoreAllMocks());
+
+  it('returns the optional physical assignment source from the write-free GET query', async () => {
+    const reader = {};
+    vi.mocked(createConfiguredSheetsReader).mockResolvedValue(reader as never);
+    vi.mocked(getTaskAssignmentStatus).mockResolvedValue({
+      taskId: 'T1',
+      students: [{ studentId: 'S1', name: 'Student', assigned: true, completed: false, assignmentSource: 'QR' }],
+    });
+    const response = await GET(new Request('http://localhost/api/tasks/T1/assignments'), {
+      params: Promise.resolve({ taskId: 'T1' }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      students: [{ studentId: 'S1', assignmentSource: 'QR' }],
+    });
+    expect(getTaskAssignmentStatus).toHaveBeenCalledWith(reader, 'T1');
+    expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
+  });
 
   it('awaits Next 16 params and sends one student desired state with ADMIN source', async () => {
     const store = {};

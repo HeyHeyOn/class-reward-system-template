@@ -275,7 +275,9 @@ describe('cycle-aware completion command', () => {
       ruleVersion: 1, timeZone: 'UTC', source: 'BANK', assignmentId: 'A1', schemaVersion: 2,
     }));
     const result = await updateTaskAssignmentStatus(store as never, 'T1', { studentId: 'S1', assigned: false, completed: false, source: 'ADMIN' });
-    expect(result.students).toContainEqual({ studentId: 'S1', name: 'Kim', assigned: false, completed: false });
+    expect(result.students).toContainEqual(expect.objectContaining({
+      studentId: 'S1', name: 'Kim', assigned: false, completed: false, assignmentSource: 'ADMIN',
+    }));
     expect(completionRecords(store).at(-1)).toMatchObject({ source: 'ADMIN_RESET', status: 'RESET' });
     const assignmentHeaders = store.rows.TaskAssignments[0];
     const lastAssignment = Object.fromEntries(assignmentHeaders.map((header, index) => [header, store.rows.TaskAssignments.at(-1)![index]]));
@@ -316,7 +318,9 @@ describe('cycle-aware completion command', () => {
       { studentId: 'S1', completed: false, source: 'ADMIN' },
     );
 
-    expect(result.students).toContainEqual({ studentId: 'S1', name: 'Kim', assigned: false, completed: false });
+    expect(result.students).toContainEqual(expect.objectContaining({
+      studentId: 'S1', name: 'Kim', assigned: false, completed: false, assignmentSource: 'ADMIN',
+    }));
     expect(store.rows.TaskAssignments).toHaveLength(3);
     expect(completionRecords(store)).toMatchObject([
       { completionId: 'DONE', status: 'SUCCESS', assignmentId: 'A1' },
@@ -359,7 +363,9 @@ describe('cycle-aware completion command', () => {
       { studentId: 'S1', completed: false, source: 'ADMIN' },
     );
 
-    expect(result.students).toContainEqual({ studentId: 'S1', name: 'Kim', assigned: false, completed: false });
+    expect(result.students).toContainEqual(expect.objectContaining({
+      studentId: 'S1', name: 'Kim', assigned: false, completed: false,
+    }));
     expect(store.rows.TaskAssignments).toHaveLength(1);
     expect(completionRecords(store)).toMatchObject([
       { completionId: 'LEGACY-DONE', status: 'SUCCESS', assignmentId: '' },
@@ -376,7 +382,7 @@ describe('cycle-aware completion command', () => {
       .resolves.toEqual({ taskIds: ['T1'], resetEventsAppended: 1, deletedCount: 1 });
 
     expect((await getTaskAssignmentStatus(store as never, 'T1')).students)
-      .toContainEqual({ studentId: 'S1', name: 'Kim', assigned: false, completed: false });
+      .toContainEqual(expect.objectContaining({ studentId: 'S1', name: 'Kim', assigned: false, completed: false }));
     expect(store.rows.TaskAssignments).toHaveLength(1);
     expect(completionRecords(store)).toMatchObject([
       { completionId: 'LEGACY-DONE', status: 'SUCCESS', assignmentId: '' },

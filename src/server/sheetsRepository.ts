@@ -278,12 +278,22 @@ export async function getTaskAssignmentStatus(reader: SheetsReader, taskId: stri
   ]);
   return {
     taskId: task.taskId,
-    students: students.map((student) => ({
-      studentId: student.studentId,
-      name: student.name,
-      assigned: cycleState.students[student.studentId]?.assigned ?? false,
-      completed: cycleState.students[student.studentId]?.completed ?? false,
-    })),
+    cycleId: cycleState.cycle.cycleId,
+    startsAt: cycleState.cycle.startsAt,
+    endsAt: cycleState.cycle.endsAt,
+    transition: cycleState.transition,
+    students: students.map((student) => {
+      const projected = cycleState.students[student.studentId];
+      return {
+        studentId: student.studentId,
+        name: student.name,
+        assigned: projected?.assigned ?? false,
+        completed: projected?.completed ?? false,
+        assignmentOrigin: projected?.assignmentOrigin ?? 'DEFAULT',
+        ...(projected?.assignmentEvent?.source ? { assignmentSource: projected.assignmentEvent.source } : {}),
+        completionOrigin: projected?.completionOrigin ?? 'DEFAULT',
+      };
+    }),
   };
 }
 
@@ -366,11 +376,14 @@ export async function updateTaskAssignmentStatus(
 }
 
 export async function createTask(store: SheetsStore, create: TaskCreate): Promise<ClassTask> {
-  await ensureTaskSheet(store);
   const taskId = create.taskId.trim();
   validateTaskId(taskId);
   validateTaskUpdate(create);
+  await ensureTaskSheet(store);
   if (await getTaskById(store, taskId)) throw new Error('이미 존재하는 과제 ID입니다.');
+  if (create.schedule !== undefined) {
+    await migrateRecurringSchemaIfNeeded(requireRecurringSchemaMigrationStore(store));
+  }
   const now = new Date().toISOString();
   const taskRows = await store.getRows('Tasks');
   const headers = taskRows[0] ?? TASK_HEADERS;
@@ -384,10 +397,10 @@ export async function createTask(store: SheetsStore, create: TaskCreate): Promis
       schedule: {
         ruleVersion: 1,
         effectiveFrom: now,
-        timeZone: classTimeZone,
-        recurrence: { type: 'NONE' },
-        resetCompletionOnCycle: false,
-        resetAssignmentOnCycle: false,
+        timeZone: create.schedule?.timeZone ?? classTimeZone,
+        recurrence: create.schedule?.recurrence ?? { type: 'NONE' },
+        resetCompletionOnCycle: create.schedule?.resetCompletionOnCycle ?? false,
+        resetAssignmentOnCycle: create.schedule?.resetAssignmentOnCycle ?? false,
       },
       pendingSchedule: null,
     };
@@ -1180,6 +1193,22 @@ function getStudentRecordsFromRows(rows: string[][]): Map<string, StudentRecord>
   return records;
 }
 
+function requireRecurringSchemaMigrationStore(store: SheetsStore): RecurringSchemaMigrationStore {
+  const candidate = store as Partial<RecurringSchemaMigrationStore>;
+  const requiredCapabilities: Array<keyof RecurringSchemaMigrationStore> = [
+    'lookupSheet',
+    'createSheetWithHeader',
+    'ensureColumnCount',
+    'writeHeaderCells',
+    'verifyHeaderCells',
+    'verifyAndWriteHeaderCells',
+  ];
+  if (requiredCapabilities.some((capability) => typeof candidate[capability] !== 'function')) {
+    throw new Error('현재 Sheets 저장소가 반복 과제 스키마 준비를 지원하지 않습니다.');
+  }
+  return candidate as RecurringSchemaMigrationStore;
+}
+
 async function migrateRecurringSchemaIfNeeded(store: RecurringSchemaMigrationStore): Promise<void> {
   const [taskRows, completionRows, assignmentLookup] = await Promise.all([
     store.getRows('Tasks'),
@@ -1321,20 +1350,21 @@ function prepareImmediateScheduleState(task: ClassTask, edit: TaskScheduleEdit, 
   if (Object.keys(edit).some((key) => !allowedKeys.has(key))) {
     throw new Error('schedule contains unsupported fields');
   }
-  const transitionAt = [
-    editedAt,
-    task.schedule.effectiveFrom,
-    task.pendingSchedule?.effectiveFrom,
-  ].filter((value): value is string => Boolean(value)).reduce((latest, value) =>
-    value > latest ? value : latest, editedAt);
+  // An administrator's full schedule edit takes effect at the request instant. A future
+  // pending rule cannot be retained by the two-slot schema, so this edit supersedes it.
+  const transitionAt = editedAt;
   const effectiveSchedule = resolveTaskSchedule({
     currentSchedule: task.schedule,
     pendingSchedule: task.pendingSchedule ?? null,
-    now: transitionAt,
+    now: editedAt,
   });
+  const nextRuleVersion = Math.max(
+    task.schedule.ruleVersion,
+    task.pendingSchedule?.ruleVersion ?? 0,
+  ) + 1;
   const pendingSchedule = validateTaskSchedule({
-    ruleVersion: effectiveSchedule.ruleVersion + 1,
-    effectiveFrom: transitionAt,
+    ruleVersion: nextRuleVersion,
+    effectiveFrom: editedAt,
     timeZone: edit.timeZone,
     recurrence: edit.recurrence,
     resetCompletionOnCycle: edit.resetCompletionOnCycle,

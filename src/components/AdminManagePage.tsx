@@ -2,23 +2,27 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
-import type { ClassTask, Product, Student } from '@/domain/types';
+import type { ClassTask, Product, Student, TaskAssignmentStatus, TaskAssignmentStudentStatus } from '@/domain/types';
 import { SettingsForm } from './SettingsForm';
 import { QrScanner } from './QrScanner';
 import { TransactionsPanel } from './TransactionsPage';
 import { getFontFamilyCss, type FontFamily } from '@/lib/fontSettings';
+import { formatRecurrenceSummary, normalizeAdminTask, resolveEffectiveAdminTaskSchedule, scheduleDtoToForm, scheduleFormToPayload, type NormalizedAdminTask, type TaskRecurrenceForm } from './taskRecurrenceEditor';
+import { TaskRecurrenceFields, TaskScheduleProjection } from './tasks/TaskRecurrenceFields';
+import { TaskHistoryDialog, type TaskHistoryDialogState } from './tasks/TaskHistoryDialog';
+import { normalizeTaskAssignmentStatus, reconcileTaskAssignmentProjection } from './taskAssignmentProjection';
 
 type StudentDraft = Student;
 type ProductDraft = Product;
-type TaskDraft = ClassTask;
+type TaskDraft = NormalizedAdminTask;
 type AdminTab = 'settings' | 'students' | 'products' | 'tasks' | 'transactions' | 'currency';
 type BulkMode = 'set' | 'add' | 'subtract';
 type CurrencyMode = 'add' | 'subtract';
 type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'black' | 'navy';
-type Settings = { currencyUnit?: string; appTitle?: string; bankTitle?: string; themeColor?: ThemeColor; fontFamily?: FontFamily; qrManualInputEnabled?: boolean };
+type Settings = { currencyUnit?: string; appTitle?: string; bankTitle?: string; themeColor?: ThemeColor; fontFamily?: FontFamily; qrManualInputEnabled?: boolean; classTimeZone?: string };
 type AdminTheme = { shell: string; pageText: string; accentText: string; accentBg: string; actionText: string; selectedTab: string; idleTab: string; statBg: string; logoColor: string; softBg: string; softText: string; focusBorder: string };
 const disabledActionClass = 'disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none';
 type CurrencyResult = {
@@ -34,6 +38,7 @@ type QrTaskAssignmentResult = {
   taskId: string;
   message: string;
 };
+
 
 type NewStudentDraft = {
   studentId: string;
@@ -55,6 +60,34 @@ type NewProductDraft = {
 const EMPTY_STUDENT: NewStudentDraft = { studentId: '', name: '', balance: 0, status: 'ACTIVE' };
 const EMPTY_PRODUCT: NewProductDraft = { name: '', price: 0, stock: 0, isActive: true, imageUrl: '', category: '', sortOrder: 1 };
 const EMPTY_TASK: Omit<TaskDraft, 'taskId'> = { title: '', description: '', reward: 0, isActive: true, sortOrder: 1, allowedStudentIds: [] };
+
+function reconcileTaskProjections(
+  current: TaskDraft[],
+  serverRows: TaskDraft[],
+  targetTaskIds: string[],
+  freshTaskIds: string[] = [],
+): TaskDraft[] {
+  const currentById = new Map(current.map((task) => [task.taskId, task]));
+  const targetIds = new Set(targetTaskIds);
+  const freshIds = new Set(freshTaskIds);
+
+  return serverRows.map((row) => {
+    const serverTask = normalizeAdminTask(row);
+    const localTask = currentById.get(serverTask.taskId);
+    if (!localTask) return serverTask;
+    if (freshIds.has(serverTask.taskId)) return serverTask;
+    if (!targetIds.has(serverTask.taskId)) return localTask;
+
+    return {
+      ...localTask,
+      taskInstanceId: serverTask.taskInstanceId,
+      schedule: serverTask.schedule,
+      pendingSchedule: serverTask.pendingSchedule,
+      scheduleReadWarnings: serverTask.scheduleReadWarnings,
+      currentCycle: serverTask.currentCycle,
+    };
+  });
+}
 
 const ADMIN_THEME: Record<ThemeColor, AdminTheme> = {
   blue: { shell: 'bg-[#EDF5FA]', pageText: 'text-slate-950', accentText: 'text-[#365F78]', accentBg: 'bg-[#B8D0E0]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#B8D0E0] text-[#1F1F1F]', idleTab: 'bg-[#EDF5FA] text-slate-800 hover:bg-[#D8E9F2]', statBg: 'bg-[#EDF5FA]', logoColor: 'bg-[#365F78]', softBg: 'bg-[#EDF5FA]/80', softText: 'text-slate-700', focusBorder: 'focus:border-[#B8D0E0]' },
@@ -96,6 +129,13 @@ export function AdminManagePage() {
   const [newTask, setNewTask] = useState<Omit<TaskDraft, 'taskId'>>(EMPTY_TASK);
   const [imageEditor, setImageEditor] = useState<{ productId: string; value: string } | null>(null);
   const [taskDescriptionEditor, setTaskDescriptionEditor] = useState<{ taskId: string; value: string } | null>(null);
+  const [taskScheduleEditor, setTaskScheduleEditor] = useState<{ taskId: string | null; form: TaskRecurrenceForm } | null>(null);
+  const [dirtyTaskScheduleIds, setDirtyTaskScheduleIds] = useState<string[]>([]);
+  const [isSavingTaskSchedule, setIsSavingTaskSchedule] = useState(false);
+  const taskScheduleSession = useRef<{ id: number; taskId: string | null }>({ id: 0, taskId: null });
+  const [taskHistory, setTaskHistory] = useState<TaskHistoryDialogState | null>(null);
+  const historyRequestId = useRef(0);
+  const assignmentRequest = useRef<{ id: number; taskId: string | null }>({ id: 0, taskId: null });
   const [taskAssignmentEditor, setTaskAssignmentEditor] = useState<{
     taskId: string | null;
     selectedIds: string[];
@@ -103,6 +143,7 @@ export function AdminManagePage() {
     completedIds: string[];
     initialAssignedIds: string[];
     initialCompletedIds: string[];
+    statusRows: TaskAssignmentStudentStatus[];
     isLoading?: boolean;
   } | null>(null);
   const [qrPrintStudents, setQrPrintStudents] = useState<StudentDraft[] | null>(null);
@@ -116,7 +157,7 @@ export function AdminManagePage() {
   const [qrTaskScan, setQrTaskScan] = useState<{ taskId: string; manualId: string } | null>(null);
   const [qrTaskLoading, setQrTaskLoading] = useState(false);
   const [qrTaskResult, setQrTaskResult] = useState<QrTaskAssignmentResult | null>(null);
-  const [settings, setSettings] = useState<Settings>({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', fontFamily: 'default', qrManualInputEnabled: false });
+  const [settings, setSettings] = useState<Settings>({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', fontFamily: 'default', qrManualInputEnabled: false, classTimeZone: 'Asia/Seoul' });
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isSavingChanges, setIsSavingChanges] = useState(false);
   const [isRefreshingLists, setIsRefreshingLists] = useState(false);
@@ -150,10 +191,11 @@ export function AdminManagePage() {
         themeColor: normalizeThemeColor(settingsPayload?.themeColor),
         fontFamily: settingsPayload?.fontFamily ?? 'default',
         qrManualInputEnabled: Boolean(settingsPayload?.qrManualInputEnabled),
+        classTimeZone: settingsPayload?.classTimeZone ?? 'Asia/Seoul',
       });
       setStudents(studentPayload);
       setProducts(productPayload);
-      setTasks(taskPayload);
+      setTasks((taskPayload as TaskDraft[]).map(normalizeAdminTask));
       setSelectedStudentIds((ids) => ids.filter((id) => studentPayload.some((student: Student) => student.studentId === id)));
       setSelectedProductIds((ids) => ids.filter((id) => productPayload.some((product: Product) => product.productId === id)));
       setSelectedTaskIds((ids) => ids.filter((id) => taskPayload.some((task: ClassTask) => task.taskId === id)));
@@ -206,6 +248,96 @@ export function AdminManagePage() {
     setTasks((current) => current.map((task) => (task.taskId === taskId ? { ...task, ...patch } : task)));
   }
 
+  function openTaskScheduleEditor(task: TaskDraft | null) {
+    const taskId = task?.taskId ?? null;
+    const schedule = task ? resolveEffectiveAdminTaskSchedule(task) : newTask.schedule;
+    taskScheduleSession.current = { id: taskScheduleSession.current.id + 1, taskId };
+    setIsSavingTaskSchedule(false);
+    setTaskScheduleEditor({
+      taskId,
+      form: scheduleDtoToForm(schedule, {
+        timeZone: schedule?.timeZone ?? settings.classTimeZone ?? 'Asia/Seoul',
+        taskInstanceId: task?.taskInstanceId,
+      }),
+    });
+  }
+
+  function closeTaskScheduleEditor() {
+    taskScheduleSession.current = { id: taskScheduleSession.current.id + 1, taskId: null };
+    setIsSavingTaskSchedule(false);
+    setTaskScheduleEditor(null);
+  }
+
+  async function applyTaskScheduleEditor() {
+    if (!taskScheduleEditor) return;
+    const session = { ...taskScheduleSession.current };
+    const isCurrentSession = () => taskScheduleSession.current.id === session.id
+      && taskScheduleSession.current.taskId === session.taskId;
+    const parsed = scheduleFormToPayload(taskScheduleEditor.form);
+    if (!parsed.ok) return notify(parsed.error);
+    if (taskScheduleEditor.taskId) {
+      const task = tasks.find((item) => item.taskId === taskScheduleEditor.taskId);
+      if (!task) return notify('과제를 찾을 수 없습니다.');
+      setIsSavingTaskSchedule(true);
+      try {
+        const response = await fetch(`/api/tasks/${encodeURIComponent(task.taskId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            taskId: task.taskId,
+            title: task.title,
+            description: task.description,
+            reward: task.reward,
+            isActive: task.isActive,
+            sortOrder: task.sortOrder,
+            allowedStudentIds: task.allowedStudentIds ?? [],
+            schedule: parsed.payload,
+          }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? '반복 설정을 저장하지 못했습니다.');
+        const taskResponse = await fetch('/api/tasks?includeInactive=1', { cache: 'no-store' });
+        const taskPayload = await taskResponse.json();
+        if (!isCurrentSession()) return;
+        if (!taskResponse.ok || !Array.isArray(taskPayload)) throw new Error(taskPayload?.error ?? '저장 후 최신 과제 회차를 불러오지 못했습니다.');
+        setTasks((current) => reconcileTaskProjections(current, taskPayload, [task.taskId]));
+        setDirtyTaskScheduleIds((current) => current.filter((id) => id !== task.taskId));
+        closeTaskScheduleEditor();
+      } catch (error) {
+        if (isCurrentSession()) notify(error instanceof Error ? error.message : '반복 설정을 저장하지 못했습니다.');
+      } finally {
+        if (isCurrentSession()) setIsSavingTaskSchedule(false);
+      }
+      return;
+    }
+    setNewTask((current) => ({ ...current, schedule: {
+      ruleVersion: 1,
+      effectiveFrom: '',
+      ...parsed.payload,
+    } }));
+    closeTaskScheduleEditor();
+  }
+
+  async function openTaskHistory(task: TaskDraft) {
+    const requestId = ++historyRequestId.current;
+    setTaskHistory({ taskId: task.taskId, title: task.title, loading: true, error: '', detail: null });
+    try {
+      const response = await fetch(`/api/tasks/${encodeURIComponent(task.taskId)}/history`, { cache: 'no-store' });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? '과제 기록을 불러오지 못했습니다.');
+      if (historyRequestId.current !== requestId) return;
+      setTaskHistory({ taskId: task.taskId, title: task.title, loading: false, error: '', detail: payload });
+    } catch (error) {
+      if (historyRequestId.current !== requestId) return;
+      setTaskHistory({ taskId: task.taskId, title: task.title, loading: false, error: error instanceof Error ? error.message : '과제 기록을 불러오지 못했습니다.', detail: null });
+    }
+  }
+
+  function closeTaskHistory() {
+    historyRequestId.current += 1;
+    setTaskHistory(null);
+  }
+
   function notify(messageText: string) {
     window.alert(messageText);
   }
@@ -228,6 +360,7 @@ export function AdminManagePage() {
         themeColor: normalizeThemeColor(settingsPayload?.themeColor),
         fontFamily: settingsPayload?.fontFamily ?? 'default',
         qrManualInputEnabled: Boolean(settingsPayload?.qrManualInputEnabled),
+        classTimeZone: settingsPayload?.classTimeZone ?? 'Asia/Seoul',
       });
       setMessage('');
     } catch (error) {
@@ -255,6 +388,7 @@ export function AdminManagePage() {
         themeColor: normalizeThemeColor(settingsPayload?.themeColor),
         fontFamily: settingsPayload?.fontFamily ?? 'default',
         qrManualInputEnabled: Boolean(settingsPayload?.qrManualInputEnabled),
+        classTimeZone: settingsPayload?.classTimeZone ?? 'Asia/Seoul',
       });
       setMessage('');
     } catch (error) {
@@ -273,7 +407,7 @@ export function AdminManagePage() {
       ]);
       const [taskPayload, settingsPayload] = await Promise.all([taskResponse.json(), settingsResponse.json().catch(() => null)]);
       if (!taskResponse.ok) throw new Error(taskPayload.error ?? '과제 목록을 불러오지 못했습니다.');
-      setTasks(taskPayload);
+      setTasks((taskPayload as TaskDraft[]).map(normalizeAdminTask));
       setSelectedTaskIds((ids) => ids.filter((id) => taskPayload.some((task: ClassTask) => task.taskId === id)));
       setSettings({
         currencyUnit: settingsPayload?.currencyUnit ?? '원',
@@ -282,6 +416,7 @@ export function AdminManagePage() {
         themeColor: normalizeThemeColor(settingsPayload?.themeColor),
         fontFamily: settingsPayload?.fontFamily ?? 'default',
         qrManualInputEnabled: Boolean(settingsPayload?.qrManualInputEnabled),
+        classTimeZone: settingsPayload?.classTimeZone ?? 'Asia/Seoul',
       });
       setMessage('');
     } catch (error) {
@@ -309,16 +444,15 @@ export function AdminManagePage() {
 
   async function loadTaskAssignmentStatus(taskId: string) {
     const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/assignments`, { cache: 'no-store' });
-    const payload = await response.json();
+    const payload = await response.json() as TaskAssignmentStatus & { error?: string };
     if (!response.ok) throw new Error(payload.error ?? '과제 부여 상태를 불러오지 못했습니다.');
-    const statusRows = Array.isArray(payload.students) ? payload.students : [];
-    return {
-      assignedIds: statusRows.filter((row: { assigned?: boolean }) => row.assigned).map((row: { studentId: string }) => row.studentId),
-      completedIds: statusRows.filter((row: { completed?: boolean }) => row.completed).map((row: { studentId: string }) => row.studentId),
-    };
+    return normalizeTaskAssignmentStatus(payload);
   }
 
+
   function openTaskAssignmentEditor(taskId: string | null, assignedIds: string[]) {
+    const requestId = assignmentRequest.current.id + 1;
+    assignmentRequest.current = { id: requestId, taskId };
     setTaskAssignmentEditor({
       taskId,
       selectedIds: [],
@@ -326,13 +460,16 @@ export function AdminManagePage() {
       completedIds: [],
       initialAssignedIds: [...assignedIds],
       initialCompletedIds: [],
+      statusRows: [],
       isLoading: Boolean(taskId),
     });
     if (!taskId) return;
 
     void loadTaskAssignmentStatus(taskId)
-      .then(({ assignedIds: loadedAssignedIds, completedIds: loadedCompletedIds }) => {
-        setTasks((current) => current.map((task) => task.taskId === taskId ? { ...task, allowedStudentIds: loadedAssignedIds } : task));
+      .then((status) => {
+        if (assignmentRequest.current.id !== requestId || assignmentRequest.current.taskId !== taskId) return;
+        const { assignedIds: loadedAssignedIds, completedIds: loadedCompletedIds, statusRows } = status;
+        setTasks((current) => reconcileTaskAssignmentProjection(current, taskId, status));
         setTaskAssignmentEditor((current) => current?.taskId === taskId ? {
           ...current,
           selectedIds: [],
@@ -340,13 +477,20 @@ export function AdminManagePage() {
           completedIds: loadedCompletedIds,
           initialAssignedIds: loadedAssignedIds,
           initialCompletedIds: loadedCompletedIds,
+          statusRows,
           isLoading: false,
         } : current);
       })
       .catch((error) => {
+        if (assignmentRequest.current.id !== requestId || assignmentRequest.current.taskId !== taskId) return;
         notify(error instanceof Error ? error.message : '과제 부여 상태를 불러오지 못했습니다.');
         setTaskAssignmentEditor((current) => current?.taskId === taskId ? { ...current, isLoading: false } : current);
       });
+  }
+
+  function closeTaskAssignmentEditor() {
+    assignmentRequest.current = { id: assignmentRequest.current.id + 1, taskId: null };
+    setTaskAssignmentEditor(null);
   }
 
   function toggleTaskAssignmentStudent(studentId: string) {
@@ -402,7 +546,7 @@ export function AdminManagePage() {
     if (!taskAssignmentEditor) return;
     if (!taskAssignmentEditor.taskId) {
       setNewTask((current) => ({ ...current, allowedStudentIds: taskAssignmentEditor.assignedIds }));
-      setTaskAssignmentEditor(null);
+      closeTaskAssignmentEditor();
       return;
     }
 
@@ -410,7 +554,7 @@ export function AdminManagePage() {
     const task = tasks.find((item) => item.taskId === taskId);
     if (!task) {
       notify('과제를 찾을 수 없습니다.');
-      setTaskAssignmentEditor(null);
+      closeTaskAssignmentEditor();
       return;
     }
 
@@ -430,7 +574,7 @@ export function AdminManagePage() {
     });
 
     if (commands.length === 0) {
-      setTaskAssignmentEditor(null);
+      closeTaskAssignmentEditor();
       notify('과제 부여 저장 완료');
       return;
     }
@@ -451,8 +595,11 @@ export function AdminManagePage() {
           const payload = await response.json();
           if (!response.ok) throw new Error(payload.error ?? '과제 부여 내용을 저장하지 못했습니다.');
           if (Array.isArray(payload.students)) {
-            authoritativeAssignedIds = payload.students.filter((row: { assigned?: boolean }) => row.assigned).map((row: { studentId: string }) => row.studentId);
-            authoritativeCompletedIds = payload.students.filter((row: { completed?: boolean }) => row.completed).map((row: { studentId: string }) => row.studentId);
+            const status = normalizeTaskAssignmentStatus(payload as TaskAssignmentStatus);
+            authoritativeAssignedIds = status.assignedIds;
+            authoritativeCompletedIds = status.completedIds;
+            setTasks((current) => reconcileTaskAssignmentProjection(current, taskId, status));
+            setTaskAssignmentEditor((current) => current?.taskId === taskId ? { ...current, statusRows: status.statusRows } : current);
           } else {
             if (typeof command.assigned === 'boolean') {
               authoritativeAssignedIds = command.assigned
@@ -475,6 +622,8 @@ export function AdminManagePage() {
           const reconciledStatus = await loadTaskAssignmentStatus(taskId);
           authoritativeAssignedIds = reconciledStatus.assignedIds;
           authoritativeCompletedIds = reconciledStatus.completedIds;
+          setTasks((current) => reconcileTaskAssignmentProjection(current, taskId, reconciledStatus));
+          setTaskAssignmentEditor((current) => current?.taskId === taskId ? { ...current, statusRows: reconciledStatus.statusRows } : current);
         } catch (error) {
           reconciliationFailureMessage = error instanceof Error
             ? `, 최신 부여 상태 확인 실패: ${error.message}`
@@ -484,7 +633,7 @@ export function AdminManagePage() {
 
       setTasks((current) => current.map((item) => item.taskId === taskId ? { ...item, allowedStudentIds: authoritativeAssignedIds } : item));
       if (failures.length === 0) {
-        setTaskAssignmentEditor(null);
+        closeTaskAssignmentEditor();
         notify('과제 부여 저장 완료');
         return;
       }
@@ -569,7 +718,8 @@ export function AdminManagePage() {
       const assignedStudentIds = Array.isArray(payload.students)
         ? payload.students.filter((row: { assigned?: boolean }) => row.assigned).map((row: { studentId: string }) => row.studentId)
         : fallbackAssignedIds;
-      setTasks((current) => current.map((item) => item.taskId === task.taskId ? { ...item, allowedStudentIds: assignedStudentIds } : item));
+      if (Array.isArray(payload.students)) setTasks((current) => reconcileTaskAssignmentProjection(current, task.taskId, normalizeTaskAssignmentStatus(payload as TaskAssignmentStatus)));
+      else setTasks((current) => current.map((item) => item.taskId === task.taskId ? { ...item, allowedStudentIds: assignedStudentIds } : item));
       setQrTaskResult({ status: 'success', taskId, message: '과제가 부여되었습니다.' });
     } catch (error) {
       setQrTaskResult({ status: 'failure', taskId, message: error instanceof Error ? error.message : '과제 부여 내용을 저장하지 못했습니다.' });
@@ -587,7 +737,21 @@ export function AdminManagePage() {
   }
 
   function buildTaskPayload(list: TaskDraft[]) {
-    return list.map((task) => ({ taskId: task.taskId, title: task.title, description: task.description, reward: task.reward, isActive: task.isActive, sortOrder: task.sortOrder, allowedStudentIds: task.allowedStudentIds ?? [] }));
+    return list.map((task) => {
+      const schedule = dirtyTaskScheduleIds.includes(task.taskId) && task.schedule
+        ? scheduleFormToPayload(scheduleDtoToForm(task.schedule, { taskInstanceId: task.taskInstanceId }))
+        : null;
+      return {
+        taskId: task.taskId,
+        title: task.title,
+        description: task.description,
+        reward: task.reward,
+        isActive: task.isActive,
+        sortOrder: task.sortOrder,
+        allowedStudentIds: task.allowedStudentIds ?? [],
+        ...(schedule?.ok ? { schedule: schedule.payload } : {}),
+      };
+    });
   }
 
   function nextPrefixedId(existingIds: string[], prefix: 'P' | 'T') {
@@ -681,6 +845,7 @@ export function AdminManagePage() {
       const savedTasks = payload as TaskDraft[];
       const savedMap = new Map(savedTasks.map((task) => [task.taskId, task]));
       setTasks((current) => current.map((task) => savedMap.has(task.taskId) ? { ...task, ...savedMap.get(task.taskId) } : task).sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title)));
+      setDirtyTaskScheduleIds((current) => current.filter((id) => !savedMap.has(id)));
       notify(`${label} ${rows.length}개 저장 완료`);
     } catch (error) {
       notify(error instanceof Error ? error.message : '과제 목록을 저장하지 못했습니다.');
@@ -787,13 +952,30 @@ export function AdminManagePage() {
         isActive: newTask.isActive,
         sortOrder: newTask.sortOrder,
         allowedStudentIds: newTask.allowedStudentIds ?? [],
+        ...(newTask.schedule ? (() => {
+          const schedule = scheduleFormToPayload(scheduleDtoToForm(newTask.schedule));
+          return schedule.ok ? { schedule: schedule.payload } : {};
+        })() : {}),
       };
       const response = await fetch('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? '과제를 추가하지 못했습니다.');
-      setTasks((current) => [...current, payload].sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title)));
+      const createdTask = normalizeAdminTask(payload as TaskDraft);
+      setTasks((current) => [...current, createdTask].sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title)));
       setNewTask(EMPTY_TASK);
-      notify(`${payload.taskId} 과제 추가 완료`);
+      notify(`${createdTask.taskId} 과제 추가 완료`);
+      if (createdTask.schedule?.recurrence.type !== 'NONE') {
+        try {
+          const taskResponse = await fetch('/api/tasks?includeInactive=1', { cache: 'no-store' });
+          const taskPayload = await taskResponse.json();
+          if (!taskResponse.ok || !Array.isArray(taskPayload)) throw new Error(taskPayload?.error ?? '최신 과제 회차를 불러오지 못했습니다.');
+          if (!taskPayload.some((task: ClassTask) => task.taskId === createdTask.taskId)) throw new Error('생성한 과제의 최신 회차가 아직 조회되지 않습니다.');
+          setTasks((current) => reconcileTaskProjections(current, taskPayload, [createdTask.taskId], [createdTask.taskId]));
+        } catch (error) {
+          notify(`${createdTask.taskId} 과제는 추가되었지만 회차 정보를 새로고침하지 못했습니다: ${error instanceof Error ? error.message : '최신 과제 회차를 불러오지 못했습니다.'}`);
+          return;
+        }
+      }
     } catch (error) {
       notify(error instanceof Error ? error.message : '과제를 추가하지 못했습니다.');
     }
@@ -834,6 +1016,7 @@ export function AdminManagePage() {
 
   async function resetTaskCompletions(taskIds: string[], label: string) {
     if (taskIds.length === 0) return notify('선택된 과제가 없습니다.');
+    if (!window.confirm('완료 기록을 초기화하시겠습니까? 과거 지급 보상은 회수되지 않으며, 같은 회차에서 은행으로 다시 완료하면 재보상될 수 있습니다.')) return;
     try {
       const response = await fetch('/api/tasks/completions/reset', {
         method: 'POST',
@@ -842,17 +1025,10 @@ export function AdminManagePage() {
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? '과제 완료 기록을 초기화하지 못했습니다.');
-      const resetTaskIds: string[] = Array.isArray(payload.taskIds) ? payload.taskIds.map((id: unknown) => String(id)) : taskIds;
-      const refreshedAssignments = await Promise.all(resetTaskIds.map(async (taskId) => {
-        try {
-          const status = await loadTaskAssignmentStatus(taskId);
-          return [taskId, status.assignedIds] as const;
-        } catch {
-          return null;
-        }
-      }));
-      const refreshedAssignmentMap = new Map(refreshedAssignments.filter((entry): entry is readonly [string, string[]] => entry !== null));
-      setTasks((current) => current.map((task) => refreshedAssignmentMap.has(task.taskId) ? { ...task, allowedStudentIds: refreshedAssignmentMap.get(task.taskId)! } : task));
+      const taskResponse = await fetch('/api/tasks?includeInactive=1', { cache: 'no-store' });
+      const taskPayload = await taskResponse.json();
+      if (!taskResponse.ok || !Array.isArray(taskPayload)) throw new Error(taskPayload?.error ?? '초기화 후 최신 과제 회차를 불러오지 못했습니다.');
+      setTasks((current) => reconcileTaskProjections(current, taskPayload, taskIds));
       notify(`${label} 완료 기록 ${Number(payload.deletedCount ?? 0)}건 초기화 완료`);
     } catch (error) {
       notify(error instanceof Error ? error.message : '과제 완료 기록을 초기화하지 못했습니다.');
@@ -1181,6 +1357,7 @@ export function AdminManagePage() {
                   <input aria-label="새 과제 활성" checked={newTask.isActive} onChange={(event) => setNewTask((current) => ({ ...current, isActive: event.target.checked }))} type="checkbox" />
                   은행 페이지에 표시
                 </label>
+                <button type="button" aria-label="새 과제 반복 설정" onClick={() => openTaskScheduleEditor(null)} className="w-full rounded-xl bg-violet-100 py-3 font-black text-violet-800">반복: {formatRecurrenceSummary(newTask.schedule)}</button>
                 <button type="button" aria-label="새 과제 과제 부여" onClick={() => openTaskAssignmentEditor(null, newTask.allowedStudentIds ?? [])} className="w-full rounded-xl bg-sky-100 py-3 font-black text-sky-800">과제 부여{newTask.allowedStudentIds.length ? ` (${newTask.allowedStudentIds.length}명)` : ''}</button>
                 <button className={`w-full rounded-xl ${theme.accentBg} py-3 font-black ${theme.actionText} shadow-sm`} type="submit">새 과제 추가</button>
               </form>
@@ -1217,7 +1394,15 @@ export function AdminManagePage() {
                       <input aria-label={`${task.taskId} 선택`} checked={selectedTaskIds.includes(task.taskId)} onChange={() => toggleTask(task.taskId)} type="checkbox" />
                       <span className="sr-only">선택</span>
                     </label>
-                    <TextInput label={`${task.taskId} 과제명`} value={task.title} onChange={(value) => updateTask(task.taskId, { title: value })} dense />
+                    <div className="min-w-0">
+                      <TextInput label={`${task.taskId} 과제명`} value={task.title} onChange={(value) => updateTask(task.taskId, { title: value })} dense />
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        <button type="button" aria-label={`${task.taskId} 반복 설정`} onClick={() => openTaskScheduleEditor(task)} className="rounded bg-violet-100 px-1 text-[9px] font-black text-violet-800">{formatRecurrenceSummary(resolveEffectiveAdminTaskSchedule(task))}</button>
+                        <button type="button" aria-label={`${task.taskId} 기록 보기`} onClick={() => void openTaskHistory(task)} className="rounded bg-slate-100 px-1 text-[9px] font-black text-slate-700">기록</button>
+                      </div>
+                      <TaskScheduleProjection task={task} />
+                      {task.currentCycle?.students?.length ? <p className="truncate text-[9px] text-slate-500">{task.currentCycle.students.map((row) => `${row.studentId} ${row.assigned ? '부여' : '미부여'}(${assignmentSourceLabel(row.assignmentOrigin, row.assignmentSource)}) · ${row.completed ? '완료' : '미완료'}(${originLabel(row.completionOrigin)})`).join(' / ')}</p> : null}
+                    </div>
                     <NumberInput label={`${task.taskId} 보상`} value={task.reward} onChange={(value) => updateTask(task.taskId, { reward: value })} dense />
                     <NumberInput label={`${task.taskId} 정렬`} value={task.sortOrder} onChange={(value) => updateTask(task.taskId, { sortOrder: value })} dense />
                     <label className={`flex h-8 items-center justify-center rounded-lg ${theme.softBg} text-[10px] font-bold ${theme.softText}`}>
@@ -1385,11 +1570,27 @@ export function AdminManagePage() {
           </section>
         </div>
       ) : null}
+      {taskScheduleEditor ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <section role="dialog" aria-modal="true" aria-label="과제 반복 설정" className="w-full max-w-lg rounded-2xl bg-white p-4 text-slate-950 shadow-2xl">
+            <h2 className="text-xl font-black">과제 반복 설정</h2>
+            <p className="mt-1 rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-900">반복 규칙 변경은 즉시 적용됩니다. 직전 완료 상태는 보상 없이 새 회차에 승계되고 자연 초기화는 다음 경계부터 시작됩니다.</p>
+            <TaskRecurrenceFields form={taskScheduleEditor.form} onChange={(form) => setTaskScheduleEditor((current) => current ? { ...current, form } : current)} />
+            <div className="mt-4 flex gap-2">
+              <button type="button" className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700" onClick={closeTaskScheduleEditor}>취소</button>
+              <button type="button" disabled={isSavingTaskSchedule} className={`flex-1 rounded-xl ${theme.accentBg} py-3 font-black ${theme.actionText} disabled:opacity-60`} onClick={() => void applyTaskScheduleEditor()}>{isSavingTaskSchedule ? '반복 설정 저장 중...' : taskScheduleEditor.taskId ? '반복 설정 저장' : '반복 설정 적용'}</button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+      {taskHistory ? <TaskHistoryDialog history={taskHistory} onClose={closeTaskHistory} /> : null}
       {taskAssignmentEditor ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <section role="dialog" aria-modal="true" aria-label="과제 부여" className="w-full max-w-xl rounded-2xl bg-white p-4 text-slate-950 shadow-2xl">
             <h2 className="text-xl font-black">과제 부여</h2>
+            {taskAssignmentEditor.taskId ? <p className="mt-1 text-xs font-black text-violet-700">현재 회차 부여·완료 상태 {tasks.find((task) => task.taskId === taskAssignmentEditor.taskId)?.currentCycle?.transition === 'PERMANENT' ? '(상시 과제)' : ''}</p> : null}
             <p className="mt-1 rounded-2xl bg-sky-50 p-3 text-sm font-bold text-sky-800">선택된 학생만 이 과제를 완료할 수 있습니다. 아무 학생도 선택하지 않으면 아무도 완료할 수 없습니다.</p>
+            <p className="mt-1 rounded-xl bg-amber-50 p-2 text-xs font-bold text-amber-900">관리자 완료는 보상 없이 표시됩니다.</p>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-100 px-3 py-2 text-sm font-black">
               <label className="flex items-center gap-2">
                 <input aria-label="전체 학생 행 선택" checked={students.length > 0 && taskAssignmentEditor.selectedIds.length === students.length} onChange={(event) => setTaskAssignmentEditor((current) => current ? { ...current, selectedIds: event.target.checked ? students.map((student) => student.studentId) : [] } : current)} type="checkbox" />
@@ -1449,7 +1650,7 @@ export function AdminManagePage() {
                 return (
                   <div key={student.studentId} data-testid={`task-assignment-row-${student.studentId}`} className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-3 rounded-xl px-3 py-2 text-sm font-bold hover:bg-slate-50">
                     <input aria-label={`${student.studentId} ${student.name} 행 선택`} checked={selected} onChange={() => toggleTaskAssignmentStudent(student.studentId)} type="checkbox" />
-                    <span className="min-w-0"><span className="font-black">{student.studentId}</span> <span>{student.name}</span></span>
+                    <span className="min-w-0"><span className="font-black">{student.studentId}</span> <span>{student.name}</span>{(() => { const state = taskAssignmentEditor.statusRows.find((row) => row.studentId === student.studentId); return state ? <span className="block text-[10px] text-slate-500">부여 {assignmentSourceLabel(state.assignmentOrigin ?? 'DEFAULT', state.assignmentSource)} · 완료 {originLabel(state.completionOrigin ?? 'DEFAULT')}</span> : null; })()}</span>
                     <button type="button" aria-label={`${student.studentId} ${student.name} 부여 상태`} className={`h-9 min-w-16 rounded-full border px-3 text-xs font-black shadow-sm transition ${assignmentClass}`} onClick={() => toggleTaskAssignmentAssigned(student.studentId)}>{assigned ? '부여' : '미부여'}</button>
                     <button type="button" aria-label={`${student.studentId} ${student.name} 완료 상태`} className={`h-9 min-w-16 rounded-full border px-3 text-xs font-black shadow-sm transition ${completionClass}`} onClick={() => toggleTaskAssignmentCompleted(student.studentId)}>{completed ? '완료' : '미완료'}</button>
                   </div>
@@ -1457,8 +1658,8 @@ export function AdminManagePage() {
               })}
             </div>
             <div className="mt-4 flex gap-2">
-              <button type="button" className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700" onClick={() => setTaskAssignmentEditor(null)}>취소</button>
-              <button type="button" className={`flex-1 rounded-xl ${theme.accentBg} py-3 font-black ${theme.actionText}`} onClick={saveTaskAssignment}>과제 부여 저장</button>
+              <button type="button" className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700" onClick={closeTaskAssignmentEditor}>취소</button>
+              <button type="button" disabled={Boolean(taskAssignmentEditor.isLoading)} className={`flex-1 rounded-xl ${theme.accentBg} py-3 font-black ${theme.actionText} disabled:cursor-not-allowed disabled:opacity-50`} onClick={saveTaskAssignment}>과제 부여 저장</button>
             </div>
           </section>
         </div>
@@ -1529,6 +1730,16 @@ export function AdminManagePage() {
       ) : null}
     </main>
   );
+}
+
+function originLabel(origin: string) {
+  return ({ EVENT: '현재 기록', CARRY: '이월', LEGACY: '기존 설정', DEFAULT: '기본값' } as Record<string, string>)[origin] ?? origin;
+}
+
+function assignmentSourceLabel(origin: string, source?: TaskAssignmentStudentStatus['assignmentSource']) {
+  const sourceLabel = source ? ({ ADMIN: '관리자', QR: 'QR', LEGACY_SEED: '기존 설정', CARRY_FORWARD: '이월' } as const)[source] : undefined;
+  if (!sourceLabel) return originLabel(origin);
+  return origin === 'CARRY' ? `${originLabel(origin)} · ${sourceLabel}` : sourceLabel;
 }
 
 function LoadingScreen({ title, message }: { title: string; message: string }) {

@@ -146,7 +146,11 @@ function legacyRecurringStore(taskIds: string[]) {
     updateHeaderRow: vi.fn(async () => { migrationWrite(); }),
     updateCell: vi.fn(),
     updateCells: vi.fn(),
-    appendRow: vi.fn(async () => { migrationWrite(); }),
+    appendRow: vi.fn(async (_sheetName: string, _values: string[]) => {
+      void _sheetName;
+      void _values;
+      migrationWrite();
+    }),
     deleteRow: vi.fn(),
     deleteRows: vi.fn(),
   };
@@ -965,6 +969,33 @@ describe('sheets repository', () => {
     expect(appended[1].values[8]).toBe('');
   });
 
+  it('migrates a legacy Tasks schema before creating a task with a recurring schedule', async () => {
+    const { store } = legacyRecurringStore([]);
+
+    const created = await createTask(store, {
+      taskId: 'T-RECURRING', title: '월말 과제', description: '', reward: 3, isActive: true, sortOrder: 1,
+      schedule: {
+        timeZone: 'Asia/Seoul',
+        recurrence: { type: 'MONTHLY', dayOfMonth: 31, time: '17:45' },
+        resetCompletionOnCycle: true,
+        resetAssignmentOnCycle: false,
+      },
+    });
+
+    expect(created.taskInstanceId).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(created.schedule).toMatchObject({
+      ruleVersion: 1,
+      timeZone: 'Asia/Seoul',
+      recurrence: { type: 'MONTHLY', dayOfMonth: 31, time: '17:45' },
+      resetCompletionOnCycle: true,
+      resetAssignmentOnCycle: false,
+    });
+    const appendedTask = vi.mocked(store.appendRow).mock.calls.find(([sheetName]) => sheetName === 'Tasks');
+    expect(appendedTask).toBeTruthy();
+    expect(appendedTask?.[1][TASK_SCHEMA_HEADERS.indexOf('recurrenceType')]).toBe('MONTHLY');
+    expect(appendedTask?.[1][TASK_SCHEMA_HEADERS.indexOf('recurrenceDayOfMonth')]).toBe('31');
+  });
+
   it('appends new task values by the live Tasks header order', async () => {
     const appended: Array<{ sheetName: string; values: string[] }> = [];
     const fakeStore = {
@@ -1305,7 +1336,7 @@ describe('sheets repository', () => {
     });
   });
 
-  it('promotes a later persisted pending schedule before applying an out-of-order explicit edit', async () => {
+  it('applies an out-of-order explicit edit immediately and supersedes the future pending version', async () => {
     const { store, writes } = versionedScheduleMutationStore();
     const first = await updateTaskDetails(
       store as never,
@@ -1327,16 +1358,16 @@ describe('sheets repository', () => {
     });
     expect(second).toMatchObject({
       taskInstanceId: 'instance-serial',
-      schedule: { ruleVersion: 2, recurrence: { type: 'DAILY', time: '09:00' } },
+      schedule: { ruleVersion: 1, recurrence: { type: 'DAILY', time: '08:00' } },
       pendingSchedule: {
         ruleVersion: 3,
-        effectiveFrom: '2026-08-25T09:01:00.000Z',
+        effectiveFrom: '2026-08-25T09:00:00.000Z',
         recurrence: { type: 'WEEKLY', time: '10:00', weekday: 2 },
       },
     });
     expect(writes).toEqual([
       { ruleVersion: '1', pendingRuleVersion: '2' },
-      { ruleVersion: '2', pendingRuleVersion: '3' },
+      { ruleVersion: '1', pendingRuleVersion: '3' },
     ]);
   });
 
@@ -1623,12 +1654,50 @@ describe('sheets repository', () => {
 
 
   it('reads task assignment and completion status from legacy sheets without createdAt', async () => {
-    await expect(getTaskAssignmentStatus(fakeReader, 'T001')).resolves.toEqual({
+    await expect(getTaskAssignmentStatus(fakeReader, 'T001')).resolves.toMatchObject({
       taskId: 'T001',
+      transition: 'PERMANENT',
       students: [
-        { studentId: 'S001', name: '김민준', assigned: true, completed: true },
+        { studentId: 'S001', name: '김민준', assigned: true, completed: true, assignmentOrigin: 'LEGACY', completionOrigin: 'LEGACY' },
       ],
     });
+  });
+
+  it('exposes the latest physical assignment event source in the student status DTO without writes', async () => {
+    const values: Record<string, string> = {
+      taskId: 'T-SOURCE', title: 'Source task', description: '', reward: '1', isActive: 'TRUE', sortOrder: '1',
+      createdAt: '2026-08-20T00:00:00Z', updatedAt: '2026-08-20T00:00:00Z', allowedStudentIds: '',
+      taskInstanceId: 'instance-source', ruleVersion: '1', scheduleEffectiveFrom: '2026-08-20T00:00:00Z',
+      recurrenceTimeZone: 'UTC', recurrenceType: 'NONE', resetCompletionOnCycle: 'FALSE', resetAssignmentOnCycle: 'FALSE',
+    };
+    const assignmentRows: string[][] = [[...TASK_ASSIGNMENT_HEADERS]];
+    const writes = vi.fn();
+    const reader = {
+      async getRows(sheetName: string) {
+        if (sheetName === 'Tasks') return [[...TASK_SCHEMA_HEADERS], TASK_SCHEMA_HEADERS.map((header) => values[header] ?? '')];
+        if (sheetName === 'Students') return [['studentId', 'name', 'balance', 'status'], ['S1', 'Student', '0', 'ACTIVE']];
+        if (sheetName === 'TaskAssignments') return assignmentRows;
+        if (sheetName === 'TaskCompletions') return [[...TASK_COMPLETION_SCHEMA_HEADERS]];
+        return [];
+      },
+      appendRow: writes, updateCell: writes, updateCells: writes, updateHeaderRow: writes,
+    };
+    const state = await getTaskCycleState(reader, 'T-SOURCE', '2026-08-25T00:00:00Z');
+    const event = (assignmentId: string, source: 'ADMIN' | 'QR', createdAt: string) =>
+      TASK_ASSIGNMENT_HEADERS.map((header) => ({
+        assignmentId, taskId: 'T-SOURCE', taskInstanceId: 'instance-source', cycleId: state.cycle.cycleId,
+        cycleStartsAt: state.cycle.startsAt, cycleEndsAt: state.cycle.endsAt ?? '', ruleVersion: '1', timeZone: 'UTC',
+        studentId: 'S1', status: 'ASSIGNED', source, previousAssignmentId: '', createdAt, schemaVersion: '2', note: '',
+      }[header] ?? ''));
+    assignmentRows.push(
+      event('A-admin', 'ADMIN', '2026-08-25T10:00:00Z'),
+      event('A-qr', 'QR', '2026-08-25T01:00:00Z'),
+    );
+
+    await expect(getTaskAssignmentStatus(reader, 'T-SOURCE')).resolves.toMatchObject({
+      students: [{ studentId: 'S1', assignmentOrigin: 'EVENT', assignmentSource: 'QR' }],
+    });
+    expect(writes).not.toHaveBeenCalled();
   });
 
   it('exposes a pure repository cycle query without invoking any write capability', async () => {
@@ -1660,10 +1729,11 @@ describe('sheets repository', () => {
       },
     };
 
-    await expect(getTaskAssignmentStatus(reader, 'T001')).resolves.toEqual({
+    await expect(getTaskAssignmentStatus(reader, 'T001')).resolves.toMatchObject({
       taskId: 'T001',
+      transition: 'PERMANENT',
       students: [
-        { studentId: 'S001', name: '김민준', assigned: true, completed: true },
+        { studentId: 'S001', name: '김민준', assigned: true, completed: true, assignmentOrigin: 'LEGACY', completionOrigin: 'LEGACY' },
       ],
     });
   });

@@ -32,6 +32,23 @@ describe('task cycle sheet queries', () => {
     expect(store.materializeTaskCycle).not.toHaveBeenCalled();
   });
 
+  it('keeps the source from the latest physical assignment ledger row in the current projection', async () => {
+    const store = {
+      getRows: vi.fn(async (sheet: string) => sheet === 'TaskAssignments'
+        ? [assignmentHeaders,
+            ['A1', 'T1', 'I1', 'v1|I1|r1|2026-08-24T00:00:00Z', '2026-08-24T00:00:00Z', '2026-08-25T00:00:00Z', '1', 'UTC', 'S1', 'ASSIGNED', 'ADMIN', '', '2026-08-24T10:00:00Z', '2', ''],
+            ['A2', 'T1', 'I1', 'v1|I1|r1|2026-08-24T00:00:00Z', '2026-08-24T00:00:00Z', '2026-08-25T00:00:00Z', '1', 'UTC', 'S1', 'ASSIGNED', 'QR', 'A1', '2026-08-24T01:00:00Z', '2', '']]
+        : [completionHeaders]),
+    };
+
+    const state = await readTaskCycleState(store, task, '2026-08-24T12:00:00Z');
+    expect(state.students.S1).toMatchObject({
+      assigned: true,
+      assignmentOrigin: 'EVENT',
+      assignmentEvent: { assignmentId: 'A2', source: 'QR' },
+    });
+  });
+
   it('uses allowedStudentIds when the adapter represents a missing TaskAssignments sheet as []', async () => {
     const reader = {
       async getRows(sheet: string) {

@@ -2,6 +2,7 @@ import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/ap
 import { createConfiguredSheetsReader, createConfiguredSheetsStore } from '@/server/googleSheets';
 import { createTask } from '@/server/sheetsRepository';
 import { listTaskCycleProjections } from '@/server/repositories/sheets/taskHistoryQueries';
+import { parseOptionalTaskScheduleEdit } from './taskScheduleEdit';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,6 +34,7 @@ export async function POST(request: Request) {
 
   try {
     const payload = await request.json();
+    const schedule = parseOptionalTaskScheduleEdit(payload.schedule);
     const store = await createConfiguredSheetsStore(request);
     const task = await createTask(store, {
       taskId: String(payload.taskId ?? ''),
@@ -42,6 +44,7 @@ export async function POST(request: Request) {
       isActive: Boolean(payload.isActive),
       sortOrder: Number(payload.sortOrder),
       allowedStudentIds: Array.isArray(payload.allowedStudentIds) ? payload.allowedStudentIds.map((id: unknown) => String(id)) : [],
+      ...(schedule === undefined ? {} : { schedule }),
     });
     return Response.json(task, { status: 201 });
   } catch (error) {

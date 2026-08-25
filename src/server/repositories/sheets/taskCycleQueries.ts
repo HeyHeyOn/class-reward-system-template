@@ -35,7 +35,7 @@ export type TaskCycleHistoryEvent =
       completionStatus: string;
       completionSource?: TaskCompletion['source'];
       studentName: string;
-      reward: number;
+      reward?: number;
       balanceBefore: number;
       balanceAfter: number;
       assignmentId?: string;

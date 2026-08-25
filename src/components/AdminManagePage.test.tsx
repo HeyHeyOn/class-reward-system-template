@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdminManagePage } from './AdminManagePage';
 
@@ -36,19 +36,20 @@ function jsonResponse(payload: unknown, init?: ResponseInit) {
   });
 }
 
-function deferredResponse(payload: unknown) {
+function deferredResponse(payload: unknown, init?: ResponseInit) {
   let resolve!: () => void;
   const gate = new Promise<void>((res) => { resolve = res; });
-  return { resolve, response: gate.then(() => jsonResponse(payload)) };
+  return { resolve, response: gate.then(() => jsonResponse(payload, init)) };
 }
 
 describe('AdminManagePage', () => {
   beforeEach(() => {
     let t001AssignmentStatus = [
-      { studentId: 'S001', name: '김민준', assigned: true, completed: true },
-      { studentId: 'S002', name: '이서연', assigned: false, completed: false },
+      { studentId: 'S001', name: '김민준', assigned: true, completed: true, assignmentOrigin: 'EVENT', assignmentSource: 'QR' },
+      { studentId: 'S002', name: '이서연', assigned: false, completed: false, assignmentOrigin: 'EVENT', assignmentSource: 'ADMIN' },
     ];
     vi.stubGlobal('alert', vi.fn());
+    vi.stubGlobal('confirm', vi.fn(() => true));
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -192,6 +193,7 @@ describe('AdminManagePage', () => {
     expect(s001Assignment.textContent).toContain('부여');
     expect(s001Assignment.className).toContain('bg-green');
     const s001Row = screen.getByTestId('task-assignment-row-S001');
+    expect(s001Row.textContent).toContain('부여 QR');
     expect(s001Row.innerHTML.indexOf('aria-label=\"S001 김민준 행 선택\"')).toBeLessThan(s001Row.innerHTML.indexOf('김민준'));
     const s001Completion = screen.getByRole('button', { name: 'S001 김민준 완료 상태' });
     expect(s001Completion.tagName).toBe('BUTTON');
@@ -1097,5 +1099,533 @@ describe('AdminManagePage', () => {
     expect(screen.getByText('잔액은 0보다 작아질 수 없습니다.')).toBeTruthy();
     expect(screen.getByRole('button', { name: '다시 시도' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '취소' })).toBeTruthy();
+  });
+
+  it('edits recurring schedules with strict bulk payloads and shows current-cycle origins', async () => {
+    const recurringTasks = [{
+      ...tasks[0], taskInstanceId: 'instance-1',
+      schedule: { ruleVersion: 2, effectiveFrom: '2026-08-25T00:00:00.000Z', timeZone: 'Asia/Seoul', recurrence: { type: 'WEEKLY', weekday: 2, time: '09:00' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: false },
+      currentCycle: { cycleId: 'cycle-1', startsAt: '2026-08-25T00:00:00.000Z', endsAt: '2026-09-01T00:00:00.000Z', transition: 'NATURAL_BOUNDARY', assignedStudentIds: ['S001'], completedStudentIds: ['S001'], students: [{ studentId: 'S001', assigned: true, completed: true, assignmentOrigin: 'CARRY', completionOrigin: 'EVENT' }] },
+    }];
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    baseFetch.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === '/api/tasks?includeInactive=1') return jsonResponse(recurringTasks);
+      if (url === '/api/tasks/T001' && init?.method === 'PATCH') return jsonResponse({
+        ...recurringTasks[0],
+        schedule: { ruleVersion: 3, effectiveFrom: '2026-08-25T12:00:00.000Z', timeZone: 'Asia/Seoul', recurrence: { type: 'MONTHLY', dayOfMonth: 31, time: '17:45' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: true },
+      });
+      if (url === '/api/tasks/T001/assignments' && init?.method === 'PATCH') return jsonResponse({
+        taskId: 'T001', cycleId: 'cycle-2', startsAt: '2026-09-01T00:00:00.000Z', endsAt: null, transition: 'NATURAL_BOUNDARY',
+        students: [
+          { studentId: 'S001', name: '김민준', assigned: true, completed: true, assignmentOrigin: 'EVENT', completionOrigin: 'CARRY' },
+          { studentId: 'S002', name: '이서연', assigned: true, completed: false, assignmentOrigin: 'EVENT', completionOrigin: 'DEFAULT' },
+        ],
+      });
+      if (url === '/api/tasks/T001/assignments') return jsonResponse({
+        taskId: 'T001', cycleId: 'cycle-2', startsAt: '2026-09-01T00:00:00.000Z', endsAt: null, transition: 'NATURAL_BOUNDARY',
+        students: [
+          { studentId: 'S001', name: '김민준', assigned: true, completed: true, assignmentOrigin: 'DEFAULT', completionOrigin: 'CARRY' },
+          { studentId: 'S002', name: '이서연', assigned: false, completed: false, assignmentOrigin: 'DEFAULT', completionOrigin: 'DEFAULT' },
+        ],
+      });
+      return fallback(input, init);
+    });
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    expect(await screen.findByText(/현재 회차:/)).toBeTruthy();
+    expect(screen.getByText(/S001 부여\(이월\).*완료\(현재 기록\)/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'T001 반복 설정' }));
+    fireEvent.change(screen.getByLabelText('반복 주기'), { target: { value: 'MONTHLY' } });
+    fireEvent.change(screen.getByLabelText('반복 시간'), { target: { value: '17:45' } });
+    fireEvent.change(screen.getByLabelText('반복 날짜'), { target: { value: '31' } });
+    fireEvent.click(screen.getByLabelText('회차마다 부여 초기화'));
+    fireEvent.click(screen.getByRole('button', { name: '반복 설정 저장' }));
+
+    await waitFor(() => {
+      expect(baseFetch).toHaveBeenCalledWith('/api/tasks/T001', expect.objectContaining({ method: 'PATCH' }));
+    });
+    const singlePatchCall = baseFetch.mock.calls.find(([url, init]) => String(url) === '/api/tasks/T001' && init?.method === 'PATCH');
+    const body = JSON.parse(String(singlePatchCall![1]?.body));
+    expect(body).toEqual({
+      taskId: 'T001', title: '책 읽기', description: '책 10분 읽기', reward: 5, isActive: true,
+      sortOrder: 1, allowedStudentIds: ['S001'],
+      schedule: { recurrence: { type: 'MONTHLY', time: '17:45', dayOfMonth: 31 }, timeZone: 'Asia/Seoul', resetCompletionOnCycle: true, resetAssignmentOnCycle: true },
+    });
+    expect(body.schedule).not.toHaveProperty('ruleVersion');
+    expect(body.schedule).not.toHaveProperty('effectiveFrom');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '과제 반복 설정' })).toBeNull());
+
+    fireEvent.click(screen.getByLabelText('T001 선택'));
+    fireEvent.click(screen.getByRole('button', { name: '선택 저장' }));
+    await waitFor(() => {
+      const call = baseFetch.mock.calls.find(([url, init]) => String(url) === '/api/tasks/batch' && init?.method === 'PATCH');
+      const body = JSON.parse(String(call?.[1]?.body));
+      expect(body.tasks[0]).not.toHaveProperty('schedule');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
+    expect(await screen.findByText(/현재 회차 부여·완료 상태/)).toBeTruthy();
+    expect(await screen.findByText('부여 기본값 · 완료 이월')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }));
+    fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
+    await waitFor(() => expect(alert).toHaveBeenCalledWith('과제 부여 저장 완료'));
+    expect(screen.getByText(/S001 부여\(현재 기록\).*완료\(이월\)/)).toBeTruthy();
+  });
+
+  it('preserves another task row draft while reconciling a saved schedule projection', async () => {
+    const scheduledTask = {
+      ...tasks[0],
+      taskInstanceId: 'instance-1',
+      schedule: { ruleVersion: 1, effectiveFrom: '2026-08-25T00:00:00.000Z', timeZone: 'Asia/Seoul', recurrence: { type: 'DAILY', time: '09:00' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: false },
+      currentCycle: { cycleId: 'old-cycle', startsAt: '2026-08-25T00:00:00.000Z', endsAt: '2026-08-26T00:00:00.000Z', transition: 'NATURAL_BOUNDARY', assignedStudentIds: ['S001'], completedStudentIds: ['S001'], students: [{ studentId: 'S001', assigned: true, completed: true, assignmentOrigin: 'EVENT', completionOrigin: 'EVENT' }] },
+    } as const;
+    const refreshedTask = {
+      ...scheduledTask,
+      schedule: { ...scheduledTask.schedule, ruleVersion: 2, recurrence: { type: 'DAILY', time: '10:30' } },
+      currentCycle: { ...scheduledTask.currentCycle, cycleId: 'fresh-cycle', completedStudentIds: [], students: [{ studentId: 'S001', assigned: true, completed: false, assignmentOrigin: 'CARRY', completionOrigin: 'DEFAULT' }] },
+    } as const;
+    const serverRows = [scheduledTask, tasks[1]];
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    let taskGetCount = 0;
+    baseFetch.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === '/api/tasks?includeInactive=1') {
+        taskGetCount += 1;
+        return jsonResponse(taskGetCount === 1 ? serverRows : [refreshedTask, tasks[1]]);
+      }
+      if (url === '/api/tasks/T001' && init?.method === 'PATCH') return jsonResponse(scheduledTask);
+      return fallback(input, init);
+    });
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.change(screen.getByLabelText('T002 과제명'), { target: { value: '저장 안 한 제목' } });
+    fireEvent.change(screen.getByLabelText('T002 보상'), { target: { value: '77' } });
+    fireEvent.click(screen.getByRole('button', { name: 'T001 반복 설정' }));
+    fireEvent.change(screen.getByLabelText('반복 시간'), { target: { value: '10:30' } });
+    fireEvent.click(screen.getByRole('button', { name: '반복 설정 저장' }));
+
+    await waitFor(() => expect(taskGetCount).toBe(2));
+    expect(await screen.findByText(/현재 일정: 매일 10:30/)).toBeTruthy();
+    expect(screen.getByText(/S001 부여\(이월\).*미완료\(기본값\)/)).toBeTruthy();
+    expect(screen.getByLabelText('T002 과제명')).toHaveProperty('value', '저장 안 한 제목');
+    expect(screen.getByLabelText('T002 보상')).toHaveProperty('value', '77');
+  });
+
+  it('preserves another task row draft while reconciling only reset task projections', async () => {
+    const staleTask = {
+      ...tasks[0],
+      currentCycle: { cycleId: 'cycle-1', startsAt: '2026-08-25T00:00:00.000Z', endsAt: null, transition: 'PERMANENT', assignedStudentIds: ['S001'], completedStudentIds: ['S001'], students: [] },
+    } as const;
+    const resetTask = { ...staleTask, currentCycle: { ...staleTask.currentCycle, completedStudentIds: [] } } as const;
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    let taskGetCount = 0;
+    baseFetch.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === '/api/tasks?includeInactive=1') {
+        taskGetCount += 1;
+        return jsonResponse(taskGetCount === 1 ? [staleTask, tasks[1]] : [resetTask, tasks[1]]);
+      }
+      if (url === '/api/tasks/completions/reset' && init?.method === 'POST') return jsonResponse({ taskIds: ['T001'], deletedCount: 1 });
+      return fallback(input, init);
+    });
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.change(screen.getByLabelText('T002 과제명'), { target: { value: '초기화와 무관한 제목' } });
+    fireEvent.change(screen.getByLabelText('T002 보상'), { target: { value: '88' } });
+    fireEvent.click(screen.getByRole('button', { name: 'T001 완료 기록 초기화' }));
+
+    await waitFor(() => expect(taskGetCount).toBe(2));
+    expect(screen.getByLabelText('T002 과제명')).toHaveProperty('value', '초기화와 무관한 제목');
+    expect(screen.getByLabelText('T002 보상')).toHaveProperty('value', '88');
+  });
+
+  it('shows an effective pending schedule in the row, projection, and editor', async () => {
+    const currentSchedule = { ruleVersion: 1, effectiveFrom: '2000-01-01T00:00:00.000Z', timeZone: 'Asia/Seoul', recurrence: { type: 'DAILY', time: '09:00' }, resetCompletionOnCycle: false, resetAssignmentOnCycle: false } as const;
+    const pendingSchedule = { ruleVersion: 2, effectiveFrom: '2001-01-01T00:00:00.000Z', timeZone: 'Europe/Paris', recurrence: { type: 'WEEKLY', weekday: 5, time: '16:30' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: true } as const;
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    baseFetch.mockImplementation(async (input, init) => {
+      if (String(input) === '/api/tasks?includeInactive=1') return jsonResponse([{ ...tasks[0], schedule: currentSchedule, pendingSchedule }]);
+      return fallback(input, init);
+    });
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    expect(await screen.findByText('매주 금요일 16:30')).toBeTruthy();
+    expect(screen.getByText(/현재 일정: 매주 금요일 16:30/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'T001 반복 설정' }));
+    expect(screen.getByLabelText('반복 주기')).toHaveProperty('value', 'WEEKLY');
+    expect(screen.getByLabelText('반복 시간')).toHaveProperty('value', '16:30');
+    expect(screen.getByLabelText('반복 요일')).toHaveProperty('value', '5');
+    expect(screen.getByLabelText('과제 시간대')).toHaveProperty('value', 'Europe/Paris');
+  });
+
+  it('refreshes a newly created task projection without replacing other unsaved task drafts', async () => {
+    const created = { taskId: 'T003', title: '영어 단어', description: '5개 외우기', reward: 10, isActive: true, sortOrder: 3, allowedStudentIds: [], schedule: { ruleVersion: 1, effectiveFrom: '2000-01-01T00:00:00.000Z', timeZone: 'Asia/Seoul', recurrence: { type: 'DAILY', time: '14:00' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: false } } as const;
+    const projected = { ...created, title: '영어 단어 (서버)', currentCycle: { cycleId: 'new-cycle', startsAt: '2026-08-25T05:00:00.000Z', endsAt: '2026-08-26T05:00:00.000Z', transition: 'NATURAL_BOUNDARY', assignedStudentIds: ['S001'], completedStudentIds: [], students: [{ studentId: 'S001', assigned: true, completed: false, assignmentOrigin: 'DEFAULT', completionOrigin: 'DEFAULT' }] } } as const;
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    let taskGetCount = 0;
+    baseFetch.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === '/api/tasks?includeInactive=1') {
+        taskGetCount += 1;
+        return jsonResponse(taskGetCount === 1 ? tasks : [tasks[0], tasks[1], projected]);
+      }
+      if (url === '/api/tasks' && init?.method === 'POST') return jsonResponse(created);
+      return fallback(input, init);
+    });
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.change(screen.getByLabelText('T002 과제명'), { target: { value: '저장 안 한 수학 제목' } });
+    fireEvent.change(screen.getByLabelText('T002 보상'), { target: { value: '91' } });
+    fireEvent.change(screen.getByLabelText('새 과제명'), { target: { value: '영어 단어' } });
+    fireEvent.change(screen.getByLabelText('새 과제 설명'), { target: { value: '5개 외우기' } });
+    fireEvent.change(screen.getByLabelText('새 과제 보상'), { target: { value: '10' } });
+    fireEvent.change(screen.getByLabelText('새 과제 정렬'), { target: { value: '3' } });
+    fireEvent.click(screen.getByRole('button', { name: '새 과제 추가' }));
+
+    await waitFor(() => expect(taskGetCount).toBe(2));
+    expect(await screen.findByText(/S001 부여\(기본값\).*미완료\(기본값\)/)).toBeTruthy();
+    expect(screen.getByLabelText('T003 과제명')).toHaveProperty('value', '영어 단어 (서버)');
+    expect(screen.getByLabelText('T002 과제명')).toHaveProperty('value', '저장 안 한 수학 제목');
+    expect(screen.getByLabelText('T002 보상')).toHaveProperty('value', '91');
+  });
+
+  it('keeps a successfully created recurring task and reports a projection refresh failure separately', async () => {
+    const created = { taskId: 'T003', title: '영어 단어', description: '', reward: 10, isActive: true, sortOrder: 3, allowedStudentIds: [], schedule: { ruleVersion: 1, effectiveFrom: '2000-01-01T00:00:00.000Z', timeZone: 'Asia/Seoul', recurrence: { type: 'DAILY', time: '14:00' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: false } } as const;
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    let taskGetCount = 0;
+    baseFetch.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === '/api/tasks?includeInactive=1') {
+        taskGetCount += 1;
+        return taskGetCount === 1 ? jsonResponse(tasks) : jsonResponse({ error: 'projection unavailable' }, { status: 503 });
+      }
+      if (url === '/api/tasks' && init?.method === 'POST') return jsonResponse(created);
+      return fallback(input, init);
+    });
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.change(screen.getByLabelText('새 과제명'), { target: { value: '영어 단어' } });
+    fireEvent.click(screen.getByRole('button', { name: '새 과제 추가' }));
+
+    await waitFor(() => expect(alert).toHaveBeenCalledWith('T003 과제 추가 완료'));
+    await waitFor(() => expect(alert).toHaveBeenCalledWith(expect.stringContaining('과제는 추가되었지만 회차 정보를 새로고침하지 못했습니다: projection unavailable')));
+    expect(screen.getByLabelText('T003 과제명')).toHaveProperty('value', '영어 단어');
+  });
+
+  it('reopens the new-task schedule editor with the applied recurrence draft', async () => {
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: '새 과제 반복 설정' }));
+    fireEvent.change(screen.getByLabelText('반복 주기'), { target: { value: 'DAILY' } });
+    fireEvent.change(screen.getByLabelText('반복 시간'), { target: { value: '14:25' } });
+    fireEvent.click(screen.getByRole('button', { name: '반복 설정 적용' }));
+
+    expect(screen.getByRole('button', { name: '새 과제 반복 설정' }).textContent).toContain('매일 14:25');
+    fireEvent.click(screen.getByRole('button', { name: '새 과제 반복 설정' }));
+    expect(screen.getByLabelText('반복 주기')).toHaveProperty('value', 'DAILY');
+    expect(screen.getByLabelText('반복 시간')).toHaveProperty('value', '14:25');
+  });
+
+  it('keeps a newly opened schedule editor when an earlier schedule save finishes', async () => {
+    const firstSave = deferredResponse(tasks[0]);
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    baseFetch.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === '/api/tasks/T001' && init?.method === 'PATCH') return firstSave.response;
+      return fallback(input, init);
+    });
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 반복 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: '반복 설정 저장' }));
+    await waitFor(() => expect(baseFetch).toHaveBeenCalledWith('/api/tasks/T001', expect.objectContaining({ method: 'PATCH' })));
+
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T002 반복 설정' }));
+    expect(screen.getByRole('dialog', { name: '과제 반복 설정' })).toBeTruthy();
+
+    firstSave.resolve();
+    await waitFor(() => expect(baseFetch.mock.calls.filter(([url]) => String(url) === '/api/tasks?includeInactive=1')).toHaveLength(2));
+    expect(screen.getByRole('dialog', { name: '과제 반복 설정' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '반복 설정 저장' })).toBeTruthy();
+  });
+
+  it('keeps the newer projection when consecutive schedule saves for the same task finish out of order', async () => {
+    const initialTask = {
+      ...tasks[0],
+      schedule: { ruleVersion: 1, effectiveFrom: '2026-08-25T00:00:00.000Z', timeZone: 'Asia/Seoul', recurrence: { type: 'DAILY', time: '09:00' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: false },
+      currentCycle: { cycleId: 'initial-cycle', startsAt: '2026-08-25T00:00:00.000Z', endsAt: '2026-08-26T00:00:00.000Z', transition: 'NATURAL_BOUNDARY', assignedStudentIds: ['S001'], completedStudentIds: [], students: [{ studentId: 'S001', assigned: true, completed: false, assignmentOrigin: 'DEFAULT', completionOrigin: 'DEFAULT' }] },
+    } as const;
+    const firstProjectionTask = {
+      ...initialTask,
+      schedule: { ...initialTask.schedule, ruleVersion: 2, recurrence: { type: 'DAILY', time: '10:00' } },
+      currentCycle: { ...initialTask.currentCycle, cycleId: 'first-cycle' },
+    } as const;
+    const secondProjectionTask = {
+      ...initialTask,
+      schedule: { ...initialTask.schedule, ruleVersion: 3, recurrence: { type: 'DAILY', time: '11:00' } },
+      currentCycle: { ...initialTask.currentCycle, cycleId: 'second-cycle', assignedStudentIds: [], students: [{ studentId: 'S001', assigned: false, completed: false, assignmentOrigin: 'EVENT', completionOrigin: 'DEFAULT' }] },
+    } as const;
+    const firstPatch = deferredResponse(initialTask);
+    const secondPatch = deferredResponse(initialTask);
+    const firstProjection = deferredResponse([firstProjectionTask]);
+    const secondProjection = deferredResponse([secondProjectionTask]);
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    let patchCount = 0;
+    let taskGetCount = 0;
+    baseFetch.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === '/api/tasks/T001' && init?.method === 'PATCH') {
+        patchCount += 1;
+        return patchCount === 1 ? firstPatch.response : secondPatch.response;
+      }
+      if (url === '/api/tasks?includeInactive=1') {
+        taskGetCount += 1;
+        if (taskGetCount === 1) return jsonResponse([initialTask]);
+        return taskGetCount === 2 ? firstProjection.response : secondProjection.response;
+      }
+      return fallback(input, init);
+    });
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 반복 설정' }));
+    fireEvent.change(screen.getByLabelText('반복 시간'), { target: { value: '10:00' } });
+    fireEvent.click(screen.getByRole('button', { name: '반복 설정 저장' }));
+    await waitFor(() => expect(patchCount).toBe(1));
+
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 반복 설정' }));
+    fireEvent.change(screen.getByLabelText('반복 시간'), { target: { value: '11:00' } });
+    fireEvent.click(screen.getByRole('button', { name: '반복 설정 저장' }));
+    await waitFor(() => expect(patchCount).toBe(2));
+
+    await act(async () => {
+      firstPatch.resolve();
+      await firstPatch.response;
+    });
+    await waitFor(() => expect(taskGetCount).toBe(2));
+    await act(async () => {
+      secondPatch.resolve();
+      await secondPatch.response;
+    });
+    await waitFor(() => expect(taskGetCount).toBe(3));
+
+    await act(async () => {
+      secondProjection.resolve();
+      await secondProjection.response;
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '과제 반복 설정' })).toBeNull());
+    expect(screen.getByText(/현재 일정: 매일 11:00/)).toBeTruthy();
+    expect(screen.getByText(/S001 미부여\(현재 기록\).*미완료\(기본값\)/)).toBeTruthy();
+
+    await act(async () => {
+      firstProjection.resolve();
+      await firstProjection.response;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(screen.getByText(/현재 일정: 매일 11:00/)).toBeTruthy();
+    expect(screen.getByText(/S001 미부여\(현재 기록\).*미완료\(기본값\)/)).toBeTruthy();
+    expect(screen.queryByText(/현재 일정: 매일 10:00/)).toBeNull();
+  });
+
+  it('ignores an older assignment status response after the same task is closed and reopened', async () => {
+    const first = deferredResponse({
+      taskId: 'T001',
+      students: [
+        { studentId: 'S001', name: '김민준', assigned: true, completed: false },
+        { studentId: 'S002', name: '이서연', assigned: false, completed: false },
+      ],
+    });
+    const second = deferredResponse({
+      taskId: 'T001',
+      students: [
+        { studentId: 'S001', name: '김민준', assigned: true, completed: false },
+        { studentId: 'S002', name: '이서연', assigned: true, completed: true },
+      ],
+    });
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    let assignmentGetCount = 0;
+    baseFetch.mockImplementation(async (input, init) => {
+      if (String(input) === '/api/tasks/T001/assignments' && !init?.method) {
+        assignmentGetCount += 1;
+        return assignmentGetCount === 1 ? first.response : second.response;
+      }
+      return fallback(input, init);
+    });
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
+    expect(assignmentGetCount).toBe(2);
+
+    await act(async () => {
+      second.resolve();
+      await second.response;
+    });
+    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
+    expect(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }).textContent).toContain('부여');
+    expect(screen.getByRole('button', { name: 'S002 이서연 완료 상태' }).textContent).toContain('완료');
+
+    await act(async () => {
+      first.resolve();
+      await first.response;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }).textContent).toContain('부여');
+    expect(screen.getByRole('button', { name: 'S002 이서연 완료 상태' }).textContent).toContain('완료');
+  });
+
+  it('does not show an assignment modal or alert for an error from a closed request', async () => {
+    const staleError = deferredResponse({ error: '뒤늦은 부여 조회 오류' }, { status: 500 });
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    baseFetch.mockImplementation(async (input, init) => (
+      String(input) === '/api/tasks/T001/assignments' && !init?.method ? staleError.response : fallback(input, init)
+    ));
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+
+    await act(async () => {
+      staleError.resolve();
+      await staleError.response;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(screen.queryByRole('dialog', { name: '과제 부여' })).toBeNull();
+    expect(alert).not.toHaveBeenCalledWith('뒤늦은 부여 조회 오류');
+  });
+
+  it('ignores a closed history request and displays a later history error', async () => {
+    const taskRows = [{ ...tasks[0], taskInstanceId: 'i1', schedule: { ruleVersion: 1, effectiveFrom: '2026-08-01T00:00:00.000Z', timeZone: 'Asia/Seoul', recurrence: { type: 'DAILY', time: '09:00' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: false } }, { ...tasks[1], taskInstanceId: 'i2' }];
+    const first = deferredResponse({ taskId: 'T001', currentLifecycle: { taskDefinitionExists: true, taskInstanceId: 'i1', currentCycleStatus: null }, cumulativeHistory: { eventCount: 0, lifecycles: [] } });
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    baseFetch.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === '/api/tasks?includeInactive=1') return jsonResponse(taskRows);
+      if (url === '/api/tasks/T001/history') return first.response;
+      if (url === '/api/tasks/T002/history') return jsonResponse({ error: '기록 서버 오류' }, { status: 500 });
+      return fallback(input, init);
+    });
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 기록 보기' }));
+    expect(screen.getByRole('status', { name: '과제 기록 불러오는 중' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '닫기' }));
+    first.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByRole('dialog', { name: '과제 기록' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'T002 기록 보기' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('기록 서버 오류');
+  });
+
+  it('reconciles a schedule PATCH only from a fresh task-list cycle projection', async () => {
+    const oldTask = {
+      ...tasks[0],
+      schedule: { ruleVersion: 1, effectiveFrom: '2026-08-25T00:00:00.000Z', timeZone: 'Asia/Seoul', recurrence: { type: 'WEEKLY', weekday: 2, time: '09:00' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: false },
+      currentCycle: { cycleId: 'old-cycle', startsAt: '2026-08-25T00:00:00.000Z', endsAt: '2026-09-01T00:00:00.000Z', transition: 'NATURAL_BOUNDARY', assignedStudentIds: ['S001'], completedStudentIds: ['S001'], students: [{ studentId: 'S001', assigned: true, completed: true, assignmentOrigin: 'EVENT', completionOrigin: 'EVENT' }] },
+    } as const;
+    const freshTask = {
+      ...oldTask,
+      schedule: { ...oldTask.schedule, ruleVersion: 2, recurrence: { type: 'MONTHLY', dayOfMonth: 31, time: '17:45' } },
+      currentCycle: { ...oldTask.currentCycle, cycleId: 'fresh-cycle', startsAt: '2026-09-01T00:00:00.000Z', endsAt: '2026-09-30T08:45:00.000Z', completedStudentIds: [], students: [{ studentId: 'S001', assigned: true, completed: false, assignmentOrigin: 'CARRY', completionOrigin: 'DEFAULT' }] },
+    } as const;
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    let taskGetCount = 0;
+    baseFetch.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === '/api/tasks?includeInactive=1') {
+        taskGetCount += 1;
+        return jsonResponse([taskGetCount === 1 ? oldTask : freshTask]);
+      }
+      if (url === '/api/tasks/T001' && init?.method === 'PATCH') return jsonResponse(oldTask);
+      return fallback(input, init);
+    });
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 반복 설정' }));
+    fireEvent.change(screen.getByLabelText('반복 주기'), { target: { value: 'MONTHLY' } });
+    fireEvent.change(screen.getByLabelText('반복 시간'), { target: { value: '17:45' } });
+    fireEvent.change(screen.getByLabelText('반복 날짜'), { target: { value: '31' } });
+    expect(screen.getByText('29/30/31일이 없는 달은 해당 월 말일로 당겨집니다.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '반복 설정 저장' }));
+
+    await waitFor(() => expect(taskGetCount).toBe(2));
+    expect(await screen.findByText(/현재 일정: 매월 31일 17:45/)).toBeTruthy();
+    expect(screen.getByText(/S001 부여\(이월\).*미완료\(기본값\)/)).toBeTruthy();
+  });
+
+  it('confirms resets with both reward warnings and replaces stale completion projection', async () => {
+    const staleTask = {
+      ...tasks[0],
+      currentCycle: { cycleId: 'cycle-1', startsAt: '2026-08-25T00:00:00.000Z', endsAt: null, transition: 'PERMANENT', assignedStudentIds: ['S001'], completedStudentIds: ['S001'], students: [{ studentId: 'S001', assigned: true, completed: true, assignmentOrigin: 'EVENT', completionOrigin: 'EVENT' }] },
+    } as const;
+    const resetTask = { ...staleTask, currentCycle: { ...staleTask.currentCycle, completedStudentIds: [], students: [{ ...staleTask.currentCycle.students[0], completed: false, completionOrigin: 'DEFAULT' }] } } as const;
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    let taskGetCount = 0;
+    baseFetch.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === '/api/tasks?includeInactive=1') {
+        taskGetCount += 1;
+        return jsonResponse([taskGetCount === 1 ? staleTask : resetTask]);
+      }
+      if (url === '/api/tasks/completions/reset' && init?.method === 'POST') return jsonResponse({ taskIds: ['T001'], deletedCount: 1 });
+      return fallback(input, init);
+    });
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    vi.mocked(confirm).mockReturnValueOnce(false);
+    fireEvent.click(screen.getByRole('button', { name: 'T001 완료 기록 초기화' }));
+    expect(baseFetch.mock.calls.some(([url, init]) => String(url) === '/api/tasks/completions/reset' && init?.method === 'POST')).toBe(false);
+
+    vi.mocked(confirm).mockReturnValueOnce(true);
+    fireEvent.click(screen.getByRole('button', { name: 'T001 완료 기록 초기화' }));
+    expect(confirm).toHaveBeenLastCalledWith(expect.stringContaining('과거 지급 보상은 회수되지 않으며'));
+    expect(confirm).toHaveBeenLastCalledWith(expect.stringContaining('같은 회차에서 은행으로 다시 완료하면 재보상될 수 있습니다'));
+    await waitFor(() => expect(taskGetCount).toBe(2));
+    expect(await screen.findByText(/S001 부여\(현재 기록\).*미완료\(기본값\)/)).toBeTruthy();
+  });
+
+  it('disables assignment save while status GET is pending and explains admin completion reward behavior', async () => {
+    const pending = deferredResponse({ taskId: 'T001', students: [] });
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    baseFetch.mockImplementation(async (input, init) => String(input) === '/api/tasks/T001/assignments' && !init?.method ? pending.response : fallback(input, init));
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
+    expect(screen.getByRole('button', { name: '과제 부여 저장' })).toHaveProperty('disabled', true);
+    expect(screen.getByText('관리자 완료는 보상 없이 표시됩니다.')).toBeTruthy();
+    pending.resolve();
+    await waitFor(() => expect(screen.getByRole('button', { name: '과제 부여 저장' })).toHaveProperty('disabled', false));
   });
 });

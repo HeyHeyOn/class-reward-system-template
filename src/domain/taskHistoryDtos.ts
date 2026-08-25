@@ -1,5 +1,6 @@
 import type { TaskCycleState } from './taskCycleState';
 import type { TaskCycleHistoryEvent } from '@/server/repositories/sheets/taskCycleQueries';
+import type { TaskAssignmentSource } from './types';
 
 export type TaskCurrentCycleStatusDto = {
   cycleId: string;
@@ -13,6 +14,7 @@ export type TaskCurrentCycleStatusDto = {
     assigned: boolean;
     completed: boolean;
     assignmentOrigin: TaskCycleState['students'][string]['assignmentOrigin'];
+    assignmentSource?: TaskAssignmentSource;
     completionOrigin: TaskCycleState['students'][string]['completionOrigin'];
   }>;
 };
@@ -108,6 +110,7 @@ export function buildTaskCurrentCycleStatusDto(state: TaskCycleState): TaskCurre
       assigned: student.assigned,
       completed: student.completed,
       assignmentOrigin: student.assignmentOrigin,
+      ...(student.assignmentEvent?.source ? { assignmentSource: student.assignmentEvent.source } : {}),
       completionOrigin: student.completionOrigin,
     })),
   };

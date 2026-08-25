@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createConfiguredSheetsReader } from '@/server/googleSheets';
+import { createConfiguredSheetsReader, createConfiguredSheetsStore } from '@/server/googleSheets';
+import { createTask } from '@/server/sheetsRepository';
+import { isAuthorizedAdminRequest } from '@/server/apiAuth';
 import { listTaskCycleProjections } from '@/server/repositories/sheets/taskHistoryQueries';
-import { GET } from './route';
+import { GET, POST } from './route';
 
 vi.mock('@/server/apiAuth', () => ({
   isAuthorizedAdminRequest: vi.fn(),
@@ -78,5 +80,74 @@ describe('GET /api/tasks', () => {
     const response = await GET(new Request('http://localhost/api/tasks'));
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({ error: 'reader failed' });
+  });
+});
+
+describe('POST /api/tasks', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(isAuthorizedAdminRequest).mockReturnValue(true);
+  });
+
+  it('passes a strict recurring schedule to task creation', async () => {
+    const store = {};
+    const created = { ...projected[0], schedule: { ruleVersion: 1 } };
+    vi.mocked(createConfiguredSheetsStore).mockResolvedValue(store as never);
+    vi.mocked(createTask).mockResolvedValue(created as never);
+    const request = new Request('http://localhost/api/tasks', {
+      method: 'POST',
+      body: JSON.stringify({
+        taskId: 'T1', title: 'Read', description: '', reward: 5, isActive: true,
+        sortOrder: 1, allowedStudentIds: ['S1'],
+        schedule: {
+          timeZone: 'Asia/Seoul',
+          recurrence: { type: 'MONTHLY', time: '17:45', dayOfMonth: 31 },
+          resetCompletionOnCycle: true,
+          resetAssignmentOnCycle: false,
+        },
+      }),
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(201);
+    expect(createConfiguredSheetsStore).toHaveBeenCalledWith(request);
+    expect(createTask).toHaveBeenCalledWith(store, expect.objectContaining({
+      taskId: 'T1',
+      schedule: {
+        timeZone: 'Asia/Seoul',
+        recurrence: { type: 'MONTHLY', time: '17:45', dayOfMonth: 31 },
+        resetCompletionOnCycle: true,
+        resetAssignmentOnCycle: false,
+      },
+    }));
+  });
+
+  it('rejects malformed schedules before opening Sheets', async () => {
+    const response = await POST(new Request('http://localhost/api/tasks', {
+      method: 'POST',
+      body: JSON.stringify({
+        taskId: 'T1', title: 'Read', reward: 5, isActive: true, sortOrder: 1,
+        schedule: { timeZone: 'Asia/Seoul', recurrence: { type: 'MONTHLY', time: '09:00', dayOfMonth: 32 }, resetCompletionOnCycle: true, resetAssignmentOnCycle: false },
+      }),
+    }));
+
+    expect(response.status).toBe(400);
+    expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
+    expect(createTask).not.toHaveBeenCalled();
+  });
+
+  it('keeps omitted schedules backward compatible', async () => {
+    vi.mocked(createConfiguredSheetsStore).mockResolvedValue({} as never);
+    vi.mocked(createTask).mockResolvedValue(projected[0] as never);
+
+    const response = await POST(new Request('http://localhost/api/tasks', {
+      method: 'POST',
+      body: JSON.stringify({ taskId: 'T1', title: 'Read', description: '', reward: 5, isActive: true, sortOrder: 1, allowedStudentIds: [] }),
+    }));
+
+    expect(response.status).toBe(201);
+    const create = vi.mocked(createTask).mock.calls[0][1];
+    expect(create).not.toHaveProperty('schedule');
   });
 });
