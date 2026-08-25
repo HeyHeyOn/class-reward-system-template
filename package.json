@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@js-temporal/polyfill": "^0.5.1",
     "@types/qrcode": "^1.5.6",
     "googleapis": "^171.4.0",
     "html5-qrcode": "^2.3.8",

@@ -80,3 +80,25 @@ export type TaskAssignmentStatus = {
   taskId: string;
   students: TaskAssignmentStudentStatus[];
 };
+
+export type IsoWeekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+
+export type DayOfMonth =
+  | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
+  | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20
+  | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31;
+
+export type TaskRecurrence =
+  | { type: 'NONE' }
+  | { type: 'DAILY'; time: string }
+  | { type: 'WEEKLY'; weekday: IsoWeekday; time: string }
+  | { type: 'MONTHLY'; dayOfMonth: DayOfMonth; time: string };
+
+export type TaskSchedule = {
+  ruleVersion: number;
+  effectiveFrom: string;
+  timeZone: string;
+  recurrence: TaskRecurrence;
+  resetCompletionOnCycle: boolean;
+  resetAssignmentOnCycle: boolean;
+};
