@@ -180,8 +180,27 @@ describe('projectTaskCycleState', () => {
     });
   });
 
-  it('forces carry in an immediate schedule-change first cycle, but applies reset flags at its next natural boundary', () => {
-    const changedTask = { ...task, schedule: { ...schedule, ruleVersion: 2, effectiveFrom: '2026-08-25T09:30:00.000Z', resetAssignmentOnCycle: true, resetCompletionOnCycle: true } };
+  it.each([
+    [false, false, true, true],
+    [false, true, true, false],
+    [true, false, false, true],
+    [true, true, false, false],
+  ])('forces carry in the immediate schedule-change cycle, then applies reset flags at the natural boundary (%s, %s)', (
+    resetAssignmentOnCycle,
+    resetCompletionOnCycle,
+    expectedAssigned,
+    expectedCompleted,
+  ) => {
+    const changedTask = {
+      ...task,
+      schedule: {
+        ...schedule,
+        ruleVersion: 2,
+        effectiveFrom: '2026-08-25T09:30:00.000Z',
+        resetAssignmentOnCycle,
+        resetCompletionOnCycle,
+      },
+    };
     const priorAssignments = [assignment({ cycleId: 'old', cycleStartsAt: '2026-08-25T00:00:00Z' })];
     const priorCompletions = [completion({ cycleId: 'old', cycleStartsAt: '2026-08-25T00:00:00Z' })];
     const first = projectTaskCycleState({ task: changedTask, now: '2026-08-25T09:30:00Z', assignments: priorAssignments, completions: priorCompletions });
@@ -189,7 +208,7 @@ describe('projectTaskCycleState', () => {
     expect(first.transition).toBe('SCHEDULE_CHANGE_FIRST_CYCLE');
     expect(first.students.S1).toMatchObject({ assigned: true, completed: true });
     expect(natural.transition).toBe('NATURAL_BOUNDARY');
-    expect(natural.students.S1).toMatchObject({ assigned: false, completed: false });
+    expect(natural.students.S1).toMatchObject({ assigned: expectedAssigned, completed: expectedCompleted });
   });
 
   it('carries the previous schedule version at an identical boundary while exact current-cycle events override it', () => {
@@ -560,5 +579,34 @@ describe('projectTaskCycleState', () => {
     });
     expect(state.students.S1).toBeUndefined();
     expect(state.students.legacy.assigned).toBe(true);
+  });
+
+  it('does not contaminate a recreated task lifecycle with a malformed cycle-less legacy timestamp', () => {
+    const recreated = {
+      ...task,
+      taskInstanceId: 'I2',
+      createdAt: '2026-08-25T00:00:00Z',
+      schedule: { ...schedule, effectiveFrom: '2026-08-25T00:00:00Z' },
+    };
+    const state = projectTaskCycleState({
+      task: recreated,
+      now: '2026-08-25T12:00:00Z',
+      assignments: [],
+      completions: [completion({
+        taskInstanceId: undefined,
+        cycleId: undefined,
+        cycleStartsAt: undefined,
+        cycleEndsAt: undefined,
+        ruleVersion: undefined,
+        timeZone: undefined,
+        source: undefined,
+        schemaVersion: undefined,
+        studentId: 'legacy',
+        timestamp: 'not-a-date',
+      })],
+    });
+
+    expect(state.students.legacy).toMatchObject({ completed: false, completionOrigin: 'DEFAULT' });
+    expect(state.completedStudentIds).toEqual([]);
   });
 });

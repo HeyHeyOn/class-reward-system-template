@@ -111,7 +111,7 @@ describe('GoogleSheetsStore auth and recurring ranges', () => {
     await expect(store.lookupSheet('TaskAssignments')).resolves.toEqual({ found: false, reason: 'SHEET_NOT_FOUND' });
   });
 
-  it.each(['Settings', 'Tasks', 'TaskCompletions'] as const)(
+  it.each(['Settings', 'Tasks', 'TaskAssignments', 'TaskCompletions'] as const)(
     'preserves missing %s reads as write-free empty results',
     async (sheetName) => {
       googleMocks.sheetsValuesGet.mockRejectedValueOnce(new Error('Unable to parse range'));

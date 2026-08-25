@@ -69,8 +69,7 @@ export function isCompletionForTaskInstance(
   if (taskCreatedAt === null) return true;
 
   const completionTimestamp = parseIsoTimestamp(completion.timestamp);
-  if (completionTimestamp === null) return true;
-  return completionTimestamp >= taskCreatedAt;
+  return completionTimestamp !== null && completionTimestamp >= taskCreatedAt;
 }
 
 function parseIsoTimestamp(value?: string): number | null {

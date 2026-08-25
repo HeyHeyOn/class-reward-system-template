@@ -83,6 +83,10 @@
 
 따라서 관리자 완료 체크를 `TASK_REWARD`나 `ADMIN_ADJUSTMENT`로 해석하면 안 된다. R1은 상태 표시를 append-only 완료/reset 이력으로 남기되 금전 효과를 만들지 않는다.
 
+### CARRY_FORWARD
+
+schedule·학급 시간대 변경 직후의 새 cycle 또는 reset flag가 꺼진 자연 cycle에서 기존 완료 상태를 명시적으로 materialize할 때 `TaskCompletions`에 `source=CARRY_FORWARD` 행을 append할 수 있다. 이 행은 상태 승계용 감사 이벤트이며 `reward=0`, `balanceBefore=balanceAfter`다. 학생 잔액을 바꾸지 않고 `Transactions`에도 거래를 만들지 않는다. 따라서 `CARRY_FORWARD`를 신규 보상 지급이나 `TASK_REWARD`로 집계하면 안 된다.
+
 ## 2. 향후 목표: 공통 idempotency 계약
 
 향후 다음 작업은 모두 같은 durable operation 계약을 사용해야 한다.
@@ -172,7 +176,7 @@ FAILED_RETRYABLE → APPLYING
 ## 6. R1 보존 계약과 도입 조건
 
 - **현재 구현에서 관찰됨**: 1절의 다단계 Sheets 호출, 부분 실패 가능성, idempotency 부재 및 관리자 완료 표시 동작.
-- **R1이 보존/추가**: task reward 거래 append는 여전히 best effort이고 generic cancellation은 완료 행을 건드리지 않습니다. 반복 과제 완료는 cycle snapshot과 append-only reset 이력을 사용하며, 관찰된 completion append 실패에는 재조회·잔액 보상을 시도합니다. 관리자 완료 표시는 무보상입니다.
+- **R1이 보존/추가**: task reward 거래 append는 여전히 best effort이고 generic cancellation은 완료 행을 건드리지 않습니다. 반복 과제 완료는 cycle snapshot과 append-only reset 이력을 사용하며, 관찰된 completion append 실패에는 재조회·잔액 보상을 시도합니다. 관리자 완료 표시와 `CARRY_FORWARD`는 모두 무보상이며 transaction을 만들지 않습니다.
 - **R1에 없음**: operationId 입력/응답, payloadHash, operation/outbox 저장소, durable checkpoint, lease/fencing, multi-instance exactly-once, 학생 balance resource CAS, task reward 취소와 completion 연결, `ADMIN_GRANT_TASK_REWARD`.
 - **향후 도입 조건**: 저장 위치와 스키마 호환/마이그레이션 계획, API versioning, canonical hash 규격 테스트, effect별 장애 주입 테스트, multi-instance 동시성 테스트, 운영자용 `FAILED_MANUAL` 조회·복구 절차를 별도 변경으로 승인해야 한다.
 

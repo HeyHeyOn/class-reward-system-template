@@ -21,7 +21,7 @@
 - `Tasks`는 기존 9개 컬럼 뒤에 현재/예약 recurrence rule 컬럼 19개를 더한 28개 canonical 컬럼을 사용합니다.
 - `TaskAssignments`는 cycle별 학생 배정을 보존하는 15개 컬럼의 append-only 원장입니다.
 - `TaskCompletions`는 기존 10개 컬럼을 그대로 앞에 유지하고 cycle/rule/assignment 스냅샷 컬럼 9개를 뒤에 추가합니다.
-- 현재 cycle의 해석은 `taskInstanceId`, `cycleId`, `ruleVersion`, `timeZone` 스냅샷을 기준으로 합니다. schedule·학급 시간대 변경은 현재 시각부터 더 높은 rule version으로 즉시 적용되며, 직전 배정·완료 상태는 보상 없이 새 cycle로 승계됩니다. 이미 기록된 과거 cycle 원장은 소급 변경하지 않습니다.
+- 현재 cycle의 해석은 `taskInstanceId`, `cycleId`, `ruleVersion`, `timeZone` 스냅샷을 기준으로 합니다. schedule·학급 시간대 변경은 현재 시각부터 더 높은 rule version으로 즉시 적용되며, 직전 배정·완료 상태는 보상 없이 새 cycle로 승계됩니다. 그 다음 자연 경계에서는 각각의 reset flag가 `true`인 상태만 초기화되고, `false`인 완료는 계속 승계되어 재보상을 차단합니다. 이미 기록된 과거 cycle 원장은 소급 변경하지 않습니다.
 - 신규 `Tasks`에는 `maxCompletionsPerStudent`를 생성하지 않습니다. 레거시 인스턴스에서는 아래 비파괴 호환 원칙을 유지합니다.
 
 ## Recovery
@@ -54,7 +54,8 @@
 ## 기존 시트와 하위 호환 원칙
 
 - 시트나 컬럼의 삭제·덮어쓰기·이름 변경 같은 파괴적 자동 마이그레이션은 수행하지 않습니다.
-- 일반 GET/query는 migration을 호출하지 않으며 write-free입니다. schedule·시간대·배정·완료 mutation 직전의 명시적 additive migrator만 `Tasks`/`TaskCompletions` 뒤에 누락 canonical 컬럼을 추가하고, 누락된 `TaskAssignments`를 canonical header로 race-safe하게 생성합니다.
+- 일반 GET/query는 migration을 호출하지 않으며 write-free입니다. read adapter가 누락된 `TaskAssignments`를 `[]`로 표현하면 레거시 `allowedStudentIds` fallback을 사용합니다. 실제 read 오류는 전파하고, 시트가 존재하지만 필수 헤더가 빠졌으면 즉시 실패합니다. schedule·시간대·배정·완료 mutation 직전의 명시적 additive migrator만 `Tasks`/`TaskCompletions` 뒤에 누락 canonical 컬럼을 추가하고, 누락된 `TaskAssignments`를 canonical header로 race-safe하게 생성합니다.
+- 학급 시간대 변경은 `Settings`와 대상 `Tasks` 셀을 한 provider 요청으로 갱신할 수 있는 `updateCellsAtomicallyAcrossSheets` capability가 반드시 필요합니다. 이 capability가 없으면 schema migration보다 먼저 요청을 거부하며, primitive write 반복으로 원자성을 흉내 내지 않습니다.
 - 런타임은 필요한 canonical 컬럼을 이름으로 찾고, 알 수 없는 추가 레거시 컬럼은 가능한 한 보존하고 무시합니다.
 - 신규 생성 계약의 변경이 기존 인스턴스의 즉시 전면 재작성을 의미하지 않습니다. canonical 스키마로 전면 재작성하는 작업은 명시적인 검토, 백업, 사용자 동의가 있는 별도 절차로만 수행합니다.
 - 호환을 위해 남겨 둔 시트나 컬럼이 현재 런타임 기능에서 사용된다는 의미는 아닙니다.
@@ -76,8 +77,8 @@
 ## R1 recurring task compatibility contract
 
 - `NONE`, `DAILY`, `WEEKLY`, `MONTHLY`를 지원하며 월 29~31일이 없는 달은 그 달 말일로 당깁니다. cycle 계산은 named timezone과 DST 전환을 포함해 Temporal 기반으로 수행합니다.
-- 레거시 `allowedStudentIds`는 assignment 원장이 없을 때 초기 배정 fallback으로 읽습니다. cycle 정보가 없는 기존 `SUCCESS` completion도 현재 task instance의 legacy 완료로 투영하되 새 행으로 다시 쓰지 않습니다.
-- assignment와 completion은 물리적 append 순서의 최신 이벤트로 투영합니다. reset은 `RESET`, 삭제는 lifecycle snapshot 이벤트를 append하며 기존 성공·배정 행을 삭제하지 않습니다.
-- 같은 `taskId`를 삭제 후 재생성해도 새 `taskInstanceId`가 이전 lifecycle의 배정·완료를 격리합니다. 삭제된 lifecycle의 이력은 원장 snapshot으로 조회할 수 있습니다.
-- process-local command queue와 완료 append 결과 재조회는 같은 프로세스의 순차 중복·일반 재시도를 방어합니다. 여러 서버 instance의 강한 exactly-once와 서로 다른 operation 사이 학생 balance resource race는 R1 보장이 아닙니다.
+- 레거시 `allowedStudentIds`는 assignment 원장이 없을 때 초기 배정 fallback으로 읽습니다. cycle 정보가 없는 기존 completion은 현재 과제의 `createdAt`이 유효하면 completion `timestamp`도 유효하고 `timestamp >= createdAt`인 행만 현재 instance 후보로 봅니다. 후보 중 물리적 마지막 행이 아니라 `SUCCESS`가 하나라도 있으면 legacy 완료로 우선 투영하며 새 행으로 다시 쓰지 않습니다. 과제 `createdAt` 자체가 유효하지 않은 레거시 정의에 한해서는 taskId 일치 fallback을 유지합니다.
+- versioned assignment와 completion 상태 이벤트는 물리적 append 순서의 최신 행으로 투영하고 reset은 `RESET` 이벤트를 append합니다. 과제 삭제는 `Tasks` 정의 행만 삭제하며 삭제 이벤트를 만들지 않습니다. 기존 `TaskAssignments`와 `TaskCompletions` 원장은 그대로 보존됩니다.
+- 같은 `taskId`를 삭제 후 재생성해도 새 `taskInstanceId`가 이전 lifecycle의 배정·완료를 격리합니다. 삭제된 lifecycle 이력은 삭제 시 새 snapshot을 만드는 것이 아니라, 이미 보존된 assignment/completion 행의 cycle snapshot으로만 조회합니다.
+- legacy seed/carry에는 결정적 ID를 사용하지만 Sheets 원장에는 unique constraint나 atomic put-if-absent가 없습니다. process-local command queue와 완료 append 결과 재조회는 같은 프로세스의 순차 중복·일반 재시도를 방어할 뿐이며, 여러 서버 instance가 동시에 materialize하면 같은 결정적 ID의 중복 행이 생길 수 있습니다. 강한 exactly-once와 서로 다른 operation 사이 학생 balance resource race는 R1 보장이 아닙니다.
 - 학생용 `/api/tasks?studentId=...`는 요청 학생의 상태와 cycle metadata만 공개합니다. 전체 목록 projection, 단건 raw projection, `includeInactive` 관리 조회는 관리자 인증이 필요합니다.

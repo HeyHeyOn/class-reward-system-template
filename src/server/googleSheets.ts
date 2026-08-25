@@ -36,7 +36,7 @@ export class GoogleSheetsStore implements TabularStore, RecurringSchemaMigration
       return normalizeRows(response.data.values ?? []);
     } catch (error) {
       // Legacy optional sheets read as empty, but reads never create or migrate them.
-      if (isLegacyAutoCreatableSheet(sheetName) && isMissingSheetError(error)) return [];
+      if (isLegacyOptionalReadableSheet(sheetName) && isMissingSheetError(error)) return [];
       throw error;
     }
   }
@@ -389,6 +389,10 @@ function isMissingSheetError(error: unknown): boolean {
 
 function isLegacyAutoCreatableSheet(sheetName: OperationalSheetName): boolean {
   return sheetName === 'Settings' || sheetName === 'Tasks' || sheetName === 'TaskCompletions';
+}
+
+function isLegacyOptionalReadableSheet(sheetName: OperationalSheetName): boolean {
+  return isLegacyAutoCreatableSheet(sheetName) || sheetName === 'TaskAssignments';
 }
 
 function assertValidColumnIndex(index: number): void {

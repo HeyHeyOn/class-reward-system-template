@@ -36,8 +36,12 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
   const [savedAdminPassword, setSavedAdminPassword] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [classTimeZone, setClassTimeZone] = useState('Asia/Seoul');
+  const [appliedClassTimeZone, setAppliedClassTimeZone] = useState('Asia/Seoul');
   const [isSavingTimeZone, setIsSavingTimeZone] = useState(false);
   const [timeZoneMessage, setTimeZoneMessage] = useState('');
+  const normalizedClassTimeZone = classTimeZone.trim();
+  const isTimeZoneDirty = normalizedClassTimeZone !== appliedClassTimeZone;
+  const isTimeZoneValid = isValidTimeZone(normalizedClassTimeZone);
 
   useEffect(() => {
     let ignore = false;
@@ -55,7 +59,9 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
         setThemeColor(settings.themeColor ?? 'blue');
         setFontFamily(normalizeFontFamily(settings.fontFamily));
         setQrManualInputEnabled(Boolean(settings.qrManualInputEnabled));
-        setClassTimeZone(settings.classTimeZone ?? 'Asia/Seoul');
+        const loadedClassTimeZone = settings.classTimeZone ?? 'Asia/Seoul';
+        setClassTimeZone(loadedClassTimeZone);
+        setAppliedClassTimeZone(loadedClassTimeZone);
       }
     }
 
@@ -99,7 +105,9 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
         setAdminPassword('');
       }
       await onSettingsSaved?.();
-      setMessage('시스템 설정을 저장했고, 관리자 목록도 같은 시트에서 다시 불러왔습니다.');
+      setMessage(isTimeZoneDirty
+        ? '시스템 설정을 저장했습니다. 학급 시간대 변경은 별도로 적용해야 합니다.'
+        : '시스템 설정을 저장했고, 관리자 목록도 같은 시트에서 다시 불러왔습니다.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '설정을 저장하지 못했습니다.');
     } finally {
@@ -107,14 +115,16 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
     }
   }
 
-  async function saveClassTimeZone() {
+  async function saveClassTimeZone(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!isTimeZoneDirty || !isTimeZoneValid) return;
     setIsSavingTimeZone(true);
     setTimeZoneMessage('');
     try {
       const response = await fetch('/api/settings', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ classTimeZone: classTimeZone.trim() }),
+        body: JSON.stringify({ classTimeZone: normalizedClassTimeZone }),
       });
       const payload = (await response.json()) as SettingsResponse | { error: string };
       if (!response.ok || 'error' in payload) {
@@ -122,9 +132,11 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
         return;
       }
       setCurrentSettings(payload);
-      setClassTimeZone(payload.classTimeZone ?? classTimeZone.trim());
+      const savedClassTimeZone = payload.classTimeZone ?? normalizedClassTimeZone;
+      setClassTimeZone(savedClassTimeZone);
+      setAppliedClassTimeZone(savedClassTimeZone);
       await onSettingsSaved?.();
-      setTimeZoneMessage('학급 시간대를 저장했습니다.');
+      setTimeZoneMessage('학급 시간대를 적용했습니다.');
     } catch (error) {
       setTimeZoneMessage(error instanceof Error ? error.message : '학급 시간대를 저장하지 못했습니다.');
     } finally {
@@ -133,24 +145,30 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
   }
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-[2rem] bg-white p-6 shadow-sm ring-1 ring-black/5">
-      <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+    <div className="rounded-[2rem] bg-white p-6 shadow-sm ring-1 ring-black/5">
+      <form aria-label="학급 시간대 설정" onSubmit={saveClassTimeZone} className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
         <label className="block">
           <span className="text-sm font-black text-slate-800">학급 시간대 (IANA)</span>
           <input
             aria-label="학급 시간대 (IANA)"
             value={classTimeZone}
-            onChange={(event) => setClassTimeZone(event.target.value)}
+            onChange={(event) => {
+              setClassTimeZone(event.target.value);
+              setTimeZoneMessage('');
+            }}
             placeholder="Asia/Seoul"
             className="mt-2 w-full rounded-xl border border-amber-200 bg-white px-3 py-3 text-sm font-bold text-slate-950 outline-none focus:border-amber-500"
           />
         </label>
-        <p className="mt-2 text-xs font-bold leading-relaxed text-amber-900">시간대와 과제 반복 규칙 변경은 즉시 적용됩니다. 직전 완료 상태는 보상 없이 새 회차에 승계되며, 다음 경계부터 자연 초기화가 시작됩니다.</p>
+        <p className="mt-2 text-xs font-bold leading-relaxed text-amber-900">시간대와 과제 반복 규칙 변경은 즉시 적용됩니다. 직전 완료 상태는 보상 없이 새 회차에 승계되며, 다음 경계부터 자연 초기화가 시작되는 것은 해당 초기화 옵션이 켜진 상태일 때뿐입니다.</p>
+        {isTimeZoneDirty && !isTimeZoneValid ? <p role="alert" className="mt-2 text-sm font-bold text-rose-700">유효한 IANA 시간대 이름을 입력해 주세요.</p> : null}
+        {isTimeZoneDirty && isTimeZoneValid ? <p role="status" className="mt-2 text-sm font-bold text-amber-800">시간대 변경이 아직 적용되지 않았습니다.</p> : null}
         {timeZoneMessage ? <p role="status" className="mt-2 text-sm font-bold text-rose-700">{timeZoneMessage}</p> : null}
-        <button type="button" disabled={isSavingTimeZone} onClick={saveClassTimeZone} className="mt-3 w-full rounded-xl bg-amber-300 py-3 font-black text-amber-950 disabled:opacity-60">
-          {isSavingTimeZone ? '시간대 저장 중...' : '학급 시간대 저장'}
+        <button type="submit" disabled={isSavingTimeZone || !isTimeZoneDirty || !isTimeZoneValid} className="mt-3 w-full rounded-xl bg-amber-300 py-3 font-black text-amber-950 disabled:cursor-not-allowed disabled:opacity-60">
+          {isSavingTimeZone ? '시간대 적용 중...' : '학급 시간대 적용'}
         </button>
-      </section>
+      </form>
+      <form onSubmit={handleSubmit}>
       <label className="mt-6 block">
         <span className="text-sm font-bold text-slate-700">Google Sheets 주소 또는 시트 ID</span>
         <input
@@ -292,6 +310,17 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
       >
         {isSaving ? '저장 중...' : '시스템 설정 저장'}
       </button>
-    </form>
+      </form>
+    </div>
   );
+}
+
+function isValidTimeZone(value: string): boolean {
+  if (!value || /^[+-]\d{2}(?::?\d{2})?$/.test(value)) return false;
+  try {
+    new Intl.DateTimeFormat('ko-KR', { timeZone: value }).format();
+    return true;
+  } catch {
+    return false;
+  }
 }

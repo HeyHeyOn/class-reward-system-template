@@ -376,6 +376,13 @@ export async function updateTaskAssignmentStatus(
 }
 
 export async function createTask(store: SheetsStore, create: TaskCreate): Promise<ClassTask> {
+  // Creation shares the process-global task command queue because both the Tasks header and
+  // task IDs are shared resources. The Sheets provider still gives no cross-process CAS, so
+  // uniqueness across multiple application instances remains outside this R1 guarantee.
+  return enqueueTaskCommand(taskCommandQueueKey(create.taskId.trim()), () => createTaskNow(store, create));
+}
+
+async function createTaskNow(store: SheetsStore, create: TaskCreate): Promise<ClassTask> {
   const taskId = create.taskId.trim();
   validateTaskId(taskId);
   validateTaskUpdate(create);
@@ -430,6 +437,27 @@ export async function updateTaskDetails(
   // so this prevents stale schedule versions only among commands in this application process.
   return enqueueTaskCommand(taskCommandQueueKey(taskId), () =>
     updateTaskDetailsNow(store, taskId, update, editedAt ?? new Date().toISOString()));
+}
+
+export async function updateTaskSchedule(
+  store: RecurringSchemaMigrationStore,
+  taskId: string,
+  schedule: TaskScheduleEdit,
+  editedAt?: string,
+): Promise<ClassTask> {
+  return enqueueTaskCommand(taskCommandQueueKey(taskId), async () => {
+    const record = await getTaskRecordById(store, taskId);
+    if (!record) throw new Error('과제를 찾을 수 없습니다.');
+    return updateTaskDetailsNow(store, taskId, {
+      title: record.task.title,
+      description: record.task.description,
+      reward: record.task.reward,
+      isActive: record.task.isActive,
+      sortOrder: record.task.sortOrder,
+      allowedStudentIds: [...record.task.allowedStudentIds],
+      schedule,
+    }, editedAt ?? new Date().toISOString());
+  });
 }
 
 async function updateTaskDetailsNow(
@@ -616,7 +644,6 @@ export async function deleteTasksBatch(store: RecurringSchemaMigrationStore, tas
   const missingIds = uniqueIds.filter((taskId) => !recordsById.has(taskId));
   if (missingIds.length > 0) throw new Error(`과제를 찾을 수 없습니다: ${missingIds.join(', ')}`);
 
-  await migrateRecurringSchemaIfNeeded(store);
   await store.deleteRows('Tasks', uniqueIds.map((taskId) => recordsById.get(taskId)!.rowNumber));
   // Assignment and completion rows are append-only audit ledgers and outlive the definition row.
   return { taskIds: uniqueIds, deletedTaskCount: uniqueIds.length, deletedCompletionCount: 0 };
@@ -660,7 +687,6 @@ export async function deleteTask(store: RecurringSchemaMigrationStore, taskId: s
   const record = await getTaskRecordById(store, taskId);
   if (!record) throw new Error('과제를 찾을 수 없습니다.');
   if (!store.deleteRow) throw new Error('현재 Sheets 저장소가 행 삭제를 지원하지 않습니다.');
-  await migrateRecurringSchemaIfNeeded(store);
   await store.deleteRow('Tasks', record.rowNumber);
   return { taskId, taskDefinitionDeleted: true, deletedCompletionCount: 0 };
 }

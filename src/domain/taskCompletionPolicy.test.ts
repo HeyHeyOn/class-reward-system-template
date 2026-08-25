@@ -62,13 +62,22 @@ describe('task completion policy', () => {
   it.each([
     ['missing task createdAt', { taskId: 'T001', reward: 5 }, success],
     ['malformed task createdAt', { ...task, createdAt: '5630' }, success],
-    ['missing completion timestamp', task, { taskId: 'T001', studentId: 'S001', status: 'SUCCESS' }],
-    ['malformed completion timestamp', task, { ...success, timestamp: 'not-a-date' }],
   ])('preserves the legacy current-instance heuristic for %s', (_case, currentTask, completion) => {
     expect(evaluateTaskCompletion({ task: currentTask, student, completions: [completion] })).toEqual({
       ok: false,
       message: '이미 완료한 과제입니다.',
     });
+  });
+
+  it.each([
+    ['missing timestamp', undefined],
+    ['malformed timestamp', 'not-a-date'],
+  ])('ignores a cycle-less legacy completion with %s when task createdAt is valid', (_case, timestamp) => {
+    expect(evaluateTaskCompletion({
+      task,
+      student,
+      completions: [{ ...success, timestamp }],
+    })).toEqual({ ok: true, balanceAfter: 15 });
   });
 
   it('ignores non-SUCCESS, other-student, and other-task completions', () => {

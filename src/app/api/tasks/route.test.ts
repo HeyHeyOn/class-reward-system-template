@@ -99,14 +99,13 @@ describe('GET /api/tasks', () => {
     expect(listTaskCycleProjections).toHaveBeenCalledWith({}, { includeInactive: true });
   });
 
-  it('combines includeInactive=1 with a student projection', async () => {
-    vi.mocked(createConfiguredSheetsReader).mockResolvedValue({} as never);
-    vi.mocked(listTaskCycleProjections).mockResolvedValue(projected as never);
-
+  it('rejects the unsupported studentId and includeInactive combination before opening Sheets', async () => {
     const response = await GET(new Request('http://localhost/api/tasks?includeInactive=1&studentId=%20S1%20'));
 
-    expect(response.status).toBe(200);
-    expect(listTaskCycleProjections).toHaveBeenCalledWith({}, { includeInactive: true, studentId: 'S1' });
+    expect(response.status).toBe(400);
+    expect(createConfiguredSheetsReader).not.toHaveBeenCalled();
+    expect(listTaskCycleProjections).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({ error: '과제 조회 요청 형식이 올바르지 않습니다.' });
   });
 
   it.each([

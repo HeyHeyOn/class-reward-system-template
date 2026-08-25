@@ -1137,6 +1137,8 @@ describe('AdminManagePage', () => {
     expect(await screen.findByText(/현재 회차:/)).toBeTruthy();
     expect(screen.getByText(/S001 부여\(이월\).*완료\(현재 기록\)/)).toBeTruthy();
 
+    fireEvent.change(screen.getByLabelText('T001 과제명'), { target: { value: '저장 안 한 제목' } });
+    fireEvent.change(screen.getByLabelText('T001 보상'), { target: { value: '77' } });
     fireEvent.click(screen.getByRole('button', { name: 'T001 반복 설정' }));
     fireEvent.change(screen.getByLabelText('반복 주기'), { target: { value: 'MONTHLY' } });
     fireEvent.change(screen.getByLabelText('반복 시간'), { target: { value: '17:45' } });
@@ -1150,13 +1152,13 @@ describe('AdminManagePage', () => {
     const singlePatchCall = baseFetch.mock.calls.find(([url, init]) => String(url) === '/api/tasks/T001' && init?.method === 'PATCH');
     const body = JSON.parse(String(singlePatchCall![1]?.body));
     expect(body).toEqual({
-      taskId: 'T001', title: '책 읽기', description: '책 10분 읽기', reward: 5, isActive: true,
-      sortOrder: 1, allowedStudentIds: ['S001'],
       schedule: { recurrence: { type: 'MONTHLY', time: '17:45', dayOfMonth: 31 }, timeZone: 'Asia/Seoul', resetCompletionOnCycle: true, resetAssignmentOnCycle: true },
     });
     expect(body.schedule).not.toHaveProperty('ruleVersion');
     expect(body.schedule).not.toHaveProperty('effectiveFrom');
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '과제 반복 설정' })).toBeNull());
+    expect(screen.getByLabelText('T001 과제명')).toHaveProperty('value', '저장 안 한 제목');
+    expect(screen.getByLabelText('T001 보상')).toHaveProperty('value', '77');
 
     fireEvent.click(screen.getByLabelText('T001 선택'));
     fireEvent.click(screen.getByRole('button', { name: '선택 저장' }));

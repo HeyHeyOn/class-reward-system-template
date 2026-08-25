@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     const studentIds = searchParams.getAll('studentId');
     if (keys.some((key) => key !== 'studentId' && key !== 'includeInactive')
       || studentIds.length > 1
-      || (studentIds.length === 1 && !studentIds[0].trim())) {
+      || (studentIds.length === 1 && (!studentIds[0].trim() || searchParams.has('includeInactive')))) {
       return Response.json({ error: '과제 조회 요청 형식이 올바르지 않습니다.' }, { status: 400 });
     }
     const studentId = studentIds.length === 1 ? studentIds[0].trim() : null;

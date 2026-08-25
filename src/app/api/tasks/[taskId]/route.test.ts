@@ -1,13 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createConfiguredSheetsReader, createConfiguredSheetsStore } from '@/server/googleSheets';
-import { deleteTask, getTaskById, updateTaskDetails } from '@/server/sheetsRepository';
+import { deleteTask, getTaskById, updateTaskDetails, updateTaskSchedule } from '@/server/sheetsRepository';
 import { isAuthorizedAdminRequest } from '@/server/apiAuth';
 import { getTaskCycleProjection } from '@/server/repositories/sheets/taskHistoryQueries';
 import { DELETE, GET, PATCH } from './route';
 
 vi.mock('@/server/apiAuth', () => ({ isAuthorizedAdminRequest: vi.fn(() => true), unauthorizedAdminResponse: () => Response.json({ error: 'unauthorized' }, { status: 401 }) }));
 vi.mock('@/server/googleSheets', () => ({ createConfiguredSheetsReader: vi.fn(), createConfiguredSheetsStore: vi.fn() }));
-vi.mock('@/server/sheetsRepository', () => ({ deleteTask: vi.fn(), getTaskById: vi.fn(), updateTaskDetails: vi.fn() }));
+vi.mock('@/server/sheetsRepository', () => ({
+  deleteTask: vi.fn(), getTaskById: vi.fn(), updateTaskDetails: vi.fn(), updateTaskSchedule: vi.fn(),
+}));
 vi.mock('@/server/repositories/sheets/taskHistoryQueries', () => ({ getTaskCycleProjection: vi.fn() }));
 
 describe('GET /api/tasks/[taskId]', () => {
@@ -159,6 +161,44 @@ describe('PATCH /api/tasks/[taskId]', () => {
     const invalidResponse = await PATCH(invalid, { params: Promise.resolve({ taskId: 'T1' }) });
     expect(invalidResponse.status).toBe(400);
     expect(updateTaskDetails).toHaveBeenCalledTimes(1);
+  });
+
+  it('merges a schedule-only edit with the latest persisted general fields', async () => {
+    const store = {};
+    const schedule = {
+      recurrence: { type: 'DAILY', time: '10:30' }, timeZone: 'Asia/Seoul',
+      resetCompletionOnCycle: true, resetAssignmentOnCycle: false,
+    };
+    const persisted = {
+      taskId: 'T1', title: '서버 최신 제목', description: '서버 최신 설명', reward: 77,
+      isActive: false, sortOrder: 9, allowedStudentIds: ['S2'],
+    };
+    vi.mocked(createConfiguredSheetsStore).mockResolvedValue(store as never);
+    vi.mocked(updateTaskSchedule).mockResolvedValue({ ...persisted, schedule } as never);
+    const request = new Request('http://localhost/api/tasks/T1', {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ schedule }),
+    });
+
+    const response = await PATCH(request, { params: Promise.resolve({ taskId: 'T1' }) });
+
+    expect(response.status).toBe(200);
+    expect(updateTaskSchedule).toHaveBeenCalledWith(store, 'T1', schedule);
+    expect(getTaskById).not.toHaveBeenCalled();
+    expect(updateTaskDetails).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['unknown schedule-only field', { schedule: { recurrence: { type: 'NONE' }, timeZone: 'Asia/Seoul', resetCompletionOnCycle: false, resetAssignmentOnCycle: false }, unexpected: true }],
+    ['partial general edit mixed with schedule', { title: 'partial', schedule: { recurrence: { type: 'NONE' }, timeZone: 'Asia/Seoul', resetCompletionOnCycle: false, resetAssignmentOnCycle: false } }],
+  ])('rejects %s before opening Sheets', async (_label, body) => {
+    const response = await PATCH(new Request('http://localhost/api/tasks/T1', {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    }), { params: Promise.resolve({ taskId: 'T1' }) });
+
+    expect(response.status).toBe(400);
+    expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
+    expect(getTaskById).not.toHaveBeenCalled();
+    expect(updateTaskDetails).not.toHaveBeenCalled();
   });
 
   it('strictly rejects malformed schedule values with 400 before opening Sheets', async () => {

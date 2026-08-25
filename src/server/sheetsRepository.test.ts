@@ -24,6 +24,7 @@ import {
   updateStudentDetails,
   updateStudentDetailsBatch,
   updateTaskDetails,
+  updateTaskSchedule,
   updateTaskDetailsBatch,
   getTaskAssignmentStatus,
   getTaskCycleState,
@@ -969,6 +970,59 @@ describe('sheets repository', () => {
     expect(appended[1].values[8]).toBe('');
   });
 
+  it('serializes concurrent creates for the same task ID on an empty Tasks sheet', async () => {
+    const rows: string[][] = [];
+    const store = {
+      async getRows(sheetName: string) {
+        if (sheetName === 'Tasks') return rows.map((row) => [...row]);
+        return sheetRows[sheetName as keyof typeof sheetRows] ?? [];
+      },
+      async updateCell() {},
+      async appendRow(sheetName: string, values: string[]) {
+        if (sheetName === 'Tasks') rows.push([...values]);
+      },
+    };
+    const create = {
+      taskId: 'T-RACE', title: '동시 과제', description: '', reward: 1, isActive: true, sortOrder: 1,
+    };
+
+    const results = await Promise.allSettled([createTask(store, create), createTask(store, create)]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.filter((result) => result.status === 'rejected');
+    expect(rejected).toHaveLength(1);
+    expect((rejected[0] as PromiseRejectedResult).reason).toEqual(expect.objectContaining({
+      message: '이미 존재하는 과제 ID입니다.',
+    }));
+    expect(rows.filter((row) => row[0] === 'taskId')).toHaveLength(1);
+    expect(rows.filter((row) => row[0] === 'T-RACE')).toHaveLength(1);
+  });
+
+  it('creates one header and both rows for concurrent different task IDs on an empty Tasks sheet', async () => {
+    const rows: string[][] = [];
+    const store = {
+      async getRows(sheetName: string) {
+        if (sheetName === 'Tasks') return rows.map((row) => [...row]);
+        return sheetRows[sheetName as keyof typeof sheetRows] ?? [];
+      },
+      async updateCell() {},
+      async appendRow(sheetName: string, values: string[]) {
+        if (sheetName === 'Tasks') rows.push([...values]);
+      },
+    };
+    const create = (taskId: string) => ({
+      taskId, title: taskId, description: '', reward: 1, isActive: true, sortOrder: 1,
+    });
+
+    await expect(Promise.all([
+      createTask(store, create('T-RACE-A')),
+      createTask(store, create('T-RACE-B')),
+    ])).resolves.toHaveLength(2);
+
+    expect(rows.filter((row) => row[0] === 'taskId')).toHaveLength(1);
+    expect(rows.filter((row) => row[0].startsWith('T-RACE-'))).toHaveLength(2);
+  });
+
   it('migrates a legacy Tasks schema before creating a task with a recurring schedule', async () => {
     const { store } = legacyRecurringStore([]);
 
@@ -1313,6 +1367,26 @@ describe('sheets repository', () => {
     ]);
   });
 
+  it('preserves a preceding queued general edit when applying a schedule-only command', async () => {
+    const { store } = versionedScheduleMutationStore(undefined, true);
+    const [, scheduled] = await Promise.all([
+      updateTaskDetails(store as never, 'T-SERIAL', {
+        title: 'Latest title', description: 'Latest description', reward: 9,
+        isActive: false, sortOrder: 7, allowedStudentIds: ['S2'],
+      }, '2026-08-25T09:00:00.000Z'),
+      updateTaskSchedule(store as never, 'T-SERIAL', {
+        recurrence: { type: 'WEEKLY', time: '10:00', weekday: 2 },
+        timeZone: 'Asia/Seoul', resetCompletionOnCycle: true, resetAssignmentOnCycle: false,
+      }, '2026-08-25T09:01:00.000Z'),
+    ]);
+
+    expect(scheduled).toMatchObject({
+      title: 'Latest title', description: 'Latest description', reward: 9,
+      isActive: false, sortOrder: 7, allowedStudentIds: ['S2'],
+      pendingSchedule: { ruleVersion: 2, timeZone: 'Asia/Seoul' },
+    });
+  });
+
   it('observes a default single-edit timestamp only after earlier queued operations finish', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-25T09:00:00.000Z'));
@@ -1443,6 +1517,18 @@ describe('sheets repository', () => {
     await expect(deleteTasksBatch(batchDelete.store as never, ['missing']))
       .rejects.toThrow('과제를 찾을 수 없습니다: missing');
     expect(batchDelete.migrationWrite).not.toHaveBeenCalled();
+  });
+
+  it('deletes legacy task definitions without migrating recurring ledgers or headers', async () => {
+    const single = legacyRecurringStore(['T1']);
+    await expect(deleteTask(single.store as never, 'T1')).resolves.toMatchObject({ taskDefinitionDeleted: true });
+    expect(single.migrationWrite).not.toHaveBeenCalled();
+    expect(single.store.deleteRow).toHaveBeenCalledWith('Tasks', 2);
+
+    const batch = legacyRecurringStore(['T1', 'T2']);
+    await expect(deleteTasksBatch(batch.store as never, ['T1', 'T2'])).resolves.toMatchObject({ deletedTaskCount: 2 });
+    expect(batch.migrationWrite).not.toHaveBeenCalled();
+    expect(batch.store.deleteRows).toHaveBeenCalledWith('Tasks', [2, 3]);
   });
 
   it('deletes task definitions without deleting completion history', async () => {

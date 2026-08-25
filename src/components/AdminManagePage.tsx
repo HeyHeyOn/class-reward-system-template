@@ -283,16 +283,7 @@ export function AdminManagePage() {
         const response = await fetch(`/api/tasks/${encodeURIComponent(task.taskId)}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            taskId: task.taskId,
-            title: task.title,
-            description: task.description,
-            reward: task.reward,
-            isActive: task.isActive,
-            sortOrder: task.sortOrder,
-            allowedStudentIds: task.allowedStudentIds ?? [],
-            schedule: parsed.payload,
-          }),
+          body: JSON.stringify({ schedule: parsed.payload }),
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error ?? '반복 설정을 저장하지 못했습니다.');
