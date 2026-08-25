@@ -19,7 +19,19 @@ const projected = [{
 }];
 
 describe('GET /api/tasks', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(isAuthorizedAdminRequest).mockReturnValue(true);
+  });
+
+  it('rejects unauthenticated raw task projections before opening Sheets', async () => {
+    vi.mocked(isAuthorizedAdminRequest).mockReturnValue(false);
+
+    const response = await GET(new Request('http://localhost/api/tasks'));
+
+    expect(response.status).toBe(401);
+    expect(createConfiguredSheetsReader).not.toHaveBeenCalled();
+  });
 
   it('passes the request to a reader and returns active raw tasks with additive current cycle', async () => {
     const reader = {};
@@ -42,6 +54,39 @@ describe('GET /api/tasks', () => {
 
     expect(response.status).toBe(200);
     expect(listTaskCycleProjections).toHaveBeenCalledWith({}, { studentId: 'S1' });
+  });
+
+  it('returns only the requested student status and hides other students from the public student projection', async () => {
+    vi.mocked(createConfiguredSheetsReader).mockResolvedValue({} as never);
+    vi.mocked(listTaskCycleProjections).mockResolvedValue([{
+      ...projected[0],
+      allowedStudentIds: ['S1', 'S2'],
+      currentCycle: {
+        cycleId: 'cycle-1', startsAt: '2026-08-25T00:00:00.000Z', endsAt: '2026-08-26T00:00:00.000Z',
+        assignedStudentIds: ['S1', 'S2'], completedStudentIds: ['S2'],
+        students: [
+          { studentId: 'S1', assigned: true, completed: false, assignmentOrigin: 'EVENT', completionOrigin: 'DEFAULT' },
+          { studentId: 'S2', assigned: true, completed: true, assignmentOrigin: 'EVENT', completionOrigin: 'EVENT' },
+        ],
+      },
+    }] as never);
+
+    const response = await GET(new Request('http://localhost/api/tasks?studentId=S1'));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toEqual([expect.objectContaining({
+      taskId: 'T1',
+      studentStatus: { studentId: 'S1', assigned: true, completed: false },
+      currentCycle: expect.objectContaining({
+        cycleId: 'cycle-1', startsAt: '2026-08-25T00:00:00.000Z', endsAt: '2026-08-26T00:00:00.000Z',
+      }),
+    })]);
+    expect(payload[0]).not.toHaveProperty('allowedStudentIds');
+    expect(payload[0].currentCycle).not.toHaveProperty('assignedStudentIds');
+    expect(payload[0].currentCycle).not.toHaveProperty('completedStudentIds');
+    expect(payload[0].currentCycle).not.toHaveProperty('students');
+    expect(JSON.stringify(payload)).not.toContain('S2');
   });
 
   it('preserves includeInactive=1 compatibility', async () => {

@@ -16,13 +16,43 @@ export async function GET(request: Request) {
       || (studentIds.length === 1 && !studentIds[0].trim())) {
       return Response.json({ error: '과제 조회 요청 형식이 올바르지 않습니다.' }, { status: 400 });
     }
+    const studentId = studentIds.length === 1 ? studentIds[0].trim() : null;
+    if (!studentId && !isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
     const reader = await createConfiguredSheetsReader(request);
     const includeInactive = searchParams.get('includeInactive') === '1';
     const tasks = await listTaskCycleProjections(reader, {
       ...(includeInactive ? { includeInactive: true } : {}),
-      ...(studentIds.length === 1 ? { studentId: studentIds[0].trim() } : {}),
+      ...(studentId ? { studentId } : {}),
     });
-    return Response.json(tasks);
+    if (!studentId) return Response.json(tasks);
+    return Response.json(tasks.map((task) => {
+      const { allowedStudentIds, currentCycle, ...publicTask } = task;
+      const directStatus = currentCycle?.students?.find((student) => student.studentId === studentId);
+      const hasAssignedCycleStatus = Array.isArray(currentCycle?.assignedStudentIds);
+      const hasCompletedCycleStatus = Array.isArray(currentCycle?.completedStudentIds);
+      const assigned = directStatus?.assigned
+        ?? (hasAssignedCycleStatus
+          ? currentCycle.assignedStudentIds.includes(studentId)
+          : allowedStudentIds.includes(studentId));
+      const completed = directStatus?.completed
+        ?? (hasCompletedCycleStatus ? currentCycle.completedStudentIds.includes(studentId) : undefined);
+      return {
+        ...publicTask,
+        ...(currentCycle ? {
+          currentCycle: {
+            cycleId: currentCycle.cycleId,
+            startsAt: currentCycle.startsAt,
+            endsAt: currentCycle.endsAt,
+            transition: currentCycle.transition,
+          },
+        } : {}),
+        studentStatus: {
+          studentId,
+          assigned,
+          ...(completed === undefined ? {} : { completed }),
+        },
+      };
+    }));
   } catch (error) {
     const message = error instanceof Error ? error.message : '과제 목록을 불러오지 못했습니다.';
     return Response.json({ error: message }, { status: 500 });
