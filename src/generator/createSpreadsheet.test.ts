@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { REQUIRED_SHEETS } from './config/schema';
-import { buildSpreadsheetValueRanges } from './createSpreadsheet';
+import { buildSpreadsheetSheetDefinitions, buildSpreadsheetValueRanges } from './createSpreadsheet';
 
 const OPTIONS = {
   appTitle: '학급 매점',
@@ -13,16 +13,36 @@ const OPTIONS = {
 
 const RECOVERY_CODE = 'ABCD-1234-EFGH-5678';
 
+function columnIndexToLetter(index: number): string {
+  let value = index + 1;
+  let result = '';
+  while (value > 0) {
+    value -= 1;
+    result = String.fromCharCode(65 + (value % 26)) + result;
+    value = Math.floor(value / 26);
+  }
+  return result;
+}
+
 describe('spreadsheet initialization values', () => {
   it('includes a canonical header range for every required sheet', () => {
     const ranges = buildSpreadsheetValueRanges(OPTIONS);
 
     for (const [sheetName, columns] of Object.entries(REQUIRED_SHEETS)) {
-      const lastColumn = String.fromCharCode('A'.charCodeAt(0) + columns.length - 1);
+      const lastColumn = columnIndexToLetter(columns.length - 1);
       expect(ranges).toContainEqual({
         range: `${sheetName}!A1:${lastColumn}1`,
         values: [columns],
       });
+    }
+  });
+
+  it('creates all nine physical sheets with enough explicit grid columns', () => {
+    const definitions = buildSpreadsheetSheetDefinitions();
+    expect(definitions.map(({ properties }) => properties.title)).toEqual(Object.keys(REQUIRED_SHEETS));
+    for (const { properties } of definitions) {
+      const name = properties.title as keyof typeof REQUIRED_SHEETS;
+      expect(properties.gridProperties.columnCount).toBeGreaterThanOrEqual(REQUIRED_SHEETS[name].length);
     }
   });
 

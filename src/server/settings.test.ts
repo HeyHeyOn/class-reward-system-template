@@ -31,6 +31,47 @@ describe('settings', () => {
     expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', fontFamily: 'default', qrManualInputEnabled: false, classTimeZone: 'Asia/Seoul', schemaVersion: 1, systemVersion: SYSTEM_VERSION, systemName: '학급 보상 시스템', source: 'env' });
   });
 
+  it('uses legacy schema version 1 when the deployment spreadsheet id is unset', async () => {
+    const settings = await getAppSettings({ env: {} });
+
+    expect(settings.schemaVersion).toBe(1);
+    expect(settings.source).toBe('unset');
+  });
+
+  it('uses legacy schema version 1 when the Settings sheet is missing', async () => {
+    const settings = await getAppSettings({
+      env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
+      settingsReader: {
+        async getRows() {
+          throw new Error('Unable to parse range: Settings!A:B');
+        },
+      },
+    });
+
+    expect(settings.schemaVersion).toBe(1);
+    expect(settings.source).toBe('env');
+  });
+
+  it.each([undefined, '', 'not-a-version', '2oops', '2.5', '0', '-1'])(
+    'uses legacy schema version 1 when the Settings schemaVersion is missing or invalid: %s',
+    async (schemaVersion) => {
+      const settings = await getAppSettings({
+        env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
+        settingsReader: {
+          async getRows() {
+            return [
+              ['key', 'value'],
+              ...(schemaVersion === undefined ? [] : [['schemaVersion', schemaVersion]]),
+            ];
+          },
+        },
+      });
+
+      expect(settings.schemaVersion).toBe(1);
+      expect(settings.source).toBe('sheet');
+    },
+  );
+
   it('reads currency unit and app title from Settings sheet when present', async () => {
     const settings = await getAppSettings({
       env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
@@ -46,7 +87,7 @@ describe('settings', () => {
             ['fontFamily', 'school-safe-notice'],
             ['qrManualInputEnabled', 'TRUE'],
             ['classTimeZone', 'America/New_York'],
-            ['schemaVersion', '1'],
+            ['schemaVersion', '7'],
             ['systemVersion', '0.2.0-phase1'],
             ['systemName', '햇살반 보상 시스템'],
           ];
@@ -54,7 +95,7 @@ describe('settings', () => {
       },
     });
 
-    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '별', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'purple', fontFamily: 'school-safe-notice', qrManualInputEnabled: true, classTimeZone: 'America/New_York', schemaVersion: 1, systemVersion: '0.2.0-phase1', systemName: '햇살반 보상 시스템', source: 'sheet' });
+    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '별', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'purple', fontFamily: 'school-safe-notice', qrManualInputEnabled: true, classTimeZone: 'America/New_York', schemaVersion: 7, systemVersion: '0.2.0-phase1', systemName: '햇살반 보상 시스템', source: 'sheet' });
   });
 
   it('accepts white, black, and navy theme colors from Settings sheet', async () => {
@@ -174,6 +215,39 @@ describe('settings', () => {
 
     expect(result.classTimeZone).toBe('America/New_York');
     expect(timeZoneWrites).toEqual([]);
+  });
+
+  it.each([
+    ['2', 2],
+    ['1', 1],
+    ['future', 1],
+  ])('preserves valid schemaVersion %s on ordinary settings save and defaults invalid legacy to %i', async (storedVersion, expectedVersion) => {
+    const schemaWrites: string[] = [];
+    let reads = 0;
+    const settingsStore: SheetsStore = {
+      async getRows() {
+        reads += 1;
+        return [['key', 'value'], ['classTimeZone', 'America/New_York'], ['schemaVersion', storedVersion]];
+      },
+      async updateCell(_sheetName, rowNumber, _columnName, value) {
+        if (rowNumber === 3) schemaWrites.push(String(value));
+      },
+      async appendRow(_sheetName, values) {
+        if (values[0] === 'schemaVersion') schemaWrites.push(values[1]);
+      },
+    };
+
+    const result = await saveAppSettings({
+      settingsStore,
+      spreadsheetIdOrUrl: 'env-sheet-id',
+      appTitle: '일반 설정 변경',
+      env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
+    });
+
+    expect(result.classTimeZone).toBe('America/New_York');
+    expect(result.schemaVersion).toBe(expectedVersion);
+    expect(schemaWrites).toEqual([String(expectedVersion)]);
+    expect(reads).toBe(10);
   });
 
   it.each([undefined, '', '+09:00'])('returns the Seoul fallback without repairing omitted legacy time zone %s', async (legacyValue) => {

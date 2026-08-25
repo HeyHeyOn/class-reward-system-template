@@ -49,18 +49,28 @@ export function buildSpreadsheetValueRanges(options: ClassRewardInstanceOptions,
   ];
 }
 
+export function buildSpreadsheetSheetDefinitions() {
+  return Object.entries(REQUIRED_SHEETS).map(([title, columns]) => ({
+    properties: {
+      title,
+      gridProperties: { columnCount: columns.length },
+    },
+  }));
+}
+
 export async function createClassRewardSpreadsheet(optionsInput: Partial<ClassRewardInstanceOptions>, request: Request): Promise<GeneratedSpreadsheet> {
   const options = normalizeClassRewardCreateOptions(optionsInput);
   const { auth, authMode, ownerEmail } = createGeneratorSheetsAuth(request);
   const recovery: RecoveryMetadata = { ownerEmail, recoveryCode: generateRecoveryCode() };
   const sheets = google.sheets({ version: 'v4', auth });
   const title = buildSpreadsheetTitle(options);
-  const sheetNames = Object.keys(REQUIRED_SHEETS);
+  const sheetDefinitions = buildSpreadsheetSheetDefinitions();
+  const sheetNames = sheetDefinitions.map(({ properties }) => properties.title);
 
   const created = await sheets.spreadsheets.create({
     requestBody: {
       properties: { title },
-      sheets: sheetNames.map((sheetName) => ({ properties: { title: sheetName } })),
+      sheets: sheetDefinitions,
     },
   });
 

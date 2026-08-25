@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildTaskAssignmentAppendRow,
   buildTaskCompletionAppendRow,
   buildTaskAppendRow,
   buildTransactionAppendRow,
@@ -7,6 +8,8 @@ import {
   parseAllowedStudentIds,
   parseProductRow,
   parseStudentRow,
+  parseTaskAssignmentRow,
+  parseTaskAssignmentRows,
   parseTaskCompletionRow,
   parseTaskRow,
   parseTransactionRow,
@@ -268,5 +271,182 @@ describe('sheets row parsing', () => {
     expect(buildTransactionAppendRow(transactionHeaders, transaction)).toEqual([
       'kiosk', '4', JSON.stringify(transaction.items), 'TR-3', 'COMPLETED', '김민준', '6', completion.timestamp, 'S001', '10',
     ]);
+  });
+
+  it('round-trips TaskAssignments by canonical headers and preserves physical row order', () => {
+    const headers = [
+      'assignmentId', 'taskId', 'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt',
+      'ruleVersion', 'timeZone', 'studentId', 'status', 'source', 'previousAssignmentId',
+      'createdAt', 'schemaVersion', 'note',
+    ];
+    const first = {
+      assignmentId: 'A-2', taskId: 'T-1', taskInstanceId: 'TI-1', cycleId: 'C-1',
+      cycleStartsAt: '2026-08-25T00:00:00.000Z', cycleEndsAt: '2026-08-26T00:00:00.000Z',
+      ruleVersion: 2, timeZone: 'Asia/Seoul', studentId: 'S-1', status: 'ASSIGNED' as const,
+      source: 'ADMIN' as const, previousAssignmentId: '', createdAt: '2026-08-25T09:00:00.000Z',
+      schemaVersion: 2, note: 'first physical row',
+    };
+    const second = {
+      ...first, assignmentId: 'A-1', status: 'UNASSIGNED' as const, source: 'CARRY_FORWARD' as const,
+      previousAssignmentId: 'A-2', createdAt: '2026-08-24T09:00:00.000Z', note: '',
+    };
+    const rows = [buildTaskAssignmentAppendRow(headers, first), buildTaskAssignmentAppendRow(headers, second)];
+
+    expect(rows[0]).toEqual([
+      'A-2', 'T-1', 'TI-1', 'C-1', first.cycleStartsAt, first.cycleEndsAt, '2', 'Asia/Seoul',
+      'S-1', 'ASSIGNED', 'ADMIN', '', first.createdAt, '2', 'first physical row',
+    ]);
+    expect(parseTaskAssignmentRow(rows[0], createHeaderIndex(headers))).toEqual(first);
+    expect(parseTaskAssignmentRows(rows, createHeaderIndex(headers)).map(({ assignmentId }) => assignmentId))
+      .toEqual(['A-2', 'A-1']);
+  });
+
+  it('rejects malformed TaskAssignment enum and version cells', () => {
+    const headers = [
+      'assignmentId', 'taskId', 'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt',
+      'ruleVersion', 'timeZone', 'studentId', 'status', 'source', 'previousAssignmentId',
+      'createdAt', 'schemaVersion', 'note',
+    ];
+    const valid = ['A-1', 'T-1', 'TI-1', 'C-1', 'start', 'end', '1', 'Asia/Seoul', 'S-1', 'ASSIGNED', 'QR', '', 'created', '2', ''];
+    expect(parseTaskAssignmentRow([...valid.slice(0, 9), 'DONE', ...valid.slice(10)], createHeaderIndex(headers))).toBeNull();
+    expect(parseTaskAssignmentRow([...valid.slice(0, 10), 'BANK', ...valid.slice(11)], createHeaderIndex(headers))).toBeNull();
+    expect(parseTaskAssignmentRow([...valid.slice(0, 6), 'not-a-version', ...valid.slice(7)], createHeaderIndex(headers))).toBeNull();
+    expect(parseTaskAssignmentRow([...valid.slice(0, 13), '0', ...valid.slice(14)], createHeaderIndex(headers))).toBeNull();
+  });
+
+  it('reads legacy completions unchanged and round-trips additive cycle snapshots', () => {
+    const legacyHeaders = ['completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note'];
+    const legacyRow = ['TC-L', '2026-08-25T00:00:00Z', 'T-1', 'S-1', '학생', '5', '10', '15', 'SUCCESS', 'legacy'];
+    expect(parseTaskCompletionRow(legacyRow, createHeaderIndex(legacyHeaders))).toEqual({
+      completionId: 'TC-L', timestamp: '2026-08-25T00:00:00Z', taskId: 'T-1', studentId: 'S-1',
+      studentName: '학생', reward: 5, balanceBefore: 10, balanceAfter: 15, status: 'SUCCESS', note: 'legacy',
+    });
+
+    const headers = [...legacyHeaders, 'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion', 'timeZone', 'source', 'assignmentId', 'schemaVersion'];
+    const carried = {
+      completionId: 'TC-C', timestamp: '2026-08-26T00:00:00Z', taskId: 'T-1', studentId: 'S-1',
+      studentName: '학생', reward: 0 as const, balanceBefore: 15, balanceAfter: 15, status: 'SUCCESS', note: '',
+      taskInstanceId: 'TI-1', cycleId: 'C-2', cycleStartsAt: '2026-08-26T00:00:00Z',
+      cycleEndsAt: '2026-08-27T00:00:00Z', ruleVersion: 2, timeZone: 'Asia/Seoul',
+      source: 'CARRY_FORWARD' as const, assignmentId: 'A-1', schemaVersion: 2,
+    };
+    const row = buildTaskCompletionAppendRow(headers, carried);
+    expect(parseTaskCompletionRow(row, createHeaderIndex(headers))).toEqual(carried);
+    expect(row.slice(-9)).toEqual(['TI-1', 'C-2', carried.cycleStartsAt, carried.cycleEndsAt, '2', 'Asia/Seoul', 'CARRY_FORWARD', 'A-1', '2']);
+  });
+
+  it('round-trips NONE-cycle rows with null cycleEndsAt as an empty cell', () => {
+    const assignmentHeaders = [
+      'assignmentId', 'taskId', 'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion',
+      'timeZone', 'studentId', 'status', 'source', 'previousAssignmentId', 'createdAt', 'schemaVersion', 'note',
+    ];
+    const noneCycleStartsAt = '2026-08-25T00:00:00Z';
+    const noneCycleId = `v1|TI-1|r1|${noneCycleStartsAt}`;
+    const assignment = {
+      assignmentId: 'A-NONE', taskId: 'T-1', taskInstanceId: 'TI-1', cycleId: noneCycleId,
+      cycleStartsAt: noneCycleStartsAt,
+      cycleEndsAt: null, ruleVersion: 1, timeZone: 'Asia/Seoul', studentId: 'S-1', status: 'ASSIGNED' as const,
+      source: 'ADMIN' as const, previousAssignmentId: '', createdAt: 'created', schemaVersion: 2, note: '',
+    };
+    const assignmentRow = buildTaskAssignmentAppendRow(assignmentHeaders, assignment);
+    expect(assignmentRow[5]).toBe('');
+    expect(parseTaskAssignmentRow(assignmentRow, createHeaderIndex(assignmentHeaders))).toEqual(assignment);
+
+    const completionHeaders = [
+      'completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter',
+      'status', 'note', 'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion', 'timeZone',
+      'source', 'assignmentId', 'schemaVersion',
+    ];
+    const completion = {
+      completionId: 'TC-NONE', timestamp: 'now', taskId: 'T-1', studentId: 'S-1', studentName: '학생', reward: 5,
+      balanceBefore: 10, balanceAfter: 15, status: 'SUCCESS', note: '', taskInstanceId: 'TI-1',
+      cycleId: noneCycleId, cycleStartsAt: noneCycleStartsAt, cycleEndsAt: null, ruleVersion: 1,
+      timeZone: 'Asia/Seoul', source: 'BANK' as const, assignmentId: '', schemaVersion: 2,
+    };
+    const completionRow = buildTaskCompletionAppendRow(completionHeaders, completion);
+    expect(completionRow[13]).toBe('');
+    expect(parseTaskCompletionRow(completionRow, createHeaderIndex(completionHeaders))).toEqual(completion);
+  });
+
+  it('fails closed when serializing malformed versioned ledger snapshots', () => {
+    const completionHeaders = [
+      'completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter',
+      'status', 'note', 'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion', 'timeZone',
+      'source', 'assignmentId', 'schemaVersion',
+    ];
+    const legacy = {
+      completionId: 'TC-1', timestamp: 'now', taskId: 'T-1', studentId: 'S-1', studentName: '학생', reward: 5,
+      balanceBefore: 10, balanceAfter: 15, status: 'SUCCESS', note: '',
+    };
+    expect(() => buildTaskCompletionAppendRow(completionHeaders, legacy)).not.toThrow();
+    for (const malformed of [
+      { ...legacy, taskInstanceId: 'partial' },
+      { ...legacy, taskInstanceId: 'TI', cycleId: 'C', cycleStartsAt: 'start', cycleEndsAt: null, ruleVersion: 1, timeZone: 'Asia/Seoul', source: 'INVALID', schemaVersion: 2 },
+      { ...legacy, taskInstanceId: 'TI', cycleId: 'C', cycleStartsAt: 'start', cycleEndsAt: null, ruleVersion: 0, timeZone: 'Asia/Seoul', source: 'BANK', schemaVersion: 2 },
+      { ...legacy, taskInstanceId: 'TI', cycleId: 'C', cycleStartsAt: 'start', cycleEndsAt: null, ruleVersion: 1, timeZone: 'Asia/Seoul', source: 'BANK', schemaVersion: 1.5 },
+    ]) expect(() => buildTaskCompletionAppendRow(completionHeaders, malformed as never)).toThrow();
+
+    const assignmentHeaders = [
+      'assignmentId', 'taskId', 'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion',
+      'timeZone', 'studentId', 'status', 'source', 'previousAssignmentId', 'createdAt', 'schemaVersion', 'note',
+    ];
+    const assignment = {
+      assignmentId: 'A', taskId: 'T', taskInstanceId: 'TI', cycleId: 'C', cycleStartsAt: 'start', cycleEndsAt: null,
+      ruleVersion: 1, timeZone: 'Asia/Seoul', studentId: 'S', status: 'ASSIGNED', source: 'ADMIN',
+      previousAssignmentId: '', createdAt: 'created', schemaVersion: 2, note: '',
+    };
+    for (const malformed of [
+      { ...assignment, assignmentId: '' }, { ...assignment, cycleEndsAt: undefined }, { ...assignment, status: 'DONE' },
+      { ...assignment, source: 'BANK' }, { ...assignment, ruleVersion: 0 }, { ...assignment, schemaVersion: -1 },
+    ]) expect(() => buildTaskAssignmentAppendRow(assignmentHeaders, malformed as never)).toThrow();
+  });
+
+  it('returns null for partial or malformed versioned rows', () => {
+    const headers = [
+      'completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter',
+      'status', 'note', 'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion', 'timeZone',
+      'source', 'assignmentId', 'schemaVersion',
+    ];
+    const base = ['TC', 'now', 'T', 'S', '학생', '5', '10', '15', 'SUCCESS', '', 'TI', 'C', 'start', '', '1', 'Asia/Seoul', 'BANK', '', '2'];
+    expect(parseTaskCompletionRow([...base.slice(0, 11), '', ...base.slice(12)], createHeaderIndex(headers))).toBeNull();
+    expect(parseTaskCompletionRow([...base.slice(0, 16), 'INVALID', ...base.slice(17)], createHeaderIndex(headers))).toBeNull();
+    expect(parseTaskCompletionRow([...base.slice(0, 18), '0'], createHeaderIndex(headers))).toBeNull();
+  });
+
+  it('fails closed for whitespace IDs, unsupported schema versions, and incomplete ledger headers', () => {
+    const assignmentHeaders = [
+      'assignmentId', 'taskId', 'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion',
+      'timeZone', 'studentId', 'status', 'source', 'previousAssignmentId', 'createdAt', 'schemaVersion', 'note',
+    ];
+    const assignment = {
+      assignmentId: 'A', taskId: 'T', taskInstanceId: 'TI', cycleId: 'C', cycleStartsAt: 'start', cycleEndsAt: null,
+      ruleVersion: 1, timeZone: 'Asia/Seoul', studentId: 'S', status: 'ASSIGNED' as const, source: 'ADMIN' as const,
+      previousAssignmentId: '', createdAt: 'created', schemaVersion: 2, note: '',
+    };
+    expect(() => buildTaskAssignmentAppendRow(assignmentHeaders, { ...assignment, assignmentId: '   ' })).toThrow();
+    expect(() => buildTaskAssignmentAppendRow(assignmentHeaders.filter((header) => header !== 'studentId'), assignment)).toThrow(/studentId/);
+    expect(() => buildTaskAssignmentAppendRow([...assignmentHeaders, ' studentId '], assignment)).toThrow(/studentId/);
+    expect(() => buildTaskAssignmentAppendRow(['extra', ...assignmentHeaders].reverse(), assignment)).not.toThrow();
+    for (const schemaVersion of [1, 3]) {
+      const row = ['A', 'T', 'TI', 'C', 'start', '', '1', 'Asia/Seoul', 'S', 'ASSIGNED', 'ADMIN', '', 'created', String(schemaVersion), ''];
+      expect(parseTaskAssignmentRow(row, createHeaderIndex(assignmentHeaders))).toBeNull();
+      expect(() => buildTaskAssignmentAppendRow(assignmentHeaders, { ...assignment, schemaVersion })).toThrow();
+    }
+
+    const legacyHeaders = ['completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note'];
+    const legacy = { completionId: 'TC', timestamp: 'now', taskId: 'T', studentId: 'S', studentName: '학생', reward: 1, balanceBefore: 1, balanceAfter: 2, status: 'SUCCESS', note: '' };
+    expect(() => buildTaskCompletionAppendRow(legacyHeaders.filter((header) => header !== 'taskId'), legacy)).toThrow(/taskId/);
+    expect(() => buildTaskCompletionAppendRow(legacyHeaders, legacy)).not.toThrow();
+
+    const versionedHeaders = [...legacyHeaders, 'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion', 'timeZone', 'source', 'assignmentId', 'schemaVersion'];
+    const versioned = { ...legacy, taskInstanceId: 'TI', cycleId: 'C', cycleStartsAt: 'start', cycleEndsAt: null, ruleVersion: 1, timeZone: 'Asia/Seoul', source: 'BANK' as const, assignmentId: '', schemaVersion: 2 };
+    expect(() => buildTaskCompletionAppendRow(versionedHeaders, { ...versioned, cycleId: '   ' })).toThrow();
+    expect(() => buildTaskCompletionAppendRow(versionedHeaders.filter((header) => header !== 'assignmentId'), versioned)).toThrow(/assignmentId/);
+    expect(() => buildTaskCompletionAppendRow([...versionedHeaders, ' schemaVersion '], versioned)).toThrow(/schemaVersion/);
+    for (const schemaVersion of [1, 3]) {
+      const row = ['TC', 'now', 'T', 'S', '학생', '1', '1', '2', 'SUCCESS', '', 'TI', 'C', 'start', '', '1', 'Asia/Seoul', 'BANK', '', String(schemaVersion)];
+      expect(parseTaskCompletionRow(row, createHeaderIndex(versionedHeaders))).toBeNull();
+      expect(() => buildTaskCompletionAppendRow(versionedHeaders, { ...versioned, schemaVersion })).toThrow();
+    }
   });
 });

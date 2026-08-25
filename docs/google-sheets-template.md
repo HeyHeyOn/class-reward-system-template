@@ -1,6 +1,6 @@
 # Google Sheets 템플릿
 
-학급 보상 시스템 생성기는 신규 스프레드시트에 아래 **8개 시트**를 순서대로 만듭니다. 시트 이름과 헤더 이름은 대소문자를 포함해 그대로 사용해야 합니다.
+학급 보상 시스템 생성기는 신규 스프레드시트에 아래 **9개 시트**를 순서대로 만듭니다. 시트 이름과 헤더 이름은 대소문자를 포함해 그대로 사용해야 합니다.
 
 1. `Students`
 2. `Products`
@@ -8,8 +8,9 @@
 4. `Adjustments`
 5. `Settings`
 6. `Tasks`
-7. `TaskCompletions`
-8. `Recovery`
+7. `TaskAssignments`
+8. `TaskCompletions`
+9. `Recovery`
 
 ## Students
 
@@ -83,18 +84,18 @@ key | value
 신규 생성 시 포함되는 핵심 버전 값:
 
 ```text
-schemaVersion | 1
+schemaVersion | 2
 systemVersion | 0.4.0-phase3
 ```
 
-그 밖에 `systemName`, `appTitle`, `bankTitle`, `currencyUnit`, `themeColor`, `qrManualInputEnabled` 등의 설정을 저장합니다. `schemaVersion`은 시트 구조 호환성, `systemVersion`은 생성된 시스템 릴리스를 식별합니다.
+그 밖에 `systemName`, `appTitle`, `bankTitle`, `currencyUnit`, `classTimeZone`, `themeColor`, `qrManualInputEnabled` 등의 설정을 저장합니다. 신규 인스턴스의 `classTimeZone` 기본값은 `Asia/Seoul`입니다. `schemaVersion`은 시트 구조 호환성, `systemVersion`은 생성된 시스템 릴리스를 식별합니다.
 
 ## Tasks
 
-과제 정의와 대상 학생을 저장합니다.
+과제 정의, 현재 recurrence rule, 다음 cycle부터 적용할 pending rule을 저장합니다.
 
 ```text
-taskId | title | description | reward | isActive | sortOrder | createdAt | updatedAt | allowedStudentIds
+taskId | title | description | reward | isActive | sortOrder | createdAt | updatedAt | allowedStudentIds | taskInstanceId | ruleVersion | scheduleEffectiveFrom | recurrenceTimeZone | recurrenceType | recurrenceTime | recurrenceWeekday | recurrenceDayOfMonth | resetCompletionOnCycle | resetAssignmentOnCycle | pendingRuleVersion | pendingEffectiveFrom | pendingTimeZone | pendingRecurrenceType | pendingRecurrenceTime | pendingRecurrenceWeekday | pendingRecurrenceDayOfMonth | pendingResetCompletionOnCycle | pendingResetAssignmentOnCycle
 ```
 
 - `taskId`: 과제 고유 ID
@@ -104,15 +105,36 @@ taskId | title | description | reward | isActive | sortOrder | createdAt | updat
 - `sortOrder`: 표시 순서
 - `createdAt`, `updatedAt`: 생성/수정 시각
 - `allowedStudentIds`: 참여 가능한 학생 ID 목록
+- `taskInstanceId`, `ruleVersion`, `scheduleEffectiveFrom`: 과제 instance와 현재 스케줄 규칙 버전/적용 시점
+- `recurrenceTimeZone`, `recurrenceType`, `recurrenceTime`, `recurrenceWeekday`, `recurrenceDayOfMonth`: 현재 반복 일정
+- `resetCompletionOnCycle`, `resetAssignmentOnCycle`: cycle 전환 시 상태 초기화 정책
+- `pending*`: 진행 중 cycle을 바꾸지 않고 다음 적용 시점부터 사용할 예약 규칙
 
 신규 템플릿에는 레거시 컬럼 `maxCompletionsPerStudent`를 만들지 않습니다. 자세한 호환 정책은 [스키마 호환성 정책](architecture/schema-compatibility.md)을 참고하세요.
+
+## TaskAssignments
+
+반복 과제의 cycle별 학생 배정 원장을 저장합니다.
+
+```text
+assignmentId | taskId | taskInstanceId | cycleId | cycleStartsAt | cycleEndsAt | ruleVersion | timeZone | studentId | status | source | previousAssignmentId | createdAt | schemaVersion | note
+```
+
+- `assignmentId`: 배정 원장 고유 ID
+- `taskId`, `taskInstanceId`, `cycleId`: 과제와 cycle 식별 정보
+- `cycleStartsAt`, `cycleEndsAt`, `ruleVersion`, `timeZone`: 배정 당시의 cycle/rule 스냅샷
+- `studentId`, `status`, `source`: 대상 학생, 배정 상태, 생성 출처
+- `status`: `ASSIGNED`, `UNASSIGNED` 중 하나
+- `source`: `ADMIN`, `QR`, `LEGACY_SEED`, `CARRY_FORWARD` 중 하나
+- `previousAssignmentId`: 이전 cycle 배정과의 연결
+- `createdAt`, `schemaVersion`, `note`: 감사 및 호환 메타데이터
 
 ## TaskCompletions
 
 과제 완료 및 보상 반영 결과를 기록합니다.
 
 ```text
-completionId | timestamp | taskId | studentId | studentName | reward | balanceBefore | balanceAfter | status | note
+completionId | timestamp | taskId | studentId | studentName | reward | balanceBefore | balanceAfter | status | note | taskInstanceId | cycleId | cycleStartsAt | cycleEndsAt | ruleVersion | timeZone | source | assignmentId | schemaVersion
 ```
 
 - `completionId`: 완료 기록 고유 ID
@@ -122,6 +144,9 @@ completionId | timestamp | taskId | studentId | studentName | reward | balanceBe
 - `balanceBefore`, `balanceAfter`: 지급 전후 잔액
 - `status`: 완료 처리 상태
 - `note`: 운영 메모
+- `taskInstanceId`, `cycleId`, `cycleStartsAt`, `cycleEndsAt`, `ruleVersion`, `timeZone`: 완료 당시의 과제 cycle/rule 스냅샷
+- `source`, `assignmentId`, `schemaVersion`: 완료 출처, 연결된 배정, 기록 스키마 버전
+- `source`: `BANK`, `ADMIN`, `CARRY_FORWARD`, `ADMIN_RESET` 중 하나
 
 동일한 과제 instance에서 학생별 성공 완료는 한 번만 인정합니다.
 
@@ -140,6 +165,6 @@ key | value
 - Google API로 접근하는 계정에는 필요한 범위의 스프레드시트 권한을 부여합니다.
 - `Recovery`를 포함한 스프레드시트 전체 열람 권한을 관리자 전용으로 제한합니다.
 - 기존 시트나 컬럼을 삭제·덮어쓰기·이름 변경하는 파괴적 자동 마이그레이션은 수행하지 않습니다.
-- 런타임 호환에 필요한 누락 시트 또는 헤더(예: `Tasks`, `TaskCompletions`)는 기존 데이터와 컬럼을 보존한 채 append될 수 있습니다.
+- 누락 시트 생성과 race-safe 마이그레이션은 별도 절차에서 다룹니다. 현재 append 경로는 누락된 `TaskAssignments` 시트를 자동 생성하지 않습니다.
 - canonical 스키마로 전면 재작성하는 작업은 사용자 동의와 백업이 있는 별도 절차로만 수행합니다.
 - 레거시 컬럼과 시트의 상세 원칙은 [스키마 호환성 정책](architecture/schema-compatibility.md)을 따릅니다.

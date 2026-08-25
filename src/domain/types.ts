@@ -73,6 +73,46 @@ export type TaskCompletion = {
   balanceAfter: number;
   status: string;
   note: string;
+  /** Schema-v2 cycle snapshot fields are absent only on legacy rows. */
+  taskInstanceId?: string;
+  cycleId?: string;
+  cycleStartsAt?: string;
+  cycleEndsAt?: string | null;
+  ruleVersion?: number;
+  timeZone?: string;
+  source?: TaskCompletionSource;
+  assignmentId?: string;
+  schemaVersion?: number;
+};
+
+export type TaskCompletionSource = 'BANK' | 'ADMIN' | 'CARRY_FORWARD' | 'ADMIN_RESET';
+
+/** Carry-forward records never mint a reward or change the persisted balance. */
+export type CarryForwardTaskCompletion = TaskCompletion & {
+  source: 'CARRY_FORWARD';
+  reward: 0;
+};
+
+export type TaskAssignmentStatusValue = 'ASSIGNED' | 'UNASSIGNED';
+export type TaskAssignmentSource = 'ADMIN' | 'QR' | 'LEGACY_SEED' | 'CARRY_FORWARD';
+
+/** Append-only assignment event. Physical sheet row order is authoritative. */
+export type TaskAssignment = {
+  assignmentId: string;
+  taskId: string;
+  taskInstanceId: string;
+  cycleId: string;
+  cycleStartsAt: string;
+  cycleEndsAt: string | null;
+  ruleVersion: number;
+  timeZone: string;
+  studentId: string;
+  status: TaskAssignmentStatusValue;
+  source: TaskAssignmentSource;
+  previousAssignmentId: string;
+  createdAt: string;
+  schemaVersion: number;
+  note: string;
 };
 
 export type TaskAssignmentStudentStatus = {

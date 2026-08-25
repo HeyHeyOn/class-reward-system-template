@@ -4,7 +4,11 @@ import type {
   Product,
   Student,
   StudentStatus,
+  TaskAssignment,
+  TaskAssignmentSource,
+  TaskAssignmentStatusValue,
   TaskCompletion,
+  TaskCompletionSource,
   Transaction,
 } from '@/domain/types';
 import { parseTaskScheduleCells, serializeTaskScheduleCells } from '@/domain/taskSchedule';
@@ -193,7 +197,7 @@ export function parseTaskCompletionRow(row: string[], headerIndex: HeaderIndex):
   const balanceBefore = parseNumberCell(getRowCell(row, headerIndex, 'balanceBefore'));
   const balanceAfter = parseNumberCell(getRowCell(row, headerIndex, 'balanceAfter'));
   if (!completionId || !timestamp || !taskId || !studentId || !studentName || reward === null || balanceBefore === null || balanceAfter === null) return null;
-  return {
+  const completion: TaskCompletion = {
     completionId,
     timestamp,
     taskId,
@@ -205,9 +209,41 @@ export function parseTaskCompletionRow(row: string[], headerIndex: HeaderIndex):
     status: getRowCell(row, headerIndex, 'status') || 'UNKNOWN',
     note: getRowCell(row, headerIndex, 'note'),
   };
+  const snapshotValues = TASK_COMPLETION_SNAPSHOT_FIELDS.map((field) => getRowCell(row, headerIndex, field));
+  if (snapshotValues.every((value) => !value)) return completion;
+
+  const [taskInstanceId, cycleId, cycleStartsAt, cycleEndsAt, ruleVersionCell, timeZone, sourceCell, assignmentId, schemaVersionCell] = snapshotValues;
+  const ruleVersion = parsePositiveIntegerCell(ruleVersionCell);
+  const schemaVersion = parsePositiveIntegerCell(schemaVersionCell);
+  const source = parseTaskCompletionSource(sourceCell);
+  if (!taskInstanceId || !cycleId || !cycleStartsAt || !timeZone || !source || ruleVersion === null
+    || schemaVersion !== LEDGER_SCHEMA_VERSION) return null;
+  if (source === 'CARRY_FORWARD' && (reward !== 0 || balanceBefore !== balanceAfter)) return null;
+  return {
+    ...completion,
+    taskInstanceId,
+    cycleId,
+    cycleStartsAt,
+    cycleEndsAt: cycleEndsAt || null,
+    ruleVersion,
+    timeZone,
+    source,
+    assignmentId,
+    schemaVersion,
+  };
 }
 
 export function buildTaskCompletionAppendRow(headers: string[], completion: TaskCompletion): string[] {
+  validateRequiredHeaders(headers, REQUIRED_TASK_COMPLETION_HEADERS);
+  validateTaskCompletionBase(completion);
+  validateTaskCompletionSnapshot(completion);
+  const snapshot = completion as TaskCompletion & Record<(typeof TASK_COMPLETION_SNAPSHOT_FIELDS)[number], unknown>;
+  if (TASK_COMPLETION_SNAPSHOT_FIELDS.some((field) => snapshot[field] !== undefined)) {
+    validateRequiredHeaders(headers, TASK_COMPLETION_SNAPSHOT_FIELDS);
+  }
+  if (completion.source === 'CARRY_FORWARD' && (completion.reward !== 0 || completion.balanceBefore !== completion.balanceAfter)) {
+    throw new Error('CARRY_FORWARD completion must have reward 0 and an unchanged balance');
+  }
   const valuesByHeader: Record<string, string> = {
     completionId: completion.completionId,
     timestamp: completion.timestamp,
@@ -219,6 +255,71 @@ export function buildTaskCompletionAppendRow(headers: string[], completion: Task
     balanceAfter: String(completion.balanceAfter),
     status: completion.status,
     note: completion.note,
+    taskInstanceId: completion.taskInstanceId ?? '',
+    cycleId: completion.cycleId ?? '',
+    cycleStartsAt: completion.cycleStartsAt ?? '',
+    cycleEndsAt: completion.cycleEndsAt ?? '',
+    ruleVersion: completion.ruleVersion === undefined ? '' : String(completion.ruleVersion),
+    timeZone: completion.timeZone ?? '',
+    source: completion.source ?? '',
+    assignmentId: completion.assignmentId ?? '',
+    schemaVersion: completion.schemaVersion === undefined ? '' : String(completion.schemaVersion),
+  };
+  return headers.map((header) => valuesByHeader[header.trim()] ?? '');
+}
+
+const TASK_COMPLETION_SNAPSHOT_FIELDS = [
+  'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion', 'timeZone', 'source',
+  'assignmentId', 'schemaVersion',
+] as const;
+const REQUIRED_TASK_COMPLETION_HEADERS = [
+  'completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore',
+  'balanceAfter', 'status', 'note',
+] as const;
+const REQUIRED_TASK_ASSIGNMENT_HEADERS = [
+  'assignmentId', 'taskId', 'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion',
+  'timeZone', 'studentId', 'status', 'source', 'previousAssignmentId', 'createdAt', 'schemaVersion', 'note',
+] as const;
+const LEDGER_SCHEMA_VERSION = 2;
+
+export function parseTaskAssignmentRow(row: string[], headerIndex: HeaderIndex): TaskAssignment | null {
+  const assignmentId = getRowCell(row, headerIndex, 'assignmentId');
+  const taskId = getRowCell(row, headerIndex, 'taskId');
+  const taskInstanceId = getRowCell(row, headerIndex, 'taskInstanceId');
+  const cycleId = getRowCell(row, headerIndex, 'cycleId');
+  const cycleStartsAt = getRowCell(row, headerIndex, 'cycleStartsAt');
+  const cycleEndsAt = getRowCell(row, headerIndex, 'cycleEndsAt');
+  const ruleVersion = parsePositiveIntegerCell(getRowCell(row, headerIndex, 'ruleVersion'));
+  const timeZone = getRowCell(row, headerIndex, 'timeZone');
+  const studentId = getRowCell(row, headerIndex, 'studentId');
+  const status = parseTaskAssignmentStatus(getRowCell(row, headerIndex, 'status'));
+  const source = parseTaskAssignmentSource(getRowCell(row, headerIndex, 'source'));
+  const createdAt = getRowCell(row, headerIndex, 'createdAt');
+  const schemaVersion = parsePositiveIntegerCell(getRowCell(row, headerIndex, 'schemaVersion'));
+  if (!assignmentId || !taskId || !taskInstanceId || !cycleId || !cycleStartsAt
+    || ruleVersion === null || !timeZone || !studentId || !status || !source || !createdAt
+    || schemaVersion !== LEDGER_SCHEMA_VERSION) return null;
+  return {
+    assignmentId, taskId, taskInstanceId, cycleId, cycleStartsAt, cycleEndsAt: cycleEndsAt || null, ruleVersion, timeZone,
+    studentId, status, source,
+    previousAssignmentId: getRowCell(row, headerIndex, 'previousAssignmentId'),
+    createdAt, schemaVersion, note: getRowCell(row, headerIndex, 'note'),
+  };
+}
+
+/** Deliberately maps without sorting: physical append order is the ledger order. */
+export function parseTaskAssignmentRows(rows: string[][], headerIndex: HeaderIndex): TaskAssignment[] {
+  return rows.map((row) => parseTaskAssignmentRow(row, headerIndex)).filter((event): event is TaskAssignment => event !== null);
+}
+
+export function buildTaskAssignmentAppendRow(headers: string[], assignment: TaskAssignment): string[] {
+  validateRequiredHeaders(headers, REQUIRED_TASK_ASSIGNMENT_HEADERS);
+  validateTaskAssignment(assignment);
+  const valuesByHeader: Record<string, string> = {
+    ...assignment,
+    cycleEndsAt: assignment.cycleEndsAt ?? '',
+    ruleVersion: String(assignment.ruleVersion),
+    schemaVersion: String(assignment.schemaVersion),
   };
   return headers.map((header) => valuesByHeader[header.trim()] ?? '');
 }
@@ -245,6 +346,84 @@ function parseNumberCell(value: string): number | null {
   const parsed = Number(value.replace(/,/g, ''));
 
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parsePositiveIntegerCell(value: string): number | null {
+  const parsed = parseNumberCell(value);
+  return parsed !== null && Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0;
+}
+
+function isRequiredString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function validateRequiredHeaders(headers: string[], requiredHeaders: readonly string[]): void {
+  const normalizedHeaders = headers.map((header) => header.trim());
+  const missing = requiredHeaders.filter((header) => !normalizedHeaders.includes(header));
+  const duplicates = requiredHeaders.filter(
+    (header) => normalizedHeaders.filter((candidate) => candidate === header).length > 1,
+  );
+  if (missing.length > 0 || duplicates.length > 0) {
+    const details = [
+      ...(missing.length > 0 ? [`missing: ${missing.join(', ')}`] : []),
+      ...(duplicates.length > 0 ? [`duplicate: ${duplicates.join(', ')}`] : []),
+    ].join('; ');
+    throw new Error(`Ledger headers are invalid (${details})`);
+  }
+}
+
+function validateTaskCompletionBase(completion: TaskCompletion): void {
+  if (!isRequiredString(completion.completionId) || !isRequiredString(completion.timestamp)
+    || !isRequiredString(completion.taskId) || !isRequiredString(completion.studentId)
+    || !isRequiredString(completion.studentName) || !isRequiredString(completion.status)
+    || typeof completion.note !== 'string' || !Number.isFinite(completion.reward)
+    || !Number.isFinite(completion.balanceBefore) || !Number.isFinite(completion.balanceAfter)) {
+    throw new Error('TaskCompletion must contain all required legacy fields');
+  }
+}
+
+function validateTaskCompletionSnapshot(completion: TaskCompletion): void {
+  const snapshot = completion as TaskCompletion & Record<(typeof TASK_COMPLETION_SNAPSHOT_FIELDS)[number], unknown>;
+  if (TASK_COMPLETION_SNAPSHOT_FIELDS.every((field) => snapshot[field] === undefined)) return;
+  if (!isRequiredString(snapshot.taskInstanceId) || !isRequiredString(snapshot.cycleId)
+    || !isRequiredString(snapshot.cycleStartsAt)
+    || !(snapshot.cycleEndsAt === null || isRequiredString(snapshot.cycleEndsAt))
+    || !isPositiveInteger(snapshot.ruleVersion) || !isRequiredString(snapshot.timeZone)
+    || parseTaskCompletionSource(String(snapshot.source ?? '')) === null
+    || snapshot.schemaVersion !== LEDGER_SCHEMA_VERSION
+    || !(snapshot.assignmentId === undefined || typeof snapshot.assignmentId === 'string')) {
+    throw new Error('TaskCompletion snapshot must be entirely absent or a valid complete versioned snapshot');
+  }
+}
+
+function validateTaskAssignment(assignment: TaskAssignment): void {
+  if (!isRequiredString(assignment.assignmentId) || !isRequiredString(assignment.taskId)
+    || !isRequiredString(assignment.taskInstanceId) || !isRequiredString(assignment.cycleId)
+    || !isRequiredString(assignment.cycleStartsAt)
+    || !(assignment.cycleEndsAt === null || isRequiredString(assignment.cycleEndsAt))
+    || !isPositiveInteger(assignment.ruleVersion) || !isRequiredString(assignment.timeZone)
+    || !isRequiredString(assignment.studentId) || parseTaskAssignmentStatus(String(assignment.status ?? '')) === null
+    || parseTaskAssignmentSource(String(assignment.source ?? '')) === null || !isRequiredString(assignment.createdAt)
+    || assignment.schemaVersion !== LEDGER_SCHEMA_VERSION
+    || typeof assignment.previousAssignmentId !== 'string' || typeof assignment.note !== 'string') {
+    throw new Error('TaskAssignment must contain a valid complete versioned snapshot');
+  }
+}
+
+function parseTaskAssignmentStatus(value: string): TaskAssignmentStatusValue | null {
+  return value === 'ASSIGNED' || value === 'UNASSIGNED' ? value : null;
+}
+
+function parseTaskAssignmentSource(value: string): TaskAssignmentSource | null {
+  return value === 'ADMIN' || value === 'QR' || value === 'LEGACY_SEED' || value === 'CARRY_FORWARD' ? value : null;
+}
+
+function parseTaskCompletionSource(value: string): TaskCompletionSource | null {
+  return value === 'BANK' || value === 'ADMIN' || value === 'CARRY_FORWARD' || value === 'ADMIN_RESET' ? value : null;
 }
 
 function parseBooleanCell(value: string): boolean | null {

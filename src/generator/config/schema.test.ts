@@ -10,16 +10,27 @@ const EXPECTED_SHEETS = [
   ],
   ['Adjustments', ['adjustmentId', 'timestamp', 'studentId', 'amount', 'mode', 'operator']],
   ['Settings', ['key', 'value']],
-  ['Tasks', ['taskId', 'title', 'description', 'reward', 'isActive', 'sortOrder', 'createdAt', 'updatedAt', 'allowedStudentIds']],
+  ['Tasks', [
+    'taskId', 'title', 'description', 'reward', 'isActive', 'sortOrder', 'createdAt', 'updatedAt', 'allowedStudentIds',
+    'taskInstanceId', 'ruleVersion', 'scheduleEffectiveFrom', 'recurrenceTimeZone', 'recurrenceType',
+    'recurrenceTime', 'recurrenceWeekday', 'recurrenceDayOfMonth', 'resetCompletionOnCycle', 'resetAssignmentOnCycle',
+    'pendingRuleVersion', 'pendingEffectiveFrom', 'pendingTimeZone', 'pendingRecurrenceType', 'pendingRecurrenceTime',
+    'pendingRecurrenceWeekday', 'pendingRecurrenceDayOfMonth', 'pendingResetCompletionOnCycle', 'pendingResetAssignmentOnCycle',
+  ]],
+  ['TaskAssignments', [
+    'assignmentId', 'taskId', 'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion',
+    'timeZone', 'studentId', 'status', 'source', 'previousAssignmentId', 'createdAt', 'schemaVersion', 'note',
+  ]],
   [
     'TaskCompletions',
-    ['completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note'],
+    ['completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note',
+      'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion', 'timeZone', 'source', 'assignmentId', 'schemaVersion'],
   ],
   ['Recovery', ['key', 'value']],
 ] as const;
 
 describe('REQUIRED_SHEETS', () => {
-  it('defines exactly the eight canonical sheets and columns in order', () => {
+  it('defines exactly the nine canonical sheets and columns in order', () => {
     expect(Object.entries(REQUIRED_SHEETS)).toEqual(EXPECTED_SHEETS);
   });
 
@@ -29,6 +40,11 @@ describe('REQUIRED_SHEETS', () => {
 
   it('starts Recovery with key/value columns', () => {
     expect(REQUIRED_SHEETS.Recovery).toEqual(['key', 'value']);
+  });
+
+  it('defines the schema-v2 recurring ledger dimensions exactly', () => {
+    expect(REQUIRED_SHEETS.Tasks).toHaveLength(28);
+    expect(REQUIRED_SHEETS.TaskAssignments).toHaveLength(15);
   });
 
   it('does not add maxCompletionsPerStudent to newly generated Tasks sheets', () => {

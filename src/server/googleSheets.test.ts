@@ -82,4 +82,35 @@ describe('GoogleSheetsStore auth', () => {
     expect(googleMocks.sheets).toHaveBeenCalledWith({ version: 'v4', auth: googleMocks.oauth2Instances[0] });
     expect(googleMocks.sheetsValuesGet).toHaveBeenCalledWith({ spreadsheetId: 'sheet-123', range: 'Students!A:Z' });
   });
+
+  it('uses the canonical assignment range and does not auto-create a missing TaskAssignments sheet', async () => {
+    const missingSheet = new Error('Unable to parse range: TaskAssignments!A:O');
+    googleMocks.sheetsApi.spreadsheets.values.append.mockRejectedValueOnce(missingSheet);
+    const store = new GoogleSheetsStore('sheet-123');
+
+    await expect(store.appendRow('TaskAssignments', ['A-1'])).rejects.toBe(missingSheet);
+    expect(googleMocks.sheetsApi.spreadsheets.values.append).toHaveBeenCalledWith({
+      spreadsheetId: 'sheet-123', range: 'TaskAssignments!A:O', valueInputOption: 'RAW',
+      insertDataOption: 'INSERT_ROWS', requestBody: { values: [['A-1']] },
+    });
+    expect(googleMocks.sheetsApi.spreadsheets.batchUpdate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['Tasks', 'Tasks!A:AB'],
+    ['TaskCompletions', 'TaskCompletions!A:S'],
+    ['TaskAssignments', 'TaskAssignments!A:O'],
+  ] as const)('uses the fixed schema-v2 range for reading and appending %s', async (sheetName, range) => {
+    googleMocks.sheetsApi.spreadsheets.values.append.mockResolvedValueOnce({});
+    const store = new GoogleSheetsStore('sheet-123');
+
+    await store.getRows(sheetName);
+    await store.appendRow(sheetName, ['value']);
+
+    expect(googleMocks.sheetsValuesGet).toHaveBeenLastCalledWith({ spreadsheetId: 'sheet-123', range });
+    expect(googleMocks.sheetsApi.spreadsheets.values.append).toHaveBeenLastCalledWith({
+      spreadsheetId: 'sheet-123', range, valueInputOption: 'RAW', insertDataOption: 'INSERT_ROWS',
+      requestBody: { values: [['value']] },
+    });
+  });
 });

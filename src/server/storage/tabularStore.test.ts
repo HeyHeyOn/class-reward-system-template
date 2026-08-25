@@ -68,6 +68,7 @@ describe('tabular store port', () => {
       | 'Adjustments'
       | 'Settings'
       | 'Tasks'
+      | 'TaskAssignments'
       | 'TaskCompletions'
     >();
 

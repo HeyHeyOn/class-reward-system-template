@@ -1,7 +1,7 @@
 import type { SheetsReader, SheetsStore } from '@/server/sheetsRepository';
 import { getSheetSettings, saveSheetSetting } from '@/server/sheetsRepository';
 import { saveAdminPassword } from '@/server/adminAuth';
-import { LATEST_SCHEMA_VERSION, SYSTEM_NAME_KO, SYSTEM_VERSION } from '@/generator/config/versions';
+import { SYSTEM_NAME_KO, SYSTEM_VERSION } from '@/generator/config/versions';
 import { normalizeFontFamily, type FontFamily } from '@/lib/fontSettings';
 import { DEFAULT_CLASS_TIME_ZONE, normalizeLegacyTimeZone } from '@/domain/taskSchedule';
 import { isValidNamedTimeZone } from '@/domain/timeZone';
@@ -59,7 +59,7 @@ const DEFAULT_CURRENCY_UNIT = '원';
 const DEFAULT_APP_TITLE = '학급 매점';
 const DEFAULT_BANK_TITLE = '학급 은행';
 const DEFAULT_THEME_COLOR: ThemeColor = 'white';
-const DEFAULT_SCHEMA_VERSION = LATEST_SCHEMA_VERSION;
+const LEGACY_DEFAULT_SCHEMA_VERSION = 1;
 const DEFAULT_SYSTEM_VERSION = SYSTEM_VERSION;
 const DEFAULT_SYSTEM_NAME = SYSTEM_NAME_KO;
 const DEFAULT_QR_MANUAL_INPUT_ENABLED = false;
@@ -162,10 +162,11 @@ export async function saveAppSettings(options: SaveSettingsOptions): Promise<App
   const themeColor = normalizeThemeColor(options.themeColor);
   const fontFamily = normalizeFontFamily(options.fontFamily);
   const qrManualInputEnabled = normalizeQrManualInputEnabled(options.qrManualInputEnabled);
+  const existingSettings = await getSheetSettings(options.settingsStore);
+  const schemaVersion = normalizeSchemaVersion(existingSettings.schemaVersion);
   let classTimeZone: string;
   if (options.classTimeZone === undefined) {
-    const sheetSettings = await getSheetSettings(options.settingsStore);
-    classTimeZone = normalizeLegacyTimeZone(sheetSettings.classTimeZone);
+    classTimeZone = normalizeLegacyTimeZone(existingSettings.classTimeZone);
   } else {
     const classTimeZoneValidation = validateClassTimeZone(options.classTimeZone);
     if (classTimeZoneValidation.ok === false) throw new Error(classTimeZoneValidation.message);
@@ -180,7 +181,7 @@ export async function saveAppSettings(options: SaveSettingsOptions): Promise<App
   if (options.classTimeZone !== undefined) {
     await saveSheetSetting(options.settingsStore, { key: 'classTimeZone', value: classTimeZone });
   }
-  await saveSheetSetting(options.settingsStore, { key: 'schemaVersion', value: String(DEFAULT_SCHEMA_VERSION) });
+  await saveSheetSetting(options.settingsStore, { key: 'schemaVersion', value: String(schemaVersion) });
   await saveSheetSetting(options.settingsStore, { key: 'systemVersion', value: DEFAULT_SYSTEM_VERSION });
   await saveSheetSetting(options.settingsStore, { key: 'systemName', value: DEFAULT_SYSTEM_NAME });
   if (options.adminPassword?.trim()) {
@@ -196,7 +197,7 @@ export async function saveAppSettings(options: SaveSettingsOptions): Promise<App
     fontFamily,
     qrManualInputEnabled,
     classTimeZone,
-    schemaVersion: DEFAULT_SCHEMA_VERSION,
+    schemaVersion,
     systemVersion: DEFAULT_SYSTEM_VERSION,
     systemName: DEFAULT_SYSTEM_NAME,
     source: 'sheet',
@@ -232,8 +233,8 @@ export function normalizeQrManualInputEnabled(value: unknown): boolean {
 }
 
 export function normalizeSchemaVersion(value: unknown): number {
-  const parsed = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SCHEMA_VERSION;
+  const parsed = typeof value === 'number' ? value : Number(String(value ?? ''));
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : LEGACY_DEFAULT_SCHEMA_VERSION;
 }
 
 export function normalizeSystemVersion(value: unknown): string {
@@ -258,7 +259,7 @@ function defaultAppSettings(spreadsheetId: string, source: AppSettings['source']
     fontFamily: 'default',
     qrManualInputEnabled: DEFAULT_QR_MANUAL_INPUT_ENABLED,
     classTimeZone: DEFAULT_CLASS_TIME_ZONE,
-    schemaVersion: DEFAULT_SCHEMA_VERSION,
+    schemaVersion: LEGACY_DEFAULT_SCHEMA_VERSION,
     systemVersion: DEFAULT_SYSTEM_VERSION,
     systemName: DEFAULT_SYSTEM_NAME,
     source,

@@ -5,6 +5,7 @@ export type OperationalSheetName =
   | 'Adjustments'
   | 'Settings'
   | 'Tasks'
+  | 'TaskAssignments'
   | 'TaskCompletions';
 
 export type SheetCellUpdate = {

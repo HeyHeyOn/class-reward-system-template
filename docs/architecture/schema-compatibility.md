@@ -10,9 +10,19 @@
 
 ## 스키마 범위
 
-- **신규 생성 스키마(`GeneratedSheetName`)**: `Students`, `Products`, `Transactions`, `Adjustments`, `Settings`, `Tasks`, `TaskCompletions`, `Recovery`의 8개 시트입니다.
-- **일반 운영 스키마(`OperationalSheetName`)**: 위 목록에서 `Recovery`를 제외한 7개 시트입니다. Task 3의 저장소 타입 이동 전까지 기존 `SheetName` 타입 alias는 이 운영 범위를 뜻합니다.
+- **신규 생성 스키마(`GeneratedSheetName`)**: `Students`, `Products`, `Transactions`, `Adjustments`, `Settings`, `Tasks`, `TaskAssignments`, `TaskCompletions`, `Recovery`의 9개 시트입니다.
+- **일반 운영 스키마(`OperationalSheetName`)**: 위 목록에서 `Recovery`를 제외한 8개 시트입니다. 기존 `SheetName` 타입 alias는 이 운영 범위를 뜻합니다.
 - generator와 doctor는 생성 스키마의 시트 존재 여부와 canonical 헤더를 검사할 수 있습니다. 일반 운영 repository와 API route에는 `Recovery` 접근을 허용하지 않습니다.
+
+신규 생성 스키마 버전은 `2`이며 Settings의 `classTimeZone` 기본값은 `Asia/Seoul`입니다. Google Sheets 생성 요청은 9개 시트 각각에 canonical 헤더 길이 이상의 명시적 `gridProperties.columnCount`를 설정합니다.
+
+## Recurring task ledger (schema v2)
+
+- `Tasks`는 기존 9개 컬럼 뒤에 현재/예약 recurrence rule 컬럼 19개를 더한 28개 canonical 컬럼을 사용합니다.
+- `TaskAssignments`는 cycle별 학생 배정을 보존하는 15개 컬럼의 append-only 원장입니다.
+- `TaskCompletions`는 기존 10개 컬럼을 그대로 앞에 유지하고 cycle/rule/assignment 스냅샷 컬럼 9개를 뒤에 추가합니다.
+- 현재 cycle의 해석은 `taskInstanceId`, `cycleId`, `ruleVersion`, `timeZone` 스냅샷을 기준으로 하며, pending rule은 `pendingEffectiveFrom` 이전의 cycle 기록을 소급 변경하지 않습니다.
+- 신규 `Tasks`에는 `maxCompletionsPerStudent`를 생성하지 않습니다. 레거시 인스턴스에서는 아래 비파괴 호환 원칙을 유지합니다.
 
 ## Recovery
 
@@ -29,7 +39,7 @@
 
 - `Adjustments`는 **legacy/reserved** 시트입니다.
 - R0 런타임은 `Adjustments`를 읽거나 쓰지 않습니다.
-- 과거 템플릿과의 비파괴 호환을 위해 신규 생성 8개 목록에서는 제거하지 않습니다.
+- 과거 템플릿과의 비파괴 호환을 위해 신규 생성 9개 목록에서는 제거하지 않습니다.
 - 현재 관리자 잔액 조정의 canonical 원장은 `Transactions`이며 `status=ADMIN_ADJUSTMENT`로 기록합니다.
 - 별도의 `Adjustments` 행으로 이중 기록하지 않습니다.
 
@@ -44,7 +54,7 @@
 ## 기존 시트와 하위 호환 원칙
 
 - 시트나 컬럼의 삭제·덮어쓰기·이름 변경 같은 파괴적 자동 마이그레이션은 수행하지 않습니다.
-- 런타임 호환에 필요한 누락 시트 또는 헤더(예: `Tasks`, `TaskCompletions`)는 기존 데이터와 기존 컬럼을 보존한 채 append될 수 있습니다.
+- 누락 시트 생성과 race-safe 마이그레이션은 별도 절차에서 다룹니다. 현재 append 경로는 누락된 `TaskAssignments` 시트를 자동 생성하지 않습니다.
 - 런타임은 필요한 canonical 컬럼을 이름으로 찾고, 알 수 없는 추가 레거시 컬럼은 가능한 한 보존하고 무시합니다.
 - 신규 생성 계약의 변경이 기존 인스턴스의 즉시 전면 재작성을 의미하지 않습니다. canonical 스키마로 전면 재작성하는 작업은 명시적인 검토, 백업, 사용자 동의가 있는 별도 절차로만 수행합니다.
 - 호환을 위해 남겨 둔 시트나 컬럼이 현재 런타임 기능에서 사용된다는 의미는 아닙니다.

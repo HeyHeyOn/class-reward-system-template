@@ -9,8 +9,9 @@ const SHEET_RANGES: Record<OperationalSheetName, string> = {
   Transactions: 'Transactions!A:Z',
   Adjustments: 'Adjustments!A:Z',
   Settings: 'Settings!A:Z',
-  Tasks: 'Tasks!A:Z',
-  TaskCompletions: 'TaskCompletions!A:Z',
+  Tasks: 'Tasks!A:AB',
+  TaskAssignments: 'TaskAssignments!A:O',
+  TaskCompletions: 'TaskCompletions!A:S',
 };
 
 export class GoogleSheetsStore implements TabularStore {
@@ -77,7 +78,7 @@ export class GoogleSheetsStore implements TabularStore {
     try {
       await sheets.spreadsheets.values.append({
         spreadsheetId: this.spreadsheetId,
-        range: `${sheetName}!A:Z`,
+        range: SHEET_RANGES[sheetName],
         valueInputOption: 'RAW',
         insertDataOption: 'INSERT_ROWS',
         requestBody: { values: [values] },
@@ -87,7 +88,7 @@ export class GoogleSheetsStore implements TabularStore {
       await this.createSheet(sheetName);
       await sheets.spreadsheets.values.append({
         spreadsheetId: this.spreadsheetId,
-        range: `${sheetName}!A:Z`,
+        range: SHEET_RANGES[sheetName],
         valueInputOption: 'RAW',
         insertDataOption: 'INSERT_ROWS',
         requestBody: { values: [values] },

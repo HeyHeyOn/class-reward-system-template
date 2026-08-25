@@ -18,7 +18,7 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
   it('defines the reward-system schema without student auto-import as an MVP capability', () => {
     expect(SYSTEM_NAME_KO).toBe('학급 보상 시스템');
     expect(GENERATOR_NAME_KO).toBe('학급 보상 시스템 생성기');
-    expect(LATEST_SCHEMA_VERSION).toBeGreaterThanOrEqual(1);
+    expect(LATEST_SCHEMA_VERSION).toBe(2);
     expect(DEFAULT_SETTINGS).toEqual(
       expect.arrayContaining([
         { key: 'schemaVersion', value: String(LATEST_SCHEMA_VERSION) },
@@ -26,6 +26,7 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
         { key: 'appTitle', value: '학급 매점' },
         { key: 'bankTitle', value: '학급 은행' },
         { key: 'currencyUnit', value: '원' },
+        { key: 'classTimeZone', value: 'Asia/Seoul' },
       ]),
     );
     expect(Object.keys(REQUIRED_SHEETS)).toEqual([
@@ -35,16 +36,21 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
       'Adjustments',
       'Settings',
       'Tasks',
+      'TaskAssignments',
       'TaskCompletions',
       'Recovery',
     ]);
     expect(REQUIRED_SHEETS.Students).toEqual(['studentId', 'name', 'balance', 'status']);
-    expect(REQUIRED_SHEETS.Tasks).toEqual(['taskId', 'title', 'description', 'reward', 'isActive', 'sortOrder', 'createdAt', 'updatedAt', 'allowedStudentIds']);
+    expect(REQUIRED_SHEETS.Tasks).toHaveLength(28);
+    expect(REQUIRED_SHEETS.TaskAssignments).toEqual([
+      'assignmentId', 'taskId', 'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion',
+      'timeZone', 'studentId', 'status', 'source', 'previousAssignmentId', 'createdAt', 'schemaVersion', 'note',
+    ]);
     expect(REQUIRED_SHEETS.Transactions).toEqual(['transactionId', 'timestamp', 'studentId', 'studentName', 'items', 'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator']);
     expect(JSON.stringify({ REQUIRED_SHEETS, DEFAULT_SETTINGS })).not.toMatch(/import|csv|NEIS|나이스|자동 불러오기/iu);
   });
 
-  it('separates the eight-sheet generated schema from the seven-sheet operational compatibility alias', () => {
+  it('separates the nine-sheet generated schema from the eight-sheet operational compatibility alias', () => {
     expect(GENERATED_SHEET_NAMES).toEqual([
       'Students',
       'Products',
@@ -52,6 +58,7 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
       'Adjustments',
       'Settings',
       'Tasks',
+      'TaskAssignments',
       'TaskCompletions',
       'Recovery',
     ]);
@@ -62,6 +69,7 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
       'Adjustments',
       'Settings',
       'Tasks',
+      'TaskAssignments',
       'TaskCompletions',
     ]);
     expect(OPERATIONAL_SHEET_NAMES).toEqual(GENERATED_SHEET_NAMES.filter((name) => name !== 'Recovery'));
@@ -222,7 +230,7 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
     expect(rendered).toContain('currencyUnit: 별');
     expect(rendered).toContain('themeColor: purple');
     expect(rendered).toContain('Students: studentId, name, balance, status');
-    expect(rendered).toContain('Tasks: taskId, title, description, reward, isActive, sortOrder, createdAt, updatedAt, allowedStudentIds');
+    expect(rendered).toContain('TaskAssignments: assignmentId, taskId, taskInstanceId');
     expect(rendered).toContain('Vercel 환경변수: GOOGLE_SHEET_ID, ADMIN_PASSWORD, AUTH_SECRET');
     expect(rendered).not.toContain('비밀번호');
   });
