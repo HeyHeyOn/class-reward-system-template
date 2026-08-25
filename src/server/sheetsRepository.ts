@@ -1,6 +1,12 @@
 import type { ClassTask, Product, Student, TaskAssignmentStatus, TaskCompletion, Transaction } from '@/domain/types';
 import { normalizeLegacyTimeZone } from '@/domain/taskSchedule';
 import { evaluateTaskCompletion, isCompletionForTaskInstance } from '@/domain/taskCompletionPolicy';
+import type { TaskCycleState } from '@/domain/taskCycleState';
+import {
+  readTaskCycleHistory,
+  readTaskCycleState,
+  type TaskCycleHistoryEvent,
+} from '@/server/repositories/sheets/taskCycleQueries';
 import {
   buildTaskAppendRow,
   buildTaskCompletionAppendRow,
@@ -12,6 +18,7 @@ import {
   parseTaskRow,
   parseTransactionRow,
   requireColumns,
+  REQUIRED_TASK_COMPLETION_COLUMNS,
 } from '@/server/sheetsRows';
 import type {
   OperationalSheetName,
@@ -108,7 +115,7 @@ const REQUIRED_STUDENT_COLUMNS = ['studentId', 'name', 'balance', 'status'];
 const REQUIRED_PRODUCT_COLUMNS = ['productId', 'name', 'price', 'stock', 'isActive'];
 const REQUIRED_TRANSACTION_COLUMNS = ['transactionId', 'timestamp', 'studentId', 'studentName', 'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator'];
 const REQUIRED_TASK_COLUMNS = ['taskId', 'title', 'description', 'reward', 'isActive', 'sortOrder'];
-const REQUIRED_TASK_COMPLETION_COLUMNS = ['completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note'];
+
 const TASK_HEADERS = ['taskId', 'title', 'description', 'reward', 'isActive', 'sortOrder', 'createdAt', 'updatedAt', 'allowedStudentIds'];
 const VERSIONED_TASK_SCHEDULE_HEADERS = [
   'taskInstanceId', 'ruleVersion', 'scheduleEffectiveFrom', 'recurrenceTimeZone', 'recurrenceType',
@@ -239,8 +246,38 @@ export type TaskAssignmentStatusUpdate = {
 export async function getTaskAssignmentStatus(reader: SheetsReader, taskId: string): Promise<TaskAssignmentStatus> {
   const task = await getTaskById(reader, taskId.trim());
   if (!task) throw new Error('과제를 찾을 수 없습니다.');
-  const [students, completions] = await Promise.all([getStudents(reader), getTaskCompletions(reader)]);
-  return buildTaskAssignmentStatus(task, students, completions);
+  const [students, cycleState] = await Promise.all([
+    getStudents(reader),
+    readTaskCycleState(reader, task, new Date().toISOString()),
+  ]);
+  return {
+    taskId: task.taskId,
+    students: students.map((student) => ({
+      studentId: student.studentId,
+      name: student.name,
+      assigned: cycleState.students[student.studentId]?.assigned ?? false,
+      completed: cycleState.students[student.studentId]?.completed ?? false,
+    })),
+  };
+}
+
+/** Pure current-cycle query. It deliberately accepts only a reader, so it cannot materialize or migrate. */
+export async function getTaskCycleState(
+  reader: SheetsReader,
+  taskId: string,
+  now: string = new Date().toISOString(),
+): Promise<TaskCycleState> {
+  const task = await getTaskById(reader, taskId.trim());
+  if (!task) throw new Error('과제를 찾을 수 없습니다.');
+  return readTaskCycleState(reader, task, now);
+}
+
+/** Event-snapshot history remains readable after the Tasks definition row is deleted. */
+export async function getTaskCycleHistory(
+  reader: SheetsReader,
+  filter: { taskId?: string; taskInstanceId?: string } = {},
+): Promise<TaskCycleHistoryEvent[]> {
+  return readTaskCycleHistory(reader, filter);
 }
 
 export async function updateTaskAssignmentStatus(store: SheetsStore, taskId: string, update: TaskAssignmentStatusUpdate): Promise<TaskAssignmentStatus> {
@@ -1185,7 +1222,7 @@ function assertVersionedTaskScheduleHeaders(headerIndex: ReadonlyMap<string, num
 
 function assertRequiredColumns(
   headerIndex: Map<string, number>,
-  requiredColumns: string[],
+  requiredColumns: readonly string[],
   sheetName: SheetName,
 ) {
   const result = requireColumns(headerIndex, requiredColumns);

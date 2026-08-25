@@ -23,7 +23,7 @@ export function createHeaderIndex(headers: string[]): HeaderIndex {
   return new Map(headers.map((header, index) => [header.trim(), index]));
 }
 
-export function requireColumns(headerIndex: HeaderIndex, requiredColumns: string[]): RequiredColumnsResult {
+export function requireColumns(headerIndex: HeaderIndex, requiredColumns: readonly string[]): RequiredColumnsResult {
   const missingColumns = requiredColumns.filter((column) => !headerIndex.has(column));
 
   if (missingColumns.length > 0) {
@@ -234,7 +234,7 @@ export function parseTaskCompletionRow(row: string[], headerIndex: HeaderIndex):
 }
 
 export function buildTaskCompletionAppendRow(headers: string[], completion: TaskCompletion): string[] {
-  validateRequiredHeaders(headers, REQUIRED_TASK_COMPLETION_HEADERS);
+  validateRequiredHeaders(headers, REQUIRED_TASK_COMPLETION_COLUMNS);
   validateTaskCompletionBase(completion);
   validateTaskCompletionSnapshot(completion);
   const snapshot = completion as TaskCompletion & Record<(typeof TASK_COMPLETION_SNAPSHOT_FIELDS)[number], unknown>;
@@ -272,11 +272,11 @@ const TASK_COMPLETION_SNAPSHOT_FIELDS = [
   'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion', 'timeZone', 'source',
   'assignmentId', 'schemaVersion',
 ] as const;
-const REQUIRED_TASK_COMPLETION_HEADERS = [
+export const REQUIRED_TASK_COMPLETION_COLUMNS = [
   'completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore',
   'balanceAfter', 'status', 'note',
 ] as const;
-const REQUIRED_TASK_ASSIGNMENT_HEADERS = [
+export const REQUIRED_TASK_ASSIGNMENT_COLUMNS = [
   'assignmentId', 'taskId', 'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion',
   'timeZone', 'studentId', 'status', 'source', 'previousAssignmentId', 'createdAt', 'schemaVersion', 'note',
 ] as const;
@@ -313,7 +313,7 @@ export function parseTaskAssignmentRows(rows: string[][], headerIndex: HeaderInd
 }
 
 export function buildTaskAssignmentAppendRow(headers: string[], assignment: TaskAssignment): string[] {
-  validateRequiredHeaders(headers, REQUIRED_TASK_ASSIGNMENT_HEADERS);
+  validateRequiredHeaders(headers, REQUIRED_TASK_ASSIGNMENT_COLUMNS);
   validateTaskAssignment(assignment);
   const valuesByHeader: Record<string, string> = {
     ...assignment,

@@ -26,6 +26,7 @@ import {
   updateTaskDetails,
   updateTaskDetailsBatch,
   getTaskAssignmentStatus,
+  getTaskCycleState,
   updateTaskAssignmentStatus,
   saveSheetSetting,
 } from '@/server/sheetsRepository';
@@ -1116,6 +1117,24 @@ describe('sheets repository', () => {
         { studentId: 'S001', name: '김민준', assigned: true, completed: true },
       ],
     });
+  });
+
+  it('exposes a pure repository cycle query without invoking any write capability', async () => {
+    let writes = 0;
+    const store = {
+      ...fakeReader,
+      async appendRow() { writes += 1; },
+      async updateCell() { writes += 1; },
+      async updateCells() { writes += 1; },
+      async updateHeaderRow() { writes += 1; },
+    };
+
+    await expect(getTaskCycleState(store, 'T001', '2026-08-25T00:00:00Z')).resolves.toMatchObject({
+      taskId: 'T001',
+      transition: 'PERMANENT',
+      students: { S001: { assigned: true, completed: true } },
+    });
+    expect(writes).toBe(0);
   });
 
   it('does not treat malformed numeric createdAt values as a task-instance boundary', async () => {
