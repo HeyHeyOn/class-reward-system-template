@@ -98,8 +98,8 @@ async function assertAssignmentState(store: RecurringSchemaMigrationStore, info:
   if (header.length === 0) {
     throw new MigrationConflictError('TaskAssignments', 'existing sheet has no canonical header');
   }
-  if (!sameHeader(header, TASK_ASSIGNMENT_HEADERS)) {
-    throw new MigrationConflictError('TaskAssignments', 'existing header is not canonical A1:O1');
+  if (!hasCanonicalPrefix(header, TASK_ASSIGNMENT_HEADERS)) {
+    throw new MigrationConflictError('TaskAssignments', 'existing header does not begin with canonical A1:O1');
   }
   if (info.columnCount < TASK_ASSIGNMENT_HEADERS.length) {
     throw new MigrationConflictError('TaskAssignments', 'canonical header exceeds grid width');
@@ -120,7 +120,7 @@ async function ensureAssignments(store: RecurringSchemaMigrationStore, initial: 
     if (!lookup.found) throw new MigrationConflictError('TaskAssignments', 'sheet absent after create');
   }
   const header = (await store.getRows('TaskAssignments'))[0] ?? [];
-  if (sameHeader(header, TASK_ASSIGNMENT_HEADERS)) return;
+  if (hasCanonicalPrefix(header, TASK_ASSIGNMENT_HEADERS)) return;
   if (racedCreate) {
     throw new MigrationConflictError('TaskAssignments', 'concurrent create was not already canonical');
   }

@@ -294,7 +294,9 @@ describe('cycle-aware completion command', () => {
       ruleVersion: 1, timeZone: 'UTC', source: 'BANK', assignmentId: 'A1', schemaVersion: 2,
     }));
 
-    await expect(resetTaskCompletionsBatch(store as never, ['T1'])).resolves.toEqual({ taskIds: ['T1'], deletedCount: 1 });
+    await expect(resetTaskCompletionsBatch(store as never, ['T1'])).resolves.toEqual({
+      taskIds: ['T1'], resetEventsAppended: 1, deletedCount: 1,
+    });
     expect(completionRecords(store)).toMatchObject([
       { completionId: 'DONE', status: 'SUCCESS' },
       { source: 'ADMIN_RESET', status: 'RESET' },
@@ -336,7 +338,9 @@ describe('cycle-aware completion command', () => {
     vi.setSystemTime(new Date(NOW));
     const store = completedThenUnassignedStore();
 
-    await expect(resetTaskCompletionsBatch(store as never, ['T1'])).resolves.toEqual({ taskIds: ['T1'], deletedCount: 1 });
+    await expect(resetTaskCompletionsBatch(store as never, ['T1'])).resolves.toEqual({
+      taskIds: ['T1'], resetEventsAppended: 1, deletedCount: 1,
+    });
     expect(store.rows.TaskAssignments).toHaveLength(3);
     expect(completionRecords(store)).toMatchObject([
       { completionId: 'DONE', status: 'SUCCESS', assignmentId: 'A1' },
@@ -369,7 +373,7 @@ describe('cycle-aware completion command', () => {
     const store = legacyCompletedUnassignedStore();
 
     await expect(resetTaskCompletionsBatch(store as never, ['T1']))
-      .resolves.toEqual({ taskIds: ['T1'], deletedCount: 1 });
+      .resolves.toEqual({ taskIds: ['T1'], resetEventsAppended: 1, deletedCount: 1 });
 
     expect((await getTaskAssignmentStatus(store as never, 'T1')).students)
       .toContainEqual({ studentId: 'S1', name: 'Kim', assigned: false, completed: false });

@@ -1,6 +1,7 @@
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { createConfiguredSheetsStore } from '@/server/googleSheets';
 import { deleteTasksBatch, updateTaskDetailsBatch } from '@/server/sheetsRepository';
+import { parseOptionalTaskScheduleEdit } from '../taskScheduleEdit';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,7 +9,6 @@ export async function PATCH(request: Request) {
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
   try {
-    const store = await createConfiguredSheetsStore(request);
     const payload = await request.json();
     const tasks = Array.isArray(payload.tasks)
       ? payload.tasks.map((task: Record<string, unknown>) => ({
@@ -19,8 +19,10 @@ export async function PATCH(request: Request) {
           isActive: Boolean(task.isActive),
           sortOrder: Number(task.sortOrder),
           allowedStudentIds: Array.isArray(task.allowedStudentIds) ? task.allowedStudentIds.map((id: unknown) => String(id)) : [],
+          ...parseScheduleProperty(task),
         }))
       : [];
+    const store = await createConfiguredSheetsStore(request);
     const result = await updateTaskDetailsBatch(store, tasks);
 
     return Response.json(result);
@@ -29,6 +31,11 @@ export async function PATCH(request: Request) {
 
     return Response.json({ error: message }, { status: 400 });
   }
+}
+
+function parseScheduleProperty(task: Record<string, unknown>) {
+  const schedule = parseOptionalTaskScheduleEdit(task.schedule);
+  return schedule === undefined ? {} : { schedule };
 }
 
 export async function DELETE(request: Request) {

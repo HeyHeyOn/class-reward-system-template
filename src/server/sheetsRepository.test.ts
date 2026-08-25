@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { TaskRecurrence } from '@/domain/types';
 import {
   createProduct,
   createStudent,
@@ -26,10 +27,17 @@ import {
   updateTaskDetailsBatch,
   getTaskAssignmentStatus,
   getTaskCycleState,
+  resetTaskCompletionsBatch,
 
   saveSheetSetting,
 } from '@/server/sheetsRepository';
-import { TASK_SCHEMA_HEADERS } from '@/server/repositories/sheets/recurringSchemaMigrator';
+import { getTaskHistoryDetail } from '@/server/repositories/sheets/taskHistoryQueries';
+import {
+  TASK_ASSIGNMENT_HEADERS,
+  TASK_COMPLETION_SCHEMA_HEADERS,
+  TASK_SCHEMA_HEADERS,
+} from '@/server/repositories/sheets/recurringSchemaMigrator';
+import { enqueueTaskCommand, taskCommandQueueKey } from '@/server/repositories/sheets/taskCommandQueue';
 
 type LocalStore = {
   getRows(sheetName: string): Promise<string[][]>;
@@ -106,6 +114,106 @@ function normalizeLegacyTasks(rows: string[][]): string[][] {
   ];
 }
 
+function legacyRecurringStore(taskIds: string[]) {
+  const rows: Record<string, string[][]> = {
+    Tasks: [
+      [...TASK_SCHEMA_HEADERS.slice(0, 9)],
+      ...taskIds.map((taskId) => [taskId, `Task ${taskId}`, '', '1', 'TRUE', '1', '2026-01-01T00:00:00Z', '', '']),
+    ],
+    TaskCompletions: [[...TASK_COMPLETION_SCHEMA_HEADERS.slice(0, 10)]],
+    Settings: [['key', 'value'], ['classTimeZone', 'UTC']],
+  };
+  const widths = new Map([['Tasks', 28], ['TaskCompletions', 19]]);
+  const migrationWrite = vi.fn();
+  const store = {
+    async getRows(sheetName: string) { return (rows[sheetName] ?? []).map((row) => [...row]); },
+    async lookupSheet(sheetName: string) {
+      if (!rows[sheetName]) return { found: false as const, reason: 'SHEET_NOT_FOUND' as const };
+      return { found: true as const, info: { sheetId: 1, title: sheetName, columnCount: widths.get(sheetName) ?? rows[sheetName][0].length } };
+    },
+    createSheetWithHeader: vi.fn(async (sheetName: string, headers: readonly string[]) => {
+      migrationWrite();
+      rows[sheetName] = [[...headers]];
+      widths.set(sheetName, headers.length);
+    }),
+    ensureColumnCount: vi.fn(async () => { migrationWrite(); }),
+    verifyHeaderCells: vi.fn(async () => undefined),
+    verifyAndWriteHeaderCells: vi.fn(async (sheetName: string, expected: { header: readonly string[] }, headers: string[]) => {
+      migrationWrite();
+      rows[sheetName][0] = [...expected.header, ...headers];
+    }),
+    writeHeaderCells: vi.fn(async () => { migrationWrite(); }),
+    updateHeaderRow: vi.fn(async () => { migrationWrite(); }),
+    updateCell: vi.fn(),
+    updateCells: vi.fn(),
+    appendRow: vi.fn(async () => { migrationWrite(); }),
+    deleteRow: vi.fn(),
+    deleteRows: vi.fn(),
+  };
+  return { store, migrationWrite };
+}
+
+function versionedScheduleMutationStore(warning?: 'current' | 'pending', coordinateConcurrentWrites = false) {
+  const taskValues: Record<string, string> = {
+    taskId: 'T-SERIAL', title: 'Task', description: '', reward: '1', isActive: 'TRUE', sortOrder: '1',
+    createdAt: '2026-08-20T00:00:00.000Z', updatedAt: '2026-08-20T00:00:00.000Z', allowedStudentIds: '',
+    taskInstanceId: 'instance-serial', ruleVersion: '1', scheduleEffectiveFrom: '2026-08-20T00:00:00.000Z',
+    recurrenceTimeZone: 'UTC', recurrenceType: warning === 'current' ? 'BROKEN' : 'DAILY', recurrenceTime: '08:00',
+    resetCompletionOnCycle: 'FALSE', resetAssignmentOnCycle: 'FALSE',
+    ...(warning === 'pending' ? {
+      pendingRuleVersion: '2', pendingEffectiveFrom: '2026-08-24T00:00:00.000Z', pendingTimeZone: 'UTC',
+      pendingRecurrenceType: 'BROKEN', pendingRecurrenceTime: '09:00',
+      pendingResetCompletionOnCycle: 'FALSE', pendingResetAssignmentOnCycle: 'FALSE',
+    } : {}),
+  };
+  const rows: Record<string, string[][]> = {
+    Tasks: [[...TASK_SCHEMA_HEADERS], TASK_SCHEMA_HEADERS.map((header) => taskValues[header] ?? '')],
+    TaskCompletions: [[...TASK_COMPLETION_SCHEMA_HEADERS]],
+    TaskAssignments: [[...TASK_ASSIGNMENT_HEADERS]],
+  };
+  const writes: Array<{ pendingRuleVersion: string; ruleVersion: string }> = [];
+  let concurrentWriteCount = 0;
+  let releaseConcurrentWrites: (() => void) | undefined;
+  const concurrentWrites = new Promise<void>((resolve) => { releaseConcurrentWrites = resolve; });
+  const migrationWrite = vi.fn();
+  const taskWrite = vi.fn(async (_sheetName: string, updates: Array<{ rowNumber: number; columnName: string; value: string | number }>) => {
+    if (coordinateConcurrentWrites) {
+      concurrentWriteCount += 1;
+      if (concurrentWriteCount === 1) {
+        await Promise.race([concurrentWrites, new Promise<void>((resolve) => setTimeout(resolve, 20))]);
+      } else {
+        releaseConcurrentWrites?.();
+      }
+    }
+    const header = rows.Tasks[0];
+    for (const update of updates) {
+      const column = header.indexOf(update.columnName);
+      if (column >= 0) rows.Tasks[update.rowNumber - 1][column] = String(update.value);
+    }
+    const saved = new Map(updates.map((update) => [update.columnName, String(update.value)]));
+    writes.push({
+      pendingRuleVersion: saved.get('pendingRuleVersion') ?? '',
+      ruleVersion: saved.get('ruleVersion') ?? '',
+    });
+  });
+  const store = {
+    async getRows(sheetName: string) { return (rows[sheetName] ?? []).map((row) => [...row]); },
+    async lookupSheet() {
+      return { found: true as const, info: { sheetId: 1, title: 'TaskAssignments', columnCount: TASK_ASSIGNMENT_HEADERS.length } };
+    },
+    updateCell: vi.fn(),
+    updateCells: taskWrite,
+    updateHeaderRow: migrationWrite,
+    appendRow: migrationWrite,
+  };
+  return { store, writes, migrationWrite, taskWrite };
+}
+
+const scheduleUpdate = (recurrence: TaskRecurrence) => ({
+  title: 'Task edited', description: '', reward: 1, isActive: true, sortOrder: 1,
+  schedule: { recurrence, timeZone: 'UTC', resetCompletionOnCycle: false, resetAssignmentOnCycle: false },
+});
+
 const sheetRows = {
   Students: [
     ['studentId', 'name', 'balance', 'qrValue', 'status', 'note'],
@@ -144,7 +252,10 @@ const fakeReader = {
 };
 
 describe('sheets repository', () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
 
   it('finds a student by studentId without requiring student number', async () => {
     const minimalReader = {
@@ -1064,7 +1175,7 @@ describe('sheets repository', () => {
       async appendRow() {},
     };
 
-    await expect(updateTaskDetailsBatch(fakeStore, [
+    await expect(updateTaskDetailsBatch(fakeStore as never, [
       { taskId: 'T001', title: '책 읽기 수정', description: '책 20분 읽기', reward: 7, isActive: true, sortOrder: 5, allowedStudentIds: [] },
       { taskId: 'T002', title: '비활성 과제', description: '숨김', reward: 2, isActive: false, sortOrder: 2, allowedStudentIds: [] },
     ])).resolves.toEqual([
@@ -1093,6 +1204,216 @@ describe('sheets repository', () => {
     ]);
   });
 
+  it('persists an already-effective pending schedule as current and one request-time edit as the next pending version', async () => {
+    const editedAt = '2026-08-25T09:30:00.000Z';
+    const taskValues: Record<string, string> = {
+      taskId: 'T-SCHEDULE', title: 'Read', description: '', reward: '5', isActive: 'TRUE', sortOrder: '1',
+      createdAt: '2026-08-20T00:00:00.000Z', updatedAt: '2026-08-20T00:00:00.000Z', allowedStudentIds: 'S1',
+      taskInstanceId: 'instance-stable', ruleVersion: '1', scheduleEffectiveFrom: '2026-08-20T00:00:00.000Z',
+      recurrenceTimeZone: 'UTC', recurrenceType: 'DAILY', recurrenceTime: '08:00',
+      resetCompletionOnCycle: 'FALSE', resetAssignmentOnCycle: 'FALSE',
+      pendingRuleVersion: '2', pendingEffectiveFrom: '2026-08-24T10:00:00.000Z', pendingTimeZone: 'UTC',
+      pendingRecurrenceType: 'WEEKLY', pendingRecurrenceTime: '09:00', pendingRecurrenceWeekday: '1',
+      pendingResetCompletionOnCycle: 'FALSE', pendingResetAssignmentOnCycle: 'FALSE',
+    };
+    const rows: Record<string, string[][]> = {
+      Tasks: [[...TASK_SCHEMA_HEADERS, 'customMetadata'], [
+        ...TASK_SCHEMA_HEADERS.map((header) => taskValues[header] ?? ''), 'preserve-me',
+      ]],
+      TaskCompletions: [[...TASK_COMPLETION_SCHEMA_HEADERS, 'customCompletionMetadata']],
+      TaskAssignments: [[...TASK_ASSIGNMENT_HEADERS, 'customAssignmentMetadata']],
+    };
+    const batches: Array<{ sheetName: string; updates: Array<{ rowNumber: number; columnName: string; value: string | number }> }> = [];
+    const store = {
+      async getRows(sheetName: string) { return rows[sheetName] ?? []; },
+      async lookupSheet() { return { found: true as const, info: { sheetId: 1, title: 'TaskAssignments', columnCount: TASK_ASSIGNMENT_HEADERS.length + 1 } }; },
+      async updateCell() { throw new Error('single-cell update should not be used'); },
+      async updateCells(sheetName: string, updates: Array<{ rowNumber: number; columnName: string; value: string | number }>) {
+        batches.push({ sheetName, updates });
+      },
+      async updateHeaderRow() { throw new Error('current schema must not be migrated'); },
+      async appendRow() { throw new Error('schedule edit must not append history or money rows'); },
+    };
+
+    const result = await updateTaskDetailsBatch(store as never, [{
+      taskId: 'T-SCHEDULE', title: 'Read edited', description: '', reward: 5, isActive: true, sortOrder: 1,
+      allowedStudentIds: ['S1'],
+      schedule: {
+        recurrence: { type: 'MONTHLY', time: '10:15', dayOfMonth: 15 }, timeZone: 'Asia/Seoul',
+        resetCompletionOnCycle: true, resetAssignmentOnCycle: true,
+      },
+    }], editedAt);
+
+    expect(result[0]).toMatchObject({
+      taskId: 'T-SCHEDULE', taskInstanceId: 'instance-stable',
+      schedule: { ruleVersion: 2, effectiveFrom: '2026-08-24T10:00:00.000Z', recurrence: { type: 'WEEKLY' } },
+      pendingSchedule: {
+        ruleVersion: 3, effectiveFrom: editedAt, timeZone: 'Asia/Seoul',
+        recurrence: { type: 'MONTHLY', time: '10:15', dayOfMonth: 15 },
+        resetCompletionOnCycle: true, resetAssignmentOnCycle: true,
+      },
+    });
+    expect(batches).toHaveLength(1);
+    expect(batches[0].sheetName).toBe('Tasks');
+    const saved = new Map(batches[0].updates.map((update) => [update.columnName, update.value]));
+    expect(saved.get('taskInstanceId')).toBe('instance-stable');
+    expect(saved.get('ruleVersion')).toBe('2');
+    expect(saved.get('scheduleEffectiveFrom')).toBe('2026-08-24T10:00:00.000Z');
+    expect(saved.get('pendingRuleVersion')).toBe('3');
+    expect(saved.get('pendingEffectiveFrom')).toBe(editedAt);
+    expect(saved.get('pendingRecurrenceType')).toBe('MONTHLY');
+    expect(saved.get('updatedAt')).toBe(editedAt);
+    expect(rows.TaskAssignments[0].at(-1)).toBe('customAssignmentMetadata');
+  });
+
+  it('serializes concurrent single schedule edits in the process-global task mutation queue', async () => {
+    const { store, writes } = versionedScheduleMutationStore(undefined, true);
+    const [first, second] = await Promise.all([
+      updateTaskDetails(store as never, 'T-SERIAL', scheduleUpdate({ type: 'DAILY', time: '09:00' }), '2026-08-25T09:00:00.000Z'),
+      updateTaskDetails(store as never, 'T-SERIAL', scheduleUpdate({ type: 'WEEKLY', time: '10:00', weekday: 2 }), '2026-08-25T09:01:00.000Z'),
+    ]);
+
+    expect(first.pendingSchedule?.ruleVersion).toBe(2);
+    expect(second.schedule?.ruleVersion).toBe(2);
+    expect(second.pendingSchedule?.ruleVersion).toBe(3);
+    expect(writes).toEqual([
+      { ruleVersion: '1', pendingRuleVersion: '2' },
+      { ruleVersion: '2', pendingRuleVersion: '3' },
+    ]);
+  });
+
+  it('observes a default single-edit timestamp only after earlier queued operations finish', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-25T09:00:00.000Z'));
+    let releaseBlocker!: () => void;
+    const blocker = enqueueTaskCommand(taskCommandQueueKey(''), () =>
+      new Promise<void>((resolve) => { releaseBlocker = resolve; }));
+    await Promise.resolve();
+
+    const { store } = versionedScheduleMutationStore();
+    const edit = updateTaskDetails(
+      store as never,
+      'T-SERIAL',
+      scheduleUpdate({ type: 'DAILY', time: '09:00' }),
+    );
+    vi.setSystemTime(new Date('2026-08-25T09:01:00.000Z'));
+    releaseBlocker();
+    await blocker;
+
+    await expect(edit).resolves.toMatchObject({
+      pendingSchedule: { effectiveFrom: '2026-08-25T09:01:00.000Z' },
+    });
+  });
+
+  it('promotes a later persisted pending schedule before applying an out-of-order explicit edit', async () => {
+    const { store, writes } = versionedScheduleMutationStore();
+    const first = await updateTaskDetails(
+      store as never,
+      'T-SERIAL',
+      scheduleUpdate({ type: 'DAILY', time: '09:00' }),
+      '2026-08-25T09:01:00.000Z',
+    );
+    const second = await updateTaskDetails(
+      store as never,
+      'T-SERIAL',
+      scheduleUpdate({ type: 'WEEKLY', time: '10:00', weekday: 2 }),
+      '2026-08-25T09:00:00.000Z',
+    );
+
+    expect(first).toMatchObject({
+      taskInstanceId: 'instance-serial',
+      schedule: { ruleVersion: 1 },
+      pendingSchedule: { ruleVersion: 2, effectiveFrom: '2026-08-25T09:01:00.000Z' },
+    });
+    expect(second).toMatchObject({
+      taskInstanceId: 'instance-serial',
+      schedule: { ruleVersion: 2, recurrence: { type: 'DAILY', time: '09:00' } },
+      pendingSchedule: {
+        ruleVersion: 3,
+        effectiveFrom: '2026-08-25T09:01:00.000Z',
+        recurrence: { type: 'WEEKLY', time: '10:00', weekday: 2 },
+      },
+    });
+    expect(writes).toEqual([
+      { ruleVersion: '1', pendingRuleVersion: '2' },
+      { ruleVersion: '2', pendingRuleVersion: '3' },
+    ]);
+  });
+
+  it('uses the same process-global queue for concurrent single and batch schedule edits', async () => {
+    const { store, writes } = versionedScheduleMutationStore(undefined, true);
+    const [single, batch] = await Promise.all([
+      updateTaskDetails(store as never, 'T-SERIAL', scheduleUpdate({ type: 'DAILY', time: '09:00' }), '2026-08-25T09:00:00.000Z'),
+      updateTaskDetailsBatch(store as never, [{
+        taskId: 'T-SERIAL',
+        ...scheduleUpdate({ type: 'WEEKLY', time: '10:00', weekday: 2 }),
+      }], '2026-08-25T09:01:00.000Z'),
+    ]);
+
+    expect(single.pendingSchedule?.ruleVersion).toBe(2);
+    expect(batch[0].schedule?.ruleVersion).toBe(2);
+    expect(batch[0].pendingSchedule?.ruleVersion).toBe(3);
+    expect(writes.map((write) => write.pendingRuleVersion)).toEqual(['2', '3']);
+  });
+
+  it.each([
+    ['current', 'INVALID_CURRENT_SCHEDULE'],
+    ['pending', 'INVALID_PENDING_SCHEDULE'],
+  ] as const)('rejects a malformed persisted %s schedule before migration or task writes', async (warning, warningCode) => {
+    const { store, migrationWrite, taskWrite } = versionedScheduleMutationStore(warning);
+
+    await expect(updateTaskDetails(
+      store as never,
+      'T-SERIAL',
+      scheduleUpdate({ type: 'DAILY', time: '09:00' }),
+      '2026-08-25T09:00:00.000Z',
+    )).rejects.toThrow(`과제 일정 데이터가 손상되었습니다 (${warningCode}). 일정을 먼저 복구해 주세요.`);
+    expect(migrationWrite).not.toHaveBeenCalled();
+    expect(taskWrite).not.toHaveBeenCalled();
+    expect(store.updateCell).not.toHaveBeenCalled();
+  });
+
+  it('validates an invalid single schedule edit before recurring migration writes', async () => {
+    const { store, migrationWrite } = legacyRecurringStore(['T1']);
+    await expect(updateTaskDetails(store as never, 'T1', {
+      title: '', description: '', reward: 1, isActive: true, sortOrder: 1,
+      schedule: { recurrence: { type: 'NONE' }, timeZone: 'UTC', resetCompletionOnCycle: false, resetAssignmentOnCycle: false },
+    })).rejects.toThrow('과제명을 입력해 주세요.');
+    expect(migrationWrite).not.toHaveBeenCalled();
+  });
+
+  it('validates batch duplicates and missing targets before recurring migration writes', async () => {
+    const scheduled = (taskId: string) => ({
+      taskId, title: 'Task', description: '', reward: 1, isActive: true, sortOrder: 1,
+      schedule: { recurrence: { type: 'NONE' } as const, timeZone: 'UTC', resetCompletionOnCycle: false, resetAssignmentOnCycle: false },
+    });
+    const duplicate = legacyRecurringStore(['T1']);
+    await expect(updateTaskDetailsBatch(duplicate.store as never, [scheduled('T1'), scheduled('T1')]))
+      .rejects.toThrow('중복된 과제 ID가 있습니다: T1');
+    expect(duplicate.migrationWrite).not.toHaveBeenCalled();
+
+    const missing = legacyRecurringStore(['T1']);
+    await expect(updateTaskDetailsBatch(missing.store as never, [scheduled('missing')]))
+      .rejects.toThrow('과제를 찾을 수 없습니다: missing');
+    expect(missing.migrationWrite).not.toHaveBeenCalled();
+  });
+
+  it('validates reset and delete targets before recurring migration writes', async () => {
+    const reset = legacyRecurringStore(['T1']);
+    await expect(resetTaskCompletionsBatch(reset.store as never, ['missing']))
+      .rejects.toThrow('과제를 찾을 수 없습니다: missing');
+    expect(reset.migrationWrite).not.toHaveBeenCalled();
+
+    const singleDelete = legacyRecurringStore(['T1']);
+    await expect(deleteTask(singleDelete.store as never, 'missing')).rejects.toThrow('과제를 찾을 수 없습니다.');
+    expect(singleDelete.migrationWrite).not.toHaveBeenCalled();
+
+    const batchDelete = legacyRecurringStore(['T1']);
+    await expect(deleteTasksBatch(batchDelete.store as never, ['missing']))
+      .rejects.toThrow('과제를 찾을 수 없습니다: missing');
+    expect(batchDelete.migrationWrite).not.toHaveBeenCalled();
+  });
+
   it('deletes task definitions without deleting completion history', async () => {
     const deletedBatches: Array<{ sheetName: string; rowNumbers: number[] }> = [];
     const cellUpdates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
@@ -1106,7 +1427,9 @@ describe('sheets repository', () => {
       },
     };
 
-    await expect(deleteTasksBatch(fakeStore, ['T001', 'T002', 'T001'])).resolves.toEqual({ taskIds: ['T001', 'T002'], deletedCompletionCount: 0 });
+    await expect(deleteTasksBatch(withRecurringMigration(fakeStore) as never, ['T001', 'T002', 'T001'])).resolves.toEqual({
+      taskIds: ['T001', 'T002'], deletedTaskCount: 2, deletedCompletionCount: 0,
+    });
 
     expect(deletedBatches).toEqual([
       { sheetName: 'Tasks', rowNumbers: [3, 2] },
@@ -1130,9 +1453,124 @@ describe('sheets repository', () => {
       },
     };
 
-    await expect(deleteTask(fakeStore, 'T001')).resolves.toEqual({ taskId: 'T001', deletedCompletionCount: 0 });
+    await expect(deleteTask(withRecurringMigration(fakeStore) as never, 'T001')).resolves.toEqual({
+      taskId: 'T001', taskDefinitionDeleted: true, deletedCompletionCount: 0,
+    });
     expect(deletedBatches).toEqual([]);
     expect(deletedRows).toEqual([{ sheetName: 'Tasks', rowNumber: 3 }]);
+  });
+
+  it('does not rewrite current schemas and preserves unknown trailing columns before delete', async () => {
+    const taskValues: Record<string, string> = {
+      taskId: 'T-CURRENT', title: 'Current', description: '', reward: '1', isActive: 'TRUE', sortOrder: '1',
+      createdAt: '2026-02-01T00:00:00Z', updatedAt: '2026-02-01T00:00:00Z', allowedStudentIds: '',
+      taskInstanceId: 'current-instance', ruleVersion: '1', scheduleEffectiveFrom: '2026-02-01T00:00:00Z',
+      recurrenceTimeZone: 'UTC', recurrenceType: 'NONE', resetCompletionOnCycle: 'FALSE', resetAssignmentOnCycle: 'FALSE',
+    };
+    const rows: Record<string, string[][]> = {
+      Tasks: [[...TASK_SCHEMA_HEADERS, 'customTaskMetadata'], [
+        ...TASK_SCHEMA_HEADERS.map((header) => taskValues[header] ?? ''), 'preserve-task',
+      ]],
+      TaskCompletions: [[...TASK_COMPLETION_SCHEMA_HEADERS, 'customCompletionMetadata']],
+      TaskAssignments: [[...TASK_ASSIGNMENT_HEADERS]],
+    };
+    const migrationWrite = vi.fn();
+    const deleteRow = vi.fn();
+    const store = {
+      async getRows(sheetName: string) { return rows[sheetName].map((row) => [...row]); },
+      async updateCell() {},
+      async appendRow() {},
+      deleteRow,
+      async lookupSheet(sheetName: string) {
+        return { found: true as const, info: { sheetId: 1, title: sheetName, columnCount: rows[sheetName][0].length } };
+      },
+      createSheetWithHeader: migrationWrite,
+      ensureColumnCount: migrationWrite,
+      writeHeaderCells: migrationWrite,
+      verifyHeaderCells: migrationWrite,
+      verifyAndWriteHeaderCells: migrationWrite,
+    };
+
+    await expect(deleteTask(store as never, 'T-CURRENT')).resolves.toMatchObject({ taskDefinitionDeleted: true });
+    expect(migrationWrite).not.toHaveBeenCalled();
+    expect(deleteRow).toHaveBeenCalledWith('Tasks', 2);
+    expect(rows.Tasks[0].at(-1)).toBe('customTaskMetadata');
+    expect(rows.Tasks[1].at(-1)).toBe('preserve-task');
+    expect(rows.TaskCompletions[0].at(-1)).toBe('customCompletionMetadata');
+  });
+
+  it('keeps deleted-task ledgers queryable without invoking write capabilities', async () => {
+    const writes = vi.fn();
+    const reader = {
+      async getRows(sheetName: string) {
+        if (sheetName === 'Tasks') return [[...TASK_SCHEMA_HEADERS]];
+        if (sheetName === 'TaskAssignments') return [
+          ['assignmentId', 'taskId', 'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion', 'timeZone', 'studentId', 'status', 'source', 'previousAssignmentId', 'createdAt', 'schemaVersion', 'note'],
+          ['A-old', 'T1', 'old-instance', 'old-cycle', '2026-01-01T00:00:00Z', '', '1', 'Asia/Seoul', 'S1', 'ASSIGNED', 'ADMIN', '', '2026-01-01T00:00:00Z', '2', ''],
+        ];
+        if (sheetName === 'TaskCompletions') return [
+          ['completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note', 'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion', 'timeZone', 'source', 'assignmentId', 'schemaVersion'],
+          ['C-old', '2026-01-02T00:00:00Z', 'T1', 'S1', 'Student', '5', '0', '5', 'SUCCESS', '', 'old-instance', 'old-cycle', '2026-01-01T00:00:00Z', '', '1', 'Asia/Seoul', 'BANK', 'A-old', '2'],
+        ];
+        if (sheetName === 'Settings') return sheetRows.Settings;
+        return [];
+      },
+      appendRow: writes, updateCell: writes, deleteRow: writes, deleteRows: writes,
+    };
+
+    const detail = await getTaskHistoryDetail(reader, { taskId: 'T1', taskInstanceId: 'old-instance' });
+    expect(detail.currentLifecycle).toEqual({ taskDefinitionExists: false, taskInstanceId: null, currentCycleStatus: null });
+    expect(detail.cumulativeHistory.eventCount).toBe(2);
+    expect(detail.cumulativeHistory.lifecycles[0]).toMatchObject({ taskInstanceId: 'old-instance', eventCount: 2 });
+    expect(writes).not.toHaveBeenCalled();
+  });
+
+  it('returns the current reused definition while filtering cumulative detail to an old lifecycle', async () => {
+    const currentTask = [
+      'T1', 'Current definition', '', '5', 'TRUE', '1', '2026-02-01T00:00:00Z',
+      '2026-02-01T00:00:00Z', 'S1', 'current-instance', '1', '2026-02-01T00:00:00Z',
+      'UTC', 'NONE', '', '', '', 'FALSE', 'FALSE', '', '', '', '', '', '', '', '', '',
+    ];
+    const reader = {
+      async getRows(sheetName: string) {
+        if (sheetName === 'Tasks') return [[...TASK_SCHEMA_HEADERS], currentTask];
+        if (sheetName === 'TaskAssignments') return [
+          ['assignmentId', 'taskId', 'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion', 'timeZone', 'studentId', 'status', 'source', 'previousAssignmentId', 'createdAt', 'schemaVersion', 'note'],
+          ['A-old', 'T1', 'old-instance', 'old-cycle', '2026-01-01T00:00:00Z', '', '1', 'UTC', 'S1', 'ASSIGNED', 'ADMIN', '', '2026-01-01T00:00:00Z', '2', ''],
+        ];
+        if (sheetName === 'TaskCompletions') return [[
+          'completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note',
+          'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion', 'timeZone', 'source', 'assignmentId', 'schemaVersion',
+        ]];
+        if (sheetName === 'Settings') return sheetRows.Settings;
+        return [];
+      },
+    };
+
+    const detail = await getTaskHistoryDetail(
+      reader,
+      { taskId: 'T1', taskInstanceId: 'old-instance' },
+      '2026-02-02T00:00:00Z',
+    );
+    expect(detail.currentLifecycle).toMatchObject({
+      taskDefinitionExists: true,
+      taskInstanceId: 'current-instance',
+      currentCycleStatus: { transition: 'PERMANENT' },
+    });
+    expect(detail.cumulativeHistory).toMatchObject({
+      eventCount: 1,
+      lifecycles: [{ taskInstanceId: 'old-instance', isCurrentLifecycle: false, eventCount: 1 }],
+    });
+  });
+
+  it('returns a truthful reset event count alias without deleting ledger rows', async () => {
+    await expect(resetTaskCompletionsBatch(withRecurringMigration({
+      ...fakeReader,
+      async updateCell() {},
+      async appendRow() {},
+    } as unknown as LocalStore) as never, ['T002'])).resolves.toEqual({
+      taskIds: ['T002'], resetEventsAppended: 0, deletedCount: 0,
+    });
   });
 
 
@@ -1164,7 +1602,7 @@ describe('sheets repository', () => {
       async appendRow(sheetName: string, values: string[]) { appended.push({ sheetName, values }); },
     };
 
-    await expect(updateTaskDetails(store, 'T010', {
+    await expect(updateTaskDetails(store as never, 'T010', {
       title: '지정 과제',
       description: '선택 학생만',
       reward: 10,

@@ -41,34 +41,58 @@ export type TaskCycleHistoryEvent =
       assignmentId?: string;
     };
 
+export type TaskCycleLedgerSnapshot = {
+  assignments: TaskAssignment[];
+  completions: TaskCompletion[];
+};
+
+export async function loadTaskCycleLedgerSnapshot(
+  reader: TabularReader,
+): Promise<TaskCycleLedgerSnapshot> {
+  const [assignments, completions] = await Promise.all([
+    readTaskAssignmentsIfPresent(reader),
+    readTaskCompletions(reader),
+  ]);
+  return { assignments, completions };
+}
+
+export function projectTaskCycleStateFromSnapshot(
+  task: ClassTask,
+  now: string,
+  snapshot: TaskCycleLedgerSnapshot,
+): TaskCycleState {
+  return projectTaskCycleState({ task, now, ...snapshot });
+}
+
+export function projectTaskCycleHistoryFromSnapshot(
+  snapshot: TaskCycleLedgerSnapshot,
+  filter: { taskId?: string; taskInstanceId?: string } = {},
+): TaskCycleHistoryEvent[] {
+  const matches = (event: { taskId: string; taskInstanceId?: string }) =>
+    (!filter.taskId || event.taskId === filter.taskId)
+    && (!filter.taskInstanceId || event.taskInstanceId === filter.taskInstanceId);
+
+  return [
+    ...snapshot.assignments.filter(matches).map(assignmentHistoryDto),
+    ...snapshot.completions.filter(matches).map(completionHistoryDto),
+  ];
+}
+
 export async function readTaskCycleState(
   reader: TabularReader,
   task: ClassTask,
   now: string,
 ): Promise<TaskCycleState> {
-  const [assignments, completions] = await Promise.all([
-    readTaskAssignmentsIfPresent(reader),
-    readTaskCompletions(reader),
-  ]);
-  return projectTaskCycleState({ task, now, assignments, completions });
+  const snapshot = await loadTaskCycleLedgerSnapshot(reader);
+  return projectTaskCycleStateFromSnapshot(task, now, snapshot);
 }
 
 export async function readTaskCycleHistory(
   reader: TabularReader,
   filter: { taskId?: string; taskInstanceId?: string } = {},
 ): Promise<TaskCycleHistoryEvent[]> {
-  const [assignments, completions] = await Promise.all([
-    readTaskAssignmentsIfPresent(reader),
-    readTaskCompletions(reader),
-  ]);
-  const matches = (event: { taskId: string; taskInstanceId?: string }) =>
-    (!filter.taskId || event.taskId === filter.taskId)
-    && (!filter.taskInstanceId || event.taskInstanceId === filter.taskInstanceId);
-
-  return [
-    ...assignments.filter(matches).map(assignmentHistoryDto),
-    ...completions.filter(matches).map(completionHistoryDto),
-  ];
+  const snapshot = await loadTaskCycleLedgerSnapshot(reader);
+  return projectTaskCycleHistoryFromSnapshot(snapshot, filter);
 }
 
 export async function readTaskAssignmentsIfPresent(reader: TabularReader): Promise<TaskAssignment[]> {

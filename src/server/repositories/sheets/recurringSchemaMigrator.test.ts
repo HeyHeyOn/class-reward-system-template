@@ -156,6 +156,22 @@ describe('recurring schema migrator', () => {
     expect(store.writes.filter((write) => write.includes('TaskAssignments'))).toHaveLength(0);
   });
 
+  it('accepts and preserves unknown columns trailing the canonical TaskAssignments header', async () => {
+    const store = new FakeStore({
+      Tasks: { columnCount: TASK_SCHEMA_HEADERS.length, rows: [[...TASK_SCHEMA_HEADERS]] },
+      TaskCompletions: { columnCount: TASK_COMPLETION_SCHEMA_HEADERS.length, rows: [[...TASK_COMPLETION_SCHEMA_HEADERS]] },
+      TaskAssignments: {
+        columnCount: TASK_ASSIGNMENT_HEADERS.length + 1,
+        rows: [[...TASK_ASSIGNMENT_HEADERS, 'teacherCustomMetadata'], ['', ...Array(14).fill(''), 'preserve-me']],
+      },
+    });
+
+    await expect(migrateRecurringTaskSchema(store)).resolves.toBeUndefined();
+    expect(store.writes).toEqual([]);
+    expect(store.sheets.get('TaskAssignments')?.rows[0].at(-1)).toBe('teacherCustomMetadata');
+    expect(store.sheets.get('TaskAssignments')?.rows[1].at(-1)).toBe('preserve-me');
+  });
+
   it('aborts with an explicit retryable conflict before writes when a header extension races', async () => {
     const store = baseStore();
     store.sheets.set('TaskAssignments', {

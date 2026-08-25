@@ -1,9 +1,20 @@
-import type { ClassTask, Product, Student, TaskAssignmentStatus, TaskCompletion, Transaction } from '@/domain/types';
-import { normalizeLegacyTimeZone } from '@/domain/taskSchedule';
+import type { ClassTask, Product, Student, TaskAssignmentStatus, TaskCompletion, TaskRecurrence, Transaction } from '@/domain/types';
+import {
+  normalizeLegacyTimeZone,
+  resolveTaskSchedule,
+  serializeTaskScheduleCells,
+  validateTaskSchedule,
+} from '@/domain/taskSchedule';
 import type { TaskCycleState } from '@/domain/taskCycleState';
 import { mutateTaskAssignmentNow } from '@/server/repositories/sheets/taskAssignmentCommands';
 import { mutateTaskCompletion, mutateTaskCompletionNow } from '@/server/repositories/sheets/taskCompletionCommands';
 import { enqueueTaskCommand, taskCommandQueueKey } from '@/server/repositories/sheets/taskCommandQueue';
+import {
+  migrateRecurringTaskSchema,
+  TASK_ASSIGNMENT_HEADERS,
+  TASK_COMPLETION_SCHEMA_HEADERS,
+  TASK_SCHEMA_HEADERS,
+} from '@/server/repositories/sheets/recurringSchemaMigrator';
 import {
   readTaskCycleHistory,
   readTaskCycleState,
@@ -75,6 +86,13 @@ export type ProductCreate = ProductUpdate & {
   productId: string;
 };
 
+export type TaskScheduleEdit = {
+  recurrence: TaskRecurrence;
+  timeZone: string;
+  resetCompletionOnCycle: boolean;
+  resetAssignmentOnCycle: boolean;
+};
+
 export type TaskUpdate = {
   title: string;
   description: string;
@@ -82,6 +100,7 @@ export type TaskUpdate = {
   isActive: boolean;
   sortOrder: number;
   allowedStudentIds?: string[];
+  schedule?: TaskScheduleEdit;
 };
 
 export type TaskCreate = TaskUpdate & {
@@ -388,45 +407,144 @@ export async function createTask(store: SheetsStore, create: TaskCreate): Promis
   return task;
 }
 
-export async function updateTaskDetails(store: SheetsStore, taskId: string, update: TaskUpdate): Promise<ClassTask> {
-  await ensureTaskSheet(store);
-  const record = await getTaskRecordById(store, taskId);
-  if (!record) throw new Error('과제를 찾을 수 없습니다.');
-  validateTaskUpdate(update);
+export async function updateTaskDetails(
+  store: RecurringSchemaMigrationStore,
+  taskId: string,
+  update: TaskUpdate,
+  editedAt?: string,
+): Promise<ClassTask> {
+  // This queue is deliberately process-local. The Sheets provider does not expose a CAS,
+  // so this prevents stale schedule versions only among commands in this application process.
+  return enqueueTaskCommand(taskCommandQueueKey(taskId), () =>
+    updateTaskDetailsNow(store, taskId, update, editedAt ?? new Date().toISOString()));
+}
+
+async function updateTaskDetailsNow(
+  store: RecurringSchemaMigrationStore,
+  taskId: string,
+  update: TaskUpdate,
+  editedAt: string,
+): Promise<ClassTask> {
+  let record;
+  let scheduleState = null;
+  if (update.schedule !== undefined) {
+    validateTaskUpdate(update);
+    record = await getTaskRecordById(store, taskId);
+    if (!record) throw new Error('과제를 찾을 수 없습니다.');
+    assertPersistedScheduleIsEditable(record.task);
+    await ensureTaskSheet(store);
+    await migrateRecurringSchemaIfNeeded(store);
+    // Migration can replace the legacy projection. Always derive the next version from the
+    // persisted row as it exists inside this process-local critical section.
+    record = await getTaskRecordById(store, taskId);
+    if (!record) throw new Error('과제를 찾을 수 없습니다.');
+    assertPersistedScheduleIsEditable(record.task);
+    scheduleState = prepareImmediateScheduleState(record.task, update.schedule, editedAt);
+  } else {
+    await ensureTaskSheet(store);
+    record = await getTaskRecordById(store, taskId);
+    if (!record) throw new Error('과제를 찾을 수 없습니다.');
+    validateTaskUpdate(update);
+  }
   const title = update.title.trim();
   const description = update.description.trim();
-  await store.updateCell('Tasks', record.rowNumber, 'title', title);
-  await store.updateCell('Tasks', record.rowNumber, 'description', description);
-  await store.updateCell('Tasks', record.rowNumber, 'reward', update.reward);
-  await store.updateCell('Tasks', record.rowNumber, 'isActive', update.isActive ? 'TRUE' : 'FALSE');
-  await store.updateCell('Tasks', record.rowNumber, 'sortOrder', update.sortOrder);
-  const taskRows = await store.getRows('Tasks');
   const allowedStudentIds = normalizeUniqueIds(update.allowedStudentIds ?? []);
-  if (taskRows[0]?.includes('allowedStudentIds')) await store.updateCell('Tasks', record.rowNumber, 'allowedStudentIds', allowedStudentIds.join(','));
-  if (taskRows[0]?.includes('updatedAt')) await store.updateCell('Tasks', record.rowNumber, 'updatedAt', new Date().toISOString());
-  return { taskId, title, description, reward: update.reward, isActive: update.isActive, sortOrder: update.sortOrder, allowedStudentIds };
+  const cellUpdates: SheetCellUpdate[] = [
+    { rowNumber: record.rowNumber, columnName: 'title', value: title },
+    { rowNumber: record.rowNumber, columnName: 'description', value: description },
+    { rowNumber: record.rowNumber, columnName: 'reward', value: update.reward },
+    { rowNumber: record.rowNumber, columnName: 'isActive', value: update.isActive ? 'TRUE' : 'FALSE' },
+    { rowNumber: record.rowNumber, columnName: 'sortOrder', value: update.sortOrder },
+  ];
+  const taskRows = await store.getRows('Tasks');
+  const headers = taskRows[0] ?? [];
+  if (headers.includes('allowedStudentIds')) {
+    cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'allowedStudentIds', value: allowedStudentIds.join(',') });
+  }
+  if (headers.includes('updatedAt')) {
+    cellUpdates.push({
+      rowNumber: record.rowNumber,
+      columnName: 'updatedAt',
+      value: scheduleState?.transitionAt ?? editedAt,
+    });
+  }
+
+  if (scheduleState) {
+    const cells = serializeTaskScheduleCells(scheduleState);
+    for (const [columnName, value] of Object.entries(cells)) {
+      cellUpdates.push({ rowNumber: record.rowNumber, columnName, value });
+    }
+  }
+  await applyCellUpdates(store, 'Tasks', cellUpdates);
+  return {
+    ...(scheduleState ? record.task : withoutVersionedSchedule(record.task)),
+    taskId,
+    title,
+    description,
+    reward: update.reward,
+    isActive: update.isActive,
+    sortOrder: update.sortOrder,
+    allowedStudentIds,
+    ...(scheduleState ? {
+      taskInstanceId: scheduleState.taskInstanceId,
+      schedule: scheduleState.currentSchedule,
+      pendingSchedule: scheduleState.pendingSchedule,
+    } : {}),
+  };
 }
 
 
-export async function updateTaskDetailsBatch(store: SheetsStore, updates: TaskBatchUpdate[]): Promise<ClassTask[]> {
-  await ensureTaskSheet(store);
-  if (!Array.isArray(updates) || updates.length === 0) throw new Error('저장할 과제가 없습니다.');
+export async function updateTaskDetailsBatch(
+  store: RecurringSchemaMigrationStore,
+  updates: TaskBatchUpdate[],
+  editedAt?: string,
+): Promise<ClassTask[]> {
+  // Batch and single edits use the same conservative process-global task-mutation key.
+  return enqueueTaskCommand(taskCommandQueueKey(''), () =>
+    updateTaskDetailsBatchNow(store, updates, editedAt ?? new Date().toISOString()));
+}
 
-  const recordsById = new Map((await getTaskRecords(store)).map((record) => [record.task.taskId, record]));
+async function updateTaskDetailsBatchNow(
+  store: RecurringSchemaMigrationStore,
+  updates: TaskBatchUpdate[],
+  editedAt: string,
+): Promise<ClassTask[]> {
+  if (!Array.isArray(updates) || updates.length === 0) throw new Error('저장할 과제가 없습니다.');
   const normalized = updates.map((update) => ({ ...update, taskId: update.taskId.trim() }));
   const duplicateIds = findDuplicates(normalized.map((update) => update.taskId));
   if (duplicateIds.length > 0) throw new Error(`중복된 과제 ID가 있습니다: ${duplicateIds.join(', ')}`);
 
-  const taskRows = await store.getRows('Tasks');
-  const hasUpdatedAt = taskRows[0]?.includes('updatedAt') ?? false;
-  const now = new Date().toISOString();
-  const cellUpdates: SheetCellUpdate[] = [];
-  const tasks: ClassTask[] = [];
-
+  const recordsById = new Map((await getTaskRecords(store)).map((record) => [record.task.taskId, record]));
   for (const update of normalized) {
     validateTaskId(update.taskId);
     validateTaskUpdate(update);
     const record = recordsById.get(update.taskId);
+    if (!record) throw new Error(`과제를 찾을 수 없습니다: ${update.taskId}`);
+    if (update.schedule !== undefined) assertPersistedScheduleIsEditable(record.task);
+  }
+  await ensureTaskSheet(store);
+  const hasScheduleEdits = normalized.some((update) => update.schedule !== undefined);
+  if (hasScheduleEdits) await migrateRecurringSchemaIfNeeded(store);
+
+  // Re-read after any migration while still holding the process-local queue lock.
+  const currentRecordsById = new Map((await getTaskRecords(store)).map((record) => [record.task.taskId, record]));
+  const scheduleStates = new Map<string, ReturnType<typeof prepareImmediateScheduleState>>();
+  for (const update of normalized) {
+    if (update.schedule === undefined) continue;
+    const record = currentRecordsById.get(update.taskId);
+    if (!record) throw new Error(`과제를 찾을 수 없습니다: ${update.taskId}`);
+    assertPersistedScheduleIsEditable(record.task);
+    scheduleStates.set(update.taskId, prepareImmediateScheduleState(record.task, update.schedule, editedAt));
+  }
+
+  const taskRows = await store.getRows('Tasks');
+  const hasUpdatedAt = taskRows[0]?.includes('updatedAt') ?? false;
+  const now = editedAt;
+  const cellUpdates: SheetCellUpdate[] = [];
+  const tasks: ClassTask[] = [];
+
+  for (const update of normalized) {
+    const record = currentRecordsById.get(update.taskId);
     if (!record) throw new Error(`과제를 찾을 수 없습니다: ${update.taskId}`);
 
     const title = update.title.trim();
@@ -441,15 +559,42 @@ export async function updateTaskDetailsBatch(store: SheetsStore, updates: TaskBa
     const allowedStudentIds = normalizeUniqueIds(update.allowedStudentIds ?? []);
     const hasAllowedStudentIds = taskRows[0]?.includes('allowedStudentIds') ?? false;
     if (hasAllowedStudentIds) cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'allowedStudentIds', value: allowedStudentIds.join(',') });
-    if (hasUpdatedAt) cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'updatedAt', value: now });
-    tasks.push({ taskId: update.taskId, title, description, reward: update.reward, isActive: update.isActive, sortOrder: update.sortOrder, allowedStudentIds });
+    const scheduleState = scheduleStates.get(update.taskId) ?? null;
+    if (hasUpdatedAt) {
+      cellUpdates.push({
+        rowNumber: record.rowNumber,
+        columnName: 'updatedAt',
+        value: scheduleState?.transitionAt ?? now,
+      });
+    }
+    if (scheduleState) {
+      const cells = serializeTaskScheduleCells(scheduleState);
+      for (const [columnName, value] of Object.entries(cells)) {
+        cellUpdates.push({ rowNumber: record.rowNumber, columnName, value });
+      }
+    }
+    tasks.push({
+      ...(scheduleState ? record.task : withoutVersionedSchedule(record.task)),
+      taskId: update.taskId,
+      title,
+      description,
+      reward: update.reward,
+      isActive: update.isActive,
+      sortOrder: update.sortOrder,
+      allowedStudentIds,
+      ...(scheduleState ? {
+        taskInstanceId: scheduleState.taskInstanceId,
+        schedule: scheduleState.currentSchedule,
+        pendingSchedule: scheduleState.pendingSchedule,
+      } : {}),
+    });
   }
 
   await applyCellUpdates(store, 'Tasks', cellUpdates);
   return tasks.sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title));
 }
 
-export async function deleteTasksBatch(store: SheetsStore, taskIds: string[]): Promise<{ taskIds: string[]; deletedCompletionCount: number }> {
+export async function deleteTasksBatch(store: RecurringSchemaMigrationStore, taskIds: string[]): Promise<{ taskIds: string[]; deletedTaskCount: number; deletedCompletionCount: number }> {
   const uniqueIds = normalizeUniqueIds(taskIds);
   if (uniqueIds.length === 0) throw new Error('선택된 과제가 없습니다.');
   if (!store.deleteRows) throw new Error('현재 Sheets 저장소가 여러 행 삭제를 지원하지 않습니다.');
@@ -458,18 +603,20 @@ export async function deleteTasksBatch(store: SheetsStore, taskIds: string[]): P
   const missingIds = uniqueIds.filter((taskId) => !recordsById.has(taskId));
   if (missingIds.length > 0) throw new Error(`과제를 찾을 수 없습니다: ${missingIds.join(', ')}`);
 
+  await migrateRecurringSchemaIfNeeded(store);
   await store.deleteRows('Tasks', uniqueIds.map((taskId) => recordsById.get(taskId)!.rowNumber));
-  // Completion rows are an append-only audit ledger and outlive the task definition row.
-  return { taskIds: uniqueIds, deletedCompletionCount: 0 };
+  // Assignment and completion rows are append-only audit ledgers and outlive the definition row.
+  return { taskIds: uniqueIds, deletedTaskCount: uniqueIds.length, deletedCompletionCount: 0 };
 }
 
-export async function resetTaskCompletionsBatch(store: RecurringSchemaMigrationStore, taskIds: string[]): Promise<{ taskIds: string[]; deletedCount: number }> {
+export async function resetTaskCompletionsBatch(store: RecurringSchemaMigrationStore, taskIds: string[]): Promise<{ taskIds: string[]; resetEventsAppended: number; deletedCount: number }> {
   const uniqueIds = normalizeUniqueIds(taskIds);
   if (uniqueIds.length === 0) throw new Error('선택된 과제가 없습니다.');
   const recordsById = new Map((await getTaskRecords(store)).map((record) => [record.task.taskId, record]));
   const missingIds = uniqueIds.filter((taskId) => !recordsById.has(taskId));
   if (missingIds.length > 0) throw new Error(`과제를 찾을 수 없습니다: ${missingIds.join(', ')}`);
 
+  await migrateRecurringSchemaIfNeeded(store);
   const studentsById = new Map((await getStudents(store)).map((student) => [student.studentId, student]));
   let resetCount = 0;
   for (const taskId of uniqueIds) {
@@ -493,15 +640,16 @@ export async function resetTaskCompletionsBatch(store: RecurringSchemaMigrationS
     }
   }
   // Keep the legacy property name while reporting appended reset events, never deletions.
-  return { taskIds: uniqueIds, deletedCount: resetCount };
+  return { taskIds: uniqueIds, resetEventsAppended: resetCount, deletedCount: resetCount };
 }
 
-export async function deleteTask(store: SheetsStore, taskId: string): Promise<{ taskId: string; deletedCompletionCount: number }> {
+export async function deleteTask(store: RecurringSchemaMigrationStore, taskId: string): Promise<{ taskId: string; taskDefinitionDeleted: true; deletedCompletionCount: number }> {
   const record = await getTaskRecordById(store, taskId);
   if (!record) throw new Error('과제를 찾을 수 없습니다.');
   if (!store.deleteRow) throw new Error('현재 Sheets 저장소가 행 삭제를 지원하지 않습니다.');
+  await migrateRecurringSchemaIfNeeded(store);
   await store.deleteRow('Tasks', record.rowNumber);
-  return { taskId, deletedCompletionCount: 0 };
+  return { taskId, taskDefinitionDeleted: true, deletedCompletionCount: 0 };
 }
 
 export async function completeTaskForStudent(store: RecurringSchemaMigrationStore, taskId: string, studentId: string): Promise<TaskCompletionResult> {
@@ -1032,6 +1180,29 @@ function getStudentRecordsFromRows(rows: string[][]): Map<string, StudentRecord>
   return records;
 }
 
+async function migrateRecurringSchemaIfNeeded(store: RecurringSchemaMigrationStore): Promise<void> {
+  const [taskRows, completionRows, assignmentLookup] = await Promise.all([
+    store.getRows('Tasks'),
+    store.getRows('TaskCompletions'),
+    store.lookupSheet('TaskAssignments'),
+  ]);
+  const hasHeaderSet = (headers: readonly string[] | undefined, required: readonly string[]) => {
+    const present = new Set((headers ?? []).map((header) => header.trim()));
+    return required.every((header) => present.has(header));
+  };
+  let needsMigration = !hasHeaderSet(taskRows[0], TASK_SCHEMA_HEADERS)
+    || !hasHeaderSet(completionRows[0], TASK_COMPLETION_SCHEMA_HEADERS)
+    || !assignmentLookup.found;
+  if (!needsMigration && assignmentLookup.found) {
+    const assignmentRows = await store.getRows('TaskAssignments');
+    const header = assignmentRows[0];
+    needsMigration = !header
+      || header.length < TASK_ASSIGNMENT_HEADERS.length
+      || !TASK_ASSIGNMENT_HEADERS.every((value, index) => header[index]?.trim() === value);
+  }
+  if (needsMigration) await migrateRecurringTaskSchema(store);
+}
+
 async function applyCellUpdates(store: SheetsStore, sheetName: SheetName, updates: SheetCellUpdate[]): Promise<void> {
   if (updates.length === 0) return;
   if (store.updateCells) {
@@ -1042,6 +1213,19 @@ async function applyCellUpdates(store: SheetsStore, sheetName: SheetName, update
   for (const update of updates) {
     await store.updateCell(sheetName, update.rowNumber, update.columnName, update.value);
   }
+}
+
+function withoutVersionedSchedule(task: ClassTask): ClassTask {
+  return {
+    taskId: task.taskId,
+    title: task.title,
+    description: task.description,
+    reward: task.reward,
+    isActive: task.isActive,
+    sortOrder: task.sortOrder,
+    allowedStudentIds: task.allowedStudentIds,
+    ...(task.createdAt !== undefined ? { createdAt: task.createdAt } : {}),
+  };
 }
 
 function normalizeUniqueIds(ids: string[]): string[] {
@@ -1117,6 +1301,51 @@ function validateTaskUpdate(update: TaskUpdate) {
   if (!update.title.trim()) throw new Error('과제명을 입력해 주세요.');
   if (!Number.isInteger(update.reward) || update.reward < 0) throw new Error('보상은 0 이상의 정수여야 합니다.');
   if (!Number.isInteger(update.sortOrder)) throw new Error('정렬 순서는 정수여야 합니다.');
+}
+
+function assertPersistedScheduleIsEditable(task: ClassTask): void {
+  const warning = task.scheduleReadWarnings?.[0];
+  if (warning) {
+    throw new Error(`과제 일정 데이터가 손상되었습니다 (${warning}). 일정을 먼저 복구해 주세요.`);
+  }
+}
+
+function prepareImmediateScheduleState(task: ClassTask, edit: TaskScheduleEdit, editedAt: string) {
+  if (!task.taskInstanceId || !task.schedule) {
+    throw new Error('과제 반복 일정 정보를 불러오지 못했습니다.');
+  }
+  if (!edit || typeof edit !== 'object') throw new Error('schedule must be an object');
+  const allowedKeys = new Set([
+    'recurrence', 'timeZone', 'resetCompletionOnCycle', 'resetAssignmentOnCycle',
+  ]);
+  if (Object.keys(edit).some((key) => !allowedKeys.has(key))) {
+    throw new Error('schedule contains unsupported fields');
+  }
+  const transitionAt = [
+    editedAt,
+    task.schedule.effectiveFrom,
+    task.pendingSchedule?.effectiveFrom,
+  ].filter((value): value is string => Boolean(value)).reduce((latest, value) =>
+    value > latest ? value : latest, editedAt);
+  const effectiveSchedule = resolveTaskSchedule({
+    currentSchedule: task.schedule,
+    pendingSchedule: task.pendingSchedule ?? null,
+    now: transitionAt,
+  });
+  const pendingSchedule = validateTaskSchedule({
+    ruleVersion: effectiveSchedule.ruleVersion + 1,
+    effectiveFrom: transitionAt,
+    timeZone: edit.timeZone,
+    recurrence: edit.recurrence,
+    resetCompletionOnCycle: edit.resetCompletionOnCycle,
+    resetAssignmentOnCycle: edit.resetAssignmentOnCycle,
+  });
+  return {
+    taskInstanceId: task.taskInstanceId,
+    currentSchedule: effectiveSchedule,
+    pendingSchedule,
+    transitionAt,
+  };
 }
 
 function assertVersionedTaskScheduleHeaders(headerIndex: ReadonlyMap<string, number>): boolean {
