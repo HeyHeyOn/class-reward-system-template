@@ -77,22 +77,16 @@ describe('AdminManagePage', () => {
         }
         if (url === '/api/tasks/batch' && init?.method === 'DELETE') return jsonResponse({ taskIds: ['T001', 'T002'] });
         if (url === '/api/tasks/completions/reset' && init?.method === 'POST') {
-          t001AssignmentStatus = [
-            { studentId: 'S001', name: '김민준', assigned: false, completed: false },
-            { studentId: 'S002', name: '이서연', assigned: false, completed: false },
-          ];
+          t001AssignmentStatus = t001AssignmentStatus.map((row) => ({ ...row, completed: false }));
           return jsonResponse({ taskIds: ['T001', 'T002'], deletedCount: 3 });
         }
         if (url === '/api/tasks/T001/assignments' && init?.method === 'PATCH') {
           const body = JSON.parse(String(init.body ?? '{}'));
-          const assignedIds = Array.isArray(body.assignedStudentIds) ? body.assignedStudentIds : [];
-          const completedIds = Array.isArray(body.completedStudentIds) ? body.completedStudentIds : [];
-          t001AssignmentStatus = students.map((student) => ({
-            studentId: student.studentId,
-            name: student.name,
-            assigned: assignedIds.includes(student.studentId),
-            completed: completedIds.includes(student.studentId),
-          }));
+          t001AssignmentStatus = t001AssignmentStatus.map((row) => row.studentId === body.studentId ? {
+            ...row,
+            ...(typeof body.assigned === 'boolean' ? { assigned: body.assigned } : {}),
+            ...(typeof body.completed === 'boolean' ? { completed: body.completed } : {}),
+          } : row);
           return jsonResponse({ taskId: 'T001', students: t001AssignmentStatus });
         }
         if (url === '/api/tasks/T001/assignments') {
@@ -222,12 +216,14 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'S001 김민준 부여 상태' }));
     fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
 
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/T001/assignments', expect.objectContaining({
-      method: 'PATCH',
-      body: expect.stringContaining('"assignedStudentIds":["S002"]'),
-    })));
-    const assignmentPatchBody = String(((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.find(([url, init]) => String(url) === '/api/tasks/T001/assignments' && init?.method === 'PATCH')?.[1] as RequestInit).body);
-    expect(assignmentPatchBody).toContain('"completedStudentIds":["S001","S002"]');
+    await waitFor(() => expect((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.filter(([url, init]) => String(url) === '/api/tasks/T001/assignments' && init?.method === 'PATCH')).toHaveLength(2));
+    const assignmentPatchBodies = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
+      .filter(([url, init]) => String(url) === '/api/tasks/T001/assignments' && init?.method === 'PATCH')
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+    expect(assignmentPatchBodies).toEqual([
+      { studentId: 'S001', assigned: false, source: 'ADMIN' },
+      { studentId: 'S002', assigned: true, completed: true, source: 'ADMIN' },
+    ]);
     expect(alert).toHaveBeenCalledWith('과제 부여 저장 완료');
 
     fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
@@ -240,15 +236,131 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'T001 완료 기록 초기화' }));
     await waitFor(() => expect(alert).toHaveBeenCalledWith('T001 완료 기록 3건 초기화 완료'));
     fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
-    expect(await screen.findByText('완료 여부')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
     expect(screen.getByRole('button', { name: 'S001 김민준 부여 상태' }).textContent).toContain('미부여');
     expect(screen.getByRole('button', { name: 'S001 김민준 완료 상태' }).textContent).toContain('미완료');
+    expect(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }).textContent).toContain('부여');
+    expect(screen.getByRole('button', { name: 'S002 이서연 완료 상태' }).textContent).toContain('미완료');
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'QR 과제 부여' }));
+    expect(screen.getByRole('button', { name: '책 읽기 과제 선택' }).textContent).toContain('부여 학생 1명');
+    fireEvent.click(screen.getByRole('button', { name: '책 읽기 과제 선택' }));
+    fireEvent.change(screen.getByLabelText('과제 부여 학생 QR 직접 입력'), { target: { value: 'S002' } });
+    fireEvent.click(screen.getByRole('button', { name: '직접 입력 적용' }));
+    expect(await screen.findByRole('dialog', { name: 'QR 과제 부여 실패' })).toBeTruthy();
+    expect(screen.getByText('이미 이 과제가 부여된 학생입니다.')).toBeTruthy();
+  });
+
+  it('does not send assignment commands when the loaded desired state is unchanged', async () => {
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
+    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
+
+    fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
+
+    await waitFor(() => expect(alert).toHaveBeenCalledWith('과제 부여 저장 완료'));
+    expect((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.some(([url, init]) => String(url) === '/api/tasks/T001/assignments' && init?.method === 'PATCH')).toBe(false);
+  });
+
+  it('reconciles a failed combined command and retries only its unresolved completion change', async () => {
+    const baseFetch = fetch as unknown as ReturnType<typeof vi.fn>;
+    const defaultFetch = baseFetch.getMockImplementation() as (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+    let assignmentStatus = [
+      { studentId: 'S001', name: '김민준', assigned: true, completed: true },
+      { studentId: 'S002', name: '이서연', assigned: false, completed: false },
+    ];
+    const patchBodies: Array<Record<string, unknown>> = [];
+    let assignmentGetCount = 0;
+    baseFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/tasks/T001/assignments' && init?.method === 'PATCH') {
+        const body = JSON.parse(String(init.body));
+        patchBodies.push(body);
+        assignmentStatus = assignmentStatus.map((row) => row.studentId === body.studentId ? {
+          ...row,
+          ...(typeof body.assigned === 'boolean' ? { assigned: body.assigned } : {}),
+          ...(patchBodies.length > 1 && typeof body.completed === 'boolean' ? { completed: body.completed } : {}),
+        } : row);
+        if (patchBodies.length === 1) return jsonResponse({ error: '완료 기록 저장 실패' }, { status: 500 });
+        return jsonResponse({ taskId: 'T001', students: assignmentStatus });
+      }
+      if (url === '/api/tasks/T001/assignments') {
+        assignmentGetCount += 1;
+        return jsonResponse({ taskId: 'T001', students: assignmentStatus });
+      }
+      return defaultFetch(input, init);
+    });
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
+    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }));
+    fireEvent.click(screen.getByRole('button', { name: 'S002 이서연 완료 상태' }));
+    fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
+
+    await waitFor(() => expect(alert).toHaveBeenCalledWith(expect.stringContaining('완료 기록 저장 실패')));
+    expect(assignmentGetCount).toBe(2);
+    expect(screen.getByRole('dialog', { name: '과제 부여' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }).textContent).toContain('부여');
+    expect(screen.getByRole('button', { name: 'S002 이서연 완료 상태' }).textContent).toContain('완료');
+    expect(alert).not.toHaveBeenCalledWith('과제 부여 저장 완료');
+
+    fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
+    await waitFor(() => expect(patchBodies).toHaveLength(2));
+    expect(patchBodies).toEqual([
+      { studentId: 'S002', assigned: true, completed: true, source: 'ADMIN' },
+      { studentId: 'S002', completed: true, source: 'ADMIN' },
+    ]);
+    await waitFor(() => expect(alert).toHaveBeenCalledWith('과제 부여 저장 완료'));
+  });
+
+  it('keeps the reconciled assignment cache when a failed edit is cancelled', async () => {
+    const baseFetch = fetch as unknown as ReturnType<typeof vi.fn>;
+    const defaultFetch = baseFetch.getMockImplementation() as (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+    let assignmentStatus = [
+      { studentId: 'S001', name: '김민준', assigned: true, completed: true },
+      { studentId: 'S002', name: '이서연', assigned: false, completed: false },
+    ];
+    baseFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/tasks/T001/assignments' && init?.method === 'PATCH') {
+        assignmentStatus = assignmentStatus.map((row) => row.studentId === 'S002' ? { ...row, assigned: true } : row);
+        return jsonResponse({ error: '완료 기록 저장 실패' }, { status: 500 });
+      }
+      if (url === '/api/tasks/T001/assignments') return jsonResponse({ taskId: 'T001', students: assignmentStatus });
+      return defaultFetch(input, init);
+    });
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
+    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }));
+    fireEvent.click(screen.getByRole('button', { name: 'S002 이서연 완료 상태' }));
+    fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
+    await waitFor(() => expect(alert).toHaveBeenCalledWith(expect.stringContaining('완료 기록 저장 실패')));
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'QR 과제 부여' }));
+    expect(screen.getByRole('button', { name: '책 읽기 과제 선택' }).textContent).toContain('부여 학생 2명');
+    fireEvent.click(screen.getByRole('button', { name: '책 읽기 과제 선택' }));
+    fireEvent.change(screen.getByLabelText('과제 부여 학생 QR 직접 입력'), { target: { value: 'S002' } });
+    fireEvent.click(screen.getByRole('button', { name: '직접 입력 적용' }));
+    expect(await screen.findByText('이미 이 과제가 부여된 학생입니다.')).toBeTruthy();
   });
 
 
   it('assigns a selected task to a scanned student QR, saves it immediately, and shows saving progress', async () => {
-    const savedTasks = [tasks[0], { ...tasks[1], allowedStudentIds: ['S002'] }];
-    const qrTaskSave = deferredResponse(savedTasks);
+    const qrTaskSave = deferredResponse({
+      taskId: 'T002',
+      students: [
+        { studentId: 'S001', assigned: false, completed: false },
+        { studentId: 'S002', assigned: true, completed: false },
+      ],
+    });
     const baseFetch = fetch as unknown as ReturnType<typeof vi.fn>;
     baseFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -257,7 +369,7 @@ describe('AdminManagePage', () => {
       if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
       if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue', source: 'runtime' });
       if (url === '/api/transactions') return jsonResponse(transactions);
-      if (url === '/api/tasks/batch' && init?.method === 'PATCH') return qrTaskSave.response;
+      if (url === '/api/tasks/T002/assignments' && init?.method === 'PATCH') return qrTaskSave.response;
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
 
@@ -278,11 +390,11 @@ describe('AdminManagePage', () => {
     expect(screen.getByText('QR을 인식했습니다. 과제를 부여하는 중입니다.')).toBeTruthy();
     expect(await screen.findByRole('dialog', { name: '변경 사항 저장 중' })).toBeTruthy();
     expect(screen.getByText('변경 사항을 저장하는 중입니다.')).toBeTruthy();
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/batch', expect.objectContaining({
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/T002/assignments', expect.objectContaining({
       method: 'PATCH',
-      body: expect.stringContaining('"taskId":"T002"'),
+      body: JSON.stringify({ studentId: 'S002', assigned: true, source: 'QR' }),
     })));
-    expect((baseFetch.mock.calls.find(([url, init]) => String(url) === '/api/tasks/batch' && init?.method === 'PATCH')?.[1] as RequestInit).body).toContain('"allowedStudentIds":["S002"]');
+    expect(baseFetch.mock.calls.some(([url, init]) => String(url) === '/api/tasks/batch' && init?.method === 'PATCH')).toBe(false);
     qrTaskSave.resolve();
 
     expect(await screen.findByRole('dialog', { name: 'QR 과제 부여 성공' })).toBeTruthy();

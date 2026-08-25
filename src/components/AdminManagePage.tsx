@@ -96,7 +96,15 @@ export function AdminManagePage() {
   const [newTask, setNewTask] = useState<Omit<TaskDraft, 'taskId'>>(EMPTY_TASK);
   const [imageEditor, setImageEditor] = useState<{ productId: string; value: string } | null>(null);
   const [taskDescriptionEditor, setTaskDescriptionEditor] = useState<{ taskId: string; value: string } | null>(null);
-  const [taskAssignmentEditor, setTaskAssignmentEditor] = useState<{ taskId: string | null; selectedIds: string[]; assignedIds: string[]; completedIds: string[]; isLoading?: boolean } | null>(null);
+  const [taskAssignmentEditor, setTaskAssignmentEditor] = useState<{
+    taskId: string | null;
+    selectedIds: string[];
+    assignedIds: string[];
+    completedIds: string[];
+    initialAssignedIds: string[];
+    initialCompletedIds: string[];
+    isLoading?: boolean;
+  } | null>(null);
   const [qrPrintStudents, setQrPrintStudents] = useState<StudentDraft[] | null>(null);
   const [currencyMode, setCurrencyMode] = useState<CurrencyMode>('add');
   const [currencyAmount, setCurrencyAmount] = useState(0);
@@ -299,20 +307,39 @@ export function AdminManagePage() {
     return [...list].sort((a, b) => a.studentId.localeCompare(b.studentId, 'ko-KR', { numeric: true }) || a.name.localeCompare(b.name));
   }
 
+  async function loadTaskAssignmentStatus(taskId: string) {
+    const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/assignments`, { cache: 'no-store' });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error ?? '과제 부여 상태를 불러오지 못했습니다.');
+    const statusRows = Array.isArray(payload.students) ? payload.students : [];
+    return {
+      assignedIds: statusRows.filter((row: { assigned?: boolean }) => row.assigned).map((row: { studentId: string }) => row.studentId),
+      completedIds: statusRows.filter((row: { completed?: boolean }) => row.completed).map((row: { studentId: string }) => row.studentId),
+    };
+  }
+
   function openTaskAssignmentEditor(taskId: string | null, assignedIds: string[]) {
-    setTaskAssignmentEditor({ taskId, selectedIds: [], assignedIds: [...assignedIds], completedIds: [], isLoading: Boolean(taskId) });
+    setTaskAssignmentEditor({
+      taskId,
+      selectedIds: [],
+      assignedIds: [...assignedIds],
+      completedIds: [],
+      initialAssignedIds: [...assignedIds],
+      initialCompletedIds: [],
+      isLoading: Boolean(taskId),
+    });
     if (!taskId) return;
 
-    void fetch(`/api/tasks/${encodeURIComponent(taskId)}/assignments`, { cache: 'no-store' })
-      .then(async (response) => {
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error ?? '과제 부여 상태를 불러오지 못했습니다.');
-        const statusRows = Array.isArray(payload.students) ? payload.students : [];
+    void loadTaskAssignmentStatus(taskId)
+      .then(({ assignedIds: loadedAssignedIds, completedIds: loadedCompletedIds }) => {
+        setTasks((current) => current.map((task) => task.taskId === taskId ? { ...task, allowedStudentIds: loadedAssignedIds } : task));
         setTaskAssignmentEditor((current) => current?.taskId === taskId ? {
           ...current,
           selectedIds: [],
-          assignedIds: statusRows.filter((row: { assigned?: boolean }) => row.assigned).map((row: { studentId: string }) => row.studentId),
-          completedIds: statusRows.filter((row: { completed?: boolean }) => row.completed).map((row: { studentId: string }) => row.studentId),
+          assignedIds: loadedAssignedIds,
+          completedIds: loadedCompletedIds,
+          initialAssignedIds: loadedAssignedIds,
+          initialCompletedIds: loadedCompletedIds,
           isLoading: false,
         } : current);
       })
@@ -379,34 +406,111 @@ export function AdminManagePage() {
       return;
     }
 
-    const task = tasks.find((item) => item.taskId === taskAssignmentEditor.taskId);
+    const taskId = taskAssignmentEditor.taskId;
+    const task = tasks.find((item) => item.taskId === taskId);
     if (!task) {
       notify('과제를 찾을 수 없습니다.');
       setTaskAssignmentEditor(null);
       return;
     }
 
-    const updatedTask = { ...task, allowedStudentIds: taskAssignmentEditor.assignedIds };
-    setIsSavingChanges(true);
-    try {
-      const response = await fetch(`/api/tasks/${encodeURIComponent(updatedTask.taskId)}/assignments`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          assignedStudentIds: taskAssignmentEditor.assignedIds,
-          completedStudentIds: taskAssignmentEditor.completedIds,
-        }),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? '과제 부여 내용을 저장하지 못했습니다.');
-      const assignedStudentIds = Array.isArray(payload.students)
-        ? payload.students.filter((row: { assigned?: boolean }) => row.assigned).map((row: { studentId: string }) => row.studentId)
-        : taskAssignmentEditor.assignedIds;
-      setTasks((current) => current.map((item) => item.taskId === updatedTask.taskId ? { ...item, allowedStudentIds: assignedStudentIds } : item));
+    type AssignmentCommand = { studentId: string; assigned?: boolean; completed?: boolean; source: 'ADMIN' };
+    const commands: AssignmentCommand[] = students.flatMap((student) => {
+      const wasAssigned = taskAssignmentEditor.initialAssignedIds.includes(student.studentId);
+      const wasCompleted = taskAssignmentEditor.initialCompletedIds.includes(student.studentId);
+      const assigned = taskAssignmentEditor.assignedIds.includes(student.studentId);
+      const completed = taskAssignmentEditor.completedIds.includes(student.studentId);
+      if (wasAssigned === assigned && wasCompleted === completed) return [];
+      return [{
+        studentId: student.studentId,
+        ...(wasAssigned !== assigned ? { assigned } : {}),
+        ...(wasCompleted !== completed ? { completed } : {}),
+        source: 'ADMIN' as const,
+      }];
+    });
+
+    if (commands.length === 0) {
       setTaskAssignmentEditor(null);
       notify('과제 부여 저장 완료');
-    } catch (error) {
-      notify(error instanceof Error ? error.message : '과제 부여 내용을 저장하지 못했습니다.');
+      return;
+    }
+
+    let authoritativeAssignedIds = [...taskAssignmentEditor.initialAssignedIds];
+    let authoritativeCompletedIds = [...taskAssignmentEditor.initialCompletedIds];
+    const failures: Array<{ command: AssignmentCommand; message: string }> = [];
+    let reconciliationFailureMessage = '';
+    setIsSavingChanges(true);
+    try {
+      for (const command of commands) {
+        try {
+          const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/assignments`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(command),
+          });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.error ?? '과제 부여 내용을 저장하지 못했습니다.');
+          if (Array.isArray(payload.students)) {
+            authoritativeAssignedIds = payload.students.filter((row: { assigned?: boolean }) => row.assigned).map((row: { studentId: string }) => row.studentId);
+            authoritativeCompletedIds = payload.students.filter((row: { completed?: boolean }) => row.completed).map((row: { studentId: string }) => row.studentId);
+          } else {
+            if (typeof command.assigned === 'boolean') {
+              authoritativeAssignedIds = command.assigned
+                ? Array.from(new Set([...authoritativeAssignedIds, command.studentId]))
+                : authoritativeAssignedIds.filter((id) => id !== command.studentId);
+            }
+            if (typeof command.completed === 'boolean') {
+              authoritativeCompletedIds = command.completed
+                ? Array.from(new Set([...authoritativeCompletedIds, command.studentId]))
+                : authoritativeCompletedIds.filter((id) => id !== command.studentId);
+            }
+          }
+        } catch (error) {
+          failures.push({ command, message: error instanceof Error ? error.message : '과제 부여 내용을 저장하지 못했습니다.' });
+        }
+      }
+
+      if (failures.length > 0) {
+        try {
+          const reconciledStatus = await loadTaskAssignmentStatus(taskId);
+          authoritativeAssignedIds = reconciledStatus.assignedIds;
+          authoritativeCompletedIds = reconciledStatus.completedIds;
+        } catch (error) {
+          reconciliationFailureMessage = error instanceof Error
+            ? `, 최신 부여 상태 확인 실패: ${error.message}`
+            : ', 최신 부여 상태를 확인하지 못했습니다.';
+        }
+      }
+
+      setTasks((current) => current.map((item) => item.taskId === taskId ? { ...item, allowedStudentIds: authoritativeAssignedIds } : item));
+      if (failures.length === 0) {
+        setTaskAssignmentEditor(null);
+        notify('과제 부여 저장 완료');
+        return;
+      }
+
+      let retryAssignedIds = [...authoritativeAssignedIds];
+      let retryCompletedIds = [...authoritativeCompletedIds];
+      for (const { command } of failures) {
+        if (typeof command.assigned === 'boolean') {
+          retryAssignedIds = command.assigned
+            ? Array.from(new Set([...retryAssignedIds, command.studentId]))
+            : retryAssignedIds.filter((id) => id !== command.studentId);
+        }
+        if (typeof command.completed === 'boolean') {
+          retryCompletedIds = command.completed
+            ? Array.from(new Set([...retryCompletedIds, command.studentId]))
+            : retryCompletedIds.filter((id) => id !== command.studentId);
+        }
+      }
+      setTaskAssignmentEditor((current) => current?.taskId === taskId ? {
+        ...current,
+        assignedIds: retryAssignedIds,
+        completedIds: retryCompletedIds,
+        initialAssignedIds: authoritativeAssignedIds,
+        initialCompletedIds: authoritativeCompletedIds,
+      } : current);
+      notify(`과제 부여 일부 저장 실패 (${commands.length - failures.length}/${commands.length}건 저장): ${failures.map((failure) => failure.message).join(', ')}${reconciliationFailureMessage}`);
     } finally {
       setIsSavingChanges(false);
     }
@@ -450,23 +554,22 @@ export function AdminManagePage() {
       return;
     }
 
-    const updatedTasks = tasks.map((item) => (
-      item.taskId === task.taskId
-        ? { ...item, allowedStudentIds: [...(item.allowedStudentIds ?? []), student.studentId] }
-        : item
-    ));
+    const fallbackAssignedIds = [...(task.allowedStudentIds ?? []), student.studentId];
 
     setQrTaskLoading(false);
     setIsSavingChanges(true);
     try {
-      const response = await fetch('/api/tasks/batch', {
+      const response = await fetch(`/api/tasks/${encodeURIComponent(task.taskId)}/assignments`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tasks: buildTaskPayload(updatedTasks) }),
+        body: JSON.stringify({ studentId: student.studentId, assigned: true, source: 'QR' }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? '과제 부여 내용을 저장하지 못했습니다.');
-      setTasks(Array.isArray(payload) ? payload : updatedTasks);
+      const assignedStudentIds = Array.isArray(payload.students)
+        ? payload.students.filter((row: { assigned?: boolean }) => row.assigned).map((row: { studentId: string }) => row.studentId)
+        : fallbackAssignedIds;
+      setTasks((current) => current.map((item) => item.taskId === task.taskId ? { ...item, allowedStudentIds: assignedStudentIds } : item));
       setQrTaskResult({ status: 'success', taskId, message: '과제가 부여되었습니다.' });
     } catch (error) {
       setQrTaskResult({ status: 'failure', taskId, message: error instanceof Error ? error.message : '과제 부여 내용을 저장하지 못했습니다.' });
@@ -739,8 +842,17 @@ export function AdminManagePage() {
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? '과제 완료 기록을 초기화하지 못했습니다.');
-      const resetTaskIds = Array.isArray(payload.taskIds) ? payload.taskIds.map((id: unknown) => String(id)) : taskIds;
-      setTasks((current) => current.map((task) => resetTaskIds.includes(task.taskId) ? { ...task, allowedStudentIds: [] } : task));
+      const resetTaskIds: string[] = Array.isArray(payload.taskIds) ? payload.taskIds.map((id: unknown) => String(id)) : taskIds;
+      const refreshedAssignments = await Promise.all(resetTaskIds.map(async (taskId) => {
+        try {
+          const status = await loadTaskAssignmentStatus(taskId);
+          return [taskId, status.assignedIds] as const;
+        } catch {
+          return null;
+        }
+      }));
+      const refreshedAssignmentMap = new Map(refreshedAssignments.filter((entry): entry is readonly [string, string[]] => entry !== null));
+      setTasks((current) => current.map((task) => refreshedAssignmentMap.has(task.taskId) ? { ...task, allowedStudentIds: refreshedAssignmentMap.get(task.taskId)! } : task));
       notify(`${label} 완료 기록 ${Number(payload.deletedCount ?? 0)}건 초기화 완료`);
     } catch (error) {
       notify(error instanceof Error ? error.message : '과제 완료 기록을 초기화하지 못했습니다.');

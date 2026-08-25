@@ -10,6 +10,7 @@ import {
 } from '@/server/sheetsRows';
 import type { RecurringSchemaMigrationStore } from '@/server/storage/tabularStore';
 import { migrateRecurringTaskSchema } from './recurringSchemaMigrator';
+import { enqueueTaskCommand, taskCommandQueueKey } from './taskCommandQueue';
 import { readTaskAssignmentsIfPresent, readTaskCompletions } from './taskCycleQueries';
 
 export type TaskAssignmentMutation = {
@@ -29,7 +30,6 @@ export type TaskAssignmentMutationResult = {
   legacyMirrorWarning?: string;
 };
 
-const commandQueues = new Map<string, Promise<void>>();
 const LEGACY_MIRROR_WARNING = 'LEGACY_MIRROR_UPDATE_FAILED';
 
 /**
@@ -41,11 +41,11 @@ export function mutateTaskAssignment(
   store: RecurringSchemaMigrationStore,
   mutation: TaskAssignmentMutation,
 ): Promise<TaskAssignmentMutationResult> {
-  const queueKey = JSON.stringify([mutation.task.taskId, mutation.task.taskInstanceId ?? null]);
-  return enqueueCommand(queueKey, () => mutateTaskAssignmentNow(store, mutation));
+  const queueKey = taskCommandQueueKey(mutation.task.taskId, mutation.task.taskInstanceId);
+  return enqueueTaskCommand(queueKey, () => mutateTaskAssignmentNow(store, mutation));
 }
 
-async function mutateTaskAssignmentNow(
+export async function mutateTaskAssignmentNow(
   store: RecurringSchemaMigrationStore,
   mutation: TaskAssignmentMutation,
 ): Promise<TaskAssignmentMutationResult> {
@@ -184,19 +184,6 @@ async function mutateTaskAssignmentNow(
     result.legacyMirrorWarning = LEGACY_MIRROR_WARNING;
   }
   return result;
-}
-
-function enqueueCommand<T>(
-  queueKey: string,
-  operation: () => Promise<T>,
-): Promise<T> {
-  const previous = commandQueues.get(queueKey) ?? Promise.resolve();
-  const result = previous.then(operation, operation);
-  const tail = result.then(() => undefined, () => undefined);
-  commandQueues.set(queueKey, tail);
-  return result.finally(() => {
-    if (commandQueues.get(queueKey) === tail) commandQueues.delete(queueKey);
-  });
 }
 
 async function appendCanonical(

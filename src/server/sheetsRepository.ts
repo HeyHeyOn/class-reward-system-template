@@ -1,8 +1,9 @@
 import type { ClassTask, Product, Student, TaskAssignmentStatus, TaskCompletion, Transaction } from '@/domain/types';
 import { normalizeLegacyTimeZone } from '@/domain/taskSchedule';
-import { evaluateTaskCompletion } from '@/domain/taskCompletionPolicy';
 import type { TaskCycleState } from '@/domain/taskCycleState';
-import { mutateTaskAssignment } from '@/server/repositories/sheets/taskAssignmentCommands';
+import { mutateTaskAssignmentNow } from '@/server/repositories/sheets/taskAssignmentCommands';
+import { mutateTaskCompletion, mutateTaskCompletionNow } from '@/server/repositories/sheets/taskCompletionCommands';
+import { enqueueTaskCommand, taskCommandQueueKey } from '@/server/repositories/sheets/taskCommandQueue';
 import {
   readTaskCycleHistory,
   readTaskCycleState,
@@ -10,7 +11,7 @@ import {
 } from '@/server/repositories/sheets/taskCycleQueries';
 import {
   buildTaskAppendRow,
-  buildTaskCompletionAppendRow,
+
   buildTransactionAppendRow,
   createHeaderIndex,
   parseProductRow,
@@ -126,7 +127,7 @@ const VERSIONED_TASK_SCHEDULE_HEADERS = [
   'pendingRecurrenceType', 'pendingRecurrenceTime', 'pendingRecurrenceWeekday',
   'pendingRecurrenceDayOfMonth', 'pendingResetCompletionOnCycle', 'pendingResetAssignmentOnCycle',
 ] as const;
-const TASK_COMPLETION_HEADERS = ['completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note'];
+
 const TRANSACTION_HEADERS = ['transactionId', 'timestamp', 'studentId', 'studentName', 'items', 'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator'];
 
 export type SheetSetting = {
@@ -242,7 +243,8 @@ function parseTaskCompletions(rows: string[][]): TaskCompletion[] {
 
 export type TaskAssignmentStatusUpdate = {
   studentId: string;
-  assigned: boolean;
+  assigned?: boolean;
+  completed?: boolean;
   source: 'ADMIN' | 'QR';
 };
 
@@ -294,16 +296,54 @@ export async function updateTaskAssignmentStatus(
   if (!record) throw new Error('과제를 찾을 수 없습니다.');
   const student = await getStudentById(store, update.studentId.trim());
   if (!student || student.status !== 'ACTIVE') throw new Error('학생 정보를 찾을 수 없습니다.');
-  const mutation = await mutateTaskAssignment(store, {
-    task: record.task,
-    taskRowNumber: record.rowNumber,
-    studentId: student.studentId,
-    assigned: update.assigned,
-    source: update.source,
+  if (update.completed !== undefined && update.source !== 'ADMIN') {
+    throw new Error('QR 요청은 완료 상태를 변경할 수 없습니다.');
+  }
+  const studentRecord = update.completed !== undefined
+    ? await getStudentRecordById(store, student.studentId)
+    : null;
+  const queueKey = taskCommandQueueKey(record.task.taskId, record.task.taskInstanceId);
+
+  return enqueueTaskCommand(queueKey, async () => {
+    let legacyMirrorWarning: string | undefined;
+    const mutateAssignment = async () => {
+      if (update.assigned === undefined) return;
+      const mutation = await mutateTaskAssignmentNow(store, {
+        task: record.task,
+        taskRowNumber: record.rowNumber,
+        studentId: student.studentId,
+        assigned: update.assigned,
+        source: update.source,
+      });
+      legacyMirrorWarning = mutation.legacyMirrorWarning;
+    };
+    const mutateCompletion = async () => {
+      if (update.completed === undefined || !studentRecord) return;
+      await mutateTaskCompletionNow({
+        store,
+        task: record.task,
+        taskRowNumber: record.rowNumber,
+        student,
+        studentRowNumber: studentRecord.rowNumber,
+        completed: update.completed,
+        source: 'ADMIN',
+      });
+    };
+
+    // A reset needs the old assignment; a completion needs the new assignment. Keep both
+    // dependency-ordered operations in this one process-global task-mutation queue command.
+    if (update.assigned === false && update.completed !== undefined) {
+      await mutateCompletion();
+      await mutateAssignment();
+    } else {
+      await mutateAssignment();
+      await mutateCompletion();
+    }
+
+    const status: TaskAssignmentMutationStatus = await getTaskAssignmentStatus(store, record.task.taskId);
+    if (legacyMirrorWarning) status.legacyMirrorWarning = legacyMirrorWarning;
+    return status;
   });
-  const status: TaskAssignmentMutationStatus = await getTaskAssignmentStatus(store, record.task.taskId);
-  if (mutation.legacyMirrorWarning) status.legacyMirrorWarning = mutation.legacyMirrorWarning;
-  return status;
 }
 
 export async function createTask(store: SheetsStore, create: TaskCreate): Promise<ClassTask> {
@@ -418,128 +458,71 @@ export async function deleteTasksBatch(store: SheetsStore, taskIds: string[]): P
   const missingIds = uniqueIds.filter((taskId) => !recordsById.has(taskId));
   if (missingIds.length > 0) throw new Error(`과제를 찾을 수 없습니다: ${missingIds.join(', ')}`);
 
-  const deletedCompletionCount = await deleteTaskCompletionRowsForTaskIds(store, uniqueIds);
   await store.deleteRows('Tasks', uniqueIds.map((taskId) => recordsById.get(taskId)!.rowNumber));
-  return { taskIds: uniqueIds, deletedCompletionCount };
+  // Completion rows are an append-only audit ledger and outlive the task definition row.
+  return { taskIds: uniqueIds, deletedCompletionCount: 0 };
 }
 
-export async function resetTaskCompletionsBatch(store: SheetsStore, taskIds: string[]): Promise<{ taskIds: string[]; deletedCount: number }> {
+export async function resetTaskCompletionsBatch(store: RecurringSchemaMigrationStore, taskIds: string[]): Promise<{ taskIds: string[]; deletedCount: number }> {
   const uniqueIds = normalizeUniqueIds(taskIds);
   if (uniqueIds.length === 0) throw new Error('선택된 과제가 없습니다.');
-  if (!store.deleteRows) throw new Error('현재 Sheets 저장소가 여러 행 삭제를 지원하지 않습니다.');
-  await ensureTaskSheet(store);
   const recordsById = new Map((await getTaskRecords(store)).map((record) => [record.task.taskId, record]));
   const missingIds = uniqueIds.filter((taskId) => !recordsById.has(taskId));
   if (missingIds.length > 0) throw new Error(`과제를 찾을 수 없습니다: ${missingIds.join(', ')}`);
-  const deletedCount = await deleteTaskCompletionRowsForTaskIds(store, uniqueIds);
-  const taskRows = await store.getRows('Tasks');
-  if (taskRows[0]?.includes('allowedStudentIds')) {
-    await applyCellUpdates(store, 'Tasks', uniqueIds.map((taskId) => ({
-      rowNumber: recordsById.get(taskId)!.rowNumber,
-      columnName: 'allowedStudentIds',
-      value: '',
-    })));
+
+  const studentsById = new Map((await getStudents(store)).map((student) => [student.studentId, student]));
+  let resetCount = 0;
+  for (const taskId of uniqueIds) {
+    const record = recordsById.get(taskId)!;
+    const cycleState = await readTaskCycleState(store, record.task, new Date().toISOString());
+    for (const studentId of cycleState.completedStudentIds) {
+      const student = studentsById.get(studentId);
+      if (!student) continue;
+      const studentRecord = await getStudentRecordById(store, studentId);
+      if (!studentRecord) continue;
+      const result = await mutateTaskCompletion({
+        store,
+        task: record.task,
+        taskRowNumber: record.rowNumber,
+        student,
+        studentRowNumber: studentRecord.rowNumber,
+        completed: false,
+        source: 'ADMIN',
+      });
+      if (result.changed) resetCount += 1;
+    }
   }
-  return { taskIds: uniqueIds, deletedCount };
+  // Keep the legacy property name while reporting appended reset events, never deletions.
+  return { taskIds: uniqueIds, deletedCount: resetCount };
 }
 
 export async function deleteTask(store: SheetsStore, taskId: string): Promise<{ taskId: string; deletedCompletionCount: number }> {
   const record = await getTaskRecordById(store, taskId);
   if (!record) throw new Error('과제를 찾을 수 없습니다.');
   if (!store.deleteRow) throw new Error('현재 Sheets 저장소가 행 삭제를 지원하지 않습니다.');
-  const deletedCompletionCount = await deleteTaskCompletionRowsForTaskIds(store, [taskId]);
   await store.deleteRow('Tasks', record.rowNumber);
-  return { taskId, deletedCompletionCount };
+  return { taskId, deletedCompletionCount: 0 };
 }
 
-async function deleteTaskCompletionRowsForTaskIds(store: SheetsStore, taskIds: string[]): Promise<number> {
-  await ensureTaskCompletionSheet(store);
-
-  const rows = await store.getRows('TaskCompletions');
-  const [headers, ...dataRows] = rows;
-  if (!headers) return 0;
-
-  const headerIndex = createHeaderIndex(headers);
-  assertRequiredColumns(headerIndex, REQUIRED_TASK_COMPLETION_COLUMNS, 'TaskCompletions');
-  const taskIdIndex = headerIndex.get('taskId')!;
-  const rowNumbers = dataRows
-    .map((row, index) => taskIds.includes(String(row[taskIdIndex] ?? '').trim()) ? index + 2 : null)
-    .filter((rowNumber): rowNumber is number => rowNumber !== null);
-
-  return deleteTaskCompletionRowNumbers(store, rowNumbers);
-}
-
-
-async function deleteTaskCompletionRowNumbers(store: SheetsStore, rowNumbers: number[]): Promise<number> {
-  if (rowNumbers.length === 0) return 0;
-  if (store.deleteRows) {
-    await store.deleteRows('TaskCompletions', rowNumbers);
-  } else if (store.deleteRow) {
-    for (const rowNumber of [...rowNumbers].sort((a, b) => b - a)) await store.deleteRow('TaskCompletions', rowNumber);
-  } else {
-    throw new Error('현재 Sheets 저장소가 완료 기록 삭제를 지원하지 않습니다.');
-  }
-  return rowNumbers.length;
-}
-
-export async function completeTaskForStudent(store: SheetsStore, taskId: string, studentId: string): Promise<TaskCompletionResult> {
-  await ensureTaskSheet(store);
-  await ensureTaskCompletionSheet(store);
-  const task = await getTaskById(store, taskId.trim());
-  if (!task || !task.isActive) throw new Error('완료할 수 있는 과제가 아닙니다.');
+export async function completeTaskForStudent(store: RecurringSchemaMigrationStore, taskId: string, studentId: string): Promise<TaskCompletionResult> {
+  const record = await getTaskRecordById(store, taskId.trim());
+  if (!record || !record.task.isActive) throw new Error('완료할 수 있는 과제가 아닙니다.');
   const studentRecord = await getStudentRecordById(store, studentId.trim());
   if (!studentRecord || studentRecord.student.status !== 'ACTIVE') throw new Error('학생 정보를 찾을 수 없습니다.');
-  if (task.allowedStudentIds.length === 0) throw new Error('부여된 학생이 없습니다.');
-  if (!task.allowedStudentIds.includes(studentRecord.student.studentId)) throw new Error('허가되지 않은 과제입니다.');
-
-  const completionRows = await store.getRows('TaskCompletions');
-  const completions = parseTaskCompletions(completionRows);
-  const policyResult = evaluateTaskCompletion({ task, student: studentRecord.student, completions });
-  if (!policyResult.ok) throw new Error(policyResult.message);
-
-  const balanceBefore = studentRecord.student.balance;
-  const balanceAfter = policyResult.balanceAfter;
-  const timestamp = new Date().toISOString();
-  const completion: TaskCompletion = {
-    completionId: `TC-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    timestamp,
-    taskId: task.taskId,
-    studentId: studentRecord.student.studentId,
-    studentName: studentRecord.student.name,
-    reward: task.reward,
-    balanceBefore,
-    balanceAfter,
-    status: 'SUCCESS',
-    note: 'bank-self-completion',
-  };
-  const completionHeaders = completionRows[0] ?? TASK_COMPLETION_HEADERS;
-  let transactionHeaders = TRANSACTION_HEADERS;
-  try {
-    transactionHeaders = (await store.getRows('Transactions'))[0] ?? TRANSACTION_HEADERS;
-  } catch {
-    // Transaction logging is best effort; still try the canonical schema below.
-  }
-
-  await store.updateCell('Students', studentRecord.rowNumber, 'balance', balanceAfter);
-  await store.appendRow('TaskCompletions', buildTaskCompletionAppendRow(completionHeaders, completion));
-  const rewardTransaction: Transaction = {
-    transactionId: `TASK-${completion.completionId}`,
-    timestamp,
-    studentId: completion.studentId,
-    studentName: completion.studentName,
-    items: [{ productId: task.taskId, name: task.title, price: -task.reward, quantity: 1, subtotal: -task.reward }],
-    totalAmount: -task.reward,
-    balanceBefore,
-    balanceAfter,
-    status: 'TASK_REWARD',
-    operator: 'bank',
-  };
-  await store.appendRow('Transactions', buildTransactionAppendRow(transactionHeaders, rewardTransaction)).catch(() => undefined);
-
+  const mutation = await mutateTaskCompletion({
+    store,
+    task: record.task,
+    taskRowNumber: record.rowNumber,
+    student: studentRecord.student,
+    studentRowNumber: studentRecord.rowNumber,
+    completed: true,
+    source: 'BANK',
+  });
+  if (!mutation.completion) throw new Error('과제 완료 처리에 실패했습니다.');
   return {
-    task,
-    student: { ...studentRecord.student, balance: balanceAfter },
-    completion,
+    task: record.task,
+    student: { ...studentRecord.student, balance: mutation.balanceAfter },
+    completion: mutation.completion,
   };
 }
 
@@ -1115,16 +1098,6 @@ async function ensureTaskSheet(store: SheetsStore): Promise<void> {
   await ensureSheetHeaders(store, 'Tasks', TASK_HEADERS, headers);
 }
 
-async function ensureTaskCompletionSheet(store: SheetsStore): Promise<void> {
-  const rows = await store.getRows('TaskCompletions');
-  const headers = rows[0];
-  if (!headers) {
-    await store.appendRow('TaskCompletions', TASK_COMPLETION_HEADERS);
-    return;
-  }
-
-  await ensureSheetHeaders(store, 'TaskCompletions', TASK_COMPLETION_HEADERS, headers);
-}
 
 async function ensureSheetHeaders(store: SheetsStore, sheetName: SheetName, requiredHeaders: string[], currentHeaders: string[]): Promise<void> {
   const normalizedCurrent = currentHeaders.map((header) => header.trim()).filter(Boolean);

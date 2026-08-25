@@ -22,7 +22,6 @@ import {
   updateProductDetailsBatch,
   updateStudentDetails,
   updateStudentDetailsBatch,
-  resetTaskCompletionsBatch,
   updateTaskDetails,
   updateTaskDetailsBatch,
   getTaskAssignmentStatus,
@@ -30,6 +29,82 @@ import {
 
   saveSheetSetting,
 } from '@/server/sheetsRepository';
+import { TASK_SCHEMA_HEADERS } from '@/server/repositories/sheets/recurringSchemaMigrator';
+
+type LocalStore = {
+  getRows(sheetName: string): Promise<string[][]>;
+  updateCell(sheetName: string, rowNumber: number, columnName: string, value: string | number): Promise<void>;
+  appendRow(sheetName: string, values: string[]): Promise<void>;
+  [key: string]: unknown;
+};
+
+/** Adds the real stateful migration capabilities omitted by old repository fakes. */
+function withRecurringMigration<T extends LocalStore>(base: T) {
+  const cached = new Map<string, string[][]>();
+  const widths = new Map<string, number>();
+
+  async function rowsFor(sheetName: string): Promise<string[][]> {
+    const existing = cached.get(sheetName);
+    if (existing) return existing;
+    const source = (await base.getRows(sheetName)).map((row) => [...row]);
+    const rows = sheetName === 'Tasks' ? normalizeLegacyTasks(source) : source;
+    cached.set(sheetName, rows);
+    widths.set(sheetName, Math.max(rows[0]?.length ?? 0, 26));
+    return rows;
+  }
+
+  const adapter = {
+    ...base,
+    async getRows(sheetName: string) { return (await rowsFor(sheetName)).map((row) => [...row]); },
+    async updateCell(sheetName: string, rowNumber: number, columnName: string, value: string | number) {
+      await base.updateCell(sheetName, rowNumber, columnName, value);
+      const rows = await rowsFor(sheetName);
+      const column = rows[0]?.indexOf(columnName) ?? -1;
+      if (column >= 0 && rows[rowNumber - 1]) rows[rowNumber - 1][column] = String(value);
+    },
+    async appendRow(sheetName: string, values: string[]) {
+      await base.appendRow(sheetName, values);
+      (await rowsFor(sheetName)).push([...values]);
+    },
+    async lookupSheet(sheetName: string) {
+      if (sheetName === 'TaskAssignments' && !cached.has(sheetName)) return { found: false as const, reason: 'SHEET_NOT_FOUND' as const };
+      const rows = await rowsFor(sheetName);
+      return { found: true as const, info: { sheetId: sheetName === 'Tasks' ? 1 : 2, title: sheetName, columnCount: widths.get(sheetName) ?? rows[0]?.length ?? 0 } };
+    },
+    async createSheetWithHeader(sheetName: string, headers: readonly string[]) {
+      cached.set(sheetName, [[...headers]]);
+      widths.set(sheetName, Math.max(headers.length, 26));
+    },
+    async ensureColumnCount(sheetName: string, expected: number, required: number) {
+      if ((widths.get(sheetName) ?? expected) !== expected) throw new Error('column width changed');
+      widths.set(sheetName, required);
+    },
+    async writeHeaderCells(sheetName: string, startColumn: number, headers: readonly string[]) {
+      const rows = await rowsFor(sheetName);
+      headers.forEach((header, index) => { rows[0][startColumn + index] = header; });
+    },
+    async verifyHeaderCells(sheetName: string, expected: { header: readonly string[] }) {
+      const header = (await rowsFor(sheetName))[0] ?? [];
+      if (!expected.header.every((value, index) => header[index] === value)) throw new Error('header changed');
+    },
+    async verifyAndWriteHeaderCells(sheetName: string, expected: { header: readonly string[] }, headers: readonly string[]) {
+      await adapter.verifyHeaderCells(sheetName, expected);
+      await adapter.writeHeaderCells(sheetName, expected.header.length, headers);
+    },
+  };
+  return adapter;
+}
+
+function normalizeLegacyTasks(rows: string[][]): string[][] {
+  const header = rows[0] ?? [];
+  if (TASK_SCHEMA_HEADERS.slice(0, 9).every((value, index) => header[index]?.trim() === value)) return rows;
+  const index = new Map(header.map((value, position) => [value.trim(), position]));
+  const legacy = TASK_SCHEMA_HEADERS.slice(0, 9);
+  return [
+    [...legacy],
+    ...rows.slice(1).map((row) => legacy.map((column) => row[index.get(column) ?? -1] ?? '')),
+  ];
+}
 
 const sheetRows = {
   Students: [
@@ -1018,7 +1093,7 @@ describe('sheets repository', () => {
     ]);
   });
 
-  it('batch deletes tasks and resets selected task assignment and completion rows', async () => {
+  it('deletes task definitions without deleting completion history', async () => {
     const deletedBatches: Array<{ sheetName: string; rowNumbers: number[] }> = [];
     const cellUpdates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
     const fakeStore = {
@@ -1031,18 +1106,15 @@ describe('sheets repository', () => {
       },
     };
 
-    await expect(deleteTasksBatch(fakeStore, ['T001', 'T002', 'T001'])).resolves.toEqual({ taskIds: ['T001', 'T002'], deletedCompletionCount: 1 });
-    await expect(resetTaskCompletionsBatch(fakeStore, ['T001'])).resolves.toEqual({ taskIds: ['T001'], deletedCount: 1 });
+    await expect(deleteTasksBatch(fakeStore, ['T001', 'T002', 'T001'])).resolves.toEqual({ taskIds: ['T001', 'T002'], deletedCompletionCount: 0 });
 
     expect(deletedBatches).toEqual([
-      { sheetName: 'TaskCompletions', rowNumbers: [2] },
       { sheetName: 'Tasks', rowNumbers: [3, 2] },
-      { sheetName: 'TaskCompletions', rowNumbers: [2] },
     ]);
-    expect(cellUpdates).toContainEqual({ sheetName: 'Tasks', rowNumber: 3, columnName: 'allowedStudentIds', value: '' });
+    expect(cellUpdates).toEqual([]);
   });
 
-  it('deletes a single task together with its completion rows', async () => {
+  it('deletes a single task while retaining its completion rows', async () => {
     const deletedRows: Array<{ sheetName: string; rowNumber: number }> = [];
     const deletedBatches: Array<{ sheetName: string; rowNumbers: number[] }> = [];
     const fakeStore = {
@@ -1058,8 +1130,8 @@ describe('sheets repository', () => {
       },
     };
 
-    await expect(deleteTask(fakeStore, 'T001')).resolves.toEqual({ taskId: 'T001', deletedCompletionCount: 1 });
-    expect(deletedBatches).toEqual([{ sheetName: 'TaskCompletions', rowNumbers: [2] }]);
+    await expect(deleteTask(fakeStore, 'T001')).resolves.toEqual({ taskId: 'T001', deletedCompletionCount: 0 });
+    expect(deletedBatches).toEqual([]);
     expect(deletedRows).toEqual([{ sheetName: 'Tasks', rowNumber: 3 }]);
   });
 
@@ -1106,7 +1178,7 @@ describe('sheets repository', () => {
     ]);
     expect(cellUpdates).toContainEqual({ rowNumber: 2, columnName: 'allowedStudentIds', value: 'S001' });
 
-    await expect(completeTaskForStudent(store, 'T010', 'S002')).rejects.toThrow('허가되지 않은 과제입니다.');
+    await expect(completeTaskForStudent(withRecurringMigration(store) as never, 'T010', 'S002')).rejects.toThrow('허가되지 않은 과제입니다.');
     expect(appended.some((row) => row.sheetName === 'TaskCompletions')).toBe(false);
   });
 
@@ -1205,8 +1277,8 @@ describe('sheets repository', () => {
       async appendRow(sheetName: string, values: string[]) { appended.push({ sheetName, values }); },
     };
 
-    await expect(completeTaskForStudent(store, 'T010', 'S002')).rejects.toThrow('허가되지 않은 과제입니다.');
-    await expect(completeTaskForStudent(store, 'T010', 'S001')).resolves.toMatchObject({ student: { studentId: 'S001' } });
+    await expect(completeTaskForStudent(withRecurringMigration(store) as never, 'T010', 'S002')).rejects.toThrow('허가되지 않은 과제입니다.');
+    await expect(completeTaskForStudent(withRecurringMigration(store) as never, 'T010', 'S001')).resolves.toMatchObject({ student: { studentId: 'S001' } });
     expect(appended.some((row) => row.sheetName === 'TaskCompletions')).toBe(true);
   });
 
@@ -1225,7 +1297,7 @@ describe('sheets repository', () => {
       async appendRow() {},
     };
 
-    await expect(completeTaskForStudent(fakeStore, 'T099', 'S001')).rejects.toThrow('부여된 학생이 없습니다.');
+    await expect(completeTaskForStudent(withRecurringMigration(fakeStore) as never, 'T099', 'S001')).rejects.toThrow('부여된 학생이 없습니다.');
   });
 
   it('completes a task once, pays reward, and records completion', async () => {
@@ -1241,7 +1313,7 @@ describe('sheets repository', () => {
       async updateHeaderRow() {},
       async appendRow(sheetName: string, values: string[]) { appended.push({ sheetName, values }); },
     };
-    await expect(completeTaskForStudent(fakeStore, 'T001', 'S001')).resolves.toMatchObject({ student: { studentId: 'S001', balance: 3505 } });
+    await expect(completeTaskForStudent(withRecurringMigration(fakeStore) as never, 'T001', 'S001')).resolves.toMatchObject({ student: { studentId: 'S001', balance: 3505 } });
     expect(updates).toContainEqual({ sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: 3505 });
     expect(appended.some((row) => row.sheetName === 'TaskCompletions')).toBe(true);
   });
@@ -1264,9 +1336,10 @@ describe('sheets repository', () => {
       async appendRow() {},
     };
 
-    await expect(completeTaskForStudent(fakeStore, 'T001', 'S001')).resolves.toMatchObject({ student: { balance: 3505 } });
-    expect(completionReads).toBe(2);
-    expect(events).toEqual(['read:TaskCompletions', 'read:TaskCompletions', 'update']);
+    await expect(completeTaskForStudent(withRecurringMigration(fakeStore) as never, 'T001', 'S001')).resolves.toMatchObject({ student: { balance: 3505 } });
+    expect(completionReads).toBe(1);
+    expect(events[0]).toBe('read:TaskCompletions');
+    expect(events.indexOf('read:TaskCompletions')).toBeLessThan(events.indexOf('update'));
   });
 
   it('attempts a canonical task reward transaction append when its header read fails', async () => {
@@ -1283,7 +1356,7 @@ describe('sheets repository', () => {
       async appendRow(sheetName: string, values: string[]) { appended.push({ sheetName, values }); },
     };
 
-    await expect(completeTaskForStudent(fakeStore, 'T001', 'S001')).resolves.toMatchObject({ student: { balance: 3505 } });
+    await expect(completeTaskForStudent(withRecurringMigration(fakeStore) as never, 'T001', 'S001')).resolves.toMatchObject({ student: { balance: 3505 } });
     expect(appended.find((row) => row.sheetName === 'Transactions')?.values.slice(2, 10)).toEqual([
       'S001', '김민준', expect.stringContaining('T001'), '-5', '3500', '3505', 'TASK_REWARD', 'bank',
     ]);
@@ -1305,7 +1378,7 @@ describe('sheets repository', () => {
       async appendRow(sheetName: string, values: string[]) { appended.push({ sheetName, values }); },
     };
 
-    await expect(completeTaskForStudent(fakeStore, 'T001', 'S001')).resolves.toMatchObject({
+    await expect(completeTaskForStudent(withRecurringMigration(fakeStore) as never, 'T001', 'S001')).resolves.toMatchObject({
       student: { studentId: 'S001', balance: 1 },
       completion: { balanceBefore: -1, balanceAfter: 1, reward: 2 },
     });
@@ -1333,7 +1406,7 @@ describe('sheets repository', () => {
       async appendRow(sheetName: string, values: string[]) { appended.push({ sheetName, values }); },
     };
 
-    await expect(completeTaskForStudent(fakeStore, 'T001', 'S001')).resolves.toMatchObject({ student: { studentId: 'S001', balance: 3505 } });
+    await expect(completeTaskForStudent(withRecurringMigration(fakeStore) as never, 'T001', 'S001')).resolves.toMatchObject({ student: { studentId: 'S001', balance: 3505 } });
     expect(updates).toContainEqual({ sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: 3505 });
     expect(appended.some((row) => row.sheetName === 'TaskCompletions')).toBe(true);
   });
@@ -1352,7 +1425,7 @@ describe('sheets repository', () => {
       async updateHeaderRow() {},
       async appendRow() {},
     };
-    await expect(completeTaskForStudent(fakeStore, 'T001', 'S001')).rejects.toThrow('이미 완료한 과제입니다.');
+    await expect(completeTaskForStudent(withRecurringMigration(fakeStore) as never, 'T001', 'S001')).rejects.toThrow('이미 완료한 과제입니다.');
   });
 
 });

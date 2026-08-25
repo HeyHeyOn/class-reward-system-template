@@ -14,6 +14,9 @@ export type TaskCompletionPolicyCompletion = {
   studentId: string;
   status: string;
   timestamp?: string;
+  taskInstanceId?: string;
+  cycleId?: string;
+  source?: string;
 };
 
 export type TaskCompletionPolicyResult =
@@ -24,17 +27,31 @@ export function evaluateTaskCompletion({
   task,
   student,
   completions,
+  taskInstanceId,
+  cycleId,
 }: {
   task: TaskCompletionPolicyTask;
   student: TaskCompletionPolicyStudent;
   completions: TaskCompletionPolicyCompletion[];
+  taskInstanceId?: string;
+  cycleId?: string;
 }): TaskCompletionPolicyResult {
-  const alreadyCompleted = completions.some(
-    (completion) =>
-      isCompletionForTaskInstance(completion, task)
-      && completion.studentId === student.studentId
-      && completion.status === 'SUCCESS',
-  );
+  const versionedRows = taskInstanceId && cycleId
+    ? completions.filter((completion) =>
+      completion.taskInstanceId === taskInstanceId
+      && completion.cycleId === cycleId
+      && completion.studentId === student.studentId)
+    : [];
+  const effectiveVersioned = versionedRows.at(-1);
+  const alreadyCompleted = effectiveVersioned
+    ? effectiveVersioned.source !== 'ADMIN_RESET' && effectiveVersioned.status === 'SUCCESS'
+    : completions.some(
+      (completion) =>
+        !completion.taskInstanceId
+        && isCompletionForTaskInstance(completion, task)
+        && completion.studentId === student.studentId
+        && completion.status === 'SUCCESS',
+    );
 
   if (alreadyCompleted) {
     return { ok: false, message: '이미 완료한 과제입니다.' };

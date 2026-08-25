@@ -82,4 +82,30 @@ describe('task completion policy', () => {
       ],
     })).toEqual({ ok: true, balanceAfter: 15 });
   });
+
+  it('uses the last physical versioned row as the effective state so ADMIN_RESET unlocks a retry', () => {
+    expect(evaluateTaskCompletion({
+      task,
+      student,
+      completions: [
+        { ...success, taskInstanceId: 'I1', cycleId: 'C1', source: 'BANK' },
+        { ...success, status: 'RESET', taskInstanceId: 'I1', cycleId: 'C1', source: 'ADMIN_RESET' },
+      ],
+      taskInstanceId: 'I1',
+      cycleId: 'C1',
+    })).toEqual({ ok: true, balanceAfter: 15 });
+  });
+
+  it('blocks when the last physical versioned row is SUCCESS', () => {
+    expect(evaluateTaskCompletion({
+      task,
+      student,
+      completions: [
+        { ...success, status: 'RESET', taskInstanceId: 'I1', cycleId: 'C1', source: 'ADMIN_RESET' },
+        { ...success, taskInstanceId: 'I1', cycleId: 'C1', source: 'BANK' },
+      ],
+      taskInstanceId: 'I1',
+      cycleId: 'C1',
+    })).toEqual({ ok: false, message: '이미 완료한 과제입니다.' });
+  });
 });

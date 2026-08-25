@@ -33,6 +33,28 @@ describe('PATCH /api/tasks/[taskId]/assignments', () => {
     await expect(response.json()).resolves.toMatchObject({ taskId: 'T1', legacyMirrorWarning: 'LEGACY_MIRROR_UPDATE_FAILED' });
   });
 
+  it('sends completion desired state as an ADMIN command', async () => {
+    const store = {};
+    vi.mocked(createConfiguredSheetsStore).mockResolvedValue(store as never);
+    vi.mocked(updateTaskAssignmentStatus).mockResolvedValue({ taskId: 'T1', students: [] });
+    const response = await PATCH(new Request('http://localhost/api/tasks/T1/assignments', {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ studentId: 'S1', completed: false }),
+    }), { params: Promise.resolve({ taskId: 'T1' }) });
+    expect(response.status).toBe(200);
+    expect(updateTaskAssignmentStatus).toHaveBeenCalledWith(store, 'T1', { studentId: 'S1', completed: false, source: 'ADMIN' });
+  });
+
+  it('accepts an authenticated one-student QR assignment command', async () => {
+    const store = {};
+    vi.mocked(createConfiguredSheetsStore).mockResolvedValue(store as never);
+    vi.mocked(updateTaskAssignmentStatus).mockResolvedValue({ taskId: 'T1', students: [] });
+    const response = await PATCH(new Request('http://localhost/api/tasks/T1/assignments', {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ studentId: 'S1', assigned: true, source: 'QR' }),
+    }), { params: Promise.resolve({ taskId: 'T1' }) });
+    expect(response.status).toBe(200);
+    expect(updateTaskAssignmentStatus).toHaveBeenCalledWith(store, 'T1', { studentId: 'S1', assigned: true, source: 'QR' });
+  });
+
   it.each([
     ['null payload', null],
     ['array payload', []],
@@ -40,6 +62,8 @@ describe('PATCH /api/tasks/[taskId]/assignments', () => {
     ['string assigned', { studentId: 'S1', assigned: 'false' }],
     ['non-string studentId', { studentId: 1, assigned: true }],
     ['empty studentId', { studentId: '   ', assigned: false }],
+    ['unknown key', { studentId: 'S1', assigned: true, allowedStudentIds: ['S1'] }],
+    ['legacy full-set key', { studentId: 'S1', assigned: true, studentIds: ['S1'] }],
   ])('rejects %s before creating a Sheets store', async (_label, body) => {
     const response = await PATCH(new Request('http://localhost/api/tasks/T1/assignments', {
       method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
