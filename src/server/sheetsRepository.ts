@@ -1,7 +1,8 @@
 import type { ClassTask, Product, Student, TaskAssignmentStatus, TaskCompletion, Transaction } from '@/domain/types';
 import { normalizeLegacyTimeZone } from '@/domain/taskSchedule';
-import { evaluateTaskCompletion, isCompletionForTaskInstance } from '@/domain/taskCompletionPolicy';
+import { evaluateTaskCompletion } from '@/domain/taskCompletionPolicy';
 import type { TaskCycleState } from '@/domain/taskCycleState';
+import { mutateTaskAssignment } from '@/server/repositories/sheets/taskAssignmentCommands';
 import {
   readTaskCycleHistory,
   readTaskCycleState,
@@ -22,6 +23,7 @@ import {
 } from '@/server/sheetsRows';
 import type {
   OperationalSheetName,
+  RecurringSchemaMigrationStore,
   SheetCellUpdate,
   TabularReader,
   TabularStore,
@@ -239,9 +241,12 @@ function parseTaskCompletions(rows: string[][]): TaskCompletion[] {
 }
 
 export type TaskAssignmentStatusUpdate = {
-  assignedStudentIds: string[];
-  completedStudentIds: string[];
+  studentId: string;
+  assigned: boolean;
+  source: 'ADMIN' | 'QR';
 };
+
+export type TaskAssignmentMutationStatus = TaskAssignmentStatus & { legacyMirrorWarning?: string };
 
 export async function getTaskAssignmentStatus(reader: SheetsReader, taskId: string): Promise<TaskAssignmentStatus> {
   const task = await getTaskById(reader, taskId.trim());
@@ -280,72 +285,25 @@ export async function getTaskCycleHistory(
   return readTaskCycleHistory(reader, filter);
 }
 
-export async function updateTaskAssignmentStatus(store: SheetsStore, taskId: string, update: TaskAssignmentStatusUpdate): Promise<TaskAssignmentStatus> {
-  await ensureTaskSheet(store);
-  await ensureTaskCompletionSheet(store);
-
+export async function updateTaskAssignmentStatus(
+  store: RecurringSchemaMigrationStore,
+  taskId: string,
+  update: TaskAssignmentStatusUpdate,
+): Promise<TaskAssignmentMutationStatus> {
   const record = await getTaskRecordById(store, taskId.trim());
   if (!record) throw new Error('과제를 찾을 수 없습니다.');
-
-  const students = await getStudents(store);
-  const studentsById = new Map(students.map((student) => [student.studentId, student]));
-  const assignedStudentIds = normalizeUniqueIds(update.assignedStudentIds).filter((id) => studentsById.has(id));
-  const completedStudentIds = normalizeUniqueIds(update.completedStudentIds).filter((id) => studentsById.has(id));
-
-  await store.updateCell('Tasks', record.rowNumber, 'allowedStudentIds', assignedStudentIds.join(','));
-
-  const completionRows = await store.getRows('TaskCompletions');
-  const currentCompletions = parseTaskCompletions(completionRows);
-  const existingCompletedIds = new Set(
-    currentCompletions
-      .filter((completion) => isCompletionForTaskInstance(completion, record.task) && completion.status === 'SUCCESS')
-      .map((completion) => completion.studentId),
-  );
-  const idsToDelete = Array.from(existingCompletedIds).filter((studentId) => !completedStudentIds.includes(studentId));
-  if (idsToDelete.length > 0) await deleteTaskCompletionRowsForTaskStudentIds(store, record.task, idsToDelete);
-
-  const timestamp = new Date().toISOString();
-  const completionHeaders = completionRows[0] ?? TASK_COMPLETION_HEADERS;
-  for (const studentId of completedStudentIds) {
-    if (existingCompletedIds.has(studentId)) continue;
-    const student = studentsById.get(studentId);
-    if (!student) continue;
-    const completion: TaskCompletion = {
-      completionId: `TC-ADMIN-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      timestamp,
-      taskId: record.task.taskId,
-      studentId: student.studentId,
-      studentName: student.name,
-      reward: record.task.reward,
-      balanceBefore: student.balance,
-      balanceAfter: student.balance,
-      status: 'SUCCESS',
-      note: 'admin-assignment-status',
-    };
-    await store.appendRow('TaskCompletions', buildTaskCompletionAppendRow(completionHeaders, completion));
-  }
-
-  const refreshedCompletions = currentCompletions
-    .filter((completion) => !idsToDelete.includes(completion.studentId))
-    .concat(completedStudentIds
-      .filter((studentId) => !existingCompletedIds.has(studentId))
-      .map((studentId) => {
-        const student = studentsById.get(studentId)!;
-        return {
-          completionId: 'pending-admin-status',
-          timestamp,
-          taskId: record.task.taskId,
-          studentId,
-          studentName: student.name,
-          reward: record.task.reward,
-          balanceBefore: student.balance,
-          balanceAfter: student.balance,
-          status: 'SUCCESS',
-          note: 'admin-assignment-status',
-        };
-      }));
-
-  return buildTaskAssignmentStatus({ ...record.task, allowedStudentIds: assignedStudentIds }, students, refreshedCompletions);
+  const student = await getStudentById(store, update.studentId.trim());
+  if (!student || student.status !== 'ACTIVE') throw new Error('학생 정보를 찾을 수 없습니다.');
+  const mutation = await mutateTaskAssignment(store, {
+    task: record.task,
+    taskRowNumber: record.rowNumber,
+    studentId: student.studentId,
+    assigned: update.assigned,
+    source: update.source,
+  });
+  const status: TaskAssignmentMutationStatus = await getTaskAssignmentStatus(store, record.task.taskId);
+  if (mutation.legacyMirrorWarning) status.legacyMirrorWarning = mutation.legacyMirrorWarning;
+  return status;
 }
 
 export async function createTask(store: SheetsStore, create: TaskCreate): Promise<ClassTask> {
@@ -511,28 +469,6 @@ async function deleteTaskCompletionRowsForTaskIds(store: SheetsStore, taskIds: s
   return deleteTaskCompletionRowNumbers(store, rowNumbers);
 }
 
-async function deleteTaskCompletionRowsForTaskStudentIds(store: SheetsStore, task: ClassTask, studentIds: string[]): Promise<number> {
-  await ensureTaskCompletionSheet(store);
-
-  const rows = await store.getRows('TaskCompletions');
-  const [headers, ...dataRows] = rows;
-  if (!headers) return 0;
-
-  const headerIndex = createHeaderIndex(headers);
-  assertRequiredColumns(headerIndex, REQUIRED_TASK_COMPLETION_COLUMNS, 'TaskCompletions');
-  const rowNumbers = dataRows
-    .map((row, index) => {
-      const completion = parseTaskCompletionRow(row, headerIndex);
-      if (!completion) return null;
-      if (!studentIds.includes(completion.studentId)) return null;
-      if (completion.status !== 'SUCCESS') return null;
-      if (!isCompletionForTaskInstance(completion, task)) return null;
-      return index + 2;
-    })
-    .filter((rowNumber): rowNumber is number => rowNumber !== null);
-
-  return deleteTaskCompletionRowNumbers(store, rowNumbers);
-}
 
 async function deleteTaskCompletionRowNumbers(store: SheetsStore, rowNumbers: number[]): Promise<number> {
   if (rowNumbers.length === 0) return 0;
@@ -1230,22 +1166,4 @@ function assertRequiredColumns(
   if (result.ok === false) {
     throw new Error(`${sheetName} 시트에 필수 컬럼이 없습니다: ${result.missingColumns.join(', ')}`);
   }
-}
-
-function buildTaskAssignmentStatus(task: ClassTask, students: Student[], completions: TaskCompletion[]): TaskAssignmentStatus {
-  const completedStudentIds = new Set(
-    completions
-      .filter((completion) => isCompletionForTaskInstance(completion, task) && completion.status === 'SUCCESS')
-      .map((completion) => completion.studentId),
-  );
-  const assignedStudentIds = new Set(task.allowedStudentIds);
-  return {
-    taskId: task.taskId,
-    students: students.map((student) => ({
-      studentId: student.studentId,
-      name: student.name,
-      assigned: assignedStudentIds.has(student.studentId),
-      completed: completedStudentIds.has(student.studentId),
-    })),
-  };
 }

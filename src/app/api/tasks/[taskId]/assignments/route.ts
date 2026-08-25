@@ -3,6 +3,7 @@ import { createConfiguredSheetsReader, createConfiguredSheetsStore } from '@/ser
 import { getTaskAssignmentStatus, updateTaskAssignmentStatus } from '@/server/sheetsRepository';
 
 type RouteContext = { params: Promise<{ taskId: string }> };
+const INVALID_ASSIGNMENT_REQUEST = '과제 부여 요청 형식이 올바르지 않습니다.';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,10 +27,21 @@ export async function PATCH(request: Request, context: RouteContext) {
   try {
     const { taskId } = await context.params;
     const payload = await request.json();
+    if (
+      typeof payload !== 'object'
+      || payload === null
+      || Array.isArray(payload)
+      || typeof payload.studentId !== 'string'
+      || payload.studentId.trim().length === 0
+      || typeof payload.assigned !== 'boolean'
+    ) {
+      return Response.json({ error: INVALID_ASSIGNMENT_REQUEST }, { status: 400 });
+    }
     const store = await createConfiguredSheetsStore(request);
     const status = await updateTaskAssignmentStatus(store, decodeURIComponent(taskId), {
-      assignedStudentIds: Array.isArray(payload.assignedStudentIds) ? payload.assignedStudentIds.map((id: unknown) => String(id)) : [],
-      completedStudentIds: Array.isArray(payload.completedStudentIds) ? payload.completedStudentIds.map((id: unknown) => String(id)) : [],
+      studentId: payload.studentId,
+      assigned: payload.assigned,
+      source: 'ADMIN',
     });
     return Response.json(status);
   } catch (error) {

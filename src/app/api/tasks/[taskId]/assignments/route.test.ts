@@ -1,0 +1,53 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createConfiguredSheetsStore } from '@/server/googleSheets';
+import { updateTaskAssignmentStatus } from '@/server/sheetsRepository';
+import { PATCH } from './route';
+
+vi.mock('@/server/apiAuth', () => ({ isAuthorizedAdminRequest: () => true, unauthorizedAdminResponse: () => new Response(null, { status: 401 }) }));
+vi.mock('@/server/googleSheets', () => ({ createConfiguredSheetsReader: vi.fn(), createConfiguredSheetsStore: vi.fn() }));
+vi.mock('@/server/sheetsRepository', () => ({ getTaskAssignmentStatus: vi.fn(), updateTaskAssignmentStatus: vi.fn() }));
+
+describe('PATCH /api/tasks/[taskId]/assignments', () => {
+  beforeEach(() => vi.clearAllMocks());
+  afterEach(() => vi.restoreAllMocks());
+
+  it('awaits Next 16 params and sends one student desired state with ADMIN source', async () => {
+    const store = {};
+    vi.mocked(createConfiguredSheetsStore).mockResolvedValue(store as never);
+    vi.mocked(updateTaskAssignmentStatus).mockResolvedValue({ taskId: 'T 1', students: [] });
+    const params = Promise.resolve({ taskId: 'T%201' });
+    const response = await PATCH(new Request('http://localhost/api/tasks/T%201/assignments', {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ studentId: ' S1 ', assigned: true }),
+    }), { params });
+    expect(response.status).toBe(200);
+    expect(updateTaskAssignmentStatus).toHaveBeenCalledWith(store, 'T 1', { studentId: ' S1 ', assigned: true, source: 'ADMIN' });
+  });
+
+  it('preserves an additive legacyMirrorWarning in canonical success responses', async () => {
+    vi.mocked(createConfiguredSheetsStore).mockResolvedValue({} as never);
+    vi.mocked(updateTaskAssignmentStatus).mockResolvedValue({ taskId: 'T1', students: [], legacyMirrorWarning: 'LEGACY_MIRROR_UPDATE_FAILED' });
+    const response = await PATCH(new Request('http://localhost/api/tasks/T1/assignments', {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ studentId: 'S1', assigned: false }),
+    }), { params: Promise.resolve({ taskId: 'T1' }) });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ taskId: 'T1', legacyMirrorWarning: 'LEGACY_MIRROR_UPDATE_FAILED' });
+  });
+
+  it.each([
+    ['null payload', null],
+    ['array payload', []],
+    ['missing assigned', { studentId: 'S1' }],
+    ['string assigned', { studentId: 'S1', assigned: 'false' }],
+    ['non-string studentId', { studentId: 1, assigned: true }],
+    ['empty studentId', { studentId: '   ', assigned: false }],
+  ])('rejects %s before creating a Sheets store', async (_label, body) => {
+    const response = await PATCH(new Request('http://localhost/api/tasks/T1/assignments', {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    }), { params: Promise.resolve({ taskId: 'T1' }) });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: '과제 부여 요청 형식이 올바르지 않습니다.' });
+    expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
+    expect(updateTaskAssignmentStatus).not.toHaveBeenCalled();
+  });
+});

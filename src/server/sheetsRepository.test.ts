@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createProduct,
   createStudent,
@@ -27,7 +27,7 @@ import {
   updateTaskDetailsBatch,
   getTaskAssignmentStatus,
   getTaskCycleState,
-  updateTaskAssignmentStatus,
+
   saveSheetSetting,
 } from '@/server/sheetsRepository';
 
@@ -69,6 +69,8 @@ const fakeReader = {
 };
 
 describe('sheets repository', () => {
+  afterEach(() => vi.restoreAllMocks());
+
   it('finds a student by studentId without requiring student number', async () => {
     const minimalReader = {
       async getRows() {
@@ -1156,71 +1158,19 @@ describe('sheets repository', () => {
     });
   });
 
-  it('saves assignment and independent completion status without requiring legacy Tasks timestamps', async () => {
-    const rows = {
-      ...sheetRows,
-      Students: [sheetRows.Students[0], sheetRows.Students[1], ['S002', '이서연', '1200', 'S002', 'ACTIVE', '']],
-      Tasks: [
-        ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'allowedStudentIds'],
-        ['T001', '책 읽기', '책 10분 읽기', '5', '2', 'TRUE', '1', 'S001'],
-      ],
-      TaskCompletions: [
-        sheetRows.TaskCompletions[0],
-        ['TC-OLD', '2026-05-20T00:00:00.000Z', 'T001', 'S001', '김민준', '5', '3495', '3500', 'SUCCESS', ''],
-      ],
-    };
-    const cellUpdates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
-    const deletedBatches: Array<{ sheetName: string; rowNumbers: number[] }> = [];
-    const appended: Array<{ sheetName: string; values: string[] }> = [];
-    const store = {
-      async getRows(sheetName: keyof typeof rows) { return rows[sheetName]; },
-      async updateCell(sheetName: string, rowNumber: number, columnName: string, value: string | number) {
-        cellUpdates.push({ sheetName, rowNumber, columnName, value });
-        const columnIndex = rows.Tasks[0].indexOf(columnName);
-        if (sheetName === 'Tasks' && columnIndex >= 0) rows.Tasks[rowNumber - 1][columnIndex] = String(value);
-      },
-      async updateHeaderRow() {},
-      async appendRow(sheetName: string, values: string[]) { appended.push({ sheetName, values }); },
-      async deleteRows(sheetName: 'TaskCompletions', rowNumbers: number[]) { deletedBatches.push({ sheetName, rowNumbers }); },
-    };
-
-    await expect(updateTaskAssignmentStatus(store, 'T001', {
-      assignedStudentIds: ['S002'],
-      completedStudentIds: ['S001', 'S002'],
-    })).resolves.toEqual({
-      taskId: 'T001',
-      students: [
-        { studentId: 'S001', name: '김민준', assigned: false, completed: true },
-        { studentId: 'S002', name: '이서연', assigned: true, completed: true },
-      ],
-    });
-
-    expect(cellUpdates).toContainEqual({ sheetName: 'Tasks', rowNumber: 2, columnName: 'allowedStudentIds', value: 'S002' });
-    expect(deletedBatches).toEqual([]);
-    expect(appended).toHaveLength(1);
-    expect(appended[0].sheetName).toBe('TaskCompletions');
-    expect(appended[0].values.slice(2, 10)).toEqual(['T001', 'S002', '이서연', '5', '1200', '1200', 'SUCCESS', 'admin-assignment-status']);
-  });
-
-  it('does not reread TaskCompletions when assignment status adds no completion', async () => {
-    let completionReads = 0;
-    const store = {
+  it('keeps assignment GET projection write-free; assignment commands are covered by the append-only command suite', async () => {
+    const writes = vi.fn();
+    const reader = {
       ...fakeReader,
-      async getRows(sheetName: keyof typeof sheetRows) {
-        if (sheetName === 'TaskCompletions') completionReads += 1;
-        return sheetRows[sheetName];
-      },
-      async updateCell() {},
-      async updateHeaderRow() {},
-      async appendRow() {},
+      appendRow: writes,
+      updateCell: writes,
+      deleteRow: writes,
+      deleteRows: writes,
     };
-
-    await updateTaskAssignmentStatus(store, 'T001', {
-      assignedStudentIds: ['S001'],
-      completedStudentIds: ['S001'],
-    });
-    expect(completionReads).toBe(2);
+    await getTaskAssignmentStatus(reader, 'T001');
+    expect(writes).not.toHaveBeenCalled();
   });
+
 
   it('stores task assignment student IDs only and rejects unassigned students', async () => {
     const taskReader = {
