@@ -6,7 +6,7 @@
 
 - 이 문서는 시트/컬럼의 생성, 접근 범위, 레거시 데이터 보존과 마이그레이션 호환성을 정합니다.
 - 신뢰성 계약은 여러 시트에 걸친 효과의 순서, operation 수명주기, 재시도·동시성·감사 완결성을 정합니다.
-- R0에는 신뢰성 계약의 operation/outbox 저장소나 관련 신규 스키마가 없습니다. 향후 이를 추가하려면 이 문서의 비파괴 호환 원칙과 별도 스키마/API 마이그레이션 검토를 함께 충족해야 합니다.
+- R1에는 신뢰성 계약의 operation/outbox 저장소나 관련 신규 스키마가 없습니다. 향후 이를 추가하려면 이 문서의 비파괴 호환 원칙과 별도 스키마/API 마이그레이션 검토를 함께 충족해야 합니다.
 
 ## 스키마 범위
 
@@ -21,7 +21,7 @@
 - `Tasks`는 기존 9개 컬럼 뒤에 현재/예약 recurrence rule 컬럼 19개를 더한 28개 canonical 컬럼을 사용합니다.
 - `TaskAssignments`는 cycle별 학생 배정을 보존하는 15개 컬럼의 append-only 원장입니다.
 - `TaskCompletions`는 기존 10개 컬럼을 그대로 앞에 유지하고 cycle/rule/assignment 스냅샷 컬럼 9개를 뒤에 추가합니다.
-- 현재 cycle의 해석은 `taskInstanceId`, `cycleId`, `ruleVersion`, `timeZone` 스냅샷을 기준으로 하며, pending rule은 `pendingEffectiveFrom` 이전의 cycle 기록을 소급 변경하지 않습니다.
+- 현재 cycle의 해석은 `taskInstanceId`, `cycleId`, `ruleVersion`, `timeZone` 스냅샷을 기준으로 합니다. schedule·학급 시간대 변경은 현재 시각부터 더 높은 rule version으로 즉시 적용되며, 직전 배정·완료 상태는 보상 없이 새 cycle로 승계됩니다. 이미 기록된 과거 cycle 원장은 소급 변경하지 않습니다.
 - 신규 `Tasks`에는 `maxCompletionsPerStudent`를 생성하지 않습니다. 레거시 인스턴스에서는 아래 비파괴 호환 원칙을 유지합니다.
 
 ## Recovery
@@ -38,7 +38,7 @@
 ## Adjustments
 
 - `Adjustments`는 **legacy/reserved** 시트입니다.
-- R0 런타임은 `Adjustments`를 읽거나 쓰지 않습니다.
+- R1 런타임은 `Adjustments`를 읽거나 쓰지 않습니다.
 - 과거 템플릿과의 비파괴 호환을 위해 신규 생성 9개 목록에서는 제거하지 않습니다.
 - 현재 관리자 잔액 조정의 canonical 원장은 `Transactions`이며 `status=ADMIN_ADJUSTMENT`로 기록합니다.
 - 별도의 `Adjustments` 행으로 이중 기록하지 않습니다.
@@ -54,7 +54,30 @@
 ## 기존 시트와 하위 호환 원칙
 
 - 시트나 컬럼의 삭제·덮어쓰기·이름 변경 같은 파괴적 자동 마이그레이션은 수행하지 않습니다.
-- 누락 시트 생성과 race-safe 마이그레이션은 별도 절차에서 다룹니다. 현재 append 경로는 누락된 `TaskAssignments` 시트를 자동 생성하지 않습니다.
+- 일반 GET/query는 migration을 호출하지 않으며 write-free입니다. schedule·시간대·배정·완료 mutation 직전의 명시적 additive migrator만 `Tasks`/`TaskCompletions` 뒤에 누락 canonical 컬럼을 추가하고, 누락된 `TaskAssignments`를 canonical header로 race-safe하게 생성합니다.
 - 런타임은 필요한 canonical 컬럼을 이름으로 찾고, 알 수 없는 추가 레거시 컬럼은 가능한 한 보존하고 무시합니다.
 - 신규 생성 계약의 변경이 기존 인스턴스의 즉시 전면 재작성을 의미하지 않습니다. canonical 스키마로 전면 재작성하는 작업은 명시적인 검토, 백업, 사용자 동의가 있는 별도 절차로만 수행합니다.
 - 호환을 위해 남겨 둔 시트나 컬럼이 현재 런타임 기능에서 사용된다는 의미는 아닙니다.
+
+## R1 compatibility verification matrix
+
+| 계약 | 검증 |
+| --- | --- |
+| 신규 schema·canonical header·9개 시트 | `src/generator/config/schema.test.ts`, `src/generator/createSpreadsheet.test.ts`, `src/server/sheetsRows.test.ts` |
+| legacy schema·누락 `TaskAssignments`·unknown trailing columns·first-create/header race | `src/server/repositories/sheets/recurringSchemaMigrator.test.ts`, `src/server/sheetsRepository.test.ts` |
+| `NONE`/`DAILY`/`WEEKLY`/`MONTHLY`, 서울·DST·월말, 변경 직전·정각·직후 | `src/domain/taskRecurrence.test.ts`, `src/domain/taskSchedule.test.ts` |
+| schedule/timezone 즉시 변경·무보상 carry·reset flag 조합 | `src/domain/taskCycleState.test.ts`, `src/server/repositories/sheets/taskScheduleCommands.test.ts` |
+| legacy `allowedStudentIds`·cycle 없는 completion·다음 자연 cycle | `src/domain/taskCycleState.test.ts`, `src/server/repositories/sheets/taskAssignmentCommands.test.ts`, `src/server/repositories/sheets/taskCompletionCommands.test.ts` |
+| 순차 중복·completion append 관찰/보상·canonical/mirror 실패 | `src/server/repositories/sheets/taskAssignmentCommands.test.ts`, `src/server/repositories/sheets/taskCompletionCommands.test.ts` |
+| 같은 `taskId` 재생성·append-only reset/delete/history | `src/domain/taskCycleState.test.ts`, `src/server/repositories/sheets/taskHistoryQueries.test.ts`, `src/server/sheetsRepository.test.ts` |
+| 관리자 dirty draft·이력·stale async, 은행 legacy DTO·stale fetch·targeted refresh | `src/components/AdminManagePage.test.tsx`, `src/components/BankApp.test.tsx` |
+| 학생 공개 DTO 최소화·raw projection 관리자 인증 | `src/app/api/tasks/route.test.ts` |
+
+## R1 recurring task compatibility contract
+
+- `NONE`, `DAILY`, `WEEKLY`, `MONTHLY`를 지원하며 월 29~31일이 없는 달은 그 달 말일로 당깁니다. cycle 계산은 named timezone과 DST 전환을 포함해 Temporal 기반으로 수행합니다.
+- 레거시 `allowedStudentIds`는 assignment 원장이 없을 때 초기 배정 fallback으로 읽습니다. cycle 정보가 없는 기존 `SUCCESS` completion도 현재 task instance의 legacy 완료로 투영하되 새 행으로 다시 쓰지 않습니다.
+- assignment와 completion은 물리적 append 순서의 최신 이벤트로 투영합니다. reset은 `RESET`, 삭제는 lifecycle snapshot 이벤트를 append하며 기존 성공·배정 행을 삭제하지 않습니다.
+- 같은 `taskId`를 삭제 후 재생성해도 새 `taskInstanceId`가 이전 lifecycle의 배정·완료를 격리합니다. 삭제된 lifecycle의 이력은 원장 snapshot으로 조회할 수 있습니다.
+- process-local command queue와 완료 append 결과 재조회는 같은 프로세스의 순차 중복·일반 재시도를 방어합니다. 여러 서버 instance의 강한 exactly-once와 서로 다른 operation 사이 학생 balance resource race는 R1 보장이 아닙니다.
+- 학생용 `/api/tasks?studentId=...`는 요청 학생의 상태와 cycle metadata만 공개합니다. 전체 목록 projection, 단건 raw projection, `includeInactive` 관리 조회는 관리자 인증이 필요합니다.

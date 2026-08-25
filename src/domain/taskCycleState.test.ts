@@ -295,26 +295,90 @@ describe('projectTaskCycleState', () => {
     });
   });
 
-  it('resolves a persisted pending schedule version before computing the current cycle', () => {
-    const pendingTask = {
+  it('switches a pending schedule and timezone exactly at editedAt while carrying prior success into the immediate cycle', () => {
+    const editedAt = '2026-08-25T09:30:00.000Z';
+    const oldCycleId = 'v1|I1|r1|2026-08-25T00:00:00Z';
+    const pendingTask: ClassTask = {
       ...task,
       pendingSchedule: {
         ...schedule,
         ruleVersion: 2,
-        effectiveFrom: '2026-08-25T09:30:00Z',
+        effectiveFrom: editedAt,
+        timeZone: 'Asia/Seoul',
         resetAssignmentOnCycle: true,
         resetCompletionOnCycle: true,
       },
     };
-    const state = projectTaskCycleState({
+    const priorAssignments = [assignment({
+      assignmentId: 'old-cycle-assigned',
+      cycleId: oldCycleId,
+      cycleStartsAt: '2026-08-25T00:00:00Z',
+      cycleEndsAt: '2026-08-26T00:00:00Z',
+      ruleVersion: 1,
+      timeZone: 'UTC',
+      status: 'ASSIGNED',
+      createdAt: '2026-08-25T08:00:00Z',
+    })];
+    const priorCompletions = [completion({
+      completionId: 'old-cycle-success',
+      cycleId: oldCycleId,
+      cycleStartsAt: '2026-08-25T00:00:00Z',
+      cycleEndsAt: '2026-08-26T00:00:00Z',
+      ruleVersion: 1,
+      timeZone: 'UTC',
+      status: 'SUCCESS',
+      timestamp: '2026-08-25T08:30:00Z',
+    })];
+
+    const before = projectTaskCycleState({
       task: pendingTask,
-      now: '2026-08-25T09:30:00Z',
-      assignments: [assignment({ cycleId: 'old', cycleStartsAt: '2026-08-25T00:00:00Z' })],
-      completions: [completion({ cycleId: 'old', cycleStartsAt: '2026-08-25T00:00:00Z' })],
+      now: '2026-08-25T09:29:59.999Z',
+      assignments: priorAssignments,
+      completions: priorCompletions,
     });
-    expect(state.cycle.cycleId).toContain('|r2|2026-08-25T09:30:00Z');
-    expect(state.transition).toBe('SCHEDULE_CHANGE_FIRST_CYCLE');
-    expect(state.students.S1).toMatchObject({ assigned: true, completed: true });
+    const exact = projectTaskCycleState({
+      task: pendingTask,
+      now: editedAt,
+      assignments: priorAssignments,
+      completions: priorCompletions,
+    });
+    const after = projectTaskCycleState({
+      task: pendingTask,
+      now: '2026-08-25T09:30:00.001Z',
+      assignments: priorAssignments,
+      completions: priorCompletions,
+    });
+
+    expect(before.cycle).toMatchObject({
+      cycleId: oldCycleId,
+      startsAt: '2026-08-25T00:00:00Z',
+      endsAt: '2026-08-26T00:00:00Z',
+    });
+    expect(before.students.S1).toMatchObject({
+      assigned: true,
+      completed: true,
+      assignmentOrigin: 'EVENT',
+      completionOrigin: 'EVENT',
+    });
+
+    expect(exact.cycle).toMatchObject({
+      cycleId: 'v1|I1|r2|2026-08-25T09:30:00Z',
+      startsAt: '2026-08-25T09:30:00Z',
+      endsAt: '2026-08-25T15:00:00Z',
+    });
+    expect(exact.transition).toBe('SCHEDULE_CHANGE_FIRST_CYCLE');
+    expect(after.cycle.cycleId).toBe(exact.cycle.cycleId);
+    expect(after.cycle.startsAt).toBe(exact.cycle.startsAt);
+    for (const state of [exact, after]) {
+      expect(state.students.S1).toMatchObject({
+        assigned: true,
+        completed: true,
+        assignmentOrigin: 'CARRY',
+        completionOrigin: 'CARRY',
+        assignmentEvent: { assignmentId: 'old-cycle-assigned' },
+        completionEvent: { completionId: 'old-cycle-success' },
+      });
+    }
   });
 
   it('falls back to allowedStudentIds and cycle-less legacy completion heuristics', () => {

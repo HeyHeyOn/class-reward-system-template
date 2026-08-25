@@ -67,7 +67,7 @@ transactionId | timestamp | studentId | studentName | items | totalAmount | bala
 
 ## Adjustments
 
-과거 템플릿과의 비파괴 호환을 위해 유지하는 legacy/reserved 시트입니다. R0 런타임은 이 시트를 읽거나 쓰지 않으며, 현재 관리자 잔액 조정은 `Transactions`에 `status=ADMIN_ADJUSTMENT`로 기록합니다.
+과거 템플릿과의 비파괴 호환을 위해 유지하는 legacy/reserved 시트입니다. R1 런타임은 이 시트를 읽거나 쓰지 않으며, 현재 관리자 잔액 조정은 `Transactions`에 `status=ADMIN_ADJUSTMENT`로 기록합니다.
 
 ```text
 adjustmentId | timestamp | studentId | amount | mode | operator
@@ -92,7 +92,7 @@ systemVersion | 0.4.0-phase3
 
 ## Tasks
 
-과제 정의, 현재 recurrence rule, 다음 cycle부터 적용할 pending rule을 저장합니다.
+과제 정의와 versioned recurrence rule을 저장합니다. `current`/`pending`은 저장 형식이며, 관리자 schedule·학급 시간대 변경으로 만든 `pending`은 변경 시각부터 즉시 유효합니다.
 
 ```text
 taskId | title | description | reward | isActive | sortOrder | createdAt | updatedAt | allowedStudentIds | taskInstanceId | ruleVersion | scheduleEffectiveFrom | recurrenceTimeZone | recurrenceType | recurrenceTime | recurrenceWeekday | recurrenceDayOfMonth | resetCompletionOnCycle | resetAssignmentOnCycle | pendingRuleVersion | pendingEffectiveFrom | pendingTimeZone | pendingRecurrenceType | pendingRecurrenceTime | pendingRecurrenceWeekday | pendingRecurrenceDayOfMonth | pendingResetCompletionOnCycle | pendingResetAssignmentOnCycle
@@ -108,7 +108,7 @@ taskId | title | description | reward | isActive | sortOrder | createdAt | updat
 - `taskInstanceId`, `ruleVersion`, `scheduleEffectiveFrom`: 과제 instance와 현재 스케줄 규칙 버전/적용 시점
 - `recurrenceTimeZone`, `recurrenceType`, `recurrenceTime`, `recurrenceWeekday`, `recurrenceDayOfMonth`: 현재 반복 일정
 - `resetCompletionOnCycle`, `resetAssignmentOnCycle`: cycle 전환 시 상태 초기화 정책
-- `pending*`: 진행 중 cycle을 바꾸지 않고 다음 적용 시점부터 사용할 예약 규칙
+- `pending*`: `pendingEffectiveFrom`부터 해석되는 다음 규칙 버전. 관리자 변경은 현재 시각을 적용 시점으로 기록해 즉시 새 회차를 시작하며, 기존 미래 pending이 있으면 더 높은 버전으로 대체합니다.
 
 신규 템플릿에는 레거시 컬럼 `maxCompletionsPerStudent`를 만들지 않습니다. 자세한 호환 정책은 [스키마 호환성 정책](architecture/schema-compatibility.md)을 참고하세요.
 
@@ -148,7 +148,7 @@ completionId | timestamp | taskId | studentId | studentName | reward | balanceBe
 - `source`, `assignmentId`, `schemaVersion`: 완료 출처, 연결된 배정, 기록 스키마 버전
 - `source`: `BANK`, `ADMIN`, `CARRY_FORWARD`, `ADMIN_RESET` 중 하나
 
-동일한 과제 instance에서 학생별 성공 완료는 한 번만 인정합니다.
+동일한 과제 instance의 **같은 cycle**에서 학생별 보상 성공 완료는 한 번만 인정합니다. 다음 자연 cycle은 다시 완료할 수 있으며, 관리자 완료 표시는 잔액 보상 없이 별도 원장 이벤트로 기록됩니다.
 
 ## Recovery
 
@@ -165,6 +165,6 @@ key | value
 - Google API로 접근하는 계정에는 필요한 범위의 스프레드시트 권한을 부여합니다.
 - `Recovery`를 포함한 스프레드시트 전체 열람 권한을 관리자 전용으로 제한합니다.
 - 기존 시트나 컬럼을 삭제·덮어쓰기·이름 변경하는 파괴적 자동 마이그레이션은 수행하지 않습니다.
-- 누락 시트 생성과 race-safe 마이그레이션은 별도 절차에서 다룹니다. 현재 append 경로는 누락된 `TaskAssignments` 시트를 자동 생성하지 않습니다.
+- 일반 GET/query는 schema를 쓰지 않습니다. 반복 과제의 schedule·시간대·배정·완료 mutation 직전에는 additive migrator가 `Tasks`/`TaskCompletions`의 누락 canonical 컬럼을 뒤에 추가하고, 누락된 `TaskAssignments`를 race-safe하게 생성합니다. 기존 행과 알 수 없는 trailing column은 보존합니다.
 - canonical 스키마로 전면 재작성하는 작업은 사용자 동의와 백업이 있는 별도 절차로만 수행합니다.
 - 레거시 컬럼과 시트의 상세 원칙은 [스키마 호환성 정책](architecture/schema-compatibility.md)을 따릅니다.

@@ -62,4 +62,4 @@ Google Sheets 접근용 인증값은 OAuth refresh token 방식 또는 서비스
 ## 아키텍처 문서
 
 - [스키마 호환성 정책](docs/architecture/schema-compatibility.md)
-- [금전 작업 신뢰성 계약](docs/architecture/money-operation-contracts.md) — 현재/R0 부분 실패 경계와 향후 idempotency·outbox 목표
+- [금전 작업 신뢰성 계약](docs/architecture/money-operation-contracts.md) — 현재/R1 부분 실패 경계와 향후 idempotency·outbox 목표

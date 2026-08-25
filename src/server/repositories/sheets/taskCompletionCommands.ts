@@ -149,6 +149,29 @@ export async function mutateTaskCompletionNow(mutation: TaskCompletionMutation):
         );
       }
       if (!appendWasObserved) {
+        let observedBalance: number;
+        try {
+          const currentRows = await store.getRows('Students');
+          const currentHeaders = currentRows[0];
+          if (!currentHeaders) throw new Error('Students header missing during compensation');
+          const currentIndex = createHeaderIndex(currentHeaders);
+          const currentStudent = currentRows.slice(1)
+            .map((row) => parseStudentRow(row, currentIndex))
+            .find((candidate) => candidate?.studentId === completion.studentId);
+          if (!currentStudent) throw new Error('Student missing during compensation');
+          observedBalance = currentStudent.balance;
+        } catch (readError) {
+          throw new TaskCompletionReconciliationError(
+            'TASK_COMPLETION_BALANCE_COMPENSATION_STATE_UNKNOWN',
+            readError,
+          );
+        }
+        if (observedBalance !== completion.balanceAfter) {
+          throw new TaskCompletionReconciliationError(
+            'TASK_COMPLETION_BALANCE_CHANGED_BEFORE_COMPENSATION',
+            appendError,
+          );
+        }
         try {
           await store.updateCell('Students', studentRowNumber, 'balance', completion.balanceBefore);
         } catch (compensationError) {

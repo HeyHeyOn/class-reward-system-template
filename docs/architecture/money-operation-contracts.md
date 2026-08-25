@@ -1,12 +1,12 @@
 # 금전 작업 신뢰성 계약
 
-이 문서는 학급 화폐 잔액, 상품 재고, `Transactions`, `TaskCompletions`를 함께 변경하는 작업의 신뢰성 경계를 정의합니다. 먼저 **현재 구현의 실제 동작과 위험**을 기록하고, 이어서 그중 **R0가 변경하지 않고 보존하는 범위**, 마지막으로 **향후 목표 계약**을 구분해 명시합니다.
+이 문서는 학급 화폐 잔액, 상품 재고, `Transactions`, `TaskCompletions`를 함께 변경하는 작업의 신뢰성 경계를 정의합니다. 먼저 **현재 구현의 실제 동작과 위험**을 기록하고, 이어서 **R1이 보장하는 범위**, 마지막으로 **향후 목표 계약**을 구분해 명시합니다.
 
-> 중요: 아래의 idempotency operation record, outbox, checkpoint, lease 및 새 작업 유형은 설계 목표일 뿐입니다. R0에는 이를 위한 저장소·API·스키마가 구현되어 있지 않으며, 이 문서가 구현 완료를 뜻하지 않습니다.
+> 중요: 아래의 idempotency operation record, outbox, checkpoint, lease 및 새 작업 유형은 설계 목표일 뿐입니다. R1에는 이를 위한 저장소·API·스키마가 구현되어 있지 않으며, 이 문서가 구현 완료를 뜻하지 않습니다.
 
 ## 1. 현재 구현: 코드 대조 결과
 
-현재 Google Sheets 쓰기는 여러 호출로 나뉘며 트랜잭션, rollback, durable checkpoint 또는 요청 idempotency가 없다. 아래 내용은 현재 코드를 대조한 관찰 결과이며, R0가 보존하는 범위는 6절에서 별도로 선언한다.
+현재 Google Sheets 쓰기는 여러 호출로 나뉘며 트랜잭션, durable checkpoint 또는 요청 idempotency가 없습니다. 일부 반복 과제 완료 실패에는 제한적 잔액 보상이 있지만 범용 rollback 계약은 아닙니다. R1 보장 범위는 6절에서 별도로 선언합니다.
 
 ### CHECKOUT
 
@@ -36,9 +36,9 @@
 중간 실패 시 구체적인 상태:
 
 - 잔액 갱신 실패: 완료 행과 거래 행은 생기지 않는다.
-- 완료 append 실패: 잔액은 이미 증가했지만 완료 행과 거래 행은 없다. 호출은 실패한다.
+- 완료 append 실패: 서버는 동일 `completionId`를 재조회합니다. append가 관찰되면 성공으로 계속합니다. 관찰되지 않으면 현재 잔액을 다시 읽고 방금 지급한 `balanceAfter`와 같을 때만 `balanceBefore`로 보상합니다. 이미 다른 값이면 동시 변경을 덮어쓰지 않고 reconciliation 오류로 중단합니다. 결과/잔액 재조회 또는 보상 쓰기가 실패해도 명시적 reconciliation 오류를 반환합니다. 재조회와 보상 쓰기 사이는 CAS가 아니므로 multi-instance 원자성을 보장하지 않습니다.
 - 거래 append 실패: 잔액과 완료 행은 남는다. 이 실패는 현재 `.catch(() => undefined)`로 **무시하는 best effort**이므로 호출도 성공하며 `TASK_REWARD` 감사 원장만 누락된다.
-- 응답 유실 뒤 재시도: 완료 행이 이미 보이면 현재 1회 완료 정책이 재지급을 대체로 차단하지만, 잔액 반영과 완료 append 사이에서 실패한 경우에는 완료 행이 없어 다시 보상이 지급될 수 있다. 이는 idempotency 보장이 아니다.
+- 응답 유실 뒤 같은 프로세스의 순차 재시도: process-local task command queue와 현재 cycle 완료 행 재조회가 관찰된 성공의 재지급을 차단합니다. 다만 여러 서버 instance의 동시 요청을 직렬화하거나 학생 balance에 compare-and-set을 제공하지 않으므로 강한 exactly-once 계약은 아닙니다.
 
 현재 `TASK_REWARD` 거래 ID `TASK-${completionId}`와 `completionId`의 `Date.now()`/난수 조합도 operation key가 아니다.
 
@@ -74,15 +74,14 @@
 
 관리자 과제 배정 PATCH의 완료 표시 변경은 **금전 작업이 아니다**.
 
-- 새 완료 표시는 `TaskCompletions`에 `status=SUCCESS`, `note=admin-assignment-status`로 append한다.
+- 새 완료 표시는 `TaskCompletions`에 `status=SUCCESS`, `source=ADMIN`으로 append한다.
 - `balanceBefore`와 `balanceAfter`는 동일하다.
 - 학생 잔액을 지급/회수하지 않으며 `Transactions`에 보상 거래를 만들지 않는다.
-- 현재 완료 해제는 해당 성공 완료 행을 삭제한다. append-only reversal이 아니다.
-- 배정 대상(`allowedStudentIds`) 갱신 실패: 완료 행은 변경되지 않는다.
-- 완료 행 조회 또는 기존 완료 삭제 실패: 배정 대상만 변경되고 기존 완료 상태는 남을 수 있다. 여러 삭제를 지원하지 않는 저장소의 순차 삭제 fallback에서는 일부 기존 완료만 삭제될 수 있다.
-- 신규 n번째 완료 append 실패: 배정 대상 갱신과 기존 완료 삭제는 이미 반영되었고, 앞선 신규 완료만 추가된다. 실패한 학생과 뒤 학생의 신규 완료는 없다.
+- 완료 해제는 기존 성공 행을 삭제하지 않고 `status=RESET`, `source=ADMIN_RESET`, `reward=0`인 상쇄 이벤트를 append한다.
+- 배정 변경도 `TaskAssignments`의 `ASSIGNED`/`UNASSIGNED` 이벤트로 append하며 기존 assignment 행을 삭제하지 않는다.
+- 관리자 완료·reset은 잔액을 변경하지 않으며, append 실패 시 해당 상태 변경은 반영되지 않는다. 여러 학생을 순차 처리하는 batch에서 뒤 학생이 실패하면 앞 학생의 append는 이미 남을 수 있으므로 batch 전체 원자성은 보장하지 않는다.
 
-따라서 관리자 완료 체크를 `TASK_REWARD`나 `ADMIN_ADJUSTMENT`로 해석하면 안 된다. R0는 위 상태 표시 의미와 현재 완료 기록 보존/삭제 동작을 변경하지 않는다.
+따라서 관리자 완료 체크를 `TASK_REWARD`나 `ADMIN_ADJUSTMENT`로 해석하면 안 된다. R1은 상태 표시를 append-only 완료/reset 이력으로 남기되 금전 효과를 만들지 않는다.
 
 ## 2. 향후 목표: 공통 idempotency 계약
 
@@ -115,7 +114,7 @@ operation 결과와 생성되는 ledger/completion/reversal ID는 최초 처리 
 
 ## 3. 향후 목표: durable operation/outbox와 적용 상태
 
-R0에는 operation/outbox 저장소가 없다. 향후 구현은 외부 효과보다 먼저 durable operation을 생성하고 다음 상태 기계를 따라야 한다.
+R1에는 operation/outbox 저장소가 없습니다. 향후 구현은 외부 효과보다 먼저 durable operation을 생성하고 다음 상태 기계를 따라야 합니다.
 
 ```text
 PENDING → APPLYING → APPLIED
@@ -149,7 +148,7 @@ FAILED_RETRYABLE → APPLYING
 
 ## 4. 향후 목표: TASK_REWARD 취소
 
-현재 구현의 일반 취소는 `TaskCompletions`를 변경하지 않는다. R0 보존 계약에서도 기존 완료 행을 그대로 유지하며 새 연결 컬럼이나 취소 상태를 도입하지 않는다.
+현재 구현의 일반 거래 취소는 연결된 `TaskCompletions`를 변경하지 않는다. R1의 관리자 완료 reset은 별도 `ADMIN_RESET` 이벤트이며, 이미 지급된 `TASK_REWARD` 거래를 취소하거나 보상을 회수하는 기능이 아니다.
 
 향후 `TASK_REWARD` 취소는 다음을 하나의 `CANCEL_TRANSACTION` operation으로 처리해야 한다.
 
@@ -168,13 +167,13 @@ FAILED_RETRYABLE → APPLYING
 - 완료 해제(uncomplete)는 기존 완료 행 삭제가 아니라 append-only reversal/status 전이로 설계한다.
 - `ADMIN_MARK_COMPLETE`와 `ADMIN_GRANT_TASK_REWARD`는 operationId를 공유하거나 서로의 재시도로 취급하지 않는다.
 
-`ADMIN_GRANT_TASK_REWARD`와 append-only uncomplete는 향후 목표이며 R0 구현에 존재하지 않는다.
+`ADMIN_GRANT_TASK_REWARD`와 금전 보상 취소 연결은 향후 목표입니다. 상태 표시용 uncomplete는 R1에서 append-only `ADMIN_RESET`으로 구현되어 있지만 지급된 보상을 회수하지 않습니다.
 
-## 6. R0 보존 계약과 도입 조건
+## 6. R1 보존 계약과 도입 조건
 
 - **현재 구현에서 관찰됨**: 1절의 다단계 Sheets 호출, 부분 실패 가능성, idempotency 부재 및 관리자 완료 표시 동작.
-- **R0가 변경하지 않고 보존**: 기존 API, Sheets 8개 생성 스키마, 쓰기 순서, task reward 거래의 best-effort 처리, generic cancellation의 음수 방지 및 완료 행 유지, 관리자 완료 표시의 무보상 의미와 현재 삭제 동작. 이는 현재 구현의 위험을 해결했다는 뜻이 아니라 이번 R0 변경 범위 밖으로 명시한다는 뜻이다.
-- **R0에 없음**: operationId 입력/응답, payloadHash, operation/outbox 저장소, 상태 기계, checkpoint, lease/fencing, 자동 복구, task completion 취소 연결, `ADMIN_GRANT_TASK_REWARD`.
+- **R1이 보존/추가**: task reward 거래 append는 여전히 best effort이고 generic cancellation은 완료 행을 건드리지 않습니다. 반복 과제 완료는 cycle snapshot과 append-only reset 이력을 사용하며, 관찰된 completion append 실패에는 재조회·잔액 보상을 시도합니다. 관리자 완료 표시는 무보상입니다.
+- **R1에 없음**: operationId 입력/응답, payloadHash, operation/outbox 저장소, durable checkpoint, lease/fencing, multi-instance exactly-once, 학생 balance resource CAS, task reward 취소와 completion 연결, `ADMIN_GRANT_TASK_REWARD`.
 - **향후 도입 조건**: 저장 위치와 스키마 호환/마이그레이션 계획, API versioning, canonical hash 규격 테스트, effect별 장애 주입 테스트, multi-instance 동시성 테스트, 운영자용 `FAILED_MANUAL` 조회·복구 절차를 별도 변경으로 승인해야 한다.
 
 스키마 변경과 레거시 시트 보존 원칙은 [스키마 호환성 정책](./schema-compatibility.md)을 따른다.

@@ -226,6 +226,24 @@ describe('cycle-aware completion command', () => {
     expect(store.rows.Transactions).toHaveLength(2);
   });
 
+  it('does not overwrite a concurrent balance change while reconciling a failed completion append', async () => {
+    const store = new Store();
+    store.appendRow.mockImplementationOnce(async () => {
+      store.rows.Students[1][2] = '20';
+      throw new Error('canonical completion failed after another balance change');
+    });
+
+    await expect(mutateTaskCompletion({
+      store: store as never, task, taskRowNumber: 2, student, studentRowNumber: 2,
+      completed: true, source: 'BANK', now: NOW,
+    })).rejects.toMatchObject({
+      name: 'TaskCompletionReconciliationError',
+      message: 'TASK_COMPLETION_BALANCE_CHANGED_BEFORE_COMPENSATION',
+    } satisfies Partial<TaskCompletionReconciliationError>);
+    expect(store.rows.Students[1][2]).toBe('20');
+    expect(store.updateCell).not.toHaveBeenCalledWith('Students', 2, 'balance', 10);
+  });
+
   it('accepts an ambiguous canonical append that wrote the completion before throwing', async () => {
     const store = new Store();
     store.appendRow.mockImplementationOnce(async (sheet: string, values: string[]) => {

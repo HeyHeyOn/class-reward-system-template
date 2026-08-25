@@ -9,6 +9,8 @@ type RouteContext = { params: Promise<{ taskId: string }> };
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request, context: RouteContext) {
+  if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
+
   try {
     const { searchParams } = new URL(request.url);
     const keys = Array.from(searchParams.keys());

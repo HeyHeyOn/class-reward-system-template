@@ -11,7 +11,22 @@ vi.mock('@/server/sheetsRepository', () => ({ deleteTask: vi.fn(), getTaskById: 
 vi.mock('@/server/repositories/sheets/taskHistoryQueries', () => ({ getTaskCycleProjection: vi.fn() }));
 
 describe('GET /api/tasks/[taskId]', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(isAuthorizedAdminRequest).mockReturnValue(true);
+  });
+
+  it('rejects unauthenticated single-task projections before opening Sheets', async () => {
+    vi.mocked(isAuthorizedAdminRequest).mockReturnValue(false);
+
+    const response = await GET(
+      new Request('http://localhost/api/tasks/T1?studentId=S1'),
+      { params: Promise.resolve({ taskId: 'T1' }) },
+    );
+
+    expect(response.status).toBe(401);
+    expect(createConfiguredSheetsReader).not.toHaveBeenCalled();
+  });
 
   it('uses the request-aware reader and returns raw task fields with additive current cycle', async () => {
     const reader = {};
@@ -75,7 +90,10 @@ describe('GET /api/tasks/[taskId]', () => {
 });
 
 describe('DELETE /api/tasks/[taskId]', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(isAuthorizedAdminRequest).mockReturnValue(true);
+  });
 
   it('awaits params and reports only the current definition deletion with audit ledgers preserved', async () => {
     const store = {};
