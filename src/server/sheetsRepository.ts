@@ -769,18 +769,29 @@ export async function cancelTransaction(store: SheetsStore, transactionId: strin
   if (!studentRecord) throw new Error('학생 정보를 찾을 수 없습니다.');
 
   const productsById = new Map((await getProductRecords(store)).map((record) => [record.product.productId, record]));
-  const productUpdates: SheetCellUpdate[] = [];
+  const restoreQuantityByProductId = new Map<string, number>();
   for (const item of transaction.items) {
-    const productRecord = productsById.get(item.productId);
-    if (productRecord) {
-      const restoreQuantity = isCheckoutLineSnapshot(item) ? item.totalQuantity : item.quantity;
-      productUpdates.push({ rowNumber: productRecord.rowNumber, columnName: 'stock', value: productRecord.product.stock + restoreQuantity });
-    }
+    if (!productsById.has(item.productId)) continue;
+    const restoreQuantity = isCheckoutLineSnapshot(item) ? item.totalQuantity : item.quantity;
+    restoreQuantityByProductId.set(
+      item.productId,
+      checkedSafeIntegerAddition(restoreQuantityByProductId.get(item.productId) ?? 0, restoreQuantity),
+    );
+  }
+  const productUpdates: SheetCellUpdate[] = [];
+  for (const [productId, restoreQuantity] of restoreQuantityByProductId) {
+    const productRecord = productsById.get(productId)!;
+    productUpdates.push({
+      rowNumber: productRecord.rowNumber,
+      columnName: 'stock',
+      value: checkedSafeIntegerAddition(productRecord.product.stock, restoreQuantity),
+    });
   }
 
   const cancelledAt = new Date().toISOString();
   const reversalDelta = transaction.balanceBefore - transaction.balanceAfter;
-  const reversalBalanceAfter = studentRecord.student.balance + reversalDelta;
+  if (!Number.isSafeInteger(reversalDelta)) throw new Error('Cancellation balance delta exceeds the safe integer range');
+  const reversalBalanceAfter = checkedSafeIntegerAddition(studentRecord.student.balance, reversalDelta);
   if (reversalBalanceAfter < 0) throw new Error('거래 취소 후 잔액은 0보다 작아질 수 없습니다.');
   const reversalTotalAmount = -reversalDelta;
   const reversalTransaction: Transaction = {
@@ -811,6 +822,15 @@ export async function cancelTransaction(store: SheetsStore, transactionId: strin
   await store.appendRow('Transactions', buildTransactionAppendRow(transactionHeaders, reversalTransaction));
 
   return { cancelledTransaction: { ...transaction, status: 'CANCELLED', cancelledAt }, reversalTransaction };
+}
+
+function checkedSafeIntegerAddition(left: number, right: number): number {
+  if (!Number.isSafeInteger(left) || !Number.isSafeInteger(right)) {
+    throw new Error('Cancellation restoration requires safe integer values');
+  }
+  const result = left + right;
+  if (!Number.isSafeInteger(result)) throw new Error('Cancellation restoration safe integer overflow');
+  return result;
 }
 
 export async function getSheetSettings(reader: SheetsReader): Promise<Record<string, string>> {

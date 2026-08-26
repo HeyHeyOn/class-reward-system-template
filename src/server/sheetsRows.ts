@@ -110,9 +110,9 @@ export function parsePromotionRow(row: string[], headerIndex: HeaderIndex): Prom
   const createdAt = getRowCell(row, headerIndex, 'createdAt');
   const updatedAt = getRowCell(row, headerIndex, 'updatedAt');
   const schemaVersion = parseSafeIntegerCell(getRowCell(row, headerIndex, 'schemaVersion'));
-  if (!promotionId || !name || !isParseableDate(startsAt) || !isParseableDate(endsAt)
-    || Date.parse(startsAt) > Date.parse(endsAt) || isActive === null || sortOrder === null
-    || !isParseableDate(createdAt) || !isParseableDate(updatedAt)
+  if (!promotionId || !name || !isCanonicalIsoTimestamp(startsAt) || !isCanonicalIsoTimestamp(endsAt)
+    || Date.parse(startsAt) >= Date.parse(endsAt) || isActive === null || sortOrder === null
+    || !isCanonicalIsoTimestamp(createdAt) || !isCanonicalIsoTimestamp(updatedAt)
     || schemaVersion !== PROMOTION_SCHEMA_VERSION) return null;
 
   const common = {
@@ -189,7 +189,7 @@ export function parsePromotionProductRow(row: string[], headerIndex: HeaderIndex
   const productId = getRowCell(row, headerIndex, 'productId');
   const createdAt = getRowCell(row, headerIndex, 'createdAt');
   const schemaVersion = parseSafeIntegerCell(getRowCell(row, headerIndex, 'schemaVersion'));
-  if (!promotionProductId || !promotionId || !productId || !isParseableDate(createdAt)
+  if (!promotionProductId || !promotionId || !productId || !isCanonicalIsoTimestamp(createdAt)
     || schemaVersion !== PROMOTION_SCHEMA_VERSION) return null;
   return { promotionProductId, promotionId, productId, createdAt, schemaVersion };
 }
@@ -273,9 +273,9 @@ export function parseTransactionRow(row: string[], headerIndex: HeaderIndex): Tr
   const timestamp = getRowCell(row, headerIndex, 'timestamp');
   const studentId = getRowCell(row, headerIndex, 'studentId');
   const studentName = getRowCell(row, headerIndex, 'studentName');
-  const totalAmount = parseNumberCell(getRowCell(row, headerIndex, 'totalAmount'));
-  const balanceBefore = parseNumberCell(getRowCell(row, headerIndex, 'balanceBefore'));
-  const balanceAfter = parseNumberCell(getRowCell(row, headerIndex, 'balanceAfter'));
+  const totalAmount = parseSafeIntegerCell(getRowCell(row, headerIndex, 'totalAmount'));
+  const balanceBefore = parseSafeNonNegativeIntegerCell(getRowCell(row, headerIndex, 'balanceBefore'));
+  const balanceAfter = parseSafeNonNegativeIntegerCell(getRowCell(row, headerIndex, 'balanceAfter'));
 
   if (!transactionId || !timestamp || !studentId || !studentName || totalAmount === null || balanceBefore === null || balanceAfter === null) {
     return null;
@@ -602,10 +602,6 @@ function parseSafeNonNegativeIntegerCell(value: string): number | null {
   return parsed !== null && parsed >= 0 ? parsed : null;
 }
 
-function isParseableDate(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0 && Number.isFinite(Date.parse(value));
-}
-
 function isPositiveInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value > 0;
 }
@@ -652,10 +648,10 @@ function validatePromotion(promotion: Promotion): void {
   }
   const commonIsValid = Boolean(promotion && typeof promotion === 'object'
     && isRequiredString(candidate.promotionId) && isRequiredString(candidate.name)
-    && typeof candidate.description === 'string' && isParseableDate(candidate.startsAt)
-    && isParseableDate(candidate.endsAt) && Date.parse(candidate.startsAt) <= Date.parse(candidate.endsAt)
+    && typeof candidate.description === 'string' && isCanonicalIsoTimestamp(candidate.startsAt)
+    && isCanonicalIsoTimestamp(candidate.endsAt) && Date.parse(candidate.startsAt) < Date.parse(candidate.endsAt)
     && typeof candidate.isActive === 'boolean' && Number.isSafeInteger(candidate.sortOrder)
-    && isParseableDate(candidate.createdAt) && isParseableDate(candidate.updatedAt)
+    && isCanonicalIsoTimestamp(candidate.createdAt) && isCanonicalIsoTimestamp(candidate.updatedAt)
     && candidate.schemaVersion === PROMOTION_SCHEMA_VERSION);
   let typeIsValid = false;
   if (commonIsValid && candidate.type === 'N_PLUS_ONE') {
@@ -680,7 +676,7 @@ function validatePromotion(promotion: Promotion): void {
 function validatePromotionProductLink(link: PromotionProductLink): void {
   if (!link || typeof link !== 'object' || !isRequiredString(link.promotionProductId)
     || !isRequiredString(link.promotionId) || !isRequiredString(link.productId)
-    || !isParseableDate(link.createdAt) || link.schemaVersion !== PROMOTION_SCHEMA_VERSION) {
+    || !isCanonicalIsoTimestamp(link.createdAt) || link.schemaVersion !== PROMOTION_SCHEMA_VERSION) {
     throw new Error('PromotionProductLink must be a valid complete schema-v3 link');
   }
 }

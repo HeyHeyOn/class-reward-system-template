@@ -96,20 +96,20 @@ describe('promotion sheet read queries', () => {
     await expect(getPromotionProductRecords(blankReader)).resolves.toEqual([]);
   });
 
-  it('skips malformed rows and retains physical row numbers for valid records', async () => {
+  it('skips only truly blank rows and retains physical row numbers for valid records', async () => {
     const reader = readerWith({
       Promotions: [
         promotionHeaders,
-        promotionRow({ promotionId: 'P-2', name: '' }),
+        [],
         promotionRow({ promotionId: 'P-3', sortOrder: '3' }),
-        promotionRow({ promotionId: 'P-4', schemaVersion: '2' }),
+        [' ', '', '   '],
         promotionRow({ promotionId: 'P-5', sortOrder: '5' }),
       ],
       PromotionProducts: [
         promotionProductHeaders,
-        promotionProductRow({ promotionProductId: '', productId: 'BAD' }),
+        [],
         promotionProductRow({ promotionProductId: 'PP-3', productId: 'PRODUCT-3' }),
-        promotionProductRow({ promotionProductId: 'PP-4', schemaVersion: '1' }),
+        [' ', '', '   '],
         promotionProductRow({ promotionProductId: 'PP-5', productId: 'PRODUCT-5' }),
       ],
     });
@@ -121,6 +121,23 @@ describe('promotion sheet read queries', () => {
       .toEqual([['P-3', 3], ['P-5', 5]]);
     expect(productRecords.map(({ link, rowNumber }) => [link.promotionProductId, rowNumber]))
       .toEqual([['PP-3', 3], ['PP-5', 5]]);
+  });
+
+  it.each([
+    {
+      sheetName: 'Promotions' as const,
+      rows: [promotionHeaders, [], promotionRow({ promotionId: 'P-BAD', name: '' })],
+      read: (reader: TabularReader) => getPromotionRecords(reader),
+      message: 'Promotions 시트 3행이 올바르지 않습니다.',
+    },
+    {
+      sheetName: 'PromotionProducts' as const,
+      rows: [promotionProductHeaders, [], promotionProductRow({ promotionProductId: '', productId: 'BAD' })],
+      read: (reader: TabularReader) => getPromotionProductRecords(reader),
+      message: 'PromotionProducts 시트 3행이 올바르지 않습니다.',
+    },
+  ])('fails closed on a nonblank malformed $sheetName row', async ({ sheetName, rows, read, message }) => {
+    await expect(read(readerWith({ [sheetName]: rows }))).rejects.toThrow(message);
   });
 
   it('reads normalized required columns from permuted headers', async () => {
@@ -235,8 +252,8 @@ describe('promotion sheet read queries', () => {
     const reader = readerWith({
       Promotions: [
         promotionHeaders,
-        promotionRow({ promotionId: 'PAST-ACTIVE', startsAt: '2020-01-01T00:00:00Z', endsAt: '2020-01-02T00:00:00Z', isActive: 'TRUE' }),
-        promotionRow({ promotionId: 'FUTURE-ACTIVE', startsAt: '2099-01-01T00:00:00Z', endsAt: '2099-01-02T00:00:00Z', isActive: 'TRUE', sortOrder: '2' }),
+        promotionRow({ promotionId: 'PAST-ACTIVE', startsAt: '2020-01-01T00:00:00.000Z', endsAt: '2020-01-02T00:00:00.000Z', isActive: 'TRUE' }),
+        promotionRow({ promotionId: 'FUTURE-ACTIVE', startsAt: '2099-01-01T00:00:00.000Z', endsAt: '2099-01-02T00:00:00.000Z', isActive: 'TRUE', sortOrder: '2' }),
         promotionRow({ promotionId: 'CURRENT-INACTIVE', isActive: 'FALSE', sortOrder: '3' }),
       ],
     });

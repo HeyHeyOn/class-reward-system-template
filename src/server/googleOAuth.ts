@@ -107,10 +107,13 @@ export function clearGoogleSessionCookie(response: NextResponse) {
   response.cookies.set(GOOGLE_AUTH_COOKIE, '', { path: '/', maxAge: 0 });
 }
 
-export function getGoogleSessionFromRequest(request: Request): GoogleSession | null {
+export function getGoogleSessionFromRequest(
+  request: Request,
+  env: GoogleAuthEnv = process.env,
+): GoogleSession | null {
   const cookieValue = getCookieValue(request, GOOGLE_AUTH_COOKIE);
   if (!cookieValue) return null;
-  return decryptSession(cookieValue);
+  return decryptSession(cookieValue, env);
 }
 
 export function createUserSheetsAuth(request: Request, origin: string) {
@@ -153,19 +156,19 @@ export function makeState(): string {
 
 function encryptSession(session: GoogleSession): string {
   const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', getCookieKey(), iv);
+  const cipher = createCipheriv('aes-256-gcm', getCookieKey(process.env), iv);
   const plaintext = Buffer.from(JSON.stringify(session), 'utf8');
   const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   const tag = cipher.getAuthTag();
   return [COOKIE_VERSION, iv.toString('base64url'), tag.toString('base64url'), ciphertext.toString('base64url')].join('.');
 }
 
-function decryptSession(value: string): GoogleSession | null {
+function decryptSession(value: string, env: GoogleAuthEnv): GoogleSession | null {
   try {
     const [version, ivPart, tagPart, ciphertextPart] = value.split('.');
     if (version !== COOKIE_VERSION || !ivPart || !tagPart || !ciphertextPart) return null;
 
-    const decipher = createDecipheriv('aes-256-gcm', getCookieKey(), Buffer.from(ivPart, 'base64url'));
+    const decipher = createDecipheriv('aes-256-gcm', getCookieKey(env), Buffer.from(ivPart, 'base64url'));
     decipher.setAuthTag(Buffer.from(tagPart, 'base64url'));
     const plaintext = Buffer.concat([
       decipher.update(Buffer.from(ciphertextPart, 'base64url')),
@@ -174,14 +177,16 @@ function decryptSession(value: string): GoogleSession | null {
     const parsed = JSON.parse(plaintext) as Partial<GoogleSession>;
 
     if (!parsed.email || !parsed.refreshToken || typeof parsed.issuedAt !== 'number') return null;
+    const ageMs = Date.now() - parsed.issuedAt;
+    if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > MAX_AGE_SECONDS * 1000) return null;
     return { email: parsed.email, name: parsed.name, refreshToken: parsed.refreshToken, issuedAt: parsed.issuedAt };
   } catch {
     return null;
   }
 }
 
-function getCookieKey(): Buffer {
-  const secret = process.env.AUTH_SECRET || process.env.GOOGLE_CLIENT_SECRET || process.env.ADMIN_PASSWORD;
+function getCookieKey(env: GoogleAuthEnv): Buffer {
+  const secret = env.AUTH_SECRET || env.GOOGLE_CLIENT_SECRET || env.ADMIN_PASSWORD;
   if (!secret?.trim()) {
     throw new Error('OAuth 쿠키 암호화를 위한 AUTH_SECRET 또는 GOOGLE_CLIENT_SECRET 환경변수가 필요합니다.');
   }
@@ -193,7 +198,12 @@ function getCookieValue(request: Request, name: string): string | undefined {
   const cookies = cookieHeader.split(';').map((part) => part.trim()).filter(Boolean);
   const prefix = `${name}=`;
   const cookie = cookies.find((part) => part.startsWith(prefix));
-  return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : undefined;
+  if (!cookie) return undefined;
+  try {
+    return decodeURIComponent(cookie.slice(prefix.length));
+  } catch {
+    return undefined;
+  }
 }
 
 function safeEqual(a: string, b: string): boolean {

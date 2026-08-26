@@ -1,7 +1,7 @@
 import { isAdminAuthEnabled, isValidAdminSession } from '@/server/adminAuth';
+import { getGoogleSessionFromRequest, isGoogleOAuthEnabled } from '@/server/googleOAuth';
 
 const ADMIN_SESSION_COOKIE = 'class_store_admin';
-const GOOGLE_AUTH_COOKIE = 'class_store_google_auth';
 
 type ApiAuthEnv = {
   [key: string]: string | undefined;
@@ -12,14 +12,14 @@ type ApiAuthEnv = {
 };
 
 export function isAuthorizedAdminRequest(request: Request, env: ApiAuthEnv = process.env): boolean {
-  const googleOAuthEnabled = Boolean(env.GOOGLE_CLIENT_ID?.trim() && env.GOOGLE_CLIENT_SECRET?.trim());
+  const googleOAuthEnabled = isGoogleOAuthEnabled(env);
   const adminAuthEnabled = isAdminAuthEnabled(env);
   const cookies = parseCookieHeader(request.headers.get('cookie') ?? '');
   const adminToken = cookies.get(ADMIN_SESSION_COOKIE);
   if (adminAuthEnabled && isValidAdminSession(adminToken, env)) return true;
   if (!adminAuthEnabled && !googleOAuthEnabled) return true;
 
-  return googleOAuthEnabled && Boolean(cookies.get(GOOGLE_AUTH_COOKIE));
+  return googleOAuthEnabled && getGoogleSessionFromRequest(request, env) !== null;
 }
 
 export function unauthorizedAdminResponse(): Response {
@@ -31,7 +31,11 @@ function parseCookieHeader(header: string): Map<string, string> {
   for (const part of header.split(';')) {
     const [rawKey, ...rawValue] = part.trim().split('=');
     if (!rawKey) continue;
-    cookies.set(rawKey, decodeURIComponent(rawValue.join('=')));
+    try {
+      cookies.set(rawKey, decodeURIComponent(rawValue.join('=')));
+    } catch {
+      continue;
+    }
   }
   return cookies;
 }

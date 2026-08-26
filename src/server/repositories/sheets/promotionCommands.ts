@@ -262,7 +262,7 @@ function normalizeDefinition(input: PromotionDefinitionInput | PromotionCreateIn
     isActive: booleanValue(candidate.isActive, 'isActive'),
     sortOrder: safeInteger(candidate.sortOrder, 'sortOrder'),
   };
-  if (Date.parse(common.startsAt) > Date.parse(common.endsAt)) throw new Error('startsAt must not be after endsAt');
+  if (Date.parse(common.startsAt) >= Date.parse(common.endsAt)) throw new Error('startsAt must be before endsAt');
   if (type === 'N_PLUS_ONE') {
     return { ...common, type, buyQuantity: safePositiveInteger(candidate.buyQuantity, 'buyQuantity'), freeQuantity: safePositiveInteger(candidate.freeQuantity, 'freeQuantity') };
   }
@@ -377,7 +377,10 @@ function stringValue(value: unknown, name: string): string {
 
 function dateString(value: unknown, name: string): string {
   const result = stringValue(value, name);
-  if (!result || !Number.isFinite(Date.parse(result))) throw new Error(`${name} must be a parseable date`);
+  const timestamp = Date.parse(result);
+  if (!result || !Number.isFinite(timestamp) || new Date(timestamp).toISOString() !== result) {
+    throw new Error(`${name} must be a canonical millisecond UTC timestamp`);
+  }
   return result;
 }
 

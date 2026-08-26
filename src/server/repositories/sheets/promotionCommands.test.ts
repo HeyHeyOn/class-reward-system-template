@@ -147,8 +147,17 @@ describe('promotion Sheets commands', () => {
     { ...definition(), percent: '10' },
     { ...definition(), name: '   ' },
     { ...definition(), startsAt: '2026-09-02T00:00:00.000Z' },
+    { ...definition(), endsAt: base.startsAt },
+    { ...definition(), startsAt: '2026-08-01T00:00:00Z' },
   ])('pure validator rejects malformed and semantically invalid definitions', (input) => {
     expect(() => validatePromotionDefinitionInput(input as PromotionDefinitionInput)).toThrow();
+  });
+
+  it('rejects a noncanonical command timestamp before migration or writes', async () => {
+    const store = new StatefulStore();
+    await expect(createPromotion(store, base, { ...options, now: () => '2026-08-26T01:02:03Z' }))
+      .rejects.toThrow(/now/);
+    expect(store.calls).toEqual([]);
   });
 
   it.each([

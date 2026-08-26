@@ -252,6 +252,26 @@ describe('sheets row parsing', () => {
     expect(parseTransactionRow(row, createHeaderIndex(headers))?.items).toEqual([]);
   });
 
+  it('requires transaction money cells to be safe integers and balances to be nonnegative', () => {
+    const headers = [
+      'transactionId', 'timestamp', 'studentId', 'studentName', 'items',
+      'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator',
+    ];
+    const valid = ['TR-MONEY', '2026-08-15T00:00:00.000Z', 'S001', '학생', '[]', '-5', '10', '15', 'TASK_REWARD', 'bank'];
+    const index = createHeaderIndex(headers);
+
+    expect(parseTransactionRow(valid, index)?.totalAmount).toBe(-5);
+    for (const [column, value] of [
+      [5, '1.5'], [5, '9007199254740992'],
+      [6, '-1'], [6, '1.5'], [6, '9007199254740992'],
+      [7, '-1'], [7, '1.5'], [7, '9007199254740992'],
+    ] as const) {
+      const malformed = [...valid];
+      malformed[column] = value;
+      expect(parseTransactionRow(malformed, index)).toBeNull();
+    }
+  });
+
   it('round-trips complete checkout snapshots while retaining legacy five-field items', () => {
     const headers = [
       'transactionId', 'timestamp', 'studentId', 'studentName', 'items',
@@ -606,12 +626,14 @@ describe('promotion sheet row codecs', () => {
       'promotionId', 'name', 'description', 'type', 'value', 'buyQuantity', 'freeQuantity',
       'startsAt', 'endsAt', 'isActive', 'sortOrder', 'createdAt', 'updatedAt', 'schemaVersion',
     ];
-    const valid = ['P', 'Name', '', 'FIXED_DISCOUNT', '1', '', '', '2026-08-01T00:00:00Z',
-      '2026-08-02T00:00:00Z', 'TRUE', '0', '2026-07-01T00:00:00Z', '2026-07-02T00:00:00Z', '3'];
+    const valid = ['P', 'Name', '', 'FIXED_DISCOUNT', '1', '', '', '2026-08-01T00:00:00.000Z',
+      '2026-08-02T00:00:00.000Z', 'TRUE', '0', '2026-07-01T00:00:00.000Z', '2026-07-02T00:00:00.000Z', '3'];
     const malformedRows = [
       ['', ...valid.slice(1)], [valid[0], '   ', ...valid.slice(2)],
       [...valid.slice(0, 7), 'not-a-date', ...valid.slice(8)],
+      [...valid.slice(0, 7), '2026-08-01T00:00:00Z', ...valid.slice(8)],
       [...valid.slice(0, 7), '2026-09-01T00:00:00Z', ...valid.slice(8)],
+      [...valid.slice(0, 8), valid[7], ...valid.slice(9)],
       [...valid.slice(0, 8), 'not-a-date', ...valid.slice(9)],
       [...valid.slice(0, 9), 'yes', ...valid.slice(10)],
       [...valid.slice(0, 10), '1.5', ...valid.slice(11)],
@@ -627,8 +649,8 @@ describe('promotion sheet row codecs', () => {
   it('returns null for unsupported or malformed type-specific promotion cells', () => {
     const typeHeaders = ['promotionId', 'name', 'description', 'type', 'value', 'buyQuantity', 'freeQuantity',
       'startsAt', 'endsAt', 'isActive', 'sortOrder', 'createdAt', 'updatedAt', 'schemaVersion'];
-    const suffix = ['2026-08-01T00:00:00Z', '2026-08-02T00:00:00Z', 'FALSE', '1',
-      '2026-07-01T00:00:00Z', '2026-07-02T00:00:00Z', '3'];
+    const suffix = ['2026-08-01T00:00:00.000Z', '2026-08-02T00:00:00.000Z', 'FALSE', '1',
+      '2026-07-01T00:00:00.000Z', '2026-07-02T00:00:00.000Z', '3'];
     const row = (type: string, value: string, buy: string, free: string) =>
       ['P', 'Name', '', type, value, buy, free, ...suffix];
     const malformedRows = [
@@ -651,6 +673,9 @@ describe('promotion sheet row codecs', () => {
     expect(() => buildPromotionAppendRow(headers, { ...promotions[2], percent: 101 } as Promotion)).toThrow();
     expect(() => buildPromotionAppendRow(headers, { ...promotions[3], discountAmount: 0 } as Promotion)).toThrow();
     expect(() => buildPromotionAppendRow(headers, { ...promotions[3], startsAt: 'bad' })).toThrow();
+    expect(() => buildPromotionAppendRow(headers, { ...promotions[3], startsAt: '2026-08-01T00:00:00Z' })).toThrow();
+    expect(() => buildPromotionAppendRow(headers, { ...promotions[3], endsAt: promotions[3].startsAt })).toThrow();
+    expect(() => buildPromotionAppendRow(headers, { ...promotions[3], createdAt: '2026-07-20T00:00:00Z' })).toThrow();
     expect(() => buildPromotionAppendRow(headers, { ...promotions[3], schemaVersion: 2 })).toThrow();
     expect(() => buildPromotionAppendRow(headers, { ...promotions[3], productIds: ['PRODUCT-1'] })).toThrow(/productIds/);
     expect(() => buildPromotionAppendRow(headers.filter((header) => header !== 'value'), promotions[0])).toThrow(/value/);
@@ -711,10 +736,12 @@ describe('promotion-product sheet row codecs', () => {
     for (const malformed of [
       ['', ...valid.slice(1)], [valid[0], ' ', ...valid.slice(2)],
       [...valid.slice(0, 2), '', ...valid.slice(3)], [...valid.slice(0, 3), 'bad', valid[4]],
+      [...valid.slice(0, 3), '2026-08-01T00:00:00Z', valid[4]],
       [...valid.slice(0, 4), '2'], valid.slice(0, 4),
     ]) expect(parsePromotionProductRow(malformed, createHeaderIndex(canonicalHeaders))).toBeNull();
     expect(() => buildPromotionProductAppendRow(headers, { ...link, productId: ' ' })).toThrow();
     expect(() => buildPromotionProductAppendRow(headers, { ...link, createdAt: 'bad' })).toThrow();
+    expect(() => buildPromotionProductAppendRow(headers, { ...link, createdAt: '2026-08-01T00:00:00Z' })).toThrow();
     expect(() => buildPromotionProductAppendRow(headers, { ...link, schemaVersion: 4 })).toThrow();
     expect(() => buildPromotionProductAppendRow(headers.filter((header) => header !== 'promotionId'), link)).toThrow(/promotionId/);
     expect(() => buildPromotionProductAppendRow([...headers, ' productId '], link)).toThrow(/productId/);

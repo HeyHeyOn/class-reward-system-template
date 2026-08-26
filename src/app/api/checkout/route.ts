@@ -31,9 +31,8 @@ export async function POST(request: Request) {
 
     return Response.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : '결제를 처리하지 못했습니다.';
-
-    return Response.json({ error: message }, { status: 500 });
+    console.error('Failed to process checkout', error);
+    return Response.json({ error: '결제를 처리하지 못했습니다.' }, { status: 500 });
   }
 }
 

@@ -101,8 +101,12 @@ function parseSheetRecords<T>(
   }
 
   return dataRows.flatMap((row, index) => {
+    if (row.every((cell) => !String(cell ?? '').trim())) return [];
     const record = parse(row, headerIndex, index + 2);
-    return record ? [record] : [];
+    if (!record) {
+      throw new Error(`${sheetName} 시트 ${index + 2}행이 올바르지 않습니다.`);
+    }
+    return [record];
   });
 }
 

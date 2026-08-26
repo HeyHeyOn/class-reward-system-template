@@ -47,7 +47,7 @@
 현재 일반 거래 취소 `cancelTransaction`의 쓰기 순서는 다음과 같다.
 
 1. 학생 `balance`를 원거래의 증감분만큼 역반영
-2. 양수 금액의 구매 거래라면 대상 상품들의 `stock`을 한 묶음으로 복원 요청
+2. 유효한 상품 스냅샷이 있는 구매 거래라면 결제 금액이 0원이어도 실제 지급 수량만큼 대상 상품들의 `stock`을 한 묶음으로 복원 요청
 3. 원거래 `status`를 `CANCELLED`로 갱신
 4. `Transactions`에 `CANCEL_REVERSAL` 행 append
 

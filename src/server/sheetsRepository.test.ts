@@ -544,6 +544,31 @@ describe('sheets repository', () => {
     await expect(cancelTransaction(cancelledReader, 'TR001')).rejects.toThrow('이미 취소된 거래입니다.');
   });
 
+  it.each([
+    { overflow: 'stock', studentBalance: '2900', stock: String(Number.MAX_SAFE_INTEGER) },
+    { overflow: 'balance', studentBalance: '1', stock: '20', balanceBefore: String(Number.MAX_SAFE_INTEGER), balanceAfter: '0' },
+  ])('rejects cancellation $overflow overflow before every write', async ({ studentBalance, stock, balanceBefore = '3500', balanceAfter = '2900' }) => {
+    const writes = vi.fn();
+    const store = {
+      async getRows(sheetName: string) {
+        if (sheetName === 'Transactions') return [
+          sheetRows.Transactions[0],
+          ['TR-OVERFLOW', '2026-08-15T00:00:00.000Z', 'S001', '학생',
+            '[{"productId":"P001","name":"연필","price":300,"quantity":2,"subtotal":600}]',
+            '600', balanceBefore, balanceAfter, 'COMPLETED', 'kiosk'],
+        ];
+        if (sheetName === 'Students') return [sheetRows.Students[0], ['S001', '학생', studentBalance, 'S001', 'ACTIVE', '']];
+        if (sheetName === 'Products') return [sheetRows.Products[0], ['P001', '연필', '300', stock, 'TRUE', '', '문구', '1']];
+        return sheetRows[sheetName as keyof typeof sheetRows];
+      },
+      updateCell: writes,
+      appendRow: writes,
+    };
+
+    await expect(cancelTransaction(store, 'TR-OVERFLOW')).rejects.toThrow(/safe integer|overflow/i);
+    expect(writes).not.toHaveBeenCalled();
+  });
+
   it('returns active products sorted by sortOrder', async () => {
     await expect(getActiveProducts(fakeReader)).resolves.toEqual([
       {
