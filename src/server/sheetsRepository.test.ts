@@ -404,6 +404,100 @@ describe('sheets repository', () => {
     expect(appended[0].values.slice(5, 10)).toEqual(['-600', '2900', '3500', 'CANCEL_REVERSAL', 'cancel:TR001']);
   });
 
+  it('restores total received quantity from an enriched snapshot without consulting current promotions', async () => {
+    const updates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
+    const snapshot = {
+      productId: 'P001', name: '연필', price: 300, quantity: 3, subtotal: 540,
+      regularUnitPrice: 300, regularTotal: 900, totalQuantity: 3, paidQuantity: 2, freeQuantity: 1,
+      finalTotal: 540, totalDiscount: 360,
+      adjustments: [
+        { promotionId: 'N21', type: 'N_PLUS_ONE', beforeAmount: 900, afterAmount: 600, discountAmount: 300, freeQuantity: 1 },
+        { promotionId: 'P10', type: 'PERCENT_DISCOUNT', beforeAmount: 600, afterAmount: 540, discountAmount: 60 },
+      ],
+      appliedPromotions: [
+        { promotionId: 'N21', name: '2+1', description: '', productIds: ['P001'], type: 'N_PLUS_ONE', buyQuantity: 2, freeQuantity: 1, startsAt: '2026-08-01T00:00:00.000Z', endsAt: '2026-09-01T00:00:00.000Z', isActive: true, sortOrder: 1, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z', schemaVersion: 3 },
+        { promotionId: 'P10', name: '10%', description: '', productIds: ['P001'], type: 'PERCENT_DISCOUNT', percent: 10, startsAt: '2026-08-01T00:00:00.000Z', endsAt: '2026-09-01T00:00:00.000Z', isActive: true, sortOrder: 1, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z', schemaVersion: 3 },
+      ],
+    };
+    const store = {
+      async getRows(sheetName: string) {
+        if (sheetName === 'Transactions') return [sheetRows.Transactions[0], ['TR-S', '2026-08-15T00:00:00.000Z', 'S001', '김민준', JSON.stringify([snapshot]), '540', '3500', '2960', 'COMPLETED', 'kiosk']];
+        if (sheetName === 'Students') return [sheetRows.Students[0], ['S001', '김민준', '2960', 'S001', 'ACTIVE', '']];
+        if (sheetName === 'Promotions' || sheetName === 'PromotionProducts') throw new Error('promotions unavailable');
+        return sheetRows[sheetName as keyof typeof sheetRows];
+      },
+      async updateCell(sheetName: string, rowNumber: number, columnName: string, value: string | number) {
+        updates.push({ sheetName, rowNumber, columnName, value });
+      },
+      async appendRow() {},
+    };
+
+    await expect(cancelTransaction(store, 'TR-S')).resolves.toMatchObject({
+      reversalTransaction: { balanceBefore: 2960, balanceAfter: 3500, totalAmount: -540 },
+    });
+    expect(updates).toEqual([
+      { sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: 3500 },
+      { sheetName: 'Products', rowNumber: 3, columnName: 'stock', value: 23 },
+      { sheetName: 'Transactions', rowNumber: 2, columnName: 'status', value: 'CANCELLED' },
+    ]);
+  });
+
+  it('aborts malformed partial snapshot cancellation before every write', async () => {
+    const writes: string[] = [];
+    const partial = { productId: 'P001', name: '연필', price: 300, quantity: 3, subtotal: 540, totalQuantity: 3 };
+    const store = {
+      async getRows(sheetName: string) {
+        if (sheetName === 'Transactions') return [sheetRows.Transactions[0], ['TR-BAD', '2026-08-15T00:00:00.000Z', 'S001', '김민준', JSON.stringify([partial]), '540', '3500', '2960', 'COMPLETED', 'kiosk']];
+        return sheetRows[sheetName as keyof typeof sheetRows];
+      },
+      async updateCell() { writes.push('update'); },
+      async appendRow() { writes.push('append'); },
+    };
+
+    await expect(cancelTransaction(store, 'TR-BAD')).rejects.toThrow('상품 스냅샷');
+    expect(writes).toEqual([]);
+  });
+
+  it('restores received inventory when cancelling a fully discounted zero-total purchase', async () => {
+    const updates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
+    const snapshot = {
+      productId: 'P001', name: '연필', price: 300, quantity: 3, subtotal: 0,
+      regularUnitPrice: 300, regularTotal: 900, totalQuantity: 3, paidQuantity: 3, freeQuantity: 0,
+      finalTotal: 0, totalDiscount: 900,
+      adjustments: [{
+        promotionId: 'FREE', type: 'FIXED_DISCOUNT', beforeAmount: 900, afterAmount: 0, discountAmount: 900,
+      }],
+      appliedPromotions: [{
+        promotionId: 'FREE', name: '무료', description: '', productIds: ['P001'],
+        type: 'FIXED_DISCOUNT', discountAmount: 300,
+        startsAt: '2026-08-01T00:00:00.000Z', endsAt: '2026-09-01T00:00:00.000Z',
+        isActive: true, sortOrder: 1, createdAt: '2026-08-01T00:00:00.000Z',
+        updatedAt: '2026-08-01T00:00:00.000Z', schemaVersion: 3,
+      }],
+    };
+    const store = {
+      async getRows(sheetName: string) {
+        if (sheetName === 'Transactions') return [
+          sheetRows.Transactions[0],
+          ['TR-FREE', '2026-08-15T00:00:00.000Z', 'S001', '김민준', JSON.stringify([snapshot]), '0', '3500', '3500', 'COMPLETED', 'kiosk'],
+        ];
+        if (sheetName === 'Students') return [sheetRows.Students[0], ['S001', '김민준', '3500', 'S001', 'ACTIVE', '']];
+        return sheetRows[sheetName as keyof typeof sheetRows];
+      },
+      async updateCell(sheetName: string, rowNumber: number, columnName: string, value: string | number) {
+        updates.push({ sheetName, rowNumber, columnName, value });
+      },
+      async appendRow() {},
+    };
+
+    await expect(cancelTransaction(store, 'TR-FREE')).resolves.toMatchObject({
+      reversalTransaction: { balanceBefore: 3500, balanceAfter: 3500 },
+    });
+    expect(updates).toContainEqual({
+      sheetName: 'Products', rowNumber: 3, columnName: 'stock', value: 23,
+    });
+  });
+
   it('cancels an income transaction by restoring the previous balance and marking it cancelled', async () => {
     const updates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
     const appended: Array<{ sheetName: string; values: string[] }> = [];

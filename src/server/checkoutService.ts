@@ -1,6 +1,7 @@
-import type { CartItem, CheckoutLineItem, Transaction } from '@/domain/types';
+import type { CartItem, CheckoutLineSnapshot, Promotion, Transaction } from '@/domain/types';
 import { createCheckoutPreview, type CheckoutPreviewResult } from '@/domain/checkout';
 import { buildTransactionAppendRow } from '@/server/sheetsRows';
+import { getActivePromotions } from '@/server/repositories/sheets/promotionQueries';
 import {
   getProductRecords,
   getStudentRecordById,
@@ -24,7 +25,7 @@ export type ProcessCheckoutSuccess = {
   totalAmount: number;
   balanceBefore: number;
   balanceAfter: number;
-  items: CheckoutLineItem[];
+  items: CheckoutLineSnapshot[];
 };
 
 export type ProcessCheckoutResult =
@@ -37,6 +38,7 @@ export async function processCheckout(
   store: TabularStore,
   input: ProcessCheckoutInput,
 ): Promise<ProcessCheckoutResult> {
+  const now = input.now?.() ?? new Date();
   const studentRecord = await getStudentRecordById(store, input.studentId);
 
   if (!studentRecord) {
@@ -52,19 +54,22 @@ export async function processCheckout(
   const selectedProductRecords = input.items
     .map((item) => productRecordsById.get(item.productId))
     .filter((record): record is ProductRecord => Boolean(record));
+  const promotions: Promotion[] = await getActivePromotions(store);
 
   const preview = createCheckoutPreview({
     student: studentRecord.student,
     products: selectedProductRecords.map((record) => record.product),
     cartItems: input.items,
+    promotions,
+    now,
   });
 
   if (!preview.ok) {
     return preview;
   }
 
-  const transactionId = input.transactionIdFactory?.() ?? createTransactionId(input.now?.() ?? new Date());
-  const timestamp = (input.now?.() ?? new Date()).toISOString();
+  const transactionId = input.transactionIdFactory?.() ?? createTransactionId(now);
+  const timestamp = now.toISOString();
   const operator = input.operator ?? 'kiosk';
   let transactionHeaders = [
     'transactionId', 'timestamp', 'studentId', 'studentName', 'items',
@@ -76,6 +81,8 @@ export async function processCheckout(
     // Preserve checkout availability by appending with the canonical schema.
   }
 
+  // Sequential provider writes are non-atomic and not exactly-once: each later failure can
+  // leave all prior writes applied. R2 deliberately adds no outbox or idempotency schema.
   await store.updateCell('Students', studentRecord.rowNumber, 'balance', preview.balanceAfter);
 
   for (const item of preview.items) {
@@ -83,7 +90,7 @@ export async function processCheckout(
 
     if (!productRecord) continue;
 
-    await store.updateCell('Products', productRecord.rowNumber, 'stock', productRecord.product.stock - item.quantity);
+    await store.updateCell('Products', productRecord.rowNumber, 'stock', productRecord.product.stock - item.totalQuantity);
   }
 
   const transaction: Transaction = {

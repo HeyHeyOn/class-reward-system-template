@@ -1,5 +1,6 @@
 import type {
   CheckoutLineItem,
+  CheckoutLineSnapshot,
   ClassTask,
   Product,
   Promotion,
@@ -284,18 +285,23 @@ export function parseTransactionRow(row: string[], headerIndex: HeaderIndex): Tr
     || getRowCell(row, headerIndex, 'itemsJson')
     || getRowCell(row, headerIndex, 'itemJson')
     || getRowCell(row, headerIndex, 'products');
-  return {
+  const parsedItems = parseTransactionItems(itemsValue);
+  const transaction: Transaction = {
     transactionId,
     timestamp,
     studentId,
     studentName,
-    items: parseTransactionItems(itemsValue),
+    items: parsedItems.items,
     totalAmount,
     balanceBefore,
     balanceAfter,
     status: getRowCell(row, headerIndex, 'status') || 'UNKNOWN',
     operator: getRowCell(row, headerIndex, 'operator') || 'unknown',
   };
+  if (parsedItems.malformed) {
+    Object.defineProperty(transaction, 'itemsMalformed', { value: true, enumerable: false });
+  }
+  return transaction;
 }
 
 export function buildTransactionAppendRow(headers: string[], transaction: Transaction): string[] {
@@ -461,14 +467,105 @@ function getRowCell(row: string[], headerIndex: HeaderIndex, column: string): st
   return String(row[index] ?? '').trim();
 }
 
-function parseTransactionItems(value: string): CheckoutLineItem[] {
+function parseTransactionItems(value: string): {
+  items: Array<CheckoutLineItem | CheckoutLineSnapshot>;
+  malformed: boolean;
+} {
   try {
     const parsed = JSON.parse(value) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is CheckoutLineItem => Boolean(item && typeof item === 'object' && 'productId' in item));
+    if (!Array.isArray(parsed)) return { items: [], malformed: true };
+    const items: Array<CheckoutLineItem | CheckoutLineSnapshot> = [];
+    let malformed = false;
+    for (const item of parsed) {
+      if (isCheckoutLineSnapshot(item) || isLegacyCheckoutLineItem(item)) items.push(item);
+      else malformed = true;
+    }
+    return { items, malformed };
   } catch {
-    return [];
+    return { items: [], malformed: true };
   }
+}
+
+const SNAPSHOT_ONLY_FIELDS = [
+  'regularUnitPrice', 'regularTotal', 'totalQuantity', 'paidQuantity', 'freeQuantity',
+  'finalTotal', 'totalDiscount', 'adjustments', 'appliedPromotions',
+] as const;
+
+export function isCheckoutLineSnapshot(value: unknown): value is CheckoutLineSnapshot {
+  if (!isRecord(value) || !SNAPSHOT_ONLY_FIELDS.some((field) => field in value)) return false;
+  if (!hasCheckoutLineBase(value)
+    || !isSafeNonNegativeInteger(value.regularUnitPrice)
+    || !isSafeNonNegativeInteger(value.regularTotal)
+    || !isSafePositiveInteger(value.totalQuantity)
+    || !isSafeNonNegativeInteger(value.paidQuantity)
+    || !isSafeNonNegativeInteger(value.freeQuantity)
+    || !isSafeNonNegativeInteger(value.finalTotal)
+    || !isSafeNonNegativeInteger(value.totalDiscount)
+    || value.price !== value.regularUnitPrice
+    || value.quantity !== value.totalQuantity
+    || value.subtotal !== value.finalTotal
+    || value.paidQuantity + value.freeQuantity !== value.totalQuantity
+    || value.regularUnitPrice * value.totalQuantity !== value.regularTotal
+    || value.regularTotal - value.finalTotal !== value.totalDiscount
+    || !Array.isArray(value.adjustments) || !Array.isArray(value.appliedPromotions)
+    || value.adjustments.length !== value.appliedPromotions.length) return false;
+
+  let expectedBefore = value.regularTotal;
+  let discountTotal = 0;
+  for (let index = 0; index < value.adjustments.length; index += 1) {
+    const adjustment = value.adjustments[index];
+    const promotion = value.appliedPromotions[index];
+    if (!isRecord(adjustment) || !isPersistedPromotion(promotion, value.productId)
+      || !isNonBlankString(adjustment.promotionId)
+      || adjustment.promotionId !== promotion.promotionId || adjustment.type !== promotion.type
+      || !isSafeNonNegativeInteger(adjustment.beforeAmount)
+      || !isSafeNonNegativeInteger(adjustment.afterAmount)
+      || !isSafeNonNegativeInteger(adjustment.discountAmount)
+      || adjustment.beforeAmount !== expectedBefore
+      || adjustment.beforeAmount - adjustment.afterAmount !== adjustment.discountAmount
+      || ('freeQuantity' in adjustment && !isSafeNonNegativeInteger(adjustment.freeQuantity))) return false;
+    expectedBefore = adjustment.afterAmount;
+    discountTotal += adjustment.discountAmount;
+  }
+  return expectedBefore === value.finalTotal && discountTotal === value.totalDiscount;
+}
+
+function isLegacyCheckoutLineItem(value: unknown): value is CheckoutLineItem {
+  return isRecord(value) && !SNAPSHOT_ONLY_FIELDS.some((field) => field in value) && hasCheckoutLineBase(value);
+}
+
+function hasCheckoutLineBase(value: Record<string, unknown>): value is Record<string, unknown> & CheckoutLineItem {
+  return isNonBlankString(value.productId) && isNonBlankString(value.name)
+    && Number.isSafeInteger(value.price) && Number.isSafeInteger(value.subtotal)
+    && isSafePositiveInteger(value.quantity);
+}
+
+function isPersistedPromotion(value: unknown, productId: string): value is Promotion {
+  if (!isRecord(value) || !isNonBlankString(value.promotionId) || !isNonBlankString(value.name)
+    || typeof value.description !== 'string' || !Array.isArray(value.productIds)
+    || !value.productIds.every(isNonBlankString) || !value.productIds.includes(productId)
+    || !isCanonicalIsoTimestamp(value.startsAt) || !isCanonicalIsoTimestamp(value.endsAt)
+    || Date.parse(value.startsAt) >= Date.parse(value.endsAt) || typeof value.isActive !== 'boolean'
+    || !Number.isSafeInteger(value.sortOrder) || !isCanonicalIsoTimestamp(value.createdAt)
+    || !isCanonicalIsoTimestamp(value.updatedAt) || value.schemaVersion !== PROMOTION_SCHEMA_VERSION) return false;
+  if (value.type === 'N_PLUS_ONE') return isSafePositiveInteger(value.buyQuantity) && isSafePositiveInteger(value.freeQuantity);
+  if (value.type === 'PROMOTIONAL_PRICE') return isSafeNonNegativeInteger(value.promotionalUnitPrice);
+  if (value.type === 'PERCENT_DISCOUNT') return typeof value.percent === 'number' && Number.isFinite(value.percent) && value.percent > 0 && value.percent <= 100;
+  return value.type === 'FIXED_DISCOUNT' && isSafePositiveInteger(value.discountAmount);
+}
+
+function isCanonicalIsoTimestamp(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function isNonBlankString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
 }
 
 function parseNumberCell(value: string): number | null {

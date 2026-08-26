@@ -341,4 +341,29 @@ describe('calculatePromotionPrice', () => {
       ['FIXED_DISCOUNT', 'FIXED-1', 50],
     ]);
   });
+
+  it('uses a start-inclusive and end-exclusive promotion window', () => {
+    const calculateAt = (now: string) => calculatePromotionPrice({
+      productId: 'P001', quantity: 3, regularUnitPrice: 1_000,
+      now: new Date(now), promotions: [activeTwoPlusOne],
+    });
+
+    expect(calculateAt(activeTwoPlusOne.startsAt)).toMatchObject({ ok: true, finalAmount: 2_000 });
+    expect(calculateAt(activeTwoPlusOne.endsAt)).toMatchObject({
+      ok: true, finalAmount: 3_000, adjustments: [], appliedPromotions: [],
+    });
+  });
+
+  it('fails explicitly instead of throwing for malformed runtime containers', () => {
+    expect(calculatePromotionPrice({
+      productId: 'P001', quantity: 1, regularUnitPrice: 1_000,
+      now: 'not-a-date' as unknown as Date, promotions: [],
+    })).toMatchObject({ ok: false, code: 'INVALID_NOW' });
+
+    expect(calculatePromotionPrice({
+      productId: 'P001', quantity: 1, regularUnitPrice: 1_000,
+      now: new Date('2026-08-15T00:00:00.000Z'),
+      promotions: [null as unknown as Promotion],
+    })).toMatchObject({ ok: false, code: 'INVALID_PROMOTION', promotionId: null });
+  });
 });

@@ -1,9 +1,19 @@
-import type { CartItem, CheckoutLineItem, Product, Student } from './types';
+import { calculatePromotionPrice } from './promotions';
+import type {
+  CartItem,
+  CheckoutLineSnapshot,
+  Product,
+  Promotion,
+  PromotionAdjustment,
+  Student,
+} from './types';
 
-type CheckoutPreviewInput = {
+export type CheckoutPreviewInput = {
   student: Student;
   products: Product[];
   cartItems: CartItem[];
+  promotions?: Promotion[];
+  now?: Date;
 };
 
 type CheckoutPreviewSuccess = {
@@ -11,7 +21,7 @@ type CheckoutPreviewSuccess = {
   totalAmount: number;
   balanceBefore: number;
   balanceAfter: number;
-  items: CheckoutLineItem[];
+  items: CheckoutLineSnapshot[];
 };
 
 type CheckoutPreviewFailure =
@@ -41,19 +51,71 @@ type CheckoutPreviewFailure =
       message: string;
       currentBalance: number;
       requiredAmount: number;
+    }
+  | {
+      ok: false;
+      code: 'PRICING_FAILED';
+      message: string;
+      productId: string;
+      pricingCode: string;
+      promotionId?: string | null;
+    }
+  | {
+      ok: false;
+      code: 'INVALID_QUANTITY';
+      message: string;
+      productId: string;
+    }
+  | {
+      ok: false;
+      code: 'ARITHMETIC_OVERFLOW';
+      message: string;
+      productId?: string;
+    }
+  | {
+      ok: false;
+      code: 'EMPTY_CART' | 'INVALID_CART' | 'INVALID_PRODUCTS' | 'INVALID_PROMOTIONS';
+      message: string;
+    }
+  | {
+      ok: false;
+      code: 'INVALID_STUDENT';
+      message: string;
     };
 
 export type CheckoutPreviewResult = CheckoutPreviewSuccess | CheckoutPreviewFailure;
 
-export function createCheckoutPreview({
-  student,
-  products,
-  cartItems,
-}: CheckoutPreviewInput): CheckoutPreviewResult {
-  const productMap = new Map(products.map((product) => [product.productId, product]));
-  const items: CheckoutLineItem[] = [];
+export function createCheckoutPreview(input: CheckoutPreviewInput): CheckoutPreviewResult {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return { ok: false, code: 'INVALID_CART', message: '장바구니가 올바르지 않습니다.' };
+  }
+  const { student, products, cartItems, promotions = [], now = new Date() } = input;
+  if (!isValidStudent(student)) {
+    return { ok: false, code: 'INVALID_STUDENT', message: '학생 정보가 올바르지 않습니다.' };
+  }
+  if (!Array.isArray(cartItems)) {
+    return { ok: false, code: 'INVALID_CART', message: '장바구니가 올바르지 않습니다.' };
+  }
+  if (cartItems.length === 0) {
+    return { ok: false, code: 'EMPTY_CART', message: '장바구니가 비어 있습니다.' };
+  }
+  if (!isValidProductList(products)) {
+    return { ok: false, code: 'INVALID_PRODUCTS', message: '상품 목록이 올바르지 않습니다.' };
+  }
+  if (!Array.isArray(promotions) || promotions.some((promotion) => (
+    !promotion || typeof promotion !== 'object' || Array.isArray(promotion)
+  ))) {
+    return { ok: false, code: 'INVALID_PROMOTIONS', message: '행사 목록이 올바르지 않습니다.' };
+  }
 
-  for (const cartItem of cartItems) {
+  const normalizedItems = normalizeCartItems(cartItems);
+  if (!normalizedItems.ok) return normalizedItems;
+
+  const productMap = new Map(products.map((product) => [product.productId, product]));
+  const items: CheckoutLineSnapshot[] = [];
+  let totalAmount = 0;
+
+  for (const cartItem of normalizedItems.items) {
     const product = productMap.get(cartItem.productId);
 
     if (!product) {
@@ -85,17 +147,49 @@ export function createCheckoutPreview({
       };
     }
 
-    items.push({
+    const pricing = calculatePromotionPrice({
+      productId: product.productId,
+      quantity: cartItem.quantity,
+      regularUnitPrice: product.price,
+      now,
+      promotions,
+    });
+    if (!pricing.ok) {
+      return {
+        ok: false,
+        code: 'PRICING_FAILED',
+        productId: product.productId,
+        pricingCode: pricing.code,
+        message: pricing.message,
+        ...('promotionId' in pricing ? { promotionId: pricing.promotionId } : {}),
+      };
+    }
+
+    const nextTotal = totalAmount + pricing.finalAmount;
+    if (!Number.isSafeInteger(nextTotal)) return arithmeticOverflow(product.productId);
+    totalAmount = nextTotal;
+
+    const adjustments = Object.freeze(pricing.adjustments.map(cloneAdjustment));
+    const appliedPromotions = Object.freeze(pricing.appliedPromotions.map(clonePromotion));
+    items.push(Object.freeze({
       productId: product.productId,
       name: product.name,
       price: product.price,
-      quantity: cartItem.quantity,
-      subtotal: product.price * cartItem.quantity,
-    });
+      quantity: pricing.totalQuantity,
+      subtotal: pricing.finalAmount,
+      regularUnitPrice: product.price,
+      regularTotal: pricing.regularTotal,
+      totalQuantity: pricing.totalQuantity,
+      paidQuantity: pricing.paidQuantity,
+      freeQuantity: pricing.freeQuantity,
+      finalTotal: pricing.finalAmount,
+      totalDiscount: pricing.totalDiscount,
+      adjustments,
+      appliedPromotions,
+    }));
   }
 
-  const totalAmount = items.reduce((sum, item) => sum + item.subtotal, 0);
-
+  if (!Number.isSafeInteger(student.balance)) return arithmeticOverflow();
   if (student.balance < totalAmount) {
     return {
       ok: false,
@@ -106,11 +200,94 @@ export function createCheckoutPreview({
     };
   }
 
-  return {
+  const balanceAfter = student.balance - totalAmount;
+  if (!Number.isSafeInteger(balanceAfter)) return arithmeticOverflow();
+
+  return Object.freeze({
     ok: true,
     totalAmount,
     balanceBefore: student.balance,
-    balanceAfter: student.balance - totalAmount,
-    items,
+    balanceAfter,
+    items: Object.freeze(items) as CheckoutLineSnapshot[],
+  });
+}
+
+function normalizeCartItems(cartItems: CartItem[]):
+  | { ok: true; items: CartItem[] }
+  | CheckoutPreviewFailure {
+  const quantities = new Map<string, number>();
+
+  for (const cartItem of cartItems) {
+    if (!cartItem || typeof cartItem !== 'object' || typeof cartItem.productId !== 'string' || cartItem.productId.length === 0) {
+      return { ok: false, code: 'INVALID_CART', message: '장바구니가 올바르지 않습니다.' };
+    }
+    if (!Number.isSafeInteger(cartItem.quantity) || cartItem.quantity < 1) {
+      return {
+        ok: false,
+        code: 'INVALID_QUANTITY',
+        message: '상품 수량은 1개 이상이어야 합니다.',
+        productId: cartItem.productId,
+      };
+    }
+
+    const quantity = (quantities.get(cartItem.productId) ?? 0) + cartItem.quantity;
+    if (!Number.isSafeInteger(quantity)) return arithmeticOverflow(cartItem.productId);
+    quantities.set(cartItem.productId, quantity);
+  }
+
+  return {
+    ok: true,
+    items: [...quantities].map(([productId, quantity]) => ({ productId, quantity })),
+  };
+}
+
+function isValidStudent(value: unknown): value is Student {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const student = value as Partial<Student>;
+  return typeof student.studentId === 'string' && student.studentId.trim().length > 0
+    && typeof student.name === 'string' && student.name.trim().length > 0
+    && Number.isSafeInteger(student.balance)
+    && (student.status === 'ACTIVE' || student.status === 'INACTIVE');
+}
+
+function isValidProductList(value: unknown): value is Product[] {
+  if (!Array.isArray(value)) return false;
+  const ids = new Set<string>();
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+    const product = entry as Partial<Product>;
+    if (typeof product.productId !== 'string' || product.productId.trim().length === 0
+      || ids.has(product.productId)
+      || typeof product.name !== 'string' || product.name.trim().length === 0
+      || !Number.isSafeInteger(product.price) || product.price! < 0
+      || !Number.isSafeInteger(product.stock) || product.stock! < 0
+      || typeof product.isActive !== 'boolean'
+      || !Number.isSafeInteger(product.sortOrder)
+      || (product.imageUrl !== undefined && typeof product.imageUrl !== 'string')
+      || (product.category !== undefined && typeof product.category !== 'string')) {
+      return false;
+    }
+    ids.add(product.productId);
+  }
+  return true;
+}
+
+function cloneAdjustment(adjustment: PromotionAdjustment): PromotionAdjustment {
+  return Object.freeze({ ...adjustment });
+}
+
+function clonePromotion(promotion: Promotion): Promotion {
+  return Object.freeze({
+    ...promotion,
+    productIds: Object.freeze([...promotion.productIds]),
+  }) as Promotion;
+}
+
+function arithmeticOverflow(productId?: string): Extract<CheckoutPreviewFailure, { code: 'ARITHMETIC_OVERFLOW' }> {
+  return {
+    ok: false,
+    code: 'ARITHMETIC_OVERFLOW',
+    message: '결제 금액 계산 범위를 초과했습니다.',
+    ...(productId === undefined ? {} : { productId }),
   };
 }

@@ -1,4 +1,4 @@
-import type { Promotion } from './types';
+import type { Promotion, PromotionAdjustment } from './types';
 
 type PromotionPriceInput = {
   productId: string;
@@ -8,14 +8,6 @@ type PromotionPriceInput = {
   promotions: Promotion[];
 };
 
-type PromotionAdjustment = {
-  promotionId: string;
-  type: Promotion['type'];
-  beforeAmount: number;
-  afterAmount: number;
-  discountAmount: number;
-  freeQuantity?: number;
-};
 
 const PROMOTION_STAGE: Record<Promotion['type'], number> = {
   N_PLUS_ONE: 0,
@@ -31,7 +23,7 @@ export function calculatePromotionPrice({
   now,
   promotions,
 }: PromotionPriceInput) {
-  if (!Number.isFinite(now.getTime())) {
+  if (!(now instanceof Date) || !Number.isFinite(now.getTime())) {
     return {
       ok: false as const,
       code: 'INVALID_NOW' as const,
@@ -53,6 +45,12 @@ export function calculatePromotionPrice({
       code: 'INVALID_REGULAR_PRICE' as const,
       message: '정상 단가는 0원 이상의 정수여야 합니다.',
     };
+  }
+
+  if (!Array.isArray(promotions) || promotions.some((promotion) => (
+    !promotion || typeof promotion !== 'object' || Array.isArray(promotion)
+  ))) {
+    return invalidPromotionResult(null);
   }
 
   const malformedTargetingPromotion = promotions.find((promotion) => (
@@ -222,7 +220,7 @@ function isPromotionActiveAt(promotion: Promotion, now: Date): boolean {
   const startsAt = new Date(promotion.startsAt).getTime();
   const endsAt = new Date(promotion.endsAt).getTime();
   const currentTime = now.getTime();
-  return startsAt <= currentTime && currentTime <= endsAt;
+  return startsAt <= currentTime && currentTime < endsAt;
 }
 
 function isValidPromotion(promotion: Promotion): boolean {

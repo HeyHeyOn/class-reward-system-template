@@ -252,6 +252,95 @@ describe('sheets row parsing', () => {
     expect(parseTransactionRow(row, createHeaderIndex(headers))?.items).toEqual([]);
   });
 
+  it('round-trips complete checkout snapshots while retaining legacy five-field items', () => {
+    const headers = [
+      'transactionId', 'timestamp', 'studentId', 'studentName', 'items',
+      'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator',
+    ];
+    const snapshot = {
+      productId: 'P001', name: '연필', price: 300, quantity: 3, subtotal: 540,
+      regularUnitPrice: 300, regularTotal: 900, totalQuantity: 3, paidQuantity: 2,
+      freeQuantity: 1, finalTotal: 540, totalDiscount: 360,
+      adjustments: [
+        { promotionId: 'N21', type: 'N_PLUS_ONE' as const, beforeAmount: 900, afterAmount: 600, discountAmount: 300, freeQuantity: 1 },
+        { promotionId: 'P10', type: 'PERCENT_DISCOUNT' as const, beforeAmount: 600, afterAmount: 540, discountAmount: 60 },
+      ],
+      appliedPromotions: [
+        { promotionId: 'N21', name: '2+1', description: '', productIds: ['P001'], type: 'N_PLUS_ONE' as const, buyQuantity: 2, freeQuantity: 1, startsAt: '2026-08-01T00:00:00.000Z', endsAt: '2026-09-01T00:00:00.000Z', isActive: true, sortOrder: 1, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z', schemaVersion: 3 },
+        { promotionId: 'P10', name: '10%', description: '', productIds: ['P001'], type: 'PERCENT_DISCOUNT' as const, percent: 10, startsAt: '2026-08-01T00:00:00.000Z', endsAt: '2026-09-01T00:00:00.000Z', isActive: true, sortOrder: 1, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z', schemaVersion: 3 },
+      ],
+    };
+    const transaction = {
+      transactionId: 'TR-S', timestamp: '2026-08-15T00:00:00.000Z', studentId: 'S001', studentName: '김민준',
+      items: [snapshot], totalAmount: 540, balanceBefore: 3500, balanceAfter: 2960,
+      status: 'COMPLETED', operator: 'kiosk',
+    };
+    const row = buildTransactionAppendRow(headers, transaction);
+    expect(JSON.parse(row[4])).toEqual([snapshot]);
+    expect(parseTransactionRow(row, createHeaderIndex(headers))).toEqual(transaction);
+
+    const legacy = { productId: 'P002', name: '지우개', price: 500, quantity: 1, subtotal: 500 };
+    const legacyRow = [...row];
+    legacyRow[4] = JSON.stringify([legacy]);
+    expect(parseTransactionRow(legacyRow, createHeaderIndex(headers))?.items).toEqual([legacy]);
+  });
+
+  it('marks partial, malformed, or alias-inconsistent snapshots unsafe instead of reinterpreting them as legacy', () => {
+    const headers = [
+      'transactionId', 'timestamp', 'studentId', 'studentName', 'items',
+      'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator',
+    ];
+    const base = ['TR-BAD', '2026-08-15T00:00:00.000Z', 'S001', '김민준', '', '540', '3500', '2960', 'COMPLETED', 'kiosk'];
+    for (const item of [
+      { productId: 'P001', name: '연필', price: 300, quantity: 3, subtotal: 540, totalQuantity: 3 },
+      { productId: 'P001', name: '연필', price: 300, quantity: 3, subtotal: 540, regularUnitPrice: 301, regularTotal: 900, totalQuantity: 3, paidQuantity: 2, freeQuantity: 1, finalTotal: 540, totalDiscount: 360, adjustments: [], appliedPromotions: [] },
+      { productId: 'P001', name: '연필', price: 300, quantity: 3, subtotal: 540, regularUnitPrice: 300, regularTotal: 900, totalQuantity: -3, paidQuantity: 2, freeQuantity: 1, finalTotal: 540, totalDiscount: 360, adjustments: [], appliedPromotions: [] },
+    ]) {
+      const parsed = parseTransactionRow([...base.slice(0, 4), JSON.stringify([item]), ...base.slice(5)], createHeaderIndex(headers));
+      expect(parsed?.itemsMalformed).toBe(true);
+    }
+  });
+
+  it('marks persisted promotion snapshots with invalid identity, version, timestamps, or intervals unsafe', () => {
+    const headers = [
+      'transactionId', 'timestamp', 'studentId', 'studentName', 'items',
+      'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator',
+    ];
+    const promotion = {
+      promotionId: 'N21', name: '2+1', description: '', productIds: ['P001'], type: 'N_PLUS_ONE' as const,
+      buyQuantity: 2, freeQuantity: 1, startsAt: '2026-08-01T00:00:00.000Z',
+      endsAt: '2026-09-01T00:00:00.000Z', isActive: true, sortOrder: 1,
+      createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-02T00:00:00.000Z', schemaVersion: 3,
+    };
+    const snapshot = {
+      productId: 'P001', name: '연필', price: 300, quantity: 3, subtotal: 600,
+      regularUnitPrice: 300, regularTotal: 900, totalQuantity: 3, paidQuantity: 2,
+      freeQuantity: 1, finalTotal: 600, totalDiscount: 300,
+      adjustments: [{
+        promotionId: 'N21', type: 'N_PLUS_ONE' as const, beforeAmount: 900,
+        afterAmount: 600, discountAmount: 300, freeQuantity: 1,
+      }],
+      appliedPromotions: [promotion],
+    };
+    const malformedPromotions = [
+      { ...promotion, productIds: ['P999'] },
+      { ...promotion, schemaVersion: 2 },
+      { ...promotion, createdAt: 'not-a-date' },
+      { ...promotion, updatedAt: '2026-07-02' },
+      { ...promotion, endsAt: promotion.startsAt },
+      { ...promotion, startsAt: '2026-10-01T00:00:00.000Z' },
+    ];
+
+    for (const malformedPromotion of malformedPromotions) {
+      const row = [
+        'TR-BAD-PROMO', '2026-08-15T00:00:00.000Z', 'S001', '김민준',
+        JSON.stringify([{ ...snapshot, appliedPromotions: [malformedPromotion] }]),
+        '600', '3500', '2900', 'COMPLETED', 'kiosk',
+      ];
+      expect(parseTransactionRow(row, createHeaderIndex(headers))?.itemsMalformed).toBe(true);
+    }
+  });
+
   it('parses a task completion by live headers and serializes both ledger row types by live header order', () => {
     const completionHeaders = [
       'note', 'status', 'balanceAfter', 'studentName', 'completionId', 'reward',

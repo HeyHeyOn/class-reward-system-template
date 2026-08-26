@@ -25,6 +25,7 @@ import {
 
   buildTransactionAppendRow,
   createHeaderIndex,
+  isCheckoutLineSnapshot,
   parseProductRow,
   parseStudentRow,
   parseTaskCompletionRow,
@@ -762,18 +763,18 @@ export async function cancelTransaction(store: SheetsStore, transactionId: strin
 
   const transaction = transactionRecord.transaction;
   if (transaction.status === 'CANCELLED') throw new Error('이미 취소된 거래입니다.');
+  if (transaction.itemsMalformed) throw new Error('거래 상품 스냅샷이 올바르지 않습니다.');
 
   const studentRecord = await getStudentRecordById(store, transaction.studentId);
   if (!studentRecord) throw new Error('학생 정보를 찾을 수 없습니다.');
 
   const productsById = new Map((await getProductRecords(store)).map((record) => [record.product.productId, record]));
   const productUpdates: SheetCellUpdate[] = [];
-  if (transaction.totalAmount > 0) {
-    for (const item of transaction.items) {
-      const productRecord = productsById.get(item.productId);
-      if (productRecord) {
-        productUpdates.push({ rowNumber: productRecord.rowNumber, columnName: 'stock', value: productRecord.product.stock + item.quantity });
-      }
+  for (const item of transaction.items) {
+    const productRecord = productsById.get(item.productId);
+    if (productRecord) {
+      const restoreQuantity = isCheckoutLineSnapshot(item) ? item.totalQuantity : item.quantity;
+      productUpdates.push({ rowNumber: productRecord.rowNumber, columnName: 'stock', value: productRecord.product.stock + restoreQuantity });
     }
   }
 
@@ -801,6 +802,8 @@ export async function cancelTransaction(store: SheetsStore, transactionId: strin
     operator: `cancel:${transaction.transactionId}`,
   };
 
+  // Sequential provider writes are non-atomic and not exactly-once: each later failure can
+  // leave balance, inventory, or status writes applied. R2 deliberately adds no outbox.
   await store.updateCell('Students', studentRecord.rowNumber, 'balance', reversalBalanceAfter);
   await applyCellUpdates(store, 'Products', productUpdates);
   await store.updateCell('Transactions', transactionRecord.rowNumber, 'status', 'CANCELLED');

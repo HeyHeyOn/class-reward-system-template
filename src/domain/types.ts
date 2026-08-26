@@ -31,6 +31,28 @@ export type CheckoutLineItem = {
   subtotal: number;
 };
 
+/** Immutable checkout-time pricing detail; legacy aliases remain required above. */
+export type CheckoutLineSnapshot = Readonly<CheckoutLineItem> & {
+  readonly regularUnitPrice: number;
+  readonly regularTotal: number;
+  readonly totalQuantity: number;
+  readonly paidQuantity: number;
+  readonly freeQuantity: number;
+  readonly finalTotal: number;
+  readonly totalDiscount: number;
+  readonly adjustments: readonly PromotionAdjustment[];
+  readonly appliedPromotions: readonly Promotion[];
+};
+
+export type PromotionAdjustment = {
+  readonly promotionId: string;
+  readonly type: Promotion['type'];
+  readonly beforeAmount: number;
+  readonly afterAmount: number;
+  readonly discountAmount: number;
+  readonly freeQuantity?: number;
+};
+
 export type PromotionBase = {
   promotionId: string;
   name: string;
@@ -85,7 +107,9 @@ export type Transaction = {
   timestamp: string;
   studentId: string;
   studentName: string;
-  items: CheckoutLineItem[];
+  items: Array<CheckoutLineItem | CheckoutLineSnapshot>;
+  /** Present only when persisted item JSON cannot be trusted for a mutation such as cancellation. */
+  itemsMalformed?: true;
   totalAmount: number;
   balanceBefore: number;
   balanceAfter: number;
