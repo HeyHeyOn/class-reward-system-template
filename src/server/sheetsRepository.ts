@@ -817,10 +817,11 @@ export async function getSheetSettings(reader: SheetsReader): Promise<Record<str
   if (!headers) return {};
 
   const headerIndex = createHeaderIndex(headers);
+  assertRequiredColumns(headerIndex, ['key', 'value'], 'Settings');
   const keyIndex = headerIndex.get('key');
   const valueIndex = headerIndex.get('value');
 
-  if (keyIndex === undefined || valueIndex === undefined) {
+  if (keyIndex === undefined || keyIndex < 0 || valueIndex === undefined || valueIndex < 0) {
     throw new Error('Settings 시트에 필수 컬럼이 없습니다: key, value');
   }
 
@@ -845,10 +846,11 @@ export async function saveSheetSetting(store: SheetsStore, setting: SheetSetting
   }
 
   const headerIndex = createHeaderIndex(headers);
+  assertRequiredColumns(headerIndex, ['key', 'value'], 'Settings');
   const keyIndex = headerIndex.get('key');
   const valueIndex = headerIndex.get('value');
 
-  if (keyIndex === undefined || valueIndex === undefined) {
+  if (keyIndex === undefined || keyIndex < 0 || valueIndex === undefined || valueIndex < 0) {
     throw new Error('Settings 시트에 필수 컬럼이 없습니다: key, value');
   }
 
@@ -1405,13 +1407,16 @@ function prepareImmediateScheduleState(task: ClassTask, edit: TaskScheduleEdit, 
 }
 
 function assertVersionedTaskScheduleHeaders(headerIndex: ReadonlyMap<string, number>): boolean {
-  const presentCount = VERSIONED_TASK_SCHEDULE_HEADERS
-    .filter((header) => headerIndex.has(header))
+  const observedCount = VERSIONED_TASK_SCHEDULE_HEADERS
+    .filter((header) => headerIndex.get(header) !== undefined)
     .length;
-  if (presentCount > 0 && presentCount < VERSIONED_TASK_SCHEDULE_HEADERS.length) {
+  const validCount = VERSIONED_TASK_SCHEDULE_HEADERS
+    .filter((header) => (headerIndex.get(header) ?? -1) >= 0)
+    .length;
+  if (observedCount > 0 && validCount < VERSIONED_TASK_SCHEDULE_HEADERS.length) {
     throw new Error('Tasks 시트의 versioned schedule 헤더가 불완전합니다.');
   }
-  return presentCount === VERSIONED_TASK_SCHEDULE_HEADERS.length;
+  return validCount === VERSIONED_TASK_SCHEDULE_HEADERS.length;
 }
 
 function assertRequiredColumns(

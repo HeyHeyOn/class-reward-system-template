@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import type { Promotion, PromotionProductLink } from '@/domain/types';
 import {
+  buildPromotionAppendRow,
+  buildPromotionProductAppendRow,
   buildTaskAssignmentAppendRow,
   buildTaskCompletionAppendRow,
   buildTaskAppendRow,
@@ -7,6 +10,8 @@ import {
   createHeaderIndex,
   parseAllowedStudentIds,
   parseProductRow,
+  parsePromotionProductRow,
+  parsePromotionRow,
   parseStudentRow,
   parseTaskAssignmentRow,
   parseTaskAssignmentRows,
@@ -448,5 +453,189 @@ describe('sheets row parsing', () => {
       expect(parseTaskCompletionRow(row, createHeaderIndex(versionedHeaders))).toBeNull();
       expect(() => buildTaskCompletionAppendRow(versionedHeaders, { ...versioned, schemaVersion })).toThrow();
     }
+  });
+});
+
+describe('promotion sheet row codecs', () => {
+  const headers = [
+    'unknownLeading', 'type', 'name', 'promotionId', 'value', 'freeQuantity', 'buyQuantity',
+    'description', 'endsAt', 'startsAt', 'sortOrder', 'isActive', 'updatedAt', 'createdAt',
+    'schemaVersion', 'unknownTrailing',
+  ];
+  const common = {
+    promotionId: 'PROMO-1', name: '학급 할인', description: '', productIds: [] as string[],
+    startsAt: '2026-08-01T00:00:00.000Z', endsAt: '2026-08-31T23:59:59.000Z',
+    isActive: true, sortOrder: 4, createdAt: '2026-07-20T00:00:00.000Z',
+    updatedAt: '2026-07-21T00:00:00.000Z', schemaVersion: 3,
+  };
+  const promotions: Promotion[] = [
+    { ...common, type: 'N_PLUS_ONE', buyQuantity: 2, freeQuantity: 1 },
+    { ...common, promotionId: 'PROMO-2', type: 'PROMOTIONAL_PRICE', promotionalUnitPrice: 0 },
+    { ...common, promotionId: 'PROMO-3', type: 'PERCENT_DISCOUNT', percent: 12.5 },
+    { ...common, promotionId: 'PROMO-4', type: 'FIXED_DISCOUNT', discountAmount: 300 },
+  ];
+
+  it('round-trips all four promotion types in permuted live header order with blank irrelevant cells', () => {
+    const expectedTypeCells = [
+      ['N_PLUS_ONE', '', '1', '2'], ['PROMOTIONAL_PRICE', '0', '', ''],
+      ['PERCENT_DISCOUNT', '12.5', '', ''], ['FIXED_DISCOUNT', '300', '', ''],
+    ];
+    promotions.forEach((promotion, index) => {
+      const row = buildPromotionAppendRow(headers, promotion);
+      expect([row[1], row[4], row[5], row[6]]).toEqual(expectedTypeCells[index]);
+      expect(row[11]).toBe('TRUE');
+      expect(parsePromotionRow(row, createHeaderIndex(headers))).toEqual(promotion);
+    });
+  });
+
+  it('preserves unknown existing cells while overwriting canonical promotion cells', () => {
+    const existingRow = headers.map(() => 'stale');
+    existingRow[0] = 'keep-leading';
+    existingRow[15] = 'keep-trailing';
+    const row = buildPromotionAppendRow(headers, { ...promotions[3], isActive: false }, existingRow);
+    expect(row[0]).toBe('keep-leading');
+    expect(row[15]).toBe('keep-trailing');
+    expect(row[11]).toBe('FALSE');
+    expect(row[5]).toBe('');
+    expect(row[6]).toBe('');
+  });
+
+  it('preserves duplicate unknown columns and headerless trailing cells by physical index', () => {
+    const duplicateUnknownHeaders = [...headers, 'unknownLeading'];
+    const existingRow = duplicateUnknownHeaders.map((_, index) => `existing-${index}`);
+    existingRow.push('headerless-tail');
+
+    const row = buildPromotionAppendRow(duplicateUnknownHeaders, promotions[0], existingRow);
+
+    expect(row[0]).toBe('existing-0');
+    expect(row[16]).toBe('existing-16');
+    expect(row[17]).toBe('headerless-tail');
+  });
+
+  it('returns null for malformed common promotion cells', () => {
+    const canonicalHeaders = [
+      'promotionId', 'name', 'description', 'type', 'value', 'buyQuantity', 'freeQuantity',
+      'startsAt', 'endsAt', 'isActive', 'sortOrder', 'createdAt', 'updatedAt', 'schemaVersion',
+    ];
+    const valid = ['P', 'Name', '', 'FIXED_DISCOUNT', '1', '', '', '2026-08-01T00:00:00Z',
+      '2026-08-02T00:00:00Z', 'TRUE', '0', '2026-07-01T00:00:00Z', '2026-07-02T00:00:00Z', '3'];
+    const malformedRows = [
+      ['', ...valid.slice(1)], [valid[0], '   ', ...valid.slice(2)],
+      [...valid.slice(0, 7), 'not-a-date', ...valid.slice(8)],
+      [...valid.slice(0, 7), '2026-09-01T00:00:00Z', ...valid.slice(8)],
+      [...valid.slice(0, 8), 'not-a-date', ...valid.slice(9)],
+      [...valid.slice(0, 9), 'yes', ...valid.slice(10)],
+      [...valid.slice(0, 10), '1.5', ...valid.slice(11)],
+      [...valid.slice(0, 10), '9007199254740992', ...valid.slice(11)],
+      [...valid.slice(0, 11), 'bad', ...valid.slice(12)],
+      [...valid.slice(0, 12), 'bad', valid[13]], [...valid.slice(0, 13), '2'], valid.slice(0, 13),
+    ];
+    for (const row of malformedRows) {
+      expect(parsePromotionRow(row, createHeaderIndex(canonicalHeaders))).toBeNull();
+    }
+  });
+
+  it('returns null for unsupported or malformed type-specific promotion cells', () => {
+    const typeHeaders = ['promotionId', 'name', 'description', 'type', 'value', 'buyQuantity', 'freeQuantity',
+      'startsAt', 'endsAt', 'isActive', 'sortOrder', 'createdAt', 'updatedAt', 'schemaVersion'];
+    const suffix = ['2026-08-01T00:00:00Z', '2026-08-02T00:00:00Z', 'FALSE', '1',
+      '2026-07-01T00:00:00Z', '2026-07-02T00:00:00Z', '3'];
+    const row = (type: string, value: string, buy: string, free: string) =>
+      ['P', 'Name', '', type, value, buy, free, ...suffix];
+    const malformedRows = [
+      row('BOGO', '', '1', '1'), row('N_PLUS_ONE', '10', '1', '1'), row('N_PLUS_ONE', '', '0', '1'),
+      row('N_PLUS_ONE', '', '1.5', '1'), row('N_PLUS_ONE', '', '1', '9007199254740992'),
+      row('PROMOTIONAL_PRICE', '-1', '', ''), row('PROMOTIONAL_PRICE', '1.5', '', ''),
+      row('PROMOTIONAL_PRICE', '1', '1', ''), row('PERCENT_DISCOUNT', '0', '', ''),
+      row('PERCENT_DISCOUNT', '100.1', '', ''), row('PERCENT_DISCOUNT', 'Infinity', '', ''),
+      row('PERCENT_DISCOUNT', '10', '', '1'), row('FIXED_DISCOUNT', '0', '', ''),
+      row('FIXED_DISCOUNT', '1.5', '', ''), row('FIXED_DISCOUNT', '1', '', '1'),
+    ];
+    for (const malformed of malformedRows) {
+      expect(parsePromotionRow(malformed, createHeaderIndex(typeHeaders))).toBeNull();
+    }
+  });
+
+  it('throws for malformed promotions and incomplete or duplicate required headers', () => {
+    expect(() => buildPromotionAppendRow(headers, { ...promotions[0], buyQuantity: 0 } as Promotion)).toThrow();
+    expect(() => buildPromotionAppendRow(headers, { ...promotions[1], promotionalUnitPrice: 1.5 } as Promotion)).toThrow();
+    expect(() => buildPromotionAppendRow(headers, { ...promotions[2], percent: 101 } as Promotion)).toThrow();
+    expect(() => buildPromotionAppendRow(headers, { ...promotions[3], discountAmount: 0 } as Promotion)).toThrow();
+    expect(() => buildPromotionAppendRow(headers, { ...promotions[3], startsAt: 'bad' })).toThrow();
+    expect(() => buildPromotionAppendRow(headers, { ...promotions[3], schemaVersion: 2 })).toThrow();
+    expect(() => buildPromotionAppendRow(headers, { ...promotions[3], productIds: ['PRODUCT-1'] })).toThrow(/productIds/);
+    expect(() => buildPromotionAppendRow(headers.filter((header) => header !== 'value'), promotions[0])).toThrow(/value/);
+    expect(() => buildPromotionAppendRow([...headers, ' promotionId '], promotions[0])).toThrow(/promotionId/);
+  });
+
+  it('returns null when normalized required promotion headers are duplicated', () => {
+    const duplicateHeaders = [...headers, ' promotionId '];
+    const row = buildPromotionAppendRow(headers, promotions[0]);
+    row.push('CONFLICTING-ID');
+
+    expect(parsePromotionRow(row, createHeaderIndex(duplicateHeaders))).toBeNull();
+  });
+
+  it('returns null when a blank-capable required promotion header is missing or duplicated', () => {
+    const row = buildPromotionAppendRow(headers, promotions[0]);
+    const missingDescriptionHeaders = headers.filter((header) => header !== 'description');
+    const missingDescriptionRow = headers
+      .map((header, index) => ({ header, value: row[index] }))
+      .filter(({ header }) => header !== 'description')
+      .map(({ value }) => value);
+    expect(parsePromotionRow(missingDescriptionRow, createHeaderIndex(missingDescriptionHeaders))).toBeNull();
+
+    const duplicateValueHeaders = [...headers, ' value '];
+    expect(parsePromotionRow([...row, 'conflicting'], createHeaderIndex(duplicateValueHeaders))).toBeNull();
+  });
+});
+
+describe('promotion-product sheet row codecs', () => {
+  const headers = ['unknown', 'productId', 'schemaVersion', 'promotionProductId', 'createdAt', 'promotionId', 'trailing'];
+  const link: PromotionProductLink = {
+    promotionProductId: 'PP-1', promotionId: 'PROMO-1', productId: 'PRODUCT-1',
+    createdAt: '2026-08-01T00:00:00.000Z', schemaVersion: 3,
+  };
+
+  it('round-trips a link in live header order and preserves unknown existing cells', () => {
+    const existingRow = ['keep-unknown', 'old', 'old', 'old', 'old', 'old', 'keep-trailing'];
+    const row = buildPromotionProductAppendRow(headers, link, existingRow);
+    expect(row).toEqual(['keep-unknown', 'PRODUCT-1', '3', 'PP-1', link.createdAt, 'PROMO-1', 'keep-trailing']);
+    expect(parsePromotionProductRow(row, createHeaderIndex(headers))).toEqual(link);
+  });
+
+  it('preserves duplicate unknown link columns and headerless trailing cells by physical index', () => {
+    const duplicateUnknownHeaders = [...headers, 'unknown'];
+    const existingRow = duplicateUnknownHeaders.map((_, index) => `existing-${index}`);
+    existingRow.push('headerless-tail');
+
+    const row = buildPromotionProductAppendRow(duplicateUnknownHeaders, link, existingRow);
+
+    expect(row[0]).toBe('existing-0');
+    expect(row[7]).toBe('existing-7');
+    expect(row[8]).toBe('headerless-tail');
+  });
+
+  it('returns null for malformed links and throws for malformed serialization inputs', () => {
+    const canonicalHeaders = ['promotionProductId', 'promotionId', 'productId', 'createdAt', 'schemaVersion'];
+    const valid = ['PP-1', 'PROMO-1', 'PRODUCT-1', link.createdAt, '3'];
+    for (const malformed of [
+      ['', ...valid.slice(1)], [valid[0], ' ', ...valid.slice(2)],
+      [...valid.slice(0, 2), '', ...valid.slice(3)], [...valid.slice(0, 3), 'bad', valid[4]],
+      [...valid.slice(0, 4), '2'], valid.slice(0, 4),
+    ]) expect(parsePromotionProductRow(malformed, createHeaderIndex(canonicalHeaders))).toBeNull();
+    expect(() => buildPromotionProductAppendRow(headers, { ...link, productId: ' ' })).toThrow();
+    expect(() => buildPromotionProductAppendRow(headers, { ...link, createdAt: 'bad' })).toThrow();
+    expect(() => buildPromotionProductAppendRow(headers, { ...link, schemaVersion: 4 })).toThrow();
+    expect(() => buildPromotionProductAppendRow(headers.filter((header) => header !== 'promotionId'), link)).toThrow(/promotionId/);
+    expect(() => buildPromotionProductAppendRow([...headers, ' productId '], link)).toThrow(/productId/);
+  });
+
+  it('returns null when normalized required link headers are duplicated', () => {
+    const duplicateHeaders = [...headers, ' promotionId '];
+    const row = buildPromotionProductAppendRow(headers, link);
+    row.push('CONFLICTING-ID');
+
+    expect(parsePromotionProductRow(row, createHeaderIndex(duplicateHeaders))).toBeNull();
   });
 });

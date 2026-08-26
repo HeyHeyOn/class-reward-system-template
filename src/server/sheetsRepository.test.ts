@@ -28,6 +28,7 @@ import {
   updateTaskDetailsBatch,
   getTaskAssignmentStatus,
   getTaskCycleState,
+  getSheetSettings,
   resetTaskCompletionsBatch,
 
   saveSheetSetting,
@@ -1156,6 +1157,18 @@ describe('sheets repository', () => {
     await expect(getTasks(reader)).rejects.toThrow('Tasks 시트의 versioned schedule 헤더가 불완전합니다.');
   });
 
+  it('fails closed when the only normalized versioned schedule header is duplicated', async () => {
+    const headers = [...TASK_SCHEMA_HEADERS.slice(0, 9), 'recurrenceType', ' recurrenceType '];
+    const reader = {
+      async getRows(sheetName: keyof typeof sheetRows) {
+        if (sheetName === 'Tasks') return [headers];
+        return sheetRows[sheetName];
+      },
+    };
+
+    await expect(getTasks(reader)).rejects.toThrow('Tasks 시트의 versioned schedule 헤더가 불완전합니다.');
+  });
+
   it('recognizes a complete whitespace-padded versioned header and writes values in its live order', async () => {
     const scheduleHeaders = [
       'taskInstanceId', 'ruleVersion', 'scheduleEffectiveFrom', 'recurrenceTimeZone', 'recurrenceType',
@@ -1219,6 +1232,21 @@ describe('sheets repository', () => {
 
     expect(appends).toEqual([['', 'new-value', 'newSetting', '']]);
     expect(updates).toEqual([{ rowNumber: 2, columnName: ' value ', value: 'updated-value' }]);
+  });
+
+  it('rejects normalized duplicate Settings headers for reads and writes', async () => {
+    const appends: string[][] = [];
+    const rows = [['key', 'value', ' key '], ['existing', 'old', 'conflicting']];
+    const store = {
+      async getRows() { return rows; },
+      async updateCell() {},
+      async appendRow(_sheetName: string, values: string[]) { appends.push(values); },
+    };
+
+    await expect(getSheetSettings(store)).rejects.toThrow('Settings 시트에 필수 컬럼이 없습니다');
+    await expect(saveSheetSetting(store, { key: 'existing', value: 'updated' }))
+      .rejects.toThrow('Settings 시트에 필수 컬럼이 없습니다');
+    expect(appends).toEqual([]);
   });
 
   it('propagates Settings read failures from createTask and never appends', async () => {

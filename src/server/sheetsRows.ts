@@ -2,6 +2,8 @@ import type {
   CheckoutLineItem,
   ClassTask,
   Product,
+  Promotion,
+  PromotionProductLink,
   Student,
   StudentStatus,
   TaskAssignment,
@@ -20,11 +22,16 @@ export type RequiredColumnsResult =
   | { ok: false; missingColumns: string[] };
 
 export function createHeaderIndex(headers: string[]): HeaderIndex {
-  return new Map(headers.map((header, index) => [header.trim(), index]));
+  const index = new Map<string, number>();
+  headers.forEach((header, position) => {
+    const normalized = header.trim();
+    index.set(normalized, index.has(normalized) ? -1 : position);
+  });
+  return index;
 }
 
 export function requireColumns(headerIndex: HeaderIndex, requiredColumns: readonly string[]): RequiredColumnsResult {
-  const missingColumns = requiredColumns.filter((column) => !headerIndex.has(column));
+  const missingColumns = requiredColumns.filter((column) => (headerIndex.get(column) ?? -1) < 0);
 
   if (missingColumns.length > 0) {
     return { ok: false, missingColumns };
@@ -75,6 +82,130 @@ export function parseProductRow(row: string[], headerIndex: HeaderIndex): Produc
     category,
     sortOrder,
   };
+}
+
+export const REQUIRED_PROMOTION_COLUMNS = [
+  'promotionId', 'name', 'description', 'type', 'value', 'buyQuantity', 'freeQuantity',
+  'startsAt', 'endsAt', 'isActive', 'sortOrder', 'createdAt', 'updatedAt', 'schemaVersion',
+] as const;
+export const REQUIRED_PROMOTION_PRODUCT_COLUMNS = [
+  'promotionProductId', 'promotionId', 'productId', 'createdAt', 'schemaVersion',
+] as const;
+const PROMOTION_SCHEMA_VERSION = 3;
+
+export function parsePromotionRow(row: string[], headerIndex: HeaderIndex): Promotion | null {
+  if (requireColumns(headerIndex, REQUIRED_PROMOTION_COLUMNS).ok === false) return null;
+  const promotionId = getRowCell(row, headerIndex, 'promotionId');
+  const name = getRowCell(row, headerIndex, 'name');
+  const description = getRowCell(row, headerIndex, 'description');
+  const type = getRowCell(row, headerIndex, 'type');
+  const valueCell = getRowCell(row, headerIndex, 'value');
+  const buyQuantityCell = getRowCell(row, headerIndex, 'buyQuantity');
+  const freeQuantityCell = getRowCell(row, headerIndex, 'freeQuantity');
+  const startsAt = getRowCell(row, headerIndex, 'startsAt');
+  const endsAt = getRowCell(row, headerIndex, 'endsAt');
+  const isActive = parseStrictBooleanCell(getRowCell(row, headerIndex, 'isActive'));
+  const sortOrder = parseSafeIntegerCell(getRowCell(row, headerIndex, 'sortOrder'));
+  const createdAt = getRowCell(row, headerIndex, 'createdAt');
+  const updatedAt = getRowCell(row, headerIndex, 'updatedAt');
+  const schemaVersion = parseSafeIntegerCell(getRowCell(row, headerIndex, 'schemaVersion'));
+  if (!promotionId || !name || !isParseableDate(startsAt) || !isParseableDate(endsAt)
+    || Date.parse(startsAt) > Date.parse(endsAt) || isActive === null || sortOrder === null
+    || !isParseableDate(createdAt) || !isParseableDate(updatedAt)
+    || schemaVersion !== PROMOTION_SCHEMA_VERSION) return null;
+
+  const common = {
+    promotionId, name, description, productIds: [], startsAt, endsAt, isActive, sortOrder,
+    createdAt, updatedAt, schemaVersion,
+  };
+  if (type === 'N_PLUS_ONE') {
+    const buyQuantity = parseSafePositiveIntegerCell(buyQuantityCell);
+    const freeQuantity = parseSafePositiveIntegerCell(freeQuantityCell);
+    return valueCell || buyQuantity === null || freeQuantity === null
+      ? null
+      : { ...common, type, buyQuantity, freeQuantity };
+  }
+  if (type === 'PROMOTIONAL_PRICE') {
+    const promotionalUnitPrice = parseSafeNonNegativeIntegerCell(valueCell);
+    return buyQuantityCell || freeQuantityCell || promotionalUnitPrice === null
+      ? null
+      : { ...common, type, promotionalUnitPrice };
+  }
+  if (type === 'PERCENT_DISCOUNT') {
+    const percent = parseFiniteNumberCell(valueCell);
+    return buyQuantityCell || freeQuantityCell || percent === null || percent <= 0 || percent > 100
+      ? null
+      : { ...common, type, percent };
+  }
+  if (type === 'FIXED_DISCOUNT') {
+    const discountAmount = parseSafePositiveIntegerCell(valueCell);
+    return buyQuantityCell || freeQuantityCell || discountAmount === null
+      ? null
+      : { ...common, type, discountAmount };
+  }
+  return null;
+}
+
+export function buildPromotionAppendRow(headers: string[], promotion: Promotion, existingRow?: string[]): string[] {
+  validateRequiredHeaders(headers, REQUIRED_PROMOTION_COLUMNS);
+  validatePromotion(promotion);
+  let value = '';
+  let buyQuantity = '';
+  let freeQuantity = '';
+  if (promotion.type === 'N_PLUS_ONE') {
+    buyQuantity = String(promotion.buyQuantity);
+    freeQuantity = String(promotion.freeQuantity);
+  } else if (promotion.type === 'PROMOTIONAL_PRICE') {
+    value = String(promotion.promotionalUnitPrice);
+  } else if (promotion.type === 'PERCENT_DISCOUNT') {
+    value = String(promotion.percent);
+  } else {
+    value = String(promotion.discountAmount);
+  }
+  const canonicalValues: Record<string, string> = {
+    promotionId: promotion.promotionId,
+    name: promotion.name,
+    description: promotion.description,
+    type: promotion.type,
+    value,
+    buyQuantity,
+    freeQuantity,
+    startsAt: promotion.startsAt,
+    endsAt: promotion.endsAt,
+    isActive: promotion.isActive ? 'TRUE' : 'FALSE',
+    sortOrder: String(promotion.sortOrder),
+    createdAt: promotion.createdAt,
+    updatedAt: promotion.updatedAt,
+    schemaVersion: String(promotion.schemaVersion),
+  };
+  return buildRowPreservingExistingCells(headers, canonicalValues, existingRow);
+}
+
+export function parsePromotionProductRow(row: string[], headerIndex: HeaderIndex): PromotionProductLink | null {
+  if (requireColumns(headerIndex, REQUIRED_PROMOTION_PRODUCT_COLUMNS).ok === false) return null;
+  const promotionProductId = getRowCell(row, headerIndex, 'promotionProductId');
+  const promotionId = getRowCell(row, headerIndex, 'promotionId');
+  const productId = getRowCell(row, headerIndex, 'productId');
+  const createdAt = getRowCell(row, headerIndex, 'createdAt');
+  const schemaVersion = parseSafeIntegerCell(getRowCell(row, headerIndex, 'schemaVersion'));
+  if (!promotionProductId || !promotionId || !productId || !isParseableDate(createdAt)
+    || schemaVersion !== PROMOTION_SCHEMA_VERSION) return null;
+  return { promotionProductId, promotionId, productId, createdAt, schemaVersion };
+}
+
+export function buildPromotionProductAppendRow(
+  headers: string[], link: PromotionProductLink, existingRow?: string[],
+): string[] {
+  validateRequiredHeaders(headers, REQUIRED_PROMOTION_PRODUCT_COLUMNS);
+  validatePromotionProductLink(link);
+  const canonicalValues: Record<string, string> = {
+    promotionProductId: link.promotionProductId,
+    promotionId: link.promotionId,
+    productId: link.productId,
+    createdAt: link.createdAt,
+    schemaVersion: String(link.schemaVersion),
+  };
+  return buildRowPreservingExistingCells(headers, canonicalValues, existingRow);
 }
 
 export function parseTaskRow(row: string[], headerIndex: HeaderIndex, classTimeZone = 'Asia/Seoul'): ClassTask | null {
@@ -326,7 +457,7 @@ export function buildTaskAssignmentAppendRow(headers: string[], assignment: Task
 
 function getRowCell(row: string[], headerIndex: HeaderIndex, column: string): string {
   const index = headerIndex.get(column);
-  if (index === undefined) return '';
+  if (index === undefined || index < 0) return '';
   return String(row[index] ?? '').trim();
 }
 
@@ -353,6 +484,31 @@ function parsePositiveIntegerCell(value: string): number | null {
   return parsed !== null && Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+function parseFiniteNumberCell(value: string): number | null {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseSafeIntegerCell(value: string): number | null {
+  const parsed = parseFiniteNumberCell(value);
+  return parsed !== null && Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+function parseSafePositiveIntegerCell(value: string): number | null {
+  const parsed = parseSafeIntegerCell(value);
+  return parsed !== null && parsed > 0 ? parsed : null;
+}
+
+function parseSafeNonNegativeIntegerCell(value: string): number | null {
+  const parsed = parseSafeIntegerCell(value);
+  return parsed !== null && parsed >= 0 ? parsed : null;
+}
+
+function isParseableDate(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && Number.isFinite(Date.parse(value));
+}
+
 function isPositiveInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value > 0;
 }
@@ -374,6 +530,70 @@ function validateRequiredHeaders(headers: string[], requiredHeaders: readonly st
     ].join('; ');
     throw new Error(`Ledger headers are invalid (${details})`);
   }
+}
+
+function buildRowPreservingExistingCells(
+  headers: string[],
+  canonicalValues: Readonly<Record<string, string>>,
+  existingRow?: string[],
+): string[] {
+  const rowLength = Math.max(headers.length, existingRow?.length ?? 0);
+  const result = Array.from({ length: rowLength }, (_, index) => String(existingRow?.[index] ?? ''));
+  headers.forEach((header, index) => {
+    const normalized = header.trim();
+    if (Object.prototype.hasOwnProperty.call(canonicalValues, normalized)) {
+      result[index] = canonicalValues[normalized];
+    }
+  });
+  return result;
+}
+
+function validatePromotion(promotion: Promotion): void {
+  const candidate = promotion as Promotion & Record<string, unknown>;
+  if (!Array.isArray(candidate.productIds) || candidate.productIds.length !== 0) {
+    throw new Error('Promotion row productIds must be empty; persist targets through PromotionProducts');
+  }
+  const commonIsValid = Boolean(promotion && typeof promotion === 'object'
+    && isRequiredString(candidate.promotionId) && isRequiredString(candidate.name)
+    && typeof candidate.description === 'string' && isParseableDate(candidate.startsAt)
+    && isParseableDate(candidate.endsAt) && Date.parse(candidate.startsAt) <= Date.parse(candidate.endsAt)
+    && typeof candidate.isActive === 'boolean' && Number.isSafeInteger(candidate.sortOrder)
+    && isParseableDate(candidate.createdAt) && isParseableDate(candidate.updatedAt)
+    && candidate.schemaVersion === PROMOTION_SCHEMA_VERSION);
+  let typeIsValid = false;
+  if (commonIsValid && candidate.type === 'N_PLUS_ONE') {
+    typeIsValid = isSafePositiveInteger(candidate.buyQuantity) && isSafePositiveInteger(candidate.freeQuantity)
+      && candidate.promotionalUnitPrice === undefined && candidate.percent === undefined && candidate.discountAmount === undefined;
+  } else if (commonIsValid && candidate.type === 'PROMOTIONAL_PRICE') {
+    typeIsValid = isSafeNonNegativeInteger(candidate.promotionalUnitPrice)
+      && candidate.buyQuantity === undefined && candidate.freeQuantity === undefined
+      && candidate.percent === undefined && candidate.discountAmount === undefined;
+  } else if (commonIsValid && candidate.type === 'PERCENT_DISCOUNT') {
+    typeIsValid = typeof candidate.percent === 'number' && Number.isFinite(candidate.percent)
+      && candidate.percent > 0 && candidate.percent <= 100 && candidate.buyQuantity === undefined
+      && candidate.freeQuantity === undefined && candidate.promotionalUnitPrice === undefined
+      && candidate.discountAmount === undefined;
+  } else if (commonIsValid && candidate.type === 'FIXED_DISCOUNT') {
+    typeIsValid = isSafePositiveInteger(candidate.discountAmount) && candidate.buyQuantity === undefined
+      && candidate.freeQuantity === undefined && candidate.promotionalUnitPrice === undefined && candidate.percent === undefined;
+  }
+  if (!commonIsValid || !typeIsValid) throw new Error('Promotion must be a valid complete schema-v3 promotion');
+}
+
+function validatePromotionProductLink(link: PromotionProductLink): void {
+  if (!link || typeof link !== 'object' || !isRequiredString(link.promotionProductId)
+    || !isRequiredString(link.promotionId) || !isRequiredString(link.productId)
+    || !isParseableDate(link.createdAt) || link.schemaVersion !== PROMOTION_SCHEMA_VERSION) {
+    throw new Error('PromotionProductLink must be a valid complete schema-v3 link');
+  }
+}
+
+function isSafePositiveInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+}
+
+function isSafeNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 
 function validateTaskCompletionBase(completion: TaskCompletion): void {
@@ -432,6 +652,12 @@ function parseBooleanCell(value: string): boolean | null {
   if (['true', 'yes', 'y', '1'].includes(normalized)) return true;
   if (['false', 'no', 'n', '0'].includes(normalized)) return false;
 
+  return null;
+}
+
+function parseStrictBooleanCell(value: string): boolean | null {
+  if (value === 'TRUE') return true;
+  if (value === 'FALSE') return false;
   return null;
 }
 

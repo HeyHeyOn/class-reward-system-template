@@ -72,6 +72,14 @@ export type Promotion =
   | PercentDiscountPromotion
   | FixedDiscountPromotion;
 
+export type PromotionProductLink = {
+  promotionProductId: string;
+  promotionId: string;
+  productId: string;
+  createdAt: string;
+  schemaVersion: number;
+};
+
 export type Transaction = {
   transactionId: string;
   timestamp: string;
