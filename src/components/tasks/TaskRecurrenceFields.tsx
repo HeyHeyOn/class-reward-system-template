@@ -7,7 +7,9 @@ import { formatRecurrenceSummary, resolveEffectiveAdminTaskSchedule, type TaskRe
 
 const WEEKDAYS = ['월', '화', '수', '목', '금', '토', '일'];
 
-export function TaskRecurrenceFields({ form, onChange }: { form: TaskRecurrenceForm; onChange: (form: TaskRecurrenceForm) => void }) {
+type RecurrenceStyles = { detail?: string; preview?: string };
+
+export function TaskRecurrenceFields({ form, onChange, styles = {} }: { form: TaskRecurrenceForm; onChange: (form: TaskRecurrenceForm) => void; styles?: RecurrenceStyles }) {
   return (
     <div className="mt-4 space-y-3">
       <label className="block text-sm font-bold text-slate-700">
@@ -18,15 +20,14 @@ export function TaskRecurrenceFields({ form, onChange }: { form: TaskRecurrenceF
       </label>
       {form.type !== 'NONE' ? <label className="block text-sm font-bold text-slate-700"><span>실행 시간</span><input aria-label="반복 시간" type="time" value={form.time ?? ''} onChange={(event) => onChange({ ...form, time: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 bg-white p-3 text-slate-950" /></label> : null}
       {form.type === 'WEEKLY' ? <label className="block text-sm font-bold text-slate-700"><span>요일</span><select aria-label="반복 요일" value={form.weekday ?? '1'} onChange={(event) => onChange({ ...form, weekday: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 bg-white p-3 text-slate-950">{WEEKDAYS.map((day, index) => <option key={day} value={String(index + 1)}>{day}요일</option>)}</select></label> : null}
-      {form.type === 'MONTHLY' ? <div><label className="block text-sm font-bold text-slate-700"><span>날짜 (1~31)</span><input aria-label="반복 날짜" type="number" min="1" max="31" value={form.dayOfMonth ?? ''} onChange={(event) => onChange({ ...form, dayOfMonth: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 bg-white p-3 text-slate-950" /></label><p className="mt-1 text-xs font-bold text-slate-500">29/30/31일이 없는 달은 해당 월 말일로 당겨집니다.</p></div> : null}
-      <label className="block text-sm font-bold text-slate-700"><span>시간대</span><input aria-label="과제 시간대" value={form.timeZone ?? ''} onChange={(event) => onChange({ ...form, timeZone: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 bg-white p-3 text-slate-950" /></label>
+      {form.type === 'MONTHLY' ? <div><label className="block text-sm font-bold text-slate-700"><span>날짜 (1~31)</span><input aria-label="반복 날짜" type="number" min="1" max="31" value={form.dayOfMonth ?? ''} onChange={(event) => onChange({ ...form, dayOfMonth: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 bg-white p-3 text-slate-950" /></label><p className={`mt-1 text-xs font-bold ${styles.detail ?? 'text-slate-500'}`}>29/30/31일이 없는 달은 해당 월 말일로 당겨집니다.</p></div> : null}
       <div className="grid gap-2 sm:grid-cols-2"><label className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 text-sm font-bold"><input aria-label="회차마다 완료 초기화" type="checkbox" checked={Boolean(form.resetCompletionOnCycle)} onChange={(event) => onChange({ ...form, resetCompletionOnCycle: event.target.checked })} />완료 초기화</label><label className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 text-sm font-bold"><input aria-label="회차마다 부여 초기화" type="checkbox" checked={Boolean(form.resetAssignmentOnCycle)} onChange={(event) => onChange({ ...form, resetAssignmentOnCycle: event.target.checked })} />부여 초기화</label></div>
-      <p className="text-sm font-black text-violet-700">미리보기: {formatRecurrenceSummary(form)}</p>
+      <p className={`text-sm font-black ${styles.preview ?? 'text-slate-700'}`}>미리보기: {formatRecurrenceSummary(form)}</p>
     </div>
   );
 }
 
-export function TaskScheduleProjection({ task }: { task: { schedule?: TaskSchedule; pendingSchedule?: TaskSchedule | null; currentCycle?: TaskCurrentCycleStatusDto } }) {
+export function TaskScheduleProjection({ task, className = '' }: { task: { schedule?: TaskSchedule; pendingSchedule?: TaskSchedule | null; currentCycle?: TaskCurrentCycleStatusDto }; className?: string }) {
   const schedule = resolveEffectiveAdminTaskSchedule(task);
   const cycle = task.currentCycle;
   const timeZone = schedule?.timeZone;
@@ -41,10 +42,10 @@ export function TaskScheduleProjection({ task }: { task: { schedule?: TaskSchedu
     : cycle ? `${formatAdminHistoryDate(cycle.startsAt, timeZone)} ~ ${cycle.endsAt ? formatAdminHistoryDate(cycle.endsAt, timeZone) : '계속'}` : '정보 없음';
 
   return (
-    <div className="mt-1 text-[9px] font-bold">
-      <p className="truncate text-violet-700">현재 일정: {formatRecurrenceSummary(schedule)}</p>
-      <p className="truncate text-sky-800">현재 회차: {cycleRange}</p>
-      <p className="truncate text-slate-600">다음 자연 경계: {boundary} · 다음 초기화 시각: {boundary} · 초기화 대상: {resetTargets}</p>
+    <div className={`mt-3 rounded-xl p-3 text-xs font-bold ${className}`}>
+      <p>현재 일정: {formatRecurrenceSummary(schedule)}</p>
+      <p>현재 회차: {cycleRange}</p>
+      <p>다음 자연 경계: {boundary} · 다음 초기화 시각: {boundary} · 초기화 대상: {resetTargets}</p>
     </div>
   );
 }

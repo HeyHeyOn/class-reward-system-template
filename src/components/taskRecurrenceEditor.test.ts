@@ -39,10 +39,11 @@ describe('taskRecurrenceEditor', () => {
     expect(formatRecurrenceSummary(form)).toBe(summary);
   });
 
-  it('keeps additive API metadata while exposing stable controlled defaults', () => {
-    const form = scheduleDtoToForm(undefined, { timeZone: 'Europe/Paris', taskInstanceId: 'instance-7' });
-    expect(form).toEqual({ ...EMPTY_RECURRENCE_FORM, timeZone: 'Europe/Paris', taskInstanceId: 'instance-7' });
-    expect(Object.values(form).every((value) => value !== undefined)).toBe(true);
+  it('uses Seoul for every new edit payload while preserving non-Seoul historical schedule reads', () => {
+    const historical = scheduleDtoToForm({ ...baseSchedule, timeZone: 'Europe/Paris' }, { taskInstanceId: 'instance-7' });
+    expect(historical).toEqual({ ...EMPTY_RECURRENCE_FORM, taskInstanceId: 'instance-7', ruleVersion: 3, effectiveFrom: baseSchedule.effectiveFrom });
+    expect(Object.values(historical).every((value) => value !== undefined)).toBe(true);
+    expect(scheduleFormToPayload(historical)).toMatchObject({ ok: true, payload: { timeZone: 'Asia/Seoul' } });
   });
 
   it('validates only fields required by the selected recurrence', () => {

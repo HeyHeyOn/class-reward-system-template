@@ -243,12 +243,12 @@ describe('POST /api/checkout/preview', () => {
     const items = [{ productId: 'P001', quantity: 3 }];
 
     const previewResponse = await previewCheckout(request({ items }));
+    const previewBody = await previewResponse.json();
     const checkoutResponse = await commitCheckout(new Request('http://localhost/api/checkout', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ studentId: 'S001', items }),
+      body: JSON.stringify({ studentId: 'S001', items, expectedPricing: previewBody }),
     }));
-    const previewBody = await previewResponse.json();
     const checkoutBody = await checkoutResponse.json();
 
     expect(previewResponse.status).toBe(200);

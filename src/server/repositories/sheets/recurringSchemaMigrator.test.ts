@@ -104,6 +104,20 @@ class FakeStore implements RecurringSchemaMigrationStore {
 
 const legacyTasks = TASK_SCHEMA_HEADERS.slice(0, 9);
 const legacyCompletions = TASK_COMPLETION_SCHEMA_HEADERS.slice(0, 10);
+const deployedLegacyTaskHeaders = [
+  [
+    'B',
+    ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'createdAt', 'updatedAt', 'allowedStudentIds'],
+  ],
+  [
+    'C',
+    ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'allowedStudentIds', 'createdAt', 'updatedAt'],
+  ],
+  [
+    'D',
+    ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'createdAt', 'updatedAt'],
+  ],
+] as const;
 
 function baseStore() {
   return new FakeStore({
@@ -113,6 +127,45 @@ function baseStore() {
 }
 
 describe('recurring schema migrator', () => {
+  it.each(deployedLegacyTaskHeaders)('migrates deployed legacy Tasks variant %s by appending at the physical right edge', async (_variant, header) => {
+    const customHeader = 'teacherCustomMetadata';
+    const values: Record<string, string> = {
+      taskId: 'T1', title: '제목', description: '설명', reward: '10', maxCompletionsPerStudent: '1',
+      isActive: 'TRUE', sortOrder: '7', createdAt: 'created', updatedAt: 'updated', allowedStudentIds: 'S1',
+    };
+    const originalRow = [...header.map((column) => values[column] ?? ''), 'preserve-me'];
+    const store = new FakeStore({
+      Tasks: { columnCount: header.length + 1, rows: [[...header, customHeader], originalRow] },
+      TaskCompletions: { columnCount: legacyCompletions.length, rows: [[...legacyCompletions], ['C1']] },
+    });
+
+    await migrateRecurringTaskSchema(store);
+
+    const existingHeaders = new Set<string>(header);
+    const expectedMissing = TASK_SCHEMA_HEADERS.filter((candidate) => !existingHeaders.has(candidate));
+    expect(store.writes).toContain(`header:Tasks:${header.length + 1}:${expectedMissing.join(',')}`);
+    expect(store.sheets.get('Tasks')?.rows[0]).toEqual([...header, customHeader, ...expectedMissing]);
+    expect(store.sheets.get('Tasks')?.rows[1]).toEqual(originalRow);
+  });
+
+  it.each([
+    ['duplicate required header', [...legacyTasks, 'title']],
+    ['duplicate missing canonical header', [...legacyTasks, 'recurrenceType', ' recurrenceType ']],
+    ['blank trailing header', [...legacyTasks, '']],
+    ['renamed core header', ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'active', 'sortOrder', 'createdAt', 'updatedAt']],
+    ['unrecognized legacy interleaving', ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'allowedStudentIds', 'sortOrder', 'createdAt', 'updatedAt']],
+  ])('rejects a malformed Tasks header with %s before any write', async (_case, header) => {
+    const store = new FakeStore({
+      Tasks: { columnCount: header.length, rows: [header] },
+      TaskCompletions: { columnCount: legacyCompletions.length, rows: [[...legacyCompletions]] },
+    });
+
+    await expect(migrateRecurringTaskSchema(store)).rejects.toMatchObject({
+      name: 'MigrationConflictError', sheetName: 'Tasks', retryable: true,
+    });
+    expect(store.writes).toEqual([]);
+  });
+
   it('creates a structurally missing TaskAssignments sheet and initializes exactly A1:O1 once', async () => {
     const store = baseStore();
     await migrateRecurringTaskSchema(store);

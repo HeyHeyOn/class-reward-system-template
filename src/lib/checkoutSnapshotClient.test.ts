@@ -35,6 +35,10 @@ describe('checkoutSnapshotClient', () => {
     ['broken quantities', { ok: true, totalAmount: 600, items: [{ ...item, paidQuantity: 3 }] }],
     ['broken discount', { ok: true, totalAmount: 600, items: [{ ...item, totalDiscount: 1 }] }],
     ['malformed promotion snapshot', { ok: true, totalAmount: 600, items: [{ ...item, appliedPromotions: [{ ...promotion, schemaVersion: 2 }] }] }],
+    ['adjustment/promotion type mismatch', { ok: true, totalAmount: 600, items: [{ ...item, adjustments: [{ ...item.adjustments[0], type: 'PERCENT_DISCOUNT' }] }] }],
+    ['promotion targeting another product', { ok: true, totalAmount: 600, items: [{ ...item, appliedPromotions: [{ ...promotion, productIds: ['P002'] }] }] }],
+    ['free quantity on a non-N+1 adjustment', { ok: true, totalAmount: 600, items: [{ ...item, adjustments: [{ ...item.adjustments[0], type: 'PERCENT_DISCOUNT' }], appliedPromotions: [{ ...promotion, type: 'PERCENT_DISCOUNT', percent: 10, buyQuantity: undefined, freeQuantity: undefined }] }] }],
+    ['promotion without a paired adjustment', { ok: true, totalAmount: 900, items: [{ ...item, quantity: 3, subtotal: 900, paidQuantity: 3, freeQuantity: 0, finalTotal: 900, totalDiscount: 0, adjustments: [], appliedPromotions: [promotion] }] }],
   ])('rejects %s', (_label, value) => {
     expect(parseCheckoutPreviewResponse(value)).toBeNull();
   });

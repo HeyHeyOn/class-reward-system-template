@@ -55,9 +55,13 @@ async function planExtension(
   const firstLookup = await store.lookupSheet(name);
   if (!firstLookup.found) throw new MigrationConflictError(name, 'required sheet is missing');
   const firstHeader = (await store.getRows(name))[0] ?? [];
-  const requiredLegacyPrefix = name === 'Tasks' ? canonical.slice(0, 9) : canonical.slice(0, 10);
-  if (!hasCanonicalPrefix(firstHeader, requiredLegacyPrefix)) {
-    throw new MigrationConflictError(name, 'existing legacy header prefix is not canonical');
+  if (name === 'Tasks') {
+    assertKnownTasksHeader(firstHeader);
+  } else {
+    const requiredLegacyPrefix = canonical.slice(0, 10);
+    if (!hasCanonicalPrefix(firstHeader, requiredLegacyPrefix)) {
+      throw new MigrationConflictError(name, 'existing legacy header prefix is not canonical');
+    }
   }
   const normalized = firstHeader.map(normalize);
   const missing = canonical.filter((header) => !normalized.includes(header));
@@ -129,6 +133,28 @@ async function ensureAssignments(store: RecurringSchemaMigrationStore, initial: 
     await store.ensureColumnCount('TaskAssignments', lookup.info.columnCount, TASK_ASSIGNMENT_HEADERS.length);
   }
   await store.writeHeaderCells('TaskAssignments', 0, [...TASK_ASSIGNMENT_HEADERS]);
+}
+
+const KNOWN_TASK_HEADER_PREFIXES = [
+  TASK_SCHEMA_HEADERS.slice(0, 9),
+  ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'createdAt', 'updatedAt', 'allowedStudentIds'],
+  ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'allowedStudentIds', 'createdAt', 'updatedAt'],
+  ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'createdAt', 'updatedAt'],
+] as const;
+
+function assertKnownTasksHeader(header: readonly string[]): void {
+  const signatureLength = KNOWN_TASK_HEADER_PREFIXES.find((prefix) => hasCanonicalPrefix(header, prefix))?.length;
+  if (signatureLength === undefined) {
+    throw new MigrationConflictError('Tasks', 'existing legacy header does not match a deployed signature');
+  }
+  const normalized = header.map(normalize);
+  const seen = new Set(normalized.slice(0, signatureLength));
+  for (const trailingHeader of normalized.slice(signatureLength)) {
+    if (trailingHeader.length === 0 || seen.has(trailingHeader)) {
+      throw new MigrationConflictError('Tasks', 'trailing header names must be non-blank and unique');
+    }
+    seen.add(trailingHeader);
+  }
 }
 
 function normalize(value: string): string { return value.trim(); }

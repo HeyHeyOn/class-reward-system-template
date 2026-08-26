@@ -2,8 +2,6 @@ import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/ap
 import {
   getAppSettings,
   saveAppSettings,
-  updateClassTimeZone,
-  validateClassTimeZone,
   validateSpreadsheetId,
 } from '@/server/settings';
 import { createConfiguredSheetsStore, verifySpreadsheetAccess } from '@/server/googleSheets';
@@ -31,24 +29,11 @@ export async function GET(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
-
-  const parsed = await parseRequestJson(request);
-  if (!parsed.ok) return Response.json({ error: INVALID_JSON_ERROR }, { status: 400 });
-
-  const validation = validateClassTimeZone(parsed.body.classTimeZone);
-  if (validation.ok === false) {
-    return Response.json({ error: validation.message }, { status: 400 });
-  }
-
-  try {
-    const store = await createConfiguredSheetsStore(request);
-    const settings = await getAppSettings({ settingsReader: store });
-    await updateClassTimeZone(store, validation.classTimeZone);
-    return Response.json({ ...settings, classTimeZone: validation.classTimeZone });
-  } catch {
-    return Response.json({ error: SAVE_SETTINGS_ERROR }, { status: 500 });
-  }
+  void request;
+  return Response.json(
+    { error: '지원하지 않는 요청 방식입니다.' },
+    { status: 405, headers: { Allow: 'GET, POST' } },
+  );
 }
 
 export async function POST(request: Request) {

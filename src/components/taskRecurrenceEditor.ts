@@ -1,5 +1,5 @@
 import type { TaskCurrentCycleStatusDto } from '@/domain/taskHistoryDtos';
-import { resolveTaskSchedule } from '@/domain/taskSchedule';
+import { DEFAULT_CLASS_TIME_ZONE, resolveTaskSchedule } from '@/domain/taskSchedule';
 import type { ClassTask, DayOfMonth, IsoWeekday, TaskRecurrence, TaskSchedule } from '@/domain/types';
 
 export type NormalizedAdminTask = ClassTask & { currentCycle?: TaskCurrentCycleStatusDto };
@@ -34,7 +34,6 @@ export type TaskRecurrenceForm = {
   time: string;
   weekday: string;
   dayOfMonth: string;
-  timeZone: string;
   resetCompletionOnCycle: boolean;
   resetAssignmentOnCycle: boolean;
   taskInstanceId: string;
@@ -49,7 +48,6 @@ export const EMPTY_RECURRENCE_FORM: TaskRecurrenceForm = {
   time: '09:00',
   weekday: '1',
   dayOfMonth: '1',
-  timeZone: 'Asia/Seoul',
   resetCompletionOnCycle: false,
   resetAssignmentOnCycle: false,
   taskInstanceId: '',
@@ -59,7 +57,7 @@ export const EMPTY_RECURRENCE_FORM: TaskRecurrenceForm = {
 
 export function scheduleDtoToForm(
   schedule?: TaskSchedule | null,
-  additive: { timeZone?: string; taskInstanceId?: string } = {},
+  additive: { taskInstanceId?: string } = {},
 ): TaskRecurrenceForm {
   const recurrence = schedule?.recurrence;
   return {
@@ -67,7 +65,6 @@ export function scheduleDtoToForm(
     time: recurrence && recurrence.type !== 'NONE' ? recurrence.time : EMPTY_RECURRENCE_FORM.time,
     weekday: recurrence?.type === 'WEEKLY' ? String(recurrence.weekday) : EMPTY_RECURRENCE_FORM.weekday,
     dayOfMonth: recurrence?.type === 'MONTHLY' ? String(recurrence.dayOfMonth) : EMPTY_RECURRENCE_FORM.dayOfMonth,
-    timeZone: schedule?.timeZone ?? additive.timeZone ?? EMPTY_RECURRENCE_FORM.timeZone,
     resetCompletionOnCycle: schedule?.resetCompletionOnCycle ?? false,
     resetAssignmentOnCycle: schedule?.resetAssignmentOnCycle ?? false,
     taskInstanceId: additive.taskInstanceId ?? '',
@@ -77,7 +74,6 @@ export function scheduleDtoToForm(
 }
 
 export function validateRecurrenceForm(form: TaskRecurrenceForm): string | null {
-  if (!form.timeZone.trim()) return '학급 시간대를 입력해 주세요.';
   if (form.type === 'NONE') return null;
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(form.time)) return '시간은 HH:mm 형식으로 입력해 주세요.';
   if (form.type === 'WEEKLY') {
@@ -105,7 +101,7 @@ export function scheduleFormToPayload(form: TaskRecurrenceForm):
     ok: true,
     payload: {
       recurrence,
-      timeZone: form.timeZone.trim(),
+      timeZone: DEFAULT_CLASS_TIME_ZONE,
       resetCompletionOnCycle: form.resetCompletionOnCycle,
       resetAssignmentOnCycle: form.resetAssignmentOnCycle,
     },

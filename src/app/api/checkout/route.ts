@@ -1,12 +1,14 @@
 import { createConfiguredSheetsStore } from '@/server/googleSheets';
 import { processCheckout } from '@/server/checkoutService';
 import type { CartItem } from '@/domain/types';
+import { checkoutPreviewMatchesCart, parseCheckoutPreviewResponse, type CheckoutPreviewPayload } from '@/lib/checkoutSnapshotClient';
 
 export const dynamic = 'force-dynamic';
 
 type CheckoutRequestBody = {
   studentId?: unknown;
   items?: unknown;
+  expectedPricing?: unknown;
 };
 
 export async function POST(request: Request) {
@@ -22,11 +24,12 @@ export async function POST(request: Request) {
     const result = await processCheckout(store, {
       studentId: validation.studentId,
       items: validation.items,
+      expectedPricing: validation.expectedPricing,
       operator: 'kiosk',
     });
 
     if (!result.ok) {
-      return Response.json(result, { status: 400 });
+      return Response.json(result, { status: result.code === 'PRICE_CHANGED' ? 409 : 400 });
     }
 
     return Response.json(result);
@@ -37,7 +40,7 @@ export async function POST(request: Request) {
 }
 
 type CheckoutBodyValidation =
-  | { ok: true; studentId: string; items: CartItem[] }
+  | { ok: true; studentId: string; items: CartItem[]; expectedPricing: CheckoutPreviewPayload }
   | { ok: false; message: string };
 
 function validateCheckoutBody(body: CheckoutRequestBody): CheckoutBodyValidation {
@@ -59,7 +62,12 @@ function validateCheckoutBody(body: CheckoutRequestBody): CheckoutBodyValidation
     items.push({ productId: item.productId.trim(), quantity: item.quantity });
   }
 
-  return { ok: true, studentId: body.studentId.trim(), items };
+  const expectedPricing = parseCheckoutPreviewResponse(body.expectedPricing);
+  if (!expectedPricing || !checkoutPreviewMatchesCart(expectedPricing, items)) {
+    return { ok: false, message: '예상 결제 금액 형식이 올바르지 않습니다.' };
+  }
+
+  return { ok: true, studentId: body.studentId.trim(), items, expectedPricing };
 }
 
 function isCartItemLike(value: unknown): value is CartItem {

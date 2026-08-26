@@ -116,11 +116,17 @@ function normalizeLegacyTasks(rows: string[][]): string[][] {
   ];
 }
 
-function legacyRecurringStore(taskIds: string[]) {
+function legacyRecurringStore(taskIds: string[], taskHeader: readonly string[] = TASK_SCHEMA_HEADERS.slice(0, 9)) {
   const rows: Record<string, string[][]> = {
     Tasks: [
-      [...TASK_SCHEMA_HEADERS.slice(0, 9)],
-      ...taskIds.map((taskId) => [taskId, `Task ${taskId}`, '', '1', 'TRUE', '1', '2026-01-01T00:00:00Z', '', '']),
+      [...taskHeader],
+      ...taskIds.map((taskId) => {
+        const values: Record<string, string> = {
+          taskId, title: `Task ${taskId}`, description: '', reward: '1', maxCompletionsPerStudent: '1',
+          isActive: 'TRUE', sortOrder: '1', createdAt: '2026-01-01T00:00:00Z', updatedAt: '', allowedStudentIds: '',
+        };
+        return taskHeader.map((header) => values[header] ?? '');
+      }),
     ],
     TaskCompletions: [[...TASK_COMPLETION_SCHEMA_HEADERS.slice(0, 10)]],
     Settings: [['key', 'value'], ['classTimeZone', 'UTC']],
@@ -1170,6 +1176,28 @@ describe('sheets repository', () => {
     expect(appendedTask?.[1][TASK_SCHEMA_HEADERS.indexOf('recurrenceDayOfMonth')]).toBe('31');
   });
 
+  it('migrates deployed Tasks variant D before updating a task schedule', async () => {
+    const variantD = [
+      'taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'createdAt', 'updatedAt',
+    ];
+    const { store } = legacyRecurringStore(['T-LEGACY-D'], variantD);
+
+    await expect(updateTaskSchedule(store as never, 'T-LEGACY-D', {
+      recurrence: { type: 'WEEKLY', time: '10:00', weekday: 2 },
+      timeZone: 'Asia/Seoul', resetCompletionOnCycle: true, resetAssignmentOnCycle: false,
+    }, '2026-08-25T09:00:00.000Z')).resolves.toMatchObject({
+      taskId: 'T-LEGACY-D',
+      pendingSchedule: { ruleVersion: 2, recurrence: { type: 'WEEKLY', time: '10:00', weekday: 2 } },
+    });
+
+    expect(store.verifyAndWriteHeaderCells).toHaveBeenCalledWith(
+      'Tasks',
+      expect.objectContaining({ header: variantD }),
+      TASK_SCHEMA_HEADERS.filter((header) => !variantD.includes(header)),
+    );
+    expect(store.updateCells).toHaveBeenCalled();
+  });
+
   it('appends new task values by the live Tasks header order', async () => {
     const appended: Array<{ sheetName: string; values: string[] }> = [];
     const fakeStore = {
@@ -1200,10 +1228,7 @@ describe('sheets repository', () => {
     expect(appended[0].values[9]).toBe('5630,S002');
   });
 
-  it.each([
-    ['America/New_York', 'America/New_York'],
-    ['+09:00', 'Asia/Seoul'],
-  ])('persists a UUID and version 1 NONE schedule with normalized Settings time zone %s', async (storedTimeZone, expectedTimeZone) => {
+  it('ignores the legacy Settings time zone when creating a task without an explicit schedule', async () => {
     const scheduleHeaders = [
       'taskInstanceId', 'ruleVersion', 'scheduleEffectiveFrom', 'recurrenceTimeZone', 'recurrenceType',
       'recurrenceTime', 'recurrenceWeekday', 'recurrenceDayOfMonth', 'resetCompletionOnCycle',
@@ -1216,7 +1241,7 @@ describe('sheets repository', () => {
         'taskId', 'title', 'description', 'reward', 'isActive', 'sortOrder', 'createdAt', 'updatedAt',
         'allowedStudentIds', ...scheduleHeaders,
       ]],
-      Settings: [['key', 'value'], ['classTimeZone', storedTimeZone]],
+      Settings: [['key', 'value'], ['classTimeZone', 'UTC']],
     };
     const store = {
       async getRows(sheetName: string) { return rows[sheetName] ?? []; },
@@ -1232,13 +1257,35 @@ describe('sheets repository', () => {
     expect(created.schedule).toEqual({
       ruleVersion: 1,
       effectiveFrom: created.createdAt,
-      timeZone: expectedTimeZone,
+      timeZone: 'Asia/Seoul',
       recurrence: { type: 'NONE' },
       resetCompletionOnCycle: false,
       resetAssignmentOnCycle: false,
     });
     expect(created.pendingSchedule).toBeNull();
     await expect(getTasks(store)).resolves.toEqual([created]);
+  });
+
+  it('forces an explicitly non-Seoul new task schedule to Asia/Seoul', async () => {
+    const { store } = legacyRecurringStore([]);
+
+    const created = await createTask(store, {
+      taskId: 'T-SEOUL', title: '서울 과제', description: '', reward: 3, isActive: true, sortOrder: 1,
+      schedule: {
+        timeZone: 'Europe/Paris',
+        recurrence: { type: 'DAILY', time: '17:45' },
+        resetCompletionOnCycle: true,
+        resetAssignmentOnCycle: false,
+      },
+    });
+
+    expect(created.schedule).toMatchObject({
+      ruleVersion: 1,
+      timeZone: 'Asia/Seoul',
+      recurrence: { type: 'DAILY', time: '17:45' },
+    });
+    const appendedTask = vi.mocked(store.appendRow).mock.calls.find(([sheetName]) => sheetName === 'Tasks');
+    expect(appendedTask?.[1][TASK_SCHEMA_HEADERS.indexOf('recurrenceTimeZone')]).toBe('Asia/Seoul');
   });
 
   it('rejects a partially extended Tasks schedule header without appending an incomplete row', async () => {
@@ -1368,7 +1415,7 @@ describe('sheets repository', () => {
     expect(appends).toEqual([]);
   });
 
-  it('propagates Settings read failures from createTask and never appends', async () => {
+  it('does not read legacy Settings when creating a versioned task schedule', async () => {
     let appends = 0;
     const headers = [
       'taskId', 'title', 'description', 'reward', 'isActive', 'sortOrder', 'createdAt', 'updatedAt',
@@ -1381,16 +1428,16 @@ describe('sheets repository', () => {
     const store = {
       async getRows(sheetName: keyof typeof sheetRows) {
         if (sheetName === 'Tasks') return [headers];
-        if (sheetName === 'Settings') throw new Error('Settings unavailable');
+        if (sheetName === 'Settings') throw new Error('Settings must not be read');
         return sheetRows[sheetName];
       },
       async updateCell() {},
       async appendRow() { appends += 1; },
     };
     await expect(createTask(store, {
-      taskId: 'T-FAIL', title: '실패', description: '', reward: 1, isActive: true, sortOrder: 1,
-    })).rejects.toThrow('Settings unavailable');
-    expect(appends).toBe(0);
+      taskId: 'T-NO-SETTINGS', title: '새 과제', description: '', reward: 1, isActive: true, sortOrder: 1,
+    })).resolves.toMatchObject({ schedule: { timeZone: 'Asia/Seoul' } });
+    expect(appends).toBe(1);
   });
 
   it('batch updates tasks through one store call', async () => {
@@ -1496,6 +1543,40 @@ describe('sheets repository', () => {
     expect(saved.get('pendingRecurrenceType')).toBe('MONTHLY');
     expect(saved.get('updatedAt')).toBe(editedAt);
     expect(rows.TaskAssignments[0].at(-1)).toBe('customAssignmentMetadata');
+  });
+
+  it('forces a direct updateTaskDetails schedule edit to Asia/Seoul without rewriting historical current time zone', async () => {
+    const { store } = versionedScheduleMutationStore();
+
+    const updated = await updateTaskDetails(
+      store as never,
+      'T-SERIAL',
+      scheduleUpdate({ type: 'DAILY', time: '09:00' }),
+      '2026-08-25T09:00:00.000Z',
+    );
+
+    expect(updated.schedule?.timeZone).toBe('UTC');
+    expect(updated.pendingSchedule?.timeZone).toBe('Asia/Seoul');
+    const taskRows = await store.getRows('Tasks');
+    expect(taskRows[1][TASK_SCHEMA_HEADERS.indexOf('recurrenceTimeZone')]).toBe('UTC');
+    expect(taskRows[1][TASK_SCHEMA_HEADERS.indexOf('pendingTimeZone')]).toBe('Asia/Seoul');
+  });
+
+  it('forces a direct updateTaskSchedule edit to Asia/Seoul without rewriting historical current time zone', async () => {
+    const { store } = versionedScheduleMutationStore();
+
+    const updated = await updateTaskSchedule(store as never, 'T-SERIAL', {
+      recurrence: { type: 'WEEKLY', time: '10:00', weekday: 2 },
+      timeZone: 'Europe/Paris',
+      resetCompletionOnCycle: true,
+      resetAssignmentOnCycle: false,
+    }, '2026-08-25T09:00:00.000Z');
+
+    expect(updated.schedule?.timeZone).toBe('UTC');
+    expect(updated.pendingSchedule?.timeZone).toBe('Asia/Seoul');
+    const taskRows = await store.getRows('Tasks');
+    expect(taskRows[1][TASK_SCHEMA_HEADERS.indexOf('recurrenceTimeZone')]).toBe('UTC');
+    expect(taskRows[1][TASK_SCHEMA_HEADERS.indexOf('pendingTimeZone')]).toBe('Asia/Seoul');
   });
 
   it('serializes concurrent single schedule edits in the process-global task mutation queue', async () => {

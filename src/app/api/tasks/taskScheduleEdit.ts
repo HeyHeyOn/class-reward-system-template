@@ -1,4 +1,4 @@
-import { validateTaskSchedule } from '@/domain/taskSchedule';
+import { DEFAULT_CLASS_TIME_ZONE, validateTaskSchedule } from '@/domain/taskSchedule';
 import type { TaskRecurrence } from '@/domain/types';
 import type { TaskScheduleEdit } from '@/server/sheetsRepository';
 
@@ -18,7 +18,9 @@ export function parseOptionalTaskScheduleEdit(value: unknown): TaskScheduleEdit 
     ruleVersion: 1,
     effectiveFrom: '1970-01-01T00:00:00.000Z',
     recurrence,
-    timeZone: input.timeZone,
+    // Keep accepting the legacy exact payload shape, but the class policy is
+    // authoritative: every newly written schedule uses Seoul.
+    timeZone: DEFAULT_CLASS_TIME_ZONE,
     resetCompletionOnCycle: input.resetCompletionOnCycle,
     resetAssignmentOnCycle: input.resetAssignmentOnCycle,
   });

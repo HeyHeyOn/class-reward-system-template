@@ -10,7 +10,7 @@ import { SettingsForm } from './SettingsForm';
 import { QrScanner } from './QrScanner';
 import { TransactionsPanel } from './TransactionsPage';
 import { getFontFamilyCss, type FontFamily } from '@/lib/fontSettings';
-import { formatRecurrenceSummary, normalizeAdminTask, resolveEffectiveAdminTaskSchedule, scheduleDtoToForm, scheduleFormToPayload, type NormalizedAdminTask, type TaskRecurrenceForm } from './taskRecurrenceEditor';
+import { normalizeAdminTask, resolveEffectiveAdminTaskSchedule, scheduleDtoToForm, scheduleFormToPayload, type NormalizedAdminTask, type TaskRecurrenceForm } from './taskRecurrenceEditor';
 import { TaskRecurrenceFields, TaskScheduleProjection } from './tasks/TaskRecurrenceFields';
 import { TaskHistoryDialog, type TaskHistoryDialogState } from './tasks/TaskHistoryDialog';
 import { normalizeTaskAssignmentStatus, reconcileTaskAssignmentProjection } from './taskAssignmentProjection';
@@ -23,7 +23,7 @@ type AdminTab = 'settings' | 'students' | 'products' | 'promotions' | 'tasks' | 
 type BulkMode = 'set' | 'add' | 'subtract';
 type CurrencyMode = 'add' | 'subtract';
 type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'black' | 'navy';
-type Settings = { currencyUnit?: string; appTitle?: string; bankTitle?: string; themeColor?: ThemeColor; fontFamily?: FontFamily; qrManualInputEnabled?: boolean; classTimeZone?: string };
+type Settings = { currencyUnit?: string; appTitle?: string; bankTitle?: string; themeColor?: ThemeColor; fontFamily?: FontFamily; qrManualInputEnabled?: boolean };
 type AdminTheme = { shell: string; pageText: string; accentText: string; accentBg: string; actionText: string; selectedTab: string; idleTab: string; statBg: string; logoColor: string; softBg: string; softText: string; focusBorder: string };
 const disabledActionClass = 'disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none';
 type CurrencyResult = {
@@ -159,7 +159,7 @@ export function AdminManagePage() {
   const [qrTaskScan, setQrTaskScan] = useState<{ taskId: string; manualId: string } | null>(null);
   const [qrTaskLoading, setQrTaskLoading] = useState(false);
   const [qrTaskResult, setQrTaskResult] = useState<QrTaskAssignmentResult | null>(null);
-  const [settings, setSettings] = useState<Settings>({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', fontFamily: 'default', qrManualInputEnabled: false, classTimeZone: 'Asia/Seoul' });
+  const [settings, setSettings] = useState<Settings>({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', fontFamily: 'default', qrManualInputEnabled: false });
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isSavingChanges, setIsSavingChanges] = useState(false);
   const [isRefreshingLists, setIsRefreshingLists] = useState(false);
@@ -193,7 +193,6 @@ export function AdminManagePage() {
         themeColor: normalizeThemeColor(settingsPayload?.themeColor),
         fontFamily: settingsPayload?.fontFamily ?? 'default',
         qrManualInputEnabled: Boolean(settingsPayload?.qrManualInputEnabled),
-        classTimeZone: settingsPayload?.classTimeZone ?? 'Asia/Seoul',
       });
       setStudents(studentPayload);
       setProducts(productPayload);
@@ -257,10 +256,7 @@ export function AdminManagePage() {
     setIsSavingTaskSchedule(false);
     setTaskScheduleEditor({
       taskId,
-      form: scheduleDtoToForm(schedule, {
-        timeZone: schedule?.timeZone ?? settings.classTimeZone ?? 'Asia/Seoul',
-        taskInstanceId: task?.taskInstanceId,
-      }),
+      form: scheduleDtoToForm(schedule, { taskInstanceId: task?.taskInstanceId }),
     });
   }
 
@@ -353,7 +349,6 @@ export function AdminManagePage() {
         themeColor: normalizeThemeColor(settingsPayload?.themeColor),
         fontFamily: settingsPayload?.fontFamily ?? 'default',
         qrManualInputEnabled: Boolean(settingsPayload?.qrManualInputEnabled),
-        classTimeZone: settingsPayload?.classTimeZone ?? 'Asia/Seoul',
       });
       setMessage('');
     } catch (error) {
@@ -381,7 +376,6 @@ export function AdminManagePage() {
         themeColor: normalizeThemeColor(settingsPayload?.themeColor),
         fontFamily: settingsPayload?.fontFamily ?? 'default',
         qrManualInputEnabled: Boolean(settingsPayload?.qrManualInputEnabled),
-        classTimeZone: settingsPayload?.classTimeZone ?? 'Asia/Seoul',
       });
       setMessage('');
     } catch (error) {
@@ -409,7 +403,6 @@ export function AdminManagePage() {
         themeColor: normalizeThemeColor(settingsPayload?.themeColor),
         fontFamily: settingsPayload?.fontFamily ?? 'default',
         qrManualInputEnabled: Boolean(settingsPayload?.qrManualInputEnabled),
-        classTimeZone: settingsPayload?.classTimeZone ?? 'Asia/Seoul',
       });
       setMessage('');
     } catch (error) {
@@ -1350,7 +1343,7 @@ export function AdminManagePage() {
                   <input aria-label="새 과제 활성" checked={newTask.isActive} onChange={(event) => setNewTask((current) => ({ ...current, isActive: event.target.checked }))} type="checkbox" />
                   은행 페이지에 표시
                 </label>
-                <button type="button" aria-label="새 과제 반복 설정" onClick={() => openTaskScheduleEditor(null)} className="w-full rounded-xl bg-violet-100 py-3 font-black text-violet-800">반복: {formatRecurrenceSummary(newTask.schedule)}</button>
+                <button type="button" aria-label="새 과제 반복 설정" onClick={() => openTaskScheduleEditor(null)} className={`w-full rounded-xl ${theme.softBg} py-3 font-black ${theme.accentText}`}>반복 설정</button>
                 <button type="button" aria-label="새 과제 과제 부여" onClick={() => openTaskAssignmentEditor(null, newTask.allowedStudentIds ?? [])} className="w-full rounded-xl bg-sky-100 py-3 font-black text-sky-800">과제 부여{newTask.allowedStudentIds.length ? ` (${newTask.allowedStudentIds.length}명)` : ''}</button>
                 <button className={`w-full rounded-xl ${theme.accentBg} py-3 font-black ${theme.actionText} shadow-sm`} type="submit">새 과제 추가</button>
               </form>
@@ -1390,11 +1383,10 @@ export function AdminManagePage() {
                     <div className="min-w-0">
                       <TextInput label={`${task.taskId} 과제명`} value={task.title} onChange={(value) => updateTask(task.taskId, { title: value })} dense />
                       <div className="mt-1 flex flex-wrap gap-1">
-                        <button type="button" aria-label={`${task.taskId} 반복 설정`} onClick={() => openTaskScheduleEditor(task)} className="rounded bg-violet-100 px-1 text-[9px] font-black text-violet-800">{formatRecurrenceSummary(resolveEffectiveAdminTaskSchedule(task))}</button>
+                        <button type="button" aria-label={`${task.taskId} 반복 설정`} onClick={() => openTaskScheduleEditor(task)} className={`rounded ${theme.softBg} px-1 text-[9px] font-black ${theme.accentText}`}>반복</button>
                         <button type="button" aria-label={`${task.taskId} 기록 보기`} onClick={() => void openTaskHistory(task)} className="rounded bg-slate-100 px-1 text-[9px] font-black text-slate-700">기록</button>
                       </div>
-                      <TaskScheduleProjection task={task} />
-                      {task.currentCycle?.students?.length ? <p className="truncate text-[9px] text-slate-500">{task.currentCycle.students.map((row) => `${row.studentId} ${row.assigned ? '부여' : '미부여'}(${assignmentSourceLabel(row.assignmentOrigin, row.assignmentSource)}) · ${row.completed ? '완료' : '미완료'}(${originLabel(row.completionOrigin)})`).join(' / ')}</p> : null}
+
                     </div>
                     <NumberInput label={`${task.taskId} 보상`} value={task.reward} onChange={(value) => updateTask(task.taskId, { reward: value })} dense />
                     <NumberInput label={`${task.taskId} 정렬`} value={task.sortOrder} onChange={(value) => updateTask(task.taskId, { sortOrder: value })} dense />
@@ -1426,7 +1418,7 @@ export function AdminManagePage() {
             <PromotionAdminPanel
               products={products}
               currencyUnit={settings.currencyUnit ?? '원'}
-              timeZone={settings.classTimeZone ?? 'Asia/Seoul'}
+              timeZone="Asia/Seoul"
             />
           </section>
         ) : null}
@@ -1578,7 +1570,17 @@ export function AdminManagePage() {
           <section role="dialog" aria-modal="true" aria-label="과제 반복 설정" className="w-full max-w-lg rounded-2xl bg-white p-4 text-slate-950 shadow-2xl">
             <h2 className="text-xl font-black">과제 반복 설정</h2>
             <p className="mt-1 rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-900">반복 규칙 변경은 즉시 적용됩니다. 직전 완료 상태는 보상 없이 새 회차에 승계되고 자연 초기화는 다음 경계부터 시작됩니다.</p>
-            <TaskRecurrenceFields form={taskScheduleEditor.form} onChange={(form) => setTaskScheduleEditor((current) => current ? { ...current, form } : current)} />
+            {taskScheduleEditor.taskId ? (
+              <TaskScheduleProjection
+                task={tasks.find((task) => task.taskId === taskScheduleEditor.taskId) ?? {}}
+                className={`${theme.softBg} ${theme.softText}`}
+              />
+            ) : null}
+            <TaskRecurrenceFields
+              form={taskScheduleEditor.form}
+              onChange={(form) => setTaskScheduleEditor((current) => current ? { ...current, form } : current)}
+              styles={{ detail: theme.softText, preview: theme.accentText }}
+            />
             <div className="mt-4 flex gap-2">
               <button type="button" className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700" onClick={closeTaskScheduleEditor}>취소</button>
               <button type="button" disabled={isSavingTaskSchedule} className={`flex-1 rounded-xl ${theme.accentBg} py-3 font-black ${theme.actionText} disabled:opacity-60`} onClick={() => void applyTaskScheduleEditor()}>{isSavingTaskSchedule ? '반복 설정 저장 중...' : taskScheduleEditor.taskId ? '반복 설정 저장' : '반복 설정 적용'}</button>

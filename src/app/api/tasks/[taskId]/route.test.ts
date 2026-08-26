@@ -138,12 +138,13 @@ describe('PATCH /api/tasks/[taskId]', () => {
     await expect(response.json()).resolves.toEqual(saved);
   });
 
-  it('accepts only editable schedule fields and rejects client-controlled versioning', async () => {
+  it('accepts only editable schedule fields and forces non-Seoul client input to Seoul', async () => {
     const store = {};
     const schedule = {
-      recurrence: { type: 'WEEKLY', time: '09:30', weekday: 2 }, timeZone: 'Asia/Seoul',
+      recurrence: { type: 'WEEKLY', time: '09:30', weekday: 2 }, timeZone: 'Europe/Paris',
       resetCompletionOnCycle: true, resetAssignmentOnCycle: false,
     };
+    const seoulSchedule = { ...schedule, timeZone: 'Asia/Seoul' };
     vi.mocked(createConfiguredSheetsStore).mockResolvedValue(store as never);
     vi.mocked(updateTaskDetails).mockResolvedValue({ taskId: 'T1', pendingSchedule: { ruleVersion: 2 } } as never);
     const request = new Request('http://localhost/api/tasks/T1', {
@@ -152,7 +153,7 @@ describe('PATCH /api/tasks/[taskId]', () => {
 
     const response = await PATCH(request, { params: Promise.resolve({ taskId: 'T1' }) });
     expect(response.status).toBe(200);
-    expect(updateTaskDetails).toHaveBeenCalledWith(store, 'T1', { ...legacyPayload, schedule });
+    expect(updateTaskDetails).toHaveBeenCalledWith(store, 'T1', { ...legacyPayload, schedule: seoulSchedule });
 
     const invalid = new Request('http://localhost/api/tasks/T1', {
       method: 'PATCH', headers: { 'content-type': 'application/json' },

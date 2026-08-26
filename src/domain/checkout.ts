@@ -19,7 +19,7 @@ export type CheckoutPreviewInput = CartPricingPreviewInput & {
   student: Student;
 };
 
-type CartPricingPreviewSuccess = {
+export type CartPricingPreviewSuccess = {
   ok: true;
   totalAmount: number;
   items: CheckoutLineSnapshot[];
@@ -73,6 +73,59 @@ export type CartPricingPreviewFailure =
     };
 
 export type CartPricingPreviewResult = CartPricingPreviewSuccess | CartPricingPreviewFailure;
+
+export function checkoutPricingMatches(
+  expected: CartPricingPreviewSuccess,
+  authoritative: CartPricingPreviewSuccess,
+): boolean {
+  return JSON.stringify(pricingComparisonValue(expected)) === JSON.stringify(pricingComparisonValue(authoritative));
+}
+
+function pricingComparisonValue(pricing: CartPricingPreviewSuccess) {
+  return {
+    totalAmount: pricing.totalAmount,
+    items: pricing.items.map((item) => ({
+      productId: item.productId,
+      name: item.name,
+      price: item.price,
+      quantity: item.quantity,
+      subtotal: item.subtotal,
+      regularUnitPrice: item.regularUnitPrice,
+      regularTotal: item.regularTotal,
+      totalQuantity: item.totalQuantity,
+      paidQuantity: item.paidQuantity,
+      freeQuantity: item.freeQuantity,
+      finalTotal: item.finalTotal,
+      totalDiscount: item.totalDiscount,
+      adjustments: item.adjustments.map((adjustment) => ({
+        promotionId: adjustment.promotionId,
+        type: adjustment.type,
+        beforeAmount: adjustment.beforeAmount,
+        afterAmount: adjustment.afterAmount,
+        discountAmount: adjustment.discountAmount,
+        ...('freeQuantity' in adjustment ? { freeQuantity: adjustment.freeQuantity } : {}),
+      })),
+      appliedPromotions: item.appliedPromotions.map((promotion) => ({
+        promotionId: promotion.promotionId,
+        name: promotion.name,
+        description: promotion.description,
+        type: promotion.type,
+        productIds: [...promotion.productIds],
+        startsAt: promotion.startsAt,
+        endsAt: promotion.endsAt,
+        isActive: promotion.isActive,
+        sortOrder: promotion.sortOrder,
+        createdAt: promotion.createdAt,
+        updatedAt: promotion.updatedAt,
+        schemaVersion: promotion.schemaVersion,
+        ...(promotion.type === 'N_PLUS_ONE' ? { buyQuantity: promotion.buyQuantity, freeQuantity: promotion.freeQuantity } : {}),
+        ...(promotion.type === 'PROMOTIONAL_PRICE' ? { promotionalUnitPrice: promotion.promotionalUnitPrice } : {}),
+        ...(promotion.type === 'PERCENT_DISCOUNT' ? { percent: promotion.percent } : {}),
+        ...(promotion.type === 'FIXED_DISCOUNT' ? { discountAmount: promotion.discountAmount } : {}),
+      })),
+    })),
+  };
+}
 
 type CheckoutPreviewSuccess = CartPricingPreviewSuccess & {
   balanceBefore: number;

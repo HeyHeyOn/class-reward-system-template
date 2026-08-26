@@ -71,6 +71,12 @@ const noPromotionSnapshot = (productId: string, name: string, price: number, qua
   adjustments: [], appliedPromotions: [],
 });
 
+const noPromotionQuote = (...items: ReturnType<typeof noPromotionSnapshot>[]) => ({
+  ok: true as const,
+  totalAmount: items.reduce((total, item) => total + item.finalTotal, 0),
+  items,
+});
+
 describe('processCheckout', () => {
   afterEach(() => vi.restoreAllMocks());
 
@@ -83,6 +89,10 @@ describe('processCheckout', () => {
         { productId: 'P001', quantity: 2 },
         { productId: 'P002', quantity: 1 },
       ],
+      expectedPricing: noPromotionQuote(
+        noPromotionSnapshot('P001', '연필', 300, 2),
+        noPromotionSnapshot('P002', '지우개', 500, 1),
+      ),
       operator: 'kiosk',
       now: () => new Date('2026-05-19T02:00:00.000Z'),
       transactionIdFactory: () => 'T-TEST-001',
@@ -129,6 +139,7 @@ describe('processCheckout', () => {
     const result = await processCheckout(store, {
       studentId: 'S001',
       items: [{ productId: 'P001', quantity: 1 }],
+      expectedPricing: noPromotionQuote(noPromotionSnapshot('P001', '연필', 300, 1)),
       operator: 'teacher',
       now: () => new Date('2026-05-19T02:00:00.000Z'),
       transactionIdFactory: () => 'T-LIVE-ORDER',
@@ -165,6 +176,7 @@ describe('processCheckout', () => {
     await expect(processCheckout(store, {
       studentId: 'S001',
       items: [{ productId: 'P001', quantity: 1 }],
+      expectedPricing: noPromotionQuote(noPromotionSnapshot('P001', '연필', 300, 1)),
       operator: 'kiosk',
       now: () => new Date('2026-05-19T02:00:00.000Z'),
       transactionIdFactory: () => 'T-FALLBACK',
@@ -207,9 +219,15 @@ describe('processCheckout', () => {
     });
     let nowCalls = 0;
     const now = new Date('2026-08-15T00:00:00.000Z');
+    const expectedPricing = await previewCheckoutCart(store, {
+      items: [{ productId: 'P001', quantity: 3 }],
+      now: () => now,
+    });
+    if (!expectedPricing.ok) throw new Error('expected pricing preview to succeed');
 
     const result = await processCheckout(store, {
       studentId: 'S001', items: [{ productId: 'P001', quantity: 3 }],
+      expectedPricing,
       now: () => { nowCalls += 1; return now; }, transactionIdFactory: () => 'T-PROMO',
     });
 
@@ -238,6 +256,7 @@ describe('processCheckout', () => {
     let calls = 0;
     const result = await processCheckout(store, {
       studentId: 'S001', items: [{ productId: 'P001', quantity: 1 }],
+      expectedPricing: noPromotionQuote(noPromotionSnapshot('P001', '연필', 300, 1)),
       now: () => { calls += 1; return new Date('2026-08-15T12:34:56.000Z'); },
     });
     expect(result).toMatchObject({ ok: true, transactionId: 'T20260815123456' });
@@ -256,6 +275,7 @@ describe('processCheckout', () => {
     const store = new FakeSheetsStore(baseRows);
     await expect(processCheckout(store, {
       studentId: 'S001', items: [{ productId: 'P001', quantity: 1 }],
+      expectedPricing: noPromotionQuote(noPromotionSnapshot('P001', '연필', 300, 1)),
       now: () => new Date('2026-08-15T00:00:00.000Z'),
     })).resolves.toMatchObject({ ok: false, code: 'PRICING_FAILED', promotionId: 'BAD' });
     expect(store.updates).toEqual([]);
@@ -271,6 +291,7 @@ describe('processCheckout', () => {
     };
     await expect(processCheckout(store, {
       studentId: 'S001', items: [{ productId: 'P001', quantity: 1 }],
+      expectedPricing: noPromotionQuote(noPromotionSnapshot('P001', '연필', 300, 1)),
       now: () => new Date('2026-08-15T00:00:00.000Z'), transactionIdFactory: () => 'T-NO-PROMO',
     })).resolves.toMatchObject({ ok: true, totalAmount: 300 });
     expect(JSON.parse(store.appends[0].values[4])).toEqual([noPromotionSnapshot('P001', '연필', 300, 1)]);
@@ -285,6 +306,7 @@ describe('processCheckout', () => {
 
     await expect(processCheckout(store, {
       studentId: 'S001', items: [{ productId: 'P001', quantity: 1 }],
+      expectedPricing: noPromotionQuote(noPromotionSnapshot('P001', '연필', 300, 1)),
       now: () => new Date('2026-08-15T00:00:00.000Z'),
     })).rejects.toThrow('필수 컬럼');
     expect(store.updates).toEqual([]);
@@ -300,6 +322,7 @@ describe('processCheckout', () => {
     const result = await processCheckout(store, {
       studentId: 'S001',
       items: [{ productId: 'P001', quantity: 2 }],
+      expectedPricing: noPromotionQuote(noPromotionSnapshot('P001', '연필', 300, 2)),
       operator: 'kiosk',
       now: () => new Date('2026-05-19T02:00:00.000Z'),
       transactionIdFactory: () => 'T-TEST-002',
@@ -311,6 +334,47 @@ describe('processCheckout', () => {
       message: '잔액이 부족합니다.',
       currentBalance: 500,
       requiredAmount: 600,
+    });
+    expect(store.updates).toEqual([]);
+    expect(store.appends).toEqual([]);
+  });
+
+  it('returns the latest authoritative quote without writes when expected pricing changed', async () => {
+    const store = new FakeSheetsStore(baseRows);
+    const staleQuote = {
+      ok: true as const,
+      totalAmount: 299,
+      items: [{ ...noPromotionSnapshot('P001', '연필', 300, 1), subtotal: 299, finalTotal: 299, totalDiscount: 1 }],
+    };
+
+    const result = await processCheckout(store, {
+      studentId: 'S001', items: [{ productId: 'P001', quantity: 1 }], expectedPricing: staleQuote,
+      now: () => new Date('2026-08-15T00:00:00.000Z'),
+    });
+
+    expect(result).toEqual({
+      ok: false, code: 'PRICE_CHANGED',
+      message: '상품 가격 또는 행사가 변경되었습니다. 최신 금액을 확인해 주세요.',
+      latestPricing: { ok: true, totalAmount: 300, items: [noPromotionSnapshot('P001', '연필', 300, 1)] },
+    });
+    expect(store.updates).toEqual([]);
+    expect(store.appends).toEqual([]);
+  });
+
+  it('does not allow a direct caller to omit expected pricing', async () => {
+    const store = new FakeSheetsStore(baseRows);
+
+    const result = await processCheckout(store, {
+      studentId: 'S001',
+      items: [{ productId: 'P001', quantity: 1 }],
+      now: () => new Date('2026-08-15T00:00:00.000Z'),
+    } as Parameters<typeof processCheckout>[1]);
+
+    expect(result).toEqual({
+      ok: false,
+      code: 'PRICE_CHANGED',
+      message: '상품 가격 또는 행사가 변경되었습니다. 최신 금액을 확인해 주세요.',
+      latestPricing: noPromotionQuote(noPromotionSnapshot('P001', '연필', 300, 1)),
     });
     expect(store.updates).toEqual([]);
     expect(store.appends).toEqual([]);
@@ -387,8 +451,10 @@ describe('previewCheckoutCart', () => {
     const now = () => new Date('2026-08-15T00:00:00.000Z');
 
     const preview = await previewCheckoutCart(store, { items, now });
+    if (!preview.ok) throw new Error('expected preview to succeed');
     const checkout = await processCheckout(store, {
-      studentId: 'S001', items, now, transactionIdFactory: () => 'T-CONSISTENCY',
+      studentId: 'S001', items, expectedPricing: preview,
+      now, transactionIdFactory: () => 'T-CONSISTENCY',
     });
 
     expect(preview.ok).toBe(true);

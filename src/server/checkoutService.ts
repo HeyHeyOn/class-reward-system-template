@@ -1,7 +1,9 @@
 import type { CartItem, CheckoutLineSnapshot, Promotion, Transaction } from '@/domain/types';
 import {
+  checkoutPricingMatches,
   createCartPricingPreview,
   createCheckoutPreview,
+  type CartPricingPreviewSuccess,
   type CartPricingPreviewResult,
   type CheckoutPreviewResult,
 } from '@/domain/checkout';
@@ -20,6 +22,7 @@ export type ProcessCheckoutInput = {
   operator?: string;
   now?: () => Date;
   transactionIdFactory?: () => string;
+  expectedPricing: CartPricingPreviewSuccess;
 };
 
 export type ProcessCheckoutSuccess = {
@@ -37,7 +40,8 @@ export type ProcessCheckoutResult =
   | ProcessCheckoutSuccess
   | Exclude<CheckoutPreviewResult, { ok: true }>
   | { ok: false; code: 'STUDENT_NOT_FOUND'; message: string }
-  | { ok: false; code: 'STUDENT_INACTIVE'; message: string };
+  | { ok: false; code: 'STUDENT_INACTIVE'; message: string }
+  | { ok: false; code: 'PRICE_CHANGED'; message: string; latestPricing: CartPricingPreviewSuccess };
 
 export type PreviewCheckoutCartInput = {
   items: CartItem[];
@@ -81,6 +85,23 @@ export async function processCheckout(
   const productRecordsById = new Map(productRecords.map((record) => [record.product.productId, record]));
   const selectedProductRecords = selectProductRecords(productRecordsById, input.items);
   const promotions: Promotion[] = await getActivePromotions(store);
+
+  const authoritativePricing = createCartPricingPreview({
+    products: selectedProductRecords.map((record) => record.product),
+    cartItems: input.items,
+    promotions,
+    now,
+  });
+  if (!authoritativePricing.ok) return authoritativePricing;
+
+  if (!input.expectedPricing || !checkoutPricingMatches(input.expectedPricing, authoritativePricing)) {
+    return {
+      ok: false,
+      code: 'PRICE_CHANGED',
+      message: '상품 가격 또는 행사가 변경되었습니다. 최신 금액을 확인해 주세요.',
+      latestPricing: authoritativePricing,
+    };
+  }
 
   const preview = createCheckoutPreview({
     student: studentRecord.student,

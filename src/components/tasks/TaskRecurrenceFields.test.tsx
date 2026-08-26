@@ -4,18 +4,25 @@ import { EMPTY_RECURRENCE_FORM } from '../taskRecurrenceEditor';
 import { TaskRecurrenceFields, TaskScheduleProjection } from './TaskRecurrenceFields';
 
 describe('TaskRecurrenceFields', () => {
-  it('renders conditional recurrence controls and explains short-month clamping', () => {
+  it('renders conditional recurrence controls without a per-task timezone and uses supplied theme tokens', () => {
     const onChange = vi.fn();
-    const { rerender } = render(<TaskRecurrenceFields form={EMPTY_RECURRENCE_FORM} onChange={onChange} />);
+    const { container, rerender } = render(<TaskRecurrenceFields
+      form={EMPTY_RECURRENCE_FORM}
+      onChange={onChange}
+      styles={{ detail: 'theme-detail', preview: 'theme-preview' }}
+    />);
 
     expect(screen.queryByLabelText('반복 시간')).toBeNull();
+    expect(screen.queryByLabelText('과제 시간대')).toBeNull();
     fireEvent.change(screen.getByLabelText('반복 주기'), { target: { value: 'MONTHLY' } });
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ type: 'MONTHLY' }));
 
-    rerender(<TaskRecurrenceFields form={{ ...EMPTY_RECURRENCE_FORM, type: 'MONTHLY', dayOfMonth: '31' }} onChange={onChange} />);
+    rerender(<TaskRecurrenceFields form={{ ...EMPTY_RECURRENCE_FORM, type: 'MONTHLY', dayOfMonth: '31' }} onChange={onChange} styles={{ detail: 'theme-detail', preview: 'theme-preview' }} />);
     expect(screen.getByLabelText('반복 시간')).toBeTruthy();
     expect(screen.getByLabelText('반복 날짜')).toBeTruthy();
-    expect(screen.getByText('29/30/31일이 없는 달은 해당 월 말일로 당겨집니다.')).toBeTruthy();
+    expect(screen.getByText('29/30/31일이 없는 달은 해당 월 말일로 당겨집니다.').className).toContain('theme-detail');
+    expect(screen.getByText(/미리보기:/).className).toContain('theme-preview');
+    expect(container.innerHTML).not.toContain('violet-');
   });
 
   it('shows the current schedule, next natural boundary, and exact reset targets', () => {

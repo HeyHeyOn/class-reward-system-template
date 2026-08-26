@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdminManagePage } from './AdminManagePage';
 
@@ -1147,8 +1147,8 @@ describe('AdminManagePage', () => {
     });
     render(<AdminManagePage />);
     fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    expect(await screen.findByText(/현재 회차:/)).toBeTruthy();
-    expect(screen.getByText(/S001 부여\(이월\).*완료\(현재 기록\)/)).toBeTruthy();
+    const initialRow = await screen.findByTestId('task-row');
+    expect(within(initialRow).queryByText(/현재 회차:|S001 부여/)).toBeNull();
 
     fireEvent.change(screen.getByLabelText('T001 과제명'), { target: { value: '저장 안 한 제목' } });
     fireEvent.change(screen.getByLabelText('T001 보상'), { target: { value: '77' } });
@@ -1187,7 +1187,7 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }));
     fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
     await waitFor(() => expect(alert).toHaveBeenCalledWith('과제 부여 저장 완료'));
-    expect(screen.getByText(/S001 부여\(현재 기록\).*완료\(이월\)/)).toBeTruthy();
+    expect(within(screen.getByTestId('task-row')).queryByText(/S001 부여/)).toBeNull();
   });
 
   it('preserves another task row draft while reconciling a saved schedule projection', async () => {
@@ -1225,8 +1225,9 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByRole('button', { name: '반복 설정 저장' }));
 
     await waitFor(() => expect(taskGetCount).toBe(2));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 반복 설정' }));
     expect(await screen.findByText(/현재 일정: 매일 10:30/)).toBeTruthy();
-    expect(screen.getByText(/S001 부여\(이월\).*미완료\(기본값\)/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
     expect(screen.getByLabelText('T002 과제명')).toHaveProperty('value', '저장 안 한 제목');
     expect(screen.getByLabelText('T002 보상')).toHaveProperty('value', '77');
   });
@@ -1261,7 +1262,7 @@ describe('AdminManagePage', () => {
     expect(screen.getByLabelText('T002 보상')).toHaveProperty('value', '88');
   });
 
-  it('shows an effective pending schedule in the row, projection, and editor', async () => {
+  it('shows an effective pending schedule in the recurrence modal without a timezone control', async () => {
     const currentSchedule = { ruleVersion: 1, effectiveFrom: '2000-01-01T00:00:00.000Z', timeZone: 'Asia/Seoul', recurrence: { type: 'DAILY', time: '09:00' }, resetCompletionOnCycle: false, resetAssignmentOnCycle: false } as const;
     const pendingSchedule = { ruleVersion: 2, effectiveFrom: '2001-01-01T00:00:00.000Z', timeZone: 'Europe/Paris', recurrence: { type: 'WEEKLY', weekday: 5, time: '16:30' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: true } as const;
     const baseFetch = vi.mocked(fetch);
@@ -1273,13 +1274,15 @@ describe('AdminManagePage', () => {
 
     render(<AdminManagePage />);
     fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    expect(await screen.findByText('매주 금요일 16:30')).toBeTruthy();
+    const row = await screen.findByTestId('task-row');
+    expect(within(row).getByRole('button', { name: 'T001 반복 설정' }).textContent).toBe('반복');
+    expect(within(row).queryByText('매주 금요일 16:30')).toBeNull();
+    fireEvent.click(within(row).getByRole('button', { name: 'T001 반복 설정' }));
     expect(screen.getByText(/현재 일정: 매주 금요일 16:30/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'T001 반복 설정' }));
     expect(screen.getByLabelText('반복 주기')).toHaveProperty('value', 'WEEKLY');
     expect(screen.getByLabelText('반복 시간')).toHaveProperty('value', '16:30');
     expect(screen.getByLabelText('반복 요일')).toHaveProperty('value', '5');
-    expect(screen.getByLabelText('과제 시간대')).toHaveProperty('value', 'Europe/Paris');
+    expect(screen.queryByLabelText('과제 시간대')).toBeNull();
   });
 
   it('refreshes a newly created task projection without replacing other unsaved task drafts', async () => {
@@ -1309,7 +1312,7 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByRole('button', { name: '새 과제 추가' }));
 
     await waitFor(() => expect(taskGetCount).toBe(2));
-    expect(await screen.findByText(/S001 부여\(기본값\).*미완료\(기본값\)/)).toBeTruthy();
+    expect(screen.queryByText(/S001 부여/)).toBeNull();
     expect(screen.getByLabelText('T003 과제명')).toHaveProperty('value', '영어 단어 (서버)');
     expect(screen.getByLabelText('T002 과제명')).toHaveProperty('value', '저장 안 한 수학 제목');
     expect(screen.getByLabelText('T002 보상')).toHaveProperty('value', '91');
@@ -1348,7 +1351,7 @@ describe('AdminManagePage', () => {
     fireEvent.change(screen.getByLabelText('반복 시간'), { target: { value: '14:25' } });
     fireEvent.click(screen.getByRole('button', { name: '반복 설정 적용' }));
 
-    expect(screen.getByRole('button', { name: '새 과제 반복 설정' }).textContent).toContain('매일 14:25');
+    expect(screen.getByRole('button', { name: '새 과제 반복 설정' }).textContent).toBe('반복 설정');
     fireEvent.click(screen.getByRole('button', { name: '새 과제 반복 설정' }));
     expect(screen.getByLabelText('반복 주기')).toHaveProperty('value', 'DAILY');
     expect(screen.getByLabelText('반복 시간')).toHaveProperty('value', '14:25');
@@ -1447,8 +1450,8 @@ describe('AdminManagePage', () => {
       await secondProjection.response;
     });
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '과제 반복 설정' })).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'T001 반복 설정' }));
     expect(screen.getByText(/현재 일정: 매일 11:00/)).toBeTruthy();
-    expect(screen.getByText(/S001 미부여\(현재 기록\).*미완료\(기본값\)/)).toBeTruthy();
 
     await act(async () => {
       firstProjection.resolve();
@@ -1456,7 +1459,6 @@ describe('AdminManagePage', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     expect(screen.getByText(/현재 일정: 매일 11:00/)).toBeTruthy();
-    expect(screen.getByText(/S001 미부여\(현재 기록\).*미완료\(기본값\)/)).toBeTruthy();
     expect(screen.queryByText(/현재 일정: 매일 10:00/)).toBeNull();
   });
 
@@ -1592,8 +1594,8 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByRole('button', { name: '반복 설정 저장' }));
 
     await waitFor(() => expect(taskGetCount).toBe(2));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 반복 설정' }));
     expect(await screen.findByText(/현재 일정: 매월 31일 17:45/)).toBeTruthy();
-    expect(screen.getByText(/S001 부여\(이월\).*미완료\(기본값\)/)).toBeTruthy();
   });
 
   it('confirms resets with both reward warnings and replaces stale completion projection', async () => {
@@ -1626,7 +1628,40 @@ describe('AdminManagePage', () => {
     expect(confirm).toHaveBeenLastCalledWith(expect.stringContaining('과거 지급 보상은 회수되지 않으며'));
     expect(confirm).toHaveBeenLastCalledWith(expect.stringContaining('같은 회차에서 은행으로 다시 완료하면 재보상될 수 있습니다'));
     await waitFor(() => expect(taskGetCount).toBe(2));
-    expect(await screen.findByText(/S001 부여\(현재 기록\).*미완료\(기본값\)/)).toBeTruthy();
+    expect(screen.queryByText(/S001 부여/)).toBeNull();
+  });
+
+  it('keeps task rows compact and moves themed schedule details into the recurrence modal', async () => {
+    const recurringTask = {
+      ...tasks[0],
+      schedule: { ruleVersion: 2, effectiveFrom: '2026-08-25T00:00:00.000Z', timeZone: 'Europe/Paris', recurrence: { type: 'WEEKLY', weekday: 2, time: '09:00' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: false },
+      currentCycle: { cycleId: 'cycle-1', startsAt: '2026-08-25T00:00:00.000Z', endsAt: '2026-09-01T00:00:00.000Z', transition: 'NATURAL_BOUNDARY', assignedStudentIds: ['S001'], completedStudentIds: [], students: [{ studentId: 'S001', assigned: true, completed: false, assignmentOrigin: 'EVENT', completionOrigin: 'DEFAULT' }] },
+    } as const;
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    baseFetch.mockImplementation(async (input, init) => {
+      if (String(input) === '/api/tasks?includeInactive=1') return jsonResponse([recurringTask]);
+      if (String(input) === '/api/settings' && !init?.method) return jsonResponse({ spreadsheetId: 'sheet', currencyUnit: '별', themeColor: 'black' });
+      return fallback(input, init);
+    });
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    const row = (await screen.findByTestId('task-row'));
+    expect(within(row).getByRole('button', { name: 'T001 반복 설정' }).textContent).toBe('반복');
+    expect(within(row).getByRole('button', { name: 'T001 기록 보기' }).textContent).toBe('기록');
+    expect(within(row).queryByText(/현재 일정:|현재 회차:|다음 자연 경계:|S001 부여/)).toBeNull();
+    expect(screen.getByRole('button', { name: '새 과제 반복 설정' }).textContent).toBe('반복 설정');
+
+    fireEvent.click(within(row).getByRole('button', { name: 'T001 반복 설정' }));
+    const dialog = screen.getByRole('dialog', { name: '과제 반복 설정' });
+    expect(within(dialog).getByText(/현재 일정: 매주 화요일 09:00/)).toBeTruthy();
+    expect(within(dialog).getByText(/현재 회차:/)).toBeTruthy();
+    expect(within(dialog).getByText(/다음 자연 경계:/)).toBeTruthy();
+    expect(within(dialog).getByText(/초기화 대상: 완료 상태 초기화/)).toBeTruthy();
+    expect(within(dialog).queryByLabelText('과제 시간대')).toBeNull();
+    expect(dialog.innerHTML).not.toContain('violet-');
+    expect(dialog.innerHTML).toContain('bg-[#FCFCFC]');
   });
 
   it('disables assignment save while status GET is pending and explains admin completion reward behavior', async () => {

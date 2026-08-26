@@ -81,7 +81,7 @@ export function promotionBadgeLabel(promotion: Promotion, currencyUnit: string):
   switch (promotion.type) {
     case 'N_PLUS_ONE': return `${promotion.buyQuantity}+${promotion.freeQuantity}`;
     case 'PROMOTIONAL_PRICE': return `${promotion.promotionalUnitPrice.toLocaleString('ko-KR')}${currencyUnit}`;
-    case 'PERCENT_DISCOUNT': return `${promotion.percent}%`;
+    case 'PERCENT_DISCOUNT': return `-${promotion.percent}%`;
     case 'FIXED_DISCOUNT': return `-${promotion.discountAmount.toLocaleString('ko-KR')}${currencyUnit}`;
   }
 }

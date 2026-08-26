@@ -33,7 +33,7 @@ const percent: Promotion = { ...base, promotionId: 'P10', name: '10%', type: 'PE
   it('formats concise badges for every promotion type', () => {
     expect(promotionBadgeLabel(nPlusOne, '별')).toBe('2+1');
     expect(promotionBadgeLabel({ ...base, promotionId: 'PRICE', name: '가격', type: 'PROMOTIONAL_PRICE', promotionalUnitPrice: 250 }, '별')).toBe('250별');
-    expect(promotionBadgeLabel(percent, '별')).toBe('10%');
+    expect(promotionBadgeLabel(percent, '별')).toBe('-10%');
     expect(promotionBadgeLabel({ ...base, promotionId: 'FIX', name: '정액', type: 'FIXED_DISCOUNT', discountAmount: 50 }, '별')).toBe('-50별');
   });
 });

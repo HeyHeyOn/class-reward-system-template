@@ -18,19 +18,16 @@ export type CheckoutSuccessPayload = CheckoutPreviewPayload & {
 export function checkoutPreviewMatchesCart(preview: CheckoutPreviewPayload, requestedItems: CartItem[]): boolean {
   if (preview.items.length !== requestedItems.length) return false;
 
-  const requestedByProduct = new Map<string, number>();
-  for (const item of requestedItems) {
-    if (typeof item.productId !== 'string' || item.productId.trim() === '' || !positiveQuantity(item.quantity)) return false;
-    if (requestedByProduct.has(item.productId)) return false;
-    requestedByProduct.set(item.productId, item.quantity);
+  const seen = new Set<string>();
+  for (let index = 0; index < requestedItems.length; index += 1) {
+    const requested = requestedItems[index];
+    const quoted = preview.items[index];
+    if (typeof requested.productId !== 'string' || requested.productId.trim() === ''
+      || !positiveQuantity(requested.quantity) || seen.has(requested.productId)
+      || quoted.productId !== requested.productId || quoted.totalQuantity !== requested.quantity) return false;
+    seen.add(requested.productId);
   }
-
-  const returnedProducts = new Set<string>();
-  for (const item of preview.items) {
-    if (returnedProducts.has(item.productId) || requestedByProduct.get(item.productId) !== item.totalQuantity) return false;
-    returnedProducts.add(item.productId);
-  }
-  return returnedProducts.size === requestedByProduct.size;
+  return true;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -74,17 +71,26 @@ function parseLine(value: unknown): CheckoutLineSnapshot | null {
     || value.regularUnitPrice * value.totalQuantity !== value.regularTotal
     || value.regularTotal - value.finalTotal !== value.totalDiscount
     || !Array.isArray(value.adjustments) || !Array.isArray(value.appliedPromotions)) return null;
+  const productId = value.productId;
   const adjustments = value.adjustments.map(parseAdjustment);
   const appliedPromotions = value.appliedPromotions.map(parsePromotionResponse);
   if (!adjustments.every((item): item is PromotionAdjustment => item !== null)
     || !appliedPromotions.every((item): item is NonNullable<ReturnType<typeof parsePromotionResponse>> => item !== null)
+    || adjustments.length !== appliedPromotions.length
     || new Set(appliedPromotions.map((item) => item.promotionId)).size !== appliedPromotions.length
-    || adjustments.some((adjustment, index) => adjustment.promotionId !== appliedPromotions[index]?.promotionId)
+    || adjustments.some((adjustment, index) => {
+      const promotion = appliedPromotions[index];
+      return adjustment.promotionId !== promotion?.promotionId
+        || adjustment.type !== promotion.type
+        || !promotion.productIds.includes(productId)
+        || (adjustment.type === 'N_PLUS_ONE' ? adjustment.freeQuantity === undefined : adjustment.freeQuantity !== undefined);
+    })
+    || adjustments.reduce((sum, adjustment) => sum + (adjustment.freeQuantity ?? 0), 0) !== value.freeQuantity
     || (adjustments.length > 0 && (adjustments[0].beforeAmount !== value.regularTotal
       || adjustments[adjustments.length - 1].afterAmount !== value.finalTotal
       || adjustments.some((adjustment, index) => index > 0 && adjustment.beforeAmount !== adjustments[index - 1].afterAmount)))) return null;
   return {
-    productId: value.productId, name: value.name, price: value.price, quantity: value.quantity,
+    productId, name: value.name, price: value.price, quantity: value.quantity,
     subtotal: value.subtotal, regularUnitPrice: value.regularUnitPrice, regularTotal: value.regularTotal,
     totalQuantity: value.totalQuantity, paidQuantity: value.paidQuantity, freeQuantity: value.freeQuantity,
     finalTotal: value.finalTotal, totalDiscount: value.totalDiscount,

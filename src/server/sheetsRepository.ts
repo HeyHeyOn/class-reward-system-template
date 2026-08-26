@@ -1,5 +1,6 @@
 import type { ClassTask, Product, Student, TaskAssignmentStatus, TaskCompletion, TaskRecurrence, Transaction } from '@/domain/types';
 import {
+  DEFAULT_CLASS_TIME_ZONE,
   normalizeLegacyTimeZone,
   resolveTaskSchedule,
   serializeTaskScheduleCells,
@@ -399,13 +400,12 @@ async function createTaskNow(store: SheetsStore, create: TaskCreate): Promise<Cl
   const hasVersionedScheduleColumns = assertVersionedTaskScheduleHeaders(taskHeaderIndex);
   let versionedSchedule: Pick<ClassTask, 'taskInstanceId' | 'schedule' | 'pendingSchedule'> | undefined;
   if (hasVersionedScheduleColumns) {
-    const classTimeZone = normalizeLegacyTimeZone((await getSheetSettings(store)).classTimeZone);
     versionedSchedule = {
       taskInstanceId: crypto.randomUUID(),
       schedule: {
         ruleVersion: 1,
         effectiveFrom: now,
-        timeZone: create.schedule?.timeZone ?? classTimeZone,
+        timeZone: DEFAULT_CLASS_TIME_ZONE,
         recurrence: create.schedule?.recurrence ?? { type: 'NONE' },
         resetCompletionOnCycle: create.schedule?.resetCompletionOnCycle ?? false,
         resetAssignmentOnCycle: create.schedule?.resetAssignmentOnCycle ?? false,
@@ -1416,7 +1416,7 @@ function prepareImmediateScheduleState(task: ClassTask, edit: TaskScheduleEdit, 
   const pendingSchedule = validateTaskSchedule({
     ruleVersion: nextRuleVersion,
     effectiveFrom: editedAt,
-    timeZone: edit.timeZone,
+    timeZone: DEFAULT_CLASS_TIME_ZONE,
     recurrence: edit.recurrence,
     resetCompletionOnCycle: edit.resetCompletionOnCycle,
     resetAssignmentOnCycle: edit.resetAssignmentOnCycle,

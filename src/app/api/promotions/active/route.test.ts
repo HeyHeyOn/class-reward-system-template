@@ -19,6 +19,7 @@ describe('GET /api/promotions/active', () => {
     const response = await GET(request);
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('x-server-now')).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(createConfiguredSheetsReader).toHaveBeenCalledWith(request);
     expect(getActivePromotions).toHaveBeenCalledWith(reader);
     await expect(response.json()).resolves.toEqual(promotions);

@@ -1,12 +1,14 @@
 'use client';
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createCartPricingPreview } from '@/domain/checkout';
 import { calculatePromotionPrice } from '@/domain/promotions';
 import type { CartItem, CheckoutLineSnapshot, Product, Promotion, Student } from '@/domain/types';
 import { checkoutPreviewMatchesCart, parseCheckoutPreviewResponse, parseCheckoutSuccessResponse, type CheckoutPreviewPayload, type CheckoutSuccessPayload } from '@/lib/checkoutSnapshotClient';
 import { getFontFamilyCss, type FontFamily } from '@/lib/fontSettings';
-import { effectivePromotionsForProduct, parsePromotionListResponse, promotionBadgeLabel } from '@/lib/promotionClient';
+import { effectivePromotionsForProduct, parsePromotionListResponse } from '@/lib/promotionClient';
 import { QrScanner } from './QrScanner';
+import { PromotionPills } from './promotions/PromotionPills';
 
 type PaymentStep = 'checkout' | 'processing' | 'failure' | 'complete';
 
@@ -14,18 +16,13 @@ type PaymentResult = CheckoutSuccessPayload & {
   studentNumber?: number;
 };
 
-type PreviewState =
-  | { status: 'empty' }
-  | { status: 'loading'; cartKey: string }
-  | { status: 'error'; cartKey: string; message: string }
-  | { status: 'success'; cartKey: string; payload: CheckoutPreviewPayload };
-
 type ApiError = {
   error?: string;
   message?: string;
   code?: string;
   currentBalance?: number;
   requiredAmount?: number;
+  latestPricing?: unknown;
 };
 
 type FailureState = {
@@ -81,11 +78,10 @@ export function KioskApp() {
   const [qrManualInputEnabled, setQrManualInputEnabled] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('전체');
   const [loadError, setLoadError] = useState('');
-  const [preview, setPreview] = useState<PreviewState>({ status: 'empty' });
-  const [previewRetry, setPreviewRetry] = useState(0);
+  const [confirmedServerPricing, setConfirmedServerPricing] = useState<{ cartKey: string; payload: CheckoutPreviewPayload } | null>(null);
   const mountedRef = useRef(true);
   const loadGenerationRef = useRef(0);
-  const previewGenerationRef = useRef(0);
+  const serverClockOffsetRef = useRef(0);
 
   const loadProducts = useCallback(async (options: { shouldApply?: () => boolean } = {}) => {
     const generation = loadGenerationRef.current + 1;
@@ -108,10 +104,17 @@ export function KioskApp() {
       const parsedPromotions = parsePromotionListResponse(promotionPayload);
       if (!promotionResponse.ok || !parsedPromotions) throw new Error('행사 정보를 불러오지 못했습니다.');
 
+      const serverNow = promotionResponse.headers.get('x-server-now');
+      if (serverNow) {
+        const serverEpoch = Date.parse(serverNow);
+        if (Number.isFinite(serverEpoch)) serverClockOffsetRef.current = serverEpoch - Date.now();
+      }
+
       if (!mountedRef.current || loadGenerationRef.current !== generation || options.shouldApply?.() === false) return;
       setProducts(payload as Product[]);
       setPromotions(parsedPromotions);
-      setRenderClock((current) => new Date(Math.max(Date.now(), current.getTime() + 1)));
+      setConfirmedServerPricing(null);
+      setRenderClock(new Date(Date.now() + serverClockOffsetRef.current));
       setSelectedCategory((current) => current === '전체' || (payload as Product[]).some((product) => (product.category || '기타') === current) ? current : '전체');
       if (settings?.currencyUnit) setCurrencyUnit(settings.currencyUnit);
       if (settings?.appTitle) setAppTitle(settings.appTitle);
@@ -134,12 +137,11 @@ export function KioskApp() {
     let ignore = false;
     mountedRef.current = true;
     void Promise.resolve().then(() => loadProducts({ shouldApply: () => !ignore }));
-    const interval = window.setInterval(() => setRenderClock(new Date()), 60_000);
+    const interval = window.setInterval(() => setRenderClock(new Date(Date.now() + serverClockOffsetRef.current)), 60_000);
     return () => {
       ignore = true;
       mountedRef.current = false;
       loadGenerationRef.current += 1;
-      previewGenerationRef.current += 1;
       window.clearInterval(interval);
     };
   }, [loadProducts]);
@@ -161,45 +163,13 @@ export function KioskApp() {
       .filter((item): item is CartItem & { name: string; price: number; stock: number; subtotal: number } => Boolean(item));
   }, [cartItems, products]);
 
-  const cartKey = useMemo(() => JSON.stringify({ items: cartItems, pricingClock: renderClock.toISOString() }), [cartItems, renderClock]);
-  useEffect(() => {
-    const generation = previewGenerationRef.current + 1;
-    previewGenerationRef.current = generation;
-    if (cartItems.length === 0) {
-      void Promise.resolve().then(() => {
-        if (mountedRef.current && previewGenerationRef.current === generation) {
-          setPreview({ status: 'empty' });
-        }
-      });
-      return;
-    }
-    const controller = new AbortController();
-    const requestedItems = cartItems.map((item) => ({ ...item }));
-    const requestedKey = cartKey;
-    void (async () => {
-      await Promise.resolve();
-      if (!mountedRef.current || previewGenerationRef.current !== generation) return;
-      setPreview({ status: 'loading', cartKey: requestedKey });
-      try {
-        const response = await fetch('/api/checkout/preview', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ items: requestedItems }), signal: controller.signal,
-        });
-        const payload: unknown = await response.json().catch(() => null);
-        const parsed = response.ok ? parseCheckoutPreviewResponse(payload) : null;
-        if (!parsed || !checkoutPreviewMatchesCart(parsed, requestedItems)) throw new Error('결제 금액을 확인하지 못했습니다.');
-        if (mountedRef.current && previewGenerationRef.current === generation) {
-          setPreview({ status: 'success', cartKey: requestedKey, payload: parsed });
-        }
-      } catch (error) {
-        if (controller.signal.aborted) return;
-        if (mountedRef.current && previewGenerationRef.current === generation) {
-          setPreview({ status: 'error', cartKey: requestedKey, message: error instanceof Error ? error.message : '결제 금액을 확인하지 못했습니다.' });
-        }
-      }
-    })();
-    return () => controller.abort();
-  }, [cartItems, cartKey, previewRetry]);
+  const cartKey = useMemo(() => JSON.stringify(cartItems), [cartItems]);
+  const localPricing = useMemo(() => cartItems.length === 0 ? null : createCartPricingPreview({
+    products,
+    cartItems,
+    promotions,
+    now: renderClock,
+  }), [cartItems, products, promotions, renderClock]);
 
   const productPricing = useMemo(() => new Map(products.map((product) => {
     const effective = effectivePromotionsForProduct(promotions, product.productId, renderClock);
@@ -209,8 +179,10 @@ export function KioskApp() {
     });
     return [product.productId, { effective, pricing }] as const;
   })), [products, promotions, renderClock]);
-  const pricingError = [...productPricing.values()].some(({ pricing }) => !pricing.ok);
-  const currentPreview = preview.status === 'success' && preview.cartKey === cartKey ? preview.payload : null;
+  const pricingError = [...productPricing.values()].some(({ pricing }) => !pricing.ok) || Boolean(localPricing && !localPricing.ok);
+  const currentPreview = confirmedServerPricing?.cartKey === cartKey
+    ? confirmedServerPricing.payload
+    : localPricing?.ok ? localPricing : null;
   const totalAmount = currentPreview?.totalAmount ?? null;
   const regularAggregate = currentPreview?.items.reduce((sum, item) => sum + item.regularTotal, 0) ?? null;
   const totalSavings = currentPreview?.items.reduce((sum, item) => sum + item.totalDiscount, 0) ?? 0;
@@ -305,6 +277,12 @@ export function KioskApp() {
       return;
     }
 
+    if (!currentPreview) {
+      setFailure({ title: '결제 실패', message: '결제 금액을 계산하지 못했습니다.' });
+      setPaymentStep('failure');
+      return;
+    }
+
     setIsCheckingOut(true);
     setFailure(null);
     setPaymentStep('processing');
@@ -325,13 +303,23 @@ export function KioskApp() {
       const checkoutResponse = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId: studentPayload.studentId, items: cartItems }),
+        body: JSON.stringify({ studentId: studentPayload.studentId, items: cartItems, expectedPricing: currentPreview }),
       });
       const checkoutRaw: unknown = await checkoutResponse.json().catch(() => null);
       const checkoutPayload = checkoutResponse.ok ? parseCheckoutSuccessResponse(checkoutRaw) : null;
 
       if (!checkoutPayload) {
         const errorPayload = isApiError(checkoutRaw) ? checkoutRaw : {};
+        if (checkoutResponse.status === 409 && errorPayload.code === 'PRICE_CHANGED') {
+          const latestPricing = parseCheckoutPreviewResponse(errorPayload.latestPricing);
+          if (latestPricing && checkoutPreviewMatchesCart(latestPricing, cartItems)) {
+            setConfirmedServerPricing({ cartKey, payload: latestPricing });
+            setMessage(errorPayload.message || '상품 가격 또는 행사가 변경되었습니다. 최신 금액을 확인해 주세요.');
+            setManualQrValue('');
+            setPaymentStep(null);
+            return;
+          }
+        }
         const errorMessage = errorPayload.message || errorPayload.error || '결제에 실패했습니다.';
         const detail =
           typeof errorPayload.currentBalance === 'number'
@@ -429,7 +417,7 @@ export function KioskApp() {
                   className={`rounded-[0.8rem] border border-slate-300 bg-white p-1 text-left text-[clamp(0.62rem,2vw,1rem)] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed sm:rounded-[0.9rem] sm:p-3 ${isSoldOut ? 'brightness-75 grayscale disabled:opacity-75' : 'disabled:opacity-50'}`}
                 >
                   <p className="truncate text-[clamp(0.55rem,1.8vw,0.75rem)] font-black">{product.category || '기타'}</p>
-                  <div className="mt-1 flex aspect-[4/3] items-center justify-center rounded-md bg-slate-200 text-[clamp(1.5rem,8vw,3rem)] text-white sm:mt-2">
+                  <div className="relative mt-1 flex aspect-[4/3] items-center justify-center overflow-hidden rounded-md bg-slate-200 text-[clamp(1.5rem,8vw,3rem)] text-white sm:mt-2">
                     {product.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={product.imageUrl} alt={`${product.name} 이미지`} className="h-full w-full object-cover" />
@@ -437,11 +425,15 @@ export function KioskApp() {
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src="/class-reward-system-icon.png" alt={`${product.name} 기본 이미지`} className="h-full w-full object-contain p-2 sm:p-3" />
                     )}
+                    <PromotionPills
+                      promotions={cardPromotion?.effective ?? []}
+                      currencyUnit={currencyUnit}
+                      ariaLabel={`${product.name} 행사`}
+                      className="absolute bottom-1 left-1 z-10"
+                      pillClassName={`${theme.accentBg} ${theme.selectedText}`}
+                    />
                   </div>
                   <p className="mt-1 truncate text-[clamp(0.62rem,2.4vw,1.125rem)] font-black leading-tight sm:mt-2">{product.name}</p>
-                  {cardPromotion?.effective.length ? <div className="mt-1 flex flex-wrap gap-1" aria-label={`${product.name} 행사`}>
-                    {cardPromotion.effective.map((promotion) => <span key={promotion.promotionId} className={`rounded-full ${theme.lightBg} px-1.5 py-0.5 text-[clamp(0.5rem,1.6vw,0.7rem)] font-black ${theme.accentText}`}>{promotionBadgeLabel(promotion, currencyUnit)}</span>)}
-                  </div> : null}
                   <div data-testid="product-card-footer" className="mt-1 flex flex-row items-end justify-between gap-1 sm:gap-2">
                     <div className="min-w-0 leading-tight">
                       {cardPrice?.ok && cardPrice.finalAmount < product.price ? <p className="text-[clamp(0.5rem,1.7vw,0.75rem)] font-bold text-slate-500 line-through" aria-label={`정상 가격 ${formatCurrency(product.price, currencyUnit)}`}>{formatCurrency(product.price, currencyUnit)}</p> : null}
@@ -479,12 +471,15 @@ export function KioskApp() {
                   const snapshot = currentPreview?.items.find((candidate) => candidate.productId === item.productId);
                   return (
                   <div key={item.productId} data-testid="cart-item-row" className="grid grid-cols-[minmax(0,2fr)_auto_minmax(3.5rem,1fr)] items-center gap-x-2 gap-y-1 rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-[clamp(0.68rem,2.2vw,1rem)] shadow-sm landscape:grid-cols-[minmax(0,2fr)_auto_minmax(3.5rem,1fr)] sm:gap-x-3 sm:px-3 sm:py-2">
-                    <div className="min-w-0">
+                    <div className="flex min-w-0 items-center gap-1">
+                      <PromotionPills
+                        promotions={productPricing.get(item.productId)?.effective ?? []}
+                        currencyUnit={currencyUnit}
+                        ariaLabel={`${item.name} 행사`}
+                        className="shrink-0 flex-nowrap"
+                        pillClassName={`${theme.accentBg} ${theme.selectedText}`}
+                      />
                       <p data-testid="cart-item-name" className="min-w-0 truncate text-[clamp(0.75rem,2.8vw,1.125rem)] font-black leading-tight">{snapshot?.name ?? item.name}</p>
-                      {snapshot ? <>
-                        <p className="text-[clamp(0.58rem,1.8vw,0.75rem)] font-bold text-slate-600">유료 {snapshot.paidQuantity}개{snapshot.freeQuantity > 0 ? ` · 무료 ${snapshot.freeQuantity}개` : ''}</p>
-                        <div className="flex flex-wrap gap-1">{snapshot.adjustments.map((adjustment, index) => <span data-testid="cart-adjustment" key={`${adjustment.promotionId}-${index}`} className="rounded bg-slate-100 px-1 py-0.5 text-[clamp(0.5rem,1.6vw,0.68rem)] font-bold">{promotionBadgeLabel(snapshot.appliedPromotions[index], currencyUnit)} · {formatCurrency(adjustment.beforeAmount, currencyUnit)}→{formatCurrency(adjustment.afterAmount, currencyUnit)}</span>)}</div>
-                      </> : null}
                     </div>
                     <div data-testid="cart-quantity-controls" className="relative z-10 flex justify-self-center items-center gap-1 sm:gap-1.5">
                       <button
@@ -513,9 +508,7 @@ export function KioskApp() {
             )}
           </div>
 
-          {message || pricingError ? <p role={loadError || pricingError ? 'alert' : undefined} className="mt-2 rounded-xl bg-amber-100 p-2 text-[clamp(0.7rem,2.4vw,0.875rem)] font-bold text-amber-900">{pricingError ? '행사 가격 설정이 올바르지 않아 결제할 수 없습니다.' : message}</p> : null}
-          {cartItems.length > 0 && preview.status === 'loading' ? <p role="status" aria-label="결제 금액 계산 중" className="mt-2 rounded-xl bg-sky-50 p-2 text-sm font-bold text-sky-800">결제 금액을 계산하는 중입니다.</p> : null}
-          {cartItems.length > 0 && preview.status === 'error' ? <div role="alert" className="mt-2 rounded-xl bg-rose-100 p-2 text-sm font-bold text-rose-800"><p>{preview.message}</p><button type="button" className="mt-1 rounded bg-white px-2 py-1" onClick={() => setPreviewRetry((value) => value + 1)}>결제 금액 다시 계산</button></div> : null}
+          {message || pricingError ? <p role="alert" className="mt-2 rounded-xl bg-amber-100 p-2 text-[clamp(0.7rem,2.4vw,0.875rem)] font-bold text-amber-900">{pricingError ? '행사 가격 설정이 올바르지 않아 결제할 수 없습니다.' : message}</p> : null}
 
           <div data-testid="checkout-total-bar" className="mt-2 flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-2 text-[clamp(0.7rem,2.4vw,1rem)] shadow-sm sm:mt-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:p-3">
             <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 sm:block">
@@ -523,7 +516,6 @@ export function KioskApp() {
               {totalAmount === null ? <p className="text-sm font-bold text-slate-500">확인 중</p> : <>
                 {totalSavings > 0 && regularAggregate !== null ? <p className="text-sm font-bold text-slate-500 line-through" aria-label={`정상 총액 ${formatCurrency(regularAggregate, currencyUnit)}`}>{formatCurrency(regularAggregate, currencyUnit)}</p> : null}
                 <p className={`text-[clamp(1.2rem,5vw,1.875rem)] font-black leading-tight ${theme.accentText}`}>{formatCurrency(totalAmount, currencyUnit)}</p>
-                {totalSavings > 0 ? <p className="text-xs font-black text-emerald-700">총 절약 {formatCurrency(totalSavings, currencyUnit)}</p> : null}
               </>}
             </div>
             <button
@@ -734,7 +726,7 @@ function CartSummary({
       {cartDetails.map((item) => (
         <div key={item.productId} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:gap-4 sm:px-4">
           <p className="truncate text-lg font-black sm:text-xl">{item.name}</p>
-          <div className="text-right sm:text-left"><p className="text-lg font-black sm:text-xl">× {item.totalQuantity}</p><p className="text-xs font-bold text-slate-500">유료 {item.paidQuantity}개{item.freeQuantity > 0 ? ` · 무료 ${item.freeQuantity}개` : ''}</p></div>
+          <p className="text-right text-lg font-black sm:text-left sm:text-xl">× {item.totalQuantity}</p>
           <div className="col-span-2 text-right sm:col-span-1 sm:w-32"><p className="text-lg font-black sm:text-xl">{formatCurrency(item.finalTotal, currencyUnit)}</p>{item.totalDiscount > 0 ? <p className="text-sm text-slate-500 line-through">{formatCurrency(item.regularTotal, currencyUnit)}</p> : null}</div>
         </div>
       ))}

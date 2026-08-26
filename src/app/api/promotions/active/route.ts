@@ -6,7 +6,8 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   try {
     const reader = await createConfiguredSheetsReader(request);
-    return Response.json(await getActivePromotions(reader));
+    const promotions = await getActivePromotions(reader);
+    return Response.json(promotions, { headers: { 'x-server-now': new Date().toISOString() } });
   } catch (error) {
     console.error('Failed to get active promotions', error);
     return Response.json(
