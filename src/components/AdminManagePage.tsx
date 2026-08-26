@@ -14,11 +14,12 @@ import { formatRecurrenceSummary, normalizeAdminTask, resolveEffectiveAdminTaskS
 import { TaskRecurrenceFields, TaskScheduleProjection } from './tasks/TaskRecurrenceFields';
 import { TaskHistoryDialog, type TaskHistoryDialogState } from './tasks/TaskHistoryDialog';
 import { normalizeTaskAssignmentStatus, reconcileTaskAssignmentProjection } from './taskAssignmentProjection';
+import { PromotionAdminPanel } from './promotions/PromotionAdminPanel';
 
 type StudentDraft = Student;
 type ProductDraft = Product;
 type TaskDraft = NormalizedAdminTask;
-type AdminTab = 'settings' | 'students' | 'products' | 'tasks' | 'transactions' | 'currency';
+type AdminTab = 'settings' | 'students' | 'products' | 'promotions' | 'tasks' | 'transactions' | 'currency';
 type BulkMode = 'set' | 'add' | 'subtract';
 type CurrencyMode = 'add' | 'subtract';
 type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'black' | 'navy';
@@ -108,6 +109,7 @@ const tabs: Array<{ id: AdminTab; label: string }> = [
   { id: 'settings', label: '시스템 설정' },
   { id: 'students', label: '학생 관리' },
   { id: 'products', label: '매점 관리' },
+  { id: 'promotions', label: '행사 관리' },
   { id: 'tasks', label: '과제 설정' },
   { id: 'transactions', label: '거래 내역 확인' },
   { id: 'currency', label: '화폐 지급/회수' },
@@ -1416,6 +1418,16 @@ export function AdminManagePage() {
               </div>
             </SectionCard>
             </div>
+          </section>
+        ) : null}
+
+        {activeTab === 'promotions' ? (
+          <section role="tabpanel" aria-label="행사 관리">
+            <PromotionAdminPanel
+              products={products}
+              currencyUnit={settings.currencyUnit ?? '원'}
+              timeZone={settings.classTimeZone ?? 'Asia/Seoul'}
+            />
           </section>
         ) : null}
 
