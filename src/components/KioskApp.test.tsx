@@ -9,6 +9,23 @@ const products = [
 ];
 
 const studentBefore = { studentId: 'S001', name: '김민준', number: 1, balance: 3500, status: 'ACTIVE' };
+const promotionBase = {
+  description: '', productIds: ['P001'], startsAt: '2020-01-01T00:00:00.000Z', endsAt: '2099-01-01T00:00:00.000Z',
+  isActive: true, sortOrder: 1, createdAt: '2020-01-01T00:00:00.000Z', updatedAt: '2020-01-01T00:00:00.000Z', schemaVersion: 3,
+};
+const nPlusOne = { ...promotionBase, promotionId: 'N21', name: '연필 2+1', type: 'N_PLUS_ONE', buyQuantity: 2, freeQuantity: 1 };
+const percent = { ...promotionBase, promotionId: 'P10', name: '10% 할인', type: 'PERCENT_DISCOUNT', percent: 10, sortOrder: 2 };
+
+function regularPreview(items: Array<{ productId: string; quantity: number }>) {
+  const snapshots = items.map((item) => {
+    const product = products.find((candidate) => candidate.productId === item.productId)!;
+    const total = product.price * item.quantity;
+    return { productId: item.productId, name: product.name, price: product.price, quantity: item.quantity, subtotal: total,
+      regularUnitPrice: product.price, regularTotal: total, totalQuantity: item.quantity, paidQuantity: item.quantity,
+      freeQuantity: 0, finalTotal: total, totalDiscount: 0, adjustments: [], appliedPromotions: [] };
+  });
+  return { ok: true, totalAmount: snapshots.reduce((sum, item) => sum + item.finalTotal, 0), items: snapshots };
+}
 
 function expectPageText(text: string) {
   expect(document.body.textContent?.replace(/\s+/g, ' ')).toContain(text);
@@ -36,6 +53,12 @@ describe('KioskApp', () => {
           return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '햇살반 매점', themeColor: 'pink', fontFamily: 'school-safe-notice', qrManualInputEnabled: true, source: 'runtime' });
         }
 
+        if (url === '/api/promotions/active') return jsonResponse([]);
+
+        if (url === '/api/checkout/preview' && init?.method === 'POST') {
+          return jsonResponse(regularPreview(JSON.parse(String(init.body)).items));
+        }
+
         if (url === '/api/students/S001') {
           return jsonResponse(studentBefore);
         }
@@ -53,7 +76,7 @@ describe('KioskApp', () => {
             totalAmount: 300,
             balanceBefore: 3500,
             balanceAfter: 3200,
-            items: [{ productId: 'P001', name: '연필', price: 300, quantity: 1, subtotal: 300 }],
+            items: regularPreview([{ productId: 'P001', quantity: 1 }]).items,
           });
         }
 
@@ -116,6 +139,7 @@ describe('KioskApp', () => {
         ]);
       }
       if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '햇살반 매점', themeColor: 'pink', qrManualInputEnabled: true, source: 'runtime' });
+      if (url === '/api/promotions/active') return jsonResponse([]);
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
 
@@ -162,6 +186,7 @@ describe('KioskApp', () => {
       const url = String(input);
       if (url === '/api/products') return productGate.then(() => jsonResponse(products));
       if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', themeColor: 'white', qrManualInputEnabled: true, source: 'runtime' });
+      if (url === '/api/promotions/active') return jsonResponse([]);
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
 
@@ -243,12 +268,21 @@ describe('KioskApp', () => {
     });
   });
 
+  it('recalculates an unchanged cart preview when storefront data is refreshed', async () => {
+    render(<KioskApp />);
+    fireEvent.click(await screen.findByRole('button', { name: '연필 300별 담기' }));
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/checkout/preview')).toHaveLength(1));
+
+    fireEvent.click(screen.getByRole('button', { name: '새로고침' }));
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/checkout/preview')).toHaveLength(2));
+  });
+
   it('keeps the main kiosk visible while checkout, processing, and complete steps appear as popups', async () => {
     render(<KioskApp />);
 
     expect(await screen.findByText('연필')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '연필 300별 담기' }));
-    expectPageText('총 결제 금액300별');
+    await waitFor(() => expect(screen.getByTestId('checkout-total-bar').textContent).toContain('300별'));
 
     fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
     expect(await screen.findByRole('dialog', { name: '결제 확인' })).toBeTruthy();
@@ -283,6 +317,7 @@ describe('KioskApp', () => {
 
     expect(await screen.findByText('연필')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '연필 300별 담기' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'QR 결제' })).toHaveProperty('disabled', false));
     fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
 
     fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: 'WRONG' } });
@@ -294,16 +329,21 @@ describe('KioskApp', () => {
   });
 
   it('recovers from malformed QR/student lookup errors instead of staying on the processing popup', async () => {
-    vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse(products));
-    vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', qrManualInputEnabled: true, source: 'runtime' }));
-    vi.mocked(fetch).mockImplementationOnce(async () => {
-      throw new SyntaxError('Unexpected token < in JSON');
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/products') return jsonResponse(products);
+      if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', qrManualInputEnabled: true, source: 'runtime' });
+      if (url === '/api/promotions/active') return jsonResponse([]);
+      if (url === '/api/checkout/preview' && init?.method === 'POST') return jsonResponse(regularPreview(JSON.parse(String(init.body)).items));
+      if (url === '/api/students/BROKEN-QR') throw new SyntaxError('Unexpected token < in JSON');
+      return jsonResponse({ error: 'not found' }, { status: 404 });
     });
 
     render(<KioskApp />);
 
     expect(await screen.findByText('연필')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '연필 300별 담기' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'QR 결제' })).toHaveProperty('disabled', false));
     fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
     fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: 'BROKEN-QR' } });
     fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 결제하기' }));
@@ -358,5 +398,136 @@ describe('KioskApp', () => {
     expect(increaseButton.className).toContain('w-[clamp(2rem,5vw,2.25rem)]');
     expect(increaseButton.className).not.toContain('min-w-10');
     expect(increaseButton.className).toContain('touch-manipulation');
+  });
+
+  it('renders active promotion badges/card pricing and authoritative stacked cart snapshots', async () => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/products') return jsonResponse(products);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', appTitle: '행사 매점', themeColor: 'white' });
+      if (url === '/api/promotions/active') return jsonResponse([percent, nPlusOne]);
+      if (url === '/api/checkout/preview') {
+        const quantity = JSON.parse(String(init?.body)).items[0].quantity;
+        if (quantity !== 3) return jsonResponse(regularPreview([{ productId: 'P001', quantity }]));
+        return jsonResponse({ ok: true, totalAmount: 540, items: [{
+          productId: 'P001', name: '연필', price: 300, quantity: 3, subtotal: 540,
+          regularUnitPrice: 300, regularTotal: 900, totalQuantity: 3, paidQuantity: 2, freeQuantity: 1,
+          finalTotal: 540, totalDiscount: 360,
+          adjustments: [
+            { promotionId: 'N21', type: 'N_PLUS_ONE', beforeAmount: 900, afterAmount: 600, discountAmount: 300, freeQuantity: 1 },
+            { promotionId: 'P10', type: 'PERCENT_DISCOUNT', beforeAmount: 600, afterAmount: 540, discountAmount: 60 },
+          ], appliedPromotions: [nPlusOne, percent],
+        }] });
+      }
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+    render(<KioskApp />);
+
+    const card = await screen.findByRole('button', { name: '연필 270별 담기' });
+    expect(within(card).getByText('2+1')).toBeTruthy();
+    expect(within(card).getByText('10%')).toBeTruthy();
+    expect(within(card).getByText('300별').className).toContain('line-through');
+    expect(within(card).getByText('270별')).toBeTruthy();
+    fireEvent.click(card);
+    fireEvent.click(screen.getByRole('button', { name: '연필 수량 늘리기' }));
+    fireEvent.click(screen.getByRole('button', { name: '연필 수량 늘리기' }));
+
+    expect(await screen.findByText('유료 2개 · 무료 1개')).toBeTruthy();
+    const cartRow = screen.getByTestId('cart-item-row');
+    expect(within(cartRow).getByText('900별').className).toContain('line-through');
+    expect(within(cartRow).getByText('540별')).toBeTruthy();
+    expect(within(cartRow).getAllByTestId('cart-adjustment').map((node) => node.textContent)).toEqual([
+      expect.stringContaining('2+1'), expect.stringContaining('10%'),
+    ]);
+    expectPageText('총 절약 360별');
+  });
+
+  it('fails closed when active promotions are malformed', async () => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/products') return jsonResponse(products);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별' });
+      if (url === '/api/promotions/active') return jsonResponse([{ ...percent, schemaVersion: 2 }]);
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+    render(<KioskApp />);
+    expect((await screen.findByRole('alert')).textContent).toContain('행사 정보를 불러오지 못했습니다.');
+    expect(screen.getByRole('button', { name: 'QR 결제' })).toHaveProperty('disabled', true);
+  });
+
+  it('disables checkout while preview is pending or failed and retries the exact current cart', async () => {
+    let resolvePreview!: (value: Response) => void;
+    const pending = new Promise<Response>((resolve) => { resolvePreview = resolve; });
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/products') return jsonResponse(products);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별' });
+      if (url === '/api/promotions/active') return jsonResponse([]);
+      if (url === '/api/checkout/preview') return pending;
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+    render(<KioskApp />);
+    fireEvent.click(await screen.findByRole('button', { name: '연필 300별 담기' }));
+    expect(await screen.findByRole('status', { name: '결제 금액 계산 중' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'QR 결제' })).toHaveProperty('disabled', true);
+    resolvePreview(jsonResponse({ ok: true, totalAmount: 999, items: [] }));
+    expect((await screen.findByRole('alert')).textContent).toContain('결제 금액을 확인하지 못했습니다.');
+    fireEvent.click(screen.getByRole('button', { name: '결제 금액 다시 계산' }));
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === '/api/checkout/preview')).toHaveLength(2));
+    const retry = vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === '/api/checkout/preview')[1];
+    expect(JSON.parse(String(retry[1]?.body))).toEqual({ items: [{ productId: 'P001', quantity: 1 }] });
+  });
+
+  it('ignores stale rapid preview responses', async () => {
+    const pending: Array<(response: Response) => void> = [];
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/products') return jsonResponse(products);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별' });
+      if (url === '/api/promotions/active') return jsonResponse([]);
+      if (url === '/api/checkout/preview') return new Promise<Response>((resolve) => pending.push(resolve));
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+    render(<KioskApp />);
+    fireEvent.click(await screen.findByRole('button', { name: '연필 300별 담기' }));
+    await waitFor(() => expect(pending).toHaveLength(1));
+    fireEvent.click(screen.getByRole('button', { name: '연필 수량 늘리기' }));
+    await waitFor(() => expect(pending).toHaveLength(2));
+    pending[1](jsonResponse(regularPreview([{ productId: 'P001', quantity: 2 }])));
+    await waitFor(() => expect(screen.getByTestId('checkout-total-bar').textContent).toContain('600별'));
+    pending[0](jsonResponse(regularPreview([{ productId: 'P001', quantity: 1 }])));
+    await waitFor(() => expect(screen.getByTestId('checkout-total-bar').textContent).toContain('600별'));
+    expect(screen.getByTestId('checkout-total-bar').textContent).not.toContain('300별');
+  });
+
+  it('uses commit snapshots and total for completion and stock even when they differ from preview', async () => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/products') return jsonResponse(products);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', qrManualInputEnabled: true });
+      if (url === '/api/promotions/active') return jsonResponse([]);
+      if (url === '/api/checkout/preview') return jsonResponse(regularPreview([{ productId: 'P001', quantity: 1 }]));
+      if (url === '/api/students/S001') return jsonResponse(studentBefore);
+      if (url === '/api/checkout' && init?.method === 'POST') return jsonResponse({
+        ok: true, transactionId: 'T2', studentId: 'S001', studentName: '김민준', totalAmount: 500,
+        balanceBefore: 3500, balanceAfter: 3000,
+        items: [{ productId: 'P001', name: '서버 연필', price: 500, quantity: 2, subtotal: 500,
+          regularUnitPrice: 500, regularTotal: 1000, totalQuantity: 2, paidQuantity: 1, freeQuantity: 1,
+          finalTotal: 500, totalDiscount: 500,
+          adjustments: [{ promotionId: 'N21', type: 'N_PLUS_ONE', beforeAmount: 1000, afterAmount: 500, discountAmount: 500, freeQuantity: 1 }],
+          appliedPromotions: [nPlusOne] }],
+      });
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+    render(<KioskApp />);
+    fireEvent.click(await screen.findByRole('button', { name: '연필 300별 담기' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'QR 결제' })).toHaveProperty('disabled', false));
+    fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
+    fireEvent.change(await screen.findByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 결제하기' }));
+    const complete = await screen.findByRole('dialog', { name: '결제 완료' });
+    expect(within(complete).getByText('서버 연필')).toBeTruthy();
+    expect(within(complete).getAllByText('500별').length).toBeGreaterThan(0);
+    expect(screen.getByText('재고 18')).toBeTruthy();
   });
 });

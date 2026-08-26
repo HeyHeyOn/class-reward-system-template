@@ -1,25 +1,24 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import type { CartItem, Product, Student } from '@/domain/types';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { calculatePromotionPrice } from '@/domain/promotions';
+import type { CartItem, CheckoutLineSnapshot, Product, Promotion, Student } from '@/domain/types';
+import { checkoutPreviewMatchesCart, parseCheckoutPreviewResponse, parseCheckoutSuccessResponse, type CheckoutPreviewPayload, type CheckoutSuccessPayload } from '@/lib/checkoutSnapshotClient';
 import { getFontFamilyCss, type FontFamily } from '@/lib/fontSettings';
+import { effectivePromotionsForProduct, parsePromotionListResponse, promotionBadgeLabel } from '@/lib/promotionClient';
 import { QrScanner } from './QrScanner';
 
 type PaymentStep = 'checkout' | 'processing' | 'failure' | 'complete';
 
-type CheckoutSuccess = {
-  ok: true;
-  transactionId: string;
-  studentId: string;
-  studentName: string;
-  totalAmount: number;
-  balanceBefore: number;
-  balanceAfter: number;
-};
-
-type PaymentResult = CheckoutSuccess & {
+type PaymentResult = CheckoutSuccessPayload & {
   studentNumber?: number;
 };
+
+type PreviewState =
+  | { status: 'empty' }
+  | { status: 'loading'; cartKey: string }
+  | { status: 'error'; cartKey: string; message: string }
+  | { status: 'success'; cartKey: string; payload: CheckoutPreviewPayload };
 
 type ApiError = {
   error?: string;
@@ -64,6 +63,8 @@ function formatCurrency(amount: number, unit: string) {
 
 export function KioskApp() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [promotions, setPromotions] = useState<Promotion[]>([]);
+  const [renderClock, setRenderClock] = useState(() => new Date());
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [manualQrValue, setManualQrValue] = useState('');
   const [message, setMessage] = useState('');
@@ -71,7 +72,7 @@ export function KioskApp() {
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [paymentStep, setPaymentStep] = useState<PaymentStep | null>(null);
   const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
-  const [completedCartDetails, setCompletedCartDetails] = useState<CartDetail[]>([]);
+  const [completedCartDetails, setCompletedCartDetails] = useState<CheckoutLineSnapshot[]>([]);
   const [failure, setFailure] = useState<FailureState | null>(null);
   const [currencyUnit, setCurrencyUnit] = useState('원');
   const [appTitle, setAppTitle] = useState('학급 매점');
@@ -79,24 +80,39 @@ export function KioskApp() {
   const [fontFamily, setFontFamily] = useState<FontFamily>('default');
   const [qrManualInputEnabled, setQrManualInputEnabled] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('전체');
+  const [loadError, setLoadError] = useState('');
+  const [preview, setPreview] = useState<PreviewState>({ status: 'empty' });
+  const [previewRetry, setPreviewRetry] = useState(0);
+  const mountedRef = useRef(true);
+  const loadGenerationRef = useRef(0);
+  const previewGenerationRef = useRef(0);
 
   const loadProducts = useCallback(async (options: { shouldApply?: () => boolean } = {}) => {
+    const generation = loadGenerationRef.current + 1;
+    loadGenerationRef.current = generation;
     setIsLoadingProducts(true);
+    setLoadError('');
     try {
-      const [productResponse, settingsResponse] = await Promise.all([
+      const [productResponse, settingsResponse, promotionResponse] = await Promise.all([
         fetch('/api/products', { cache: 'no-store' }),
         fetch('/api/settings', { cache: 'no-store' }),
+        fetch('/api/promotions/active', { cache: 'no-store' }),
       ]);
-      const payload = (await productResponse.json()) as Product[] | ApiError;
+      const payload: unknown = await productResponse.json();
       const settings = await settingsResponse.json().catch(() => null) as KioskSettings | null;
+      const promotionPayload: unknown = await promotionResponse.json().catch(() => null);
 
       if (!productResponse.ok || !Array.isArray(payload)) {
         throw new Error('상품 정보를 불러오지 못했습니다.');
       }
+      const parsedPromotions = parsePromotionListResponse(promotionPayload);
+      if (!promotionResponse.ok || !parsedPromotions) throw new Error('행사 정보를 불러오지 못했습니다.');
 
-      if (options.shouldApply?.() === false) return;
-      setProducts(payload);
-      setSelectedCategory((current) => current === '전체' || payload.some((product) => (product.category || '기타') === current) ? current : '전체');
+      if (!mountedRef.current || loadGenerationRef.current !== generation || options.shouldApply?.() === false) return;
+      setProducts(payload as Product[]);
+      setPromotions(parsedPromotions);
+      setRenderClock((current) => new Date(Math.max(Date.now(), current.getTime() + 1)));
+      setSelectedCategory((current) => current === '전체' || (payload as Product[]).some((product) => (product.category || '기타') === current) ? current : '전체');
       if (settings?.currencyUnit) setCurrencyUnit(settings.currencyUnit);
       if (settings?.appTitle) setAppTitle(settings.appTitle);
       setThemeColor(normalizeThemeColor(settings?.themeColor));
@@ -104,17 +120,27 @@ export function KioskApp() {
       setQrManualInputEnabled(Boolean(settings?.qrManualInputEnabled));
       setMessage('');
     } catch (error) {
-      if (options.shouldApply?.() !== false) setMessage(error instanceof Error ? error.message : '상품 정보를 불러오지 못했습니다.');
+      if (mountedRef.current && loadGenerationRef.current === generation && options.shouldApply?.() !== false) {
+        const nextError = error instanceof Error ? error.message : '상품 정보를 불러오지 못했습니다.';
+        setLoadError(nextError);
+        setMessage(nextError);
+      }
     } finally {
-      if (options.shouldApply?.() !== false) setIsLoadingProducts(false);
+      if (mountedRef.current && loadGenerationRef.current === generation && options.shouldApply?.() !== false) setIsLoadingProducts(false);
     }
   }, []);
 
   useEffect(() => {
     let ignore = false;
+    mountedRef.current = true;
     void Promise.resolve().then(() => loadProducts({ shouldApply: () => !ignore }));
+    const interval = window.setInterval(() => setRenderClock(new Date()), 60_000);
     return () => {
       ignore = true;
+      mountedRef.current = false;
+      loadGenerationRef.current += 1;
+      previewGenerationRef.current += 1;
+      window.clearInterval(interval);
     };
   }, [loadProducts]);
 
@@ -135,7 +161,59 @@ export function KioskApp() {
       .filter((item): item is CartItem & { name: string; price: number; stock: number; subtotal: number } => Boolean(item));
   }, [cartItems, products]);
 
-  const totalAmount = cartDetails.reduce((sum, item) => sum + item.subtotal, 0);
+  const cartKey = useMemo(() => JSON.stringify({ items: cartItems, pricingClock: renderClock.toISOString() }), [cartItems, renderClock]);
+  useEffect(() => {
+    const generation = previewGenerationRef.current + 1;
+    previewGenerationRef.current = generation;
+    if (cartItems.length === 0) {
+      void Promise.resolve().then(() => {
+        if (mountedRef.current && previewGenerationRef.current === generation) {
+          setPreview({ status: 'empty' });
+        }
+      });
+      return;
+    }
+    const controller = new AbortController();
+    const requestedItems = cartItems.map((item) => ({ ...item }));
+    const requestedKey = cartKey;
+    void (async () => {
+      await Promise.resolve();
+      if (!mountedRef.current || previewGenerationRef.current !== generation) return;
+      setPreview({ status: 'loading', cartKey: requestedKey });
+      try {
+        const response = await fetch('/api/checkout/preview', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: requestedItems }), signal: controller.signal,
+        });
+        const payload: unknown = await response.json().catch(() => null);
+        const parsed = response.ok ? parseCheckoutPreviewResponse(payload) : null;
+        if (!parsed || !checkoutPreviewMatchesCart(parsed, requestedItems)) throw new Error('결제 금액을 확인하지 못했습니다.');
+        if (mountedRef.current && previewGenerationRef.current === generation) {
+          setPreview({ status: 'success', cartKey: requestedKey, payload: parsed });
+        }
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        if (mountedRef.current && previewGenerationRef.current === generation) {
+          setPreview({ status: 'error', cartKey: requestedKey, message: error instanceof Error ? error.message : '결제 금액을 확인하지 못했습니다.' });
+        }
+      }
+    })();
+    return () => controller.abort();
+  }, [cartItems, cartKey, previewRetry]);
+
+  const productPricing = useMemo(() => new Map(products.map((product) => {
+    const effective = effectivePromotionsForProduct(promotions, product.productId, renderClock);
+    const pricing = calculatePromotionPrice({
+      productId: product.productId, quantity: 1, regularUnitPrice: product.price,
+      now: renderClock, promotions,
+    });
+    return [product.productId, { effective, pricing }] as const;
+  })), [products, promotions, renderClock]);
+  const pricingError = [...productPricing.values()].some(({ pricing }) => !pricing.ok);
+  const currentPreview = preview.status === 'success' && preview.cartKey === cartKey ? preview.payload : null;
+  const totalAmount = currentPreview?.totalAmount ?? null;
+  const regularAggregate = currentPreview?.items.reduce((sum, item) => sum + item.regularTotal, 0) ?? null;
+  const totalSavings = currentPreview?.items.reduce((sum, item) => sum + item.totalDiscount, 0) ?? 0;
   const categories = useMemo(() => ['전체', ...Array.from(new Set(products.map((product) => product.category || '기타')))], [products]);
   const filteredProducts = useMemo(() => {
     const categoryProducts = selectedCategory === '전체' ? products : products.filter((product) => (product.category || '기타') === selectedCategory);
@@ -199,6 +277,10 @@ export function KioskApp() {
       setMessage('장바구니가 비어 있습니다.');
       return;
     }
+    if (!currentPreview || pricingError || loadError) {
+      setMessage('결제 금액 확인이 완료된 뒤 다시 시도해 주세요.');
+      return;
+    }
 
     setFailure(null);
     setPaymentResult(null);
@@ -245,16 +327,15 @@ export function KioskApp() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ studentId: studentPayload.studentId, items: cartItems }),
       });
-      const checkoutPayload = (await checkoutResponse.json()) as CheckoutSuccess | ApiError;
+      const checkoutRaw: unknown = await checkoutResponse.json().catch(() => null);
+      const checkoutPayload = checkoutResponse.ok ? parseCheckoutSuccessResponse(checkoutRaw) : null;
 
-      if (!checkoutResponse.ok || !('ok' in checkoutPayload) || checkoutPayload.ok !== true) {
-        const errorMessage =
-          ('message' in checkoutPayload && checkoutPayload.message) ||
-          ('error' in checkoutPayload && checkoutPayload.error) ||
-          '결제에 실패했습니다.';
+      if (!checkoutPayload) {
+        const errorPayload = isApiError(checkoutRaw) ? checkoutRaw : {};
+        const errorMessage = errorPayload.message || errorPayload.error || '결제에 실패했습니다.';
         const detail =
-          'currentBalance' in checkoutPayload && typeof checkoutPayload.currentBalance === 'number'
-            ? `현재 잔액: ${formatCurrency(checkoutPayload.currentBalance, currencyUnit)}`
+          typeof errorPayload.currentBalance === 'number'
+            ? `현재 잔액: ${formatCurrency(errorPayload.currentBalance, currencyUnit)}`
             : undefined;
 
         setFailure({ title: '결제 실패', message: errorMessage, detail });
@@ -264,12 +345,12 @@ export function KioskApp() {
 
       setProducts((currentProducts) =>
         currentProducts.map((product) => {
-          const cartItem = cartItems.find((item) => item.productId === product.productId);
-          return cartItem ? { ...product, stock: product.stock - cartItem.quantity } : product;
+          const completedItem = checkoutPayload.items.find((item) => item.productId === product.productId);
+          return completedItem ? { ...product, stock: product.stock - completedItem.totalQuantity } : product;
         }),
       );
       setPaymentResult(checkoutPayload);
-      setCompletedCartDetails(cartDetails);
+      setCompletedCartDetails(checkoutPayload.items);
       setCartItems([]);
       setManualQrValue('');
       setPaymentStep('complete');
@@ -334,12 +415,16 @@ export function KioskApp() {
             <div data-testid="product-grid" className="grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-3">
               {filteredProducts.map((product) => {
                 const isSoldOut = product.stock <= 0;
+                const cardPromotion = productPricing.get(product.productId);
+                const cardPrice = cardPromotion?.pricing;
+                const displayPrice = cardPrice?.ok ? cardPrice.finalAmount : product.price;
+                const cardPricingFailed = !cardPrice?.ok;
                 return (
                 <button
                   key={product.productId}
                   onClick={() => addToCart(product.productId)}
-                  disabled={!product.isActive || isSoldOut}
-                  aria-label={`${product.name} ${formatCurrency(product.price, currencyUnit)} 담기`}
+                  disabled={!product.isActive || isSoldOut || cardPricingFailed || Boolean(loadError)}
+                  aria-label={`${product.name} ${formatCurrency(displayPrice, currencyUnit)} 담기`}
                   data-testid="product-card"
                   className={`rounded-[0.8rem] border border-slate-300 bg-white p-1 text-left text-[clamp(0.62rem,2vw,1rem)] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed sm:rounded-[0.9rem] sm:p-3 ${isSoldOut ? 'brightness-75 grayscale disabled:opacity-75' : 'disabled:opacity-50'}`}
                 >
@@ -354,8 +439,14 @@ export function KioskApp() {
                     )}
                   </div>
                   <p className="mt-1 truncate text-[clamp(0.62rem,2.4vw,1.125rem)] font-black leading-tight sm:mt-2">{product.name}</p>
+                  {cardPromotion?.effective.length ? <div className="mt-1 flex flex-wrap gap-1" aria-label={`${product.name} 행사`}>
+                    {cardPromotion.effective.map((promotion) => <span key={promotion.promotionId} className={`rounded-full ${theme.lightBg} px-1.5 py-0.5 text-[clamp(0.5rem,1.6vw,0.7rem)] font-black ${theme.accentText}`}>{promotionBadgeLabel(promotion, currencyUnit)}</span>)}
+                  </div> : null}
                   <div data-testid="product-card-footer" className="mt-1 flex flex-row items-end justify-between gap-1 sm:gap-2">
-                    <p className="min-w-0 truncate text-[clamp(0.62rem,2.3vw,1.25rem)] font-black leading-tight">{formatCurrency(product.price, currencyUnit)}</p>
+                    <div className="min-w-0 leading-tight">
+                      {cardPrice?.ok && cardPrice.finalAmount < product.price ? <p className="text-[clamp(0.5rem,1.7vw,0.75rem)] font-bold text-slate-500 line-through" aria-label={`정상 가격 ${formatCurrency(product.price, currencyUnit)}`}>{formatCurrency(product.price, currencyUnit)}</p> : null}
+                      <p className={`truncate text-[clamp(0.62rem,2.3vw,1.25rem)] font-black ${cardPrice?.ok && cardPrice.finalAmount < product.price ? theme.accentText : ''}`}>{formatCurrency(displayPrice, currencyUnit)}</p>
+                    </div>
                     <p data-testid="product-card-stock" className={`shrink-0 whitespace-nowrap rounded-full ${theme.lightBg} px-1 py-0.5 text-[clamp(0.55rem,1.8vw,0.75rem)] font-black leading-tight ${theme.lightText} sm:px-2 sm:py-1`}>재고 {product.stock}</p>
                   </div>
                 </button>
@@ -384,9 +475,17 @@ export function KioskApp() {
               </div>
             ) : (
               <div className="space-y-2">
-                {cartDetails.map((item) => (
+                {cartDetails.map((item) => {
+                  const snapshot = currentPreview?.items.find((candidate) => candidate.productId === item.productId);
+                  return (
                   <div key={item.productId} data-testid="cart-item-row" className="grid grid-cols-[minmax(0,2fr)_auto_minmax(3.5rem,1fr)] items-center gap-x-2 gap-y-1 rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-[clamp(0.68rem,2.2vw,1rem)] shadow-sm landscape:grid-cols-[minmax(0,2fr)_auto_minmax(3.5rem,1fr)] sm:gap-x-3 sm:px-3 sm:py-2">
-                    <p data-testid="cart-item-name" className="min-w-0 truncate text-[clamp(0.75rem,2.8vw,1.125rem)] font-black leading-tight">{item.name}</p>
+                    <div className="min-w-0">
+                      <p data-testid="cart-item-name" className="min-w-0 truncate text-[clamp(0.75rem,2.8vw,1.125rem)] font-black leading-tight">{snapshot?.name ?? item.name}</p>
+                      {snapshot ? <>
+                        <p className="text-[clamp(0.58rem,1.8vw,0.75rem)] font-bold text-slate-600">유료 {snapshot.paidQuantity}개{snapshot.freeQuantity > 0 ? ` · 무료 ${snapshot.freeQuantity}개` : ''}</p>
+                        <div className="flex flex-wrap gap-1">{snapshot.adjustments.map((adjustment, index) => <span data-testid="cart-adjustment" key={`${adjustment.promotionId}-${index}`} className="rounded bg-slate-100 px-1 py-0.5 text-[clamp(0.5rem,1.6vw,0.68rem)] font-bold">{promotionBadgeLabel(snapshot.appliedPromotions[index], currencyUnit)} · {formatCurrency(adjustment.beforeAmount, currencyUnit)}→{formatCurrency(adjustment.afterAmount, currencyUnit)}</span>)}</div>
+                      </> : null}
+                    </div>
                     <div data-testid="cart-quantity-controls" className="relative z-10 flex justify-self-center items-center gap-1 sm:gap-1.5">
                       <button
                         aria-label={`${item.name} 수량 줄이기`}
@@ -404,24 +503,33 @@ export function KioskApp() {
                         +
                       </button>
                     </div>
-                    <p data-testid="cart-item-subtotal" className="min-w-0 break-words text-right text-[clamp(0.75rem,2.8vw,1.125rem)] font-black leading-tight justify-self-end">{formatCurrency(item.subtotal, currencyUnit)}</p>
+                    <div data-testid="cart-item-subtotal" className="min-w-0 break-words text-right text-[clamp(0.75rem,2.8vw,1.125rem)] font-black leading-tight justify-self-end">
+                      {snapshot ? <>{snapshot.totalDiscount > 0 ? <p className="text-xs text-slate-500 line-through" aria-label={`정상 합계 ${formatCurrency(snapshot.regularTotal, currencyUnit)}`}>{formatCurrency(snapshot.regularTotal, currencyUnit)}</p> : null}<p className={snapshot.totalDiscount > 0 ? theme.accentText : ''}>{formatCurrency(snapshot.finalTotal, currencyUnit)}</p></> : <span aria-hidden="true">—</span>}
+                    </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
 
-          {message ? <p className="mt-2 rounded-xl bg-amber-100 p-2 text-[clamp(0.7rem,2.4vw,0.875rem)] font-bold text-amber-900">{message}</p> : null}
+          {message || pricingError ? <p role={loadError || pricingError ? 'alert' : undefined} className="mt-2 rounded-xl bg-amber-100 p-2 text-[clamp(0.7rem,2.4vw,0.875rem)] font-bold text-amber-900">{pricingError ? '행사 가격 설정이 올바르지 않아 결제할 수 없습니다.' : message}</p> : null}
+          {cartItems.length > 0 && preview.status === 'loading' ? <p role="status" aria-label="결제 금액 계산 중" className="mt-2 rounded-xl bg-sky-50 p-2 text-sm font-bold text-sky-800">결제 금액을 계산하는 중입니다.</p> : null}
+          {cartItems.length > 0 && preview.status === 'error' ? <div role="alert" className="mt-2 rounded-xl bg-rose-100 p-2 text-sm font-bold text-rose-800"><p>{preview.message}</p><button type="button" className="mt-1 rounded bg-white px-2 py-1" onClick={() => setPreviewRetry((value) => value + 1)}>결제 금액 다시 계산</button></div> : null}
 
           <div data-testid="checkout-total-bar" className="mt-2 flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-2 text-[clamp(0.7rem,2.4vw,1rem)] shadow-sm sm:mt-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:p-3">
             <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 sm:block">
               <p className="text-[clamp(0.8rem,2.8vw,1.25rem)] font-black leading-tight">총 결제 금액</p>
-              <p className={`text-[clamp(1.2rem,5vw,1.875rem)] font-black leading-tight ${theme.accentText}`}>{formatCurrency(totalAmount, currencyUnit)}</p>
+              {totalAmount === null ? <p className="text-sm font-bold text-slate-500">확인 중</p> : <>
+                {totalSavings > 0 && regularAggregate !== null ? <p className="text-sm font-bold text-slate-500 line-through" aria-label={`정상 총액 ${formatCurrency(regularAggregate, currencyUnit)}`}>{formatCurrency(regularAggregate, currencyUnit)}</p> : null}
+                <p className={`text-[clamp(1.2rem,5vw,1.875rem)] font-black leading-tight ${theme.accentText}`}>{formatCurrency(totalAmount, currencyUnit)}</p>
+                {totalSavings > 0 ? <p className="text-xs font-black text-emerald-700">총 절약 {formatCurrency(totalSavings, currencyUnit)}</p> : null}
+              </>}
             </div>
             <button
               data-testid="checkout-button"
               onClick={openCheckout}
-              disabled={cartItems.length === 0}
+              disabled={cartItems.length === 0 || !currentPreview || pricingError || Boolean(loadError)}
               className={`w-full rounded-xl ${theme.accentBg} px-4 py-2.5 text-[clamp(1rem,4vw,1.5rem)] font-black ${theme.selectedText} shadow-sm transition ${theme.hoverBg} disabled:cursor-not-allowed disabled:bg-slate-300 sm:w-auto sm:min-w-44 sm:px-6 sm:py-3`}
             >
               QR 결제
@@ -434,8 +542,8 @@ export function KioskApp() {
       {paymentStep ? (
         <PaymentModal
           step={paymentStep}
-          cartDetails={cartDetails}
-          totalAmount={totalAmount}
+          cartDetails={currentPreview?.items ?? []}
+          totalAmount={currentPreview?.totalAmount ?? 0}
           manualQrValue={manualQrValue}
           setManualQrValue={setManualQrValue}
           onManualQrSubmit={handleManualQrSubmit}
@@ -468,11 +576,9 @@ function LoadingScreen({ title, message }: { title: string; message: string }) {
   );
 }
 
-type CartDetail = CartItem & { name: string; price: number; stock: number; subtotal: number };
-
 type PaymentModalProps = {
   step: PaymentStep;
-  cartDetails: CartDetail[];
+  cartDetails: CheckoutLineSnapshot[];
   totalAmount: number;
   manualQrValue: string;
   setManualQrValue: (value: string) => void;
@@ -483,7 +589,7 @@ type PaymentModalProps = {
   onReset: () => void;
   isCheckingOut: boolean;
   paymentResult: PaymentResult | null;
-  completedCartDetails: CartDetail[];
+  completedCartDetails: CheckoutLineSnapshot[];
   failure: FailureState | null;
   currencyUnit: string;
   themeColor: ThemeColor;
@@ -617,7 +723,7 @@ function CartSummary({
   showTotal = true,
   currencyUnit,
 }: {
-  cartDetails: CartDetail[];
+  cartDetails: CheckoutLineSnapshot[];
   totalAmount: number;
   accent: string;
   showTotal?: boolean;
@@ -628,8 +734,8 @@ function CartSummary({
       {cartDetails.map((item) => (
         <div key={item.productId} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:gap-4 sm:px-4">
           <p className="truncate text-lg font-black sm:text-xl">{item.name}</p>
-          <p className="text-lg font-black sm:text-xl">× {item.quantity}</p>
-          <p className="col-span-2 text-right text-lg font-black sm:col-span-1 sm:w-28 sm:text-xl">{formatCurrency(item.subtotal, currencyUnit)}</p>
+          <div className="text-right sm:text-left"><p className="text-lg font-black sm:text-xl">× {item.totalQuantity}</p><p className="text-xs font-bold text-slate-500">유료 {item.paidQuantity}개{item.freeQuantity > 0 ? ` · 무료 ${item.freeQuantity}개` : ''}</p></div>
+          <div className="col-span-2 text-right sm:col-span-1 sm:w-32"><p className="text-lg font-black sm:text-xl">{formatCurrency(item.finalTotal, currencyUnit)}</p>{item.totalDiscount > 0 ? <p className="text-sm text-slate-500 line-through">{formatCurrency(item.regularTotal, currencyUnit)}</p> : null}</div>
         </div>
       ))}
       {showTotal ? (
