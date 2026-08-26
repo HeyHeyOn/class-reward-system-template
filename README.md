@@ -66,3 +66,9 @@ Google Sheets 접근용 인증값은 OAuth refresh token 방식 또는 서비스
 
 - [스키마 호환성 정책](docs/architecture/schema-compatibility.md)
 - [금전 작업 신뢰성 계약](docs/architecture/money-operation-contracts.md) — 현재/R1 부분 실패 경계와 향후 idempotency·outbox 목표
+
+## 결제 예상 금액 API
+
+`POST /api/checkout/preview`는 현재 상품, 재고, 활성 행사 정보를 기준으로 장바구니의 예상 결제 금액과 항목별 가격 스냅샷을 반환합니다. 이 결과는 조회 시점의 안내값이며 재고나 행사가 이후 변경될 수 있습니다. 실제 `POST /api/checkout` 결제는 저장 직전에 상품, 재고, 행사, 학생 잔액을 다시 읽고 금액을 권위 있게 재계산합니다.
+
+키오스크는 인증 없이 `GET /api/promotions/active`에서 활성화된 행사 정의를 조회할 수 있습니다.

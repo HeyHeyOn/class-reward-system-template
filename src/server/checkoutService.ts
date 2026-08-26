@@ -1,5 +1,10 @@
 import type { CartItem, CheckoutLineSnapshot, Promotion, Transaction } from '@/domain/types';
-import { createCheckoutPreview, type CheckoutPreviewResult } from '@/domain/checkout';
+import {
+  createCartPricingPreview,
+  createCheckoutPreview,
+  type CartPricingPreviewResult,
+  type CheckoutPreviewResult,
+} from '@/domain/checkout';
 import { buildTransactionAppendRow } from '@/server/sheetsRows';
 import { getActivePromotions } from '@/server/repositories/sheets/promotionQueries';
 import {
@@ -34,6 +39,29 @@ export type ProcessCheckoutResult =
   | { ok: false; code: 'STUDENT_NOT_FOUND'; message: string }
   | { ok: false; code: 'STUDENT_INACTIVE'; message: string };
 
+export type PreviewCheckoutCartInput = {
+  items: CartItem[];
+  now?: () => Date;
+};
+
+export async function previewCheckoutCart(
+  store: TabularStore,
+  input: PreviewCheckoutCartInput,
+): Promise<CartPricingPreviewResult> {
+  const now = input.now?.() ?? new Date();
+  const productRecords = await getProductRecords(store);
+  const productRecordsById = new Map(productRecords.map((record) => [record.product.productId, record]));
+  const selectedProductRecords = selectProductRecords(productRecordsById, input.items);
+  const promotions: Promotion[] = await getActivePromotions(store);
+
+  return createCartPricingPreview({
+    products: selectedProductRecords.map((record) => record.product),
+    cartItems: input.items,
+    promotions,
+    now,
+  });
+}
+
 export async function processCheckout(
   store: TabularStore,
   input: ProcessCheckoutInput,
@@ -51,9 +79,7 @@ export async function processCheckout(
 
   const productRecords = await getProductRecords(store);
   const productRecordsById = new Map(productRecords.map((record) => [record.product.productId, record]));
-  const selectedProductRecords = input.items
-    .map((item) => productRecordsById.get(item.productId))
-    .filter((record): record is ProductRecord => Boolean(record));
+  const selectedProductRecords = selectProductRecords(productRecordsById, input.items);
   const promotions: Promotion[] = await getActivePromotions(store);
 
   const preview = createCheckoutPreview({
@@ -117,6 +143,18 @@ export async function processCheckout(
     balanceAfter: preview.balanceAfter,
     items: preview.items,
   };
+}
+
+function selectProductRecords(
+  recordsById: Map<string, ProductRecord>,
+  items: CartItem[],
+): ProductRecord[] {
+  const selected = new Map<string, ProductRecord>();
+  for (const item of items) {
+    const record = recordsById.get(item.productId);
+    if (record) selected.set(item.productId, record);
+  }
+  return [...selected.values()];
 }
 
 function createTransactionId(date: Date): string {

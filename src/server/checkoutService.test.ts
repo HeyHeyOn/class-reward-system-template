@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { processCheckout } from '@/server/checkoutService';
+import { previewCheckoutCart, processCheckout } from '@/server/checkoutService';
 import * as promotionQueries from '@/server/repositories/sheets/promotionQueries';
 import type { OperationalSheetName, TabularStore } from '@/server/storage/tabularStore';
 
@@ -49,6 +49,20 @@ const baseRows: Record<string, string[][]> = {
   ]],
   PromotionProducts: [['promotionProductId', 'promotionId', 'productId', 'createdAt', 'schemaVersion']],
 };
+
+const stackedPromotionRows = (): Record<string, string[][]> => ({
+  ...baseRows,
+  Promotions: [
+    baseRows.Promotions[0],
+    ['N21', '2+1', '', 'N_PLUS_ONE', '', '2', '1', '2026-08-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z', 'TRUE', '1', '2026-08-01T00:00:00.000Z', '2026-08-01T00:00:00.000Z', '3'],
+    ['P10', '10% 할인', '', 'PERCENT_DISCOUNT', '10', '', '', '2026-08-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z', 'TRUE', '1', '2026-08-01T00:00:00.000Z', '2026-08-01T00:00:00.000Z', '3'],
+  ],
+  PromotionProducts: [
+    baseRows.PromotionProducts[0],
+    ['L1', 'N21', 'P001', '2026-08-01T00:00:00.000Z', '3'],
+    ['L2', 'P10', 'P001', '2026-08-01T00:00:00.000Z', '3'],
+  ],
+});
 
 const noPromotionSnapshot = (productId: string, name: string, price: number, quantity: number) => ({
   productId, name, price, quantity, subtotal: price * quantity,
@@ -300,5 +314,87 @@ describe('processCheckout', () => {
     });
     expect(store.updates).toEqual([]);
     expect(store.appends).toEqual([]);
+  });
+});
+
+describe('previewCheckoutCart', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('returns stacked promotion pricing, captures the clock once, and performs no writes', async () => {
+    const store = new FakeSheetsStore(stackedPromotionRows());
+    const now = new Date('2026-08-15T00:00:00.000Z');
+    const clock = vi.fn(() => now);
+
+    const result = await previewCheckoutCart(store, {
+      items: [{ productId: 'P001', quantity: 3 }],
+      now: clock,
+    });
+
+    expect(clock).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({
+      ok: true,
+      totalAmount: 540,
+      items: [{
+        productId: 'P001', totalQuantity: 3, paidQuantity: 2, freeQuantity: 1,
+        regularTotal: 900, finalTotal: 540, totalDiscount: 360,
+      }],
+    });
+    expect(store.updates).toEqual([]);
+    expect(store.appends).toEqual([]);
+  });
+
+  it('treats missing promotion sheets as no promotions without writing', async () => {
+    const store = new FakeSheetsStore(baseRows);
+    const getRows = store.getRows.bind(store);
+    store.getRows = async (sheetName) => {
+      if (sheetName === 'Promotions' || sheetName === 'PromotionProducts') return [];
+      return getRows(sheetName);
+    };
+
+    await expect(previewCheckoutCart(store, {
+      items: [{ productId: 'P001', quantity: 1 }],
+      now: () => new Date('2026-08-15T00:00:00.000Z'),
+    })).resolves.toEqual({
+      ok: true,
+      totalAmount: 300,
+      items: [noPromotionSnapshot('P001', '연필', 300, 1)],
+    });
+    expect(store.updates).toEqual([]);
+    expect(store.appends).toEqual([]);
+  });
+
+  it('propagates malformed promotion schemas closed without writing', async () => {
+    const store = new FakeSheetsStore({
+      ...baseRows,
+      Promotions: [['promotionId']],
+      PromotionProducts: [],
+    });
+
+    await expect(previewCheckoutCart(store, {
+      items: [{ productId: 'P001', quantity: 1 }],
+      now: () => new Date('2026-08-15T00:00:00.000Z'),
+    })).rejects.toThrow('필수 컬럼');
+    expect(store.updates).toEqual([]);
+    expect(store.appends).toEqual([]);
+  });
+
+  it('matches the authoritative checkout pricing snapshot under the same source snapshot', async () => {
+    const store = new FakeSheetsStore(stackedPromotionRows());
+    const items = [
+      { productId: 'P001', quantity: 1 },
+      { productId: 'P001', quantity: 2 },
+    ];
+    const now = () => new Date('2026-08-15T00:00:00.000Z');
+
+    const preview = await previewCheckoutCart(store, { items, now });
+    const checkout = await processCheckout(store, {
+      studentId: 'S001', items, now, transactionIdFactory: () => 'T-CONSISTENCY',
+    });
+
+    expect(preview.ok).toBe(true);
+    expect(checkout.ok).toBe(true);
+    if (!preview.ok || !checkout.ok) throw new Error('expected both operations to succeed');
+    expect(preview.totalAmount).toBe(checkout.totalAmount);
+    expect(preview.items).toEqual(checkout.items);
   });
 });

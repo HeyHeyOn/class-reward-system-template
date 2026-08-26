@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createCheckoutPreview } from '@/domain/checkout';
+import { createCartPricingPreview, createCheckoutPreview } from '@/domain/checkout';
 import type { Product, Promotion, Student } from '@/domain/types';
 
 const activeStudent: Student = {
@@ -348,5 +348,69 @@ describe('createCheckoutPreview', () => {
     expect(Object.isFrozen(line.appliedPromotions)).toBe(true);
     expect(Object.isFrozen(line.appliedPromotions[0])).toBe(true);
     expect(Object.isFrozen(line.appliedPromotions[0].productIds)).toBe(true);
+  });
+});
+
+describe('createCartPricingPreview', () => {
+  it('returns exactly the checkout pricing snapshot for stacked promotions and duplicate normalization', () => {
+    const input = {
+      products,
+      cartItems: [
+        { productId: 'P002', quantity: 1 },
+        { productId: 'P001', quantity: 1 },
+        { productId: 'P001', quantity: 2 },
+      ],
+      promotions: stackedPromotions,
+      now: new Date('2026-08-15T00:00:00.000Z'),
+    };
+
+    const cartPreview = createCartPricingPreview(input);
+    const checkoutPreview = createCheckoutPreview({
+      ...input,
+      student: { ...activeStudent, balance: 10_000 },
+    });
+
+    expect(cartPreview.ok).toBe(true);
+    expect(checkoutPreview.ok).toBe(true);
+    if (!cartPreview.ok || !checkoutPreview.ok) throw new Error('expected previews to succeed');
+    expect(cartPreview).toEqual({
+      ok: true,
+      totalAmount: 1040,
+      items: checkoutPreview.items,
+    });
+    expect(cartPreview.totalAmount).toBe(checkoutPreview.totalAmount);
+    expect(cartPreview.items.map(({ productId, totalQuantity }) => [productId, totalQuantity])).toEqual([
+      ['P002', 1], ['P001', 3],
+    ]);
+  });
+
+  it.each([
+    {
+      label: 'missing product',
+      input: { products, cartItems: [{ productId: 'MISSING', quantity: 1 }] },
+    },
+    {
+      label: 'insufficient stock',
+      input: { products, cartItems: [{ productId: 'P002', quantity: 2 }] },
+    },
+    {
+      label: 'invalid quantity',
+      input: { products, cartItems: [{ productId: 'P001', quantity: 0 }] },
+    },
+    {
+      label: 'promotion pricing failure',
+      input: {
+        products,
+        cartItems: [{ productId: 'P001', quantity: 1 }],
+        promotions: [{ ...stackedPromotions[0], percent: 200 } as Promotion],
+        now: new Date('2026-08-15T00:00:00.000Z'),
+      },
+    },
+  ])('returns exactly the checkout pricing failure for $label', ({ input }) => {
+    const cartPreview = createCartPricingPreview(input);
+    const checkoutPreview = createCheckoutPreview({ ...input, student: activeStudent });
+
+    expect(cartPreview).toEqual(checkoutPreview);
+    expect(cartPreview.ok).toBe(false);
   });
 });

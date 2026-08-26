@@ -8,23 +8,24 @@ import type {
   Student,
 } from './types';
 
-export type CheckoutPreviewInput = {
-  student: Student;
+export type CartPricingPreviewInput = {
   products: Product[];
   cartItems: CartItem[];
   promotions?: Promotion[];
   now?: Date;
 };
 
-type CheckoutPreviewSuccess = {
+export type CheckoutPreviewInput = CartPricingPreviewInput & {
+  student: Student;
+};
+
+type CartPricingPreviewSuccess = {
   ok: true;
   totalAmount: number;
-  balanceBefore: number;
-  balanceAfter: number;
   items: CheckoutLineSnapshot[];
 };
 
-type CheckoutPreviewFailure =
+export type CartPricingPreviewFailure =
   | {
       ok: false;
       code: 'PRODUCT_NOT_FOUND';
@@ -44,13 +45,6 @@ type CheckoutPreviewFailure =
       productId: string;
       requestedQuantity: number;
       currentStock: number;
-    }
-  | {
-      ok: false;
-      code: 'INSUFFICIENT_BALANCE';
-      message: string;
-      currentBalance: number;
-      requiredAmount: number;
     }
   | {
       ok: false;
@@ -76,6 +70,23 @@ type CheckoutPreviewFailure =
       ok: false;
       code: 'EMPTY_CART' | 'INVALID_CART' | 'INVALID_PRODUCTS' | 'INVALID_PROMOTIONS';
       message: string;
+    };
+
+export type CartPricingPreviewResult = CartPricingPreviewSuccess | CartPricingPreviewFailure;
+
+type CheckoutPreviewSuccess = CartPricingPreviewSuccess & {
+  balanceBefore: number;
+  balanceAfter: number;
+};
+
+type CheckoutPreviewFailure =
+  | CartPricingPreviewFailure
+  | {
+      ok: false;
+      code: 'INSUFFICIENT_BALANCE';
+      message: string;
+      currentBalance: number;
+      requiredAmount: number;
     }
   | {
       ok: false;
@@ -93,6 +104,38 @@ export function createCheckoutPreview(input: CheckoutPreviewInput): CheckoutPrev
   if (!isValidStudent(student)) {
     return { ok: false, code: 'INVALID_STUDENT', message: '학생 정보가 올바르지 않습니다.' };
   }
+
+  const pricing = createCartPricingPreview({ products, cartItems, promotions, now });
+  if (!pricing.ok) return pricing;
+
+  if (!Number.isSafeInteger(student.balance)) return arithmeticOverflow();
+  if (student.balance < pricing.totalAmount) {
+    return {
+      ok: false,
+      code: 'INSUFFICIENT_BALANCE',
+      message: '잔액이 부족합니다.',
+      currentBalance: student.balance,
+      requiredAmount: pricing.totalAmount,
+    };
+  }
+
+  const balanceAfter = student.balance - pricing.totalAmount;
+  if (!Number.isSafeInteger(balanceAfter)) return arithmeticOverflow();
+
+  return Object.freeze({
+    ok: true,
+    totalAmount: pricing.totalAmount,
+    balanceBefore: student.balance,
+    balanceAfter,
+    items: pricing.items,
+  });
+}
+
+export function createCartPricingPreview(input: CartPricingPreviewInput): CartPricingPreviewResult {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return { ok: false, code: 'INVALID_CART', message: '장바구니가 올바르지 않습니다.' };
+  }
+  const { products, cartItems, promotions = [], now = new Date() } = input;
   if (!Array.isArray(cartItems)) {
     return { ok: false, code: 'INVALID_CART', message: '장바구니가 올바르지 않습니다.' };
   }
@@ -189,32 +232,16 @@ export function createCheckoutPreview(input: CheckoutPreviewInput): CheckoutPrev
     }));
   }
 
-  if (!Number.isSafeInteger(student.balance)) return arithmeticOverflow();
-  if (student.balance < totalAmount) {
-    return {
-      ok: false,
-      code: 'INSUFFICIENT_BALANCE',
-      message: '잔액이 부족합니다.',
-      currentBalance: student.balance,
-      requiredAmount: totalAmount,
-    };
-  }
-
-  const balanceAfter = student.balance - totalAmount;
-  if (!Number.isSafeInteger(balanceAfter)) return arithmeticOverflow();
-
   return Object.freeze({
     ok: true,
     totalAmount,
-    balanceBefore: student.balance,
-    balanceAfter,
     items: Object.freeze(items) as CheckoutLineSnapshot[],
   });
 }
 
 function normalizeCartItems(cartItems: CartItem[]):
   | { ok: true; items: CartItem[] }
-  | CheckoutPreviewFailure {
+  | CartPricingPreviewFailure {
   const quantities = new Map<string, number>();
 
   for (const cartItem of cartItems) {
