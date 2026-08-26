@@ -74,6 +74,8 @@ describe('tabular store port', () => {
       | 'Tasks'
       | 'TaskAssignments'
       | 'TaskCompletions'
+      | 'Promotions'
+      | 'PromotionProducts'
     >();
 
     if (false) {
@@ -87,9 +89,17 @@ describe('tabular store port', () => {
     expect(new SheetProviderError('SHEET_ALREADY_EXISTS')).toMatchObject({
       name: 'SheetProviderError', reason: 'SHEET_ALREADY_EXISTS',
     });
-    expect(new MigrationConflictError('Tasks', 'header raced')).toMatchObject({
+    const retryable = new MigrationConflictError('Tasks', 'header raced');
+    expect(retryable).toMatchObject({
       name: 'MigrationConflictError', sheetName: 'Tasks', retryable: true,
     });
+    expect(retryable.message).toContain('schema migration conflict');
+    expect(retryable.message).not.toContain('recurring');
+
+    expect(new MigrationConflictError('Promotions', 'noncanonical header', { retryable: false }))
+      .toMatchObject({
+        name: 'MigrationConflictError', sheetName: 'Promotions', retryable: false,
+      });
   });
 
   it('keeps migration capabilities on an explicit required extension port', () => {

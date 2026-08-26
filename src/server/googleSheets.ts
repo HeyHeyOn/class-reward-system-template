@@ -4,6 +4,7 @@ import { createDeploymentSheetsAuth, createUserSheetsAuth, isGoogleOAuthEnabled 
 import {
   MigrationConflictError,
   SheetProviderError,
+  type AdditiveSchemaMigrationStore,
   type CrossSheetCellUpdate,
   type HeaderWritePrecondition,
   type OperationalSheetName,
@@ -22,9 +23,11 @@ const SHEET_RANGES: Record<OperationalSheetName, string> = {
   Tasks: a1Range('Tasks', 'A:A'),
   TaskAssignments: a1Range('TaskAssignments', 'A:A'),
   TaskCompletions: a1Range('TaskCompletions', 'A:A'),
+  Promotions: a1Range('Promotions', 'A:Z'),
+  PromotionProducts: a1Range('PromotionProducts', 'A:Z'),
 };
 
-export class GoogleSheetsStore implements TabularStore, RecurringSchemaMigrationStore {
+export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationStore, RecurringSchemaMigrationStore {
   constructor(private readonly spreadsheetId: string, private readonly request?: Request) {}
 
   async getRows(sheetName: OperationalSheetName): Promise<string[][]> {
@@ -392,7 +395,10 @@ function isLegacyAutoCreatableSheet(sheetName: OperationalSheetName): boolean {
 }
 
 function isLegacyOptionalReadableSheet(sheetName: OperationalSheetName): boolean {
-  return isLegacyAutoCreatableSheet(sheetName) || sheetName === 'TaskAssignments';
+  return isLegacyAutoCreatableSheet(sheetName)
+    || sheetName === 'TaskAssignments'
+    || sheetName === 'Promotions'
+    || sheetName === 'PromotionProducts';
 }
 
 function assertValidColumnIndex(index: number): void {

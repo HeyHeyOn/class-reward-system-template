@@ -6,7 +6,9 @@ export type OperationalSheetName =
   | 'Settings'
   | 'Tasks'
   | 'TaskAssignments'
-  | 'TaskCompletions';
+  | 'TaskCompletions'
+  | 'Promotions'
+  | 'PromotionProducts';
 
 export type SheetCellUpdate = {
   rowNumber: number;
@@ -48,13 +50,19 @@ export class SheetProviderError extends Error {
   }
 }
 
-/** Signals that migration preconditions raced; callers may safely retry the explicit command. */
+/** Structured schema-migration failure with explicit retry guidance for callers. */
 export class MigrationConflictError extends Error {
-  readonly retryable = true;
+  readonly retryable: boolean;
 
-  constructor(public readonly sheetName: OperationalSheetName, detail: string) {
-    super(`Retryable recurring schema migration conflict in ${sheetName}: ${detail}`);
+  constructor(
+    public readonly sheetName: OperationalSheetName,
+    detail: string,
+    options: { retryable?: boolean } = {},
+  ) {
+    const retryable = options.retryable ?? true;
+    super(`${retryable ? 'Retryable ' : ''}schema migration conflict in ${sheetName}: ${detail}`);
     this.name = 'MigrationConflictError';
+    this.retryable = retryable;
   }
 }
 
@@ -88,10 +96,14 @@ export async function updateCellsAtomicallyAcrossSheets(
   await store.updateCellsAtomicallyAcrossSheets(updates);
 }
 
-/** Capabilities required by the explicit recurring-schema migration command. */
-export interface RecurringSchemaMigrationStore extends TabularStore {
+/** Capabilities required to add structurally missing sheets explicitly. */
+export interface AdditiveSchemaMigrationStore extends TabularStore {
   lookupSheet(sheetName: OperationalSheetName): Promise<SheetLookupResult>;
   createSheetWithHeader(sheetName: OperationalSheetName, headers: readonly string[]): Promise<void>;
+}
+
+/** Capabilities required by the explicit recurring-schema migration command. */
+export interface RecurringSchemaMigrationStore extends AdditiveSchemaMigrationStore {
   ensureColumnCount(
     sheetName: OperationalSheetName,
     expectedColumnCount: number,

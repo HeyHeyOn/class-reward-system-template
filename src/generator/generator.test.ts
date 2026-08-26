@@ -18,7 +18,7 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
   it('defines the reward-system schema without student auto-import as an MVP capability', () => {
     expect(SYSTEM_NAME_KO).toBe('학급 보상 시스템');
     expect(GENERATOR_NAME_KO).toBe('학급 보상 시스템 생성기');
-    expect(LATEST_SCHEMA_VERSION).toBe(2);
+    expect(LATEST_SCHEMA_VERSION).toBe(3);
     expect(DEFAULT_SETTINGS).toEqual(
       expect.arrayContaining([
         { key: 'schemaVersion', value: String(LATEST_SCHEMA_VERSION) },
@@ -38,6 +38,8 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
       'Tasks',
       'TaskAssignments',
       'TaskCompletions',
+      'Promotions',
+      'PromotionProducts',
       'Recovery',
     ]);
     expect(REQUIRED_SHEETS.Students).toEqual(['studentId', 'name', 'balance', 'status']);
@@ -50,7 +52,7 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
     expect(JSON.stringify({ REQUIRED_SHEETS, DEFAULT_SETTINGS })).not.toMatch(/import|csv|NEIS|나이스|자동 불러오기/iu);
   });
 
-  it('separates the nine-sheet generated schema from the eight-sheet operational compatibility alias', () => {
+  it('separates the eleven-sheet generated schema from the ten-sheet operational compatibility alias', () => {
     expect(GENERATED_SHEET_NAMES).toEqual([
       'Students',
       'Products',
@@ -60,6 +62,8 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
       'Tasks',
       'TaskAssignments',
       'TaskCompletions',
+      'Promotions',
+      'PromotionProducts',
       'Recovery',
     ]);
     expect(OPERATIONAL_SHEET_NAMES).toEqual([
@@ -71,6 +75,8 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
       'Tasks',
       'TaskAssignments',
       'TaskCompletions',
+      'Promotions',
+      'PromotionProducts',
     ]);
     expect(OPERATIONAL_SHEET_NAMES).toEqual(GENERATED_SHEET_NAMES.filter((name) => name !== 'Recovery'));
     expectTypeOf<GeneratedSheetName>().toEqualTypeOf<(typeof GENERATED_SHEET_NAMES)[number]>();

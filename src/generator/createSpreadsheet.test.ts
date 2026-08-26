@@ -37,7 +37,7 @@ describe('spreadsheet initialization values', () => {
     }
   });
 
-  it('creates all nine physical sheets with enough explicit grid columns', () => {
+  it('creates all eleven physical sheets with enough explicit grid columns', () => {
     const definitions = buildSpreadsheetSheetDefinitions();
     expect(definitions.map(({ properties }) => properties.title)).toEqual(Object.keys(REQUIRED_SHEETS));
     for (const { properties } of definitions) {

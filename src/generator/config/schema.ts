@@ -9,6 +9,8 @@ export const GENERATED_SHEET_NAMES = [
   'Tasks',
   'TaskAssignments',
   'TaskCompletions',
+  'Promotions',
+  'PromotionProducts',
   'Recovery',
 ] as const;
 export type GeneratedSheetName = (typeof GENERATED_SHEET_NAMES)[number];
@@ -22,6 +24,8 @@ export const OPERATIONAL_SHEET_NAMES = [
   'Tasks',
   'TaskAssignments',
   'TaskCompletions',
+  'Promotions',
+  'PromotionProducts',
 ] as const satisfies readonly Exclude<GeneratedSheetName, 'Recovery'>[];
 export type OperationalSheetName = (typeof OPERATIONAL_SHEET_NAMES)[number];
 
@@ -51,6 +55,13 @@ export const REQUIRED_SHEETS: Record<GeneratedSheetName, string[]> = {
   TaskCompletions: [
     'completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note',
     'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion', 'timeZone', 'source', 'assignmentId', 'schemaVersion',
+  ],
+  Promotions: [
+    'promotionId', 'name', 'description', 'type', 'value', 'buyQuantity', 'freeQuantity',
+    'startsAt', 'endsAt', 'isActive', 'sortOrder', 'createdAt', 'updatedAt', 'schemaVersion',
+  ],
+  PromotionProducts: [
+    'promotionProductId', 'promotionId', 'productId', 'createdAt', 'schemaVersion',
   ],
   Recovery: ['key', 'value'],
 };

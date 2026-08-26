@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { REQUIRED_SHEETS } from './schema';
+import { GENERATED_SHEET_NAMES, OPERATIONAL_SHEET_NAMES, REQUIRED_SHEETS } from './schema';
+import { LATEST_SCHEMA_VERSION } from './versions';
 
 const EXPECTED_SHEETS = [
   ['Students', ['studentId', 'name', 'balance', 'status']],
@@ -26,12 +27,27 @@ const EXPECTED_SHEETS = [
     ['completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note',
       'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion', 'timeZone', 'source', 'assignmentId', 'schemaVersion'],
   ],
+  ['Promotions', [
+    'promotionId', 'name', 'description', 'type', 'value', 'buyQuantity', 'freeQuantity',
+    'startsAt', 'endsAt', 'isActive', 'sortOrder', 'createdAt', 'updatedAt', 'schemaVersion',
+  ]],
+  ['PromotionProducts', [
+    'promotionProductId', 'promotionId', 'productId', 'createdAt', 'schemaVersion',
+  ]],
   ['Recovery', ['key', 'value']],
 ] as const;
 
 describe('REQUIRED_SHEETS', () => {
-  it('defines exactly the nine canonical sheets and columns in order', () => {
+  it('defines exactly the eleven canonical sheets and columns in order', () => {
     expect(Object.entries(REQUIRED_SHEETS)).toEqual(EXPECTED_SHEETS);
+  });
+
+  it('exposes eleven generated and ten operational sheets for schema v3', () => {
+    expect(LATEST_SCHEMA_VERSION).toBe(3);
+    expect(GENERATED_SHEET_NAMES).toHaveLength(11);
+    expect(OPERATIONAL_SHEET_NAMES).toHaveLength(10);
+    expect(OPERATIONAL_SHEET_NAMES).toContain('Promotions');
+    expect(OPERATIONAL_SHEET_NAMES).toContain('PromotionProducts');
   });
 
   it('uses items as the canonical Transactions item column', () => {

@@ -123,6 +123,40 @@ describe('GoogleSheetsStore auth and recurring ranges', () => {
     },
   );
 
+  it.each(['Promotions', 'PromotionProducts'] as const)(
+    'preserves missing %s reads as write-free empty results',
+    async (sheetName) => {
+      googleMocks.sheetsValuesGet.mockRejectedValueOnce(new Error('Unable to parse range'));
+      const store = new GoogleSheetsStore('sheet-123');
+
+      await expect(store.getRows(sheetName)).resolves.toEqual([]);
+      expect(googleMocks.sheetsApi.spreadsheets.batchUpdate).not.toHaveBeenCalled();
+      expect(googleMocks.sheetsApi.spreadsheets.values.append).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['Promotions', "'Promotions'!A:Z"],
+    ['PromotionProducts', "'PromotionProducts'!A:Z"],
+  ] as const)('reads present %s rows from its operational range', async (sheetName, range) => {
+    const store = new GoogleSheetsStore('sheet-123');
+
+    await expect(store.getRows(sheetName)).resolves.toEqual([['studentId'], ['S001']]);
+    expect(googleMocks.sheetsValuesGet).toHaveBeenCalledWith({ spreadsheetId: 'sheet-123', range });
+  });
+
+  it.each(['Promotions', 'PromotionProducts'] as const)(
+    'does not auto-create missing %s during append',
+    async (sheetName) => {
+      googleMocks.sheetsApi.spreadsheets.values.append.mockRejectedValueOnce(new Error('Unable to parse range'));
+      const store = new GoogleSheetsStore('sheet-123');
+
+      await expect(store.appendRow(sheetName, ['P-1'])).rejects.toThrow('Unable to parse range');
+      expect(googleMocks.sheetsApi.spreadsheets.batchUpdate).not.toHaveBeenCalled();
+      expect(googleMocks.sheetsApi.spreadsheets.values.append).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it.each(['Settings', 'Tasks', 'TaskCompletions'] as const)(
     'preserves missing %s append creation and retries the append',
     async (sheetName) => {
