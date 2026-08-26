@@ -1,6 +1,9 @@
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { createConfiguredSheetsStore } from '@/server/googleSheets';
 import {
+  deletePromotion,
+  PROMOTION_DELETE_PARTIAL_FAILURE_MESSAGE,
+  PromotionDeletePartialFailure,
   replacePromotionProducts,
   setPromotionActive,
   updatePromotion,
@@ -30,7 +33,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
   }
 
   try {
-    const promotionId = decodeURIComponent((await params).promotionId);
+    const promotionId = (await params).promotionId;
     const store = await createConfiguredSheetsStore(request);
 
     if (payload.kind === 'activation') {
@@ -54,6 +57,23 @@ export async function PATCH(request: Request, { params }: RouteContext) {
   } catch (error) {
     console.error('Failed to update promotion', error);
     return safeErrorResponse(500, '행사를 수정하지 못했습니다.');
+  }
+}
+
+export async function DELETE(request: Request, { params }: RouteContext) {
+  if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
+
+  try {
+    const promotionId = (await params).promotionId;
+    const store = await createConfiguredSheetsStore(request);
+    const deleted = await deletePromotion(store, promotionId);
+    return Response.json({ promotionId: deleted.promotionId });
+  } catch (error) {
+    console.error('Failed to delete promotion', error);
+    if (error instanceof PromotionDeletePartialFailure) {
+      return safeErrorResponse(500, PROMOTION_DELETE_PARTIAL_FAILURE_MESSAGE);
+    }
+    return safeErrorResponse(500, '행사를 삭제하지 못했습니다.');
   }
 }
 

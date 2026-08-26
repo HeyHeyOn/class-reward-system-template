@@ -204,6 +204,15 @@ export async function getProducts(reader: SheetsReader): Promise<Product[]> {
   return (await getProductRecords(reader)).map((record) => record.product);
 }
 
+export async function verifyRequiredOperationalSheetHeaders(reader: SheetsReader): Promise<void> {
+  const [studentRows, productRows] = await Promise.all([
+    reader.getRows('Students'),
+    reader.getRows('Products'),
+  ]);
+  assertRequiredSheetHeaders(studentRows, REQUIRED_STUDENT_COLUMNS, 'Students');
+  assertRequiredSheetHeaders(productRows, REQUIRED_PRODUCT_COLUMNS, 'Products');
+}
+
 
 export async function getTasks(reader: SheetsReader, options: { includeInactive?: boolean } = {}): Promise<ClassTask[]> {
   return (await getTaskRecords(reader))
@@ -835,6 +844,10 @@ function checkedSafeIntegerAddition(left: number, right: number): number {
 
 export async function getSheetSettings(reader: SheetsReader): Promise<Record<string, string>> {
   const rows = await reader.getRows('Settings');
+  return parseSheetSettingsRows(rows);
+}
+
+export function parseSheetSettingsRows(rows: string[][]): Record<string, string> {
   const [headers, ...dataRows] = rows;
 
   if (!headers) return {};
@@ -853,6 +866,63 @@ export async function getSheetSettings(reader: SheetsReader): Promise<Record<str
       .map((row) => [String(row[keyIndex] ?? '').trim(), String(row[valueIndex] ?? '').trim()] as const)
       .filter(([key]) => Boolean(key)),
   );
+}
+
+export async function upsertSheetSettings(
+  store: SheetsStore,
+  rows: string[][],
+  settings: SheetSetting[],
+): Promise<void> {
+  const normalized = settings.map(({ key, value }) => ({ key: key.trim(), value }));
+  if (normalized.some(({ key }) => !key)) throw new Error('설정 키를 입력해 주세요.');
+  const [headers, ...dataRows] = rows;
+  if (!headers) {
+    const appendedRows = [['key', 'value'], ...normalized.map(({ key, value }) => [key, value])];
+    if (store.appendRows) await store.appendRows('Settings', appendedRows);
+    else for (const row of appendedRows) await store.appendRow('Settings', row);
+    return;
+  }
+
+  const headerIndex = createHeaderIndex(headers);
+  assertRequiredColumns(headerIndex, ['key', 'value'], 'Settings');
+  const keyIndex = headerIndex.get('key');
+  const valueIndex = headerIndex.get('value');
+  if (keyIndex === undefined || valueIndex === undefined) {
+    throw new Error('Settings 시트에 필수 컬럼이 없습니다: key, value');
+  }
+
+  const updates: SheetCellUpdate[] = [];
+  const missing: string[][] = [];
+  for (const setting of normalized) {
+    let existingIndex = -1;
+    for (let index = dataRows.length - 1; index >= 0; index -= 1) {
+      if (String(dataRows[index][keyIndex] ?? '').trim() === setting.key) {
+        existingIndex = index;
+        break;
+      }
+    }
+    if (existingIndex < 0) {
+      missing.push(headers.map((header) => {
+        const normalizedHeader = header.trim();
+        if (normalizedHeader === 'key') return setting.key;
+        if (normalizedHeader === 'value') return setting.value;
+        return '';
+      }));
+    } else if (String(dataRows[existingIndex][valueIndex] ?? '').trim() !== setting.value) {
+      updates.push({ rowNumber: existingIndex + 2, columnName: headers[valueIndex], value: setting.value });
+    }
+  }
+
+  if (updates.length > 0) {
+    if (store.updateCells) await store.updateCells('Settings', updates);
+    else for (const update of updates) {
+      await store.updateCell('Settings', update.rowNumber, update.columnName, update.value);
+    }
+  }
+  if (missing.length > 0) {
+    if (store.appendRows) await store.appendRows('Settings', missing);
+    else for (const row of missing) await store.appendRow('Settings', row);
+  }
 }
 
 export async function saveSheetSetting(store: SheetsStore, setting: SheetSetting): Promise<void> {
@@ -1440,6 +1510,15 @@ function assertVersionedTaskScheduleHeaders(headerIndex: ReadonlyMap<string, num
     throw new Error('Tasks 시트의 versioned schedule 헤더가 불완전합니다.');
   }
   return validCount === VERSIONED_TASK_SCHEDULE_HEADERS.length;
+}
+
+function assertRequiredSheetHeaders(
+  rows: string[][],
+  requiredColumns: readonly string[],
+  sheetName: SheetName,
+): void {
+  const headerIndex = createHeaderIndex(rows[0] ?? []);
+  assertRequiredColumns(headerIndex, requiredColumns, sheetName);
 }
 
 function assertRequiredColumns(

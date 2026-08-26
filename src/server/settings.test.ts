@@ -8,6 +8,7 @@ import {
 } from '@/server/settings';
 import type { SheetName, SheetsReader, SheetsStore } from '@/server/sheetsRepository';
 import { SYSTEM_VERSION } from '@/generator/config/versions';
+import { createAdminPasswordHash, verifyAdminPasswordHash } from '@/server/adminAuth';
 
 describe('settings', () => {
   it('extracts spreadsheet id from a plain id or Google Sheets URL', () => {
@@ -135,22 +136,30 @@ describe('settings', () => {
     expect(validateClassTimeZone(value)).toEqual({ ok: true, classTimeZone: value });
   });
 
-  it('saves currency unit and app title to Settings sheet and rejects changing deployment spreadsheet id', async () => {
+  it('reads Settings once, batches changed values, and minimally appends missing keys', async () => {
+    let reads = 0;
     const updates: Array<{ sheetName: SheetName; rowNumber: number; columnName: string; value: string | number }> = [];
-    const appends: Array<{ sheetName: SheetName; values: string[] }> = [];
+    const appendedBatches: Array<{ sheetName: SheetName; rows: string[][] }> = [];
     const settingsStore: SheetsStore = {
       async getRows(sheetName: SheetName) {
+        reads += 1;
         expect(sheetName).toBe('Settings');
         return [
-          ['key', 'value'],
+          ['key', ' value ', 'unknown'],
           ['currencyUnit', '원'],
         ];
       },
       async updateCell(sheetName: SheetName, rowNumber: number, columnName: string, value: string | number) {
         updates.push({ sheetName, rowNumber, columnName, value });
       },
+      async updateCells(sheetName, batch) {
+        updates.push(...batch.map((update) => ({ sheetName, ...update })));
+      },
       async appendRow(sheetName: SheetName, values: string[]) {
-        appends.push({ sheetName, values });
+        appendedBatches.push({ sheetName, rows: [values] });
+      },
+      async appendRows(sheetName, rows) {
+        appendedBatches.push({ sheetName, rows });
       },
     };
 
@@ -169,18 +178,19 @@ describe('settings', () => {
       }),
     ).resolves.toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '달란트', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'green', fontFamily: 'school-safe-board-marker', qrManualInputEnabled: true, classTimeZone: 'Asia/Tokyo', schemaVersion: 1, systemVersion: SYSTEM_VERSION, systemName: '학급 보상 시스템', source: 'sheet' });
 
-    expect(updates).toEqual([{ sheetName: 'Settings', rowNumber: 2, columnName: 'value', value: '달란트' }]);
-    expect(appends).toEqual([
-      { sheetName: 'Settings', values: ['appTitle', '햇살반 매점'] },
-      { sheetName: 'Settings', values: ['bankTitle', '햇살반 은행'] },
-      { sheetName: 'Settings', values: ['themeColor', 'green'] },
-      { sheetName: 'Settings', values: ['fontFamily', 'school-safe-board-marker'] },
-      { sheetName: 'Settings', values: ['qrManualInputEnabled', 'TRUE'] },
-      { sheetName: 'Settings', values: ['classTimeZone', 'Asia/Tokyo'] },
-      { sheetName: 'Settings', values: ['schemaVersion', '1'] },
-      { sheetName: 'Settings', values: ['systemVersion', SYSTEM_VERSION] },
-      { sheetName: 'Settings', values: ['systemName', '학급 보상 시스템'] },
-    ]);
+    expect(reads).toBe(1);
+    expect(updates).toEqual([{ sheetName: 'Settings', rowNumber: 2, columnName: ' value ', value: '달란트' }]);
+    expect(appendedBatches).toEqual([{ sheetName: 'Settings', rows: [
+      ['appTitle', '햇살반 매점', ''],
+      ['bankTitle', '햇살반 은행', ''],
+      ['themeColor', 'green', ''],
+      ['fontFamily', 'school-safe-board-marker', ''],
+      ['qrManualInputEnabled', 'TRUE', ''],
+      ['classTimeZone', 'Asia/Tokyo', ''],
+      ['schemaVersion', '1', ''],
+      ['systemVersion', SYSTEM_VERSION, ''],
+      ['systemName', '학급 보상 시스템', ''],
+    ] }]);
 
     await expect(
       saveAppSettings({
@@ -246,8 +256,167 @@ describe('settings', () => {
 
     expect(result.classTimeZone).toBe('America/New_York');
     expect(result.schemaVersion).toBe(expectedVersion);
-    expect(schemaWrites).toEqual([String(expectedVersion)]);
-    expect(reads).toBe(10);
+    expect(schemaWrites).toEqual(storedVersion === String(expectedVersion) ? [] : [String(expectedVersion)]);
+    expect(reads).toBe(1);
+  });
+
+  it('performs no write when every normalized setting and metadata value is unchanged', async () => {
+    let reads = 0;
+    let writes = 0;
+    const settingsStore: SheetsStore = {
+      async getRows() {
+        reads += 1;
+        return [['key', 'value'],
+          ['currencyUnit', '원'], ['appTitle', '학급 매점'], ['bankTitle', '학급 은행'],
+          ['themeColor', 'white'], ['fontFamily', 'default'], ['qrManualInputEnabled', 'FALSE'],
+          ['classTimeZone', 'Asia/Seoul'], ['schemaVersion', '1'],
+          ['systemVersion', SYSTEM_VERSION], ['systemName', '학급 보상 시스템']];
+      },
+      async updateCell() { writes += 1; },
+      async updateCells() { writes += 1; },
+      async appendRow() { writes += 1; },
+      async appendRows() { writes += 1; },
+    };
+
+    await saveAppSettings({
+      settingsStore, spreadsheetIdOrUrl: 'env-sheet-id', env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
+    });
+
+    expect(reads).toBe(1);
+    expect(writes).toBe(0);
+  });
+
+  it('batches a changed admin password into the same provider write as ordinary settings', async () => {
+    const existingHash = createAdminPasswordHash('old-password');
+    let reads = 0;
+    let writes = 0;
+    const updates: Array<{ rowNumber: number; columnName: string; value: string | number }> = [];
+    const settingsStore: SheetsStore = {
+      async getRows() {
+        reads += 1;
+        return completeSettingsRows([
+          ['appTitle', '이전 제목'],
+          ['adminPasswordHash', existingHash],
+        ]);
+      },
+      async updateCell(_sheetName, rowNumber, columnName, value) {
+        writes += 1;
+        updates.push({ rowNumber, columnName, value });
+      },
+      async updateCells(_sheetName, batch) {
+        writes += 1;
+        updates.push(...batch);
+      },
+      async appendRow() { writes += 1; },
+      async appendRows() { writes += 1; },
+    };
+
+    const result = await saveAppSettings({
+      settingsStore,
+      spreadsheetIdOrUrl: 'env-sheet-id',
+      appTitle: '새 제목',
+      adminPassword: 'new-password',
+      env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
+    });
+
+    const passwordUpdate = updates.find(({ rowNumber }) => rowNumber === 12);
+    expect(reads).toBe(1);
+    expect(writes).toBe(1);
+    expect(updates).toHaveLength(2);
+    expect(passwordUpdate?.value).not.toBe('new-password');
+    expect(verifyAdminPasswordHash('new-password', String(passwordUpdate?.value))).toBe(true);
+    expect(result.adminPasswordConfigured).toBe(true);
+  });
+
+  it('does not rewrite an unchanged admin password hash', async () => {
+    const existingHash = createAdminPasswordHash('same-password');
+    let reads = 0;
+    let writes = 0;
+    const settingsStore: SheetsStore = {
+      async getRows() {
+        reads += 1;
+        return completeSettingsRows([['adminPasswordHash', existingHash]]);
+      },
+      async updateCell() { writes += 1; },
+      async updateCells() { writes += 1; },
+      async appendRow() { writes += 1; },
+      async appendRows() { writes += 1; },
+    };
+
+    const result = await saveAppSettings({
+      settingsStore,
+      spreadsheetIdOrUrl: 'env-sheet-id',
+      adminPassword: 'same-password',
+      env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
+    });
+
+    expect(reads).toBe(1);
+    expect(writes).toBe(0);
+    expect(result.adminPasswordConfigured).toBe(true);
+  });
+
+  it('preserves an existing admin password when the submitted password is blank', async () => {
+    const existingHash = createAdminPasswordHash('kept-password');
+    let writes = 0;
+    const settingsStore: SheetsStore = {
+      async getRows() { return completeSettingsRows([['adminPasswordHash', existingHash]]); },
+      async updateCell() { writes += 1; },
+      async updateCells() { writes += 1; },
+      async appendRow() { writes += 1; },
+      async appendRows() { writes += 1; },
+    };
+
+    const result = await saveAppSettings({
+      settingsStore,
+      spreadsheetIdOrUrl: 'env-sheet-id',
+      adminPassword: '   ',
+      env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
+    });
+
+    expect(writes).toBe(0);
+    expect(result.adminPasswordConfigured).toBe(true);
+  });
+
+  it('appends a missing admin password hash with the settings batch', async () => {
+    let writes = 0;
+    const appended: string[][] = [];
+    const settingsStore: SheetsStore = {
+      async getRows() { return completeSettingsRows(); },
+      async updateCell() { writes += 1; },
+      async updateCells() { writes += 1; },
+      async appendRow(_sheetName, row) { writes += 1; appended.push(row); },
+      async appendRows(_sheetName, rows) { writes += 1; appended.push(...rows); },
+    };
+
+    await saveAppSettings({
+      settingsStore,
+      spreadsheetIdOrUrl: 'env-sheet-id',
+      adminPassword: 'first-password',
+      env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
+    });
+
+    expect(writes).toBe(1);
+    expect(appended).toHaveLength(1);
+    expect(appended[0][0]).toBe('adminPasswordHash');
+    expect(verifyAdminPasswordHash('first-password', appended[0][1])).toBe(true);
+  });
+
+  it('safely replaces a malformed stored admin password hash', async () => {
+    let replacement = '';
+    const settingsStore: SheetsStore = {
+      async getRows() { return completeSettingsRows([['adminPasswordHash', 'scrypt$broken']]); },
+      async updateCell(_sheetName, _rowNumber, _columnName, value) { replacement = String(value); },
+      async appendRow() { throw new Error('unexpected append'); },
+    };
+
+    await saveAppSettings({
+      settingsStore,
+      spreadsheetIdOrUrl: 'env-sheet-id',
+      adminPassword: 'replacement-password',
+      env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
+    });
+
+    expect(verifyAdminPasswordHash('replacement-password', replacement)).toBe(true);
   });
 
   it.each([undefined, '', '+09:00'])('returns the Seoul fallback without repairing omitted legacy time zone %s', async (legacyValue) => {
@@ -275,3 +444,14 @@ describe('settings', () => {
     expect(timeZoneWrites).toEqual([]);
   });
 });
+
+function completeSettingsRows(overrides: string[][] = []): string[][] {
+  const values = new Map<string, string>([
+    ['currencyUnit', '원'], ['appTitle', '학급 매점'], ['bankTitle', '학급 은행'],
+    ['themeColor', 'white'], ['fontFamily', 'default'], ['qrManualInputEnabled', 'FALSE'],
+    ['classTimeZone', 'Asia/Seoul'], ['schemaVersion', '1'],
+    ['systemVersion', SYSTEM_VERSION], ['systemName', '학급 보상 시스템'],
+  ]);
+  for (const [key, value] of overrides) values.set(key, value);
+  return [['key', 'value'], ...values.entries()];
+}

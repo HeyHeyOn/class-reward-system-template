@@ -8,6 +8,8 @@ import type {
 } from '@/server/storage/tabularStore';
 import {
   createPromotion,
+  deletePromotion,
+  PromotionDeletePartialFailure,
   replacePromotionProducts,
   setPromotionActive,
   updatePromotion,
@@ -58,7 +60,12 @@ function promotionRow(value = promotion(), headers: readonly string[] = PROMOTIO
   });
 }
 
-function linkRow(id: string, productId: string, promotionId = 'P-1', headers = PROMOTION_PRODUCTS_HEADERS) {
+function linkRow(
+  id: string,
+  productId: string,
+  promotionId = 'P-1',
+  headers: readonly string[] = PROMOTION_PRODUCTS_HEADERS,
+) {
   return rowFor(headers, { promotionProductId: id, promotionId, productId, createdAt, schemaVersion: 3 });
 }
 
@@ -68,6 +75,7 @@ class StatefulStore implements AdditiveSchemaMigrationStore {
   updateBatches: SheetCellUpdate[][] = [];
   deleted: number[][] = [];
   failAppend = false;
+  failDeleteSheet?: OperationalSheetName;
 
   constructor(rows?: Partial<Record<OperationalSheetName, string[][]>>) {
     this.rows = rows ?? {
@@ -106,6 +114,7 @@ class StatefulStore implements AdditiveSchemaMigrationStore {
   }
   async deleteRows(name: OperationalSheetName, rowNumbers: number[]) {
     this.calls.push(`deleteRows:${name}`);
+    if (this.failDeleteSheet === name) throw new Error(`injected ${name} delete failure`);
     this.deleted.push([...rowNumbers]);
     for (const rowNumber of [...rowNumbers].sort((a, b) => b - a)) this.rows[name]!.splice(rowNumber - 1, 1);
   }
@@ -429,5 +438,130 @@ describe('promotion Sheets commands', () => {
     expect(second.productIds).toEqual(['NEW-B']);
     expect(store.rows.PromotionProducts!.slice(1).map((row) => [row[1], row[2]]).sort())
       .toEqual([['P-1', 'NEW-A'], ['P-2', 'NEW-B']]);
+  });
+
+  it('deletes every target link in descending physical-row order before metadata and preserves unrelated rows', async () => {
+    const promotionHeaders = [...PROMOTIONS_HEADERS, 'custom'];
+    const linkHeaders = [...PROMOTION_PRODUCTS_HEADERS, 'custom'];
+    const store = new StatefulStore({
+      Promotions: [
+        promotionHeaders,
+        [...promotionRow(promotion(), promotionHeaders).slice(0, -1), 'delete-custom'],
+        [...promotionRow({ ...promotion(), promotionId: 'P-2' }, promotionHeaders).slice(0, -1), 'keep-custom'],
+      ],
+      PromotionProducts: [
+        linkHeaders,
+        [...linkRow('L-1', 'A', 'P-1', linkHeaders).slice(0, -1), 'delete-a'],
+        [...linkRow('L-2', 'B', 'P-2', linkHeaders).slice(0, -1), 'keep-link'],
+        [...linkRow('L-3', 'C', 'P-1', linkHeaders).slice(0, -1), 'delete-c'],
+      ],
+      Transactions: [['immutable'], ['snapshot']],
+    });
+
+    await expect(deletePromotion(store, 'P-1')).resolves.toEqual({ promotionId: 'P-1' });
+
+    expect(store.calls.filter((call) => call.startsWith('deleteRows:'))).toEqual([
+      'deleteRows:PromotionProducts',
+      'deleteRows:Promotions',
+    ]);
+    expect(store.deleted).toEqual([[4, 2], [2]]);
+    expect(store.rows.Promotions).toEqual([
+      promotionHeaders,
+      [...promotionRow({ ...promotion(), promotionId: 'P-2' }, promotionHeaders).slice(0, -1), 'keep-custom'],
+    ]);
+    expect(store.rows.PromotionProducts).toEqual([
+      linkHeaders,
+      [...linkRow('L-2', 'B', 'P-2', linkHeaders).slice(0, -1), 'keep-link'],
+    ]);
+    expect(store.rows.Transactions).toEqual([['immutable'], ['snapshot']]);
+  });
+
+  it('deletes promotion metadata directly when there are no target links', async () => {
+    const store = new StatefulStore({
+      Promotions: [[...PROMOTIONS_HEADERS], promotionRow()],
+      PromotionProducts: [[...PROMOTION_PRODUCTS_HEADERS]],
+    });
+
+    await deletePromotion(store, 'P-1');
+
+    expect(store.deleted).toEqual([[2]]);
+    expect(store.calls).not.toContain('deleteRows:PromotionProducts');
+  });
+
+  it('rejects an unknown ID before any write', async () => {
+    const store = new StatefulStore({
+      Promotions: [[...PROMOTIONS_HEADERS], promotionRow()],
+      PromotionProducts: [[...PROMOTION_PRODUCTS_HEADERS], linkRow('L-1', 'A')],
+    });
+
+    await expect(deletePromotion(store, 'UNKNOWN')).rejects.toThrow(/UNKNOWN|찾을 수 없습니다/);
+    expect(store.deleted).toEqual([]);
+  });
+
+  it.each([
+    ['Promotions', [[...PROMOTIONS_HEADERS], promotionRow({ ...promotion(), name: '' })], [[...PROMOTION_PRODUCTS_HEADERS]]],
+    ['PromotionProducts', [[...PROMOTIONS_HEADERS], promotionRow()], [[...PROMOTION_PRODUCTS_HEADERS], linkRow('BROKEN', '')]],
+  ] as const)('rejects a malformed %s physical row before deletion', async (_sheet, promotions, links) => {
+    const store = new StatefulStore({
+      Promotions: promotions.map((row) => [...row]),
+      PromotionProducts: links.map((row) => [...row]),
+    });
+
+    await expect(deletePromotion(store, 'P-1')).rejects.toThrow();
+    expect(store.deleted).toEqual([]);
+  });
+
+  it('requires deleteRows support before deleting either links or metadata', async () => {
+    const store = new StatefulStore({
+      Promotions: [[...PROMOTIONS_HEADERS], promotionRow()],
+      PromotionProducts: [[...PROMOTION_PRODUCTS_HEADERS], linkRow('L-1', 'A')],
+    });
+    store.deleteRows = undefined as never;
+
+    await expect(deletePromotion(store, 'P-1')).rejects.toThrow(/deleteRows/);
+    expect(store.rows.Promotions).toHaveLength(2);
+    expect(store.rows.PromotionProducts).toHaveLength(2);
+  });
+
+  it('leaves metadata untouched and propagates a normal failure when link deletion fails', async () => {
+    const store = new StatefulStore({
+      Promotions: [[...PROMOTIONS_HEADERS], promotionRow()],
+      PromotionProducts: [[...PROMOTION_PRODUCTS_HEADERS], linkRow('L-1', 'A')],
+    });
+    store.failDeleteSheet = 'PromotionProducts';
+
+    await expect(deletePromotion(store, 'P-1')).rejects.not.toBeInstanceOf(PromotionDeletePartialFailure);
+    expect(store.rows.Promotions).toHaveLength(2);
+    expect(store.calls).not.toContain('deleteRows:Promotions');
+  });
+
+  it('classifies metadata failure after link deletion as a safe partial failure', async () => {
+    const store = new StatefulStore({
+      Promotions: [[...PROMOTIONS_HEADERS], promotionRow()],
+      PromotionProducts: [[...PROMOTION_PRODUCTS_HEADERS], linkRow('L-1', 'A')],
+    });
+    store.failDeleteSheet = 'Promotions';
+
+    const failure = await deletePromotion(store, 'P-1').catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(PromotionDeletePartialFailure);
+    expect((failure as Error).message).toContain('대상 상품 연결은 삭제되었지만 행사 삭제를 완료하지 못했습니다');
+    expect(store.rows.PromotionProducts).toHaveLength(1);
+    expect(store.rows.Promotions).toHaveLength(2);
+  });
+
+  it('retries idempotently after links were deleted but metadata remained', async () => {
+    const store = new StatefulStore({
+      Promotions: [[...PROMOTIONS_HEADERS], promotionRow()],
+      PromotionProducts: [[...PROMOTION_PRODUCTS_HEADERS], linkRow('L-1', 'A')],
+    });
+    store.failDeleteSheet = 'Promotions';
+    await expect(deletePromotion(store, 'P-1')).rejects.toBeInstanceOf(PromotionDeletePartialFailure);
+
+    store.failDeleteSheet = undefined;
+    await expect(deletePromotion(store, 'P-1')).resolves.toEqual({ promotionId: 'P-1' });
+
+    expect(store.rows.Promotions).toHaveLength(1);
+    expect(store.deleted).toEqual([[2], [2]]);
   });
 });

@@ -1,6 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
-import { TaskHistoryDialog } from './TaskHistoryDialog';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { TaskHistoryDialog, type TaskHistoryDialogState } from './TaskHistoryDialog';
 
 const detail = {
   taskId: 'T001',
@@ -19,7 +19,17 @@ const detail = {
   },
 } as never;
 
+const loadingHistory: TaskHistoryDialogState = {
+  taskId: 'T001',
+  title: '책 읽기',
+  loading: true,
+  error: '',
+  detail: null,
+};
+
 describe('TaskHistoryDialog', () => {
+  afterEach(cleanup);
+
   it('renders lifecycle/cycle history and delegates close without deletion UI', () => {
     const onClose = vi.fn();
     render(<TaskHistoryDialog history={{ taskId: 'T001', title: '책 읽기', loading: false, error: '', detail }} onClose={onClose} />);
@@ -34,9 +44,58 @@ describe('TaskHistoryDialog', () => {
   });
 
   it('renders loading and error states', () => {
-    const { rerender } = render(<TaskHistoryDialog history={{ taskId: 'T001', title: '책 읽기', loading: true, error: '', detail: null }} onClose={() => undefined} />);
+    const { rerender } = render(<TaskHistoryDialog history={loadingHistory} onClose={() => undefined} />);
     expect(screen.getByRole('status', { name: '과제 기록 불러오는 중' })).toBeTruthy();
     rerender(<TaskHistoryDialog history={{ taskId: 'T001', title: '책 읽기', loading: false, error: '기록 서버 오류', detail: null }} onClose={() => undefined} />);
     expect(screen.getByRole('alert').textContent).toContain('기록 서버 오류');
+  });
+
+  it('focuses the loading close control, traps tabbing, closes on Escape, and restores the opener', () => {
+    const onClose = vi.fn();
+    const opener = document.createElement('button');
+    opener.textContent = '기록 열기';
+    document.body.append(opener);
+    opener.focus();
+
+    const { unmount } = render(<TaskHistoryDialog history={loadingHistory} onClose={onClose} opener={opener} />);
+    const close = screen.getByRole('button', { name: '닫기' });
+    expect(document.activeElement).toBe(close);
+    fireEvent.keyDown(close, { key: 'Tab' });
+    expect(document.activeElement).toBe(close);
+    fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(close);
+    fireEvent.keyDown(close, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledOnce();
+
+    unmount();
+    expect(document.activeElement).toBe(opener);
+    opener.remove();
+  });
+
+  it.each([
+    ['white', '#FFFFFF', '#8A8A8A', '#1F1F1F'],
+    ['black', '#2B2B2B', '#818181', '#FCFCFC'],
+    ['navy', '#1B2945', '#7184A6', '#F7FAFF'],
+  ] as const)('uses semantic %s theme surfaces, boundaries, and text', (themeColor, surface, border, text) => {
+    const onClose = vi.fn();
+    render(<TaskHistoryDialog history={loadingHistory} onClose={onClose} themeColor={themeColor} />);
+
+    const dialog = screen.getByRole('dialog', { name: '과제 기록' });
+    const loading = screen.getByRole('status', { name: '과제 기록 불러오는 중' });
+    const close = screen.getByRole('button', { name: '닫기' });
+
+    expect(dialog.style.getPropertyValue('--theme-surface')).toBe(surface);
+    expect(dialog.style.getPropertyValue('--theme-border')).toBe(border);
+    expect(dialog.style.getPropertyValue('--theme-text')).toBe(text);
+    expect(dialog.className).toContain('border-[var(--theme-border)]');
+    expect(dialog.className).toContain('bg-[var(--theme-surface)]');
+    expect(dialog.className).toContain('text-[var(--theme-text)]');
+    expect(loading.className).toContain('bg-[var(--theme-surface-raised)]');
+    expect(loading.className).toContain('text-[var(--theme-muted-text)]');
+    expect(close.className).toContain('focus:ring-[var(--theme-focus-ring)]');
+    expect(`${dialog.className} ${dialog.innerHTML}`).not.toMatch(/bg-white|bg-slate-|text-slate-|border-slate-/);
+
+    fireEvent.click(close);
+    expect(onClose).toHaveBeenCalledOnce();
   });
 });

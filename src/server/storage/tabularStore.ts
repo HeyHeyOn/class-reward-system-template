@@ -40,7 +40,7 @@ export type HeaderWritePrecondition = {
   header: readonly string[];
 };
 
-export type SheetProviderErrorReason = 'SHEET_ALREADY_EXISTS';
+export type SheetProviderErrorReason = 'SHEET_ALREADY_EXISTS' | 'QUOTA_EXCEEDED';
 
 /** A provider fact, rather than a guess based on a localized error message. */
 export class SheetProviderError extends Error {
@@ -68,6 +68,7 @@ export class MigrationConflictError extends Error {
 
 export type TabularReader = {
   getRows(sheetName: OperationalSheetName): Promise<string[][]>;
+  primeRows?(sheetNames: readonly OperationalSheetName[]): Promise<void>;
 };
 
 export type TabularStore = TabularReader & {
@@ -81,6 +82,7 @@ export type TabularStore = TabularReader & {
   updateCellsAtomicallyAcrossSheets?(updates: CrossSheetCellUpdate[]): Promise<void>;
   updateHeaderRow?(sheetName: OperationalSheetName, headers: string[]): Promise<void>;
   appendRow(sheetName: OperationalSheetName, values: string[]): Promise<void>;
+  appendRows?(sheetName: OperationalSheetName, rows: string[][]): Promise<void>;
   deleteRow?(sheetName: OperationalSheetName, rowNumber: number): Promise<void>;
   deleteRows?(sheetName: OperationalSheetName, rowNumbers: number[]): Promise<void>;
 };

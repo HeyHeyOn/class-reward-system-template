@@ -29,6 +29,7 @@ import {
   getTaskAssignmentStatus,
   getTaskCycleState,
   getSheetSettings,
+  verifyRequiredOperationalSheetHeaders,
   resetTaskCompletionsBatch,
 
   saveSheetSetting,
@@ -267,6 +268,32 @@ describe('sheets repository', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it.each([
+    ['Students', [], [['productId', 'name', 'price', 'stock', 'isActive']]],
+    ['Products', [['studentId', 'name', 'balance', 'status']], []],
+  ] as const)('rejects a completely empty required %s sheet', async (_sheetName, studentRows, productRows) => {
+    const reader = {
+      async getRows(sheetName: string) {
+        const rows = sheetName === 'Students' ? studentRows : productRows;
+        return rows.map((row) => [...row]);
+      },
+    };
+
+    await expect(verifyRequiredOperationalSheetHeaders(reader)).rejects.toThrow(/필수 컬럼/);
+  });
+
+  it('accepts canonical header-only operational sheets as empty datasets', async () => {
+    const reader = {
+      async getRows(sheetName: string) {
+        return sheetName === 'Students'
+          ? [['studentId', 'name', 'balance', 'status']]
+          : [['productId', 'name', 'price', 'stock', 'isActive']];
+      },
+    };
+
+    await expect(verifyRequiredOperationalSheetHeaders(reader)).resolves.toBeUndefined();
   });
 
   it('finds a student by studentId without requiring student number', async () => {

@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { isAuthorizedAdminRequest } from '@/server/apiAuth';
 import { createConfiguredSheetsStore } from '@/server/googleSheets';
 import {
+  deletePromotion,
+  PromotionDeletePartialFailure,
   replacePromotionProducts,
   setPromotionActive,
   updatePromotion,
 } from '@/server/repositories/sheets/promotionCommands';
-import { PATCH } from './route';
+import { DELETE, PATCH } from './route';
 
 vi.mock('@/server/apiAuth', () => ({
   isAuthorizedAdminRequest: vi.fn(),
@@ -15,6 +17,7 @@ vi.mock('@/server/apiAuth', () => ({
 vi.mock('@/server/googleSheets', () => ({ createConfiguredSheetsStore: vi.fn() }));
 vi.mock('@/server/repositories/sheets/promotionCommands', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/server/repositories/sheets/promotionCommands')>(),
+  deletePromotion: vi.fn(),
   replacePromotionProducts: vi.fn(),
   setPromotionActive: vi.fn(),
   updatePromotion: vi.fn(),
@@ -34,6 +37,11 @@ function patch(body: unknown, promotionId = 'PROMO-1') {
     method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
   });
   return { request, response: PATCH(request, { params: Promise.resolve({ promotionId }) }) };
+}
+
+function remove(promotionId = 'PROMO-1') {
+  const request = new Request(`http://localhost/api/promotions/${promotionId}`, { method: 'DELETE' });
+  return { request, response: DELETE(request, { params: Promise.resolve({ promotionId }) }) };
 }
 
 describe('PATCH /api/promotions/[promotionId]', () => {
@@ -68,13 +76,29 @@ describe('PATCH /api/promotions/[promotionId]', () => {
     await expect(result.json()).resolves.toEqual(saved);
   });
 
-  it('decodes the route ID before an activation command', async () => {
-    vi.mocked(setPromotionActive).mockResolvedValue({ promotionId: 'PROMO / 1', isActive: true } as never);
-    const { response } = patch({ isActive: true }, 'PROMO%20%2F%201');
+  it.each(['PROMO%2F1', '%25', '%'])(
+    'passes the framework-decoded route ID %s to an activation command unchanged',
+    async (promotionId) => {
+      vi.mocked(setPromotionActive).mockResolvedValue({ promotionId, isActive: true } as never);
+      const { response } = patch({ isActive: true }, promotionId);
 
-    expect((await response).status).toBe(200);
-    expect(setPromotionActive).toHaveBeenCalledWith({}, 'PROMO / 1', true);
-  });
+      expect((await response).status).toBe(200);
+      expect(setPromotionActive).toHaveBeenCalledWith({}, promotionId, true);
+    },
+  );
+
+  it.each(['PROMO%2F1', '%25', '%'])(
+    'passes the framework-decoded route ID %s to updatePromotion unchanged',
+    async (promotionId) => {
+      const definition = { ...common, type: 'FIXED_DISCOUNT' as const, discountAmount: 100 };
+      vi.mocked(updatePromotion).mockResolvedValue({ promotionId, ...definition, productIds: ['P1'] } as never);
+
+      const { response } = patch({ ...definition, productIds: ['P1'] }, promotionId);
+
+      expect((await response).status).toBe(200);
+      expect(updatePromotion).toHaveBeenCalledWith({}, promotionId, definition);
+    },
+  );
 
   it.each([
     ['N_PLUS_ONE', { buyQuantity: 2, freeQuantity: 1 }],
@@ -222,6 +246,82 @@ describe('PATCH /api/promotions/[promotionId]', () => {
     expect(result.status).toBe(500);
     await expect(result.json()).resolves.toEqual({
       error: '행사 정보는 저장되었을 수 있지만 대상 상품 수정에 실패했습니다. 새로고침 후 확인하고 다시 시도해 주세요.',
+    });
+  });
+});
+
+describe('DELETE /api/promotions/[promotionId]', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(isAuthorizedAdminRequest).mockReturnValue(true);
+    vi.mocked(createConfiguredSheetsStore).mockResolvedValue({} as never);
+  });
+
+  it('rejects unauthorized requests before opening Sheets', async () => {
+    vi.mocked(isAuthorizedAdminRequest).mockReturnValue(false);
+
+    const result = await remove().response;
+
+    expect(result.status).toBe(401);
+    expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
+    expect(deletePromotion).not.toHaveBeenCalled();
+  });
+
+  it('creates the request-scoped store and returns only the safely deleted promotion ID', async () => {
+    vi.mocked(deletePromotion).mockResolvedValue({ promotionId: 'PROMO-1' });
+    const { request, response } = remove();
+
+    const result = await response;
+
+    expect(result.status).toBe(200);
+    expect(createConfiguredSheetsStore).toHaveBeenCalledWith(request);
+    expect(deletePromotion).toHaveBeenCalledWith({}, 'PROMO-1');
+    await expect(result.json()).resolves.toEqual({ promotionId: 'PROMO-1' });
+  });
+
+  it.each(['PROMO%2F1', '%25', '%'])(
+    'passes the framework-decoded route ID %s to the delete command unchanged',
+    async (promotionId) => {
+      vi.mocked(deletePromotion).mockResolvedValue({ promotionId });
+
+      const result = await remove(promotionId).response;
+
+      expect(result.status).toBe(200);
+      expect(deletePromotion).toHaveBeenCalledWith({}, promotionId);
+      await expect(result.json()).resolves.toEqual({ promotionId });
+    },
+  );
+
+  it('returns a safe normal 500 when store creation fails without leaking provider details', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.mocked(createConfiguredSheetsStore).mockRejectedValue(new Error('private service account detail'));
+
+    const result = await remove().response;
+
+    expect(result.status).toBe(500);
+    await expect(result.json()).resolves.toEqual({ error: '행사를 삭제하지 못했습니다.' });
+    expect(deletePromotion).not.toHaveBeenCalled();
+  });
+
+  it('returns a safe normal 500 for command failures', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.mocked(deletePromotion).mockRejectedValue(new Error('provider row secret'));
+
+    const result = await remove().response;
+
+    expect(result.status).toBe(500);
+    await expect(result.json()).resolves.toEqual({ error: '행사를 삭제하지 못했습니다.' });
+  });
+
+  it('returns the distinct safe partial-failure contract without provider details', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.mocked(deletePromotion).mockRejectedValue(new PromotionDeletePartialFailure());
+
+    const result = await remove().response;
+
+    expect(result.status).toBe(500);
+    await expect(result.json()).resolves.toEqual({
+      error: '대상 상품 연결은 삭제되었지만 행사 삭제를 완료하지 못했습니다. 새로고침 후 재시도해 주세요.',
     });
   });
 });

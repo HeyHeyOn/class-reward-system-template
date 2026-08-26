@@ -1,6 +1,7 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { KioskApp } from './KioskApp';
+import { contrastRatio, THEME_PALETTES, type ThemeColor } from './uiTheme';
 
 const products = [
   { productId: 'P001', name: '연필', price: 300, stock: 20, isActive: true, imageUrl: 'https://example.com/pencil.png', category: '문구', sortOrder: 1 },
@@ -87,6 +88,7 @@ describe('KioskApp', () => {
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -107,7 +109,7 @@ describe('KioskApp', () => {
 
     expect(screen.queryByRole('link', { name: '관리자 설정' })).toBeNull();
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('h-screen');
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-[#FAEDED]');
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain('--theme-shell: #FAEDED');
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain('SchoolSafeNotice');
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('overflow-hidden');
     expect(container.querySelector('[data-testid="kiosk-main-grid"]')?.className).toContain('grid-rows-[minmax(0,2fr)_minmax(0,1fr)]');
@@ -164,6 +166,7 @@ describe('KioskApp', () => {
     const { container } = render(<KioskApp />);
 
     expect(await screen.findByRole('button', { name: '전체' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '행사' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '문구' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '간식' })).toBeTruthy();
     const tabs = container.querySelector('[data-testid="category-tabs"]');
@@ -177,6 +180,75 @@ describe('KioskApp', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '전체' }));
     expect(screen.getByText('연필')).toBeTruthy();
+  });
+
+  it('orders 전체, virtual 행사, then real categories without colliding with a real 행사 category', async () => {
+    const collisionProducts = [
+      products[0],
+      { ...products[1], category: '행사', name: '행사 카테고리 상품' },
+      products[2],
+    ];
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/products') return jsonResponse(collisionProducts);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별' });
+      if (url === '/api/promotions/active') return jsonResponse([percent]);
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+    const { container } = render(<KioskApp />);
+
+    const tabs = await screen.findByTestId('category-tabs');
+    expect(within(tabs).getAllByRole('button').map((button) => button.textContent)).toEqual(['전체', '행사', '문구', '행사 카테고리', '간식']);
+    expect(within(tabs).getByRole('button', { name: '행사' })).toBeTruthy();
+    expect(within(tabs).getByRole('button', { name: '카테고리 행사' })).toBeTruthy();
+
+    fireEvent.click(within(tabs).getByRole('button', { name: '행사' }));
+    expect(screen.getByText('연필')).toBeTruthy();
+    expect(screen.queryByText('행사 카테고리 상품')).toBeNull();
+    expect(container.querySelector('[data-testid="product-grid"]')?.textContent).not.toContain('마이쮸');
+
+    fireEvent.click(within(tabs).getByRole('button', { name: '카테고리 행사' }));
+    expect(screen.getByText('행사 카테고리 상품')).toBeTruthy();
+    expect(screen.queryByText('연필')).toBeNull();
+  });
+
+  it('keeps the virtual promotion filter selected across refreshes', async () => {
+    let productLoads = 0;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/products') {
+        productLoads += 1;
+        return jsonResponse(productLoads === 1 ? products : products.map((product) => ({ ...product, category: '새 분류' })));
+      }
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별' });
+      if (url === '/api/promotions/active') return jsonResponse([percent]);
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+    render(<KioskApp />);
+
+    const promotionTab = await screen.findByRole('button', { name: '행사' });
+    fireEvent.click(promotionTab);
+    expect(promotionTab.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: '새로고침' }));
+    await waitFor(() => expect(productLoads).toBe(2));
+    expect(screen.getByRole('button', { name: '행사' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByText('연필')).toBeTruthy();
+  });
+
+  it('uses the calibrated clock for promotion expiry and shows a promotion-filter empty state', async () => {
+    const expiring = { ...percent, startsAt: '2090-01-01T00:00:00.000Z', endsAt: '2090-02-01T00:00:00.000Z' };
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/products') return jsonResponse(products);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별' });
+      if (url === '/api/promotions/active') return jsonResponse([expiring], { headers: { 'x-server-now': expiring.endsAt } });
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+    render(<KioskApp />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '행사' }));
+    expect(screen.getByText('진행 중인 행사 상품이 없습니다.')).toBeTruthy();
+    expect(screen.queryByText('연필')).toBeNull();
   });
 
   it('shows a loading dialog until products and settings are loaded', async () => {
@@ -196,7 +268,8 @@ describe('KioskApp', () => {
     expect(screen.queryByRole('heading', { name: '상품 목록' })).toBeNull();
     resolveProducts();
     expect(await screen.findByRole('heading', { name: '학급 매점' })).toBeTruthy();
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-[#FCFCFC]');
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain('--theme-shell: #FCFCFC');
+    expect(container.querySelector('[data-testid="products-panel"]')?.className).toContain('border-[var(--theme-border)]');
   });
 
   it('applies the new navy theme from settings', async () => {
@@ -205,8 +278,9 @@ describe('KioskApp', () => {
     const { container } = render(<KioskApp />);
 
     expect(await screen.findByRole('heading', { name: '남색 매점' })).toBeTruthy();
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-[#DCE8F4]');
-    expect(screen.getByRole('button', { name: '전체' }).className).toContain('bg-[#7FA6C7]');
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain('--theme-shell: #111A2E');
+    expect(container.querySelector('[data-testid="products-panel"]')?.className).toContain('bg-[var(--theme-surface)]');
+    expect(screen.getByRole('button', { name: '전체' }).className).toContain('bg-[var(--theme-accent-solid)]');
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).not.toContain('bg-[#8F97CF]');
   });
 
@@ -217,11 +291,12 @@ describe('KioskApp', () => {
 
     expect(await screen.findByRole('heading', { name: '검정 매점' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '연필 300별 담기' }));
-    expect(screen.getByRole('button', { name: '비우기' }).className).toContain('bg-[#2B2B2B]');
-    expect(screen.getByRole('button', { name: '비우기' }).className).toContain('text-[#FCFCFC]');
-    expect(screen.getByText('재고 20').className).toContain('text-[#FCFCFC]');
-    expect(screen.getByRole('button', { name: 'QR 결제' }).className).toContain('bg-[#FCFCFC]');
-    expect(screen.getByRole('button', { name: 'QR 결제' }).className).toContain('text-[#1F1F1F]');
+    expect(screen.getByRole('button', { name: '비우기' }).className).toContain('bg-[var(--theme-accent-soft)]');
+    expect(screen.getByRole('button', { name: '비우기' }).className).toContain('text-[var(--theme-accent-text)]');
+    expect(screen.getByText('재고 20').className).toContain('text-[var(--theme-accent-text)]');
+    expect(screen.getByRole('button', { name: 'QR 결제' }).className).toContain('bg-[var(--theme-accent-solid)]');
+    expect(screen.getByRole('button', { name: 'QR 결제' }).className).toContain('text-[var(--theme-accent-on-solid)]');
+    expect(screen.getByTestId('cart-item-row').className).toContain('bg-[var(--theme-surface-raised)]');
   });
 
   it('applies softer pastel theme classes from settings on the kiosk', async () => {
@@ -230,16 +305,25 @@ describe('KioskApp', () => {
     const { container } = render(<KioskApp />);
 
     expect(await screen.findByRole('heading', { name: '분홍 매점' })).toBeTruthy();
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-[#FAEDED]');
-    expect(screen.getByRole('button', { name: '전체' }).className).toContain('bg-[#F0C7C7]');
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain('--theme-shell: #FAEDED');
+    expect(screen.getByRole('button', { name: '전체' }).className).toContain('bg-[var(--theme-accent-solid)]');
     expect(screen.getByRole('button', { name: '전체' }).className).not.toContain('bg-pink-500');
+  });
+
+  it('applies paired semantic hover foreground and background classes to hoverable controls', async () => {
+    render(<KioskApp />);
+    await screen.findByRole('heading', { name: '햇살반 매점' });
+    for (const control of [screen.getByRole('button', { name: '새로고침' }), screen.getByRole('button', { name: 'QR 결제' })]) {
+      expect(control.className).toContain('hover:bg-[var(--theme-hover)]');
+      expect(control.className).toContain('hover:text-[var(--theme-hover-text)]');
+    }
   });
 
   it('uses a soft yellow, balanced green, and darker black kiosk shell when selected', async () => {
     for (const [themeColor, expectedShell, rejectedShell] of [
-      ['yellow', 'bg-[#FCFAE6]', 'bg-yellow-100'],
-      ['green', 'bg-[#DCF5C9]', 'bg-green-50'],
-      ['black', 'bg-[#1F1F1F]', 'bg-slate-100'],
+      ['yellow', '#FCFAE6', 'bg-yellow-100'],
+      ['green', '#DCF5C9', 'bg-green-50'],
+      ['black', '#1F1F1F', 'bg-slate-100'],
     ] as const) {
       cleanup();
       vi.mocked(fetch).mockReset();
@@ -249,8 +333,9 @@ describe('KioskApp', () => {
       const { container } = render(<KioskApp />);
 
       expect(await screen.findByRole('heading', { name: `${themeColor} 매점` })).toBeTruthy();
-      const shellClass = container.querySelector('[data-testid="kiosk-shell"]')?.className ?? '';
-      expect(shellClass).toContain(expectedShell);
+      const shell = container.querySelector('[data-testid="kiosk-shell"]');
+      const shellClass = shell?.className ?? '';
+      expect(shell?.getAttribute('style')).toContain(`--theme-shell: ${expectedShell}`);
       expect(shellClass).not.toContain(rejectedShell);
     }
   });
@@ -288,7 +373,7 @@ describe('KioskApp', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
     expect(await screen.findByRole('dialog', { name: '결제 확인' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: '상품 목록' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '상품 목록', hidden: true })).toBeTruthy();
     expect(screen.getByText('결제하려면 카메라에 QR 코드를 인식해주세요.')).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
@@ -359,7 +444,7 @@ describe('KioskApp', () => {
 
     expect(await screen.findByText('연필')).toBeTruthy();
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('h-screen');
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-[#FAEDED]');
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain('--theme-shell: #FAEDED');
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('overflow-hidden');
     expect(container.querySelector('[data-testid="kiosk-content"]')?.className).toContain('h-full');
     expect(container.querySelector('[data-testid="kiosk-title"]')?.className).toContain('text-[clamp(');
@@ -411,12 +496,14 @@ describe('KioskApp', () => {
     });
     render(<KioskApp />);
 
-    const card = await screen.findByRole('button', { name: '연필 270별 담기' });
+    const card = await screen.findByRole('button', { name: /연필 270별 담기/ });
     expect(within(card).getByText('2+1')).toBeTruthy();
-    expect(within(card).getByText('-10%')).toBeTruthy();
+    expect(within(card).getByText('할인')).toBeTruthy();
     const imageOverlay = within(card).getByLabelText('연필 행사');
     expect(imageOverlay.className).toContain('absolute');
-    expect(imageOverlay.className).toContain('bottom-');
+    expect(imageOverlay.className).toContain('top-1');
+    expect(imageOverlay.className).not.toContain('bottom-');
+    expect(within(card).getByText('할인').className).toContain('text-[clamp(0.62rem,2.4vw,1.125rem)]');
     expect(within(card).getByText('300별').className).toContain('line-through');
     expect(within(card).getByText('270별')).toBeTruthy();
     fireEvent.click(card);
@@ -451,9 +538,92 @@ describe('KioskApp', () => {
 
     render(<KioskApp />);
 
-    const card = await screen.findByRole('button', { name: '연필 270별 담기' });
-    expect(within(card).getByText('-10%')).toBeTruthy();
+    const card = await screen.findByRole('button', { name: /연필 270별 담기/ });
+    expect(within(card).getByText('할인')).toBeTruthy();
     expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input) === '/api/checkout/preview')).toBe(false);
+  });
+
+  it('does not let an older overlapping refresh recalibrate the clock after a newer refresh wins', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date('2090-01-15T00:00:00.000Z'));
+    const windowedPercent = {
+      ...percent,
+      startsAt: '2090-01-01T00:00:00.000Z',
+      endsAt: '2090-02-01T00:00:00.000Z',
+    };
+    let promotionLoads = 0;
+    let releaseOlderRefresh!: () => void;
+    const olderRefreshGate = new Promise<void>((resolve) => { releaseOlderRefresh = resolve; });
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/products') return jsonResponse(products);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별' });
+      if (url === '/api/promotions/active') {
+        promotionLoads += 1;
+        if (promotionLoads === 1) return jsonResponse([windowedPercent], { headers: { 'x-server-now': '2090-01-15T00:00:00.000Z' } });
+        if (promotionLoads === 2) {
+          return olderRefreshGate.then(() => jsonResponse([windowedPercent], { headers: { 'x-server-now': '2090-03-01T00:00:00.000Z' } }));
+        }
+        return jsonResponse([windowedPercent], { headers: { 'x-server-now': '2090-01-20T00:00:00.000Z' } });
+      }
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+
+    render(<KioskApp />);
+    expect(await screen.findByRole('button', { name: /연필 270별 담기/ })).toBeTruthy();
+    const refreshButton = screen.getByRole('button', { name: '새로고침' });
+    act(() => {
+      refreshButton.click();
+      refreshButton.click();
+    });
+    await waitFor(() => expect(promotionLoads).toBe(3));
+    expect(screen.getByRole('button', { name: /연필 270별 담기/ })).toBeTruthy();
+
+    await act(async () => { releaseOlderRefresh(); });
+    await act(async () => { vi.advanceTimersByTime(60_000); });
+
+    expect(screen.getByRole('button', { name: /연필 270별 담기/ })).toBeTruthy();
+    expect(within(screen.getByRole('button', { name: /연필 270별 담기/ })).getByText('할인')).toBeTruthy();
+    vi.useRealTimers();
+  });
+
+  it.each(['black', 'navy'] as const)('renders muted %s-theme kiosk and modal text with semantic AA colors', async (themeColor) => {
+    let resolveStudent!: () => void;
+    const studentGate = new Promise<void>((resolve) => { resolveStudent = resolve; });
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/products') return jsonResponse(products);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', appTitle: `${themeColor} 매점`, themeColor, qrManualInputEnabled: true });
+      if (url === '/api/promotions/active') return jsonResponse([percent]);
+      if (url === '/api/students/S001') return studentGate.then(() => jsonResponse(studentBefore));
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+    const { container } = render(<KioskApp />);
+    const palette = THEME_PALETTES[themeColor as ThemeColor];
+    const expectSemanticMuted = (element: HTMLElement, background: string) => {
+      expect(element.className).toContain('text-[var(--theme-muted-text)]');
+      expect(element.className).not.toMatch(/text-slate-(500|600|700)/);
+      expect(contrastRatio(palette.mutedText, background)).toBeGreaterThanOrEqual(4.5);
+    };
+
+    const card = await screen.findByRole('button', { name: /연필 270별 담기/ });
+    expectSemanticMuted(within(card).getByLabelText('정상 가격 300별'), palette.surfaceRaised);
+    expectSemanticMuted(screen.getByText('선택한 상품이 없습니다.'), palette.surfaceRaised);
+    expectSemanticMuted(within(screen.getByTestId('checkout-total-bar')).getByText('확인 중'), palette.surfaceRaised);
+
+    fireEvent.click(card);
+    const cartRow = screen.getByTestId('cart-item-row');
+    expectSemanticMuted(within(cartRow).getByLabelText('정상 합계 300별'), palette.surfaceRaised);
+    expectSemanticMuted(within(screen.getByTestId('checkout-total-bar')).getByLabelText('정상 총액 300별'), palette.surfaceRaised);
+    fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
+    const checkoutDialog = await screen.findByRole('dialog', { name: '결제 확인' });
+    expectSemanticMuted(within(checkoutDialog).getByText('300별'), palette.surfaceRaised);
+    fireEvent.change(within(checkoutDialog).getByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
+    fireEvent.click(within(checkoutDialog).getByRole('button', { name: 'QR 값으로 결제하기' }));
+    const processingDialog = await screen.findByRole('dialog', { name: '결제 중' });
+    expectSemanticMuted(within(processingDialog).getByText('학급 화폐 잔액과 재고를 확인하고 있습니다.'), palette.surface);
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain(`--theme-muted-text: ${palette.mutedText}`);
+    resolveStudent();
   });
 
   it('fails closed when active promotions are malformed', async () => {
@@ -509,6 +679,53 @@ describe('KioskApp', () => {
     expect(screen.getByRole('button', { name: 'QR 결제' })).toHaveProperty('disabled', false);
   });
 
+  it('adopts an in-flight 409 quote after the local promotion boundary and reconfirms that server quote', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date('2090-01-01T00:00:00.000Z'));
+    const expiring = { ...percent, startsAt: '2089-01-01T00:00:00.000Z', endsAt: '2090-01-01T00:00:30.000Z' };
+    const original = regularPreview([{ productId: 'P001', quantity: 1 }]).items[0];
+    const latestPricing = { ok: true, totalAmount: 250, items: [{ ...original, price: 250, regularUnitPrice: 250, regularTotal: 250, subtotal: 250, finalTotal: 250 }] };
+    let resolveFirstCheckout!: () => void;
+    const firstCheckoutGate = new Promise<void>((resolve) => { resolveFirstCheckout = resolve; });
+    let checkoutCalls = 0;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/products') return jsonResponse(products);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', qrManualInputEnabled: true });
+      if (url === '/api/promotions/active') return jsonResponse([expiring], { headers: { 'x-server-now': '2090-01-01T00:00:00.000Z' } });
+      if (url === '/api/students/S001') return jsonResponse(studentBefore);
+      if (url === '/api/checkout' && init?.method === 'POST') {
+        checkoutCalls += 1;
+        if (checkoutCalls === 1) {
+          return firstCheckoutGate.then(() => jsonResponse({ code: 'PRICE_CHANGED', message: '가격이 변경되었습니다.', latestPricing }, { status: 409 }));
+        }
+        return jsonResponse({ code: 'PRICE_CHANGED', message: '서버가 다시 확인했습니다.', latestPricing }, { status: 409 });
+      }
+      return jsonResponse({}, { status: 404 });
+    });
+
+    render(<KioskApp />);
+    fireEvent.click(await screen.findByRole('button', { name: /연필 270별 담기/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
+    fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 결제하기' }));
+    await waitFor(() => expect(checkoutCalls).toBe(1));
+
+    await act(async () => { vi.advanceTimersByTime(60_000); });
+    resolveFirstCheckout();
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.getByRole('alert').textContent).toContain('가격이 변경되었습니다.');
+    expect(screen.getByTestId('checkout-total-bar').textContent).toContain('250별');
+    fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
+    expect(within(await screen.findByRole('dialog', { name: '결제 확인' })).getAllByText('250별')).toHaveLength(2);
+    fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 결제하기' }));
+    await waitFor(() => expect(checkoutCalls).toBe(2));
+    const checkoutRequests = vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/checkout');
+    expect(JSON.parse(String(checkoutRequests[1][1]?.body)).expectedPricing).toEqual(latestPricing);
+  });
+
   it('uses commit snapshots and total for completion and stock even when they differ from preview', async () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -538,5 +755,133 @@ describe('KioskApp', () => {
     expect(within(complete).getByText('서버 연필')).toBeTruthy();
     expect(within(complete).getAllByText('500별').length).toBeGreaterThan(0);
     expect(screen.getByText('재고 18')).toBeTruthy();
+  });
+
+  it('includes visual promotion labels and full promotion names in the product card accessible name', async () => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/products') return jsonResponse(products);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별' });
+      if (url === '/api/promotions/active') return jsonResponse([nPlusOne, percent]);
+      return jsonResponse({}, { status: 404 });
+    });
+    render(<KioskApp />);
+    expect(await screen.findByRole('button', {
+      name: '연필 270별 담기, 행사: 2+1 (연필 2+1), 할인 (10% 할인)',
+    })).toBeTruthy();
+  });
+
+  it('does not resurrect a confirmed quote after changing away from and back to the same cart', async () => {
+    const original = regularPreview([{ productId: 'P001', quantity: 1 }]).items[0];
+    const latestPricing = { ok: true, totalAmount: 250, items: [{ ...original, price: 250, regularUnitPrice: 250, regularTotal: 250, subtotal: 250, finalTotal: 250 }] };
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/products') return jsonResponse(products);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', qrManualInputEnabled: true });
+      if (url === '/api/promotions/active') return jsonResponse([]);
+      if (url === '/api/students/S001') return jsonResponse(studentBefore);
+      if (url === '/api/checkout') return jsonResponse({ code: 'PRICE_CHANGED', message: '가격이 변경되었습니다.', latestPricing }, { status: 409 });
+      return jsonResponse({}, { status: 404 });
+    });
+    render(<KioskApp />);
+    fireEvent.click(await screen.findByRole('button', { name: '연필 300별 담기' }));
+    fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
+    fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 결제하기' }));
+    await waitFor(() => expect(screen.getByTestId('checkout-total-bar').textContent).toContain('250별'));
+    fireEvent.click(screen.getByRole('button', { name: '연필 수량 늘리기' }));
+    fireEvent.click(screen.getByRole('button', { name: '연필 수량 줄이기' }));
+    expect(screen.getByTestId('checkout-total-bar').textContent).toContain('300별');
+    expect(screen.getByTestId('checkout-total-bar').textContent).not.toContain('250별');
+  });
+
+  it('keeps a newer server quote only while the local temporal pricing fingerprint is unchanged', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date('2090-01-01T00:00:00.000Z'));
+    const expiring = { ...percent, startsAt: '2089-01-01T00:00:00.000Z', endsAt: '2090-01-01T00:01:30.000Z' };
+    const original = regularPreview([{ productId: 'P001', quantity: 1 }]).items[0];
+    const latestPricing = { ok: true, totalAmount: 250, items: [{ ...original, price: 250, regularUnitPrice: 250, regularTotal: 250, subtotal: 250, finalTotal: 250 }] };
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/products') return jsonResponse(products);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', qrManualInputEnabled: true });
+      if (url === '/api/promotions/active') return jsonResponse([expiring], { headers: { 'x-server-now': '2090-01-01T00:00:00.000Z' } });
+      if (url === '/api/students/S001') return jsonResponse(studentBefore);
+      if (url === '/api/checkout') return jsonResponse({ code: 'PRICE_CHANGED', message: '가격이 변경되었습니다.', latestPricing }, { status: 409 });
+      return jsonResponse({}, { status: 404 });
+    });
+    render(<KioskApp />);
+    fireEvent.click(await screen.findByRole('button', { name: /연필 270별 담기/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
+    fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 결제하기' }));
+    await waitFor(() => expect(screen.getByTestId('checkout-total-bar').textContent).toContain('250별'));
+    await act(async () => { vi.advanceTimersByTime(60_000); });
+    expect(screen.getByTestId('checkout-total-bar').textContent).toContain('250별');
+    await act(async () => { vi.advanceTimersByTime(60_000); });
+    expect(screen.getByTestId('checkout-total-bar').textContent).toContain('300별');
+    expect(screen.getByTestId('checkout-total-bar').textContent).not.toContain('250별');
+  });
+
+  it('uses accessible modal action colors with normal-text contrast', async () => {
+    render(<KioskApp />);
+    fireEvent.click(await screen.findByRole('button', { name: '연필 300별 담기' }));
+    fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
+    const cancel = await screen.findByRole('button', { name: '결제 취소' });
+    const submit = screen.getByRole('button', { name: 'QR 값으로 결제하기' });
+    expect(cancel.className).toContain('bg-rose-700');
+    expect(submit.className).toContain('bg-sky-700');
+    expect(contrastRatio('#FFFFFF', '#BE123C')).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio('#FFFFFF', '#0369A1')).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('moves focus into the modal, traps Tab, closes with Escape, restores focus, and hides the kiosk', async () => {
+    render(<KioskApp />);
+    fireEvent.click(await screen.findByRole('button', { name: '연필 300별 담기' }));
+    const trigger = screen.getByRole('button', { name: 'QR 결제' });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const dialog = await screen.findByRole('dialog', { name: '결제 확인' });
+    expect(within(dialog).getByRole('button', { name: '결제 취소' })).toBeTruthy();
+    expect(within(dialog).getByRole('button', { name: 'QR 값으로 결제하기' })).toBeTruthy();
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(screen.getByTestId('kiosk-content').getAttribute('aria-hidden')).toBe('true');
+    expect(screen.getByTestId('kiosk-content').hasAttribute('inert')).toBe(true);
+    const focusable = Array.from(dialog.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled)'))
+      .filter((element) => !(element instanceof HTMLInputElement && element.type === 'hidden'));
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    last.focus();
+    fireEvent.keyDown(last, { key: 'Tab' });
+    expect(document.activeElement).toBe(first);
+    first.focus();
+    fireEvent.keyDown(first, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(last);
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    expect(screen.getByTestId('kiosk-content').hasAttribute('aria-hidden')).toBe(false);
+  });
+
+  it('does not allow Escape cancellation while payment is processing', async () => {
+    let resolveStudent!: () => void;
+    const studentGate = new Promise<void>((resolve) => { resolveStudent = resolve; });
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/products') return jsonResponse(products);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', qrManualInputEnabled: true });
+      if (url === '/api/promotions/active') return jsonResponse([]);
+      if (url === '/api/students/S001') return studentGate.then(() => jsonResponse(studentBefore));
+      return jsonResponse({}, { status: 404 });
+    });
+    render(<KioskApp />);
+    fireEvent.click(await screen.findByRole('button', { name: '연필 300별 담기' }));
+    fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
+    fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 결제하기' }));
+    const processing = await screen.findByRole('dialog', { name: '결제 중' });
+    fireEvent.keyDown(processing, { key: 'Escape' });
+    expect(screen.getByRole('dialog', { name: '결제 중' })).toBeTruthy();
+    resolveStudent();
   });
 });

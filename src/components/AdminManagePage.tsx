@@ -15,17 +15,19 @@ import { TaskRecurrenceFields, TaskScheduleProjection } from './tasks/TaskRecurr
 import { TaskHistoryDialog, type TaskHistoryDialogState } from './tasks/TaskHistoryDialog';
 import { normalizeTaskAssignmentStatus, reconcileTaskAssignmentProjection } from './taskAssignmentProjection';
 import { PromotionAdminPanel } from './promotions/PromotionAdminPanel';
+import { normalizeThemeColor, themeStyles, type ThemeColor } from './uiTheme';
 
 type StudentDraft = Student;
 type ProductDraft = Product;
 type TaskDraft = NormalizedAdminTask;
-type AdminTab = 'settings' | 'students' | 'products' | 'promotions' | 'tasks' | 'transactions' | 'currency';
+type AdminTab = 'settings' | 'students' | 'products' | 'tasks' | 'transactions' | 'currency';
+type StoreTab = 'inventory' | 'promotions';
 type BulkMode = 'set' | 'add' | 'subtract';
 type CurrencyMode = 'add' | 'subtract';
-type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'black' | 'navy';
+
 type Settings = { currencyUnit?: string; appTitle?: string; bankTitle?: string; themeColor?: ThemeColor; fontFamily?: FontFamily; qrManualInputEnabled?: boolean };
-type AdminTheme = { shell: string; pageText: string; accentText: string; accentBg: string; actionText: string; selectedTab: string; idleTab: string; statBg: string; logoColor: string; softBg: string; softText: string; focusBorder: string };
 const disabledActionClass = 'disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none';
+const storeTabs: StoreTab[] = ['inventory', 'promotions'];
 type CurrencyResult = {
   status: 'success' | 'failure';
   mode: CurrencyMode;
@@ -90,26 +92,11 @@ function reconcileTaskProjections(
   });
 }
 
-const ADMIN_THEME: Record<ThemeColor, AdminTheme> = {
-  blue: { shell: 'bg-[#EDF5FA]', pageText: 'text-slate-950', accentText: 'text-[#365F78]', accentBg: 'bg-[#B8D0E0]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#B8D0E0] text-[#1F1F1F]', idleTab: 'bg-[#EDF5FA] text-slate-800 hover:bg-[#D8E9F2]', statBg: 'bg-[#EDF5FA]', logoColor: 'bg-[#365F78]', softBg: 'bg-[#EDF5FA]/80', softText: 'text-slate-700', focusBorder: 'focus:border-[#B8D0E0]' },
-  pink: { shell: 'bg-[#FAEDED]', pageText: 'text-slate-950', accentText: 'text-[#8F5555]', accentBg: 'bg-[#F0C7C7]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#F0C7C7] text-[#1F1F1F]', idleTab: 'bg-[#FAEDED] text-slate-800 hover:bg-[#F4DADA]', statBg: 'bg-[#FAEDED]', logoColor: 'bg-[#B97878]', softBg: 'bg-[#FAEDED]/80', softText: 'text-slate-700', focusBorder: 'focus:border-[#F0C7C7]' },
-  yellow: { shell: 'bg-[#FCFAE6]', pageText: 'text-slate-950', accentText: 'text-[#766D1E]', accentBg: 'bg-[#F5EDA6]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#F5EDA6] text-[#1F1F1F]', idleTab: 'bg-[#FCFAE6] text-slate-800 hover:bg-[#F8F2BF]', statBg: 'bg-[#FCFAE6]', logoColor: 'bg-[#A99D37]', softBg: 'bg-[#FCFAE6]/80', softText: 'text-slate-700', focusBorder: 'focus:border-[#F5EDA6]' },
-  green: { shell: 'bg-[#DCF5C9]', pageText: 'text-slate-950', accentText: 'text-[#4F7138]', accentBg: 'bg-[#A5C78B]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#A5C78B] text-[#1F1F1F]', idleTab: 'bg-[#DCF5C9] text-slate-800 hover:bg-[#C3E5AE]', statBg: 'bg-[#DCF5C9]', logoColor: 'bg-[#6B8E50]', softBg: 'bg-[#DCF5C9]/80', softText: 'text-slate-700', focusBorder: 'focus:border-[#A5C78B]' },
-  purple: { shell: 'bg-[#F7EDFC]', pageText: 'text-slate-950', accentText: 'text-[#76518A]', accentBg: 'bg-[#BB99CC]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#BB99CC] text-[#1F1F1F]', idleTab: 'bg-[#F7EDFC] text-slate-800 hover:bg-[#E8D6F0]', statBg: 'bg-[#F7EDFC]', logoColor: 'bg-[#76518A]', softBg: 'bg-[#F7EDFC]/80', softText: 'text-slate-700', focusBorder: 'focus:border-[#BB99CC]' },
-  white: { shell: 'bg-[#FCFCFC]', pageText: 'text-[#1F1F1F]', accentText: 'text-[#1F1F1F]', accentBg: 'bg-[#1F1F1F]', actionText: 'text-[#FCFCFC]', selectedTab: 'bg-[#1F1F1F] text-[#FCFCFC]', idleTab: 'bg-[#FCFCFC] text-[#1F1F1F] hover:bg-white', statBg: 'bg-white', logoColor: 'bg-[#1F1F1F]', softBg: 'bg-white', softText: 'text-[#1F1F1F]', focusBorder: 'focus:border-[#1F1F1F]' },
-  black: { shell: 'bg-[#1F1F1F]', pageText: 'text-[#FCFCFC]', accentText: 'text-[#FCFCFC]', accentBg: 'bg-[#FCFCFC]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#FCFCFC] text-[#1F1F1F]', idleTab: 'bg-[#2B2B2B] text-[#FCFCFC] hover:bg-[#3A3A3A]', statBg: 'bg-[#2B2B2B]', logoColor: 'bg-[#FCFCFC]', softBg: 'bg-[#2B2B2B]', softText: 'text-[#FCFCFC]', focusBorder: 'focus:border-[#FCFCFC]' },
-  navy: { shell: 'bg-[#DCE8F4]', pageText: 'text-[#1F1F1F]', accentText: 'text-[#2F5D82]', accentBg: 'bg-[#7FA6C7]', actionText: 'text-[#1F1F1F]', selectedTab: 'bg-[#7FA6C7] text-[#1F1F1F]', idleTab: 'bg-[#EEF5FA] text-[#1F1F1F] hover:bg-[#C8DCEC]', statBg: 'bg-[#EEF5FA]', logoColor: 'bg-[#3F6F95]', softBg: 'bg-[#EEF5FA]/80', softText: 'text-slate-700', focusBorder: 'focus:border-[#7FA6C7]' },
-};
-
-function normalizeThemeColor(value: unknown): ThemeColor {
-  return value === 'blue' || value === 'pink' || value === 'yellow' || value === 'green' || value === 'purple' || value === 'black' || value === 'navy' ? value : 'white';
-}
-
 const tabs: Array<{ id: AdminTab; label: string }> = [
   { id: 'settings', label: '시스템 설정' },
   { id: 'students', label: '학생 관리' },
   { id: 'products', label: '매점 관리' },
-  { id: 'promotions', label: '행사 관리' },
+
   { id: 'tasks', label: '과제 설정' },
   { id: 'transactions', label: '거래 내역 확인' },
   { id: 'currency', label: '화폐 지급/회수' },
@@ -117,6 +104,11 @@ const tabs: Array<{ id: AdminTab; label: string }> = [
 
 export function AdminManagePage() {
   const [activeTab, setActiveTab] = useState<AdminTab>('settings');
+  const adminTabRefs = useRef<Partial<Record<AdminTab, HTMLButtonElement | null>>>({});
+  const [storeTab, setStoreTab] = useState<StoreTab>('inventory');
+  const [hasOpenedPromotions, setHasOpenedPromotions] = useState(false);
+  const [hasOpenedTransactions, setHasOpenedTransactions] = useState(false);
+  const storeTabRefs = useRef<Record<StoreTab, HTMLButtonElement | null>>({ inventory: null, promotions: null });
   const [students, setStudents] = useState<StudentDraft[]>([]);
   const [products, setProducts] = useState<ProductDraft[]>([]);
   const [tasks, setTasks] = useState<TaskDraft[]>([]);
@@ -136,6 +128,8 @@ export function AdminManagePage() {
   const [isSavingTaskSchedule, setIsSavingTaskSchedule] = useState(false);
   const taskScheduleSession = useRef<{ id: number; taskId: string | null }>({ id: 0, taskId: null });
   const [taskHistory, setTaskHistory] = useState<TaskHistoryDialogState | null>(null);
+  const historyOpenerRef = useRef<HTMLElement | null>(null);
+  const [taskDeleteConfirmation, setTaskDeleteConfirmation] = useState<{ taskId: string; title: string; opener: HTMLElement; deleting: boolean; error: string } | null>(null);
   const historyRequestId = useRef(0);
   const assignmentRequest = useRef<{ id: number; taskId: string | null }>({ id: 0, taskId: null });
   const [taskAssignmentEditor, setTaskAssignmentEditor] = useState<{
@@ -307,8 +301,10 @@ export function AdminManagePage() {
     closeTaskScheduleEditor();
   }
 
-  async function openTaskHistory(task: TaskDraft) {
+  async function openTaskHistory(task: TaskDraft, opener: HTMLElement) {
     const requestId = ++historyRequestId.current;
+    historyOpenerRef.current = opener;
+    setTaskDeleteConfirmation(null);
     setTaskHistory({ taskId: task.taskId, title: task.title, loading: true, error: '', detail: null });
     try {
       const response = await fetch(`/api/tasks/${encodeURIComponent(task.taskId)}/history`, { cache: 'no-store' });
@@ -325,6 +321,16 @@ export function AdminManagePage() {
   function closeTaskHistory() {
     historyRequestId.current += 1;
     setTaskHistory(null);
+  }
+
+  function requestTaskDelete(task: TaskDraft, opener: HTMLElement) {
+    closeTaskHistory();
+    setTaskDeleteConfirmation({ taskId: task.taskId, title: task.title, opener, deleting: false, error: '' });
+  }
+
+  function cancelTaskDelete() {
+    if (taskDeleteConfirmation?.deleting) return;
+    setTaskDeleteConfirmation(null);
   }
 
   function notify(messageText: string) {
@@ -967,16 +973,22 @@ export function AdminManagePage() {
     }
   }
 
-  async function deleteTaskRow(taskId: string) {
+  async function confirmTaskDelete() {
+    if (!taskDeleteConfirmation || taskDeleteConfirmation.deleting) return;
+    const { taskId } = taskDeleteConfirmation;
+    setTaskDeleteConfirmation((current) => current ? { ...current, deleting: true, error: '' } : current);
     try {
       const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, { method: 'DELETE' });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? '과제를 삭제하지 못했습니다.');
       setTasks((current) => current.filter((task) => task.taskId !== taskId));
       setSelectedTaskIds((current) => current.filter((id) => id !== taskId));
+      setTaskDeleteConfirmation(null);
       notify(`${taskId} 과제 삭제 완료`);
     } catch (error) {
-      notify(error instanceof Error ? error.message : '과제를 삭제하지 못했습니다.');
+      const messageText = error instanceof Error ? error.message : '과제를 삭제하지 못했습니다.';
+      setTaskDeleteConfirmation((current) => current?.taskId === taskId ? { ...current, deleting: false, error: messageText } : current);
+      notify(messageText);
     }
   }
 
@@ -1103,25 +1115,76 @@ export function AdminManagePage() {
     setCurrencyScannerOpen(true);
   }
 
+  function selectAdminTab(nextTab: AdminTab, focus = false) {
+    setActiveTab(nextTab);
+    if (nextTab === 'transactions') setHasOpenedTransactions(true);
+    if (focus) adminTabRefs.current[nextTab]?.focus();
+  }
+
+  function handleAdminTabKeyDown(event: React.KeyboardEvent<HTMLButtonElement>, currentTab: AdminTab) {
+    const currentIndex = tabs.findIndex((tab) => tab.id === currentTab);
+    let nextTab: AdminTab | undefined;
+    if (event.key === 'ArrowRight') nextTab = tabs[(currentIndex + 1) % tabs.length].id;
+    if (event.key === 'ArrowLeft') nextTab = tabs[(currentIndex - 1 + tabs.length) % tabs.length].id;
+    if (event.key === 'Home') nextTab = tabs[0].id;
+    if (event.key === 'End') nextTab = tabs[tabs.length - 1].id;
+    if (!nextTab) return;
+    event.preventDefault();
+    selectAdminTab(nextTab, true);
+  }
+
+  function selectStoreTab(nextTab: StoreTab, focus = false) {
+    setStoreTab(nextTab);
+    if (nextTab === 'promotions') setHasOpenedPromotions(true);
+    if (focus) storeTabRefs.current[nextTab]?.focus();
+  }
+
+  function handleStoreTabKeyDown(event: React.KeyboardEvent<HTMLButtonElement>, currentTab: StoreTab) {
+    const currentIndex = storeTabs.indexOf(currentTab);
+    let nextTab: StoreTab | undefined;
+    if (event.key === 'ArrowRight') nextTab = storeTabs[(currentIndex + 1) % storeTabs.length];
+    if (event.key === 'ArrowLeft') nextTab = storeTabs[(currentIndex - 1 + storeTabs.length) % storeTabs.length];
+    if (event.key === 'Home') nextTab = storeTabs[0];
+    if (event.key === 'End') nextTab = storeTabs[storeTabs.length - 1];
+    if (!nextTab) return;
+    event.preventDefault();
+    selectStoreTab(nextTab, true);
+  }
+
   const currencyActionLabel = currencyMode === 'add' ? '지급' : '회수';
-  const theme = ADMIN_THEME[settings.themeColor ?? 'white'] ?? ADMIN_THEME.white;
+  const themeColor = normalizeThemeColor(settings.themeColor);
+  const semantic = themeStyles(themeColor);
+  const theme = {
+    shell: semantic.shell,
+    pageText: semantic.text,
+    accentText: semantic.accentText,
+    accentBg: semantic.accentSolid,
+    actionText: semantic.accentOnSolid,
+    selectedTab: `${semantic.accentSolid} ${semantic.accentOnSolid}`,
+    idleTab: `${semantic.accentSoft} ${semantic.text} ${semantic.hover} ${semantic.hoverText}`,
+    statBg: semantic.surfaceRaised,
+    logoColor: 'bg-[var(--theme-accent-text)]',
+    softBg: semantic.surfaceRaised,
+    softText: semantic.mutedText,
+  };
   const fontFamilyCss = getFontFamilyCss(settings.fontFamily);
-  const fontFamilyStyle = fontFamilyCss ? { fontFamily: fontFamilyCss } : undefined;
+  const rootStyle = { ...semantic.variables, ...(fontFamilyCss ? { fontFamily: fontFamilyCss } : {}) };
 
   if (isInitialLoading) {
     return <LoadingScreen title="시트 정보 불러오는 중" message="관리자 데이터와 테마 설정을 불러오는 중입니다." />;
   }
 
   return (
-    <main data-testid="admin-shell" style={fontFamilyStyle} className={`min-h-screen ${theme.shell} ${theme.pageText} p-2 sm:p-3 lg:p-5`}>
+    <main data-testid="admin-shell" style={rootStyle} className={`min-h-screen ${theme.shell} ${theme.pageText} p-2 sm:p-3 lg:p-5`}>
+      <div data-testid="admin-background" inert={taskHistory || taskDeleteConfirmation ? true : undefined} aria-hidden={taskHistory || taskDeleteConfirmation ? true : undefined}>
       <section className="mx-auto flex w-full max-w-[1280px] flex-col gap-3 lg:gap-4">
-        <header className="rounded-[1.25rem] border border-slate-300/70 bg-white px-4 py-4 text-center text-slate-950 shadow-sm sm:rounded-[1.75rem] md:px-6">
+        <header data-testid="admin-header" className={`rounded-[1.25rem] border ${semantic.border} ${semantic.surface} px-4 py-4 text-center ${semantic.text} shadow-sm sm:rounded-[1.75rem] md:px-6`}>
           <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
             <span className="inline-flex h-16 w-16 shrink-0 items-center justify-center">
               <span role="img" aria-label="학급 보상 시스템 로고" className={`h-16 w-16 ${theme.logoColor} [mask-image:url('/class-reward-system-icon.png')] [mask-position:center] [mask-repeat:no-repeat] [mask-size:contain]`} />
             </span>
             <div>
-              <h1 className="text-3xl font-black tracking-tight text-slate-950 sm:text-4xl md:text-5xl">학급 보상 시스템</h1>
+              <h1 className={`text-3xl font-black tracking-tight ${semantic.text} sm:text-4xl md:text-5xl`}>학급 보상 시스템</h1>
             </div>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -1133,17 +1196,22 @@ export function AdminManagePage() {
           {message ? <p className="mt-3 rounded-2xl bg-rose-100 p-3 text-sm font-bold text-rose-700">{message}</p> : null}
         </header>
 
-        <nav data-testid="admin-tabs" role="tablist" aria-label="관리자 메뉴" className="grid grid-cols-2 gap-2 rounded-[1.5rem] border border-slate-300/70 bg-white/90 p-2 shadow-sm sm:grid-cols-4 lg:grid-cols-8">
+        <nav data-testid="admin-tabs" role="tablist" aria-label="관리자 메뉴" className={`grid grid-cols-2 gap-2 rounded-[1.5rem] border ${semantic.border} ${semantic.surface} p-2 shadow-sm sm:grid-cols-4 lg:grid-cols-8`}>
           {tabs.map((tab) => {
             const selected = activeTab === tab.id;
             return (
               <button
+                ref={(node) => { adminTabRefs.current[tab.id] = node; }}
                 key={tab.id}
+                id={`admin-tab-${tab.id}`}
                 type="button"
                 role="tab"
+                aria-controls={`admin-panel-${tab.id}`}
                 aria-selected={selected}
                 aria-label={tab.label}
-                onClick={() => setActiveTab(tab.id)}
+                tabIndex={selected ? 0 : -1}
+                onKeyDown={(event) => handleAdminTabKeyDown(event, tab.id)}
+                onClick={() => selectAdminTab(tab.id)}
                 className={`rounded-[1rem] px-2 py-3 text-left transition ${selected ? `${theme.selectedTab} shadow-sm` : theme.idleTab}`}
               >
                 <span className="block text-sm font-black sm:text-base">{tab.label}</span>
@@ -1155,7 +1223,7 @@ export function AdminManagePage() {
         </nav>
 
         {activeTab === 'settings' ? (
-          <section role="tabpanel" aria-label="시스템 설정" className="grid gap-3">
+          <section id="admin-panel-settings" role="tabpanel" aria-labelledby="admin-tab-settings" aria-label="시스템 설정" className="grid gap-3">
             <SettingsForm
               linkedStudentCount={students.length}
               linkedProductCount={products.length}
@@ -1165,7 +1233,7 @@ export function AdminManagePage() {
         ) : null}
 
         {activeTab === 'students' ? (
-          <section role="tabpanel" aria-label="학생 관리" className="grid gap-3 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)]">
+          <section id="admin-panel-students" role="tabpanel" aria-labelledby="admin-tab-students" aria-label="학생 관리" className="grid gap-3 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)]">
             <SectionCard title="새 학생 추가" description="관리자 화면에서는 초기 잔액을 음수로도 지정할 수 있습니다." compact>
               <form onSubmit={createNewStudent} className="space-y-2">
                 <TextInput label="새 학생 ID" value={newStudent.studentId} onChange={(value) => setNewStudent((current) => ({ ...current, studentId: value }))} compact />
@@ -1179,25 +1247,25 @@ export function AdminManagePage() {
               title="학생 명단"
               action={(
                 <div className="flex flex-wrap items-center gap-2">
-                  <button type="button" aria-label="학생 명단 새로고침" onClick={refreshStudents} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 shadow-sm">새로고침</button>
+                  <button type="button" aria-label="학생 명단 새로고침" onClick={refreshStudents} className={`rounded-xl border ${semantic.border} ${semantic.surfaceRaised} px-4 py-2 text-sm font-black ${semantic.text} shadow-sm`}>새로고침</button>
                   <button type="button" onClick={saveAllStudents} className={`rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black ${theme.actionText} shadow-sm`}>전체 저장</button>
                 </div>
               )}
               compact
             >
-              <div className={`mb-3 rounded-2xl border border-slate-200 ${theme.softBg} p-3`}>
+              <div className={`mb-3 rounded-2xl border ${semantic.border} ${theme.softBg} p-3`}>
                 <div className="flex flex-wrap items-center gap-2">
-                  <label className="flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-black">
+                  <label className={`flex items-center gap-2 rounded-xl ${semantic.surface} px-3 py-2 text-sm font-black`}>
                     <input aria-label="전체 학생 선택" checked={allStudentsSelected} onChange={(event) => setSelectedStudentIds(event.target.checked ? students.map((student) => student.studentId) : [])} type="checkbox" />
                     전체 선택 ({selectedStudentIds.length}/{students.length})
                   </label>
-                  <select aria-label="선택 학생 작업" value={bulkMode} onChange={(event) => setBulkMode(event.target.value as BulkMode)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-950">
+                  <select aria-label="선택 학생 작업" value={bulkMode} onChange={(event) => setBulkMode(event.target.value as BulkMode)} className={`rounded-xl border ${semantic.border} ${semantic.input} px-3 py-2 text-sm font-bold ${semantic.text}`}>
                     <option value="set">특정 값으로 설정</option>
                     <option value="add">금액 추가</option>
                     <option value="subtract">금액 제거</option>
                   </select>
-                  <input aria-label="선택 학생 금액" value={bulkAmount} onChange={(event) => setBulkAmount(Number(event.target.value))} type="number" className="w-28 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-950" />
-                  <span className="text-xs font-bold text-slate-500">회수 후 음수 잔액 가능</span>
+                  <input aria-label="선택 학생 금액" value={bulkAmount} onChange={(event) => setBulkAmount(Number(event.target.value))} type="number" className={`w-28 rounded-xl border ${semantic.border} ${semantic.input} px-3 py-2 text-sm font-bold ${semantic.text}`} />
+                  <span className="text-xs font-bold text-[var(--theme-muted-text)]">회수 후 음수 잔액 가능</span>
                   <button type="button" disabled={selectedStudentIds.length === 0} onClick={applyBulkStudentBalance} className={`rounded-xl bg-slate-950 px-4 py-2 text-sm font-black text-white ${disabledActionClass}`}>화폐 수정</button>
                   <button type="button" disabled={selectedStudentIds.length === 0} onClick={deleteSelectedStudents} className={`rounded-xl bg-rose-500 px-4 py-2 text-sm font-black text-white ${disabledActionClass}`}>삭제</button>
                   <button type="button" disabled={selectedStudentIds.length === 0} onClick={saveSelectedStudents} className={`rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black ${theme.actionText} ${disabledActionClass}`}>선택 저장</button>
@@ -1212,8 +1280,8 @@ export function AdminManagePage() {
                 </div>
               </div>
 
-              <div data-testid="student-list" className="overflow-hidden rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
-                <div data-testid="student-header-row" className="grid grid-cols-[24px_56px_minmax(4rem,1fr)_78px_52px_42px] items-center gap-0.5 bg-slate-100 px-1.5 py-1 text-[10px] font-black text-slate-500">
+              <div data-testid="student-list" className={`overflow-hidden rounded-2xl border ${semantic.border} ${semantic.surface} divide-y divide-[var(--theme-border)]`}>
+                <div data-testid="student-header-row" className={`grid grid-cols-[24px_56px_minmax(4rem,1fr)_78px_52px_42px] items-center gap-0.5 ${semantic.surfaceRaised} px-1.5 py-1 text-[10px] font-black ${semantic.mutedText}`}>
                   <span>선택</span>
                   <span>ID</span>
                   <span>이름</span>
@@ -1230,9 +1298,9 @@ export function AdminManagePage() {
                     <p className={`min-w-0 truncate font-black ${theme.accentText}`}>{student.studentId}</p>
                     <TextInput dataTestId="student-name-field" label={`${student.studentId} 이름`} value={student.name} onChange={(value) => updateStudent(student.studentId, { name: value })} dense />
                     <NumberInput label={`${student.studentId} 잔액`} value={student.balance} onChange={(value) => updateStudent(student.studentId, { balance: value })} dense />
-                    <label className="block min-w-0 text-xs font-bold text-slate-700">
+                    <label className={`block min-w-0 text-xs font-bold ${semantic.mutedText}`}>
                       <span className="sr-only">상태</span>
-                      <select aria-label={`${student.studentId} 상태`} className="h-8 w-full rounded-lg border border-slate-200 bg-white px-1 text-xs text-slate-950" onChange={(event) => updateStudent(student.studentId, { status: event.target.value as Student['status'] })} value={student.status ?? 'ACTIVE'}>
+                      <select aria-label={`${student.studentId} 상태`} className={`h-8 w-full rounded-lg border ${semantic.border} ${semantic.input} px-1 text-xs ${semantic.text}`} onChange={(event) => updateStudent(student.studentId, { status: event.target.value as Student['status'] })} value={student.status ?? 'ACTIVE'}>
                         <option value="ACTIVE">활성</option>
                         <option value="INACTIVE">비활성</option>
                       </select>
@@ -1248,7 +1316,12 @@ export function AdminManagePage() {
         ) : null}
 
         {activeTab === 'products' ? (
-          <section role="tabpanel" aria-label="매점 관리" className="grid gap-3 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)]">
+          <section id="admin-panel-products" role="tabpanel" aria-labelledby="admin-tab-products" aria-label="매점 관리" className="grid gap-3">
+            <div role="tablist" aria-label="매점 관리 메뉴" className={`grid grid-cols-2 gap-2 rounded-2xl border ${semantic.border} ${semantic.surface} p-2 shadow-sm`}>
+              <button ref={(node) => { storeTabRefs.current.inventory = node; }} id="admin-store-tab-inventory" type="button" role="tab" aria-controls="admin-store-panel-inventory" aria-selected={storeTab === 'inventory'} tabIndex={storeTab === 'inventory' ? 0 : -1} onKeyDown={(event) => handleStoreTabKeyDown(event, 'inventory')} onClick={() => selectStoreTab('inventory')} className={`rounded-xl px-4 py-3 font-black ${storeTab === 'inventory' ? `${theme.selectedTab} shadow-sm` : theme.idleTab}`}>상품·재고</button>
+              <button ref={(node) => { storeTabRefs.current.promotions = node; }} id="admin-store-tab-promotions" type="button" role="tab" aria-controls="admin-store-panel-promotions" aria-selected={storeTab === 'promotions'} tabIndex={storeTab === 'promotions' ? 0 : -1} onKeyDown={(event) => handleStoreTabKeyDown(event, 'promotions')} onClick={() => selectStoreTab('promotions')} className={`rounded-xl px-4 py-3 font-black ${storeTab === 'promotions' ? `${theme.selectedTab} shadow-sm` : theme.idleTab}`}>행사 관리</button>
+            </div>
+            <div id="admin-store-panel-inventory" role="tabpanel" aria-labelledby="admin-store-tab-inventory" hidden={storeTab !== 'inventory'} className="grid gap-3 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)]">
             <SectionCard title="새 상품 추가" description="상품과 가격, 재고를 등록합니다." compact>
               <form onSubmit={createNewProduct} className="space-y-2">
                 <TextInput label="새 상품명" value={newProduct.name} onChange={(value) => setNewProduct((current) => ({ ...current, name: value }))} compact />
@@ -1269,20 +1342,20 @@ export function AdminManagePage() {
 
             <SectionCard title="상품 · 재고 관리" action={(
               <div className="flex flex-wrap gap-2">
-                <button type="button" aria-label="상품 · 재고 관리 새로고침" onClick={refreshProducts} className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-black text-slate-700 shadow-sm">새로고침</button>
+                <button type="button" aria-label="상품 · 재고 관리 새로고침" onClick={refreshProducts} className={`rounded-xl ${semantic.surfaceRaised} px-4 py-2 text-sm font-black ${semantic.text} shadow-sm`}>새로고침</button>
                 <button type="button" onClick={saveAllProducts} className={`rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black ${theme.actionText} shadow-sm`}>전체 저장</button>
               </div>
             )} compact>
-              <div className={`mb-3 rounded-2xl border border-slate-200 ${theme.softBg} p-3`}>
-                <label className="flex w-fit items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-black">
+              <div className={`mb-3 rounded-2xl border ${semantic.border} ${theme.softBg} p-3`}>
+                <label className={`flex w-fit items-center gap-2 rounded-xl ${semantic.surface} px-3 py-2 text-sm font-black`}>
                   <input aria-label="전체 상품 선택" checked={allProductsSelected} onChange={(event) => setSelectedProductIds(event.target.checked ? products.map((product) => product.productId) : [])} type="checkbox" />
                   전체 선택 ({selectedProductIds.length}/{products.length})
                 </label>
                 <button type="button" disabled={selectedProductIds.length === 0} onClick={deleteSelectedProducts} className={`mt-2 rounded-xl bg-rose-500 px-4 py-2 text-sm font-black text-white ${disabledActionClass}`}>삭제</button>
                 <button type="button" disabled={selectedProductIds.length === 0} onClick={saveSelectedProducts} className={`ml-2 mt-2 rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black ${theme.actionText} ${disabledActionClass}`}>선택 저장</button>
               </div>
-              <div data-testid="product-list" className="overflow-hidden rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
-                <div data-testid="product-header-row" className="grid grid-cols-[24px_minmax(3rem,1fr)_56px_48px_36px_minmax(3rem,0.8fr)_40px_30px_34px] items-center gap-0.5 bg-slate-100 px-1.5 py-1 text-[10px] font-black text-slate-500">
+              <div data-testid="product-list" className={`overflow-hidden rounded-2xl border ${semantic.border} ${semantic.surface} divide-y divide-[var(--theme-border)]`}>
+                <div data-testid="product-header-row" className={`grid grid-cols-[24px_minmax(3rem,1fr)_56px_48px_36px_minmax(3rem,0.8fr)_40px_30px_34px] items-center gap-0.5 ${semantic.surfaceRaised} px-1.5 py-1 text-[10px] font-black ${semantic.mutedText}`}>
                   <span>선택</span>
                   <span>상품명</span>
                   <span>가격</span>
@@ -1305,7 +1378,7 @@ export function AdminManagePage() {
                     <TextInput label={`${product.productId} 카테고리`} value={product.category ?? ''} onChange={(value) => updateProduct(product.productId, { category: value })} dense />
                     <button
                       aria-label={`${product.productId} 이미지 주소 편집`}
-                      className="h-8 min-w-0 truncate rounded-lg border border-slate-200 bg-white px-1 text-left text-[10px] font-bold text-slate-600"
+                      className={`h-8 min-w-0 truncate rounded-lg border ${semantic.border} ${semantic.input} px-1 text-left text-[10px] font-bold ${semantic.mutedText}`}
                       onClick={() => setImageEditor({ productId: product.productId, value: product.imageUrl ?? '' })}
                       type="button"
                     >
@@ -1322,18 +1395,29 @@ export function AdminManagePage() {
                 ))}
               </div>
             </SectionCard>
+            </div>
+            <section id="admin-store-panel-promotions" role="tabpanel" aria-labelledby="admin-store-tab-promotions" hidden={storeTab !== 'promotions'}>
+              {hasOpenedPromotions ? (
+                <PromotionAdminPanel
+                  products={products}
+                  currencyUnit={settings.currencyUnit ?? '원'}
+                  timeZone="Asia/Seoul"
+                  themeColor={themeColor}
+                />
+              ) : null}
+            </section>
           </section>
         ) : null}
 
         {activeTab === 'tasks' ? (
-          <section data-testid="task-panel" role="tabpanel" aria-label="과제 설정" className="grid min-w-0 gap-3 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)]">
+          <section id="admin-panel-tasks" data-testid="task-panel" role="tabpanel" aria-labelledby="admin-tab-tasks" aria-label="과제 설정" className="grid min-w-0 gap-3 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)]">
             <div data-testid="new-task-card" className="min-w-0">
             <SectionCard title="새 과제 추가" description="은행 페이지에서 학생이 완료할 보상 과제를 등록합니다." compact>
               <form onSubmit={createNewTask} className="space-y-2">
                 <TextInput label="새 과제명" value={newTask.title} onChange={(value) => setNewTask((current) => ({ ...current, title: value }))} compact />
-                <label className="block text-xs font-bold text-slate-700">
+                <label className={`block text-xs font-bold ${semantic.mutedText}`}>
                   <span>새 과제 설명</span>
-                  <textarea aria-label="새 과제 설명" value={newTask.description} onChange={(event) => setNewTask((current) => ({ ...current, description: event.target.value }))} className="mt-1 min-h-24 w-full rounded-xl border border-slate-200 bg-white px-2 py-2 text-sm text-slate-950 outline-none transition focus:border-slate-300" />
+                  <textarea aria-label="새 과제 설명" value={newTask.description} onChange={(event) => setNewTask((current) => ({ ...current, description: event.target.value }))} className={`mt-1 min-h-24 w-full rounded-xl border ${semantic.border} ${semantic.input} px-2 py-2 text-sm ${semantic.text} outline-none transition ${semantic.ring} focus:ring-2`} />
                 </label>
                 <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
                   <NumberInput label="새 과제 보상" value={newTask.reward} onChange={(value) => setNewTask((current) => ({ ...current, reward: value }))} compact />
@@ -1353,14 +1437,14 @@ export function AdminManagePage() {
             <div data-testid="task-list-card" className="min-w-0">
             <SectionCard title="과제 설정" action={(
               <div className="flex flex-wrap gap-2">
-                <button type="button" aria-label="과제 설정 새로고침" onClick={refreshTasks} className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-black text-slate-700 shadow-sm">새로고침</button>
+                <button type="button" aria-label="과제 설정 새로고침" onClick={refreshTasks} className={`rounded-xl ${semantic.surfaceRaised} px-4 py-2 text-sm font-black ${semantic.text} shadow-sm`}>새로고침</button>
                 <button type="button" onClick={() => { setQrTaskResult(null); setQrTaskScan(null); setQrTaskPickerOpen(true); }} className="rounded-xl bg-sky-100 px-4 py-2 text-sm font-black text-sky-800 shadow-sm">QR 과제 부여</button>
                 <button type="button" onClick={saveAllTasks} className={`rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black ${theme.actionText} shadow-sm`}>전체 저장</button>
               </div>
             )} compact>
-              <div className={`mb-3 rounded-2xl border border-slate-200 ${theme.softBg} p-3`}>
+              <div className={`mb-3 rounded-2xl border ${semantic.border} ${theme.softBg} p-3`}>
                 <div data-testid="task-bulk-actions" className="flex flex-wrap items-center gap-2">
-                <label className="flex w-fit items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-black">
+                <label className={`flex w-fit items-center gap-2 rounded-xl ${semantic.surface} px-3 py-2 text-sm font-black`}>
                   <input aria-label="전체 과제 선택" checked={allTasksSelected} onChange={(event) => setSelectedTaskIds(event.target.checked ? tasks.map((task) => task.taskId) : [])} type="checkbox" />
                   전체 선택 ({selectedTaskIds.length}/{tasks.length})
                 </label>
@@ -1369,24 +1453,19 @@ export function AdminManagePage() {
                 <button type="button" disabled={selectedTaskIds.length === 0} onClick={saveSelectedTasks} className={`rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black ${theme.actionText} ${disabledActionClass}`}>선택 저장</button>
                 </div>
               </div>
-              <div data-testid="task-list-scroll" className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-                <div className="min-w-[540px] divide-y divide-slate-100">
-                <div data-testid="task-header-row" className="grid grid-cols-[24px_minmax(5rem,1fr)_64px_48px_38px_52px_minmax(3rem,0.7fr)_46px_40px] items-center gap-0.5 bg-slate-100 px-1.5 py-1 text-[10px] font-black text-slate-500">
-                  <span>선택</span><span>과제명</span><span>보상</span><span>순서</span><span>활성</span><span>부여</span><span>상세</span><span>초기화</span><span>삭제</span>
+              <div data-testid="task-list-scroll" className={`overflow-x-auto rounded-2xl border ${semantic.border} ${semantic.surface}`}>
+                <div className="min-w-[720px] divide-y divide-slate-100">
+                <div data-testid="task-header-row" className={`grid grid-cols-[24px_minmax(5rem,1fr)_64px_48px_38px_52px_minmax(3rem,0.7fr)_minmax(180px,auto)] items-center gap-0.5 ${semantic.surfaceRaised} px-1.5 py-1 text-[10px] font-black ${semantic.mutedText}`}>
+                  <span>선택</span><span>과제명</span><span>보상</span><span>순서</span><span>활성</span><span>부여</span><span>상세</span><span>작업</span>
                 </div>
                 {tasks.map((task) => (
-                  <div data-testid="task-row" key={task.taskId} className="grid grid-cols-[24px_minmax(5rem,1fr)_64px_48px_38px_52px_minmax(3rem,0.7fr)_46px_40px] items-center gap-0.5 px-1.5 py-1 text-[11px]">
+                  <div data-testid="task-row" key={task.taskId} className="grid grid-cols-[24px_minmax(5rem,1fr)_64px_48px_38px_52px_minmax(3rem,0.7fr)_minmax(180px,auto)] items-center gap-0.5 px-1.5 py-1 text-[11px]">
                     <label className="flex items-center justify-center">
                       <input aria-label={`${task.taskId} 선택`} checked={selectedTaskIds.includes(task.taskId)} onChange={() => toggleTask(task.taskId)} type="checkbox" />
                       <span className="sr-only">선택</span>
                     </label>
                     <div className="min-w-0">
                       <TextInput label={`${task.taskId} 과제명`} value={task.title} onChange={(value) => updateTask(task.taskId, { title: value })} dense />
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        <button type="button" aria-label={`${task.taskId} 반복 설정`} onClick={() => openTaskScheduleEditor(task)} className={`rounded ${theme.softBg} px-1 text-[9px] font-black ${theme.accentText}`}>반복</button>
-                        <button type="button" aria-label={`${task.taskId} 기록 보기`} onClick={() => void openTaskHistory(task)} className="rounded bg-slate-100 px-1 text-[9px] font-black text-slate-700">기록</button>
-                      </div>
-
                     </div>
                     <NumberInput label={`${task.taskId} 보상`} value={task.reward} onChange={(value) => updateTask(task.taskId, { reward: value })} dense />
                     <NumberInput label={`${task.taskId} 정렬`} value={task.sortOrder} onChange={(value) => updateTask(task.taskId, { sortOrder: value })} dense />
@@ -1396,14 +1475,18 @@ export function AdminManagePage() {
                     <button type="button" aria-label={`${task.taskId} 과제 부여`} onClick={() => openTaskAssignmentEditor(task.taskId, task.allowedStudentIds ?? [])} className="h-8 rounded-lg bg-sky-100 px-1 text-[10px] font-black text-sky-800">과제 부여</button>
                     <button
                       aria-label={`${task.taskId} 상세 설정 편집`}
-                      className="h-8 min-w-0 truncate rounded-lg border border-slate-200 bg-white px-1 text-left text-[10px] font-bold text-slate-600"
+                      className={`h-8 min-w-0 truncate rounded-lg border ${semantic.border} ${semantic.input} px-1 text-left text-[10px] font-bold ${semantic.mutedText}`}
                       onClick={() => setTaskDescriptionEditor({ taskId: task.taskId, value: task.description })}
                       type="button"
                     >
                       {task.description ? '상세 있음' : '상세'}
                     </button>
-                    <button type="button" aria-label={`${task.taskId} 완료 기록 초기화`} onClick={() => resetTaskCompletions([task.taskId], task.taskId)} className="h-8 rounded-lg bg-amber-100 px-1 text-[10px] font-black text-amber-800">초기화</button>
-                    <button type="button" aria-label={`${task.taskId} 과제 삭제`} onClick={() => deleteTaskRow(task.taskId)} className="h-8 rounded-lg bg-rose-100 px-1 text-[10px] font-black text-rose-700">삭제</button>
+                    <div data-testid="task-row-actions" className="flex flex-wrap justify-end gap-1">
+                      <button type="button" aria-label={`${task.taskId} 반복 설정`} onClick={() => openTaskScheduleEditor(task)} className={`h-8 rounded-lg border ${semantic.border} ${theme.softBg} px-2 text-[10px] font-black ${theme.accentText} outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-surface)]`}>반복</button>
+                      <button type="button" aria-label={`${task.taskId} 기록 보기`} onClick={(event) => void openTaskHistory(task, event.currentTarget)} className={`h-8 rounded-lg border ${semantic.border} ${semantic.surfaceRaised} px-2 text-[10px] font-black ${semantic.text} outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-surface)]`}>기록</button>
+                      <button type="button" aria-label={`${task.taskId} 완료 기록 초기화`} onClick={() => resetTaskCompletions([task.taskId], task.taskId)} className="h-8 rounded-lg border border-amber-500 bg-amber-100 px-2 text-[10px] font-black text-amber-900 outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-surface)]">초기화</button>
+                      <button type="button" aria-label={`${task.taskId} 과제 삭제`} onClick={(event) => requestTaskDelete(task, event.currentTarget)} className="h-8 rounded-lg border border-rose-500 bg-rose-100 px-2 text-[10px] font-black text-rose-800 outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-surface)]">삭제</button>
+                    </div>
                   </div>
                 ))}
                 </div>
@@ -1413,62 +1496,56 @@ export function AdminManagePage() {
           </section>
         ) : null}
 
-        {activeTab === 'promotions' ? (
-          <section role="tabpanel" aria-label="행사 관리">
-            <PromotionAdminPanel
-              products={products}
-              currencyUnit={settings.currencyUnit ?? '원'}
-              timeZone="Asia/Seoul"
-            />
-          </section>
-        ) : null}
-
-        <section role="tabpanel" aria-label="거래 내역 확인" hidden={activeTab !== 'transactions'}>
-          <TransactionsPanel embedded summaryToneClass={theme.statBg} summaryAccentClass={theme.accentText} />
+        <section id="admin-panel-transactions" role="tabpanel" aria-labelledby="admin-tab-transactions" aria-label="거래 내역 확인" hidden={activeTab !== 'transactions'}>
+          {hasOpenedTransactions ? <TransactionsPanel embedded summaryToneClass={theme.statBg} summaryAccentClass={theme.accentText} /> : null}
         </section>
 
         {activeTab === 'currency' ? (
-          <section role="tabpanel" aria-label="화폐 지급/회수" className="mx-auto grid w-full max-w-5xl gap-3 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <section id="admin-panel-currency" role="tabpanel" aria-labelledby="admin-tab-currency" aria-label="화폐 지급/회수" className="mx-auto grid w-full max-w-5xl gap-3 lg:grid-cols-[minmax(0,1fr)_360px]">
             <SectionCard title="화폐 지급/회수" compact>
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => setCurrencyMode('add')} className={`rounded-2xl px-4 py-4 text-xl font-black ${currencyMode === 'add' ? `${theme.accentBg} ${theme.actionText}` : `${theme.softBg} ${theme.softText}`}`}>지급</button>
                 <button type="button" onClick={() => setCurrencyMode('subtract')} className={`rounded-2xl px-4 py-4 text-xl font-black ${currencyMode === 'subtract' ? 'bg-rose-500 text-white' : 'bg-rose-50 text-slate-700'}`}>회수</button>
               </div>
-              <label className="mt-3 block text-sm font-black text-slate-700">
+              <label className={`mt-3 block text-sm font-black ${semantic.mutedText}`}>
                 <span>금액</span>
-                <input aria-label="지급/회수 금액" value={currencyAmount} onChange={(event) => setCurrencyAmount(Number(event.target.value))} type="number" min="0" className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-2xl font-black text-slate-950 outline-none focus:border-slate-300" />
+                <input aria-label="지급/회수 금액" value={currencyAmount} onChange={(event) => setCurrencyAmount(Number(event.target.value))} type="number" min="0" className={`mt-2 w-full rounded-2xl border ${semantic.border} ${semantic.input} px-4 py-4 text-2xl font-black ${semantic.text} outline-none focus:ring-2 ${semantic.ring}`} />
               </label>
               <button type="button" onClick={() => { setCurrencyResult(null); setCurrencyManualId(''); setCurrencyScannerOpen(true); }} className="mt-3 w-full rounded-2xl bg-slate-950 py-4 text-xl font-black text-white">
                 QR 인식 시작
               </button>
             </SectionCard>
             <SectionCard title="이용 안내" compact>
-              <ul className="space-y-3 text-sm font-bold leading-relaxed text-slate-600 sm:text-base">
+              <ul className="space-y-3 text-sm font-bold leading-relaxed text-[var(--theme-muted-text)] sm:text-base">
                 <li>• QR코드를 인식하여 화폐를 지급하거나 회수할 수 있습니다.</li>
                 <li>• 회수하는 금액이 잔액보다 큰 경우, 차액만큼 잔액이 음수로 표시됩니다. (예: 잔액 10인 학생에게 15만큼 회수하는 경우 잔액이 -5로 기록됨)</li>
               </ul>
             </SectionCard>
           </section>
         ) : null}
+        {tabs.filter((tab) => tab.id !== activeTab && tab.id !== 'transactions').map((tab) => (
+          <section key={`inactive-${tab.id}`} id={`admin-panel-${tab.id}`} role="tabpanel" aria-labelledby={`admin-tab-${tab.id}`} hidden />
+        ))}
       </section>
+      </div>
       {isSavingChanges ? <LoadingDialog title="변경 사항 저장 중" message="변경 사항을 저장하는 중입니다." /> : null}
       {isRefreshingLists ? <LoadingDialog title="새로고침 중" message="새로고침하는 중입니다." /> : null}
       {imageEditor ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <section role="dialog" aria-modal="true" aria-label="상품 이미지 등록" className="w-full max-w-xl rounded-2xl bg-white p-4 shadow-2xl">
+          <section role="dialog" aria-modal="true" aria-label="상품 이미지 등록" className="w-full max-w-xl rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 text-[var(--theme-text)] shadow-2xl">
             <h2 className="text-xl font-black">상품 이미지 등록</h2>
-            <div className="mt-2 space-y-1 rounded-2xl bg-slate-50 p-3 text-sm font-bold leading-relaxed text-slate-600">
+            <div className="mt-2 space-y-1 rounded-2xl bg-[var(--theme-surface-raised)] p-3 text-sm font-bold leading-relaxed text-[var(--theme-muted-text)]">
               <p>※ 상품 이미지 등록하는 방법</p>
               <p>① 구글 이미지 검색 등으로 원하는 상품 이미지를 찾습니다.</p>
               <p>② 원하는 이미지를 마우스로 우클릭(모바일에서는 꾹 누르기)하고 &apos;이미지 주소 복사&apos;를 선택합니다.</p>
               <p>③ 복사한 이미지 주소를 아래 창에 붙여넣고 &apos;상품 이미지 적용&apos; 버튼을 누릅니다.</p>
               <p>④ &apos;전체 저장&apos;을 눌러 상품 이미지를 저장 및 적용합니다.</p>
             </div>
-            <label className="mt-4 block text-sm font-bold text-slate-700">
+            <label className="mt-4 block text-sm font-bold text-[var(--theme-muted-text)]">
               <span>이미지 주소 전체 입력</span>
               <textarea
                 aria-label="이미지 주소 전체 입력"
-                className="mt-2 min-h-32 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-950 outline-none focus:border-slate-300"
+                className="mt-2 min-h-32 w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-input)] p-3 text-sm text-[var(--theme-text)] outline-none focus:ring-2 focus:ring-[var(--theme-focus-ring)]"
                 value={imageEditor.value}
                 onChange={(event) => setImageEditor((current) => current ? { ...current, value: event.target.value } : current)}
               />
@@ -1491,11 +1568,11 @@ export function AdminManagePage() {
       ) : null}
       {qrPrintStudents ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 print:hidden">
-          <section role="dialog" aria-modal="true" aria-label="선택 학생 QR 발급" className="flex max-h-[90vh] w-full max-w-4xl flex-col rounded-2xl bg-white p-4 shadow-2xl">
+          <section role="dialog" aria-modal="true" aria-label="선택 학생 QR 발급" className="flex max-h-[90vh] w-full max-w-4xl flex-col rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 text-[var(--theme-text)] shadow-2xl">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h2 className="text-xl font-black">선택 학생 QR 발급</h2>
-                <p className="mt-1 text-sm font-bold text-slate-500">선택한 학생 {qrPrintStudents.length}명의 QR만 출력합니다.</p>
+                <p className="mt-1 text-sm font-bold text-[var(--theme-muted-text)]">선택한 학생 {qrPrintStudents.length}명의 QR만 출력합니다.</p>
               </div>
               <div className="flex gap-2">
                 <button type="button" className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-black text-white" onClick={() => window.print()}>인쇄</button>
@@ -1518,9 +1595,9 @@ export function AdminManagePage() {
 
       {qrTaskPickerOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <section role="dialog" aria-modal="true" aria-label="QR 과제 부여" className="flex max-h-[90vh] w-full max-w-xl flex-col rounded-2xl bg-white p-4 text-slate-950 shadow-2xl">
+          <section role="dialog" aria-modal="true" aria-label="QR 과제 부여" className="flex max-h-[90vh] w-full max-w-xl flex-col rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 text-[var(--theme-text)] shadow-2xl">
             <h2 className="text-xl font-black">QR 과제 부여</h2>
-            <p className="mt-1 text-sm font-bold text-slate-500">QR로 부여할 과제를 선택해 주세요.</p>
+            <p className="mt-1 text-sm font-bold text-[var(--theme-muted-text)]">QR로 부여할 과제를 선택해 주세요.</p>
             <div className="mt-4 max-h-80 space-y-2 overflow-y-auto">
               {tasks.map((task) => (
                 <button key={task.taskId} type="button" aria-label={`${task.title} 과제 선택`} onClick={() => openQrTaskScan(task.taskId)} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left font-black text-slate-800 hover:bg-sky-50">
@@ -1535,15 +1612,15 @@ export function AdminManagePage() {
       ) : null}
       {qrTaskScan ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <section role="dialog" aria-modal="true" aria-label={`${tasks.find((task) => task.taskId === qrTaskScan.taskId)?.title ?? '과제'} QR 과제 부여`} className="w-full max-w-xl rounded-2xl bg-white p-4 text-slate-950 shadow-2xl">
+          <section role="dialog" aria-modal="true" aria-label={`${tasks.find((task) => task.taskId === qrTaskScan.taskId)?.title ?? '과제'} QR 과제 부여`} className="w-full max-w-xl rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 text-[var(--theme-text)] shadow-2xl">
             <h2 className="text-xl font-black">학생 QR 인식</h2>
             <p className="mt-1 rounded-2xl bg-sky-50 p-3 text-sm font-bold text-sky-800"><strong>{tasks.find((task) => task.taskId === qrTaskScan.taskId)?.title ?? '선택한 과제'}</strong> 과제를 부여 중입니다.</p>
             <div className="mt-4 flex justify-center">
               <QrScanner onScan={assignTaskByQr} />
             </div>
-            <label className="mt-4 block text-sm font-bold text-slate-700">
+            <label className="mt-4 block text-sm font-bold text-[var(--theme-muted-text)]">
               <span>학생 QR 직접 입력</span>
-              <input aria-label="과제 부여 학생 QR 직접 입력" value={qrTaskScan.manualId} onChange={(event) => setQrTaskScan((current) => current ? { ...current, manualId: event.target.value } : current)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-950 outline-none focus:border-slate-300" placeholder="S001" />
+              <input aria-label="과제 부여 학생 QR 직접 입력" value={qrTaskScan.manualId} onChange={(event) => setQrTaskScan((current) => current ? { ...current, manualId: event.target.value } : current)} className="mt-2 w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-input)] p-3 text-sm text-[var(--theme-text)] outline-none focus:ring-2 focus:ring-[var(--theme-focus-ring)]" placeholder="S001" />
             </label>
             <div className="mt-4 flex gap-2">
               <button type="button" className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700" onClick={returnToQrTaskPicker}>취소</button>
@@ -1555,9 +1632,9 @@ export function AdminManagePage() {
       {qrTaskLoading ? <LoadingDialog title="QR 인식 중" message="QR을 인식했습니다. 과제를 부여하는 중입니다." /> : null}
       {qrTaskResult ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <section role="dialog" aria-modal="true" aria-label={`QR 과제 부여 ${qrTaskResult.status === 'success' ? '성공' : '실패'}`} className="w-full max-w-md rounded-2xl bg-white p-5 text-center text-slate-950 shadow-2xl">
-            <h2 className={`text-2xl font-black ${qrTaskResult.status === 'success' ? theme.accentText : 'text-rose-700'}`}>QR 과제 부여 {qrTaskResult.status === 'success' ? '성공' : '실패'}</h2>
-            <p className="mt-3 rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-700">{qrTaskResult.message}</p>
+          <section role="dialog" aria-modal="true" aria-label={`QR 과제 부여 ${qrTaskResult.status === 'success' ? '성공' : '실패'}`} className="w-full max-w-md rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-5 text-center text-[var(--theme-text)] shadow-2xl">
+            <h2 className={`inline-block rounded-xl px-3 py-2 text-2xl font-black text-white ${qrTaskResult.status === 'success' ? 'bg-emerald-700' : 'bg-rose-700'}`}>QR 과제 부여 {qrTaskResult.status === 'success' ? '성공' : '실패'}</h2>
+            <p className="mt-3 rounded-2xl bg-[var(--theme-surface-raised)] p-4 text-sm font-bold text-[var(--theme-text)]">{qrTaskResult.message}</p>
             <div className="mt-4 flex gap-2">
               <button type="button" className="flex-1 rounded-xl bg-slate-950 py-3 font-black text-white" onClick={() => openQrTaskScan(qrTaskResult.taskId)}>{qrTaskResult.status === 'success' ? '다시 찍기' : '다시 시도'}</button>
               <button type="button" className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700" onClick={returnToQrTaskPicker}>{qrTaskResult.status === 'success' ? '닫기' : '취소'}</button>
@@ -1567,7 +1644,7 @@ export function AdminManagePage() {
       ) : null}
       {taskScheduleEditor ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <section role="dialog" aria-modal="true" aria-label="과제 반복 설정" className="w-full max-w-lg rounded-2xl bg-white p-4 text-slate-950 shadow-2xl">
+          <section role="dialog" aria-modal="true" aria-label="과제 반복 설정" className="w-full max-w-lg rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 text-[var(--theme-text)] shadow-2xl">
             <h2 className="text-xl font-black">과제 반복 설정</h2>
             <p className="mt-1 rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-900">반복 규칙 변경은 즉시 적용됩니다. 직전 완료 상태는 보상 없이 새 회차에 승계되고 자연 초기화는 다음 경계부터 시작됩니다.</p>
             {taskScheduleEditor.taskId ? (
@@ -1588,12 +1665,19 @@ export function AdminManagePage() {
           </section>
         </div>
       ) : null}
-      {taskHistory ? <TaskHistoryDialog history={taskHistory} onClose={closeTaskHistory} /> : null}
+      {taskHistory ? <TaskHistoryDialog history={taskHistory} onClose={closeTaskHistory} opener={historyOpenerRef.current} themeColor={themeColor} /> : null}
+      {taskDeleteConfirmation ? (
+        <TaskDeleteConfirmDialog
+          confirmation={taskDeleteConfirmation}
+          onCancel={cancelTaskDelete}
+          onConfirm={() => void confirmTaskDelete()}
+        />
+      ) : null}
       {taskAssignmentEditor ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <section role="dialog" aria-modal="true" aria-label="과제 부여" className="w-full max-w-xl rounded-2xl bg-white p-4 text-slate-950 shadow-2xl">
+          <section role="dialog" aria-modal="true" aria-label="과제 부여" className="w-full max-w-xl rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 text-[var(--theme-text)] shadow-2xl">
             <h2 className="text-xl font-black">과제 부여</h2>
-            {taskAssignmentEditor.taskId ? <p className="mt-1 text-xs font-black text-violet-700">현재 회차 부여·완료 상태 {tasks.find((task) => task.taskId === taskAssignmentEditor.taskId)?.currentCycle?.transition === 'PERMANENT' ? '(상시 과제)' : ''}</p> : null}
+            {taskAssignmentEditor.taskId ? <p className="mt-1 text-xs font-black text-[var(--theme-accent-text)]">현재 회차 부여·완료 상태 {tasks.find((task) => task.taskId === taskAssignmentEditor.taskId)?.currentCycle?.transition === 'PERMANENT' ? '(상시 과제)' : ''}</p> : null}
             <p className="mt-1 rounded-2xl bg-sky-50 p-3 text-sm font-bold text-sky-800">선택된 학생만 이 과제를 완료할 수 있습니다. 아무 학생도 선택하지 않으면 아무도 완료할 수 없습니다.</p>
             <p className="mt-1 rounded-xl bg-amber-50 p-2 text-xs font-bold text-amber-900">관리자 완료는 보상 없이 표시됩니다.</p>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-100 px-3 py-2 text-sm font-black">
@@ -1604,7 +1688,7 @@ export function AdminManagePage() {
               <div className="flex flex-wrap gap-2">
                 <select
                   aria-label="선택 학생 부여 상태 일괄 변경"
-                  className="h-9 rounded-full border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 shadow-sm outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                  className={`h-9 rounded-full border ${semantic.border} ${semantic.input} px-3 text-xs font-black ${semantic.text} shadow-sm outline-none disabled:cursor-not-allowed disabled:opacity-50`}
                   disabled={taskAssignmentEditor.selectedIds.length === 0}
                   onChange={(event) => {
                     if (event.target.value === 'assigned' || event.target.value === 'unassigned') setSelectedTaskAssignmentAssigned(event.target.value);
@@ -1617,7 +1701,7 @@ export function AdminManagePage() {
                 </select>
                 <select
                   aria-label="선택 학생 완료 여부 일괄 변경"
-                  className="h-9 rounded-full border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 shadow-sm outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                  className={`h-9 rounded-full border ${semantic.border} ${semantic.input} px-3 text-xs font-black ${semantic.text} shadow-sm outline-none disabled:cursor-not-allowed disabled:opacity-50`}
                   disabled={taskAssignmentEditor.selectedIds.length === 0}
                   onChange={(event) => {
                     if (event.target.value === 'completed' || event.target.value === 'incomplete') setSelectedTaskAssignmentCompletion(event.target.value);
@@ -1630,7 +1714,7 @@ export function AdminManagePage() {
                 </select>
               </div>
             </div>
-            <div className="mt-3 grid grid-cols-[auto_1fr_auto_auto] gap-3 px-3 text-xs font-black text-slate-500">
+            <div className="mt-3 grid grid-cols-[auto_1fr_auto_auto] gap-3 px-3 text-xs font-black text-[var(--theme-muted-text)]">
               <span>선택</span>
               <span>학생</span>
               <span>부여 여부</span>
@@ -1638,7 +1722,7 @@ export function AdminManagePage() {
             </div>
             <div className="relative mt-2 max-h-72 space-y-1 overflow-y-auto rounded-2xl border border-slate-200 p-2">
               {taskAssignmentEditor.isLoading ? (
-                <div role="status" aria-label="과제 부여 상태 불러오는 중" className="absolute inset-2 z-10 flex items-center justify-center rounded-2xl bg-white/90 p-4 text-center text-sm font-black text-slate-600 shadow-sm">
+                <div role="status" aria-label="과제 부여 상태 불러오는 중" className="absolute inset-2 z-10 flex items-center justify-center rounded-2xl bg-[var(--theme-surface-raised)] p-4 text-center text-sm font-black text-[var(--theme-muted-text)] shadow-sm">
                   부여·완료 정보를 불러오는 중입니다.
                 </div>
               ) : null}
@@ -1653,9 +1737,9 @@ export function AdminManagePage() {
                   ? 'border-blue-600 bg-blue-600 text-white'
                   : 'border-slate-200 bg-slate-200 text-slate-700';
                 return (
-                  <div key={student.studentId} data-testid={`task-assignment-row-${student.studentId}`} className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-3 rounded-xl px-3 py-2 text-sm font-bold hover:bg-slate-50">
+                  <div key={student.studentId} data-testid={`task-assignment-row-${student.studentId}`} className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-3 rounded-xl px-3 py-2 text-sm font-bold hover:bg-[var(--theme-hover)] hover:text-[var(--theme-hover-text)]">
                     <input aria-label={`${student.studentId} ${student.name} 행 선택`} checked={selected} onChange={() => toggleTaskAssignmentStudent(student.studentId)} type="checkbox" />
-                    <span className="min-w-0"><span className="font-black">{student.studentId}</span> <span>{student.name}</span>{(() => { const state = taskAssignmentEditor.statusRows.find((row) => row.studentId === student.studentId); return state ? <span className="block text-[10px] text-slate-500">부여 {assignmentSourceLabel(state.assignmentOrigin ?? 'DEFAULT', state.assignmentSource)} · 완료 {originLabel(state.completionOrigin ?? 'DEFAULT')}</span> : null; })()}</span>
+                    <span className="min-w-0"><span className="font-black">{student.studentId}</span> <span>{student.name}</span>{(() => { const state = taskAssignmentEditor.statusRows.find((row) => row.studentId === student.studentId); return state ? <span className="block text-[10px] text-[var(--theme-muted-text)]">부여 {assignmentSourceLabel(state.assignmentOrigin ?? 'DEFAULT', state.assignmentSource)} · 완료 {originLabel(state.completionOrigin ?? 'DEFAULT')}</span> : null; })()}</span>
                     <button type="button" aria-label={`${student.studentId} ${student.name} 부여 상태`} className={`h-9 min-w-16 rounded-full border px-3 text-xs font-black shadow-sm transition ${assignmentClass}`} onClick={() => toggleTaskAssignmentAssigned(student.studentId)}>{assigned ? '부여' : '미부여'}</button>
                     <button type="button" aria-label={`${student.studentId} ${student.name} 완료 상태`} className={`h-9 min-w-16 rounded-full border px-3 text-xs font-black shadow-sm transition ${completionClass}`} onClick={() => toggleTaskAssignmentCompleted(student.studentId)}>{completed ? '완료' : '미완료'}</button>
                   </div>
@@ -1671,14 +1755,14 @@ export function AdminManagePage() {
       ) : null}
       {taskDescriptionEditor ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <section role="dialog" aria-modal="true" aria-label="과제 상세 설정 편집" className="w-full max-w-xl rounded-2xl bg-white p-4 shadow-2xl">
+          <section role="dialog" aria-modal="true" aria-label="과제 상세 설정 편집" className="w-full max-w-xl rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 text-[var(--theme-text)] shadow-2xl">
             <h2 className="text-xl font-black">과제 상세 설정 편집</h2>
-            <p className="mt-1 text-sm font-bold text-slate-500">긴 설명은 여기에서 편하게 입력하고 수정합니다.</p>
-            <label className="mt-4 block text-sm font-bold text-slate-700">
+            <p className="mt-1 text-sm font-bold text-[var(--theme-muted-text)]">긴 설명은 여기에서 편하게 입력하고 수정합니다.</p>
+            <label className="mt-4 block text-sm font-bold text-[var(--theme-muted-text)]">
               <span>과제 상세 설정 전체 입력</span>
               <textarea
                 aria-label="과제 상세 설정 전체 입력"
-                className="mt-2 min-h-40 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-950 outline-none focus:border-slate-300"
+                className="mt-2 min-h-40 w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-input)] p-3 text-sm text-[var(--theme-text)] outline-none focus:ring-2 focus:ring-[var(--theme-focus-ring)]"
                 value={taskDescriptionEditor.value}
                 onChange={(event) => setTaskDescriptionEditor((current) => current ? { ...current, value: event.target.value } : current)}
               />
@@ -1704,15 +1788,15 @@ export function AdminManagePage() {
       ) : null}
       {currencyScannerOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <section role="dialog" aria-modal="true" aria-label="학생 QR 인식" className="w-full max-w-xl rounded-2xl bg-white p-4 shadow-2xl">
+          <section role="dialog" aria-modal="true" aria-label="학생 QR 인식" className="w-full max-w-xl rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 text-[var(--theme-text)] shadow-2xl">
             <h2 className="text-xl font-black">학생 QR 인식</h2>
-            <p className="mt-1 text-sm font-bold text-slate-500">{currencyAmount} {currencyActionLabel}할 학생 QR을 인식합니다.</p>
+            <p className="mt-1 text-sm font-bold text-[var(--theme-muted-text)]">{currencyAmount} {currencyActionLabel}할 학생 QR을 인식합니다.</p>
             <div className="mt-4 flex justify-center">
               <QrScanner onScan={applyCurrencyToStudent} />
             </div>
-            <label className="mt-4 block text-sm font-bold text-slate-700">
+            <label className="mt-4 block text-sm font-bold text-[var(--theme-muted-text)]">
               <span>학생 QR 직접 입력</span>
-              <input aria-label="학생 QR 직접 입력" value={currencyManualId} onChange={(event) => setCurrencyManualId(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-950 outline-none focus:border-slate-300" placeholder="S001" />
+              <input aria-label="학생 QR 직접 입력" value={currencyManualId} onChange={(event) => setCurrencyManualId(event.target.value)} className="mt-2 w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-input)] p-3 text-sm text-[var(--theme-text)] outline-none focus:ring-2 focus:ring-[var(--theme-focus-ring)]" placeholder="S001" />
             </label>
             <div className="mt-4 flex gap-2">
               <button type="button" className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700" onClick={() => setCurrencyScannerOpen(false)}>취소</button>
@@ -1723,9 +1807,9 @@ export function AdminManagePage() {
       ) : null}
       {currencyResult ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <section role="dialog" aria-modal="true" aria-label={`화폐 ${currencyResult.mode === 'add' ? '지급' : '회수'} ${currencyResult.status === 'success' ? '성공' : '실패'}`} className="w-full max-w-md rounded-2xl bg-white p-5 text-center shadow-2xl">
-            <h2 className={`text-2xl font-black ${currencyResult.status === 'success' ? theme.accentText : 'text-rose-700'}`}>화폐 {currencyResult.mode === 'add' ? '지급' : '회수'} {currencyResult.status === 'success' ? '성공' : '실패'}</h2>
-            <p className="mt-3 rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-700">{currencyResult.message}</p>
+          <section role="dialog" aria-modal="true" aria-label={`화폐 ${currencyResult.mode === 'add' ? '지급' : '회수'} ${currencyResult.status === 'success' ? '성공' : '실패'}`} className="w-full max-w-md rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-5 text-center text-[var(--theme-text)] shadow-2xl">
+            <h2 className={`inline-block rounded-xl px-3 py-2 text-2xl font-black text-white ${currencyResult.status === 'success' ? 'bg-emerald-700' : 'bg-rose-700'}`}>화폐 {currencyResult.mode === 'add' ? '지급' : '회수'} {currencyResult.status === 'success' ? '성공' : '실패'}</h2>
+            <p className="mt-3 rounded-2xl bg-[var(--theme-surface-raised)] p-4 text-sm font-bold text-[var(--theme-text)]">{currencyResult.message}</p>
             <div className="mt-4 flex gap-2">
               <button type="button" className="flex-1 rounded-xl bg-slate-950 py-3 font-black text-white" onClick={retryCurrencyScan}>다시 시도</button>
               <button type="button" className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700" onClick={() => setCurrencyResult(null)}>{currencyResult.status === 'success' ? '닫기' : '취소'}</button>
@@ -1734,6 +1818,56 @@ export function AdminManagePage() {
         </div>
       ) : null}
     </main>
+  );
+}
+
+function TaskDeleteConfirmDialog({
+  confirmation,
+  onCancel,
+  onConfirm,
+}: {
+  confirmation: { taskId: string; title: string; opener: HTMLElement; deleting: boolean; error: string };
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const dialogRef = useRef<HTMLElement>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    confirmRef.current?.focus();
+    return () => confirmation.opener.focus();
+  }, [confirmation.opener]);
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLElement>) {
+    if (event.key === 'Escape' && !confirmation.deleting) {
+      event.preventDefault();
+      event.stopPropagation();
+      onCancel();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLButtonElement>('button:not([disabled])') ?? []);
+    if (controls.length === 0) return;
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    if ((event.shiftKey && document.activeElement === first) || (!event.shiftKey && document.activeElement === last)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <section ref={dialogRef} role="dialog" aria-modal="true" aria-label={`${confirmation.title} 과제 삭제 확인`} onKeyDown={handleKeyDown} className="w-full max-w-md rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-5 text-[var(--theme-text)] shadow-2xl">
+        <h2 className="text-xl font-black">과제를 삭제할까요?</h2>
+        <p className="mt-3 rounded-xl bg-[var(--theme-surface-raised)] p-4 font-bold"><strong>{confirmation.title}</strong> ({confirmation.taskId}) 과제를 삭제합니다.</p>
+        {confirmation.error ? <p role="alert" className="mt-3 rounded-xl border border-rose-500 bg-rose-100 p-3 text-sm font-bold text-rose-800">{confirmation.error}</p> : null}
+        <div className="mt-4 flex gap-2">
+          <button ref={confirmRef} type="button" aria-label="과제 삭제 확인" disabled={confirmation.deleting} onClick={onConfirm} className="flex-1 rounded-xl bg-rose-600 py-3 font-black text-white disabled:cursor-not-allowed disabled:opacity-60">{confirmation.deleting ? '삭제 중...' : '삭제'}</button>
+          <button type="button" aria-label="과제 삭제 취소" disabled={confirmation.deleting} onClick={onCancel} className="flex-1 rounded-xl bg-[var(--theme-surface-raised)] py-3 font-black text-[var(--theme-text)] disabled:cursor-not-allowed disabled:opacity-60">취소</button>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -1748,12 +1882,13 @@ function assignmentSourceLabel(origin: string, source?: TaskAssignmentStudentSta
 }
 
 function LoadingScreen({ title, message }: { title: string; message: string }) {
+  const loadingTheme = themeStyles('white');
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-100 p-4 text-slate-950">
-      <section role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-2xl">
-        <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-slate-950" aria-hidden="true" />
+    <main style={loadingTheme.variables} className="flex min-h-screen items-center justify-center bg-[var(--theme-shell)] p-4 text-[var(--theme-text)]">
+      <section role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-md rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-6 text-center text-[var(--theme-text)] shadow-2xl">
+        <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-[var(--theme-border)] border-t-[var(--theme-focus-ring)]" aria-hidden="true" />
         <h1 className="mt-4 text-2xl font-black">{title}</h1>
-        <p className="mt-2 rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-600">{message}</p>
+        <p className="mt-2 rounded-2xl bg-[var(--theme-surface-raised)] p-4 text-sm font-bold text-[var(--theme-muted-text)]">{message}</p>
       </section>
     </main>
   );
@@ -1762,10 +1897,10 @@ function LoadingScreen({ title, message }: { title: string; message: string }) {
 function LoadingDialog({ title, message }: { title: string; message: string }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-      <section role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-2xl">
-        <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-sky-500" aria-hidden="true" />
+      <section role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-md rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-6 text-center text-[var(--theme-text)] shadow-2xl">
+        <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-[var(--theme-border)] border-t-[var(--theme-focus-ring)]" aria-hidden="true" />
         <h2 className="mt-4 text-2xl font-black">{title}</h2>
-        <p className="mt-2 rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-600">{message}</p>
+        <p className="mt-2 rounded-2xl bg-[var(--theme-surface-raised)] p-4 text-sm font-bold text-[var(--theme-muted-text)]">{message}</p>
       </section>
     </div>
   );
@@ -1781,7 +1916,7 @@ function AdminNavLink({ href, title, className }: { href: string; title: string;
 
 function StudentQrCard({ student }: { student: Student }) {
   return (
-    <article className="break-inside-avoid rounded-3xl border-2 border-slate-200 bg-white p-5 text-center shadow-sm print:rounded-2xl print:border print:p-4 print:shadow-none">
+    <article className="break-inside-avoid rounded-3xl border-2 border-slate-200 bg-white p-5 text-center text-slate-950 shadow-sm print:rounded-2xl print:border print:p-4 print:shadow-none">
       <div className="mx-auto mb-4 flex h-48 w-48 items-center justify-center rounded-3xl border border-slate-100 bg-white p-3 print:h-40 print:w-40">
         <img alt={`${student.name} QR 코드`} className="h-full w-full" src={`/api/qrcode?value=${encodeURIComponent(student.studentId)}`} />
       </div>
@@ -1798,7 +1933,7 @@ function StudentQrCard({ student }: { student: Student }) {
 function SummaryCard({ label, value, toneClass, accentClass }: { label: string; value: string; toneClass: string; accentClass: string }) {
   return (
     <div className={`rounded-2xl ${toneClass} px-3 py-2 text-left sm:px-4 sm:py-3`}>
-      <p className="text-[11px] font-black text-slate-500 sm:text-xs">{label}</p>
+      <p className="text-[11px] font-black text-[var(--theme-muted-text)] sm:text-xs">{label}</p>
       <p className={`mt-1 text-xl font-black ${accentClass} sm:text-2xl`}>{value}</p>
     </div>
   );
@@ -1806,12 +1941,12 @@ function SummaryCard({ label, value, toneClass, accentClass }: { label: string; 
 
 function SectionCard({ title, description, action, children, compact = false }: { title: string; description?: string; action?: ReactNode; children: ReactNode; compact?: boolean }) {
   return (
-    <section className={`min-w-0 overflow-hidden rounded-[1.25rem] border border-slate-300/70 bg-white/90 text-slate-950 shadow-sm sm:rounded-[1.75rem] ${compact ? 'p-3 md:p-4' : 'p-4 md:p-5'}`}>
+    <section className={`min-w-0 overflow-hidden rounded-[1.25rem] border border-[var(--theme-border)] bg-[var(--theme-surface)] text-[var(--theme-text)] shadow-sm sm:rounded-[1.75rem] ${compact ? 'p-3 md:p-4' : 'p-4 md:p-5'}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-xl font-black text-slate-950 sm:text-2xl">{title}</h2>
+        <h2 className="text-xl font-black text-[var(--theme-text)] sm:text-2xl">{title}</h2>
         {action}
       </div>
-      {description ? <p className="mt-1 text-xs font-bold text-slate-500 sm:text-sm">{description}</p> : null}
+      {description ? <p className="mt-1 text-xs font-bold text-[var(--theme-muted-text)] sm:text-sm">{description}</p> : null}
       <div className="mt-3">{children}</div>
     </section>
   );
@@ -1820,11 +1955,11 @@ function SectionCard({ title, description, action, children, compact = false }: 
 function TextInput({ label, value, onChange, compact = false, dense = false, dataTestId }: { label: string; value?: string; onChange: (value: string) => void; compact?: boolean; dense?: boolean; dataTestId?: string }) {
   const visibleLabel = label.replace(/^새 |^[SP]\d+ /, '');
   const inputClass = dense
-    ? 'h-8 w-full rounded-lg border border-slate-200 bg-white px-1 text-[11px] text-slate-950 outline-none transition focus:border-slate-300'
-    : `mt-1 w-full rounded-xl border border-slate-200 bg-white px-2 text-slate-950 outline-none transition focus:border-slate-300 ${compact ? 'py-2 text-sm' : 'py-3'}`;
+    ? 'h-8 w-full rounded-lg border border-[var(--theme-border)] bg-[var(--theme-input)] px-1 text-[11px] text-[var(--theme-text)] outline-none transition focus:ring-2 focus:ring-[var(--theme-focus-ring)]'
+    : `mt-1 w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-input)] px-2 text-[var(--theme-text)] outline-none transition focus:ring-2 focus:ring-[var(--theme-focus-ring)] ${compact ? 'py-2 text-sm' : 'py-3'}`;
 
   return (
-    <label className="block min-w-0 text-xs font-bold text-slate-700">
+    <label className="block min-w-0 text-xs font-bold text-[var(--theme-muted-text)]">
       <span data-testid={dataTestId} className={dense ? 'sr-only' : undefined}>{visibleLabel}</span>
       <input aria-label={label} className={inputClass} onChange={(event) => onChange(event.target.value)} value={value ?? ''} />
     </label>
@@ -1834,12 +1969,12 @@ function TextInput({ label, value, onChange, compact = false, dense = false, dat
 function NumberInput({ label, value, onChange, compact = false, dense = false }: { label: string; value?: number; onChange: (value: number) => void; compact?: boolean; dense?: boolean }) {
   const visibleLabel = label.replace(/^새 |^[SP]\d+ /, '');
   const inputClass = dense
-    ? 'h-8 w-full rounded-lg border border-slate-200 bg-white px-1 text-[11px] text-slate-950 outline-none transition focus:border-slate-300'
-    : `mt-1 w-full rounded-xl border border-slate-200 bg-white px-2 text-slate-950 outline-none transition focus:border-slate-300 ${compact ? 'py-2 text-sm' : 'py-3'}`;
+    ? 'h-8 w-full rounded-lg border border-[var(--theme-border)] bg-[var(--theme-input)] px-1 text-[11px] text-[var(--theme-text)] outline-none transition focus:ring-2 focus:ring-[var(--theme-focus-ring)]'
+    : `mt-1 w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-input)] px-2 text-[var(--theme-text)] outline-none transition focus:ring-2 focus:ring-[var(--theme-focus-ring)] ${compact ? 'py-2 text-sm' : 'py-3'}`;
   const safeValue = typeof value === 'number' && Number.isFinite(value) ? value : 0;
 
   return (
-    <label className="block min-w-0 text-xs font-bold text-slate-700">
+    <label className="block min-w-0 text-xs font-bold text-[var(--theme-muted-text)]">
       <span className={dense ? 'sr-only' : undefined}>{visibleLabel}</span>
       <input aria-label={label} className={inputClass} onChange={(event) => onChange(Number(event.target.value))} type="number" value={safeValue} />
     </label>

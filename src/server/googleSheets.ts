@@ -1,5 +1,6 @@
 import { google } from 'googleapis';
 import { getEnvSpreadsheetId } from '@/server/settings';
+import { verifyRequiredOperationalSheetHeaders, type SheetsReader } from '@/server/sheetsRepository';
 import { createDeploymentSheetsAuth, createUserSheetsAuth, isGoogleOAuthEnabled } from '@/server/googleOAuth';
 import {
   MigrationConflictError,
@@ -28,14 +29,52 @@ const SHEET_RANGES: Record<OperationalSheetName, string> = {
 };
 
 export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationStore, RecurringSchemaMigrationStore {
-  constructor(private readonly spreadsheetId: string, private readonly request?: Request) {}
+  private readonly rows = new Map<OperationalSheetName, Promise<string[][]>>();
+  private readonly sleep: (milliseconds: number) => Promise<void>;
+  private readonly maxReadAttempts: number;
+
+  constructor(
+    private readonly spreadsheetId: string,
+    private readonly request?: Request,
+    options: { sleep?: (milliseconds: number) => Promise<void>; maxReadAttempts?: number } = {},
+  ) {
+    this.sleep = options.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
+    this.maxReadAttempts = Math.max(1, Math.min(3, options.maxReadAttempts ?? 3));
+  }
 
   async getRows(sheetName: OperationalSheetName): Promise<string[][]> {
+    let pending = this.rows.get(sheetName);
+    if (!pending) {
+      pending = this.readRows(sheetName);
+      this.rows.set(sheetName, pending);
+      pending.catch(() => this.rows.delete(sheetName));
+    }
+    return cloneRows(await pending);
+  }
+
+  async primeRows(sheetNames: readonly OperationalSheetName[]): Promise<void> {
+    const missingNames = Array.from(new Set(sheetNames)).filter((sheetName) => !this.rows.has(sheetName));
+    if (missingNames.length === 0) return;
+
+    const sheets = await createSheetsClient(this.request);
+    const response = await this.readWithRetry(() => sheets.spreadsheets.values.batchGet({
+      spreadsheetId: this.spreadsheetId,
+      ranges: missingNames.map((sheetName) => SHEET_RANGES[sheetName]),
+    }));
+    const valueRanges = response.data.valueRanges ?? [];
+    if (valueRanges.length !== missingNames.length) {
+      throw new Error('Google Sheets batch read returned an incomplete snapshot.');
+    }
+    missingNames.forEach((sheetName, index) => {
+      this.rows.set(sheetName, Promise.resolve(normalizeRows(valueRanges[index].values ?? [])));
+    });
+  }
+
+  private async readRows(sheetName: OperationalSheetName): Promise<string[][]> {
     const sheets = await createSheetsClient(this.request);
     try {
-      const range = await this.resolveLiveRange(sheets, sheetName);
-      if (!range) return [];
-      const response = await sheets.spreadsheets.values.get({ spreadsheetId: this.spreadsheetId, range });
+      const range = isRecurringSheet(sheetName) ? quoteSheetTitle(sheetName) : SHEET_RANGES[sheetName];
+      const response = await this.readWithRetry(() => sheets.spreadsheets.values.get({ spreadsheetId: this.spreadsheetId, range }));
       return normalizeRows(response.data.values ?? []);
     } catch (error) {
       // Legacy optional sheets read as empty, but reads never create or migrate them.
@@ -72,6 +111,7 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
         data,
       },
     });
+    this.patchCachedCells(sheetName, updates, headers);
   }
 
   async updateCellsAtomicallyAcrossSheets(updates: CrossSheetCellUpdate[]): Promise<void> {
@@ -95,6 +135,9 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
         })),
       },
     });
+    for (const update of updates) {
+      this.patchCachedCellByIndex(update.sheetName, update.rowNumber, update.columnNumber - 1, update.value);
+    }
   }
 
   async updateHeaderRow(sheetName: OperationalSheetName, headers: string[]): Promise<void> {
@@ -106,21 +149,28 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
       valueInputOption: 'RAW',
       requestBody: { values: [headers] },
     });
+    this.rows.delete(sheetName);
   }
 
   async appendRow(sheetName: OperationalSheetName, values: string[]): Promise<void> {
+    await this.appendRows(sheetName, [values]);
+  }
+
+  async appendRows(sheetName: OperationalSheetName, rows: string[][]): Promise<void> {
+    if (rows.length === 0) return;
     const sheets = await createSheetsClient(this.request);
     let range: string | null = null;
     try {
       range = await this.resolveLiveRange(sheets, sheetName);
       if (!range) throw new MissingSheetError(sheetName);
-      await this.appendToRange(sheets, range, values);
+      await this.appendToRange(sheets, range, rows);
     } catch (error) {
       if (!isLegacyAutoCreatableSheet(sheetName)
         || (!(error instanceof MissingSheetError) && !isMissingSheetError(error))) throw error;
       await this.createLegacySheet(sheets, sheetName);
-      await this.appendToRange(sheets, range ?? SHEET_RANGES[sheetName], values);
+      await this.appendToRange(sheets, range ?? SHEET_RANGES[sheetName], rows);
     }
+    this.patchCachedAppend(sheetName, rows);
   }
 
   async deleteRow(sheetName: OperationalSheetName, rowNumber: number): Promise<void> {
@@ -149,14 +199,15 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
         })),
       },
     });
+    this.rows.delete(sheetName);
   }
 
   async lookupSheet(sheetName: OperationalSheetName): Promise<SheetLookupResult> {
     const sheets = await createSheetsClient(this.request);
-    const response = await sheets.spreadsheets.get({
+    const response = await this.readWithRetry(() => sheets.spreadsheets.get({
       spreadsheetId: this.spreadsheetId,
       fields: 'sheets.properties(sheetId,title,gridProperties.columnCount)',
-    });
+    }));
     const sheet = response.data.sheets?.find((item) => item.properties?.title === sheetName);
     const sheetId = sheet?.properties?.sheetId;
     if (sheetId === undefined || sheetId === null) return { found: false, reason: 'SHEET_NOT_FOUND' };
@@ -184,6 +235,7 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
           } },
         ],
       } });
+      this.rows.delete(sheetName);
     } catch (error) {
       try {
         const lookup = await this.lookupSheet(sheetName);
@@ -219,6 +271,7 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
       range: a1Range(sheetName, `${columnIndexToLetter(startColumn)}1:${columnIndexToLetter(startColumn + headers.length - 1)}1`),
       valueInputOption: 'RAW', requestBody: { values: [[...headers]] },
     });
+    this.rows.delete(sheetName);
   }
 
   async verifyHeaderCells(
@@ -233,10 +286,10 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
     if (expected.header.length === 0) return;
 
     const sheets = await createSheetsClient(this.request);
-    const response = await sheets.spreadsheets.values.get({
+    const response = await this.readWithRetry(() => sheets.spreadsheets.values.get({
       spreadsheetId: this.spreadsheetId,
       range: a1Range(sheetName, `A1:${columnIndexToLetter(expected.header.length - 1)}1`),
-    });
+    }));
     const current = normalizeRows(response.data.values ?? [])[0] ?? [];
     if (current.length !== expected.header.length
       || !current.every((value, index) => value === expected.header[index])) {
@@ -259,10 +312,10 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
     }
 
     const sheets = await createSheetsClient(this.request);
-    const response = await sheets.spreadsheets.values.get({
+    const response = await this.readWithRetry(() => sheets.spreadsheets.values.get({
       spreadsheetId: this.spreadsheetId,
       range: a1Range(sheetName, `A1:${columnIndexToLetter(requiredColumnCount - 1)}1`),
-    });
+    }));
     const current = normalizeRows(response.data.values ?? [])[0] ?? [];
     if (current.length !== expected.header.length
       || !current.every((value, index) => value === expected.header[index])) {
@@ -276,6 +329,7 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
       range: a1Range(sheetName, `${columnIndexToLetter(expected.header.length)}1:${columnIndexToLetter(requiredColumnCount - 1)}1`),
       valueInputOption: 'RAW', requestBody: { values: [[...headers]] },
     });
+    this.rows.delete(sheetName);
   }
 
   private async getSheetId(sheetName: OperationalSheetName): Promise<number> {
@@ -288,7 +342,7 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
     if (!isRecurringSheet(sheetName)) return SHEET_RANGES[sheetName];
     const lookup = await this.lookupSheet(sheetName);
     if (!lookup.found) return null;
-    const header = await sheets.spreadsheets.values.get({ spreadsheetId: this.spreadsheetId, range: a1Range(sheetName, '1:1') });
+    const header = await this.readWithRetry(() => sheets.spreadsheets.values.get({ spreadsheetId: this.spreadsheetId, range: a1Range(sheetName, '1:1') }));
     const width = Math.max(1, header.data.values?.[0]?.length ?? 0);
     return a1Range(sheetName, `A:${columnIndexToLetter(width - 1)}`);
   }
@@ -296,15 +350,62 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
   private async appendToRange(
     sheets: Awaited<ReturnType<typeof createSheetsClient>>,
     range: string,
-    values: string[],
+    rows: string[][],
   ): Promise<void> {
     await sheets.spreadsheets.values.append({
       spreadsheetId: this.spreadsheetId,
       range,
       valueInputOption: 'RAW',
       insertDataOption: 'INSERT_ROWS',
-      requestBody: { values: [values] },
+      requestBody: { values: rows },
     });
+  }
+
+  private patchCachedCells(sheetName: OperationalSheetName, updates: SheetCellUpdate[], headers: string[]): void {
+    for (const update of updates) {
+      this.patchCachedCellByIndex(sheetName, update.rowNumber, headers.indexOf(update.columnName), update.value);
+    }
+  }
+
+  private patchCachedCellByIndex(
+    sheetName: OperationalSheetName,
+    rowNumber: number,
+    columnIndex: number,
+    value: string | number,
+  ): void {
+    const cached = this.rows.get(sheetName);
+    if (!cached || columnIndex < 0) return;
+    this.rows.set(sheetName, cached.then((rows) => {
+      const next = cloneRows(rows);
+      while (next.length < rowNumber) next.push([]);
+      while (next[rowNumber - 1].length <= columnIndex) next[rowNumber - 1].push('');
+      next[rowNumber - 1][columnIndex] = String(value);
+      return next;
+    }));
+  }
+
+  private patchCachedAppend(sheetName: OperationalSheetName, appended: string[][]): void {
+    const cached = this.rows.get(sheetName);
+    if (!cached) return;
+    this.rows.set(sheetName, cached.then((rows) => [...cloneRows(rows), ...cloneRows(appended)]));
+  }
+
+  private async readWithRetry<T>(operation: () => Promise<T>): Promise<T> {
+    for (let attempt = 1; attempt <= this.maxReadAttempts; attempt += 1) {
+      try {
+        return await operation();
+      } catch (error) {
+        if (!isQuotaError(error)) throw error;
+        if (attempt === this.maxReadAttempts) {
+          throw new SheetProviderError(
+            'QUOTA_EXCEEDED',
+            'Google Sheets 읽기 할당량을 초과했습니다. 잠시 후 다시 시도해 주세요.',
+          );
+        }
+        await this.sleep(retryDelayMilliseconds(error, attempt));
+      }
+    }
+    throw new Error('unreachable');
   }
 
   private async createLegacySheet(
@@ -328,10 +429,10 @@ export async function createConfiguredSheetsStore(request?: Request): Promise<Go
   return new GoogleSheetsStore(spreadsheetId, request);
 }
 
-export async function verifySpreadsheetAccess(spreadsheetId: string, request?: Request): Promise<void> {
+export async function verifySpreadsheetAccess(reader: SheetsReader): Promise<void> {
   try {
-    const store = new GoogleSheetsStore(spreadsheetId, request);
-    await Promise.all([store.getRows('Students'), store.getRows('Products')]);
+    await reader.primeRows?.(['Settings', 'Students', 'Products']);
+    await verifyRequiredOperationalSheetHeaders(reader);
   } catch (error) {
     const detail = error instanceof Error ? error.message : '알 수 없는 오류';
     throw new Error(`해당 Google Sheets에 접근하지 못했습니다. OAuth refresh token 또는 서비스 계정 권한, Students/Products 시트 이름을 확인해 주세요. (${detail})`);
@@ -374,6 +475,28 @@ function normalizeRows(rows: unknown[][]): string[][] {
   return rows.map((row) => row.map((cell) => String(cell ?? '')));
 }
 
+function cloneRows(rows: string[][]): string[][] {
+  return rows.map((row) => [...row]);
+}
+
+function isQuotaError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const response = 'response' in error && error.response && typeof error.response === 'object'
+    ? error.response as { status?: unknown; data?: { error?: { status?: unknown } } }
+    : undefined;
+  return response?.status === 429 || response?.data?.error?.status === 'RESOURCE_EXHAUSTED';
+}
+
+function retryDelayMilliseconds(error: unknown, attempt: number): number {
+  const response = error && typeof error === 'object' && 'response' in error
+    ? error.response as { headers?: Record<string, unknown> }
+    : undefined;
+  const retryAfter = response?.headers?.['retry-after'];
+  const seconds = typeof retryAfter === 'string' ? Number(retryAfter) : Number.NaN;
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.min(5_000, seconds * 1_000);
+  return Math.min(2_000, 250 * (2 ** (attempt - 1)));
+}
+
 function isRecurringSheet(sheetName: OperationalSheetName): boolean {
   return sheetName === 'Tasks' || sheetName === 'TaskAssignments' || sheetName === 'TaskCompletions';
 }
@@ -409,7 +532,11 @@ function assertValidColumnIndex(index: number): void {
 
 /** Quotes an A1 sheet title and doubles embedded apostrophes per the Sheets grammar. */
 function a1Range(sheetTitle: string, cells: string): string {
-  return `'${sheetTitle.split("'").join("''")}'!${cells}`;
+  return `${quoteSheetTitle(sheetTitle)}!${cells}`;
+}
+
+function quoteSheetTitle(sheetTitle: string): string {
+  return `'${sheetTitle.split("'").join("''")}'`;
 }
 
 function columnIndexToLetter(index: number): string {

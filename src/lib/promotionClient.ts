@@ -78,10 +78,8 @@ export function effectivePromotionsForProduct(
 }
 
 export function promotionBadgeLabel(promotion: Promotion, currencyUnit: string): string {
-  switch (promotion.type) {
-    case 'N_PLUS_ONE': return `${promotion.buyQuantity}+${promotion.freeQuantity}`;
-    case 'PROMOTIONAL_PRICE': return `${promotion.promotionalUnitPrice.toLocaleString('ko-KR')}${currencyUnit}`;
-    case 'PERCENT_DISCOUNT': return `-${promotion.percent}%`;
-    case 'FIXED_DISCOUNT': return `-${promotion.discountAmount.toLocaleString('ko-KR')}${currencyUnit}`;
-  }
+  void currencyUnit;
+  return promotion.type === 'N_PLUS_ONE'
+    ? `${promotion.buyQuantity}+${promotion.freeQuantity}`
+    : '할인';
 }

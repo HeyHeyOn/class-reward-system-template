@@ -146,16 +146,356 @@ describe('AdminManagePage', () => {
     vi.unstubAllGlobals();
   });
 
-  it('opens the extracted promotion management panel with loaded products and currency', async () => {
+  it('opens promotions only from the store subtab and does not fetch them eagerly', async () => {
     render(<AdminManagePage />);
 
-    fireEvent.click(await screen.findByRole('tab', { name: '행사 관리' }));
+    await screen.findByRole('heading', { name: '학급 보상 시스템' });
+    expect(screen.queryByRole('tab', { name: '행사 관리' })).toBeNull();
+    expect(fetch).not.toHaveBeenCalledWith('/api/promotions', { cache: 'no-store' });
+
+    fireEvent.click(screen.getByRole('tab', { name: '매점 관리' }));
+    const storeTabs = screen.getByRole('tablist', { name: '매점 관리 메뉴' });
+    expect(within(storeTabs).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['상품·재고', '행사 관리']);
+    expect(within(storeTabs).getByRole('tab', { name: '상품·재고' }).getAttribute('aria-selected')).toBe('true');
+    const promotionsTab = within(storeTabs).getByRole('tab', { name: '행사 관리' });
+    const initialPromotionsPanel = document.getElementById(promotionsTab.getAttribute('aria-controls')!);
+    expect(initialPromotionsPanel).toBeTruthy();
+    expect(initialPromotionsPanel?.hidden).toBe(true);
+    expect(initialPromotionsPanel?.getAttribute('aria-labelledby')).toBe(promotionsTab.id);
+    expect(initialPromotionsPanel?.textContent).toBe('');
+    expect(screen.getByRole('heading', { name: '새 상품 추가' })).toBeTruthy();
+    expect(fetch).not.toHaveBeenCalledWith('/api/promotions', { cache: 'no-store' });
+
+    fireEvent.click(promotionsTab);
 
     expect(await screen.findByRole('tabpanel', { name: '행사 관리' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '행사 만들기' })).toBeTruthy();
     expect(screen.getByLabelText('연필 (P001) 대상')).toBeTruthy();
     expect(screen.getByText('등록된 행사가 없습니다.')).toBeTruthy();
     expect(fetch).toHaveBeenCalledWith('/api/promotions', { cache: 'no-store' });
+  });
+
+  it('links store tabs to panels and supports wrapped roving keyboard navigation without refetching promotions', async () => {
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '매점 관리' }));
+
+    const storeTabs = screen.getByRole('tablist', { name: '매점 관리 메뉴' });
+    const inventoryTab = within(storeTabs).getByRole('tab', { name: '상품·재고' });
+    const promotionsTab = within(storeTabs).getByRole('tab', { name: '행사 관리' });
+    const inventoryPanel = screen.getByRole('tabpanel', { name: '상품·재고' });
+    expect(inventoryTab.id).toBe('admin-store-tab-inventory');
+    expect(inventoryTab.getAttribute('aria-controls')).toBe('admin-store-panel-inventory');
+    expect(inventoryPanel.id).toBe('admin-store-panel-inventory');
+    expect(inventoryPanel.getAttribute('aria-labelledby')).toBe(inventoryTab.id);
+    expect(inventoryTab.tabIndex).toBe(0);
+    expect(promotionsTab.tabIndex).toBe(-1);
+
+    inventoryTab.focus();
+    fireEvent.keyDown(inventoryTab, { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(promotionsTab);
+    expect(promotionsTab.getAttribute('aria-selected')).toBe('true');
+    const promotionsPanel = await screen.findByRole('tabpanel', { name: '행사 관리' });
+    expect(promotionsTab.getAttribute('aria-controls')).toBe('admin-store-panel-promotions');
+    expect(promotionsPanel.id).toBe('admin-store-panel-promotions');
+    expect(promotionsPanel.getAttribute('aria-labelledby')).toBe(promotionsTab.id);
+
+    fireEvent.keyDown(promotionsTab, { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(inventoryTab);
+    fireEvent.keyDown(inventoryTab, { key: 'ArrowLeft' });
+    expect(document.activeElement).toBe(promotionsTab);
+    fireEvent.keyDown(promotionsTab, { key: 'Home' });
+    expect(document.activeElement).toBe(inventoryTab);
+    fireEvent.keyDown(inventoryTab, { key: 'End' });
+    expect(document.activeElement).toBe(promotionsTab);
+    expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/promotions')).toHaveLength(1);
+  });
+
+  it('exposes stable primary tab/panel relationships with wrapped roving keyboard selection', async () => {
+    render(<AdminManagePage />);
+    await screen.findByRole('heading', { name: '학급 보상 시스템' });
+    const tablist = screen.getByRole('tablist', { name: '관리자 메뉴' });
+    const primaryTabs = within(tablist).getAllByRole('tab');
+    const tabKeys = ['settings', 'students', 'products', 'tasks', 'transactions', 'currency'];
+    primaryTabs.forEach((tab, index) => {
+      expect(tab.id).toBe(`admin-tab-${tabKeys[index]}`);
+      expect(tab.getAttribute('aria-controls')).toBe(`admin-panel-${tabKeys[index]}`);
+      expect(tab.tabIndex).toBe(index === 0 ? 0 : -1);
+      const panel = document.getElementById(`admin-panel-${tabKeys[index]}`);
+      expect(panel).toBeTruthy();
+      expect(panel?.getAttribute('aria-labelledby')).toBe(tab.id);
+      expect(panel?.hidden).toBe(index !== 0);
+    });
+    primaryTabs[0].focus();
+    fireEvent.keyDown(primaryTabs[0], { key: 'ArrowLeft' });
+    expect(document.activeElement).toBe(primaryTabs[5]);
+    expect(primaryTabs[5].getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(primaryTabs[5], { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(primaryTabs[0]);
+    fireEvent.keyDown(primaryTabs[0], { key: 'End' });
+    expect(document.activeElement).toBe(primaryTabs[5]);
+    fireEvent.keyDown(primaryTabs[5], { key: 'Home' });
+    expect(document.activeElement).toBe(primaryTabs[0]);
+    expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input) === '/api/promotions')).toBe(false);
+  });
+
+  it('makes the admin background inert for history, closes on Escape, and restores the exact opener', async () => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/students') return jsonResponse(students);
+      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', themeColor: 'black' });
+      if (url === '/api/tasks/T001/history') return new Promise<Response>(() => undefined);
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    const opener = screen.getByRole('button', { name: 'T001 기록 보기' });
+    opener.focus();
+    fireEvent.click(opener);
+    const background = screen.getByTestId('admin-background');
+    const dialog = screen.getByRole('dialog', { name: '과제 기록' });
+    const close = within(dialog).getByRole('button', { name: '닫기' });
+    expect(background.hasAttribute('inert')).toBe(true);
+    expect(background.getAttribute('aria-hidden')).toBe('true');
+    expect(dialog.closest('[inert]')).toBeNull();
+    expect(document.activeElement).toBe(close);
+    fireEvent.keyDown(close, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: '과제 기록' })).toBeNull();
+    expect(background.hasAttribute('inert')).toBe(false);
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it('confirms a named task deletion without browser confirm and locks duplicate confirmation', async () => {
+    const deletion = deferredResponse({ taskId: 'T001' });
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    baseFetch.mockImplementation(async (input, init) => String(input) === '/api/tasks/T001' && init?.method === 'DELETE' ? deletion.response : fallback(input, init));
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    const opener = screen.getByRole('button', { name: 'T001 과제 삭제' });
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = screen.getByRole('dialog', { name: '책 읽기 과제 삭제 확인' });
+    expect(within(dialog).getByText(/책 읽기/)).toBeTruthy();
+    expect(screen.getByTestId('admin-background').hasAttribute('inert')).toBe(true);
+    expect(baseFetch.mock.calls.some(([url, init]) => String(url) === '/api/tasks/T001' && init?.method === 'DELETE')).toBe(false);
+    expect(confirm).not.toHaveBeenCalled();
+    const confirmDelete = within(dialog).getByRole('button', { name: '과제 삭제 확인' });
+    expect(document.activeElement).toBe(confirmDelete);
+    fireEvent.click(confirmDelete);
+    fireEvent.click(confirmDelete);
+    expect(confirmDelete).toHaveProperty('disabled', true);
+    expect(baseFetch.mock.calls.filter(([url, init]) => String(url) === '/api/tasks/T001' && init?.method === 'DELETE')).toHaveLength(1);
+    deletion.resolve();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '책 읽기 과제 삭제 확인' })).toBeNull());
+    expect(screen.queryByLabelText('T001 과제명')).toBeNull();
+  });
+
+  it('cancels task deletion by button or Escape without a request and restores focus', async () => {
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    const opener = screen.getByRole('button', { name: 'T001 과제 삭제' });
+    fireEvent.click(opener);
+    fireEvent.click(screen.getByRole('button', { name: '과제 삭제 취소' }));
+    expect(document.activeElement).toBe(opener);
+    fireEvent.click(opener);
+    fireEvent.keyDown(screen.getByRole('dialog', { name: '책 읽기 과제 삭제 확인' }), { key: 'Escape' });
+    expect(document.activeElement).toBe(opener);
+    expect(vi.mocked(fetch).mock.calls.some(([url, init]) => String(url) === '/api/tasks/T001' && init?.method === 'DELETE')).toBe(false);
+  });
+
+  it('keeps a failed task deletion confirmation open and retryable', async () => {
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    baseFetch.mockImplementation(async (input, init) => String(input) === '/api/tasks/T001' && init?.method === 'DELETE'
+      ? jsonResponse({ error: '삭제 서버 오류' }, { status: 500 })
+      : fallback(input, init));
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 삭제' }));
+    fireEvent.click(screen.getByRole('button', { name: '과제 삭제 확인' }));
+
+    const dialog = await screen.findByRole('dialog', { name: '책 읽기 과제 삭제 확인' });
+    expect(within(dialog).getByRole('alert').textContent).toContain('삭제 서버 오류');
+    expect(within(dialog).getByRole('button', { name: '과제 삭제 확인' })).toHaveProperty('disabled', false);
+    expect(screen.getByLabelText('T001 과제명')).toBeTruthy();
+  });
+
+  it.each(['black', 'navy'] as const)('uses semantic muted and hover colors on remaining %s admin surfaces', async (themeColor) => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/students') return jsonResponse(students);
+      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', themeColor });
+      if (url === '/api/tasks/T001/assignments') return new Promise<Response>(() => undefined);
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+    render(<AdminManagePage />);
+    expect((await screen.findByText('학생')).className).toContain('text-[var(--theme-muted-text)]');
+    fireEvent.click(screen.getByRole('tab', { name: '학생 관리' }));
+    expect(screen.getByText('회수 후 음수 잔액 가능').className).toContain('text-[var(--theme-muted-text)]');
+    fireEvent.click(screen.getByRole('tab', { name: '화폐 지급/회수' }));
+    expect(screen.getByText(/QR코드를 인식하여/).closest('ul')?.className).toContain('text-[var(--theme-muted-text)]');
+    fireEvent.click(screen.getByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
+    const row = await screen.findByTestId('task-assignment-row-S001');
+    expect(row.className).toContain('hover:bg-[var(--theme-hover)]');
+    expect(row.className).toContain('hover:text-[var(--theme-hover-text)]');
+    expect(screen.getByRole('status', { name: '과제 부여 상태 불러오는 중' }).className).not.toMatch(/bg-white|text-slate-600/);
+  });
+
+  it('keeps the product draft when switching store subtabs', async () => {
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '매점 관리' }));
+    fireEvent.change(screen.getByLabelText('새 상품명'), { target: { value: '작성 중인 상품' } });
+
+    const storeTabs = screen.getByRole('tablist', { name: '매점 관리 메뉴' });
+    fireEvent.click(within(storeTabs).getByRole('tab', { name: '행사 관리' }));
+    await screen.findByRole('tabpanel', { name: '행사 관리' });
+    fireEvent.change(screen.getByLabelText('행사명'), { target: { value: '작성 중인 행사' } });
+    fireEvent.click(within(storeTabs).getByRole('tab', { name: '상품·재고' }));
+
+    expect(screen.getByLabelText('새 상품명')).toHaveProperty('value', '작성 중인 상품');
+    fireEvent.click(within(storeTabs).getByRole('tab', { name: '행사 관리' }));
+    expect(screen.getByLabelText('행사명')).toHaveProperty('value', '작성 중인 행사');
+    expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/promotions')).toHaveLength(1);
+  });
+
+  it('places each task row action in a right-side group in the required keyboard order', async () => {
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+
+    const row = screen.getAllByTestId('task-row')[0];
+    const nameField = within(row).getByLabelText('T001 과제명');
+    const actions = within(row).getByTestId('task-row-actions');
+    const buttons = within(actions).getAllByRole('button');
+    expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual([
+      'T001 반복 설정',
+      'T001 기록 보기',
+      'T001 완료 기록 초기화',
+      'T001 과제 삭제',
+    ]);
+    expect(nameField.parentElement?.contains(actions)).toBe(false);
+    expect(actions.compareDocumentPosition(nameField) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    for (const button of buttons) {
+      expect(button.className).toContain('focus-visible:ring-[var(--theme-focus-ring)]');
+      expect(button.className).toContain('focus-visible:ring-offset-[var(--theme-surface)]');
+      expect(button.className).toContain('border');
+    }
+    expect(buttons[3].className).toContain('rose');
+  });
+
+  it.each([
+    ['white', '#FCFCFC', '#FFFFFF', '#8A8A8A'],
+    ['black', '#1F1F1F', '#2B2B2B', '#818181'],
+    ['navy', '#111A2E', '#1B2945', '#7184A6'],
+  ] as const)('applies semantic %s theme variables to admin-owned surfaces and controls', async (themeColor, shellColor, surfaceColor, borderColor) => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/students') return jsonResponse(students);
+      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', themeColor });
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+    render(<AdminManagePage />);
+    const shell = await screen.findByTestId('admin-shell');
+    expect(shell.className).toContain('bg-[var(--theme-shell)]');
+    expect(shell.className).toContain('text-[var(--theme-text)]');
+    expect(shell.style.getPropertyValue('--theme-shell')).toBe(shellColor);
+    expect(shell.style.getPropertyValue('--theme-surface')).toBe(surfaceColor);
+    expect(shell.style.getPropertyValue('--theme-border')).toBe(borderColor);
+    expect(screen.getByTestId('admin-header').className).toContain('bg-[var(--theme-surface)]');
+    expect(screen.getByTestId('admin-tabs').className).toContain('border-[var(--theme-border)]');
+
+    fireEvent.click(screen.getByRole('tab', { name: '학생 관리' }));
+    const section = screen.getByRole('heading', { name: '새 학생 추가' }).closest('section');
+    const input = screen.getByLabelText('새 학생 이름');
+    expect(section?.className).toContain('bg-[var(--theme-surface)]');
+    expect(input.className).toContain('bg-[var(--theme-input)]');
+    expect(input.className).toContain('text-[var(--theme-text)]');
+    expect(input.className).toContain('focus:ring-[var(--theme-focus-ring)]');
+    expect(`${section?.className} ${input.className}`).not.toMatch(/bg-white|text-slate-(?:950|700)/);
+  });
+
+  it.each(['white', 'black', 'navy'] as const)('passes the normalized %s theme into task history dialogs', async (themeColor) => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/students') return jsonResponse(students);
+      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', themeColor });
+      if (url === '/api/tasks/T001/history') return new Promise<Response>(() => undefined);
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 기록 보기' }));
+
+    const dialog = screen.getByRole('dialog', { name: '과제 기록' });
+    expect(dialog.style.getPropertyValue('--theme-shell')).toBe(themeColor === 'white' ? '#FCFCFC' : themeColor === 'black' ? '#1F1F1F' : '#111A2E');
+    expect(dialog.className).toContain('border-[var(--theme-border)]');
+    expect(dialog.className).toContain('bg-[var(--theme-surface)]');
+    expect(dialog.className).toContain('text-[var(--theme-text)]');
+    expect(dialog.innerHTML).not.toMatch(/bg-white|bg-slate-|text-slate-|border-slate-/);
+  });
+
+  it.each(['white', 'black', 'navy'] as const)('uses semantic %s dialog, currency input, and loading/result surfaces', async (themeColor) => {
+    const currencyRequest = deferredResponse([{ studentId: 'S001', balance: 3900 }]);
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/students') return jsonResponse(students);
+      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
+      if (url === '/api/transactions') return jsonResponse([]);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', themeColor });
+      if (url === '/api/students/bulk' && init?.method === 'PATCH') return currencyRequest.response;
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+    render(<AdminManagePage />);
+    await screen.findByTestId('admin-shell');
+
+    fireEvent.click(screen.getByRole('tab', { name: '매점 관리' }));
+    fireEvent.click(screen.getByRole('button', { name: 'P001 이미지 주소 편집' }));
+    const imageDialog = screen.getByRole('dialog', { name: '상품 이미지 등록' });
+    expect(imageDialog.className).toContain('bg-[var(--theme-surface)]');
+    expect(imageDialog.className).toContain('border-[var(--theme-border)]');
+    expect(imageDialog.className).toContain('text-[var(--theme-text)]');
+    expect(screen.getByLabelText('이미지 주소 전체 입력').className).toContain('bg-[var(--theme-input)]');
+    expect(imageDialog.className).not.toContain('bg-white');
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+
+    fireEvent.click(screen.getByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 상세 설정 편집' }));
+    const taskDialog = screen.getByRole('dialog', { name: '과제 상세 설정 편집' });
+    expect(taskDialog.className).toContain('bg-[var(--theme-surface)]');
+    expect(screen.getByLabelText('과제 상세 설정 전체 입력').className).toContain('focus:ring-[var(--theme-focus-ring)]');
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+
+    fireEvent.click(screen.getByRole('tab', { name: '화폐 지급/회수' }));
+    const amountInput = screen.getByLabelText('지급/회수 금액');
+    expect(amountInput.className).toContain('bg-[var(--theme-input)]');
+    expect(amountInput.className).toContain('border-[var(--theme-border)]');
+    expect(amountInput.className).toContain('text-[var(--theme-text)]');
+    fireEvent.change(amountInput, { target: { value: '700' } });
+    fireEvent.click(screen.getByRole('button', { name: 'QR 인식 시작' }));
+    const scannerDialog = screen.getByRole('dialog', { name: '학생 QR 인식' });
+    expect(scannerDialog.className).toContain('bg-[var(--theme-surface)]');
+    expect(screen.getByLabelText('학생 QR 직접 입력').className).toContain('bg-[var(--theme-input)]');
+    fireEvent.change(screen.getByLabelText('학생 QR 직접 입력'), { target: { value: 'S001' } });
+    fireEvent.click(screen.getByRole('button', { name: '직접 입력 적용' }));
+
+    const loadingDialog = await screen.findByRole('dialog', { name: '화폐 지급 처리 중' });
+    expect(loadingDialog.className).toContain('bg-[var(--theme-surface)]');
+    expect(loadingDialog.className).toContain('border-[var(--theme-border)]');
+    await act(async () => currencyRequest.resolve());
+    const resultDialog = await screen.findByRole('dialog', { name: '화폐 지급 성공' });
+    expect(resultDialog.className).toContain('bg-[var(--theme-surface)]');
+    expect(within(resultDialog).getByRole('heading').className).toContain('bg-emerald-700');
+    expect(resultDialog.className).not.toContain('bg-white');
+    expect(within(resultDialog).getByText('S001 학생에게 700 지급 완료').className).toContain('bg-[var(--theme-surface-raised)]');
   });
 
 
@@ -546,7 +886,7 @@ describe('AdminManagePage', () => {
     expect(screen.queryByText('태블릿과 스마트폰에서 빠르게 학생 잔액과 상품 재고를 관리합니다.')).toBeNull();
     const logo = screen.getByRole('img', { name: '학급 보상 시스템 로고' });
     expect(logo).toBeTruthy();
-    expect(logo.className).toContain('bg-[#365F78]');
+    expect(logo.className).toContain('bg-[var(--theme-accent-text)]');
     expect(logo.className).toContain("[mask-image:url('/class-reward-system-icon.png')]");
     expect(logo.className).not.toContain('bg-white');
     expect(logo.parentElement?.className).not.toMatch(/bg-|shadow|rounded/);
@@ -585,7 +925,8 @@ describe('AdminManagePage', () => {
     expect(screen.getByLabelText('테마 색상')).toBeTruthy();
     expect(screen.getByLabelText('글꼴')).toBeTruthy();
     expect(screen.getByDisplayValue('학교안심 보드마카')).toBeTruthy();
-    expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-[#EDF5FA]');
+    expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-[var(--theme-shell)]');
+    expect((container.querySelector('[data-testid="admin-shell"]') as HTMLElement).style.getPropertyValue('--theme-shell')).toBe('#EDF5FA');
     expect(container.querySelector('[data-testid="admin-shell"]')?.getAttribute('style')).toContain('SchoolSafeBoardMarker');
     expect(container.querySelector('[data-testid="admin-tabs"]')?.className).toContain('rounded-[1.5rem]');
     expect(screen.queryByText('Google Sheets 연결')).toBeNull();
@@ -650,7 +991,7 @@ describe('AdminManagePage', () => {
     const { container, unmount } = render(<AdminManagePage />);
 
     expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
-    expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-[#DCF5C9]');
+    expect((container.querySelector('[data-testid="admin-shell"]') as HTMLElement).style.getPropertyValue('--theme-shell')).toBe('#DCF5C9');
     expect(container.querySelector('[data-testid="admin-shell"]')?.className).not.toContain('bg-green-50');
     unmount();
 
@@ -666,18 +1007,18 @@ describe('AdminManagePage', () => {
     const secondRender = render(<AdminManagePage />);
 
     expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
-    expect(secondRender.container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-[#1F1F1F]');
+    expect((secondRender.container.querySelector('[data-testid="admin-shell"]') as HTMLElement).style.getPropertyValue('--theme-shell')).toBe('#1F1F1F');
     expect(secondRender.container.querySelector('[data-testid="admin-shell"]')?.className).not.toContain('bg-slate-100');
-    expect(screen.getByRole('heading', { name: '학급 보상 시스템' }).className).toContain('text-slate-950');
+    expect(screen.getByRole('heading', { name: '학급 보상 시스템' }).className).toContain('text-[var(--theme-text)]');
     expect(screen.queryByRole('heading', { name: '사용 전 확인' })).toBeNull();
     expect(screen.getByLabelText('매점 제목').className).toContain('bg-slate-50');
     expect(screen.getByLabelText('매점 제목').className).toContain('text-slate-950');
     fireEvent.click(screen.getByRole('tab', { name: '학생 관리' }));
     expect(await screen.findByLabelText('S001 이름')).toBeTruthy();
-    expect(screen.getByRole('heading', { name: '새 학생 추가' }).className).toContain('text-slate-950');
-    expect(screen.getByRole('heading', { name: '학생 명단' }).className).toContain('text-slate-950');
-    expect(screen.getByLabelText('S001 이름').className).toContain('bg-white');
-    expect(screen.getByLabelText('S001 이름').className).toContain('text-slate-950');
+    expect(screen.getByRole('heading', { name: '새 학생 추가' }).className).toContain('text-[var(--theme-text)]');
+    expect(screen.getByRole('heading', { name: '학생 명단' }).className).toContain('text-[var(--theme-text)]');
+    expect(screen.getByLabelText('S001 이름').className).toContain('bg-[var(--theme-input)]');
+    expect(screen.getByLabelText('S001 이름').className).toContain('text-[var(--theme-text)]');
   });
 
   it('uses a blue-leaning low-saturation navy admin palette', async () => {
@@ -693,9 +1034,9 @@ describe('AdminManagePage', () => {
     const { container } = render(<AdminManagePage />);
 
     expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
-    expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-[#DCE8F4]');
-    expect(screen.getByRole('tab', { name: '시스템 설정' }).className).toContain('bg-[#7FA6C7]');
-    expect(screen.getByRole('img', { name: '학급 보상 시스템 로고' }).className).toContain('bg-[#3F6F95]');
+    expect((container.querySelector('[data-testid="admin-shell"]') as HTMLElement).style.getPropertyValue('--theme-shell')).toBe('#111A2E');
+    expect(screen.getByRole('tab', { name: '시스템 설정' }).className).toContain('bg-[var(--theme-accent-solid)]');
+    expect(screen.getByRole('img', { name: '학급 보상 시스템 로고' }).className).toContain('bg-[var(--theme-accent-text)]');
     expect(container.querySelector('[data-testid="admin-shell"]')?.className).not.toContain('bg-[#8F97CF]');
   });
 
@@ -748,21 +1089,56 @@ describe('AdminManagePage', () => {
 
     studentGate.resolve();
     expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
-    expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-[#FCFCFC]');
+    expect((container.querySelector('[data-testid="admin-shell"]') as HTMLElement).style.getPropertyValue('--theme-shell')).toBe('#FCFCFC');
   });
 
-  it('preloads payment history before the payment tab is opened', async () => {
+  it('lazy-mounts payment history in its existing ARIA shell and preserves it after first opening', async () => {
     render(<AdminManagePage />);
 
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/transactions', { cache: 'no-store' }));
-    expect(screen.queryByRole('heading', { name: '거래 내역 (1)' })).toBeNull();
+    const transactionsTab = await screen.findByRole('tab', { name: '거래 내역 확인' });
+    const transactionsPanel = document.getElementById('admin-panel-transactions');
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/settings')).toHaveLength(2));
+    expect(transactionsTab.getAttribute('aria-controls')).toBe('admin-panel-transactions');
+    expect(transactionsPanel).toBeTruthy();
+    expect(transactionsPanel?.hidden).toBe(true);
+    expect(transactionsPanel?.getAttribute('aria-labelledby')).toBe(transactionsTab.id);
+    expect(transactionsPanel?.textContent).toBe('');
+    expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/transactions')).toHaveLength(0);
 
-    fireEvent.click(await screen.findByRole('tab', { name: '거래 내역 확인' }));
+    fireEvent.click(transactionsTab);
 
     expect(await screen.findByRole('heading', { name: '거래 내역 (1)' })).toBeTruthy();
     expect(screen.getByText('김민준')).toBeTruthy();
     expect(screen.getByText('연필 × 2')).toBeTruthy();
     expect(screen.getAllByText('-600별').length).toBeGreaterThan(0);
+    expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/transactions')).toHaveLength(1);
+    expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/settings')).toHaveLength(3);
+
+    fireEvent.click(screen.getByRole('button', { name: '수입' }));
+    expect(screen.getByRole('heading', { name: '거래 내역 (0)' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: '과제 설정' }));
+    expect(transactionsPanel?.hidden).toBe(true);
+    fireEvent.click(transactionsTab);
+
+    expect(screen.getByRole('heading', { name: '거래 내역 (0)' })).toBeTruthy();
+    expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/transactions')).toHaveLength(1);
+    expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/settings')).toHaveLength(3);
+  });
+
+  it('mounts payment history once when the primary tab is selected with the keyboard', async () => {
+    render(<AdminManagePage />);
+
+    const tasksTab = await screen.findByRole('tab', { name: '과제 설정' });
+    tasksTab.focus();
+    fireEvent.keyDown(tasksTab, { key: 'ArrowRight' });
+
+    const transactionsTab = screen.getByRole('tab', { name: '거래 내역 확인' });
+    expect(document.activeElement).toBe(transactionsTab);
+    expect(transactionsTab.getAttribute('aria-selected')).toBe('true');
+    expect(await screen.findByRole('heading', { name: '거래 내역 (1)' })).toBeTruthy();
+    fireEvent.keyDown(transactionsTab, { key: 'ArrowLeft' });
+    fireEvent.keyDown(tasksTab, { key: 'ArrowRight' });
+    expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/transactions')).toHaveLength(1);
   });
 
   it('reloads admin lists from the shared sheet after saving sheet settings', async () => {
@@ -942,7 +1318,7 @@ describe('AdminManagePage', () => {
     expect(screen.getByTestId('task-list-scroll').className).toContain('overflow-x-auto');
     expect(screen.getByTestId('task-bulk-actions').className).toContain('flex-wrap');
     const taskRow = container.querySelector('[data-testid="task-row"]');
-    expect(taskRow?.className).toContain('grid-cols-[24px_minmax(5rem,1fr)_64px_48px_38px_52px_minmax(3rem,0.7fr)_46px_40px]');
+    expect(taskRow?.className).toContain('grid-cols-[24px_minmax(5rem,1fr)_64px_48px_38px_52px_minmax(3rem,0.7fr)_minmax(180px,auto)]');
     expect(taskRow?.className).toContain('items-center');
     expect(screen.queryByLabelText('T001 설명')).toBeNull();
 
@@ -1661,7 +2037,7 @@ describe('AdminManagePage', () => {
     expect(within(dialog).getByText(/초기화 대상: 완료 상태 초기화/)).toBeTruthy();
     expect(within(dialog).queryByLabelText('과제 시간대')).toBeNull();
     expect(dialog.innerHTML).not.toContain('violet-');
-    expect(dialog.innerHTML).toContain('bg-[#FCFCFC]');
+    expect(dialog.innerHTML).toContain('bg-[var(--theme-surface-raised)]');
   });
 
   it('disables assignment save while status GET is pending and explains admin completion reward behavior', async () => {

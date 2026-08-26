@@ -1,17 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { GoogleSheetsStore } from '@/server/googleSheets';
+import { GoogleSheetsStore, verifySpreadsheetAccess } from '@/server/googleSheets';
 import { TASK_ASSIGNMENT_HEADERS } from '@/server/repositories/sheets/recurringSchemaMigrator';
 import { saveSheetSetting } from '@/server/sheetsRepository';
+import { saveAppSettings } from '@/server/settings';
 import { MigrationConflictError } from '@/server/storage/tabularStore';
 
 const googleMocks = vi.hoisted(() => {
   const oauth2SetCredentials = vi.fn();
   const oauth2Instances: Array<{ setCredentials: typeof oauth2SetCredentials }> = [];
   const sheetsValuesGet = vi.fn();
+  const sheetsValuesBatchGet = vi.fn();
   const sheetsApi = {
     spreadsheets: {
       values: {
         get: sheetsValuesGet,
+        batchGet: sheetsValuesBatchGet,
         batchUpdate: vi.fn(),
         append: vi.fn(),
         update: vi.fn(),
@@ -25,6 +28,7 @@ const googleMocks = vi.hoisted(() => {
     oauth2SetCredentials,
     oauth2Instances,
     sheetsValuesGet,
+    sheetsValuesBatchGet,
     sheetsApi,
     OAuth2: vi.fn(function OAuth2(this: { setCredentials: typeof oauth2SetCredentials }) {
       this.setCredentials = oauth2SetCredentials;
@@ -89,6 +93,100 @@ describe('GoogleSheetsStore auth and recurring ranges', () => {
     });
   });
 
+  it('saves a one-value Settings diff with one external read and one batch write', async () => {
+    googleMocks.sheetsValuesGet.mockResolvedValue({ data: { values: [
+      ['key', 'value'], ['currencyUnit', '원'], ['appTitle', '학급 매점'], ['bankTitle', '학급 은행'],
+      ['themeColor', 'white'], ['fontFamily', 'default'], ['qrManualInputEnabled', 'FALSE'],
+      ['classTimeZone', 'Asia/Seoul'], ['schemaVersion', '1'],
+      ['systemVersion', '0.1.0'], ['systemName', '학급 보상 시스템'],
+    ] } });
+    const store = new GoogleSheetsStore('env-sheet-id');
+
+    await saveAppSettings({
+      settingsStore: store, spreadsheetIdOrUrl: 'env-sheet-id', appTitle: '변경된 제목',
+      env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
+    });
+
+    expect(googleMocks.sheetsValuesGet).toHaveBeenCalledTimes(1);
+    expect(googleMocks.sheetsApi.spreadsheets.values.batchUpdate).toHaveBeenCalledTimes(1);
+    expect(googleMocks.sheetsApi.spreadsheets.values.append).not.toHaveBeenCalled();
+  });
+
+  it('primes Settings and validates required operational headers in one batch read before saving', async () => {
+    const settingsRows = [
+      ['key', 'value'], ['currencyUnit', '원'], ['appTitle', '학급 매점'], ['bankTitle', '학급 은행'],
+      ['themeColor', 'white'], ['fontFamily', 'default'], ['qrManualInputEnabled', 'FALSE'],
+      ['classTimeZone', 'Asia/Seoul'], ['schemaVersion', '1'],
+      ['systemVersion', '0.1.0'], ['systemName', '학급 보상 시스템'],
+    ];
+    googleMocks.sheetsValuesBatchGet.mockResolvedValue({ data: { valueRanges: [
+      { range: "'Settings'!A1:Z11", values: settingsRows },
+      { range: "'Students'!A1:Z1", values: [['studentId', 'name', 'balance', 'status']] },
+      { range: "'Products'!A1:Z1", values: [['productId', 'name', 'price', 'stock', 'isActive']] },
+    ] } });
+    const store = new GoogleSheetsStore('env-sheet-id');
+
+    await verifySpreadsheetAccess(store);
+    await saveAppSettings({
+      settingsStore: store, spreadsheetIdOrUrl: 'env-sheet-id', appTitle: '변경된 제목',
+      env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
+    });
+
+    expect(googleMocks.sheetsValuesBatchGet).toHaveBeenCalledTimes(1);
+    expect(googleMocks.sheetsValuesBatchGet).toHaveBeenCalledWith({
+      spreadsheetId: 'env-sheet-id',
+      ranges: ["'Settings'!A:Z", "'Students'!A:Z", "'Products'!A:Z"],
+    });
+    expect(googleMocks.sheetsValuesGet).not.toHaveBeenCalled();
+    expect(googleMocks.sheetsApi.spreadsheets.values.batchUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['Students', [['studentId', 'name', 'status']], [['productId', 'name', 'price', 'stock', 'isActive']]],
+    ['Products', [['studentId', 'name', 'balance', 'status']], [['productId', 'name', 'stock', 'isActive']]],
+  ] as const)('fails operational validation when %s headers are malformed', async (_sheet, studentRows, productRows) => {
+    googleMocks.sheetsValuesBatchGet.mockResolvedValue({ data: { valueRanges: [
+      { values: [['key', 'value']] }, { values: studentRows }, { values: productRows },
+    ] } });
+
+    await expect(verifySpreadsheetAccess(new GoogleSheetsStore('env-sheet-id'))).rejects.toThrow(/필수 컬럼/);
+    expect(googleMocks.sheetsValuesBatchGet).toHaveBeenCalledTimes(1);
+    expect(googleMocks.sheetsValuesGet).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['Students', [], [['productId', 'name', 'price', 'stock', 'isActive']]],
+    ['Products', [['studentId', 'name', 'balance', 'status']], []],
+  ] as const)('fails operational validation when %s is completely empty', async (_sheet, studentRows, productRows) => {
+    googleMocks.sheetsValuesBatchGet.mockResolvedValue({ data: { valueRanges: [
+      { values: [['key', 'value']] }, { values: studentRows }, { values: productRows },
+    ] } });
+
+    await expect(verifySpreadsheetAccess(new GoogleSheetsStore('env-sheet-id'))).rejects.toThrow(/필수 컬럼/);
+    expect(googleMocks.sheetsValuesBatchGet).toHaveBeenCalledTimes(1);
+    expect(googleMocks.sheetsValuesGet).not.toHaveBeenCalled();
+  });
+
+  it('accepts canonical header-only Students and Products as valid empty datasets', async () => {
+    googleMocks.sheetsValuesBatchGet.mockResolvedValue({ data: { valueRanges: [
+      { values: [['key', 'value']] },
+      { values: [['studentId', 'name', 'balance', 'status']] },
+      { values: [['productId', 'name', 'price', 'stock', 'isActive']] },
+    ] } });
+
+    await expect(verifySpreadsheetAccess(new GoogleSheetsStore('env-sheet-id'))).resolves.toBeUndefined();
+    expect(googleMocks.sheetsValuesBatchGet).toHaveBeenCalledTimes(1);
+    expect(googleMocks.sheetsValuesGet).not.toHaveBeenCalled();
+  });
+
+  it('fails safely when the provider rejects a batch because a required sheet is missing', async () => {
+    googleMocks.sheetsValuesBatchGet.mockRejectedValue(new Error('Unable to parse range: Products!1:1'));
+
+    await expect(verifySpreadsheetAccess(new GoogleSheetsStore('env-sheet-id'))).rejects.toThrow(/접근하지 못했습니다/);
+    expect(googleMocks.sheetsValuesBatchGet).toHaveBeenCalledTimes(1);
+    expect(googleMocks.sheetsValuesGet).not.toHaveBeenCalled();
+  });
+
   it('uses a deployment refresh token for public sheet access without service account credentials', async () => {
     const store = new GoogleSheetsStore('sheet-123');
 
@@ -99,6 +197,89 @@ describe('GoogleSheetsStore auth and recurring ranges', () => {
     expect(googleMocks.JWT).not.toHaveBeenCalled();
     expect(googleMocks.sheets).toHaveBeenCalledWith({ version: 'v4', auth: googleMocks.oauth2Instances[0] });
     expect(googleMocks.sheetsValuesGet).toHaveBeenCalledWith({ spreadsheetId: 'sheet-123', range: "'Students'!A:Z" });
+  });
+
+  it('deduplicates concurrent and repeated reads per store while returning clone-safe rows', async () => {
+    let resolveRead!: (value: unknown) => void;
+    googleMocks.sheetsValuesGet.mockImplementationOnce(() => new Promise((resolve) => { resolveRead = resolve; }));
+    const store = new GoogleSheetsStore('sheet-123');
+
+    const firstPromise = store.getRows('Students');
+    const secondPromise = store.getRows('Students');
+    await Promise.resolve();
+    resolveRead({ data: { values: [['studentId'], ['S001']] } });
+    const [first, second] = await Promise.all([firstPromise, secondPromise]);
+    first[1][0] = 'mutated';
+
+    await expect(store.getRows('Students')).resolves.toEqual([['studentId'], ['S001']]);
+    expect(second).toEqual([['studentId'], ['S001']]);
+    expect(googleMocks.sheetsValuesGet).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not share cached rows with a newly constructed store', async () => {
+    googleMocks.sheetsValuesGet
+      .mockResolvedValueOnce({ data: { values: [['studentId'], ['S001']] } })
+      .mockResolvedValueOnce({ data: { values: [['studentId'], ['S002']] } });
+
+    await expect(new GoogleSheetsStore('sheet-123').getRows('Students')).resolves.toEqual([['studentId'], ['S001']]);
+    await expect(new GoogleSheetsStore('sheet-123').getRows('Students')).resolves.toEqual([['studentId'], ['S002']]);
+    expect(googleMocks.sheetsValuesGet).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the request-scoped snapshot coherent after update and append writes', async () => {
+    googleMocks.sheetsValuesGet.mockResolvedValueOnce({ data: { values: [['key', 'value'], ['currencyUnit', '원']] } });
+    const store = new GoogleSheetsStore('sheet-123');
+    await store.getRows('Settings');
+
+    await store.updateCell('Settings', 2, 'value', '별');
+    await store.appendRows('Settings', [['appTitle', '햇살반 매점'], ['themeColor', 'green']]);
+
+    await expect(store.getRows('Settings')).resolves.toEqual([
+      ['key', 'value'], ['currencyUnit', '별'], ['appTitle', '햇살반 매점'], ['themeColor', 'green'],
+    ]);
+    expect(googleMocks.sheetsValuesGet).toHaveBeenCalledTimes(1);
+    expect(googleMocks.sheetsApi.spreadsheets.values.append).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['Tasks', 'TaskAssignments', 'TaskCompletions'] as const)(
+    'reads present recurring %s used range with one values.get',
+    async (sheetName) => {
+      const rows = [['id', 'legacyTail'], ['1', 'preserved']];
+      googleMocks.sheetsValuesGet.mockResolvedValueOnce({ data: { values: rows } });
+
+      await expect(new GoogleSheetsStore('sheet-123').getRows(sheetName)).resolves.toEqual(rows);
+
+      expect(googleMocks.sheetsValuesGet).toHaveBeenCalledTimes(1);
+      expect(googleMocks.sheetsValuesGet).toHaveBeenCalledWith({ spreadsheetId: 'sheet-123', range: `'${sheetName}'` });
+      expect(googleMocks.sheetsApi.spreadsheets.get).not.toHaveBeenCalled();
+    },
+  );
+
+  it('retries quota-limited reads with injected delay and sanitizes the final provider error', async () => {
+    const quotaError = {
+      response: { status: 429, headers: { 'retry-after': '1' }, data: { error: { status: 'RESOURCE_EXHAUSTED', message: 'project_number:123 secret' } } },
+    };
+    googleMocks.sheetsValuesGet.mockRejectedValue(quotaError);
+    const sleep = vi.fn(async () => undefined);
+    const store = new GoogleSheetsStore('sheet-123', undefined, { sleep, maxReadAttempts: 2 });
+
+    await expect(store.getRows('Students')).rejects.toMatchObject({
+      name: 'SheetProviderError', reason: 'QUOTA_EXCEEDED', message: 'Google Sheets 읽기 할당량을 초과했습니다. 잠시 후 다시 시도해 주세요.',
+    });
+    expect(googleMocks.sheetsValuesGet).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledWith(1000);
+  });
+
+  it('never retries a quota-limited write', async () => {
+    googleMocks.sheetsApi.spreadsheets.values.batchUpdate.mockRejectedValueOnce({ response: { status: 429 } });
+    const sleep = vi.fn(async () => undefined);
+    const store = new GoogleSheetsStore('sheet-123', undefined, { sleep, maxReadAttempts: 3 });
+
+    await expect(store.updateCellsAtomicallyAcrossSheets([
+      { sheetName: 'Settings', rowNumber: 2, columnNumber: 2, value: '별' },
+    ])).rejects.toBeTruthy();
+    expect(googleMocks.sheetsApi.spreadsheets.values.batchUpdate).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
   });
 
   it('does not auto-create or append when structured lookup says TaskAssignments is missing', async () => {
@@ -178,8 +359,8 @@ describe('GoogleSheetsStore auth and recurring ranges', () => {
   it('uses live A:AC width for >26-column Tasks read, append, and update without dropping a legacy tail', async () => {
     const rows = [taskHeader, [...taskHeader.map((_, index) => `value${index + 1}`)]];
     googleMocks.sheetsValuesGet.mockImplementation(async ({ range }: { range: string }) => {
+      if (range === "'Tasks'") return { data: { values: rows } };
       if (range === "'Tasks'!1:1") return { data: { values: [taskHeader] } };
-      if (range === "'Tasks'!A:AC") return { data: { values: rows } };
       throw new Error(`unexpected range ${range}`);
     });
     const store = new GoogleSheetsStore('sheet-123');

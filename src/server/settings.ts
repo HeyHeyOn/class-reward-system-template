@@ -1,8 +1,8 @@
 import type { SheetsReader, SheetsStore } from '@/server/sheetsRepository';
 import type { RecurringSchemaMigrationStore } from '@/server/storage/tabularStore';
 import { changeClassTimeZone, type ClassTimeZoneChangeResult } from '@/server/repositories/sheets/taskScheduleCommands';
-import { getSheetSettings, saveSheetSetting } from '@/server/sheetsRepository';
-import { saveAdminPassword } from '@/server/adminAuth';
+import { getSheetSettings, parseSheetSettingsRows, upsertSheetSettings } from '@/server/sheetsRepository';
+import { createAdminPasswordHash, verifyAdminPasswordHash } from '@/server/adminAuth';
 import { SYSTEM_NAME_KO, SYSTEM_VERSION } from '@/generator/config/versions';
 import { normalizeFontFamily, type FontFamily } from '@/lib/fontSettings';
 import { DEFAULT_CLASS_TIME_ZONE, normalizeLegacyTimeZone } from '@/domain/taskSchedule';
@@ -173,7 +173,21 @@ export async function saveAppSettings(options: SaveSettingsOptions): Promise<App
   const themeColor = normalizeThemeColor(options.themeColor);
   const fontFamily = normalizeFontFamily(options.fontFamily);
   const qrManualInputEnabled = normalizeQrManualInputEnabled(options.qrManualInputEnabled);
-  const existingSettings = await getSheetSettings(options.settingsStore);
+  const settingsRows = await options.settingsStore.getRows('Settings');
+  const existingSettings = parseSheetSettingsRows(settingsRows);
+  const submittedAdminPassword = options.adminPassword?.trim() ?? '';
+  const existingAdminPasswordHash = existingSettings.adminPasswordHash?.trim() ?? '';
+  const passwordSettings = [];
+  if (submittedAdminPassword) {
+    if (submittedAdminPassword.length < 4) throw new Error('관리자 암호는 4자 이상으로 입력해 주세요.');
+    if (!existingAdminPasswordHash
+      || !verifyAdminPasswordHash(submittedAdminPassword, existingAdminPasswordHash)) {
+      passwordSettings.push({
+        key: 'adminPasswordHash',
+        value: createAdminPasswordHash(submittedAdminPassword),
+      });
+    }
+  }
   const schemaVersion = normalizeSchemaVersion(existingSettings.schemaVersion);
   let classTimeZone: string;
   if (options.classTimeZone === undefined) {
@@ -183,21 +197,19 @@ export async function saveAppSettings(options: SaveSettingsOptions): Promise<App
     if (classTimeZoneValidation.ok === false) throw new Error(classTimeZoneValidation.message);
     classTimeZone = classTimeZoneValidation.classTimeZone;
   }
-  await saveSheetSetting(options.settingsStore, { key: 'currencyUnit', value: currencyUnit });
-  await saveSheetSetting(options.settingsStore, { key: 'appTitle', value: appTitle });
-  await saveSheetSetting(options.settingsStore, { key: 'bankTitle', value: bankTitle });
-  await saveSheetSetting(options.settingsStore, { key: 'themeColor', value: themeColor });
-  await saveSheetSetting(options.settingsStore, { key: 'fontFamily', value: fontFamily });
-  await saveSheetSetting(options.settingsStore, { key: 'qrManualInputEnabled', value: qrManualInputEnabled ? 'TRUE' : 'FALSE' });
-  if (options.classTimeZone !== undefined) {
-    await saveSheetSetting(options.settingsStore, { key: 'classTimeZone', value: classTimeZone });
-  }
-  await saveSheetSetting(options.settingsStore, { key: 'schemaVersion', value: String(schemaVersion) });
-  await saveSheetSetting(options.settingsStore, { key: 'systemVersion', value: DEFAULT_SYSTEM_VERSION });
-  await saveSheetSetting(options.settingsStore, { key: 'systemName', value: DEFAULT_SYSTEM_NAME });
-  if (options.adminPassword?.trim()) {
-    await saveAdminPassword(options.settingsStore, options.adminPassword);
-  }
+  await upsertSheetSettings(options.settingsStore, settingsRows, [
+    { key: 'currencyUnit', value: currencyUnit },
+    { key: 'appTitle', value: appTitle },
+    { key: 'bankTitle', value: bankTitle },
+    { key: 'themeColor', value: themeColor },
+    { key: 'fontFamily', value: fontFamily },
+    { key: 'qrManualInputEnabled', value: qrManualInputEnabled ? 'TRUE' : 'FALSE' },
+    ...(options.classTimeZone === undefined ? [] : [{ key: 'classTimeZone', value: classTimeZone }]),
+    { key: 'schemaVersion', value: String(schemaVersion) },
+    { key: 'systemVersion', value: DEFAULT_SYSTEM_VERSION },
+    { key: 'systemName', value: DEFAULT_SYSTEM_NAME },
+    ...passwordSettings,
+  ]);
 
   return {
     spreadsheetId: configuredSpreadsheetId,
@@ -212,7 +224,7 @@ export async function saveAppSettings(options: SaveSettingsOptions): Promise<App
     systemVersion: DEFAULT_SYSTEM_VERSION,
     systemName: DEFAULT_SYSTEM_NAME,
     source: 'sheet',
-    ...(options.adminPassword?.trim() ? { adminPasswordConfigured: true } : {}),
+    ...(existingAdminPasswordHash || submittedAdminPassword ? { adminPasswordConfigured: true } : {}),
   };
 }
 

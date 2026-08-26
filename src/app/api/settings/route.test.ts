@@ -61,7 +61,7 @@ describe('/api/settings Seoul-only policy', () => {
 
     const response = await POST(request);
 
-    expect(verifySpreadsheetAccess).toHaveBeenCalledWith('env-sheet-id', request);
+    expect(verifySpreadsheetAccess).toHaveBeenCalledWith(store);
     expect(saveAppSettings).toHaveBeenCalledWith(expect.objectContaining({
       settingsStore: store,
       spreadsheetIdOrUrl: 'env-sheet-id',
@@ -70,12 +70,27 @@ describe('/api/settings Seoul-only policy', () => {
     await expect(response.json()).resolves.toEqual(saved);
   });
 
+  it.each(['Students', 'Products'])('POST does not write Settings when %s validation fails', async (sheetName) => {
+    const store = {};
+    vi.mocked(createConfiguredSheetsStore).mockResolvedValue(store as never);
+    vi.mocked(verifySpreadsheetAccess).mockRejectedValueOnce(new Error(`${sheetName} 시트에 필수 컬럼이 없습니다.`));
+    const request = new Request('http://localhost/api/settings', {
+      method: 'POST', body: JSON.stringify({ spreadsheetIdOrUrl: 'env-sheet-id' }),
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(500);
+    expect(verifySpreadsheetAccess).toHaveBeenCalledWith(store);
+    expect(saveAppSettings).not.toHaveBeenCalled();
+  });
+
   it('POST returns Korean 400 for malformed JSON and sanitized 500 for failures', async () => {
     const malformed = await POST(new Request('http://localhost/api/settings', { method: 'POST', body: '{bad-json' }));
     expect(malformed.status).toBe(400);
     expect((await malformed.json()).error).toMatch(/[가-힣]/);
 
-    vi.mocked(verifySpreadsheetAccess).mockRejectedValue(new Error('provider secret'));
+    vi.mocked(saveAppSettings).mockRejectedValueOnce(new Error('provider secret project_number:123'));
     const failed = await POST(new Request('http://localhost/api/settings', {
       method: 'POST', body: JSON.stringify({ spreadsheetIdOrUrl: 'env-sheet-id' }),
     }));

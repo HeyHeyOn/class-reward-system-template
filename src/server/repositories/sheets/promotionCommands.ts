@@ -48,6 +48,17 @@ export type PromotionCommandOptions = {
   idFactory?: () => string;
 };
 
+export const PROMOTION_DELETE_PARTIAL_FAILURE_MESSAGE =
+  '대상 상품 연결은 삭제되었지만 행사 삭제를 완료하지 못했습니다. 새로고침 후 재시도해 주세요.';
+
+/** Metadata remains after this command successfully removed one or more target links. */
+export class PromotionDeletePartialFailure extends Error {
+  constructor() {
+    super(PROMOTION_DELETE_PARTIAL_FAILURE_MESSAGE);
+    this.name = 'PromotionDeletePartialFailure';
+  }
+}
+
 /** Validates and normalizes promotion metadata without performing any I/O. */
 export function validatePromotionDefinitionInput(
   input: PromotionDefinitionInput,
@@ -199,6 +210,42 @@ export async function replacePromotionProducts(
     }
     for (const row of appendRows) await store.appendRow('PromotionProducts', row);
     return clonePromotion({ ...promotionRecord.promotion, productIds: targets });
+  });
+}
+
+/**
+ * Deletes target links before metadata without touching historical transaction snapshots.
+ * This is deliberately provider-non-atomic; metadata failure after link removal is classified.
+ */
+export async function deletePromotion(
+  store: AdditiveSchemaMigrationStore,
+  promotionId: string,
+): Promise<{ promotionId: string }> {
+  const id = requiredExactString(promotionId, 'promotionId');
+
+  return enqueuePromotionCommand(async () => {
+    await migratePromotionSchema(store);
+    await assertWritablePromotionRows(store);
+    const promotionRecord = requirePromotion(await getPromotionRecords(store), id);
+    const links = (await getPromotionProductRecords(store))
+      .filter(({ link }) => link.promotionId === id);
+
+    if (!store.deleteRows) {
+      throw new Error('현재 Sheets 저장소가 deleteRows를 지원하지 않습니다.');
+    }
+
+    if (links.length > 0) {
+      const descendingRows = links.map(({ rowNumber }) => rowNumber).sort((left, right) => right - left);
+      await store.deleteRows('PromotionProducts', descendingRows);
+    }
+
+    try {
+      await store.deleteRows('Promotions', [promotionRecord.rowNumber]);
+    } catch (error) {
+      if (links.length > 0) throw new PromotionDeletePartialFailure();
+      throw error;
+    }
+    return { promotionId: id };
   });
 }
 
@@ -366,6 +413,12 @@ function clonePromotion(value: Promotion): Promotion {
 
 function requiredTrimmedString(value: unknown, name: string): string {
   const result = stringValue(value, name).trim();
+  if (!result) throw new Error(`${name} must not be blank`);
+  return result;
+}
+
+function requiredExactString(value: unknown, name: string): string {
+  const result = stringValue(value, name);
   if (!result) throw new Error(`${name} must not be blank`);
   return result;
 }

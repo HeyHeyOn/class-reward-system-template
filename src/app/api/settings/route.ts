@@ -53,8 +53,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    await verifySpreadsheetAccess(validation.spreadsheetId, request);
     const store = await createConfiguredSheetsStore(request);
+    await verifySpreadsheetAccess(store);
     const settings = await saveAppSettings({
       settingsStore: store,
       spreadsheetIdOrUrl: validation.spreadsheetId,
