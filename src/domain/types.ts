@@ -31,6 +31,47 @@ export type CheckoutLineItem = {
   subtotal: number;
 };
 
+export type PromotionBase = {
+  promotionId: string;
+  name: string;
+  description: string;
+  productIds: string[];
+  startsAt: string;
+  endsAt: string;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  schemaVersion: number;
+};
+
+export type NPlusOnePromotion = PromotionBase & {
+  type: 'N_PLUS_ONE';
+  buyQuantity: number;
+  freeQuantity: number;
+};
+
+export type PromotionalPricePromotion = PromotionBase & {
+  type: 'PROMOTIONAL_PRICE';
+  promotionalUnitPrice: number;
+};
+
+export type PercentDiscountPromotion = PromotionBase & {
+  type: 'PERCENT_DISCOUNT';
+  percent: number;
+};
+
+export type FixedDiscountPromotion = PromotionBase & {
+  type: 'FIXED_DISCOUNT';
+  discountAmount: number;
+};
+
+export type Promotion =
+  | NPlusOnePromotion
+  | PromotionalPricePromotion
+  | PercentDiscountPromotion
+  | FixedDiscountPromotion;
+
 export type Transaction = {
   transactionId: string;
   timestamp: string;
