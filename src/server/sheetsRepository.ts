@@ -2,13 +2,23 @@ import type { ClassTask, Product, Student, TaskAssignmentStatus, TaskCompletion,
 import {
   DEFAULT_CLASS_TIME_ZONE,
   normalizeLegacyTimeZone,
-  resolveTaskSchedule,
   serializeTaskScheduleCells,
-  validateTaskSchedule,
 } from '@/domain/taskSchedule';
 import type { TaskCycleState } from '@/domain/taskCycleState';
-import { mutateTaskAssignmentNow } from '@/server/repositories/sheets/taskAssignmentCommands';
+import {
+  mutateTaskAssignmentNow,
+  updateTaskAssignmentsBatch,
+  type TaskBatchAssignmentOperation,
+  type TaskBatchAssignmentTarget,
+} from '@/server/repositories/sheets/taskAssignmentCommands';
+export { updateTaskAssignmentsBatch };
+export type { TaskBatchAssignmentOperation, TaskBatchAssignmentTarget };
 import { mutateTaskCompletion, mutateTaskCompletionNow } from '@/server/repositories/sheets/taskCompletionCommands';
+import {
+  prepareImmediateTaskScheduleState,
+  updateTaskSchedulesBatch,
+} from '@/server/repositories/sheets/taskScheduleCommands';
+export { updateTaskSchedulesBatch };
 import { enqueueTaskCommand, taskCommandQueueKey } from '@/server/repositories/sheets/taskCommandQueue';
 import {
   migrateRecurringTaskSchema,
@@ -1461,42 +1471,7 @@ function assertPersistedScheduleIsEditable(task: ClassTask): void {
 }
 
 function prepareImmediateScheduleState(task: ClassTask, edit: TaskScheduleEdit, editedAt: string) {
-  if (!task.taskInstanceId || !task.schedule) {
-    throw new Error('과제 반복 일정 정보를 불러오지 못했습니다.');
-  }
-  if (!edit || typeof edit !== 'object') throw new Error('schedule must be an object');
-  const allowedKeys = new Set([
-    'recurrence', 'timeZone', 'resetCompletionOnCycle', 'resetAssignmentOnCycle',
-  ]);
-  if (Object.keys(edit).some((key) => !allowedKeys.has(key))) {
-    throw new Error('schedule contains unsupported fields');
-  }
-  // An administrator's full schedule edit takes effect at the request instant. A future
-  // pending rule cannot be retained by the two-slot schema, so this edit supersedes it.
-  const transitionAt = editedAt;
-  const effectiveSchedule = resolveTaskSchedule({
-    currentSchedule: task.schedule,
-    pendingSchedule: task.pendingSchedule ?? null,
-    now: editedAt,
-  });
-  const nextRuleVersion = Math.max(
-    task.schedule.ruleVersion,
-    task.pendingSchedule?.ruleVersion ?? 0,
-  ) + 1;
-  const pendingSchedule = validateTaskSchedule({
-    ruleVersion: nextRuleVersion,
-    effectiveFrom: editedAt,
-    timeZone: DEFAULT_CLASS_TIME_ZONE,
-    recurrence: edit.recurrence,
-    resetCompletionOnCycle: edit.resetCompletionOnCycle,
-    resetAssignmentOnCycle: edit.resetAssignmentOnCycle,
-  });
-  return {
-    taskInstanceId: task.taskInstanceId,
-    currentSchedule: effectiveSchedule,
-    pendingSchedule,
-    transitionAt,
-  };
+  return prepareImmediateTaskScheduleState(task, edit, editedAt);
 }
 
 function assertVersionedTaskScheduleHeaders(headerIndex: ReadonlyMap<string, number>): boolean {

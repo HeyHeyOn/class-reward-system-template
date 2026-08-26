@@ -6,7 +6,7 @@ describe('semantic kiosk theme palettes', () => {
     expect(Object.keys(THEME_PALETTES)).toEqual(['blue', 'pink', 'yellow', 'green', 'purple', 'white', 'black', 'navy']);
     for (const palette of Object.values(THEME_PALETTES)) {
       expect(Object.keys(palette)).toEqual(expect.arrayContaining([
-        'shell', 'surface', 'surfaceRaised', 'input', 'border', 'text', 'mutedText',
+        'shell', 'surface', 'surfaceRaised', 'contentCard', 'input', 'border', 'divider', 'text', 'mutedText',
         'accentSolid', 'accentOnSolid', 'accentSoft', 'accentText', 'focusRing', 'hover', 'hoverText',
       ]));
     }
@@ -31,6 +31,28 @@ describe('semantic kiosk theme palettes', () => {
     expect(contrastRatio(black.border, black.surfaceRaised), 'black border against product card').toBeGreaterThanOrEqual(3);
   });
 
+  it('uses softer visible dividers and brighter coordinated content cards', () => {
+    for (const [name, palette] of Object.entries(THEME_PALETTES)) {
+      const dividerContrast = contrastRatio(palette.divider, palette.surface);
+      expect(dividerContrast, `${name} divider remains visible`).toBeGreaterThanOrEqual(1.2);
+      expect(dividerContrast, `${name} divider is softer than strong border`).toBeLessThan(contrastRatio(palette.border, palette.surface));
+      expect(contrastRatio(palette.text, palette.contentCard), `${name} content-card text`).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(contrastRatio('#000000', THEME_PALETTES.white.contentCard)).toBeGreaterThan(
+      contrastRatio('#000000', THEME_PALETTES.white.surfaceRaised),
+    );
+    expect(new Set([
+      THEME_PALETTES.black.surface,
+      THEME_PALETTES.black.surfaceRaised,
+      THEME_PALETTES.black.contentCard,
+    ]).size).toBe(3);
+    expect(new Set([
+      THEME_PALETTES.navy.surface,
+      THEME_PALETTES.navy.surfaceRaised,
+      THEME_PALETTES.navy.contentCard,
+    ]).size).toBe(3);
+  });
+
   it('meets WCAG AA for key semantic text/background pairs', () => {
     for (const [name, palette] of Object.entries(THEME_PALETTES)) {
       expect(contrastRatio(palette.text, palette.shell), `${name} shell text`).toBeGreaterThanOrEqual(4.5);
@@ -48,7 +70,9 @@ describe('semantic kiosk theme palettes', () => {
     expect(navy.variables['--theme-shell']).toBe('#111A2E');
     expect(navy.shell).toContain('bg-[var(--theme-shell)]');
     expect(navy.surfaceRaised).toContain('bg-[var(--theme-surface-raised)]');
+    expect(navy.contentCard).toContain('bg-[var(--theme-content-card)]');
     expect(navy.border).toContain('border-[var(--theme-border)]');
+    expect(navy.divider).toContain('divide-[var(--theme-divider)]');
     expect(navy.hover).toContain('hover:bg-[var(--theme-hover)]');
     expect(navy.hoverText).toContain('hover:text-[var(--theme-hover-text)]');
   });

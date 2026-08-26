@@ -68,6 +68,8 @@ export class MigrationConflictError extends Error {
 
 export type TabularReader = {
   getRows(sheetName: OperationalSheetName): Promise<string[][]>;
+  /** Forces a provider read and replaces any request-scoped cached snapshot. */
+  getRowsFresh?(sheetName: OperationalSheetName): Promise<string[][]>;
   primeRows?(sheetNames: readonly OperationalSheetName[]): Promise<void>;
 };
 

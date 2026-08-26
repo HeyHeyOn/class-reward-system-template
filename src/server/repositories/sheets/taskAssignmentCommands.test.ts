@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ClassTask } from '@/domain/types';
 import type { OperationalSheetName } from '@/server/storage/tabularStore';
 import { TASK_ASSIGNMENT_HEADERS, TASK_COMPLETION_SCHEMA_HEADERS, TASK_SCHEMA_HEADERS } from './recurringSchemaMigrator';
-import { mutateTaskAssignment } from './taskAssignmentCommands';
+import { mutateTaskAssignment, updateTaskAssignmentsBatch } from './taskAssignmentCommands';
 import { readTaskCycleState } from './taskCycleQueries';
 
 const NOW = '2026-08-25T12:00:00.000Z';
@@ -42,12 +42,14 @@ class MemoryStore {
       pendingResetCompletionOnCycle: '', pendingResetAssignmentOnCycle: '',
     };
     this.rows = {
+      Students: [['studentId', 'name', 'balance', 'qrValue', 'status', 'note'], ['S1', 'Student 1', '0', 'S1', 'ACTIVE', ''], ['S2', 'Student 2', '0', 'S2', 'ACTIVE', '']],
       Tasks: [[...TASK_SCHEMA_HEADERS], TASK_SCHEMA_HEADERS.map((header) => values[header] ?? '')],
       TaskCompletions: [[...TASK_COMPLETION_SCHEMA_HEADERS]],
       TaskAssignments: [[...TASK_ASSIGNMENT_HEADERS], ...(options.assignments ?? [])],
     };
   }
   getRows = vi.fn(async (sheet: string) => this.rows[sheet].map((row) => [...row]));
+  getRowsFresh = vi.fn(async (sheet: string) => this.rows[sheet].map((row) => [...row]));
 }
 
 function assignmentRow(overrides: Partial<Record<(typeof TASK_ASSIGNMENT_HEADERS)[number], string>> = {}): string[] {
@@ -58,6 +60,18 @@ function assignmentRow(overrides: Partial<Record<(typeof TASK_ASSIGNMENT_HEADERS
     createdAt: '2026-08-24T01:00:00.000Z', schemaVersion: '2', note: '', ...overrides,
   };
   return TASK_ASSIGNMENT_HEADERS.map((header) => values[header] ?? '');
+}
+
+function completionRow(overrides: Partial<Record<(typeof TASK_COMPLETION_SCHEMA_HEADERS)[number], string>> = {}): string[] {
+  const values: Record<string, string> = {
+    completionId: 'TC-current', timestamp: NOW, taskId: 'T1', studentId: 'S1', studentName: 'Student 1',
+    reward: '0', balanceBefore: '0', balanceAfter: '0', status: 'SUCCESS', note: 'admin-completion',
+    taskInstanceId: 'I1', cycleId: 'v1|I1|r1|2026-08-25T00:00:00Z',
+    cycleStartsAt: '2026-08-25T00:00:00.000Z', cycleEndsAt: '2026-08-26T00:00:00.000Z',
+    ruleVersion: '1', timeZone: 'UTC', source: 'ADMIN', assignmentId: 'A-current', schemaVersion: '2',
+    ...overrides,
+  };
+  return TASK_COMPLETION_SCHEMA_HEADERS.map((header) => values[header] ?? '');
 }
 
 describe('assignment ledger mutation command', () => {
@@ -123,9 +137,10 @@ describe('assignment ledger mutation command', () => {
     });
 
     const assignmentReads = store.getRows.mock.calls.filter(([sheet]) => sheet === 'TaskAssignments');
-    // Migration verification + one command snapshot + one canonical mirror reread stay constant
+    // Migration verification + one command snapshot stay constant; the mirror uses one forced fresh read
     // regardless of how many legacy students are materialized.
-    expect(assignmentReads).toHaveLength(4);
+    expect(assignmentReads).toHaveLength(3);
+    expect(store.getRowsFresh.mock.calls.filter(([sheet]) => sheet === 'TaskAssignments')).toHaveLength(1);
   });
 
   it('retries each deterministic legacy seed after a partial seed append failure', async () => {
@@ -389,5 +404,372 @@ describe('assignment ledger mutation command', () => {
     expect(store.rows.Tasks[1][TASK_SCHEMA_HEADERS.indexOf('allowedStudentIds')]).toBe('S1,S2');
     expect(store.deleteRow).not.toHaveBeenCalled();
     expect(store.deleteRows).not.toHaveBeenCalled();
+  });
+});
+
+describe('batch explicit assignment command', () => {
+  const operation = { studentId: 'S1', assigned: true, source: 'ADMIN' as const };
+  const target = { taskId: 'T1', operations: [operation] };
+
+  it('rejects bounded, exact, duplicate, and conflicting grouped targets before reads or writes', async () => {
+    const invalidTargets = [
+      [],
+      [target, target],
+      [{ ...target, taskId: 'T1 ' }],
+      Array.from({ length: 21 }, (_, index) => ({ taskId: `T${index}`, operations: [operation] })),
+      [{ taskId: 'T1', operations: [] }],
+      [{ taskId: 'T1', operations: Array.from({ length: 41 }, (_, index) => ({ studentId: `S${index}`, assigned: true, source: 'ADMIN' as const })) }],
+      [{ taskId: 'T1', operations: [operation, { ...operation, assigned: false }] }],
+      [40, 40, 21].map((count, taskIndex) => ({ taskId: `T${taskIndex}`, operations: Array.from({ length: count }, (_, index) => ({ studentId: `S${index}`, assigned: true, source: 'ADMIN' as const })) })),
+    ];
+    for (const targets of invalidTargets) {
+      const store = new MemoryStore();
+      await expect(updateTaskAssignmentsBatch(store, targets, { now: () => NOW })).rejects.toThrow();
+      expect(store.getRows).not.toHaveBeenCalled();
+      expect(store.appendRow).not.toHaveBeenCalled();
+      expect(store.updateCell).not.toHaveBeenCalled();
+    }
+  });
+
+  it('validates all exact tasks and active students before business writes', async () => {
+    const store = new MemoryStore();
+    await expect(updateTaskAssignmentsBatch(store, [target, { ...target, taskId: 'NOPE' }], { now: () => NOW }))
+      .rejects.toThrow(/NOPE/);
+    expect(store.appendRow).not.toHaveBeenCalled();
+    expect(store.updateCell).not.toHaveBeenCalled();
+
+    const missingStudent = new MemoryStore();
+    await expect(updateTaskAssignmentsBatch(missingStudent, [{ taskId: 'T1', operations: [{ ...operation, studentId: 'NOPE' }] }], { now: () => NOW }))
+      .rejects.toThrow(/NOPE|학생/);
+    expect(missingStudent.appendRow).not.toHaveBeenCalled();
+  });
+
+  it('migrates once before shared snapshots and creates no events for explicit no-ops', async () => {
+    const current = assignmentRow({ assignmentId: 'A-current', cycleId: 'v1|I1|r1|2026-08-25T00:00:00Z', cycleStartsAt: '2026-08-25T00:00:00.000Z', cycleEndsAt: '2026-08-26T00:00:00.000Z' });
+    const store = new MemoryStore({ assignments: [current] });
+    const result = await updateTaskAssignmentsBatch(store, [{ taskId: 'T1', operations: [{
+      studentId: 'S1', assigned: true, completed: false, source: 'ADMIN',
+    }] }], { now: () => NOW });
+    expect(result).toEqual({ appliedCount: 0, failures: [] });
+    expect(store.appendRow).not.toHaveBeenCalled();
+    expect(store.updateCell).not.toHaveBeenCalled();
+    expect(store.lookupSheet.mock.calls.filter(([sheet]) => sheet === 'Tasks')).toHaveLength(1);
+    expect(store.getRows.mock.calls.filter(([sheet]) => sheet === 'Students')).toHaveLength(1);
+  });
+
+  it('fails migration before any business mutation', async () => {
+    const store = new MemoryStore();
+    store.lookupSheet.mockRejectedValueOnce(new Error('migration failed private A1:Z99'));
+    await expect(updateTaskAssignmentsBatch(store, [target], { now: () => NOW })).rejects.toThrow(/migration/);
+    expect(store.appendRow).not.toHaveBeenCalled();
+    expect(store.updateCell).not.toHaveBeenCalled();
+  });
+
+  it('uses one shared mutable snapshot for a mutating multi-task multi-student batch', async () => {
+    const store = new MemoryStore();
+    const t2 = store.rows.Tasks[1].map((value) => value);
+    t2[TASK_SCHEMA_HEADERS.indexOf('taskId')] = 'T2';
+    t2[TASK_SCHEMA_HEADERS.indexOf('taskInstanceId')] = 'I2';
+    store.rows.Tasks.push(t2);
+
+    const result = await updateTaskAssignmentsBatch(store, [
+      { taskId: 'T1', operations: [
+        { studentId: 'S1', assigned: true, completed: true, source: 'ADMIN' },
+        { studentId: 'S2', assigned: true, source: 'ADMIN' },
+      ] },
+      { taskId: 'T2', operations: [
+        { studentId: 'S1', assigned: true, source: 'ADMIN' },
+        { studentId: 'S2', assigned: true, completed: true, source: 'ADMIN' },
+      ] },
+    ], { now: () => NOW });
+
+    expect(result).toEqual({ appliedCount: 4, failures: [] });
+    expect(store.rows.TaskAssignments.slice(1)).toHaveLength(4);
+    expect(store.rows.TaskCompletions.slice(1)).toHaveLength(2);
+    // Migration verification contributes one Tasks read, two assignment reads, and one completion read.
+    // The batch itself adds one shared snapshot per sheet plus one final assignment reread for mirrors.
+    expect(store.getRows.mock.calls.filter(([sheet]) => sheet === 'Tasks')).toHaveLength(2);
+    expect(store.getRows.mock.calls.filter(([sheet]) => sheet === 'Students')).toHaveLength(1);
+    expect(store.getRows.mock.calls.filter(([sheet]) => sheet === 'TaskAssignments')).toHaveLength(3);
+    expect(store.getRowsFresh.mock.calls.filter(([sheet]) => sheet === 'TaskAssignments')).toHaveLength(1);
+    expect(store.getRows.mock.calls.filter(([sheet]) => sheet === 'TaskCompletions')).toHaveLength(2);
+    expect(store.lookupSheet.mock.calls.filter(([sheet]) => sheet === 'Tasks')).toHaveLength(1);
+    expect(store.lookupSheet.mock.calls.filter(([sheet]) => sheet === 'TaskAssignments')).toHaveLength(1);
+    expect(store.lookupSheet.mock.calls.filter(([sheet]) => sheet === 'TaskCompletions')).toHaveLength(1);
+  });
+
+  it('applies sparse per-task operations with zero reward, balance, or transaction writes', async () => {
+    const store = new MemoryStore();
+    const t2 = store.rows.Tasks[1].map((value) => value);
+    t2[TASK_SCHEMA_HEADERS.indexOf('taskId')] = 'T2';
+    t2[TASK_SCHEMA_HEADERS.indexOf('taskInstanceId')] = 'I2';
+    store.rows.Tasks.push(t2);
+    const result = await updateTaskAssignmentsBatch(store, [
+      { taskId: 'T1', operations: [{ studentId: 'S1', assigned: true, completed: true, source: 'ADMIN' }] },
+      { taskId: 'T2', operations: [{ studentId: 'S2', assigned: true, source: 'ADMIN' }] },
+    ], { now: () => NOW });
+    expect(result).toEqual({ appliedCount: 2, failures: [] });
+    expect(store.rows.TaskAssignments.slice(1)).toHaveLength(2);
+    expect(store.rows.TaskCompletions.slice(1)).toHaveLength(1);
+    const completion = store.rows.TaskCompletions[1];
+    expect(completion[TASK_COMPLETION_SCHEMA_HEADERS.indexOf('source')]).toBe('ADMIN');
+    expect(completion[TASK_COMPLETION_SCHEMA_HEADERS.indexOf('reward')]).toBe('0');
+    expect(store.updateCell.mock.calls.some(([sheet, , column]) => sheet === 'Students' && column === 'balance')).toBe(false);
+    expect(store.appendRow.mock.calls.some(([sheet]) => sheet === 'Transactions')).toBe(false);
+    expect(store.lookupSheet.mock.calls.filter(([sheet]) => sheet === 'Tasks')).toHaveLength(1);
+  });
+
+  it('preserves legacy seeding before a shared-snapshot mutation', async () => {
+    const store = new MemoryStore({ allowed: ['S1'] });
+
+    const result = await updateTaskAssignmentsBatch(store, [{
+      taskId: 'T1', operations: [{ studentId: 'S2', assigned: true, source: 'ADMIN' }],
+    }], { now: () => NOW });
+
+    expect(result).toEqual({ appliedCount: 1, failures: [] });
+    const events = store.rows.TaskAssignments.slice(1).map((row) => Object.fromEntries(
+      TASK_ASSIGNMENT_HEADERS.map((header, index) => [header, row[index]]),
+    ));
+    expect(events).toMatchObject([
+      { studentId: 'S1', source: 'LEGACY_SEED', status: 'ASSIGNED' },
+      { studentId: 'S2', source: 'ADMIN', status: 'ASSIGNED' },
+    ]);
+    expect(store.rows.Tasks[1][TASK_SCHEMA_HEADERS.indexOf('allowedStudentIds')]).toBe('S1,S2');
+  });
+
+  it('reconciles a committed deterministic legacy seed after append response loss without duplicating it on retry', async () => {
+    const store = new MemoryStore({ allowed: ['S1'] });
+    store.appendRow.mockImplementationOnce(async (sheet: string, values: string[]) => {
+      store.rows[sheet].push([...values]);
+      throw new Error('response lost after commit');
+    });
+    const request = [{ taskId: 'T1', operations: [{ studentId: 'S1', assigned: true, source: 'ADMIN' as const }] }];
+
+    await expect(updateTaskAssignmentsBatch(store, request, { now: () => NOW }))
+      .resolves.toEqual({ appliedCount: 0, failures: [] });
+    await expect(updateTaskAssignmentsBatch(store, request, { now: () => NOW }))
+      .resolves.toEqual({ appliedCount: 0, failures: [] });
+
+    expect(store.rows.TaskAssignments.slice(1).filter(
+      (row) => row[TASK_ASSIGNMENT_HEADERS.indexOf('source')] === 'LEGACY_SEED',
+    )).toHaveLength(1);
+    expect(store.getRowsFresh).toHaveBeenCalledWith('TaskAssignments');
+  });
+
+  it('preserves carry-forward semantics while applying a later student mutation from the shared snapshot', async () => {
+    const store = new MemoryStore({ assignments: [assignmentRow()] });
+
+    const result = await updateTaskAssignmentsBatch(store, [{
+      taskId: 'T1', operations: [{ studentId: 'S2', assigned: true, source: 'ADMIN' }],
+    }], { now: () => NOW });
+
+    expect(result).toEqual({ appliedCount: 1, failures: [] });
+    const events = store.rows.TaskAssignments.slice(1).map((row) => Object.fromEntries(
+      TASK_ASSIGNMENT_HEADERS.map((header, index) => [header, row[index]]),
+    ));
+    expect(events.slice(-2)).toMatchObject([
+      { studentId: 'S1', source: 'CARRY_FORWARD', previousAssignmentId: 'A-prior' },
+      { studentId: 'S2', source: 'ADMIN', status: 'ASSIGNED' },
+    ]);
+    expect(store.rows.Tasks[1][TASK_SCHEMA_HEADERS.indexOf('allowedStudentIds')]).toBe('S1,S2');
+  });
+
+  it('reconciles a committed deterministic carry after response loss without duplicating it on retry', async () => {
+    const store = new MemoryStore({ assignments: [assignmentRow()] });
+    store.appendRow.mockImplementationOnce(async (sheet: string, values: string[]) => {
+      store.rows[sheet].push([...values]);
+      throw new Error('response lost after carry commit');
+    });
+    const request = [{ taskId: 'T1', operations: [{ studentId: 'S1', assigned: true, source: 'ADMIN' as const }] }];
+
+    await expect(updateTaskAssignmentsBatch(store, request, { now: () => NOW }))
+      .resolves.toEqual({ appliedCount: 0, failures: [] });
+    await expect(updateTaskAssignmentsBatch(store, request, { now: () => NOW }))
+      .resolves.toEqual({ appliedCount: 0, failures: [] });
+
+    expect(store.rows.TaskAssignments.slice(1).filter(
+      (row) => row[TASK_ASSIGNMENT_HEADERS.indexOf('source')] === 'CARRY_FORWARD',
+    )).toHaveLength(1);
+  });
+
+  it('materializes a reaffirmed legacy assignment even when the projected state is already assigned', async () => {
+    const store = new MemoryStore({ allowed: ['S1'] });
+
+    const result = await updateTaskAssignmentsBatch(store, [{
+      taskId: 'T1', operations: [{ studentId: 'S1', assigned: true, source: 'ADMIN' }],
+    }], { now: () => NOW });
+
+    expect(result).toEqual({ appliedCount: 0, failures: [] });
+    expect(store.rows.TaskAssignments.slice(1)).toHaveLength(1);
+    expect(store.rows.TaskAssignments[1][TASK_ASSIGNMENT_HEADERS.indexOf('source')]).toBe('LEGACY_SEED');
+  });
+
+  it('materializes a reaffirmed implicit assignment carry without appending an ADMIN duplicate', async () => {
+    const store = new MemoryStore({ assignments: [assignmentRow()] });
+
+    const result = await updateTaskAssignmentsBatch(store, [{
+      taskId: 'T1', operations: [{ studentId: 'S1', assigned: true, source: 'ADMIN' }],
+    }], { now: () => NOW });
+
+    expect(result).toEqual({ appliedCount: 0, failures: [] });
+    const events = store.rows.TaskAssignments.slice(1).map((row) => ({
+      source: row[TASK_ASSIGNMENT_HEADERS.indexOf('source')],
+      studentId: row[TASK_ASSIGNMENT_HEADERS.indexOf('studentId')],
+    }));
+    expect(events).toEqual([
+      { source: 'ADMIN', studentId: 'S1' },
+      { source: 'CARRY_FORWARD', studentId: 'S1' },
+    ]);
+  });
+
+  it('materializes reaffirmed implicit assignment and completion carries', async () => {
+    const store = new MemoryStore({ assignments: [assignmentRow()] });
+    store.rows.TaskCompletions.push(completionRow({
+      completionId: 'TC-prior', timestamp: '2026-08-24T02:00:00.000Z', cycleId: 'prior',
+      cycleStartsAt: '2026-08-24T00:00:00.000Z', cycleEndsAt: '2026-08-25T00:00:00.000Z',
+      assignmentId: 'A-prior',
+    }));
+
+    const result = await updateTaskAssignmentsBatch(store, [{
+      taskId: 'T1', operations: [{ studentId: 'S1', completed: true, source: 'ADMIN' }],
+    }], { now: () => NOW });
+
+    expect(result).toEqual({ appliedCount: 0, failures: [] });
+    expect(store.rows.TaskAssignments.at(-1)![TASK_ASSIGNMENT_HEADERS.indexOf('source')]).toBe('CARRY_FORWARD');
+    expect(store.rows.TaskCompletions.at(-1)![TASK_COMPLETION_SCHEMA_HEADERS.indexOf('source')]).toBe('CARRY_FORWARD');
+  });
+
+  it('resets completion before unassigning and keeps both canonical events', async () => {
+    const current = assignmentRow({
+      assignmentId: 'A-current', cycleId: 'v1|I1|r1|2026-08-25T00:00:00Z',
+      cycleStartsAt: '2026-08-25T00:00:00.000Z', cycleEndsAt: '2026-08-26T00:00:00.000Z',
+    });
+    const store = new MemoryStore({ assignments: [current] });
+    store.rows.TaskCompletions.push(completionRow());
+    const appendOrder: string[] = [];
+    store.appendRow.mockImplementation(async (sheet: string, values: string[]) => {
+      appendOrder.push(sheet);
+      store.rows[sheet].push([...values]);
+    });
+
+    const result = await updateTaskAssignmentsBatch(store, [{
+      taskId: 'T1', operations: [{ studentId: 'S1', assigned: false, completed: false, source: 'ADMIN' }],
+    }], { now: () => NOW });
+
+    expect(result).toEqual({ appliedCount: 1, failures: [] });
+    expect(appendOrder).toEqual(['TaskCompletions', 'TaskAssignments']);
+    expect(store.rows.TaskCompletions.at(-1)![TASK_COMPLETION_SCHEMA_HEADERS.indexOf('source')]).toBe('ADMIN_RESET');
+    expect(store.rows.TaskAssignments.at(-1)![TASK_ASSIGNMENT_HEADERS.indexOf('status')]).toBe('UNASSIGNED');
+  });
+
+  it('reports mirror failures as sanitized warnings after canonical success and updates each task at most once', async () => {
+    const store = new MemoryStore();
+    const t2 = store.rows.Tasks[1].map((value) => value);
+    t2[TASK_SCHEMA_HEADERS.indexOf('taskId')] = 'T2';
+    t2[TASK_SCHEMA_HEADERS.indexOf('taskInstanceId')] = 'I2';
+    store.rows.Tasks.push(t2);
+    store.updateCell.mockImplementation(async (_sheet: string, row: number) => {
+      if (row === 2) throw new Error('provider private A1:Z99');
+    });
+
+    const result = await updateTaskAssignmentsBatch(store, [
+      { taskId: 'T1', operations: [
+        { studentId: 'S1', assigned: true, source: 'ADMIN' },
+        { studentId: 'S2', assigned: true, source: 'ADMIN' },
+      ] },
+      { taskId: 'T2', operations: [{ studentId: 'S1', assigned: true, source: 'ADMIN' }] },
+    ], { now: () => NOW });
+
+    expect(result).toEqual({
+      appliedCount: 3,
+      failures: [],
+      warnings: [{ taskId: 'T1', code: 'LEGACY_MIRROR_UPDATE_FAILED' }],
+    });
+    expect(JSON.stringify(result)).not.toMatch(/provider|A1|Z99/);
+    expect(store.getRows.mock.calls.filter(([sheet]) => sheet === 'TaskAssignments')).toHaveLength(3);
+    expect(store.getRowsFresh.mock.calls.filter(([sheet]) => sheet === 'TaskAssignments')).toHaveLength(1);
+    expect(store.updateCell.mock.calls.filter(([sheet]) => sheet === 'Tasks')).toHaveLength(2);
+  });
+
+  it('reports a combined pair failure after its first subwrite and makes the sparse pair exactly retryable', async () => {
+    const store = new MemoryStore();
+    let failCompletion = true;
+    store.appendRow.mockImplementation(async (sheet: string, values: string[]) => {
+      if (sheet === 'TaskCompletions' && failCompletion) {
+        failCompletion = false;
+        throw new Error('provider cells A1:Z999 private');
+      }
+      store.rows[sheet].push([...values]);
+    });
+    const retryTarget = { taskId: 'T1', operations: [{ studentId: 'S1', assigned: true, completed: true, source: 'ADMIN' as const }] };
+
+    const first = await updateTaskAssignmentsBatch(store, [retryTarget], { now: () => NOW });
+    expect(first).toEqual({
+      appliedCount: 0,
+      failures: [{ taskId: 'T1', studentId: 'S1', code: 'OPERATION_FAILED' }],
+      aborted: true,
+      notAttempted: [],
+    });
+    expect(store.rows.TaskAssignments.slice(1)).toHaveLength(1);
+    expect(store.rows.TaskCompletions.slice(1)).toHaveLength(0);
+    expect(JSON.stringify(first)).not.toMatch(/provider|A1/);
+
+    const retry = await updateTaskAssignmentsBatch(store, [retryTarget], { now: () => NOW });
+    expect(retry).toEqual({ appliedCount: 1, failures: [] });
+    expect(store.rows.TaskAssignments.slice(1)).toHaveLength(1);
+    expect(store.rows.TaskCompletions.slice(1)).toHaveLength(1);
+  });
+
+  it('reconciles a committed completion after response loss and does not append it again on retry', async () => {
+    const store = new MemoryStore();
+    store.appendRow.mockImplementation(async (sheet: string, values: string[]) => {
+      store.rows[sheet].push([...values]);
+      if (sheet === 'TaskCompletions') throw new Error('completion response lost');
+    });
+    const retryTarget = { taskId: 'T1', operations: [{ studentId: 'S1', assigned: true, completed: true, source: 'ADMIN' as const }] };
+
+    await expect(updateTaskAssignmentsBatch(store, [retryTarget], { now: () => NOW }))
+      .resolves.toEqual({ appliedCount: 1, failures: [] });
+    await expect(updateTaskAssignmentsBatch(store, [retryTarget], { now: () => NOW }))
+      .resolves.toEqual({ appliedCount: 0, failures: [] });
+
+    expect(store.rows.TaskCompletions.slice(1)).toHaveLength(1);
+    expect(store.getRowsFresh).toHaveBeenCalledWith('TaskCompletions');
+  });
+
+  it('circuit-breaks remaining operations after an unreconciled provider append failure', async () => {
+    const store = new MemoryStore();
+    store.appendRow.mockRejectedValueOnce(new Error('provider unavailable private range'));
+
+    const result = await updateTaskAssignmentsBatch(store, [{ taskId: 'T1', operations: [
+      { studentId: 'S1', assigned: true, source: 'ADMIN' },
+      { studentId: 'S2', assigned: true, source: 'ADMIN' },
+    ] }], { now: () => NOW });
+
+    expect(result).toEqual({
+      appliedCount: 0,
+      failures: [{ taskId: 'T1', studentId: 'S1', code: 'OPERATION_FAILED' }],
+      aborted: true,
+      notAttempted: [{ taskId: 'T1', studentId: 'S2' }],
+    });
+    expect(store.appendRow).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(result)).not.toMatch(/provider|private|range/);
+  });
+
+  it('hard-stops materialization fanout at the canonical append budget', async () => {
+    const legacyIds = Array.from({ length: 251 }, (_, index) => `LEGACY-${index}`);
+    const store = new MemoryStore({ allowed: legacyIds });
+
+    const result = await updateTaskAssignmentsBatch(store, [{ taskId: 'T1', operations: [
+      { studentId: 'S1', assigned: true, source: 'ADMIN' },
+    ] }], { now: () => NOW });
+
+    expect(result).toMatchObject({
+      appliedCount: 0,
+      failures: [{ taskId: 'T1', studentId: 'S1', code: 'OPERATION_FAILED' }],
+      aborted: true,
+      notAttempted: [],
+    });
+    expect(store.appendRow).toHaveBeenCalledTimes(250);
   });
 });

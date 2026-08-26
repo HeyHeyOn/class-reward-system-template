@@ -226,6 +226,18 @@ describe('GoogleSheetsStore auth and recurring ranges', () => {
     expect(googleMocks.sheetsValuesGet).toHaveBeenCalledTimes(2);
   });
 
+  it('forces an uncached live read and replaces the request snapshot', async () => {
+    googleMocks.sheetsValuesGet
+      .mockResolvedValueOnce({ data: { values: [['studentId'], ['S001']] } })
+      .mockResolvedValueOnce({ data: { values: [['studentId'], ['S002']] } });
+    const store = new GoogleSheetsStore('sheet-123');
+
+    await expect(store.getRows('Students')).resolves.toEqual([['studentId'], ['S001']]);
+    await expect(store.getRowsFresh('Students')).resolves.toEqual([['studentId'], ['S002']]);
+    await expect(store.getRows('Students')).resolves.toEqual([['studentId'], ['S002']]);
+    expect(googleMocks.sheetsValuesGet).toHaveBeenCalledTimes(2);
+  });
+
   it('keeps the request-scoped snapshot coherent after update and append writes', async () => {
     googleMocks.sheetsValuesGet.mockResolvedValueOnce({ data: { values: [['key', 'value'], ['currencyUnit', '원']] } });
     const store = new GoogleSheetsStore('sheet-123');

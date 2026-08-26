@@ -4,7 +4,7 @@ import { serializeTaskScheduleCells } from '@/domain/taskSchedule';
 import type { TaskAssignment, TaskCompletion, TaskSchedule } from '@/domain/types';
 import { getSheetSettings, getTaskRecords } from '@/server/sheetsRepository';
 import { SheetProviderError } from '@/server/storage/tabularStore';
-import { changeClassTimeZone } from './taskScheduleCommands';
+import { changeClassTimeZone, updateTaskSchedulesBatch } from './taskScheduleCommands';
 import {
   TASK_ASSIGNMENT_HEADERS,
   TASK_COMPLETION_SCHEMA_HEADERS,
@@ -14,6 +14,7 @@ import type {
   CrossSheetCellUpdate,
   OperationalSheetName,
   RecurringSchemaMigrationStore,
+  SheetCellUpdate,
   SheetLookupResult,
 } from '@/server/storage/tabularStore';
 
@@ -64,13 +65,36 @@ class AtomicFake implements RecurringSchemaMigrationStore {
     TaskAssignments: [[...TASK_ASSIGNMENT_HEADERS]],
   };
   atomicCalls: CrossSheetCellUpdate[][] = [];
+  batchCalls: SheetCellUpdate[][] = [];
   primitiveWrites = 0;
   failAtomic = false;
+  lookupCalls: OperationalSheetName[] = [];
+  freshReads: OperationalSheetName[] = [];
+  loseNextBatchResponse = false;
 
   async getRows(name: OperationalSheetName) { return structuredClone(this.rows[name] ?? []); }
+  async getRowsFresh(name: OperationalSheetName) {
+    this.freshReads.push(name);
+    return structuredClone(this.rows[name] ?? []);
+  }
   async updateCell() { this.primitiveWrites += 1; }
+  async updateCells(name: OperationalSheetName, updates: SheetCellUpdate[]) {
+    if (name !== 'Tasks') throw new Error('unexpected sheet');
+    this.batchCalls.push(structuredClone(updates));
+    const headers = this.rows.Tasks?.[0] ?? [];
+    for (const update of updates) {
+      const column = headers.indexOf(update.columnName);
+      if (column < 0) throw new Error(`missing ${update.columnName}`);
+      this.rows.Tasks![update.rowNumber - 1][column] = String(update.value);
+    }
+    if (this.loseNextBatchResponse) {
+      this.loseNextBatchResponse = false;
+      throw new Error('response lost after committed batch');
+    }
+  }
   async appendRow() { this.primitiveWrites += 1; }
   async lookupSheet(name: OperationalSheetName): Promise<SheetLookupResult> {
+    this.lookupCalls.push(name);
     if (name === 'Settings' && this.rows.Settings) {
       return { found: true, info: { sheetId: 4, title: name, columnCount: 10 } };
     }
@@ -86,7 +110,10 @@ class AtomicFake implements RecurringSchemaMigrationStore {
   async ensureColumnCount() { this.primitiveWrites += 1; }
   async writeHeaderCells() { this.primitiveWrites += 1; }
   async verifyHeaderCells() {}
-  async verifyAndWriteHeaderCells() { this.primitiveWrites += 1; }
+  async verifyAndWriteHeaderCells(name: OperationalSheetName, _expected: unknown, headers: readonly string[]) {
+    this.primitiveWrites += 1;
+    this.rows[name]![0].push(...headers);
+  }
   async updateCellsAtomicallyAcrossSheets(updates: CrossSheetCellUpdate[]) {
     this.atomicCalls.push(structuredClone(updates));
     if (this.failAtomic) throw new Error('injected atomic failure');
@@ -387,5 +414,141 @@ describe('atomic classroom timezone schedule command', () => {
     expect(store.rows).toEqual(before);
     expect(store.atomicCalls).toHaveLength(1);
     expect(store.primitiveWrites).toBe(0);
+  });
+});
+
+describe('batch task schedule command', () => {
+  const edit = {
+    recurrence: { type: 'WEEKLY' as const, time: '14:30', weekday: 3 as const },
+    timeZone: 'Asia/Seoul',
+    resetCompletionOnCycle: true,
+    resetAssignmentOnCycle: true,
+  };
+
+  it('uses one queued instant and one Tasks-only batch cell update while preserving unrelated cells', async () => {
+    const store = new AtomicFake();
+    let clockCalls = 0;
+    const beforeT2 = structuredClone(store.rows.Tasks![2]);
+    const result = await updateTaskSchedulesBatch(store, ['T1'], edit, {
+      now: () => { clockCalls += 1; return changedAt; },
+    });
+    expect(result).toEqual({ updatedTaskIds: ['T1'] });
+    expect(clockCalls).toBe(1);
+    expect(store.batchCalls).toHaveLength(1);
+    expect(store.atomicCalls).toHaveLength(0);
+    expect(store.primitiveWrites).toBe(0);
+    expect(store.batchCalls[0].every((update) => update.rowNumber === 2)).toBe(true);
+    expect(store.batchCalls[0].some((update) => update.columnName === 'updatedAt' && update.value === changedAt)).toBe(true);
+    expect(store.rows.Tasks![1].at(-1)).toBe('preserve-me');
+    expect(store.rows.Tasks![2]).toEqual(beforeT2);
+    const updated = (await getTaskRecords(store))[0].task;
+    expect(updated.schedule).toMatchObject({ ruleVersion: 3, recurrence: effectivePending.recurrence });
+    expect(updated.pendingSchedule).toEqual({
+      ruleVersion: 4, effectiveFrom: changedAt, timeZone: 'Asia/Seoul', recurrence: edit.recurrence,
+      resetCompletionOnCycle: true, resetAssignmentOnCycle: true,
+    });
+    expect(store.freshReads).toContain('Tasks');
+  });
+
+  it('treats a response-loss retry with identical desired pending fields as a no-op', async () => {
+    const store = new AtomicFake();
+    store.loseNextBatchResponse = true;
+
+    await expect(updateTaskSchedulesBatch(store, ['T1'], edit, { now: () => changedAt }))
+      .rejects.toThrow('response lost');
+    const versionAfterCommit = (await getTaskRecords(store))[0].task.pendingSchedule!.ruleVersion;
+    await expect(updateTaskSchedulesBatch(store, ['T1'], edit, { now: () => changedAt }))
+      .resolves.toEqual({ updatedTaskIds: ['T1'] });
+
+    expect(store.batchCalls).toHaveLength(1);
+    expect((await getTaskRecords(store))[0].task.pendingSchedule!.ruleVersion).toBe(versionAfterCommit);
+    expect(store.freshReads.filter((sheet) => sheet === 'Tasks')).toHaveLength(2);
+  });
+
+  it('updates only differing targets when another target already has the desired pending fields', async () => {
+    const store = new AtomicFake();
+    store.rows.Tasks![1] = [...taskRow('T1', 'instance-1', current, {
+      ruleVersion: 9, effectiveFrom: changedAt, timeZone: 'Asia/Seoul', recurrence: edit.recurrence,
+      resetCompletionOnCycle: true, resetAssignmentOnCycle: true,
+    }), 'preserve-me'];
+
+    await updateTaskSchedulesBatch(store, ['T1', 'T2'], edit, { now: () => changedAt });
+
+    expect(store.batchCalls).toHaveLength(1);
+    expect(new Set(store.batchCalls[0].map(({ rowNumber }) => rowNumber))).toEqual(new Set([3]));
+  });
+
+  it.each([
+    ['empty IDs', []],
+    ['duplicate IDs', ['T1', 'T1']],
+    ['blank ID', ['']],
+    ['too many IDs', Array.from({ length: 21 }, (_, index) => `T${index}`)],
+    ['missing exact ID', ['T1 ']],
+  ])('rejects %s before any business write', async (_label, taskIds) => {
+    const store = new AtomicFake();
+    const before = structuredClone(store.rows);
+    await expect(updateTaskSchedulesBatch(store, taskIds, edit, { now: () => changedAt })).rejects.toThrow();
+    expect(store.batchCalls).toEqual([]);
+    expect(store.rows).toEqual(before);
+  });
+
+  it('validates every target and persisted schedule before the single write', async () => {
+    const missing = new AtomicFake();
+    await expect(updateTaskSchedulesBatch(missing, ['T1', 'NOPE'], edit, { now: () => changedAt }))
+      .rejects.toThrow(/NOPE/);
+    expect(missing.batchCalls).toEqual([]);
+    const corrupt = new AtomicFake();
+    corrupt.rows.Tasks![2][corrupt.rows.Tasks![0].indexOf('recurrenceType')] = 'BROKEN';
+    await expect(updateTaskSchedulesBatch(corrupt, ['T1', 'T2'], edit, { now: () => changedAt }))
+      .rejects.toThrow(/손상|복구/);
+    expect(corrupt.batchCalls).toEqual([]);
+  });
+
+  it('requires the provider batch-cell capability before reads or writes', async () => {
+    const store = new AtomicFake();
+    let reads = 0;
+    store.getRows = async (name) => { reads += 1; return structuredClone(store.rows[name] ?? []); };
+    store.updateCells = undefined as never;
+    await expect(updateTaskSchedulesBatch(store, ['T1'], edit)).rejects.toThrow(/일괄|batch/i);
+    expect(reads).toBe(0);
+    expect(store.batchCalls).toEqual([]);
+  });
+
+  it('rejects a direct non-Seoul timezone before migration or reads', async () => {
+    const store = new AtomicFake();
+    await expect(updateTaskSchedulesBatch(store, ['T1'], { ...edit, timeZone: 'UTC' }, { now: () => changedAt }))
+      .rejects.toThrow(/Asia\/Seoul|시간대/);
+    expect(store.lookupCalls).toEqual([]);
+    expect(store.batchCalls).toEqual([]);
+  });
+
+  it('migrates exactly once before reads and writes all targets in one Tasks updateCells call', async () => {
+    const store = new AtomicFake();
+    await expect(updateTaskSchedulesBatch(store, ['T1', 'T2'], edit, { now: () => changedAt }))
+      .resolves.toEqual({ updatedTaskIds: ['T1', 'T2'] });
+    expect(store.lookupCalls.filter((sheet) => sheet === 'Tasks')).toHaveLength(1);
+    expect(store.batchCalls).toHaveLength(1);
+    expect(new Set(store.batchCalls[0].map(({ rowNumber }) => rowNumber))).toEqual(new Set([2, 3]));
+  });
+
+  it('fails schema migration before any business update', async () => {
+    const store = new AtomicFake();
+    store.lookupSheet = async () => { throw new Error('migration secret Tasks!A1:Z99'); };
+    await expect(updateTaskSchedulesBatch(store, ['T1'], edit, { now: () => changedAt })).rejects.toThrow(/migration/);
+    expect(store.batchCalls).toEqual([]);
+  });
+
+  it('migrates and updates a valid deployed legacy task sheet', async () => {
+    const store = new AtomicFake();
+    store.rows.Tasks![0] = store.rows.Tasks![0].slice(0, 9);
+    store.rows.Tasks![1] = store.rows.Tasks![1].slice(0, 9);
+    store.rows.Tasks!.splice(2);
+    store.rows.TaskCompletions![0] = store.rows.TaskCompletions![0].slice(0, 10);
+
+    await expect(updateTaskSchedulesBatch(store, ['T1'], edit, { now: () => changedAt }))
+      .resolves.toEqual({ updatedTaskIds: ['T1'] });
+    expect(store.rows.Tasks![0]).toEqual([...TASK_SCHEMA_HEADERS]);
+    expect(store.rows.TaskCompletions![0]).toEqual([...TASK_COMPLETION_SCHEMA_HEADERS]);
+    expect(store.batchCalls).toHaveLength(1);
   });
 });

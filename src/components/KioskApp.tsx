@@ -469,7 +469,7 @@ export function KioskApp() {
                   disabled={!product.isActive || isSoldOut || cardPricingFailed || Boolean(loadError)}
                   aria-label={`${product.name} ${formatCurrency(displayPrice, currencyUnit)} 담기${promotionAccessibleSummary(cardPromotion?.effective ?? [], currencyUnit)}`}
                   data-testid="product-card"
-                  className={`rounded-[0.8rem] border ${theme.border} ${theme.surfaceRaised} p-1 text-left text-[clamp(0.62rem,2vw,1rem)] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed sm:rounded-[0.9rem] sm:p-3 ${isSoldOut ? 'brightness-75 grayscale disabled:opacity-75' : 'disabled:opacity-50'}`}
+                  className={`rounded-[0.8rem] border ${theme.border} ${theme.contentCard} p-1 text-left text-[clamp(0.62rem,2vw,1rem)] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed sm:rounded-[0.9rem] sm:p-3 ${isSoldOut ? 'brightness-75 grayscale disabled:opacity-75' : 'disabled:opacity-50'}`}
                 >
                   <p className="truncate text-[clamp(0.55rem,1.8vw,0.75rem)] font-black">{product.category || '기타'}</p>
                   <div className={`relative mt-1 flex aspect-[4/3] items-center justify-center overflow-hidden rounded-md ${theme.accentSoft} text-[clamp(1.5rem,8vw,3rem)] sm:mt-2`}>

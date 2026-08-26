@@ -52,6 +52,15 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
     return cloneRows(await pending);
   }
 
+  async getRowsFresh(sheetName: OperationalSheetName): Promise<string[][]> {
+    const pending = this.readRows(sheetName);
+    this.rows.set(sheetName, pending);
+    pending.catch(() => {
+      if (this.rows.get(sheetName) === pending) this.rows.delete(sheetName);
+    });
+    return cloneRows(await pending);
+  }
+
   async primeRows(sheetNames: readonly OperationalSheetName[]): Promise<void> {
     const missingNames = Array.from(new Set(sheetNames)).filter((sheetName) => !this.rows.has(sheetName));
     if (missingNames.length === 0) return;

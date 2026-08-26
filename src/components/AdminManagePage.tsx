@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import type { ClassTask, Product, Student, TaskAssignmentStatus, TaskAssignmentStudentStatus } from '@/domain/types';
@@ -13,6 +13,7 @@ import { getFontFamilyCss, type FontFamily } from '@/lib/fontSettings';
 import { normalizeAdminTask, resolveEffectiveAdminTaskSchedule, scheduleDtoToForm, scheduleFormToPayload, type NormalizedAdminTask, type TaskRecurrenceForm } from './taskRecurrenceEditor';
 import { TaskRecurrenceFields, TaskScheduleProjection } from './tasks/TaskRecurrenceFields';
 import { TaskHistoryDialog, type TaskHistoryDialogState } from './tasks/TaskHistoryDialog';
+import { createTaskDialogTarget, taskTargetSummary, type TaskDialogTarget } from './tasks/taskTargetSummary';
 import { normalizeTaskAssignmentStatus, reconcileTaskAssignmentProjection } from './taskAssignmentProjection';
 import { PromotionAdminPanel } from './promotions/PromotionAdminPanel';
 import { normalizeThemeColor, themeStyles, type ThemeColor } from './uiTheme';
@@ -123,7 +124,7 @@ export function AdminManagePage() {
   const [newTask, setNewTask] = useState<Omit<TaskDraft, 'taskId'>>(EMPTY_TASK);
   const [imageEditor, setImageEditor] = useState<{ productId: string; value: string } | null>(null);
   const [taskDescriptionEditor, setTaskDescriptionEditor] = useState<{ taskId: string; value: string } | null>(null);
-  const [taskScheduleEditor, setTaskScheduleEditor] = useState<{ taskId: string | null; form: TaskRecurrenceForm } | null>(null);
+  const [taskScheduleEditor, setTaskScheduleEditor] = useState<{ taskId: string | null; target: TaskDialogTarget; form: TaskRecurrenceForm; explicit: boolean; opener: HTMLElement | null } | null>(null);
   const [dirtyTaskScheduleIds, setDirtyTaskScheduleIds] = useState<string[]>([]);
   const [isSavingTaskSchedule, setIsSavingTaskSchedule] = useState(false);
   const taskScheduleSession = useRef<{ id: number; taskId: string | null }>({ id: 0, taskId: null });
@@ -134,6 +135,10 @@ export function AdminManagePage() {
   const assignmentRequest = useRef<{ id: number; taskId: string | null }>({ id: 0, taskId: null });
   const [taskAssignmentEditor, setTaskAssignmentEditor] = useState<{
     taskId: string | null;
+    target: TaskDialogTarget;
+    opener: HTMLElement | null;
+    operations: Record<string, { assigned?: boolean; completed?: boolean }>;
+    retryTargets?: Array<{ taskId: string; operations: Array<{ studentId: string; assigned?: boolean; completed?: boolean; source: 'ADMIN' }> }>;
     selectedIds: string[];
     assignedIds: string[];
     completedIds: string[];
@@ -142,6 +147,7 @@ export function AdminManagePage() {
     statusRows: TaskAssignmentStudentStatus[];
     isLoading?: boolean;
   } | null>(null);
+  const [taskResetConfirmation, setTaskResetConfirmation] = useState<{ target: TaskDialogTarget; opener: HTMLElement; resetting: boolean; error: string } | null>(null);
   const [qrPrintStudents, setQrPrintStudents] = useState<StudentDraft[] | null>(null);
   const [currencyMode, setCurrencyMode] = useState<CurrencyMode>('add');
   const [currencyAmount, setCurrencyAmount] = useState(0);
@@ -243,14 +249,30 @@ export function AdminManagePage() {
     setTasks((current) => current.map((task) => (task.taskId === taskId ? { ...task, ...patch } : task)));
   }
 
-  function openTaskScheduleEditor(task: TaskDraft | null) {
+  function openTaskScheduleEditor(task: TaskDraft | null, opener: HTMLElement | null = null) {
     const taskId = task?.taskId ?? null;
     const schedule = task ? resolveEffectiveAdminTaskSchedule(task) : newTask.schedule;
     taskScheduleSession.current = { id: taskScheduleSession.current.id + 1, taskId };
     setIsSavingTaskSchedule(false);
     setTaskScheduleEditor({
       taskId,
+      target: task ? createTaskDialogTarget('single', [task]) : createTaskDialogTarget('new'),
       form: scheduleDtoToForm(schedule, { taskInstanceId: task?.taskInstanceId }),
+      explicit: true,
+      opener,
+    });
+  }
+
+  function openBulkTaskScheduleEditor(opener: HTMLElement) {
+    const selected = tasks.filter((task) => selectedTaskIds.includes(task.taskId));
+    taskScheduleSession.current = { id: taskScheduleSession.current.id + 1, taskId: null };
+    setIsSavingTaskSchedule(false);
+    setTaskScheduleEditor({
+      taskId: null,
+      target: createTaskDialogTarget('bulk', selected),
+      form: { ...scheduleDtoToForm(), type: '' as TaskRecurrenceForm['type'], time: '', weekday: '', dayOfMonth: '' },
+      explicit: false,
+      opener,
     });
   }
 
@@ -262,11 +284,45 @@ export function AdminManagePage() {
 
   async function applyTaskScheduleEditor() {
     if (!taskScheduleEditor) return;
+    if (!taskScheduleEditor.explicit) return;
     const session = { ...taskScheduleSession.current };
     const isCurrentSession = () => taskScheduleSession.current.id === session.id
       && taskScheduleSession.current.taskId === session.taskId;
     const parsed = scheduleFormToPayload(taskScheduleEditor.form);
     if (!parsed.ok) return notify(parsed.error);
+    if (taskScheduleEditor.target.kind === 'bulk') {
+      const taskIds = taskScheduleEditor.target.tasks.map((task) => task.taskId);
+      setIsSavingTaskSchedule(true);
+      try {
+        const response = await fetch('/api/tasks/schedules/batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskIds, schedule: parsed.payload }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!isCurrentSession()) return;
+        if (!response.ok) throw new Error(payload.error ?? '반복 설정을 저장하지 못했습니다.');
+        try {
+          const taskResponse = await fetch('/api/tasks?includeInactive=1', { cache: 'no-store' });
+          const taskPayload = await taskResponse.json().catch(() => null);
+          if (!isCurrentSession()) return;
+          if (!taskResponse.ok || !Array.isArray(taskPayload)) throw new Error('refresh failed');
+          setTasks((current) => reconcileTaskProjections(current, taskPayload, taskIds));
+          setIsSavingTaskSchedule(false);
+          closeTaskScheduleEditor();
+        } catch {
+          if (!isCurrentSession()) return;
+          setIsSavingTaskSchedule(false);
+          closeTaskScheduleEditor();
+          notify('반복 설정 저장은 완료됐지만 목록 새로고침 실패. 과제 설정의 새로고침 버튼을 눌러 주세요.');
+        }
+      } catch (error) {
+        if (isCurrentSession()) notify(error instanceof Error ? error.message : '반복 설정을 저장하지 못했습니다.');
+      } finally {
+        if (isCurrentSession()) setIsSavingTaskSchedule(false);
+      }
+      return;
+    }
     if (taskScheduleEditor.taskId) {
       const task = tasks.find((item) => item.taskId === taskScheduleEditor.taskId);
       if (!task) return notify('과제를 찾을 수 없습니다.');
@@ -279,13 +335,21 @@ export function AdminManagePage() {
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error ?? '반복 설정을 저장하지 못했습니다.');
-        const taskResponse = await fetch('/api/tasks?includeInactive=1', { cache: 'no-store' });
-        const taskPayload = await taskResponse.json();
-        if (!isCurrentSession()) return;
-        if (!taskResponse.ok || !Array.isArray(taskPayload)) throw new Error(taskPayload?.error ?? '저장 후 최신 과제 회차를 불러오지 못했습니다.');
-        setTasks((current) => reconcileTaskProjections(current, taskPayload, [task.taskId]));
-        setDirtyTaskScheduleIds((current) => current.filter((id) => id !== task.taskId));
-        closeTaskScheduleEditor();
+        try {
+          const taskResponse = await fetch('/api/tasks?includeInactive=1', { cache: 'no-store' });
+          const taskPayload = await taskResponse.json().catch(() => null);
+          if (!isCurrentSession()) return;
+          if (!taskResponse.ok || !Array.isArray(taskPayload)) throw new Error('refresh failed');
+          setTasks((current) => reconcileTaskProjections(current, taskPayload, [task.taskId]));
+          setDirtyTaskScheduleIds((current) => current.filter((id) => id !== task.taskId));
+          setIsSavingTaskSchedule(false);
+          closeTaskScheduleEditor();
+        } catch {
+          if (!isCurrentSession()) return;
+          setIsSavingTaskSchedule(false);
+          closeTaskScheduleEditor();
+          notify('반복 설정 저장은 완료됐지만 목록 새로고침 실패. 과제 설정의 새로고침 버튼을 눌러 주세요.');
+        }
       } catch (error) {
         if (isCurrentSession()) notify(error instanceof Error ? error.message : '반복 설정을 저장하지 못했습니다.');
       } finally {
@@ -442,11 +506,17 @@ export function AdminManagePage() {
   }
 
 
-  function openTaskAssignmentEditor(taskId: string | null, assignedIds: string[]) {
+  function openTaskAssignmentEditor(taskId: string | null, assignedIds: string[], opener: HTMLElement | null = null) {
     const requestId = assignmentRequest.current.id + 1;
     assignmentRequest.current = { id: requestId, taskId };
+    setIsSavingChanges(false);
     setTaskAssignmentEditor({
       taskId,
+      target: taskId
+        ? createTaskDialogTarget('single', tasks.filter((task) => task.taskId === taskId))
+        : createTaskDialogTarget('new'),
+      opener,
+      operations: {},
       selectedIds: [],
       assignedIds: [...assignedIds],
       completedIds: [],
@@ -480,8 +550,41 @@ export function AdminManagePage() {
       });
   }
 
+  function openBulkTaskAssignmentEditor(opener: HTMLElement) {
+    const selected = tasks.filter((task) => selectedTaskIds.includes(task.taskId));
+    assignmentRequest.current = { id: assignmentRequest.current.id + 1, taskId: null };
+    setIsSavingChanges(false);
+    setTaskAssignmentEditor({
+      taskId: null,
+      target: createTaskDialogTarget('bulk', selected),
+      opener,
+      operations: {},
+      selectedIds: [],
+      assignedIds: [],
+      completedIds: [],
+      initialAssignedIds: [],
+      initialCompletedIds: [],
+      statusRows: [],
+      isLoading: false,
+    });
+  }
+
+  function setBulkAssignmentOperation(studentId: string, field: 'assigned' | 'completed', value: string) {
+    setTaskAssignmentEditor((current) => {
+      if (!current || current.target.kind !== 'bulk') return current;
+      const operation = { ...current.operations[studentId] };
+      if (value === '') delete operation[field];
+      else operation[field] = value === (field === 'assigned' ? 'assigned' : 'completed');
+      const operations = { ...current.operations };
+      if (Object.keys(operation).length) operations[studentId] = operation;
+      else delete operations[studentId];
+      return { ...current, operations, retryTargets: undefined };
+    });
+  }
+
   function closeTaskAssignmentEditor() {
     assignmentRequest.current = { id: assignmentRequest.current.id + 1, taskId: null };
+    setIsSavingChanges(false);
     setTaskAssignmentEditor(null);
   }
 
@@ -516,6 +619,11 @@ export function AdminManagePage() {
   function setSelectedTaskAssignmentAssigned(status: 'assigned' | 'unassigned') {
     setTaskAssignmentEditor((current) => {
       if (!current) return current;
+      if (current.target.kind === 'bulk') {
+        const operations = { ...current.operations };
+        for (const studentId of current.selectedIds) operations[studentId] = { ...operations[studentId], assigned: status === 'assigned' };
+        return { ...current, operations, retryTargets: undefined };
+      }
       if (status === 'assigned') {
         return { ...current, assignedIds: Array.from(new Set([...current.assignedIds, ...current.selectedIds])) };
       }
@@ -526,6 +634,11 @@ export function AdminManagePage() {
   function setSelectedTaskAssignmentCompletion(status: 'completed' | 'incomplete') {
     setTaskAssignmentEditor((current) => {
       if (!current) return current;
+      if (current.target.kind === 'bulk') {
+        const operations = { ...current.operations };
+        for (const studentId of current.selectedIds) operations[studentId] = { ...operations[studentId], completed: status === 'completed' };
+        return { ...current, operations, retryTargets: undefined };
+      }
       if (status === 'completed') {
         return { ...current, completedIds: Array.from(new Set([...current.completedIds, ...current.selectedIds])) };
       }
@@ -535,7 +648,74 @@ export function AdminManagePage() {
 
 
   async function saveTaskAssignment() {
-    if (!taskAssignmentEditor) return;
+    if (!taskAssignmentEditor || isSavingChanges) return;
+    if (taskAssignmentEditor.target.kind === 'bulk') {
+      const session = { ...assignmentRequest.current };
+      const isCurrentSession = () => assignmentRequest.current.id === session.id
+        && assignmentRequest.current.taskId === session.taskId;
+      const operations = Object.entries(taskAssignmentEditor.operations).map(([studentId, operation]) => ({ studentId, ...operation, source: 'ADMIN' as const }));
+      if (operations.length === 0) return;
+      const targets = taskAssignmentEditor.retryTargets ?? taskAssignmentEditor.target.tasks.map((task) => ({ taskId: task.taskId, operations }));
+      setIsSavingChanges(true);
+      try {
+        const response = await fetch('/api/tasks/assignments/batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ targets }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!isCurrentSession()) return;
+        if (!response.ok) throw new Error(payload.error ?? '과제 부여 내용을 저장하지 못했습니다.');
+        const failures = Array.isArray(payload.failures) ? payload.failures as Array<{ taskId?: string; studentId?: string; code?: string }> : [];
+        const notAttempted = Array.isArray(payload.notAttempted) ? payload.notAttempted as Array<{ taskId?: string; studentId?: string }> : [];
+        const warnings = Array.isArray(payload.warnings) ? payload.warnings as Array<{ taskId?: string; code?: string }> : [];
+        const aborted = payload.aborted === true;
+        if (failures.length === 0 && notAttempted.length === 0 && !aborted) {
+          try {
+            const taskResponse = await fetch('/api/tasks?includeInactive=1', { cache: 'no-store' });
+            const taskPayload = await taskResponse.json().catch(() => null);
+            if (!isCurrentSession()) return;
+            if (!taskResponse.ok || !Array.isArray(taskPayload)) throw new Error('refresh failed');
+            setTasks((taskPayload as TaskDraft[]).map(normalizeAdminTask));
+            setIsSavingChanges(false);
+            closeTaskAssignmentEditor();
+            if (warnings.length > 0) {
+              notify(`과제 부여 저장은 완료됐지만 기존 호환 목록 반영에 실패했습니다 (${formatTaskWarnings(warnings, tasks)}). 새로고침 후 확인해 주세요.`);
+            } else {
+              notify('과제 부여 저장 완료');
+            }
+          } catch {
+            if (!isCurrentSession()) return;
+            setIsSavingChanges(false);
+            closeTaskAssignmentEditor();
+            const warningText = warnings.length > 0 ? ` 기존 호환 목록 반영 실패: ${formatTaskWarnings(warnings, tasks)}.` : '';
+            notify(`과제 부여 저장은 완료됐지만 목록 새로고침 실패.${warningText} 과제 설정의 새로고침 버튼을 눌러 주세요.`);
+          }
+          return;
+        }
+        const pendingPairs = new Set([...failures, ...notAttempted].flatMap((item) =>
+          item.taskId && item.studentId ? [`${item.taskId}\u0000${item.studentId}`] : []));
+        const retryTargets = pendingPairs.size ? targets.flatMap((target) => {
+          const pending = target.operations.filter((operation) => pendingPairs.has(`${target.taskId}\u0000${operation.studentId}`));
+          return pending.length ? [{ taskId: target.taskId, operations: pending }] : [];
+        }) : targets;
+        setTaskAssignmentEditor((current) => current?.target.kind === 'bulk' ? {
+          ...current,
+          retryTargets,
+        } : current);
+        const retryItems = [
+          ...failures,
+          ...notAttempted.map((item) => ({ ...item, code: 'NOT_ATTEMPTED' })),
+        ];
+        const warningText = warnings.length > 0 ? ` 기존 호환 목록 반영 실패: ${formatTaskWarnings(warnings, tasks)}.` : '';
+        notify(`${aborted ? '과제 부여 처리가 중단되었습니다. ' : '과제 부여 일부 저장 실패. '}다시 시도 대상: ${formatAssignmentFailures(retryItems, tasks, students)}.${warningText}`);
+      } catch (error) {
+        if (isCurrentSession()) notify(error instanceof Error ? error.message : '과제 부여 내용을 저장하지 못했습니다.');
+      } finally {
+        if (isCurrentSession()) setIsSavingChanges(false);
+      }
+      return;
+    }
     if (!taskAssignmentEditor.taskId) {
       setNewTask((current) => ({ ...current, allowedStudentIds: taskAssignmentEditor.assignedIds }));
       closeTaskAssignmentEditor();
@@ -1012,9 +1192,16 @@ export function AdminManagePage() {
     }
   }
 
-  async function resetTaskCompletions(taskIds: string[], label: string) {
-    if (taskIds.length === 0) return notify('선택된 과제가 없습니다.');
-    if (!window.confirm('완료 기록을 초기화하시겠습니까? 과거 지급 보상은 회수되지 않으며, 같은 회차에서 은행으로 다시 완료하면 재보상될 수 있습니다.')) return;
+  function requestTaskCompletionReset(target: TaskDialogTarget, opener: HTMLElement) {
+    if (target.tasks.length === 0) return notify('선택된 과제가 없습니다.');
+    setTaskResetConfirmation({ target, opener, resetting: false, error: '' });
+  }
+
+  async function confirmTaskCompletionReset() {
+    if (!taskResetConfirmation || taskResetConfirmation.resetting) return;
+    const target = taskResetConfirmation.target;
+    const taskIds = target.tasks.map((task) => task.taskId);
+    setTaskResetConfirmation((current) => current ? { ...current, resetting: true, error: '' } : current);
     try {
       const response = await fetch('/api/tasks/completions/reset', {
         method: 'POST',
@@ -1023,13 +1210,39 @@ export function AdminManagePage() {
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? '과제 완료 기록을 초기화하지 못했습니다.');
-      const taskResponse = await fetch('/api/tasks?includeInactive=1', { cache: 'no-store' });
-      const taskPayload = await taskResponse.json();
-      if (!taskResponse.ok || !Array.isArray(taskPayload)) throw new Error(taskPayload?.error ?? '초기화 후 최신 과제 회차를 불러오지 못했습니다.');
+      let taskPayload: unknown;
+      try {
+        const taskResponse = await fetch('/api/tasks?includeInactive=1', { cache: 'no-store' });
+        taskPayload = await taskResponse.json().catch(() => null);
+        if (!taskResponse.ok || !Array.isArray(taskPayload)) throw new Error('refresh failed');
+      } catch {
+        setTaskResetConfirmation(null);
+        closeTaskAssignmentEditor();
+        notify('초기화는 완료됐지만 목록 새로고침 실패. 과제 설정의 새로고침 버튼을 눌러 주세요.');
+        return;
+      }
       setTasks((current) => reconcileTaskProjections(current, taskPayload, taskIds));
-      notify(`${label} 완료 기록 ${Number(payload.deletedCount ?? 0)}건 초기화 완료`);
+      if (target.kind === 'single' && taskAssignmentEditor?.taskId === taskIds[0]) {
+        try {
+          const status = await loadTaskAssignmentStatus(taskIds[0]);
+          setTaskAssignmentEditor((current) => current?.taskId === taskIds[0] ? {
+            ...current,
+            assignedIds: status.assignedIds,
+            completedIds: status.completedIds,
+            initialAssignedIds: status.assignedIds,
+            initialCompletedIds: status.completedIds,
+            statusRows: status.statusRows,
+          } : current);
+        } catch {
+          // The task list refresh is authoritative; assignment details can be reloaded by reopening.
+        }
+      }
+      setTaskResetConfirmation(null);
+      notify(`완료 기록 ${Number(payload.deletedCount ?? 0)}건 초기화 완료`);
     } catch (error) {
-      notify(error instanceof Error ? error.message : '과제 완료 기록을 초기화하지 못했습니다.');
+      const errorText = error instanceof Error ? error.message : '과제 완료 기록을 초기화하지 못했습니다.';
+      setTaskResetConfirmation((current) => current ? { ...current, resetting: false, error: errorText } : current);
+      notify(errorText);
     }
   }
 
@@ -1176,7 +1389,7 @@ export function AdminManagePage() {
 
   return (
     <main data-testid="admin-shell" style={rootStyle} className={`min-h-screen ${theme.shell} ${theme.pageText} p-2 sm:p-3 lg:p-5`}>
-      <div data-testid="admin-background" inert={taskHistory || taskDeleteConfirmation ? true : undefined} aria-hidden={taskHistory || taskDeleteConfirmation ? true : undefined}>
+      <div data-testid="admin-background" inert={taskHistory || taskDeleteConfirmation || taskScheduleEditor || taskAssignmentEditor || taskResetConfirmation ? true : undefined} aria-hidden={taskHistory || taskDeleteConfirmation || taskScheduleEditor || taskAssignmentEditor || taskResetConfirmation ? true : undefined}>
       <section className="mx-auto flex w-full max-w-[1280px] flex-col gap-3 lg:gap-4">
         <header data-testid="admin-header" className={`rounded-[1.25rem] border ${semantic.border} ${semantic.surface} px-4 py-4 text-center ${semantic.text} shadow-sm sm:rounded-[1.75rem] md:px-6`}>
           <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -1280,7 +1493,7 @@ export function AdminManagePage() {
                 </div>
               </div>
 
-              <div data-testid="student-list" className={`overflow-hidden rounded-2xl border ${semantic.border} ${semantic.surface} divide-y divide-[var(--theme-border)]`}>
+              <div data-testid="student-list" className={`overflow-hidden rounded-2xl border ${semantic.border} ${semantic.surface} divide-y ${semantic.divider}`}>
                 <div data-testid="student-header-row" className={`grid grid-cols-[24px_56px_minmax(4rem,1fr)_78px_52px_42px] items-center gap-0.5 ${semantic.surfaceRaised} px-1.5 py-1 text-[10px] font-black ${semantic.mutedText}`}>
                   <span>선택</span>
                   <span>ID</span>
@@ -1354,7 +1567,7 @@ export function AdminManagePage() {
                 <button type="button" disabled={selectedProductIds.length === 0} onClick={deleteSelectedProducts} className={`mt-2 rounded-xl bg-rose-500 px-4 py-2 text-sm font-black text-white ${disabledActionClass}`}>삭제</button>
                 <button type="button" disabled={selectedProductIds.length === 0} onClick={saveSelectedProducts} className={`ml-2 mt-2 rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black ${theme.actionText} ${disabledActionClass}`}>선택 저장</button>
               </div>
-              <div data-testid="product-list" className={`overflow-hidden rounded-2xl border ${semantic.border} ${semantic.surface} divide-y divide-[var(--theme-border)]`}>
+              <div data-testid="product-list" className={`overflow-hidden rounded-2xl border ${semantic.border} ${semantic.surface} divide-y ${semantic.divider}`}>
                 <div data-testid="product-header-row" className={`grid grid-cols-[24px_minmax(3rem,1fr)_56px_48px_36px_minmax(3rem,0.8fr)_40px_30px_34px] items-center gap-0.5 ${semantic.surfaceRaised} px-1.5 py-1 text-[10px] font-black ${semantic.mutedText}`}>
                   <span>선택</span>
                   <span>상품명</span>
@@ -1427,8 +1640,8 @@ export function AdminManagePage() {
                   <input aria-label="새 과제 활성" checked={newTask.isActive} onChange={(event) => setNewTask((current) => ({ ...current, isActive: event.target.checked }))} type="checkbox" />
                   은행 페이지에 표시
                 </label>
-                <button type="button" aria-label="새 과제 반복 설정" onClick={() => openTaskScheduleEditor(null)} className={`w-full rounded-xl ${theme.softBg} py-3 font-black ${theme.accentText}`}>반복 설정</button>
-                <button type="button" aria-label="새 과제 과제 부여" onClick={() => openTaskAssignmentEditor(null, newTask.allowedStudentIds ?? [])} className="w-full rounded-xl bg-sky-100 py-3 font-black text-sky-800">과제 부여{newTask.allowedStudentIds.length ? ` (${newTask.allowedStudentIds.length}명)` : ''}</button>
+                <button type="button" aria-label="새 과제 반복 설정" onClick={(event) => openTaskScheduleEditor(null, event.currentTarget)} className={`w-full rounded-xl ${theme.softBg} py-3 font-black ${theme.accentText}`}>반복 설정</button>
+                <button type="button" aria-label="새 과제 과제 부여" onClick={(event) => openTaskAssignmentEditor(null, newTask.allowedStudentIds ?? [], event.currentTarget)} className="w-full rounded-xl bg-sky-100 py-3 font-black text-sky-800">과제 부여{newTask.allowedStudentIds.length ? ` (${newTask.allowedStudentIds.length}명)` : ''}</button>
                 <button className={`w-full rounded-xl ${theme.accentBg} py-3 font-black ${theme.actionText} shadow-sm`} type="submit">새 과제 추가</button>
               </form>
             </SectionCard>
@@ -1448,18 +1661,19 @@ export function AdminManagePage() {
                   <input aria-label="전체 과제 선택" checked={allTasksSelected} onChange={(event) => setSelectedTaskIds(event.target.checked ? tasks.map((task) => task.taskId) : [])} type="checkbox" />
                   전체 선택 ({selectedTaskIds.length}/{tasks.length})
                 </label>
+                <button type="button" aria-label="선택 과제 반복" disabled={selectedTaskIds.length === 0} onClick={(event) => openBulkTaskScheduleEditor(event.currentTarget)} className={`rounded-xl ${theme.softBg} px-4 py-2 text-sm font-black ${theme.accentText} ${disabledActionClass}`}>반복</button>
+                <button type="button" aria-label="선택 과제 과제 부여" disabled={selectedTaskIds.length === 0} onClick={(event) => openBulkTaskAssignmentEditor(event.currentTarget)} className={`rounded-xl bg-sky-100 px-4 py-2 text-sm font-black text-sky-800 ${disabledActionClass}`}>과제 부여</button>
                 <button type="button" disabled={selectedTaskIds.length === 0} onClick={deleteSelectedTasks} className={`rounded-xl bg-rose-500 px-4 py-2 text-sm font-black text-white ${disabledActionClass}`}>삭제</button>
-                <button type="button" disabled={selectedTaskIds.length === 0} onClick={() => resetTaskCompletions([...selectedTaskIds], `선택 과제 ${selectedTaskIds.length}개`)} className={`rounded-xl bg-amber-300 px-4 py-2 text-sm font-black text-amber-950 ${disabledActionClass}`}>초기화</button>
                 <button type="button" disabled={selectedTaskIds.length === 0} onClick={saveSelectedTasks} className={`rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black ${theme.actionText} ${disabledActionClass}`}>선택 저장</button>
                 </div>
               </div>
               <div data-testid="task-list-scroll" className={`overflow-x-auto rounded-2xl border ${semantic.border} ${semantic.surface}`}>
-                <div className="min-w-[720px] divide-y divide-slate-100">
-                <div data-testid="task-header-row" className={`grid grid-cols-[24px_minmax(5rem,1fr)_64px_48px_38px_52px_minmax(3rem,0.7fr)_minmax(180px,auto)] items-center gap-0.5 ${semantic.surfaceRaised} px-1.5 py-1 text-[10px] font-black ${semantic.mutedText}`}>
-                  <span>선택</span><span>과제명</span><span>보상</span><span>순서</span><span>활성</span><span>부여</span><span>상세</span><span>작업</span>
+                <div className={`min-w-[720px] divide-y ${semantic.divider}`}>
+                <div data-testid="task-header-row" className={`grid grid-cols-[24px_minmax(5rem,1fr)_64px_48px_38px_minmax(3rem,0.7fr)_minmax(180px,auto)] items-center gap-0.5 ${semantic.surfaceRaised} px-1.5 py-1 text-[10px] font-black ${semantic.mutedText}`}>
+                  <span>선택</span><span>과제명</span><span>보상</span><span>순서</span><span>활성</span><span>상세</span><span>작업</span>
                 </div>
                 {tasks.map((task) => (
-                  <div data-testid="task-row" key={task.taskId} className="grid grid-cols-[24px_minmax(5rem,1fr)_64px_48px_38px_52px_minmax(3rem,0.7fr)_minmax(180px,auto)] items-center gap-0.5 px-1.5 py-1 text-[11px]">
+                  <div data-testid="task-row" key={task.taskId} className="grid grid-cols-[24px_minmax(5rem,1fr)_64px_48px_38px_minmax(3rem,0.7fr)_minmax(180px,auto)] items-center gap-0.5 px-1.5 py-1 text-[11px]">
                     <label className="flex items-center justify-center">
                       <input aria-label={`${task.taskId} 선택`} checked={selectedTaskIds.includes(task.taskId)} onChange={() => toggleTask(task.taskId)} type="checkbox" />
                       <span className="sr-only">선택</span>
@@ -1472,7 +1686,7 @@ export function AdminManagePage() {
                     <label className={`flex h-8 items-center justify-center rounded-lg ${theme.softBg} text-[10px] font-bold ${theme.softText}`}>
                       <input aria-label={`${task.taskId} 활성`} checked={Boolean(task.isActive)} onChange={(event) => updateTask(task.taskId, { isActive: event.target.checked })} type="checkbox" />
                     </label>
-                    <button type="button" aria-label={`${task.taskId} 과제 부여`} onClick={() => openTaskAssignmentEditor(task.taskId, task.allowedStudentIds ?? [])} className="h-8 rounded-lg bg-sky-100 px-1 text-[10px] font-black text-sky-800">과제 부여</button>
+
                     <button
                       aria-label={`${task.taskId} 상세 설정 편집`}
                       className={`h-8 min-w-0 truncate rounded-lg border ${semantic.border} ${semantic.input} px-1 text-left text-[10px] font-bold ${semantic.mutedText}`}
@@ -1482,9 +1696,9 @@ export function AdminManagePage() {
                       {task.description ? '상세 있음' : '상세'}
                     </button>
                     <div data-testid="task-row-actions" className="flex flex-wrap justify-end gap-1">
-                      <button type="button" aria-label={`${task.taskId} 반복 설정`} onClick={() => openTaskScheduleEditor(task)} className={`h-8 rounded-lg border ${semantic.border} ${theme.softBg} px-2 text-[10px] font-black ${theme.accentText} outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-surface)]`}>반복</button>
+                      <button type="button" aria-label={`${task.taskId} 반복 설정`} onClick={(event) => openTaskScheduleEditor(task, event.currentTarget)} className={`h-8 rounded-lg border ${semantic.border} ${theme.softBg} px-2 text-[10px] font-black ${theme.accentText} outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-surface)]`}>반복</button>
                       <button type="button" aria-label={`${task.taskId} 기록 보기`} onClick={(event) => void openTaskHistory(task, event.currentTarget)} className={`h-8 rounded-lg border ${semantic.border} ${semantic.surfaceRaised} px-2 text-[10px] font-black ${semantic.text} outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-surface)]`}>기록</button>
-                      <button type="button" aria-label={`${task.taskId} 완료 기록 초기화`} onClick={() => resetTaskCompletions([task.taskId], task.taskId)} className="h-8 rounded-lg border border-amber-500 bg-amber-100 px-2 text-[10px] font-black text-amber-900 outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-surface)]">초기화</button>
+                      <button type="button" aria-label={`${task.taskId} 과제 부여`} onClick={(event) => openTaskAssignmentEditor(task.taskId, task.allowedStudentIds ?? [], event.currentTarget)} className="h-8 rounded-lg border border-sky-500 bg-sky-100 px-2 text-[10px] font-black text-sky-800 outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-surface)]">과제 부여</button>
                       <button type="button" aria-label={`${task.taskId} 과제 삭제`} onClick={(event) => requestTaskDelete(task, event.currentTarget)} className="h-8 rounded-lg border border-rose-500 bg-rose-100 px-2 text-[10px] font-black text-rose-800 outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-surface)]">삭제</button>
                     </div>
                   </div>
@@ -1529,6 +1743,8 @@ export function AdminManagePage() {
       </section>
       </div>
       {isSavingChanges ? <LoadingDialog title="변경 사항 저장 중" message="변경 사항을 저장하는 중입니다." /> : null}
+      {isSavingTaskSchedule ? <LoadingDialog title="반복 설정 저장 중" message="반복 설정을 저장하고 최신 과제 목록을 불러오는 중입니다." /> : null}
+      {taskResetConfirmation?.resetting ? <LoadingDialog title="완료 기록 초기화 중" message="완료 기록을 초기화하고 최신 과제 목록을 불러오는 중입니다." restoreFocus={false} /> : null}
       {isRefreshingLists ? <LoadingDialog title="새로고침 중" message="새로고침하는 중입니다." /> : null}
       {imageEditor ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -1643,9 +1859,12 @@ export function AdminManagePage() {
         </div>
       ) : null}
       {taskScheduleEditor ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <section role="dialog" aria-modal="true" aria-label="과제 반복 설정" className="w-full max-w-lg rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 text-[var(--theme-text)] shadow-2xl">
+        <TaskDialogFrame title="과제 반복 설정" target={taskScheduleEditor.target} opener={taskScheduleEditor.opener} mutation={isSavingTaskSchedule} onClose={closeTaskScheduleEditor}>
             <h2 className="text-xl font-black">과제 반복 설정</h2>
+            <TaskTargetSummary target={taskScheduleEditor.target} />
+            {taskScheduleEditor.target.kind === 'bulk' ? (
+              <p className="mt-1 rounded-xl bg-sky-50 p-3 text-xs font-bold text-sky-900">선택한 모든 과제에 같은 반복 설정이 일괄 적용됩니다. 기존 반복 설정은 불러오지 않습니다.</p>
+            ) : null}
             <p className="mt-1 rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-900">반복 규칙 변경은 즉시 적용됩니다. 직전 완료 상태는 보상 없이 새 회차에 승계되고 자연 초기화는 다음 경계부터 시작됩니다.</p>
             {taskScheduleEditor.taskId ? (
               <TaskScheduleProjection
@@ -1653,17 +1872,23 @@ export function AdminManagePage() {
                 className={`${theme.softBg} ${theme.softText}`}
               />
             ) : null}
-            <TaskRecurrenceFields
-              form={taskScheduleEditor.form}
-              onChange={(form) => setTaskScheduleEditor((current) => current ? { ...current, form } : current)}
-              styles={{ detail: theme.softText, preview: theme.accentText }}
-            />
+            {taskScheduleEditor.target.kind === 'bulk' ? (
+              <BulkTaskRecurrenceFields
+                form={taskScheduleEditor.form}
+                onChange={(form) => setTaskScheduleEditor((current) => current ? { ...current, form, explicit: Boolean(form.type) } : current)}
+              />
+            ) : (
+              <TaskRecurrenceFields
+                form={taskScheduleEditor.form}
+                onChange={(form) => setTaskScheduleEditor((current) => current ? { ...current, form, explicit: true } : current)}
+                styles={{ detail: theme.softText, preview: theme.accentText }}
+              />
+            )}
             <div className="mt-4 flex gap-2">
-              <button type="button" className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700" onClick={closeTaskScheduleEditor}>취소</button>
-              <button type="button" disabled={isSavingTaskSchedule} className={`flex-1 rounded-xl ${theme.accentBg} py-3 font-black ${theme.actionText} disabled:opacity-60`} onClick={() => void applyTaskScheduleEditor()}>{isSavingTaskSchedule ? '반복 설정 저장 중...' : taskScheduleEditor.taskId ? '반복 설정 저장' : '반복 설정 적용'}</button>
+              <button type="button" disabled={isSavingTaskSchedule} className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700 disabled:opacity-50" onClick={closeTaskScheduleEditor}>취소</button>
+              <button type="button" aria-label={taskScheduleEditor.target.kind === 'new' ? '반복 설정 적용' : '반복 설정 저장'} disabled={isSavingTaskSchedule || !taskScheduleEditor.explicit || !scheduleFormToPayload(taskScheduleEditor.form).ok} className={`flex-1 rounded-xl ${theme.accentBg} py-3 font-black ${theme.actionText} disabled:opacity-60`} onClick={() => void applyTaskScheduleEditor()}>{isSavingTaskSchedule ? '반복 설정 저장 중...' : taskScheduleEditor.target.kind === 'new' ? '반복 설정 적용' : '반복 설정 저장'}</button>
             </div>
-          </section>
-        </div>
+        </TaskDialogFrame>
       ) : null}
       {taskHistory ? <TaskHistoryDialog history={taskHistory} onClose={closeTaskHistory} opener={historyOpenerRef.current} themeColor={themeColor} /> : null}
       {taskDeleteConfirmation ? (
@@ -1674,9 +1899,12 @@ export function AdminManagePage() {
         />
       ) : null}
       {taskAssignmentEditor ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <section role="dialog" aria-modal="true" aria-label="과제 부여" className="w-full max-w-xl rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 text-[var(--theme-text)] shadow-2xl">
+        <TaskDialogFrame title="과제 부여" target={taskAssignmentEditor.target} opener={taskAssignmentEditor.opener} mutation={isSavingChanges} obscured={Boolean(taskResetConfirmation)} onClose={closeTaskAssignmentEditor} maxWidth="max-w-xl">
             <h2 className="text-xl font-black">과제 부여</h2>
+            <TaskTargetSummary target={taskAssignmentEditor.target} />
+            {taskAssignmentEditor.target.kind === 'bulk' ? (
+              <p className="mt-1 rounded-xl bg-sky-50 p-3 text-xs font-bold text-sky-900">선택한 모든 과제에 같은 과제 부여 변경이 일괄 적용됩니다. 기존 설정은 불러오지 않으며, 명시한 항목만 변경됩니다.</p>
+            ) : null}
             {taskAssignmentEditor.taskId ? <p className="mt-1 text-xs font-black text-[var(--theme-accent-text)]">현재 회차 부여·완료 상태 {tasks.find((task) => task.taskId === taskAssignmentEditor.taskId)?.currentCycle?.transition === 'PERMANENT' ? '(상시 과제)' : ''}</p> : null}
             <p className="mt-1 rounded-2xl bg-sky-50 p-3 text-sm font-bold text-sky-800">선택된 학생만 이 과제를 완료할 수 있습니다. 아무 학생도 선택하지 않으면 아무도 완료할 수 없습니다.</p>
             <p className="mt-1 rounded-xl bg-amber-50 p-2 text-xs font-bold text-amber-900">관리자 완료는 보상 없이 표시됩니다.</p>
@@ -1740,18 +1968,38 @@ export function AdminManagePage() {
                   <div key={student.studentId} data-testid={`task-assignment-row-${student.studentId}`} className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-3 rounded-xl px-3 py-2 text-sm font-bold hover:bg-[var(--theme-hover)] hover:text-[var(--theme-hover-text)]">
                     <input aria-label={`${student.studentId} ${student.name} 행 선택`} checked={selected} onChange={() => toggleTaskAssignmentStudent(student.studentId)} type="checkbox" />
                     <span className="min-w-0"><span className="font-black">{student.studentId}</span> <span>{student.name}</span>{(() => { const state = taskAssignmentEditor.statusRows.find((row) => row.studentId === student.studentId); return state ? <span className="block text-[10px] text-[var(--theme-muted-text)]">부여 {assignmentSourceLabel(state.assignmentOrigin ?? 'DEFAULT', state.assignmentSource)} · 완료 {originLabel(state.completionOrigin ?? 'DEFAULT')}</span> : null; })()}</span>
-                    <button type="button" aria-label={`${student.studentId} ${student.name} 부여 상태`} className={`h-9 min-w-16 rounded-full border px-3 text-xs font-black shadow-sm transition ${assignmentClass}`} onClick={() => toggleTaskAssignmentAssigned(student.studentId)}>{assigned ? '부여' : '미부여'}</button>
-                    <button type="button" aria-label={`${student.studentId} ${student.name} 완료 상태`} className={`h-9 min-w-16 rounded-full border px-3 text-xs font-black shadow-sm transition ${completionClass}`} onClick={() => toggleTaskAssignmentCompleted(student.studentId)}>{completed ? '완료' : '미완료'}</button>
+                    {taskAssignmentEditor.target.kind === 'bulk' ? (
+                      <>
+                        <select aria-label={`${student.studentId} ${student.name} 부여 작업`} value={typeof taskAssignmentEditor.operations[student.studentId]?.assigned === 'boolean' ? (taskAssignmentEditor.operations[student.studentId].assigned ? 'assigned' : 'unassigned') : ''} onChange={(event) => setBulkAssignmentOperation(student.studentId, 'assigned', event.target.value)} className={`h-9 rounded-full border ${semantic.border} ${semantic.input} px-2 text-xs font-black ${semantic.text}`}>
+                          <option value="">변경 안 함</option><option value="assigned">부여</option><option value="unassigned">미부여</option>
+                        </select>
+                        <select aria-label={`${student.studentId} ${student.name} 완료 작업`} value={typeof taskAssignmentEditor.operations[student.studentId]?.completed === 'boolean' ? (taskAssignmentEditor.operations[student.studentId].completed ? 'completed' : 'incomplete') : ''} onChange={(event) => setBulkAssignmentOperation(student.studentId, 'completed', event.target.value)} className={`h-9 rounded-full border ${semantic.border} ${semantic.input} px-2 text-xs font-black ${semantic.text}`}>
+                          <option value="">변경 안 함</option><option value="completed">완료</option><option value="incomplete">미완료</option>
+                        </select>
+                      </>
+                    ) : (
+                      <>
+                        <button type="button" aria-label={`${student.studentId} ${student.name} 부여 상태`} className={`h-9 min-w-16 rounded-full border px-3 text-xs font-black shadow-sm transition ${assignmentClass}`} onClick={() => toggleTaskAssignmentAssigned(student.studentId)}>{assigned ? '부여' : '미부여'}</button>
+                        <button type="button" aria-label={`${student.studentId} ${student.name} 완료 상태`} className={`h-9 min-w-16 rounded-full border px-3 text-xs font-black shadow-sm transition ${completionClass}`} onClick={() => toggleTaskAssignmentCompleted(student.studentId)}>{completed ? '완료' : '미완료'}</button>
+                      </>
+                    )}
                   </div>
                 );
               })}
             </div>
-            <div className="mt-4 flex gap-2">
-              <button type="button" className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700" onClick={closeTaskAssignmentEditor}>취소</button>
-              <button type="button" disabled={Boolean(taskAssignmentEditor.isLoading)} className={`flex-1 rounded-xl ${theme.accentBg} py-3 font-black ${theme.actionText} disabled:cursor-not-allowed disabled:opacity-50`} onClick={saveTaskAssignment}>과제 부여 저장</button>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {taskAssignmentEditor.target.kind !== 'new' ? <button type="button" disabled={isSavingChanges} className="flex-1 rounded-xl bg-amber-100 py-3 font-black text-amber-900 disabled:opacity-50" onClick={(event) => requestTaskCompletionReset(taskAssignmentEditor.target, event.currentTarget)}>완료 기록 초기화</button> : null}
+              <button type="button" disabled={isSavingChanges} className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700 disabled:opacity-50" onClick={closeTaskAssignmentEditor}>취소</button>
+              <button type="button" disabled={Boolean(taskAssignmentEditor.isLoading) || isSavingChanges || (taskAssignmentEditor.target.kind === 'bulk' && Object.keys(taskAssignmentEditor.operations).length === 0)} className={`flex-1 rounded-xl ${theme.accentBg} py-3 font-black ${theme.actionText} disabled:cursor-not-allowed disabled:opacity-50`} onClick={saveTaskAssignment}>과제 부여 저장</button>
             </div>
-          </section>
-        </div>
+        </TaskDialogFrame>
+      ) : null}
+      {taskResetConfirmation ? (
+        <TaskResetConfirmDialog
+          confirmation={taskResetConfirmation}
+          onCancel={() => { if (!taskResetConfirmation.resetting) setTaskResetConfirmation(null); }}
+          onConfirm={() => void confirmTaskCompletionReset()}
+        />
       ) : null}
       {taskDescriptionEditor ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -1821,6 +2069,108 @@ export function AdminManagePage() {
   );
 }
 
+function BulkTaskRecurrenceFields({ form, onChange }: { form: TaskRecurrenceForm; onChange: (form: TaskRecurrenceForm) => void }) {
+  return (
+    <div className="mt-4 space-y-3">
+      <label className="block text-sm font-bold"><span>반복 주기</span><select aria-label="반복 주기" value={form.type} onChange={(event) => onChange({ ...form, type: event.target.value as TaskRecurrenceForm['type'], weekday: '', dayOfMonth: '' })} className="mt-1 w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-input)] p-3">
+        <option value="">선택해 주세요</option><option value="NONE">반복 없음</option><option value="DAILY">매일</option><option value="WEEKLY">매주</option><option value="MONTHLY">매월</option>
+      </select></label>
+      {form.type && form.type !== 'NONE' ? <label className="block text-sm font-bold"><span>실행 시간</span><input aria-label="반복 시간" type="time" value={form.time} onChange={(event) => onChange({ ...form, time: event.target.value })} className="mt-1 w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-input)] p-3" /></label> : null}
+      {form.type === 'WEEKLY' ? <label className="block text-sm font-bold"><span>요일</span><select aria-label="반복 요일" value={form.weekday} onChange={(event) => onChange({ ...form, weekday: event.target.value })} className="mt-1 w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-input)] p-3"><option value="">선택해 주세요</option>{['월','화','수','목','금','토','일'].map((day, index) => <option key={day} value={index + 1}>{day}요일</option>)}</select></label> : null}
+      {form.type === 'MONTHLY' ? <label className="block text-sm font-bold"><span>날짜</span><input aria-label="반복 날짜" type="number" min="1" max="31" value={form.dayOfMonth} onChange={(event) => onChange({ ...form, dayOfMonth: event.target.value })} className="mt-1 w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-input)] p-3" /></label> : null}
+      <div className="grid gap-2 sm:grid-cols-2"><label className="flex gap-2 rounded-xl bg-[var(--theme-surface-raised)] p-3 text-sm font-bold"><input aria-label="회차마다 완료 초기화" type="checkbox" checked={form.resetCompletionOnCycle} onChange={(event) => onChange({ ...form, resetCompletionOnCycle: event.target.checked })} />완료 초기화</label><label className="flex gap-2 rounded-xl bg-[var(--theme-surface-raised)] p-3 text-sm font-bold"><input aria-label="회차마다 부여 초기화" type="checkbox" checked={form.resetAssignmentOnCycle} onChange={(event) => onChange({ ...form, resetAssignmentOnCycle: event.target.checked })} />부여 초기화</label></div>
+    </div>
+  );
+}
+
+function TaskTargetSummary({ target }: { target: TaskDialogTarget }) {
+  const summary = taskTargetSummary(target);
+  return <p title={summary.full} className="mt-1 truncate text-sm font-black text-[var(--theme-accent-text)]">대상: {summary.short}</p>;
+}
+
+function TaskDialogFrame({ title, target, opener, mutation, obscured = false, onClose, maxWidth = 'max-w-lg', children }: {
+  title: string;
+  target: TaskDialogTarget;
+  opener: HTMLElement | null;
+  mutation: boolean;
+  obscured?: boolean;
+  onClose: () => void;
+  maxWidth?: string;
+  children: ReactNode;
+}) {
+  const dialogRef = useRef<HTMLElement>(null);
+  const descriptionId = useId();
+  const summary = taskTargetSummary(target);
+  useEffect(() => {
+    const first = dialogRef.current?.querySelector<HTMLElement>('button:not([disabled]), select:not([disabled]), input:not([disabled]), textarea:not([disabled])');
+    first?.focus();
+    return () => opener?.focus();
+  }, [opener]);
+  function onKeyDown(event: React.KeyboardEvent<HTMLElement>) {
+    if (event.key === 'Escape' && !mutation) {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), select:not([disabled]), input:not([disabled]), textarea:not([disabled])') ?? []);
+    if (!controls.length) return;
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    if ((event.shiftKey && document.activeElement === first) || (!event.shiftKey && document.activeElement === last)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    }
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <section ref={dialogRef} role="dialog" aria-modal="true" aria-label={title} aria-describedby={descriptionId} aria-hidden={obscured || mutation ? true : undefined} inert={obscured || mutation} onKeyDown={onKeyDown} className={`w-full ${maxWidth} rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 text-[var(--theme-text)] shadow-2xl`}>
+        <span id={descriptionId} className="sr-only">대상 과제: {summary.full}</span>
+        {children}
+      </section>
+    </div>
+  );
+}
+
+function TaskResetConfirmDialog({ confirmation, onCancel, onConfirm }: {
+  confirmation: { target: TaskDialogTarget; opener: HTMLElement; resetting: boolean; error: string };
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const confirmRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    confirmRef.current?.focus();
+    return () => {
+      window.queueMicrotask(() => {
+        if (confirmation.opener.isConnected) confirmation.opener.focus();
+      });
+    };
+  }, [confirmation.opener]);
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
+      <section role="dialog" aria-modal="true" aria-label="완료 기록 초기화 확인" aria-hidden={confirmation.resetting ? true : undefined} inert={confirmation.resetting} onKeyDown={(event) => {
+        if (event.key === 'Escape' && !confirmation.resetting) { event.preventDefault(); onCancel(); }
+        if (event.key === 'Tab') {
+          const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not([disabled])'));
+          if (buttons.length && ((!event.shiftKey && document.activeElement === buttons.at(-1)) || (event.shiftKey && document.activeElement === buttons[0]))) {
+            event.preventDefault();
+            (event.shiftKey ? buttons.at(-1) : buttons[0])?.focus();
+          }
+        }
+      }} className="w-full max-w-md rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-5 text-[var(--theme-text)] shadow-2xl">
+        <h2 className="text-xl font-black">완료 기록을 초기화할까요?</h2>
+        <TaskTargetSummary target={confirmation.target} />
+        <p className="mt-3 rounded-xl bg-amber-100 p-3 text-sm font-bold text-amber-950">과거 지급 보상은 회수되지 않습니다. 같은 회차에서 은행으로 다시 완료하면 재보상될 수 있습니다.</p>
+        {confirmation.error ? <p role="alert" className="mt-3 rounded-xl bg-rose-100 p-3 text-sm font-bold text-rose-800">{confirmation.error}</p> : null}
+        <div className="mt-4 flex gap-2">
+          <button ref={confirmRef} type="button" aria-label="완료 기록 초기화 확인" disabled={confirmation.resetting} onClick={onConfirm} className="flex-1 rounded-xl bg-amber-500 py-3 font-black text-amber-950 disabled:opacity-50">{confirmation.resetting ? '초기화 중...' : '초기화'}</button>
+          <button type="button" disabled={confirmation.resetting} onClick={onCancel} className="flex-1 rounded-xl bg-[var(--theme-surface-raised)] py-3 font-black disabled:opacity-50">취소</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function TaskDeleteConfirmDialog({
   confirmation,
   onCancel,
@@ -1871,6 +2221,31 @@ function TaskDeleteConfirmDialog({
   );
 }
 
+function formatAssignmentFailures(
+  failures: Array<{ taskId?: string; studentId?: string; code?: string }>,
+  tasks: TaskDraft[],
+  students: StudentDraft[],
+) {
+  return failures.map((failure) => {
+    const task = tasks.find((candidate) => candidate.taskId === failure.taskId);
+    const student = students.find((candidate) => candidate.studentId === failure.studentId);
+    const taskLabel = task ? `${task.title} (${task.taskId})` : failure.taskId ?? '알 수 없는 과제';
+    const studentLabel = student ? `${student.name} (${student.studentId})` : failure.studentId ?? '알 수 없는 학생';
+    const reason = failure.code === 'OPERATION_FAILED'
+      ? '작업 실패'
+      : failure.code === 'NOT_ATTEMPTED' ? '미처리' : `작업 실패 (${failure.code ?? 'UNKNOWN'})`;
+    return `${taskLabel} · ${studentLabel}: ${reason}`;
+  }).join(', ');
+}
+
+function formatTaskWarnings(warnings: Array<{ taskId?: string; code?: string }>, tasks: TaskDraft[]) {
+  return warnings.map((warning) => {
+    const task = tasks.find((candidate) => candidate.taskId === warning.taskId);
+    const label = task ? `${task.title} (${task.taskId})` : warning.taskId ?? '알 수 없는 과제';
+    return warning.code === 'LEGACY_MIRROR_UPDATE_FAILED' ? label : `${label}: ${warning.code ?? 'UNKNOWN'}`;
+  }).join(', ');
+}
+
 function originLabel(origin: string) {
   return ({ EVENT: '현재 기록', CARRY: '이월', LEGACY: '기존 설정', DEFAULT: '기본값' } as Record<string, string>)[origin] ?? origin;
 }
@@ -1894,10 +2269,23 @@ function LoadingScreen({ title, message }: { title: string; message: string }) {
   );
 }
 
-function LoadingDialog({ title, message }: { title: string; message: string }) {
+function LoadingDialog({ title, message, restoreFocus = true }: { title: string; message: string; restoreFocus?: boolean }) {
+  const dialogRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dialogRef.current?.focus();
+    return () => {
+      if (!restoreFocus) return;
+      window.queueMicrotask(() => {
+        if (previous?.isConnected) previous.focus();
+      });
+    };
+  }, [restoreFocus]);
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-      <section role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-md rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-6 text-center text-[var(--theme-text)] shadow-2xl">
+      <section ref={dialogRef} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} onKeyDown={(event) => {
+        if (event.key === 'Tab') event.preventDefault();
+      }} className="w-full max-w-md rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-6 text-center text-[var(--theme-text)] shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)]">
         <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-[var(--theme-border)] border-t-[var(--theme-focus-ring)]" aria-hidden="true" />
         <h2 className="mt-4 text-2xl font-black">{title}</h2>
         <p className="mt-2 rounded-2xl bg-[var(--theme-surface-raised)] p-4 text-sm font-bold text-[var(--theme-muted-text)]">{message}</p>

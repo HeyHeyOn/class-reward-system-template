@@ -848,7 +848,16 @@ describe('PromotionAdminPanel', () => {
     await screen.findByText(percent.name);
     expect(panel.getAttribute('data-theme')).toBe(themeColor);
     expect(panel.className).toContain('bg-[var(--theme-shell)]');
-    expect(screen.getByTestId('promotion-row').className).toContain('bg-[var(--theme-surface-raised)]');
+    const row = screen.getByTestId('promotion-row');
+    expect(row.className).toContain('bg-[var(--theme-content-card)]');
+    const edit = within(row).getByRole('button', { name: `${percent.name} 편집` });
+    const activation = within(row).getByRole('button', { name: `${percent.name} 비활성화` });
+    expect(edit.className).toContain('bg-[var(--theme-accent-soft)]');
+    expect(activation.className).toContain('bg-[var(--theme-accent-solid)]');
+    for (const action of [edit, activation]) {
+      expect(action.className).toContain('border-[var(--theme-border)]');
+      expect(action.className).toContain('focus-visible:ring-[var(--theme-focus-ring)]');
+    }
     expect(screen.getByLabelText('행사명').className).toContain('bg-[var(--theme-input)]');
     fireEvent.click(screen.getByRole('button', { name: `${percent.name} 편집` }));
     expect(screen.getByRole('dialog').className).toContain('text-[var(--theme-text)]');

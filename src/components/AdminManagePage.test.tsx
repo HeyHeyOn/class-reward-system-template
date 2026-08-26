@@ -374,7 +374,7 @@ describe('AdminManagePage', () => {
     expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual([
       'T001 반복 설정',
       'T001 기록 보기',
-      'T001 완료 기록 초기화',
+      'T001 과제 부여',
       'T001 과제 삭제',
     ]);
     expect(nameField.parentElement?.contains(actions)).toBe(false);
@@ -587,10 +587,9 @@ describe('AdminManagePage', () => {
     const reopenedS002Completion = screen.getByRole('button', { name: 'S002 이서연 완료 상태' });
     expect(reopenedS002Completion.textContent).toContain('완료');
     expect(reopenedS002Completion.className).toContain('bg-blue');
-    fireEvent.click(screen.getByRole('button', { name: '취소' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 완료 기록 초기화' }));
-    await waitFor(() => expect(alert).toHaveBeenCalledWith('T001 완료 기록 3건 초기화 완료'));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
+    fireEvent.click(screen.getByRole('button', { name: '완료 기록 초기화' }));
+    fireEvent.click(screen.getByRole('button', { name: '완료 기록 초기화 확인' }));
+    await waitFor(() => expect(alert).toHaveBeenCalledWith('완료 기록 3건 초기화 완료'));
     await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
     expect(screen.getByRole('button', { name: 'S001 김민준 부여 상태' }).textContent).toContain('미부여');
     expect(screen.getByRole('button', { name: 'S001 김민준 완료 상태' }).textContent).toContain('미완료');
@@ -1234,12 +1233,34 @@ describe('AdminManagePage', () => {
     await waitFor(() => expect(window.alert).toHaveBeenCalledWith('선택 상품 1개 저장 완료'));
   });
 
+  it('uses semantic dividers for student, product, and task rows while retaining strong list borders', async () => {
+    render(<AdminManagePage />);
+
+    fireEvent.click(await screen.findByRole('tab', { name: '학생 관리' }));
+    const studentList = await screen.findByTestId('student-list');
+    expect(studentList.className).toContain('divide-[var(--theme-divider)]');
+    expect(studentList.className).toContain('border-[var(--theme-border)]');
+
+    fireEvent.click(screen.getByRole('tab', { name: '매점 관리' }));
+    const productList = await screen.findByTestId('product-list');
+    expect(productList.className).toContain('divide-[var(--theme-divider)]');
+    expect(productList.className).toContain('border-[var(--theme-border)]');
+
+    fireEvent.click(screen.getByRole('tab', { name: '과제 설정' }));
+    const taskScroll = await screen.findByTestId('task-list-scroll');
+    expect(taskScroll.className).toContain('border-[var(--theme-border)]');
+    expect(screen.getAllByTestId('task-row')[0].parentElement?.className).toContain('divide-[var(--theme-divider)]');
+    expect(screen.getAllByTestId('task-row')[0].parentElement?.className).not.toContain('divide-slate-100');
+  });
+
   it('supports dense selectable rows with bulk student balance editing and deletion', async () => {
     const { container } = render(<AdminManagePage />);
 
     fireEvent.click(await screen.findByRole('tab', { name: '학생 관리' }));
     expect(await screen.findByDisplayValue('김민준')).toBeTruthy();
     expect(container.querySelector('[data-testid="student-list"]')?.className).toContain('divide-y');
+    expect(container.querySelector('[data-testid="student-list"]')?.className).toContain('divide-[var(--theme-divider)]');
+    expect(container.querySelector('[data-testid="student-list"]')?.className).toContain('border-[var(--theme-border)]');
     const studentRow = container.querySelector('[data-testid="student-row"]');
     expect(studentRow?.className).toContain('grid-cols-[24px_56px_minmax(4rem,1fr)_78px_52px_42px]');
     expect(studentRow?.className).toContain('items-center');
@@ -1276,6 +1297,8 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByRole('tab', { name: '매점 관리' }));
     expect(await screen.findByDisplayValue('연필')).toBeTruthy();
     expect(container.querySelector('[data-testid="product-list"]')?.className).toContain('divide-y');
+    expect(container.querySelector('[data-testid="product-list"]')?.className).toContain('divide-[var(--theme-divider)]');
+    expect(container.querySelector('[data-testid="product-list"]')?.className).toContain('border-[var(--theme-border)]');
     const productRow = container.querySelector('[data-testid="product-row"]');
     expect(productRow?.className).toContain('grid-cols-[24px_minmax(3rem,1fr)_56px_48px_36px_minmax(3rem,0.8fr)_40px_30px_34px]');
     expect(productRow?.className).toContain('items-center');
@@ -1316,9 +1339,12 @@ describe('AdminManagePage', () => {
     expect(screen.getByTestId('new-task-card').className).toContain('min-w-0');
     expect(screen.getByTestId('task-list-card').className).toContain('min-w-0');
     expect(screen.getByTestId('task-list-scroll').className).toContain('overflow-x-auto');
+    expect(screen.getByTestId('task-list-scroll').className).toContain('border-[var(--theme-border)]');
+    expect(screen.getAllByTestId('task-row')[0].parentElement?.className).toContain('divide-[var(--theme-divider)]');
+    expect(screen.getAllByTestId('task-row')[0].parentElement?.className).not.toContain('divide-slate-100');
     expect(screen.getByTestId('task-bulk-actions').className).toContain('flex-wrap');
     const taskRow = container.querySelector('[data-testid="task-row"]');
-    expect(taskRow?.className).toContain('grid-cols-[24px_minmax(5rem,1fr)_64px_48px_38px_52px_minmax(3rem,0.7fr)_minmax(180px,auto)]');
+    expect(taskRow?.className).toContain('grid-cols-[24px_minmax(5rem,1fr)_64px_48px_38px_minmax(3rem,0.7fr)_minmax(180px,auto)]');
     expect(taskRow?.className).toContain('items-center');
     expect(screen.queryByLabelText('T001 설명')).toBeNull();
 
@@ -1345,20 +1371,7 @@ describe('AdminManagePage', () => {
     expect(fetch).not.toHaveBeenCalledWith('/api/tasks/T001', expect.objectContaining({ method: 'PATCH' }));
 
     fireEvent.click(screen.getByLabelText('전체 과제 선택'));
-    fireEvent.click(screen.getByRole('button', { name: '초기화' }));
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/completions/reset', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ taskIds: ['T001', 'T002'] }),
-    }));
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('선택 과제 2개 완료 기록 3건 초기화 완료'));
-
-    fireEvent.click(screen.getByRole('button', { name: 'T001 완료 기록 초기화' }));
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/completions/reset', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ taskIds: ['T001'] }),
-    }));
+    expect(screen.queryByRole('button', { name: '초기화' })).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: '삭제' }));
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/batch', {
@@ -1631,9 +1644,13 @@ describe('AdminManagePage', () => {
     fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
     fireEvent.change(screen.getByLabelText('T002 과제명'), { target: { value: '초기화와 무관한 제목' } });
     fireEvent.change(screen.getByLabelText('T002 보상'), { target: { value: '88' } });
-    fireEvent.click(screen.getByRole('button', { name: 'T001 완료 기록 초기화' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
+    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: '완료 기록 초기화' }));
+    fireEvent.click(screen.getByRole('button', { name: '완료 기록 초기화 확인' }));
 
     await waitFor(() => expect(taskGetCount).toBe(2));
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
     expect(screen.getByLabelText('T002 과제명')).toHaveProperty('value', '초기화와 무관한 제목');
     expect(screen.getByLabelText('T002 보상')).toHaveProperty('value', '88');
   });
@@ -1749,8 +1766,8 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByRole('button', { name: '반복 설정 저장' }));
     await waitFor(() => expect(baseFetch).toHaveBeenCalledWith('/api/tasks/T001', expect.objectContaining({ method: 'PATCH' })));
 
-    fireEvent.click(screen.getByRole('button', { name: '취소' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T002 반복 설정' }));
+    expect(screen.getByRole('button', { name: '취소', hidden: true })).toHaveProperty('disabled', true);
+    fireEvent.click(screen.getByRole('button', { name: 'T002 반복 설정', hidden: true }));
     expect(screen.getByRole('dialog', { name: '과제 반복 설정' })).toBeTruthy();
 
     firstSave.resolve();
@@ -1804,8 +1821,8 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByRole('button', { name: '반복 설정 저장' }));
     await waitFor(() => expect(patchCount).toBe(1));
 
-    fireEvent.click(screen.getByRole('button', { name: '취소' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 반복 설정' }));
+    expect(screen.getByRole('button', { name: '취소', hidden: true })).toHaveProperty('disabled', true);
+    fireEvent.click(screen.getByRole('button', { name: 'T001 반복 설정', hidden: true }));
     fireEvent.change(screen.getByLabelText('반복 시간'), { target: { value: '11:00' } });
     fireEvent.click(screen.getByRole('button', { name: '반복 설정 저장' }));
     await waitFor(() => expect(patchCount).toBe(2));
@@ -1995,14 +2012,15 @@ describe('AdminManagePage', () => {
 
     render(<AdminManagePage />);
     fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    vi.mocked(confirm).mockReturnValueOnce(false);
-    fireEvent.click(screen.getByRole('button', { name: 'T001 완료 기록 초기화' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
+    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: '완료 기록 초기화' }));
+    const confirmation = screen.getByRole('dialog', { name: '완료 기록 초기화 확인' });
+    expect(within(confirmation).getByText(/과거 지급 보상은 회수되지 않습니다/)).toBeTruthy();
+    expect(within(confirmation).getByText(/같은 회차에서 은행으로 다시 완료하면 재보상될 수 있습니다/)).toBeTruthy();
     expect(baseFetch.mock.calls.some(([url, init]) => String(url) === '/api/tasks/completions/reset' && init?.method === 'POST')).toBe(false);
-
-    vi.mocked(confirm).mockReturnValueOnce(true);
-    fireEvent.click(screen.getByRole('button', { name: 'T001 완료 기록 초기화' }));
-    expect(confirm).toHaveBeenLastCalledWith(expect.stringContaining('과거 지급 보상은 회수되지 않으며'));
-    expect(confirm).toHaveBeenLastCalledWith(expect.stringContaining('같은 회차에서 은행으로 다시 완료하면 재보상될 수 있습니다'));
+    fireEvent.click(within(confirmation).getByRole('button', { name: '완료 기록 초기화 확인' }));
+    expect(confirm).not.toHaveBeenCalled();
     await waitFor(() => expect(taskGetCount).toBe(2));
     expect(screen.queryByText(/S001 부여/)).toBeNull();
   });
@@ -2053,5 +2071,400 @@ describe('AdminManagePage', () => {
     expect(screen.getByText('관리자 완료는 보상 없이 표시됩니다.')).toBeTruthy();
     pending.resolve();
     await waitFor(() => expect(screen.getByRole('button', { name: '과제 부여 저장' })).toHaveProperty('disabled', false));
+  });
+
+  it('opens bulk recurrence blank, names the snapshotted targets, and sends one batch request', async () => {
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    baseFetch.mockImplementation(async (input, init) => String(input) === '/api/tasks/schedules/batch' && init?.method === 'POST'
+      ? jsonResponse({ updatedTaskIds: ['T001', 'T002'] })
+      : fallback(input, init));
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByLabelText('전체 과제 선택'));
+    fireEvent.click(screen.getByRole('button', { name: '선택 과제 반복' }));
+
+    const dialog = screen.getByRole('dialog', { name: '과제 반복 설정' });
+    expect(within(dialog).getByText('대상: 책 읽기, 수학 학습지').getAttribute('title')).toBe('책 읽기, 수학 학습지');
+    expect(within(dialog).getByText(/선택한 모든 과제에 같은 반복 설정/)).toBeTruthy();
+    expect(within(dialog).getByLabelText('반복 주기')).toHaveProperty('value', '');
+    expect(within(dialog).queryByLabelText('반복 시간')).toBeNull();
+    expect(within(dialog).queryByLabelText('반복 요일')).toBeNull();
+    expect(within(dialog).queryByLabelText('반복 날짜')).toBeNull();
+    expect(within(dialog).getByRole('button', { name: '반복 설정 저장' })).toHaveProperty('disabled', true);
+    expect(baseFetch.mock.calls.some(([url]) => String(url).includes('/assignments'))).toBe(false);
+
+    fireEvent.change(within(dialog).getByLabelText('반복 주기'), { target: { value: 'DAILY' } });
+    fireEvent.change(within(dialog).getByLabelText('반복 시간'), { target: { value: '10:30' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '반복 설정 저장' }));
+    await waitFor(() => expect(baseFetch.mock.calls.filter(([url, init]) => String(url) === '/api/tasks/schedules/batch' && init?.method === 'POST')).toHaveLength(1));
+    const call = baseFetch.mock.calls.find(([url]) => String(url) === '/api/tasks/schedules/batch')!;
+    expect(JSON.parse(String(call[1]?.body))).toEqual({
+      taskIds: ['T001', 'T002'],
+      schedule: { recurrence: { type: 'DAILY', time: '10:30' }, timeZone: 'Asia/Seoul', resetCompletionOnCycle: false, resetAssignmentOnCycle: false },
+    });
+  });
+
+  it('requires an explicit weekday or month day for bulk recurrence', async () => {
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByLabelText('전체 과제 선택'));
+    fireEvent.click(screen.getByRole('button', { name: '선택 과제 반복' }));
+    const dialog = screen.getByRole('dialog', { name: '과제 반복 설정' });
+    const save = within(dialog).getByRole('button', { name: '반복 설정 저장' });
+
+    fireEvent.change(within(dialog).getByLabelText('반복 주기'), { target: { value: 'WEEKLY' } });
+    expect(within(dialog).getByLabelText('반복 요일')).toHaveProperty('value', '');
+    expect(save).toHaveProperty('disabled', true);
+    fireEvent.change(within(dialog).getByLabelText('반복 시간'), { target: { value: '09:30' } });
+    fireEvent.change(within(dialog).getByLabelText('반복 요일'), { target: { value: '3' } });
+    expect(save).toHaveProperty('disabled', false);
+
+    fireEvent.change(within(dialog).getByLabelText('반복 주기'), { target: { value: 'MONTHLY' } });
+    expect(within(dialog).getByLabelText('반복 날짜')).toHaveProperty('value', '');
+    expect(save).toHaveProperty('disabled', true);
+    fireEvent.change(within(dialog).getByLabelText('반복 날짜'), { target: { value: '15' } });
+    expect(save).toHaveProperty('disabled', false);
+  });
+
+  it('sends grouped ADMIN operations and retries only exact sparse failed pairs', async () => {
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    let postCount = 0;
+    baseFetch.mockImplementation(async (input, init) => {
+      if (String(input) === '/api/tasks/assignments/batch' && init?.method === 'POST') {
+        postCount += 1;
+        return postCount === 1
+          ? jsonResponse({
+            appliedCount: 1,
+            aborted: true,
+            failures: [{ taskId: 'T001', studentId: 'S001', code: 'OPERATION_FAILED' }],
+            notAttempted: [{ taskId: 'T002', studentId: 'S002' }],
+            warnings: [{ taskId: 'T001', code: 'LEGACY_MIRROR_UPDATE_FAILED' }],
+          })
+          : jsonResponse({ appliedCount: 2, failures: [] });
+      }
+      return fallback(input, init);
+    });
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByLabelText('전체 과제 선택'));
+    fireEvent.click(screen.getByRole('button', { name: '선택 과제 과제 부여' }));
+
+    const dialog = screen.getByRole('dialog', { name: '과제 부여' });
+    expect(within(dialog).getByText('대상: 책 읽기, 수학 학습지')).toBeTruthy();
+    expect(within(dialog).getByText(/선택한 모든 과제에 같은 과제 부여 변경/)).toBeTruthy();
+    expect(within(dialog).getByText(/기존 설정은 불러오지 않으며, 명시한 항목만 변경/)).toBeTruthy();
+    expect(within(dialog).getByLabelText('S001 김민준 부여 작업')).toHaveProperty('value', '');
+    expect(within(dialog).getByRole('button', { name: '과제 부여 저장' })).toHaveProperty('disabled', true);
+    expect(baseFetch.mock.calls.some(([url]) => /\/api\/tasks\/T00\d\/assignments/.test(String(url)))).toBe(false);
+
+    fireEvent.change(within(dialog).getByLabelText('S001 김민준 부여 작업'), { target: { value: 'assigned' } });
+    fireEvent.change(within(dialog).getByLabelText('S002 이서연 완료 작업'), { target: { value: 'completed' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '과제 부여 저장' }));
+    await waitFor(() => expect(alert).toHaveBeenCalledWith(expect.stringMatching(/중단.*책 읽기.*김민준.*수학 학습지.*이서연.*호환/)));
+    const firstCall = baseFetch.mock.calls.find(([url]) => String(url) === '/api/tasks/assignments/batch')!;
+    expect(JSON.parse(String(firstCall[1]?.body))).toEqual({ targets: [
+      { taskId: 'T001', operations: [
+        { studentId: 'S001', assigned: true, source: 'ADMIN' },
+        { studentId: 'S002', completed: true, source: 'ADMIN' },
+      ] },
+      { taskId: 'T002', operations: [
+        { studentId: 'S001', assigned: true, source: 'ADMIN' },
+        { studentId: 'S002', completed: true, source: 'ADMIN' },
+      ] },
+    ] });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: '과제 부여 저장' }));
+    await waitFor(() => expect(baseFetch.mock.calls.filter(([url]) => String(url) === '/api/tasks/assignments/batch')).toHaveLength(2));
+    const retryCall = baseFetch.mock.calls.filter(([url]) => String(url) === '/api/tasks/assignments/batch')[1];
+    expect(JSON.parse(String(retryCall[1]?.body))).toEqual({ targets: [
+      { taskId: 'T001', operations: [{ studentId: 'S001', assigned: true, source: 'ADMIN' }] },
+      { taskId: 'T002', operations: [{ studentId: 'S002', completed: true, source: 'ADMIN' }] },
+    ] });
+  });
+
+  it('applies selected-student bulk controls to explicit row operations and save state', async () => {
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByLabelText('전체 과제 선택'));
+    fireEvent.click(screen.getByRole('button', { name: '선택 과제 과제 부여' }));
+    const dialog = screen.getByRole('dialog', { name: '과제 부여' });
+    const save = within(dialog).getByRole('button', { name: '과제 부여 저장' });
+    fireEvent.click(within(dialog).getByLabelText('S001 김민준 행 선택'));
+    fireEvent.click(within(dialog).getByLabelText('S002 이서연 행 선택'));
+
+    fireEvent.change(within(dialog).getByLabelText('선택 학생 부여 상태 일괄 변경'), { target: { value: 'unassigned' } });
+    expect(within(dialog).getByLabelText('S001 김민준 부여 작업')).toHaveProperty('value', 'unassigned');
+    expect(within(dialog).getByLabelText('S002 이서연 부여 작업')).toHaveProperty('value', 'unassigned');
+    expect(save).toHaveProperty('disabled', false);
+    fireEvent.change(within(dialog).getByLabelText('선택 학생 완료 여부 일괄 변경'), { target: { value: 'completed' } });
+    expect(within(dialog).getByLabelText('S001 김민준 완료 작업')).toHaveProperty('value', 'completed');
+    expect(within(dialog).getByLabelText('S002 이서연 완료 작업')).toHaveProperty('value', 'completed');
+  });
+
+  it('keeps a newer recurrence dialog open when an older save completes', async () => {
+    const pending = deferredResponse({ updatedTaskIds: ['T001', 'T002'] });
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    baseFetch.mockImplementation(async (input, init) => String(input) === '/api/tasks/schedules/batch' && init?.method === 'POST' ? pending.response : fallback(input, init));
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByLabelText('전체 과제 선택'));
+    fireEvent.click(screen.getByRole('button', { name: '선택 과제 반복' }));
+    let dialog = screen.getByRole('dialog', { name: '과제 반복 설정' });
+    fireEvent.change(within(dialog).getByLabelText('반복 주기'), { target: { value: 'DAILY' } });
+    fireEvent.change(within(dialog).getByLabelText('반복 시간'), { target: { value: '09:30' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '반복 설정 저장' }));
+    expect(within(dialog).getByRole('button', { name: '취소', hidden: true })).toHaveProperty('disabled', true);
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(screen.getByRole('dialog', { name: '반복 설정 저장 중' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'T002 반복 설정', hidden: true }));
+    dialog = screen.getByRole('dialog', { name: '과제 반복 설정' });
+    expect(within(dialog).getByText('대상: 수학 학습지')).toBeTruthy();
+    pending.resolve();
+    await waitFor(() => expect(within(screen.getByRole('dialog', { name: '과제 반복 설정' })).getByText('대상: 수학 학습지')).toBeTruthy());
+  });
+
+  it('makes assignment inert under reset confirmation, traps focus, and restores the reset opener on cancel', async () => {
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
+    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
+    const assignment = screen.getByRole('dialog', { name: '과제 부여' });
+    const resetOpener = within(assignment).getByRole('button', { name: '완료 기록 초기화' });
+    fireEvent.click(resetOpener);
+
+    const confirmation = screen.getByRole('dialog', { name: '완료 기록 초기화 확인' });
+    expect(assignment.getAttribute('aria-hidden')).toBe('true');
+    expect(assignment.hasAttribute('inert')).toBe(true);
+    const confirm = within(confirmation).getByRole('button', { name: '완료 기록 초기화 확인' });
+    const cancel = within(confirmation).getByRole('button', { name: '취소' });
+    expect(document.activeElement).toBe(confirm);
+    fireEvent.keyDown(confirmation, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(cancel);
+    fireEvent.keyDown(confirmation, { key: 'Tab' });
+    expect(document.activeElement).toBe(confirm);
+    fireEvent.click(cancel);
+    expect(screen.queryByRole('dialog', { name: '완료 기록 초기화 확인' })).toBeNull();
+    expect(assignment.hasAttribute('aria-hidden')).toBe(false);
+    await waitFor(() => expect(document.activeElement).toBe(resetOpener));
+  });
+
+  it('exposes only a focus-trapped loading modal while assignment save is pending and restores focus on failure', async () => {
+    const pending = deferredResponse({ error: '저장 실패' }, { status: 500 });
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    baseFetch.mockImplementation(async (input, init) => String(input) === '/api/tasks/assignments/batch' && init?.method === 'POST'
+      ? pending.response
+      : fallback(input, init));
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByLabelText('전체 과제 선택'));
+    fireEvent.click(screen.getByRole('button', { name: '선택 과제 과제 부여' }));
+    const assignment = screen.getByRole('dialog', { name: '과제 부여' });
+    fireEvent.change(within(assignment).getByLabelText('S001 김민준 부여 작업'), { target: { value: 'assigned' } });
+    const save = within(assignment).getByRole('button', { name: '과제 부여 저장' });
+    save.focus();
+    fireEvent.keyDown(save, { key: 'Enter' });
+    fireEvent.click(save);
+
+    const loading = await screen.findByRole('dialog', { name: '변경 사항 저장 중' });
+    expect(screen.getAllByRole('dialog')).toEqual([loading]);
+    expect(assignment.getAttribute('aria-hidden')).toBe('true');
+    expect(assignment.hasAttribute('inert')).toBe(true);
+    expect(document.activeElement).toBe(loading);
+    fireEvent.keyDown(loading, { key: 'Tab' });
+    expect(document.activeElement).toBe(loading);
+    fireEvent.keyDown(loading, { key: 'Escape' });
+    expect(screen.getByRole('dialog', { name: '변경 사항 저장 중' })).toBe(loading);
+
+    pending.resolve();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '변경 사항 저장 중' })).toBeNull());
+    expect(screen.getByRole('dialog', { name: '과제 부여' })).toBe(assignment);
+    expect(document.activeElement).toBe(save);
+  });
+
+  it('locks every recurrence control behind the only accessible loading modal while schedule save is pending', async () => {
+    const pending = deferredResponse({ error: '일정 저장 실패' }, { status: 500 });
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    baseFetch.mockImplementation(async (input, init) => String(input) === '/api/tasks/schedules/batch' && init?.method === 'POST'
+      ? pending.response
+      : fallback(input, init));
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByLabelText('전체 과제 선택'));
+    fireEvent.click(screen.getByRole('button', { name: '선택 과제 반복' }));
+    const recurrence = screen.getByRole('dialog', { name: '과제 반복 설정' });
+    fireEvent.change(within(recurrence).getByLabelText('반복 주기'), { target: { value: 'DAILY' } });
+    fireEvent.change(within(recurrence).getByLabelText('반복 시간'), { target: { value: '09:30' } });
+    const save = within(recurrence).getByRole('button', { name: '반복 설정 저장' });
+    save.focus();
+    fireEvent.click(save);
+
+    const loading = await screen.findByRole('dialog', { name: '반복 설정 저장 중' });
+    expect(screen.getAllByRole('dialog')).toEqual([loading]);
+    expect(recurrence.getAttribute('aria-hidden')).toBe('true');
+    expect(recurrence.hasAttribute('inert')).toBe(true);
+    expect(document.activeElement).toBe(loading);
+    for (const control of within(recurrence).getAllByRole('combobox', { hidden: true }).concat(within(recurrence).getAllByRole('checkbox', { hidden: true }))) {
+      expect(control.closest('[inert]')).toBe(recurrence);
+    }
+    fireEvent.keyDown(loading, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(loading);
+
+    pending.resolve();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '반복 설정 저장 중' })).toBeNull());
+    expect(document.activeElement).toBe(save);
+  });
+
+  it('uses real batch failure codes, names failed task/student pairs, and reports mirror warnings without plain success', async () => {
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    let postCount = 0;
+    baseFetch.mockImplementation(async (input, init) => {
+      if (String(input) === '/api/tasks/assignments/batch' && init?.method === 'POST') {
+        postCount += 1;
+        return postCount === 1
+          ? jsonResponse({ appliedCount: 3, failures: [{ taskId: 'T002', studentId: 'S001', code: 'OPERATION_FAILED' }] })
+          : jsonResponse({ appliedCount: 1, failures: [], warnings: [{ taskId: 'T002', code: 'LEGACY_MIRROR_UPDATE_FAILED' }] });
+      }
+      return fallback(input, init);
+    });
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByLabelText('전체 과제 선택'));
+    fireEvent.click(screen.getByRole('button', { name: '선택 과제 과제 부여' }));
+    const assignment = screen.getByRole('dialog', { name: '과제 부여' });
+    fireEvent.change(within(assignment).getByLabelText('S001 김민준 부여 작업'), { target: { value: 'assigned' } });
+    fireEvent.click(within(assignment).getByRole('button', { name: '과제 부여 저장' }));
+    await waitFor(() => expect(alert).toHaveBeenCalledWith(expect.stringMatching(/수학 학습지.*김민준.*작업 실패/)));
+
+    fireEvent.click(within(assignment).getByRole('button', { name: '과제 부여 저장' }));
+    await waitFor(() => expect(baseFetch.mock.calls.filter(([url]) => String(url) === '/api/tasks/assignments/batch')).toHaveLength(2));
+    const retryBody = JSON.parse(String(baseFetch.mock.calls.filter(([url]) => String(url) === '/api/tasks/assignments/batch')[1][1]?.body));
+    expect(retryBody).toEqual({ targets: [{ taskId: 'T002', operations: [{ studentId: 'S001', assigned: true, source: 'ADMIN' }] }] });
+    await waitFor(() => expect(alert).toHaveBeenCalledWith(expect.stringMatching(/저장은 완료.*기존 호환 목록.*수학 학습지.*새로고침/)));
+    expect(alert).not.toHaveBeenCalledWith('과제 부여 저장 완료');
+  });
+
+  it('closes a committed assignment draft and reports refresh-only recovery without reposting', async () => {
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    let taskGets = 0;
+    baseFetch.mockImplementation(async (input, init) => {
+      if (String(input) === '/api/tasks?includeInactive=1') {
+        taskGets += 1;
+        return taskGets === 1 ? jsonResponse(tasks) : jsonResponse({ error: 'projection down' }, { status: 503 });
+      }
+      if (String(input) === '/api/tasks/assignments/batch' && init?.method === 'POST') return jsonResponse({ appliedCount: 2, failures: [] });
+      return fallback(input, init);
+    });
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByLabelText('전체 과제 선택'));
+    fireEvent.click(screen.getByRole('button', { name: '선택 과제 과제 부여' }));
+    const assignment = screen.getByRole('dialog', { name: '과제 부여' });
+    fireEvent.change(within(assignment).getByLabelText('S001 김민준 부여 작업'), { target: { value: 'assigned' } });
+    fireEvent.click(within(assignment).getByRole('button', { name: '과제 부여 저장' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '과제 부여' })).toBeNull());
+    expect(alert).toHaveBeenCalledWith(expect.stringMatching(/과제 부여 저장은 완료됐지만.*목록 새로고침 실패.*새로고침/));
+    expect(baseFetch.mock.calls.filter(([url]) => String(url) === '/api/tasks/assignments/batch')).toHaveLength(1);
+  });
+
+  it('does not re-enable reset after its POST succeeds when projection refresh fails', async () => {
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    let taskGets = 0;
+    baseFetch.mockImplementation(async (input, init) => {
+      if (String(input) === '/api/tasks?includeInactive=1') {
+        taskGets += 1;
+        return taskGets === 1 ? jsonResponse(tasks) : jsonResponse({ error: 'projection down' }, { status: 503 });
+      }
+      if (String(input) === '/api/tasks/completions/reset' && init?.method === 'POST') return jsonResponse({ taskIds: ['T001'], deletedCount: 1 });
+      return fallback(input, init);
+    });
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
+    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: '완료 기록 초기화' }));
+    const confirmation = screen.getByRole('dialog', { name: '완료 기록 초기화 확인' });
+    fireEvent.click(within(confirmation).getByRole('button', { name: '완료 기록 초기화 확인' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '완료 기록 초기화 확인' })).toBeNull());
+    expect(screen.queryByRole('dialog', { name: '과제 부여' })).toBeNull();
+    expect(alert).toHaveBeenCalledWith(expect.stringMatching(/초기화는 완료됐지만 목록 새로고침 실패.*새로고침/));
+    expect(baseFetch.mock.calls.filter(([url, init]) => String(url) === '/api/tasks/completions/reset' && init?.method === 'POST')).toHaveLength(1);
+  });
+
+  it('keeps a newer assignment session usable when an older save completes', async () => {
+    const pending = deferredResponse({ appliedCount: 2, failures: [] });
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    baseFetch.mockImplementation(async (input, init) => String(input) === '/api/tasks/assignments/batch' && init?.method === 'POST'
+      ? pending.response
+      : fallback(input, init));
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByLabelText('전체 과제 선택'));
+    fireEvent.click(screen.getByRole('button', { name: '선택 과제 과제 부여' }));
+    let assignment = screen.getByRole('dialog', { name: '과제 부여' });
+    fireEvent.change(within(assignment).getByLabelText('S001 김민준 부여 작업'), { target: { value: 'assigned' } });
+    fireEvent.click(within(assignment).getByRole('button', { name: '과제 부여 저장' }));
+    await screen.findByRole('dialog', { name: '변경 사항 저장 중' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'T002 과제 부여', hidden: true }));
+    assignment = screen.getByRole('dialog', { name: '과제 부여' });
+    expect(within(assignment).getByText('대상: 수학 학습지')).toBeTruthy();
+    expect(within(assignment).getByRole('button', { name: '과제 부여 저장' })).toHaveProperty('disabled', true);
+
+    pending.resolve();
+    await waitFor(() => expect(within(screen.getByRole('dialog', { name: '과제 부여' })).getByText('대상: 수학 학습지')).toBeTruthy());
+  });
+
+  it('relocates reset into assignment, confirms in-app, locks mutation, and refreshes tasks once', async () => {
+    const reset = deferredResponse({ taskIds: ['T001'], deletedCount: 1 });
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    let taskGets = 0;
+    baseFetch.mockImplementation(async (input, init) => {
+      if (String(input) === '/api/tasks?includeInactive=1') {
+        taskGets += 1;
+        return jsonResponse(tasks);
+      }
+      if (String(input) === '/api/tasks/completions/reset' && init?.method === 'POST') return reset.response;
+      return fallback(input, init);
+    });
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    expect(screen.queryByRole('button', { name: 'T001 완료 기록 초기화' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
+    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: '완료 기록 초기화' }));
+    const confirmation = screen.getByRole('dialog', { name: '완료 기록 초기화 확인' });
+    expect(within(confirmation).getByText(/과거 지급 보상은 회수되지 않/)).toBeTruthy();
+    expect(within(confirmation).getByText(/다시 완료하면 재보상/)).toBeTruthy();
+    expect(baseFetch.mock.calls.filter(([url]) => String(url) === '/api/tasks/completions/reset')).toHaveLength(0);
+    const confirmReset = within(confirmation).getByRole('button', { name: '완료 기록 초기화 확인' });
+    fireEvent.click(confirmReset);
+    fireEvent.click(confirmReset);
+    expect(confirmReset).toHaveProperty('disabled', true);
+    expect(baseFetch.mock.calls.filter(([url]) => String(url) === '/api/tasks/completions/reset')).toHaveLength(1);
+    fireEvent.keyDown(confirmation, { key: 'Escape' });
+    expect(screen.getByRole('dialog', { name: '완료 기록 초기화 중' })).toBeTruthy();
+    reset.resolve();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '완료 기록 초기화 확인' })).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: '완료 기록 초기화' })));
+    expect(taskGets).toBe(2);
   });
 });

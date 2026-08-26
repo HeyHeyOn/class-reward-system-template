@@ -296,6 +296,7 @@ describe('KioskApp', () => {
     expect(screen.getByText('재고 20').className).toContain('text-[var(--theme-accent-text)]');
     expect(screen.getByRole('button', { name: 'QR 결제' }).className).toContain('bg-[var(--theme-accent-solid)]');
     expect(screen.getByRole('button', { name: 'QR 결제' }).className).toContain('text-[var(--theme-accent-on-solid)]');
+    expect(screen.getAllByTestId('product-card')[0].className).toContain('bg-[var(--theme-content-card)]');
     expect(screen.getByTestId('cart-item-row').className).toContain('bg-[var(--theme-surface-raised)]');
   });
 
