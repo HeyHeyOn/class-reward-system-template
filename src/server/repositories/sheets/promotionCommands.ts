@@ -48,6 +48,13 @@ export type PromotionCommandOptions = {
   idFactory?: () => string;
 };
 
+/** Validates and normalizes promotion metadata without performing any I/O. */
+export function validatePromotionDefinitionInput(
+  input: PromotionDefinitionInput,
+): PromotionDefinitionInput {
+  return normalizeDefinition(input, false);
+}
+
 const COMMON_KEYS = ['name', 'description', 'startsAt', 'endsAt', 'isActive', 'sortOrder', 'type'] as const;
 const TYPE_KEYS = {
   N_PLUS_ONE: ['buyQuantity', 'freeQuantity'],
@@ -96,7 +103,7 @@ export async function updatePromotion(
   options: PromotionCommandOptions = {},
 ): Promise<Promotion> {
   const id = requiredTrimmedString(promotionId, 'promotionId');
-  const normalized = normalizeDefinition(input, false);
+  const normalized = validatePromotionDefinitionInput(input);
   const timestamp = commandTimestamp(options);
 
   return enqueuePromotionCommand(async () => {

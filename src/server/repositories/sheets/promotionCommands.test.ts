@@ -11,6 +11,7 @@ import {
   replacePromotionProducts,
   setPromotionActive,
   updatePromotion,
+  validatePromotionDefinitionInput,
   type PromotionCreateInput,
   type PromotionDefinitionInput,
 } from './promotionCommands';
@@ -135,6 +136,21 @@ function definition(overrides: Partial<PromotionDefinitionInput> = {}): Promotio
 }
 
 describe('promotion Sheets commands', () => {
+  it('purely validates and normalizes a definition without store access', () => {
+    expect(validatePromotionDefinitionInput(definition({ name: '  Normalized  ' }))).toEqual({
+      ...definition({ name: 'Normalized', description: 'details' }),
+    });
+  });
+
+  it.each([
+    { ...definition(), sortOrder: '1' },
+    { ...definition(), percent: '10' },
+    { ...definition(), name: '   ' },
+    { ...definition(), startsAt: '2026-09-02T00:00:00.000Z' },
+  ])('pure validator rejects malformed and semantically invalid definitions', (input) => {
+    expect(() => validatePromotionDefinitionInput(input as PromotionDefinitionInput)).toThrow();
+  });
+
   it.each([
     { ...base, name: '   ' },
     { ...base, startsAt: 'bad-date' },
