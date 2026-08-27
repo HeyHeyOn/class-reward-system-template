@@ -3,6 +3,8 @@ import { createConfiguredSheetsReader, createConfiguredSheetsStore } from '@/ser
 import { createTask } from '@/server/sheetsRepository';
 import { isAuthorizedAdminRequest } from '@/server/apiAuth';
 import { listTaskCycleProjections } from '@/server/repositories/sheets/taskHistoryQueries';
+import { projectTaskCycleState } from '@/domain/taskCycleState';
+import type { ClassTask, TaskAssignment } from '@/domain/types';
 import { GET, POST } from './route';
 
 vi.mock('@/server/apiAuth', () => ({
@@ -143,6 +145,55 @@ describe('GET /api/tasks', () => {
       prerequisiteTitle: '배정되지 않은 선행 과제',
       prerequisiteStatus: 'REQUIRED',
       prerequisiteMessage: "선행 과제 '배정되지 않은 선행 과제'을(를) 먼저 완료해 주세요.",
+    });
+  });
+
+  it('preserves a linked relation for an unseeded legacy student during partial assignment materialization', async () => {
+    vi.mocked(createConfiguredSheetsReader).mockResolvedValue({} as never);
+    const schedule = {
+      ruleVersion: 1, effectiveFrom: '2026-08-20T00:00:00.000Z', timeZone: 'UTC',
+      recurrence: { type: 'DAILY' as const, time: '00:00' },
+      resetAssignmentOnCycle: false, resetCompletionOnCycle: false,
+    };
+    const baseTask: ClassTask = {
+      taskId: 'A', taskInstanceId: 'IA', title: '선행 과제', description: '', reward: 1,
+      isActive: true, sortOrder: 1, allowedStudentIds: ['S1', 'S2'],
+      createdAt: '2026-08-20T00:00:00.000Z', schedule,
+    };
+    const seed: TaskAssignment = {
+      assignmentId: 'seed-s2', taskId: 'A', taskInstanceId: 'IA',
+      cycleId: 'v1|IA|r1|2026-08-27T00:00:00Z', cycleStartsAt: '2026-08-27T00:00:00Z',
+      cycleEndsAt: '2026-08-28T00:00:00Z', ruleVersion: 1, timeZone: 'UTC', studentId: 'S2',
+      status: 'ASSIGNED', source: 'LEGACY_SEED', previousAssignmentId: '',
+      createdAt: '2026-08-27T01:00:00Z', schemaVersion: 2, note: '',
+    };
+    const project = (value: ClassTask, assignments: TaskAssignment[] = []) => {
+      const state = projectTaskCycleState({
+        task: value, now: '2026-08-27T12:00:00Z', assignments, completions: [],
+      });
+      return {
+        ...value,
+        currentCycle: {
+          ...state.cycle,
+          transition: state.transition,
+          assignedStudentIds: state.assignedStudentIds,
+          completedStudentIds: state.completedStudentIds,
+          students: Object.entries(state.students).map(([studentId, status]) => ({ studentId, ...status })),
+        },
+      };
+    };
+    const dependent = { ...baseTask, taskId: 'B', taskInstanceId: 'IB', title: '후행 과제', prerequisiteTaskId: 'A' };
+    vi.mocked(listTaskCycleProjections).mockResolvedValue([
+      project(baseTask, [seed]),
+      project(dependent),
+    ] as never);
+
+    const response = await GET(new Request('http://localhost/api/tasks?studentId=S1'));
+    const payload = await response.json();
+
+    expect(payload.find((item: { taskId: string }) => item.taskId === 'B')).toMatchObject({
+      prerequisiteTaskId: 'A',
+      studentStatus: { studentId: 'S1', assigned: true },
     });
   });
 

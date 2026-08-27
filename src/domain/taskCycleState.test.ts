@@ -408,6 +408,86 @@ describe('projectTaskCycleState', () => {
     expect(state.students.legacy).toMatchObject({ assigned: true, completed: true, assignmentOrigin: 'LEGACY' });
   });
 
+  it('keeps each unmaterialized legacy student assigned after another student is seeded', () => {
+    const partialTask = { ...task, allowedStudentIds: ['S1', 'S2'] };
+    const state = projectTaskCycleState({
+      task: partialTask,
+      now: '2026-08-24T12:00:00Z',
+      assignments: [assignment({
+        assignmentId: 'seed-s1',
+        studentId: 'S1',
+        source: 'LEGACY_SEED',
+        cycleId: 'v1|I1|r1|2026-08-24T00:00:00Z',
+      })],
+      completions: [],
+    });
+
+    expect(state.students.S1).toMatchObject({ assigned: true, assignmentOrigin: 'EVENT' });
+    expect(state.students.S2).toMatchObject({ assigned: true, assignmentOrigin: 'LEGACY' });
+    expect(state.assignedStudentIds).toEqual(['S1', 'S2']);
+  });
+
+  it('uses assignment provenance per student instead of reviving an explicitly unassigned legacy ID', () => {
+    const partialTask = { ...task, allowedStudentIds: ['S1', 'S2'] };
+    const state = projectTaskCycleState({
+      task: partialTask,
+      now: '2026-08-24T12:00:00Z',
+      assignments: [assignment({
+        assignmentId: 'explicit-unassign-s1',
+        studentId: 'S1',
+        status: 'UNASSIGNED',
+      })],
+      completions: [],
+    });
+
+    expect(state.students.S1).toMatchObject({ assigned: false, assignmentOrigin: 'EVENT' });
+    expect(state.students.S2).toMatchObject({ assigned: true, assignmentOrigin: 'LEGACY' });
+    expect(state.assignedStudentIds).toEqual(['S2']);
+  });
+
+  it('does not resurrect unseeded or explicitly unassigned legacy IDs at a reset boundary', () => {
+    const resetTask = {
+      ...task,
+      allowedStudentIds: ['S1', 'S2'],
+      schedule: { ...schedule, resetAssignmentOnCycle: true },
+    };
+    const state = projectTaskCycleState({
+      task: resetTask,
+      now: '2026-08-25T12:00:00Z',
+      assignments: [assignment({
+        assignmentId: 'prior-unassign-s1',
+        studentId: 'S1',
+        status: 'UNASSIGNED',
+        cycleId: 'prior',
+        cycleStartsAt: '2026-08-24T00:00:00Z',
+      })],
+      completions: [],
+    });
+
+    expect(state.students.S1).toMatchObject({ assigned: false, assignmentOrigin: 'DEFAULT' });
+    expect(state.students.S2).toMatchObject({ assigned: false, assignmentOrigin: 'DEFAULT' });
+    expect(state.assignedStudentIds).toEqual([]);
+  });
+
+  it('carries prior explicit state while retaining a different unseeded legacy student', () => {
+    const partialTask = { ...task, allowedStudentIds: ['S1', 'S2'] };
+    const state = projectTaskCycleState({
+      task: partialTask,
+      now: '2026-08-25T12:00:00Z',
+      assignments: [assignment({
+        assignmentId: 'prior-assigned-s1',
+        studentId: 'S1',
+        cycleId: 'prior',
+        cycleStartsAt: '2026-08-24T00:00:00Z',
+      })],
+      completions: [],
+    });
+
+    expect(state.students.S1).toMatchObject({ assigned: true, assignmentOrigin: 'CARRY' });
+    expect(state.students.S2).toMatchObject({ assigned: true, assignmentOrigin: 'LEGACY' });
+    expect(state.assignedStudentIds).toEqual(['S1', 'S2']);
+  });
+
   it('keeps cycle-less legacy completion true when any matching SUCCESS exists despite a later failed row', () => {
     const legacySnapshot = {
       taskInstanceId: undefined,
@@ -558,7 +638,7 @@ describe('projectTaskCycleState', () => {
     expect(state.students.contaminated).toBeUndefined();
   });
 
-  it('uses instance-level assignment fallback: any matching event disables allowedStudentIds fallback', () => {
+  it('uses per-student assignment fallback when another student has a matching event', () => {
     const state = projectTaskCycleState({
       task: { ...task, allowedStudentIds: ['legacy', 'S1'] },
       now: '2026-08-24T12:00:00Z',
@@ -566,8 +646,8 @@ describe('projectTaskCycleState', () => {
       completions: [],
     });
 
-    expect(state.students.S1.assigned).toBe(true);
-    expect(state.students.legacy).toBeUndefined();
+    expect(state.students.S1).toMatchObject({ assigned: true, assignmentOrigin: 'EVENT' });
+    expect(state.students.legacy).toMatchObject({ assigned: true, assignmentOrigin: 'LEGACY' });
   });
 
   it('isolates a recreated task with the same taskId by instance and legacy createdAt', () => {

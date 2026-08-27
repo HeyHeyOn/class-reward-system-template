@@ -86,8 +86,8 @@ export function projectTaskCycleState({
     !event.taskInstanceId && isCompletionForTaskInstance(event, task)));
 
   const allowedStudentIds = new Set(task.allowedStudentIds);
-  const studentIds = new Set<string>();
-  if (instanceAssignments.length === 0) task.allowedStudentIds.forEach((id) => studentIds.add(id));
+  const assignmentStudentsWithEvents = new Set(instanceAssignments.map((event) => event.studentId));
+  const studentIds = new Set<string>(task.allowedStudentIds);
   for (const collection of [currentAssignments, priorAssignments, currentCompletions, priorCompletions, legacyCompletions]) {
     collection.forEach((_event, studentId) => studentIds.add(studentId));
   }
@@ -102,7 +102,7 @@ export function projectTaskCycleState({
     const assignment = projectAssignment({
       current: currentAssignment,
       prior: priorAssignment,
-      legacyAssigned: instanceAssignments.length === 0
+      legacyAssigned: !assignmentStudentsWithEvents.has(studentId)
         && allowedStudentIds.has(studentId)
         && (transition !== 'NATURAL_BOUNDARY' || !schedule.resetAssignmentOnCycle),
       carry: forceCarry || transition === 'PERMANENT' || !schedule.resetAssignmentOnCycle,

@@ -241,41 +241,30 @@ async function materializeBatchAssignments(
   const effectiveSchedule = resolveTaskSchedule({
     currentSchedule: task.schedule!, pendingSchedule: task.pendingSchedule ?? null, now: context.now,
   });
-  const instanceAssignments = context.assignments.filter((event) =>
-    event.taskId === task.taskId && event.taskInstanceId === task.taskInstanceId);
-  const currentCycleId = projectTaskCycleState({
-    task, now: context.now, assignments: context.assignments, completions: context.completions,
-  }).cycle.cycleId;
-
-  if (instanceAssignments.length === 0 || instanceAssignments.every((event) =>
-    event.source === 'LEGACY_SEED' && event.cycleId === currentCycleId)) {
-    const assignmentsWithoutInstanceSeeds = context.assignments.filter((event) => !(
-      event.taskId === task.taskId
-      && event.taskInstanceId === task.taskInstanceId
-      && event.source === 'LEGACY_SEED'
-    ));
-    const legacyState = projectTaskCycleState({
-      task, now: context.now, assignments: assignmentsWithoutInstanceSeeds, completions: context.completions,
-    });
-    const existingAssignmentIds = new Set(instanceAssignments.map((event) => event.assignmentId));
-    for (const legacyStudentId of legacyState.assignedStudentIds) {
-      if (legacyState.students[legacyStudentId]?.assignmentOrigin !== 'LEGACY') continue;
-      const assignmentId = deterministicId('LEGACY', task.taskInstanceId!, legacyState.cycle.cycleId, legacyStudentId);
-      if (existingAssignmentIds.has(assignmentId)) continue;
-      const seed = createAssignment({
-        task, cycle: legacyState.cycle, ruleVersion: effectiveSchedule.ruleVersion,
-        timeZone: effectiveSchedule.timeZone, studentId: legacyStudentId, status: 'ASSIGNED',
-        source: 'LEGACY_SEED', previousAssignmentId: '', createdAt: context.now, assignmentId,
-        note: 'legacy allowedStudentIds seed',
-      });
-      await appendBatchAssignment(context, seed);
-      existingAssignmentIds.add(assignmentId);
-    }
-  }
-
   let state = projectTaskCycleState({
     task, now: context.now, assignments: context.assignments, completions: context.completions,
   });
+  const existingAssignmentIds = new Set(context.assignments.map((event) => event.assignmentId));
+  const legacyStudentIds = state.assignedStudentIds.filter((studentId) =>
+    state.students[studentId]?.assignmentOrigin === 'LEGACY');
+  for (const legacyStudentId of legacyStudentIds) {
+    const assignmentId = deterministicId('LEGACY', task.taskInstanceId!, state.cycle.cycleId, legacyStudentId);
+    if (existingAssignmentIds.has(assignmentId)) continue;
+    const seed = createAssignment({
+      task, cycle: state.cycle, ruleVersion: effectiveSchedule.ruleVersion,
+      timeZone: effectiveSchedule.timeZone, studentId: legacyStudentId, status: 'ASSIGNED',
+      source: 'LEGACY_SEED', previousAssignmentId: '', createdAt: context.now, assignmentId,
+      note: 'legacy allowedStudentIds seed',
+    });
+    await appendBatchAssignment(context, seed);
+    existingAssignmentIds.add(assignmentId);
+  }
+  if (legacyStudentIds.length > 0) {
+    state = projectTaskCycleState({
+      task, now: context.now, assignments: context.assignments, completions: context.completions,
+    });
+  }
+
   const carries = Object.entries(state.students)
     .filter(([, student]) => student.assignmentOrigin === 'CARRY' && student.assignmentEvent)
     .map(([studentId, student]) => createAssignment({
@@ -563,53 +552,40 @@ export async function mutateTaskAssignmentNow(
   }
   const assignments = parseTaskAssignmentRows(assignmentDataRows, assignmentHeaderIndex);
   const completions = await readTaskCompletions(store);
-  const instanceAssignments = assignments.filter((event) =>
-    event.taskId === mutation.task.taskId && event.taskInstanceId === mutation.task.taskInstanceId);
-  const currentCycleId = projectTaskCycleState({
-    task: mutation.task, now, assignments, completions,
-  }).cycle.cycleId;
+  let state = projectTaskCycleState({ task: mutation.task, now, assignments, completions });
+  const existingAssignmentIds = new Set(assignments.map((event) => event.assignmentId));
+  const legacyStudentIds = state.assignedStudentIds.filter((legacyStudentId) =>
+    state.students[legacyStudentId]?.assignmentOrigin === 'LEGACY');
+  let canonicalTouched = false;
 
-  // While no events exist, or only deterministic seeds from this cycle exist, retry any
-  // missing active legacy seed independently. Prior-cycle/version seeds must project normally
-  // so they can become carry-forward events linked to the original seed.
-  if (instanceAssignments.length === 0 || instanceAssignments.every((event) =>
-    event.source === 'LEGACY_SEED' && event.cycleId === currentCycleId)) {
-    const assignmentsWithoutInstanceSeeds = assignments.filter((event) => !(
-      event.taskId === mutation.task.taskId
-      && event.taskInstanceId === mutation.task.taskInstanceId
-      && event.source === 'LEGACY_SEED'
-    ));
-    const legacyState = projectTaskCycleState({
-      task: mutation.task, now, assignments: assignmentsWithoutInstanceSeeds, completions,
+  // Materialize every still-implicit legacy student independently. A seed or explicit event
+  // for one student must not disable fallback or resumability for another student.
+  for (const legacyStudentId of legacyStudentIds) {
+    const assignmentId = deterministicId(
+      'LEGACY', mutation.task.taskInstanceId, state.cycle.cycleId, legacyStudentId,
+    );
+    if (existingAssignmentIds.has(assignmentId)) continue;
+    const seed = createAssignment({
+      task: mutation.task,
+      cycle: state.cycle,
+      ruleVersion: effectiveSchedule.ruleVersion,
+      timeZone: effectiveSchedule.timeZone,
+      studentId: legacyStudentId,
+      status: 'ASSIGNED',
+      source: 'LEGACY_SEED',
+      previousAssignmentId: '',
+      createdAt: now,
+      assignmentId,
+      note: 'legacy allowedStudentIds seed',
     });
-    const existingAssignmentIds = new Set(instanceAssignments.map((event) => event.assignmentId));
-    for (const legacyStudentId of legacyState.assignedStudentIds) {
-      if (legacyState.students[legacyStudentId]?.assignmentOrigin !== 'LEGACY') continue;
-      const assignmentId = deterministicId(
-        'LEGACY', mutation.task.taskInstanceId, legacyState.cycle.cycleId, legacyStudentId,
-      );
-      if (existingAssignmentIds.has(assignmentId)) continue;
-      const seed = createAssignment({
-        task: mutation.task,
-        cycle: legacyState.cycle,
-        ruleVersion: effectiveSchedule.ruleVersion,
-        timeZone: effectiveSchedule.timeZone,
-        studentId: legacyStudentId,
-        status: 'ASSIGNED',
-        source: 'LEGACY_SEED',
-        previousAssignmentId: '',
-        createdAt: now,
-        assignmentId,
-        note: 'legacy allowedStudentIds seed',
-      });
-      await appendCanonical(store, assignmentHeaders, seed);
-      assignments.push(seed);
-      existingAssignmentIds.add(assignmentId);
-    }
+    await appendCanonical(store, assignmentHeaders, seed);
+    assignments.push(seed);
+    existingAssignmentIds.add(assignmentId);
+    canonicalTouched = true;
   }
 
   // Make an implicit carry explicit immediately before the desired-state decision.
-  let state = projectTaskCycleState({ task: mutation.task, now, assignments, completions });
+  if (canonicalTouched) state = projectTaskCycleState({ task: mutation.task, now, assignments, completions });
   const carries = Object.entries(state.students)
     .filter(([, student]) => student.assignmentOrigin === 'CARRY' && student.assignmentEvent)
     .map(([carryStudentId, student]) => createAssignment({
@@ -628,6 +604,7 @@ export async function mutateTaskAssignmentNow(
   for (const carry of carries) {
     await appendCanonical(store, assignmentHeaders, carry);
     assignments.push(carry);
+    canonicalTouched = true;
   }
   if (carries.length > 0) state = projectTaskCycleState({ task: mutation.task, now, assignments, completions });
 
@@ -652,6 +629,17 @@ export async function mutateTaskAssignmentNow(
     await appendCanonical(store, assignmentHeaders, assignment);
     assignments.push(assignment);
     changed = true;
+    canonicalTouched = true;
+  }
+
+  const mirrorMatchesProjection = mutation.task.allowedStudentIds.length === state.assignedStudentIds.length
+    && mutation.task.allowedStudentIds.every((id) => state.assignedStudentIds.includes(id));
+  if (!canonicalTouched && mirrorMatchesProjection) {
+    return {
+      changed,
+      assignment,
+      assignedStudentIds: state.assignedStudentIds,
+    };
   }
 
   // Mirror the observed physical-row-authoritative ledger, not this command's local snapshot.

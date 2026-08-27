@@ -153,6 +153,9 @@ describe('assignment ledger mutation command', () => {
     await expect(mutateTaskAssignment(store, {
       task: legacyTask, taskRowNumber: 2, studentId: 'S3', assigned: false, source: 'ADMIN', now: NOW,
     })).rejects.toThrow('second seed failed');
+    const partiallyMaterialized = await readTaskCycleState(store, legacyTask, NOW);
+    expect(partiallyMaterialized.assignedStudentIds).toEqual(['S1', 'S2']);
+    expect(partiallyMaterialized.students.S2).toMatchObject({ assigned: true, assignmentOrigin: 'LEGACY' });
     await mutateTaskAssignment(store, {
       task: legacyTask, taskRowNumber: 2, studentId: 'S3', assigned: false, source: 'ADMIN', now: NOW,
     });
@@ -162,6 +165,48 @@ describe('assignment ledger mutation command', () => {
       .map((row) => row[TASK_ASSIGNMENT_HEADERS.indexOf('studentId')]);
     expect(seedStudentIds).toEqual(['S1', 'S2']);
     expect(store.rows.Tasks[1][TASK_SCHEMA_HEADERS.indexOf('allowedStudentIds')]).toBe('S1,S2');
+  });
+
+  it('resumes missing legacy seeds even after an explicit event exists for another student', async () => {
+    const legacyTask = { ...task, allowedStudentIds: ['S1', 'S2'] };
+    const currentSeed = assignmentRow({
+      assignmentId: 'seed-s1', studentId: 'S1', source: 'LEGACY_SEED',
+      cycleId: 'v1|I1|r1|2026-08-25T00:00:00Z', cycleStartsAt: '2026-08-25T00:00:00.000Z',
+      cycleEndsAt: '2026-08-26T00:00:00.000Z',
+    });
+    const explicitOther = assignmentRow({
+      assignmentId: 'explicit-s3', studentId: 'S3', status: 'UNASSIGNED',
+      cycleId: 'v1|I1|r1|2026-08-25T00:00:00Z', cycleStartsAt: '2026-08-25T00:00:00.000Z',
+      cycleEndsAt: '2026-08-26T00:00:00.000Z',
+    });
+    const store = new MemoryStore({ allowed: legacyTask.allowedStudentIds, assignments: [currentSeed, explicitOther] });
+
+    await mutateTaskAssignment(store, {
+      task: legacyTask, taskRowNumber: 2, studentId: 'S3', assigned: false, source: 'ADMIN', now: NOW,
+    });
+
+    const seeds = store.rows.TaskAssignments.slice(1).filter(
+      (row) => row[TASK_ASSIGNMENT_HEADERS.indexOf('source')] === 'LEGACY_SEED',
+    );
+    expect(seeds.map((row) => row[TASK_ASSIGNMENT_HEADERS.indexOf('studentId')])).toEqual(['S1', 'S2']);
+    expect(store.rows.Tasks[1][TASK_SCHEMA_HEADERS.indexOf('allowedStudentIds')]).toBe('S1,S2');
+  });
+
+  it('does not reread or rewrite the legacy mirror for an ordinary canonical no-op', async () => {
+    const current = assignmentRow({
+      assignmentId: 'A-current', cycleId: 'v1|I1|r1|2026-08-25T00:00:00Z',
+      cycleStartsAt: '2026-08-25T00:00:00.000Z', cycleEndsAt: '2026-08-26T00:00:00.000Z',
+    });
+    const mirroredTask = { ...task, allowedStudentIds: ['S1'] };
+    const store = new MemoryStore({ allowed: ['S1'], assignments: [current] });
+
+    const result = await mutateTaskAssignment(store, {
+      task: mirroredTask, taskRowNumber: 2, studentId: 'S1', assigned: true, source: 'ADMIN', now: NOW,
+    });
+
+    expect(result).toMatchObject({ changed: false, assignedStudentIds: ['S1'] });
+    expect(store.getRowsFresh).not.toHaveBeenCalled();
+    expect(store.updateCell).not.toHaveBeenCalled();
   });
 
   it('carries a legacy seed from a prior natural cycle instead of seeding legacy again', async () => {
