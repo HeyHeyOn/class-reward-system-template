@@ -2489,6 +2489,61 @@ describe('AdminManagePage', () => {
     expect(taskGets).toBe(2);
   });
 
+  it('keeps the task deadline dialog within the mobile viewport and makes time controls shrink safely', async () => {
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 기한 설정' }));
+
+    const dialog = screen.getByRole('dialog', { name: '과제 기한 설정' });
+    expect(dialog.className).toContain('max-h-[calc(100dvh-2rem)]');
+    expect(dialog.className).toContain('overflow-y-auto');
+    expect(dialog.className).toContain('overflow-x-hidden');
+    expect(dialog.className).toContain('overscroll-contain');
+    expect(dialog.className).toContain('max-w-full');
+    expect(dialog.className).toContain('min-w-0');
+
+    for (const input of [within(dialog).getByLabelText('시작 시각'), within(dialog).getByLabelText('기한')]) {
+      expect(input.parentElement?.className).toContain('min-w-0');
+      expect(input.parentElement?.className).toContain('max-w-full');
+      expect(input.className).toContain('min-w-0');
+      expect(input.className.split(/\s+/)).toContain('w-full');
+      expect(input.className).toContain('max-w-full');
+      expect(input.className).toContain('text-base');
+    }
+
+    fireEvent.change(within(dialog).getByLabelText('반복 주기'), { target: { value: 'DAILY' } });
+    const recurrenceTime = within(dialog).getByLabelText('반복 시간');
+    const recurrenceShell = recurrenceTime.closest('[data-testid="task-recurrence-mobile-fields"]');
+    expect(recurrenceShell).toBeTruthy();
+    expect(recurrenceShell?.className).toContain('min-w-0');
+    expect(recurrenceShell?.className).toContain('max-w-full');
+    expect(recurrenceShell?.className).toContain('[&_input]:min-w-0');
+    expect(recurrenceShell?.className).toContain('[&_input]:max-w-full');
+    expect(recurrenceShell?.className).toContain('[&_input]:text-base');
+  });
+
+  it('places each availability badge to the left of its title input on the same row', async () => {
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+
+    const row = (await screen.findAllByTestId('task-row'))[0];
+    const badge = within(row).getByText('진행 중');
+    const titleInput = within(row).getByLabelText('T001 과제명');
+    const titleRow = badge.parentElement;
+    const inputWrapper = titleInput.closest('[data-testid="task-title-input-wrapper"]');
+
+    expect(titleRow?.className).toContain('flex');
+    expect(titleRow?.className).toContain('items-center');
+    expect(titleRow?.className).toContain('min-w-0');
+    expect(badge.className).toContain('shrink-0');
+    expect(badge.className).toContain('whitespace-nowrap');
+    expect(inputWrapper).toBeTruthy();
+    expect(inputWrapper?.className).toContain('min-w-0');
+    expect(inputWrapper?.className).toContain('flex-1');
+    expect(badge.compareDocumentPosition(titleInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(row.className).toContain('grid-cols-[24px_minmax(5rem,1fr)_64px_48px_38px_minmax(3rem,0.7fr)_minmax(180px,auto)]');
+  });
+
   it('edits availability, prerequisite, recurrence and shows clear admin status badges', async () => {
     const datedTasks = [
       { ...tasks[0], availableFrom: '2000-01-01T00:00:00Z', dueAt: '2999-01-01T00:00:00Z' },

@@ -42,7 +42,11 @@ export async function GET(request: Request) {
           : undefined);
       return { assigned, completed };
     };
-    return Response.json(tasks.filter((task) => task.isActive && isTaskAvailable(task, now)).map((task) => {
+    const visibleTasks = tasks.filter((task) => task.isActive && isTaskAvailable(task, now));
+    const assignedVisibleTaskIds = new Set(visibleTasks
+      .filter((task) => getStudentStatus(task).assigned === true)
+      .map((task) => task.taskId));
+    return Response.json(visibleTasks.map((task) => {
       const { assigned, completed } = getStudentStatus(task);
       const effectiveSchedule = task.schedule ? resolveTaskSchedule({
         currentSchedule: task.schedule,
@@ -73,6 +77,9 @@ export async function GET(request: Request) {
         ...(task.dueAt ? { dueAt: task.dueAt } : {}),
         ...(effectiveSchedule ? { recurrence: effectiveSchedule.recurrence } : {}),
         ...(task.prerequisiteTaskId ? {
+          ...(assigned && assignedVisibleTaskIds.has(task.prerequisiteTaskId)
+            ? { prerequisiteTaskId: task.prerequisiteTaskId }
+            : {}),
           prerequisiteTitle,
           prerequisiteStatus,
           ...(prerequisiteMessage ? { prerequisiteMessage } : {}),

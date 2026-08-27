@@ -1729,9 +1729,11 @@ export function AdminManagePage() {
                       <input aria-label={`${task.taskId} 선택`} checked={selectedTaskIds.includes(task.taskId)} onChange={() => toggleTask(task.taskId)} type="checkbox" />
                       <span className="sr-only">선택</span>
                     </label>
-                    <div className="min-w-0">
-                      <TextInput label={`${task.taskId} 과제명`} value={task.title} onChange={(value) => updateTask(task.taskId, { title: value })} dense />
-                      <span className="mt-0.5 inline-block rounded-full bg-[var(--theme-surface-raised)] px-2 py-0.5 text-[9px] font-black text-[var(--theme-muted-text)]">{taskAvailabilityLabel(task)}</span>
+                    <div className="flex min-w-0 items-center gap-1">
+                      <span className="shrink-0 whitespace-nowrap rounded-full bg-[var(--theme-surface-raised)] px-2 py-0.5 text-[9px] font-black text-[var(--theme-muted-text)]">{taskAvailabilityLabel(task)}</span>
+                      <div data-testid="task-title-input-wrapper" className="min-w-0 flex-1">
+                        <TextInput label={`${task.taskId} 과제명`} value={task.title} onChange={(value) => updateTask(task.taskId, { title: value })} dense />
+                      </div>
                     </div>
                     <NumberInput label={`${task.taskId} 보상`} value={task.reward} onChange={(value) => updateTask(task.taskId, { reward: value })} dense />
                     <NumberInput label={`${task.taskId} 정렬`} value={task.sortOrder} onChange={(value) => updateTask(task.taskId, { sortOrder: value })} dense />
@@ -1914,9 +1916,9 @@ export function AdminManagePage() {
         <TaskDialogFrame title="과제 기한 설정" target={taskScheduleEditor.target} opener={taskScheduleEditor.opener} mutation={isSavingTaskSchedule} onClose={closeTaskScheduleEditor}>
             <h2 className="text-xl font-black">기한 설정</h2>
             <TaskTargetSummary target={taskScheduleEditor.target} />
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              <label className="text-sm font-bold">시작 시각<input aria-label="시작 시각" type="datetime-local" value={taskScheduleEditor.availableFrom} onChange={(event) => setTaskScheduleEditor((current) => current ? { ...current, availableFrom: event.target.value, availabilityExplicit: true } : current)} className="mt-1 w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-input)] p-3" /></label>
-              <label className="text-sm font-bold">기한<input aria-label="기한" type="datetime-local" value={taskScheduleEditor.dueAt} onChange={(event) => setTaskScheduleEditor((current) => current ? { ...current, dueAt: event.target.value, availabilityExplicit: true } : current)} className="mt-1 w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-input)] p-3" /></label>
+            <div className="mt-3 grid min-w-0 max-w-full gap-2 sm:grid-cols-2">
+              <label className="block min-w-0 max-w-full text-sm font-bold">시작 시각<input aria-label="시작 시각" type="datetime-local" value={taskScheduleEditor.availableFrom} onChange={(event) => setTaskScheduleEditor((current) => current ? { ...current, availableFrom: event.target.value, availabilityExplicit: true } : current)} className="mt-1 min-w-0 w-full max-w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-input)] p-3 text-base" /></label>
+              <label className="block min-w-0 max-w-full text-sm font-bold">기한<input aria-label="기한" type="datetime-local" value={taskScheduleEditor.dueAt} onChange={(event) => setTaskScheduleEditor((current) => current ? { ...current, dueAt: event.target.value, availabilityExplicit: true } : current)} className="mt-1 min-w-0 w-full max-w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-input)] p-3 text-base" /></label>
             </div>
             {taskScheduleEditor.target.kind === 'bulk' ? <p className="mt-2 rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-900">선행 과제는 개별 과제 기한 설정에서만 변경할 수 있습니다.</p> : <label className="mt-3 block text-sm font-bold">선행 과제<select aria-label="선행 과제" value={taskScheduleEditor.prerequisiteTaskId} onChange={(event) => setTaskScheduleEditor((current) => current ? { ...current, prerequisiteTaskId: event.target.value } : current)} className="mt-1 w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-input)] p-3"><option value="">없음</option>{tasks.filter((task) => task.isActive && task.taskId !== taskScheduleEditor.taskId).map((task) => <option key={task.taskId} value={task.taskId}>{task.title}</option>)}</select></label>}
             {taskScheduleEditor.target.kind === 'bulk' ? (
@@ -1929,18 +1931,20 @@ export function AdminManagePage() {
                 className={`${theme.softBg} ${theme.softText}`}
               />
             ) : null}
-            {taskScheduleEditor.target.kind === 'bulk' ? (
-              <BulkTaskRecurrenceFields
-                form={taskScheduleEditor.form}
-                onChange={(form) => setTaskScheduleEditor((current) => current ? { ...current, form, explicit: Boolean(form.type) } : current)}
-              />
-            ) : (
-              <TaskRecurrenceFields
-                form={taskScheduleEditor.form}
-                onChange={(form) => setTaskScheduleEditor((current) => current ? { ...current, form, explicit: true } : current)}
-                styles={{ detail: theme.softText, preview: theme.accentText }}
-              />
-            )}
+            <div data-testid="task-recurrence-mobile-fields" className="min-w-0 max-w-full [&_input]:min-w-0 [&_input]:max-w-full [&_input]:text-base">
+              {taskScheduleEditor.target.kind === 'bulk' ? (
+                <BulkTaskRecurrenceFields
+                  form={taskScheduleEditor.form}
+                  onChange={(form) => setTaskScheduleEditor((current) => current ? { ...current, form, explicit: Boolean(form.type) } : current)}
+                />
+              ) : (
+                <TaskRecurrenceFields
+                  form={taskScheduleEditor.form}
+                  onChange={(form) => setTaskScheduleEditor((current) => current ? { ...current, form, explicit: true } : current)}
+                  styles={{ detail: theme.softText, preview: theme.accentText }}
+                />
+              )}
+            </div>
             <div className="mt-4 flex gap-2">
               <button type="button" disabled={isSavingTaskSchedule} className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700 disabled:opacity-50" onClick={closeTaskScheduleEditor}>취소</button>
               <button type="button" aria-label={taskScheduleEditor.target.kind === 'new' ? '기한 설정 적용' : '기한 설정 저장'} disabled={isSavingTaskSchedule || !taskScheduleEditor.explicit || !scheduleFormToPayload(taskScheduleEditor.form).ok} className={`flex-1 rounded-xl ${theme.accentBg} py-3 font-black ${theme.actionText} disabled:opacity-60`} onClick={() => void applyTaskScheduleEditor()}>{isSavingTaskSchedule ? '기한 설정 저장 중...' : taskScheduleEditor.target.kind === 'new' ? '기한 설정 적용' : '기한 설정 저장'}</button>
@@ -2181,7 +2185,7 @@ function TaskDialogFrame({ title, target, opener, mutation, obscured = false, on
   }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <section ref={dialogRef} role="dialog" aria-modal="true" aria-label={title} aria-describedby={descriptionId} aria-hidden={obscured || mutation ? true : undefined} inert={obscured || mutation} onKeyDown={onKeyDown} className={`w-full ${maxWidth} rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 text-[var(--theme-text)] shadow-2xl`}>
+      <section ref={dialogRef} role="dialog" aria-modal="true" aria-label={title} aria-describedby={descriptionId} aria-hidden={obscured || mutation ? true : undefined} inert={obscured || mutation} onKeyDown={onKeyDown} className={`max-h-[calc(100dvh-2rem)] min-w-0 w-full max-w-full ${maxWidth} overflow-x-hidden overflow-y-auto overscroll-contain rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 text-[var(--theme-text)] shadow-2xl`}>
         <span id={descriptionId} className="sr-only">대상 과제: {summary.full}</span>
         {children}
       </section>

@@ -366,7 +366,7 @@ describe('BankApp', () => {
     expect(fetch).toHaveBeenCalledWith('/api/tasks?studentId=S%20001', expect.objectContaining({ cache: 'no-store' }));
     expect(screen.getByRole('button', { name: /책 10분 읽기/ })).toBeTruthy();
     expect(screen.queryByText('배정 안 된 과제')).toBeNull();
-    expect(document.body.textContent).toContain('미완료');
+    expect(document.body.textContent).not.toContain('미완료');
     expect(document.body.textContent).toContain('기한: 없음');
     expect(document.body.textContent).toContain('반복: 없음');
     expect(document.body.textContent).not.toContain('현재 회차');
@@ -416,7 +416,8 @@ describe('BankApp', () => {
     await screen.findByRole('dialog', { name: '과제 목록' });
     expect(screen.getByRole('button', { name: /책 10분 읽기/ })).toBeTruthy();
     expect(screen.queryByText('전체 허용으로 추측하면 안 됨')).toBeNull();
-    expect(document.body.textContent).toContain('완료 정보 없음');
+    expect(document.body.textContent).not.toContain('완료 정보 없음');
+    expect(document.body.textContent).not.toContain('미완료');
     expect(document.body.textContent).not.toContain('완료됨');
   });
 
@@ -445,7 +446,7 @@ describe('BankApp', () => {
     expect(screen.getByRole('button', { name: /B 학생 과제/ })).toBeTruthy();
   });
 
-  it('refreshes only the completed task current cycle after success without resetting student flow', async () => {
+  it('refreshes the student projection after success without resetting student flow', async () => {
     const before = { ...tasks[0], allowedStudentIds: ['S001'], currentCycle: { cycleId: 'cycle-1', startsAt: '2026-05-20T00:00:00.000Z', endsAt: '2026-05-27T00:00:00.000Z' }, studentStatus: { studentId: 'S001', assigned: true, completed: false } };
     const after = { ...before, studentStatus: { ...before.studentStatus, completed: true } };
     let studentFetches = 0;
@@ -468,9 +469,226 @@ describe('BankApp', () => {
     expect(await screen.findByRole('dialog', { name: '과제 완료 성공' })).toBeTruthy();
     await waitFor(() => expect(studentFetches).toBe(2));
     fireEvent.click(screen.getByRole('button', { name: '닫기' }));
-    expect(await screen.findByRole('dialog', { name: '책 10분 읽기' })).toBeTruthy();
-    expect(document.body.textContent).toContain('완료됨');
+    const refreshedDetail = await screen.findByRole('dialog', { name: '책 10분 읽기' });
+    expect(within(refreshedDetail).getByText('완료됨').className).toContain('sr-only');
     expect(screen.queryByRole('button', { name: '완료하기' })).toBeNull();
+  });
+
+  it('starts a five-task linked carousel on the first incomplete third slide and exposes its indicator', async () => {
+    const linkedTasks = Array.from({ length: 5 }, (_, index) => ({
+      ...tasks[0],
+      taskId: `C${index + 1}`,
+      title: `연결 과제 ${index + 1}`,
+      sortOrder: index + 1,
+      prerequisiteTaskId: index === 0 ? undefined : `C${index}`,
+      studentStatus: { studentId: 'S001', assigned: true, completed: index < 2 },
+    }));
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/tasks?studentId=S001' ? jsonResponse(linkedTasks) : base(input, init));
+
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+
+    const carousel = await screen.findByRole('region', { name: '연결 과제 1 연결 과제 묶음' });
+    expect(within(carousel).getByRole('group', { name: '3 / 5: 연결 과제 3' })).toBeTruthy();
+    expect(within(carousel).getByRole('button', { name: '연결 과제 3' })).toBeTruthy();
+    expect(within(carousel).queryByRole('button', { name: '연결 과제 2' })).toBeNull();
+    const inactiveSlide = carousel.querySelector('[aria-label="2 / 5: 연결 과제 2"]');
+    const activeSlide = carousel.querySelector('[aria-label="3 / 5: 연결 과제 3"]');
+    expect(inactiveSlide?.hasAttribute('inert')).toBe(true);
+    expect(activeSlide?.hasAttribute('inert')).toBe(false);
+    expect(within(carousel).getByText('••○••')).toBeTruthy();
+    const indicator = within(carousel).getByTestId('task-carousel-indicator');
+    expect(carousel.className).toContain('relative');
+    expect(indicator.className).toContain('absolute');
+    expect(indicator.className).toContain('bottom-');
+    const activeIndicator = within(carousel).getByRole('button', { name: '3번째 과제 보기' });
+    expect(activeIndicator.getAttribute('aria-current')).toBe('true');
+    expect(activeIndicator.className).toContain('focus-visible:opacity-100');
+    expect(activeIndicator.className).toContain('focus-visible:outline-2');
+  });
+
+  it('navigates a linked task carousel with next and indicator controls', async () => {
+    const linkedTasks = Array.from({ length: 3 }, (_, index) => ({
+      ...tasks[0], taskId: `N${index + 1}`, title: `탐색 과제 ${index + 1}`, sortOrder: index + 1,
+      prerequisiteTaskId: index ? `N${index}` : undefined,
+      studentStatus: { studentId: 'S001', assigned: true, completed: false },
+    }));
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/tasks?studentId=S001' ? jsonResponse(linkedTasks) : base(input, init));
+
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+    const carousel = await screen.findByRole('region', { name: '탐색 과제 1 연결 과제 묶음' });
+    fireEvent.click(within(carousel).getByRole('button', { name: '다음 과제' }));
+    expect(within(carousel).getByRole('button', { name: '탐색 과제 2' })).toBeTruthy();
+    expect(within(carousel).getByText('•○•')).toBeTruthy();
+    fireEvent.click(within(carousel).getByRole('button', { name: '3번째 과제 보기' }));
+    expect(within(carousel).getByRole('button', { name: '탐색 과제 3' })).toBeTruthy();
+    expect(within(carousel).getByRole('button', { name: '이전 과제' })).toBeTruthy();
+  });
+
+  it('renders a singleton task without carousel controls or an indicator', async () => {
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+    const taskList = await screen.findByRole('dialog', { name: '과제 목록' });
+    expect(within(taskList).getByRole('button', { name: '책 10분 읽기' })).toBeTruthy();
+    expect(within(taskList).queryByRole('button', { name: '다음 과제' })).toBeNull();
+    expect(within(taskList).queryByRole('button', { name: '이전 과제' })).toBeNull();
+    expect(within(taskList).queryByRole('button', { name: '1번째 과제 보기' })).toBeNull();
+  });
+
+  it('dims a locked task card but still opens its detail with completion disabled', async () => {
+    const locked = { ...tasks[0], taskId: 'LOCKED', title: '잠긴 과제', prerequisiteStatus: 'REQUIRED', prerequisiteMessage: '먼저 선행 과제를 완료하세요.', studentStatus: { studentId: 'S001', assigned: true, completed: false } };
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/tasks?studentId=S001' ? jsonResponse([locked]) : base(input, init));
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+    const card = await screen.findByRole('button', { name: '잠긴 과제, 완료 불가' });
+    expect(card.className).toContain('brightness-75');
+    expect(card.className).toContain('opacity-70');
+    fireEvent.click(card);
+    expect(await screen.findByRole('dialog', { name: '잠긴 과제' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '완료하기' })).toHaveProperty('disabled', true);
+  });
+
+  it('dims completed cards with a stamp and removes inline completion metadata', async () => {
+    const completed = { ...tasks[0], title: '끝낸 과제', studentStatus: { studentId: 'S001', assigned: true, completed: true } };
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input) === '/api/settings') return jsonResponse({ bankTitle: '검정 은행', currencyUnit: '별', themeColor: 'black', qrManualInputEnabled: true });
+      if (String(input) === '/api/tasks?studentId=S001') return jsonResponse([completed]);
+      return base(input, init);
+    });
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '검정 은행' });
+    await identifyTaskStudent();
+    const card = await screen.findByRole('button', { name: '끝낸 과제, 완료됨' });
+    expect(card.className).toContain('brightness-75');
+    const stamp = within(card).getByText('완료됨');
+    expect(stamp.className).toContain('rotate-[-12deg]');
+    expect(stamp.className).toContain('border-white');
+    expect(stamp.className).toContain('text-white');
+    expect(card.textContent).toContain('보상 5별');
+    expect(card.textContent).not.toMatch(/·\s*(완료됨|미완료|완료 정보 없음)/);
+    fireEvent.click(card);
+    const detail = await screen.findByRole('dialog', { name: '끝낸 과제' });
+    expect(within(detail).queryByRole('button', { name: '완료하기' })).toBeNull();
+    expect(within(detail).getByText('완료됨').className).toContain('sr-only');
+  });
+
+  it('keeps partially complete groups before all-complete groups without reordering chain slides', async () => {
+    const projected = [
+      { ...tasks[0], taskId: 'DONE', title: '완료 단독', sortOrder: 1, studentStatus: { studentId: 'S001', assigned: true, completed: true } },
+      { ...tasks[0], taskId: 'P1', title: '부분 첫째', sortOrder: 20, studentStatus: { studentId: 'S001', assigned: true, completed: true } },
+      { ...tasks[0], taskId: 'P2', title: '부분 둘째', sortOrder: 10, prerequisiteTaskId: 'P1', studentStatus: { studentId: 'S001', assigned: true, completed: false } },
+    ];
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/tasks?studentId=S001' ? jsonResponse(projected) : base(input, init));
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+    const dialog = await screen.findByRole('dialog', { name: '과제 목록' });
+    const partial = within(dialog).getByRole('region', { name: '부분 첫째 연결 과제 묶음' });
+    const complete = within(dialog).getByRole('button', { name: '완료 단독, 완료됨' });
+    expect(partial.compareDocumentPosition(complete) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(partial).getByRole('group', { name: '2 / 2: 부분 둘째' })).toBeTruthy();
+    fireEvent.click(within(partial).getByRole('button', { name: '1번째 과제 보기' }));
+    expect(within(partial).getByRole('button', { name: '부분 첫째, 완료됨' })).toBeTruthy();
+  });
+
+  it('replaces the whole refreshed projection, unlocks the next task, and recalculates the active slide', async () => {
+    const first = { ...tasks[0], taskId: 'R1', title: '새로고침 첫째', sortOrder: 1, studentStatus: { studentId: 'S001', assigned: true, completed: false } };
+    const second = { ...tasks[0], taskId: 'R2', title: '새로고침 둘째', sortOrder: 2, prerequisiteTaskId: 'R1', prerequisiteStatus: 'REQUIRED' as const, prerequisiteMessage: '첫째를 먼저 완료하세요.', studentStatus: { studentId: 'S001', assigned: true, completed: false } };
+    const refreshed = [
+      { ...first, studentStatus: { ...first.studentStatus, completed: true } },
+      { ...second, prerequisiteStatus: 'SATISFIED' as const, prerequisiteMessage: undefined },
+    ];
+    let projections = 0;
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === '/api/tasks?studentId=S001') return jsonResponse(projections++ === 0 ? [first, second] : refreshed);
+      if (url === '/api/tasks/R1/complete' && init?.method === 'POST') return jsonResponse({ task: first, student: { studentId: 'S001', name: '김민준', balance: 17 } });
+      return base(input, init);
+    });
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+    fireEvent.click(await screen.findByRole('button', { name: '새로고침 첫째' }));
+    fireEvent.click(screen.getByRole('button', { name: '완료하기' }));
+    await screen.findByRole('dialog', { name: '과제 완료 성공' });
+    await waitFor(() => expect(projections).toBe(2));
+    fireEvent.click(screen.getByRole('button', { name: '닫기' }));
+    const refreshedDetail = await screen.findByRole('dialog', { name: '새로고침 첫째' });
+    expect(within(refreshedDetail).queryByRole('button', { name: '완료하기' })).toBeNull();
+    fireEvent.click(within(refreshedDetail).getByRole('button', { name: '닫기' }));
+    const carousel = await screen.findByRole('region', { name: '새로고침 첫째 연결 과제 묶음' });
+    const next = within(carousel).getByRole('button', { name: '새로고침 둘째' });
+    expect(next.className).not.toContain('brightness-75');
+    fireEvent.click(next);
+    expect(screen.getByRole('button', { name: '완료하기' })).toHaveProperty('disabled', false);
+  });
+
+  it('keeps the bank home within one dynamic viewport and scrolls only the public task body', async () => {
+    const manyPublicTasks = Array.from({ length: 18 }, (_, index) => ({
+      ...publicTasks[0],
+      taskId: `PUB${index + 1}`,
+      title: `공개 과제 ${index + 1}`,
+      sortOrder: index + 1,
+    }));
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input) === '/api/bank/tasks') return jsonResponse(manyPublicTasks);
+      return base(input, init);
+    });
+
+    const { container } = render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    expect(await screen.findByRole('button', { name: /공개 과제 18/ })).toBeTruthy();
+
+    const shell = container.querySelector('[data-testid="bank-shell"]');
+    const home = screen.getByTestId('bank-home-layout');
+    const header = screen.getByTestId('bank-home-header');
+    const catalog = screen.getByRole('region', { name: '공개 과제 목록' });
+    const taskBody = screen.getByTestId('public-task-list-body');
+    const actions = screen.getByTestId('bank-home-actions');
+
+    expect(shell?.className).toContain('h-[100dvh]');
+    expect(shell?.className).toContain('overflow-hidden');
+    expect(home.className).toContain('h-full');
+    expect(home.className).toContain('min-h-0');
+    expect(header.className).toContain('shrink-0');
+    expect(catalog.className).toContain('min-h-0');
+    expect(catalog.className).toContain('flex-1');
+    expect(taskBody.className).toContain('min-h-0');
+    expect(taskBody.className).toContain('overflow-y-auto');
+    expect(taskBody.className).toContain('overscroll-contain');
+    expect(actions.className).toContain('shrink-0');
+    expect(home.className).not.toContain('overflow-y-auto');
+    expect(catalog.className).not.toContain('overflow-y-auto');
+    expect(actions.className).not.toContain('overflow-y-auto');
+  });
+
+  it('always keeps bank home actions in two columns with compact mobile and roomier sm sizing', async () => {
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+
+    const actions = screen.getByTestId('bank-home-actions');
+    expect(actions.className).toContain('grid-cols-2');
+    expect(actions.className).not.toContain('sm:grid-cols-2');
+
+    for (const name of ['내 계좌', '과제 완료']) {
+      const button = screen.getByRole('button', { name });
+      expect(button.className).toContain('py-4');
+      expect(button.className).toContain('text-lg');
+      expect(button.className).toContain('sm:py-8');
+      expect(button.className).toContain('sm:text-3xl');
+    }
   });
 
   it('loads the public catalog independently above actions and opens a read-only student-safe detail', async () => {

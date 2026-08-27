@@ -106,6 +106,7 @@ describe('GET /api/tasks', () => {
     expect(listTaskCycleProjections).toHaveBeenCalledWith({}, { studentId: 'S1', includeInactive: true });
     expect(payload.find((task: { taskId: string }) => task.taskId === 'B')).toMatchObject({
       recurrence: { type: 'WEEKLY', weekdays: [1, 4], time: '10:00' },
+      prerequisiteTaskId: 'A',
       prerequisiteTitle: '먼저 할 일',
       prerequisiteStatus: 'REQUIRED',
       prerequisiteMessage: "선행 과제 '먼저 할 일'을(를) 먼저 완료해 주세요.",
@@ -115,8 +116,86 @@ describe('GET /api/tasks', () => {
     expect(studentTask).not.toHaveProperty('schedule');
     expect(studentTask).not.toHaveProperty('pendingSchedule');
     expect(studentTask).not.toHaveProperty('scheduleReadWarnings');
-    expect(studentTask).not.toHaveProperty('prerequisiteTaskId');
     expect(studentTask).not.toHaveProperty('currentCycle');
+  });
+
+  it('omits a relation to an unassigned prerequisite without dropping compatible task rows', async () => {
+    vi.mocked(createConfiguredSheetsReader).mockResolvedValue({} as never);
+    vi.mocked(listTaskCycleProjections).mockResolvedValue([
+      {
+        ...projected[0], taskId: 'A', title: '배정되지 않은 선행 과제',
+        allowedStudentIds: [],
+        currentCycle: { cycleId: 'a-cycle', students: [{ studentId: 'S1', assigned: false, completed: false }] },
+      },
+      {
+        ...projected[0], taskId: 'B', title: '다음 할 일', prerequisiteTaskId: 'A',
+        currentCycle: { cycleId: 'b-cycle', students: [{ studentId: 'S1', assigned: true, completed: false }] },
+      },
+    ] as never);
+
+    const response = await GET(new Request('http://localhost/api/tasks?studentId=S1'));
+    const payload = await response.json();
+    const dependent = payload.find((task: { taskId: string }) => task.taskId === 'B');
+
+    expect(payload.map((task: { taskId: string }) => task.taskId)).toEqual(['A', 'B']);
+    expect(dependent).not.toHaveProperty('prerequisiteTaskId');
+    expect(dependent).toMatchObject({
+      prerequisiteTitle: '배정되지 않은 선행 과제',
+      prerequisiteStatus: 'REQUIRED',
+      prerequisiteMessage: "선행 과제 '배정되지 않은 선행 과제'을(를) 먼저 완료해 주세요.",
+    });
+  });
+
+  it('omits a relation from an unassigned dependent even when its prerequisite is assigned', async () => {
+    vi.mocked(createConfiguredSheetsReader).mockResolvedValue({} as never);
+    vi.mocked(listTaskCycleProjections).mockResolvedValue([
+      {
+        ...projected[0], taskId: 'A', title: '배정된 선행 과제',
+        currentCycle: { cycleId: 'a-cycle', students: [{ studentId: 'S1', assigned: true, completed: false }] },
+      },
+      {
+        ...projected[0], taskId: 'B', title: '배정되지 않은 후행 과제', prerequisiteTaskId: 'A',
+        allowedStudentIds: [],
+        currentCycle: { cycleId: 'b-cycle', students: [{ studentId: 'S1', assigned: false, completed: false }] },
+      },
+    ] as never);
+
+    const response = await GET(new Request('http://localhost/api/tasks?studentId=S1'));
+    const payload = await response.json();
+    const dependent = payload.find((task: { taskId: string }) => task.taskId === 'B');
+
+    expect(dependent.studentStatus.assigned).toBe(false);
+    expect(dependent).not.toHaveProperty('prerequisiteTaskId');
+    expect(dependent).toMatchObject({
+      prerequisiteTitle: '배정된 선행 과제',
+      prerequisiteStatus: 'REQUIRED',
+    });
+  });
+
+  it('omits a relation to a prerequisite excluded from returned cards while preserving unavailable semantics', async () => {
+    vi.mocked(createConfiguredSheetsReader).mockResolvedValue({} as never);
+    vi.mocked(listTaskCycleProjections).mockResolvedValue([
+      {
+        ...projected[0], taskId: 'A', title: '비활성 선행 과제', isActive: false,
+        currentCycle: { cycleId: 'a-cycle', students: [{ studentId: 'S1', assigned: true, completed: false }] },
+      },
+      {
+        ...projected[0], taskId: 'B', title: '다음 할 일', prerequisiteTaskId: 'A',
+        currentCycle: { cycleId: 'b-cycle', students: [{ studentId: 'S1', assigned: true, completed: false }] },
+      },
+    ] as never);
+
+    const response = await GET(new Request('http://localhost/api/tasks?studentId=S1'));
+    const payload = await response.json();
+    const dependent = payload.find((task: { taskId: string }) => task.taskId === 'B');
+
+    expect(payload.map((task: { taskId: string }) => task.taskId)).toEqual(['B']);
+    expect(dependent).not.toHaveProperty('prerequisiteTaskId');
+    expect(dependent).toMatchObject({
+      prerequisiteTitle: '비활성 선행 과제',
+      prerequisiteStatus: 'UNAVAILABLE',
+      prerequisiteMessage: "선행 과제 '비활성 선행 과제'을(를) 완료할 수 없습니다. 교사에게 문의해 주세요.",
+    });
   });
 
   it('preserves includeInactive=1 compatibility', async () => {

@@ -6,6 +6,7 @@ import type { ClassTask, Transaction } from '@/domain/types';
 import { getFontFamilyCss, type FontFamily } from '@/lib/fontSettings';
 import { QrScanner } from './QrScanner';
 import { formatStudentTaskDue, formatStudentTaskRecurrence } from '@/domain/taskStudentDisplay';
+import { buildStudentTaskChains, type StudentTaskChain } from '@/domain/studentTaskChains';
 import type { TaskRecurrence } from '@/domain/types';
 
 type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'black' | 'navy';
@@ -164,6 +165,10 @@ export function BankApp() {
     () => tasks.filter((task) => taskStudentId && getTaskStudentStatus(task, taskStudentId).assigned),
     [taskStudentId, tasks],
   );
+  const assignedTaskChains = useMemo(
+    () => buildStudentTaskChains(assignedTasks, (task) => getTaskStudentStatus(task, taskStudentId).completed),
+    [assignedTasks, taskStudentId],
+  );
 
   const identifyTaskStudent = useCallback(async (decodedText: string) => {
     const studentId = decodedText.trim();
@@ -230,7 +235,6 @@ export function BankApp() {
     if (!studentId || !selectedTask) return;
     const status = getTaskStudentStatus(selectedTask, studentId);
     if (!status.assigned || status.completed === true) return;
-    const completedTaskId = selectedTask.taskId;
     const activeRequestId = taskRequestId.current;
     setLoading(true);
     setLoadingDialog({ title: '과제 완료 처리 중', message: '과제 완료를 기록하고 보상을 지급하는 중입니다.' });
@@ -250,7 +254,7 @@ export function BankApp() {
         studentName: payload.student.name,
       });
       setView('task-success');
-      void refreshCompletedTask(completedTaskId, studentId, activeRequestId);
+      void refreshCompletedTask(studentId, activeRequestId);
     } catch (error) {
       setTaskResult({ message: error instanceof Error ? error.message : '과제 완료 처리에 실패했습니다.' });
       setView('task-failure');
@@ -260,15 +264,13 @@ export function BankApp() {
     }
   }
 
-  async function refreshCompletedTask(taskId: string, studentId: string, requestId: number) {
+  async function refreshCompletedTask(studentId: string, requestId: number) {
     try {
       const response = await fetch(`/api/tasks?studentId=${encodeURIComponent(studentId)}`, { cache: 'no-store' });
       const payload: BankTask[] = await response.json();
       if (!response.ok || requestId !== taskRequestId.current) return;
-      const refreshed = payload.find((task) => task.taskId === taskId);
-      if (!refreshed) return;
-      setTasks((current) => current.map((task) => task.taskId === taskId ? refreshed : task));
-      setSelectedTask((current) => current?.taskId === taskId ? refreshed : current);
+      setTasks(payload);
+      setSelectedTask((current) => current ? payload.find((task) => task.taskId === current.taskId) ?? null : null);
     } catch {
       // Completion already succeeded; a refresh failure must not discard that result.
     }
@@ -293,28 +295,30 @@ export function BankApp() {
   }
 
   return (
-    <main data-testid="bank-shell" style={fontFamilyStyle} className={`min-h-screen ${theme.shell} p-4 text-slate-950`}>
-      <section className="mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col justify-center gap-5">
-        <header className="rounded-[2rem] border border-white/50 bg-white/90 p-5 text-center text-slate-950 shadow-lg">
-          <h1 className="text-4xl font-black sm:text-5xl">{title}</h1>
-          <div className="mt-3 space-y-1 text-sm font-bold text-slate-500">
+    <main data-testid="bank-shell" style={fontFamilyStyle} className={`h-[100dvh] overflow-hidden ${theme.shell} pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))] pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))] text-slate-950 sm:p-4`}>
+      <section data-testid="bank-home-layout" className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col gap-2 sm:gap-5">
+        <header data-testid="bank-home-header" className="shrink-0 rounded-[1.5rem] border border-white/50 bg-white/90 p-3 text-center text-slate-950 shadow-lg sm:rounded-[2rem] sm:p-5">
+          <h1 className="text-2xl font-black sm:text-5xl">{title}</h1>
+          <div className="mt-2 space-y-0.5 text-xs font-bold text-slate-500 sm:mt-3 sm:space-y-1 sm:text-sm">
             <p>- 내 계좌 버튼을 눌러 잔액과 거래 내역을 확인할 수 있어요.</p>
             <p>- 과제 완료 버튼을 눌러 과제를 확인하고 완료할 수 있어요.</p>
             <p>(※ 일부 과제는 허용된 학생만 완료할 수 있습니다.)</p>
           </div>
         </header>
 
-        <section role="region" aria-label="공개 과제 목록" className="rounded-[2rem] bg-white/90 p-5 shadow-lg">
-          <h2 className="text-2xl font-black">공개 과제 목록</h2>
-          {publicTasksLoading ? <p role="status" className="mt-3 rounded-xl bg-slate-50 p-4 font-bold text-slate-600">공개 과제를 불러오는 중입니다.</p> : null}
-          {publicTasksError ? <div className="mt-3 rounded-xl bg-rose-50 p-4 font-bold text-rose-700"><p>{publicTasksError}</p><button type="button" aria-label="공개 과제 다시 시도" onClick={() => void loadPublicTasks()} className="mt-2 rounded-lg bg-rose-700 px-3 py-2 text-white">다시 시도</button></div> : null}
-          {!publicTasksLoading && !publicTasksError && publicTasks.length === 0 ? <p className="mt-3 rounded-xl bg-slate-50 p-4 font-bold text-slate-600">현재 공개된 과제가 없습니다.</p> : null}
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">{publicTasks.map((task) => <button key={task.taskId} type="button" onClick={() => setPublicTask(task)} className={`rounded-2xl border ${theme.accentBorderAlt} ${theme.softBg} p-4 text-left ${theme.softText}`}><span className="block text-lg font-black">{task.title}</span><span className="mt-1 block text-sm font-bold">보상 {task.reward.toLocaleString()}{currencyUnit}</span><TaskStudentSummary task={task} compact /></button>)}</div>
+        <section role="region" aria-label="공개 과제 목록" className="flex min-h-0 flex-1 flex-col rounded-[1.5rem] bg-white/90 p-3 shadow-lg sm:rounded-[2rem] sm:p-5">
+          <h2 className="shrink-0 text-xl font-black sm:text-2xl">공개 과제 목록</h2>
+          <div data-testid="public-task-list-body" className="mt-2 min-h-0 flex-1 overflow-y-auto overscroll-contain sm:mt-3">
+            {publicTasksLoading ? <p role="status" className="rounded-xl bg-slate-50 p-3 font-bold text-slate-600 sm:p-4">공개 과제를 불러오는 중입니다.</p> : null}
+            {publicTasksError ? <div className="rounded-xl bg-rose-50 p-3 font-bold text-rose-700 sm:p-4"><p>{publicTasksError}</p><button type="button" aria-label="공개 과제 다시 시도" onClick={() => void loadPublicTasks()} className="mt-2 rounded-lg bg-rose-700 px-3 py-2 text-white">다시 시도</button></div> : null}
+            {!publicTasksLoading && !publicTasksError && publicTasks.length === 0 ? <p className="rounded-xl bg-slate-50 p-3 font-bold text-slate-600 sm:p-4">현재 공개된 과제가 없습니다.</p> : null}
+            <div className="grid gap-2 sm:grid-cols-2">{publicTasks.map((task) => <button key={task.taskId} type="button" onClick={() => setPublicTask(task)} className={`rounded-2xl border ${theme.accentBorderAlt} ${theme.softBg} p-3 text-left ${theme.softText} sm:p-4`}><span className="block text-base font-black sm:text-lg">{task.title}</span><span className="mt-1 block text-xs font-bold sm:text-sm">보상 {task.reward.toLocaleString()}{currencyUnit}</span><TaskStudentSummary task={task} compact /></button>)}</div>
+          </div>
         </section>
 
-        <section className="grid gap-4 rounded-[2rem] bg-white/90 p-5 shadow-lg sm:grid-cols-2">
-          <button type="button" onClick={openBalanceScan} className={`rounded-[1.5rem] border ${theme.accentBorder} ${theme.accentBg} px-5 py-12 text-3xl font-black shadow-sm`}>내 계좌</button>
-          <button type="button" onClick={openTaskScan} className={`rounded-[1.5rem] border ${theme.accentBorderAlt} ${theme.accentBgAlt} px-5 py-12 text-3xl font-black shadow-sm`}>과제 완료</button>
+        <section data-testid="bank-home-actions" className="grid shrink-0 grid-cols-2 gap-2 rounded-[1.5rem] bg-white/90 p-2 shadow-lg sm:gap-4 sm:rounded-[2rem] sm:p-5">
+          <button type="button" onClick={openBalanceScan} className={`rounded-[1rem] border ${theme.accentBorder} ${theme.accentBg} px-2 py-4 text-lg font-black shadow-sm sm:rounded-[1.5rem] sm:px-5 sm:py-8 sm:text-3xl`}>내 계좌</button>
+          <button type="button" onClick={openTaskScan} className={`rounded-[1rem] border ${theme.accentBorderAlt} ${theme.accentBgAlt} px-2 py-4 text-lg font-black shadow-sm sm:rounded-[1.5rem] sm:px-5 sm:py-8 sm:text-3xl`}>과제 완료</button>
         </section>
       </section>
 
@@ -379,13 +383,10 @@ export function BankApp() {
           {errorMessage ? <p className="rounded-2xl bg-rose-50 p-4 font-bold text-rose-700">{errorMessage}</p> : null}
           {!loading && !errorMessage && assignedTasks.length === 0 ? <p className="rounded-2xl bg-slate-50 p-4 font-bold text-slate-600">배정된 과제가 없습니다.</p> : null}
           <div className="space-y-2">
-            {assignedTasks.map((task) => (
-              <button key={task.taskId} type="button" onClick={() => openTaskDetail(task)} className={`w-full rounded-2xl border border-slate-200 ${theme.softBg} p-4 text-left font-black ${theme.softText}`}>
-                <span className="block text-lg">{task.title}</span>
-                <span className={`mt-1 block text-sm ${normalizeThemeColor(settings.themeColor) === 'black' ? 'text-slate-300' : 'text-slate-500'}`}>보상 {task.reward.toLocaleString()}{currencyUnit} · {getTaskStudentStatus(task, taskStudentId).completed === true ? '완료됨' : getTaskStudentStatus(task, taskStudentId).completed === false ? '미완료' : '완료 정보 없음'}</span>
-                <TaskStudentSummary task={task} compact />
-                {task.prerequisiteMessage ? <span className="mt-2 block rounded-xl bg-amber-100 p-2 text-xs text-amber-900">{task.prerequisiteMessage}</span> : null}
-              </button>
+            {assignedTaskChains.map((chain) => chain.tasks.length === 1 ? (
+              <TaskCard key={chain.tasks[0].taskId} task={chain.tasks[0]} studentId={taskStudentId} currencyUnit={currencyUnit} theme={theme} isBlackTheme={normalizeThemeColor(settings.themeColor) === 'black'} onOpen={openTaskDetail} />
+            ) : (
+              <TaskCarousel key={chain.tasks.map((task) => `${task.taskId}:${getTaskStudentStatus(task, taskStudentId).completed === true ? '1' : '0'}:${task.prerequisiteStatus ?? ''}`).join('|')} chain={chain} studentId={taskStudentId} currencyUnit={currencyUnit} theme={theme} isBlackTheme={normalizeThemeColor(settings.themeColor) === 'black'} onOpen={openTaskDetail} />
             ))}
           </div>
           <button type="button" onClick={openTaskScan} className="mt-3 w-full rounded-xl border border-slate-300 py-2 text-sm font-black text-slate-600">다른 학생 QR 인식</button>
@@ -397,13 +398,12 @@ export function BankApp() {
           <p data-testid="bank-task-description" className="whitespace-pre-wrap rounded-2xl bg-slate-50 p-5 text-lg font-bold leading-relaxed text-slate-700">{selectedTask.description || '과제 설명이 없습니다.'}</p>
           <p className="mt-3 rounded-2xl bg-amber-50 p-4 text-center font-black text-amber-800">보상<br />{selectedTask.reward.toLocaleString()}{currencyUnit}</p>
           <TaskStudentSummary task={selectedTask} />
+          {getTaskStudentStatus(selectedTask, taskStudentId).completed === true ? <p className="sr-only">완료됨</p> : null}
           {selectedTask.prerequisiteTitle ? <p className="mt-3 rounded-xl bg-slate-100 p-3 font-bold">선행 과제: {selectedTask.prerequisiteTitle}</p> : null}
           {selectedTask.prerequisiteMessage ? <p className="mt-3 rounded-xl bg-amber-100 p-3 font-bold text-amber-900">{selectedTask.prerequisiteMessage}</p> : null}
-          {getTaskStudentStatus(selectedTask, taskStudentId).completed === true ? (
-            <p className="mt-4 rounded-2xl bg-emerald-50 p-4 text-center font-black text-emerald-700">완료됨</p>
-          ) : (
+          {getTaskStudentStatus(selectedTask, taskStudentId).completed !== true ? (
             <button type="button" disabled={selectedTask.prerequisiteStatus === 'REQUIRED' || selectedTask.prerequisiteStatus === 'UNAVAILABLE'} onClick={() => void completeSelectedTask()} className={`mt-4 w-full rounded-2xl ${theme.accentBg} py-4 text-xl font-black disabled:cursor-not-allowed disabled:opacity-50`}>완료하기</button>
-          )}
+          ) : null}
         </Modal>
       ) : null}
 
@@ -429,6 +429,111 @@ export function BankApp() {
       ) : null}
     </main>
   );
+}
+
+type TaskCardProps = {
+  task: BankTask;
+  studentId: string;
+  currencyUnit: string;
+  theme: (typeof BANK_THEME)[ThemeColor];
+  isBlackTheme: boolean;
+  onOpen: (task: BankTask) => void;
+  reserveCarouselFooter?: boolean;
+};
+
+function TaskCard({ task, studentId, currencyUnit, theme, isBlackTheme, onOpen, reserveCarouselFooter = false }: TaskCardProps) {
+  const completed = getTaskStudentStatus(task, studentId).completed === true;
+  const locked = task.prerequisiteStatus === 'REQUIRED' || task.prerequisiteStatus === 'UNAVAILABLE';
+  const accessibleStatus = completed ? ', 완료됨' : locked ? ', 완료 불가' : '';
+  return (
+    <button
+      type="button"
+      aria-label={`${task.title}${accessibleStatus}`}
+      onClick={() => onOpen(task)}
+      className={`relative w-full overflow-hidden rounded-2xl border border-slate-200 ${theme.softBg} p-4 ${reserveCarouselFooter ? 'pb-11' : ''} text-left font-black ${theme.softText} ${completed || locked ? 'brightness-75 opacity-70' : ''}`}
+    >
+      <span className="block text-lg">{task.title}</span>
+      <span className={`mt-1 block text-sm ${isBlackTheme ? 'text-slate-300' : 'text-slate-500'}`}>보상 {task.reward.toLocaleString()}{currencyUnit}</span>
+      <TaskStudentSummary task={task} compact />
+      {task.prerequisiteMessage ? <span className="mt-2 block rounded-xl bg-amber-100 p-2 text-xs text-amber-900">{task.prerequisiteMessage}</span> : null}
+      {completed ? <span aria-hidden="true" className={`absolute right-4 top-1/2 -translate-y-1/2 rotate-[-12deg] rounded border-4 px-3 py-1 text-xl font-black ${isBlackTheme ? 'border-white text-white' : 'border-emerald-800 text-emerald-900'}`}>완료됨</span> : null}
+    </button>
+  );
+}
+
+function TaskCarousel({ chain, studentId, currencyUnit, theme, isBlackTheme, onOpen }: Omit<TaskCardProps, 'task' | 'reserveCarouselFooter'> & { chain: StudentTaskChain<BankTask> }) {
+  const [activeIndex, setActiveIndex] = useState(chain.initialIndex);
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+
+  const showSlide = useCallback((index: number) => {
+    const nextIndex = Math.max(0, Math.min(chain.tasks.length - 1, index));
+    setActiveIndex(nextIndex);
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    const left = nextIndex * scroller.clientWidth;
+    scrollTaskCarousel(scroller, left, 'smooth');
+  }, [chain.tasks.length]);
+
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    const left = chain.initialIndex * scroller.clientWidth;
+    scrollTaskCarousel(scroller, left);
+  }, [chain.initialIndex]);
+
+  return (
+    <section role="region" aria-label={`${chain.tasks[0].title} 연결 과제 묶음`} className="relative rounded-2xl border border-slate-200 bg-white/60 p-2">
+      <div
+        ref={scrollerRef}
+        className="flex touch-pan-x snap-x snap-mandatory overflow-x-auto overscroll-x-contain"
+        onScroll={(event) => {
+          const width = event.currentTarget.clientWidth;
+          if (width > 0) setActiveIndex(Math.max(0, Math.min(chain.tasks.length - 1, Math.round(event.currentTarget.scrollLeft / width))));
+        }}
+      >
+        {chain.tasks.map((task, index) => (
+          <div
+            key={task.taskId}
+            role="group"
+            aria-label={`${index + 1} / ${chain.tasks.length}: ${task.title}`}
+            aria-hidden={index === activeIndex ? undefined : true}
+            inert={index === activeIndex ? undefined : true}
+            className="min-w-full snap-center"
+          >
+            <TaskCard task={task} studentId={studentId} currencyUnit={currencyUnit} theme={theme} isBlackTheme={isBlackTheme} onOpen={onOpen} reserveCarouselFooter />
+          </div>
+        ))}
+      </div>
+      <button type="button" aria-label="이전 과제" disabled={activeIndex === 0} onClick={() => showSlide(activeIndex - 1)} className="absolute bottom-3 left-4 z-10 rounded-lg bg-white/90 px-3 py-1 font-black shadow-sm disabled:opacity-40">‹</button>
+      <div data-testid="task-carousel-indicator" className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 text-xl font-black tracking-widest text-slate-600">
+          <span aria-hidden="true">{chain.tasks.map((_, index) => index === activeIndex ? '○' : '•').join('')}</span>
+          {chain.tasks.map((task, index) => (
+            <button
+              key={task.taskId}
+              type="button"
+              aria-label={`${index + 1}번째 과제 보기`}
+              aria-current={index === activeIndex ? 'true' : undefined}
+              onClick={() => showSlide(index)}
+              className="absolute inset-y-0 opacity-0 focus-visible:z-20 focus-visible:opacity-100 focus-visible:bg-white/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+              style={{ left: `${index * (100 / chain.tasks.length)}%`, width: `${100 / chain.tasks.length}%` }}
+            />
+          ))}
+      </div>
+      <button type="button" aria-label="다음 과제" disabled={activeIndex === chain.tasks.length - 1} onClick={() => showSlide(activeIndex + 1)} className="absolute bottom-3 right-4 z-10 rounded-lg bg-white/90 px-3 py-1 font-black shadow-sm disabled:opacity-40">›</button>
+    </section>
+  );
+}
+
+function scrollTaskCarousel(scroller: HTMLDivElement, left: number, behavior?: ScrollBehavior) {
+  try {
+    if (typeof scroller.scrollTo === 'function') {
+      scroller.scrollTo({ left, behavior });
+      return;
+    }
+  } catch {
+    // Older browsers and some test DOMs expose scrollTo without implementing it.
+  }
+  scroller.scrollLeft = left;
 }
 
 function TaskStudentSummary({ task, compact = false }: { task: BankTask; compact?: boolean }) {
