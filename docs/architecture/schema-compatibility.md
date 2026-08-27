@@ -20,7 +20,10 @@
 
 - `Tasks`는 기존 9개 컬럼 뒤에 현재/예약 recurrence rule 컬럼 19개와 과제 가용 기간·선행 과제·다중 요일 컬럼 5개를 append한 33개 canonical 컬럼을 사용합니다. 추가 순서는 `availableFrom`, `dueAt`, `prerequisiteTaskId`, `recurrenceWeekdays`, `pendingRecurrenceWeekdays`입니다.
 - `TaskAssignments`는 cycle별 학생 배정을 보존하는 15개 컬럼의 append-only 원장입니다.
-- `TaskCompletions`는 기존 10개 컬럼을 그대로 앞에 유지하고 cycle/rule/assignment 스냅샷 컬럼 9개를 뒤에 추가합니다.
+- `TaskCompletions`는 기존 10개 컬럼을 그대로 앞에 유지하고 cycle/rule/assignment 스냅샷 9개와 BANK 재시도용 `operationId`, `operationPayloadHash` 2개를 **맨 뒤에만** 추가한 21개 canonical 컬럼을 사용합니다. 기존 10/19열 행은 operation 값이 없는 레거시 행으로 계속 읽으며 삭제·재배열·전면 재작성하지 않습니다.
+- BANK 완료의 정상 순서는 logical completion identity(`taskId + taskInstanceId + cycleId + studentId + latest reset generation`)에서 결정한 checkpoint/transaction ID와 같은 client operation identity를 유지한 `PENDING` checkpoint append → 학생 잔액 갱신 → `BALANCE_APPLIED` checkpoint append → 결정적 보상 `Transactions` 행 확인/append → `SUCCESS` checkpoint append입니다. `SUCCESS`만 과제 완료로 투영하며 nonterminal checkpoint는 성공 완료로 세지 않습니다.
+- 같은 operation의 재시도는 fresh 원장과 결정적 transaction ID를 확인해 누락 단계부터 이어갑니다. process-local queue 안에서 다른 operation ID가 같은 logical completion을 요청해도 기존 SUCCESS를 alias해 한 잔액 target/transaction identity로 수렴합니다. 같은 ID에 다른 payload hash가 오면 충돌로 거부하고, 원장 상태가 모순되어 자동 판정할 수 없으면 추가 보상 없이 수동 확인 상태로 중단합니다.
+- 이 수렴은 process-local serialization과 fresh reconciliation 경계입니다. Google Sheets에는 원자적 unique insert/CAS가 없으므로 서로 다른 Vercel instance가 체크포인트 이전에 완전히 동시에 시작하는 경우나 서로 다른 과제 보상이 같은 학생 잔액을 동시에 바꾸는 경우까지 distributed exactly-once를 보장하지 않습니다.
 - 현재 cycle의 해석은 `taskInstanceId`, `cycleId`, `ruleVersion`, `timeZone` 스냅샷을 기준으로 합니다. schedule·학급 시간대 변경은 현재 시각부터 더 높은 rule version으로 즉시 적용되며, 직전 배정·완료 상태는 보상 없이 새 cycle로 승계됩니다. 그 다음 자연 경계에서는 각각의 reset flag가 `true`인 상태만 초기화되고, `false`인 완료는 계속 승계되어 재보상을 차단합니다. 이미 기록된 과거 cycle 원장은 소급 변경하지 않습니다.
 - 신규 `Tasks`에는 `maxCompletionsPerStudent`를 생성하지 않습니다. 레거시 인스턴스에서는 아래 비파괴 호환 원칙을 유지합니다.
 - `recurrenceWeekdays`와 `pendingRecurrenceWeekdays`는 주간 반복의 canonical 다중 요일 값입니다. 레거시 `recurrenceWeekday`/`pendingRecurrenceWeekday`는 단일 요일 fallback으로 읽고, 다중 요일을 저장할 때는 레거시 셀을 비웁니다.

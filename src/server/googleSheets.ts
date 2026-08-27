@@ -32,6 +32,7 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
   private readonly rows = new Map<OperationalSheetName, Promise<string[][]>>();
   private readonly sleep: (milliseconds: number) => Promise<void>;
   private readonly maxReadAttempts: number;
+  private sheetsClient: ReturnType<typeof createSheetsClient> | undefined;
 
   constructor(
     private readonly spreadsheetId: string,
@@ -40,6 +41,17 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
   ) {
     this.sleep = options.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
     this.maxReadAttempts = Math.max(1, Math.min(3, options.maxReadAttempts ?? 3));
+  }
+
+  private getSheetsClient(): ReturnType<typeof createSheetsClient> {
+    const existing = this.sheetsClient;
+    if (existing) return existing;
+    const pending = createSheetsClient(this.request);
+    this.sheetsClient = pending;
+    pending.catch(() => {
+      if (this.sheetsClient === pending) this.sheetsClient = undefined;
+    });
+    return pending;
   }
 
   async getRows(sheetName: OperationalSheetName): Promise<string[][]> {
@@ -65,10 +77,10 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
     const missingNames = Array.from(new Set(sheetNames)).filter((sheetName) => !this.rows.has(sheetName));
     if (missingNames.length === 0) return;
 
-    const sheets = await createSheetsClient(this.request);
+    const sheets = await this.getSheetsClient();
     const response = await this.readWithRetry(() => sheets.spreadsheets.values.batchGet({
       spreadsheetId: this.spreadsheetId,
-      ranges: missingNames.map((sheetName) => SHEET_RANGES[sheetName]),
+      ranges: missingNames.map((sheetName) => isRecurringSheet(sheetName) ? quoteSheetTitle(sheetName) : SHEET_RANGES[sheetName]),
     }));
     const valueRanges = response.data.valueRanges ?? [];
     if (valueRanges.length !== missingNames.length) {
@@ -80,7 +92,7 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
   }
 
   private async readRows(sheetName: OperationalSheetName): Promise<string[][]> {
-    const sheets = await createSheetsClient(this.request);
+    const sheets = await this.getSheetsClient();
     try {
       const range = isRecurringSheet(sheetName) ? quoteSheetTitle(sheetName) : SHEET_RANGES[sheetName];
       const response = await this.readWithRetry(() => sheets.spreadsheets.values.get({ spreadsheetId: this.spreadsheetId, range }));
@@ -99,7 +111,7 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
   async updateCells(sheetName: OperationalSheetName, updates: SheetCellUpdate[]): Promise<void> {
     if (updates.length === 0) return;
     const headers = (await this.getRows(sheetName))[0] ?? [];
-    const sheets = await createSheetsClient(this.request);
+    const sheets = await this.getSheetsClient();
     const data = updates.map((update) => {
       const columnIndex = headers.indexOf(update.columnName);
 
@@ -133,7 +145,7 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
         throw new RangeError(`Invalid one-based column number: ${update.columnNumber}`);
       }
     }
-    const sheets = await createSheetsClient(this.request);
+    const sheets = await this.getSheetsClient();
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: this.spreadsheetId,
       requestBody: {
@@ -151,7 +163,7 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
 
   async updateHeaderRow(sheetName: OperationalSheetName, headers: string[]): Promise<void> {
     if (headers.length === 0) return;
-    const sheets = await createSheetsClient(this.request);
+    const sheets = await this.getSheetsClient();
     await sheets.spreadsheets.values.update({
       spreadsheetId: this.spreadsheetId,
       range: a1Range(sheetName, `A1:${columnIndexToLetter(headers.length - 1)}1`),
@@ -167,7 +179,7 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
 
   async appendRows(sheetName: OperationalSheetName, rows: string[][]): Promise<void> {
     if (rows.length === 0) return;
-    const sheets = await createSheetsClient(this.request);
+    const sheets = await this.getSheetsClient();
     let range: string | null = null;
     try {
       range = await this.resolveLiveRange(sheets, sheetName);
@@ -191,7 +203,7 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
     if (uniqueRows.some((rowNumber) => rowNumber <= 1)) throw new Error('헤더 행은 삭제할 수 없습니다.');
     if (uniqueRows.length === 0) return;
 
-    const sheets = await createSheetsClient(this.request);
+    const sheets = await this.getSheetsClient();
     const sheetId = await this.getSheetId(sheetName);
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId: this.spreadsheetId,
@@ -212,7 +224,7 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
   }
 
   async lookupSheet(sheetName: OperationalSheetName): Promise<SheetLookupResult> {
-    const sheets = await createSheetsClient(this.request);
+    const sheets = await this.getSheetsClient();
     const response = await this.readWithRetry(() => sheets.spreadsheets.get({
       spreadsheetId: this.spreadsheetId,
       fields: 'sheets.properties(sheetId,title,gridProperties.columnCount)',
@@ -225,7 +237,7 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
 
   async createSheetWithHeader(sheetName: OperationalSheetName, headers: readonly string[]): Promise<void> {
     if (headers.length === 0) throw new RangeError('header must contain at least one column');
-    const sheets = await createSheetsClient(this.request);
+    const sheets = await this.getSheetsClient();
     // Supplying the ID lets addSheet and updateCells share one atomic batch request.
     const sheetId = Math.floor(Math.random() * 2_000_000_000) + 1;
     try {
@@ -264,7 +276,7 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
     if (!lookup.found || lookup.info.columnCount !== expectedColumnCount) {
       throw new MigrationConflictError(sheetName, 'grid width changed before expansion');
     }
-    const sheets = await createSheetsClient(this.request);
+    const sheets = await this.getSheetsClient();
     await sheets.spreadsheets.batchUpdate({ spreadsheetId: this.spreadsheetId, requestBody: { requests: [{
       appendDimension: { sheetId: lookup.info.sheetId, dimension: 'COLUMNS', length: requiredColumnCount - expectedColumnCount },
     }] } });
@@ -274,7 +286,7 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
     if (headers.length === 0) return;
     assertValidColumnIndex(startColumn);
     assertValidColumnIndex(startColumn + headers.length - 1);
-    const sheets = await createSheetsClient(this.request);
+    const sheets = await this.getSheetsClient();
     await sheets.spreadsheets.values.update({
       spreadsheetId: this.spreadsheetId,
       range: a1Range(sheetName, `${columnIndexToLetter(startColumn)}1:${columnIndexToLetter(startColumn + headers.length - 1)}1`),
@@ -294,7 +306,7 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
     }
     if (expected.header.length === 0) return;
 
-    const sheets = await createSheetsClient(this.request);
+    const sheets = await this.getSheetsClient();
     const response = await this.readWithRetry(() => sheets.spreadsheets.values.get({
       spreadsheetId: this.spreadsheetId,
       range: a1Range(sheetName, `A1:${columnIndexToLetter(expected.header.length - 1)}1`),
@@ -320,7 +332,7 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
       throw new MigrationConflictError(sheetName, 'sheet identity or grid width changed before header update');
     }
 
-    const sheets = await createSheetsClient(this.request);
+    const sheets = await this.getSheetsClient();
     const response = await this.readWithRetry(() => sheets.spreadsheets.values.get({
       spreadsheetId: this.spreadsheetId,
       range: a1Range(sheetName, `A1:${columnIndexToLetter(requiredColumnCount - 1)}1`),
@@ -404,11 +416,17 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
       try {
         return await operation();
       } catch (error) {
-        if (!isQuotaError(error)) throw error;
+        if (!isTransientReadError(error)) throw error;
         if (attempt === this.maxReadAttempts) {
+          if (isQuotaError(error)) {
+            throw new SheetProviderError(
+              'QUOTA_EXCEEDED',
+              'Google Sheets 읽기 할당량을 초과했습니다. 잠시 후 다시 시도해 주세요.',
+            );
+          }
           throw new SheetProviderError(
-            'QUOTA_EXCEEDED',
-            'Google Sheets 읽기 할당량을 초과했습니다. 잠시 후 다시 시도해 주세요.',
+            'TRANSIENT_UNAVAILABLE',
+            'Google Sheets 읽기가 일시적으로 실패했습니다. 잠시 후 다시 시도해 주세요.',
           );
         }
         await this.sleep(retryDelayMilliseconds(error, attempt));
@@ -494,6 +512,17 @@ function isQuotaError(error: unknown): boolean {
     ? error.response as { status?: unknown; data?: { error?: { status?: unknown } } }
     : undefined;
   return response?.status === 429 || response?.data?.error?.status === 'RESOURCE_EXHAUSTED';
+}
+
+function isTransientReadError(error: unknown): boolean {
+  if (isQuotaError(error)) return true;
+  if (!error || typeof error !== 'object') return false;
+  const response = 'response' in error && error.response && typeof error.response === 'object'
+    ? error.response as { status?: unknown }
+    : undefined;
+  if ([408, 500, 502, 503, 504].includes(Number(response?.status))) return true;
+  const code = 'code' in error ? String(error.code) : '';
+  return ['ETIMEDOUT', 'ECONNRESET', 'ECONNABORTED', 'EAI_AGAIN'].includes(code);
 }
 
 function retryDelayMilliseconds(error: unknown, attempt: number): number {

@@ -2414,11 +2414,12 @@ describe('sheets repository', () => {
 
   it('attempts a canonical task reward transaction append when its header read fails', async () => {
     const appended: Array<{ sheetName: string; values: string[] }> = [];
+    let transactionReads = 0;
     const fakeStore = {
       ...fakeReader,
       async getRows(sheetName: keyof typeof sheetRows) {
         if (sheetName === 'TaskCompletions') return [sheetRows.TaskCompletions[0]];
-        if (sheetName === 'Transactions') throw new Error('Transactions header read failed');
+        if (sheetName === 'Transactions' && transactionReads++ === 0) throw new Error('Transactions header read failed');
         return sheetRows[sheetName];
       },
       async updateCell() {},

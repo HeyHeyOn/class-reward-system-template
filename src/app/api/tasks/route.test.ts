@@ -5,6 +5,7 @@ import { isAuthorizedAdminRequest } from '@/server/apiAuth';
 import { listTaskCycleProjections } from '@/server/repositories/sheets/taskHistoryQueries';
 import { projectTaskCycleState } from '@/domain/taskCycleState';
 import type { ClassTask, TaskAssignment } from '@/domain/types';
+import { buildStudentTaskProjection } from '@/server/studentTaskProjection';
 import { GET, POST } from './route';
 
 vi.mock('@/server/apiAuth', () => ({
@@ -14,6 +15,10 @@ vi.mock('@/server/apiAuth', () => ({
 vi.mock('@/server/googleSheets', () => ({ createConfiguredSheetsReader: vi.fn(), createConfiguredSheetsStore: vi.fn() }));
 vi.mock('@/server/sheetsRepository', () => ({ createTask: vi.fn() }));
 vi.mock('@/server/repositories/sheets/taskHistoryQueries', () => ({ listTaskCycleProjections: vi.fn() }));
+vi.mock('@/server/studentTaskProjection', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/server/studentTaskProjection')>();
+  return { ...actual, buildStudentTaskProjection: vi.fn(actual.buildStudentTaskProjection) };
+});
 
 const projected = [{
   taskId: 'T1', title: 'Read', description: '', reward: 5, isActive: true, sortOrder: 1,
@@ -56,6 +61,7 @@ describe('GET /api/tasks', () => {
 
     expect(response.status).toBe(200);
     expect(listTaskCycleProjections).toHaveBeenCalledWith({}, { studentId: 'S1', includeInactive: true });
+    expect(buildStudentTaskProjection).toHaveBeenCalledWith(projected, 'S1', expect.any(String));
   });
 
   it('returns only the requested student status and hides other students from the public student projection', async () => {

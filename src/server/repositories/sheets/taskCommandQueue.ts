@@ -1,9 +1,24 @@
 const commandQueues = new Map<string, Promise<void>>();
 
+type TaskCommandQueueOptions = {
+  now?: () => number;
+  onStart?: (timing: { queueWaitMs: number }) => void;
+};
+
 /** Process-local serialization only; this is not a cross-process exactly-once claim. */
-export function enqueueTaskCommand<T>(queueKey: string, operation: () => Promise<T>): Promise<T> {
+export function enqueueTaskCommand<T>(
+  queueKey: string,
+  operation: () => Promise<T>,
+  options: TaskCommandQueueOptions = {},
+): Promise<T> {
+  const now = options.now ?? Date.now;
+  const queuedAt = now();
+  const run = () => {
+    options.onStart?.({ queueWaitMs: Math.max(0, now() - queuedAt) });
+    return operation();
+  };
   const previous = commandQueues.get(queueKey) ?? Promise.resolve();
-  const result = previous.then(operation, operation);
+  const result = previous.then(run, run);
   const tail = result.then(() => undefined, () => undefined);
   commandQueues.set(queueKey, tail);
   return result.finally(() => {

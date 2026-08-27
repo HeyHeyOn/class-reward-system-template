@@ -40,7 +40,7 @@ export type HeaderWritePrecondition = {
   header: readonly string[];
 };
 
-export type SheetProviderErrorReason = 'SHEET_ALREADY_EXISTS' | 'QUOTA_EXCEEDED';
+export type SheetProviderErrorReason = 'SHEET_ALREADY_EXISTS' | 'QUOTA_EXCEEDED' | 'TRANSIENT_UNAVAILABLE';
 
 /** A provider fact, rather than a guess based on a localized error message. */
 export class SheetProviderError extends Error {

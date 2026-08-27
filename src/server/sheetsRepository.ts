@@ -31,6 +31,7 @@ import {
 import {
   readTaskCycleHistory,
   readTaskCycleState,
+  readTaskCompletionsFresh,
   type TaskCycleHistoryEvent,
 } from '@/server/repositories/sheets/taskCycleQueries';
 import {
@@ -47,6 +48,8 @@ import {
   requireColumns,
   REQUIRED_TASK_COMPLETION_COLUMNS,
 } from '@/server/sheetsRows';
+import { emitOperationStage } from '@/server/operationTelemetry';
+import type { StudentTaskProjectionDto } from '@/server/studentTaskProjection';
 import type {
   OperationalSheetName,
   RecurringSchemaMigrationStore,
@@ -128,6 +131,15 @@ export type TaskCompletionResult = {
   task: ClassTask;
   student: Student;
   completion: TaskCompletion;
+  tasks?: StudentTaskProjectionDto[];
+  operation?: { operationId: string; state: 'SUCCESS' };
+};
+
+export type TaskCompletionOperation = {
+  requestId: string;
+  operationId: string;
+  operationPayloadHash: string;
+  buildSafeProjection: (now: string) => Promise<StudentTaskProjectionDto[]>;
 };
 
 export type StudentBulkBalanceMode = 'set' | 'add' | 'subtract';
@@ -801,17 +813,35 @@ function assertNoRemainingTaskReferences(
   if (dependent) throw new Error(`선행 과제로 참조 중인 과제는 삭제할 수 없습니다: ${dependent.task.title}`);
 }
 
-export async function completeTaskForStudent(store: RecurringSchemaMigrationStore, taskId: string, studentId: string): Promise<TaskCompletionResult> {
+export async function completeTaskForStudent(
+  store: RecurringSchemaMigrationStore,
+  taskId: string,
+  studentId: string,
+  operation?: TaskCompletionOperation,
+): Promise<TaskCompletionResult> {
   return enqueueTaskCommand(taskCommandQueueKey(''), async () => {
+    let schemaReady = false;
+    if (store.primeRows) {
+      await store.primeRows(['Tasks', 'Students', 'TaskAssignments', 'TaskCompletions']);
+      const [taskRows, assignmentRows, completionRows] = await Promise.all([
+        store.getRows('Tasks'), store.getRows('TaskAssignments'), store.getRows('TaskCompletions'),
+      ]);
+      schemaReady = TASK_SCHEMA_HEADERS.every((header) => taskRows[0]?.includes(header))
+        && TASK_ASSIGNMENT_HEADERS.every((header) => assignmentRows[0]?.includes(header))
+        && TASK_COMPLETION_SCHEMA_HEADERS.every((header) => completionRows[0]?.includes(header));
+    }
     // Every decision that authorizes a reward is based on state re-read inside the same
     // process-global critical section immediately before the completion mutation.
+    const existingOperation = operation
+      ? (await readTaskCompletionsFresh(store)).some((event) => event.operationId === operation.operationId)
+      : false;
     const record = await getTaskRecordById(store, taskId.trim());
-    if (!record || !record.task.isActive) throw new Error('완료할 수 있는 과제가 아닙니다.');
+    if (!record || (!existingOperation && !record.task.isActive)) throw new Error('완료할 수 있는 과제가 아닙니다.');
     const now = new Date().toISOString();
-    if (!isTaskAvailable(record.task, now)) throw new Error('현재 완료할 수 있는 과제가 아닙니다.');
+    if (!existingOperation && !isTaskAvailable(record.task, now)) throw new Error('현재 완료할 수 있는 과제가 아닙니다.');
     const studentRecord = await getStudentRecordById(store, studentId.trim());
-    if (!studentRecord || studentRecord.student.status !== 'ACTIVE') throw new Error('학생 정보를 찾을 수 없습니다.');
-    if (record.task.prerequisiteTaskId) {
+    if (!studentRecord || (!existingOperation && studentRecord.student.status !== 'ACTIVE')) throw new Error('학생 정보를 찾을 수 없습니다.');
+    if (!existingOperation && record.task.prerequisiteTaskId) {
       const prerequisite = await getTaskById(store, record.task.prerequisiteTaskId);
       if (!prerequisite) throw new Error('선행 과제를 찾을 수 없습니다.');
       if (!prerequisite.isActive || !isTaskAvailable(prerequisite, now)) {
@@ -830,15 +860,46 @@ export async function completeTaskForStudent(store: RecurringSchemaMigrationStor
       studentRowNumber: studentRecord.rowNumber,
       completed: true,
       source: 'BANK',
+      schemaReady,
+      ...(operation ? {
+        operationId: operation.operationId,
+        operationPayloadHash: operation.operationPayloadHash,
+      } : {}),
       now,
     });
     if (!mutation.completion) throw new Error('과제 완료 처리에 실패했습니다.');
-    return {
-      task: record.task,
+    const baseResult = {
+      task: operation ? { ...record.task, reward: mutation.completion.reward } : record.task,
       student: { ...studentRecord.student, balance: mutation.balanceAfter },
       completion: mutation.completion,
     };
-  });
+    if (!operation) return baseResult;
+    const projectionStartedAt = Date.now();
+    const tasks = await operation.buildSafeProjection(now);
+    if (!Array.isArray(tasks)) throw new Error('과제 projection을 확인할 수 없습니다.');
+    emitOperationStage({
+      requestId: operation.requestId,
+      operationId: operation.operationId,
+      stage: 'safe_projection',
+      durationMs: Date.now() - projectionStartedAt,
+      resultCode: 'SUCCESS',
+      retryCount: 0,
+    });
+    return {
+      ...baseResult,
+      tasks,
+      operation: { operationId: operation.operationId, state: 'SUCCESS' },
+    };
+  }, operation ? {
+    onStart: ({ queueWaitMs }) => emitOperationStage({
+      requestId: operation.requestId,
+      operationId: operation.operationId,
+      stage: 'queue_wait',
+      durationMs: queueWaitMs,
+      resultCode: queueWaitMs >= 1_000 ? 'SLOW' : 'OK',
+      retryCount: 0,
+    }),
+  } : undefined);
 }
 
 export async function getTransactions(reader: SheetsReader): Promise<Transaction[]> {

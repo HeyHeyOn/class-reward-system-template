@@ -26,6 +26,7 @@ export type TaskAssignmentMutation = {
   source: Extract<TaskAssignmentSource, 'ADMIN' | 'QR'>;
   now?: string;
   note?: string;
+  schemaReady?: boolean;
 };
 
 export type TaskAssignmentMutationResult = {
@@ -84,8 +85,8 @@ export async function updateTaskAssignmentsBatch(
     const [records, studentRows, assignmentRows, completionRows] = await Promise.all([
       getTaskRecords(store),
       store.getRows('Students'),
-      store.getRows('TaskAssignments'),
-      store.getRows('TaskCompletions'),
+      store.getRowsFresh ? store.getRowsFresh('TaskAssignments') : store.getRows('TaskAssignments'),
+      store.getRowsFresh ? store.getRowsFresh('TaskCompletions') : store.getRows('TaskCompletions'),
     ]);
     const [studentHeaders, ...studentDataRows] = studentRows;
     if (!studentHeaders) throw new Error('학생 정보를 찾을 수 없습니다.');
@@ -178,7 +179,11 @@ export async function updateTaskAssignmentsBatch(
         }
     }
 
-    const warnings = await mirrorBatchAssignments(context, recordsById);
+    const warnings = await mirrorBatchAssignments(
+      context,
+      recordsById,
+      new Set(requestedTargets.map((target) => target.taskId)),
+    );
     const result: TaskBatchAssignmentResult = { appliedCount, failures };
     if (warnings.length > 0) result.warnings = warnings;
     if (abortedAt >= 0) {
@@ -440,25 +445,29 @@ function createBatchCompletion(input: {
 async function mirrorBatchAssignments(
   context: BatchMutationContext,
   recordsById: Map<string, { task: ClassTask; rowNumber: number }>,
+  requestedTaskIds: Set<string>,
 ): Promise<TaskBatchAssignmentWarning[]> {
-  if (context.assignmentTouchedTaskIds.size === 0) return [];
+  const mirrorTaskIds = Array.from(requestedTaskIds);
+  if (mirrorTaskIds.length === 0) return [];
   let observedAssignments: TaskAssignment[];
   try {
     observedAssignments = await readFreshTaskAssignments(context.store);
   } catch {
-    return Array.from(context.assignmentTouchedTaskIds, (taskId) => ({
+    return mirrorTaskIds.map((taskId) => ({
       taskId, code: LEGACY_MIRROR_WARNING,
     }));
   }
   const warnings: TaskBatchAssignmentWarning[] = [];
-  for (const taskId of context.assignmentTouchedTaskIds) {
+  for (const taskId of mirrorTaskIds) {
     const record = recordsById.get(taskId)!;
     const state = projectTaskCycleState({
       task: record.task, now: context.now, assignments: observedAssignments, completions: context.completions,
     });
+    const allowedStudentIds = state.assignedStudentIds.join(',');
+    if (record.task.allowedStudentIds.join(',') === allowedStudentIds) continue;
     try {
       await context.store.updateCell(
-        'Tasks', record.rowNumber, 'allowedStudentIds', state.assignedStudentIds.join(','),
+        'Tasks', record.rowNumber, 'allowedStudentIds', allowedStudentIds,
       );
     } catch {
       warnings.push({ taskId, code: LEGACY_MIRROR_WARNING });
@@ -532,14 +541,16 @@ export async function mutateTaskAssignmentNow(
     throw new Error('task assignment mutation requires a task instance and schedule');
   }
 
-  await migrateRecurringTaskSchema(store);
+  if (!mutation.schemaReady) await migrateRecurringTaskSchema(store);
   const now = mutation.now ?? new Date().toISOString();
   const effectiveSchedule = resolveTaskSchedule({
     currentSchedule: mutation.task.schedule,
     pendingSchedule: mutation.task.pendingSchedule ?? null,
     now,
   });
-  const assignmentRows = await store.getRows('TaskAssignments');
+  const assignmentRows = store.getRowsFresh
+    ? await store.getRowsFresh('TaskAssignments')
+    : await store.getRows('TaskAssignments');
   const [assignmentHeaders, ...assignmentDataRows] = assignmentRows;
   if (!assignmentHeaders) throw new Error('TaskAssignments 시트에 헤더가 없습니다.');
   const assignmentHeaderIndex = createHeaderIndex(assignmentHeaders);

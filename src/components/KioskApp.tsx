@@ -225,7 +225,7 @@ export function KioskApp() {
     return <LoadingScreen title="시트 정보 불러오는 중" message="매점 상품과 테마 설정을 불러오는 중입니다." />;
   }
 
-  const quantityButtonClass = `relative z-10 flex h-[clamp(2rem,5vw,2.25rem)] w-[clamp(2rem,5vw,2.25rem)] shrink-0 touch-manipulation items-center justify-center rounded-lg ${theme.accentSoft} text-[clamp(1rem,2.8vw,1.25rem)] font-black ${theme.accentText}`;
+  const quantityButtonClass = `relative z-10 flex h-[clamp(2rem,5vw,2.25rem)] w-[clamp(2rem,5vw,2.25rem)] shrink-0 touch-manipulation items-center justify-center rounded-lg ${themeColor === 'white' ? `${theme.accentSolid} ${theme.accentOnSolid}` : `${theme.accentSoft} ${theme.accentText}`} text-[clamp(1rem,2.8vw,1.25rem)] font-black`;
 
   function addToCart(productId: string) {
     cartGenerationRef.current += 1;
@@ -525,7 +525,7 @@ export function KioskApp() {
                 {cartDetails.map((item) => {
                   const snapshot = currentPreview?.items.find((candidate) => candidate.productId === item.productId);
                   return (
-                  <div key={item.productId} data-testid="cart-item-row" className={`grid grid-cols-[minmax(0,2fr)_auto_minmax(3.5rem,1fr)] items-center gap-x-2 gap-y-1 rounded-xl border ${theme.border} ${theme.surfaceRaised} px-2 py-1.5 text-[clamp(0.68rem,2.2vw,1rem)] shadow-sm landscape:grid-cols-[minmax(0,2fr)_auto_minmax(3.5rem,1fr)] sm:gap-x-3 sm:px-3 sm:py-2`}>
+                  <div key={item.productId} data-testid="cart-item-row" className={`grid grid-cols-[minmax(0,2fr)_auto_minmax(3.5rem,1fr)] items-center gap-x-2 gap-y-1 rounded-xl border ${theme.border} ${themeColor === 'white' ? theme.contentCard : theme.surfaceRaised} px-2 py-1.5 text-[clamp(0.68rem,2.2vw,1rem)] shadow-sm landscape:grid-cols-[minmax(0,2fr)_auto_minmax(3.5rem,1fr)] sm:gap-x-3 sm:px-3 sm:py-2`}>
                     <div className="flex min-w-0 items-center gap-1">
                       <PromotionPills
                         promotions={productPricing.get(item.productId)?.effective ?? []}

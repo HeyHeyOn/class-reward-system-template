@@ -23,9 +23,17 @@ async function parseRequestJson(request: Request): Promise<{ ok: true; body: Rec
 }
 
 export async function GET(request: Request) {
-  const store = await createConfiguredSheetsStore(request);
-  const settings = await getAppSettings({ settingsReader: store });
-  return Response.json(settings);
+  try {
+    const store = await createConfiguredSheetsStore(request);
+    const settings = await getAppSettings({ settingsReader: store });
+    return Response.json(settings);
+  } catch {
+    return Response.json({
+      error: '설정을 일시적으로 불러오지 못했습니다.',
+      code: 'SETTINGS_UNAVAILABLE',
+      retryable: true,
+    }, { status: 503 });
+  }
 }
 
 export async function PATCH(request: Request) {

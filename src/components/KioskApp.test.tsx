@@ -298,6 +298,33 @@ describe('KioskApp', () => {
     expect(screen.getByRole('button', { name: 'QR 결제' }).className).toContain('text-[var(--theme-accent-on-solid)]');
     expect(screen.getAllByTestId('product-card')[0].className).toContain('bg-[var(--theme-content-card)]');
     expect(screen.getByTestId('cart-item-row').className).toContain('bg-[var(--theme-surface-raised)]');
+    for (const button of [
+      screen.getByRole('button', { name: '연필 수량 줄이기' }),
+      screen.getByRole('button', { name: '연필 수량 늘리기' }),
+    ]) {
+      expect(button.className).toContain('bg-[var(--theme-accent-soft)]');
+      expect(button.className).toContain('text-[var(--theme-accent-text)]');
+      expect(button.className).not.toContain('bg-[var(--theme-accent-solid)]');
+    }
+  });
+
+  it('keeps white-theme cart quantity controls distinct from the cart row', async () => {
+    vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse(products));
+    vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse({ currencyUnit: '별', appTitle: '흰색 매점', themeColor: 'white' }));
+    render(<KioskApp />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '연필 300별 담기' }));
+    const decreaseButton = screen.getByRole('button', { name: '연필 수량 줄이기' });
+    const increaseButton = screen.getByRole('button', { name: '연필 수량 늘리기' });
+    for (const button of [decreaseButton, increaseButton]) {
+      expect(button.className).toContain('bg-[var(--theme-accent-solid)]');
+      expect(button.className).toContain('text-[var(--theme-accent-on-solid)]');
+      expect(button.className).not.toContain('bg-[var(--theme-accent-soft)]');
+    }
+    const cartRow = screen.getByTestId('cart-item-row');
+    expect(cartRow.className).toContain('bg-[var(--theme-content-card)]');
+    expect(cartRow.className).not.toContain('bg-[var(--theme-surface-raised)]');
+    expect(contrastRatio(THEME_PALETTES.white.accentSolid, THEME_PALETTES.white.contentCard)).toBeGreaterThanOrEqual(3);
   });
 
   it('applies softer pastel theme classes from settings on the kiosk', async () => {

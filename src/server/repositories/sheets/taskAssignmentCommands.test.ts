@@ -137,10 +137,10 @@ describe('assignment ledger mutation command', () => {
     });
 
     const assignmentReads = store.getRows.mock.calls.filter(([sheet]) => sheet === 'TaskAssignments');
-    // Migration verification + one command snapshot stay constant; the mirror uses one forced fresh read
-    // regardless of how many legacy students are materialized.
-    expect(assignmentReads).toHaveLength(3);
-    expect(store.getRowsFresh.mock.calls.filter(([sheet]) => sheet === 'TaskAssignments')).toHaveLength(1);
+    // Migration verification stays bounded; the command uses one fresh decision snapshot and one
+    // fresh post-append mirror snapshot regardless of how many legacy students are materialized.
+    expect(assignmentReads).toHaveLength(2);
+    expect(store.getRowsFresh.mock.calls.filter(([sheet]) => sheet === 'TaskAssignments')).toHaveLength(2);
   });
 
   it('retries each deterministic legacy seed after a partial seed append failure', async () => {
@@ -205,8 +205,34 @@ describe('assignment ledger mutation command', () => {
     });
 
     expect(result).toMatchObject({ changed: false, assignedStudentIds: ['S1'] });
-    expect(store.getRowsFresh).not.toHaveBeenCalled();
+    expect(store.getRowsFresh).toHaveBeenCalledTimes(1);
     expect(store.updateCell).not.toHaveBeenCalled();
+  });
+
+  it('honors a later explicit physical event instead of returning a stale cached no-op', async () => {
+    const current = assignmentRow({
+      assignmentId: 'A-current', cycleId: 'v1|I1|r1|2026-08-25T00:00:00Z',
+      cycleStartsAt: '2026-08-25T00:00:00.000Z', cycleEndsAt: '2026-08-26T00:00:00.000Z',
+    });
+    const lateUnassignment = assignmentRow({
+      assignmentId: 'A-late', status: 'UNASSIGNED', cycleId: 'v1|I1|r1|2026-08-25T00:00:00Z',
+      cycleStartsAt: '2026-08-25T00:00:00.000Z', cycleEndsAt: '2026-08-26T00:00:00.000Z',
+      previousAssignmentId: 'A-current', createdAt: '2026-08-25T11:00:00.000Z',
+    });
+    const mirroredTask = { ...task, allowedStudentIds: ['S1'] };
+    const store = new MemoryStore({ allowed: ['S1'], assignments: [current, lateUnassignment] });
+    const staleRows = [[...TASK_ASSIGNMENT_HEADERS], current];
+    store.getRows.mockImplementation(async (sheet: string) => (
+      sheet === 'TaskAssignments' ? staleRows : store.rows[sheet]
+    ).map((row) => [...row]));
+
+    const result = await mutateTaskAssignment(store, {
+      task: mirroredTask, taskRowNumber: 2, studentId: 'S1', assigned: true, source: 'ADMIN', now: NOW,
+    });
+
+    expect(result).toMatchObject({ changed: true, assignedStudentIds: ['S1'] });
+    expect(store.appendRow).toHaveBeenCalledWith('TaskAssignments', expect.any(Array));
+    expect(store.getRowsFresh).toHaveBeenCalled();
   });
 
   it('carries a legacy seed from a prior natural cycle instead of seeding legacy again', async () => {
@@ -453,6 +479,26 @@ describe('assignment ledger mutation command', () => {
 });
 
 describe('batch explicit assignment command', () => {
+  it('uses a fresh physical assignment snapshot before deciding a batch no-op', async () => {
+    const current = assignmentRow({
+      assignmentId: 'A-current', cycleId: 'v1|I1|r1|2026-08-25T00:00:00Z',
+      cycleStartsAt: '2026-08-25T00:00:00.000Z', cycleEndsAt: '2026-08-26T00:00:00.000Z',
+    });
+    const store = new MemoryStore({ assignments: [current] });
+    store.rows.Tasks[1][TASK_SCHEMA_HEADERS.indexOf('allowedStudentIds')] = '';
+    store.getRows.mockImplementation(async (sheet: string) => sheet === 'TaskAssignments'
+      ? [[...TASK_ASSIGNMENT_HEADERS]]
+      : store.rows[sheet].map((row) => [...row]));
+
+    const result = await updateTaskAssignmentsBatch(store, [{
+      taskId: 'T1', operations: [{ studentId: 'S1', assigned: true, source: 'ADMIN' }],
+    }], { now: () => NOW });
+
+    expect(result).toEqual({ appliedCount: 0, failures: [] });
+    expect(store.getRowsFresh).toHaveBeenCalledWith('TaskAssignments');
+    expect(store.appendRow).not.toHaveBeenCalled();
+    expect(store.rows.Tasks[1][TASK_SCHEMA_HEADERS.indexOf('allowedStudentIds')]).toBe('S1');
+  });
   const operation = { studentId: 'S1', assigned: true, source: 'ADMIN' as const };
   const target = { taskId: 'T1', operations: [operation] };
 
@@ -489,7 +535,7 @@ describe('batch explicit assignment command', () => {
     expect(missingStudent.appendRow).not.toHaveBeenCalled();
   });
 
-  it('migrates once before shared snapshots and creates no events for explicit no-ops', async () => {
+  it('migrates once, creates no canonical events for explicit no-ops, and repairs a stale legacy mirror', async () => {
     const current = assignmentRow({ assignmentId: 'A-current', cycleId: 'v1|I1|r1|2026-08-25T00:00:00Z', cycleStartsAt: '2026-08-25T00:00:00.000Z', cycleEndsAt: '2026-08-26T00:00:00.000Z' });
     const store = new MemoryStore({ assignments: [current] });
     const result = await updateTaskAssignmentsBatch(store, [{ taskId: 'T1', operations: [{
@@ -497,7 +543,7 @@ describe('batch explicit assignment command', () => {
     }] }], { now: () => NOW });
     expect(result).toEqual({ appliedCount: 0, failures: [] });
     expect(store.appendRow).not.toHaveBeenCalled();
-    expect(store.updateCell).not.toHaveBeenCalled();
+    expect(store.updateCell).toHaveBeenCalledWith('Tasks', 2, 'allowedStudentIds', 'S1');
     expect(store.lookupSheet.mock.calls.filter(([sheet]) => sheet === 'Tasks')).toHaveLength(1);
     expect(store.getRows.mock.calls.filter(([sheet]) => sheet === 'Students')).toHaveLength(1);
   });
@@ -535,9 +581,10 @@ describe('batch explicit assignment command', () => {
     // The batch itself adds one shared snapshot per sheet plus one final assignment reread for mirrors.
     expect(store.getRows.mock.calls.filter(([sheet]) => sheet === 'Tasks')).toHaveLength(2);
     expect(store.getRows.mock.calls.filter(([sheet]) => sheet === 'Students')).toHaveLength(1);
-    expect(store.getRows.mock.calls.filter(([sheet]) => sheet === 'TaskAssignments')).toHaveLength(3);
-    expect(store.getRowsFresh.mock.calls.filter(([sheet]) => sheet === 'TaskAssignments')).toHaveLength(1);
-    expect(store.getRows.mock.calls.filter(([sheet]) => sheet === 'TaskCompletions')).toHaveLength(2);
+    expect(store.getRows.mock.calls.filter(([sheet]) => sheet === 'TaskAssignments')).toHaveLength(2);
+    expect(store.getRowsFresh.mock.calls.filter(([sheet]) => sheet === 'TaskAssignments')).toHaveLength(2);
+    expect(store.getRows.mock.calls.filter(([sheet]) => sheet === 'TaskCompletions')).toHaveLength(1);
+    expect(store.getRowsFresh.mock.calls.filter(([sheet]) => sheet === 'TaskCompletions')).toHaveLength(1);
     expect(store.lookupSheet.mock.calls.filter(([sheet]) => sheet === 'Tasks')).toHaveLength(1);
     expect(store.lookupSheet.mock.calls.filter(([sheet]) => sheet === 'TaskAssignments')).toHaveLength(1);
     expect(store.lookupSheet.mock.calls.filter(([sheet]) => sheet === 'TaskCompletions')).toHaveLength(1);
@@ -684,6 +731,23 @@ describe('batch explicit assignment command', () => {
     expect(store.rows.TaskCompletions.at(-1)![TASK_COMPLETION_SCHEMA_HEADERS.indexOf('source')]).toBe('CARRY_FORWARD');
   });
 
+  it('uses a fresh completion ledger before deciding a batch completion reset no-op', async () => {
+    const store = new MemoryStore({ assignments: [assignmentRow()] });
+    store.rows.TaskCompletions.push(completionRow());
+    const cachedCompletionRows = [store.rows.TaskCompletions[0].map((value) => value)];
+    const originalGetRows = store.getRows.getMockImplementation()!;
+    store.getRows.mockImplementation(async (sheet: string) => sheet === 'TaskCompletions'
+      ? cachedCompletionRows.map((row) => [...row])
+      : originalGetRows(sheet));
+
+    const result = await updateTaskAssignmentsBatch(store, [{
+      taskId: 'T1', operations: [{ studentId: 'S1', completed: false, source: 'ADMIN' }],
+    }], { now: () => NOW });
+
+    expect(result).toEqual({ appliedCount: 1, failures: [] });
+    expect(store.rows.TaskCompletions.at(-1)![TASK_COMPLETION_SCHEMA_HEADERS.indexOf('source')]).toBe('ADMIN_RESET');
+  });
+
   it('resets completion before unassigning and keeps both canonical events', async () => {
     const current = assignmentRow({
       assignmentId: 'A-current', cycleId: 'v1|I1|r1|2026-08-25T00:00:00Z',
@@ -731,8 +795,8 @@ describe('batch explicit assignment command', () => {
       warnings: [{ taskId: 'T1', code: 'LEGACY_MIRROR_UPDATE_FAILED' }],
     });
     expect(JSON.stringify(result)).not.toMatch(/provider|A1|Z99/);
-    expect(store.getRows.mock.calls.filter(([sheet]) => sheet === 'TaskAssignments')).toHaveLength(3);
-    expect(store.getRowsFresh.mock.calls.filter(([sheet]) => sheet === 'TaskAssignments')).toHaveLength(1);
+    expect(store.getRows.mock.calls.filter(([sheet]) => sheet === 'TaskAssignments')).toHaveLength(2);
+    expect(store.getRowsFresh.mock.calls.filter(([sheet]) => sheet === 'TaskAssignments')).toHaveLength(2);
     expect(store.updateCell.mock.calls.filter(([sheet]) => sheet === 'Tasks')).toHaveLength(2);
   });
 

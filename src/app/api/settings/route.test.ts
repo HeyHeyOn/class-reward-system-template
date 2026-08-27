@@ -37,6 +37,21 @@ describe('/api/settings Seoul-only policy', () => {
     await expect(response.json()).resolves.toEqual({ classTimeZone: 'Asia/Seoul' });
   });
 
+  it('returns a sanitized retryable status when GET cannot read settings', async () => {
+    vi.mocked(createConfiguredSheetsStore).mockRejectedValue(
+      new Error('Google credential secret for Settings!A:Z'),
+    );
+
+    const response = await GET(new Request('http://localhost/api/settings'));
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      error: '설정을 일시적으로 불러오지 못했습니다.',
+      code: 'SETTINGS_UNAVAILABLE',
+      retryable: true,
+    });
+  });
+
   it('disables the legacy user-configurable PATCH route without opening Sheets', async () => {
     const response = await PATCH(new Request('http://localhost/api/settings', {
       method: 'PATCH', body: JSON.stringify({ classTimeZone: 'UTC' }),

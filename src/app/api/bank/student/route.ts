@@ -1,11 +1,14 @@
 import { createConfiguredSheetsReader } from '@/server/googleSheets';
-import { getStudentById } from '@/server/sheetsRepository';
+import { confirmStudentLookup } from '@/server/studentLookup';
 
 export const dynamic = 'force-dynamic';
 
 const invalidQueryError = { error: '올바른 학생 ID를 입력해 주세요.' };
-const missingStudentError = { error: '학생 정보를 찾을 수 없습니다.' };
-const internalError = { error: '학생 정보를 불러오지 못했습니다.' };
+const missingStudentError = { error: '학생 정보를 찾을 수 없습니다.', code: 'STUDENT_NOT_FOUND' };
+const unavailableError = {
+  error: '학생 정보를 일시적으로 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
+  code: 'STUDENT_DATA_UNAVAILABLE',
+};
 
 export async function GET(request: Request) {
   try {
@@ -18,13 +21,16 @@ export async function GET(request: Request) {
     if (!studentId) return Response.json(invalidQueryError, { status: 400 });
 
     const reader = await createConfiguredSheetsReader(request);
-    const student = await getStudentById(reader, studentId);
-    if (!student || student.status !== 'ACTIVE') {
+    const lookup = await confirmStudentLookup(reader, studentId);
+    if (lookup.status === 'NOT_FOUND' || lookup.status === 'INACTIVE') {
       return Response.json(missingStudentError, { status: 404 });
     }
+    if (lookup.status === 'UNAVAILABLE') {
+      return Response.json(unavailableError, { status: 503 });
+    }
 
-    return Response.json({ studentId: student.studentId, name: student.name });
+    return Response.json({ studentId: lookup.student.studentId, name: lookup.student.name });
   } catch {
-    return Response.json(internalError, { status: 500 });
+    return Response.json(unavailableError, { status: 503 });
   }
 }

@@ -475,6 +475,28 @@ describe('sheets row parsing', () => {
     expect(row.slice(-9)).toEqual(['TI-1', 'C-2', carried.cycleStartsAt, carried.cycleEndsAt, '2', 'Asia/Seoul', 'CARRY_FORWARD', 'A-1', '2']);
   });
 
+  it('round-trips append-only task completion operation metadata after legacy columns', () => {
+    const headers = [
+      'completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore',
+      'balanceAfter', 'status', 'note', 'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt',
+      'ruleVersion', 'timeZone', 'source', 'assignmentId', 'schemaVersion', 'operationId',
+      'operationPayloadHash',
+    ];
+    const pending = {
+      completionId: 'TC-OP', timestamp: '2026-08-26T00:00:00Z', taskId: 'T-1', studentId: 'S-1',
+      studentName: '학생', reward: 5, balanceBefore: 10, balanceAfter: 15, status: 'PENDING', note: '',
+      taskInstanceId: 'TI-1', cycleId: 'C-2', cycleStartsAt: '2026-08-26T00:00:00Z',
+      cycleEndsAt: '2026-08-27T00:00:00Z', ruleVersion: 2, timeZone: 'Asia/Seoul',
+      source: 'BANK' as const, assignmentId: 'A-1', schemaVersion: 2,
+      operationId: '11111111-1111-4111-8111-111111111111', operationPayloadHash: 'sha256:abc',
+    };
+
+    const row = buildTaskCompletionAppendRow(headers, pending);
+
+    expect(row.slice(-2)).toEqual([pending.operationId, pending.operationPayloadHash]);
+    expect(parseTaskCompletionRow(row, createHeaderIndex(headers))).toEqual(pending);
+  });
+
   it('round-trips NONE-cycle rows with null cycleEndsAt as an empty cell', () => {
     const assignmentHeaders = [
       'assignmentId', 'taskId', 'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion',

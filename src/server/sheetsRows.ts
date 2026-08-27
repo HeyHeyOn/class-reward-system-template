@@ -352,8 +352,13 @@ export function parseTaskCompletionRow(row: string[], headerIndex: HeaderIndex):
     status: getRowCell(row, headerIndex, 'status') || 'UNKNOWN',
     note: getRowCell(row, headerIndex, 'note'),
   };
+  const operationId = getRowCell(row, headerIndex, 'operationId');
+  const operationPayloadHash = getRowCell(row, headerIndex, 'operationPayloadHash');
+  if (Boolean(operationId) !== Boolean(operationPayloadHash)) return null;
   const snapshotValues = TASK_COMPLETION_SNAPSHOT_FIELDS.map((field) => getRowCell(row, headerIndex, field));
-  if (snapshotValues.every((value) => !value)) return completion;
+  if (snapshotValues.every((value) => !value)) {
+    return operationId ? null : completion;
+  }
 
   const [taskInstanceId, cycleId, cycleStartsAt, cycleEndsAt, ruleVersionCell, timeZone, sourceCell, assignmentId, schemaVersionCell] = snapshotValues;
   const ruleVersion = parsePositiveIntegerCell(ruleVersionCell);
@@ -373,6 +378,7 @@ export function parseTaskCompletionRow(row: string[], headerIndex: HeaderIndex):
     source,
     assignmentId,
     schemaVersion,
+    ...(operationId ? { operationId, operationPayloadHash } : {}),
   };
 }
 
@@ -407,6 +413,8 @@ export function buildTaskCompletionAppendRow(headers: string[], completion: Task
     source: completion.source ?? '',
     assignmentId: completion.assignmentId ?? '',
     schemaVersion: completion.schemaVersion === undefined ? '' : String(completion.schemaVersion),
+    operationId: completion.operationId ?? '',
+    operationPayloadHash: completion.operationPayloadHash ?? '',
   };
   return headers.map((header) => valuesByHeader[header.trim()] ?? '');
 }

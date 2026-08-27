@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BankApp } from './BankApp';
 
@@ -20,6 +20,19 @@ function deferredResponse(payload: unknown) {
   };
 }
 
+function completionSuccess(operationId: string, projectedTasks: unknown[] = tasks.map((task) => ({
+  ...task,
+  allowedStudentIds: ['S001'],
+  studentStatus: { studentId: 'S001', assigned: true, completed: true },
+})), task = tasks[0]) {
+  return {
+    task: { taskId: task.taskId, title: task.title, reward: task.reward },
+    student: { studentId: 'S001', name: '김민준' },
+    tasks: projectedTasks,
+    operation: { operationId, state: 'SUCCESS' },
+  };
+}
+
 async function identifyTaskStudent(studentId = 'S001') {
   fireEvent.click(screen.getByRole('button', { name: '과제 완료' }));
   fireEvent.change(await screen.findByLabelText('QR 값 직접 입력'), { target: { value: studentId } });
@@ -28,6 +41,7 @@ async function identifyTaskStudent(studentId = 'S001') {
 
 describe('BankApp', () => {
   beforeEach(() => {
+    vi.stubGlobal('crypto', { ...globalThis.crypto, randomUUID: vi.fn(() => 'operation-001') });
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.startsWith('/api/bank/student?studentId=')) return jsonResponse({ studentId: decodeURIComponent(url.split('=').at(-1) ?? ''), name: url.includes('studentId=B') ? '학생 B' : url.includes('studentId=A') ? '학생 A' : '김민준' });
@@ -45,14 +59,17 @@ describe('BankApp', () => {
           { transactionId: 'T003', timestamp: '2026-05-21T02:00:00.000Z', studentId: 'S001', studentName: '김민준', items: [{ productId: 'P002', name: '지우개', price: 2, quantity: 1, subtotal: 2 }], totalAmount: 2, balanceBefore: 17, balanceAfter: 15, status: 'CANCELLED', operator: 'kiosk', cancelledAt: '2026-05-21T02:30:00.000Z' },
         ],
       });
-      if (url === '/api/tasks/T001/complete' && init?.method === 'POST') return jsonResponse({ task: tasks[0], student: { studentId: 'S001', name: '김민준', balance: 17 } });
+      if (url === '/api/tasks/T001/complete' && init?.method === 'POST') {
+        const operationId = JSON.parse(String(init.body)).operationId;
+        return jsonResponse(completionSuccess(operationId));
+      }
       return jsonResponse({ error: 'not found' }, { status: 404 });
     }));
   });
 
-  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+  afterEach(() => { vi.useRealTimers(); cleanup(); vi.unstubAllGlobals(); });
 
-  it('shows a loading dialog until bank settings are loaded', async () => {
+  it('renders the bank immediately with defaults while settings load in the background', async () => {
     const settingsRequest = deferredResponse({ appTitle: '별빛 매점', bankTitle: '별빛 은행', currencyUnit: '별', themeColor: 'white', qrManualInputEnabled: true });
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -63,8 +80,9 @@ describe('BankApp', () => {
 
     const { container } = render(<BankApp />);
 
-    expect(screen.getByRole('dialog', { name: '시트 정보 불러오는 중' })).toBeTruthy();
-    expect(screen.queryByRole('heading', { name: '별빛 은행' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: '시트 정보 불러오는 중' })).toBeNull();
+    expect(screen.getByRole('heading', { name: '학급 은행' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '내 계좌' })).toBeTruthy();
 
     settingsRequest.resolve();
     expect(await screen.findByRole('heading', { name: '별빛 은행' })).toBeTruthy();
@@ -315,7 +333,8 @@ describe('BankApp', () => {
   });
 
   it('shows a loading popup while completing a task after QR recognition', async () => {
-    const completeRequest = deferredResponse({ task: tasks[0], student: { studentId: 'S001', name: '김민준', balance: 17 } });
+    const projected = tasks.map((task) => ({ ...task, allowedStudentIds: ['S001'], studentStatus: { studentId: 'S001', assigned: true, completed: true } }));
+    const completeRequest = deferredResponse(completionSuccess('operation-001', projected));
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.startsWith('/api/bank/student?studentId=')) return jsonResponse({ studentId: decodeURIComponent(url.split('=').at(-1) ?? ''), name: url.includes('studentId=B') ? '학생 B' : url.includes('studentId=A') ? '학생 A' : '김민준' });
@@ -460,7 +479,7 @@ describe('BankApp', () => {
     expect(screen.getByRole('button', { name: /B 학생 과제/ })).toBeTruthy();
   });
 
-  it('refreshes the student projection after success without resetting student flow', async () => {
+  it('uses the completion response as the authoritative student projection without an extra GET', async () => {
     const before = { ...tasks[0], allowedStudentIds: ['S001'], currentCycle: { cycleId: 'cycle-1', startsAt: '2026-05-20T00:00:00.000Z', endsAt: '2026-05-27T00:00:00.000Z' }, studentStatus: { studentId: 'S001', assigned: true, completed: false } };
     const after = { ...before, studentStatus: { ...before.studentStatus, completed: true } };
     let studentFetches = 0;
@@ -468,8 +487,8 @@ describe('BankApp', () => {
       const url = String(input);
       if (url.startsWith('/api/bank/student?studentId=')) return jsonResponse({ studentId: decodeURIComponent(url.split('=').at(-1) ?? ''), name: url.includes('studentId=B') ? '학생 B' : url.includes('studentId=A') ? '학생 A' : '김민준' });
       if (url === '/api/settings') return jsonResponse({ bankTitle: '별빛 은행', currencyUnit: '별', qrManualInputEnabled: true });
-      if (url === '/api/tasks?studentId=S001') return jsonResponse(studentFetches++ === 0 ? [before] : [after]);
-      if (url === '/api/tasks/T001/complete' && init?.method === 'POST') return jsonResponse({ task: before, student: { studentId: 'S001', name: '김민준', balance: 17 } });
+      if (url === '/api/tasks?studentId=S001') { studentFetches += 1; return jsonResponse([before]); }
+      if (url === '/api/tasks/T001/complete' && init?.method === 'POST') return jsonResponse(completionSuccess('operation-001', [after], before));
       return jsonResponse({ error: 'not found' }, { status: 404 });
     }));
 
@@ -482,7 +501,7 @@ describe('BankApp', () => {
     fireEvent.click(screen.getByRole('button', { name: '완료하기' }));
 
     expect(await screen.findByRole('dialog', { name: '과제 완료 성공' })).toBeTruthy();
-    await waitFor(() => expect(studentFetches).toBe(2));
+    expect(studentFetches).toBe(1);
     fireEvent.click(screen.getByRole('button', { name: '닫기' }));
     const refreshedDetail = await screen.findByRole('dialog', { name: '책 10분 읽기' });
     expect(within(refreshedDetail).getByText('완료됨').className).toContain('sr-only');
@@ -491,15 +510,15 @@ describe('BankApp', () => {
     expect(await screen.findByText('이름: 김민준')).toBeTruthy();
   });
 
-  it('prevents a second completion while the successful projection refresh is still pending', async () => {
+  it('prevents a second completion while the same operation response is still pending', async () => {
     const before = { ...tasks[0], studentStatus: { studentId: 'S001', assigned: true, completed: false } };
-    const refresh = deferredResponse([{ ...before, studentStatus: { ...before.studentStatus, completed: true } }]);
-    let taskFetches = 0;
+    const after = { ...before, studentStatus: { ...before.studentStatus, completed: true } };
+    const complete = deferredResponse(completionSuccess('operation-001', [after], before));
     const base = vi.mocked(fetch).getMockImplementation()!;
     vi.mocked(fetch).mockImplementation(async (input, init) => {
       const url = String(input);
-      if (url === '/api/tasks?studentId=S001') return taskFetches++ === 0 ? jsonResponse([before]) : refresh.response;
-      if (url === '/api/tasks/T001/complete' && init?.method === 'POST') return jsonResponse({ task: before, student: { studentId: 'S001', name: '김민준', balance: 17 } });
+      if (url === '/api/tasks?studentId=S001') return jsonResponse([before]);
+      if (url === '/api/tasks/T001/complete' && init?.method === 'POST') return complete.response;
       return base(input, init);
     });
 
@@ -508,13 +527,10 @@ describe('BankApp', () => {
     await identifyTaskStudent();
     fireEvent.click(await screen.findByRole('button', { name: '책 10분 읽기' }));
     fireEvent.click(screen.getByRole('button', { name: '완료하기' }));
-    await screen.findByRole('dialog', { name: '과제 완료 성공' });
-    fireEvent.click(screen.getByRole('button', { name: '닫기' }));
-
-    const detail = await screen.findByRole('dialog', { name: '책 10분 읽기' });
-    expect(within(detail).queryByRole('button', { name: '완료하기' })).toBeNull();
+    expect(await screen.findByRole('dialog', { name: '과제 완료 처리 중' })).toBeTruthy();
     expect(vi.mocked(fetch).mock.calls.filter(([url, init]) => String(url) === '/api/tasks/T001/complete' && init?.method === 'POST')).toHaveLength(1);
-    refresh.resolve();
+    complete.resolve();
+    expect(await screen.findByRole('dialog', { name: '과제 완료 성공' })).toBeTruthy();
   });
 
   it('starts a five-task linked carousel on the first incomplete third slide and exposes its indicator', async () => {
@@ -584,6 +600,80 @@ describe('BankApp', () => {
     expect(within(carousel).getByRole('button', { name: '이전 과제' })).toBeTruthy();
   });
 
+  it('makes every linked-task slide and card stretch to the carousel height', async () => {
+    const linkedTasks = [
+      { ...tasks[0], taskId: 'HEIGHT1', title: '짧은 과제', description: '짧음', studentStatus: { studentId: 'S001', assigned: true, completed: false } },
+      { ...tasks[0], taskId: 'HEIGHT2', title: '두 줄 이상으로 길어질 수 있는 아주 긴 과제 제목', description: '긴 설명', prerequisiteTaskId: 'HEIGHT1', dueAt: '2030-01-02T03:30:00.000Z', recurrence: { type: 'WEEKLY', weekdays: [1, 4], time: '09:00' }, studentStatus: { studentId: 'S001', assigned: true, completed: false } },
+    ];
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/tasks?studentId=S001' ? jsonResponse(linkedTasks) : base(input, init));
+
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+
+    const carousel = await screen.findByRole('region', { name: '짧은 과제 연결 과제 묶음' });
+    const scroller = carousel.querySelector('[data-testid="task-carousel-scroller"]');
+    const slides = Array.from(carousel.querySelectorAll('[data-testid="task-carousel-slide"]'));
+    expect(scroller?.className).toContain('items-stretch');
+    expect(slides).toHaveLength(2);
+    for (const slide of slides) {
+      expect(slide.className).toContain('flex');
+      const slideButton = slide.querySelector('button');
+      expect(slideButton?.className).toContain('h-full');
+      expect(slideButton?.className).not.toContain('pb-12');
+    }
+  });
+
+  it('returns from a linked-task detail to the same active slide and vertical list position', async () => {
+    const linkedTasks = Array.from({ length: 3 }, (_, index) => ({
+      ...tasks[0], taskId: `ROUND${index + 1}`, title: `왕복 과제 ${index + 1}`,
+      prerequisiteTaskId: index ? `ROUND${index}` : undefined,
+      studentStatus: { studentId: 'S001', assigned: true, completed: false },
+    }));
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/tasks?studentId=S001' ? jsonResponse(linkedTasks) : base(input, init));
+
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+    const listBeforeDetail = await screen.findByRole('dialog', { name: '과제 완료' });
+    listBeforeDetail.scrollTop = 240;
+    fireEvent.scroll(listBeforeDetail);
+    let carousel = await screen.findByRole('region', { name: '왕복 과제 1 연결 과제 묶음' });
+    fireEvent.click(within(carousel).getByRole('button', { name: '3번째 과제 보기' }));
+    fireEvent.click(within(carousel).getByRole('button', { name: '왕복 과제 3' }));
+    fireEvent.click(within(await screen.findByRole('dialog', { name: '왕복 과제 3' })).getByRole('button', { name: '닫기' }));
+
+    carousel = await screen.findByRole('region', { name: '왕복 과제 1 연결 과제 묶음' });
+    expect(screen.getByRole('dialog', { name: '과제 완료' }).scrollTop).toBe(240);
+    expect(within(carousel).getByRole('button', { name: '왕복 과제 3' })).toBeTruthy();
+    expect(within(carousel).getByRole('button', { name: '3번째 과제 보기' }).getAttribute('aria-current')).toBe('true');
+  });
+
+  it('returns from a completed-task detail to that completed card instead of the first incomplete slide', async () => {
+    const linkedTasks = [
+      { ...tasks[0], taskId: 'COMPLETE1', title: '미완료 첫째', studentStatus: { studentId: 'S001', assigned: true, completed: false } },
+      { ...tasks[0], taskId: 'COMPLETE2', title: '완료 둘째', prerequisiteTaskId: 'COMPLETE1', studentStatus: { studentId: 'S001', assigned: true, completed: true } },
+    ];
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/tasks?studentId=S001' ? jsonResponse(linkedTasks) : base(input, init));
+
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+    let carousel = await screen.findByRole('region', { name: '미완료 첫째 연결 과제 묶음' });
+    fireEvent.click(within(carousel).getByRole('button', { name: '2번째 과제 보기' }));
+    fireEvent.click(within(carousel).getByRole('button', { name: '완료 둘째, 완료됨' }));
+    const detail = await screen.findByRole('dialog', { name: '완료 둘째' });
+    expect(within(detail).queryByRole('button', { name: '완료하기' })).toBeNull();
+    fireEvent.click(within(detail).getByRole('button', { name: '닫기' }));
+
+    carousel = await screen.findByRole('region', { name: '미완료 첫째 연결 과제 묶음' });
+    expect(within(carousel).getByRole('button', { name: '완료 둘째, 완료됨' })).toBeTruthy();
+    expect(within(carousel).getByRole('button', { name: '2번째 과제 보기' }).getAttribute('aria-current')).toBe('true');
+  });
+
   it('renders a singleton task without carousel controls or an indicator', async () => {
     render(<BankApp />);
     await screen.findByRole('heading', { name: '별빛 은행' });
@@ -634,7 +724,11 @@ describe('BankApp', () => {
     const card = await screen.findByRole('button', { name: '끝낸 과제, 완료됨' });
     expect(card.className).not.toContain('brightness-75');
     expect(card.className).not.toContain('opacity-70');
-    expect(within(card).getByTestId('task-card-content').className).toContain('opacity-60');
+    expect(within(card).getByTestId('task-card-content').className).not.toContain('opacity-60');
+    const completedOverlay = within(card).getByTestId('task-card-completed-overlay');
+    expect(completedOverlay.className).toContain('absolute');
+    expect(completedOverlay.className).toContain('inset-0');
+    expect(completedOverlay.className).toContain('bg-black/');
     const stamp = within(card).getByText('완료됨');
     expect(stamp.className).toContain('rounded-full');
     expect(stamp.className).toContain('bg-emerald-700');
@@ -667,7 +761,11 @@ describe('BankApp', () => {
     expect(partial.compareDocumentPosition(complete) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(partial).getByRole('group', { name: '2 / 2: 부분 둘째' })).toBeTruthy();
     fireEvent.click(within(partial).getByRole('button', { name: '1번째 과제 보기' }));
-    expect(within(partial).getByRole('button', { name: '부분 첫째, 완료됨' })).toBeTruthy();
+    const completedSlide = within(partial).getByRole('button', { name: '부분 첫째, 완료됨' });
+    expect(within(completedSlide).getByTestId('task-card-completed-overlay')).toBeTruthy();
+    fireEvent.click(within(partial).getByRole('button', { name: '2번째 과제 보기' }));
+    const incompleteSlide = within(partial).getByRole('button', { name: '부분 둘째' });
+    expect(within(incompleteSlide).queryByTestId('task-card-completed-overlay')).toBeNull();
   });
 
   it('replaces the whole refreshed projection, unlocks the next task, and recalculates the active slide', async () => {
@@ -682,8 +780,8 @@ describe('BankApp', () => {
     vi.mocked(fetch).mockImplementation(async (input, init) => {
       const url = String(input);
       if (url.startsWith('/api/bank/student?studentId=')) return jsonResponse({ studentId: decodeURIComponent(url.split('=').at(-1) ?? ''), name: url.includes('studentId=B') ? '학생 B' : url.includes('studentId=A') ? '학생 A' : '김민준' });
-      if (url === '/api/tasks?studentId=S001') return jsonResponse(projections++ === 0 ? [first, second] : refreshed);
-      if (url === '/api/tasks/R1/complete' && init?.method === 'POST') return jsonResponse({ task: first, student: { studentId: 'S001', name: '김민준', balance: 17 } });
+      if (url === '/api/tasks?studentId=S001') { projections += 1; return jsonResponse([first, second]); }
+      if (url === '/api/tasks/R1/complete' && init?.method === 'POST') return jsonResponse(completionSuccess('operation-001', refreshed, first));
       return base(input, init);
     });
     render(<BankApp />);
@@ -692,7 +790,7 @@ describe('BankApp', () => {
     fireEvent.click(await screen.findByRole('button', { name: '새로고침 첫째' }));
     fireEvent.click(screen.getByRole('button', { name: '완료하기' }));
     await screen.findByRole('dialog', { name: '과제 완료 성공' });
-    await waitFor(() => expect(projections).toBe(2));
+    expect(projections).toBe(1);
     fireEvent.click(screen.getByRole('button', { name: '닫기' }));
     const refreshedDetail = await screen.findByRole('dialog', { name: '새로고침 첫째' });
     expect(within(refreshedDetail).queryByRole('button', { name: '완료하기' })).toBeNull();
@@ -908,5 +1006,241 @@ describe('BankApp', () => {
     await waitFor(() => expect(screen.queryByText('느린 A 이름')).toBeNull());
     expect(screen.getByText('이름: 빠른 B 이름')).toBeTruthy();
     expect(screen.getByRole('button', { name: '빠른 B 과제' })).toBeTruthy();
+  });
+
+  it('keeps the shell usable with default settings and a compact retry banner when settings are unavailable', async () => {
+    let attempts = 0;
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/settings'
+      ? attempts++ === 0
+        ? jsonResponse({ error: '설정을 불러올 수 없습니다.', code: 'SETTINGS_UNAVAILABLE' }, { status: 503 })
+        : jsonResponse({ bankTitle: '복구된 은행', currencyUnit: '별', qrManualInputEnabled: true })
+      : base(input, init));
+
+    render(<BankApp />);
+    expect(await screen.findByRole('heading', { name: '학급 은행' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: '설정 불러오기 실패' }).textContent).toContain('기본 설정으로 표시하고 있습니다.');
+    expect(screen.getByRole('button', { name: '설정 다시 시도' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '과제 완료' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '설정 다시 시도' }));
+    expect(await screen.findByRole('heading', { name: '복구된 은행' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: '설정 불러오기 실패' })).toBeNull();
+  });
+
+  it('allows the same scanned student ID to retry after temporary student-data unavailability without leaking prior identity', async () => {
+    let studentAttempts = 0;
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input) === '/api/bank/student?studentId=S001') {
+        studentAttempts += 1;
+        return studentAttempts === 1
+          ? jsonResponse({ error: '학생 정보를 잠시 불러올 수 없습니다.', code: 'STUDENT_DATA_UNAVAILABLE' }, { status: 503 })
+          : jsonResponse({ studentId: 'S001', name: '김민준' });
+      }
+      return base(input, init);
+    });
+
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+    const failure = await screen.findByRole('dialog', { name: '학생 정보 일시 오류' });
+    expect(within(failure).getByText('학생 정보를 잠시 불러올 수 없습니다.')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('이름: 김민준');
+    expect(within(failure).queryByLabelText('QR 값 직접 입력')).toBeNull();
+    fireEvent.click(within(failure).getByRole('button', { name: '같은 학생 다시 시도' }));
+    expect(await screen.findByText('이름: 김민준')).toBeTruthy();
+    expect(studentAttempts).toBe(2);
+  });
+
+  it('shows permanent missing only for STUDENT_NOT_FOUND and does not offer an identity retry', async () => {
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/bank/student?studentId=S001'
+      ? jsonResponse({ error: '등록되지 않은 학생입니다.', code: 'STUDENT_NOT_FOUND' }, { status: 404 })
+      : base(input, init));
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+    const failure = await screen.findByRole('dialog', { name: '학생 확인 실패' });
+    expect(within(failure).getByText('등록되지 않은 학생입니다.')).toBeTruthy();
+    expect(within(failure).queryByRole('button', { name: '같은 학생 다시 시도' })).toBeNull();
+  });
+
+  it('blocks other tasks after an unknown outcome and only rechecks the original task with the same operation ID', async () => {
+    const first = { ...tasks[0], studentStatus: { studentId: 'S001', assigned: true, completed: false } };
+    const second = { ...tasks[0], taskId: 'T002', title: '다른 과제', sortOrder: 2, studentStatus: { studentId: 'S001', assigned: true, completed: false } };
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === '/api/tasks?studentId=S001') return jsonResponse([first, second]);
+      if (url === '/api/tasks/T001/complete' && init?.method === 'POST') {
+        return jsonResponse({ error: '완료 상태를 확인하고 있습니다.', code: 'COMPLETION_STATUS_UNKNOWN', retryable: true }, { status: 503 });
+      }
+      return base(input, init);
+    });
+
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+    fireEvent.click(await screen.findByRole('button', { name: '책 10분 읽기' }));
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole('button', { name: '완료하기' }));
+    await vi.runAllTimersAsync();
+    vi.useRealTimers();
+    const unknown = await screen.findByRole('dialog', { name: '완료 상태 확인 필요' });
+    fireEvent.click(within(unknown).getByRole('button', { name: '과제 목록 유지' }));
+
+    fireEvent.click(screen.getByRole('button', { name: '다른 과제' }));
+    let detail = await screen.findByRole('dialog', { name: '다른 과제' });
+    expect(within(detail).queryByRole('button', { name: '완료하기' })).toBeNull();
+    expect(within(detail).queryByRole('button', { name: '상태 다시 확인' })).toBeNull();
+    expect(within(detail).getByText(/확인 중인 다른 과제 완료 작업/)).toBeTruthy();
+    fireEvent.click(within(detail).getByRole('button', { name: '닫기' }));
+    const retainedList = await screen.findByRole('dialog', { name: '과제 완료' });
+
+    fireEvent.click(within(retainedList).getByRole('button', { name: '책 10분 읽기' }));
+    detail = await screen.findByRole('dialog', { name: '책 10분 읽기' });
+    fireEvent.click(within(detail).getByRole('button', { name: '상태 다시 확인' }));
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === '/api/tasks/T001/complete')).toHaveLength(4));
+    const operationIds = vi.mocked(fetch).mock.calls
+      .filter(([url]) => String(url) === '/api/tasks/T001/complete')
+      .map(([, init]) => JSON.parse(String(init?.body)).operationId);
+    expect(operationIds).toEqual(['operation-001', 'operation-001', 'operation-001', 'operation-001']);
+    expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === '/api/tasks/T002/complete')).toHaveLength(0);
+  });
+
+  it.each([
+    ['COMPLETION_OPERATION_CONFLICT', '완료 요청 충돌'],
+    ['COMPLETION_RECONCILIATION_REQUIRED', '수동 확인 필요'],
+  ])('treats %s as terminal without automatic or manual completion retry', async (code, dialogName) => {
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/tasks/T001/complete' && init?.method === 'POST'
+      ? jsonResponse({ error: code === 'COMPLETION_OPERATION_CONFLICT' ? '같은 완료 요청의 내용이 일치하지 않습니다.' : '완료 상태를 자동으로 판단할 수 없습니다.', code, retryable: false }, { status: 409 })
+      : base(input, init));
+
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+    fireEvent.click(await screen.findByRole('button', { name: '책 10분 읽기' }));
+    fireEvent.click(screen.getByRole('button', { name: '완료하기' }));
+
+    const failure = await screen.findByRole('dialog', { name: dialogName });
+    expect(within(failure).queryByRole('button', { name: '상태 다시 확인' })).toBeNull();
+    expect(within(failure).queryByRole('button', { name: '다시 시도' })).toBeNull();
+    expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === '/api/tasks/T001/complete')).toHaveLength(1);
+    fireEvent.click(within(failure).getByRole('button', { name: '과제 목록 유지' }));
+    expect(await screen.findByText('이름: 김민준')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '책 10분 읽기' }));
+    expect(within(await screen.findByRole('dialog', { name: '책 10분 읽기' })).queryByRole('button', { name: '완료하기' })).toBeNull();
+  });
+
+  it('changes delayed completion copy and guards duplicate completion clicks with one operation ID', async () => {
+    const complete = deferredResponse(completionSuccess('operation-001'));
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/tasks/T001/complete' && init?.method === 'POST'
+      ? complete.response
+      : base(input, init));
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+    fireEvent.click(await screen.findByRole('button', { name: '책 10분 읽기' }));
+    vi.useFakeTimers();
+    const completeButton = screen.getByRole('button', { name: '완료하기' });
+    fireEvent.click(completeButton);
+    fireEvent.click(completeButton);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1200); });
+    expect(screen.getByText('처리 상태를 확인하고 있습니다')).toBeTruthy();
+    const calls = vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === '/api/tasks/T001/complete');
+    expect(calls).toHaveLength(1);
+    expect(JSON.parse(String(calls[0][1]?.body))).toEqual({ studentId: 'S001', operationId: 'operation-001' });
+    expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
+    complete.resolve();
+    await vi.runAllTimersAsync();
+    vi.useRealTimers();
+    expect(await screen.findByRole('dialog', { name: '과제 완료 성공' })).toBeTruthy();
+  });
+
+  it('recovers a non-JSON gateway response by retrying the same POST and never refreshes tasks with GET', async () => {
+    let completions = 0;
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input) === '/api/tasks/T001/complete' && init?.method === 'POST') {
+        completions += 1;
+        return completions === 1
+          ? new Response('<html>bad gateway</html>', { status: 502, headers: { 'Content-Type': 'text/html' } })
+          : jsonResponse(completionSuccess('operation-001'));
+      }
+      return base(input, init);
+    });
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+    fireEvent.click(await screen.findByRole('button', { name: '책 10분 읽기' }));
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole('button', { name: '완료하기' }));
+    await vi.runAllTimersAsync();
+    vi.useRealTimers();
+    expect(await screen.findByRole('dialog', { name: '과제 완료 성공' })).toBeTruthy();
+    const completionCalls = vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === '/api/tasks/T001/complete');
+    expect(completionCalls).toHaveLength(2);
+    expect(completionCalls.map(([, init]) => JSON.parse(String(init?.body)).operationId)).toEqual(['operation-001', 'operation-001']);
+    expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === '/api/tasks?studentId=S001')).toHaveLength(1);
+  });
+
+  it('retains the projection and uses the same operation ID for manual verification after malformed success retries', async () => {
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/tasks/T001/complete' && init?.method === 'POST'
+      ? jsonResponse({ task: tasks[0], student: { studentId: 'S001', name: '김민준' }, tasks: [null], operation: { operationId: 'operation-001', state: 'SUCCESS' } })
+      : base(input, init));
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+    fireEvent.click(await screen.findByRole('button', { name: '책 10분 읽기' }));
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole('button', { name: '완료하기' }));
+    await vi.runAllTimersAsync();
+    vi.useRealTimers();
+    const unknown = await screen.findByRole('dialog', { name: '완료 상태 확인 필요' });
+    expect(within(unknown).getByText(/결과를 확인하지 못했습니다/)).toBeTruthy();
+    const beforeManual = vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === '/api/tasks/T001/complete');
+    expect(beforeManual).toHaveLength(3);
+    fireEvent.click(within(unknown).getByRole('button', { name: '상태 다시 확인' }));
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === '/api/tasks/T001/complete')).toHaveLength(4));
+    const unknownAgain = await screen.findByRole('dialog', { name: '완료 상태 확인 필요' });
+    fireEvent.click(within(unknownAgain).getByRole('button', { name: '과제 목록 유지' }));
+    const retainedList = await screen.findByRole('dialog', { name: '과제 완료' });
+    expect(within(retainedList).getByRole('button', { name: '책 10분 읽기' })).toBeTruthy();
+    const bodies = vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === '/api/tasks/T001/complete').map(([, init]) => JSON.parse(String(init?.body)));
+    expect(bodies.every((body) => body.operationId === 'operation-001')).toBe(true);
+    expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
+  });
+
+  it('atomically adopts the success projection, preserves unrelated carousel selection, and safely returns to the retained list when the selected task disappeared', async () => {
+    const before = [
+      { ...tasks[0], taskId: 'A1', title: '대상 첫째', studentStatus: { studentId: 'S001', assigned: true, completed: false } },
+      { ...tasks[0], taskId: 'A2', title: '대상 둘째', prerequisiteTaskId: 'A1', studentStatus: { studentId: 'S001', assigned: true, completed: false } },
+      { ...tasks[0], taskId: 'B1', title: '별도 첫째', studentStatus: { studentId: 'S001', assigned: true, completed: false } },
+      { ...tasks[0], taskId: 'B2', title: '별도 둘째', prerequisiteTaskId: 'B1', studentStatus: { studentId: 'S001', assigned: true, completed: false } },
+    ];
+    const after = before.filter((task) => task.taskId !== 'A1');
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input) === '/api/tasks?studentId=S001') return jsonResponse(before);
+      if (String(input) === '/api/tasks/A1/complete' && init?.method === 'POST') return jsonResponse(completionSuccess('operation-001', after, before[0]));
+      return base(input, init);
+    });
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+    const unrelated = await screen.findByRole('region', { name: '별도 첫째 연결 과제 묶음' });
+    fireEvent.click(within(unrelated).getByRole('button', { name: '2번째 과제 보기' }));
+    fireEvent.click(screen.getByRole('button', { name: '대상 첫째' }));
+    fireEvent.click(screen.getByRole('button', { name: '완료하기' }));
+    const success = await screen.findByRole('dialog', { name: '과제 완료 성공' });
+    fireEvent.click(within(success).getByRole('button', { name: '닫기' }));
+    const list = await screen.findByRole('dialog', { name: '과제 완료' });
+    expect(within(list).queryByText('대상 첫째')).toBeNull();
+    const retainedUnrelated = within(list).getByRole('region', { name: '별도 첫째 연결 과제 묶음' });
+    expect(within(retainedUnrelated).getByRole('button', { name: '2번째 과제 보기' }).getAttribute('aria-current')).toBe('true');
+    expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === '/api/tasks?studentId=S001')).toHaveLength(1);
   });
 });

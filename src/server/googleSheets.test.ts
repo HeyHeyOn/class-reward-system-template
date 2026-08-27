@@ -76,6 +76,50 @@ describe('GoogleSheetsStore auth and recurring ranges', () => {
     mockSheetMetadata();
   });
 
+  it('reuses one Sheets/OAuth client across operations in the same store', async () => {
+    const store = new GoogleSheetsStore('sheet-123');
+
+    await store.getRows('Students');
+    await store.getRows('Products');
+
+    expect(googleMocks.sheets).toHaveBeenCalledTimes(1);
+    expect(googleMocks.OAuth2).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['503', { response: { status: 503 } }],
+    ['timeout', Object.assign(new Error('timed out'), { code: 'ETIMEDOUT' })],
+    ['connection reset', Object.assign(new Error('reset'), { code: 'ECONNRESET' })],
+  ])('retries a transient %s read failure without retrying writes', async (_label, transientError) => {
+    const sleep = vi.fn(async () => undefined);
+    googleMocks.sheetsValuesGet
+      .mockReset()
+      .mockRejectedValueOnce(transientError)
+      .mockResolvedValueOnce({ data: { values: [['studentId'], ['S1']] } });
+    const store = new GoogleSheetsStore('sheet-123', undefined, { sleep, maxReadAttempts: 3 });
+
+    await expect(store.getRows('Students')).resolves.toEqual([['studentId'], ['S1']]);
+
+    expect(googleMocks.sheetsValuesGet).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledWith(250);
+  });
+
+  it('batch-primes complete recurring rows instead of first-column metadata ranges', async () => {
+    googleMocks.sheetsValuesBatchGet.mockResolvedValueOnce({ data: { valueRanges: [
+      { values: [['taskId', 'title'], ['T1', 'Read']] },
+      { values: [['assignmentId', 'taskId'], ['A1', 'T1']] },
+      { values: [['completionId', 'taskId'], ['C1', 'T1']] },
+    ] } });
+    const store = new GoogleSheetsStore('sheet-123');
+
+    await store.primeRows(['Tasks', 'TaskAssignments', 'TaskCompletions']);
+
+    expect(googleMocks.sheetsValuesBatchGet).toHaveBeenCalledWith(expect.objectContaining({
+      ranges: ["'Tasks'", "'TaskAssignments'", "'TaskCompletions'"],
+    }));
+    await expect(store.getRows('Tasks')).resolves.toEqual([['taskId', 'title'], ['T1', 'Read']]);
+  });
+
   it('updates an existing setting through the adapter when its value header has surrounding whitespace', async () => {
     googleMocks.sheetsValuesGet.mockResolvedValue({
       data: { values: [['key', ' value '], ['currencyUnit', '원']] },

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { ReactNode, RefCallback, UIEventHandler } from 'react';
 import type { ClassTask, Transaction } from '@/domain/types';
 import { getFontFamilyCss, type FontFamily } from '@/lib/fontSettings';
 import { QrScanner } from './QrScanner';
@@ -15,6 +15,9 @@ type BankView = 'home' | 'balance-scan' | 'balance-result' | 'tasks-scan' | 'tas
 type BalanceResult = { studentId: string; name: string; balance: number; transactions?: Transaction[] } | null;
 type TaskResult = { message: string; balanceAfter?: number; reward?: number; studentName?: string } | null;
 type TaskStudentStatus = { studentId: string; assigned: boolean; completed?: boolean };
+type CompletionOperation = { operationId: string; studentId: string; taskId: string };
+type CompletionFailureMode = 'policy' | 'unknown' | 'conflict' | 'manual' | null;
+type IdentifyFailureMode = 'temporary' | 'missing' | 'other' | null;
 type BankTask = Omit<ClassTask, 'allowedStudentIds'> & {
   allowedStudentIds?: string[];
   currentCycle?: {
@@ -31,6 +34,42 @@ type BankTask = Omit<ClassTask, 'allowedStudentIds'> & {
   prerequisiteStatus?: 'SATISFIED' | 'REQUIRED' | 'UNAVAILABLE';
   prerequisiteMessage?: string;
 };
+
+type CompletionSuccessPayload = {
+  task: { taskId: string; title: string; reward: number };
+  student: { studentId: string; name: string };
+  tasks: BankTask[];
+  operation: { operationId: string; state: 'SUCCESS' };
+};
+
+function isSafeBankTask(value: unknown): value is BankTask {
+  if (!value || typeof value !== 'object') return false;
+  const task = value as Partial<BankTask>;
+  return typeof task.taskId === 'string'
+    && typeof task.title === 'string'
+    && typeof task.reward === 'number'
+    && Number.isFinite(task.reward)
+    && typeof task.sortOrder === 'number'
+    && Number.isFinite(task.sortOrder);
+}
+
+function isCompletionSuccess(payload: unknown, operation: CompletionOperation): payload is CompletionSuccessPayload {
+  if (!payload || typeof payload !== 'object') return false;
+  const candidate = payload as Partial<CompletionSuccessPayload>;
+  return Array.isArray(candidate.tasks)
+    && candidate.tasks.every(isSafeBankTask)
+    && candidate.operation?.operationId === operation.operationId
+    && candidate.operation?.state === 'SUCCESS'
+    && candidate.student?.studentId === operation.studentId
+    && typeof candidate.student?.name === 'string'
+    && candidate.task?.taskId === operation.taskId
+    && typeof candidate.task?.title === 'string'
+    && typeof candidate.task?.reward === 'number';
+}
+
+function waitForRetry(delayMs: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, delayMs));
+}
 
 function getTaskStudentStatus(task: BankTask, studentId: string) {
   const direct = task.studentStatus?.studentId === studentId ? task.studentStatus : undefined;
@@ -49,18 +88,6 @@ function getTaskStudentStatus(task: BankTask, studentId: string) {
   return { assigned, completed };
 }
 
-
-function LoadingScreen({ title, message }: { title: string; message: string }) {
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-100 p-4 text-slate-950">
-      <section role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-2xl">
-        <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-slate-950" aria-hidden="true" />
-        <h1 className="mt-4 text-2xl font-black">{title}</h1>
-        <p className="mt-2 rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-600">{message}</p>
-      </section>
-    </main>
-  );
-}
 
 function formatTransactionAmount(transaction: Transaction, unit: string) {
   const delta = transaction.balanceAfter - transaction.balanceBefore;
@@ -112,6 +139,8 @@ export function BankApp() {
   const [selectedTask, setSelectedTask] = useState<BankTask | null>(null);
   const [taskStudentId, setTaskStudentId] = useState('');
   const [taskStudentName, setTaskStudentName] = useState('');
+  const [taskCarouselPositions, setTaskCarouselPositions] = useState<Record<string, string>>({});
+  const [publicCarouselPositions, setPublicCarouselPositions] = useState<Record<string, string>>({});
   const [view, setView] = useState<BankView>('home');
   const [manualQr, setManualQr] = useState('');
   const [balanceResult, setBalanceResult] = useState<BalanceResult>(null);
@@ -120,10 +149,19 @@ export function BankApp() {
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingDialog, setLoadingDialog] = useState<{ title: string; message: string } | null>(null);
-  const [isSettingsLoading, setIsSettingsLoading] = useState(true);
+  const [settingsError, setSettingsError] = useState('');
+  const [completionFailureMode, setCompletionFailureMode] = useState<CompletionFailureMode>(null);
+  const [pendingCompletionTaskId, setPendingCompletionTaskId] = useState('');
+  const [identifyFailureMode, setIdentifyFailureMode] = useState<IdentifyFailureMode>(null);
+  const [pendingTaskStudentId, setPendingTaskStudentId] = useState('');
   const taskRequestId = useRef(0);
   const taskAbortController = useRef<AbortController | null>(null);
   const taskCompletionInFlight = useRef(false);
+  const activeCompletion = useRef<CompletionOperation | null>(null);
+  const taskListScrollTop = useRef(0);
+  const restoreTaskListScroll: RefCallback<HTMLElement> = useCallback((element) => {
+    if (element) element.scrollTop = taskListScrollTop.current;
+  }, []);
 
   const currencyUnit = settings.currencyUnit || '원';
   const theme = BANK_THEME[normalizeThemeColor(settings.themeColor)];
@@ -140,11 +178,11 @@ export function BankApp() {
     try {
       const response = await fetch('/api/settings', { cache: 'no-store' });
       const payload = await response.json();
-      if (response.ok) setSettings(payload);
-    } catch {
-      setSettings({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', fontFamily: 'default', qrManualInputEnabled: false });
-    } finally {
-      setIsSettingsLoading(false);
+      if (!response.ok) throw new Error(payload?.error ?? '설정을 불러오지 못했습니다.');
+      setSettings((current) => ({ ...current, ...payload }));
+      setSettingsError('');
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : '설정을 불러오지 못했습니다.');
     }
   }, []);
 
@@ -180,9 +218,16 @@ export function BankApp() {
     taskAbortController.current?.abort();
     const controller = new AbortController();
     taskAbortController.current = controller;
+    setPendingTaskStudentId(studentId);
+    setIdentifyFailureMode(null);
+    setTaskStudentId('');
+    setTaskStudentName('');
+    setTasks([]);
+    setSelectedTask(null);
     setLoading(true);
     setLoadingDialog({ title: '과제 목록 불러오는 중', message: '과제 목록을 불러오는 중입니다.' });
     setErrorMessage('');
+    let failureMode: IdentifyFailureMode = 'other';
     try {
       const requestOptions = { cache: 'no-store' as const, signal: controller.signal };
       const [tasksResponse, studentResponse] = await Promise.all([
@@ -190,8 +235,15 @@ export function BankApp() {
         fetch(`/api/bank/student?studentId=${encodeURIComponent(studentId)}`, requestOptions),
       ]);
       const [tasksPayload, studentPayload] = await Promise.all([tasksResponse.json(), studentResponse.json()]);
-      if (!tasksResponse.ok) throw new Error(tasksPayload.error ?? '과제 목록을 불러오지 못했습니다.');
-      if (!studentResponse.ok) throw new Error(studentPayload.error ?? '학생 이름을 불러오지 못했습니다.');
+      if (!studentResponse.ok) {
+        failureMode = studentPayload?.code === 'STUDENT_NOT_FOUND'
+          ? 'missing'
+          : studentPayload?.code === 'STUDENT_DATA_UNAVAILABLE'
+            ? 'temporary'
+            : 'other';
+        throw new Error(studentPayload?.error ?? '학생 이름을 불러오지 못했습니다.');
+      }
+      if (!tasksResponse.ok) throw new Error(tasksPayload?.error ?? '과제 목록을 불러오지 못했습니다.');
       if (studentPayload?.studentId !== studentId || typeof studentPayload?.name !== 'string' || !studentPayload.name.trim()) {
         throw new Error('학생 정보를 확인하지 못했습니다.');
       }
@@ -199,7 +251,9 @@ export function BankApp() {
       setTaskStudentId(studentId);
       setTaskStudentName(studentPayload.name.trim());
       setTasks(Array.isArray(tasksPayload) ? tasksPayload : []);
+      setTaskCarouselPositions({});
       setSelectedTask(null);
+      setPendingTaskStudentId('');
       setManualQr('');
       setView('tasks-list');
     } catch (error) {
@@ -207,9 +261,11 @@ export function BankApp() {
       const message = error instanceof Error ? error.message : '과제 목록을 불러오지 못했습니다.';
       setErrorMessage(message);
       setTaskResult({ message });
+      setIdentifyFailureMode(failureMode);
       setTaskStudentId('');
       setTaskStudentName('');
       setTasks([]);
+      setSelectedTask(null);
       setView('task-identify-failure');
     } finally {
       if (requestId === taskRequestId.current) {
@@ -245,77 +301,144 @@ export function BankApp() {
     }
   }
 
-  async function completeSelectedTask() {
-    const studentId = taskStudentId;
-    if (!studentId || !selectedTask || taskCompletionInFlight.current) return;
-    const status = getTaskStudentStatus(selectedTask, studentId);
-    if (!status.assigned || status.completed === true) return;
+  async function completeSelectedTask(manualCheck = false) {
+    if (taskCompletionInFlight.current) return;
+
+    let operation = activeCompletion.current;
+    if (operation && selectedTask && operation.taskId !== selectedTask.taskId) return;
+    if (!operation) {
+      const studentId = taskStudentId;
+      if (!studentId || !selectedTask) return;
+      const status = getTaskStudentStatus(selectedTask, studentId);
+      if (!status.assigned || status.completed === true) return;
+      operation = { operationId: crypto.randomUUID(), studentId, taskId: selectedTask.taskId };
+      activeCompletion.current = operation;
+      setPendingCompletionTaskId(operation.taskId);
+    }
+
     taskCompletionInFlight.current = true;
-    const activeRequestId = taskRequestId.current;
+    setCompletionFailureMode(null);
     setLoading(true);
-    setLoadingDialog({ title: '과제 완료 처리 중', message: '과제 완료를 기록하고 보상을 지급하는 중입니다.' });
+    setLoadingDialog({ title: '과제 완료 처리 중', message: manualCheck ? '처리 상태를 확인하고 있습니다' : '과제 완료를 기록하고 보상을 지급하는 중입니다.' });
     setErrorMessage('');
+    const delayedCopyTimer = window.setTimeout(() => {
+      setLoadingDialog({ title: '과제 완료 처리 중', message: '처리 상태를 확인하고 있습니다' });
+    }, 1000);
+
+    const maxAttempts = manualCheck ? 1 : 3;
+    let terminal = false;
     try {
-      const response = await fetch(`/api/tasks/${encodeURIComponent(selectedTask.taskId)}/complete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId }),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? '과제 완료 처리에 실패했습니다.');
-      setTaskResult({
-        message: `${payload.student.name} 학생에게 ${payload.task.reward}${currencyUnit} 지급 완료`,
-        balanceAfter: payload.student.balance,
-        reward: payload.task.reward,
-        studentName: payload.student.name,
-      });
-      const completedTaskId = selectedTask.taskId;
-      const markCompleted = (task: BankTask): BankTask => task.taskId === completedTaskId ? {
-        ...task,
-        studentStatus: { ...task.studentStatus, studentId, assigned: true, completed: true },
-      } : task;
-      setTasks((current) => current.map(markCompleted));
-      setSelectedTask((current) => current ? markCompleted(current) : null);
-      setView('task-success');
-      void refreshCompletedTask(studentId, activeRequestId);
-    } catch (error) {
-      setTaskResult({ message: error instanceof Error ? error.message : '과제 완료 처리에 실패했습니다.' });
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        let response: Response | null = null;
+        let payload: unknown = null;
+        try {
+          response = await fetch(`/api/tasks/${encodeURIComponent(operation.taskId)}/complete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ studentId: operation.studentId, operationId: operation.operationId }),
+          });
+          const text = await response.text();
+          try {
+            payload = JSON.parse(text);
+          } catch {
+            payload = null;
+          }
+        } catch {
+          response = null;
+        }
+
+        if (response?.ok && isCompletionSuccess(payload, operation)) {
+          const projectedTasks = payload.tasks;
+          const projectedChains = buildStudentTaskChains(
+            projectedTasks.filter((task) => getTaskStudentStatus(task, operation.studentId).assigned),
+            (task) => getTaskStudentStatus(task, operation.studentId).completed,
+          );
+          const affectedChain = projectedChains.find((chain) => chain.tasks.some((task) => task.taskId === operation.taskId || task.prerequisiteTaskId === operation.taskId));
+          const firstIncomplete = affectedChain?.tasks.find((task) => getTaskStudentStatus(task, operation.studentId).completed !== true);
+          if (affectedChain && firstIncomplete) {
+            setTaskCarouselPositions((current) => ({ ...current, [affectedChain.tasks[0].taskId]: firstIncomplete.taskId }));
+          }
+          setTasks(projectedTasks);
+          setTaskStudentName(payload.student.name.trim());
+          setSelectedTask(projectedTasks.find((task) => task.taskId === operation.taskId) ?? null);
+          setTaskResult({
+            message: `${payload.student.name} 학생에게 ${payload.task.reward}${currencyUnit} 지급 완료`,
+            reward: payload.task.reward,
+            studentName: payload.student.name,
+          });
+          activeCompletion.current = null;
+          setPendingCompletionTaskId('');
+          terminal = true;
+          setView('task-success');
+          return;
+        }
+
+        const errorPayload = payload && typeof payload === 'object'
+          ? payload as { error?: unknown; code?: unknown; retryable?: unknown }
+          : null;
+        if (response && response.status >= 400 && response.status < 500 && errorPayload?.code === 'POLICY_FAILURE') {
+          const message = typeof errorPayload.error === 'string' ? errorPayload.error : '과제 완료 조건을 확인해 주세요.';
+          setTaskResult({ message });
+          setCompletionFailureMode('policy');
+          activeCompletion.current = null;
+          setPendingCompletionTaskId('');
+          terminal = true;
+          setView('task-failure');
+          return;
+        }
+        if (errorPayload?.code === 'COMPLETION_OPERATION_CONFLICT') {
+          setTaskResult({ message: typeof errorPayload.error === 'string' ? errorPayload.error : '같은 완료 요청의 내용이 일치하지 않습니다.' });
+          setCompletionFailureMode('conflict');
+          activeCompletion.current = null;
+          setPendingCompletionTaskId('');
+          terminal = true;
+          setView('task-failure');
+          return;
+        }
+        if (errorPayload?.code === 'COMPLETION_RECONCILIATION_REQUIRED' && errorPayload.retryable === false) {
+          setTaskResult({ message: typeof errorPayload.error === 'string' ? errorPayload.error : '완료 결과를 확인하지 못했습니다. 담당자에게 문의해 주세요.' });
+          setCompletionFailureMode('manual');
+          activeCompletion.current = null;
+          setPendingCompletionTaskId('');
+          terminal = true;
+          setView('task-failure');
+          return;
+        }
+
+        setLoadingDialog({ title: '과제 완료 처리 중', message: '처리 상태를 확인하고 있습니다' });
+        if (attempt < maxAttempts - 1) await waitForRetry(250 * (2 ** attempt));
+      }
+
+      setTaskResult({ message: '완료 결과를 확인하지 못했습니다. 같은 작업 번호로 상태를 다시 확인해 주세요.' });
+      setCompletionFailureMode('unknown');
+      terminal = true;
       setView('task-failure');
     } finally {
+      window.clearTimeout(delayedCopyTimer);
       taskCompletionInFlight.current = false;
       setLoading(false);
       setLoadingDialog(null);
-    }
-  }
-
-  async function refreshCompletedTask(studentId: string, requestId: number) {
-    try {
-      const response = await fetch(`/api/tasks?studentId=${encodeURIComponent(studentId)}`, { cache: 'no-store' });
-      const payload: BankTask[] = await response.json();
-      if (!response.ok || requestId !== taskRequestId.current) return;
-      setTasks(payload);
-      setSelectedTask((current) => current ? payload.find((task) => task.taskId === current.taskId) ?? null : null);
-    } catch {
-      // Completion already succeeded; a refresh failure must not discard that result.
+      if (!terminal && activeCompletion.current === operation) {
+        activeCompletion.current = null;
+        setPendingCompletionTaskId('');
+      }
     }
   }
 
   function openBalanceScan() {
+    if (activeCompletion.current) return;
     setManualQr(''); setBalanceResult(null); setErrorMessage(''); setView('balance-scan');
   }
 
   function openTaskScan() {
+    if (activeCompletion.current) return;
     ++taskRequestId.current;
     taskAbortController.current?.abort();
-    setManualQr(''); setTasks([]); setSelectedTask(null); setTaskStudentId(''); setTaskStudentName(''); setTaskResult(null); setErrorMessage(''); setView('tasks-scan');
+    taskListScrollTop.current = 0; setPendingTaskStudentId(''); setIdentifyFailureMode(null); setCompletionFailureMode(null); setManualQr(''); setTasks([]); setSelectedTask(null); setTaskStudentId(''); setTaskStudentName(''); setTaskCarouselPositions({}); setTaskResult(null); setErrorMessage(''); setView('tasks-scan');
   }
 
   function openTaskDetail(task: BankTask) {
     setSelectedTask(task); setTaskResult(null); setErrorMessage(''); setView('task-detail');
-  }
-
-  if (isSettingsLoading) {
-    return <LoadingScreen title="시트 정보 불러오는 중" message="은행 제목과 테마 설정을 불러오는 중입니다." />;
   }
 
   return (
@@ -330,6 +453,13 @@ export function BankApp() {
           </div>
         </header>
 
+        {settingsError ? (
+          <div role="status" aria-label="설정 불러오기 실패" className="flex shrink-0 items-center justify-between gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900 shadow-sm">
+            <span>기본 설정으로 표시하고 있습니다.</span>
+            <button type="button" aria-label="설정 다시 시도" onClick={() => void loadSettings()} className="shrink-0 rounded-lg bg-amber-900 px-3 py-1.5 text-white">다시 시도</button>
+          </div>
+        ) : null}
+
         <section role="region" aria-label="공개 과제 목록" className="flex min-h-0 flex-1 flex-col rounded-[1.5rem] bg-white/90 p-3 shadow-lg sm:rounded-[2rem] sm:p-5">
           <h2 className="shrink-0 text-xl font-black sm:text-2xl">공개 과제 목록</h2>
           <div data-testid="public-task-list-body" className="mt-2 min-h-0 flex-1 overflow-y-auto overscroll-contain sm:mt-3">
@@ -340,7 +470,7 @@ export function BankApp() {
               {publicTaskChains.map((chain) => chain.tasks.length === 1 ? (
                 <TaskCard key={chain.tasks[0].taskId} task={chain.tasks[0]} studentId="" currencyUnit={currencyUnit} theme={theme} isBlackTheme={normalizeThemeColor(settings.themeColor) === 'black'} onOpen={setPublicTask} catalog />
               ) : (
-                <TaskCarousel key={chain.tasks.map((task) => task.taskId).join('|')} chain={chain} studentId="" currencyUnit={currencyUnit} theme={theme} isBlackTheme={normalizeThemeColor(settings.themeColor) === 'black'} onOpen={setPublicTask} catalog />
+                <TaskCarousel key={chain.tasks.map((task) => task.taskId).join('|')} chain={chain} studentId="" currencyUnit={currencyUnit} theme={theme} isBlackTheme={normalizeThemeColor(settings.themeColor) === 'black'} onOpen={setPublicTask} activeTaskId={publicCarouselPositions[chain.tasks[0].taskId]} onActiveTaskChange={(taskId) => setPublicCarouselPositions((current) => ({ ...current, [chain.tasks[0].taskId]: taskId }))} catalog />
               ))}
             </div>
           </div>
@@ -407,7 +537,7 @@ export function BankApp() {
       ) : null}
 
       {view === 'tasks-list' ? (
-        <Modal title="과제 완료" onClose={() => setView('home')} closeLabel="닫기">
+        <Modal title="과제 완료" onClose={() => { if (!activeCompletion.current) setView('home'); }} closeLabel="닫기" containerRef={restoreTaskListScroll} onScroll={(event) => { taskListScrollTop.current = event.currentTarget.scrollTop; }}>
           <p className="mb-3 rounded-xl bg-slate-100 p-3 text-sm font-black text-slate-600">이름: {taskStudentName}</p>
           {loading ? <p className="rounded-2xl bg-slate-50 p-4 font-bold">과제 목록을 불러오는 중입니다.</p> : null}
           {errorMessage ? <p className="rounded-2xl bg-rose-50 p-4 font-bold text-rose-700">{errorMessage}</p> : null}
@@ -416,40 +546,56 @@ export function BankApp() {
             {assignedTaskChains.map((chain) => chain.tasks.length === 1 ? (
               <TaskCard key={chain.tasks[0].taskId} task={chain.tasks[0]} studentId={taskStudentId} currencyUnit={currencyUnit} theme={theme} isBlackTheme={normalizeThemeColor(settings.themeColor) === 'black'} onOpen={openTaskDetail} />
             ) : (
-              <TaskCarousel key={chain.tasks.map((task) => `${task.taskId}:${getTaskStudentStatus(task, taskStudentId).completed === true ? '1' : '0'}:${task.prerequisiteStatus ?? ''}`).join('|')} chain={chain} studentId={taskStudentId} currencyUnit={currencyUnit} theme={theme} isBlackTheme={normalizeThemeColor(settings.themeColor) === 'black'} onOpen={openTaskDetail} />
+              <TaskCarousel key={chain.tasks.map((task) => `${task.taskId}:${getTaskStudentStatus(task, taskStudentId).completed === true ? '1' : '0'}:${task.prerequisiteStatus ?? ''}`).join('|')} chain={chain} studentId={taskStudentId} currencyUnit={currencyUnit} theme={theme} isBlackTheme={normalizeThemeColor(settings.themeColor) === 'black'} onOpen={openTaskDetail} activeTaskId={taskCarouselPositions[chain.tasks[0].taskId]} onActiveTaskChange={(taskId) => setTaskCarouselPositions((current) => ({ ...current, [chain.tasks[0].taskId]: taskId }))} />
             ))}
           </div>
         </Modal>
       ) : null}
 
       {view === 'task-detail' && selectedTask ? (
-        <Modal title={selectedTask.title} onClose={() => setView('tasks-list')} closeLabel="닫기">
+        <Modal title={selectedTask.title} onClose={() => { if (!taskCompletionInFlight.current) setView('tasks-list'); }} closeLabel="닫기">
           <p data-testid="bank-task-description" className="whitespace-pre-wrap rounded-2xl bg-slate-50 p-5 text-lg font-bold leading-relaxed text-slate-700">{selectedTask.description || '과제 설명이 없습니다.'}</p>
           <p className="mt-3 rounded-2xl bg-amber-50 p-4 text-center font-black text-amber-800">보상<br />{selectedTask.reward.toLocaleString()}{currencyUnit}</p>
           <TaskStudentSummary task={selectedTask} />
           {getTaskStudentStatus(selectedTask, taskStudentId).completed === true ? <p className="sr-only">완료됨</p> : null}
           {selectedTask.prerequisiteTitle ? <p className="mt-3 rounded-xl bg-slate-100 p-3 font-bold">선행 과제: {selectedTask.prerequisiteTitle}</p> : null}
           {selectedTask.prerequisiteMessage ? <p className="mt-3 rounded-xl bg-amber-100 p-3 font-bold text-amber-900">{selectedTask.prerequisiteMessage}</p> : null}
-          {getTaskStudentStatus(selectedTask, taskStudentId).completed !== true ? (
+          {completionFailureMode === 'manual' || completionFailureMode === 'conflict' ? <p className="mt-3 rounded-xl bg-rose-50 p-3 font-bold text-rose-700">이 QR 세션에서는 추가 완료를 진행할 수 없습니다. 담당자 확인 후 새 QR로 다시 시작해 주세요.</p> : null}
+          {pendingCompletionTaskId && pendingCompletionTaskId !== selectedTask.taskId ? <p className="mt-3 rounded-xl bg-amber-50 p-3 font-bold text-amber-800">확인 중인 다른 과제 완료 작업이 있습니다. 해당 과제로 돌아가 상태를 확인해 주세요.</p> : null}
+          {pendingCompletionTaskId === selectedTask.taskId ? <button type="button" onClick={() => void completeSelectedTask(true)} className={`mt-4 w-full rounded-2xl ${theme.accentBg} py-4 text-xl font-black`}>상태 다시 확인</button> : null}
+          {getTaskStudentStatus(selectedTask, taskStudentId).completed !== true && !pendingCompletionTaskId && completionFailureMode !== 'manual' && completionFailureMode !== 'conflict' ? (
             <button type="button" disabled={selectedTask.prerequisiteStatus === 'REQUIRED' || selectedTask.prerequisiteStatus === 'UNAVAILABLE'} onClick={() => void completeSelectedTask()} className={`mt-4 w-full rounded-2xl ${theme.accentBg} py-4 text-xl font-black disabled:cursor-not-allowed disabled:opacity-50`}>완료하기</button>
           ) : null}
         </Modal>
       ) : null}
 
       {view === 'task-success' ? (
-        <ResultDialog title="과제 완료 성공" tone="success" onClose={() => setView('task-detail')}>
+        <ResultDialog title="과제 완료 성공" tone="success" onClose={() => setView(selectedTask ? 'task-detail' : 'tasks-list')}>
           <p>{taskResult?.message}</p>
           {typeof taskResult?.balanceAfter === 'number' ? <p className="mt-2">현재 잔액: <strong>{taskResult.balanceAfter.toLocaleString()}{currencyUnit}</strong></p> : null}
         </ResultDialog>
       ) : null}
 
       {view === 'task-failure' ? (
-        <ResultDialog title="과제 완료 실패" tone="failure" onClose={() => setView('task-detail')} retryLabel="다시 시도" onRetry={() => void completeSelectedTask()} closeLabel="취소">
+        <ResultDialog
+          title={completionFailureMode === 'unknown' ? '완료 상태 확인 필요' : completionFailureMode === 'manual' ? '수동 확인 필요' : completionFailureMode === 'conflict' ? '완료 요청 충돌' : '과제 완료 실패'}
+          tone="failure"
+          onClose={() => setView(completionFailureMode === 'policy' && selectedTask ? 'task-detail' : 'tasks-list')}
+          retryLabel={completionFailureMode === 'unknown' ? '상태 다시 확인' : completionFailureMode === 'policy' ? '다시 시도' : undefined}
+          onRetry={completionFailureMode === 'unknown' ? () => void completeSelectedTask(true) : completionFailureMode === 'policy' ? () => void completeSelectedTask(false) : undefined}
+          closeLabel={completionFailureMode === 'policy' ? '취소' : '과제 목록 유지'}
+        >
           <p>{taskResult?.message ?? '과제 완료 처리에 실패했습니다.'}</p>
         </ResultDialog>
       ) : null}
       {view === 'task-identify-failure' ? (
-        <ResultDialog title="학생 확인 실패" tone="failure" onClose={() => setView('home')}>
+        <ResultDialog
+          title={identifyFailureMode === 'temporary' ? '학생 정보 일시 오류' : '학생 확인 실패'}
+          tone="failure"
+          onClose={() => { setPendingTaskStudentId(''); setView('home'); }}
+          onRetry={identifyFailureMode === 'temporary' && pendingTaskStudentId ? () => void identifyTaskStudent(pendingTaskStudentId) : undefined}
+          retryLabel="같은 학생 다시 시도"
+        >
           <p>{taskResult?.message ?? '과제 목록을 불러오지 못했습니다.'}</p>
         </ResultDialog>
       ) : null}
@@ -473,12 +619,13 @@ type TaskCardProps = {
   theme: (typeof BANK_THEME)[ThemeColor];
   isBlackTheme: boolean;
   onOpen: (task: BankTask) => void;
-  reserveCarouselFooter?: boolean;
   embedded?: boolean;
   catalog?: boolean;
+  activeTaskId?: string;
+  onActiveTaskChange?: (taskId: string) => void;
 };
 
-function TaskCard({ task, studentId, currencyUnit, theme, isBlackTheme, onOpen, reserveCarouselFooter = false, embedded = false, catalog = false }: TaskCardProps) {
+function TaskCard({ task, studentId, currencyUnit, theme, isBlackTheme, onOpen, embedded = false, catalog = false }: TaskCardProps) {
   const guidanceId = useId();
   const completed = !catalog && getTaskStudentStatus(task, studentId).completed === true;
   const locked = !catalog && (task.prerequisiteStatus === 'REQUIRED' || task.prerequisiteStatus === 'UNAVAILABLE');
@@ -490,62 +637,69 @@ function TaskCard({ task, studentId, currencyUnit, theme, isBlackTheme, onOpen, 
       aria-label={`${task.title}${accessibleStatus}`}
       aria-describedby={locked && task.prerequisiteMessage ? guidanceId : undefined}
       onClick={() => onOpen(task)}
-      className={`relative w-full overflow-hidden ${embedded ? '' : `rounded-2xl border ${theme.accentBorderAlt} ${theme.softBg}`} p-4 ${reserveCarouselFooter ? 'pb-12' : ''} text-left font-black ${theme.softText}`}
+      className={`relative h-full w-full overflow-hidden ${embedded ? '' : `rounded-2xl border ${theme.accentBorderAlt} ${theme.softBg}`} p-4 text-left font-black ${theme.softText}`}
     >
-      <div data-testid="task-card-content" className={completed || locked ? 'opacity-60' : ''}>
+      {completed ? <span data-testid="task-card-completed-overlay" aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 bg-black/30" /> : null}
+      <div data-testid="task-card-content" className={`relative z-[1] ${locked ? 'opacity-60' : ''}`}>
         <span className={`block text-lg ${completed || locked ? 'max-w-[calc(100%-7rem)]' : ''}`}>{task.title}</span>
         <span className={`mt-1 block text-sm ${isBlackTheme ? 'text-slate-300' : 'text-slate-500'}`}>보상 {task.reward.toLocaleString()}{currencyUnit}</span>
         <TaskStudentSummary task={task} compact />
       </div>
       {locked && task.prerequisiteMessage ? <>
-        <span aria-hidden="true" className="absolute right-3 top-3 rounded-full bg-amber-100 px-3 py-1 text-xs text-amber-900">{statusLabel}</span>
+        <span aria-hidden="true" className="absolute right-3 top-3 z-10 rounded-full bg-amber-100 px-3 py-1 text-xs text-amber-900">{statusLabel}</span>
         <span id={guidanceId} className="sr-only">{task.prerequisiteMessage}</span>
       </> : null}
-      {completed ? <span aria-hidden="true" className="absolute right-3 top-3 rounded-full bg-emerald-700 px-3 py-1 text-sm font-black text-white">완료됨</span> : null}
+      {completed ? <span aria-hidden="true" className="absolute right-3 top-3 z-10 rounded-full bg-emerald-700 px-3 py-1 text-sm font-black text-white">완료됨</span> : null}
     </button>
   );
 }
 
-function TaskCarousel({ chain, studentId, currencyUnit, theme, isBlackTheme, onOpen, catalog = false }: Omit<TaskCardProps, 'task' | 'reserveCarouselFooter' | 'embedded'> & { chain: StudentTaskChain<BankTask> }) {
-  const [activeIndex, setActiveIndex] = useState(chain.initialIndex);
+function TaskCarousel({ chain, studentId, currencyUnit, theme, isBlackTheme, onOpen, catalog = false, activeTaskId, onActiveTaskChange }: Omit<TaskCardProps, 'task' | 'embedded'> & { chain: StudentTaskChain<BankTask> }) {
+  const storedIndex = activeTaskId ? chain.tasks.findIndex((task) => task.taskId === activeTaskId) : -1;
+  const activeIndex = storedIndex >= 0 ? storedIndex : chain.initialIndex;
   const scrollerRef = useRef<HTMLDivElement | null>(null);
 
   const showSlide = useCallback((index: number) => {
     const nextIndex = Math.max(0, Math.min(chain.tasks.length - 1, index));
-    setActiveIndex(nextIndex);
+    onActiveTaskChange?.(chain.tasks[nextIndex].taskId);
     const scroller = scrollerRef.current;
     if (!scroller) return;
     const left = nextIndex * scroller.clientWidth;
     scrollTaskCarousel(scroller, left, 'smooth');
-  }, [chain.tasks.length]);
+  }, [chain.tasks, onActiveTaskChange]);
 
   useEffect(() => {
     const scroller = scrollerRef.current;
     if (!scroller) return;
-    const left = chain.initialIndex * scroller.clientWidth;
+    const left = activeIndex * scroller.clientWidth;
     scrollTaskCarousel(scroller, left);
-  }, [chain.initialIndex]);
+  }, [activeIndex]);
 
   return (
     <section role="region" aria-label={`${chain.tasks[0].title} 연결 과제 묶음`} className={`group relative overflow-hidden rounded-2xl border ${theme.accentBorderAlt} ${theme.softBg}`}>
       <div
         ref={scrollerRef}
-        className="flex touch-pan-x snap-x snap-mandatory overflow-x-auto overscroll-x-contain"
+        data-testid="task-carousel-scroller"
+        className="flex items-stretch touch-pan-x snap-x snap-mandatory overflow-x-auto overscroll-x-contain"
         onScroll={(event) => {
           const width = event.currentTarget.clientWidth;
-          if (width > 0) setActiveIndex(Math.max(0, Math.min(chain.tasks.length - 1, Math.round(event.currentTarget.scrollLeft / width))));
+          if (width > 0) {
+            const nextIndex = Math.max(0, Math.min(chain.tasks.length - 1, Math.round(event.currentTarget.scrollLeft / width)));
+            if (nextIndex !== activeIndex) onActiveTaskChange?.(chain.tasks[nextIndex].taskId);
+          }
         }}
       >
         {chain.tasks.map((task, index) => (
           <div
             key={task.taskId}
+            data-testid="task-carousel-slide"
             role="group"
             aria-label={`${index + 1} / ${chain.tasks.length}: ${task.title}`}
             aria-hidden={index === activeIndex ? undefined : true}
             inert={index === activeIndex ? undefined : true}
-            className="min-w-full snap-center"
+            className="flex min-w-full snap-center"
           >
-            <TaskCard task={task} studentId={studentId} currencyUnit={currencyUnit} theme={theme} isBlackTheme={isBlackTheme} onOpen={onOpen} reserveCarouselFooter embedded catalog={catalog} />
+            <TaskCard task={task} studentId={studentId} currencyUnit={currencyUnit} theme={theme} isBlackTheme={isBlackTheme} onOpen={onOpen} embedded catalog={catalog} />
           </div>
         ))}
       </div>
@@ -622,10 +776,10 @@ function LoadingDialog({ title, message }: { title: string; message: string }) {
   );
 }
 
-function Modal({ title, children, onClose, closeLabel }: { title: string; children: ReactNode; onClose: () => void; closeLabel: string }) {
+function Modal({ title, children, onClose, closeLabel, containerRef, onScroll }: { title: string; children: ReactNode; onClose: () => void; closeLabel: string; containerRef?: RefCallback<HTMLElement>; onScroll?: UIEventHandler<HTMLElement> }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 text-slate-950">
-      <section role="dialog" aria-modal="true" aria-label={title} className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-[2rem] bg-white p-5 shadow-2xl">
+      <section ref={containerRef} onScroll={onScroll} role="dialog" aria-modal="true" aria-label={title} className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-[2rem] bg-white p-5 shadow-2xl">
         <h2 className="text-2xl font-black">{title}</h2>
         <div className="mt-4">{children}</div>
         <button type="button" onClick={onClose} className="mt-4 w-full rounded-2xl bg-slate-200 py-3 font-black text-slate-700">{closeLabel}</button>

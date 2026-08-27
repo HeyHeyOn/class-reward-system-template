@@ -109,7 +109,17 @@ export async function readTaskAssignmentsIfPresent(reader: TabularReader): Promi
 }
 
 export async function readTaskCompletions(reader: TabularReader): Promise<TaskCompletion[]> {
-  const rows = await reader.getRows('TaskCompletions');
+  return parseTaskCompletionRows(await reader.getRows('TaskCompletions'));
+}
+
+export async function readTaskCompletionsFresh(reader: TabularReader): Promise<TaskCompletion[]> {
+  const rows = reader.getRowsFresh
+    ? await reader.getRowsFresh('TaskCompletions')
+    : await reader.getRows('TaskCompletions');
+  return parseTaskCompletionRows(rows);
+}
+
+function parseTaskCompletionRows(rows: string[][]): TaskCompletion[] {
   if (!Array.isArray(rows)) return [];
   const [headers, ...dataRows] = rows;
   if (!headers) return [];

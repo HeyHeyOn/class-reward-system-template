@@ -25,6 +25,7 @@ class Store {
   lookupSheet = vi.fn(async (name: string) => ({ found: true as const, info: { sheetId: 1, title: name, columnCount: this.rows[name][0].length } }));
   createSheetWithHeader = vi.fn(); ensureColumnCount = vi.fn(); writeHeaderCells = vi.fn(); verifyHeaderCells = vi.fn(); verifyAndWriteHeaderCells = vi.fn();
   getRows = vi.fn(async (sheet: string) => this.rows[sheet].map((row) => [...row]));
+  getRowsFresh = vi.fn(async (sheet: string) => this.rows[sheet].map((row) => [...row]));
 
   constructor(readonly configuredTask: ClassTask = task) {
     this.rows = {
@@ -35,6 +36,28 @@ class Store {
       Transactions: [['transactionId', 'timestamp', 'studentId', 'studentName', 'items', 'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator']],
     };
   }
+}
+
+function bankOperation(label: string): { operationId: string; operationPayloadHash: string } {
+  return {
+    operationId: `op-${label}`,
+    operationPayloadHash: `sha256:${label.padEnd(64, '0').slice(0, 64)}`,
+  };
+}
+
+function operationCompletionRow(
+  operation: { operationId: string; operationPayloadHash: string },
+  status: string,
+  balanceBefore: number,
+  balanceAfter: number,
+): string[] {
+  const cycle = getTaskCycle({ taskInstanceId: 'I1', schedule: task.schedule!, taskCreatedAt: task.createdAt, now: NOW });
+  return completionRow({
+    completionId: `${operation.operationId}:${status}`, timestamp: NOW, taskId: 'T1', studentId: 'S1',
+    studentName: 'Kim', reward: 5, balanceBefore, balanceAfter, status, note: 'bank-self-completion',
+    taskInstanceId: 'I1', cycleId: cycle.cycleId, cycleStartsAt: cycle.startsAt, cycleEndsAt: cycle.endsAt,
+    ruleVersion: 1, timeZone: 'UTC', source: 'BANK', assignmentId: 'A1', schemaVersion: 2, ...operation,
+  });
 }
 
 function assignmentRow(valueTask: ClassTask, now: string): string[] {
@@ -73,6 +96,246 @@ function taskRow(valueTask: ClassTask): string[] {
 
 describe('cycle-aware completion command', () => {
   afterEach(() => vi.useRealTimers());
+
+  it('writes BANK checkpoints in resumable order with immutable operation metadata', async () => {
+    const store = new Store();
+    const operation = bankOperation('checkpoint-order');
+
+    const result = await mutateTaskCompletion({
+      store: store as never, task, taskRowNumber: 2, student, studentRowNumber: 2,
+      completed: true, source: 'BANK', now: NOW, ...operation,
+    });
+
+    expect(completionRecords(store).map(({ status }) => status)).toEqual([
+      'PENDING', 'BALANCE_APPLIED', 'SUCCESS',
+    ]);
+    expect(completionRecords(store)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ ...operation, balanceBefore: 10, balanceAfter: 15 }),
+    ]));
+    expect(result).toMatchObject({ changed: true, completion: { status: 'SUCCESS', ...operation }, balanceAfter: 15 });
+    expect(store.rows.Students[1][2]).toBe('15');
+    expect(store.rows.Transactions).toHaveLength(2);
+  });
+
+  it('derives checkpoint and transaction IDs from logical completion identity instead of operation ID', async () => {
+    const storeA = new Store();
+    const storeB = new Store();
+    await mutateTaskCompletion({
+      store: storeA as never, task, taskRowNumber: 2, student, studentRowNumber: 2,
+      completed: true, source: 'BANK', now: NOW, ...bankOperation('logical-a'),
+    });
+    await mutateTaskCompletion({
+      store: storeB as never, task, taskRowNumber: 2, student, studentRowNumber: 2,
+      completed: true, source: 'BANK', now: NOW, ...bankOperation('logical-b'),
+    });
+
+    expect(completionRecords(storeA).map((event) => event.completionId))
+      .toEqual(completionRecords(storeB).map((event) => event.completionId));
+    expect(storeA.rows.Transactions[1][0]).toBe(storeB.rows.Transactions[1][0]);
+  });
+
+  it('resumes the same successful BANK operation without duplicate balance, transaction, or checkpoints', async () => {
+    const store = new Store();
+    const operation = bankOperation('same-operation');
+    const input = {
+      store: store as never, task, taskRowNumber: 2, student, studentRowNumber: 2,
+      completed: true as const, source: 'BANK' as const, now: NOW, ...operation,
+    };
+
+    const first = await mutateTaskCompletion(input);
+    const retry = await mutateTaskCompletion(input);
+
+    expect(retry).toMatchObject({ changed: false, completion: first.completion, balanceAfter: 15 });
+    expect(completionRecords(store)).toHaveLength(3);
+    expect(store.rows.Transactions).toHaveLength(2);
+    expect(store.rows.Students[1][2]).toBe('15');
+  });
+
+  it('converges concurrent different operation IDs for one logical completion without duplicate reward', async () => {
+    const store = new Store();
+    const operationA = bankOperation('logical-completion');
+    const operationB = { operationId: 'op-b', operationPayloadHash: operationA.operationPayloadHash };
+    const input = {
+      store: store as never, task, taskRowNumber: 2, student, studentRowNumber: 2,
+      completed: true as const, source: 'BANK' as const, now: NOW,
+    };
+
+    const [resultA, resultB] = await Promise.all([
+      mutateTaskCompletion({ ...input, ...operationA }),
+      mutateTaskCompletion({ ...input, ...operationB }),
+    ]);
+
+    expect(resultA).toMatchObject({ balanceAfter: 15, completion: { status: 'SUCCESS', operationId: operationA.operationId } });
+    expect(resultB).toMatchObject({ changed: false, balanceAfter: 15, completion: { status: 'SUCCESS', operationId: operationB.operationId } });
+    expect(store.rows.Students[1][2]).toBe('15');
+    expect(store.rows.Transactions).toHaveLength(2);
+    expect(new Set(completionRecords(store).map((event) => event.completionId)).size).toBe(3);
+  });
+
+  it('resumes an existing operation checkpoint after the current recurrence cycle changes', async () => {
+    const store = new Store();
+    const operation = bankOperation('cross-cycle-resume');
+    store.rows.TaskCompletions.push(operationCompletionRow(operation, 'PENDING', 10, 15));
+
+    const result = await mutateTaskCompletion({
+      store: store as never, task, taskRowNumber: 2, student, studentRowNumber: 2,
+      completed: true, source: 'BANK', now: NEXT, ...operation,
+    });
+
+    expect(result).toMatchObject({ balanceAfter: 15, completion: { status: 'SUCCESS', ...operation } });
+    expect(store.rows.Students[1][2]).toBe('15');
+    expect(store.rows.Transactions).toHaveLength(2);
+  });
+
+  it('rejects the same operation ID with a different payload before any mutation write', async () => {
+    const store = new Store();
+    const operation = bankOperation('payload-conflict');
+    const input = {
+      store: store as never, task, taskRowNumber: 2, student, studentRowNumber: 2,
+      completed: true as const, source: 'BANK' as const, now: NOW,
+    };
+    await mutateTaskCompletion({ ...input, ...operation });
+    store.appendRow.mockClear();
+    store.updateCell.mockClear();
+
+    await expect(mutateTaskCompletion({
+      ...input, operationId: operation.operationId, operationPayloadHash: `sha256:${'f'.repeat(64)}`,
+    })).rejects.toThrow('TASK_COMPLETION_OPERATION_PAYLOAD_CONFLICT');
+    expect(store.appendRow).not.toHaveBeenCalled();
+    expect(store.updateCell).not.toHaveBeenCalled();
+  });
+
+  it('reconciles response loss after each append and balance update without duplicating effects', async () => {
+    const scenarios = ['PENDING', 'BALANCE_UPDATE', 'BALANCE_APPLIED', 'TRANSACTION', 'SUCCESS'] as const;
+    for (const scenario of scenarios) {
+      const store = new Store();
+      const operation = bankOperation(`ambiguous-${scenario.toLowerCase()}`);
+      const baseAppend = store.appendRow.getMockImplementation()!;
+      const baseUpdate = store.updateCell.getMockImplementation()!;
+      let lost = false;
+      store.appendRow.mockImplementation(async (sheet: string, values: string[]) => {
+        await baseAppend(sheet, values);
+        const status = sheet === 'TaskCompletions'
+          ? values[store.rows.TaskCompletions[0].indexOf('status')]
+          : '';
+        const matches = scenario === 'TRANSACTION' ? sheet === 'Transactions' : status === scenario;
+        if (!lost && matches) {
+          lost = true;
+          throw new Error(`response lost for ${scenario}`);
+        }
+      });
+      store.updateCell.mockImplementation(async (...args: [string, number, string, string | number]) => {
+        await baseUpdate(...args);
+        if (!lost && scenario === 'BALANCE_UPDATE' && args[0] === 'Students' && args[2] === 'balance') {
+          lost = true;
+          throw new Error('response lost for balance update');
+        }
+      });
+
+      await expect(mutateTaskCompletion({
+        store: store as never, task, taskRowNumber: 2, student, studentRowNumber: 2,
+        completed: true, source: 'BANK', now: NOW, ...operation,
+      }), scenario).resolves.toMatchObject({ balanceAfter: 15, completion: { status: 'SUCCESS' } });
+      expect(lost, scenario).toBe(true);
+      expect(completionRecords(store).map(({ status }) => status), scenario)
+        .toEqual(['PENDING', 'BALANCE_APPLIED', 'SUCCESS']);
+      expect(store.rows.Transactions, scenario).toHaveLength(2);
+      expect(store.rows.Students[1][2], scenario).toBe('15');
+    }
+  });
+
+  it('propagates a transaction failure and resumes from BALANCE_APPLIED on retry', async () => {
+    const store = new Store();
+    const operation = bankOperation('transaction-retry');
+    const baseAppend = store.appendRow.getMockImplementation()!;
+    let failTransaction = true;
+    store.appendRow.mockImplementation(async (sheet: string, values: string[]) => {
+      if (sheet === 'Transactions' && failTransaction) {
+        failTransaction = false;
+        throw new Error('transaction unavailable');
+      }
+      await baseAppend(sheet, values);
+    });
+    const input = {
+      store: store as never, task, taskRowNumber: 2, student, studentRowNumber: 2,
+      completed: true as const, source: 'BANK' as const, now: NOW, ...operation,
+    };
+
+    await expect(mutateTaskCompletion(input)).rejects.toThrow('transaction unavailable');
+    expect(completionRecords(store).map(({ status }) => status)).toEqual(['PENDING', 'BALANCE_APPLIED']);
+    expect(store.rows.Students[1][2]).toBe('15');
+
+    await expect(mutateTaskCompletion(input)).resolves.toMatchObject({ completion: { status: 'SUCCESS' } });
+    expect(completionRecords(store).map(({ status }) => status))
+      .toEqual(['PENDING', 'BALANCE_APPLIED', 'SUCCESS']);
+    expect(store.rows.Transactions).toHaveLength(2);
+  });
+
+  it('normalizes the BANK payload hash once and persists its canonical value', async () => {
+    const store = new Store();
+    const operation = bankOperation('normalized-hash');
+    const result = await mutateTaskCompletion({
+      store: store as never, task, taskRowNumber: 2, student, studentRowNumber: 2,
+      completed: true, source: 'BANK', now: NOW,
+      operationId: operation.operationId,
+      operationPayloadHash: `  ${operation.operationPayloadHash.toUpperCase()}  `,
+    });
+
+    expect(result.completion?.operationPayloadHash).toBe(operation.operationPayloadHash);
+    expect(completionRecords(store).every((event) =>
+      event.operationPayloadHash === operation.operationPayloadHash)).toBe(true);
+  });
+
+  it('resumes a stored PENDING checkpoint and applies the balance exactly once', async () => {
+    const store = new Store();
+    const operation = bankOperation('resume-pending');
+    store.rows.TaskCompletions.push(operationCompletionRow(operation, 'PENDING', 10, 15));
+
+    await expect(mutateTaskCompletion({
+      store: store as never, task, taskRowNumber: 2, student, studentRowNumber: 2,
+      completed: true, source: 'BANK', now: NOW, ...operation,
+    })).resolves.toMatchObject({ balanceAfter: 15, completion: { status: 'SUCCESS' } });
+
+    expect(completionRecords(store).map(({ status }) => status))
+      .toEqual(['PENDING', 'BALANCE_APPLIED', 'SUCCESS']);
+    expect(store.rows.Students[1][2]).toBe('15');
+    expect(store.rows.Transactions).toHaveLength(2);
+  });
+
+  it('refuses to overwrite a balance matching neither stored before nor after', async () => {
+    const store = new Store();
+    const operation = bankOperation('unknown-balance');
+    store.rows.TaskCompletions.push(operationCompletionRow(operation, 'PENDING', 10, 15));
+    store.rows.Students[1][2] = '12';
+
+    await expect(mutateTaskCompletion({
+      store: store as never, task, taskRowNumber: 2, student, studentRowNumber: 2,
+      completed: true, source: 'BANK', now: NOW, ...operation,
+    })).rejects.toMatchObject({
+      name: 'TaskCompletionReconciliationError',
+      message: 'TASK_COMPLETION_BALANCE_OUTCOME_UNKNOWN_MANUAL_RECONCILIATION_REQUIRED',
+    });
+    expect(store.rows.Students[1][2]).toBe('12');
+    expect(store.updateCell).not.toHaveBeenCalledWith('Students', 2, 'balance', 15);
+  });
+
+  it('converges concurrent retries of the same logical operation in the process queue', async () => {
+    const store = new Store();
+    const operation = bankOperation('concurrent-retry');
+    const input = {
+      store: store as never, task, taskRowNumber: 2, student, studentRowNumber: 2,
+      completed: true as const, source: 'BANK' as const, now: NOW, ...operation,
+    };
+
+    const [first, second] = await Promise.all([
+      mutateTaskCompletion(input), mutateTaskCompletion(input),
+    ]);
+
+    expect([first.changed, second.changed].sort()).toEqual([false, true]);
+    expect(store.rows.Students[1][2]).toBe('15');
+    expect(store.rows.Transactions).toHaveLength(2);
+    expect(completionRecords(store)).toHaveLength(3);
+  });
 
   it('runs ADMIN complete -> no-op -> ADMIN_RESET -> BANK reward -> retry blocked', async () => {
     const store = new Store();
@@ -244,8 +507,12 @@ describe('cycle-aware completion command', () => {
     expect(store.updateCell).not.toHaveBeenCalledWith('Students', 2, 'balance', 10);
   });
 
-  it('accepts an ambiguous canonical append that wrote the completion before throwing', async () => {
+  it('accepts an ambiguous canonical append using a fresh read when the cached completion snapshot is stale', async () => {
     const store = new Store();
+    const cachedCompletionRows = store.rows.TaskCompletions.map((row) => [...row]);
+    store.getRows.mockImplementation(async (sheet: string) => (
+      sheet === 'TaskCompletions' ? cachedCompletionRows : store.rows[sheet]
+    ).map((row) => [...row]));
     store.appendRow.mockImplementationOnce(async (sheet: string, values: string[]) => {
       store.rows[sheet].push([...values]);
       throw new Error('response lost after write');
@@ -255,6 +522,7 @@ describe('cycle-aware completion command', () => {
       store: store as never, task, taskRowNumber: 2, student, studentRowNumber: 2,
       completed: true, source: 'BANK', now: NOW,
     })).resolves.toMatchObject({ balanceAfter: 15 });
+    expect(store.getRowsFresh).toHaveBeenCalledWith('TaskCompletions');
     expect(store.rows.Students[1][2]).toBe('15');
     expect(completionRecords(store).filter((event) => event.source === 'BANK')).toHaveLength(1);
     expect(store.rows.Transactions).toHaveLength(2);

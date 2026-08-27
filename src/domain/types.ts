@@ -159,6 +159,9 @@ export type TaskCompletion = {
   source?: TaskCompletionSource;
   assignmentId?: string;
   schemaVersion?: number;
+  /** Append-only BANK operation metadata; absent on legacy/admin rows. */
+  operationId?: string;
+  operationPayloadHash?: string;
 };
 
 export type TaskCompletionSource = 'BANK' | 'ADMIN' | 'CARRY_FORWARD' | 'ADMIN_RESET';

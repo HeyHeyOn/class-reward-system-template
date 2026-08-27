@@ -104,3 +104,11 @@ Vercel에서는 로컬 파일 저장이 영구 보장되지 않습니다. 따라
 - 화폐 단위: `Settings` 시트의 `currencyUnit` 값
 
 스프레드시트를 바꾸려면 관리자 화면이 아니라 Vercel의 `GOOGLE_SHEET_ID` 환경변수를 바꾸고 재배포하세요.
+
+
+## 과제 완료 장애 확인
+
+- BANK 완료는 같은 `operationId`로 재시도하며 `TaskCompletions`의 `PENDING → BALANCE_APPLIED → SUCCESS` checkpoint와 결정적 보상 transaction을 확인합니다. `SUCCESS` 전 상태는 완료로 표시하지 않습니다.
+- Vercel 로그의 `task_operation_stage` JSON은 `requestId`, `operationId`, `stage`, `durationMs`, `resultCode`, `retryCount`만 기록합니다. QR 값, 학생 ID/이름, 잔액, 스프레드시트 ID, provider 원문과 인증정보는 기록하지 않습니다.
+- `queue_wait`의 `resultCode=SLOW`는 process-local 대기 1초 이상을 뜻합니다. `safe_projection`은 완료 직후 학생용 safe projection 생성 시간입니다. 서로 다른 Vercel instance 사이의 unrelated balance race까지 exactly-once로 보장한다는 뜻은 아닙니다.
+- `COMPLETION_STATUS_UNKNOWN`은 같은 operation으로 재확인 가능한 상태이고, `COMPLETION_RECONCILIATION_REQUIRED`는 자동 판단을 중단한 수동 확인 상태입니다. 운영 trace 없이 OAuth, quota, gateway 중 하나를 간헐 장애의 단일 원인으로 단정하지 않습니다.

@@ -291,7 +291,7 @@ describe('recurring schema migrator', () => {
     expect(store.writes).toEqual([
       'expand:Tasks:26->33',
       `header:Tasks:9:${TASK_SCHEMA_HEADERS.slice(9).join(',')}`,
-      'expand:TaskCompletions:10->19',
+      `expand:TaskCompletions:10->${TASK_COMPLETION_SCHEMA_HEADERS.length}`,
       `header:TaskCompletions:10:${TASK_COMPLETION_SCHEMA_HEADERS.slice(10).join(',')}`,
       'createWithHeader:TaskAssignments:15',
     ]);

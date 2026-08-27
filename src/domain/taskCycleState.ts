@@ -71,7 +71,9 @@ export function projectTaskCycleState({
   }));
 
   const versionedCompletions = completions.filter((event) =>
-    event.taskId === task.taskId && event.taskInstanceId === task.taskInstanceId);
+    event.taskId === task.taskId
+      && event.taskInstanceId === task.taskInstanceId
+      && (event.status === 'SUCCESS' || event.status === 'RESET'));
   const currentCompletions = latestByStudent(
     versionedCompletions.filter((event) => event.cycleId === cycle.cycleId),
   );
