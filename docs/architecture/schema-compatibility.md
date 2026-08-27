@@ -76,7 +76,8 @@
 | 같은 `taskId` 재생성·append-only reset/delete/history | `src/domain/taskCycleState.test.ts`, `src/server/repositories/sheets/taskHistoryQueries.test.ts`, `src/server/sheetsRepository.test.ts` |
 | 관리자 dirty draft·이력·stale async, 은행 legacy DTO·stale fetch·targeted refresh | `src/components/AdminManagePage.test.tsx`, `src/components/BankApp.test.tsx` |
 | 학생 공개 DTO 최소화·raw projection 관리자 인증 | `src/app/api/tasks/route.test.ts` |
-| 기한·선행 그래프·다중 요일·공개 은행 목록·완료 직전 재검증 | `src/domain/taskCrsFeatures.test.ts`, `src/app/api/bank/tasks/route.test.ts`, `src/server/sheetsRepository.test.ts` |
+| 기한·선행 그래프·다중 요일·공개 은행 관계 목록·완료 직전 재검증 | `src/domain/taskCrsFeatures.test.ts`, `src/app/api/bank/tasks/route.test.ts`, `src/server/sheetsRepository.test.ts` |
+| 은행 학생명 최소 DTO·잔액/거래 비노출 | `src/app/api/bank/student/route.test.ts` |
 
 ## R1 recurring task compatibility contract
 
@@ -86,3 +87,4 @@
 - 같은 `taskId`를 삭제 후 재생성해도 새 `taskInstanceId`가 이전 lifecycle의 배정·완료를 격리합니다. 삭제된 lifecycle 이력은 삭제 시 새 snapshot을 만드는 것이 아니라, 이미 보존된 assignment/completion 행의 cycle snapshot으로만 조회합니다.
 - assignment의 `LEGACY_SEED`/`CARRY_FORWARD`는 결정적 ID를 사용하지만 Sheets 원장에는 unique constraint나 atomic put-if-absent가 없어 여러 서버 instance가 동시에 materialize하면 같은 ID의 중복 행이 생길 수 있습니다. completion `CARRY_FORWARD`는 무작위 ID를 사용하므로 동시 materialize 시 서로 다른 ID의 의미상 중복 이벤트가 생길 수 있습니다. process-local command queue와 완료 append 결과 재조회는 같은 프로세스의 순차 중복·일반 재시도만 방어하며, 강한 exactly-once와 서로 다른 operation 사이 학생 balance resource race는 R1 보장이 아닙니다.
 - 학생용 `/api/tasks?studentId=...`는 요청 학생의 배정·완료·선행 상태와 표시용 과제 정보만 공개하며 내부 cycle metadata는 공개하지 않습니다. 연결형 UI에 필요한 `prerequisiteTaskId`도 현재 학생에게 실제 표시·배정되는 과제끼리의 관계에만 포함합니다. 전체 목록 projection, 단건 raw projection, `includeInactive` 관리 조회는 관리자 인증이 필요합니다.
+- 공개 `/api/bank/tasks`의 `prerequisiteTaskId`는 현재 active·available 응답에 함께 포함된 공개 과제 사이에서만 제공됩니다. `/api/bank/student?studentId=...`는 과제 완료 화면용 `{ studentId, name }`만 반환하며 잔액·거래내역·상태는 포함하지 않습니다. 이 UI/API 확장은 Sheets 열을 추가하거나 기존 행을 변경하지 않습니다.

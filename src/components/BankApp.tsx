@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { ClassTask, Transaction } from '@/domain/types';
 import { getFontFamilyCss, type FontFamily } from '@/lib/fontSettings';
@@ -11,7 +11,7 @@ import type { TaskRecurrence } from '@/domain/types';
 
 type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'black' | 'navy';
 type Settings = { currencyUnit?: string; appTitle?: string; bankTitle?: string; themeColor?: string; fontFamily?: FontFamily; qrManualInputEnabled?: boolean };
-type BankView = 'home' | 'balance-scan' | 'balance-result' | 'tasks-scan' | 'tasks-list' | 'task-detail' | 'task-success' | 'task-failure';
+type BankView = 'home' | 'balance-scan' | 'balance-result' | 'tasks-scan' | 'tasks-list' | 'task-detail' | 'task-success' | 'task-failure' | 'task-identify-failure';
 type BalanceResult = { studentId: string; name: string; balance: number; transactions?: Transaction[] } | null;
 type TaskResult = { message: string; balanceAfter?: number; reward?: number; studentName?: string } | null;
 type TaskStudentStatus = { studentId: string; assigned: boolean; completed?: boolean };
@@ -111,6 +111,7 @@ export function BankApp() {
   const [publicTasksError, setPublicTasksError] = useState('');
   const [selectedTask, setSelectedTask] = useState<BankTask | null>(null);
   const [taskStudentId, setTaskStudentId] = useState('');
+  const [taskStudentName, setTaskStudentName] = useState('');
   const [view, setView] = useState<BankView>('home');
   const [manualQr, setManualQr] = useState('');
   const [balanceResult, setBalanceResult] = useState<BalanceResult>(null);
@@ -122,6 +123,7 @@ export function BankApp() {
   const [isSettingsLoading, setIsSettingsLoading] = useState(true);
   const taskRequestId = useRef(0);
   const taskAbortController = useRef<AbortController | null>(null);
+  const taskCompletionInFlight = useRef(false);
 
   const currencyUnit = settings.currencyUnit || '원';
   const theme = BANK_THEME[normalizeThemeColor(settings.themeColor)];
@@ -169,6 +171,7 @@ export function BankApp() {
     () => buildStudentTaskChains(assignedTasks, (task) => getTaskStudentStatus(task, taskStudentId).completed),
     [assignedTasks, taskStudentId],
   );
+  const publicTaskChains = useMemo(() => buildStudentTaskChains(publicTasks), [publicTasks]);
 
   const identifyTaskStudent = useCallback(async (decodedText: string) => {
     const studentId = decodedText.trim();
@@ -181,21 +184,33 @@ export function BankApp() {
     setLoadingDialog({ title: '과제 목록 불러오는 중', message: '과제 목록을 불러오는 중입니다.' });
     setErrorMessage('');
     try {
-      const response = await fetch(`/api/tasks?studentId=${encodeURIComponent(studentId)}`, { cache: 'no-store', signal: controller.signal });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? '과제 목록을 불러오지 못했습니다.');
+      const requestOptions = { cache: 'no-store' as const, signal: controller.signal };
+      const [tasksResponse, studentResponse] = await Promise.all([
+        fetch(`/api/tasks?studentId=${encodeURIComponent(studentId)}`, requestOptions),
+        fetch(`/api/bank/student?studentId=${encodeURIComponent(studentId)}`, requestOptions),
+      ]);
+      const [tasksPayload, studentPayload] = await Promise.all([tasksResponse.json(), studentResponse.json()]);
+      if (!tasksResponse.ok) throw new Error(tasksPayload.error ?? '과제 목록을 불러오지 못했습니다.');
+      if (!studentResponse.ok) throw new Error(studentPayload.error ?? '학생 이름을 불러오지 못했습니다.');
+      if (studentPayload?.studentId !== studentId || typeof studentPayload?.name !== 'string' || !studentPayload.name.trim()) {
+        throw new Error('학생 정보를 확인하지 못했습니다.');
+      }
       if (requestId !== taskRequestId.current) return;
       setTaskStudentId(studentId);
-      setTasks(payload);
+      setTaskStudentName(studentPayload.name.trim());
+      setTasks(Array.isArray(tasksPayload) ? tasksPayload : []);
       setSelectedTask(null);
       setManualQr('');
       setView('tasks-list');
     } catch (error) {
       if (requestId !== taskRequestId.current || controller.signal.aborted) return;
-      setErrorMessage(error instanceof Error ? error.message : '과제 목록을 불러오지 못했습니다.');
-      setTaskStudentId(studentId);
+      const message = error instanceof Error ? error.message : '과제 목록을 불러오지 못했습니다.';
+      setErrorMessage(message);
+      setTaskResult({ message });
+      setTaskStudentId('');
+      setTaskStudentName('');
       setTasks([]);
-      setView('tasks-list');
+      setView('task-identify-failure');
     } finally {
       if (requestId === taskRequestId.current) {
         setLoading(false);
@@ -232,9 +247,10 @@ export function BankApp() {
 
   async function completeSelectedTask() {
     const studentId = taskStudentId;
-    if (!studentId || !selectedTask) return;
+    if (!studentId || !selectedTask || taskCompletionInFlight.current) return;
     const status = getTaskStudentStatus(selectedTask, studentId);
     if (!status.assigned || status.completed === true) return;
+    taskCompletionInFlight.current = true;
     const activeRequestId = taskRequestId.current;
     setLoading(true);
     setLoadingDialog({ title: '과제 완료 처리 중', message: '과제 완료를 기록하고 보상을 지급하는 중입니다.' });
@@ -253,12 +269,20 @@ export function BankApp() {
         reward: payload.task.reward,
         studentName: payload.student.name,
       });
+      const completedTaskId = selectedTask.taskId;
+      const markCompleted = (task: BankTask): BankTask => task.taskId === completedTaskId ? {
+        ...task,
+        studentStatus: { ...task.studentStatus, studentId, assigned: true, completed: true },
+      } : task;
+      setTasks((current) => current.map(markCompleted));
+      setSelectedTask((current) => current ? markCompleted(current) : null);
       setView('task-success');
       void refreshCompletedTask(studentId, activeRequestId);
     } catch (error) {
       setTaskResult({ message: error instanceof Error ? error.message : '과제 완료 처리에 실패했습니다.' });
       setView('task-failure');
     } finally {
+      taskCompletionInFlight.current = false;
       setLoading(false);
       setLoadingDialog(null);
     }
@@ -283,7 +307,7 @@ export function BankApp() {
   function openTaskScan() {
     ++taskRequestId.current;
     taskAbortController.current?.abort();
-    setManualQr(''); setTasks([]); setSelectedTask(null); setTaskStudentId(''); setTaskResult(null); setErrorMessage(''); setView('tasks-scan');
+    setManualQr(''); setTasks([]); setSelectedTask(null); setTaskStudentId(''); setTaskStudentName(''); setTaskResult(null); setErrorMessage(''); setView('tasks-scan');
   }
 
   function openTaskDetail(task: BankTask) {
@@ -312,7 +336,13 @@ export function BankApp() {
             {publicTasksLoading ? <p role="status" className="rounded-xl bg-slate-50 p-3 font-bold text-slate-600 sm:p-4">공개 과제를 불러오는 중입니다.</p> : null}
             {publicTasksError ? <div className="rounded-xl bg-rose-50 p-3 font-bold text-rose-700 sm:p-4"><p>{publicTasksError}</p><button type="button" aria-label="공개 과제 다시 시도" onClick={() => void loadPublicTasks()} className="mt-2 rounded-lg bg-rose-700 px-3 py-2 text-white">다시 시도</button></div> : null}
             {!publicTasksLoading && !publicTasksError && publicTasks.length === 0 ? <p className="rounded-xl bg-slate-50 p-3 font-bold text-slate-600 sm:p-4">현재 공개된 과제가 없습니다.</p> : null}
-            <div className="grid gap-2 sm:grid-cols-2">{publicTasks.map((task) => <button key={task.taskId} type="button" onClick={() => setPublicTask(task)} className={`rounded-2xl border ${theme.accentBorderAlt} ${theme.softBg} p-3 text-left ${theme.softText} sm:p-4`}><span className="block text-base font-black sm:text-lg">{task.title}</span><span className="mt-1 block text-xs font-bold sm:text-sm">보상 {task.reward.toLocaleString()}{currencyUnit}</span><TaskStudentSummary task={task} compact /></button>)}</div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {publicTaskChains.map((chain) => chain.tasks.length === 1 ? (
+                <TaskCard key={chain.tasks[0].taskId} task={chain.tasks[0]} studentId="" currencyUnit={currencyUnit} theme={theme} isBlackTheme={normalizeThemeColor(settings.themeColor) === 'black'} onOpen={setPublicTask} catalog />
+              ) : (
+                <TaskCarousel key={chain.tasks.map((task) => task.taskId).join('|')} chain={chain} studentId="" currencyUnit={currencyUnit} theme={theme} isBlackTheme={normalizeThemeColor(settings.themeColor) === 'black'} onOpen={setPublicTask} catalog />
+              ))}
+            </div>
           </div>
         </section>
 
@@ -377,8 +407,8 @@ export function BankApp() {
       ) : null}
 
       {view === 'tasks-list' ? (
-        <Modal title="과제 목록" onClose={() => setView('home')} closeLabel="닫기">
-          <p className="mb-3 rounded-xl bg-slate-100 p-3 text-sm font-black text-slate-600">학생 QR: {taskStudentId}</p>
+        <Modal title="과제 완료" onClose={() => setView('home')} closeLabel="닫기">
+          <p className="mb-3 rounded-xl bg-slate-100 p-3 text-sm font-black text-slate-600">이름: {taskStudentName}</p>
           {loading ? <p className="rounded-2xl bg-slate-50 p-4 font-bold">과제 목록을 불러오는 중입니다.</p> : null}
           {errorMessage ? <p className="rounded-2xl bg-rose-50 p-4 font-bold text-rose-700">{errorMessage}</p> : null}
           {!loading && !errorMessage && assignedTasks.length === 0 ? <p className="rounded-2xl bg-slate-50 p-4 font-bold text-slate-600">배정된 과제가 없습니다.</p> : null}
@@ -389,7 +419,6 @@ export function BankApp() {
               <TaskCarousel key={chain.tasks.map((task) => `${task.taskId}:${getTaskStudentStatus(task, taskStudentId).completed === true ? '1' : '0'}:${task.prerequisiteStatus ?? ''}`).join('|')} chain={chain} studentId={taskStudentId} currencyUnit={currencyUnit} theme={theme} isBlackTheme={normalizeThemeColor(settings.themeColor) === 'black'} onOpen={openTaskDetail} />
             ))}
           </div>
-          <button type="button" onClick={openTaskScan} className="mt-3 w-full rounded-xl border border-slate-300 py-2 text-sm font-black text-slate-600">다른 학생 QR 인식</button>
         </Modal>
       ) : null}
 
@@ -419,12 +448,18 @@ export function BankApp() {
           <p>{taskResult?.message ?? '과제 완료 처리에 실패했습니다.'}</p>
         </ResultDialog>
       ) : null}
+      {view === 'task-identify-failure' ? (
+        <ResultDialog title="학생 확인 실패" tone="failure" onClose={() => setView('home')}>
+          <p>{taskResult?.message ?? '과제 목록을 불러오지 못했습니다.'}</p>
+        </ResultDialog>
+      ) : null}
       {publicTask ? (
         <Modal title={publicTask.title} onClose={() => setPublicTask(null)} closeLabel="닫기">
           <p className="whitespace-pre-wrap rounded-2xl bg-slate-50 p-5 text-lg font-bold text-slate-700">{publicTask.description || '과제 설명이 없습니다.'}</p>
           <p className="mt-3 rounded-2xl bg-amber-50 p-4 text-center font-black text-amber-800">보상 {publicTask.reward.toLocaleString()}{currencyUnit}</p>
           <TaskStudentSummary task={publicTask} />
           {publicTask.prerequisiteTitle ? <p className="mt-3 rounded-xl bg-slate-100 p-3 font-bold">선행 과제: {publicTask.prerequisiteTitle}</p> : null}
+          {publicTask.prerequisiteMessage ? <p className="mt-3 rounded-xl bg-amber-100 p-3 font-bold text-amber-900">{publicTask.prerequisiteMessage}</p> : null}
         </Modal>
       ) : null}
     </main>
@@ -439,29 +474,39 @@ type TaskCardProps = {
   isBlackTheme: boolean;
   onOpen: (task: BankTask) => void;
   reserveCarouselFooter?: boolean;
+  embedded?: boolean;
+  catalog?: boolean;
 };
 
-function TaskCard({ task, studentId, currencyUnit, theme, isBlackTheme, onOpen, reserveCarouselFooter = false }: TaskCardProps) {
-  const completed = getTaskStudentStatus(task, studentId).completed === true;
-  const locked = task.prerequisiteStatus === 'REQUIRED' || task.prerequisiteStatus === 'UNAVAILABLE';
+function TaskCard({ task, studentId, currencyUnit, theme, isBlackTheme, onOpen, reserveCarouselFooter = false, embedded = false, catalog = false }: TaskCardProps) {
+  const guidanceId = useId();
+  const completed = !catalog && getTaskStudentStatus(task, studentId).completed === true;
+  const locked = !catalog && (task.prerequisiteStatus === 'REQUIRED' || task.prerequisiteStatus === 'UNAVAILABLE');
   const accessibleStatus = completed ? ', 완료됨' : locked ? ', 완료 불가' : '';
+  const statusLabel = task.prerequisiteStatus === 'UNAVAILABLE' ? '과제 완료 불가' : '선행 완료 필요';
   return (
     <button
       type="button"
       aria-label={`${task.title}${accessibleStatus}`}
+      aria-describedby={locked && task.prerequisiteMessage ? guidanceId : undefined}
       onClick={() => onOpen(task)}
-      className={`relative w-full overflow-hidden rounded-2xl border border-slate-200 ${theme.softBg} p-4 ${reserveCarouselFooter ? 'pb-11' : ''} text-left font-black ${theme.softText} ${completed || locked ? 'brightness-75 opacity-70' : ''}`}
+      className={`relative w-full overflow-hidden ${embedded ? '' : `rounded-2xl border ${theme.accentBorderAlt} ${theme.softBg}`} p-4 ${reserveCarouselFooter ? 'pb-12' : ''} text-left font-black ${theme.softText}`}
     >
-      <span className="block text-lg">{task.title}</span>
-      <span className={`mt-1 block text-sm ${isBlackTheme ? 'text-slate-300' : 'text-slate-500'}`}>보상 {task.reward.toLocaleString()}{currencyUnit}</span>
-      <TaskStudentSummary task={task} compact />
-      {task.prerequisiteMessage ? <span className="mt-2 block rounded-xl bg-amber-100 p-2 text-xs text-amber-900">{task.prerequisiteMessage}</span> : null}
-      {completed ? <span aria-hidden="true" className={`absolute right-4 top-1/2 -translate-y-1/2 rotate-[-12deg] rounded border-4 px-3 py-1 text-xl font-black ${isBlackTheme ? 'border-white text-white' : 'border-emerald-800 text-emerald-900'}`}>완료됨</span> : null}
+      <div data-testid="task-card-content" className={completed || locked ? 'opacity-60' : ''}>
+        <span className={`block text-lg ${completed || locked ? 'max-w-[calc(100%-7rem)]' : ''}`}>{task.title}</span>
+        <span className={`mt-1 block text-sm ${isBlackTheme ? 'text-slate-300' : 'text-slate-500'}`}>보상 {task.reward.toLocaleString()}{currencyUnit}</span>
+        <TaskStudentSummary task={task} compact />
+      </div>
+      {locked && task.prerequisiteMessage ? <>
+        <span aria-hidden="true" className="absolute right-3 top-3 rounded-full bg-amber-100 px-3 py-1 text-xs text-amber-900">{statusLabel}</span>
+        <span id={guidanceId} className="sr-only">{task.prerequisiteMessage}</span>
+      </> : null}
+      {completed ? <span aria-hidden="true" className="absolute right-3 top-3 rounded-full bg-emerald-700 px-3 py-1 text-sm font-black text-white">완료됨</span> : null}
     </button>
   );
 }
 
-function TaskCarousel({ chain, studentId, currencyUnit, theme, isBlackTheme, onOpen }: Omit<TaskCardProps, 'task' | 'reserveCarouselFooter'> & { chain: StudentTaskChain<BankTask> }) {
+function TaskCarousel({ chain, studentId, currencyUnit, theme, isBlackTheme, onOpen, catalog = false }: Omit<TaskCardProps, 'task' | 'reserveCarouselFooter' | 'embedded'> & { chain: StudentTaskChain<BankTask> }) {
   const [activeIndex, setActiveIndex] = useState(chain.initialIndex);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
 
@@ -482,7 +527,7 @@ function TaskCarousel({ chain, studentId, currencyUnit, theme, isBlackTheme, onO
   }, [chain.initialIndex]);
 
   return (
-    <section role="region" aria-label={`${chain.tasks[0].title} 연결 과제 묶음`} className="relative rounded-2xl border border-slate-200 bg-white/60 p-2">
+    <section role="region" aria-label={`${chain.tasks[0].title} 연결 과제 묶음`} className={`group relative overflow-hidden rounded-2xl border ${theme.accentBorderAlt} ${theme.softBg}`}>
       <div
         ref={scrollerRef}
         className="flex touch-pan-x snap-x snap-mandatory overflow-x-auto overscroll-x-contain"
@@ -500,13 +545,12 @@ function TaskCarousel({ chain, studentId, currencyUnit, theme, isBlackTheme, onO
             inert={index === activeIndex ? undefined : true}
             className="min-w-full snap-center"
           >
-            <TaskCard task={task} studentId={studentId} currencyUnit={currencyUnit} theme={theme} isBlackTheme={isBlackTheme} onOpen={onOpen} reserveCarouselFooter />
+            <TaskCard task={task} studentId={studentId} currencyUnit={currencyUnit} theme={theme} isBlackTheme={isBlackTheme} onOpen={onOpen} reserveCarouselFooter embedded catalog={catalog} />
           </div>
         ))}
       </div>
-      <button type="button" aria-label="이전 과제" disabled={activeIndex === 0} onClick={() => showSlide(activeIndex - 1)} className="absolute bottom-3 left-4 z-10 rounded-lg bg-white/90 px-3 py-1 font-black shadow-sm disabled:opacity-40">‹</button>
-      <div data-testid="task-carousel-indicator" className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 text-xl font-black tracking-widest text-slate-600">
-          <span aria-hidden="true">{chain.tasks.map((_, index) => index === activeIndex ? '○' : '•').join('')}</span>
+      <button type="button" aria-label="이전 과제" disabled={activeIndex === 0} onClick={() => showSlide(activeIndex - 1)} className="absolute inset-y-0 left-0 z-10 hidden w-12 items-center justify-start pl-2 opacity-0 transition-opacity [@media(hover:hover)_and_(pointer:fine)]:flex hover:opacity-100 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-slate-900 disabled:pointer-events-none"><svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6 rounded-full bg-white/90 p-1 shadow"><path d="M19 12H5m6-6-6 6 6 6" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" /></svg></button>
+      <div data-testid="task-carousel-indicator" className="absolute bottom-1 left-1/2 z-10 flex -translate-x-1/2 items-center justify-center">
           {chain.tasks.map((task, index) => (
             <button
               key={task.taskId}
@@ -514,12 +558,11 @@ function TaskCarousel({ chain, studentId, currencyUnit, theme, isBlackTheme, onO
               aria-label={`${index + 1}번째 과제 보기`}
               aria-current={index === activeIndex ? 'true' : undefined}
               onClick={() => showSlide(index)}
-              className="absolute inset-y-0 opacity-0 focus-visible:z-20 focus-visible:opacity-100 focus-visible:bg-white/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
-              style={{ left: `${index * (100 / chain.tasks.length)}%`, width: `${100 / chain.tasks.length}%` }}
-            />
+              className={`flex h-8 w-8 items-center justify-center rounded-full focus-visible:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 ${isBlackTheme ? 'focus-visible:outline-white' : 'focus-visible:outline-slate-900'}`}
+            ><span aria-hidden="true" className={`h-2 w-2 rounded-full ${isBlackTheme ? (index === activeIndex ? 'bg-white' : 'bg-white/40') : (index === activeIndex ? 'bg-slate-800' : 'bg-slate-500/35')}`} /></button>
           ))}
       </div>
-      <button type="button" aria-label="다음 과제" disabled={activeIndex === chain.tasks.length - 1} onClick={() => showSlide(activeIndex + 1)} className="absolute bottom-3 right-4 z-10 rounded-lg bg-white/90 px-3 py-1 font-black shadow-sm disabled:opacity-40">›</button>
+      <button type="button" aria-label="다음 과제" disabled={activeIndex === chain.tasks.length - 1} onClick={() => showSlide(activeIndex + 1)} className="absolute inset-y-0 right-0 z-10 hidden w-12 items-center justify-end pr-2 opacity-0 transition-opacity [@media(hover:hover)_and_(pointer:fine)]:flex hover:opacity-100 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-slate-900 disabled:pointer-events-none"><svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6 rounded-full bg-white/90 p-1 shadow"><path d="M5 12h14m-6-6 6 6-6 6" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" /></svg></button>
     </section>
   );
 }
