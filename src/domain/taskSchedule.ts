@@ -39,7 +39,10 @@ export function validateTaskSchedule(value: unknown): TaskSchedule {
     throw new TaskScheduleValidationError('reset flags must be boolean');
   }
   validateRecurrence(schedule.recurrence);
-  return { ...schedule, effectiveFrom, timeZone: schedule.timeZone.trim() };
+  const recurrence = schedule.recurrence.type === 'WEEKLY'
+    ? { ...schedule.recurrence, weekdays: [...schedule.recurrence.weekdays].sort((a, b) => a - b) }
+    : schedule.recurrence;
+  return { ...schedule, recurrence, effectiveFrom, timeZone: schedule.timeZone.trim() };
 }
 
 export function parseTaskScheduleCells(
@@ -145,7 +148,7 @@ function recurrencesEqual(left: TaskRecurrence, right: TaskRecurrence): boolean 
   if (left.type === 'NONE' || right.type === 'NONE') return true;
   if (left.time !== right.time) return false;
   if (left.type === 'DAILY' || right.type === 'DAILY') return true;
-  if (left.type === 'WEEKLY' && right.type === 'WEEKLY') return left.weekday === right.weekday;
+  if (left.type === 'WEEKLY' && right.type === 'WEEKLY') return left.weekdays.join(',') === right.weekdays.join(',');
   return left.type === 'MONTHLY' && right.type === 'MONTHLY' && left.dayOfMonth === right.dayOfMonth;
 }
 
@@ -162,12 +165,12 @@ function safeParseSchedule(
 
 const CURRENT_SCHEDULE_FIELDS = [
   'ruleVersion', 'scheduleEffectiveFrom', 'recurrenceTimeZone', 'recurrenceType', 'recurrenceTime',
-  'recurrenceWeekday', 'recurrenceDayOfMonth', 'resetCompletionOnCycle', 'resetAssignmentOnCycle',
+  'recurrenceWeekday', 'recurrenceWeekdays', 'recurrenceDayOfMonth', 'resetCompletionOnCycle', 'resetAssignmentOnCycle',
 ] as const;
 
 const PENDING_SCHEDULE_FIELDS = [
   'pendingRuleVersion', 'pendingEffectiveFrom', 'pendingTimeZone', 'pendingRecurrenceType',
-  'pendingRecurrenceTime', 'pendingRecurrenceWeekday', 'pendingRecurrenceDayOfMonth',
+  'pendingRecurrenceTime', 'pendingRecurrenceWeekday', 'pendingRecurrenceWeekdays', 'pendingRecurrenceDayOfMonth',
   'pendingResetCompletionOnCycle', 'pendingResetAssignmentOnCycle',
 ] as const;
 
@@ -183,12 +186,12 @@ function scheduleFromCells(cells: Readonly<Record<string, string | undefined>>, 
     ? {
         ruleVersion: 'pendingRuleVersion', effectiveFrom: 'pendingEffectiveFrom', timeZone: 'pendingTimeZone',
         recurrenceType: 'pendingRecurrenceType', recurrenceTime: 'pendingRecurrenceTime',
-        recurrenceWeekday: 'pendingRecurrenceWeekday', recurrenceDayOfMonth: 'pendingRecurrenceDayOfMonth',
+        recurrenceWeekday: 'pendingRecurrenceWeekday', recurrenceWeekdays: 'pendingRecurrenceWeekdays', recurrenceDayOfMonth: 'pendingRecurrenceDayOfMonth',
         resetCompletion: 'pendingResetCompletionOnCycle', resetAssignment: 'pendingResetAssignmentOnCycle',
       }
     : {
         ruleVersion: 'ruleVersion', effectiveFrom: 'scheduleEffectiveFrom', timeZone: 'recurrenceTimeZone',
-        recurrenceType: 'recurrenceType', recurrenceTime: 'recurrenceTime', recurrenceWeekday: 'recurrenceWeekday',
+        recurrenceType: 'recurrenceType', recurrenceTime: 'recurrenceTime', recurrenceWeekday: 'recurrenceWeekday', recurrenceWeekdays: 'recurrenceWeekdays',
         recurrenceDayOfMonth: 'recurrenceDayOfMonth', resetCompletion: 'resetCompletionOnCycle',
         resetAssignment: 'resetAssignmentOnCycle',
       };
@@ -204,14 +207,16 @@ function scheduleFromCells(cells: Readonly<Record<string, string | undefined>>, 
 
 function recurrenceFromCells(
   cells: Readonly<Record<string, string | undefined>>,
-  names: { recurrenceType: string; recurrenceTime: string; recurrenceWeekday: string; recurrenceDayOfMonth: string },
+  names: { recurrenceType: string; recurrenceTime: string; recurrenceWeekday: string; recurrenceWeekdays: string; recurrenceDayOfMonth: string },
 ): TaskRecurrence {
   const type = cells[names.recurrenceType]?.trim();
   if (type === 'NONE') return { type: 'NONE' };
   if (type === 'DAILY') return { type, time: cells[names.recurrenceTime]?.trim() ?? '' };
-  if (type === 'WEEKLY') return {
-    type, time: cells[names.recurrenceTime]?.trim() ?? '', weekday: Number(cells[names.recurrenceWeekday]) as IsoWeekday,
-  };
+  if (type === 'WEEKLY') {
+    const multi = cells[names.recurrenceWeekdays]?.trim();
+    const source = multi || cells[names.recurrenceWeekday]?.trim() || '';
+    return { type, time: cells[names.recurrenceTime]?.trim() ?? '', weekdays: source.split(',').filter(Boolean).map(Number).sort((a, b) => a - b) as IsoWeekday[] };
+  }
   if (type === 'MONTHLY') return {
     type, time: cells[names.recurrenceTime]?.trim() ?? '', dayOfMonth: Number(cells[names.recurrenceDayOfMonth]) as DayOfMonth,
   };
@@ -221,8 +226,8 @@ function recurrenceFromCells(
 function scheduleToCells(schedule: TaskSchedule | null, prefix: '' | 'pending'): TaskScheduleCells {
   const p = prefix;
   const names = p === 'pending'
-    ? ['pendingRuleVersion', 'pendingEffectiveFrom', 'pendingTimeZone', 'pendingRecurrenceType', 'pendingRecurrenceTime', 'pendingRecurrenceWeekday', 'pendingRecurrenceDayOfMonth', 'pendingResetCompletionOnCycle', 'pendingResetAssignmentOnCycle']
-    : ['ruleVersion', 'scheduleEffectiveFrom', 'recurrenceTimeZone', 'recurrenceType', 'recurrenceTime', 'recurrenceWeekday', 'recurrenceDayOfMonth', 'resetCompletionOnCycle', 'resetAssignmentOnCycle'];
+    ? ['pendingRuleVersion', 'pendingEffectiveFrom', 'pendingTimeZone', 'pendingRecurrenceType', 'pendingRecurrenceTime', 'pendingRecurrenceWeekday', 'pendingRecurrenceDayOfMonth', 'pendingResetCompletionOnCycle', 'pendingResetAssignmentOnCycle', 'pendingRecurrenceWeekdays']
+    : ['ruleVersion', 'scheduleEffectiveFrom', 'recurrenceTimeZone', 'recurrenceType', 'recurrenceTime', 'recurrenceWeekday', 'recurrenceDayOfMonth', 'resetCompletionOnCycle', 'resetAssignmentOnCycle', 'recurrenceWeekdays'];
   if (!schedule) return Object.fromEntries(names.map((name) => [name, '']));
   const recurrence = schedule.recurrence;
   return {
@@ -231,10 +236,11 @@ function scheduleToCells(schedule: TaskSchedule | null, prefix: '' | 'pending'):
     [names[2]]: schedule.timeZone,
     [names[3]]: recurrence.type,
     [names[4]]: recurrence.type === 'NONE' ? '' : recurrence.time,
-    [names[5]]: recurrence.type === 'WEEKLY' ? String(recurrence.weekday) : '',
+    [names[5]]: recurrence.type === 'WEEKLY' && recurrence.weekdays.length === 1 ? String(recurrence.weekdays[0]) : '',
     [names[6]]: recurrence.type === 'MONTHLY' ? String(recurrence.dayOfMonth) : '',
     [names[7]]: schedule.resetCompletionOnCycle ? 'TRUE' : 'FALSE',
     [names[8]]: schedule.resetAssignmentOnCycle ? 'TRUE' : 'FALSE',
+    [names[9]]: recurrence.type === 'WEEKLY' ? recurrence.weekdays.join(',') : '',
   };
 }
 
@@ -246,8 +252,10 @@ function validateRecurrence(recurrence: TaskRecurrence): void {
   }
   if (recurrence.type === 'DAILY') return;
   if (recurrence.type === 'WEEKLY') {
-    if (!Number.isInteger(recurrence.weekday) || recurrence.weekday < 1 || recurrence.weekday > 7) {
-      throw new TaskScheduleValidationError('weekday must be from 1 to 7');
+    if (!Array.isArray(recurrence.weekdays) || recurrence.weekdays.length === 0
+      || recurrence.weekdays.some((weekday) => !Number.isInteger(weekday) || weekday < 1 || weekday > 7)
+      || new Set(recurrence.weekdays).size !== recurrence.weekdays.length) {
+      throw new TaskScheduleValidationError('weekdays must contain unique values from 1 to 7');
     }
     return;
   }

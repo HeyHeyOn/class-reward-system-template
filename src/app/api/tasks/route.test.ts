@@ -53,7 +53,7 @@ describe('GET /api/tasks', () => {
     const response = await GET(new Request('http://localhost/api/tasks?studentId=%20S1%20'));
 
     expect(response.status).toBe(200);
-    expect(listTaskCycleProjections).toHaveBeenCalledWith({}, { studentId: 'S1' });
+    expect(listTaskCycleProjections).toHaveBeenCalledWith({}, { studentId: 'S1', includeInactive: true });
   });
 
   it('returns only the requested student status and hides other students from the public student projection', async () => {
@@ -75,18 +75,48 @@ describe('GET /api/tasks', () => {
     const payload = await response.json();
 
     expect(response.status).toBe(200);
-    expect(payload).toEqual([expect.objectContaining({
+    expect(payload[0]).toEqual(expect.objectContaining({
       taskId: 'T1',
       studentStatus: { studentId: 'S1', assigned: true, completed: false },
-      currentCycle: expect.objectContaining({
-        cycleId: 'cycle-1', startsAt: '2026-08-25T00:00:00.000Z', endsAt: '2026-08-26T00:00:00.000Z',
-      }),
-    })]);
+    }));
     expect(payload[0]).not.toHaveProperty('allowedStudentIds');
-    expect(payload[0].currentCycle).not.toHaveProperty('assignedStudentIds');
-    expect(payload[0].currentCycle).not.toHaveProperty('completedStudentIds');
-    expect(payload[0].currentCycle).not.toHaveProperty('students');
+    expect(payload[0]).not.toHaveProperty('currentCycle');
     expect(JSON.stringify(payload)).not.toContain('S2');
+  });
+
+  it('returns the effective pending recurrence and prerequisite completion state for the requested student', async () => {
+    vi.mocked(createConfiguredSheetsReader).mockResolvedValue({} as never);
+    vi.mocked(listTaskCycleProjections).mockResolvedValue([
+      {
+        ...projected[0], taskId: 'A', title: '먼저 할 일',
+        currentCycle: { cycleId: 'a-cycle', students: [{ studentId: 'S1', assigned: true, completed: false }] },
+      },
+      {
+        ...projected[0], taskId: 'B', title: '다음 할 일', prerequisiteTaskId: 'A',
+        taskInstanceId: 'internal-instance', scheduleReadWarnings: ['Tasks!A:ZZ provider detail'],
+        schedule: { ruleVersion: 1, effectiveFrom: '2000-01-01T00:00:00Z', timeZone: 'Asia/Seoul', recurrence: { type: 'DAILY', time: '09:00' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: false },
+        pendingSchedule: { ruleVersion: 2, effectiveFrom: '2001-01-01T00:00:00Z', timeZone: 'Asia/Seoul', recurrence: { type: 'WEEKLY', weekdays: [1, 4], time: '10:00' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: false },
+        currentCycle: { cycleId: 'b-cycle', students: [{ studentId: 'S1', assigned: true, completed: false }] },
+      },
+    ] as never);
+
+    const response = await GET(new Request('http://localhost/api/tasks?studentId=S1'));
+    const payload = await response.json();
+
+    expect(listTaskCycleProjections).toHaveBeenCalledWith({}, { studentId: 'S1', includeInactive: true });
+    expect(payload.find((task: { taskId: string }) => task.taskId === 'B')).toMatchObject({
+      recurrence: { type: 'WEEKLY', weekdays: [1, 4], time: '10:00' },
+      prerequisiteTitle: '먼저 할 일',
+      prerequisiteStatus: 'REQUIRED',
+      prerequisiteMessage: "선행 과제 '먼저 할 일'을(를) 먼저 완료해 주세요.",
+    });
+    const studentTask = payload.find((task: { taskId: string }) => task.taskId === 'B');
+    expect(studentTask).not.toHaveProperty('taskInstanceId');
+    expect(studentTask).not.toHaveProperty('schedule');
+    expect(studentTask).not.toHaveProperty('pendingSchedule');
+    expect(studentTask).not.toHaveProperty('scheduleReadWarnings');
+    expect(studentTask).not.toHaveProperty('prerequisiteTaskId');
+    expect(studentTask).not.toHaveProperty('currentCycle');
   });
 
   it('preserves includeInactive=1 compatibility', async () => {
@@ -119,11 +149,11 @@ describe('GET /api/tasks', () => {
     await expect(response.json()).resolves.toEqual({ error: '과제 조회 요청 형식이 올바르지 않습니다.' });
   });
 
-  it('preserves the public 500 error response', async () => {
-    vi.mocked(createConfiguredSheetsReader).mockRejectedValue(new Error('reader failed'));
-    const response = await GET(new Request('http://localhost/api/tasks'));
+  it('does not expose provider errors to unauthenticated student callers', async () => {
+    vi.mocked(createConfiguredSheetsReader).mockRejectedValue(new Error('Tasks!A:ZZ credential secret'));
+    const response = await GET(new Request('http://localhost/api/tasks?studentId=S1'));
     expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toEqual({ error: 'reader failed' });
+    await expect(response.json()).resolves.toEqual({ error: '과제 목록을 불러오지 못했습니다.' });
   });
 });
 
@@ -176,6 +206,20 @@ describe('POST /api/tasks', () => {
       }),
     }));
 
+    expect(response.status).toBe(400);
+    expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
+    expect(createTask).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['unknown field', { taskId: 'T1', title: 'Read', description: '', reward: 5, isActive: true, sortOrder: 1, allowedStudentIds: [], surprise: true }],
+    ['coerced reward', { taskId: 'T1', title: 'Read', description: '', reward: '5', isActive: true, sortOrder: 1, allowedStudentIds: [] }],
+    ['coerced active flag', { taskId: 'T1', title: 'Read', description: '', reward: 5, isActive: 'true', sortOrder: 1, allowedStudentIds: [] }],
+    ['non-string availability', { taskId: 'T1', title: 'Read', description: '', reward: 5, isActive: true, sortOrder: 1, allowedStudentIds: [], availableFrom: 123 }],
+  ])('strictly rejects %s before opening Sheets', async (_label, body) => {
+    const response = await POST(new Request('http://localhost/api/tasks', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    }));
     expect(response.status).toBe(400);
     expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
     expect(createTask).not.toHaveBeenCalled();

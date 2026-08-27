@@ -15,6 +15,7 @@ export const TASK_SCHEMA_HEADERS = [
   'resetCompletionOnCycle', 'resetAssignmentOnCycle', 'pendingRuleVersion', 'pendingEffectiveFrom',
   'pendingTimeZone', 'pendingRecurrenceType', 'pendingRecurrenceTime', 'pendingRecurrenceWeekday',
   'pendingRecurrenceDayOfMonth', 'pendingResetCompletionOnCycle', 'pendingResetAssignmentOnCycle',
+  'availableFrom', 'dueAt', 'prerequisiteTaskId', 'recurrenceWeekdays', 'pendingRecurrenceWeekdays',
 ] as const;
 
 export const TASK_COMPLETION_SCHEMA_HEADERS = [

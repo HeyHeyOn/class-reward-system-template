@@ -35,4 +35,23 @@ describe('POST /api/tasks/[taskId]/complete', () => {
     expect(response.status).toBe(400);
     expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
   });
+
+  it('preserves safe policy errors for student guidance', async () => {
+    vi.mocked(createConfiguredSheetsStore).mockResolvedValue({} as never);
+    vi.mocked(completeTaskForStudent).mockRejectedValue(new Error("선행 과제 '먼저 할 일'을(를) 먼저 완료해 주세요."));
+    const response = await POST(new Request('http://localhost/api/tasks/T1/complete', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ studentId: 'S1' }),
+    }), { params: Promise.resolve({ taskId: 'T1' }) });
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "선행 과제 '먼저 할 일'을(를) 먼저 완료해 주세요." });
+  });
+
+  it('does not expose provider errors to unauthenticated callers', async () => {
+    vi.mocked(createConfiguredSheetsStore).mockRejectedValue(new Error('Google credential secret for Tasks!A:ZZ'));
+    const response = await POST(new Request('http://localhost/api/tasks/T1/complete', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ studentId: 'S1' }),
+    }), { params: Promise.resolve({ taskId: 'T1' }) });
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: '과제 완료 처리에 실패했습니다.' });
+  });
 });

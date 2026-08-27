@@ -127,6 +127,12 @@ function baseStore() {
 }
 
 describe('recurring schema migrator', () => {
+  it('keeps CRS task columns append-only in the required tail order', () => {
+    expect(TASK_SCHEMA_HEADERS.slice(-5)).toEqual([
+      'availableFrom', 'dueAt', 'prerequisiteTaskId', 'recurrenceWeekdays', 'pendingRecurrenceWeekdays',
+    ]);
+  });
+
   it.each(deployedLegacyTaskHeaders)('migrates deployed legacy Tasks variant %s by appending at the physical right edge', async (_variant, header) => {
     const customHeader = 'teacherCustomMetadata';
     const values: Record<string, string> = {
@@ -283,7 +289,7 @@ describe('recurring schema migrator', () => {
     const store = baseStore();
     await migrateRecurringTaskSchema(store);
     expect(store.writes).toEqual([
-      'expand:Tasks:26->28',
+      'expand:Tasks:26->33',
       `header:Tasks:9:${TASK_SCHEMA_HEADERS.slice(9).join(',')}`,
       'expand:TaskCompletions:10->19',
       `header:TaskCompletions:10:${TASK_COMPLETION_SCHEMA_HEADERS.slice(10).join(',')}`,
@@ -303,7 +309,7 @@ describe('recurring schema migrator', () => {
     expect(store.sheets.get('Tasks')!.info.columnCount).toBe(TASK_SCHEMA_HEADERS.length);
     expect(store.sheets.get('Tasks')!.rows[0]).toEqual(TASK_SCHEMA_HEADERS);
     await expect(migrateRecurringTaskSchema(store)).resolves.toBeUndefined();
-    expect(store.writes.filter((write) => write === 'expand:Tasks:26->28')).toHaveLength(1);
+    expect(store.writes.filter((write) => write === 'expand:Tasks:26->33')).toHaveLength(1);
     expect(store.writes.filter((write) => write.startsWith('header:Tasks'))).toHaveLength(1);
   });
 

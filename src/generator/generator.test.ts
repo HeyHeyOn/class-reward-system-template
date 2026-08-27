@@ -43,7 +43,7 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
       'Recovery',
     ]);
     expect(REQUIRED_SHEETS.Students).toEqual(['studentId', 'name', 'balance', 'status']);
-    expect(REQUIRED_SHEETS.Tasks).toHaveLength(28);
+    expect(REQUIRED_SHEETS.Tasks).toHaveLength(33);
     expect(REQUIRED_SHEETS.TaskAssignments).toEqual([
       'assignmentId', 'taskId', 'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion',
       'timeZone', 'studentId', 'status', 'source', 'previousAssignmentId', 'createdAt', 'schemaVersion', 'note',

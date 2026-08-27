@@ -5,6 +5,8 @@ import type { ReactNode } from 'react';
 import type { ClassTask, Transaction } from '@/domain/types';
 import { getFontFamilyCss, type FontFamily } from '@/lib/fontSettings';
 import { QrScanner } from './QrScanner';
+import { formatStudentTaskDue, formatStudentTaskRecurrence } from '@/domain/taskStudentDisplay';
+import type { TaskRecurrence } from '@/domain/types';
 
 type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'black' | 'navy';
 type Settings = { currencyUnit?: string; appTitle?: string; bankTitle?: string; themeColor?: string; fontFamily?: FontFamily; qrManualInputEnabled?: boolean };
@@ -23,6 +25,10 @@ type BankTask = Omit<ClassTask, 'allowedStudentIds'> & {
     students?: TaskStudentStatus[];
   };
   studentStatus?: TaskStudentStatus;
+  recurrence?: TaskRecurrence;
+  prerequisiteTitle?: string;
+  prerequisiteStatus?: 'SATISFIED' | 'REQUIRED' | 'UNAVAILABLE';
+  prerequisiteMessage?: string;
 };
 
 function getTaskStudentStatus(task: BankTask, studentId: string) {
@@ -42,11 +48,6 @@ function getTaskStudentStatus(task: BankTask, studentId: string) {
   return { assigned, completed };
 }
 
-function formatCycleDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' });
-}
 
 function LoadingScreen({ title, message }: { title: string; message: string }) {
   return (
@@ -103,6 +104,10 @@ function normalizeThemeColor(value: unknown): ThemeColor {
 export function BankApp() {
   const [settings, setSettings] = useState<Settings>({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', fontFamily: 'default', qrManualInputEnabled: false });
   const [tasks, setTasks] = useState<BankTask[]>([]);
+  const [publicTasks, setPublicTasks] = useState<BankTask[]>([]);
+  const [publicTask, setPublicTask] = useState<BankTask | null>(null);
+  const [publicTasksLoading, setPublicTasksLoading] = useState(true);
+  const [publicTasksError, setPublicTasksError] = useState('');
   const [selectedTask, setSelectedTask] = useState<BankTask | null>(null);
   const [taskStudentId, setTaskStudentId] = useState('');
   const [view, setView] = useState<BankView>('home');
@@ -137,6 +142,21 @@ export function BankApp() {
       setSettings({ currencyUnit: '원', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', fontFamily: 'default', qrManualInputEnabled: false });
     } finally {
       setIsSettingsLoading(false);
+    }
+  }, []);
+
+  const loadPublicTasks = useCallback(async () => {
+    setPublicTasksLoading(true);
+    setPublicTasksError('');
+    try {
+      const response = await fetch('/api/bank/tasks', { cache: 'no-store' });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? '공개 과제 목록을 불러오지 못했습니다.');
+      setPublicTasks(Array.isArray(payload) ? payload : []);
+    } catch (error) {
+      setPublicTasksError(error instanceof Error ? error.message : '공개 과제 목록을 불러오지 못했습니다.');
+    } finally {
+      setPublicTasksLoading(false);
     }
   }, []);
 
@@ -179,7 +199,7 @@ export function BankApp() {
     }
   }, []);
 
-  useEffect(() => { void Promise.resolve().then(() => loadSettings()); }, [loadSettings]);
+  useEffect(() => { void Promise.resolve().then(() => { void loadSettings(); void loadPublicTasks(); }); }, [loadPublicTasks, loadSettings]);
   useEffect(() => () => taskAbortController.current?.abort(), []);
 
   async function checkBalance(decodedText: string) {
@@ -213,7 +233,7 @@ export function BankApp() {
     const completedTaskId = selectedTask.taskId;
     const activeRequestId = taskRequestId.current;
     setLoading(true);
-    setLoadingDialog({ title: '과제 완료 처리 중', message: '현재 회차 완료를 기록하고 보상을 지급하는 중입니다.' });
+    setLoadingDialog({ title: '과제 완료 처리 중', message: '과제 완료를 기록하고 보상을 지급하는 중입니다.' });
     setErrorMessage('');
     try {
       const response = await fetch(`/api/tasks/${encodeURIComponent(selectedTask.taskId)}/complete`, {
@@ -279,14 +299,22 @@ export function BankApp() {
           <h1 className="text-4xl font-black sm:text-5xl">{title}</h1>
           <div className="mt-3 space-y-1 text-sm font-bold text-slate-500">
             <p>- 내 계좌 버튼을 눌러 잔액과 거래 내역을 확인할 수 있어요.</p>
-            <p>- 과제 확인 버튼을 눌러 과제를 확인하고 완료할 수 있어요.</p>
+            <p>- 과제 완료 버튼을 눌러 과제를 확인하고 완료할 수 있어요.</p>
             <p>(※ 일부 과제는 허용된 학생만 완료할 수 있습니다.)</p>
           </div>
         </header>
 
+        <section role="region" aria-label="공개 과제 목록" className="rounded-[2rem] bg-white/90 p-5 shadow-lg">
+          <h2 className="text-2xl font-black">공개 과제 목록</h2>
+          {publicTasksLoading ? <p role="status" className="mt-3 rounded-xl bg-slate-50 p-4 font-bold text-slate-600">공개 과제를 불러오는 중입니다.</p> : null}
+          {publicTasksError ? <div className="mt-3 rounded-xl bg-rose-50 p-4 font-bold text-rose-700"><p>{publicTasksError}</p><button type="button" aria-label="공개 과제 다시 시도" onClick={() => void loadPublicTasks()} className="mt-2 rounded-lg bg-rose-700 px-3 py-2 text-white">다시 시도</button></div> : null}
+          {!publicTasksLoading && !publicTasksError && publicTasks.length === 0 ? <p className="mt-3 rounded-xl bg-slate-50 p-4 font-bold text-slate-600">현재 공개된 과제가 없습니다.</p> : null}
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">{publicTasks.map((task) => <button key={task.taskId} type="button" onClick={() => setPublicTask(task)} className={`rounded-2xl border ${theme.accentBorderAlt} ${theme.softBg} p-4 text-left ${theme.softText}`}><span className="block text-lg font-black">{task.title}</span><span className="mt-1 block text-sm font-bold">보상 {task.reward.toLocaleString()}{currencyUnit}</span><TaskStudentSummary task={task} compact /></button>)}</div>
+        </section>
+
         <section className="grid gap-4 rounded-[2rem] bg-white/90 p-5 shadow-lg sm:grid-cols-2">
           <button type="button" onClick={openBalanceScan} className={`rounded-[1.5rem] border ${theme.accentBorder} ${theme.accentBg} px-5 py-12 text-3xl font-black shadow-sm`}>내 계좌</button>
-          <button type="button" onClick={openTaskScan} className={`rounded-[1.5rem] border ${theme.accentBorderAlt} ${theme.accentBgAlt} px-5 py-12 text-3xl font-black shadow-sm`}>과제 확인</button>
+          <button type="button" onClick={openTaskScan} className={`rounded-[1.5rem] border ${theme.accentBorderAlt} ${theme.accentBgAlt} px-5 py-12 text-3xl font-black shadow-sm`}>과제 완료</button>
         </section>
       </section>
 
@@ -341,7 +369,7 @@ export function BankApp() {
       ) : null}
 
       {view === 'tasks-scan' ? (
-        <ScanDialog title="과제 확인 QR 인식" description="과제를 확인할 학생 QR을 인식합니다." manualValue={manualQr} onManualChange={setManualQr} onClose={() => setView('home')} onSubmit={() => identifyTaskStudent(manualQr)} onScan={identifyTaskStudent} submitLabel="QR 값으로 과제 확인" manualInputEnabled={Boolean(settings.qrManualInputEnabled)} />
+        <ScanDialog title="과제 완료 QR 인식" description="과제를 완료할 학생 QR을 인식합니다." manualValue={manualQr} onManualChange={setManualQr} onClose={() => setView('home')} onSubmit={() => identifyTaskStudent(manualQr)} onScan={identifyTaskStudent} submitLabel="QR 값으로 과제 완료" manualInputEnabled={Boolean(settings.qrManualInputEnabled)} />
       ) : null}
 
       {view === 'tasks-list' ? (
@@ -349,13 +377,14 @@ export function BankApp() {
           <p className="mb-3 rounded-xl bg-slate-100 p-3 text-sm font-black text-slate-600">학생 QR: {taskStudentId}</p>
           {loading ? <p className="rounded-2xl bg-slate-50 p-4 font-bold">과제 목록을 불러오는 중입니다.</p> : null}
           {errorMessage ? <p className="rounded-2xl bg-rose-50 p-4 font-bold text-rose-700">{errorMessage}</p> : null}
-          {!loading && !errorMessage && assignedTasks.length === 0 ? <p className="rounded-2xl bg-slate-50 p-4 font-bold text-slate-600">현재 회차에 배정된 과제가 없습니다.</p> : null}
+          {!loading && !errorMessage && assignedTasks.length === 0 ? <p className="rounded-2xl bg-slate-50 p-4 font-bold text-slate-600">배정된 과제가 없습니다.</p> : null}
           <div className="space-y-2">
             {assignedTasks.map((task) => (
               <button key={task.taskId} type="button" onClick={() => openTaskDetail(task)} className={`w-full rounded-2xl border border-slate-200 ${theme.softBg} p-4 text-left font-black ${theme.softText}`}>
                 <span className="block text-lg">{task.title}</span>
                 <span className={`mt-1 block text-sm ${normalizeThemeColor(settings.themeColor) === 'black' ? 'text-slate-300' : 'text-slate-500'}`}>보상 {task.reward.toLocaleString()}{currencyUnit} · {getTaskStudentStatus(task, taskStudentId).completed === true ? '완료됨' : getTaskStudentStatus(task, taskStudentId).completed === false ? '미완료' : '완료 정보 없음'}</span>
-                <TaskCycleSummary task={task} compact />
+                <TaskStudentSummary task={task} compact />
+                {task.prerequisiteMessage ? <span className="mt-2 block rounded-xl bg-amber-100 p-2 text-xs text-amber-900">{task.prerequisiteMessage}</span> : null}
               </button>
             ))}
           </div>
@@ -367,11 +396,13 @@ export function BankApp() {
         <Modal title={selectedTask.title} onClose={() => setView('tasks-list')} closeLabel="닫기">
           <p data-testid="bank-task-description" className="whitespace-pre-wrap rounded-2xl bg-slate-50 p-5 text-lg font-bold leading-relaxed text-slate-700">{selectedTask.description || '과제 설명이 없습니다.'}</p>
           <p className="mt-3 rounded-2xl bg-amber-50 p-4 text-center font-black text-amber-800">보상<br />{selectedTask.reward.toLocaleString()}{currencyUnit}</p>
-          <TaskCycleSummary task={selectedTask} />
+          <TaskStudentSummary task={selectedTask} />
+          {selectedTask.prerequisiteTitle ? <p className="mt-3 rounded-xl bg-slate-100 p-3 font-bold">선행 과제: {selectedTask.prerequisiteTitle}</p> : null}
+          {selectedTask.prerequisiteMessage ? <p className="mt-3 rounded-xl bg-amber-100 p-3 font-bold text-amber-900">{selectedTask.prerequisiteMessage}</p> : null}
           {getTaskStudentStatus(selectedTask, taskStudentId).completed === true ? (
-            <p className="mt-4 rounded-2xl bg-emerald-50 p-4 text-center font-black text-emerald-700">현재 회차 완료됨</p>
+            <p className="mt-4 rounded-2xl bg-emerald-50 p-4 text-center font-black text-emerald-700">완료됨</p>
           ) : (
-            <button type="button" onClick={() => void completeSelectedTask()} className={`mt-4 w-full rounded-2xl ${theme.accentBg} py-4 text-xl font-black`}>완료하기</button>
+            <button type="button" disabled={selectedTask.prerequisiteStatus === 'REQUIRED' || selectedTask.prerequisiteStatus === 'UNAVAILABLE'} onClick={() => void completeSelectedTask()} className={`mt-4 w-full rounded-2xl ${theme.accentBg} py-4 text-xl font-black disabled:cursor-not-allowed disabled:opacity-50`}>완료하기</button>
           )}
         </Modal>
       ) : null}
@@ -388,20 +419,24 @@ export function BankApp() {
           <p>{taskResult?.message ?? '과제 완료 처리에 실패했습니다.'}</p>
         </ResultDialog>
       ) : null}
+      {publicTask ? (
+        <Modal title={publicTask.title} onClose={() => setPublicTask(null)} closeLabel="닫기">
+          <p className="whitespace-pre-wrap rounded-2xl bg-slate-50 p-5 text-lg font-bold text-slate-700">{publicTask.description || '과제 설명이 없습니다.'}</p>
+          <p className="mt-3 rounded-2xl bg-amber-50 p-4 text-center font-black text-amber-800">보상 {publicTask.reward.toLocaleString()}{currencyUnit}</p>
+          <TaskStudentSummary task={publicTask} />
+          {publicTask.prerequisiteTitle ? <p className="mt-3 rounded-xl bg-slate-100 p-3 font-bold">선행 과제: {publicTask.prerequisiteTitle}</p> : null}
+        </Modal>
+      ) : null}
     </main>
   );
 }
 
-function TaskCycleSummary({ task, compact = false }: { task: BankTask; compact?: boolean }) {
-  const startsAt = task.currentCycle?.startsAt;
-  const endsAt = task.currentCycle?.endsAt;
-  if (!startsAt && endsAt === undefined) {
-    return <p className={`${compact ? 'mt-1 text-xs' : 'mt-3 rounded-2xl bg-slate-50 p-4 text-sm'} font-bold text-slate-500`}>현재 회차 기간 정보 없음 · 다음 초기화 정보 없음</p>;
-  }
+function TaskStudentSummary({ task, compact = false }: { task: BankTask; compact?: boolean }) {
+  const recurrence = task.recurrence ?? task.schedule?.recurrence;
   return (
     <div className={`${compact ? 'mt-1 text-xs' : 'mt-3 rounded-2xl bg-slate-50 p-4 text-sm'} font-bold text-slate-500`}>
-      <p>현재 회차: {startsAt ? formatCycleDate(startsAt) : '시작 정보 없음'} ~ {endsAt ? formatCycleDate(endsAt) : '계속'}</p>
-      <p>다음 초기화: {endsAt ? formatCycleDate(endsAt) : '없음'}</p>
+      <p>{formatStudentTaskDue(task.dueAt)}</p>
+      <p>{formatStudentTaskRecurrence(recurrence)}</p>
     </div>
   );
 }

@@ -17,6 +17,7 @@ const EXPECTED_SHEETS = [
     'recurrenceTime', 'recurrenceWeekday', 'recurrenceDayOfMonth', 'resetCompletionOnCycle', 'resetAssignmentOnCycle',
     'pendingRuleVersion', 'pendingEffectiveFrom', 'pendingTimeZone', 'pendingRecurrenceType', 'pendingRecurrenceTime',
     'pendingRecurrenceWeekday', 'pendingRecurrenceDayOfMonth', 'pendingResetCompletionOnCycle', 'pendingResetAssignmentOnCycle',
+    'availableFrom', 'dueAt', 'prerequisiteTaskId', 'recurrenceWeekdays', 'pendingRecurrenceWeekdays',
   ]],
   ['TaskAssignments', [
     'assignmentId', 'taskId', 'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion',
@@ -59,7 +60,7 @@ describe('REQUIRED_SHEETS', () => {
   });
 
   it('defines the schema-v2 recurring ledger dimensions exactly', () => {
-    expect(REQUIRED_SHEETS.Tasks).toHaveLength(28);
+    expect(REQUIRED_SHEETS.Tasks).toHaveLength(33);
     expect(REQUIRED_SHEETS.TaskAssignments).toHaveLength(15);
   });
 

@@ -95,7 +95,7 @@ systemVersion | 0.4.0-phase3
 과제 정의와 versioned recurrence rule을 저장합니다. `current`/`pending`은 저장 형식이며, 관리자 schedule·학급 시간대 변경으로 만든 `pending`은 변경 시각부터 즉시 유효합니다.
 
 ```text
-taskId | title | description | reward | isActive | sortOrder | createdAt | updatedAt | allowedStudentIds | taskInstanceId | ruleVersion | scheduleEffectiveFrom | recurrenceTimeZone | recurrenceType | recurrenceTime | recurrenceWeekday | recurrenceDayOfMonth | resetCompletionOnCycle | resetAssignmentOnCycle | pendingRuleVersion | pendingEffectiveFrom | pendingTimeZone | pendingRecurrenceType | pendingRecurrenceTime | pendingRecurrenceWeekday | pendingRecurrenceDayOfMonth | pendingResetCompletionOnCycle | pendingResetAssignmentOnCycle
+taskId | title | description | reward | isActive | sortOrder | createdAt | updatedAt | allowedStudentIds | taskInstanceId | ruleVersion | scheduleEffectiveFrom | recurrenceTimeZone | recurrenceType | recurrenceTime | recurrenceWeekday | recurrenceDayOfMonth | resetCompletionOnCycle | resetAssignmentOnCycle | pendingRuleVersion | pendingEffectiveFrom | pendingTimeZone | pendingRecurrenceType | pendingRecurrenceTime | pendingRecurrenceWeekday | pendingRecurrenceDayOfMonth | pendingResetCompletionOnCycle | pendingResetAssignmentOnCycle | availableFrom | dueAt | prerequisiteTaskId | recurrenceWeekdays | pendingRecurrenceWeekdays
 ```
 
 - `taskId`: 과제 고유 ID
@@ -109,8 +109,11 @@ taskId | title | description | reward | isActive | sortOrder | createdAt | updat
 - `recurrenceTimeZone`, `recurrenceType`, `recurrenceTime`, `recurrenceWeekday`, `recurrenceDayOfMonth`: 현재 반복 일정
 - `resetCompletionOnCycle`, `resetAssignmentOnCycle`: cycle 전환 시 상태 초기화 정책
 - `pending*`: `pendingEffectiveFrom`부터 해석되는 다음 규칙 버전. 관리자 변경은 현재 시각을 적용 시점으로 기록해 즉시 새 회차를 시작하며, 기존 미래 pending이 있으면 더 높은 버전으로 대체합니다.
+- `availableFrom`, `dueAt`: 과제를 완료할 수 있는 시작·마감 ISO instant. 경계는 시작 포함, 마감 제외(`[availableFrom, dueAt)`)입니다.
+- `prerequisiteTaskId`: 먼저 완료해야 하는 활성 과제 ID. 한 과제만 지정할 수 있으며 자기 참조·미존재·비활성·순환 참조는 거부됩니다.
+- `recurrenceWeekdays`, `pendingRecurrenceWeekdays`: 쉼표로 구분한 ISO 요일(월=1 … 일=7) 목록입니다. 다중 요일의 권위 값이며, 레거시 단일 요일 열은 읽기 fallback으로 보존합니다.
 
-신규 템플릿에는 레거시 컬럼 `maxCompletionsPerStudent`를 만들지 않습니다. 자세한 호환 정책은 [스키마 호환성 정책](architecture/schema-compatibility.md)을 참고하세요.
+신규 Tasks 템플릿은 위 순서의 33개 canonical 컬럼을 사용하며 레거시 컬럼 `maxCompletionsPerStudent`를 만들지 않습니다. 기존 시트에는 새 5개 열만 끝에 비파괴 추가합니다. 자세한 호환 정책은 [스키마 호환성 정책](architecture/schema-compatibility.md)을 참고하세요.
 
 ## TaskAssignments
 

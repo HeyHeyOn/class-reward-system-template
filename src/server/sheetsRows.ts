@@ -230,6 +230,9 @@ export function parseTaskRow(row: string[], headerIndex: HeaderIndex, classTimeZ
     isActive: parseTaskBooleanCell(getRowCell(row, headerIndex, 'isActive')),
     sortOrder,
     allowedStudentIds: parseAllowedStudentIds(getRowCell(row, headerIndex, 'allowedStudentIds')),
+    ...(getRowCell(row, headerIndex, 'availableFrom') ? { availableFrom: getRowCell(row, headerIndex, 'availableFrom') } : {}),
+    ...(getRowCell(row, headerIndex, 'dueAt') ? { dueAt: getRowCell(row, headerIndex, 'dueAt') } : {}),
+    ...(getRowCell(row, headerIndex, 'prerequisiteTaskId') ? { prerequisiteTaskId: getRowCell(row, headerIndex, 'prerequisiteTaskId') } : {}),
     taskInstanceId: schedule.taskInstanceId,
     schedule: schedule.currentSchedule,
     pendingSchedule: schedule.pendingSchedule,
@@ -255,6 +258,9 @@ export function buildTaskAppendRow(headers: string[], task: ClassTask, timestamp
     createdAt: timestamp,
     updatedAt: timestamp,
     allowedStudentIds: task.allowedStudentIds.join(','),
+    availableFrom: task.availableFrom ?? '',
+    dueAt: task.dueAt ?? '',
+    prerequisiteTaskId: task.prerequisiteTaskId ?? '',
     ...(task.taskInstanceId && task.schedule
       ? serializeTaskScheduleCells({
           taskInstanceId: task.taskInstanceId,

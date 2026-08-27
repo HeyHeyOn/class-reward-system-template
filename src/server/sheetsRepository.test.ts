@@ -1176,6 +1176,72 @@ describe('sheets repository', () => {
     expect(rows.filter((row) => row[0].startsWith('T-RACE-'))).toHaveLength(2);
   });
 
+  it('persists CRS availability and prerequisite columns after append-only migration', async () => {
+    const { store } = legacyRecurringStore(['PRE']);
+    const created = await createTask(store as never, {
+      taskId: 'MAIN', title: 'Main', description: '', reward: 3, isActive: true, sortOrder: 2,
+      availableFrom: '2026-08-01T00:00:00Z', dueAt: '2026-09-01T00:00:00Z', prerequisiteTaskId: 'PRE',
+    });
+    const append = vi.mocked(store.appendRow).mock.calls.find(([sheetName]) => sheetName === 'Tasks');
+    expect(created).toMatchObject({
+      availableFrom: '2026-08-01T00:00:00Z', dueAt: '2026-09-01T00:00:00Z', prerequisiteTaskId: 'PRE',
+    });
+    expect(append?.[1][TASK_SCHEMA_HEADERS.indexOf('availableFrom')]).toBe('2026-08-01T00:00:00Z');
+    expect(append?.[1][TASK_SCHEMA_HEADERS.indexOf('dueAt')]).toBe('2026-09-01T00:00:00Z');
+    expect(append?.[1][TASK_SCHEMA_HEADERS.indexOf('prerequisiteTaskId')]).toBe('PRE');
+  });
+
+  it('rejects an invalid prerequisite before create performs recurring schema migration writes', async () => {
+    const { store, migrationWrite } = legacyRecurringStore(['A']);
+    await expect(createTask(store as never, {
+      taskId: 'B', title: 'B', description: '', reward: 1, isActive: true, sortOrder: 2,
+      prerequisiteTaskId: 'MISSING',
+    })).rejects.toThrow('찾을 수 없습니다');
+    expect(migrationWrite).not.toHaveBeenCalled();
+    expect(store.appendRow).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid prerequisite before a schedule edit performs migration writes', async () => {
+    const { store, migrationWrite } = legacyRecurringStore(['A']);
+    await expect(updateTaskDetails(store as never, 'A', {
+      title: 'A', description: '', reward: 1, isActive: true, sortOrder: 1, allowedStudentIds: [],
+      prerequisiteTaskId: 'MISSING',
+      schedule: { timeZone: 'Asia/Seoul', recurrence: { type: 'DAILY', time: '09:00' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: false },
+    })).rejects.toThrow('찾을 수 없습니다');
+    expect(migrationWrite).not.toHaveBeenCalled();
+    expect(store.updateCells).not.toHaveBeenCalled();
+  });
+
+  it('validates a batch prerequisite graph against the final combined state before writes', async () => {
+    const { store, migrationWrite } = legacyRecurringStore(['A', 'B']);
+    const update = (taskId: string, prerequisiteTaskId: string) => ({
+      taskId, title: taskId, description: '', reward: 1, isActive: true, sortOrder: 1,
+      allowedStudentIds: [], prerequisiteTaskId,
+    });
+    await expect(updateTaskDetailsBatch(store as never, [update('A', 'B'), update('B', 'A')]))
+      .rejects.toThrow('순환');
+    expect(store.updateCells).not.toHaveBeenCalled();
+    expect(migrationWrite).not.toHaveBeenCalled();
+  });
+
+  it.each(['single', 'batch'] as const)('rejects %s deactivation of a referenced prerequisite before writes', async (mode) => {
+    const { store } = legacyRecurringStore(['A', 'B'], TASK_SCHEMA_HEADERS);
+    const originalGetRows = store.getRows.bind(store);
+    store.getRows = vi.fn(async (sheetName: string) => {
+      const rows = await originalGetRows(sheetName);
+      if (sheetName === 'Tasks') rows[2][TASK_SCHEMA_HEADERS.indexOf('prerequisiteTaskId')] = 'A';
+      return rows;
+    });
+    const update = { title: 'A', description: '', reward: 1, isActive: false, sortOrder: 1, allowedStudentIds: [] };
+
+    const operation = mode === 'single'
+      ? updateTaskDetails(store as never, 'A', update)
+      : updateTaskDetailsBatch(store as never, [{ taskId: 'A', ...update }]);
+
+    await expect(operation).rejects.toThrow('비활성');
+    expect(store.updateCells).not.toHaveBeenCalled();
+  });
+
   it('migrates a legacy Tasks schema before creating a task with a recurring schedule', async () => {
     const { store } = legacyRecurringStore([]);
 
@@ -1210,11 +1276,11 @@ describe('sheets repository', () => {
     const { store } = legacyRecurringStore(['T-LEGACY-D'], variantD);
 
     await expect(updateTaskSchedule(store as never, 'T-LEGACY-D', {
-      recurrence: { type: 'WEEKLY', time: '10:00', weekday: 2 },
+      recurrence: { type: 'WEEKLY', time: '10:00', weekdays: [2] },
       timeZone: 'Asia/Seoul', resetCompletionOnCycle: true, resetAssignmentOnCycle: false,
     }, '2026-08-25T09:00:00.000Z')).resolves.toMatchObject({
       taskId: 'T-LEGACY-D',
-      pendingSchedule: { ruleVersion: 2, recurrence: { type: 'WEEKLY', time: '10:00', weekday: 2 } },
+      pendingSchedule: { ruleVersion: 2, recurrence: { type: 'WEEKLY', time: '10:00', weekdays: [2] } },
     });
 
     expect(store.verifyAndWriteHeaderCells).toHaveBeenCalledWith(
@@ -1593,7 +1659,7 @@ describe('sheets repository', () => {
     const { store } = versionedScheduleMutationStore();
 
     const updated = await updateTaskSchedule(store as never, 'T-SERIAL', {
-      recurrence: { type: 'WEEKLY', time: '10:00', weekday: 2 },
+      recurrence: { type: 'WEEKLY', time: '10:00', weekdays: [2] },
       timeZone: 'Europe/Paris',
       resetCompletionOnCycle: true,
       resetAssignmentOnCycle: false,
@@ -1610,7 +1676,7 @@ describe('sheets repository', () => {
     const { store, writes } = versionedScheduleMutationStore(undefined, true);
     const [first, second] = await Promise.all([
       updateTaskDetails(store as never, 'T-SERIAL', scheduleUpdate({ type: 'DAILY', time: '09:00' }), '2026-08-25T09:00:00.000Z'),
-      updateTaskDetails(store as never, 'T-SERIAL', scheduleUpdate({ type: 'WEEKLY', time: '10:00', weekday: 2 }), '2026-08-25T09:01:00.000Z'),
+      updateTaskDetails(store as never, 'T-SERIAL', scheduleUpdate({ type: 'WEEKLY', time: '10:00', weekdays: [2] }), '2026-08-25T09:01:00.000Z'),
     ]);
 
     expect(first.pendingSchedule?.ruleVersion).toBe(2);
@@ -1630,7 +1696,7 @@ describe('sheets repository', () => {
         isActive: false, sortOrder: 7, allowedStudentIds: ['S2'],
       }, '2026-08-25T09:00:00.000Z'),
       updateTaskSchedule(store as never, 'T-SERIAL', {
-        recurrence: { type: 'WEEKLY', time: '10:00', weekday: 2 },
+        recurrence: { type: 'WEEKLY', time: '10:00', weekdays: [2] },
         timeZone: 'Asia/Seoul', resetCompletionOnCycle: true, resetAssignmentOnCycle: false,
       }, '2026-08-25T09:01:00.000Z'),
     ]);
@@ -1676,7 +1742,7 @@ describe('sheets repository', () => {
     const second = await updateTaskDetails(
       store as never,
       'T-SERIAL',
-      scheduleUpdate({ type: 'WEEKLY', time: '10:00', weekday: 2 }),
+      scheduleUpdate({ type: 'WEEKLY', time: '10:00', weekdays: [2] }),
       '2026-08-25T09:00:00.000Z',
     );
 
@@ -1691,7 +1757,7 @@ describe('sheets repository', () => {
       pendingSchedule: {
         ruleVersion: 3,
         effectiveFrom: '2026-08-25T09:00:00.000Z',
-        recurrence: { type: 'WEEKLY', time: '10:00', weekday: 2 },
+        recurrence: { type: 'WEEKLY', time: '10:00', weekdays: [2] },
       },
     });
     expect(writes).toEqual([
@@ -1706,7 +1772,7 @@ describe('sheets repository', () => {
       updateTaskDetails(store as never, 'T-SERIAL', scheduleUpdate({ type: 'DAILY', time: '09:00' }), '2026-08-25T09:00:00.000Z'),
       updateTaskDetailsBatch(store as never, [{
         taskId: 'T-SERIAL',
-        ...scheduleUpdate({ type: 'WEEKLY', time: '10:00', weekday: 2 }),
+        ...scheduleUpdate({ type: 'WEEKLY', time: '10:00', weekdays: [2] }),
       }], '2026-08-25T09:01:00.000Z'),
     ]);
 
@@ -1784,6 +1850,49 @@ describe('sheets repository', () => {
     await expect(deleteTasksBatch(batch.store as never, ['T1', 'T2'])).resolves.toMatchObject({ deletedTaskCount: 2 });
     expect(batch.migrationWrite).not.toHaveBeenCalled();
     expect(batch.store.deleteRows).toHaveBeenCalledWith('Tasks', [2, 3]);
+  });
+
+  it('rejects deleting a task that is still referenced as a prerequisite', async () => {
+    const fixture = legacyRecurringStore(['A', 'B'], TASK_SCHEMA_HEADERS);
+    const originalGetRows = fixture.store.getRows.bind(fixture.store);
+    fixture.store.getRows = vi.fn(async (sheetName: string) => {
+      const rows = await originalGetRows(sheetName);
+      if (sheetName === 'Tasks') rows[2][TASK_SCHEMA_HEADERS.indexOf('prerequisiteTaskId')] = 'A';
+      return rows;
+    });
+
+    await expect(deleteTask(fixture.store as never, 'A')).rejects.toThrow('선행 과제');
+    expect(fixture.store.deleteRow).not.toHaveBeenCalled();
+    await expect(deleteTasksBatch(fixture.store as never, ['A', 'B'])).resolves.toMatchObject({ deletedTaskCount: 2 });
+  });
+
+  it('serializes delete behind an earlier prerequisite update so it cannot create a dangling reference', async () => {
+    const fixture = legacyRecurringStore(['A', 'B'], TASK_SCHEMA_HEADERS);
+    const originalGetRows = fixture.store.getRows.bind(fixture.store);
+    const rows = await originalGetRows('Tasks');
+    fixture.store.getRows = vi.fn(async (sheetName: string) => sheetName === 'Tasks'
+      ? rows.map((row) => [...row])
+      : originalGetRows(sheetName));
+    fixture.store.updateCells = vi.fn(async (_sheetName: string, updates: Array<{ rowNumber: number; columnName: string; value: string | number }>) => {
+      for (const update of updates) rows[update.rowNumber - 1][rows[0].indexOf(update.columnName)] = String(update.value);
+    });
+    fixture.store.deleteRow = vi.fn(async (_sheetName: string, rowNumber: number) => { rows.splice(rowNumber - 1, 1); });
+
+    let releaseBlocker!: () => void;
+    const blocker = enqueueTaskCommand(taskCommandQueueKey(''), () => new Promise<void>((resolve) => { releaseBlocker = resolve; }));
+    await Promise.resolve();
+    const update = updateTaskDetails(fixture.store as never, 'B', {
+      title: 'B', description: '', reward: 1, isActive: true, sortOrder: 1, allowedStudentIds: [], prerequisiteTaskId: 'A',
+    });
+    const deletion = deleteTask(fixture.store as never, 'A');
+
+    releaseBlocker();
+    await blocker;
+    const [updateResult, deletionResult] = await Promise.allSettled([update, deletion]);
+    expect(updateResult).toMatchObject({ status: 'fulfilled', value: { taskId: 'B', prerequisiteTaskId: 'A' } });
+    expect(deletionResult.status).toBe('rejected');
+    if (deletionResult.status === 'rejected') expect(String(deletionResult.reason)).toContain('선행 과제');
+    expect(fixture.store.deleteRow).not.toHaveBeenCalled();
   });
 
   it('deletes task definitions without deleting completion history', async () => {
@@ -2147,6 +2256,118 @@ describe('sheets repository', () => {
     };
 
     await expect(completeTaskForStudent(withRecurringMigration(fakeStore) as never, 'T099', 'S001')).rejects.toThrow('부여된 학생이 없습니다.');
+  });
+
+  it('rejects expired completion before any balance or ledger mutation', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-27T00:00:00Z'));
+    const writes = vi.fn();
+    const values: Record<string, string> = {
+      taskId: 'T-WINDOW', title: 'Expired', description: '', reward: '5', isActive: 'TRUE', sortOrder: '1',
+      allowedStudentIds: 'S001', dueAt: '2026-08-27T00:00:00Z',
+    };
+    const store = {
+      async getRows(sheetName: string) {
+        if (sheetName === 'Tasks') return [[...TASK_SCHEMA_HEADERS], TASK_SCHEMA_HEADERS.map((header) => values[header] ?? '')];
+        if (sheetName === 'Students') return [sheetRows.Students[0], sheetRows.Students[1]];
+        if (sheetName === 'TaskAssignments') return [[...TASK_ASSIGNMENT_HEADERS]];
+        if (sheetName === 'TaskCompletions') return [[...TASK_COMPLETION_SCHEMA_HEADERS]];
+        return sheetRows[sheetName as keyof typeof sheetRows] ?? [];
+      },
+      updateCell: writes, updateCells: writes, appendRow: writes,
+    };
+
+    await expect(completeTaskForStudent(store as never, 'T-WINDOW', 'S001')).rejects.toThrow('현재 완료할 수');
+    expect(writes).not.toHaveBeenCalled();
+  });
+
+  it('revalidates availability after a queued wait crosses dueAt before any mutation', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-26T23:59:59Z'));
+    let releaseBlocker!: () => void;
+    const blocker = enqueueTaskCommand(taskCommandQueueKey(''), () =>
+      new Promise<void>((resolve) => { releaseBlocker = resolve; }));
+    await Promise.resolve();
+    const writes = vi.fn();
+    const values: Record<string, string> = {
+      taskId: 'T-QUEUE-DUE', title: 'Deadline', description: '', reward: '5', isActive: 'TRUE', sortOrder: '1',
+      allowedStudentIds: 'S001', dueAt: '2026-08-27T00:00:00Z',
+    };
+    const store = {
+      async getRows(sheetName: string) {
+        if (sheetName === 'Tasks') return [[...TASK_SCHEMA_HEADERS], TASK_SCHEMA_HEADERS.map((header) => values[header] ?? '')];
+        if (sheetName === 'Students') return [sheetRows.Students[0], sheetRows.Students[1]];
+        if (sheetName === 'TaskAssignments') return [[...TASK_ASSIGNMENT_HEADERS]];
+        if (sheetName === 'TaskCompletions') return [[...TASK_COMPLETION_SCHEMA_HEADERS]];
+        return sheetRows[sheetName as keyof typeof sheetRows] ?? [];
+      },
+      updateCell: writes, updateCells: writes, appendRow: writes,
+    };
+
+    const completion = completeTaskForStudent(store as never, 'T-QUEUE-DUE', 'S001');
+    await Promise.resolve();
+    vi.setSystemTime(new Date('2026-08-27T00:00:00Z'));
+    releaseBlocker();
+    await blocker;
+
+    await expect(completion).rejects.toThrow('현재 완료할 수');
+    expect(writes).not.toHaveBeenCalled();
+  });
+
+  it('checks the prerequisite current cycle before any balance or ledger mutation', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-27T00:00:00Z'));
+    const writes = vi.fn();
+    const taskValues = (taskId: string, title: string, prerequisiteTaskId = '') => {
+      const values: Record<string, string> = {
+        taskId, title, description: '', reward: '5', isActive: 'TRUE', sortOrder: '1',
+        allowedStudentIds: 'S001', prerequisiteTaskId,
+      };
+      return TASK_SCHEMA_HEADERS.map((header) => values[header] ?? '');
+    };
+    const store = {
+      async getRows(sheetName: string) {
+        if (sheetName === 'Tasks') return [[...TASK_SCHEMA_HEADERS], taskValues('PRE', '먼저'), taskValues('MAIN', '나중', 'PRE')];
+        if (sheetName === 'Students') return [sheetRows.Students[0], sheetRows.Students[1]];
+        if (sheetName === 'TaskAssignments') return [[...TASK_ASSIGNMENT_HEADERS]];
+        if (sheetName === 'TaskCompletions') return [[...TASK_COMPLETION_SCHEMA_HEADERS]];
+        return sheetRows[sheetName as keyof typeof sheetRows] ?? [];
+      },
+      updateCell: writes, updateCells: writes, appendRow: writes,
+    };
+
+    await expect(completeTaskForStudent(store as never, 'MAIN', 'S001')).rejects.toThrow("선행 과제 '먼저'");
+    expect(writes).not.toHaveBeenCalled();
+  });
+
+  it('rejects an expired prerequisite before mutation even when its legacy completion exists', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-27T00:00:00Z'));
+    const writes = vi.fn();
+    const taskValues = (taskId: string, title: string, prerequisiteTaskId = '', dueAt = '') => {
+      const values: Record<string, string> = {
+        taskId, title, description: '', reward: '5', isActive: 'TRUE', sortOrder: '1',
+        allowedStudentIds: 'S001', prerequisiteTaskId, dueAt,
+      };
+      return TASK_SCHEMA_HEADERS.map((header) => values[header] ?? '');
+    };
+    const completionValues: Record<string, string> = {
+      completionId: 'C-PRE', timestamp: '2026-08-26T00:00:00Z', taskId: 'PRE',
+      studentId: 'S001', studentName: '학생', reward: '5', balanceBefore: '0', balanceAfter: '5', status: 'SUCCESS',
+    };
+    const store = {
+      async getRows(sheetName: string) {
+        if (sheetName === 'Tasks') return [[...TASK_SCHEMA_HEADERS], taskValues('PRE', '먼저', '', '2026-08-27T00:00:00Z'), taskValues('MAIN', '나중', 'PRE')];
+        if (sheetName === 'Students') return [sheetRows.Students[0], sheetRows.Students[1]];
+        if (sheetName === 'TaskAssignments') return [[...TASK_ASSIGNMENT_HEADERS]];
+        if (sheetName === 'TaskCompletions') return [[...TASK_COMPLETION_SCHEMA_HEADERS], TASK_COMPLETION_SCHEMA_HEADERS.map((header) => completionValues[header] ?? '')];
+        return sheetRows[sheetName as keyof typeof sheetRows] ?? [];
+      },
+      updateCell: writes, updateCells: writes, appendRow: writes,
+    };
+
+    await expect(completeTaskForStudent(withRecurringMigration(store as never) as never, 'MAIN', 'S001')).rejects.toThrow("선행 과제 '먼저'은(는) 현재 완료할 수 없습니다");
+    expect(writes).not.toHaveBeenCalled();
   });
 
   it('completes a task once, pays reward, and records completion', async () => {

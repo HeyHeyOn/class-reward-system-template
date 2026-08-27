@@ -126,6 +126,9 @@ export type ClassTask = {
   isActive: boolean;
   sortOrder: number;
   allowedStudentIds: string[];
+  availableFrom?: string;
+  dueAt?: string;
+  prerequisiteTaskId?: string;
   createdAt?: string;
   /** Always populated by the sheet codec; optional for legacy API callers constructing tasks. */
   taskInstanceId?: string;
@@ -220,7 +223,7 @@ export type DayOfMonth =
 export type TaskRecurrence =
   | { type: 'NONE' }
   | { type: 'DAILY'; time: string }
-  | { type: 'WEEKLY'; weekday: IsoWeekday; time: string }
+  | { type: 'WEEKLY'; weekdays: readonly IsoWeekday[]; time: string }
   | { type: 'MONTHLY'; dayOfMonth: DayOfMonth; time: string };
 
 export type TaskSchedule = {

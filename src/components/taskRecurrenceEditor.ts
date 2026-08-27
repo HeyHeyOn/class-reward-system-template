@@ -32,7 +32,7 @@ export type RecurrenceType = TaskRecurrence['type'];
 export type TaskRecurrenceForm = {
   type: RecurrenceType;
   time: string;
-  weekday: string;
+  weekdays: string[];
   dayOfMonth: string;
   resetCompletionOnCycle: boolean;
   resetAssignmentOnCycle: boolean;
@@ -46,7 +46,7 @@ export type TaskScheduleEditPayload = Pick<TaskSchedule, 'recurrence' | 'timeZon
 export const EMPTY_RECURRENCE_FORM: TaskRecurrenceForm = {
   type: 'NONE',
   time: '09:00',
-  weekday: '1',
+  weekdays: ['1'],
   dayOfMonth: '1',
   resetCompletionOnCycle: false,
   resetAssignmentOnCycle: false,
@@ -63,7 +63,7 @@ export function scheduleDtoToForm(
   return {
     type: recurrence?.type ?? 'NONE',
     time: recurrence && recurrence.type !== 'NONE' ? recurrence.time : EMPTY_RECURRENCE_FORM.time,
-    weekday: recurrence?.type === 'WEEKLY' ? String(recurrence.weekday) : EMPTY_RECURRENCE_FORM.weekday,
+    weekdays: recurrence?.type === 'WEEKLY' ? recurrence.weekdays.map(String) : EMPTY_RECURRENCE_FORM.weekdays,
     dayOfMonth: recurrence?.type === 'MONTHLY' ? String(recurrence.dayOfMonth) : EMPTY_RECURRENCE_FORM.dayOfMonth,
     resetCompletionOnCycle: schedule?.resetCompletionOnCycle ?? false,
     resetAssignmentOnCycle: schedule?.resetAssignmentOnCycle ?? false,
@@ -77,8 +77,8 @@ export function validateRecurrenceForm(form: TaskRecurrenceForm): string | null 
   if (form.type === 'NONE') return null;
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(form.time)) return '시간은 HH:mm 형식으로 입력해 주세요.';
   if (form.type === 'WEEKLY') {
-    const weekday = Number(form.weekday);
-    if (!Number.isInteger(weekday) || weekday < 1 || weekday > 7) return '요일을 선택해 주세요.';
+    if (!Array.isArray(form.weekdays) || form.weekdays.length === 0
+      || form.weekdays.some((value) => !Number.isInteger(Number(value)) || Number(value) < 1 || Number(value) > 7)) return '요일을 선택해 주세요.';
   }
   if (form.type === 'MONTHLY') {
     const day = Number(form.dayOfMonth);
@@ -95,7 +95,7 @@ export function scheduleFormToPayload(form: TaskRecurrenceForm):
   let recurrence: TaskRecurrence;
   if (form.type === 'NONE') recurrence = { type: 'NONE' };
   else if (form.type === 'DAILY') recurrence = { type: 'DAILY', time: form.time };
-  else if (form.type === 'WEEKLY') recurrence = { type: 'WEEKLY', time: form.time, weekday: Number(form.weekday) as IsoWeekday };
+  else if (form.type === 'WEEKLY') recurrence = { type: 'WEEKLY', time: form.time, weekdays: form.weekdays.map(Number).sort((a, b) => a - b) as IsoWeekday[] };
   else recurrence = { type: 'MONTHLY', time: form.time, dayOfMonth: Number(form.dayOfMonth) as DayOfMonth };
   return {
     ok: true,
@@ -115,13 +115,13 @@ export function formatRecurrenceSummary(formOrSchedule: TaskRecurrenceForm | Tas
   const recurrence = 'recurrence' in formOrSchedule ? formOrSchedule.recurrence : formToRecurrence(formOrSchedule);
   if (recurrence.type === 'NONE') return '반복 없음';
   if (recurrence.type === 'DAILY') return `매일 ${recurrence.time}`;
-  if (recurrence.type === 'WEEKLY') return `매주 ${WEEKDAYS[recurrence.weekday - 1]}요일 ${recurrence.time}`;
+  if (recurrence.type === 'WEEKLY') return `매주 ${[...recurrence.weekdays].sort((a, b) => a - b).map((day) => WEEKDAYS[day - 1]).join(', ')} ${recurrence.time}`;
   return `매월 ${recurrence.dayOfMonth}일 ${recurrence.time}`;
 }
 
 function formToRecurrence(form: TaskRecurrenceForm): TaskRecurrence {
   if (form.type === 'NONE') return { type: 'NONE' };
   if (form.type === 'DAILY') return { type: 'DAILY', time: form.time };
-  if (form.type === 'WEEKLY') return { type: 'WEEKLY', time: form.time, weekday: Number(form.weekday) as IsoWeekday };
+  if (form.type === 'WEEKLY') return { type: 'WEEKLY', time: form.time, weekdays: form.weekdays.map(Number).sort((a, b) => a - b) as IsoWeekday[] };
   return { type: 'MONTHLY', time: form.time, dayOfMonth: Number(form.dayOfMonth) as DayOfMonth };
 }

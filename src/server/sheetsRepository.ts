@@ -5,6 +5,8 @@ import {
   serializeTaskScheduleCells,
 } from '@/domain/taskSchedule';
 import type { TaskCycleState } from '@/domain/taskCycleState';
+import { isTaskAvailable, validateTaskAvailability } from '@/domain/taskAvailability';
+import { validateTaskPrerequisiteGraph } from '@/domain/taskPrerequisite';
 import {
   mutateTaskAssignmentNow,
   updateTaskAssignmentsBatch,
@@ -112,6 +114,9 @@ export type TaskUpdate = {
   isActive: boolean;
   sortOrder: number;
   allowedStudentIds?: string[];
+  availableFrom?: string;
+  dueAt?: string;
+  prerequisiteTaskId?: string;
   schedule?: TaskScheduleEdit;
 };
 
@@ -409,7 +414,10 @@ async function createTaskNow(store: SheetsStore, create: TaskCreate): Promise<Cl
   validateTaskUpdate(create);
   await ensureTaskSheet(store);
   if (await getTaskById(store, taskId)) throw new Error('이미 존재하는 과제 ID입니다.');
-  if (create.schedule !== undefined) {
+  const existingTasks = await getTasks(store, { includeInactive: true });
+  const availability = validateTaskAvailability(create);
+  validateTaskPrerequisiteGraph([...existingTasks, { taskId, isActive: create.isActive, prerequisiteTaskId: create.prerequisiteTaskId?.trim() || undefined }]);
+  if (create.schedule !== undefined || ['availableFrom', 'dueAt', 'prerequisiteTaskId'].some((key) => Object.hasOwn(create, key))) {
     await migrateRecurringSchemaIfNeeded(requireRecurringSchemaMigrationStore(store));
   }
   const now = new Date().toISOString();
@@ -440,6 +448,8 @@ async function createTaskNow(store: SheetsStore, create: TaskCreate): Promise<Cl
     isActive: create.isActive,
     sortOrder: create.sortOrder,
     allowedStudentIds: normalizeUniqueIds(create.allowedStudentIds ?? []),
+    ...availability,
+    ...(create.prerequisiteTaskId?.trim() ? { prerequisiteTaskId: create.prerequisiteTaskId.trim() } : {}),
     createdAt: now,
     ...versionedSchedule,
   };
@@ -480,32 +490,62 @@ export async function updateTaskSchedule(
   });
 }
 
+export async function updateTaskScheduleSettings(
+  store: RecurringSchemaMigrationStore,
+  taskId: string,
+  settings: Pick<TaskUpdate, 'schedule' | 'availableFrom' | 'dueAt' | 'prerequisiteTaskId'> & { schedule: TaskScheduleEdit },
+  editedAt?: string,
+): Promise<ClassTask> {
+  return enqueueTaskCommand(taskCommandQueueKey(taskId), async () => {
+    const record = await getTaskRecordById(store, taskId);
+    if (!record) throw new Error('과제를 찾을 수 없습니다.');
+    return updateTaskDetailsNow(store, taskId, {
+      title: record.task.title,
+      description: record.task.description,
+      reward: record.task.reward,
+      isActive: record.task.isActive,
+      sortOrder: record.task.sortOrder,
+      allowedStudentIds: [...record.task.allowedStudentIds],
+      ...settings,
+    }, editedAt ?? new Date().toISOString());
+  });
+}
+
 async function updateTaskDetailsNow(
   store: RecurringSchemaMigrationStore,
   taskId: string,
   update: TaskUpdate,
   editedAt: string,
 ): Promise<ClassTask> {
-  let record;
+  validateTaskUpdate(update);
+  await ensureTaskSheet(store);
+  let record = await getTaskRecordById(store, taskId);
+  if (!record) throw new Error('과제를 찾을 수 없습니다.');
+  if (update.schedule !== undefined) assertPersistedScheduleIsEditable(record.task);
+  const availability = validateTaskAvailability({
+    availableFrom: Object.hasOwn(update, 'availableFrom') ? update.availableFrom : record.task.availableFrom,
+    dueAt: Object.hasOwn(update, 'dueAt') ? update.dueAt : record.task.dueAt,
+  });
+  const prerequisiteTaskId = Object.hasOwn(update, 'prerequisiteTaskId')
+    ? update.prerequisiteTaskId?.trim() || undefined
+    : record.task.prerequisiteTaskId;
+  const allTasks = (await getTasks(store, { includeInactive: true }))
+    .map((task) => task.taskId === taskId ? { ...task, isActive: update.isActive, prerequisiteTaskId } : task);
+  validateTaskPrerequisiteGraph(allTasks);
+
+  const needsSchemaMigration = update.schedule !== undefined
+    || ['availableFrom', 'dueAt', 'prerequisiteTaskId'].some((key) => Object.hasOwn(update, key));
+  if (needsSchemaMigration) {
+    await migrateRecurringSchemaIfNeeded(store);
+    // Migration can replace the legacy projection. Re-read only after every validation that
+    // can reject the command has completed without writes.
+    record = await getTaskRecordById(store, taskId);
+    if (!record) throw new Error('과제를 찾을 수 없습니다.');
+  }
   let scheduleState = null;
   if (update.schedule !== undefined) {
-    validateTaskUpdate(update);
-    record = await getTaskRecordById(store, taskId);
-    if (!record) throw new Error('과제를 찾을 수 없습니다.');
-    assertPersistedScheduleIsEditable(record.task);
-    await ensureTaskSheet(store);
-    await migrateRecurringSchemaIfNeeded(store);
-    // Migration can replace the legacy projection. Always derive the next version from the
-    // persisted row as it exists inside this process-local critical section.
-    record = await getTaskRecordById(store, taskId);
-    if (!record) throw new Error('과제를 찾을 수 없습니다.');
     assertPersistedScheduleIsEditable(record.task);
     scheduleState = prepareImmediateScheduleState(record.task, update.schedule, editedAt);
-  } else {
-    await ensureTaskSheet(store);
-    record = await getTaskRecordById(store, taskId);
-    if (!record) throw new Error('과제를 찾을 수 없습니다.');
-    validateTaskUpdate(update);
   }
   const title = update.title.trim();
   const description = update.description.trim();
@@ -522,6 +562,9 @@ async function updateTaskDetailsNow(
   if (headers.includes('allowedStudentIds')) {
     cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'allowedStudentIds', value: allowedStudentIds.join(',') });
   }
+  if (headers.includes('availableFrom')) cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'availableFrom', value: availability.availableFrom ?? '' });
+  if (headers.includes('dueAt')) cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'dueAt', value: availability.dueAt ?? '' });
+  if (headers.includes('prerequisiteTaskId')) cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'prerequisiteTaskId', value: prerequisiteTaskId ?? '' });
   if (headers.includes('updatedAt')) {
     cellUpdates.push({
       rowNumber: record.rowNumber,
@@ -546,6 +589,8 @@ async function updateTaskDetailsNow(
     isActive: update.isActive,
     sortOrder: update.sortOrder,
     allowedStudentIds,
+    ...availability,
+    ...(prerequisiteTaskId ? { prerequisiteTaskId } : {}),
     ...(scheduleState ? {
       taskInstanceId: scheduleState.taskInstanceId,
       schedule: scheduleState.currentSchedule,
@@ -583,9 +628,20 @@ async function updateTaskDetailsBatchNow(
     if (!record) throw new Error(`과제를 찾을 수 없습니다: ${update.taskId}`);
     if (update.schedule !== undefined) assertPersistedScheduleIsEditable(record.task);
   }
+  validateTaskPrerequisiteGraph(Array.from(recordsById.values(), ({ task }) => {
+    const update = normalized.find((candidate) => candidate.taskId === task.taskId);
+    return update ? {
+      ...task,
+      isActive: update.isActive,
+      prerequisiteTaskId: Object.hasOwn(update, 'prerequisiteTaskId')
+        ? update.prerequisiteTaskId?.trim() || undefined
+        : task.prerequisiteTaskId,
+    } : task;
+  }));
   await ensureTaskSheet(store);
-  const hasScheduleEdits = normalized.some((update) => update.schedule !== undefined);
-  if (hasScheduleEdits) await migrateRecurringSchemaIfNeeded(store);
+  const needsSchemaMigration = normalized.some((update) => update.schedule !== undefined
+    || ['availableFrom', 'dueAt', 'prerequisiteTaskId'].some((key) => Object.hasOwn(update, key)));
+  if (needsSchemaMigration) await migrateRecurringSchemaIfNeeded(store);
 
   // Re-read after any migration while still holding the process-local queue lock.
   const currentRecordsById = new Map((await getTaskRecords(store)).map((record) => [record.task.taskId, record]));
@@ -618,8 +674,18 @@ async function updateTaskDetailsBatchNow(
       { rowNumber: record.rowNumber, columnName: 'sortOrder', value: update.sortOrder },
     );
     const allowedStudentIds = normalizeUniqueIds(update.allowedStudentIds ?? []);
+    const availability = validateTaskAvailability({
+      availableFrom: Object.hasOwn(update, 'availableFrom') ? update.availableFrom : record.task.availableFrom,
+      dueAt: Object.hasOwn(update, 'dueAt') ? update.dueAt : record.task.dueAt,
+    });
+    const prerequisiteTaskId = Object.hasOwn(update, 'prerequisiteTaskId')
+      ? update.prerequisiteTaskId?.trim() || undefined
+      : record.task.prerequisiteTaskId;
     const hasAllowedStudentIds = taskRows[0]?.includes('allowedStudentIds') ?? false;
     if (hasAllowedStudentIds) cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'allowedStudentIds', value: allowedStudentIds.join(',') });
+    if (taskRows[0]?.includes('availableFrom')) cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'availableFrom', value: availability.availableFrom ?? '' });
+    if (taskRows[0]?.includes('dueAt')) cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'dueAt', value: availability.dueAt ?? '' });
+    if (taskRows[0]?.includes('prerequisiteTaskId')) cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'prerequisiteTaskId', value: prerequisiteTaskId ?? '' });
     const scheduleState = scheduleStates.get(update.taskId) ?? null;
     if (hasUpdatedAt) {
       cellUpdates.push({
@@ -643,6 +709,8 @@ async function updateTaskDetailsBatchNow(
       isActive: update.isActive,
       sortOrder: update.sortOrder,
       allowedStudentIds,
+      ...availability,
+      ...(prerequisiteTaskId ? { prerequisiteTaskId } : {}),
       ...(scheduleState ? {
         taskInstanceId: scheduleState.taskInstanceId,
         schedule: scheduleState.currentSchedule,
@@ -656,6 +724,10 @@ async function updateTaskDetailsBatchNow(
 }
 
 export async function deleteTasksBatch(store: RecurringSchemaMigrationStore, taskIds: string[]): Promise<{ taskIds: string[]; deletedTaskCount: number; deletedCompletionCount: number }> {
+  return enqueueTaskCommand(taskCommandQueueKey(''), () => deleteTasksBatchNow(store, taskIds));
+}
+
+async function deleteTasksBatchNow(store: RecurringSchemaMigrationStore, taskIds: string[]): Promise<{ taskIds: string[]; deletedTaskCount: number; deletedCompletionCount: number }> {
   const uniqueIds = normalizeUniqueIds(taskIds);
   if (uniqueIds.length === 0) throw new Error('선택된 과제가 없습니다.');
   if (!store.deleteRows) throw new Error('현재 Sheets 저장소가 여러 행 삭제를 지원하지 않습니다.');
@@ -663,6 +735,7 @@ export async function deleteTasksBatch(store: RecurringSchemaMigrationStore, tas
   const recordsById = new Map((await getTaskRecords(store)).map((record) => [record.task.taskId, record]));
   const missingIds = uniqueIds.filter((taskId) => !recordsById.has(taskId));
   if (missingIds.length > 0) throw new Error(`과제를 찾을 수 없습니다: ${missingIds.join(', ')}`);
+  assertNoRemainingTaskReferences(recordsById, new Set(uniqueIds));
 
   await store.deleteRows('Tasks', uniqueIds.map((taskId) => recordsById.get(taskId)!.rowNumber));
   // Assignment and completion rows are append-only audit ledgers and outlive the definition row.
@@ -704,33 +777,68 @@ export async function resetTaskCompletionsBatch(store: RecurringSchemaMigrationS
 }
 
 export async function deleteTask(store: RecurringSchemaMigrationStore, taskId: string): Promise<{ taskId: string; taskDefinitionDeleted: true; deletedCompletionCount: number }> {
-  const record = await getTaskRecordById(store, taskId);
+  return enqueueTaskCommand(taskCommandQueueKey(''), () => deleteTaskNow(store, taskId));
+}
+
+async function deleteTaskNow(store: RecurringSchemaMigrationStore, taskId: string): Promise<{ taskId: string; taskDefinitionDeleted: true; deletedCompletionCount: number }> {
+  const records = await getTaskRecords(store);
+  const recordsById = new Map(records.map((candidate) => [candidate.task.taskId, candidate]));
+  const record = recordsById.get(taskId);
   if (!record) throw new Error('과제를 찾을 수 없습니다.');
   if (!store.deleteRow) throw new Error('현재 Sheets 저장소가 행 삭제를 지원하지 않습니다.');
+  assertNoRemainingTaskReferences(recordsById, new Set([taskId]));
   await store.deleteRow('Tasks', record.rowNumber);
   return { taskId, taskDefinitionDeleted: true, deletedCompletionCount: 0 };
 }
 
+function assertNoRemainingTaskReferences(
+  recordsById: Map<string, { task: ClassTask; rowNumber: number }>,
+  deletingTaskIds: Set<string>,
+): void {
+  const dependent = Array.from(recordsById.values()).find(({ task }) =>
+    !deletingTaskIds.has(task.taskId)
+      && Boolean(task.prerequisiteTaskId && deletingTaskIds.has(task.prerequisiteTaskId)));
+  if (dependent) throw new Error(`선행 과제로 참조 중인 과제는 삭제할 수 없습니다: ${dependent.task.title}`);
+}
+
 export async function completeTaskForStudent(store: RecurringSchemaMigrationStore, taskId: string, studentId: string): Promise<TaskCompletionResult> {
-  const record = await getTaskRecordById(store, taskId.trim());
-  if (!record || !record.task.isActive) throw new Error('완료할 수 있는 과제가 아닙니다.');
-  const studentRecord = await getStudentRecordById(store, studentId.trim());
-  if (!studentRecord || studentRecord.student.status !== 'ACTIVE') throw new Error('학생 정보를 찾을 수 없습니다.');
-  const mutation = await mutateTaskCompletion({
-    store,
-    task: record.task,
-    taskRowNumber: record.rowNumber,
-    student: studentRecord.student,
-    studentRowNumber: studentRecord.rowNumber,
-    completed: true,
-    source: 'BANK',
+  return enqueueTaskCommand(taskCommandQueueKey(''), async () => {
+    // Every decision that authorizes a reward is based on state re-read inside the same
+    // process-global critical section immediately before the completion mutation.
+    const record = await getTaskRecordById(store, taskId.trim());
+    if (!record || !record.task.isActive) throw new Error('완료할 수 있는 과제가 아닙니다.');
+    const now = new Date().toISOString();
+    if (!isTaskAvailable(record.task, now)) throw new Error('현재 완료할 수 있는 과제가 아닙니다.');
+    const studentRecord = await getStudentRecordById(store, studentId.trim());
+    if (!studentRecord || studentRecord.student.status !== 'ACTIVE') throw new Error('학생 정보를 찾을 수 없습니다.');
+    if (record.task.prerequisiteTaskId) {
+      const prerequisite = await getTaskById(store, record.task.prerequisiteTaskId);
+      if (!prerequisite) throw new Error('선행 과제를 찾을 수 없습니다.');
+      if (!prerequisite.isActive || !isTaskAvailable(prerequisite, now)) {
+        throw new Error(`선행 과제 '${prerequisite.title}'은(는) 현재 완료할 수 없습니다.`);
+      }
+      const prerequisiteState = await readTaskCycleState(store, prerequisite, now);
+      if (!(prerequisiteState.students[studentRecord.student.studentId]?.completed ?? false)) {
+        throw new Error(`선행 과제 '${prerequisite.title}'을(를) 먼저 완료해 주세요.`);
+      }
+    }
+    const mutation = await mutateTaskCompletionNow({
+      store,
+      task: record.task,
+      taskRowNumber: record.rowNumber,
+      student: studentRecord.student,
+      studentRowNumber: studentRecord.rowNumber,
+      completed: true,
+      source: 'BANK',
+      now,
+    });
+    if (!mutation.completion) throw new Error('과제 완료 처리에 실패했습니다.');
+    return {
+      task: record.task,
+      student: { ...studentRecord.student, balance: mutation.balanceAfter },
+      completion: mutation.completion,
+    };
   });
-  if (!mutation.completion) throw new Error('과제 완료 처리에 실패했습니다.');
-  return {
-    task: record.task,
-    student: { ...studentRecord.student, balance: mutation.balanceAfter },
-    completion: mutation.completion,
-  };
 }
 
 export async function getTransactions(reader: SheetsReader): Promise<Transaction[]> {
@@ -1384,6 +1492,9 @@ function withoutVersionedSchedule(task: ClassTask): ClassTask {
     isActive: task.isActive,
     sortOrder: task.sortOrder,
     allowedStudentIds: task.allowedStudentIds,
+    ...(task.availableFrom ? { availableFrom: task.availableFrom } : {}),
+    ...(task.dueAt ? { dueAt: task.dueAt } : {}),
+    ...(task.prerequisiteTaskId ? { prerequisiteTaskId: task.prerequisiteTaskId } : {}),
     ...(task.createdAt !== undefined ? { createdAt: task.createdAt } : {}),
   };
 }
@@ -1461,6 +1572,7 @@ function validateTaskUpdate(update: TaskUpdate) {
   if (!update.title.trim()) throw new Error('과제명을 입력해 주세요.');
   if (!Number.isInteger(update.reward) || update.reward < 0) throw new Error('보상은 0 이상의 정수여야 합니다.');
   if (!Number.isInteger(update.sortOrder)) throw new Error('정렬 순서는 정수여야 합니다.');
+  validateTaskAvailability(update);
 }
 
 function assertPersistedScheduleIsEditable(task: ClassTask): void {

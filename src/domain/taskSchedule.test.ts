@@ -20,6 +20,23 @@ const current: TaskSchedule = {
 };
 
 describe('versioned task schedule codec', () => {
+  it('leaves legacy weekday cells empty for multi-weekday current and pending schedules', () => {
+    const weekly = (ruleVersion: number, effectiveFrom: string): TaskSchedule => ({
+      ruleVersion, effectiveFrom, timeZone: 'Asia/Seoul',
+      recurrence: { type: 'WEEKLY', weekdays: [2, 4], time: '09:00' },
+      resetCompletionOnCycle: true, resetAssignmentOnCycle: false,
+    });
+    const cells = serializeTaskScheduleCells({
+      taskInstanceId: 'multi',
+      currentSchedule: weekly(2, '2026-08-01T00:00:00Z'),
+      pendingSchedule: weekly(3, '2026-08-02T00:00:00Z'),
+    });
+    expect(cells.recurrenceWeekday).toBe('');
+    expect(cells.pendingRecurrenceWeekday).toBe('');
+    expect(cells.recurrenceWeekdays).toBe('2,4');
+    expect(cells.pendingRecurrenceWeekdays).toBe('2,4');
+  });
+
   it('reads a missing legacy schedule as permanent NONE without requiring a physical backfill', () => {
     expect(parseTaskScheduleCells({}, {
       taskId: 'T-1',
@@ -62,7 +79,7 @@ describe('versioned task schedule codec', () => {
       ruleVersion: 3,
       effectiveFrom: '2026-08-02T00:00:00.000Z',
       timeZone: 'America/New_York',
-      recurrence: { type: 'WEEKLY', weekday: 5, time: '08:30' },
+      recurrence: { type: 'WEEKLY', weekdays: [5], time: '08:30' },
       resetCompletionOnCycle: false,
       resetAssignmentOnCycle: true,
     };
@@ -106,7 +123,7 @@ describe('versioned task schedule codec', () => {
     [{ ...current, ruleVersion: 0 }],
     [{ ...current, effectiveFrom: 'tomorrow' }],
     [{ ...current, recurrence: { type: 'DAILY', time: '9:00' } }],
-    [{ ...current, recurrence: { type: 'WEEKLY', weekday: 0, time: '09:00' } }],
+    [{ ...current, recurrence: { type: 'WEEKLY', weekdays: [0], time: '09:00' } }],
     [{ ...current, recurrence: { type: 'MONTHLY', dayOfMonth: 32, time: '09:00' } }],
   ])('rejects invalid new schedule input %# with a domain validation error', (schedule) => {
     expect(() => validateTaskSchedule(schedule)).toThrow(TaskScheduleValidationError);
@@ -140,7 +157,7 @@ describe('versioned task schedule codec', () => {
   it('applies recurring schedule edits immediately at the edit instant', () => {
     expect(prepareTaskScheduleEdit({
       currentSchedule: current,
-      recurrence: { type: 'WEEKLY', weekday: 1, time: '09:00' },
+      recurrence: { type: 'WEEKLY', weekdays: [1], time: '09:00' },
       timeZone: 'Asia/Seoul', resetCompletionOnCycle: true, resetAssignmentOnCycle: true,
       editedAt: '2026-08-01T03:00:00Z',
     })).toMatchObject({ ruleVersion: 3, effectiveFrom: '2026-08-01T03:00:00.000Z' });
@@ -158,7 +175,7 @@ describe('versioned task schedule codec', () => {
   ])('canonicalizes editedAt %s with the schedule persistence convention', (editedAt, expected) => {
     expect(prepareTaskScheduleEdit({
       currentSchedule: current,
-      recurrence: { type: 'WEEKLY', weekday: 1, time: '09:00' },
+      recurrence: { type: 'WEEKLY', weekdays: [1], time: '09:00' },
       timeZone: 'Asia/Seoul', resetCompletionOnCycle: true, resetAssignmentOnCycle: true,
       editedAt,
     }).effectiveFrom).toBe(expected);
@@ -166,7 +183,7 @@ describe('versioned task schedule codec', () => {
 
   it.each([
     { type: 'DAILY', time: '09:00' } as const,
-    { type: 'WEEKLY', weekday: 3, time: '09:00' } as const,
+    { type: 'WEEKLY', weekdays: [3], time: '09:00' } as const,
     { type: 'MONTHLY', dayOfMonth: 15, time: '09:00' } as const,
   ])('updates reset flags without creating a new version when the recurrence and time zone are unchanged', (recurrence) => {
     const recurring = { ...current, recurrence };

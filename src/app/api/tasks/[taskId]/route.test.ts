@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createConfiguredSheetsReader, createConfiguredSheetsStore } from '@/server/googleSheets';
-import { deleteTask, getTaskById, updateTaskDetails, updateTaskSchedule } from '@/server/sheetsRepository';
+import { deleteTask, getTaskById, updateTaskDetails, updateTaskSchedule, updateTaskScheduleSettings } from '@/server/sheetsRepository';
 import { isAuthorizedAdminRequest } from '@/server/apiAuth';
 import { getTaskCycleProjection } from '@/server/repositories/sheets/taskHistoryQueries';
 import { DELETE, GET, PATCH } from './route';
@@ -8,7 +8,7 @@ import { DELETE, GET, PATCH } from './route';
 vi.mock('@/server/apiAuth', () => ({ isAuthorizedAdminRequest: vi.fn(() => true), unauthorizedAdminResponse: () => Response.json({ error: 'unauthorized' }, { status: 401 }) }));
 vi.mock('@/server/googleSheets', () => ({ createConfiguredSheetsReader: vi.fn(), createConfiguredSheetsStore: vi.fn() }));
 vi.mock('@/server/sheetsRepository', () => ({
-  deleteTask: vi.fn(), getTaskById: vi.fn(), updateTaskDetails: vi.fn(), updateTaskSchedule: vi.fn(),
+  deleteTask: vi.fn(), getTaskById: vi.fn(), updateTaskDetails: vi.fn(), updateTaskSchedule: vi.fn(), updateTaskScheduleSettings: vi.fn(),
 }));
 vi.mock('@/server/repositories/sheets/taskHistoryQueries', () => ({ getTaskCycleProjection: vi.fn() }));
 
@@ -141,7 +141,7 @@ describe('PATCH /api/tasks/[taskId]', () => {
   it('accepts only editable schedule fields and forces non-Seoul client input to Seoul', async () => {
     const store = {};
     const schedule = {
-      recurrence: { type: 'WEEKLY', time: '09:30', weekday: 2 }, timeZone: 'Europe/Paris',
+      recurrence: { type: 'WEEKLY', time: '09:30', weekdays: [2] }, timeZone: 'Europe/Paris',
       resetCompletionOnCycle: true, resetAssignmentOnCycle: false,
     };
     const seoulSchedule = { ...schedule, timeZone: 'Asia/Seoul' };
@@ -188,9 +188,35 @@ describe('PATCH /api/tasks/[taskId]', () => {
     expect(updateTaskDetails).not.toHaveBeenCalled();
   });
 
+  it('accepts only dialog-owned schedule settings and preserves explicit null clears', async () => {
+    const store = {};
+    const schedule = {
+      recurrence: { type: 'NONE' }, timeZone: 'Asia/Seoul',
+      resetCompletionOnCycle: false, resetAssignmentOnCycle: false,
+    };
+    vi.mocked(createConfiguredSheetsStore).mockResolvedValue(store as never);
+    vi.mocked(updateTaskScheduleSettings).mockResolvedValue({ taskId: 'T1' } as never);
+    const request = new Request('http://localhost/api/tasks/T1', {
+      method: 'PATCH', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ schedule, availableFrom: null, dueAt: '2026-09-01T00:00:00Z', prerequisiteTaskId: null }),
+    });
+
+    const response = await PATCH(request, { params: Promise.resolve({ taskId: 'T1' }) });
+
+    expect(response.status).toBe(200);
+    expect(updateTaskScheduleSettings).toHaveBeenCalledWith(store, 'T1', {
+      schedule, availableFrom: undefined, dueAt: '2026-09-01T00:00:00Z', prerequisiteTaskId: undefined,
+    });
+    expect(updateTaskDetails).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['unknown schedule-only field', { schedule: { recurrence: { type: 'NONE' }, timeZone: 'Asia/Seoul', resetCompletionOnCycle: false, resetAssignmentOnCycle: false }, unexpected: true }],
     ['partial general edit mixed with schedule', { title: 'partial', schedule: { recurrence: { type: 'NONE' }, timeZone: 'Asia/Seoul', resetCompletionOnCycle: false, resetAssignmentOnCycle: false } }],
+    ['body taskId string', { ...legacyPayload, taskId: 'T1' }],
+    ['body taskId number', { ...legacyPayload, taskId: 1 }],
+    ['body taskId object', { ...legacyPayload, taskId: { value: 'T1' } }],
+    ['unknown full-edit field', { ...legacyPayload, unexpected: true }],
   ])('rejects %s before opening Sheets', async (_label, body) => {
     const response = await PATCH(new Request('http://localhost/api/tasks/T1', {
       method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),

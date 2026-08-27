@@ -1,10 +1,11 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BankApp } from './BankApp';
 
 const tasks = [
   { taskId: 'T001', title: '책 10분 읽기', description: '책을 10분 읽었으면 완료', reward: 5, isActive: true, sortOrder: 1 },
 ];
+const publicTasks = [{ taskId: 'PUB1', title: '공개 독서 과제', description: '누구나 볼 수 있는 설명', reward: 8, sortOrder: 1, dueAt: '2030-01-02T03:30:00.000Z', recurrence: { type: 'WEEKLY', weekdays: [1, 4], time: '09:00' }, prerequisiteTitle: '준비 과제' }];
 
 function jsonResponse(payload: unknown, init?: ResponseInit) {
   return new Response(JSON.stringify(payload), { status: init?.status ?? 200, headers: { 'Content-Type': 'application/json' } });
@@ -20,9 +21,9 @@ function deferredResponse(payload: unknown) {
 }
 
 async function identifyTaskStudent(studentId = 'S001') {
-  fireEvent.click(screen.getByRole('button', { name: '과제 확인' }));
+  fireEvent.click(screen.getByRole('button', { name: '과제 완료' }));
   fireEvent.change(await screen.findByLabelText('QR 값 직접 입력'), { target: { value: studentId } });
-  fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 과제 확인' }));
+  fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 과제 완료' }));
 }
 
 describe('BankApp', () => {
@@ -30,6 +31,7 @@ describe('BankApp', () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/settings') return jsonResponse({ appTitle: '별빛 매점', bankTitle: '별빛 은행', currencyUnit: '별', themeColor: 'green', fontFamily: 'nanum-barun-gothic', qrManualInputEnabled: true });
+      if (url === '/api/bank/tasks') return jsonResponse(publicTasks);
       if (url === '/api/tasks?studentId=S001') return jsonResponse(tasks.map((task) => ({ ...task, allowedStudentIds: ['S001'], studentStatus: { studentId: 'S001', assigned: true, completed: false } })));
       if (url === '/api/bank/balance?studentId=S001') return jsonResponse({
         studentId: 'S001',
@@ -77,15 +79,15 @@ describe('BankApp', () => {
     expect(container.querySelector('[data-testid="bank-shell"]')?.className).not.toContain('bg-lime-50');
     expect(screen.queryByText('CLASS BANK')).toBeNull();
     expect(screen.getByText('- 내 계좌 버튼을 눌러 잔액과 거래 내역을 확인할 수 있어요.')).toBeTruthy();
-    expect(screen.getByText('- 과제 확인 버튼을 눌러 과제를 확인하고 완료할 수 있어요.')).toBeTruthy();
+    expect(screen.getByText('- 과제 완료 버튼을 눌러 과제를 확인하고 완료할 수 있어요.')).toBeTruthy();
     expect(screen.getByText('(※ 일부 과제는 허용된 학생만 완료할 수 있습니다.)')).toBeTruthy();
     expect(screen.queryByText('QR로 잔액을 확인하고 과제 보상을 받을 수 있어요.')).toBeNull();
     expect(screen.getByRole('button', { name: '내 계좌' }).className).toContain('bg-[#A5C78B]');
-    expect(screen.getByRole('button', { name: '과제 확인' }).className).toContain('bg-[#DCF5C9]');
+    expect(screen.getByRole('button', { name: '과제 완료' }).className).toContain('bg-[#DCF5C9]');
     expect(screen.getByRole('button', { name: '내 계좌' }).className).not.toContain('bg-[#DCF5C9]');
-    expect(screen.getByRole('button', { name: '과제 확인' }).className).not.toContain('bg-[#A5C78B]');
+    expect(screen.getByRole('button', { name: '과제 완료' }).className).not.toContain('bg-[#A5C78B]');
     expect(screen.getByRole('button', { name: '내 계좌' }).className).not.toContain('bg-sky-500');
-    expect(screen.getByRole('button', { name: '과제 확인' }).className).not.toContain('bg-emerald-500');
+    expect(screen.getByRole('button', { name: '과제 완료' }).className).not.toContain('bg-emerald-500');
   });
 
   it('uses a darker but not pure-black shell for the black bank theme', async () => {
@@ -113,7 +115,7 @@ describe('BankApp', () => {
 
     expect(await screen.findByRole('heading', { name: '흰색 은행' })).toBeTruthy();
     const whiteBalanceButton = screen.getByRole('button', { name: '내 계좌' });
-    const whiteTasksButton = screen.getByRole('button', { name: '과제 확인' });
+    const whiteTasksButton = screen.getByRole('button', { name: '과제 완료' });
     expect(whiteBalanceButton.className).toContain('bg-[#1F1F1F]');
     expect(whiteBalanceButton.className).toContain('text-[#FCFCFC]');
     expect(whiteBalanceButton.className).toContain('border-[#1F1F1F]');
@@ -135,7 +137,7 @@ describe('BankApp', () => {
 
     expect(await screen.findByRole('heading', { name: '검정 은행' })).toBeTruthy();
     const blackBalanceButton = screen.getByRole('button', { name: '내 계좌' });
-    const blackTasksButton = screen.getByRole('button', { name: '과제 확인' });
+    const blackTasksButton = screen.getByRole('button', { name: '과제 완료' });
     expect(blackBalanceButton.className).toContain('bg-[#FCFCFC]');
     expect(blackBalanceButton.className).toContain('text-[#1F1F1F]');
     expect(blackBalanceButton.className).toContain('border-[#FCFCFC]');
@@ -320,7 +322,7 @@ describe('BankApp', () => {
     fireEvent.click(screen.getByRole('button', { name: '완료하기' }));
 
     expect(await screen.findByRole('dialog', { name: '과제 완료 처리 중' })).toBeTruthy();
-    expect(document.body.textContent).toContain('현재 회차 완료를 기록하고 보상을 지급하는 중입니다.');
+    expect(document.body.textContent).toContain('과제 완료를 기록하고 보상을 지급하는 중입니다.');
 
     completeRequest.resolve();
     expect(await screen.findByRole('dialog', { name: '과제 완료 성공' })).toBeTruthy();
@@ -355,18 +357,43 @@ describe('BankApp', () => {
 
     render(<BankApp />);
     await screen.findByRole('heading', { name: '별빛 은행' });
-    fireEvent.click(screen.getByRole('button', { name: '과제 확인' }));
-    expect(await screen.findByRole('dialog', { name: '과제 확인 QR 인식' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '과제 완료' }));
+    expect(await screen.findByRole('dialog', { name: '과제 완료 QR 인식' })).toBeTruthy();
     fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: 'S 001' } });
-    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 과제 확인' }));
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 과제 완료' }));
 
     expect(await screen.findByRole('dialog', { name: '과제 목록' })).toBeTruthy();
     expect(fetch).toHaveBeenCalledWith('/api/tasks?studentId=S%20001', expect.objectContaining({ cache: 'no-store' }));
     expect(screen.getByRole('button', { name: /책 10분 읽기/ })).toBeTruthy();
     expect(screen.queryByText('배정 안 된 과제')).toBeNull();
     expect(document.body.textContent).toContain('미완료');
-    expect(document.body.textContent).toContain('현재 회차');
-    expect(document.body.textContent).toContain('다음 초기화');
+    expect(document.body.textContent).toContain('기한: 없음');
+    expect(document.body.textContent).toContain('반복: 없음');
+    expect(document.body.textContent).not.toContain('현재 회차');
+    expect(document.body.textContent).not.toContain('다음 초기화');
+  });
+
+  it('shows unmet prerequisite guidance and disables completion before sending a request', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/settings') return jsonResponse({ bankTitle: '별빛 은행', currencyUnit: '별', qrManualInputEnabled: true });
+      if (url === '/api/bank/tasks') return jsonResponse([]);
+      if (url === '/api/tasks?studentId=S001') return jsonResponse([{
+        ...tasks[0], studentStatus: { studentId: 'S001', assigned: true, completed: false },
+        prerequisiteTitle: '먼저 할 일', prerequisiteStatus: 'REQUIRED',
+        prerequisiteMessage: "선행 과제 '먼저 할 일'을(를) 먼저 완료해 주세요.",
+      }]);
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    }));
+
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+    await screen.findByRole('dialog', { name: '과제 목록' });
+    expect(document.body.textContent).toContain("선행 과제 '먼저 할 일'을(를) 먼저 완료해 주세요.");
+    fireEvent.click(screen.getByRole('button', { name: /책 10분 읽기/ }));
+    expect(screen.getByRole('button', { name: '완료하기' })).toHaveProperty('disabled', true);
+    expect(fetch).not.toHaveBeenCalledWith('/api/tasks/T001/complete', expect.anything());
   });
 
   it('uses allowedStudentIds only as legacy assignment fallback and never guesses completion', async () => {
@@ -382,9 +409,9 @@ describe('BankApp', () => {
 
     render(<BankApp />);
     await screen.findByRole('heading', { name: '별빛 은행' });
-    fireEvent.click(screen.getByRole('button', { name: '과제 확인' }));
+    fireEvent.click(screen.getByRole('button', { name: '과제 완료' }));
     fireEvent.change(await screen.findByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
-    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 과제 확인' }));
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 과제 완료' }));
 
     await screen.findByRole('dialog', { name: '과제 목록' });
     expect(screen.getByRole('button', { name: /책 10분 읽기/ })).toBeTruthy();
@@ -405,12 +432,12 @@ describe('BankApp', () => {
 
     render(<BankApp />);
     await screen.findByRole('heading', { name: '별빛 은행' });
-    fireEvent.click(screen.getByRole('button', { name: '과제 확인' }));
+    fireEvent.click(screen.getByRole('button', { name: '과제 완료' }));
     const input = await screen.findByLabelText('QR 값 직접 입력');
     fireEvent.change(input, { target: { value: 'A' } });
-    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 과제 확인' }));
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 과제 완료' }));
     fireEvent.change(input, { target: { value: 'B' } });
-    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 과제 확인' }));
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 과제 완료' }));
 
     expect(await screen.findByRole('button', { name: /B 학생 과제/ })).toBeTruthy();
     studentA.resolve();
@@ -432,9 +459,9 @@ describe('BankApp', () => {
 
     render(<BankApp />);
     await screen.findByRole('heading', { name: '별빛 은행' });
-    fireEvent.click(screen.getByRole('button', { name: '과제 확인' }));
+    fireEvent.click(screen.getByRole('button', { name: '과제 완료' }));
     fireEvent.change(await screen.findByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
-    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 과제 확인' }));
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 과제 완료' }));
     fireEvent.click(await screen.findByRole('button', { name: /책 10분 읽기/ }));
     fireEvent.click(screen.getByRole('button', { name: '완료하기' }));
 
@@ -444,5 +471,36 @@ describe('BankApp', () => {
     expect(await screen.findByRole('dialog', { name: '책 10분 읽기' })).toBeTruthy();
     expect(document.body.textContent).toContain('완료됨');
     expect(screen.queryByRole('button', { name: '완료하기' })).toBeNull();
+  });
+
+  it('loads the public catalog independently above actions and opens a read-only student-safe detail', async () => {
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    const catalog = await screen.findByRole('region', { name: '공개 과제 목록' });
+    const publicCard = within(catalog).getByRole('button', { name: /공개 독서 과제/ });
+    expect(catalog.compareDocumentPosition(screen.getByRole('button', { name: '내 계좌' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(publicCard.textContent).toContain('기한: 2030년 1월 2일 오후 12:30까지');
+    expect(publicCard.textContent).toContain('반복: 매주 월, 목');
+    expect(catalog.textContent).not.toMatch(/현재 회차|다음 초기화|자연 경계|studentId|allowedStudentIds/);
+    fireEvent.click(publicCard);
+    const detail = screen.getByRole('dialog', { name: '공개 독서 과제' });
+    expect(within(detail).getByText('누구나 볼 수 있는 설명')).toBeTruthy();
+    expect(within(detail).getByText(/보상.*8별/)).toBeTruthy();
+    expect(within(detail).getByText('선행 과제: 준비 과제')).toBeTruthy();
+    expect(within(detail).queryByRole('button', { name: /완료/ })).toBeNull();
+  });
+
+  it('shows a retryable public catalog error without blocking bank actions', async () => {
+    let attempts = 0;
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input) === '/api/bank/tasks') return attempts++ === 0 ? jsonResponse({ error: '공개 목록 오류' }, { status: 503 }) : jsonResponse(publicTasks);
+      return base(input, init);
+    });
+    render(<BankApp />);
+    expect(await screen.findByText('공개 목록 오류')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '내 계좌' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '공개 과제 다시 시도' }));
+    expect(await screen.findByText('공개 독서 과제')).toBeTruthy();
   });
 });

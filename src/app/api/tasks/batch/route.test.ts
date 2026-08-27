@@ -61,7 +61,7 @@ describe('PATCH /api/tasks/batch', () => {
 
   it.each([
     ['unknown field', { ...schedule, effectiveFrom: '2000-01-01T00:00:00Z' }],
-    ['bad recurrence', { ...schedule, recurrence: { type: 'WEEKLY', time: '08:00', weekday: 0 } }],
+    ['bad recurrence', { ...schedule, recurrence: { type: 'WEEKLY', time: '08:00', weekdays: [0] } }],
     ['bad flags', { ...schedule, resetCompletionOnCycle: 'true' }],
   ])('rejects %s with 400 before opening Sheets', async (_label, invalidSchedule) => {
     const request = new Request('http://localhost/api/tasks/batch', {
@@ -72,6 +72,32 @@ describe('PATCH /api/tasks/batch', () => {
     expect(response.status).toBe(400);
     expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
     expect(updateTaskDetailsBatch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['extra root key', { tasks: [legacyTask], extra: true }],
+    ['array root', [legacyTask]],
+    ['null root', null],
+    ['missing tasks', {}],
+  ])('rejects %s before opening Sheets', async (_label, body) => {
+    const response = await PATCH(new Request('http://localhost/api/tasks/batch', {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    }));
+    expect(response.status).toBe(400);
+    expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
+    expect(updateTaskDetailsBatch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['numeric taskId', 1],
+    ['object taskId', { value: 'T1' }],
+  ])('rejects %s before opening Sheets', async (_label, taskId) => {
+    const response = await PATCH(new Request('http://localhost/api/tasks/batch', {
+      method: 'PATCH', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tasks: [{ ...legacyTask, taskId }] }),
+    }));
+    expect(response.status).toBe(400);
+    expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
   });
 
   it('requires admin authorization', async () => {

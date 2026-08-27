@@ -41,7 +41,7 @@ function parseRecurrence(value: unknown): TaskRecurrence {
     : type === 'DAILY'
       ? ['type', 'time']
       : type === 'WEEKLY'
-        ? ['type', 'time', 'weekday']
+        ? ['type', 'time', 'weekdays']
         : type === 'MONTHLY'
           ? ['type', 'time', 'dayOfMonth']
           : [];

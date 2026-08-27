@@ -31,7 +31,7 @@ const effectivePending: TaskSchedule = {
   ...current,
   ruleVersion: 3,
   effectiveFrom: '2026-08-20T00:00:00.000Z',
-  recurrence: { type: 'WEEKLY', time: '10:30', weekday: 2 },
+  recurrence: { type: 'WEEKLY', time: '10:30', weekdays: [2] },
   resetCompletionOnCycle: false,
   resetAssignmentOnCycle: true,
 };
@@ -178,7 +178,7 @@ describe('atomic classroom timezone schedule command', () => {
       ...currentV1,
       ruleVersion: 2,
       effectiveFrom: '2026-08-25T09:01:00.000Z',
-      recurrence: { type: 'WEEKLY', time: '09:01', weekday: 1 },
+      recurrence: { type: 'WEEKLY', time: '09:01', weekdays: [1] },
       resetCompletionOnCycle: false,
       resetAssignmentOnCycle: true,
     };
@@ -419,7 +419,7 @@ describe('atomic classroom timezone schedule command', () => {
 
 describe('batch task schedule command', () => {
   const edit = {
-    recurrence: { type: 'WEEKLY' as const, time: '14:30', weekday: 3 as const },
+    recurrence: { type: 'WEEKLY' as const, time: '14:30', weekdays: [3] as const },
     timeZone: 'Asia/Seoul',
     resetCompletionOnCycle: true,
     resetAssignmentOnCycle: true,
@@ -462,7 +462,7 @@ describe('batch task schedule command', () => {
 
     expect(store.batchCalls).toHaveLength(1);
     expect((await getTaskRecords(store))[0].task.pendingSchedule!.ruleVersion).toBe(versionAfterCommit);
-    expect(store.freshReads.filter((sheet) => sheet === 'Tasks')).toHaveLength(2);
+    expect(store.freshReads.filter((sheet) => sheet === 'Tasks')).toHaveLength(4);
   });
 
   it('updates only differing targets when another target already has the desired pending fields', async () => {
@@ -492,16 +492,25 @@ describe('batch task schedule command', () => {
     expect(store.rows).toEqual(before);
   });
 
-  it('validates every target and persisted schedule before the single write', async () => {
+  it('validates every target and persisted schedule before migration or the business write', async () => {
     const missing = new AtomicFake();
+    missing.rows.Tasks = missing.rows.Tasks!.map((row) => row.slice(0, 9));
+    const missingBefore = structuredClone(missing.rows);
     await expect(updateTaskSchedulesBatch(missing, ['T1', 'NOPE'], edit, { now: () => changedAt }))
       .rejects.toThrow(/NOPE/);
+    expect(missing.primitiveWrites).toBe(0);
     expect(missing.batchCalls).toEqual([]);
+    expect(missing.rows).toEqual(missingBefore);
+
     const corrupt = new AtomicFake();
     corrupt.rows.Tasks![2][corrupt.rows.Tasks![0].indexOf('recurrenceType')] = 'BROKEN';
+    corrupt.rows.Tasks = corrupt.rows.Tasks!.map((row) => row.slice(0, 28));
+    const corruptBefore = structuredClone(corrupt.rows);
     await expect(updateTaskSchedulesBatch(corrupt, ['T1', 'T2'], edit, { now: () => changedAt }))
       .rejects.toThrow(/손상|복구/);
+    expect(corrupt.primitiveWrites).toBe(0);
     expect(corrupt.batchCalls).toEqual([]);
+    expect(corrupt.rows).toEqual(corruptBefore);
   });
 
   it('requires the provider batch-cell capability before reads or writes', async () => {

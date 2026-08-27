@@ -1,5 +1,6 @@
 import { resolveTaskSchedule, serializeTaskScheduleCells, validateTaskSchedule } from '@/domain/taskSchedule';
 import { isValidNamedTimeZone } from '@/domain/timeZone';
+import { validateTaskAvailability } from '@/domain/taskAvailability';
 import type { ClassTask } from '@/domain/types';
 import { getTaskRecords, type TaskScheduleEdit } from '@/server/sheetsRepository';
 import {
@@ -25,7 +26,11 @@ export type ClassTimeZoneChangeOptions = {
 
 const MAX_BATCH_TASKS = 20;
 
-export type BatchTaskScheduleOptions = { now?: () => string };
+export type BatchTaskScheduleOptions = {
+  now?: () => string;
+  availableFrom?: string;
+  dueAt?: string;
+};
 
 export async function updateTaskSchedulesBatch(
   store: RecurringSchemaMigrationStore,
@@ -36,6 +41,8 @@ export async function updateTaskSchedulesBatch(
   validateExactTaskIds(taskIds);
   if (schedule?.timeZone !== 'Asia/Seoul') throw new Error('과제 일정 시간대는 Asia/Seoul이어야 합니다.');
   validateScheduleEdit(schedule);
+  const ownsAvailability = Object.hasOwn(options, 'availableFrom') || Object.hasOwn(options, 'dueAt');
+  const availability = validateTaskAvailability(options);
   if (!store.updateCells) {
     throw new Error('현재 Sheets 저장소가 Tasks 일괄 셀 업데이트를 지원하지 않습니다.');
   }
@@ -45,22 +52,30 @@ export async function updateTaskSchedulesBatch(
 
   return enqueueTaskCommand(taskCommandQueueKey(''), async () => {
     const editedAt = options.now?.() ?? new Date().toISOString();
+    const readValidatedTargets = async () => {
+      const freshTaskRows = await store.getRowsFresh!('Tasks');
+      const records = await getTaskRecords({
+        getRows: async (sheetName) => sheetName === 'Tasks'
+          ? structuredClone(freshTaskRows)
+          : store.getRows(sheetName),
+      });
+      const recordsById = new Map(records.map((record) => [record.task.taskId, record]));
+      const targets = taskIds.map((taskId) => {
+        const record = recordsById.get(taskId);
+        if (!record) throw new Error(`과제를 찾을 수 없습니다: ${taskId}`);
+        assertScheduleEditable(record.task, true);
+        return record;
+      });
+      return { freshTaskRows, targets };
+    };
+
+    // Reject stale IDs and non-migratable corruption before schema writes. Re-read after
+    // migration because it can replace legacy projections and row/header coordinates.
+    await readValidatedTargets();
     await migrateRecurringTaskSchema(store);
     // Sheets has no compare-and-set. This uncached read narrows, but cannot
     // eliminate, the cross-process race between observation and updateCells.
-    const freshTaskRows = await store.getRowsFresh!('Tasks');
-    const records = await getTaskRecords({
-      getRows: async (sheetName) => sheetName === 'Tasks'
-        ? structuredClone(freshTaskRows)
-        : store.getRows(sheetName),
-    });
-    const recordsById = new Map(records.map((record) => [record.task.taskId, record]));
-    const targets = taskIds.map((taskId) => {
-      const record = recordsById.get(taskId);
-      if (!record) throw new Error(`과제를 찾을 수 없습니다: ${taskId}`);
-      assertScheduleEditable(record.task, true);
-      return record;
-    });
+    const { freshTaskRows, targets } = await readValidatedTargets();
     const changedTargets = targets.filter(({ task }) => !hasDesiredSchedule(task, schedule, editedAt));
     const states = changedTargets.map(({ task }) => prepareImmediateTaskScheduleState(task, schedule, editedAt, true));
     const headers = freshTaskRows[0] ?? [];
@@ -74,6 +89,18 @@ export async function updateTaskSchedulesBatch(
         updates.push({ rowNumber: changedTargets[index].rowNumber, columnName, value });
       }
       updates.push({ rowNumber: changedTargets[index].rowNumber, columnName: 'updatedAt', value: editedAt });
+    }
+    for (const target of ownsAvailability ? targets : []) {
+      if (!headers.includes('availableFrom') || !headers.includes('dueAt')) {
+        throw new Error('Tasks 시트에 기한 컬럼이 없습니다.');
+      }
+      updates.push(
+        { rowNumber: target.rowNumber, columnName: 'availableFrom', value: availability.availableFrom ?? '' },
+        { rowNumber: target.rowNumber, columnName: 'dueAt', value: availability.dueAt ?? '' },
+      );
+      if (!changedTargets.includes(target)) {
+        updates.push({ rowNumber: target.rowNumber, columnName: 'updatedAt', value: editedAt });
+      }
     }
     if (updates.length > 0) await store.updateCells!('Tasks', updates);
     return { updatedTaskIds: [...taskIds] };

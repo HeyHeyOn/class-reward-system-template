@@ -372,7 +372,7 @@ describe('AdminManagePage', () => {
     const actions = within(row).getByTestId('task-row-actions');
     const buttons = within(actions).getAllByRole('button');
     expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual([
-      'T001 반복 설정',
+      'T001 기한 설정',
       'T001 기록 보기',
       'T001 과제 부여',
       'T001 과제 삭제',
@@ -1363,7 +1363,7 @@ describe('AdminManagePage', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         tasks: [
-          { taskId: 'T001', title: '책 읽기 수정', description: '책 20분 읽기', reward: 7, isActive: true, sortOrder: 1, allowedStudentIds: ['S001'] },
+          { taskId: 'T001', title: '책 읽기 수정', description: '책 20분 읽기', reward: 7, isActive: true, sortOrder: 1, allowedStudentIds: ['S001'], availableFrom: null, dueAt: null, prerequisiteTaskId: null },
           ],
       }),
     }));
@@ -1506,18 +1506,26 @@ describe('AdminManagePage', () => {
   it('edits recurring schedules with strict bulk payloads and shows current-cycle origins', async () => {
     const recurringTasks = [{
       ...tasks[0], taskInstanceId: 'instance-1',
-      schedule: { ruleVersion: 2, effectiveFrom: '2026-08-25T00:00:00.000Z', timeZone: 'Asia/Seoul', recurrence: { type: 'WEEKLY', weekday: 2, time: '09:00' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: false },
+      schedule: { ruleVersion: 2, effectiveFrom: '2026-08-25T00:00:00.000Z', timeZone: 'Asia/Seoul', recurrence: { type: 'WEEKLY', weekdays: [2], time: '09:00' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: false },
       currentCycle: { cycleId: 'cycle-1', startsAt: '2026-08-25T00:00:00.000Z', endsAt: '2026-09-01T00:00:00.000Z', transition: 'NATURAL_BOUNDARY', assignedStudentIds: ['S001'], completedStudentIds: ['S001'], students: [{ studentId: 'S001', assigned: true, completed: true, assignmentOrigin: 'CARRY', completionOrigin: 'EVENT' }] },
-    }];
+    }, tasks[1]];
+    let scheduleSaved = false;
+    const savedTask = {
+      ...recurringTasks[0],
+      availableFrom: '2030-01-01T01:00:00.000Z',
+      dueAt: '2030-01-02T03:30:00.000Z',
+      prerequisiteTaskId: 'T002',
+      schedule: { ruleVersion: 3, effectiveFrom: '2026-08-25T12:00:00.000Z', timeZone: 'Asia/Seoul', recurrence: { type: 'MONTHLY', dayOfMonth: 31, time: '17:45' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: true },
+    };
     const baseFetch = vi.mocked(fetch);
     const fallback = baseFetch.getMockImplementation()!;
     baseFetch.mockImplementation(async (input, init) => {
       const url = String(input);
-      if (url === '/api/tasks?includeInactive=1') return jsonResponse(recurringTasks);
-      if (url === '/api/tasks/T001' && init?.method === 'PATCH') return jsonResponse({
-        ...recurringTasks[0],
-        schedule: { ruleVersion: 3, effectiveFrom: '2026-08-25T12:00:00.000Z', timeZone: 'Asia/Seoul', recurrence: { type: 'MONTHLY', dayOfMonth: 31, time: '17:45' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: true },
-      });
+      if (url === '/api/tasks?includeInactive=1') return jsonResponse(scheduleSaved ? [savedTask, recurringTasks[1]] : recurringTasks);
+      if (url === '/api/tasks/T001' && init?.method === 'PATCH') {
+        scheduleSaved = true;
+        return jsonResponse(savedTask);
+      }
       if (url === '/api/tasks/T001/assignments' && init?.method === 'PATCH') return jsonResponse({
         taskId: 'T001', cycleId: 'cycle-2', startsAt: '2026-09-01T00:00:00.000Z', endsAt: null, transition: 'NATURAL_BOUNDARY',
         students: [
@@ -1536,17 +1544,20 @@ describe('AdminManagePage', () => {
     });
     render(<AdminManagePage />);
     fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    const initialRow = await screen.findByTestId('task-row');
+    const initialRow = (await screen.findAllByTestId('task-row'))[0];
     expect(within(initialRow).queryByText(/현재 회차:|S001 부여/)).toBeNull();
 
     fireEvent.change(screen.getByLabelText('T001 과제명'), { target: { value: '저장 안 한 제목' } });
     fireEvent.change(screen.getByLabelText('T001 보상'), { target: { value: '77' } });
-    fireEvent.click(screen.getByRole('button', { name: 'T001 반복 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 기한 설정' }));
+    fireEvent.change(screen.getByLabelText('시작 시각'), { target: { value: '2030-01-01T10:00' } });
+    fireEvent.change(screen.getByLabelText('기한'), { target: { value: '2030-01-02T12:30' } });
+    fireEvent.change(screen.getByLabelText('선행 과제'), { target: { value: 'T002' } });
     fireEvent.change(screen.getByLabelText('반복 주기'), { target: { value: 'MONTHLY' } });
     fireEvent.change(screen.getByLabelText('반복 시간'), { target: { value: '17:45' } });
     fireEvent.change(screen.getByLabelText('반복 날짜'), { target: { value: '31' } });
     fireEvent.click(screen.getByLabelText('회차마다 부여 초기화'));
-    fireEvent.click(screen.getByRole('button', { name: '반복 설정 저장' }));
+    fireEvent.click(screen.getByRole('button', { name: '기한 설정 저장' }));
 
     await waitFor(() => {
       expect(baseFetch).toHaveBeenCalledWith('/api/tasks/T001', expect.objectContaining({ method: 'PATCH' }));
@@ -1555,10 +1566,13 @@ describe('AdminManagePage', () => {
     const body = JSON.parse(String(singlePatchCall![1]?.body));
     expect(body).toEqual({
       schedule: { recurrence: { type: 'MONTHLY', time: '17:45', dayOfMonth: 31 }, timeZone: 'Asia/Seoul', resetCompletionOnCycle: true, resetAssignmentOnCycle: true },
+      availableFrom: '2030-01-01T01:00:00.000Z',
+      dueAt: '2030-01-02T03:30:00.000Z',
+      prerequisiteTaskId: 'T002',
     });
     expect(body.schedule).not.toHaveProperty('ruleVersion');
     expect(body.schedule).not.toHaveProperty('effectiveFrom');
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '과제 반복 설정' })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '과제 기한 설정' })).toBeNull());
     expect(screen.getByLabelText('T001 과제명')).toHaveProperty('value', '저장 안 한 제목');
     expect(screen.getByLabelText('T001 보상')).toHaveProperty('value', '77');
 
@@ -1568,6 +1582,12 @@ describe('AdminManagePage', () => {
       const call = baseFetch.mock.calls.find(([url, init]) => String(url) === '/api/tasks/batch' && init?.method === 'PATCH');
       const body = JSON.parse(String(call?.[1]?.body));
       expect(body.tasks[0]).not.toHaveProperty('schedule');
+      expect(body.tasks[0]).toMatchObject({
+        title: '저장 안 한 제목', reward: 77,
+        availableFrom: '2030-01-01T01:00:00.000Z',
+        dueAt: '2030-01-02T03:30:00.000Z',
+        prerequisiteTaskId: 'T002',
+      });
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
@@ -1576,7 +1596,7 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }));
     fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
     await waitFor(() => expect(alert).toHaveBeenCalledWith('과제 부여 저장 완료'));
-    expect(within(screen.getByTestId('task-row')).queryByText(/S001 부여/)).toBeNull();
+    expect(within(screen.getAllByTestId('task-row')[0]).queryByText(/S001 부여/)).toBeNull();
   });
 
   it('preserves another task row draft while reconciling a saved schedule projection', async () => {
@@ -1609,12 +1629,12 @@ describe('AdminManagePage', () => {
     fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
     fireEvent.change(screen.getByLabelText('T002 과제명'), { target: { value: '저장 안 한 제목' } });
     fireEvent.change(screen.getByLabelText('T002 보상'), { target: { value: '77' } });
-    fireEvent.click(screen.getByRole('button', { name: 'T001 반복 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 기한 설정' }));
     fireEvent.change(screen.getByLabelText('반복 시간'), { target: { value: '10:30' } });
-    fireEvent.click(screen.getByRole('button', { name: '반복 설정 저장' }));
+    fireEvent.click(screen.getByRole('button', { name: '기한 설정 저장' }));
 
     await waitFor(() => expect(taskGetCount).toBe(2));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 반복 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 기한 설정' }));
     expect(await screen.findByText(/현재 일정: 매일 10:30/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '취소' }));
     expect(screen.getByLabelText('T002 과제명')).toHaveProperty('value', '저장 안 한 제목');
@@ -1657,7 +1677,7 @@ describe('AdminManagePage', () => {
 
   it('shows an effective pending schedule in the recurrence modal without a timezone control', async () => {
     const currentSchedule = { ruleVersion: 1, effectiveFrom: '2000-01-01T00:00:00.000Z', timeZone: 'Asia/Seoul', recurrence: { type: 'DAILY', time: '09:00' }, resetCompletionOnCycle: false, resetAssignmentOnCycle: false } as const;
-    const pendingSchedule = { ruleVersion: 2, effectiveFrom: '2001-01-01T00:00:00.000Z', timeZone: 'Europe/Paris', recurrence: { type: 'WEEKLY', weekday: 5, time: '16:30' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: true } as const;
+    const pendingSchedule = { ruleVersion: 2, effectiveFrom: '2001-01-01T00:00:00.000Z', timeZone: 'Europe/Paris', recurrence: { type: 'WEEKLY', weekdays: [5], time: '16:30' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: true } as const;
     const baseFetch = vi.mocked(fetch);
     const fallback = baseFetch.getMockImplementation()!;
     baseFetch.mockImplementation(async (input, init) => {
@@ -1668,13 +1688,13 @@ describe('AdminManagePage', () => {
     render(<AdminManagePage />);
     fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
     const row = await screen.findByTestId('task-row');
-    expect(within(row).getByRole('button', { name: 'T001 반복 설정' }).textContent).toBe('반복');
-    expect(within(row).queryByText('매주 금요일 16:30')).toBeNull();
-    fireEvent.click(within(row).getByRole('button', { name: 'T001 반복 설정' }));
-    expect(screen.getByText(/현재 일정: 매주 금요일 16:30/)).toBeTruthy();
+    expect(within(row).getByRole('button', { name: 'T001 기한 설정' }).textContent).toBe('기한');
+    expect(within(row).queryByText('매주 금 16:30')).toBeNull();
+    fireEvent.click(within(row).getByRole('button', { name: 'T001 기한 설정' }));
+    expect(screen.getByText(/현재 일정: 매주 금 16:30/)).toBeTruthy();
     expect(screen.getByLabelText('반복 주기')).toHaveProperty('value', 'WEEKLY');
     expect(screen.getByLabelText('반복 시간')).toHaveProperty('value', '16:30');
-    expect(screen.getByLabelText('반복 요일')).toHaveProperty('value', '5');
+    expect(screen.getByRole('button', { name: '금요일' }).getAttribute('aria-pressed')).toBe('true');
     expect(screen.queryByLabelText('과제 시간대')).toBeNull();
   });
 
@@ -1739,13 +1759,13 @@ describe('AdminManagePage', () => {
   it('reopens the new-task schedule editor with the applied recurrence draft', async () => {
     render(<AdminManagePage />);
     fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: '새 과제 반복 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: '새 과제 기한 설정' }));
     fireEvent.change(screen.getByLabelText('반복 주기'), { target: { value: 'DAILY' } });
     fireEvent.change(screen.getByLabelText('반복 시간'), { target: { value: '14:25' } });
-    fireEvent.click(screen.getByRole('button', { name: '반복 설정 적용' }));
+    fireEvent.click(screen.getByRole('button', { name: '기한 설정 적용' }));
 
-    expect(screen.getByRole('button', { name: '새 과제 반복 설정' }).textContent).toBe('반복 설정');
-    fireEvent.click(screen.getByRole('button', { name: '새 과제 반복 설정' }));
+    expect(screen.getByRole('button', { name: '새 과제 기한 설정' }).textContent).toBe('기한 설정');
+    fireEvent.click(screen.getByRole('button', { name: '새 과제 기한 설정' }));
     expect(screen.getByLabelText('반복 주기')).toHaveProperty('value', 'DAILY');
     expect(screen.getByLabelText('반복 시간')).toHaveProperty('value', '14:25');
   });
@@ -1762,18 +1782,18 @@ describe('AdminManagePage', () => {
 
     render(<AdminManagePage />);
     fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 반복 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: '반복 설정 저장' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 기한 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: '기한 설정 저장' }));
     await waitFor(() => expect(baseFetch).toHaveBeenCalledWith('/api/tasks/T001', expect.objectContaining({ method: 'PATCH' })));
 
     expect(screen.getByRole('button', { name: '취소', hidden: true })).toHaveProperty('disabled', true);
-    fireEvent.click(screen.getByRole('button', { name: 'T002 반복 설정', hidden: true }));
-    expect(screen.getByRole('dialog', { name: '과제 반복 설정' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'T002 기한 설정', hidden: true }));
+    expect(screen.getByRole('dialog', { name: '과제 기한 설정' })).toBeTruthy();
 
     firstSave.resolve();
     await waitFor(() => expect(baseFetch.mock.calls.filter(([url]) => String(url) === '/api/tasks?includeInactive=1')).toHaveLength(2));
-    expect(screen.getByRole('dialog', { name: '과제 반복 설정' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '반복 설정 저장' })).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: '과제 기한 설정' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '기한 설정 저장' })).toBeTruthy();
   });
 
   it('keeps the newer projection when consecutive schedule saves for the same task finish out of order', async () => {
@@ -1816,15 +1836,15 @@ describe('AdminManagePage', () => {
 
     render(<AdminManagePage />);
     fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 반복 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 기한 설정' }));
     fireEvent.change(screen.getByLabelText('반복 시간'), { target: { value: '10:00' } });
-    fireEvent.click(screen.getByRole('button', { name: '반복 설정 저장' }));
+    fireEvent.click(screen.getByRole('button', { name: '기한 설정 저장' }));
     await waitFor(() => expect(patchCount).toBe(1));
 
     expect(screen.getByRole('button', { name: '취소', hidden: true })).toHaveProperty('disabled', true);
-    fireEvent.click(screen.getByRole('button', { name: 'T001 반복 설정', hidden: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 기한 설정', hidden: true }));
     fireEvent.change(screen.getByLabelText('반복 시간'), { target: { value: '11:00' } });
-    fireEvent.click(screen.getByRole('button', { name: '반복 설정 저장' }));
+    fireEvent.click(screen.getByRole('button', { name: '기한 설정 저장' }));
     await waitFor(() => expect(patchCount).toBe(2));
 
     await act(async () => {
@@ -1842,8 +1862,8 @@ describe('AdminManagePage', () => {
       secondProjection.resolve();
       await secondProjection.response;
     });
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '과제 반복 설정' })).toBeNull());
-    fireEvent.click(screen.getByRole('button', { name: 'T001 반복 설정' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '과제 기한 설정' })).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'T001 기한 설정' }));
     expect(screen.getByText(/현재 일정: 매일 11:00/)).toBeTruthy();
 
     await act(async () => {
@@ -1956,7 +1976,7 @@ describe('AdminManagePage', () => {
   it('reconciles a schedule PATCH only from a fresh task-list cycle projection', async () => {
     const oldTask = {
       ...tasks[0],
-      schedule: { ruleVersion: 1, effectiveFrom: '2026-08-25T00:00:00.000Z', timeZone: 'Asia/Seoul', recurrence: { type: 'WEEKLY', weekday: 2, time: '09:00' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: false },
+      schedule: { ruleVersion: 1, effectiveFrom: '2026-08-25T00:00:00.000Z', timeZone: 'Asia/Seoul', recurrence: { type: 'WEEKLY', weekdays: [2], time: '09:00' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: false },
       currentCycle: { cycleId: 'old-cycle', startsAt: '2026-08-25T00:00:00.000Z', endsAt: '2026-09-01T00:00:00.000Z', transition: 'NATURAL_BOUNDARY', assignedStudentIds: ['S001'], completedStudentIds: ['S001'], students: [{ studentId: 'S001', assigned: true, completed: true, assignmentOrigin: 'EVENT', completionOrigin: 'EVENT' }] },
     } as const;
     const freshTask = {
@@ -1979,15 +1999,15 @@ describe('AdminManagePage', () => {
 
     render(<AdminManagePage />);
     fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 반복 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 기한 설정' }));
     fireEvent.change(screen.getByLabelText('반복 주기'), { target: { value: 'MONTHLY' } });
     fireEvent.change(screen.getByLabelText('반복 시간'), { target: { value: '17:45' } });
     fireEvent.change(screen.getByLabelText('반복 날짜'), { target: { value: '31' } });
     expect(screen.getByText('29/30/31일이 없는 달은 해당 월 말일로 당겨집니다.')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '반복 설정 저장' }));
+    fireEvent.click(screen.getByRole('button', { name: '기한 설정 저장' }));
 
     await waitFor(() => expect(taskGetCount).toBe(2));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 반복 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 기한 설정' }));
     expect(await screen.findByText(/현재 일정: 매월 31일 17:45/)).toBeTruthy();
   });
 
@@ -2028,7 +2048,7 @@ describe('AdminManagePage', () => {
   it('keeps task rows compact and moves themed schedule details into the recurrence modal', async () => {
     const recurringTask = {
       ...tasks[0],
-      schedule: { ruleVersion: 2, effectiveFrom: '2026-08-25T00:00:00.000Z', timeZone: 'Europe/Paris', recurrence: { type: 'WEEKLY', weekday: 2, time: '09:00' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: false },
+      schedule: { ruleVersion: 2, effectiveFrom: '2026-08-25T00:00:00.000Z', timeZone: 'Europe/Paris', recurrence: { type: 'WEEKLY', weekdays: [2], time: '09:00' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: false },
       currentCycle: { cycleId: 'cycle-1', startsAt: '2026-08-25T00:00:00.000Z', endsAt: '2026-09-01T00:00:00.000Z', transition: 'NATURAL_BOUNDARY', assignedStudentIds: ['S001'], completedStudentIds: [], students: [{ studentId: 'S001', assigned: true, completed: false, assignmentOrigin: 'EVENT', completionOrigin: 'DEFAULT' }] },
     } as const;
     const baseFetch = vi.mocked(fetch);
@@ -2042,14 +2062,14 @@ describe('AdminManagePage', () => {
     render(<AdminManagePage />);
     fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
     const row = (await screen.findByTestId('task-row'));
-    expect(within(row).getByRole('button', { name: 'T001 반복 설정' }).textContent).toBe('반복');
+    expect(within(row).getByRole('button', { name: 'T001 기한 설정' }).textContent).toBe('기한');
     expect(within(row).getByRole('button', { name: 'T001 기록 보기' }).textContent).toBe('기록');
     expect(within(row).queryByText(/현재 일정:|현재 회차:|다음 자연 경계:|S001 부여/)).toBeNull();
-    expect(screen.getByRole('button', { name: '새 과제 반복 설정' }).textContent).toBe('반복 설정');
+    expect(screen.getByRole('button', { name: '새 과제 기한 설정' }).textContent).toBe('기한 설정');
 
-    fireEvent.click(within(row).getByRole('button', { name: 'T001 반복 설정' }));
-    const dialog = screen.getByRole('dialog', { name: '과제 반복 설정' });
-    expect(within(dialog).getByText(/현재 일정: 매주 화요일 09:00/)).toBeTruthy();
+    fireEvent.click(within(row).getByRole('button', { name: 'T001 기한 설정' }));
+    const dialog = screen.getByRole('dialog', { name: '과제 기한 설정' });
+    expect(within(dialog).getByText(/현재 일정: 매주 화 09:00/)).toBeTruthy();
     expect(within(dialog).getByText(/현재 회차:/)).toBeTruthy();
     expect(within(dialog).getByText(/다음 자연 경계:/)).toBeTruthy();
     expect(within(dialog).getByText(/초기화 대상: 완료 상태 초기화/)).toBeTruthy();
@@ -2082,21 +2102,21 @@ describe('AdminManagePage', () => {
     render(<AdminManagePage />);
     fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
     fireEvent.click(screen.getByLabelText('전체 과제 선택'));
-    fireEvent.click(screen.getByRole('button', { name: '선택 과제 반복' }));
+    fireEvent.click(screen.getByRole('button', { name: '선택 과제 기한' }));
 
-    const dialog = screen.getByRole('dialog', { name: '과제 반복 설정' });
+    const dialog = screen.getByRole('dialog', { name: '과제 기한 설정' });
     expect(within(dialog).getByText('대상: 책 읽기, 수학 학습지').getAttribute('title')).toBe('책 읽기, 수학 학습지');
     expect(within(dialog).getByText(/선택한 모든 과제에 같은 반복 설정/)).toBeTruthy();
     expect(within(dialog).getByLabelText('반복 주기')).toHaveProperty('value', '');
     expect(within(dialog).queryByLabelText('반복 시간')).toBeNull();
     expect(within(dialog).queryByLabelText('반복 요일')).toBeNull();
     expect(within(dialog).queryByLabelText('반복 날짜')).toBeNull();
-    expect(within(dialog).getByRole('button', { name: '반복 설정 저장' })).toHaveProperty('disabled', true);
+    expect(within(dialog).getByRole('button', { name: '기한 설정 저장' })).toHaveProperty('disabled', true);
     expect(baseFetch.mock.calls.some(([url]) => String(url).includes('/assignments'))).toBe(false);
 
     fireEvent.change(within(dialog).getByLabelText('반복 주기'), { target: { value: 'DAILY' } });
     fireEvent.change(within(dialog).getByLabelText('반복 시간'), { target: { value: '10:30' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: '반복 설정 저장' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '기한 설정 저장' }));
     await waitFor(() => expect(baseFetch.mock.calls.filter(([url, init]) => String(url) === '/api/tasks/schedules/batch' && init?.method === 'POST')).toHaveLength(1));
     const call = baseFetch.mock.calls.find(([url]) => String(url) === '/api/tasks/schedules/batch')!;
     expect(JSON.parse(String(call[1]?.body))).toEqual({
@@ -2109,15 +2129,16 @@ describe('AdminManagePage', () => {
     render(<AdminManagePage />);
     fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
     fireEvent.click(screen.getByLabelText('전체 과제 선택'));
-    fireEvent.click(screen.getByRole('button', { name: '선택 과제 반복' }));
-    const dialog = screen.getByRole('dialog', { name: '과제 반복 설정' });
-    const save = within(dialog).getByRole('button', { name: '반복 설정 저장' });
+    fireEvent.click(screen.getByRole('button', { name: '선택 과제 기한' }));
+    const dialog = screen.getByRole('dialog', { name: '과제 기한 설정' });
+    const save = within(dialog).getByRole('button', { name: '기한 설정 저장' });
 
     fireEvent.change(within(dialog).getByLabelText('반복 주기'), { target: { value: 'WEEKLY' } });
-    expect(within(dialog).getByLabelText('반복 요일')).toHaveProperty('value', '');
+    expect(within(dialog).getByRole('button', { name: '수요일' }).getAttribute('aria-pressed')).toBe('false');
     expect(save).toHaveProperty('disabled', true);
     fireEvent.change(within(dialog).getByLabelText('반복 시간'), { target: { value: '09:30' } });
-    fireEvent.change(within(dialog).getByLabelText('반복 요일'), { target: { value: '3' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '수요일' }));
+    expect(within(dialog).getByRole('button', { name: '수요일' }).getAttribute('aria-pressed')).toBe('true');
     expect(save).toHaveProperty('disabled', false);
 
     fireEvent.change(within(dialog).getByLabelText('반복 주기'), { target: { value: 'MONTHLY' } });
@@ -2211,20 +2232,20 @@ describe('AdminManagePage', () => {
     render(<AdminManagePage />);
     fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
     fireEvent.click(screen.getByLabelText('전체 과제 선택'));
-    fireEvent.click(screen.getByRole('button', { name: '선택 과제 반복' }));
-    let dialog = screen.getByRole('dialog', { name: '과제 반복 설정' });
+    fireEvent.click(screen.getByRole('button', { name: '선택 과제 기한' }));
+    let dialog = screen.getByRole('dialog', { name: '과제 기한 설정' });
     fireEvent.change(within(dialog).getByLabelText('반복 주기'), { target: { value: 'DAILY' } });
     fireEvent.change(within(dialog).getByLabelText('반복 시간'), { target: { value: '09:30' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: '반복 설정 저장' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '기한 설정 저장' }));
     expect(within(dialog).getByRole('button', { name: '취소', hidden: true })).toHaveProperty('disabled', true);
     fireEvent.keyDown(dialog, { key: 'Escape' });
-    expect(screen.getByRole('dialog', { name: '반복 설정 저장 중' })).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: '기한 설정 저장 중' })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'T002 반복 설정', hidden: true }));
-    dialog = screen.getByRole('dialog', { name: '과제 반복 설정' });
+    fireEvent.click(screen.getByRole('button', { name: 'T002 기한 설정', hidden: true }));
+    dialog = screen.getByRole('dialog', { name: '과제 기한 설정' });
     expect(within(dialog).getByText('대상: 수학 학습지')).toBeTruthy();
     pending.resolve();
-    await waitFor(() => expect(within(screen.getByRole('dialog', { name: '과제 반복 설정' })).getByText('대상: 수학 학습지')).toBeTruthy());
+    await waitFor(() => expect(within(screen.getByRole('dialog', { name: '과제 기한 설정' })).getByText('대상: 수학 학습지')).toBeTruthy());
   });
 
   it('makes assignment inert under reset confirmation, traps focus, and restores the reset opener on cancel', async () => {
@@ -2298,15 +2319,15 @@ describe('AdminManagePage', () => {
     render(<AdminManagePage />);
     fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
     fireEvent.click(screen.getByLabelText('전체 과제 선택'));
-    fireEvent.click(screen.getByRole('button', { name: '선택 과제 반복' }));
-    const recurrence = screen.getByRole('dialog', { name: '과제 반복 설정' });
+    fireEvent.click(screen.getByRole('button', { name: '선택 과제 기한' }));
+    const recurrence = screen.getByRole('dialog', { name: '과제 기한 설정' });
     fireEvent.change(within(recurrence).getByLabelText('반복 주기'), { target: { value: 'DAILY' } });
     fireEvent.change(within(recurrence).getByLabelText('반복 시간'), { target: { value: '09:30' } });
-    const save = within(recurrence).getByRole('button', { name: '반복 설정 저장' });
+    const save = within(recurrence).getByRole('button', { name: '기한 설정 저장' });
     save.focus();
     fireEvent.click(save);
 
-    const loading = await screen.findByRole('dialog', { name: '반복 설정 저장 중' });
+    const loading = await screen.findByRole('dialog', { name: '기한 설정 저장 중' });
     expect(screen.getAllByRole('dialog')).toEqual([loading]);
     expect(recurrence.getAttribute('aria-hidden')).toBe('true');
     expect(recurrence.hasAttribute('inert')).toBe(true);
@@ -2318,7 +2339,7 @@ describe('AdminManagePage', () => {
     expect(document.activeElement).toBe(loading);
 
     pending.resolve();
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '반복 설정 저장 중' })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '기한 설정 저장 중' })).toBeNull());
     expect(document.activeElement).toBe(save);
   });
 
@@ -2466,5 +2487,75 @@ describe('AdminManagePage', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '완료 기록 초기화 확인' })).toBeNull());
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: '완료 기록 초기화' })));
     expect(taskGets).toBe(2);
+  });
+
+  it('edits availability, prerequisite, recurrence and shows clear admin status badges', async () => {
+    const datedTasks = [
+      { ...tasks[0], availableFrom: '2000-01-01T00:00:00Z', dueAt: '2999-01-01T00:00:00Z' },
+      { ...tasks[1], availableFrom: '2999-01-01T00:00:00Z' },
+      { ...tasks[0], taskId: 'T003', title: '만료 과제', dueAt: '2000-01-01T00:00:00Z' },
+      { ...tasks[0], taskId: 'T004', title: '비활성 과제', isActive: false },
+    ];
+    const baseFetch = vi.mocked(fetch);
+    const fallback = baseFetch.getMockImplementation()!;
+    baseFetch.mockImplementation(async (input, init) => {
+      if (String(input) === '/api/tasks?includeInactive=1') return jsonResponse(datedTasks);
+      if (String(input) === '/api/tasks/T001' && init?.method === 'PATCH') return jsonResponse(datedTasks[0]);
+      return fallback(input, init);
+    });
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    expect(screen.getByText('진행 중')).toBeTruthy();
+    expect(screen.getByText('시작 전')).toBeTruthy();
+    expect(screen.getByText('기한 만료')).toBeTruthy();
+    expect(screen.getByText('수동 비활성')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '새 과제 기한 설정' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'T001 기한 설정' }));
+    const dialog = screen.getByRole('dialog', { name: '과제 기한 설정' });
+    expect(within(dialog).getByRole('heading', { name: '기한 설정' })).toBeTruthy();
+    expect(within(dialog).getByLabelText('시작 시각')).toHaveProperty('type', 'datetime-local');
+    expect(within(dialog).getByLabelText('기한')).toHaveProperty('type', 'datetime-local');
+    expect(within(dialog).getByLabelText('선행 과제')).toBeTruthy();
+    expect(within(within(dialog).getByLabelText('선행 과제')).queryByRole('option', { name: '비활성 과제' })).toBeNull();
+    fireEvent.change(within(dialog).getByLabelText('시작 시각'), { target: { value: '' } });
+    fireEvent.change(within(dialog).getByLabelText('기한'), { target: { value: '2030-01-02T12:30' } });
+    fireEvent.change(within(dialog).getByLabelText('선행 과제'), { target: { value: 'T002' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '기한 설정 저장' }));
+
+    await waitFor(() => expect(baseFetch).toHaveBeenCalledWith('/api/tasks/T001', expect.objectContaining({ method: 'PATCH' })));
+    const call = baseFetch.mock.calls.find(([url, init]) => String(url) === '/api/tasks/T001' && init?.method === 'PATCH')!;
+    expect(JSON.parse(String(call[1]?.body))).toMatchObject({ availableFrom: null, dueAt: '2030-01-02T03:30:00.000Z', prerequisiteTaskId: 'T002' });
+  });
+
+  it('uses multi-select weekday buttons in the bulk deadline dialog and excludes prerequisite', async () => {
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByLabelText('전체 과제 선택'));
+    fireEvent.click(screen.getByRole('button', { name: '선택 과제 기한' }));
+    const dialog = screen.getByRole('dialog', { name: '과제 기한 설정' });
+    expect(within(dialog).queryByLabelText('선행 과제')).toBeNull();
+    expect(within(dialog).getByText(/선행 과제는 개별 과제/)).toBeTruthy();
+    fireEvent.change(within(dialog).getByLabelText('반복 주기'), { target: { value: 'WEEKLY' } });
+    const weekdays = within(dialog).getByRole('group', { name: '반복 요일' });
+    fireEvent.click(within(weekdays).getByRole('button', { name: '목요일' }));
+    expect(within(weekdays).getByRole('button', { name: '월요일' }).getAttribute('aria-pressed')).toBe('true');
+    expect(within(weekdays).getByRole('button', { name: '목요일' }).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('does not copy a new-task deadline draft into an existing task editor', async () => {
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: '새 과제 기한 설정' }));
+    fireEvent.change(screen.getByLabelText('시작 시각'), { target: { value: '2030-01-01T10:00' } });
+    fireEvent.change(screen.getByLabelText('기한'), { target: { value: '2030-01-02T12:30' } });
+    fireEvent.change(screen.getByLabelText('선행 과제'), { target: { value: 'T002' } });
+    fireEvent.click(screen.getByRole('button', { name: '기한 설정 적용' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'T001 기한 설정' }));
+    expect(screen.getByLabelText('시작 시각')).toHaveProperty('value', '');
+    expect(screen.getByLabelText('기한')).toHaveProperty('value', '');
+    expect(screen.getByLabelText('선행 과제')).toHaveProperty('value', '');
   });
 });

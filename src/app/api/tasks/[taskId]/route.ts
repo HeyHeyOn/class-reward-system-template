@@ -1,15 +1,16 @@
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { createConfiguredSheetsReader, createConfiguredSheetsStore } from '@/server/googleSheets';
-import { deleteTask, getTaskById, updateTaskDetails, updateTaskSchedule } from '@/server/sheetsRepository';
+import { deleteTask, getTaskById, updateTaskDetails, updateTaskSchedule, updateTaskScheduleSettings } from '@/server/sheetsRepository';
 import { getTaskCycleProjection } from '@/server/repositories/sheets/taskHistoryQueries';
 import { parseOptionalTaskScheduleEdit } from '../taskScheduleEdit';
+import { parseStrictTaskFields } from '../taskPayload';
 
 type RouteContext = { params: Promise<{ taskId: string }> };
 
 const FULL_EDIT_REQUIRED_KEYS = [
   'title', 'description', 'reward', 'isActive', 'sortOrder', 'allowedStudentIds',
 ] as const;
-const FULL_EDIT_ALLOWED_KEYS = new Set([...FULL_EDIT_REQUIRED_KEYS, 'taskId', 'schedule']);
+const FULL_EDIT_ALLOWED_KEYS = new Set([...FULL_EDIT_REQUIRED_KEYS, 'schedule', 'availableFrom', 'dueAt', 'prerequisiteTaskId']);
 
 export const dynamic = 'force-dynamic';
 
@@ -52,9 +53,12 @@ export async function PATCH(request: Request, context: RouteContext) {
     const input = payload as Record<string, unknown>;
     const keys = Object.keys(input);
     const isScheduleOnly = keys.length === 1 && keys[0] === 'schedule';
+    const scheduleSettingsKeys = new Set(['schedule', 'availableFrom', 'dueAt', 'prerequisiteTaskId']);
+    const isScheduleSettings = Object.hasOwn(input, 'schedule')
+      && keys.every((key) => scheduleSettingsKeys.has(key));
     const isFullEdit = FULL_EDIT_REQUIRED_KEYS.every((key) => Object.hasOwn(input, key))
       && keys.every((key) => FULL_EDIT_ALLOWED_KEYS.has(key));
-    if (!isScheduleOnly && !isFullEdit) {
+    if (!isScheduleSettings && !isFullEdit) {
       throw new Error('과제 저장 요청 형식이 올바르지 않습니다.');
     }
     const schedule = parseOptionalTaskScheduleEdit(input.schedule);
@@ -63,14 +67,23 @@ export async function PATCH(request: Request, context: RouteContext) {
       const task = await updateTaskSchedule(store, decodedTaskId, schedule!);
       return Response.json(task);
     }
+    if (isScheduleSettings) {
+      const optional = (key: 'availableFrom' | 'dueAt' | 'prerequisiteTaskId') => {
+        const value = input[key];
+        if (value !== null && typeof value !== 'string') throw new Error('과제 저장 요청 형식이 올바르지 않습니다.');
+        return value === null ? undefined : value;
+      };
+      const task = await updateTaskScheduleSettings(store, decodedTaskId, {
+        schedule: schedule!,
+        ...(Object.hasOwn(input, 'availableFrom') ? { availableFrom: optional('availableFrom') } : {}),
+        ...(Object.hasOwn(input, 'dueAt') ? { dueAt: optional('dueAt') } : {}),
+        ...(Object.hasOwn(input, 'prerequisiteTaskId') ? { prerequisiteTaskId: optional('prerequisiteTaskId') } : {}),
+      });
+      return Response.json(task);
+    }
     const source = input;
     const update = {
-      title: String(source.title),
-      description: String(source.description),
-      reward: Number(source.reward),
-      isActive: Boolean(source.isActive),
-      sortOrder: Number(source.sortOrder),
-      allowedStudentIds: Array.isArray(source.allowedStudentIds) ? source.allowedStudentIds.map((id: unknown) => String(id)) : [],
+      ...parseStrictTaskFields(source, 'update'),
       ...(schedule === undefined ? {} : { schedule }),
     };
     const task = await updateTaskDetails(store, decodedTaskId, update);

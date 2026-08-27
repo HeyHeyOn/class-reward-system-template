@@ -116,10 +116,10 @@ function validateRecurrence(recurrence: TaskRecurrence): void {
       return;
     case 'WEEKLY':
       parseTime(recurrence.time);
-      if (!Number.isInteger(recurrence.weekday)
-        || recurrence.weekday < 1
-        || recurrence.weekday > 7) {
-        throw new TaskRecurrenceValidationError('weekday must be an ISO weekday from 1 to 7');
+      if (!Array.isArray(recurrence.weekdays) || recurrence.weekdays.length === 0
+        || recurrence.weekdays.some((weekday) => !Number.isInteger(weekday) || weekday < 1 || weekday > 7)
+        || new Set(recurrence.weekdays).size !== recurrence.weekdays.length) {
+        throw new TaskRecurrenceValidationError('weekdays must contain unique ISO weekdays from 1 to 7');
       }
       return;
     case 'MONTHLY':
@@ -187,10 +187,9 @@ function naturalBoundariesAround(
       dates.push(localDate.add({ days: offset }));
     }
   } else if (recurrence.type === 'WEEKLY') {
-    const daysSinceBoundary = (localDate.dayOfWeek - recurrence.weekday + 7) % 7;
-    const boundaryDate = localDate.subtract({ days: daysSinceBoundary });
-    for (let offset = -2; offset <= 2; offset += 1) {
-      dates.push(boundaryDate.add({ weeks: offset }));
+    for (let offset = -14; offset <= 14; offset += 1) {
+      const date = localDate.add({ days: offset });
+      if (recurrence.weekdays.includes(date.dayOfWeek as never)) dates.push(date);
     }
   } else {
     const monthStart = localDate.with({ day: 1 });

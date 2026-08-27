@@ -73,7 +73,7 @@ describe('getTaskCycle', () => {
     ['2024-01-08T00:00:00Z', '2024-01-08T00:00:00Z', '2024-01-15T00:00:00Z'],
     ['2024-01-08T00:00:00.001Z', '2024-01-08T00:00:00Z', '2024-01-15T00:00:00Z'],
   ])('uses Seoul ISO-weekday weekly boundaries at %s', (now, startsAt, endsAt) => {
-    expect(cycle(schedule({ type: 'WEEKLY', weekday: 1, time: '09:00' }), now))
+    expect(cycle(schedule({ type: 'WEEKLY', weekdays: [1], time: '09:00' }), now))
       .toMatchObject({ startsAt, endsAt, nextResetAt: endsAt });
   });
 
@@ -129,8 +129,8 @@ describe('getTaskCycle', () => {
     [schedule({ type: 'DAILY', time: '09:00' }, { timeZone: 'Mars/Olympus' })],
     [schedule({ type: 'DAILY', time: '9:00' })],
     [schedule({ type: 'DAILY', time: '24:00' })],
-    [schedule(uncheckedRecurrence({ type: 'WEEKLY', weekday: 0, time: '09:00' }))],
-    [schedule(uncheckedRecurrence({ type: 'WEEKLY', weekday: 8, time: '09:00' }))],
+    [schedule(uncheckedRecurrence({ type: 'WEEKLY', weekdays: [0], time: '09:00' }))],
+    [schedule(uncheckedRecurrence({ type: 'WEEKLY', weekdays: [8], time: '09:00' }))],
     [schedule(uncheckedRecurrence({ type: 'MONTHLY', dayOfMonth: 0, time: '09:00' }))],
     [schedule(uncheckedRecurrence({ type: 'MONTHLY', dayOfMonth: 32, time: '09:00' }))],
   ])('rejects invalid recurrence domain values', (invalidSchedule) => {
@@ -178,7 +178,7 @@ describe('getTaskCycle', () => {
   });
 
   it.each([
-    [{ type: 'WEEKLY', weekday: 1, time: '09:00' } as const, '2024-01-03T12:00:00Z', '2024-01-08T00:00:00Z'],
+    [{ type: 'WEEKLY', weekdays: [1], time: '09:00' } as const, '2024-01-03T12:00:00Z', '2024-01-08T00:00:00Z'],
     [{ type: 'MONTHLY', dayOfMonth: 31, time: '09:00' } as const, '2024-01-03T12:00:00Z', '2024-01-31T00:00:00Z'],
   ])('clamps a %s first cycle to effectiveFrom', (recurrence, effectiveFrom, endsAt) => {
     expect(cycle(schedule(recurrence, { ruleVersion: 2, effectiveFrom }), effectiveFrom))
@@ -228,7 +228,7 @@ describe('getNextNaturalTaskBoundary', () => {
 
   it.each([
     [{ type: 'DAILY', time: '09:00' } as const, '2024-01-03T00:00:00Z'],
-    [{ type: 'WEEKLY', weekday: 1, time: '09:00' } as const, '2024-01-08T00:00:00Z'],
+    [{ type: 'WEEKLY', weekdays: [1], time: '09:00' } as const, '2024-01-08T00:00:00Z'],
     [{ type: 'MONTHLY', dayOfMonth: 31, time: '09:00' } as const, '2024-01-31T00:00:00Z'],
   ])('lets callers transition NONE to %s at the first natural boundary', (recurrence, expected) => {
     expect(getNextNaturalTaskBoundary({
@@ -247,7 +247,7 @@ describe('getNextNaturalTaskBoundary', () => {
   it.each([
     [{ recurrence: { type: 'NONE' } as TaskRecurrence, timeZone: 'Asia/Seoul' }, 'NONE has no natural boundary'],
     [{ recurrence: { type: 'DAILY', time: '09:00' } as TaskRecurrence, timeZone: 'Mars/Olympus' }, 'timeZone must be a valid IANA time zone'],
-    [{ recurrence: uncheckedRecurrence({ type: 'WEEKLY', weekday: 8, time: '09:00' }), timeZone: 'Asia/Seoul' }, 'weekday must be an ISO weekday from 1 to 7'],
+    [{ recurrence: uncheckedRecurrence({ type: 'WEEKLY', weekdays: [8], time: '09:00' }), timeZone: 'Asia/Seoul' }, 'weekdays must contain unique ISO weekdays from 1 to 7'],
   ])('rejects unsupported or invalid boundary input with the exact error', (input, message) => {
     expect(() => getNextNaturalTaskBoundary({
       ...input,

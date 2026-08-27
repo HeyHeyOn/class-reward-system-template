@@ -18,11 +18,14 @@
 
 ## Recurring task ledger (schema v2)
 
-- `Tasks`는 기존 9개 컬럼 뒤에 현재/예약 recurrence rule 컬럼 19개를 더한 28개 canonical 컬럼을 사용합니다.
+- `Tasks`는 기존 9개 컬럼 뒤에 현재/예약 recurrence rule 컬럼 19개와 과제 가용 기간·선행 과제·다중 요일 컬럼 5개를 append한 33개 canonical 컬럼을 사용합니다. 추가 순서는 `availableFrom`, `dueAt`, `prerequisiteTaskId`, `recurrenceWeekdays`, `pendingRecurrenceWeekdays`입니다.
 - `TaskAssignments`는 cycle별 학생 배정을 보존하는 15개 컬럼의 append-only 원장입니다.
 - `TaskCompletions`는 기존 10개 컬럼을 그대로 앞에 유지하고 cycle/rule/assignment 스냅샷 컬럼 9개를 뒤에 추가합니다.
 - 현재 cycle의 해석은 `taskInstanceId`, `cycleId`, `ruleVersion`, `timeZone` 스냅샷을 기준으로 합니다. schedule·학급 시간대 변경은 현재 시각부터 더 높은 rule version으로 즉시 적용되며, 직전 배정·완료 상태는 보상 없이 새 cycle로 승계됩니다. 그 다음 자연 경계에서는 각각의 reset flag가 `true`인 상태만 초기화되고, `false`인 완료는 계속 승계되어 재보상을 차단합니다. 이미 기록된 과거 cycle 원장은 소급 변경하지 않습니다.
 - 신규 `Tasks`에는 `maxCompletionsPerStudent`를 생성하지 않습니다. 레거시 인스턴스에서는 아래 비파괴 호환 원칙을 유지합니다.
+- `recurrenceWeekdays`와 `pendingRecurrenceWeekdays`는 주간 반복의 canonical 다중 요일 값입니다. 레거시 `recurrenceWeekday`/`pendingRecurrenceWeekday`는 단일 요일 fallback으로 읽고, 다중 요일을 저장할 때는 레거시 셀을 비웁니다.
+- `availableFrom` 이상 `dueAt` 미만의 구간만 학생에게 실효 활성입니다. 이 판정은 `isActive` 셀을 자동 변경하지 않으며, 목록 조회와 완료 명령에서 현재 시각으로 다시 계산합니다.
+- `prerequisiteTaskId`는 최대 하나이며 자기 참조·누락 참조·순환 그래프를 거부합니다. 완료 명령은 같은 전역 과제 mutation queue 안에서 최신 과제·원장을 다시 읽고 선행 과제의 현재 회차 완료를 확인한 뒤에만 보상 원장을 변경합니다.
 
 ## Recovery
 
@@ -73,12 +76,13 @@
 | 같은 `taskId` 재생성·append-only reset/delete/history | `src/domain/taskCycleState.test.ts`, `src/server/repositories/sheets/taskHistoryQueries.test.ts`, `src/server/sheetsRepository.test.ts` |
 | 관리자 dirty draft·이력·stale async, 은행 legacy DTO·stale fetch·targeted refresh | `src/components/AdminManagePage.test.tsx`, `src/components/BankApp.test.tsx` |
 | 학생 공개 DTO 최소화·raw projection 관리자 인증 | `src/app/api/tasks/route.test.ts` |
+| 기한·선행 그래프·다중 요일·공개 은행 목록·완료 직전 재검증 | `src/domain/taskCrsFeatures.test.ts`, `src/app/api/bank/tasks/route.test.ts`, `src/server/sheetsRepository.test.ts` |
 
 ## R1 recurring task compatibility contract
 
-- `NONE`, `DAILY`, `WEEKLY`, `MONTHLY`를 지원하며 월 29~31일이 없는 달은 그 달 말일로 당깁니다. cycle 계산은 named timezone과 DST 전환을 포함해 Temporal 기반으로 수행합니다.
+- `NONE`, `DAILY`, `WEEKLY`, `MONTHLY`를 지원합니다. `WEEKLY`는 정규화된 복수 요일을 사용하며 선택한 각 요일·시각이 경계입니다. 월 29~31일이 없는 달은 그 달 말일로 당깁니다. cycle 계산은 named timezone과 DST 전환을 포함해 Temporal 기반으로 수행합니다.
 - 레거시 `allowedStudentIds`는 assignment 원장이 없을 때 초기 배정 fallback으로 읽습니다. cycle 정보가 없는 기존 completion은 현재 과제의 `createdAt`이 유효하면 completion `timestamp`도 유효하고 `timestamp >= createdAt`인 행만 현재 instance 후보로 봅니다. 후보 중 물리적 마지막 행이 아니라 `SUCCESS`가 하나라도 있으면 legacy 완료로 우선 투영하며 새 행으로 다시 쓰지 않습니다. 과제 `createdAt` 자체가 유효하지 않은 레거시 정의에 한해서는 taskId 일치 fallback을 유지합니다.
 - versioned assignment와 completion 상태 이벤트는 물리적 append 순서의 최신 행으로 투영하고 reset은 `RESET` 이벤트를 append합니다. 과제 삭제는 `Tasks` 정의 행만 삭제하며 삭제 이벤트를 만들지 않습니다. 기존 `TaskAssignments`와 `TaskCompletions` 원장은 그대로 보존됩니다.
 - 같은 `taskId`를 삭제 후 재생성해도 새 `taskInstanceId`가 이전 lifecycle의 배정·완료를 격리합니다. 삭제된 lifecycle 이력은 삭제 시 새 snapshot을 만드는 것이 아니라, 이미 보존된 assignment/completion 행의 cycle snapshot으로만 조회합니다.
 - assignment의 `LEGACY_SEED`/`CARRY_FORWARD`는 결정적 ID를 사용하지만 Sheets 원장에는 unique constraint나 atomic put-if-absent가 없어 여러 서버 instance가 동시에 materialize하면 같은 ID의 중복 행이 생길 수 있습니다. completion `CARRY_FORWARD`는 무작위 ID를 사용하므로 동시 materialize 시 서로 다른 ID의 의미상 중복 이벤트가 생길 수 있습니다. process-local command queue와 완료 append 결과 재조회는 같은 프로세스의 순차 중복·일반 재시도만 방어하며, 강한 exactly-once와 서로 다른 operation 사이 학생 balance resource race는 R1 보장이 아닙니다.
-- 학생용 `/api/tasks?studentId=...`는 요청 학생의 상태와 cycle metadata만 공개합니다. 전체 목록 projection, 단건 raw projection, `includeInactive` 관리 조회는 관리자 인증이 필요합니다.
+- 학생용 `/api/tasks?studentId=...`는 요청 학생의 배정·완료·선행 상태와 표시용 과제 정보만 공개하며 내부 cycle metadata는 공개하지 않습니다. 전체 목록 projection, 단건 raw projection, `includeInactive` 관리 조회는 관리자 인증이 필요합니다.

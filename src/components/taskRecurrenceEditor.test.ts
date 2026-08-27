@@ -21,7 +21,7 @@ describe('taskRecurrenceEditor', () => {
   it.each([
     [{ type: 'NONE' }, { type: 'NONE' }, '반복 없음'],
     [{ type: 'DAILY', time: '08:30' }, { type: 'DAILY', time: '08:30' }, '매일 08:30'],
-    [{ type: 'WEEKLY', weekday: 3, time: '09:10' }, { type: 'WEEKLY', weekday: 3, time: '09:10' }, '매주 수요일 09:10'],
+    [{ type: 'WEEKLY', weekdays: [3], time: '09:10' }, { type: 'WEEKLY', weekdays: [3], time: '09:10' }, '매주 수 09:10'],
     [{ type: 'MONTHLY', dayOfMonth: 31, time: '17:45' }, { type: 'MONTHLY', dayOfMonth: 31, time: '17:45' }, '매월 31일 17:45'],
   ] as const)('round trips %o with a strict edit payload', (recurrence, expected, summary) => {
     const form = scheduleDtoToForm({ ...baseSchedule, recurrence, resetCompletionOnCycle: true });
@@ -48,10 +48,10 @@ describe('taskRecurrenceEditor', () => {
 
   it('validates only fields required by the selected recurrence', () => {
     expect(validateRecurrenceForm({ ...EMPTY_RECURRENCE_FORM, type: 'DAILY', time: '24:00' })).toContain('시간');
-    expect(validateRecurrenceForm({ ...EMPTY_RECURRENCE_FORM, type: 'WEEKLY', time: '08:00', weekday: '0' })).toContain('요일');
+    expect(validateRecurrenceForm({ ...EMPTY_RECURRENCE_FORM, type: 'WEEKLY', time: '08:00', weekdays: ['0'] })).toContain('요일');
     expect(validateRecurrenceForm({ ...EMPTY_RECURRENCE_FORM, type: 'MONTHLY', time: '08:00', dayOfMonth: '32' })).toContain('1일부터 31일');
     expect(validateRecurrenceForm({ ...EMPTY_RECURRENCE_FORM, type: 'MONTHLY', time: '08:00', dayOfMonth: '31' })).toBeNull();
-    expect(validateRecurrenceForm({ ...EMPTY_RECURRENCE_FORM, type: 'NONE', time: '', weekday: '', dayOfMonth: '' })).toBeNull();
+    expect(validateRecurrenceForm({ ...EMPTY_RECURRENCE_FORM, type: 'NONE', time: '', weekdays: [], dayOfMonth: '' })).toBeNull();
   });
 
   it('uses an already-effective pending schedule and keeps a future pending schedule inactive', () => {
@@ -65,7 +65,7 @@ describe('taskRecurrenceEditor', () => {
       ruleVersion: 4,
       effectiveFrom: '2026-08-20T00:00:00.000Z',
       timeZone: 'Europe/Paris',
-      recurrence: { type: 'WEEKLY' as const, weekday: 5 as const, time: '16:30' },
+      recurrence: { type: 'WEEKLY' as const, weekdays: [5] as const, time: '16:30' },
     };
 
     expect(resolveEffectiveAdminTaskSchedule(

@@ -17,6 +17,7 @@ import { createTaskDialogTarget, taskTargetSummary, type TaskDialogTarget } from
 import { normalizeTaskAssignmentStatus, reconcileTaskAssignmentProjection } from './taskAssignmentProjection';
 import { PromotionAdminPanel } from './promotions/PromotionAdminPanel';
 import { normalizeThemeColor, themeStyles, type ThemeColor } from './uiTheme';
+import { classifyTaskAvailability } from '@/domain/taskAvailability';
 
 type StudentDraft = Student;
 type ProductDraft = Product;
@@ -65,6 +66,23 @@ const EMPTY_STUDENT: NewStudentDraft = { studentId: '', name: '', balance: 0, st
 const EMPTY_PRODUCT: NewProductDraft = { name: '', price: 0, stock: 0, isActive: true, imageUrl: '', category: '', sortOrder: 1 };
 const EMPTY_TASK: Omit<TaskDraft, 'taskId'> = { title: '', description: '', reward: 0, isActive: true, sortOrder: 1, allowedStudentIds: [] };
 
+function isoToSeoulLocal(value?: string) {
+  if (!value) return '';
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(value));
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}`;
+}
+
+function seoulLocalToIso(value: string) {
+  return value ? new Date(`${value}:00+09:00`).toISOString() : '';
+}
+
+function taskAvailabilityLabel(task: TaskDraft) {
+  if (!task.isActive) return '수동 비활성';
+  const state = classifyTaskAvailability(task);
+  return state === 'UPCOMING' ? '시작 전' : state === 'EXPIRED' ? '기한 만료' : '진행 중';
+}
+
 function reconcileTaskProjections(
   current: TaskDraft[],
   serverRows: TaskDraft[],
@@ -87,6 +105,9 @@ function reconcileTaskProjections(
       taskInstanceId: serverTask.taskInstanceId,
       schedule: serverTask.schedule,
       pendingSchedule: serverTask.pendingSchedule,
+      availableFrom: serverTask.availableFrom,
+      dueAt: serverTask.dueAt,
+      prerequisiteTaskId: serverTask.prerequisiteTaskId,
       scheduleReadWarnings: serverTask.scheduleReadWarnings,
       currentCycle: serverTask.currentCycle,
     };
@@ -124,7 +145,7 @@ export function AdminManagePage() {
   const [newTask, setNewTask] = useState<Omit<TaskDraft, 'taskId'>>(EMPTY_TASK);
   const [imageEditor, setImageEditor] = useState<{ productId: string; value: string } | null>(null);
   const [taskDescriptionEditor, setTaskDescriptionEditor] = useState<{ taskId: string; value: string } | null>(null);
-  const [taskScheduleEditor, setTaskScheduleEditor] = useState<{ taskId: string | null; target: TaskDialogTarget; form: TaskRecurrenceForm; explicit: boolean; opener: HTMLElement | null } | null>(null);
+  const [taskScheduleEditor, setTaskScheduleEditor] = useState<{ taskId: string | null; target: TaskDialogTarget; form: TaskRecurrenceForm; explicit: boolean; opener: HTMLElement | null; availableFrom: string; dueAt: string; prerequisiteTaskId: string; availabilityExplicit: boolean } | null>(null);
   const [dirtyTaskScheduleIds, setDirtyTaskScheduleIds] = useState<string[]>([]);
   const [isSavingTaskSchedule, setIsSavingTaskSchedule] = useState(false);
   const taskScheduleSession = useRef<{ id: number; taskId: string | null }>({ id: 0, taskId: null });
@@ -260,6 +281,10 @@ export function AdminManagePage() {
       form: scheduleDtoToForm(schedule, { taskInstanceId: task?.taskInstanceId }),
       explicit: true,
       opener,
+      availableFrom: isoToSeoulLocal(task ? task.availableFrom : newTask.availableFrom),
+      dueAt: isoToSeoulLocal(task ? task.dueAt : newTask.dueAt),
+      prerequisiteTaskId: (task ? task.prerequisiteTaskId : newTask.prerequisiteTaskId) ?? '',
+      availabilityExplicit: false,
     });
   }
 
@@ -270,9 +295,13 @@ export function AdminManagePage() {
     setTaskScheduleEditor({
       taskId: null,
       target: createTaskDialogTarget('bulk', selected),
-      form: { ...scheduleDtoToForm(), type: '' as TaskRecurrenceForm['type'], time: '', weekday: '', dayOfMonth: '' },
+      form: { ...scheduleDtoToForm(), type: '' as TaskRecurrenceForm['type'], time: '', weekdays: [], dayOfMonth: '' },
       explicit: false,
       opener,
+      availableFrom: '',
+      dueAt: '',
+      prerequisiteTaskId: '',
+      availabilityExplicit: false,
     });
   }
 
@@ -297,7 +326,14 @@ export function AdminManagePage() {
         const response = await fetch('/api/tasks/schedules/batch', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ taskIds, schedule: parsed.payload }),
+          body: JSON.stringify({
+            taskIds,
+            schedule: parsed.payload,
+            ...(taskScheduleEditor.availabilityExplicit ? {
+              availableFrom: seoulLocalToIso(taskScheduleEditor.availableFrom) || null,
+              dueAt: seoulLocalToIso(taskScheduleEditor.dueAt) || null,
+            } : {}),
+          }),
         });
         const payload = await response.json().catch(() => ({}));
         if (!isCurrentSession()) return;
@@ -331,7 +367,12 @@ export function AdminManagePage() {
         const response = await fetch(`/api/tasks/${encodeURIComponent(task.taskId)}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ schedule: parsed.payload }),
+          body: JSON.stringify({
+            schedule: parsed.payload,
+            availableFrom: seoulLocalToIso(taskScheduleEditor.availableFrom) || null,
+            dueAt: seoulLocalToIso(taskScheduleEditor.dueAt) || null,
+            prerequisiteTaskId: taskScheduleEditor.prerequisiteTaskId || null,
+          }),
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error ?? '반복 설정을 저장하지 못했습니다.');
@@ -357,7 +398,11 @@ export function AdminManagePage() {
       }
       return;
     }
-    setNewTask((current) => ({ ...current, schedule: {
+    setNewTask((current) => ({ ...current,
+      availableFrom: seoulLocalToIso(taskScheduleEditor.availableFrom),
+      dueAt: seoulLocalToIso(taskScheduleEditor.dueAt),
+      prerequisiteTaskId: taskScheduleEditor.prerequisiteTaskId,
+      schedule: {
       ruleVersion: 1,
       effectiveFrom: '',
       ...parsed.payload,
@@ -921,6 +966,9 @@ export function AdminManagePage() {
         isActive: task.isActive,
         sortOrder: task.sortOrder,
         allowedStudentIds: task.allowedStudentIds ?? [],
+        availableFrom: task.availableFrom ?? null,
+        dueAt: task.dueAt ?? null,
+        prerequisiteTaskId: task.prerequisiteTaskId ?? null,
         ...(schedule?.ok ? { schedule: schedule.payload } : {}),
       };
     });
@@ -1124,6 +1172,9 @@ export function AdminManagePage() {
         isActive: newTask.isActive,
         sortOrder: newTask.sortOrder,
         allowedStudentIds: newTask.allowedStudentIds ?? [],
+        availableFrom: newTask.availableFrom ?? '',
+        dueAt: newTask.dueAt ?? '',
+        prerequisiteTaskId: newTask.prerequisiteTaskId ?? '',
         ...(newTask.schedule ? (() => {
           const schedule = scheduleFormToPayload(scheduleDtoToForm(newTask.schedule));
           return schedule.ok ? { schedule: schedule.payload } : {};
@@ -1640,7 +1691,7 @@ export function AdminManagePage() {
                   <input aria-label="새 과제 활성" checked={newTask.isActive} onChange={(event) => setNewTask((current) => ({ ...current, isActive: event.target.checked }))} type="checkbox" />
                   은행 페이지에 표시
                 </label>
-                <button type="button" aria-label="새 과제 반복 설정" onClick={(event) => openTaskScheduleEditor(null, event.currentTarget)} className={`w-full rounded-xl ${theme.softBg} py-3 font-black ${theme.accentText}`}>반복 설정</button>
+                <button type="button" aria-label="새 과제 기한 설정" onClick={(event) => openTaskScheduleEditor(null, event.currentTarget)} className={`w-full rounded-xl ${theme.softBg} py-3 font-black ${theme.accentText}`}>기한 설정</button>
                 <button type="button" aria-label="새 과제 과제 부여" onClick={(event) => openTaskAssignmentEditor(null, newTask.allowedStudentIds ?? [], event.currentTarget)} className="w-full rounded-xl bg-sky-100 py-3 font-black text-sky-800">과제 부여{newTask.allowedStudentIds.length ? ` (${newTask.allowedStudentIds.length}명)` : ''}</button>
                 <button className={`w-full rounded-xl ${theme.accentBg} py-3 font-black ${theme.actionText} shadow-sm`} type="submit">새 과제 추가</button>
               </form>
@@ -1661,7 +1712,7 @@ export function AdminManagePage() {
                   <input aria-label="전체 과제 선택" checked={allTasksSelected} onChange={(event) => setSelectedTaskIds(event.target.checked ? tasks.map((task) => task.taskId) : [])} type="checkbox" />
                   전체 선택 ({selectedTaskIds.length}/{tasks.length})
                 </label>
-                <button type="button" aria-label="선택 과제 반복" disabled={selectedTaskIds.length === 0} onClick={(event) => openBulkTaskScheduleEditor(event.currentTarget)} className={`rounded-xl ${theme.softBg} px-4 py-2 text-sm font-black ${theme.accentText} ${disabledActionClass}`}>반복</button>
+                <button type="button" aria-label="선택 과제 기한" disabled={selectedTaskIds.length === 0} onClick={(event) => openBulkTaskScheduleEditor(event.currentTarget)} className={`rounded-xl ${theme.softBg} px-4 py-2 text-sm font-black ${theme.accentText} ${disabledActionClass}`}>기한</button>
                 <button type="button" aria-label="선택 과제 과제 부여" disabled={selectedTaskIds.length === 0} onClick={(event) => openBulkTaskAssignmentEditor(event.currentTarget)} className={`rounded-xl bg-sky-100 px-4 py-2 text-sm font-black text-sky-800 ${disabledActionClass}`}>과제 부여</button>
                 <button type="button" disabled={selectedTaskIds.length === 0} onClick={deleteSelectedTasks} className={`rounded-xl bg-rose-500 px-4 py-2 text-sm font-black text-white ${disabledActionClass}`}>삭제</button>
                 <button type="button" disabled={selectedTaskIds.length === 0} onClick={saveSelectedTasks} className={`rounded-xl ${theme.accentBg} px-4 py-2 text-sm font-black ${theme.actionText} ${disabledActionClass}`}>선택 저장</button>
@@ -1680,6 +1731,7 @@ export function AdminManagePage() {
                     </label>
                     <div className="min-w-0">
                       <TextInput label={`${task.taskId} 과제명`} value={task.title} onChange={(value) => updateTask(task.taskId, { title: value })} dense />
+                      <span className="mt-0.5 inline-block rounded-full bg-[var(--theme-surface-raised)] px-2 py-0.5 text-[9px] font-black text-[var(--theme-muted-text)]">{taskAvailabilityLabel(task)}</span>
                     </div>
                     <NumberInput label={`${task.taskId} 보상`} value={task.reward} onChange={(value) => updateTask(task.taskId, { reward: value })} dense />
                     <NumberInput label={`${task.taskId} 정렬`} value={task.sortOrder} onChange={(value) => updateTask(task.taskId, { sortOrder: value })} dense />
@@ -1696,7 +1748,7 @@ export function AdminManagePage() {
                       {task.description ? '상세 있음' : '상세'}
                     </button>
                     <div data-testid="task-row-actions" className="flex flex-wrap justify-end gap-1">
-                      <button type="button" aria-label={`${task.taskId} 반복 설정`} onClick={(event) => openTaskScheduleEditor(task, event.currentTarget)} className={`h-8 rounded-lg border ${semantic.border} ${theme.softBg} px-2 text-[10px] font-black ${theme.accentText} outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-surface)]`}>반복</button>
+                      <button type="button" aria-label={`${task.taskId} 기한 설정`} onClick={(event) => openTaskScheduleEditor(task, event.currentTarget)} className={`h-8 rounded-lg border ${semantic.border} ${theme.softBg} px-2 text-[10px] font-black ${theme.accentText} outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-surface)]`}>기한</button>
                       <button type="button" aria-label={`${task.taskId} 기록 보기`} onClick={(event) => void openTaskHistory(task, event.currentTarget)} className={`h-8 rounded-lg border ${semantic.border} ${semantic.surfaceRaised} px-2 text-[10px] font-black ${semantic.text} outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-surface)]`}>기록</button>
                       <button type="button" aria-label={`${task.taskId} 과제 부여`} onClick={(event) => openTaskAssignmentEditor(task.taskId, task.allowedStudentIds ?? [], event.currentTarget)} className="h-8 rounded-lg border border-sky-500 bg-sky-100 px-2 text-[10px] font-black text-sky-800 outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-surface)]">과제 부여</button>
                       <button type="button" aria-label={`${task.taskId} 과제 삭제`} onClick={(event) => requestTaskDelete(task, event.currentTarget)} className="h-8 rounded-lg border border-rose-500 bg-rose-100 px-2 text-[10px] font-black text-rose-800 outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-surface)]">삭제</button>
@@ -1743,7 +1795,7 @@ export function AdminManagePage() {
       </section>
       </div>
       {isSavingChanges ? <LoadingDialog title="변경 사항 저장 중" message="변경 사항을 저장하는 중입니다." /> : null}
-      {isSavingTaskSchedule ? <LoadingDialog title="반복 설정 저장 중" message="반복 설정을 저장하고 최신 과제 목록을 불러오는 중입니다." /> : null}
+      {isSavingTaskSchedule ? <LoadingDialog title="기한 설정 저장 중" message="기한과 반복 설정을 저장하고 최신 과제 목록을 불러오는 중입니다." /> : null}
       {taskResetConfirmation?.resetting ? <LoadingDialog title="완료 기록 초기화 중" message="완료 기록을 초기화하고 최신 과제 목록을 불러오는 중입니다." restoreFocus={false} /> : null}
       {isRefreshingLists ? <LoadingDialog title="새로고침 중" message="새로고침하는 중입니다." /> : null}
       {imageEditor ? (
@@ -1859,9 +1911,14 @@ export function AdminManagePage() {
         </div>
       ) : null}
       {taskScheduleEditor ? (
-        <TaskDialogFrame title="과제 반복 설정" target={taskScheduleEditor.target} opener={taskScheduleEditor.opener} mutation={isSavingTaskSchedule} onClose={closeTaskScheduleEditor}>
-            <h2 className="text-xl font-black">과제 반복 설정</h2>
+        <TaskDialogFrame title="과제 기한 설정" target={taskScheduleEditor.target} opener={taskScheduleEditor.opener} mutation={isSavingTaskSchedule} onClose={closeTaskScheduleEditor}>
+            <h2 className="text-xl font-black">기한 설정</h2>
             <TaskTargetSummary target={taskScheduleEditor.target} />
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <label className="text-sm font-bold">시작 시각<input aria-label="시작 시각" type="datetime-local" value={taskScheduleEditor.availableFrom} onChange={(event) => setTaskScheduleEditor((current) => current ? { ...current, availableFrom: event.target.value, availabilityExplicit: true } : current)} className="mt-1 w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-input)] p-3" /></label>
+              <label className="text-sm font-bold">기한<input aria-label="기한" type="datetime-local" value={taskScheduleEditor.dueAt} onChange={(event) => setTaskScheduleEditor((current) => current ? { ...current, dueAt: event.target.value, availabilityExplicit: true } : current)} className="mt-1 w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-input)] p-3" /></label>
+            </div>
+            {taskScheduleEditor.target.kind === 'bulk' ? <p className="mt-2 rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-900">선행 과제는 개별 과제 기한 설정에서만 변경할 수 있습니다.</p> : <label className="mt-3 block text-sm font-bold">선행 과제<select aria-label="선행 과제" value={taskScheduleEditor.prerequisiteTaskId} onChange={(event) => setTaskScheduleEditor((current) => current ? { ...current, prerequisiteTaskId: event.target.value } : current)} className="mt-1 w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-input)] p-3"><option value="">없음</option>{tasks.filter((task) => task.isActive && task.taskId !== taskScheduleEditor.taskId).map((task) => <option key={task.taskId} value={task.taskId}>{task.title}</option>)}</select></label>}
             {taskScheduleEditor.target.kind === 'bulk' ? (
               <p className="mt-1 rounded-xl bg-sky-50 p-3 text-xs font-bold text-sky-900">선택한 모든 과제에 같은 반복 설정이 일괄 적용됩니다. 기존 반복 설정은 불러오지 않습니다.</p>
             ) : null}
@@ -1886,7 +1943,7 @@ export function AdminManagePage() {
             )}
             <div className="mt-4 flex gap-2">
               <button type="button" disabled={isSavingTaskSchedule} className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700 disabled:opacity-50" onClick={closeTaskScheduleEditor}>취소</button>
-              <button type="button" aria-label={taskScheduleEditor.target.kind === 'new' ? '반복 설정 적용' : '반복 설정 저장'} disabled={isSavingTaskSchedule || !taskScheduleEditor.explicit || !scheduleFormToPayload(taskScheduleEditor.form).ok} className={`flex-1 rounded-xl ${theme.accentBg} py-3 font-black ${theme.actionText} disabled:opacity-60`} onClick={() => void applyTaskScheduleEditor()}>{isSavingTaskSchedule ? '반복 설정 저장 중...' : taskScheduleEditor.target.kind === 'new' ? '반복 설정 적용' : '반복 설정 저장'}</button>
+              <button type="button" aria-label={taskScheduleEditor.target.kind === 'new' ? '기한 설정 적용' : '기한 설정 저장'} disabled={isSavingTaskSchedule || !taskScheduleEditor.explicit || !scheduleFormToPayload(taskScheduleEditor.form).ok} className={`flex-1 rounded-xl ${theme.accentBg} py-3 font-black ${theme.actionText} disabled:opacity-60`} onClick={() => void applyTaskScheduleEditor()}>{isSavingTaskSchedule ? '기한 설정 저장 중...' : taskScheduleEditor.target.kind === 'new' ? '기한 설정 적용' : '기한 설정 저장'}</button>
             </div>
         </TaskDialogFrame>
       ) : null}
@@ -2072,11 +2129,11 @@ export function AdminManagePage() {
 function BulkTaskRecurrenceFields({ form, onChange }: { form: TaskRecurrenceForm; onChange: (form: TaskRecurrenceForm) => void }) {
   return (
     <div className="mt-4 space-y-3">
-      <label className="block text-sm font-bold"><span>반복 주기</span><select aria-label="반복 주기" value={form.type} onChange={(event) => onChange({ ...form, type: event.target.value as TaskRecurrenceForm['type'], weekday: '', dayOfMonth: '' })} className="mt-1 w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-input)] p-3">
+      <label className="block text-sm font-bold"><span>반복 주기</span><select aria-label="반복 주기" value={form.type} onChange={(event) => onChange({ ...form, type: event.target.value as TaskRecurrenceForm['type'], weekdays: event.target.value === 'WEEKLY' ? ['1'] : [], dayOfMonth: '' })} className="mt-1 w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-input)] p-3">
         <option value="">선택해 주세요</option><option value="NONE">반복 없음</option><option value="DAILY">매일</option><option value="WEEKLY">매주</option><option value="MONTHLY">매월</option>
       </select></label>
       {form.type && form.type !== 'NONE' ? <label className="block text-sm font-bold"><span>실행 시간</span><input aria-label="반복 시간" type="time" value={form.time} onChange={(event) => onChange({ ...form, time: event.target.value })} className="mt-1 w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-input)] p-3" /></label> : null}
-      {form.type === 'WEEKLY' ? <label className="block text-sm font-bold"><span>요일</span><select aria-label="반복 요일" value={form.weekday} onChange={(event) => onChange({ ...form, weekday: event.target.value })} className="mt-1 w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-input)] p-3"><option value="">선택해 주세요</option>{['월','화','수','목','금','토','일'].map((day, index) => <option key={day} value={index + 1}>{day}요일</option>)}</select></label> : null}
+      {form.type === 'WEEKLY' ? <fieldset aria-label="반복 요일"><legend className="text-sm font-bold">요일</legend><div className="mt-1 flex flex-wrap gap-2">{[{ label: '일', iso: 7 }, { label: '월', iso: 1 }, { label: '화', iso: 2 }, { label: '수', iso: 3 }, { label: '목', iso: 4 }, { label: '금', iso: 5 }, { label: '토', iso: 6 }].map(({ label, iso }) => { const selected = form.weekdays.includes(String(iso)); return <button key={iso} type="button" aria-label={`${label}요일`} aria-pressed={selected} onClick={() => { if (selected && form.weekdays.length === 1) return; const weekdays = (selected ? form.weekdays.filter((day) => day !== String(iso)) : [...form.weekdays, String(iso)]).sort((a, b) => Number(a) - Number(b)); onChange({ ...form, weekdays }); }} className={`h-11 w-11 rounded-full border font-black ${selected ? 'border-[var(--theme-accent-text)] bg-[var(--theme-accent-solid)]' : 'border-[var(--theme-border)] bg-[var(--theme-input)]'}`}>{label}</button>; })}</div></fieldset> : null}
       {form.type === 'MONTHLY' ? <label className="block text-sm font-bold"><span>날짜</span><input aria-label="반복 날짜" type="number" min="1" max="31" value={form.dayOfMonth} onChange={(event) => onChange({ ...form, dayOfMonth: event.target.value })} className="mt-1 w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-input)] p-3" /></label> : null}
       <div className="grid gap-2 sm:grid-cols-2"><label className="flex gap-2 rounded-xl bg-[var(--theme-surface-raised)] p-3 text-sm font-bold"><input aria-label="회차마다 완료 초기화" type="checkbox" checked={form.resetCompletionOnCycle} onChange={(event) => onChange({ ...form, resetCompletionOnCycle: event.target.checked })} />완료 초기화</label><label className="flex gap-2 rounded-xl bg-[var(--theme-surface-raised)] p-3 text-sm font-bold"><input aria-label="회차마다 부여 초기화" type="checkbox" checked={form.resetAssignmentOnCycle} onChange={(event) => onChange({ ...form, resetAssignmentOnCycle: event.target.checked })} />부여 초기화</label></div>
     </div>

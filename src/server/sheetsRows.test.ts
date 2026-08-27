@@ -189,7 +189,7 @@ describe('sheets row parsing', () => {
     expect(task).toMatchObject({
       taskInstanceId: 'instance-100',
       schedule: { ruleVersion: 1, recurrence: { type: 'DAILY', time: '09:00' } },
-      pendingSchedule: { ruleVersion: 2, recurrence: { type: 'WEEKLY', weekday: 5, time: '08:30' } },
+      pendingSchedule: { ruleVersion: 2, recurrence: { type: 'WEEKLY', weekdays: [5], time: '08:30' } },
     });
     expect(buildTaskAppendRow(headers, task!, '2026-08-03T00:00:00Z', row)).toEqual([
       '5', '예약 과제', 'DAILY', 'T100', '2', '1', 'instance-100', '2026-08-01T00:00:00.000Z',
@@ -207,6 +207,32 @@ describe('sheets row parsing', () => {
         schedule: { ruleVersion: 1, effectiveFrom: '1970-01-01T00:00:00.000Z', timeZone: 'Asia/Tokyo', recurrence: { type: 'NONE' } },
         pendingSchedule: null,
       });
+  });
+
+  it('normalizes multi-weekday cells and falls back only to the legacy singleton column', () => {
+    const baseHeaders = [
+      'taskId', 'title', 'description', 'reward', 'isActive', 'sortOrder', 'createdAt', 'taskInstanceId',
+      'ruleVersion', 'scheduleEffectiveFrom', 'recurrenceTimeZone', 'recurrenceType', 'recurrenceTime',
+      'recurrenceWeekday', 'recurrenceDayOfMonth', 'resetCompletionOnCycle', 'resetAssignmentOnCycle',
+      'pendingRuleVersion', 'pendingEffectiveFrom', 'pendingTimeZone', 'pendingRecurrenceType',
+      'pendingRecurrenceTime', 'pendingRecurrenceWeekday', 'pendingRecurrenceDayOfMonth',
+      'pendingResetCompletionOnCycle', 'pendingResetAssignmentOnCycle', 'recurrenceWeekdays',
+      'pendingRecurrenceWeekdays',
+    ];
+    const values: Record<string, string> = {
+      taskId: 'T-W', title: '주간', reward: '1', isActive: 'TRUE', sortOrder: '1',
+      createdAt: '2026-08-01T00:00:00Z', taskInstanceId: 'I-W', ruleVersion: '1',
+      scheduleEffectiveFrom: '2026-08-01T00:00:00Z', recurrenceTimeZone: 'Asia/Seoul',
+      recurrenceType: 'WEEKLY', recurrenceTime: '09:00', recurrenceWeekday: '2',
+      recurrenceWeekdays: '4,1', resetCompletionOnCycle: 'TRUE', resetAssignmentOnCycle: 'FALSE',
+    };
+    const row = baseHeaders.map((header) => values[header] ?? '');
+    expect(parseTaskRow(row, createHeaderIndex(baseHeaders))?.schedule?.recurrence)
+      .toEqual({ type: 'WEEKLY', weekdays: [1, 4], time: '09:00' });
+
+    row[baseHeaders.indexOf('recurrenceWeekdays')] = '';
+    expect(parseTaskRow(row, createHeaderIndex(baseHeaders))?.schedule?.recurrence)
+      .toEqual({ type: 'WEEKLY', weekdays: [2], time: '09:00' });
   });
 
   it('forwards malformed schedule diagnostics to ClassTask and blocks accidental repair writes', () => {
