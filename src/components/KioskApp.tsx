@@ -87,6 +87,8 @@ export function KioskApp() {
     localFingerprint: 'null',
     cartItems: [],
   });
+  const checkoutOperationRef = useRef<{ fingerprint: string; operationId: string } | null>(null);
+  const checkoutInFlightRef = useRef(false);
 
   const loadProducts = useCallback(async (options: { shouldApply?: () => boolean } = {}) => {
     const generation = loadGenerationRef.current + 1;
@@ -266,6 +268,7 @@ export function KioskApp() {
 
   function clearCart() {
     cartGenerationRef.current += 1;
+    checkoutOperationRef.current = null;
     setConfirmedServerPricing(null);
     setCartItems([]);
     setMessage('');
@@ -288,7 +291,7 @@ export function KioskApp() {
   }
 
   async function completeCheckoutWithQrValue(qrValue: string) {
-    if (isCheckingOut) return;
+    if (checkoutInFlightRef.current) return;
 
     const studentId = qrValue.trim();
 
@@ -310,6 +313,7 @@ export function KioskApp() {
       return;
     }
 
+    checkoutInFlightRef.current = true;
     setIsCheckingOut(true);
     setFailure(null);
     setPaymentStep('processing');
@@ -332,7 +336,12 @@ export function KioskApp() {
       const checkoutResponse = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId: studentPayload.studentId, items: cartItems, expectedPricing: currentPreview }),
+        body: JSON.stringify({
+          operationId: checkoutOperationId(studentPayload.studentId, cartItems, currentPreview),
+          studentId: studentPayload.studentId,
+          items: cartItems,
+          expectedPricing: currentPreview,
+        }),
       });
       const checkoutRaw: unknown = await checkoutResponse.json().catch(() => null);
       const checkoutPayload = checkoutResponse.ok ? parseCheckoutSuccessResponse(checkoutRaw) : null;
@@ -351,6 +360,7 @@ export function KioskApp() {
               localFingerprint: currentPricingContext.localFingerprint,
               payload: latestPricing,
             });
+            checkoutOperationRef.current = null;
             setMessage(errorPayload.message || '상품 가격 또는 행사가 변경되었습니다. 최신 금액을 확인해 주세요.');
             setManualQrValue('');
             setPaymentStep(null);
@@ -375,6 +385,7 @@ export function KioskApp() {
         }),
       );
       setPaymentResult(checkoutPayload);
+      checkoutOperationRef.current = null;
       setCompletedCartDetails(checkoutPayload.items);
       setCartItems([]);
       setManualQrValue('');
@@ -383,6 +394,7 @@ export function KioskApp() {
       setFailure({ title: '결제 실패', message: '잘못된 QR 코드입니다.' });
       setPaymentStep('failure');
     } finally {
+      checkoutInFlightRef.current = false;
       setIsCheckingOut(false);
     }
   }
@@ -394,6 +406,7 @@ export function KioskApp() {
 
   function resetToShop() {
     cartGenerationRef.current += 1;
+    checkoutOperationRef.current = null;
     setPaymentStep(null);
     setPaymentResult(null);
     setCompletedCartDetails([]);
@@ -407,6 +420,20 @@ export function KioskApp() {
     setFailure(null);
     setManualQrValue('');
     setPaymentStep('checkout');
+  }
+
+  function checkoutOperationId(
+    studentId: string,
+    items: CartItem[],
+    expectedPricing: CheckoutPreviewPayload,
+  ): string {
+    const fingerprint = JSON.stringify({ studentId, items, expectedPricing });
+    if (checkoutOperationRef.current?.fingerprint === fingerprint) {
+      return checkoutOperationRef.current.operationId;
+    }
+    const operationId = crypto.randomUUID();
+    checkoutOperationRef.current = { fingerprint, operationId };
+    return operationId;
   }
 
   return (

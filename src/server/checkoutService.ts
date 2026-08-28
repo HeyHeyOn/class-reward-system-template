@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { CartItem, CheckoutLineSnapshot, Promotion, Transaction } from '@/domain/types';
 import {
   checkoutPricingMatches,
@@ -42,6 +43,66 @@ export type ProcessCheckoutResult =
   | { ok: false; code: 'STUDENT_NOT_FOUND'; message: string }
   | { ok: false; code: 'STUDENT_INACTIVE'; message: string }
   | { ok: false; code: 'PRICE_CHANGED'; message: string; latestPricing: CartPricingPreviewSuccess };
+
+export type CheckoutCommandInput = ProcessCheckoutInput & {
+  operationId: string;
+  payloadHash: string;
+};
+
+export type CheckoutOperationFailure = {
+  ok: false;
+  code: 'OPERATION_CONFLICT' | 'OPERATION_PENDING' | 'OPERATION_FAILED';
+  message: string;
+  failureCode?: string;
+};
+
+export type CheckoutCommandResult = ProcessCheckoutResult | CheckoutOperationFailure;
+
+/** Storage-neutral mutation seam. Sheets remains the default route composition. */
+export type CheckoutCommand = {
+  execute(input: CheckoutCommandInput): Promise<CheckoutCommandResult>;
+};
+
+export function createSheetsCheckoutCommand(store: TabularStore): CheckoutCommand {
+  return {
+    execute(input) {
+      return processCheckout(store, {
+        studentId: input.studentId,
+        items: input.items,
+        expectedPricing: input.expectedPricing,
+        operator: input.operator,
+        now: input.now,
+        transactionIdFactory: input.transactionIdFactory,
+      });
+    },
+  };
+}
+
+export function createCheckoutPayloadHash(
+  input: Pick<CheckoutCommandInput, 'studentId' | 'items' | 'expectedPricing' | 'operator'>,
+): string {
+  const quantities = new Map<string, number>();
+  for (const item of input.items) {
+    const productId = item.productId.trim();
+    const quantity = (quantities.get(productId) ?? 0) + item.quantity;
+    if (!productId || !Number.isSafeInteger(quantity) || quantity < 1) {
+      throw new Error('Cannot hash an invalid checkout payload.');
+    }
+    quantities.set(productId, quantity);
+  }
+  const canonicalPayload = {
+    studentId: input.studentId.trim(),
+    items: [...quantities]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([productId, quantity]) => ({ productId, quantity })),
+    expectedPricing: input.expectedPricing,
+    operator: input.operator?.trim() || 'kiosk',
+  };
+  if (!canonicalPayload.studentId || !input.expectedPricing?.ok) {
+    throw new Error('Cannot hash an invalid checkout payload.');
+  }
+  return createHash('sha256').update(stableJson(canonicalPayload), 'utf8').digest('hex');
+}
 
 export type PreviewCheckoutCartInput = {
   items: CartItem[];
@@ -180,4 +241,32 @@ function selectProductRecords(
 
 function createTransactionId(date: Date): string {
   return `T${date.toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)}`;
+}
+
+function stableJson(value: unknown, ancestors = new Set<object>()): string {
+  if (value === null) return 'null';
+  if (typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value);
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new Error('Cannot hash an invalid checkout payload.');
+    return JSON.stringify(value);
+  }
+  if (typeof value !== 'object') throw new Error('Cannot hash an invalid checkout payload.');
+  if (ancestors.has(value)) throw new Error('Cannot hash an invalid checkout payload.');
+  const prototype = Object.getPrototypeOf(value);
+  if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) {
+    throw new Error('Cannot hash an invalid checkout payload.');
+  }
+
+  ancestors.add(value);
+  try {
+    if (Array.isArray(value)) {
+      return `[${value.map((entry) => stableJson(entry, ancestors)).join(',')}]`;
+    }
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort().map((key) => (
+      `${JSON.stringify(key)}:${stableJson(record[key], ancestors)}`
+    )).join(',')}}`;
+  } finally {
+    ancestors.delete(value);
+  }
 }

@@ -247,7 +247,12 @@ describe('POST /api/checkout/preview', () => {
     const checkoutResponse = await commitCheckout(new Request('http://localhost/api/checkout', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ studentId: 'S001', items, expectedPricing: previewBody }),
+      body: JSON.stringify({
+        operationId: '11111111-1111-4111-8111-111111111111',
+        studentId: 'S001',
+        items,
+        expectedPricing: previewBody,
+      }),
     }));
     const checkoutBody = await checkoutResponse.json();
 

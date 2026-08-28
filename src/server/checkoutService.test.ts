@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { previewCheckoutCart, processCheckout } from '@/server/checkoutService';
+import { createCheckoutPayloadHash, createSheetsCheckoutCommand, previewCheckoutCart, processCheckout } from '@/server/checkoutService';
 import * as promotionQueries from '@/server/repositories/sheets/promotionQueries';
 import type { OperationalSheetName, TabularStore } from '@/server/storage/tabularStore';
 
@@ -79,6 +79,39 @@ const noPromotionQuote = (...items: ReturnType<typeof noPromotionSnapshot>[]) =>
 
 describe('processCheckout', () => {
   afterEach(() => vi.restoreAllMocks());
+
+  it.each([
+    { label: 'non-finite number', invalid: Number.NaN },
+    { label: 'undefined array value', invalid: undefined },
+  ])('rejects $label instead of aliasing invalid payload hash values', ({ invalid }) => {
+    const expectedPricing = noPromotionQuote(noPromotionSnapshot('P001', '연필', 300, 1));
+    const base = {
+      studentId: 'S001', items: [{ productId: 'P001', quantity: 1 }],
+      expectedPricing, operator: 'kiosk',
+    };
+    const malformed = invalid === undefined
+      ? { ...base, expectedPricing: { ...expectedPricing, items: [invalid] } }
+      : { ...base, expectedPricing: { ...expectedPricing, totalAmount: invalid } };
+
+    expect(() => createCheckoutPayloadHash(malformed as never)).toThrow('Cannot hash an invalid checkout payload.');
+  });
+
+  it('preserves transaction ID factory injection through the Sheets command adapter', async () => {
+    const store = new FakeSheetsStore(baseRows);
+    const result = await createSheetsCheckoutCommand(store).execute({
+      operationId: 'checkout-op-sheets-adapter',
+      payloadHash: 'a'.repeat(64),
+      studentId: 'S001',
+      items: [{ productId: 'P001', quantity: 1 }],
+      expectedPricing: noPromotionQuote(noPromotionSnapshot('P001', '연필', 300, 1)),
+      operator: 'adapter',
+      now: () => new Date('2026-05-19T02:00:00.000Z'),
+      transactionIdFactory: () => 'T-ADAPTER-001',
+    });
+
+    expect(result).toMatchObject({ ok: true, transactionId: 'T-ADAPTER-001' });
+    expect(store.appends[0].values[0]).toBe('T-ADAPTER-001');
+  });
 
   it('updates student balance, product stock, and appends a transaction row', async () => {
     const store = new FakeSheetsStore(baseRows);

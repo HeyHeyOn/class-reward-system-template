@@ -410,7 +410,9 @@ describe('KioskApp', () => {
 
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input) === '/api/checkout')).toBe(true));
     const checkoutCall = vi.mocked(fetch).mock.calls.find(([input]) => String(input) === '/api/checkout')!;
-    expect(JSON.parse(String(checkoutCall[1]?.body))).toEqual({
+    const checkoutBody = JSON.parse(String(checkoutCall[1]?.body)) as Record<string, unknown>;
+    expect(checkoutBody).toEqual({
+      operationId: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i),
       studentId: 'S001', items: [{ productId: 'P001', quantity: 1 }],
       expectedPricing: regularPreview([{ productId: 'P001', quantity: 1 }]),
     });
@@ -705,6 +707,85 @@ describe('KioskApp', () => {
     expect(screen.getByRole('alert').textContent).toContain('가격이 변경되었습니다.');
     expect(screen.getByTestId('checkout-total-bar').textContent).toContain('250별');
     expect(screen.getByRole('button', { name: 'QR 결제' })).toHaveProperty('disabled', false);
+  });
+
+  it('synchronously ignores duplicate checkout submissions before React state rerenders', async () => {
+    let resolveStudent!: () => void;
+    const studentGate = new Promise<void>((resolve) => { resolveStudent = resolve; });
+    let studentLookups = 0;
+    let checkoutCalls = 0;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/products') return jsonResponse(products);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', qrManualInputEnabled: true });
+      if (url === '/api/promotions/active') return jsonResponse([]);
+      if (url === '/api/students/S001') {
+        studentLookups += 1;
+        return studentGate.then(() => jsonResponse(studentBefore));
+      }
+      if (url === '/api/checkout' && init?.method === 'POST') {
+        checkoutCalls += 1;
+        return jsonResponse({
+          ok: true, transactionId: 'T-GUARD', studentId: 'S001', studentName: '김민준',
+          totalAmount: 300, balanceBefore: 3500, balanceAfter: 3200,
+          items: regularPreview([{ productId: 'P001', quantity: 1 }]).items,
+        });
+      }
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+
+    render(<KioskApp />);
+    fireEvent.click(await screen.findByRole('button', { name: '연필 300별 담기' }));
+    fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
+    const input = screen.getByLabelText('QR 값 직접 입력');
+    fireEvent.change(input, { target: { value: 'S001' } });
+    const form = input.closest('form');
+    if (!form) throw new Error('checkout form missing');
+    act(() => {
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+
+    expect(studentLookups).toBe(1);
+    resolveStudent();
+    await waitFor(() => expect(checkoutCalls).toBe(1));
+  });
+
+  it('reuses one checkout operation ID when retrying the same failed request', async () => {
+    const checkoutBodies: Array<Record<string, unknown>> = [];
+    vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue('11111111-1111-4111-8111-111111111111');
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/products') return jsonResponse(products);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', qrManualInputEnabled: true });
+      if (url === '/api/promotions/active') return jsonResponse([]);
+      if (url === '/api/students/S001') return jsonResponse(studentBefore);
+      if (url === '/api/checkout' && init?.method === 'POST') {
+        checkoutBodies.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+        if (checkoutBodies.length === 1) return jsonResponse({ error: '일시적인 오류입니다.' }, { status: 500 });
+        return jsonResponse({
+          ok: true, transactionId: 'T-RETRY', studentId: 'S001', studentName: '김민준',
+          totalAmount: 300, balanceBefore: 3500, balanceAfter: 3200,
+          items: regularPreview([{ productId: 'P001', quantity: 1 }]).items,
+        });
+      }
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+
+    render(<KioskApp />);
+    fireEvent.click(await screen.findByRole('button', { name: '연필 300별 담기' }));
+    fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
+    fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 결제하기' }));
+    const failureDialog = await screen.findByRole('dialog', { name: '결제 실패' });
+    fireEvent.click(within(failureDialog).getByRole('button', { name: '다시 시도' }));
+    fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 결제하기' }));
+
+    await screen.findByRole('dialog', { name: '결제 완료' });
+    expect(checkoutBodies).toHaveLength(2);
+    expect(checkoutBodies[0].operationId).toBe('11111111-1111-4111-8111-111111111111');
+    expect(checkoutBodies[1].operationId).toBe(checkoutBodies[0].operationId);
   });
 
   it('adopts an in-flight 409 quote after the local promotion boundary and reconfirms that server quote', async () => {

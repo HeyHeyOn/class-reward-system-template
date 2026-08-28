@@ -1,26 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createConfiguredSheetsStore } from '@/server/googleSheets';
-import { processCheckout } from '@/server/checkoutService';
+import { createCheckoutPayloadHash, createSheetsCheckoutCommand } from '@/server/checkoutService';
 import { POST } from './route';
+
+const executeCheckout = vi.hoisted(() => vi.fn());
 
 vi.mock('@/server/googleSheets', () => ({
   createConfiguredSheetsStore: vi.fn(),
 }));
 vi.mock('@/server/checkoutService', () => ({
-  processCheckout: vi.fn(),
+  createCheckoutPayloadHash: vi.fn(() => 'a'.repeat(64)),
+  createSheetsCheckoutCommand: vi.fn(() => ({ execute: executeCheckout })),
 }));
-
-function checkoutRequest(): Request {
-  return new Request('http://localhost/api/checkout', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      studentId: 'S001',
-      items: [{ productId: 'P001', quantity: 1 }],
-      expectedPricing,
-    }),
-  });
-}
 
 const expectedPricing = {
   ok: true as const, totalAmount: 300,
@@ -31,15 +22,30 @@ const expectedPricing = {
   }],
 };
 
+function checkoutRequest(overrides: Record<string, unknown> = {}): Request {
+  return new Request('http://localhost/api/checkout', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      operationId: '11111111-1111-4111-8111-111111111111',
+      studentId: 'S001',
+      items: [{ productId: 'P001', quantity: 1 }],
+      expectedPricing,
+      ...overrides,
+    }),
+  });
+}
+
 describe('POST /api/checkout', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(createConfiguredSheetsStore).mockResolvedValue({} as never);
+    vi.mocked(createSheetsCheckoutCommand).mockReturnValue({ execute: executeCheckout });
   });
 
   it('logs internal failures and returns a generic 500 without leaking exception details', async () => {
     const error = new Error('private provider credential and sheet coordinates');
-    vi.mocked(processCheckout).mockRejectedValue(error);
+    executeCheckout.mockRejectedValue(error);
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     const response = await POST(checkoutRequest());
@@ -48,7 +54,8 @@ describe('POST /api/checkout', () => {
     expect(response.status).toBe(500);
     expect(body).toEqual({ error: '결제를 처리하지 못했습니다.' });
     expect(JSON.stringify(body)).not.toContain(error.message);
-    expect(consoleError).toHaveBeenCalledWith('Failed to process checkout', error);
+    expect(consoleError).toHaveBeenCalledWith('checkout_failed');
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(error.message);
   });
 
   it('preserves structured domain failures as 400 responses', async () => {
@@ -56,11 +63,9 @@ describe('POST /api/checkout', () => {
       ok: false as const,
       code: 'INSUFFICIENT_STOCK' as const,
       message: '재고가 부족합니다.',
-      productId: 'P001',
-      requestedQuantity: 2,
-      currentStock: 1,
+      productId: 'P001', requestedQuantity: 2, currentStock: 1,
     };
-    vi.mocked(processCheckout).mockResolvedValue(failure);
+    executeCheckout.mockResolvedValue(failure);
 
     const response = await POST(checkoutRequest());
 
@@ -68,43 +73,95 @@ describe('POST /api/checkout', () => {
     await expect(response.json()).resolves.toEqual(failure);
   });
 
-  it('rejects a missing expectedPricing quote before opening the store', async () => {
-    const missingQuote = new Request('http://localhost/api/checkout', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ studentId: 'S001', items: [{ productId: 'P001', quantity: 1 }] }),
-    });
+  it.each([null, [], 'checkout'])(
+    'rejects a non-object body before opening the store',
+    async (body) => {
+      const response = await POST(new Request('http://localhost/api/checkout', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+      }));
+      expect(response.status).toBe(400);
+      expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
+    },
+  );
 
-    const response = await POST(missingQuote);
+  it('rejects unsafe cart quantities before hashing or opening the store', async () => {
+    const response = await POST(checkoutRequest({
+      items: [{ productId: 'P001', quantity: Number.MAX_SAFE_INTEGER + 1 }],
+    }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: '장바구니 형식이 올바르지 않습니다.' });
+    expect(createCheckoutPayloadHash).not.toHaveBeenCalled();
+    expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
+  });
+
+  it('rejects a missing expectedPricing quote before opening the store', async () => {
+    const response = await POST(checkoutRequest({ expectedPricing: undefined }));
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({ error: '예상 결제 금액 형식이 올바르지 않습니다.' });
     expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
-    expect(processCheckout).not.toHaveBeenCalled();
+    expect(executeCheckout).not.toHaveBeenCalled();
   });
 
-  it('strictly validates expectedPricing before opening the store and forwards exact quotes', async () => {
-    const malformed = new Request('http://localhost/api/checkout', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ studentId: 'S001', items: [{ productId: 'P001', quantity: 1 }], expectedPricing: { ...expectedPricing, totalAmount: 999 } }),
-    });
-    const invalidResponse = await POST(malformed);
-    expect(invalidResponse.status).toBe(400);
+  it.each([undefined, '', '   ', 'not-a-uuid'])(
+    'rejects invalid operation ID %s before opening the store',
+    async (operationId) => {
+      const response = await POST(checkoutRequest({ operationId }));
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({ error: '결제 작업 ID 형식이 올바르지 않습니다.' });
+      expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
+      expect(executeCheckout).not.toHaveBeenCalled();
+    },
+  );
+
+  it('strictly validates pricing, computes the canonical hash server-side, and invokes the selected command', async () => {
+    const malformed = await POST(checkoutRequest({
+      expectedPricing: { ...expectedPricing, totalAmount: 999 },
+    }));
+    expect(malformed.status).toBe(400);
     expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
 
-    vi.mocked(processCheckout).mockResolvedValue({ ok: true, transactionId: 'T1', studentId: 'S001', studentName: '민준', totalAmount: 300, balanceBefore: 500, balanceAfter: 200, items: expectedPricing.items });
-    const valid = new Request('http://localhost/api/checkout', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ studentId: 'S001', items: [{ productId: 'P001', quantity: 1 }], expectedPricing }),
+    const success = {
+      ok: true as const, transactionId: 'T1', studentId: 'S001', studentName: '민준',
+      totalAmount: 300, balanceBefore: 500, balanceAfter: 200, items: expectedPricing.items,
+    };
+    executeCheckout.mockResolvedValue(success);
+    const response = await POST(checkoutRequest());
+
+    expect(response.status).toBe(200);
+    expect(createCheckoutPayloadHash).toHaveBeenCalledWith({
+      operationId: '11111111-1111-4111-8111-111111111111',
+      studentId: 'S001',
+      items: [{ productId: 'P001', quantity: 1 }],
+      expectedPricing,
+      operator: 'kiosk',
     });
-    expect((await POST(valid)).status).toBe(200);
-    expect(processCheckout).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ expectedPricing }));
+    expect(executeCheckout).toHaveBeenCalledWith({
+      operationId: '11111111-1111-4111-8111-111111111111',
+      studentId: 'S001',
+      items: [{ productId: 'P001', quantity: 1 }],
+      expectedPricing,
+      operator: 'kiosk',
+      payloadHash: 'a'.repeat(64),
+    });
   });
 
-  it('returns price changes as safe 409 responses', async () => {
-    const changed = { ok: false as const, code: 'PRICE_CHANGED' as const, message: '최신 금액을 확인해 주세요.', latestPricing: expectedPricing };
-    vi.mocked(processCheckout).mockResolvedValue(changed);
-    const response = await POST(checkoutRequest());
-    expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toEqual(changed);
-  });
+  it.each(['PRICE_CHANGED', 'OPERATION_CONFLICT', 'OPERATION_PENDING', 'OPERATION_FAILED'])(
+    'returns %s as a safe 409 response',
+    async (code) => {
+      const changed = {
+        ok: false as const,
+        code,
+        message: '요청을 다시 확인해 주세요.',
+        ...(code === 'PRICE_CHANGED' ? { latestPricing: expectedPricing } : {}),
+      };
+      executeCheckout.mockResolvedValue(changed);
+
+      const response = await POST(checkoutRequest());
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toEqual(changed);
+    },
+  );
 });
