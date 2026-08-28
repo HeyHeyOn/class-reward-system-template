@@ -1,7 +1,10 @@
 import type { TaskCompletionEvidence } from '@/domain/types';
 import { isTaskAvailable } from '@/domain/taskAvailability';
 import type { TaskCycleProjectionDto } from './repositories/sheets/taskHistoryQueries';
-import type { PadletOperationBinding } from './padletEvidenceClaimStore';
+import type {
+  PadletBoundEvidenceClaimResult,
+  PadletOperationBinding,
+} from './padletEvidenceClaimStore';
 import {
   fetchPadletBoardPosts,
   isCanonicalPadletPostId,
@@ -21,8 +24,25 @@ export type PadletTaskEligibility = { status: PadletEligibilityStatus; message: 
 
 type Dependencies = {
   fetchBoardPosts?: (input: { boardId: string }) => Promise<PadletPost[]>;
-  claimStore?: Pick<PadletEvidenceClaimStore, 'getClaimOwners'>;
+  claimStore?: PadletClaimOwnerReader;
 };
+
+/** Provider-independent read seam used by listing projections. */
+export interface PadletClaimOwnerReader {
+  getClaimOwners(boardId: string, postIds: readonly string[]): Promise<Map<string, string | null>>;
+}
+
+/** Provider-independent atomic binding seam; Redis remains the Sheets composition. */
+export interface PadletEvidenceClaimGateway extends PadletClaimOwnerReader {
+  getOperationBinding(operationId: string): Promise<PadletOperationBinding | null>;
+  claimBoundEvidence(input: {
+    operationId: string;
+    taskId: string;
+    studentId: string;
+    cycleStartsAt: string;
+    evidence: TaskCompletionEvidence;
+  }): Promise<PadletBoundEvidenceClaimResult>;
+}
 
 export type PadletTaskVerificationErrorCode =
   | 'SUBMISSION_REQUIRED'
@@ -48,7 +68,7 @@ export class PadletTaskVerificationError extends Error {
 
 export type ClaimPadletEvidenceDependencies = {
   fetchBoardPosts?: (input: { boardId: string }) => Promise<PadletPost[]>;
-  claimStore?: Pick<PadletEvidenceClaimStore, 'getOperationBinding' | 'getClaimOwners' | 'claimBoundEvidence'>;
+  claimStore?: PadletEvidenceClaimGateway;
 };
 
 export type ClaimPadletEvidenceInput = {
