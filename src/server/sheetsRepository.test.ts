@@ -264,6 +264,28 @@ const fakeReader = {
   },
 };
 
+const BULK_OPERATION_ID = 'a0000000-0000-4000-8000-000000000001';
+
+function statefulBulkStore() {
+  const rows = structuredClone(sheetRows);
+  const writes: string[] = [];
+  const store = {
+    async getRows(sheetName: keyof typeof rows) {
+      return rows[sheetName];
+    },
+    async updateCell(sheetName: 'Students' | 'Products' | 'Transactions', rowNumber: number, columnName: string, value: string | number) {
+      writes.push(`update:${sheetName}`);
+      const column = rows[sheetName][0].indexOf(columnName);
+      rows[sheetName][rowNumber - 1][column] = String(value);
+    },
+    async appendRow(sheetName: 'Transactions', values: string[]) {
+      writes.push('append:Transactions');
+      rows[sheetName].push(values);
+    },
+  };
+  return { rows, writes, store };
+}
+
 describe('sheets repository', () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -435,6 +457,147 @@ describe('sheets repository', () => {
       expect.objectContaining({ productId: 'CANCEL-TR001', name: '거래 취소', quantity: 1, subtotal: -600 }),
     ]);
     expect(appended[0].values.slice(5, 10)).toEqual(['-600', '2900', '3500', 'CANCEL_REVERSAL', 'cancel:TR001']);
+  });
+
+  it('replays a Sheets cancellation by operation ID without another write', async () => {
+    const rows = structuredClone(sheetRows);
+    rows.Students[1][2] = '2900';
+    const writes: string[] = [];
+    const store = {
+      async getRows(sheetName: keyof typeof rows) { return rows[sheetName]; },
+      async updateCell(sheetName: 'Students' | 'Products' | 'Transactions', rowNumber: number, columnName: string, value: string | number) {
+        writes.push(`update:${sheetName}`);
+        const column = rows[sheetName][0].indexOf(columnName);
+        rows[sheetName][rowNumber - 1][column] = String(value);
+      },
+      async appendRow(sheetName: 'Transactions', values: string[]) {
+        writes.push('append:Transactions');
+        rows[sheetName].push(values);
+      },
+    };
+    const operationId = '30000000-0000-4000-8000-000000000001';
+
+    const first = await cancelTransaction(store, 'TR001', operationId);
+    const writesAfterFirst = [...writes];
+    const second = await cancelTransaction(store, 'TR001', operationId);
+
+    expect(first).toEqual(second);
+    expect(first.reversalTransaction.transactionId).toBe(`CANCEL-${operationId}`);
+    expect(writes).toEqual(writesAfterFirst);
+  });
+
+  it.each([
+    ['totalAmount', '999'],
+    ['balanceBefore', '1'],
+    ['balanceAfter', '2'],
+    ['studentName', '변조'],
+    ['items', '[]'],
+  ])('rejects Sheets cancellation replay when immutable %s drifted', async (columnName, value) => {
+    const rows = structuredClone(sheetRows);
+    rows.Students[1][2] = '2900';
+    const writes: string[] = [];
+    const store = {
+      async getRows(sheetName: keyof typeof rows) { return rows[sheetName]; },
+      async updateCell(sheetName: 'Students' | 'Products' | 'Transactions', rowNumber: number, column: string, next: string | number) {
+        writes.push(`update:${sheetName}`);
+        rows[sheetName][rowNumber - 1][rows[sheetName][0].indexOf(column)] = String(next);
+      },
+      async appendRow(sheetName: 'Transactions', values: string[]) {
+        writes.push('append:Transactions');
+        rows[sheetName].push(values);
+      },
+    };
+    const operationId = '30000000-0000-4000-8000-000000000001';
+    await cancelTransaction(store, 'TR001', operationId);
+    const writesAfterFirst = [...writes];
+    const reversal = rows.Transactions.at(-1)!;
+    reversal[rows.Transactions[0].indexOf(columnName)] = value;
+
+    await expect(cancelTransaction(store, 'TR001', operationId)).rejects.toThrow(/취소|무결성|일치|조정/);
+    expect(writes).toEqual(writesAfterFirst);
+  });
+
+  it('rejects a second Sheets cancellation when another operation already reversed the original', async () => {
+    const rows = structuredClone(sheetRows);
+    rows.Students[1][2] = '2900';
+    rows.Transactions.push([
+      'CANCEL-30000000-0000-4000-8000-000000000099', '2026-08-28T06:00:00.000Z',
+      'S001', '김민준', JSON.stringify([{ productId: 'CANCEL-TR001', name: '거래 취소', price: -600, quantity: 1, subtotal: -600 }]),
+      '-600', '2900', '3500', 'CANCEL_REVERSAL', 'cancel:TR001',
+    ]);
+    const writes: string[] = [];
+    const store = {
+      async getRows(sheetName: keyof typeof rows) { return rows[sheetName]; },
+      async updateCell() { writes.push('update'); },
+      async appendRow() { writes.push('append'); },
+    };
+
+    await expect(cancelTransaction(store, 'TR001', '30000000-0000-4000-8000-000000000001'))
+      .rejects.toThrow(/이미|취소|무결성|조정/);
+    expect(writes).toEqual([]);
+  });
+
+  it.each([
+    ['malformed linked reversal', [
+      'CANCEL-OTHER', '2026-08-28T06:00:00.000Z', 'S001', '김민준', '[]',
+      'not-a-number', '2900', '3500', 'CANCEL_REVERSAL', 'cancel:TR001',
+    ]],
+    ['malformed deterministic-ID collision', [
+      'CANCEL-30000000-0000-4000-8000-000000000001', '2026-08-28T06:00:00.000Z',
+      'S999', '다른 학생', '[]', 'not-a-number', '0', '0', 'UNKNOWN', 'other',
+    ]],
+  ])('rejects %s from raw Sheets rows before resource lookup or writes', async (_label, rawRow) => {
+    const rows = structuredClone(sheetRows);
+    rows.Transactions.push(rawRow);
+    const writes: string[] = [];
+    const store = {
+      async getRows(sheetName: keyof typeof rows) {
+        if (sheetName !== 'Transactions') throw new Error('resource lookup must not occur');
+        return rows[sheetName];
+      },
+      async updateCell() { writes.push('update'); },
+      async appendRow() { writes.push('append'); },
+    };
+
+    await expect(cancelTransaction(store, 'TR001', '30000000-0000-4000-8000-000000000001'))
+      .rejects.toThrow(/무결성|취소할 수/);
+    expect(writes).toEqual([]);
+  });
+
+  it.each(['CANCEL_REVERSAL', 'UNKNOWN', 'FAILED'])('rejects unsupported Sheets transaction status %s before resource lookup or writes', async (status) => {
+    const rows = structuredClone(sheetRows);
+    rows.Transactions[1][8] = status;
+    const writes: string[] = [];
+    const store = {
+      async getRows(sheetName: keyof typeof rows) {
+        if (sheetName !== 'Transactions') throw new Error('resource lookup must not occur');
+        return rows[sheetName];
+      },
+      async updateCell() { writes.push('update'); },
+      async appendRow() { writes.push('append'); },
+    };
+
+    await expect(cancelTransaction(store, 'TR001', '30000000-0000-4000-8000-000000000001'))
+      .rejects.toThrow(/무결성|취소할 수/);
+    expect(writes).toEqual([]);
+  });
+
+  it('rejects checkout cancellation when any snapshotted product is missing before every write', async () => {
+    const writes = vi.fn();
+    const store = {
+      async getRows(sheetName: string) {
+        if (sheetName === 'Transactions') return sheetRows.Transactions;
+        if (sheetName === 'Students') return sheetRows.Students;
+        if (sheetName === 'Products') return [sheetRows.Products[0], ...sheetRows.Products.slice(1).filter((row) => row[0] !== 'P001')];
+        return sheetRows[sheetName as keyof typeof sheetRows];
+      },
+      updateCell: writes,
+      appendRow: writes,
+    };
+
+    await expect(cancelTransaction(store, 'TR001', '30000000-0000-4000-8000-000000000001'))
+      .rejects.toThrow(/상품|무결성|수동 조정/);
+    expect(writes).not.toHaveBeenCalled();
   });
 
   it('restores total received quantity from an enriched snapshot without consulting current promotions', async () => {
@@ -833,14 +996,14 @@ describe('sheets repository', () => {
       async appendRow(sheetName: string, values: string[]) { appended.push({ sheetName, values }); },
     };
 
-    await expect(bulkAdjustStudentBalances(fakeStore, { studentIds: ['S001', 'S002'], mode: 'add', amount: 500 })).resolves.toEqual([
+    await expect(bulkAdjustStudentBalances(fakeStore, { studentIds: ['S001', 'S002'], mode: 'add', amount: 500, operationId: '40000000-0000-4000-8000-000000000011' })).resolves.toEqual([
       { studentId: 'S001', balance: 4000 },
       { studentId: 'S002', balance: 1700 },
     ]);
-    await expect(bulkAdjustStudentBalances(fakeStore, { studentIds: ['S001'], mode: 'subtract', amount: 1000 })).resolves.toEqual([
+    await expect(bulkAdjustStudentBalances(fakeStore, { studentIds: ['S001'], mode: 'subtract', amount: 1000, operationId: '40000000-0000-4000-8000-000000000012' })).resolves.toEqual([
       { studentId: 'S001', balance: 2500 },
     ]);
-    await expect(bulkAdjustStudentBalances(fakeStore, { studentIds: ['S002'], mode: 'set', amount: 9000 })).resolves.toEqual([
+    await expect(bulkAdjustStudentBalances(fakeStore, { studentIds: ['S002'], mode: 'set', amount: 9000, operationId: '40000000-0000-4000-8000-000000000013' })).resolves.toEqual([
       { studentId: 'S002', balance: 9000 },
     ]);
 
@@ -869,7 +1032,7 @@ describe('sheets repository', () => {
       async appendRow(sheetName: string, values: string[]) { appended.push({ sheetName, values }); },
     };
 
-    await expect(bulkAdjustStudentBalances(fakeStore, { studentIds: ['S002'], mode: 'subtract', amount: 1500 })).resolves.toEqual([
+    await expect(bulkAdjustStudentBalances(fakeStore, { studentIds: ['S002'], mode: 'subtract', amount: 1500, operationId: '40000000-0000-4000-8000-000000000014' })).resolves.toEqual([
       { studentId: 'S002', balance: -300 },
     ]);
 
@@ -892,11 +1055,11 @@ describe('sheets repository', () => {
       async appendRow() {},
     };
 
-    await bulkAdjustStudentBalances(fakeStore, { studentIds: ['S001', 'S002'], mode: 'add', amount: 100 });
+    await bulkAdjustStudentBalances(fakeStore, { studentIds: ['S001', 'S002'], mode: 'add', amount: 100, operationId: '40000000-0000-4000-8000-000000000015' });
     expect(transactionReads).toBe(1);
   });
 
-  it('falls back to canonical transaction headers when a bulk adjustment header read fails', async () => {
+  it('refuses to write when raw Transactions cannot be read for reconciliation', async () => {
     const events: string[] = [];
     const updates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
     const appended: Array<{ sheetName: string; values: string[] }> = [];
@@ -925,53 +1088,131 @@ describe('sheets repository', () => {
       studentIds: ['S001', 'S002'],
       mode: 'add',
       amount: 100,
-    })).resolves.toEqual([
-      { studentId: 'S001', balance: 3600 },
-      { studentId: 'S002', balance: 1300 },
-    ]);
+      operationId: '40000000-0000-4000-8000-000000000016',
+    })).rejects.toThrow('Transactions header read failed');
     expect(transactionReads).toBe(1);
-    expect(events).toEqual([
-      'read:Transactions',
-      'update:Students',
-      'update:Students',
-      'append:Transactions',
-      'append:Transactions',
+    expect(events).toEqual(['read:Transactions']);
+    expect(updates).toEqual([]);
+    expect(appended).toEqual([]);
+  });
+
+  it('canonicalizes student order, captures one timestamp, and creates deterministic operation rows', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-28T01:02:03.000Z'));
+    const { rows, store } = statefulBulkStore();
+
+    await expect(bulkAdjustStudentBalances(store, {
+      studentIds: [' S002 ', 'S001'], mode: 'add', amount: 25, operationId: BULK_OPERATION_ID,
+    })).resolves.toEqual([
+      { studentId: 'S001', balance: 3525 },
+      { studentId: 'S002', balance: 1225 },
     ]);
-    expect(updates).toEqual([
-      { sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: 3600 },
-      { sheetName: 'Students', rowNumber: 3, columnName: 'balance', value: 1300 },
+
+    const appended = rows.Transactions.slice(2);
+    expect(appended.map((row) => row[2])).toEqual(['S001', 'S002']);
+    expect(new Set(appended.map((row) => row[1]))).toEqual(new Set(['2026-08-28T01:02:03.000Z']));
+    expect(appended.map((row) => row[0])).toEqual([
+      expect.stringMatching(`^ADMIN-${BULK_OPERATION_ID}-[0-9a-f]{64}-[0-9a-f]+$`),
+      expect.stringMatching(`^ADMIN-${BULK_OPERATION_ID}-[0-9a-f]{64}-[0-9a-f]+$`),
     ]);
-    expect(appended).toHaveLength(2);
-    expect(appended[0]).toEqual({
-      sheetName: 'Transactions',
-      values: [
-        expect.stringMatching(/^ADMIN-/),
-        expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
-        'S001',
-        '김민준',
-        JSON.stringify([{ productId: 'ADMIN-ADD', name: '관리자 지급', price: -100, quantity: 1, subtotal: -100 }]),
-        '-100',
-        '3500',
-        '3600',
-        'ADMIN_ADJUSTMENT',
-        'admin',
-      ],
+    expect(appended[0].slice(4)).toEqual([
+      JSON.stringify([{ productId: 'ADMIN-ADD', name: '관리자 지급', price: -25, quantity: 1, subtotal: -25 }]),
+      '-25', '3500', '3525', 'ADMIN_ADJUSTMENT', 'admin',
+    ]);
+  });
+
+  it.each([
+    ['blank ID', { studentIds: [' '], mode: 'add', amount: 1, operationId: BULK_OPERATION_ID }],
+    ['duplicate trimmed IDs', { studentIds: ['S001', ' S001 '], mode: 'add', amount: 1, operationId: BULK_OPERATION_ID }],
+    ['unsafe amount', { studentIds: ['S001'], mode: 'add', amount: Number.MAX_SAFE_INTEGER + 1, operationId: BULK_OPERATION_ID }],
+    ['uppercase operation ID', { studentIds: ['S001'], mode: 'add', amount: 1, operationId: BULK_OPERATION_ID.toUpperCase() }],
+  ])('rejects %s before reading or writing Sheets', async (_label, update) => {
+    const store = { getRows: vi.fn(), updateCell: vi.fn(), appendRow: vi.fn() };
+    await expect(bulkAdjustStudentBalances(store, update as never)).rejects.toThrow();
+    expect(store.getRows).not.toHaveBeenCalled();
+    expect(store.updateCell).not.toHaveBeenCalled();
+    expect(store.appendRow).not.toHaveBeenCalled();
+  });
+
+  it.each(['items', 'timestamp', 'balanceBefore', 'balanceAfter', 'status', 'operator'])('rejects a missing %s transaction header before balance writes', async (column) => {
+    const { rows, writes, store } = statefulBulkStore();
+    const index = rows.Transactions[0].indexOf(column);
+    expect(index).toBeGreaterThanOrEqual(0);
+    rows.Transactions[0].splice(index, 1);
+
+    await expect(bulkAdjustStudentBalances(store, {
+      studentIds: ['S001'], mode: 'add', amount: 1, operationId: BULK_OPERATION_ID,
+    })).rejects.toThrow(/거래|무결성|수동/);
+    expect(writes).toEqual([]);
+  });
+
+  it('rejects an unsafe set delta before balance or ledger writes', async () => {
+    const { rows, writes, store } = statefulBulkStore();
+    rows.Students[1][2] = String(-Number.MAX_SAFE_INTEGER);
+
+    await expect(bulkAdjustStudentBalances(store, {
+      studentIds: ['S001'], mode: 'set', amount: Number.MAX_SAFE_INTEGER, operationId: BULK_OPERATION_ID,
+    })).rejects.toThrow(/안전한 정수/);
+    expect(writes).toEqual([]);
+  });
+
+  it('returns a deterministic no-write result for add-zero operations', async () => {
+    const { writes, store } = statefulBulkStore();
+    await expect(bulkAdjustStudentBalances(store, {
+      studentIds: ['S001'], mode: 'add', amount: 0, operationId: BULK_OPERATION_ID,
+    })).resolves.toEqual([{ studentId: 'S001', balance: 3500 }]);
+    expect(writes).toEqual([]);
+  });
+
+  it('writes an audit row for a set operation whose delta is zero', async () => {
+    const { rows, writes, store } = statefulBulkStore();
+    await bulkAdjustStudentBalances(store, {
+      studentIds: ['S001'], mode: 'set', amount: 3500, operationId: BULK_OPERATION_ID,
     });
-    expect(appended[1]).toEqual({
-      sheetName: 'Transactions',
-      values: [
-        expect.stringMatching(/^ADMIN-/),
-        expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
-        'S002',
-        '이서연',
-        JSON.stringify([{ productId: 'ADMIN-ADD', name: '관리자 지급', price: -100, quantity: 1, subtotal: -100 }]),
-        '-100',
-        '1200',
-        '1300',
-        'ADMIN_ADJUSTMENT',
-        'admin',
-      ],
-    });
+    expect(writes).toEqual(['update:Students', 'append:Transactions']);
+    expect(rows.Transactions.at(-1)?.slice(5, 10)).toEqual(['0', '3500', '3500', 'ADMIN_ADJUSTMENT', 'admin']);
+  });
+
+  it('replays an exact operation with exact prior balances and no additional writes', async () => {
+    const { writes, store } = statefulBulkStore();
+    const update = { studentIds: ['S002', 'S001'], mode: 'subtract' as const, amount: 2000, operationId: BULK_OPERATION_ID };
+    const first = await bulkAdjustStudentBalances(store, update);
+    const writesAfterFirst = [...writes];
+    const second = await bulkAdjustStudentBalances(store, update);
+    expect(first).toEqual([
+      { studentId: 'S001', balance: 1500 },
+      { studentId: 'S002', balance: -800 },
+    ]);
+    expect(second).toEqual(first);
+    expect(writes).toEqual(writesAfterFirst);
+  });
+
+  it.each([
+    ['different payload', (rows: typeof sheetRows) => rows],
+    ['partial residue', (rows: typeof sheetRows) => { rows.Transactions.pop(); return rows; }],
+    ['malformed expected row', (rows: typeof sheetRows) => { rows.Transactions.at(-1)![5] = 'not-a-number'; return rows; }],
+    ['duplicate expected row', (rows: typeof sheetRows) => { rows.Transactions.push([...rows.Transactions.at(-1)!]); return rows; }],
+    ['student balance drift', (rows: typeof sheetRows) => { rows.Students[1][2] = '999'; return rows; }],
+  ])('rejects replay conflict: %s, without more writes', async (kind, mutate) => {
+    const { rows, writes, store } = statefulBulkStore();
+    const update = { studentIds: ['S001', 'S002'], mode: 'add' as const, amount: 10, operationId: BULK_OPERATION_ID };
+    await bulkAdjustStudentBalances(store, update);
+    mutate(rows);
+    const writesAfterFirst = [...writes];
+    const replay = kind === 'different payload' ? { ...update, amount: 11 } : update;
+    await expect(bulkAdjustStudentBalances(store, replay)).rejects.toThrow(/조정|충돌|무결성|일치/);
+    expect(writes).toEqual(writesAfterFirst);
+  });
+
+  it('rejects raw malformed operation residue and deterministic ID collisions before writes', async () => {
+    const { rows, writes, store } = statefulBulkStore();
+    rows.Transactions.push([
+      `ADMIN-${BULK_OPERATION_ID}-bad-bad`, 'bad-time', 'S001', '김민준', '{', 'x', 'x', 'x', 'UNKNOWN', 'admin',
+    ]);
+    await expect(bulkAdjustStudentBalances(store, {
+      studentIds: ['S001'], mode: 'add', amount: 1, operationId: BULK_OPERATION_ID,
+    })).rejects.toThrow(/조정|충돌|무결성/);
+    expect(writes).toEqual([]);
   });
 
   it('updates editable product cells by row number', async () => {

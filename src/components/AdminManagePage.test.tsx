@@ -50,6 +50,7 @@ describe('AdminManagePage', () => {
     ];
     vi.stubGlobal('alert', vi.fn());
     vi.stubGlobal('confirm', vi.fn(() => true));
+    vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue('50000000-0000-4000-8000-000000000001');
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -144,6 +145,7 @@ describe('AdminManagePage', () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it('opens promotions only from the store subtab and does not fetch them eagerly', async () => {
@@ -1277,7 +1279,7 @@ describe('AdminManagePage', () => {
       expect(fetch).toHaveBeenCalledWith('/api/students/bulk', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentIds: ['S001', 'S002'], mode: 'set', amount: 5000 }),
+        body: JSON.stringify({ studentIds: ['S001', 'S002'], mode: 'set', amount: 5000, operationId: '50000000-0000-4000-8000-000000000001' }),
       });
     });
     await waitFor(() => expect(window.alert).toHaveBeenCalledWith('선택 학생 2명 수정 완료'));
@@ -1468,13 +1470,103 @@ describe('AdminManagePage', () => {
       expect(fetch).toHaveBeenCalledWith('/api/students/bulk', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentIds: ['S001'], mode: 'add', amount: 700 }),
+        body: JSON.stringify({ studentIds: ['S001'], mode: 'add', amount: 700, operationId: '50000000-0000-4000-8000-000000000001' }),
       });
     });
     expect(await screen.findByRole('dialog', { name: '화폐 지급 성공' })).toBeTruthy();
     expect(screen.getByText('S001 학생에게 700 지급 완료')).toBeTruthy();
     expect(screen.getByRole('button', { name: '다시 시도' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '닫기' })).toBeTruthy();
+  });
+
+  it('guards same-tick bulk duplicates and reuses a failed semantic attempt operation ID', async () => {
+    const first = deferredResponse({ error: 'temporary failure' }, { status: 400 });
+    const second = deferredResponse([{ studentId: 'S001', balance: 3210 }]);
+    const bulkResponses = [first.response, second.response];
+    const fallback = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) =>
+      String(input) === '/api/students/bulk' && init?.method === 'PATCH'
+        ? bulkResponses.shift()!
+        : fallback(input, init));
+    const uuid = vi.mocked(crypto.randomUUID);
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '학생 관리' }));
+    fireEvent.click(screen.getByLabelText('S001 선택'));
+    fireEvent.change(screen.getByRole('combobox', { name: '선택 학생 작업' }), { target: { value: 'add' } });
+    fireEvent.change(screen.getByLabelText('선택 학생 금액'), { target: { value: '10' } });
+    const apply = screen.getByRole('button', { name: '화폐 수정' });
+    fireEvent.click(apply);
+    fireEvent.click(apply);
+    expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === '/api/students/bulk')).toHaveLength(1);
+    expect(uuid).toHaveBeenCalledTimes(1);
+
+    first.resolve();
+    await waitFor(() => expect(alert).toHaveBeenCalledWith('temporary failure'));
+    fireEvent.click(apply);
+    expect(uuid).toHaveBeenCalledTimes(1);
+    second.resolve();
+    await waitFor(() => expect(alert).toHaveBeenCalledWith('선택 학생 1명 수정 완료'));
+    const bodies = vi.mocked(fetch).mock.calls
+      .filter(([url]) => String(url) === '/api/students/bulk')
+      .map(([, init]) => JSON.parse(String(init?.body)));
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1].operationId).toBe(bodies[0].operationId);
+  });
+
+  it('replaces a retained bulk operation ID when normalized semantics change', async () => {
+    vi.mocked(crypto.randomUUID)
+      .mockReturnValueOnce('50000000-0000-4000-8000-000000000011')
+      .mockReturnValueOnce('50000000-0000-4000-8000-000000000012');
+    const fallback = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) =>
+      String(input) === '/api/students/bulk' && init?.method === 'PATCH'
+        ? jsonResponse({ error: 'temporary failure' }, { status: 400 })
+        : fallback(input, init));
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '학생 관리' }));
+    fireEvent.click(screen.getByLabelText('S001 선택'));
+    const amount = screen.getByLabelText('선택 학생 금액');
+    const apply = screen.getByRole('button', { name: '화폐 수정' });
+    fireEvent.change(amount, { target: { value: '10' } });
+    fireEvent.click(apply);
+    await waitFor(() => expect(alert).toHaveBeenCalledWith('temporary failure'));
+    fireEvent.change(amount, { target: { value: '11' } });
+    fireEvent.click(apply);
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === '/api/students/bulk')).toHaveLength(2));
+    const ids = vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === '/api/students/bulk')
+      .map(([, init]) => JSON.parse(String(init?.body)).operationId);
+    expect(ids).toEqual(['50000000-0000-4000-8000-000000000011', '50000000-0000-4000-8000-000000000012']);
+  });
+
+  it('retries the failed QR mutation itself with the same operation ID', async () => {
+    let attempt = 0;
+    const fallback = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input) === '/api/students/bulk' && init?.method === 'PATCH') {
+        attempt += 1;
+        return attempt === 1
+          ? jsonResponse({ error: 'temporary failure' }, { status: 400 })
+          : jsonResponse([{ studentId: 'S001', balance: 3900 }]);
+      }
+      return fallback(input, init);
+    });
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '화폐 지급/회수' }));
+    fireEvent.change(screen.getByLabelText('지급/회수 금액'), { target: { value: '700' } });
+    fireEvent.click(screen.getByRole('button', { name: 'QR 인식 시작' }));
+    fireEvent.change(await screen.findByLabelText('학생 QR 직접 입력'), { target: { value: ' S001 ' } });
+    fireEvent.click(screen.getByRole('button', { name: '직접 입력 적용' }));
+    expect(await screen.findByRole('dialog', { name: '화폐 지급 실패' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '다시 시도' }));
+    expect(await screen.findByRole('dialog', { name: '화폐 지급 성공' })).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: '학생 QR 인식' })).toBeNull();
+    const bodies = vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === '/api/students/bulk')
+      .map(([, init]) => JSON.parse(String(init?.body)));
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0]).toEqual({ studentIds: ['S001'], mode: 'add', amount: 700, operationId: '50000000-0000-4000-8000-000000000001' });
+    expect(bodies[1]).toEqual(bodies[0]);
+    expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
   });
 
   it('shows a failure popup with retry and cancel when a scanned currency adjustment fails', async () => {

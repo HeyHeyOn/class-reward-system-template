@@ -37,23 +37,49 @@ describe('POST /api/transactions/[transactionId]/cancel', () => {
     };
     vi.mocked(createConfiguredSheetsStore).mockResolvedValue(store as never);
     vi.mocked(cancelTransaction).mockResolvedValue(result as never);
-    const request = new Request('http://localhost/api/transactions/TR%201/cancel', { method: 'POST' });
+    const request = new Request('http://localhost/api/transactions/TR%201/cancel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ operationId: '30000000-0000-4000-8000-000000000001' }),
+    });
 
     const response = await POST(request, { params: Promise.resolve({ transactionId: 'TR%201' }) });
 
     expect(response.status).toBe(200);
-    expect(cancelTransaction).toHaveBeenCalledWith(store, 'TR 1');
+    expect(cancelTransaction).toHaveBeenCalledWith(store, 'TR 1', '30000000-0000-4000-8000-000000000001');
     await expect(response.json()).resolves.toEqual(result);
   });
 
-  it('returns a repository error message with status 400', async () => {
+  it.each([
+    'provider credential detail',
+    '취소할 수 없는 거래입니다.',
+  ])('returns a safe error without leaking repository detail: %s', async (detail) => {
     vi.mocked(createConfiguredSheetsStore).mockResolvedValue({} as never);
-    vi.mocked(cancelTransaction).mockRejectedValue(new Error('이미 취소된 거래입니다.'));
-    const request = new Request('http://localhost/api/transactions/TR-1/cancel', { method: 'POST' });
+    vi.mocked(cancelTransaction).mockRejectedValue(new Error(detail));
+    const request = new Request('http://localhost/api/transactions/TR-1/cancel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ operationId: '30000000-0000-4000-8000-000000000001' }),
+    });
 
     const response = await POST(request, { params: Promise.resolve({ transactionId: 'TR-1' }) });
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: '이미 취소된 거래입니다.' });
+    await expect(response.json()).resolves.toEqual({ error: '거래를 취소하지 못했습니다.' });
+  });
+
+  it.each([
+    ['missing JSON content type', { body: JSON.stringify({ operationId: '30000000-0000-4000-8000-000000000001' }) }],
+    ['malformed JSON', { headers: { 'Content-Type': 'application/json' }, body: '{' }],
+    ['missing operation ID', { headers: { 'Content-Type': 'application/json' }, body: '{}' }],
+    ['noncanonical operation ID', { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operationId: 'A0000000-0000-4000-8000-000000000001' }) }],
+    ['expanded body', { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operationId: '30000000-0000-4000-8000-000000000001', tenantId: 'forbidden' }) }],
+  ])('rejects %s before creating a store', async (_label, init) => {
+    const request = new Request('http://localhost/api/transactions/TR-1/cancel', { method: 'POST', ...init });
+    const response = await POST(request, { params: Promise.resolve({ transactionId: 'TR-1' }) });
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: '올바른 취소 요청이 아닙니다.' });
+    expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
+    expect(cancelTransaction).not.toHaveBeenCalled();
   });
 });

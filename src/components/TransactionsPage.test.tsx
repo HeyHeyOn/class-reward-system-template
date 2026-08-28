@@ -70,6 +70,7 @@ function deferredResponse(payload: unknown) {
 describe('TransactionsPage', () => {
   beforeEach(() => {
     vi.stubGlobal('confirm', vi.fn(() => true));
+    vi.stubGlobal('crypto', { randomUUID: vi.fn(() => '30000000-0000-4000-8000-000000000001') });
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/transactions' && !init?.method) return jsonResponse(transactions);
@@ -219,10 +220,82 @@ describe('TransactionsPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'T002 거래 취소' }));
 
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith('/api/transactions/T002/cancel', { method: 'POST' });
+      expect(fetch).toHaveBeenCalledWith('/api/transactions/T002/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operationId: '30000000-0000-4000-8000-000000000001' }),
+      });
     });
     expect(await screen.findAllByText('취소됨')).toHaveLength(2);
     await waitFor(() => expect(screen.getAllByText((_, element) => element?.textContent === '거래 취소 × 1').length).toBeGreaterThan(0));
     expect(screen.getAllByText('-500별').length).toBeGreaterThan(0);
+  });
+
+  it('globally suppresses a second row cancellation while another destructive request is pending', async () => {
+    const first = deferredResponse({
+      cancelledTransaction: { ...transactions[0], status: 'CANCELLED' },
+      reversalTransaction: { ...transactions[0], transactionId: 'CANCEL-T001', status: 'CANCEL_REVERSAL' },
+    });
+    const second = deferredResponse({
+      cancelledTransaction: { ...transactions[1], status: 'CANCELLED' },
+      reversalTransaction: { ...transactions[1], transactionId: 'CANCEL-T002', status: 'CANCEL_REVERSAL' },
+    });
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/transactions' && !init?.method) return jsonResponse(transactions);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별' });
+      if (url === '/api/transactions/T001/cancel' && init?.method === 'POST') return first.response;
+      if (url === '/api/transactions/T002/cancel' && init?.method === 'POST') return second.response;
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+
+    render(<TransactionsPage />);
+    const firstButton = await screen.findByRole('button', { name: 'T001 거래 취소' });
+    const secondButton = screen.getByRole('button', { name: 'T002 거래 취소' });
+    fireEvent.click(firstButton);
+    fireEvent.click(secondButton);
+
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/cancel'))).toHaveLength(1);
+    expect((secondButton as HTMLButtonElement).disabled).toBe(true);
+    expect(await screen.findByRole('dialog', { name: '거래 취소 중' })).toBeTruthy();
+    first.resolve();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '거래 취소 중' })).toBeNull());
+  });
+
+  it('synchronously suppresses duplicate clicks and reuses the operation ID after a failed retry', async () => {
+    let cancellationCalls = 0;
+    const firstFailure = deferredResponse({ error: 'temporary' });
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/transactions' && !init?.method) return jsonResponse(transactions);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별' });
+      if (url === '/api/transactions/T001/cancel' && init?.method === 'POST') {
+        cancellationCalls += 1;
+        if (cancellationCalls === 1) {
+          return firstFailure.response.then(() => jsonResponse({ error: 'temporary' }, { status: 503 }));
+        }
+        return jsonResponse({
+          cancelledTransaction: { ...transactions[0], status: 'CANCELLED' },
+          reversalTransaction: { ...transactions[0], transactionId: 'CANCEL-T001', status: 'CANCEL_REVERSAL' },
+        });
+      }
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+
+    render(<TransactionsPage />);
+    const button = await screen.findByRole('button', { name: 'T001 거래 취소' });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(cancellationCalls).toBe(1);
+    firstFailure.resolve();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '거래 취소 중' })).toBeNull());
+
+    fireEvent.click(screen.getByRole('button', { name: 'T001 거래 취소' }));
+    await waitFor(() => expect(cancellationCalls).toBe(2));
+    const cancellationRequests = fetchMock.mock.calls.filter(([url]) => String(url).includes('/cancel'));
+    expect(cancellationRequests[0][1]?.body).toBe(cancellationRequests[1][1]?.body);
+    expect(crypto.randomUUID).toHaveBeenCalledOnce();
   });
 });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { Transaction } from '@/domain/types';
 
@@ -59,6 +59,8 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
   const [cancelingId, setCancelingId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [transactionFilter, setTransactionFilter] = useState<TransactionFilter>('all');
+  const cancellationInFlightRef = useRef(new Set<string>());
+  const cancellationOperationIdsRef = useRef(new Map<string, string>());
 
   const loadTransactions = useCallback(async (options: { shouldApply?: () => boolean } = {}) => {
     const shouldApply = options.shouldApply ?? (() => true);
@@ -111,13 +113,22 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
   }
 
   async function cancelTransaction(transaction: Transaction) {
-    if (transaction.status === 'CANCELLED') return;
+    if (transaction.status === 'CANCELLED'
+      || cancellationInFlightRef.current.size > 0) return;
     if (!window.confirm(`${transaction.studentName} 학생의 ${formatSignedStudentAmount(transaction, currencyUnit)} 거래를 취소하고 이전 잔액으로 되돌릴까요?`)) return;
 
+    cancellationInFlightRef.current.add(transaction.transactionId);
+    const operationId = cancellationOperationIdsRef.current.get(transaction.transactionId)
+      ?? crypto.randomUUID();
+    cancellationOperationIdsRef.current.set(transaction.transactionId, operationId);
     setCancelingId(transaction.transactionId);
     setMessage('');
     try {
-      const response = await fetch(`/api/transactions/${encodeURIComponent(transaction.transactionId)}/cancel`, { method: 'POST' });
+      const response = await fetch(`/api/transactions/${encodeURIComponent(transaction.transactionId)}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operationId }),
+      });
       const payload = (await response.json()) as CancelTransactionResponse | ApiError;
       if (!response.ok || 'error' in payload) {
         throw new Error('error' in payload && payload.error ? payload.error : '거래를 취소하지 못했습니다.');
@@ -129,9 +140,11 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
         const updated = current.map((item) => item.transactionId === transaction.transactionId ? cancelledTransaction : item);
         return reversalTransaction ? [reversalTransaction, ...updated] : updated;
       });
+      cancellationOperationIdsRef.current.delete(transaction.transactionId);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '거래를 취소하지 못했습니다.');
     } finally {
+      cancellationInFlightRef.current.delete(transaction.transactionId);
       setCancelingId(null);
     }
   }
@@ -181,7 +194,7 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
                       <button
                         aria-label={`${transaction.transactionId} 거래 취소`}
                         className="rounded-xl bg-slate-700 px-3 py-2 text-xs font-black text-white disabled:bg-slate-300"
-                        disabled={cancelingId === transaction.transactionId}
+                        disabled={cancelingId !== null}
                         onClick={() => cancelTransaction(transaction)}
                         type="button"
                       >

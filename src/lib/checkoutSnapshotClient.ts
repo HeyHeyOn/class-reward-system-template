@@ -59,7 +59,7 @@ function parseAdjustment(value: unknown): PromotionAdjustment | null {
   };
 }
 
-function parseLine(value: unknown): CheckoutLineSnapshot | null {
+export function parseCheckoutLineSnapshot(value: unknown): CheckoutLineSnapshot | null {
   if (!isRecord(value) || typeof value.productId !== 'string' || !value.productId.trim()
     || typeof value.name !== 'string' || !value.name.trim()
     || !safeMoney(value.price) || !positiveQuantity(value.quantity) || !safeMoney(value.subtotal)
@@ -100,7 +100,7 @@ function parseLine(value: unknown): CheckoutLineSnapshot | null {
 
 export function parseCheckoutPreviewResponse(value: unknown): CheckoutPreviewPayload | null {
   if (!isRecord(value) || value.ok !== true || !safeMoney(value.totalAmount) || !Array.isArray(value.items) || value.items.length === 0) return null;
-  const items = value.items.map(parseLine);
+  const items = value.items.map(parseCheckoutLineSnapshot);
   if (!items.every((item): item is CheckoutLineSnapshot => item !== null)
     || new Set(items.map((item) => item.productId)).size !== items.length
     || items.reduce((sum, item) => sum + item.finalTotal, 0) !== value.totalAmount) return null;

@@ -156,6 +156,8 @@ export function AdminManagePage() {
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   const [bulkMode, setBulkMode] = useState<BulkMode>('set');
   const [bulkAmount, setBulkAmount] = useState(0);
+  const bulkBalanceAttempt = useRef<{ semanticKey: string; operationId: string } | null>(null);
+  const bulkBalanceInFlight = useRef(false);
   const [message, setMessage] = useState('학생/상품 목록을 불러오는 중입니다.');
   const [newStudent, setNewStudent] = useState<NewStudentDraft>(EMPTY_STUDENT);
   const [newProduct, setNewProduct] = useState<NewProductDraft>(EMPTY_PRODUCT);
@@ -193,6 +195,8 @@ export function AdminManagePage() {
   const [currencyManualId, setCurrencyManualId] = useState('');
   const [currencyResult, setCurrencyResult] = useState<CurrencyResult | null>(null);
   const [currencyLoading, setCurrencyLoading] = useState(false);
+  const currencyAttempt = useRef<{ semanticKey: string; operationId: string } | null>(null);
+  const currencyInFlight = useRef(false);
   const [qrTaskPickerOpen, setQrTaskPickerOpen] = useState(false);
   const [qrTaskScan, setQrTaskScan] = useState<{ taskId: string; manualId: string } | null>(null);
   const [qrTaskLoading, setQrTaskLoading] = useState(false);
@@ -1130,19 +1134,30 @@ export function AdminManagePage() {
       notify('선택된 학생이 없습니다.');
       return;
     }
+    if (bulkBalanceInFlight.current) return;
+    const studentIds = selectedStudentIds.map((id) => id.trim()).sort();
+    const semanticKey = JSON.stringify({ studentIds, mode: bulkMode, amount: bulkAmount });
+    if (bulkBalanceAttempt.current?.semanticKey !== semanticKey) {
+      bulkBalanceAttempt.current = { semanticKey, operationId: crypto.randomUUID() };
+    }
+    const operationId = bulkBalanceAttempt.current.operationId;
+    bulkBalanceInFlight.current = true;
     try {
       const response = await fetch('/api/students/bulk', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentIds: selectedStudentIds, mode: bulkMode, amount: bulkAmount }),
+        body: JSON.stringify({ studentIds, mode: bulkMode, amount: bulkAmount, operationId }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? '선택 학생 재화를 수정하지 못했습니다.');
       const balanceMap = new Map((payload as Array<{ studentId: string; balance: number }>).map((item) => [item.studentId, item.balance]));
       setStudents((current) => current.map((student) => balanceMap.has(student.studentId) ? { ...student, balance: balanceMap.get(student.studentId)! } : student));
+      bulkBalanceAttempt.current = null;
       notify(`선택 학생 ${payload.length}명 수정 완료`);
     } catch (error) {
       notify(error instanceof Error ? error.message : '선택 학생 재화를 수정하지 못했습니다.');
+    } finally {
+      bulkBalanceInFlight.current = false;
     }
   }
 
@@ -1357,16 +1372,25 @@ export function AdminManagePage() {
     }
   }
 
-  async function applyCurrencyToStudent(decodedText: string) {
+  async function applyCurrencyToStudent(decodedText: string, retry?: { mode: CurrencyMode; amount: number }) {
     const studentId = decodedText.trim();
     if (!studentId) return;
+    if (currencyInFlight.current) return;
+    const mode = retry?.mode ?? currencyMode;
+    const amount = retry?.amount ?? currencyAmount;
+    const semanticKey = JSON.stringify({ studentIds: [studentId], mode, amount });
+    if (currencyAttempt.current?.semanticKey !== semanticKey) {
+      currencyAttempt.current = { semanticKey, operationId: crypto.randomUUID() };
+    }
+    const operationId = currencyAttempt.current.operationId;
+    currencyInFlight.current = true;
     setCurrencyScannerOpen(false);
     setCurrencyLoading(true);
     try {
       const response = await fetch('/api/students/bulk', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentIds: [studentId], mode: currencyMode, amount: currencyAmount }),
+        body: JSON.stringify({ studentIds: [studentId], mode, amount, operationId }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? '화폐를 조정하지 못했습니다.');
@@ -1376,25 +1400,33 @@ export function AdminManagePage() {
       }
       setCurrencyResult({
         status: 'success',
-        mode: currencyMode,
+        mode,
         studentId,
-        amount: currencyAmount,
-        message: `${studentId} 학생에게 ${currencyAmount} ${currencyMode === 'add' ? '지급' : '회수'} 완료`,
+        amount,
+        message: `${studentId} 학생에게 ${amount} ${mode === 'add' ? '지급' : '회수'} 완료`,
       });
+      currencyAttempt.current = null;
     } catch (error) {
       setCurrencyResult({
         status: 'failure',
-        mode: currencyMode,
+        mode,
         studentId,
-        amount: currencyAmount,
+        amount,
         message: error instanceof Error ? error.message : '화폐를 조정하지 못했습니다.',
       });
     } finally {
+      currencyInFlight.current = false;
       setCurrencyLoading(false);
     }
   }
 
   function retryCurrencyScan() {
+    if (currencyResult?.status === 'failure') {
+      const failed = currencyResult;
+      setCurrencyResult(null);
+      void applyCurrencyToStudent(failed.studentId, { mode: failed.mode, amount: failed.amount });
+      return;
+    }
     setCurrencyResult(null);
     setCurrencyManualId('');
     setCurrencyScannerOpen(true);

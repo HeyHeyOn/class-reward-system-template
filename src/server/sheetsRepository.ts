@@ -155,6 +155,7 @@ export type StudentBulkBalanceUpdate = {
   studentIds: string[];
   mode: StudentBulkBalanceMode;
   amount: number;
+  operationId: string;
 };
 
 export type StudentBatchUpdate = StudentUpdate & {
@@ -974,22 +975,85 @@ function parseTransactionRecords(rows: string[][]): TransactionRecord[] {
     .sort((a, b) => b.transaction.timestamp.localeCompare(a.transaction.timestamp));
 }
 
-export async function cancelTransaction(store: SheetsStore, transactionId: string): Promise<{ cancelledTransaction: Transaction; reversalTransaction: Transaction }> {
+export async function cancelTransaction(
+  store: SheetsStore,
+  transactionId: string,
+  operationId?: string,
+): Promise<{ cancelledTransaction: Transaction; reversalTransaction: Transaction }> {
   const normalizedId = transactionId.trim();
   if (!normalizedId) throw new Error('거래 ID를 입력해 주세요.');
 
   const transactionRows = await store.getRows('Transactions');
-  const transactionRecord = parseTransactionRecords(transactionRows).find((record) => record.transaction.transactionId === normalizedId);
+  const records = parseTransactionRecords(transactionRows);
+  const rawTransactionHeaders = transactionRows[0] ?? [];
+  const transactionHeaderIndex = createHeaderIndex(rawTransactionHeaders);
+  const transactionIdColumn = transactionHeaderIndex.get('transactionId') ?? -1;
+  const operatorColumn = transactionHeaderIndex.get('operator') ?? -1;
+  const rawRecords = transactionRows.slice(1).map((row, index) => ({ row, rowNumber: index + 2 }));
+  const parsedByRowNumber = new Map(records.map((record) => [record.rowNumber, record.transaction]));
+  const transactionRecord = records.find((record) => record.transaction.transactionId === normalizedId);
   if (!transactionRecord) throw new Error('거래 내역을 찾을 수 없습니다.');
 
   const transaction = transactionRecord.transaction;
+  const deterministicReversalId = operationId ? `CANCEL-${operationId}` : null;
+  const rawLinkedCandidates = rawRecords.filter(({ row }) => row[operatorColumn]?.trim() === `cancel:${normalizedId}`);
+  if (rawLinkedCandidates.length > 1) {
+    throw new Error('거래 취소 기록의 무결성을 확인할 수 없어 수동 조정이 필요합니다.');
+  }
+  const rawLinkedCandidate = rawLinkedCandidates[0];
+  const existingReversal = rawLinkedCandidate
+    ? parsedByRowNumber.get(rawLinkedCandidate.rowNumber)
+    : undefined;
+  if (rawLinkedCandidate && !existingReversal) {
+    throw new Error('거래 취소 기록의 무결성을 확인할 수 없어 수동 조정이 필요합니다.');
+  }
+  if (deterministicReversalId) {
+    const rawIdCollisions = rawRecords
+      .filter(({ row }) => row[transactionIdColumn]?.trim() === deterministicReversalId);
+    if (rawIdCollisions.length > 1) {
+      throw new Error('취소 작업 ID 기록의 무결성을 확인할 수 없어 수동 조정이 필요합니다.');
+    }
+    const rawIdCollision = rawIdCollisions[0];
+    const idCollision = rawIdCollision
+      ? parsedByRowNumber.get(rawIdCollision.rowNumber)
+      : undefined;
+    if (rawIdCollision && !idCollision) {
+      throw new Error('취소 작업 ID 기록의 무결성을 확인할 수 없어 수동 조정이 필요합니다.');
+    }
+    if (idCollision && idCollision.operator !== `cancel:${normalizedId}`) {
+      throw new Error('취소 작업 ID가 다른 거래에 사용되었습니다.');
+    }
+    if (existingReversal) {
+      validateSheetsCancellationReplay(transaction, existingReversal, deterministicReversalId);
+      return {
+        cancelledTransaction: { ...transaction, cancelledAt: existingReversal.timestamp },
+        reversalTransaction: existingReversal,
+      };
+    }
+  }
+  if (existingReversal) {
+    throw new Error('이미 취소된 거래이거나 취소 기록의 무결성을 확인할 수 없습니다.');
+  }
   if (transaction.status === 'CANCELLED') throw new Error('이미 취소된 거래입니다.');
+  if (transaction.status !== 'COMPLETED'
+      && transaction.status !== 'TASK_REWARD'
+      && transaction.status !== 'ADMIN_ADJUSTMENT') {
+    throw new Error('취소할 수 없는 거래입니다.');
+  }
   if (transaction.itemsMalformed) throw new Error('거래 상품 스냅샷이 올바르지 않습니다.');
 
   const studentRecord = await getStudentRecordById(store, transaction.studentId);
   if (!studentRecord) throw new Error('학생 정보를 찾을 수 없습니다.');
 
   const productsById = new Map((await getProductRecords(store)).map((record) => [record.product.productId, record]));
+  if (transaction.status === 'COMPLETED') {
+    const missingProductIds = transaction.items
+      .map((item) => item.productId)
+      .filter((productId) => !productsById.has(productId));
+    if (missingProductIds.length > 0) {
+      throw new Error(`거래 상품을 찾을 수 없어 수동 조정이 필요합니다: ${missingProductIds.join(', ')}`);
+    }
+  }
   const restoreQuantityByProductId = new Map<string, number>();
   for (const item of transaction.items) {
     if (!productsById.has(item.productId)) continue;
@@ -1016,7 +1080,7 @@ export async function cancelTransaction(store: SheetsStore, transactionId: strin
   if (reversalBalanceAfter < 0) throw new Error('거래 취소 후 잔액은 0보다 작아질 수 없습니다.');
   const reversalTotalAmount = -reversalDelta;
   const reversalTransaction: Transaction = {
-    transactionId: `CANCEL-${transaction.transactionId}-${Date.now().toString(36)}`,
+    transactionId: deterministicReversalId ?? `CANCEL-${transaction.transactionId}-${Date.now().toString(36)}`,
     timestamp: cancelledAt,
     studentId: transaction.studentId,
     studentName: transaction.studentName,
@@ -1045,12 +1109,43 @@ export async function cancelTransaction(store: SheetsStore, transactionId: strin
   return { cancelledTransaction: { ...transaction, status: 'CANCELLED', cancelledAt }, reversalTransaction };
 }
 
+function validateSheetsCancellationReplay(
+  original: Transaction,
+  reversal: Transaction,
+  expectedReversalId: string,
+): void {
+  const reversalDelta = original.balanceBefore - original.balanceAfter;
+  const expectedTotal = -reversalDelta;
+  const item = reversal.items[0];
+  const valid = Number.isSafeInteger(reversalDelta)
+    && Number.isSafeInteger(expectedTotal)
+    && original.status === 'CANCELLED'
+    && reversal.transactionId === expectedReversalId
+    && reversal.status === 'CANCEL_REVERSAL'
+    && reversal.operator === `cancel:${original.transactionId}`
+    && reversal.studentId === original.studentId
+    && reversal.studentName === original.studentName
+    && reversal.totalAmount === expectedTotal
+    && Number.isSafeInteger(reversal.balanceBefore)
+    && Number.isSafeInteger(reversal.balanceAfter)
+    && checkedSafeIntegerAddition(reversal.balanceBefore, reversalDelta) === reversal.balanceAfter
+    && reversal.items.length === 1
+    && item !== undefined
+    && !isCheckoutLineSnapshot(item)
+    && item.productId === `CANCEL-${original.transactionId}`
+    && item.name === '거래 취소'
+    && item.price === expectedTotal
+    && item.quantity === 1
+    && item.subtotal === expectedTotal;
+  if (!valid) throw new Error('거래 취소 기록의 무결성이 일치하지 않아 수동 조정이 필요합니다.');
+}
+
 function checkedSafeIntegerAddition(left: number, right: number): number {
   if (!Number.isSafeInteger(left) || !Number.isSafeInteger(right)) {
     throw new Error('Cancellation restoration requires safe integer values');
   }
   const result = left + right;
-  if (!Number.isSafeInteger(result)) throw new Error('Cancellation restoration safe integer overflow');
+  if (!Number.isSafeInteger(result)) throw new Error('Safe integer overflow: 안전한 정수 범위를 벗어났습니다.');
   return result;
 }
 
@@ -1289,38 +1384,75 @@ export async function bulkAdjustStudentBalances(
 ): Promise<Array<{ studentId: string; balance: number }>> {
   validateStudentBulkBalanceUpdate(update);
 
-  const uniqueIds = Array.from(new Set(update.studentIds.map((id) => id.trim()).filter(Boolean)));
-  const records = await Promise.all(uniqueIds.map((studentId) => getStudentRecordById(store, studentId)));
-  const missingIds = uniqueIds.filter((_, index) => !records[index]);
+  const studentIds = update.studentIds.map((id) => id.trim()).sort();
+  const payloadHash = await sha256Hex(JSON.stringify({ studentIds, mode: update.mode, amount: update.amount }));
+  const operationPrefix = `ADMIN-${update.operationId}-`;
+  const expectedTransactionIds = new Map<string, string>();
+  const writesLedger = update.mode === 'set' || update.amount !== 0;
+  if (writesLedger) {
+    for (const studentId of studentIds) {
+      expectedTransactionIds.set(studentId, `${operationPrefix}${payloadHash}-${(await sha256Hex(studentId)).slice(0, 12)}`);
+    }
+  }
+
+  const [studentRows, transactionRows] = await Promise.all([
+    store.getRows('Students'),
+    store.getRows('Transactions'),
+  ]);
+  const transactionHeaderIndex = createHeaderIndex(transactionRows[0] ?? []);
+  if (!requireColumns(transactionHeaderIndex, [...REQUIRED_TRANSACTION_COLUMNS, 'items']).ok) {
+    throw bulkReconciliationError();
+  }
+  const recordsById = getStudentRecordsFromRows(studentRows);
+  const missingIds = studentIds.filter((studentId) => !recordsById.has(studentId));
   if (missingIds.length > 0) throw new Error(`학생을 찾을 수 없습니다: ${missingIds.join(', ')}`);
 
-  const results: Array<{ studentId: string; balance: number }> = [];
-  const cellUpdates: SheetCellUpdate[] = [];
-  for (const record of records) {
-    if (!record) continue;
-    const balance =
-      update.mode === 'set'
-        ? update.amount
-        : update.mode === 'add'
-          ? record.student.balance + update.amount
-          : record.student.balance - update.amount;
-
-    cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'balance', value: balance });
-    results.push({ studentId: record.student.studentId, balance });
+  const operationRows = getRawBulkOperationRows(transactionRows, operationPrefix);
+  if (operationRows.length > 0) {
+    return validateBulkBalanceReplay(
+      transactionRows,
+      operationRows,
+      studentIds.map((studentId) => recordsById.get(studentId)!),
+      update,
+      expectedTransactionIds,
+    );
   }
 
-  let transactionHeaders = TRANSACTION_HEADERS;
-  try {
-    transactionHeaders = (await store.getRows('Transactions'))[0] ?? TRANSACTION_HEADERS;
-  } catch {
-    // Preserve bulk-adjustment availability by appending with the canonical schema.
-  }
+  const timestamp = new Date().toISOString();
+  const transactionHeaders = transactionRows[0] ?? TRANSACTION_HEADERS;
+  const changes = studentIds.map((studentId) => {
+    const record = recordsById.get(studentId)!;
+    const balance = update.mode === 'set'
+      ? update.amount
+      : checkedSafeIntegerAddition(record.student.balance, update.mode === 'add' ? update.amount : -update.amount);
+    if (!Number.isSafeInteger(record.student.balance) || !Number.isSafeInteger(balance)) {
+      throw new Error('학생 잔액은 안전한 정수 범위여야 합니다.');
+    }
+    const transactionAmount = checkedSafeIntegerAddition(record.student.balance, -balance);
+    return { record, balance, transactionAmount };
+  });
+  const results = changes.map(({ record, balance }) => ({ studentId: record.student.studentId, balance }));
+
+  // add/subtract zero has no ledger row in the legacy schema. Returning current balances is
+  // deterministic and write-free, but this operation ID cannot be remembered across requests.
+  if (!writesLedger) return results;
+
+  const cellUpdates = changes.map(({ record, balance }) => ({
+    rowNumber: record.rowNumber, columnName: 'balance', value: balance,
+  }));
   await applyCellUpdates(store, 'Students', cellUpdates);
-  for (const record of records) {
-    if (!record) continue;
-    const result = results.find((item) => item.studentId === record.student.studentId);
-    if (!result) continue;
-    await appendBalanceAdjustmentTransaction(store, transactionHeaders, record.student, record.student.balance, result.balance, update.mode);
+  for (const { record, balance, transactionAmount } of changes) {
+    await appendBalanceAdjustmentTransaction(
+      store,
+      transactionHeaders,
+      record.student,
+      record.student.balance,
+      balance,
+      update.mode,
+      transactionAmount,
+      expectedTransactionIds.get(record.student.studentId)!,
+      timestamp,
+    );
   }
   return results;
 }
@@ -1460,6 +1592,99 @@ export async function deleteProductsBatch(store: SheetsStore, productIds: string
   return { productIds: uniqueIds };
 }
 
+type RawBulkOperationRow = { row: string[]; rowNumber: number };
+
+function getRawBulkOperationRows(rows: string[][], operationPrefix: string): RawBulkOperationRow[] {
+  const headers = rows[0] ?? [];
+  const transactionIdColumn = createHeaderIndex(headers).get('transactionId') ?? -1;
+  if (transactionIdColumn < 0) throw new Error('거래 기록의 무결성을 확인할 수 없어 수동 조정이 필요합니다.');
+  return rows.slice(1)
+    .map((row, index) => ({ row, rowNumber: index + 2 }))
+    .filter(({ row }) => row[transactionIdColumn]?.trim().startsWith(operationPrefix));
+}
+
+function validateBulkBalanceReplay(
+  transactionRows: string[][],
+  operationRows: RawBulkOperationRow[],
+  records: StudentRecord[],
+  update: StudentBulkBalanceUpdate,
+  expectedIds: ReadonlyMap<string, string>,
+): Array<{ studentId: string; balance: number }> {
+  if (operationRows.length !== expectedIds.size) throw bulkReconciliationError();
+  const headerIndex = createHeaderIndex(transactionRows[0] ?? []);
+  if (!requireColumns(headerIndex, [...REQUIRED_TRANSACTION_COLUMNS, 'items']).ok) throw bulkReconciliationError();
+  const transactionIdColumn = headerIndex.get('transactionId')!;
+  const rowsById = new Map<string, RawBulkOperationRow[]>();
+  for (const raw of operationRows) {
+    const id = raw.row[transactionIdColumn]?.trim() ?? '';
+    rowsById.set(id, [...(rowsById.get(id) ?? []), raw]);
+  }
+
+  const cell = (row: string[], column: string) => row[headerIndex.get(column)!]?.trim() ?? '';
+  const safeInteger = (value: string): number | null => {
+    if (!/^-?(0|[1-9]\d*)$/.test(value)) return null;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) ? parsed : null;
+  };
+  let timestamp: string | undefined;
+  const results: Array<{ studentId: string; balance: number }> = [];
+  for (const record of records) {
+    const expectedId = expectedIds.get(record.student.studentId);
+    const candidates = expectedId ? rowsById.get(expectedId) ?? [] : [];
+    if (candidates.length !== 1) throw bulkReconciliationError();
+    const row = candidates[0].row;
+    const balanceBefore = safeInteger(cell(row, 'balanceBefore'));
+    const balanceAfter = safeInteger(cell(row, 'balanceAfter'));
+    const totalAmount = safeInteger(cell(row, 'totalAmount'));
+    let items: unknown;
+    try { items = JSON.parse(cell(row, 'items')); } catch { throw bulkReconciliationError(); }
+    if (balanceBefore === null || balanceAfter === null || totalAmount === null
+      || !Array.isArray(items) || items.length !== 1
+      || typeof items[0] !== 'object' || items[0] === null || Array.isArray(items[0])) {
+      throw bulkReconciliationError();
+    }
+    const item = items[0] as Record<string, unknown>;
+    const expectedAfter = update.mode === 'set'
+      ? update.amount
+      : checkedSafeIntegerAddition(balanceBefore, update.mode === 'add' ? update.amount : -update.amount);
+    const expectedTotal = balanceBefore - expectedAfter;
+    const label = update.mode === 'add' ? '관리자 지급' : update.mode === 'subtract' ? '관리자 회수' : '관리자 잔액 지정';
+    const rowTimestamp = cell(row, 'timestamp');
+    const validTimestamp = (() => {
+      try { return new Date(rowTimestamp).toISOString() === rowTimestamp; } catch { return false; }
+    })();
+    const valid = cell(row, 'transactionId') === expectedId
+      && cell(row, 'studentId') === record.student.studentId
+      && cell(row, 'studentName') === record.student.name
+      && cell(row, 'status') === 'ADMIN_ADJUSTMENT'
+      && cell(row, 'operator') === 'admin'
+      && balanceAfter === expectedAfter
+      && totalAmount === expectedTotal
+      && record.student.balance === balanceAfter
+      && Object.keys(item).sort().join('|') === 'name|price|productId|quantity|subtotal'
+      && item.productId === `ADMIN-${update.mode.toUpperCase()}`
+      && item.name === label
+      && item.price === expectedTotal
+      && item.quantity === 1
+      && item.subtotal === expectedTotal
+      && validTimestamp
+      && (timestamp === undefined || timestamp === rowTimestamp);
+    if (!valid) throw bulkReconciliationError();
+    timestamp = rowTimestamp;
+    results.push({ studentId: record.student.studentId, balance: balanceAfter });
+  }
+  return results;
+}
+
+function bulkReconciliationError(): Error {
+  return new Error('학생 재화 조정 기록의 무결성이 일치하지 않아 수동 조정이 필요합니다.');
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 async function appendBalanceAdjustmentTransaction(
   store: SheetsStore,
   transactionHeaders: string[],
@@ -1467,12 +1692,11 @@ async function appendBalanceAdjustmentTransaction(
   balanceBefore: number,
   balanceAfter: number,
   mode: StudentBulkBalanceMode,
+  transactionAmount: number,
+  transactionId: string,
+  timestamp: string,
 ): Promise<void> {
-  const delta = balanceAfter - balanceBefore;
-  if (delta === 0 && mode !== 'set') return;
-  const timestamp = new Date().toISOString();
   const label = mode === 'add' ? '관리자 지급' : mode === 'subtract' ? '관리자 회수' : '관리자 잔액 지정';
-  const transactionAmount = -delta;
   const item = {
     productId: `ADMIN-${mode.toUpperCase()}`,
     name: label,
@@ -1481,7 +1705,7 @@ async function appendBalanceAdjustmentTransaction(
     subtotal: transactionAmount,
   };
   const transaction: Transaction = {
-    transactionId: `ADMIN-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    transactionId,
     timestamp,
     studentId: student.studentId,
     studentName: student.name,
@@ -1620,8 +1844,15 @@ function validateStudentUpdate(update: StudentUpdate) {
 
 function validateStudentBulkBalanceUpdate(update: StudentBulkBalanceUpdate) {
   if (!Array.isArray(update.studentIds) || update.studentIds.length === 0) throw new Error('선택된 학생이 없습니다.');
+  const studentIds = update.studentIds.map((id) => typeof id === 'string' ? id.trim() : '');
+  if (studentIds.some((id) => !id)) throw new Error('학생 ID를 입력해 주세요.');
+  const duplicateIds = findDuplicates(studentIds);
+  if (duplicateIds.length > 0) throw new Error(`중복된 학생 ID가 있습니다: ${duplicateIds.join(', ')}`);
   if (update.mode !== 'set' && update.mode !== 'add' && update.mode !== 'subtract') throw new Error('일괄 작업 방식이 올바르지 않습니다.');
-  if (!Number.isInteger(update.amount) || update.amount < 0) throw new Error('금액은 0 이상의 정수여야 합니다.');
+  if (!Number.isSafeInteger(update.amount) || update.amount < 0) throw new Error('금액은 0 이상의 안전한 정수여야 합니다.');
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(update.operationId)) {
+    throw new Error('작업 ID 형식이 올바르지 않습니다.');
+  }
 }
 
 function validateProductId(productId: string) {
