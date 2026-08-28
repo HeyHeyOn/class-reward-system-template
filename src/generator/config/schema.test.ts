@@ -18,6 +18,7 @@ const EXPECTED_SHEETS = [
     'pendingRuleVersion', 'pendingEffectiveFrom', 'pendingTimeZone', 'pendingRecurrenceType', 'pendingRecurrenceTime',
     'pendingRecurrenceWeekday', 'pendingRecurrenceDayOfMonth', 'pendingResetCompletionOnCycle', 'pendingResetAssignmentOnCycle',
     'availableFrom', 'dueAt', 'prerequisiteTaskId', 'recurrenceWeekdays', 'pendingRecurrenceWeekdays',
+    'padletBoardId',
   ]],
   ['TaskAssignments', [
     'assignmentId', 'taskId', 'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion',
@@ -26,7 +27,9 @@ const EXPECTED_SHEETS = [
   [
     'TaskCompletions',
     ['completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note',
-      'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion', 'timeZone', 'source', 'assignmentId', 'schemaVersion'],
+      'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion', 'timeZone', 'source', 'assignmentId', 'schemaVersion',
+      'operationId', 'operationPayloadHash', 'evidenceProvider', 'evidenceBoardId', 'evidencePostId',
+      'evidenceCreatedAt', 'evidenceAuthorFullName'],
   ],
   ['Promotions', [
     'promotionId', 'name', 'description', 'type', 'value', 'buyQuantity', 'freeQuantity',
@@ -59,9 +62,10 @@ describe('REQUIRED_SHEETS', () => {
     expect(REQUIRED_SHEETS.Recovery).toEqual(['key', 'value']);
   });
 
-  it('defines the schema-v2 recurring ledger dimensions exactly', () => {
-    expect(REQUIRED_SHEETS.Tasks).toHaveLength(33);
+  it('defines the schema-v3 recurring ledger dimensions exactly', () => {
+    expect(REQUIRED_SHEETS.Tasks).toHaveLength(34);
     expect(REQUIRED_SHEETS.TaskAssignments).toHaveLength(15);
+    expect(REQUIRED_SHEETS.TaskCompletions).toHaveLength(26);
   });
 
   it('does not add maxCompletionsPerStudent to newly generated Tasks sheets', () => {

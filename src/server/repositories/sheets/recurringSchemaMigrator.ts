@@ -16,6 +16,7 @@ export const TASK_SCHEMA_HEADERS = [
   'pendingTimeZone', 'pendingRecurrenceType', 'pendingRecurrenceTime', 'pendingRecurrenceWeekday',
   'pendingRecurrenceDayOfMonth', 'pendingResetCompletionOnCycle', 'pendingResetAssignmentOnCycle',
   'availableFrom', 'dueAt', 'prerequisiteTaskId', 'recurrenceWeekdays', 'pendingRecurrenceWeekdays',
+  'padletBoardId',
 ] as const;
 
 export const TASK_COMPLETION_SCHEMA_HEADERS = [
@@ -23,6 +24,8 @@ export const TASK_COMPLETION_SCHEMA_HEADERS = [
   'balanceAfter', 'status', 'note', 'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt',
   'ruleVersion', 'timeZone', 'source', 'assignmentId', 'schemaVersion', 'operationId',
   'operationPayloadHash',
+  'evidenceProvider', 'evidenceBoardId', 'evidencePostId', 'evidenceCreatedAt',
+  'evidenceAuthorFullName',
 ] as const;
 
 export const TASK_ASSIGNMENT_HEADERS = [

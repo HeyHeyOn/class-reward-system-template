@@ -127,9 +127,13 @@ function baseStore() {
 }
 
 describe('recurring schema migrator', () => {
-  it('keeps CRS task columns append-only in the required tail order', () => {
-    expect(TASK_SCHEMA_HEADERS.slice(-5)).toEqual([
+  it('keeps CRS task and evidence columns append-only in the required tail order', () => {
+    expect(TASK_SCHEMA_HEADERS.slice(-6)).toEqual([
       'availableFrom', 'dueAt', 'prerequisiteTaskId', 'recurrenceWeekdays', 'pendingRecurrenceWeekdays',
+      'padletBoardId',
+    ]);
+    expect(TASK_COMPLETION_SCHEMA_HEADERS.slice(-5)).toEqual([
+      'evidenceProvider', 'evidenceBoardId', 'evidencePostId', 'evidenceCreatedAt', 'evidenceAuthorFullName',
     ]);
   });
 
@@ -289,7 +293,7 @@ describe('recurring schema migrator', () => {
     const store = baseStore();
     await migrateRecurringTaskSchema(store);
     expect(store.writes).toEqual([
-      'expand:Tasks:26->33',
+      `expand:Tasks:26->${TASK_SCHEMA_HEADERS.length}`,
       `header:Tasks:9:${TASK_SCHEMA_HEADERS.slice(9).join(',')}`,
       `expand:TaskCompletions:10->${TASK_COMPLETION_SCHEMA_HEADERS.length}`,
       `header:TaskCompletions:10:${TASK_COMPLETION_SCHEMA_HEADERS.slice(10).join(',')}`,
@@ -309,7 +313,7 @@ describe('recurring schema migrator', () => {
     expect(store.sheets.get('Tasks')!.info.columnCount).toBe(TASK_SCHEMA_HEADERS.length);
     expect(store.sheets.get('Tasks')!.rows[0]).toEqual(TASK_SCHEMA_HEADERS);
     await expect(migrateRecurringTaskSchema(store)).resolves.toBeUndefined();
-    expect(store.writes.filter((write) => write === 'expand:Tasks:26->33')).toHaveLength(1);
+    expect(store.writes.filter((write) => write === `expand:Tasks:26->${TASK_SCHEMA_HEADERS.length}`)).toHaveLength(1);
     expect(store.writes.filter((write) => write.startsWith('header:Tasks'))).toHaveLength(1);
   });
 

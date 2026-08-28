@@ -33,6 +33,8 @@ type BankTask = Omit<ClassTask, 'allowedStudentIds'> & {
   prerequisiteTitle?: string;
   prerequisiteStatus?: 'SATISFIED' | 'REQUIRED' | 'UNAVAILABLE';
   prerequisiteMessage?: string;
+  padletEligibility?: 'READY' | 'SUBMISSION_REQUIRED' | 'CHECK_UNAVAILABLE';
+  padletEligibilityMessage?: string;
 };
 
 type CompletionSuccessPayload = {
@@ -560,11 +562,12 @@ export function BankApp() {
           {getTaskStudentStatus(selectedTask, taskStudentId).completed === true ? <p className="sr-only">완료됨</p> : null}
           {selectedTask.prerequisiteTitle ? <p className="mt-3 rounded-xl bg-slate-100 p-3 font-bold">선행 과제: {selectedTask.prerequisiteTitle}</p> : null}
           {selectedTask.prerequisiteMessage ? <p className="mt-3 rounded-xl bg-amber-100 p-3 font-bold text-amber-900">{selectedTask.prerequisiteMessage}</p> : null}
+          {selectedTask.padletEligibilityMessage ? <p className="mt-3 rounded-xl bg-amber-100 p-3 font-bold text-amber-900">{selectedTask.padletEligibilityMessage}</p> : null}
           {completionFailureMode === 'manual' || completionFailureMode === 'conflict' ? <p className="mt-3 rounded-xl bg-rose-50 p-3 font-bold text-rose-700">이 QR 세션에서는 추가 완료를 진행할 수 없습니다. 담당자 확인 후 새 QR로 다시 시작해 주세요.</p> : null}
           {pendingCompletionTaskId && pendingCompletionTaskId !== selectedTask.taskId ? <p className="mt-3 rounded-xl bg-amber-50 p-3 font-bold text-amber-800">확인 중인 다른 과제 완료 작업이 있습니다. 해당 과제로 돌아가 상태를 확인해 주세요.</p> : null}
           {pendingCompletionTaskId === selectedTask.taskId ? <button type="button" onClick={() => void completeSelectedTask(true)} className={`mt-4 w-full rounded-2xl ${theme.accentBg} py-4 text-xl font-black`}>상태 다시 확인</button> : null}
           {getTaskStudentStatus(selectedTask, taskStudentId).completed !== true && !pendingCompletionTaskId && completionFailureMode !== 'manual' && completionFailureMode !== 'conflict' ? (
-            <button type="button" disabled={selectedTask.prerequisiteStatus === 'REQUIRED' || selectedTask.prerequisiteStatus === 'UNAVAILABLE'} onClick={() => void completeSelectedTask()} className={`mt-4 w-full rounded-2xl ${theme.accentBg} py-4 text-xl font-black disabled:cursor-not-allowed disabled:opacity-50`}>완료하기</button>
+            <button type="button" disabled={selectedTask.prerequisiteStatus === 'REQUIRED' || selectedTask.prerequisiteStatus === 'UNAVAILABLE' || selectedTask.padletEligibility === 'SUBMISSION_REQUIRED' || selectedTask.padletEligibility === 'CHECK_UNAVAILABLE'} onClick={() => void completeSelectedTask()} className={`mt-4 w-full rounded-2xl ${theme.accentBg} py-4 text-xl font-black disabled:cursor-not-allowed disabled:opacity-50`}>완료하기</button>
           ) : null}
         </Modal>
       ) : null}
@@ -628,14 +631,19 @@ type TaskCardProps = {
 function TaskCard({ task, studentId, currencyUnit, theme, isBlackTheme, onOpen, embedded = false, catalog = false }: TaskCardProps) {
   const guidanceId = useId();
   const completed = !catalog && getTaskStudentStatus(task, studentId).completed === true;
-  const locked = !catalog && (task.prerequisiteStatus === 'REQUIRED' || task.prerequisiteStatus === 'UNAVAILABLE');
-  const accessibleStatus = completed ? ', 완료됨' : locked ? ', 완료 불가' : '';
-  const statusLabel = task.prerequisiteStatus === 'UNAVAILABLE' ? '과제 완료 불가' : '선행 완료 필요';
+  const padletBlocked = task.padletEligibility === 'SUBMISSION_REQUIRED' || task.padletEligibility === 'CHECK_UNAVAILABLE';
+  const locked = !catalog && (task.prerequisiteStatus === 'REQUIRED' || task.prerequisiteStatus === 'UNAVAILABLE' || padletBlocked);
+  const ready = !catalog && !completed && !locked && task.padletEligibility === 'READY';
+  const guidance = task.prerequisiteMessage ?? task.padletEligibilityMessage;
+  const accessibleStatus = completed ? ', 완료됨' : locked ? ', 완료 불가' : ready ? ', 완료 가능' : '';
+  const statusLabel = task.prerequisiteStatus === 'UNAVAILABLE' ? '과제 완료 불가'
+    : task.prerequisiteStatus === 'REQUIRED' ? '선행 완료 필요'
+      : task.padletEligibility === 'CHECK_UNAVAILABLE' ? '확인 불가' : '게시물 필요';
   return (
     <button
       type="button"
       aria-label={`${task.title}${accessibleStatus}`}
-      aria-describedby={locked && task.prerequisiteMessage ? guidanceId : undefined}
+      aria-describedby={locked && guidance ? guidanceId : undefined}
       onClick={() => onOpen(task)}
       className={`relative h-full w-full overflow-hidden ${embedded ? '' : `rounded-2xl border ${theme.accentBorderAlt} ${theme.softBg}`} p-4 text-left font-black ${theme.softText}`}
     >
@@ -645,10 +653,11 @@ function TaskCard({ task, studentId, currencyUnit, theme, isBlackTheme, onOpen, 
         <span className={`mt-1 block text-sm ${isBlackTheme ? 'text-slate-300' : 'text-slate-500'}`}>보상 {task.reward.toLocaleString()}{currencyUnit}</span>
         <TaskStudentSummary task={task} compact />
       </div>
-      {locked && task.prerequisiteMessage ? <>
+      {locked && guidance ? <>
         <span aria-hidden="true" className="absolute right-3 top-3 z-10 rounded-full bg-amber-100 px-3 py-1 text-xs text-amber-900">{statusLabel}</span>
-        <span id={guidanceId} className="sr-only">{task.prerequisiteMessage}</span>
+        <span id={guidanceId} className="sr-only">{guidance}</span>
       </> : null}
+      {ready ? <span aria-hidden="true" className="absolute right-3 top-3 z-10 rounded-full bg-emerald-700 px-3 py-1 text-sm font-black text-white">완료 가능</span> : null}
       {completed ? <span aria-hidden="true" className="absolute right-3 top-3 z-10 rounded-full bg-emerald-700 px-3 py-1 text-sm font-black text-white">완료됨</span> : null}
     </button>
   );
@@ -656,24 +665,87 @@ function TaskCard({ task, studentId, currencyUnit, theme, isBlackTheme, onOpen, 
 
 function TaskCarousel({ chain, studentId, currencyUnit, theme, isBlackTheme, onOpen, catalog = false, activeTaskId, onActiveTaskChange }: Omit<TaskCardProps, 'task' | 'embedded'> & { chain: StudentTaskChain<BankTask> }) {
   const storedIndex = activeTaskId ? chain.tasks.findIndex((task) => task.taskId === activeTaskId) : -1;
-  const activeIndex = storedIndex >= 0 ? storedIndex : chain.initialIndex;
+  const externalIndex = storedIndex >= 0 ? storedIndex : chain.initialIndex;
+  const [activeIndex, setActiveIndex] = useState(externalIndex);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const scrollSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelAnimation = useCallback(() => {
+    if (animationFrameRef.current !== null) cancelAnimationFrame(animationFrameRef.current);
+    animationFrameRef.current = null;
+  }, []);
+
+  const clearScrollSettleTimer = useCallback(() => {
+    if (scrollSettleTimerRef.current !== null) clearTimeout(scrollSettleTimerRef.current);
+    scrollSettleTimerRef.current = null;
+  }, []);
+
+  const persistIndex = useCallback((index: number) => {
+    const nextIndex = Math.max(0, Math.min(chain.tasks.length - 1, index));
+    setActiveIndex(nextIndex);
+    if (chain.tasks[nextIndex].taskId !== activeTaskId) onActiveTaskChange?.(chain.tasks[nextIndex].taskId);
+  }, [activeTaskId, chain.tasks, onActiveTaskChange]);
+
+  const persistScrolledIndex = useCallback(() => {
+    clearScrollSettleTimer();
+    const scroller = scrollerRef.current;
+    if (!scroller || scroller.clientWidth <= 0 || animationFrameRef.current !== null) return;
+    persistIndex(Math.round(scroller.scrollLeft / scroller.clientWidth));
+  }, [clearScrollSettleTimer, persistIndex]);
+
+  const interruptAnimation = useCallback(() => {
+    const wasAnimating = animationFrameRef.current !== null;
+    cancelAnimation();
+    if (!wasAnimating) return;
+    clearScrollSettleTimer();
+    scrollSettleTimerRef.current = setTimeout(persistScrolledIndex, 160);
+  }, [cancelAnimation, clearScrollSettleTimer, persistScrolledIndex]);
 
   const showSlide = useCallback((index: number) => {
     const nextIndex = Math.max(0, Math.min(chain.tasks.length - 1, index));
-    onActiveTaskChange?.(chain.tasks[nextIndex].taskId);
     const scroller = scrollerRef.current;
     if (!scroller) return;
-    const left = nextIndex * scroller.clientWidth;
-    scrollTaskCarousel(scroller, left, 'smooth');
-  }, [chain.tasks, onActiveTaskChange]);
+    clearScrollSettleTimer();
+    cancelAnimation();
+    const targetLeft = nextIndex * scroller.clientWidth;
+    const reducedMotion = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reducedMotion || typeof requestAnimationFrame !== 'function' || scroller.scrollLeft === targetLeft) {
+      scrollTaskCarousel(scroller, targetLeft);
+      persistIndex(nextIndex);
+      return;
+    }
+
+    const startLeft = scroller.scrollLeft;
+    let startTime: number | null = null;
+    const step = (time: number) => {
+      if (startTime === null) startTime = time;
+      const progress = Math.min(1, (time - startTime) / 260);
+      const eased = progress < 0.5 ? 4 * progress * progress * progress : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+      scrollTaskCarousel(scroller, startLeft + (targetLeft - startLeft) * eased);
+      if (progress < 1) {
+        animationFrameRef.current = requestAnimationFrame(step);
+      } else {
+        animationFrameRef.current = null;
+        persistIndex(nextIndex);
+      }
+    };
+    animationFrameRef.current = requestAnimationFrame(step);
+  }, [cancelAnimation, chain.tasks.length, clearScrollSettleTimer, persistIndex]);
 
   useEffect(() => {
     const scroller = scrollerRef.current;
     if (!scroller) return;
-    const left = activeIndex * scroller.clientWidth;
+    cancelAnimation();
+    setActiveIndex(externalIndex);
+    const left = externalIndex * scroller.clientWidth;
     scrollTaskCarousel(scroller, left);
-  }, [activeIndex]);
+  }, [cancelAnimation, externalIndex]);
+
+  useEffect(() => () => {
+    cancelAnimation();
+    clearScrollSettleTimer();
+  }, [cancelAnimation, clearScrollSettleTimer]);
 
   return (
     <section role="region" aria-label={`${chain.tasks[0].title} 연결 과제 묶음`} className={`group relative overflow-hidden rounded-2xl border ${theme.accentBorderAlt} ${theme.softBg}`}>
@@ -681,13 +753,15 @@ function TaskCarousel({ chain, studentId, currencyUnit, theme, isBlackTheme, onO
         ref={scrollerRef}
         data-testid="task-carousel-scroller"
         className="flex items-stretch touch-pan-x snap-x snap-mandatory overflow-x-auto overscroll-x-contain"
-        onScroll={(event) => {
-          const width = event.currentTarget.clientWidth;
-          if (width > 0) {
-            const nextIndex = Math.max(0, Math.min(chain.tasks.length - 1, Math.round(event.currentTarget.scrollLeft / width)));
-            if (nextIndex !== activeIndex) onActiveTaskChange?.(chain.tasks[nextIndex].taskId);
-          }
+        onPointerDown={interruptAnimation}
+        onTouchStart={interruptAnimation}
+        onWheel={interruptAnimation}
+        onScroll={() => {
+          if (animationFrameRef.current !== null) return;
+          clearScrollSettleTimer();
+          scrollSettleTimerRef.current = setTimeout(persistScrolledIndex, 160);
         }}
+        onScrollEnd={persistScrolledIndex}
       >
         {chain.tasks.map((task, index) => (
           <div
@@ -697,7 +771,7 @@ function TaskCarousel({ chain, studentId, currencyUnit, theme, isBlackTheme, onO
             aria-label={`${index + 1} / ${chain.tasks.length}: ${task.title}`}
             aria-hidden={index === activeIndex ? undefined : true}
             inert={index === activeIndex ? undefined : true}
-            className="flex min-w-full snap-center"
+            className="flex min-w-full snap-center snap-always"
           >
             <TaskCard task={task} studentId={studentId} currencyUnit={currencyUnit} theme={theme} isBlackTheme={isBlackTheme} onOpen={onOpen} embedded catalog={catalog} />
           </div>
@@ -721,10 +795,10 @@ function TaskCarousel({ chain, studentId, currencyUnit, theme, isBlackTheme, onO
   );
 }
 
-function scrollTaskCarousel(scroller: HTMLDivElement, left: number, behavior?: ScrollBehavior) {
+function scrollTaskCarousel(scroller: HTMLDivElement, left: number) {
   try {
     if (typeof scroller.scrollTo === 'function') {
-      scroller.scrollTo({ left, behavior });
+      scroller.scrollTo({ left });
       return;
     }
   } catch {

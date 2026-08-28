@@ -2,6 +2,11 @@ import { isTaskAvailable } from '@/domain/taskAvailability';
 import { resolveTaskSchedule } from '@/domain/taskSchedule';
 import type { TaskRecurrence } from '@/domain/types';
 import type { TaskCycleProjectionDto } from '@/server/repositories/sheets/taskHistoryQueries';
+import {
+  allocatePadletTaskEligibility,
+  type PadletEligibilityStatus,
+  type PadletTaskEligibility,
+} from '@/server/padletTaskVerification';
 
 export type StudentTaskProjectionDto = {
   taskId: string;
@@ -16,12 +21,46 @@ export type StudentTaskProjectionDto = {
   prerequisiteTitle?: string;
   prerequisiteStatus?: 'UNAVAILABLE' | 'SATISFIED' | 'REQUIRED';
   prerequisiteMessage?: string;
+  padletEligibility?: PadletEligibilityStatus;
+  padletEligibilityMessage?: string;
   studentStatus: {
     studentId: string;
     assigned: boolean;
     completed?: boolean;
   };
 };
+
+type EnrichmentDependencies = {
+  verifyPadlet?: (
+    tasks: readonly TaskCycleProjectionDto[],
+    studentId: string,
+    studentName: string,
+  ) => Promise<Map<string, PadletTaskEligibility>>;
+};
+
+/** Adds fail-closed external-evidence eligibility to the safe student DTO. */
+export async function buildEnrichedStudentTaskProjection(
+  tasks: readonly TaskCycleProjectionDto[],
+  studentId: string,
+  studentName: string,
+  now: string,
+  dependencies: EnrichmentDependencies = {},
+): Promise<StudentTaskProjectionDto[]> {
+  const projection = buildStudentTaskProjection(tasks, studentId, now);
+  const visibleTaskIds = new Set(projection.map((task) => task.taskId));
+  const visibleTasks = tasks.filter((task) => visibleTaskIds.has(task.taskId));
+  const eligibility = dependencies.verifyPadlet
+    ? await dependencies.verifyPadlet(visibleTasks, studentId, studentName)
+    : await allocatePadletTaskEligibility(visibleTasks, studentId, studentName, {}, now);
+  return projection.map((task) => {
+    const evidence = eligibility.get(task.taskId);
+    return evidence ? {
+      ...task,
+      padletEligibility: evidence.status,
+      padletEligibilityMessage: evidence.message,
+    } : task;
+  });
+}
 
 /** Builds the allowlisted task representation safe to return to one student. */
 export function buildStudentTaskProjection(

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TaskCycleProjectionDto } from '@/server/repositories/sheets/taskHistoryQueries';
-import { buildStudentTaskProjection } from './studentTaskProjection';
+import { buildEnrichedStudentTaskProjection, buildStudentTaskProjection } from './studentTaskProjection';
 
 const NOW = '2026-08-27T12:00:00.000Z';
 
@@ -150,5 +150,32 @@ describe('buildStudentTaskProjection', () => {
     expect(buildStudentTaskProjection([legacyProjection], 'S1', NOW)[0].studentStatus).toEqual({
       studentId: 'S1', assigned: true,
     });
+  });
+});
+
+describe('buildEnrichedStudentTaskProjection', () => {
+  it('adds only safe Padlet eligibility fields while leaving non-Padlet tasks unchanged', async () => {
+    const verifyPadlet = async () => new Map([['PADLET', {
+      status: 'READY' as const,
+      message: 'Padlet 게시물이 확인되어 완료할 수 있습니다.',
+    }]]);
+    const projections = [
+      task({ taskId: 'PADLET', padletBoardId: 'BOARD000000000001' }),
+      task({ taskId: 'PLAIN', padletBoardId: undefined }),
+    ];
+
+    const result = await buildEnrichedStudentTaskProjection(
+      projections, 'S1', '김민준', NOW, { verifyPadlet },
+    );
+
+    expect(result.find(({ taskId }) => taskId === 'PADLET')).toMatchObject({
+      padletEligibility: 'READY',
+      padletEligibilityMessage: 'Padlet 게시물이 확인되어 완료할 수 있습니다.',
+    });
+    expect(result.find(({ taskId }) => taskId === 'PLAIN')).not.toHaveProperty('padletEligibility');
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain('BOARD000000000001');
+    expect(serialized).not.toContain('postId');
+    expect(serialized).not.toContain('author');
   });
 });

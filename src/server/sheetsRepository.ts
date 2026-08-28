@@ -1,4 +1,4 @@
-import type { ClassTask, Product, Student, TaskAssignmentStatus, TaskCompletion, TaskRecurrence, Transaction } from '@/domain/types';
+import type { ClassTask, Product, Student, TaskAssignmentStatus, TaskCompletion, TaskCompletionEvidence, TaskRecurrence, Transaction } from '@/domain/types';
 import {
   DEFAULT_CLASS_TIME_ZONE,
   normalizeLegacyTimeZone,
@@ -120,6 +120,7 @@ export type TaskUpdate = {
   availableFrom?: string;
   dueAt?: string;
   prerequisiteTaskId?: string;
+  padletBoardId?: string;
   schedule?: TaskScheduleEdit;
 };
 
@@ -139,7 +140,13 @@ export type TaskCompletionOperation = {
   requestId: string;
   operationId: string;
   operationPayloadHash: string;
-  buildSafeProjection: (now: string) => Promise<StudentTaskProjectionDto[]>;
+  evidence?: TaskCompletionEvidence;
+  resolveEvidence?: (context: {
+    task: ClassTask;
+    student: Student;
+    now: string;
+  }) => Promise<TaskCompletionEvidence>;
+  buildSafeProjection: (now: string, student: Student) => Promise<StudentTaskProjectionDto[]>;
 };
 
 export type StudentBulkBalanceMode = 'set' | 'add' | 'subtract';
@@ -424,12 +431,12 @@ async function createTaskNow(store: SheetsStore, create: TaskCreate): Promise<Cl
   const taskId = create.taskId.trim();
   validateTaskId(taskId);
   validateTaskUpdate(create);
-  await ensureTaskSheet(store);
   if (await getTaskById(store, taskId)) throw new Error('이미 존재하는 과제 ID입니다.');
   const existingTasks = await getTasks(store, { includeInactive: true });
   const availability = validateTaskAvailability(create);
   validateTaskPrerequisiteGraph([...existingTasks, { taskId, isActive: create.isActive, prerequisiteTaskId: create.prerequisiteTaskId?.trim() || undefined }]);
-  if (create.schedule !== undefined || ['availableFrom', 'dueAt', 'prerequisiteTaskId'].some((key) => Object.hasOwn(create, key))) {
+  await ensureTaskSheet(store);
+  if (create.schedule !== undefined || ['availableFrom', 'dueAt', 'prerequisiteTaskId', 'padletBoardId'].some((key) => Object.hasOwn(create, key))) {
     await migrateRecurringSchemaIfNeeded(requireRecurringSchemaMigrationStore(store));
   }
   const now = new Date().toISOString();
@@ -462,6 +469,7 @@ async function createTaskNow(store: SheetsStore, create: TaskCreate): Promise<Cl
     allowedStudentIds: normalizeUniqueIds(create.allowedStudentIds ?? []),
     ...availability,
     ...(create.prerequisiteTaskId?.trim() ? { prerequisiteTaskId: create.prerequisiteTaskId.trim() } : {}),
+    ...(create.padletBoardId?.trim() ? { padletBoardId: create.padletBoardId.trim() } : {}),
     createdAt: now,
     ...versionedSchedule,
   };
@@ -530,7 +538,6 @@ async function updateTaskDetailsNow(
   editedAt: string,
 ): Promise<ClassTask> {
   validateTaskUpdate(update);
-  await ensureTaskSheet(store);
   let record = await getTaskRecordById(store, taskId);
   if (!record) throw new Error('과제를 찾을 수 없습니다.');
   if (update.schedule !== undefined) assertPersistedScheduleIsEditable(record.task);
@@ -541,12 +548,16 @@ async function updateTaskDetailsNow(
   const prerequisiteTaskId = Object.hasOwn(update, 'prerequisiteTaskId')
     ? update.prerequisiteTaskId?.trim() || undefined
     : record.task.prerequisiteTaskId;
+  const padletBoardId = Object.hasOwn(update, 'padletBoardId')
+    ? update.padletBoardId?.trim() || undefined
+    : record.task.padletBoardId;
   const allTasks = (await getTasks(store, { includeInactive: true }))
     .map((task) => task.taskId === taskId ? { ...task, isActive: update.isActive, prerequisiteTaskId } : task);
   validateTaskPrerequisiteGraph(allTasks);
+  await ensureTaskSheet(store);
 
   const needsSchemaMigration = update.schedule !== undefined
-    || ['availableFrom', 'dueAt', 'prerequisiteTaskId'].some((key) => Object.hasOwn(update, key));
+    || ['availableFrom', 'dueAt', 'prerequisiteTaskId', 'padletBoardId'].some((key) => Object.hasOwn(update, key));
   if (needsSchemaMigration) {
     await migrateRecurringSchemaIfNeeded(store);
     // Migration can replace the legacy projection. Re-read only after every validation that
@@ -577,6 +588,9 @@ async function updateTaskDetailsNow(
   if (headers.includes('availableFrom')) cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'availableFrom', value: availability.availableFrom ?? '' });
   if (headers.includes('dueAt')) cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'dueAt', value: availability.dueAt ?? '' });
   if (headers.includes('prerequisiteTaskId')) cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'prerequisiteTaskId', value: prerequisiteTaskId ?? '' });
+  if (headers.includes('padletBoardId') && Object.hasOwn(update, 'padletBoardId')) {
+    cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'padletBoardId', value: padletBoardId ?? '' });
+  }
   if (headers.includes('updatedAt')) {
     cellUpdates.push({
       rowNumber: record.rowNumber,
@@ -603,6 +617,7 @@ async function updateTaskDetailsNow(
     allowedStudentIds,
     ...availability,
     ...(prerequisiteTaskId ? { prerequisiteTaskId } : {}),
+    ...(padletBoardId ? { padletBoardId } : Object.hasOwn(update, 'padletBoardId') ? { padletBoardId: undefined } : {}),
     ...(scheduleState ? {
       taskInstanceId: scheduleState.taskInstanceId,
       schedule: scheduleState.currentSchedule,
@@ -652,7 +667,7 @@ async function updateTaskDetailsBatchNow(
   }));
   await ensureTaskSheet(store);
   const needsSchemaMigration = normalized.some((update) => update.schedule !== undefined
-    || ['availableFrom', 'dueAt', 'prerequisiteTaskId'].some((key) => Object.hasOwn(update, key)));
+    || ['availableFrom', 'dueAt', 'prerequisiteTaskId', 'padletBoardId'].some((key) => Object.hasOwn(update, key)));
   if (needsSchemaMigration) await migrateRecurringSchemaIfNeeded(store);
 
   // Re-read after any migration while still holding the process-local queue lock.
@@ -693,11 +708,17 @@ async function updateTaskDetailsBatchNow(
     const prerequisiteTaskId = Object.hasOwn(update, 'prerequisiteTaskId')
       ? update.prerequisiteTaskId?.trim() || undefined
       : record.task.prerequisiteTaskId;
+    const padletBoardId = Object.hasOwn(update, 'padletBoardId')
+      ? update.padletBoardId?.trim() || undefined
+      : record.task.padletBoardId;
     const hasAllowedStudentIds = taskRows[0]?.includes('allowedStudentIds') ?? false;
     if (hasAllowedStudentIds) cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'allowedStudentIds', value: allowedStudentIds.join(',') });
     if (taskRows[0]?.includes('availableFrom')) cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'availableFrom', value: availability.availableFrom ?? '' });
     if (taskRows[0]?.includes('dueAt')) cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'dueAt', value: availability.dueAt ?? '' });
     if (taskRows[0]?.includes('prerequisiteTaskId')) cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'prerequisiteTaskId', value: prerequisiteTaskId ?? '' });
+    if (taskRows[0]?.includes('padletBoardId') && Object.hasOwn(update, 'padletBoardId')) {
+      cellUpdates.push({ rowNumber: record.rowNumber, columnName: 'padletBoardId', value: padletBoardId ?? '' });
+    }
     const scheduleState = scheduleStates.get(update.taskId) ?? null;
     if (hasUpdatedAt) {
       cellUpdates.push({
@@ -723,6 +744,7 @@ async function updateTaskDetailsBatchNow(
       allowedStudentIds,
       ...availability,
       ...(prerequisiteTaskId ? { prerequisiteTaskId } : {}),
+      ...(padletBoardId ? { padletBoardId } : Object.hasOwn(update, 'padletBoardId') ? { padletBoardId: undefined } : {}),
       ...(scheduleState ? {
         taskInstanceId: scheduleState.taskInstanceId,
         schedule: scheduleState.currentSchedule,
@@ -841,6 +863,9 @@ export async function completeTaskForStudent(
     if (!existingOperation && !isTaskAvailable(record.task, now)) throw new Error('현재 완료할 수 있는 과제가 아닙니다.');
     const studentRecord = await getStudentRecordById(store, studentId.trim());
     if (!studentRecord || (!existingOperation && studentRecord.student.status !== 'ACTIVE')) throw new Error('학생 정보를 찾을 수 없습니다.');
+    if (!existingOperation && record.task.padletBoardId && !operation?.resolveEvidence) {
+      throw new Error('PADLET_EVIDENCE_REQUIRED');
+    }
     if (!existingOperation && record.task.prerequisiteTaskId) {
       const prerequisite = await getTaskById(store, record.task.prerequisiteTaskId);
       if (!prerequisite) throw new Error('선행 과제를 찾을 수 없습니다.');
@@ -864,6 +889,14 @@ export async function completeTaskForStudent(
       ...(operation ? {
         operationId: operation.operationId,
         operationPayloadHash: operation.operationPayloadHash,
+        evidence: operation.evidence,
+        ...(!existingOperation && operation.resolveEvidence ? {
+          resolveEvidence: () => operation.resolveEvidence!({
+            task: record.task,
+            student: studentRecord.student,
+            now,
+          }),
+        } : {}),
       } : {}),
       now,
     });
@@ -875,7 +908,7 @@ export async function completeTaskForStudent(
     };
     if (!operation) return baseResult;
     const projectionStartedAt = Date.now();
-    const tasks = await operation.buildSafeProjection(now);
+    const tasks = await operation.buildSafeProjection(now, studentRecord.student);
     if (!Array.isArray(tasks)) throw new Error('과제 projection을 확인할 수 없습니다.');
     emitOperationStage({
       requestId: operation.requestId,
@@ -1616,7 +1649,7 @@ async function ensureTaskSheet(store: SheetsStore): Promise<void> {
 
 
 async function ensureSheetHeaders(store: SheetsStore, sheetName: SheetName, requiredHeaders: string[], currentHeaders: string[]): Promise<void> {
-  const normalizedCurrent = currentHeaders.map((header) => header.trim()).filter(Boolean);
+  const normalizedCurrent = currentHeaders.map((header) => header.trim());
   const missingHeaders = requiredHeaders.filter((header) => !normalizedCurrent.includes(header));
   if (missingHeaders.length === 0) return;
   if (!store.updateHeaderRow) {
@@ -1633,6 +1666,10 @@ function validateTaskUpdate(update: TaskUpdate) {
   if (!update.title.trim()) throw new Error('과제명을 입력해 주세요.');
   if (!Number.isInteger(update.reward) || update.reward < 0) throw new Error('보상은 0 이상의 정수여야 합니다.');
   if (!Number.isInteger(update.sortOrder)) throw new Error('정렬 순서는 정수여야 합니다.');
+  if (update.padletBoardId !== undefined && update.padletBoardId.trim()
+    && !/^[A-Za-z0-9]{16,22}$/.test(update.padletBoardId.trim())) {
+    throw new Error('Padlet 게시판 ID 형식이 올바르지 않습니다.');
+  }
   validateTaskAvailability(update);
 }
 

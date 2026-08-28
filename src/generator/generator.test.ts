@@ -43,7 +43,7 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
       'Recovery',
     ]);
     expect(REQUIRED_SHEETS.Students).toEqual(['studentId', 'name', 'balance', 'status']);
-    expect(REQUIRED_SHEETS.Tasks).toHaveLength(33);
+    expect(REQUIRED_SHEETS.Tasks).toHaveLength(34);
     expect(REQUIRED_SHEETS.TaskAssignments).toEqual([
       'assignmentId', 'taskId', 'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion',
       'timeZone', 'studentId', 'status', 'source', 'previousAssignmentId', 'createdAt', 'schemaVersion', 'note',
@@ -237,7 +237,7 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
     expect(rendered).toContain('themeColor: purple');
     expect(rendered).toContain('Students: studentId, name, balance, status');
     expect(rendered).toContain('TaskAssignments: assignmentId, taskId, taskInstanceId');
-    expect(rendered).toContain('Vercel 환경변수: GOOGLE_SHEET_ID, ADMIN_PASSWORD, AUTH_SECRET');
+    expect(rendered).toContain('Vercel 환경변수: GOOGLE_SHEET_ID, ADMIN_PASSWORD, AUTH_SECRET, PADLET_API_KEY, UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN');
     expect(rendered).not.toContain('비밀번호');
   });
 

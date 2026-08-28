@@ -1,8 +1,8 @@
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { createConfiguredSheetsReader, createConfiguredSheetsStore } from '@/server/googleSheets';
-import { createTask } from '@/server/sheetsRepository';
+import { createTask, getStudentById } from '@/server/sheetsRepository';
 import { listTaskCycleProjections } from '@/server/repositories/sheets/taskHistoryQueries';
-import { buildStudentTaskProjection } from '@/server/studentTaskProjection';
+import { buildEnrichedStudentTaskProjection } from '@/server/studentTaskProjection';
 import { parseOptionalTaskScheduleEdit } from './taskScheduleEdit';
 import { parseStrictTaskFields } from './taskPayload';
 
@@ -27,8 +27,10 @@ export async function GET(request: Request) {
       ...(studentId ? { studentId } : {}),
     });
     if (!studentId) return Response.json(tasks);
+    const student = await getStudentById(reader, studentId);
+    if (!student) return Response.json({ error: '학생을 찾을 수 없습니다.' }, { status: 404 });
     const now = new Date().toISOString();
-    return Response.json(buildStudentTaskProjection(tasks, studentId, now));
+    return Response.json(await buildEnrichedStudentTaskProjection(tasks, studentId, student.name, now));
   } catch (error) {
     if (new URL(request.url).searchParams.has('studentId')) {
       return Response.json({ error: '과제 목록을 불러오지 못했습니다.' }, { status: 500 });

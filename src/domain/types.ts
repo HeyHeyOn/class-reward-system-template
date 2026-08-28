@@ -129,6 +129,8 @@ export type ClassTask = {
   availableFrom?: string;
   dueAt?: string;
   prerequisiteTaskId?: string;
+  /** Padlet board identifier only (never a URL). */
+  padletBoardId?: string;
   createdAt?: string;
   /** Always populated by the sheet codec; optional for legacy API callers constructing tasks. */
   taskInstanceId?: string;
@@ -136,6 +138,14 @@ export type ClassTask = {
   pendingSchedule?: TaskSchedule | null;
   /** Present only when persisted versioned schedule cells were malformed and a read fallback was used. */
   scheduleReadWarnings?: TaskScheduleReadWarning[];
+};
+
+export type TaskCompletionEvidence = {
+  evidenceProvider: 'PADLET';
+  evidenceBoardId: string;
+  evidencePostId: string;
+  evidenceCreatedAt: string;
+  evidenceAuthorFullName: string;
 };
 
 export type TaskCompletion = {
@@ -162,6 +172,12 @@ export type TaskCompletion = {
   /** Append-only BANK operation metadata; absent on legacy/admin rows. */
   operationId?: string;
   operationPayloadHash?: string;
+  /** Complete immutable external-evidence snapshot; all fields are absent on non-evidence rows. */
+  evidenceProvider?: 'PADLET';
+  evidenceBoardId?: string;
+  evidencePostId?: string;
+  evidenceCreatedAt?: string;
+  evidenceAuthorFullName?: string;
 };
 
 export type TaskCompletionSource = 'BANK' | 'ADMIN' | 'CARRY_FORWARD' | 'ADMIN_RESET';

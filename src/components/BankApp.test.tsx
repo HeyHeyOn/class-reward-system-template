@@ -600,6 +600,194 @@ describe('BankApp', () => {
     expect(within(carousel).getByRole('button', { name: '이전 과제' })).toBeTruthy();
   });
 
+  it('waits for scrollend before persisting a swiped slide', async () => {
+    const linkedTasks = Array.from({ length: 4 }, (_, index) => ({
+      ...tasks[0], taskId: `SWIPE${index + 1}`, title: `스와이프 과제 ${index + 1}`, sortOrder: index + 1,
+      prerequisiteTaskId: index ? `SWIPE${index}` : undefined,
+      studentStatus: { studentId: 'S001', assigned: true, completed: false },
+    }));
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/tasks?studentId=S001' ? jsonResponse(linkedTasks) : base(input, init));
+
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+    const carousel = await screen.findByRole('region', { name: '스와이프 과제 1 연결 과제 묶음' });
+    const scroller = within(carousel).getByTestId('task-carousel-scroller');
+    Object.defineProperty(scroller, 'clientWidth', { configurable: true, value: 100 });
+    scroller.scrollLeft = 260;
+
+    fireEvent.scroll(scroller);
+    expect(within(carousel).getByRole('button', { name: '스와이프 과제 1' })).toBeTruthy();
+    fireEvent(scroller, new Event('scrollend'));
+    expect(within(carousel).getByRole('button', { name: '스와이프 과제 4' })).toBeTruthy();
+  });
+
+  it('uses a debounce fallback to persist a settled swipe when scrollend is unavailable', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const linkedTasks = Array.from({ length: 3 }, (_, index) => ({
+      ...tasks[0], taskId: `FALLBACK${index + 1}`, title: `대체 과제 ${index + 1}`, sortOrder: index + 1,
+      prerequisiteTaskId: index ? `FALLBACK${index}` : undefined,
+      studentStatus: { studentId: 'S001', assigned: true, completed: false },
+    }));
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/tasks?studentId=S001' ? jsonResponse(linkedTasks) : base(input, init));
+
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+    const carousel = await screen.findByRole('region', { name: '대체 과제 1 연결 과제 묶음' });
+    const scroller = within(carousel).getByTestId('task-carousel-scroller');
+    Object.defineProperty(scroller, 'clientWidth', { configurable: true, value: 100 });
+    scroller.scrollLeft = 100;
+
+    fireEvent.scroll(scroller);
+    expect(within(carousel).getByRole('button', { name: '대체 과제 1' })).toBeTruthy();
+    act(() => { vi.advanceTimersByTime(180); });
+    expect(within(carousel).getByRole('button', { name: '대체 과제 2' })).toBeTruthy();
+  });
+
+  it('forces every carousel slide to stop one at a time during a swipe', async () => {
+    const linkedTasks = Array.from({ length: 3 }, (_, index) => ({
+      ...tasks[0], taskId: `STOP${index + 1}`, title: `정지 과제 ${index + 1}`, sortOrder: index + 1,
+      prerequisiteTaskId: index ? `STOP${index}` : undefined,
+      studentStatus: { studentId: 'S001', assigned: true, completed: false },
+    }));
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/tasks?studentId=S001' ? jsonResponse(linkedTasks) : base(input, init));
+
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+    const carousel = await screen.findByRole('region', { name: '정지 과제 1 연결 과제 묶음' });
+    for (const slide of carousel.querySelectorAll('[data-testid="task-carousel-slide"]')) {
+      expect(slide.className).toContain('snap-always');
+    }
+  });
+
+  it('animates indicator jumps over a fixed 260ms instead of native smooth scrolling', async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => { frames.push(callback); return frames.length; }));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+    const linkedTasks = Array.from({ length: 4 }, (_, index) => ({
+      ...tasks[0], taskId: `MOTION${index + 1}`, title: `이동 과제 ${index + 1}`, sortOrder: index + 1,
+      prerequisiteTaskId: index ? `MOTION${index}` : undefined,
+      studentStatus: { studentId: 'S001', assigned: true, completed: false },
+    }));
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/tasks?studentId=S001' ? jsonResponse(linkedTasks) : base(input, init));
+
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+    const carousel = await screen.findByRole('region', { name: '이동 과제 1 연결 과제 묶음' });
+    const scroller = within(carousel).getByTestId('task-carousel-scroller');
+    Object.defineProperty(scroller, 'clientWidth', { configurable: true, value: 100 });
+    scroller.scrollLeft = 0;
+    const scrollTo = vi.fn(({ left }: ScrollToOptions) => { scroller.scrollLeft = left ?? 0; });
+    Object.defineProperty(scroller, 'scrollTo', { configurable: true, value: scrollTo });
+
+    fireEvent.click(within(carousel).getByRole('button', { name: '4번째 과제 보기' }));
+    expect(within(carousel).getByRole('button', { name: '이동 과제 1' })).toBeTruthy();
+    expect(frames).toHaveLength(1);
+    act(() => { frames.shift()!(0); });
+    act(() => { frames.shift()!(130); });
+    expect(scroller.scrollLeft).toBeGreaterThan(0);
+    expect(scroller.scrollLeft).toBeLessThan(300);
+    expect(within(carousel).getByRole('button', { name: '이동 과제 1' })).toBeTruthy();
+    act(() => { frames.shift()!(260); });
+    expect(scroller.scrollLeft).toBe(300);
+    expect(within(carousel).getByRole('button', { name: '이동 과제 4' })).toBeTruthy();
+    expect(scrollTo.mock.calls.some(([options]) => options.behavior === 'smooth')).toBe(false);
+  });
+
+  it('cancels indicator motion and settles the nearest slide when touch input does not scroll', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => { frames.push(callback); return frames.length; }));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+    const linkedTasks = Array.from({ length: 3 }, (_, index) => ({
+      ...tasks[0], taskId: `CANCEL${index + 1}`, title: `취소 과제 ${index + 1}`, sortOrder: index + 1,
+      prerequisiteTaskId: index ? `CANCEL${index}` : undefined,
+      studentStatus: { studentId: 'S001', assigned: true, completed: false },
+    }));
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/tasks?studentId=S001' ? jsonResponse(linkedTasks) : base(input, init));
+
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+    const carousel = await screen.findByRole('region', { name: '취소 과제 1 연결 과제 묶음' });
+    const scroller = within(carousel).getByTestId('task-carousel-scroller');
+    Object.defineProperty(scroller, 'clientWidth', { configurable: true, value: 100 });
+    Object.defineProperty(scroller, 'scrollTo', { configurable: true, value: vi.fn(({ left }: ScrollToOptions) => { scroller.scrollLeft = left ?? 0; }) });
+
+    fireEvent.click(within(carousel).getByRole('button', { name: '3번째 과제 보기' }));
+    expect(frames).toHaveLength(1);
+    act(() => { frames.shift()!(0); });
+    act(() => { frames.shift()!(130); });
+    expect(scroller.scrollLeft).toBe(100);
+    fireEvent.touchStart(scroller);
+    expect(cancelAnimationFrame).toHaveBeenCalled();
+    act(() => { vi.advanceTimersByTime(180); });
+    expect(within(carousel).getByRole('button', { name: '취소 과제 2' })).toBeTruthy();
+  });
+
+  it('cancels active indicator motion when wheel or trackpad input interrupts it', async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => { frames.push(callback); return frames.length; }));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+    const linkedTasks = Array.from({ length: 3 }, (_, index) => ({
+      ...tasks[0], taskId: `WHEEL${index + 1}`, title: `휠 과제 ${index + 1}`,
+      prerequisiteTaskId: index ? `WHEEL${index}` : undefined,
+      studentStatus: { studentId: 'S001', assigned: true, completed: false },
+    }));
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/tasks?studentId=S001' ? jsonResponse(linkedTasks) : base(input, init));
+
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+    const carousel = await screen.findByRole('region', { name: '휠 과제 1 연결 과제 묶음' });
+    const scroller = within(carousel).getByTestId('task-carousel-scroller');
+    Object.defineProperty(scroller, 'clientWidth', { configurable: true, value: 100 });
+    Object.defineProperty(scroller, 'scrollTo', { configurable: true, value: vi.fn() });
+
+    fireEvent.click(within(carousel).getByRole('button', { name: '3번째 과제 보기' }));
+    expect(frames).toHaveLength(1);
+    fireEvent.wheel(scroller, { deltaX: 20 });
+    expect(cancelAnimationFrame).toHaveBeenCalled();
+  });
+
+  it('jumps instantly when reduced motion is requested', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+    const linkedTasks = Array.from({ length: 3 }, (_, index) => ({
+      ...tasks[0], taskId: `REDUCED${index + 1}`, title: `감소 과제 ${index + 1}`, sortOrder: index + 1,
+      prerequisiteTaskId: index ? `REDUCED${index}` : undefined,
+      studentStatus: { studentId: 'S001', assigned: true, completed: false },
+    }));
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/tasks?studentId=S001' ? jsonResponse(linkedTasks) : base(input, init));
+
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+    const carousel = await screen.findByRole('region', { name: '감소 과제 1 연결 과제 묶음' });
+    const scroller = within(carousel).getByTestId('task-carousel-scroller');
+    Object.defineProperty(scroller, 'clientWidth', { configurable: true, value: 100 });
+    const scrollTo = vi.fn(({ left }: ScrollToOptions) => { scroller.scrollLeft = left ?? 0; });
+    Object.defineProperty(scroller, 'scrollTo', { configurable: true, value: scrollTo });
+
+    fireEvent.click(within(carousel).getByRole('button', { name: '3번째 과제 보기' }));
+    expect(scroller.scrollLeft).toBe(200);
+    expect(within(carousel).getByRole('button', { name: '감소 과제 3' })).toBeTruthy();
+    expect(scrollTo).toHaveBeenCalledWith({ left: 200 });
+    expect(scrollTo.mock.calls.some(([options]) => options.behavior === 'smooth')).toBe(false);
+  });
+
   it('makes every linked-task slide and card stretch to the carousel height', async () => {
     const linkedTasks = [
       { ...tasks[0], taskId: 'HEIGHT1', title: '짧은 과제', description: '짧음', studentStatus: { studentId: 'S001', assigned: true, completed: false } },
@@ -708,6 +896,37 @@ describe('BankApp', () => {
     fireEvent.click(card);
     expect(await screen.findByRole('dialog', { name: '잠긴 과제' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '완료하기' })).toHaveProperty('disabled', true);
+  });
+
+  it('shows Padlet READY as 완료 가능 on the card and allows completion', async () => {
+    const ready = { ...tasks[0], title: '패들렛 준비 과제', padletEligibility: 'READY', padletEligibilityMessage: 'Padlet 게시물이 확인되어 완료할 수 있습니다.', studentStatus: { studentId: 'S001', assigned: true, completed: false } };
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/tasks?studentId=S001' ? jsonResponse([ready]) : base(input, init));
+
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+    const card = await screen.findByRole('button', { name: '패들렛 준비 과제, 완료 가능' });
+    expect(within(card).getByText('완료 가능')).toBeTruthy();
+    fireEvent.click(card);
+    expect(screen.getByRole('button', { name: '완료하기' })).toHaveProperty('disabled', false);
+  });
+
+  it.each([
+    ['SUBMISSION_REQUIRED', '승인된 Padlet 게시물을 작성한 뒤 다시 확인해 주세요.'],
+    ['CHECK_UNAVAILABLE', 'Padlet 게시물 확인이 일시적으로 불가능합니다. 잠시 후 다시 시도해 주세요.'],
+  ])('disables completion for Padlet %s and shows its Korean guidance', async (padletEligibility, padletEligibilityMessage) => {
+    const blocked = { ...tasks[0], title: '패들렛 확인 과제', padletEligibility, padletEligibilityMessage, studentStatus: { studentId: 'S001', assigned: true, completed: false } };
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/tasks?studentId=S001' ? jsonResponse([blocked]) : base(input, init));
+
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent();
+    fireEvent.click(await screen.findByRole('button', { name: '패들렛 확인 과제, 완료 불가' }));
+    const detail = await screen.findByRole('dialog', { name: '패들렛 확인 과제' });
+    expect(within(detail).getByText(padletEligibilityMessage)).toBeTruthy();
+    expect(within(detail).getByRole('button', { name: '완료하기' })).toHaveProperty('disabled', true);
   });
 
   it('dims completed cards with a filled unrotated pill and removes inline completion metadata', async () => {

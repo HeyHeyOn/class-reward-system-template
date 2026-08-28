@@ -218,6 +218,11 @@ export function parseTaskRow(row: string[], headerIndex: HeaderIndex, classTimeZ
   if (!taskId || !title || reward === null) return null;
 
   const createdAt = getRowCell(row, headerIndex, 'createdAt');
+  const padletBoardId = getRowCell(row, headerIndex, 'padletBoardId');
+  if (padletBoardId && !isPadletBoardId(padletBoardId)) {
+    throw new Error('Task padletBoardId is malformed');
+  }
+  const validPadletBoardId = isPadletBoardId(padletBoardId) ? padletBoardId : '';
   const schedule = parseTaskScheduleCells(
     Object.fromEntries(Array.from(headerIndex, ([header, index]) => [header, String(row[index] ?? '').trim()])),
     { taskId, createdAt, classTimeZone },
@@ -233,6 +238,7 @@ export function parseTaskRow(row: string[], headerIndex: HeaderIndex, classTimeZ
     ...(getRowCell(row, headerIndex, 'availableFrom') ? { availableFrom: getRowCell(row, headerIndex, 'availableFrom') } : {}),
     ...(getRowCell(row, headerIndex, 'dueAt') ? { dueAt: getRowCell(row, headerIndex, 'dueAt') } : {}),
     ...(getRowCell(row, headerIndex, 'prerequisiteTaskId') ? { prerequisiteTaskId: getRowCell(row, headerIndex, 'prerequisiteTaskId') } : {}),
+    ...(validPadletBoardId ? { padletBoardId: validPadletBoardId } : {}),
     taskInstanceId: schedule.taskInstanceId,
     schedule: schedule.currentSchedule,
     pendingSchedule: schedule.pendingSchedule,
@@ -246,6 +252,9 @@ export function parseAllowedStudentIds(value: string): string[] {
 }
 
 export function buildTaskAppendRow(headers: string[], task: ClassTask, timestamp: string, existingRow?: string[]): string[] {
+  if (task.padletBoardId && !isPadletBoardId(task.padletBoardId)) {
+    throw new Error('Task padletBoardId must be a valid official Padlet board ID');
+  }
   const valuesByHeader: Record<string, string> = {
     ...Object.fromEntries(headers.map((header, index) => [header.trim(), String(existingRow?.[index] ?? '')])),
     taskId: task.taskId,
@@ -261,6 +270,7 @@ export function buildTaskAppendRow(headers: string[], task: ClassTask, timestamp
     availableFrom: task.availableFrom ?? '',
     dueAt: task.dueAt ?? '',
     prerequisiteTaskId: task.prerequisiteTaskId ?? '',
+    padletBoardId: task.padletBoardId ?? '',
     ...(task.taskInstanceId && task.schedule
       ? serializeTaskScheduleCells({
           taskInstanceId: task.taskInstanceId,
@@ -355,9 +365,11 @@ export function parseTaskCompletionRow(row: string[], headerIndex: HeaderIndex):
   const operationId = getRowCell(row, headerIndex, 'operationId');
   const operationPayloadHash = getRowCell(row, headerIndex, 'operationPayloadHash');
   if (Boolean(operationId) !== Boolean(operationPayloadHash)) return null;
+  const evidence = parseTaskCompletionEvidence(row, headerIndex);
+  const completionWithEvidence: TaskCompletion = { ...completion, ...evidence };
   const snapshotValues = TASK_COMPLETION_SNAPSHOT_FIELDS.map((field) => getRowCell(row, headerIndex, field));
   if (snapshotValues.every((value) => !value)) {
-    return operationId ? null : completion;
+    return operationId ? null : completionWithEvidence;
   }
 
   const [taskInstanceId, cycleId, cycleStartsAt, cycleEndsAt, ruleVersionCell, timeZone, sourceCell, assignmentId, schemaVersionCell] = snapshotValues;
@@ -366,9 +378,13 @@ export function parseTaskCompletionRow(row: string[], headerIndex: HeaderIndex):
   const source = parseTaskCompletionSource(sourceCell);
   if (!taskInstanceId || !cycleId || !cycleStartsAt || !timeZone || !source || ruleVersion === null
     || schemaVersion !== LEDGER_SCHEMA_VERSION) return null;
+  if (operationId && (!isCanonicalIsoTimestamp(timestamp) || !isCanonicalIsoTimestamp(cycleStartsAt)
+    || (cycleEndsAt && !isCanonicalIsoTimestamp(cycleEndsAt)))) {
+    throw new Error('TaskCompletion operation timestamp must be canonical UTC milliseconds');
+  }
   if (source === 'CARRY_FORWARD' && (reward !== 0 || balanceBefore !== balanceAfter)) return null;
   return {
-    ...completion,
+    ...completionWithEvidence,
     taskInstanceId,
     cycleId,
     cycleStartsAt,
@@ -382,13 +398,36 @@ export function parseTaskCompletionRow(row: string[], headerIndex: HeaderIndex):
   };
 }
 
+function parseTaskCompletionEvidence(
+  row: string[], headerIndex: HeaderIndex,
+): Pick<TaskCompletion, 'evidenceProvider' | 'evidenceBoardId' | 'evidencePostId' | 'evidenceCreatedAt' | 'evidenceAuthorFullName'> {
+  const [provider, boardId, postId, createdAt, authorFullName] = TASK_COMPLETION_EVIDENCE_FIELDS
+    .map((field) => getRowCell(row, headerIndex, field));
+  if (![provider, boardId, postId, createdAt, authorFullName].some(Boolean)) return {};
+  if (provider !== 'PADLET' || !isPadletBoardId(boardId) || !isExternalId(postId)
+    || !isCanonicalIsoTimestamp(createdAt) || !authorFullName) {
+    throw new Error('TaskCompletion evidence is malformed');
+  }
+  return {
+    evidenceProvider: provider,
+    evidenceBoardId: boardId,
+    evidencePostId: postId,
+    evidenceCreatedAt: createdAt,
+    evidenceAuthorFullName: authorFullName,
+  };
+}
+
 export function buildTaskCompletionAppendRow(headers: string[], completion: TaskCompletion): string[] {
   validateRequiredHeaders(headers, REQUIRED_TASK_COMPLETION_COLUMNS);
   validateTaskCompletionBase(completion);
   validateTaskCompletionSnapshot(completion);
+  validateTaskCompletionEvidence(completion);
   const snapshot = completion as TaskCompletion & Record<(typeof TASK_COMPLETION_SNAPSHOT_FIELDS)[number], unknown>;
   if (TASK_COMPLETION_SNAPSHOT_FIELDS.some((field) => snapshot[field] !== undefined)) {
     validateRequiredHeaders(headers, TASK_COMPLETION_SNAPSHOT_FIELDS);
+  }
+  if (TASK_COMPLETION_EVIDENCE_FIELDS.some((field) => completion[field] !== undefined)) {
+    validateRequiredHeaders(headers, TASK_COMPLETION_EVIDENCE_FIELDS);
   }
   if (completion.source === 'CARRY_FORWARD' && (completion.reward !== 0 || completion.balanceBefore !== completion.balanceAfter)) {
     throw new Error('CARRY_FORWARD completion must have reward 0 and an unchanged balance');
@@ -415,6 +454,11 @@ export function buildTaskCompletionAppendRow(headers: string[], completion: Task
     schemaVersion: completion.schemaVersion === undefined ? '' : String(completion.schemaVersion),
     operationId: completion.operationId ?? '',
     operationPayloadHash: completion.operationPayloadHash ?? '',
+    evidenceProvider: completion.evidenceProvider ?? '',
+    evidenceBoardId: completion.evidenceBoardId ?? '',
+    evidencePostId: completion.evidencePostId ?? '',
+    evidenceCreatedAt: completion.evidenceCreatedAt ?? '',
+    evidenceAuthorFullName: completion.evidenceAuthorFullName ?? '',
   };
   return headers.map((header) => valuesByHeader[header.trim()] ?? '');
 }
@@ -422,6 +466,10 @@ export function buildTaskCompletionAppendRow(headers: string[], completion: Task
 const TASK_COMPLETION_SNAPSHOT_FIELDS = [
   'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion', 'timeZone', 'source',
   'assignmentId', 'schemaVersion',
+] as const;
+const TASK_COMPLETION_EVIDENCE_FIELDS = [
+  'evidenceProvider', 'evidenceBoardId', 'evidencePostId', 'evidenceCreatedAt',
+  'evidenceAuthorFullName',
 ] as const;
 export const REQUIRED_TASK_COMPLETION_COLUMNS = [
   'completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore',
@@ -624,6 +672,10 @@ function isRequiredString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+function isCanonicalRequiredString(value: unknown): value is string {
+  return isRequiredString(value) && value === value.trim();
+}
+
 function validateRequiredHeaders(headers: string[], requiredHeaders: readonly string[]): void {
   const normalizedHeaders = headers.map((header) => header.trim());
   const missing = requiredHeaders.filter((header) => !normalizedHeaders.includes(header));
@@ -704,12 +756,16 @@ function isSafeNonNegativeInteger(value: unknown): value is number {
 }
 
 function validateTaskCompletionBase(completion: TaskCompletion): void {
+  const operationCheckpoint = isRequiredString(completion.operationId);
   if (!isRequiredString(completion.completionId) || !isRequiredString(completion.timestamp)
+    || (operationCheckpoint && !isCanonicalIsoTimestamp(completion.timestamp))
     || !isRequiredString(completion.taskId) || !isRequiredString(completion.studentId)
     || !isRequiredString(completion.studentName) || !isRequiredString(completion.status)
     || typeof completion.note !== 'string' || !Number.isFinite(completion.reward)
     || !Number.isFinite(completion.balanceBefore) || !Number.isFinite(completion.balanceAfter)) {
-    throw new Error('TaskCompletion must contain all required legacy fields');
+    throw new Error(operationCheckpoint
+      ? 'TaskCompletion operation timestamp must be canonical UTC milliseconds'
+      : 'TaskCompletion must contain all required legacy fields');
   }
 }
 
@@ -719,12 +775,34 @@ function validateTaskCompletionSnapshot(completion: TaskCompletion): void {
   if (!isRequiredString(snapshot.taskInstanceId) || !isRequiredString(snapshot.cycleId)
     || !isRequiredString(snapshot.cycleStartsAt)
     || !(snapshot.cycleEndsAt === null || isRequiredString(snapshot.cycleEndsAt))
+    || (isRequiredString(completion.operationId) && (!isCanonicalIsoTimestamp(snapshot.cycleStartsAt)
+      || (snapshot.cycleEndsAt !== null && !isCanonicalIsoTimestamp(snapshot.cycleEndsAt))))
     || !isPositiveInteger(snapshot.ruleVersion) || !isRequiredString(snapshot.timeZone)
     || parseTaskCompletionSource(String(snapshot.source ?? '')) === null
     || snapshot.schemaVersion !== LEDGER_SCHEMA_VERSION
     || !(snapshot.assignmentId === undefined || typeof snapshot.assignmentId === 'string')) {
     throw new Error('TaskCompletion snapshot must be entirely absent or a valid complete versioned snapshot');
   }
+}
+
+function validateTaskCompletionEvidence(completion: TaskCompletion): void {
+  const values = TASK_COMPLETION_EVIDENCE_FIELDS.map((field) => completion[field]);
+  if (values.every((value) => value === undefined)) return;
+  if (completion.evidenceProvider !== 'PADLET'
+    || !isPadletBoardId(completion.evidenceBoardId)
+    || !isExternalId(completion.evidencePostId)
+    || !isCanonicalIsoTimestamp(completion.evidenceCreatedAt)
+    || !isCanonicalRequiredString(completion.evidenceAuthorFullName)) {
+    throw new Error('TaskCompletion evidence must be entirely absent or a valid complete evidence snapshot');
+  }
+}
+
+function isExternalId(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{3,128}$/.test(value);
+}
+
+function isPadletBoardId(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9]{16,22}$/.test(value);
 }
 
 function validateTaskAssignment(assignment: TaskAssignment): void {
