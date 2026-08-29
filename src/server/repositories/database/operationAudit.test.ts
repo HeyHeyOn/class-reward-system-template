@@ -11,7 +11,7 @@ import {
   operationAuditEventId,
 } from './operationAudit';
 
-const OPERATION_ID = '123e4567-e89b-42d3-a456-426614174000';
+const OPERATION_ID = 'checkout-op-001';
 const HASH = 'a'.repeat(64);
 const OCCURRED_AT = new Date('2026-08-29T06:00:00.000Z');
 
@@ -40,6 +40,12 @@ const input = {
 } as const;
 
 describe('operation audit helper', () => {
+  it('derives fixed-length collision-safe IDs from operation and event pairs', () => {
+    expect(operationAuditEventId('checkout-op-001', 'CHECKOUT_COMPLETED'))
+      .toMatch(/^audit:[0-9a-f]{64}$/);
+    expect(operationAuditEventId('a:b', 'c')).not.toBe(operationAuditEventId('a', 'b:c'));
+  });
+
   it('creates a deterministic immutable audit row and validates exact replay state', async () => {
     await harness.runTenantTransaction(harness.tenantOneId, async (transaction) => {
       await appendOperationAudit(transaction, harness.tenantOneId, input);

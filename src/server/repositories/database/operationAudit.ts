@@ -1,9 +1,9 @@
 import 'server-only';
 
+import { createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import type { TenantTransaction } from '@/server/db/transaction';
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SENSITIVE_KEY = /(^|_)(recovery|password|secret|token|plaintext|credential|raw)(_|$)/i;
 
 export type OperationAuditInput = Readonly<{
@@ -18,9 +18,12 @@ export type OperationAuditInput = Readonly<{
 type CanonicalAuditInput = OperationAuditInput & { redactedDetailsJson: string };
 
 export function operationAuditEventId(operationId: string, eventType: string): string {
-  if (!UUID.test(operationId)) throw new Error('A canonical operation ID is required for audit.');
+  if (!isCanonicalText(operationId)) throw new Error('A canonical operation ID is required for audit.');
   if (!isCanonicalText(eventType)) throw new Error('A canonical audit event type is required.');
-  return `audit:${operationId}:${eventType}`;
+  const digest = createHash('sha256')
+    .update(JSON.stringify({ operationId, eventType }), 'utf8')
+    .digest('hex');
+  return `audit:${digest}`;
 }
 
 export async function appendOperationAudit(
