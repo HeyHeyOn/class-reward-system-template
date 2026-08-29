@@ -88,7 +88,6 @@ type OperationRow = {
 type AccountRow = {
   student_id: string;
   name: string;
-  status: string;
   balance: string | number | bigint;
 };
 
@@ -154,6 +153,24 @@ export function createAdminAdjustmentPayloadHash(
     legacyStatusSnapshot: 'ADMIN_ADJUSTMENT',
     legacyAmountConvention: 'negative-delta',
     schemaVersion: 1,
+  }), 'utf8').digest('hex');
+}
+
+export function createAdminAdjustmentResultHash(result: AdminAdjustmentSuccess): string {
+  return createHash('sha256').update(JSON.stringify({
+    adjustedAt: result.adjustedAt,
+    amount: result.amount,
+    mode: result.mode,
+    ok: result.ok,
+    operationId: result.operationId,
+    students: result.students.map((student) => ({
+      balanceAfter: student.balanceAfter,
+      balanceBefore: student.balanceBefore,
+      delta: student.delta,
+      studentId: student.studentId,
+      studentName: student.studentName,
+      transactionId: student.transactionId,
+    })),
   }), 'utf8').digest('hex');
 }
 
@@ -311,7 +328,7 @@ async function lockAccounts(
 ): Promise<AccountRow[]> {
   const ids = sql.join(studentIds.map((id) => sql`${id}`), sql`, `);
   const result = await tx.execute(sql`
-    SELECT s.student_id, s.name, s.status, a.balance::text AS balance
+    SELECT s.student_id, s.name, a.balance::text AS balance
     FROM students s
     JOIN accounts a ON a.tenant_id=s.tenant_id AND a.student_id=s.student_id
     WHERE s.tenant_id=${tenantId} AND s.student_id IN (${ids})
@@ -320,7 +337,7 @@ async function lockAccounts(
   `);
   const rows = result.rows as AccountRow[];
   if (rows.length !== studentIds.length
-    || rows.some((row, index) => row.student_id !== studentIds[index] || row.status !== 'ACTIVE')) {
+    || rows.some((row, index) => row.student_id !== studentIds[index])) {
     throw new AdminAdjustmentError('STUDENT_INVALID');
   }
   return rows;
@@ -360,9 +377,7 @@ async function resolveExisting(
   if (operation.status === 'PENDING') throw new AdminAdjustmentError('OPERATION_PENDING');
   if (operation.status === 'FAILED') throw new AdminAdjustmentError('OPERATION_FAILED');
   const stored = parseStoredResult(operation.result_snapshot, input);
-  const accounts = await lockAccounts(tx, tenantId, input.studentIds);
-  validateStoredStudents(stored, accounts, input);
-
+  validateStoredStudentSemantics(stored, input);
   const ledgerResult = await tx.execute(sql`
     SELECT t.transaction_id, t.occurred_at, t.student_id, t.student_name_snapshot, t.kind,
            t.legacy_total_amount::text AS legacy_total_amount,
@@ -416,6 +431,7 @@ function adminAdjustmentAuditInput(
       amount: result.amount,
       changedStudentCount: result.students.filter((student) => student.delta !== 0).length,
       mode: result.mode,
+      resultHash: createAdminAdjustmentResultHash(result),
       studentCount: result.students.length,
     },
     occurredAt,
@@ -449,19 +465,24 @@ function parseStoredResult(snapshot: unknown, input: CanonicalInput): AdminAdjus
   return snapshot as unknown as AdminAdjustmentSuccess;
 }
 
-function validateStoredStudents(
+function validateStoredStudentSemantics(
   stored: AdminAdjustmentSuccess,
-  accounts: AccountRow[],
   input: CanonicalInput,
 ): void {
-  for (let index = 0; index < accounts.length; index += 1) {
-    const account = accounts[index];
-    const result = stored.students[index];
-    if (result.studentId !== input.studentIds[index] || result.studentId !== account.student_id
-      || result.studentName !== account.name || safeInteger(account.balance) !== result.balanceAfter
-      || result.balanceAfter - result.balanceBefore !== result.delta
-      || expectedAfter(result.balanceBefore, input.mode, input.amount) !== result.balanceAfter
-      || result.transactionId !== expectedTransactionId(input, result)) {
+  for (let index = 0; index < stored.students.length; index += 1) {
+    const student = stored.students[index];
+    const expectedAfter = input.mode === 'set'
+      ? input.amount
+      : student.balanceBefore + (input.mode === 'add' ? input.amount : -input.amount);
+    const computedDelta = student.balanceAfter - student.balanceBefore;
+    const expectedTransaction = input.mode === 'set' || student.delta !== 0
+      ? transactionId(input.operationId, student.studentId)
+      : null;
+    if (student.studentId !== input.studentIds[index]
+      || !student.studentName.trim()
+      || !Number.isSafeInteger(expectedAfter) || expectedAfter !== student.balanceAfter
+      || !Number.isSafeInteger(computedDelta) || computedDelta !== student.delta
+      || student.transactionId !== expectedTransaction) {
       throw new AdminAdjustmentError('INTEGRITY_FAILURE');
     }
   }
@@ -517,16 +538,6 @@ function validateAdjustmentRows(
   }
 }
 
-function expectedAfter(before: number, mode: AdminAdjustmentMode, amount: number): number {
-  if (mode === 'set') return amount;
-  return mode === 'add' ? checkedAdd(before, amount) : checkedAdd(before, -amount);
-}
-
-function expectedTransactionId(input: CanonicalInput, result: AdminAdjustmentStudentResult): string | null {
-  return input.mode === 'set' || result.delta !== 0
-    ? transactionId(input.operationId, result.studentId)
-    : null;
-}
 
 function adjustmentId(operationId: string, studentId: string): string {
   return `adjustment:${operationId}:${studentId}`;

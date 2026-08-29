@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createAdminAdjustmentLedgerOperationId,
   createAdminAdjustmentPayloadHash,
+  createAdminAdjustmentResultHash,
   createDatabaseAdminCommands,
   type DatabaseAdminCommandDependencies,
 } from './adminCommands';
@@ -111,6 +112,7 @@ describe('PostgreSQL transactional admin balance adjustments', () => {
         amount: 250,
         changedStudentCount: 1,
         mode: 'add',
+        resultHash: createAdminAdjustmentResultHash(result),
         studentCount: 1,
       },
       occurred_at: NOW,
@@ -147,6 +149,66 @@ describe('PostgreSQL transactional admin balance adjustments', () => {
     expect((await snapshot()).transactions).toHaveLength(1);
     expect((await snapshot()).audits).toHaveLength(1);
     expect((await snapshot()).accounts[0]).toMatchObject({ balance: '1250', version: 2 });
+  });
+
+  it('replays the exact historical result after a later valid adjustment changed mutable state', async () => {
+    const first = await commands().adjust(input());
+    await commands().adjust(input({
+      operationId: '40000000-0000-4000-8000-000000000002',
+      amount: 100,
+    }));
+
+    const replayed = await commands({ now: () => new Date('2026-08-29T00:00:00Z') }).adjust(input());
+
+    expect(replayed).toEqual(first);
+    const state = await snapshot();
+    expect(state.accounts[0]).toMatchObject({ balance: '1350', version: 3 });
+    expect(state.transactions).toHaveLength(2);
+    expect(state.audits).toHaveLength(2);
+  });
+
+  it('replays a valid persisted student name with surrounding whitespace exactly', async () => {
+    await harness.database.query(
+      `UPDATE students SET name=' Alice ' WHERE tenant_id=$1 AND student_id='S001'`,
+      [harness.tenantOneId],
+    );
+    const first = await commands().adjust(input());
+
+    const replayed = await commands().adjust(input());
+
+    expect(first.students[0].studentName).toBe(' Alice ');
+    expect(replayed).toEqual(first);
+  });
+
+  it('rejects a zero-ledger replay whose stored student arithmetic was corrupted', async () => {
+    await commands().adjust(input({ amount: 0 }));
+    await harness.database.exec('ALTER TABLE operations DISABLE TRIGGER operations_update_guard');
+    await harness.database.query(
+      `UPDATE operations
+       SET result_snapshot=jsonb_set(result_snapshot, '{students,0,balanceAfter}', '999'::jsonb)
+       WHERE tenant_id=$1 AND operation_id=$2`,
+      [harness.tenantOneId, OPERATION_ID],
+    );
+    await harness.database.exec('ALTER TABLE operations ENABLE TRIGGER operations_update_guard');
+
+    await expect(commands().adjust(input({ amount: 0 }))).rejects.toThrow(/integrity|stored/i);
+  });
+
+  it('rejects a zero-ledger replay whose stored balances were consistently corrupted', async () => {
+    await commands().adjust(input({ amount: 0 }));
+    await harness.database.exec('ALTER TABLE operations DISABLE TRIGGER operations_update_guard');
+    await harness.database.query(
+      `UPDATE operations
+       SET result_snapshot=jsonb_set(
+         jsonb_set(result_snapshot, '{students,0,balanceBefore}', '999'::jsonb),
+         '{students,0,balanceAfter}', '999'::jsonb
+       )
+       WHERE tenant_id=$1 AND operation_id=$2`,
+      [harness.tenantOneId, OPERATION_ID],
+    );
+    await harness.database.exec('ALTER TABLE operations ENABLE TRIGGER operations_update_guard');
+
+    await expect(commands().adjust(input({ amount: 0 }))).rejects.toThrow(/integrity|stored/i);
   });
 
   it('fails closed when an initially-existing successful replay is missing its immutable audit', async () => {
@@ -244,14 +306,26 @@ describe('PostgreSQL transactional admin balance adjustments', () => {
 
   it.each([
     ['missing student', { studentIds: ['MISSING'] }, 'STUDENT_INVALID'],
-    ['inactive student', { studentIds: ['S001'] }, 'STUDENT_INVALID'],
     ['overflow result', { mode: 'add', amount: 1 }, 'UNSAFE_BALANCE'],
   ] as const)('rejects %s with no mutation', async (label, overrides, code) => {
-    if (label === 'inactive student') await harness.database.query(`UPDATE students SET status='INACTIVE' WHERE tenant_id=$1 AND student_id='S001'`, [harness.tenantOneId]);
     if (label === 'overflow result') await harness.database.query(`UPDATE accounts SET balance=$2 WHERE tenant_id=$1 AND student_id='S001'`, [harness.tenantOneId, Number.MAX_SAFE_INTEGER]);
     const before = await snapshot();
     await expect(commands().adjust(input(overrides))).rejects.toMatchObject({ code });
     expect(await snapshot()).toEqual(before);
+  });
+
+  it('allows an explicit administrator adjustment for an inactive student', async () => {
+    await harness.database.query(
+      `UPDATE students SET status='INACTIVE' WHERE tenant_id=$1 AND student_id='S001'`,
+      [harness.tenantOneId],
+    );
+
+    const result = await commands().adjust(input());
+
+    expect(result.students[0]).toMatchObject({ studentId: 'S001', balanceAfter: 1250 });
+    const state = await snapshot();
+    expect(state.accounts[0]).toMatchObject({ balance: '1250', version: 2 });
+    expect(state.audits).toHaveLength(1);
   });
 
   it('allows an explicit administrator subtraction to produce a negative balance with an audit ledger', async () => {
@@ -287,13 +361,18 @@ describe('PostgreSQL transactional admin balance adjustments', () => {
     expect(state.audits).toHaveLength(2);
     expect(state.audits[1]).toMatchObject({
       operation_id: '40000000-0000-4000-8000-000000000002',
-      redacted_details: { amount: 0, changedStudentCount: 0, mode: 'add', studentCount: 1 },
+      redacted_details: {
+        amount: 0,
+        changedStudentCount: 0,
+        mode: 'add',
+        resultHash: createAdminAdjustmentResultHash(addResult),
+        studentCount: 1,
+      },
     });
   });
 
   it.each([
     ['stored result', `UPDATE operations SET result_snapshot=jsonb_set(result_snapshot, '{amount}', '999') WHERE tenant_id=$1 AND operation_id=$2`],
-    ['account', `UPDATE accounts SET balance=balance+1 WHERE tenant_id=$1 AND student_id='S001' AND $2::text IS NOT NULL`],
     ['transaction', `UPDATE transactions SET student_name_snapshot='변조' WHERE tenant_id=$1 AND transaction_id='admin-adjustment:40000000-0000-4000-8000-000000000001:S001' AND $2::text IS NOT NULL`],
     ['missing transaction', `WITH deleted_adjustment AS (
       DELETE FROM adjustments WHERE tenant_id=$1 AND transaction_id='admin-adjustment:40000000-0000-4000-8000-000000000001:S001' RETURNING 1)
