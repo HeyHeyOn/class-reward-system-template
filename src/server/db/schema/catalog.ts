@@ -19,6 +19,7 @@ export const products = pgTable('products', {
   imageUrl: text('image_url'),
   category: text('category'),
   sortOrder: integer('sort_order').default(0).notNull(),
+  version: bigint('version', { mode: 'bigint' }).default(sql`1`).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -29,6 +30,7 @@ export const products = pgTable('products', {
   check('products_name_check', sql`length(btrim(${table.name})) > 0`),
   check('products_price_check', sql`${table.price} BETWEEN 0 AND 9007199254740991`),
   check('products_stock_check', sql`${table.stock} BETWEEN 0 AND 9007199254740991`),
+  check('products_version_check', sql`${table.version} BETWEEN 1 AND 9007199254740991`),
   check('products_deleted_chronology_check', sql`${table.deletedAt} IS NULL OR ${table.deletedAt} >= ${table.createdAt}`),
   index('products_active_sort_idx').on(table.tenantId, table.sortOrder, table.productId)
     .where(sql`${table.isActive} AND ${table.deletedAt} IS NULL`),
@@ -50,6 +52,7 @@ export const promotions = pgTable('promotions', {
   isActive: boolean('is_active').default(true).notNull(),
   sortOrder: integer('sort_order').default(0).notNull(),
   schemaVersion: integer('schema_version').default(1).notNull(),
+  version: bigint('version', { mode: 'bigint' }).default(sql`1`).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -66,6 +69,7 @@ export const promotions = pgTable('promotions', {
     OR (${table.type} = 'FIXED_DISCOUNT' AND ${table.fixedDiscount} BETWEEN 1 AND 9007199254740991 AND ${table.nPlusOneBuyQuantity} IS NULL AND ${table.nPlusOneFreeQuantity} IS NULL AND ${table.promotionalPrice} IS NULL AND ${table.percentDiscount} IS NULL)), false)`),
   check('promotions_window_check', sql`${table.endsAt} > ${table.startsAt}`),
   check('promotions_schema_version_check', sql`${table.schemaVersion} >= 1`),
+  check('promotions_version_check', sql`${table.version} BETWEEN 1 AND 9007199254740991`),
   check('promotions_deleted_chronology_check', sql`${table.deletedAt} IS NULL OR ${table.deletedAt} >= ${table.createdAt}`),
   index('promotions_active_sort_idx').on(table.tenantId, table.sortOrder, table.promotionId)
     .where(sql`${table.isActive} AND ${table.deletedAt} IS NULL`),

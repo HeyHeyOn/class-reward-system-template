@@ -89,8 +89,9 @@ async function snapshot() {
       `SELECT balance::text, version::text FROM accounts WHERE tenant_id=$1 AND student_id=$2`,
       [harness.tenantOneId, STUDENT_ID],
     ),
-    harness.database.query<{ product_id: string; stock: string }>(
-      `SELECT product_id, stock::text FROM products WHERE tenant_id=$1 ORDER BY product_id`,
+    harness.database.query<{ product_id: string; stock: string; version: string }>(
+      `SELECT product_id, stock::text, version::text FROM products
+       WHERE tenant_id=$1 ORDER BY product_id`,
       [harness.tenantOneId],
     ),
     harness.database.query(
@@ -164,8 +165,8 @@ describe('database checkout command', () => {
     const state = await snapshot();
     expect(state.account).toEqual([{ balance: '2400', version: '2' }]);
     expect(state.products).toEqual([
-      { product_id: 'P001', stock: '18' },
-      { product_id: 'P002', stock: '14' },
+      { product_id: 'P001', stock: '18', version: '2' },
+      { product_id: 'P002', stock: '14', version: '2' },
     ]);
     expect(state.transactions).toHaveLength(1);
     expect(state.transactions[0]).toMatchObject({
@@ -250,7 +251,7 @@ describe('database checkout command', () => {
 
     expect(result).toMatchObject({ ok: true, totalAmount: 900, items: [{ productId: 'P001', totalQuantity: 3 }] });
     const state = await snapshot();
-    expect(state.products[0]).toEqual({ product_id: 'P001', stock: '17' });
+    expect(state.products[0]).toEqual({ product_id: 'P001', stock: '17', version: '2' });
     expect(state.items).toHaveLength(1);
     expect(state.ledger).toHaveLength(1);
   });
@@ -263,7 +264,7 @@ describe('database checkout command', () => {
     expect(first).toEqual(second);
     const state = await snapshot();
     expect(state.account).toEqual([{ balance: '2900', version: '2' }]);
-    expect(state.products[0]).toEqual({ product_id: 'P001', stock: '18' });
+    expect(state.products[0]).toEqual({ product_id: 'P001', stock: '18', version: '2' });
     expect(state.transactions).toHaveLength(1);
     expect(state.items).toHaveLength(1);
     expect(state.ledger).toHaveLength(1);
@@ -331,8 +332,8 @@ describe('database checkout command', () => {
     const state = await snapshot();
     expect(state.account).toEqual([{ balance: '3200', version: '2' }]);
     expect(state.products).toEqual([
-      { product_id: 'P001', stock: '19' },
-      { product_id: 'P002', stock: '15' },
+      { product_id: 'P001', stock: '19', version: '2' },
+      { product_id: 'P002', stock: '15', version: '1' },
     ]);
     expect(state.transactions).toHaveLength(1);
   });
@@ -506,7 +507,7 @@ describe('database checkout command', () => {
       expect.objectContaining({ code: 'INSUFFICIENT_STOCK' }),
     ]);
     const state = await snapshot();
-    expect(state.products[0]).toEqual({ product_id: 'P001', stock: '0' });
+    expect(state.products[0]).toEqual({ product_id: 'P001', stock: '0', version: '2' });
     expect(state.account).toEqual([{ balance: '3200', version: '2' }]);
     expect(state.transactions).toHaveLength(1);
     expect(state.ledger).toHaveLength(1);

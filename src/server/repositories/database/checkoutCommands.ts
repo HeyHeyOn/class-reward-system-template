@@ -233,7 +233,7 @@ async function executeClaimedCheckout(
   for (const item of sortedPreviewItems) {
     await tx.execute(sql`
       UPDATE products
-      SET stock=stock-${item.totalQuantity}, updated_at=${now}
+      SET stock=stock-${item.totalQuantity}, version=version+1, updated_at=${now}
       WHERE tenant_id=${dependencies.tenantId} AND product_id=${item.productId}
     `);
   }

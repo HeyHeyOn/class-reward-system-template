@@ -331,7 +331,9 @@ async function lockAccounts(
     SELECT s.student_id, s.name, a.balance::text AS balance
     FROM students s
     JOIN accounts a ON a.tenant_id=s.tenant_id AND a.student_id=s.student_id
-    WHERE s.tenant_id=${tenantId} AND s.student_id IN (${ids})
+    WHERE s.tenant_id=${tenantId}
+      AND s.deleted_at IS NULL
+      AND s.student_id IN (${ids})
     ORDER BY s.student_id
     FOR UPDATE OF s, a
   `);

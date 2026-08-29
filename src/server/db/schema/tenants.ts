@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
   check,
   foreignKey,
   integer,
@@ -131,6 +132,7 @@ export const tenantSessions = pgTable('tenant_sessions', {
 export const tenantSettings = pgTable('tenant_settings', {
   tenantId: uuid('tenant_id').primaryKey(),
   schemaVersion: integer('schema_version').default(1).notNull(),
+  version: bigint('version', { mode: 'bigint' }).default(sql`1`).notNull(),
   settings: jsonb('settings').$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -141,6 +143,7 @@ export const tenantSettings = pgTable('tenant_settings', {
     foreignColumns: [tenants.id],
   }).onDelete('cascade'),
   check('tenant_settings_schema_version_check', sql`${table.schemaVersion} >= 1`),
+  check('tenant_settings_version_check', sql`${table.version} BETWEEN 1 AND 9007199254740991`),
   check('tenant_settings_object_check', sql`jsonb_typeof(${table.settings}) = 'object'`),
 ]);
 

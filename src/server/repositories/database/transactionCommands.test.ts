@@ -84,7 +84,8 @@ async function seedBase() {
 async function snapshot() {
   const [accounts, products, transactions, ledger, operations, items, completions, audits] = await Promise.all([
     harness.database.query(`SELECT balance::text, version::text FROM accounts WHERE tenant_id=$1`, [harness.tenantOneId]),
-    harness.database.query(`SELECT product_id, stock::text FROM products WHERE tenant_id=$1 ORDER BY product_id`, [harness.tenantOneId]),
+    harness.database.query(`SELECT product_id, stock::text, version::text
+      FROM products WHERE tenant_id=$1 ORDER BY product_id`, [harness.tenantOneId]),
     harness.database.query(`SELECT transaction_id, kind, reverses_transaction_id,
       legacy_total_amount::text, balance_delta::text, balance_before::text, balance_after::text,
       student_id, student_name_snapshot, operator_snapshot, legacy_status_snapshot,
@@ -202,7 +203,10 @@ describe('database transaction cancellation commands', () => {
     });
     const state = await snapshot();
     expect(state.accounts).toEqual([{ balance: '3500', version: '2' }]);
-    expect(state.products).toEqual([{ product_id: 'P001', stock: '20' }, { product_id: 'P002', stock: '15' }]);
+    expect(state.products).toEqual([
+      { product_id: 'P001', stock: '20', version: '2' },
+      { product_id: 'P002', stock: '15', version: '2' },
+    ]);
     expect(state.transactions).toHaveLength(2);
     expect(state.transactions.find((row) => (row as { kind?: string }).kind === 'CANCELLATION')).toMatchObject({
       transaction_id: `cancellation:${OPERATION_ID}`,
@@ -240,6 +244,10 @@ describe('database transaction cancellation commands', () => {
     expect(second).toEqual(first);
     const state = await snapshot();
     expect(state.accounts).toEqual([{ balance: '3500', version: '2' }]);
+    expect(state.products).toEqual([
+      { product_id: 'P001', stock: '20', version: '2' },
+      { product_id: 'P002', stock: '15', version: '2' },
+    ]);
     expect(state.transactions).toHaveLength(2);
     expect(state.ledger).toHaveLength(2);
     expect(state.audits).toHaveLength(1);

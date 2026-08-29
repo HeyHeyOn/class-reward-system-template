@@ -272,7 +272,7 @@ export function createDatabaseTransactionCommands(
           const after = checkedSum(before, item.quantity, `stock for ${item.productId}`);
           if (after < 0) throw new TransactionCancellationError('MANUAL_RECONCILIATION_REQUIRED');
           await tx.execute(sql`
-            UPDATE products SET stock=${after}, updated_at=${now}
+            UPDATE products SET stock=${after}, version=version+1, updated_at=${now}
             WHERE tenant_id=${dependencies.tenantId} AND product_id=${item.productId}
           `);
           restoredStock.set(item.productId, { before, after });

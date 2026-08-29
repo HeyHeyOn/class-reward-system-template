@@ -81,6 +81,26 @@ describe('database student queries', () => {
     await expect(queries().getStudentById('S0')).resolves.toBeNull();
   });
 
+  it('hides a tombstoned student from active lists and exact lookup while preserving its row', async () => {
+    await harness.database.query(
+      `UPDATE students
+       SET status='INACTIVE', deleted_at=now(), version=version+1
+       WHERE tenant_id=$1 AND student_id='S10'`,
+      [harness.tenantOneId],
+    );
+
+    await expect(queries().getStudents()).resolves.not.toContainEqual(
+      expect.objectContaining({ studentId: 'S10' }),
+    );
+    await expect(queries().getStudentById('S10')).resolves.toBeNull();
+    const preserved = await harness.database.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM students
+       WHERE tenant_id=$1 AND student_id='S10'`,
+      [harness.tenantOneId],
+    );
+    expect(preserved.rows).toEqual([{ count: '1' }]);
+  });
+
   it('fails closed instead of hiding a student whose account row is missing', async () => {
     await harness.database.query(
       'DELETE FROM accounts WHERE tenant_id=$1 AND student_id=$2',

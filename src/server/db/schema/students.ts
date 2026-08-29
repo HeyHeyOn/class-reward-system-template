@@ -9,16 +9,21 @@ export const students = pgTable('students', {
   studentId: text('student_id').notNull(),
   name: text('name').notNull(),
   status: text('status').$type<(typeof studentStatuses)[number]>().default('ACTIVE').notNull(),
+  version: bigint('version', { mode: 'bigint' }).default(sql`1`).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
 }, (table) => [
   primaryKey({ name: 'students_pkey', columns: [table.tenantId, table.studentId] }),
   foreignKey({ name: 'students_tenant_fk', columns: [table.tenantId], foreignColumns: [tenants.id] }).onDelete('cascade'),
   check('students_id_check', sql`${table.studentId} = btrim(${table.studentId}) AND length(${table.studentId}) > 0`),
   check('students_name_check', sql`length(btrim(${table.name})) > 0`),
   check('students_status_check', sql`${table.status} IN ('ACTIVE', 'INACTIVE')`),
+  check('students_version_check', sql`${table.version} BETWEEN 1 AND 9007199254740991`),
+  check('students_deleted_chronology_check', sql`${table.deletedAt} IS NULL OR ${table.deletedAt} >= ${table.createdAt}`),
+  check('students_deleted_status_check', sql`${table.deletedAt} IS NULL OR ${table.status} = 'INACTIVE'`),
   index('students_active_name_idx').on(table.tenantId, table.name)
-    .where(sql`${table.status} = 'ACTIVE'`),
+    .where(sql`${table.status} = 'ACTIVE' AND ${table.deletedAt} IS NULL`),
 ]);
 
 export const accounts = pgTable('accounts', {

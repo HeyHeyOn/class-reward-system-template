@@ -328,6 +328,19 @@ describe('PostgreSQL transactional admin balance adjustments', () => {
     expect(state.audits).toHaveLength(1);
   });
 
+  it('rejects an adjustment for a tombstoned student while still allowing inactive students', async () => {
+    await harness.database.query(
+      `UPDATE students
+       SET status='INACTIVE', deleted_at=now(), version=version+1
+       WHERE tenant_id=$1 AND student_id='S001'`,
+      [harness.tenantOneId],
+    );
+    const before = await snapshot();
+
+    await expect(commands().adjust(input())).rejects.toMatchObject({ code: 'STUDENT_INVALID' });
+    expect(await snapshot()).toEqual(before);
+  });
+
   it('allows an explicit administrator subtraction to produce a negative balance with an audit ledger', async () => {
     const result = await commands().adjust(input({ mode: 'subtract', amount: 1001 }));
 

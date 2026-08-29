@@ -30,7 +30,8 @@ export function createDatabaseStudentQueries(dependencies: DatabaseStudentQueryD
           FROM students s
           LEFT JOIN accounts a
             ON a.tenant_id = s.tenant_id AND a.student_id = s.student_id
-          WHERE s.tenant_id = ${dependencies.tenantId} AND s.status = 'ACTIVE'
+          WHERE s.tenant_id = ${dependencies.tenantId}
+            AND s.status = 'ACTIVE' AND s.deleted_at IS NULL
         `);
         return (result.rows as StudentRow[])
           .map(toStudent)
@@ -47,6 +48,7 @@ export function createDatabaseStudentQueries(dependencies: DatabaseStudentQueryD
           LEFT JOIN accounts a
             ON a.tenant_id = s.tenant_id AND a.student_id = s.student_id
           WHERE s.tenant_id = ${dependencies.tenantId} AND s.student_id = ${studentId}
+            AND s.deleted_at IS NULL
         `);
         if (result.rows.length === 0) return null;
         if (result.rows.length !== 1) throw new Error('Student query returned duplicate rows.');
