@@ -82,7 +82,7 @@ async function seedBase() {
 }
 
 async function snapshot() {
-  const [accounts, products, transactions, ledger, operations, items, completions] = await Promise.all([
+  const [accounts, products, transactions, ledger, operations, items, completions, audits] = await Promise.all([
     harness.database.query(`SELECT balance::text, version::text FROM accounts WHERE tenant_id=$1`, [harness.tenantOneId]),
     harness.database.query(`SELECT product_id, stock::text FROM products WHERE tenant_id=$1 ORDER BY product_id`, [harness.tenantOneId]),
     harness.database.query(`SELECT transaction_id, kind, reverses_transaction_id,
@@ -101,8 +101,20 @@ async function snapshot() {
       operation_id, operation_hash, schema_version, evidence_provider, evidence_board_id,
       evidence_post_id, evidence_created_at, evidence_author_full_name
       FROM task_completions WHERE tenant_id=$1 ORDER BY completion_id`, [harness.tenantOneId]),
+    harness.database.query(`SELECT operation_id, event_type, entity_type, entity_id,
+      redacted_details, occurred_at
+      FROM audit_events WHERE tenant_id=$1 ORDER BY event_id`, [harness.tenantOneId]),
   ]);
-  return { accounts: accounts.rows, products: products.rows, transactions: transactions.rows, ledger: ledger.rows, operations: operations.rows, items: items.rows, completions: completions.rows };
+  return {
+    accounts: accounts.rows,
+    products: products.rows,
+    transactions: transactions.rows,
+    ledger: ledger.rows,
+    operations: operations.rows,
+    items: items.rows,
+    completions: completions.rows,
+    audits: audits.rows,
+  };
 }
 
 async function seedValidTaskReward() {
@@ -206,6 +218,19 @@ describe('database transaction cancellation commands', () => {
     ]);
     expect(state.operations).toHaveLength(1);
     expect(state.operations[0]).toMatchObject({ operation_kind: 'CANCELLATION', status: 'SUCCEEDED', result_snapshot: result });
+    expect(state.audits).toEqual([{
+      operation_id: OPERATION_ID,
+      event_type: 'CANCELLATION_COMPLETED',
+      entity_type: 'TRANSACTION',
+      entity_id: result.reversalTransactionId,
+      redacted_details: {
+        originalTransactionId: ORIGINAL_ID,
+        cancellationTransactionId: result.reversalTransactionId,
+        studentId: STUDENT_ID,
+        reversalAmount: 600,
+      },
+      occurred_at: NOW,
+    }]);
     expect(state.items).toHaveLength(2);
   });
 
@@ -217,6 +242,20 @@ describe('database transaction cancellation commands', () => {
     expect(state.accounts).toEqual([{ balance: '3500', version: '2' }]);
     expect(state.transactions).toHaveLength(2);
     expect(state.ledger).toHaveLength(2);
+    expect(state.audits).toHaveLength(1);
+  });
+
+  it('fails closed when a successful cancellation replay is missing its immutable audit', async () => {
+    await commands().cancel({ operationId: OPERATION_ID, transactionId: ORIGINAL_ID });
+    await harness.database.exec('ALTER TABLE audit_events DISABLE TRIGGER audit_events_immutable');
+    await harness.database.query(
+      'DELETE FROM audit_events WHERE tenant_id=$1 AND operation_id=$2',
+      [harness.tenantOneId, OPERATION_ID],
+    );
+    await harness.database.exec('ALTER TABLE audit_events ENABLE TRIGGER audit_events_immutable');
+
+    await expect(commands().cancel({ operationId: OPERATION_ID, transactionId: ORIGINAL_ID }))
+      .rejects.toThrow(/audit integrity/i);
   });
 
   it('fails closed when an operation is pending or bound to another kind/payload', async () => {
@@ -237,7 +276,9 @@ describe('database transaction cancellation commands', () => {
     );
     await expect(commands().cancel({ operationId: OPERATION_ID, transactionId: ORIGINAL_ID }))
       .rejects.toMatchObject({ code: 'OPERATION_CONFLICT' });
-    expect((await snapshot()).transactions).toHaveLength(1);
+    const state = await snapshot();
+    expect(state.transactions).toHaveLength(1);
+    expect(state.audits).toHaveLength(0);
   });
 
   it('validates canonical UUID and an optional lowercase SHA-256 before tenant authority', async () => {

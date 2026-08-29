@@ -5,6 +5,7 @@ import { sql } from 'drizzle-orm';
 import { parseCheckoutLineSnapshot } from '@/lib/checkoutSnapshotClient';
 import { createTaskRewardPayloadHash } from './taskCompletionCommands';
 import type { TenantTransaction } from '@/server/db/transaction';
+import { appendOperationAudit, assertOperationAudit } from './operationAudit';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -77,6 +78,7 @@ type OperationRow = {
   payload_hash: string;
   status: 'PENDING' | 'SUCCEEDED' | 'FAILED';
   result_snapshot: unknown;
+  finished_at: Date | string | null;
 };
 
 type OriginalTransactionRow = {
@@ -348,6 +350,11 @@ export function createDatabaseTransactionCommands(
           cancellationCompletionId,
           cancelledAt: now.toISOString(),
         };
+        await appendOperationAudit(
+          tx,
+          dependencies.tenantId,
+          cancellationAuditInput(input.operationId, result, now),
+        );
         await tx.execute(sql`
           UPDATE operations
           SET status='SUCCEEDED', result_snapshot=${JSON.stringify(result)}::jsonb,
@@ -652,12 +659,12 @@ async function readOperation(
   lock: boolean,
 ): Promise<OperationRow | undefined> {
   const result = await tx.execute(lock ? sql`
-    SELECT operation_kind, payload_hash, status, result_snapshot
+    SELECT operation_kind, payload_hash, status, result_snapshot, finished_at
     FROM operations
     WHERE tenant_id=${tenantId} AND operation_id=${operationId}
     FOR UPDATE
   ` : sql`
-    SELECT operation_kind, payload_hash, status, result_snapshot
+    SELECT operation_kind, payload_hash, status, result_snapshot, finished_at
     FROM operations
     WHERE tenant_id=${tenantId} AND operation_id=${operationId}
   `);
@@ -708,7 +715,39 @@ async function resolveExistingOperation(
   if (operation.status === 'FAILED') throw new TransactionCancellationError('OPERATION_FAILED');
   const result = parseStoredResult(operation.result_snapshot, input, state);
   await validateStoredLedgers(tx, tenantId, state, result);
+  await assertOperationAudit(
+    tx,
+    tenantId,
+    cancellationAuditInput(input.operationId, result, requiredAuditDate(operation.finished_at)),
+  );
   return result;
+}
+
+function cancellationAuditInput(
+  operationId: string,
+  result: CancellationSuccess,
+  occurredAt: Date,
+) {
+  return {
+    operationId,
+    eventType: 'CANCELLATION_COMPLETED',
+    entityType: 'TRANSACTION',
+    entityId: result.reversalTransactionId,
+    redactedDetails: {
+      originalTransactionId: result.originalTransactionId,
+      cancellationTransactionId: result.reversalTransactionId,
+      studentId: result.studentId,
+      reversalAmount: result.reversalAmount,
+    },
+    occurredAt,
+  } as const;
+}
+
+function requiredAuditDate(value: Date | string | null): Date {
+  if (value === null) throw new Error('Cancellation audit integrity check failed.');
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) throw new Error('Cancellation audit integrity check failed.');
+  return date;
 }
 
 function parseStoredResult(
