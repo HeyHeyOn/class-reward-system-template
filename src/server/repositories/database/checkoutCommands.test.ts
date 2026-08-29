@@ -84,7 +84,7 @@ async function seedCheckoutState(options: { balance?: number; stock?: number; ac
 }
 
 async function snapshot() {
-  const [account, productRows, transactionRows, itemRows, ledgerRows, operationRows] = await Promise.all([
+  const [account, productRows, transactionRows, itemRows, ledgerRows, operationRows, auditRows] = await Promise.all([
     harness.database.query<{ balance: string; version: string }>(
       `SELECT balance::text, version::text FROM accounts WHERE tenant_id=$1 AND student_id=$2`,
       [harness.tenantOneId, STUDENT_ID],
@@ -126,6 +126,11 @@ async function snapshot() {
       [harness.tenantOneId],
     ),
     harness.database.query(`SELECT * FROM operations WHERE tenant_id=$1`, [harness.tenantOneId]),
+    harness.database.query(
+      `SELECT operation_id, event_type, entity_type, entity_id, redacted_details, occurred_at
+       FROM audit_events WHERE tenant_id=$1`,
+      [harness.tenantOneId],
+    ),
   ]);
   return {
     account: account.rows,
@@ -134,6 +139,7 @@ async function snapshot() {
     items: itemRows.rows,
     ledger: ledgerRows.rows,
     operations: operationRows.rows,
+    audits: auditRows.rows,
   };
 }
 
@@ -204,6 +210,13 @@ describe('database checkout command', () => {
       status: 'SUCCEEDED',
       result_snapshot: result,
     });
+    expect(state.audits).toEqual([expect.objectContaining({
+      operation_id: 'checkout-op-001',
+      event_type: 'CHECKOUT_COMPLETED',
+      entity_type: 'TRANSACTION',
+      entity_id: result.transactionId,
+      redacted_details: { itemCount: 2, studentId: STUDENT_ID, totalAmount: 1100 },
+    })]);
   });
 
   it.each([
@@ -255,6 +268,20 @@ describe('database checkout command', () => {
     expect(state.items).toHaveLength(1);
     expect(state.ledger).toHaveLength(1);
     expect(state.operations).toHaveLength(1);
+    expect(state.audits).toHaveLength(1);
+  });
+
+  it('fails closed when a successful checkout replay is missing its immutable audit', async () => {
+    const checkoutInput = input('checkout-op-missing-audit');
+    await command().execute(checkoutInput);
+    await harness.database.exec('ALTER TABLE audit_events DISABLE TRIGGER audit_events_immutable');
+    await harness.database.query(
+      'DELETE FROM audit_events WHERE tenant_id=$1 AND operation_id=$2',
+      [harness.tenantOneId, checkoutInput.operationId],
+    );
+    await harness.database.exec('ALTER TABLE audit_events ENABLE TRIGGER audit_events_immutable');
+
+    await expect(command().execute(checkoutInput)).rejects.toThrow(/audit integrity/i);
   });
 
   it('rejects a malformed stored success snapshot as an integrity error', async () => {

@@ -17,6 +17,7 @@ import {
 } from '@/server/checkoutService';
 import type { TenantTransaction } from '@/server/db/transaction';
 import { parseCheckoutSuccessResponse } from '@/lib/checkoutSnapshotClient';
+import { appendOperationAudit, assertOperationAudit } from './operationAudit';
 
 const SHA256 = /^[0-9a-f]{64}$/;
 
@@ -39,6 +40,7 @@ type OperationRow = {
   status: 'PENDING' | 'SUCCEEDED' | 'FAILED';
   result_snapshot: unknown;
   failure_code: string | null;
+  finished_at: Date | string | null;
 };
 
 type StudentAccountRow = {
@@ -109,7 +111,7 @@ export function createDatabaseCheckoutCommand(
           `);
           const ownsClaim = inserted.rows.length === 1;
           const operationResult = await tx.execute(sql`
-            SELECT operation_kind, payload_hash, status, result_snapshot, failure_code
+            SELECT operation_kind, payload_hash, status, result_snapshot, failure_code, finished_at
             FROM operations
             WHERE tenant_id=${dependencies.tenantId} AND operation_id=${canonicalInput.operationId}
             FOR UPDATE
@@ -121,7 +123,13 @@ export function createDatabaseCheckoutCommand(
           }
           if (!ownsClaim) {
             if (operation.status === 'SUCCEEDED') {
-              return parseStoredCheckoutResult(operation.result_snapshot, canonicalInput);
+              const result = parseStoredCheckoutResult(operation.result_snapshot, canonicalInput);
+              await assertOperationAudit(
+                tx,
+                dependencies.tenantId,
+                checkoutAuditInput(canonicalInput.operationId, result, requiredDate(operation.finished_at)),
+              );
+              return result;
             }
             if (operation.status === 'FAILED') {
               return {
@@ -283,6 +291,11 @@ async function executeClaimedCheckout(
     balanceAfter: preview.balanceAfter,
     items: preview.items,
   };
+  await appendOperationAudit(
+    tx,
+    dependencies.tenantId,
+    checkoutAuditInput(input.operationId, result, now),
+  );
   await tx.execute(sql`
     UPDATE operations
     SET status='SUCCEEDED', result_snapshot=${JSON.stringify(result)}::jsonb,
@@ -290,6 +303,32 @@ async function executeClaimedCheckout(
     WHERE tenant_id=${dependencies.tenantId} AND operation_id=${input.operationId}
   `);
   return result;
+}
+
+function checkoutAuditInput(
+  operationId: string,
+  result: Extract<CheckoutCommandResult, { ok: true }>,
+  occurredAt: Date,
+) {
+  return {
+    operationId,
+    eventType: 'CHECKOUT_COMPLETED',
+    entityType: 'TRANSACTION',
+    entityId: result.transactionId,
+    redactedDetails: {
+      itemCount: result.items.length,
+      studentId: result.studentId,
+      totalAmount: result.totalAmount,
+    },
+    occurredAt,
+  } as const;
+}
+
+function requiredDate(value: Date | string | null): Date {
+  if (value === null) throw new Error('Checkout audit integrity check failed.');
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) throw new Error('Checkout audit integrity check failed.');
+  return date;
 }
 
 async function loadPromotions(
@@ -463,7 +502,7 @@ function checkoutTransactionId(operationId: string): string {
 function parseStoredCheckoutResult(
   value: unknown,
   input: CheckoutCommandInput,
-): CheckoutCommandResult {
+): Extract<CheckoutCommandResult, { ok: true }> {
   const result = parseCheckoutSuccessResponse(value);
   if (!result
       || result.studentId !== input.studentId
