@@ -131,8 +131,10 @@ async function seedValidTaskReward() {
     cycleEndsAt: '2026-08-29T00:00:00.000Z',
     reward: 500,
   });
-  await harness.database.query(`DELETE FROM transaction_items WHERE tenant_id=$1`, [harness.tenantOneId]);
-  await harness.database.query(`DELETE FROM transactions WHERE tenant_id=$1`, [harness.tenantOneId]);
+  await harness.withImmutableLedgerTampering(async () => {
+    await harness.database.query(`DELETE FROM transaction_items WHERE tenant_id=$1`, [harness.tenantOneId]);
+    await harness.database.query(`DELETE FROM transactions WHERE tenant_id=$1`, [harness.tenantOneId]);
+  });
   await harness.database.query(`UPDATE accounts SET balance=1000 WHERE tenant_id=$1 AND student_id=$2`, [harness.tenantOneId, STUDENT_ID]);
   await harness.database.query(
     `INSERT INTO tasks
@@ -336,8 +338,10 @@ describe('database transaction cancellation commands', () => {
   it.each([
     ['ADMIN_ADJUSTMENT', -200, 1200, 1000],
   ] as const)('reverses valid %s balance semantics without inventory mutation', async (kind, delta, before, after) => {
-    await harness.database.query(`DELETE FROM transaction_items WHERE tenant_id=$1`, [harness.tenantOneId]);
-    await harness.database.query(`DELETE FROM transactions WHERE tenant_id=$1`, [harness.tenantOneId]);
+    await harness.withImmutableLedgerTampering(async () => {
+      await harness.database.query(`DELETE FROM transaction_items WHERE tenant_id=$1`, [harness.tenantOneId]);
+      await harness.database.query(`DELETE FROM transactions WHERE tenant_id=$1`, [harness.tenantOneId]);
+    });
     await harness.database.query(`UPDATE accounts SET balance=$2 WHERE tenant_id=$1 AND student_id=$3`, [harness.tenantOneId, after, STUDENT_ID]);
     await harness.database.query(
       `INSERT INTO transactions
@@ -393,10 +397,10 @@ describe('database transaction cancellation commands', () => {
         evidenceCreatedAt: '2026-08-28T04:00:00.000Z', evidenceAuthorFullName: '보호자 작성자',
       },
     });
-    await harness.database.query(
+    await harness.withImmutableLedgerTampering(() => harness.database.query(
       `UPDATE transactions SET operation_hash=$3 WHERE tenant_id=$1 AND transaction_id=$2`,
       [harness.tenantOneId, REWARD_ORIGINAL_ID, evidenceHash],
-    );
+    ));
     await harness.database.query(
       `UPDATE task_completions
        SET evidence_provider='PADLET', evidence_board_id='AbCdEfGhIjKlMnOp', evidence_post_id='post-001',
@@ -498,12 +502,12 @@ describe('database transaction cancellation commands', () => {
       cycleId: 'cycle-1', cycleStartsAt: '2026-08-28T00:00:00.000Z',
       cycleEndsAt: '2026-08-29T00:00:00.000Z', reward: 5000,
     });
-    await harness.database.query(
+    await harness.withImmutableLedgerTampering(() => harness.database.query(
       `UPDATE transactions SET legacy_total_amount=5000, balance_delta=5000,
          balance_before=-4000, balance_after=1000, operation_hash=$3
        WHERE tenant_id=$1 AND transaction_id=$2`,
       [harness.tenantOneId, REWARD_ORIGINAL_ID, largeRewardHash],
-    );
+    ));
     await harness.database.query(
       `UPDATE task_completions SET reward_snapshot=5000, balance_before=-4000,
          balance_after=1000, operation_hash=$3 WHERE tenant_id=$1 AND transaction_id=$2`,
@@ -532,10 +536,10 @@ describe('database transaction cancellation commands', () => {
       VALUES ($1, $2, 1, 'REVERSAL', 'unexpected', 1, 0, 0)`],
   ])('rejects replay after immutable %s drift', async (_label, mutation) => {
     await commands().cancel({ operationId: OPERATION_ID, transactionId: ORIGINAL_ID });
-    await harness.database.query(
+    await harness.withImmutableLedgerTampering(() => harness.database.query(
       mutation,
       [harness.tenantOneId, `cancellation:${OPERATION_ID}`],
-    );
+    ));
     await expect(commands().cancel({ operationId: OPERATION_ID, transactionId: ORIGINAL_ID }))
       .rejects.toThrow(/stored|ledger|snapshot|integrity/i);
   });

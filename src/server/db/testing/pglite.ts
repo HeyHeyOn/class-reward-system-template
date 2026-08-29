@@ -20,6 +20,7 @@ const MIGRATIONS = [
   '0003_operations_migrations.sql',
   '0004_admin_operation_kinds.sql',
   '0005_mutable_entity_versions.sql',
+  '0006_immutable_ledger_guards.sql',
 ] as const;
 
 type PgQueryConfig = {
@@ -71,6 +72,7 @@ export type PgliteDatabaseHarness = {
   runTenantTransaction: ReturnType<typeof createTenantTransactionRunner>;
   tenantOneId: string;
   tenantTwoId: string;
+  withImmutableLedgerTampering<TResult>(callback: () => Promise<TResult>): Promise<TResult>;
   close(): Promise<void>;
 };
 
@@ -118,6 +120,20 @@ export async function createPgliteDatabaseHarness(): Promise<PgliteDatabaseHarne
       runTenantTransaction,
       tenantOneId: TENANT_ONE,
       tenantTwoId: TENANT_TWO,
+      withImmutableLedgerTampering: async <TResult>(callback: () => Promise<TResult>) => {
+        await database.exec(`
+          ALTER TABLE transactions DISABLE TRIGGER transactions_immutable;
+          ALTER TABLE adjustments DISABLE TRIGGER adjustments_immutable;
+        `);
+        try {
+          return await callback();
+        } finally {
+          await database.exec(`
+            ALTER TABLE transactions ENABLE TRIGGER transactions_immutable;
+            ALTER TABLE adjustments ENABLE TRIGGER adjustments_immutable;
+          `);
+        }
+      },
       close: () => database.close(),
     };
   } catch (error) {

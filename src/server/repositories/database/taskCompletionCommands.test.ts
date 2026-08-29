@@ -269,10 +269,10 @@ describe('database task completion command', () => {
     const resolvePadletEvidence = vi.fn().mockResolvedValue(EVIDENCE);
     const taskCommand = command({ resolvePadletEvidence });
     await taskCommand.execute({ operationId: OPERATION_ID, taskId: TASK_ID, studentId: STUDENT_ID });
-    await harness.database.query(
+    await harness.withImmutableLedgerTampering(() => harness.database.query(
       mutation,
       [harness.tenantOneId, `task-reward:${OPERATION_ID}`],
-    );
+    ));
 
     await expect(taskCommand.execute({
       operationId: OPERATION_ID, taskId: TASK_ID, studentId: STUDENT_ID,

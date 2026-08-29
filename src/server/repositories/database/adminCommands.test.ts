@@ -422,7 +422,8 @@ describe('PostgreSQL transactional admin balance adjustments', () => {
   ])('rejects replay after %s drift', async (_label, mutation) => {
     await commands().adjust(input());
     if (_label === 'stored result') await harness.database.exec(`ALTER TABLE operations DISABLE TRIGGER operations_update_guard`);
-    await harness.database.query(mutation, [harness.tenantOneId, OPERATION_ID]);
+    await harness.withImmutableLedgerTampering(() =>
+      harness.database.query(mutation, [harness.tenantOneId, OPERATION_ID]));
     if (_label === 'stored result') await harness.database.exec(`ALTER TABLE operations ENABLE TRIGGER operations_update_guard`);
     await expect(commands().adjust(input())).rejects.toThrow(/integrity|stored/i);
   });

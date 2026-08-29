@@ -1,0 +1,546 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { sql } from 'drizzle-orm';
+import {
+  createDatabaseStudentCommands,
+  createStudentAdminAdjustmentId,
+  createStudentAdminLedgerOperationId,
+  createStudentAdminPayloadHash,
+  createStudentAdminResultHash,
+  createStudentAdminTransactionId,
+  type DatabaseStudentCommandDependencies,
+} from './studentCommands';
+import {
+  createPgliteDatabaseHarness,
+  type PgliteDatabaseHarness,
+} from '@/server/db/testing/pglite';
+import type { TenantTransaction } from '@/server/db/transaction';
+import { appendOperationAudit } from './operationAudit';
+
+vi.mock('server-only', () => ({}));
+
+const NOW = new Date('2026-08-29T10:15:00.000Z');
+const OPERATION_ID = 'student-create-op-001';
+let harness: PgliteDatabaseHarness;
+
+beforeEach(async () => {
+  harness = await createPgliteDatabaseHarness();
+});
+
+afterEach(async () => harness?.close());
+
+function commands(overrides: Partial<DatabaseStudentCommandDependencies> = {}) {
+  return createDatabaseStudentCommands({
+    tenantId: harness.tenantOneId,
+    runTenantTransaction: harness.runTenantTransaction,
+    now: () => new Date(NOW),
+    ...overrides,
+  });
+}
+
+async function seedStudent(input: {
+  studentId: string;
+  name: string;
+  balance: number;
+  status?: 'ACTIVE' | 'INACTIVE';
+}) {
+  await harness.database.query(
+    `INSERT INTO students
+      (tenant_id, student_id, name, status, version, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, 1, $5, $5)`,
+    [harness.tenantOneId, input.studentId, input.name, input.status ?? 'ACTIVE', NOW],
+  );
+  await harness.database.query(
+    `INSERT INTO accounts (tenant_id, student_id, balance, version, updated_at)
+     VALUES ($1, $2, $3, 1, $4)`,
+    [harness.tenantOneId, input.studentId, input.balance, NOW],
+  );
+}
+
+async function withOperationAuditTampering<TResult>(callback: () => Promise<TResult>): Promise<TResult> {
+  await harness.database.exec(`
+    ALTER TABLE operations DISABLE TRIGGER operations_update_guard;
+    ALTER TABLE audit_events DISABLE TRIGGER audit_events_immutable;
+  `);
+  try {
+    return await callback();
+  } finally {
+    await harness.database.exec(`
+      ALTER TABLE operations ENABLE TRIGGER operations_update_guard;
+      ALTER TABLE audit_events ENABLE TRIGGER audit_events_immutable;
+    `);
+  }
+}
+
+async function snapshot(tenantId = harness.tenantOneId) {
+  const [students, accounts, transactions, adjustments, operations, audits] = await Promise.all([
+    harness.database.query(
+      `SELECT student_id, name, status, version::text, deleted_at
+       FROM students WHERE tenant_id=$1 ORDER BY student_id`,
+      [tenantId],
+    ),
+    harness.database.query(
+      `SELECT student_id, balance::text, version::text
+       FROM accounts WHERE tenant_id=$1 ORDER BY student_id`,
+      [tenantId],
+    ),
+    harness.database.query(
+      `SELECT transaction_id, occurred_at, student_id, student_name_snapshot, kind,
+              legacy_total_amount::text, balance_delta::text, balance_before::text,
+              balance_after::text, operator_snapshot, legacy_status_snapshot,
+              operation_id, operation_hash, schema_version
+       FROM transactions WHERE tenant_id=$1 ORDER BY transaction_id`,
+      [tenantId],
+    ),
+    harness.database.query(
+      `SELECT adjustment_id, transaction_id, mode, requested_amount::text,
+              operator_snapshot, legacy_adjustment_id
+       FROM adjustments WHERE tenant_id=$1 ORDER BY adjustment_id`,
+      [tenantId],
+    ),
+    harness.database.query(
+      `SELECT operation_id, operation_kind, payload_hash, status, result_snapshot
+       FROM operations WHERE tenant_id=$1 ORDER BY operation_id`,
+      [tenantId],
+    ),
+    harness.database.query(
+      `SELECT operation_id, event_type, entity_type, entity_id,
+              redacted_details, occurred_at
+       FROM audit_events WHERE tenant_id=$1 ORDER BY event_id`,
+      [tenantId],
+    ),
+  ]);
+  return {
+    students: students.rows,
+    accounts: accounts.rows,
+    transactions: transactions.rows,
+    adjustments: adjustments.rows,
+    operations: operations.rows,
+    audits: audits.rows,
+  };
+}
+
+const createInput = (overrides: Record<string, unknown> = {}) => ({
+  operationId: OPERATION_ID,
+  studentId: 'S001',
+  name: ' 김민준 ',
+  balance: 1200,
+  status: 'ACTIVE' as const,
+  ...overrides,
+});
+
+describe('PostgreSQL student administration commands', () => {
+  it('creates a student and account with an immutable initial-balance ledger in one operation', async () => {
+    const result = await commands().create(createInput());
+    const payloadHash = createStudentAdminPayloadHash({
+      action: 'CREATE',
+      students: [{ studentId: 'S001', name: '김민준', balance: 1200, status: 'ACTIVE' }],
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      operationId: OPERATION_ID,
+      action: 'CREATE',
+      completedAt: NOW.toISOString(),
+      students: [{
+        studentId: 'S001',
+        name: '김민준',
+        balance: 1200,
+        status: 'ACTIVE',
+        studentVersionBefore: null,
+        studentVersionAfter: 1,
+        accountVersionBefore: null,
+        accountVersionAfter: 1,
+        balanceBefore: null,
+        balanceAfter: 1200,
+        transactionId: createStudentAdminTransactionId(OPERATION_ID, 'S001'),
+      }],
+    });
+
+    const state = await snapshot();
+    expect(state.students).toEqual([{
+      student_id: 'S001', name: '김민준', status: 'ACTIVE', version: '1', deleted_at: null,
+    }]);
+    expect(state.accounts).toEqual([{ student_id: 'S001', balance: '1200', version: '1' }]);
+    expect(state.transactions).toEqual([expect.objectContaining({
+      transaction_id: createStudentAdminTransactionId(OPERATION_ID, 'S001'),
+      occurred_at: NOW,
+      student_id: 'S001',
+      student_name_snapshot: '김민준',
+      kind: 'ADMIN_ADJUSTMENT',
+      legacy_total_amount: '-1200',
+      balance_delta: '1200',
+      balance_before: '0',
+      balance_after: '1200',
+      operator_snapshot: 'admin',
+      legacy_status_snapshot: 'ADMIN_ADJUSTMENT',
+      operation_id: createStudentAdminLedgerOperationId(OPERATION_ID, 'S001'),
+      operation_hash: payloadHash,
+      schema_version: 1,
+    })]);
+    expect(state.adjustments).toEqual([{
+      adjustment_id: createStudentAdminAdjustmentId(OPERATION_ID, 'S001'),
+      transaction_id: createStudentAdminTransactionId(OPERATION_ID, 'S001'),
+      mode: 'set',
+      requested_amount: '1200',
+      operator_snapshot: 'admin',
+      legacy_adjustment_id: null,
+    }]);
+    expect(state.operations).toEqual([expect.objectContaining({
+      operation_id: OPERATION_ID,
+      operation_kind: 'STUDENT_ADMIN',
+      payload_hash: payloadHash,
+      status: 'SUCCEEDED',
+      result_snapshot: result,
+    })]);
+    expect(state.audits).toEqual([{
+      operation_id: OPERATION_ID,
+      event_type: 'STUDENT_ADMIN_COMPLETED',
+      entity_type: 'OPERATION',
+      entity_id: OPERATION_ID,
+      redacted_details: {
+        action: 'CREATE',
+        changedStudentCount: 1,
+        ledgerCount: 1,
+        resultHash: createStudentAdminResultHash(result),
+        studentCount: 1,
+      },
+      occurred_at: NOW,
+    }]);
+  });
+
+  it('returns the exact stored create result on retry without duplicating rows or ledgers', async () => {
+    const first = await commands().create(createInput());
+    const second = await commands({ now: () => new Date('2026-08-30T00:00:00.000Z') })
+      .create(createInput());
+
+    expect(second).toEqual(first);
+    const state = await snapshot();
+    expect(state.students).toHaveLength(1);
+    expect(state.accounts).toHaveLength(1);
+    expect(state.transactions).toHaveLength(1);
+    expect(state.adjustments).toHaveLength(1);
+    expect(state.operations).toHaveLength(1);
+    expect(state.audits).toHaveLength(1);
+  });
+
+  it('re-reads and exactly replays a concurrent identical operation that wins the insert race', async () => {
+    const input = createInput({
+      operationId: 'student-create-race-op',
+      studentId: 'S010',
+      balance: 0,
+    });
+    const payloadHash = createStudentAdminPayloadHash({
+      action: 'CREATE',
+      students: [{ studentId: 'S010', name: '김민준', balance: 0, status: 'ACTIVE' }],
+    });
+    const winner = {
+      ok: true,
+      operationId: input.operationId,
+      action: 'CREATE',
+      completedAt: NOW.toISOString(),
+      students: [{
+        studentId: input.studentId,
+        name: '김민준',
+        balance: 0,
+        status: 'ACTIVE',
+        studentVersionBefore: null,
+        studentVersionAfter: 1,
+        accountVersionBefore: null,
+        accountVersionAfter: 1,
+        balanceBefore: null,
+        balanceAfter: 0,
+        transactionId: null,
+      }],
+    } as const;
+    let executeCount = 0;
+    const racingRunTenantTransaction: DatabaseStudentCommandDependencies['runTenantTransaction'] =
+      (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) => {
+        const wrapped = new Proxy(tx, {
+          get(target, property, receiver) {
+            if (property !== 'execute') return Reflect.get(target, property, receiver);
+            return async (query: Parameters<TenantTransaction['execute']>[0]) => {
+              executeCount += 1;
+              if (executeCount === 2) {
+                await tx.execute(sql`
+                  INSERT INTO operations
+                    (tenant_id, operation_id, operation_kind, payload_hash, status,
+                     result_snapshot, attempt_count, started_at, finished_at, created_at, updated_at)
+                  VALUES (${tenantId}, ${input.operationId}, 'STUDENT_ADMIN', ${payloadHash}, 'SUCCEEDED',
+                          ${JSON.stringify(winner)}::jsonb, 1, ${NOW}, ${NOW}, ${NOW}, ${NOW})
+                `);
+                await tx.execute(sql`
+                  INSERT INTO students
+                    (tenant_id, student_id, name, status, version, created_at, updated_at)
+                  VALUES (${tenantId}, ${input.studentId}, '김민준', 'ACTIVE', 1, ${NOW}, ${NOW})
+                `);
+                await tx.execute(sql`
+                  INSERT INTO accounts (tenant_id, student_id, balance, version, updated_at)
+                  VALUES (${tenantId}, ${input.studentId}, 0, 1, ${NOW})
+                `);
+                await appendOperationAudit(tx, tenantId, {
+                  operationId: input.operationId,
+                  eventType: 'STUDENT_ADMIN_COMPLETED',
+                  entityType: 'OPERATION',
+                  entityId: input.operationId,
+                  redactedDetails: {
+                    action: 'CREATE',
+                    changedStudentCount: 1,
+                    ledgerCount: 0,
+                    resultHash: createStudentAdminResultHash(winner),
+                    studentCount: 1,
+                  },
+                  occurredAt: NOW,
+                });
+              }
+              return tx.execute(query);
+            };
+          },
+        });
+        return callback(wrapped);
+      });
+
+    const result = await commands({ runTenantTransaction: racingRunTenantTransaction }).create(input);
+
+    expect(result).toEqual(winner);
+    expect(executeCount).toBeGreaterThan(2);
+  });
+
+  it('database-rejects updates to an initial-balance transaction', async () => {
+    await commands().create(createInput());
+
+    await expect(harness.database.query(
+      `UPDATE transactions SET operator_snapshot='changed'
+       WHERE tenant_id=$1 AND transaction_id=$2`,
+      [harness.tenantOneId, createStudentAdminTransactionId(OPERATION_ID, 'S001')],
+    )).rejects.toThrow(/immutable/i);
+  });
+
+  it('database-rejects deletion of an initial-balance adjustment', async () => {
+    await commands().create(createInput());
+
+    await expect(harness.database.query(
+      `DELETE FROM adjustments
+       WHERE tenant_id=$1 AND transaction_id=$2`,
+      [harness.tenantOneId, createStudentAdminTransactionId(OPERATION_ID, 'S001')],
+    )).rejects.toThrow(/immutable/i);
+  });
+
+  it('fails closed when a successful create replay is missing its immutable audit', async () => {
+    await commands().create(createInput());
+    await withOperationAuditTampering(() => harness.database.query(
+      'DELETE FROM audit_events WHERE tenant_id=$1 AND operation_id=$2',
+      [harness.tenantOneId, OPERATION_ID],
+    ));
+
+    await expect(commands().create(createInput())).rejects.toThrow(/audit integrity/i);
+  });
+
+  it('fails closed when successful operation lifecycle evidence is corrupted', async () => {
+    await commands().create(createInput());
+    await harness.database.query(
+      `UPDATE operations SET attempt_count=2
+       WHERE tenant_id=$1 AND operation_id=$2`,
+      [harness.tenantOneId, OPERATION_ID],
+    );
+
+    await expect(commands().create(createInput())).rejects.toThrow(/operation integrity/i);
+  });
+
+  it('fails closed when a successful create replay is missing its adjustment ledger', async () => {
+    await commands().create(createInput());
+    await harness.withImmutableLedgerTampering(async () => {
+      await harness.database.query(
+        'DELETE FROM adjustments WHERE tenant_id=$1 AND transaction_id=$2',
+        [harness.tenantOneId, createStudentAdminTransactionId(OPERATION_ID, 'S001')],
+      );
+      await harness.database.query(
+        'DELETE FROM transactions WHERE tenant_id=$1 AND transaction_id=$2',
+        [harness.tenantOneId, createStudentAdminTransactionId(OPERATION_ID, 'S001')],
+      );
+    });
+
+    await expect(commands().create(createInput())).rejects.toThrow(/ledger integrity/i);
+  });
+
+  it('fails closed when create replay finds an extra transaction attributed to the same operation hash', async () => {
+    await commands().create(createInput());
+    await seedStudent({ studentId: 'extra', name: '추가 학생', balance: 0 });
+    const payloadHash = createStudentAdminPayloadHash({
+      action: 'CREATE',
+      students: [{ studentId: 'S001', name: '김민준', balance: 1200, status: 'ACTIVE' }],
+    });
+    await harness.database.query(
+      `INSERT INTO transactions
+        (tenant_id, transaction_id, occurred_at, student_id, student_name_snapshot,
+         kind, legacy_total_amount, balance_delta, balance_before, balance_after,
+         operator_snapshot, legacy_status_snapshot, operation_id, operation_hash, schema_version)
+       VALUES ($1, 'student-admin-extra', $2, 'extra', '추가 학생',
+               'ADMIN_ADJUSTMENT', 0, 0, 0, 0, 'admin', 'ADMIN_ADJUSTMENT', $3, $4, 1)`,
+      [harness.tenantOneId, NOW, createStudentAdminLedgerOperationId(OPERATION_ID, 'extra'), payloadHash],
+    );
+
+    await expect(commands().create(createInput())).rejects.toThrow(/ledger integrity/i);
+  });
+
+  it('creates a zero-balance account without fabricating an adjustment ledger', async () => {
+    const result = await commands().create(createInput({
+      operationId: 'student-create-zero-op',
+      studentId: 'S000',
+      balance: 0,
+    }));
+
+    expect(result.students[0]).toMatchObject({ balance: 0, transactionId: null });
+    const state = await snapshot();
+    expect(state.students).toHaveLength(1);
+    expect(state.accounts).toEqual([{ student_id: 'S000', balance: '0', version: '1' }]);
+    expect(state.transactions).toEqual([]);
+    expect(state.adjustments).toEqual([]);
+    expect(state.audits[0]).toMatchObject({
+      redacted_details: expect.objectContaining({ ledgerCount: 0 }),
+    });
+  });
+
+  it('rejects a zero-ledger replay when its deterministic transaction ID exists with a corrupted hash', async () => {
+    const input = createInput({
+      operationId: 'student-create-zero-hash-op',
+      studentId: 'S000',
+      balance: 0,
+    });
+    await commands().create(input);
+    await harness.database.query(
+      `INSERT INTO transactions
+        (tenant_id, transaction_id, occurred_at, student_id, student_name_snapshot,
+         kind, legacy_total_amount, balance_delta, balance_before, balance_after,
+         operator_snapshot, legacy_status_snapshot, operation_id, operation_hash, schema_version)
+       VALUES ($1, $2, $3, 'S000', '김민준', 'ADMIN_ADJUSTMENT', 0, 0, 0, 0,
+               'admin', 'ADMIN_ADJUSTMENT', $4, $5, 1)`,
+      [harness.tenantOneId, createStudentAdminTransactionId(input.operationId, 'S000'), NOW,
+        createStudentAdminLedgerOperationId(input.operationId, 'S000'), 'f'.repeat(64)],
+    );
+
+    await expect(commands().create(input)).rejects.toThrow(/ledger integrity/i);
+  });
+
+  it('rejects a zero-ledger replay whose stored result and audit digest were consistently corrupted', async () => {
+    const input = createInput({
+      operationId: 'student-create-zero-corrupt-op',
+      studentId: 'S000',
+      balance: 0,
+    });
+    const result = await commands().create(input);
+    const corrupted = structuredClone(result) as unknown as {
+      students: Array<{ name: string }>;
+    };
+    corrupted.students[0].name = '변조된 이름';
+
+    await withOperationAuditTampering(async () => {
+      await harness.database.query(
+        `UPDATE operations SET result_snapshot=$3::jsonb
+         WHERE tenant_id=$1 AND operation_id=$2`,
+        [harness.tenantOneId, input.operationId, JSON.stringify(corrupted)],
+      );
+      await harness.database.query(
+        `UPDATE audit_events
+         SET redacted_details=jsonb_set(redacted_details, '{resultHash}', to_jsonb($3::text))
+         WHERE tenant_id=$1 AND operation_id=$2`,
+        [harness.tenantOneId, input.operationId,
+          createStudentAdminResultHash(corrupted as unknown as typeof result)],
+      );
+    });
+
+    await expect(commands().create(input)).rejects.toThrow(/stored result integrity/i);
+  });
+
+  it('rejects reuse of an operation ID for a different canonical create payload', async () => {
+    const first = await commands().create(createInput());
+
+    await expect(commands().create(createInput({ name: '다른 이름' })))
+      .rejects.toThrow(/conflict/i);
+
+    const state = await snapshot();
+    expect(state.students).toEqual([expect.objectContaining({ name: '김민준' })]);
+    expect(state.operations[0]).toMatchObject({ result_snapshot: first });
+    expect(state.transactions).toHaveLength(1);
+    expect(state.audits).toHaveLength(1);
+  });
+
+  it('does not reuse a tombstoned student ID', async () => {
+    await seedStudent({ studentId: 'S001', name: '기존 학생', balance: 50, status: 'INACTIVE' });
+    await harness.database.query(
+      `UPDATE students SET deleted_at=$3, version=version+1
+       WHERE tenant_id=$1 AND student_id=$2`,
+      [harness.tenantOneId, 'S001', NOW],
+    );
+
+    await expect(commands().create(createInput())).rejects.toThrow();
+
+    const operation = await harness.database.query(
+      'SELECT operation_id FROM operations WHERE tenant_id=$1 AND operation_id=$2',
+      [harness.tenantOneId, OPERATION_ID],
+    );
+    expect(operation.rows).toEqual([]);
+  });
+
+  it('allows the same student and operation IDs in another tenant without cross-tenant reads', async () => {
+    const tenantTwoCommands = createDatabaseStudentCommands({
+      tenantId: harness.tenantTwoId,
+      runTenantTransaction: harness.runTenantTransaction,
+      now: () => new Date(NOW),
+    });
+
+    await commands().create(createInput());
+    await tenantTwoCommands.create(createInput({ name: '두 번째 반 학생' }));
+
+    const rows = await harness.database.query<{ tenant_id: string; name: string }>(
+      `SELECT tenant_id, name FROM students WHERE student_id=$1 ORDER BY tenant_id`,
+      ['S001'],
+    );
+    expect(rows.rows).toEqual([
+      { tenant_id: harness.tenantOneId, name: '김민준' },
+      { tenant_id: harness.tenantTwoId, name: '두 번째 반 학생' },
+    ]);
+  });
+
+  it('does not collide ledger identifiers for distinct canonical tuples containing delimiters', async () => {
+    const first = await commands().create(createInput({
+      operationId: 'a:b', studentId: 'c', name: '첫 학생', balance: 1,
+    }));
+    const second = await commands().create(createInput({
+      operationId: 'a', studentId: 'b:c', name: '둘째 학생', balance: 1,
+    }));
+
+    expect(first.students[0].transactionId).not.toBe(second.students[0].transactionId);
+    const ledgers = await harness.database.query<{ transaction_id: string; adjustment_id: string }>(
+      `SELECT t.transaction_id, a.adjustment_id
+       FROM transactions t JOIN adjustments a USING (tenant_id, transaction_id)
+       WHERE t.tenant_id=$1 ORDER BY t.transaction_id`,
+      [harness.tenantOneId],
+    );
+    expect(new Set(ledgers.rows.map((row) => row.transaction_id)).size).toBe(2);
+    expect(new Set(ledgers.rows.map((row) => row.adjustment_id)).size).toBe(2);
+  });
+
+  it('rolls back operation, student, and account rows when the ledger insert conflicts', async () => {
+    await seedStudent({ studentId: 'seed', name: '기존 학생', balance: 0 });
+    await harness.database.query(
+      `INSERT INTO transactions
+        (tenant_id, transaction_id, occurred_at, student_id, student_name_snapshot,
+         kind, legacy_total_amount, balance_delta, balance_before, balance_after,
+         operator_snapshot, legacy_status_snapshot, operation_id, operation_hash, schema_version)
+       VALUES ($1, $2, $3, 'seed', '기존 학생', 'ADMIN_ADJUSTMENT', 0, 0, 0, 0,
+               'admin', 'ADMIN_ADJUSTMENT', $4, $5, 1)`,
+      [harness.tenantOneId, createStudentAdminTransactionId(OPERATION_ID, 'S001'), NOW,
+        createStudentAdminLedgerOperationId('seed-ledger-op', 'seed'), 'a'.repeat(64)],
+    );
+
+    await expect(commands().create(createInput())).rejects.toThrow();
+
+    const rows = await harness.database.query(
+      `SELECT student_id FROM students WHERE tenant_id=$1 AND student_id='S001'
+       UNION ALL
+       SELECT operation_id FROM operations WHERE tenant_id=$1 AND operation_id=$2`,
+      [harness.tenantOneId, OPERATION_ID],
+    );
+    expect(rows.rows).toEqual([]);
+  });
+});

@@ -283,10 +283,10 @@ describe('database transaction queries', () => {
 
   it('fails closed on malformed and inconsistent immutable money snapshots', async () => {
     await harness.database.exec('ALTER TABLE transactions DROP CONSTRAINT transactions_balance_delta_check');
-    await harness.database.query(
+    await harness.withImmutableLedgerTampering(() => harness.database.query(
       'UPDATE transactions SET balance_after=999 WHERE tenant_id=$1 AND transaction_id=$2',
       [harness.tenantOneId, ADMIN_ID],
-    );
+    ));
 
     await expect(queries().getTransactionById(ADMIN_ID)).rejects.toThrow(/balance|integrity/i);
     await expect(queries().getTransactions()).rejects.toThrow(/balance|integrity/i);
@@ -298,10 +298,10 @@ describe('database transaction queries', () => {
     [TIED_ID, 51],
     [REVERSAL_ID, -701],
   ])('rejects kind-inconsistent legacy totals for %s', async (transactionId, malformedTotal) => {
-    await harness.database.query(
+    await harness.withImmutableLedgerTampering(() => harness.database.query(
       'UPDATE transactions SET legacy_total_amount=$3 WHERE tenant_id=$1 AND transaction_id=$2',
       [harness.tenantOneId, transactionId, malformedTotal],
-    );
+    ));
 
     await expect(queries().getTransactionById(transactionId)).rejects.toThrow(/total|money|integrity/i);
   });
@@ -320,22 +320,22 @@ describe('database transaction queries', () => {
 
   it('rejects a cancellation linked to a different student than the original', async () => {
     await seedStudent(harness.tenantOneId, 'S2', '다른 학생');
-    await harness.database.query(
+    await harness.withImmutableLedgerTampering(() => harness.database.query(
       'UPDATE transactions SET student_id=$3 WHERE tenant_id=$1 AND transaction_id=$2',
       [harness.tenantOneId, REVERSAL_ID, 'S2'],
-    );
+    ));
 
     await expect(queries().getTransactionById(BASE_ID)).rejects.toThrow(/student|reversal|integrity/i);
     await expect(queries().getTransactionById(REVERSAL_ID)).rejects.toThrow(/student|reversal|integrity/i);
   });
 
   it('rejects a cancellation whose delta is not the exact negation of the original', async () => {
-    await harness.database.query(
+    await harness.withImmutableLedgerTampering(() => harness.database.query(
       `UPDATE transactions
        SET legacy_total_amount=-600, balance_delta=600, balance_after=1650
        WHERE tenant_id=$1 AND transaction_id=$2`,
       [harness.tenantOneId, REVERSAL_ID],
-    );
+    ));
 
     await expect(queries().getTransactionById(BASE_ID)).rejects.toThrow(/delta|reversal|integrity/i);
     await expect(queries().getTransactionById(REVERSAL_ID)).rejects.toThrow(/delta|reversal|integrity/i);
@@ -353,10 +353,10 @@ describe('database transaction queries', () => {
   });
 
   it('rejects cancellation chronology at or before the original transaction', async () => {
-    await harness.database.query(
+    await harness.withImmutableLedgerTampering(() => harness.database.query(
       'UPDATE transactions SET occurred_at=$3 WHERE tenant_id=$1 AND transaction_id=$2',
       [harness.tenantOneId, REVERSAL_ID, '2026-08-28T00:00:00.000Z'],
-    );
+    ));
 
     await expect(queries().getTransactionById(BASE_ID)).rejects.toThrow(/chronology|timestamp|cancellation/i);
     await expect(queries().getTransactionById(REVERSAL_ID)).rejects.toThrow(/chronology|timestamp|cancellation/i);
