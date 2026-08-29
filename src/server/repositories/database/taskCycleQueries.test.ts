@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TaskCompletion, TaskSchedule } from '@/domain/types';
+import { projectTaskCycleState } from '@/domain/taskCycleState';
 import {
   createPgliteDatabaseHarness,
   type PgliteDatabaseHarness,
@@ -62,7 +63,7 @@ afterEach(async () => {
 function queries(overrides: Partial<DatabaseTaskCycleQueryDependencies> = {}) {
   return createDatabaseTaskCycleQueries({
     tenantId: harness.tenantOneId,
-    runTenantTransaction: harness.runTenantTransaction,
+    runTenantSnapshot: harness.runTenantTransaction,
     ...overrides,
   });
 }
@@ -183,6 +184,54 @@ async function seedBankCompletion(overrides: Partial<CompletionSeed> = {}) {
 }
 
 describe('database task cycle queries', () => {
+  it('projects current cycle state from a strict task and both ledgers in one transaction', async () => {
+    await harness.database.query(
+      `INSERT INTO tasks (
+         tenant_id, task_instance_id, task_id, title, description, reward, is_active,
+         sort_order, current_schedule, schedule_schema_version, created_at, updated_at
+       ) VALUES ($1, 'LIVE-I', 'LIVE', '현재 과제', '', 5, true, 1, $2::jsonb, 1,
+                 '2026-08-01T00:00:00.000Z', '2026-08-01T00:00:00.000Z')`,
+      [harness.tenantOneId, JSON.stringify(SCHEDULE)],
+    );
+    await harness.database.query(
+      `INSERT INTO task_allowed_students (tenant_id, task_instance_id, student_id)
+       VALUES ($1, 'LIVE-I', 'S1')`,
+      [harness.tenantOneId],
+    );
+    let transactionCalls = 0;
+    const runTenantSnapshot: DatabaseTaskCycleQueryDependencies['runTenantSnapshot'] =
+      (tenantId, callback) => {
+        transactionCalls += 1;
+        return harness.runTenantTransaction(tenantId, callback);
+      };
+    const now = '2026-08-10T00:00:00.000Z';
+    const task = {
+      taskId: 'LIVE', taskInstanceId: 'LIVE-I', title: '현재 과제', description: '',
+      reward: 5, isActive: true, sortOrder: 1, allowedStudentIds: ['S1'],
+      createdAt: '2026-08-01T00:00:00.000Z', schedule: SCHEDULE, pendingSchedule: null,
+    };
+
+    await expect(queries({ runTenantSnapshot }).getTaskCycleState('LIVE', now))
+      .resolves.toEqual(projectTaskCycleState({ task, now, assignments: [], completions: [] }));
+    expect(transactionCalls).toBe(1);
+  });
+
+  it('rejects a noncanonical cycle-state task ID before opening a transaction', async () => {
+    let transactionOpened = false;
+    const runTenantSnapshot: DatabaseTaskCycleQueryDependencies['runTenantSnapshot'] = <TResult>() => {
+      transactionOpened = true;
+      return Promise.reject(new Error('unexpected transaction')) as Promise<TResult>;
+    };
+    await expect(queries({ runTenantSnapshot }).getTaskCycleState(' LIVE'))
+      .rejects.toThrow(/canonical task id/i);
+    expect(transactionOpened).toBe(false);
+  });
+
+  it('preserves the Sheets missing-task error for current cycle state', async () => {
+    await expect(queries().getTaskCycleState('MISSING', '2026-08-10T00:00:00.000Z'))
+      .rejects.toThrow('과제를 찾을 수 없습니다.');
+  });
+
   it('reads both ledgers in one tenant transaction and preserves event-sequence order and snapshots', async () => {
     await seedAssignment({ assignmentId: 'A-later-time', eventSequence: 1, source: 'QR', createdAt: '2026-08-10T09:00:00.000Z' });
     await seedAssignment({ assignmentId: 'A-earlier-time', eventSequence: 2, eventType: 'UNASSIGNED', source: 'QR', createdAt: '2026-08-10T01:00:00.000Z' });
@@ -195,7 +244,7 @@ describe('database task cycle queries', () => {
     });
     let transactionCalls = 0;
     let executeCalls = 0;
-    const runTenantTransaction: DatabaseTaskCycleQueryDependencies['runTenantTransaction'] =
+    const runTenantSnapshot: DatabaseTaskCycleQueryDependencies['runTenantSnapshot'] =
       (tenantId, callback) => {
         transactionCalls += 1;
         return harness.runTenantTransaction(tenantId, (transaction) => callback({
@@ -206,7 +255,7 @@ describe('database task cycle queries', () => {
         } as TenantTransaction));
       };
 
-    const snapshot = await queries({ runTenantTransaction }).loadTaskCycleLedgerSnapshot();
+    const snapshot = await queries({ runTenantSnapshot }).loadTaskCycleLedgerSnapshot();
 
     expect(transactionCalls).toBe(1);
     expect(executeCalls).toBe(1);
@@ -266,11 +315,11 @@ describe('database task cycle queries', () => {
       assignments: [expect.objectContaining({ assignmentId: 'SHARED', source: 'ADMIN' })],
       completions: [expect.objectContaining({ completionId: 'SHARED', status: 'SUCCESS' })],
     });
-    const mismatchedRunner: DatabaseTaskCycleQueryDependencies['runTenantTransaction'] =
+    const mismatchedRunner: DatabaseTaskCycleQueryDependencies['runTenantSnapshot'] =
       (_tenantId, callback) => harness.runTenantTransaction(harness.tenantTwoId, callback);
-    await expect(queries({ runTenantTransaction: mismatchedRunner }).loadTaskCycleLedgerSnapshot())
+    await expect(queries({ runTenantSnapshot: mismatchedRunner }).loadTaskCycleLedgerSnapshot())
       .resolves.toEqual({ assignments: [], completions: [] });
-    await expect(queries({ runTenantTransaction: mismatchedRunner }).getTaskCompletions())
+    await expect(queries({ runTenantSnapshot: mismatchedRunner }).getTaskCompletions())
       .resolves.toEqual([]);
   });
 

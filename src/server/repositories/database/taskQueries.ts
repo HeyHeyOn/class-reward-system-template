@@ -40,32 +40,45 @@ type TaskRow = {
   allowed_student_id: unknown;
 };
 
+export type DatabaseTaskReadOptions = Readonly<{
+  activeOnly: boolean;
+  taskId?: string;
+}>;
+
+export async function readDatabaseTasks(
+  transaction: TenantTransaction,
+  tenantId: string,
+  options: DatabaseTaskReadOptions,
+): Promise<ClassTask[]> {
+  const result = await transaction.execute(sql`
+    SELECT t.task_instance_id, t.task_id, t.title, t.description,
+           t.reward::text AS reward, t.is_active, t.sort_order,
+           t.available_from, t.due_at, prerequisite.task_id AS prerequisite_task_id,
+           t.padlet_board_id, t.current_schedule, t.pending_schedule,
+           t.schedule_schema_version, t.created_at,
+           allowed.student_id AS allowed_student_id
+    FROM tasks t
+    LEFT JOIN tasks prerequisite
+      ON prerequisite.tenant_id = ${tenantId}
+     AND prerequisite.task_instance_id = t.prerequisite_task_instance_id
+    LEFT JOIN task_allowed_students allowed
+      ON allowed.tenant_id = ${tenantId}
+     AND allowed.task_instance_id = t.task_instance_id
+    WHERE t.tenant_id = ${tenantId}
+      AND t.deleted_at IS NULL
+      AND (${options.activeOnly} = false OR t.is_active = true)
+      AND (${options.taskId ?? null}::text IS NULL OR t.task_id = ${options.taskId ?? null})
+    ORDER BY t.created_at, t.task_id, allowed.created_at, allowed.student_id
+  `);
+  return projectTasks(result.rows as TaskRow[]);
+}
+
 export function createDatabaseTaskQueries(dependencies: DatabaseTaskQueryDependencies) {
   const readTasks = async (options: { activeOnly: boolean; taskId?: string }): Promise<ClassTask[]> =>
-    dependencies.runTenantTransaction(dependencies.tenantId, async (transaction) => {
-      const result = await transaction.execute(sql`
-        SELECT t.task_instance_id, t.task_id, t.title, t.description,
-               t.reward::text AS reward, t.is_active, t.sort_order,
-               t.available_from, t.due_at, prerequisite.task_id AS prerequisite_task_id,
-               t.padlet_board_id, t.current_schedule, t.pending_schedule,
-               t.schedule_schema_version, t.created_at,
-               allowed.student_id AS allowed_student_id
-        FROM tasks t
-        LEFT JOIN tasks prerequisite
-          ON prerequisite.tenant_id = ${dependencies.tenantId}
-         AND prerequisite.task_instance_id = t.prerequisite_task_instance_id
-
-        LEFT JOIN task_allowed_students allowed
-          ON allowed.tenant_id = ${dependencies.tenantId}
-         AND allowed.task_instance_id = t.task_instance_id
-        WHERE t.tenant_id = ${dependencies.tenantId}
-          AND t.deleted_at IS NULL
-          AND (${options.activeOnly} = false OR t.is_active = true)
-          AND (${options.taskId ?? null}::text IS NULL OR t.task_id = ${options.taskId ?? null})
-        ORDER BY t.created_at, t.task_id, allowed.created_at, allowed.student_id
-      `);
-      return projectTasks(result.rows as TaskRow[]);
-    });
+    dependencies.runTenantTransaction(
+      dependencies.tenantId,
+      (transaction) => readDatabaseTasks(transaction, dependencies.tenantId, options),
+    );
 
   return {
     getTasks(): Promise<ClassTask[]> {

@@ -1,9 +1,11 @@
 import 'server-only';
 
 import { sql } from 'drizzle-orm';
+import { projectTaskCycleState, type TaskCycleState } from '@/domain/taskCycleState';
 import type { TaskAssignment, TaskCompletion } from '@/domain/types';
 import type { TenantTransaction } from '@/server/db/transaction';
 import { isoString, safeInteger } from './queryProjection';
+import { readDatabaseTasks } from './taskQueries';
 
 export type TaskCycleLedgerSnapshot = Readonly<{
   assignments: TaskAssignment[];
@@ -12,7 +14,7 @@ export type TaskCycleLedgerSnapshot = Readonly<{
 
 export type DatabaseTaskCycleQueryDependencies = Readonly<{
   tenantId: string;
-  runTenantTransaction: <TResult>(
+  runTenantSnapshot: <TResult>(
     tenantId: string,
     callback: (transaction: TenantTransaction) => Promise<TResult>,
   ) => Promise<TResult>;
@@ -35,13 +37,13 @@ export function createDatabaseTaskCycleQueries(
 ) {
   return {
     loadTaskCycleLedgerSnapshot(): Promise<TaskCycleLedgerSnapshot> {
-      return dependencies.runTenantTransaction(
+      return dependencies.runTenantSnapshot(
         dependencies.tenantId,
         (transaction) => readLedgerSnapshot(transaction, dependencies.tenantId, 'ledger'),
       );
     },
     getTaskCompletions(): Promise<TaskCompletion[]> {
-      return dependencies.runTenantTransaction(
+      return dependencies.runTenantSnapshot(
         dependencies.tenantId,
         async (transaction) => (await readLedgerSnapshot(
           transaction,
@@ -50,7 +52,33 @@ export function createDatabaseTaskCycleQueries(
         )).completions,
       );
     },
+    async getTaskCycleState(taskId: string, now?: string): Promise<TaskCycleState> {
+      assertCanonicalTaskId(taskId);
+      const projectionNow = now === undefined
+        ? new Date().toISOString()
+        : isoString(now, 'Task cycle projection timestamp');
+      return dependencies.runTenantSnapshot(
+        dependencies.tenantId,
+        async (transaction) => {
+          const tasks = await readDatabaseTasks(transaction, dependencies.tenantId, {
+            activeOnly: false,
+            taskId,
+          });
+          if (tasks.length > 1) throw new Error('Task query returned duplicate tasks.');
+          const task = tasks[0];
+          if (!task) throw new Error('과제를 찾을 수 없습니다.');
+          const snapshot = await readLedgerSnapshot(transaction, dependencies.tenantId, 'ledger');
+          return projectTaskCycleState({ task, now: projectionNow, ...snapshot });
+        },
+      );
+    },
   };
+}
+
+function assertCanonicalTaskId(taskId: string): void {
+  if (!taskId || taskId.trim() !== taskId) {
+    throw new Error('A canonical task ID is required.');
+  }
 }
 
 async function readLedgerSnapshot(
