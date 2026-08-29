@@ -464,6 +464,341 @@ describe('PostgreSQL student administration commands', () => {
     expect(state.audits).toHaveLength(1);
   });
 
+  it('atomically updates student fields and balance with optimistic versions and an adjustment ledger', async () => {
+    await seedStudent({ studentId: 'S001', name: '기존 학생', balance: 100 });
+
+    const result = await commands().update({
+      operationId: 'student-update-op-001',
+      studentId: 'S001',
+      expectedStudentVersion: 1,
+      expectedAccountVersion: 1,
+      name: '수정 학생',
+      balance: 150,
+      status: 'INACTIVE',
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      operationId: 'student-update-op-001',
+      action: 'UPDATE',
+      students: [{
+        studentId: 'S001', name: '수정 학생', balance: 150, status: 'INACTIVE',
+        studentVersionBefore: 1, studentVersionAfter: 2,
+        accountVersionBefore: 1, accountVersionAfter: 2,
+        balanceBefore: 100, balanceAfter: 150,
+        transactionId: createStudentAdminTransactionId('student-update-op-001', 'S001'),
+      }],
+    });
+    const state = await snapshot();
+    expect(state.students).toEqual([expect.objectContaining({
+      student_id: 'S001', name: '수정 학생', status: 'INACTIVE', version: '2', deleted_at: null,
+    })]);
+    expect(state.accounts).toEqual([{ student_id: 'S001', balance: '150', version: '2' }]);
+    expect(state.transactions).toEqual([expect.objectContaining({
+      transaction_id: createStudentAdminTransactionId('student-update-op-001', 'S001'),
+      balance_delta: '50', balance_before: '100', balance_after: '150',
+    })]);
+    expect(state.adjustments).toEqual([expect.objectContaining({
+      adjustment_id: createStudentAdminAdjustmentId('student-update-op-001', 'S001'),
+      mode: 'set', requested_amount: '150',
+    })]);
+    expect(state.operations).toEqual([expect.objectContaining({
+      operation_id: 'student-update-op-001', operation_kind: 'STUDENT_ADMIN', status: 'SUCCEEDED',
+    })]);
+    expect(state.audits).toEqual([expect.objectContaining({
+      operation_id: 'student-update-op-001',
+      redacted_details: expect.objectContaining({ action: 'UPDATE', ledgerCount: 1 }),
+    })]);
+  });
+
+  it('does not fabricate a balance ledger when an update keeps the same balance', async () => {
+    await seedStudent({ studentId: 'S001', name: '기존 학생', balance: 100 });
+
+    const result = await commands().update({
+      operationId: 'student-update-no-balance-op',
+      studentId: 'S001',
+      expectedStudentVersion: 1,
+      expectedAccountVersion: 1,
+      name: '이름만 수정',
+      balance: 100,
+      status: 'ACTIVE',
+    });
+
+    expect(result.students[0]).toMatchObject({
+      transactionId: null,
+      balanceBefore: 100,
+      balanceAfter: 100,
+      studentVersionAfter: 2,
+      accountVersionAfter: 2,
+    });
+    const state = await snapshot();
+    expect(state.transactions).toHaveLength(0);
+    expect(state.adjustments).toHaveLength(0);
+    expect(state.audits).toEqual([expect.objectContaining({
+      redacted_details: expect.objectContaining({ ledgerCount: 0 }),
+    })]);
+  });
+
+  it('exactly replays a completed student update without applying it twice', async () => {
+    await seedStudent({ studentId: 'S001', name: '기존 학생', balance: 100 });
+    const input = {
+      operationId: 'student-update-replay-op',
+      studentId: 'S001',
+      expectedStudentVersion: 1,
+      expectedAccountVersion: 1,
+      name: '수정 학생',
+      balance: 150,
+      status: 'INACTIVE' as const,
+    };
+
+    const first = await commands().update(input);
+    const second = await commands({ now: () => new Date('2026-08-30T00:00:00.000Z') }).update(input);
+
+    expect(second).toEqual(first);
+    const state = await snapshot();
+    expect(state.students).toEqual([expect.objectContaining({ version: '2' })]);
+    expect(state.accounts).toEqual([expect.objectContaining({ version: '2', balance: '150' })]);
+    expect(state.transactions).toHaveLength(1);
+    expect(state.adjustments).toHaveLength(1);
+    expect(state.operations).toHaveLength(1);
+    expect(state.audits).toHaveLength(1);
+  });
+
+  it('rejects an update replay whose stored version successor exceeds the safe integer range', async () => {
+    await seedStudent({ studentId: 'S001', name: '기존 학생', balance: 100 });
+    const originalInput = {
+      operationId: 'student-update-version-overflow-op',
+      studentId: 'S001',
+      expectedStudentVersion: 1,
+      expectedAccountVersion: 1,
+      name: '수정 학생',
+      balance: 100,
+      status: 'ACTIVE' as const,
+    };
+    const result = await commands().update(originalInput);
+    const corrupted = structuredClone(result) as unknown as {
+      students: Array<{
+        studentVersionBefore: number;
+        studentVersionAfter: number;
+        accountVersionBefore: number;
+        accountVersionAfter: number;
+      }>;
+    };
+    corrupted.students[0].studentVersionBefore = Number.MAX_SAFE_INTEGER;
+    corrupted.students[0].studentVersionAfter = Number.MAX_SAFE_INTEGER + 1;
+    corrupted.students[0].accountVersionBefore = Number.MAX_SAFE_INTEGER;
+    corrupted.students[0].accountVersionAfter = Number.MAX_SAFE_INTEGER + 1;
+    const replayInput = {
+      ...originalInput,
+      expectedStudentVersion: Number.MAX_SAFE_INTEGER,
+      expectedAccountVersion: Number.MAX_SAFE_INTEGER,
+    };
+    const payloadHash = createStudentAdminPayloadHash({ action: 'UPDATE', students: [replayInput] });
+
+    await withOperationAuditTampering(async () => {
+      await harness.database.query(
+        `UPDATE operations SET payload_hash=$3, result_snapshot=$4::jsonb
+         WHERE tenant_id=$1 AND operation_id=$2`,
+        [harness.tenantOneId, originalInput.operationId, payloadHash, JSON.stringify(corrupted)],
+      );
+      await harness.database.query(
+        `UPDATE audit_events
+         SET redacted_details=jsonb_set(redacted_details, '{resultHash}', to_jsonb($3::text))
+         WHERE tenant_id=$1 AND operation_id=$2`,
+        [harness.tenantOneId, originalInput.operationId,
+          createStudentAdminResultHash(corrupted as unknown as typeof result)],
+      );
+    });
+
+    await expect(commands().update(replayInput)).rejects.toThrow(/stored result integrity/i);
+  });
+
+  it('rejects a stale student version and rolls back the attempted operation', async () => {
+    await seedStudent({ studentId: 'S001', name: '기존 학생', balance: 100 });
+    await harness.database.query(
+      `UPDATE students SET version=2 WHERE tenant_id=$1 AND student_id='S001'`,
+      [harness.tenantOneId],
+    );
+
+    await expect(commands().update({
+      operationId: 'student-update-stale-op',
+      studentId: 'S001',
+      expectedStudentVersion: 1,
+      expectedAccountVersion: 1,
+      name: '덮어쓸 이름',
+      balance: 150,
+      status: 'INACTIVE',
+    })).rejects.toThrow(/stale version/i);
+
+    const state = await snapshot();
+    expect(state.students).toEqual([expect.objectContaining({ name: '기존 학생', version: '2' })]);
+    expect(state.accounts).toEqual([{ student_id: 'S001', balance: '100', version: '1' }]);
+    expect(state.operations).toHaveLength(0);
+    expect(state.transactions).toHaveLength(0);
+    expect(state.audits).toHaveLength(0);
+  });
+
+  it('rejects a stale account version and preserves the concurrent balance', async () => {
+    await seedStudent({ studentId: 'S001', name: '기존 학생', balance: 100 });
+    await harness.database.query(
+      `UPDATE accounts SET balance=175, version=2 WHERE tenant_id=$1 AND student_id='S001'`,
+      [harness.tenantOneId],
+    );
+
+    await expect(commands().update({
+      operationId: 'student-update-stale-account-op',
+      studentId: 'S001',
+      expectedStudentVersion: 1,
+      expectedAccountVersion: 1,
+      name: '덮어쓸 이름',
+      balance: 150,
+      status: 'INACTIVE',
+    })).rejects.toThrow(/stale version/i);
+
+    const state = await snapshot();
+    expect(state.students).toEqual([expect.objectContaining({ name: '기존 학생', version: '1' })]);
+    expect(state.accounts).toEqual([{ student_id: 'S001', balance: '175', version: '2' }]);
+    expect(state.operations).toHaveLength(0);
+    expect(state.transactions).toHaveLength(0);
+  });
+
+  it('rejects updates to a tombstoned student while preserving the row and account', async () => {
+    await seedStudent({ studentId: 'S001', name: '삭제 학생', balance: 100, status: 'INACTIVE' });
+    await harness.database.query(
+      `UPDATE students SET deleted_at=$3 WHERE tenant_id=$1 AND student_id=$2`,
+      [harness.tenantOneId, 'S001', NOW],
+    );
+
+    await expect(commands().update({
+      operationId: 'student-update-tombstone-op',
+      studentId: 'S001',
+      expectedStudentVersion: 1,
+      expectedAccountVersion: 1,
+      name: '변조 이름',
+      balance: 200,
+      status: 'INACTIVE',
+    })).rejects.toThrow(/student integrity/i);
+
+    const state = await snapshot();
+    expect(state.students).toEqual([expect.objectContaining({
+      name: '삭제 학생', status: 'INACTIVE', version: '1', deleted_at: NOW,
+    })]);
+    expect(state.accounts).toEqual([{ student_id: 'S001', balance: '100', version: '1' }]);
+    expect(state.operations).toHaveLength(0);
+    expect(state.transactions).toHaveLength(0);
+  });
+
+  it('soft-deactivates a student while preserving the account and appending no balance ledger', async () => {
+    await seedStudent({ studentId: 'S001', name: '삭제 대상', balance: 100 });
+
+    const result = await commands().deactivate({
+      operationId: 'student-deactivate-op-001',
+      studentId: 'S001',
+      expectedStudentVersion: 1,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      action: 'DEACTIVATE',
+      operationId: 'student-deactivate-op-001',
+      students: [{
+        studentId: 'S001', name: '삭제 대상', balance: 100, status: 'INACTIVE',
+        studentVersionBefore: 1, studentVersionAfter: 2,
+        accountVersionBefore: 1, accountVersionAfter: 1,
+        balanceBefore: 100, balanceAfter: 100, transactionId: null,
+      }],
+    });
+    const state = await snapshot();
+    expect(state.students).toEqual([expect.objectContaining({
+      name: '삭제 대상', status: 'INACTIVE', version: '2', deleted_at: NOW,
+    })]);
+    expect(state.accounts).toEqual([{ student_id: 'S001', balance: '100', version: '1' }]);
+    expect(state.transactions).toHaveLength(0);
+    expect(state.adjustments).toHaveLength(0);
+    expect(state.operations).toEqual([expect.objectContaining({
+      operation_id: 'student-deactivate-op-001', operation_kind: 'STUDENT_ADMIN', status: 'SUCCEEDED',
+    })]);
+    expect(state.audits).toEqual([expect.objectContaining({
+      operation_id: 'student-deactivate-op-001',
+      redacted_details: expect.objectContaining({ action: 'DEACTIVATE', ledgerCount: 0 }),
+    })]);
+  });
+
+  it('exactly replays a completed student deactivation without changing the tombstone twice', async () => {
+    await seedStudent({ studentId: 'S001', name: '삭제 대상', balance: 100 });
+    const input = {
+      operationId: 'student-deactivate-replay-op',
+      studentId: 'S001',
+      expectedStudentVersion: 1,
+    };
+
+    const first = await commands().deactivate(input);
+    const second = await commands({ now: () => new Date('2026-08-30T00:00:00.000Z') }).deactivate(input);
+
+    expect(second).toEqual(first);
+    const state = await snapshot();
+    expect(state.students).toEqual([expect.objectContaining({ version: '2', deleted_at: NOW })]);
+    expect(state.accounts).toEqual([{ student_id: 'S001', balance: '100', version: '1' }]);
+    expect(state.operations).toHaveLength(1);
+    expect(state.audits).toHaveLength(1);
+    expect(state.transactions).toHaveLength(0);
+  });
+
+  it('replays a deactivation for a valid legacy student name with surrounding spaces', async () => {
+    await seedStudent({ studentId: 'S001', name: ' 삭제 대상 ', balance: 100 });
+    const input = {
+      operationId: 'student-deactivate-legacy-name-op',
+      studentId: 'S001',
+      expectedStudentVersion: 1,
+    };
+
+    const first = await commands().deactivate(input);
+    await expect(commands().deactivate(input)).resolves.toEqual(first);
+    expect(first.students[0].name).toBe(' 삭제 대상 ');
+  });
+
+  it('rejects a second deactivation under a different operation ID', async () => {
+    await seedStudent({ studentId: 'S001', name: '삭제 대상', balance: 100 });
+    await commands().deactivate({
+      operationId: 'student-deactivate-first-op',
+      studentId: 'S001',
+      expectedStudentVersion: 1,
+    });
+
+    await expect(commands().deactivate({
+      operationId: 'student-deactivate-second-op',
+      studentId: 'S001',
+      expectedStudentVersion: 2,
+    })).rejects.toThrow(/student integrity/i);
+
+    const state = await snapshot();
+    expect(state.students).toEqual([expect.objectContaining({ version: '2', deleted_at: NOW })]);
+    expect(state.operations).toHaveLength(1);
+    expect(state.audits).toHaveLength(1);
+  });
+
+  it('rejects a stale deactivation version without creating a tombstone or operation', async () => {
+    await seedStudent({ studentId: 'S001', name: '삭제 대상', balance: 100 });
+    await harness.database.query(
+      `UPDATE students SET version=2 WHERE tenant_id=$1 AND student_id='S001'`,
+      [harness.tenantOneId],
+    );
+
+    await expect(commands().deactivate({
+      operationId: 'student-deactivate-stale-op',
+      studentId: 'S001',
+      expectedStudentVersion: 1,
+    })).rejects.toThrow(/stale version/i);
+
+    const state = await snapshot();
+    expect(state.students).toEqual([expect.objectContaining({
+      status: 'ACTIVE', version: '2', deleted_at: null,
+    })]);
+    expect(state.accounts).toEqual([{ student_id: 'S001', balance: '100', version: '1' }]);
+    expect(state.operations).toHaveLength(0);
+    expect(state.audits).toHaveLength(0);
+  });
+
   it('does not reuse a tombstoned student ID', async () => {
     await seedStudent({ studentId: 'S001', name: '기존 학생', balance: 50, status: 'INACTIVE' });
     await harness.database.query(

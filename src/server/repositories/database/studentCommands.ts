@@ -6,7 +6,7 @@ import type { StudentStatus } from '@/domain/types';
 import type { TenantTransaction } from '@/server/db/transaction';
 import { appendOperationAudit, assertOperationAudit } from './operationAudit';
 
-export type StudentAdminAction = 'CREATE';
+export type StudentAdminAction = 'CREATE' | 'UPDATE' | 'DEACTIVATE';
 
 type RunTenantTransaction = <TResult>(
   tenantId: string,
@@ -34,6 +34,26 @@ type CanonicalCreateStudentAdminInput = Readonly<{
   balance: number;
   status: StudentStatus;
 }>;
+
+export type UpdateStudentAdminInput = Readonly<{
+  operationId: string;
+  studentId: string;
+  expectedStudentVersion: number;
+  expectedAccountVersion: number;
+  name: string;
+  balance: number;
+  status: StudentStatus;
+}>;
+
+type CanonicalUpdateStudentAdminInput = UpdateStudentAdminInput;
+
+export type DeactivateStudentAdminInput = Readonly<{
+  operationId: string;
+  studentId: string;
+  expectedStudentVersion: number;
+}>;
+
+type CanonicalDeactivateStudentAdminInput = DeactivateStudentAdminInput;
 
 export type StudentAdminStudentResult = Readonly<{
   studentId: string;
@@ -64,6 +84,8 @@ type StudentAdminPayload = Readonly<{
     name: string;
     balance: number;
     status: StudentStatus;
+    expectedStudentVersion?: number;
+    expectedAccountVersion?: number;
   }>>;
 }>;
 
@@ -106,16 +128,37 @@ type StudentAdminLedgerRow = Readonly<{
 }>;
 
 export function createStudentAdminPayloadHash(payload: StudentAdminPayload): string {
-  const students = payload.students.map((student) => ({
-    studentId: canonicalText(student.studentId, 'student ID'),
-    name: canonicalText(student.name, 'student name'),
-    balance: safeInteger(student.balance, 'student balance'),
-    status: studentStatus(student.status),
-  })).sort((left, right) => left.studentId < right.studentId ? -1 : left.studentId > right.studentId ? 1 : 0);
+  const students = payload.students.map((student) => {
+    const common = {
+      studentId: canonicalText(student.studentId, 'student ID'),
+      name: canonicalText(student.name, 'student name'),
+      balance: safeInteger(student.balance, 'student balance'),
+      status: studentStatus(student.status),
+    };
+    return payload.action === 'UPDATE'
+      ? {
+          ...common,
+          expectedStudentVersion: positiveSafeInteger(student.expectedStudentVersion, 'student version'),
+          expectedAccountVersion: positiveSafeInteger(student.expectedAccountVersion, 'account version'),
+        }
+      : common;
+  }).sort((left, right) => left.studentId < right.studentId ? -1 : left.studentId > right.studentId ? 1 : 0);
   return createHash('sha256').update(JSON.stringify({
     kind: 'STUDENT_ADMIN',
     action: payload.action,
     students,
+    schemaVersion: 1,
+  }), 'utf8').digest('hex');
+}
+
+function createStudentDeactivatePayloadHash(input: CanonicalDeactivateStudentAdminInput): string {
+  return createHash('sha256').update(JSON.stringify({
+    kind: 'STUDENT_ADMIN',
+    action: 'DEACTIVATE',
+    students: [{
+      studentId: input.studentId,
+      expectedStudentVersion: input.expectedStudentVersion,
+    }],
     schemaVersion: 1,
   }), 'utf8').digest('hex');
 }
@@ -193,7 +236,7 @@ export function createDatabaseStudentCommands(dependencies: DatabaseStudentComma
       return dependencies.runTenantTransaction(dependencies.tenantId, async (tx) => {
         const existing = await readOperation(tx, dependencies.tenantId, input.operationId);
         if (existing) {
-          return resolveExisting(tx, dependencies.tenantId, existing, payloadHash, input);
+          return resolveExisting(tx, dependencies.tenantId, existing, payloadHash, input, 'CREATE');
         }
 
         const operation = await tx.execute(sql`
@@ -209,7 +252,7 @@ export function createDatabaseStudentCommands(dependencies: DatabaseStudentComma
         if (operation.rows.length !== 1) {
           const winner = await readOperation(tx, dependencies.tenantId, input.operationId);
           if (!winner) throw new Error('Student administration operation race integrity check failed.');
-          return resolveExisting(tx, dependencies.tenantId, winner, payloadHash, input);
+          return resolveExisting(tx, dependencies.tenantId, winner, payloadHash, input, 'CREATE');
         }
 
         await tx.execute(sql`
@@ -282,6 +325,225 @@ export function createDatabaseStudentCommands(dependencies: DatabaseStudentComma
         return result;
       });
     },
+
+    async update(rawInput: UpdateStudentAdminInput): Promise<StudentAdminSuccess> {
+      const input = canonicalizeUpdate(rawInput);
+      const payloadHash = createStudentAdminPayloadHash({ action: 'UPDATE', students: [input] });
+      const now = dependencies.now?.() ?? new Date();
+      if (!Number.isFinite(now.getTime())) throw new Error('A valid student administration timestamp is required.');
+
+      return dependencies.runTenantTransaction(dependencies.tenantId, async (tx) => {
+        const existing = await readOperation(tx, dependencies.tenantId, input.operationId);
+        if (existing) {
+          return resolveExisting(tx, dependencies.tenantId, existing, payloadHash, input, 'UPDATE');
+        }
+        const operation = await tx.execute(sql`
+          INSERT INTO operations
+            (tenant_id, operation_id, operation_kind, payload_hash, status,
+             attempt_count, started_at, created_at, updated_at)
+          VALUES
+            (${dependencies.tenantId}, ${input.operationId}, 'STUDENT_ADMIN', ${payloadHash},
+             'PENDING', 1, ${now}, ${now}, ${now})
+          ON CONFLICT (tenant_id, operation_id) DO NOTHING
+          RETURNING operation_id
+        `);
+        if (operation.rows.length !== 1) {
+          const winner = await readOperation(tx, dependencies.tenantId, input.operationId);
+          if (!winner) throw new Error('Student administration operation race integrity check failed.');
+          return resolveExisting(tx, dependencies.tenantId, winner, payloadHash, input, 'UPDATE');
+        }
+
+        const locked = await tx.execute(sql`
+          SELECT s.version AS student_version, a.version AS account_version, a.balance,
+                 s.status
+          FROM students s
+          JOIN accounts a ON a.tenant_id=s.tenant_id AND a.student_id=s.student_id
+          WHERE s.tenant_id=${dependencies.tenantId} AND s.student_id=${input.studentId}
+            AND s.deleted_at IS NULL
+          FOR UPDATE OF s, a
+        `);
+        if (locked.rows.length !== 1) throw new Error('Student administration student integrity check failed.');
+        const row = locked.rows[0] as {
+          student_version: string | number | bigint;
+          account_version: string | number | bigint;
+          balance: string | number | bigint;
+          status: StudentStatus;
+        };
+        const studentVersionBefore = dbSafeInteger(row.student_version);
+        const accountVersionBefore = dbSafeInteger(row.account_version);
+        const balanceBefore = dbSafeInteger(row.balance);
+        if (studentVersionBefore !== input.expectedStudentVersion
+          || accountVersionBefore !== input.expectedAccountVersion) {
+          throw new Error('Student administration stale version.');
+        }
+        const studentVersionAfter = positiveSafeInteger(studentVersionBefore + 1, 'student version');
+        const accountVersionAfter = positiveSafeInteger(accountVersionBefore + 1, 'account version');
+        const delta = safeInteger(input.balance - balanceBefore, 'student balance delta');
+
+        const studentUpdate = await tx.execute(sql`
+          UPDATE students
+          SET name=${input.name}, status=${input.status}, version=${studentVersionAfter}, updated_at=${now}
+          WHERE tenant_id=${dependencies.tenantId} AND student_id=${input.studentId}
+            AND deleted_at IS NULL AND version=${input.expectedStudentVersion}
+          RETURNING student_id
+        `);
+        const accountUpdate = await tx.execute(sql`
+          UPDATE accounts
+          SET balance=${input.balance}, version=${accountVersionAfter}, updated_at=${now}
+          WHERE tenant_id=${dependencies.tenantId} AND student_id=${input.studentId}
+            AND version=${input.expectedAccountVersion}
+          RETURNING student_id
+        `);
+        if (studentUpdate.rows.length !== 1 || accountUpdate.rows.length !== 1) {
+          throw new Error('Student administration stale version.');
+        }
+
+        const transactionId = delta === 0
+          ? null
+          : createStudentAdminTransactionId(input.operationId, input.studentId);
+        if (transactionId) {
+          await tx.execute(sql`
+            INSERT INTO transactions
+              (tenant_id, transaction_id, occurred_at, student_id, student_name_snapshot, kind,
+               legacy_total_amount, balance_delta, balance_before, balance_after,
+               operator_snapshot, legacy_status_snapshot, operation_id, operation_hash,
+               schema_version)
+            VALUES
+              (${dependencies.tenantId}, ${transactionId}, ${now}, ${input.studentId}, ${input.name},
+               'ADMIN_ADJUSTMENT', ${-delta}, ${delta}, ${balanceBefore}, ${input.balance},
+               'admin', 'ADMIN_ADJUSTMENT',
+               ${createStudentAdminLedgerOperationId(input.operationId, input.studentId)},
+               ${payloadHash}, 1)
+          `);
+          await tx.execute(sql`
+            INSERT INTO adjustments
+              (tenant_id, adjustment_id, transaction_id, mode, requested_amount,
+               operator_snapshot, legacy_adjustment_id)
+            VALUES
+              (${dependencies.tenantId},
+               ${createStudentAdminAdjustmentId(input.operationId, input.studentId)},
+               ${transactionId}, 'set', ${input.balance}, 'admin', NULL)
+          `);
+        }
+
+        const result: StudentAdminSuccess = {
+          ok: true,
+          operationId: input.operationId,
+          action: 'UPDATE',
+          completedAt: now.toISOString(),
+          students: [{
+            studentId: input.studentId,
+            name: input.name,
+            balance: input.balance,
+            status: input.status,
+            studentVersionBefore,
+            studentVersionAfter,
+            accountVersionBefore,
+            accountVersionAfter,
+            balanceBefore,
+            balanceAfter: input.balance,
+            transactionId,
+          }],
+        };
+        await appendOperationAudit(tx, dependencies.tenantId, studentAdminAuditInput(result, now));
+        await tx.execute(sql`
+          UPDATE operations
+          SET status='SUCCEEDED', result_snapshot=${JSON.stringify(result)}::jsonb,
+              finished_at=${now}, updated_at=${now}
+          WHERE tenant_id=${dependencies.tenantId} AND operation_id=${input.operationId}
+        `);
+        return result;
+      });
+    },
+
+    async deactivate(rawInput: DeactivateStudentAdminInput): Promise<StudentAdminSuccess> {
+      const input = canonicalizeDeactivate(rawInput);
+      const payloadHash = createStudentDeactivatePayloadHash(input);
+      const now = dependencies.now?.() ?? new Date();
+      if (!Number.isFinite(now.getTime())) throw new Error('A valid student administration timestamp is required.');
+
+      return dependencies.runTenantTransaction(dependencies.tenantId, async (tx) => {
+        const existing = await readOperation(tx, dependencies.tenantId, input.operationId);
+        if (existing) {
+          return resolveExisting(tx, dependencies.tenantId, existing, payloadHash, input, 'DEACTIVATE');
+        }
+        const operation = await tx.execute(sql`
+          INSERT INTO operations
+            (tenant_id, operation_id, operation_kind, payload_hash, status,
+             attempt_count, started_at, created_at, updated_at)
+          VALUES
+            (${dependencies.tenantId}, ${input.operationId}, 'STUDENT_ADMIN', ${payloadHash},
+             'PENDING', 1, ${now}, ${now}, ${now})
+          ON CONFLICT (tenant_id, operation_id) DO NOTHING
+          RETURNING operation_id
+        `);
+        if (operation.rows.length !== 1) {
+          const winner = await readOperation(tx, dependencies.tenantId, input.operationId);
+          if (!winner) throw new Error('Student administration operation race integrity check failed.');
+          return resolveExisting(tx, dependencies.tenantId, winner, payloadHash, input, 'DEACTIVATE');
+        }
+
+        const locked = await tx.execute(sql`
+          SELECT s.name, s.version AS student_version,
+                 a.version AS account_version, a.balance
+          FROM students s
+          JOIN accounts a ON a.tenant_id=s.tenant_id AND a.student_id=s.student_id
+          WHERE s.tenant_id=${dependencies.tenantId} AND s.student_id=${input.studentId}
+            AND s.deleted_at IS NULL
+          FOR UPDATE OF s, a
+        `);
+        if (locked.rows.length !== 1) throw new Error('Student administration student integrity check failed.');
+        const row = locked.rows[0] as {
+          name: string;
+          student_version: string | number | bigint;
+          account_version: string | number | bigint;
+          balance: string | number | bigint;
+        };
+        const studentVersionBefore = dbSafeInteger(row.student_version);
+        const accountVersion = dbSafeInteger(row.account_version);
+        const balance = dbSafeInteger(row.balance);
+        if (studentVersionBefore !== input.expectedStudentVersion) {
+          throw new Error('Student administration stale version.');
+        }
+        const studentVersionAfter = positiveSafeInteger(studentVersionBefore + 1, 'student version');
+        const updated = await tx.execute(sql`
+          UPDATE students
+          SET status='INACTIVE', deleted_at=${now}, version=${studentVersionAfter}, updated_at=${now}
+          WHERE tenant_id=${dependencies.tenantId} AND student_id=${input.studentId}
+            AND deleted_at IS NULL AND version=${input.expectedStudentVersion}
+          RETURNING student_id
+        `);
+        if (updated.rows.length !== 1) throw new Error('Student administration stale version.');
+
+        const result: StudentAdminSuccess = {
+          ok: true,
+          operationId: input.operationId,
+          action: 'DEACTIVATE',
+          completedAt: now.toISOString(),
+          students: [{
+            studentId: input.studentId,
+            name: row.name,
+            balance,
+            status: 'INACTIVE',
+            studentVersionBefore,
+            studentVersionAfter,
+            accountVersionBefore: accountVersion,
+            accountVersionAfter: accountVersion,
+            balanceBefore: balance,
+            balanceAfter: balance,
+            transactionId: null,
+          }],
+        };
+        await appendOperationAudit(tx, dependencies.tenantId, studentAdminAuditInput(result, now));
+        await tx.execute(sql`
+          UPDATE operations
+          SET status='SUCCEEDED', result_snapshot=${JSON.stringify(result)}::jsonb,
+              finished_at=${now}, updated_at=${now}
+          WHERE tenant_id=${dependencies.tenantId} AND operation_id=${input.operationId}
+        `);
+        return result;
+      });
+    },
   };
 }
 
@@ -305,7 +567,9 @@ async function resolveExisting(
   tenantId: string,
   operation: OperationRow,
   payloadHash: string,
-  input: CanonicalCreateStudentAdminInput,
+  input: CanonicalCreateStudentAdminInput | CanonicalUpdateStudentAdminInput
+    | CanonicalDeactivateStudentAdminInput,
+  action: StudentAdminAction,
 ): Promise<StudentAdminSuccess> {
   if (operation.operation_kind !== 'STUDENT_ADMIN' || operation.payload_hash !== payloadHash) {
     throw new Error('Student administration operation conflict.');
@@ -314,9 +578,28 @@ async function resolveExisting(
     throw new Error('Student administration operation is not replayable.');
   }
   const finishedAt = operationTimestamp(operation.finished_at);
-  const result = parseStoredCreateResult(operation.result_snapshot, input, finishedAt);
+  const result = action === 'CREATE'
+    ? parseStoredCreateResult(
+        operation.result_snapshot,
+        input as CanonicalCreateStudentAdminInput,
+        finishedAt,
+      )
+    : action === 'UPDATE'
+      ? parseStoredUpdateResult(
+          operation.result_snapshot,
+          input as CanonicalUpdateStudentAdminInput,
+          finishedAt,
+        )
+      : parseStoredDeactivateResult(
+          operation.result_snapshot,
+          input as CanonicalDeactivateStudentAdminInput,
+          finishedAt,
+        );
   assertOperationEvidence(operation, result);
   await assertCreateLedgers(tx, tenantId, result, payloadHash);
+  if (action === 'DEACTIVATE') {
+    await assertDeactivateState(tx, tenantId, result);
+  }
   await assertOperationAudit(tx, tenantId, studentAdminAuditInput(result, finishedAt));
   return result;
 }
@@ -338,6 +621,116 @@ function operationTimestamp(value: Date | string | null): Date {
     throw new Error('Student administration operation integrity check failed.');
   }
   return timestamp;
+}
+
+function parseStoredDeactivateResult(
+  value: unknown,
+  input: CanonicalDeactivateStudentAdminInput,
+  finishedAt: Date,
+): StudentAdminSuccess {
+  if (!isExactRecord(value, ['action', 'completedAt', 'ok', 'operationId', 'students'])
+    || value.ok !== true || value.action !== 'DEACTIVATE' || value.operationId !== input.operationId
+    || value.completedAt !== finishedAt.toISOString() || !Array.isArray(value.students)
+    || value.students.length !== 1) {
+    throw new Error('Student administration stored result integrity check failed.');
+  }
+  const student = value.students[0];
+  const keys = [
+    'accountVersionAfter', 'accountVersionBefore', 'balance', 'balanceAfter', 'balanceBefore',
+    'name', 'status', 'studentId', 'studentVersionAfter', 'studentVersionBefore', 'transactionId',
+  ];
+  if (!isExactRecord(student, keys)) {
+    throw new Error('Student administration stored result integrity check failed.');
+  }
+  const balance = safeInteger(student.balance, 'stored balance');
+  const accountVersion = positiveSafeInteger(student.accountVersionBefore, 'stored account version');
+  const studentVersionBefore = storedPositiveSafeInteger(student.studentVersionBefore);
+  const studentVersionAfter = storedPositiveSafeInteger(student.studentVersionAfter);
+  if (student.studentId !== input.studentId || typeof student.name !== 'string'
+    || student.name.trim().length === 0
+    || student.status !== 'INACTIVE'
+    || studentVersionBefore !== input.expectedStudentVersion
+    || studentVersionAfter !== storedVersionSuccessor(studentVersionBefore)
+    || student.accountVersionAfter !== accountVersion
+    || student.balanceBefore !== balance || student.balanceAfter !== balance
+    || student.transactionId !== null) {
+    throw new Error('Student administration stored result integrity check failed.');
+  }
+  return value as StudentAdminSuccess;
+}
+
+async function assertDeactivateState(
+  tx: TenantTransaction,
+  tenantId: string,
+  result: StudentAdminSuccess,
+): Promise<void> {
+  const expected = result.students[0];
+  const rows = await tx.execute(sql`
+    SELECT s.name, s.status, s.version AS student_version, s.deleted_at,
+           a.balance, a.version AS account_version
+    FROM students s
+    JOIN accounts a ON a.tenant_id=s.tenant_id AND a.student_id=s.student_id
+    WHERE s.tenant_id=${tenantId} AND s.student_id=${expected.studentId}
+    FOR UPDATE OF s, a
+  `);
+  if (rows.rows.length !== 1) {
+    throw new Error('Student administration tombstone integrity check failed.');
+  }
+  const row = rows.rows[0] as {
+    name: string;
+    status: string;
+    student_version: string | number | bigint;
+    deleted_at: Date | string | null;
+    balance: string | number | bigint;
+    account_version: string | number | bigint;
+  };
+  if (row.name !== expected.name || row.status !== 'INACTIVE'
+    || dbSafeInteger(row.student_version) !== expected.studentVersionAfter
+    || operationTimestamp(row.deleted_at).toISOString() !== result.completedAt
+    || dbSafeInteger(row.balance) !== expected.balance
+    || dbSafeInteger(row.account_version) !== expected.accountVersionAfter) {
+    throw new Error('Student administration tombstone integrity check failed.');
+  }
+}
+
+function parseStoredUpdateResult(
+  value: unknown,
+  input: CanonicalUpdateStudentAdminInput,
+  finishedAt: Date,
+): StudentAdminSuccess {
+  if (!isExactRecord(value, ['action', 'completedAt', 'ok', 'operationId', 'students'])
+    || value.ok !== true || value.action !== 'UPDATE' || value.operationId !== input.operationId
+    || value.completedAt !== finishedAt.toISOString() || !Array.isArray(value.students)
+    || value.students.length !== 1) {
+    throw new Error('Student administration stored result integrity check failed.');
+  }
+  const student = value.students[0];
+  const keys = [
+    'accountVersionAfter', 'accountVersionBefore', 'balance', 'balanceAfter', 'balanceBefore',
+    'name', 'status', 'studentId', 'studentVersionAfter', 'studentVersionBefore', 'transactionId',
+  ];
+  if (!isExactRecord(student, keys)) {
+    throw new Error('Student administration stored result integrity check failed.');
+  }
+  const balanceBefore = safeInteger(student.balanceBefore, 'stored balance before');
+  const studentVersionBefore = storedPositiveSafeInteger(student.studentVersionBefore);
+  const studentVersionAfter = storedPositiveSafeInteger(student.studentVersionAfter);
+  const accountVersionBefore = storedPositiveSafeInteger(student.accountVersionBefore);
+  const accountVersionAfter = storedPositiveSafeInteger(student.accountVersionAfter);
+  const expectedTransactionId = balanceBefore === input.balance
+    ? null
+    : createStudentAdminTransactionId(input.operationId, input.studentId);
+  if (student.studentId !== input.studentId || student.name !== input.name
+    || student.balance !== input.balance || student.status !== input.status
+    || studentVersionBefore !== input.expectedStudentVersion
+    || studentVersionAfter !== storedVersionSuccessor(studentVersionBefore)
+    || accountVersionBefore !== input.expectedAccountVersion
+    || accountVersionAfter !== storedVersionSuccessor(accountVersionBefore)
+    || student.balanceBefore !== balanceBefore || student.balanceAfter !== input.balance
+    || student.transactionId !== expectedTransactionId) {
+    throw new Error('Student administration stored result integrity check failed.');
+  }
+  return value as StudentAdminSuccess;
 }
 
 function parseStoredCreateResult(
@@ -461,6 +854,30 @@ function canonicalizeCreate(input: CreateStudentAdminInput): CanonicalCreateStud
   };
 }
 
+function canonicalizeUpdate(input: UpdateStudentAdminInput): CanonicalUpdateStudentAdminInput {
+  if (!input || typeof input !== 'object') throw new Error('A valid student update input is required.');
+  return {
+    operationId: canonicalText(input.operationId, 'operation ID'),
+    studentId: canonicalText(input.studentId, 'student ID'),
+    expectedStudentVersion: positiveSafeInteger(input.expectedStudentVersion, 'student version'),
+    expectedAccountVersion: positiveSafeInteger(input.expectedAccountVersion, 'account version'),
+    name: canonicalText(input.name, 'student name'),
+    balance: safeInteger(input.balance, 'student balance'),
+    status: studentStatus(input.status),
+  };
+}
+
+function canonicalizeDeactivate(
+  input: DeactivateStudentAdminInput,
+): CanonicalDeactivateStudentAdminInput {
+  if (!input || typeof input !== 'object') throw new Error('A valid student deactivate input is required.');
+  return {
+    operationId: canonicalText(input.operationId, 'operation ID'),
+    studentId: canonicalText(input.studentId, 'student ID'),
+    expectedStudentVersion: positiveSafeInteger(input.expectedStudentVersion, 'student version'),
+  };
+}
+
 function isExactRecord(value: unknown, expectedKeys: readonly string[]): value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const actual = Object.keys(value).sort();
@@ -479,6 +896,26 @@ function canonicalText(value: unknown, field: string): string {
 function safeInteger(value: unknown, field: string): number {
   if (!Number.isSafeInteger(value)) throw new Error(`A safe integer ${field} is required.`);
   return value as number;
+}
+
+function positiveSafeInteger(value: unknown, field: string): number {
+  const parsed = safeInteger(value, field);
+  if (parsed < 1) throw new Error(`A positive ${field} is required.`);
+  return parsed;
+}
+
+function storedPositiveSafeInteger(value: unknown): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 1) {
+    throw new Error('Student administration stored result integrity check failed.');
+  }
+  return value as number;
+}
+
+function storedVersionSuccessor(value: number): number {
+  if (value >= Number.MAX_SAFE_INTEGER) {
+    throw new Error('Student administration stored result integrity check failed.');
+  }
+  return value + 1;
 }
 
 function dbSafeInteger(value: unknown): number {
