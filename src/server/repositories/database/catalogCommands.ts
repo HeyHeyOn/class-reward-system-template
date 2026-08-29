@@ -30,6 +30,19 @@ export type CreateProductAdminInput = Readonly<{
   sortOrder: number;
 }>;
 
+export type UpdateProductAdminInput = Readonly<{
+  operationId: string;
+  productId: string;
+  expectedProductVersion: number;
+  name: string;
+  price: number;
+  stock: number;
+  isActive: boolean;
+  imageUrl?: string;
+  category?: string;
+  sortOrder: number;
+}>;
+
 type CanonicalCreateProductAdminInput = Readonly<{
   operationId: string;
   productId: string;
@@ -42,6 +55,10 @@ type CanonicalCreateProductAdminInput = Readonly<{
   sortOrder: number;
 }>;
 
+type CanonicalUpdateProductAdminInput = CanonicalCreateProductAdminInput & Readonly<{
+  expectedProductVersion: number;
+}>;
+
 type ProductAdminPayloadProduct = Readonly<{
   productId: string;
   name: string;
@@ -51,6 +68,7 @@ type ProductAdminPayloadProduct = Readonly<{
   imageUrl?: string | null;
   category?: string | null;
   sortOrder: number;
+  expectedProductVersion?: number;
 }>;
 
 export type ProductAdminPayload = Readonly<{
@@ -96,16 +114,27 @@ type OperationRow = Readonly<{
 }>;
 
 export function createProductAdminPayloadHash(payload: ProductAdminPayload): string {
-  const products = payload.products.map((product) => ({
-    productId: canonicalText(product.productId, 'product ID'),
-    name: canonicalText(product.name, 'product name'),
-    price: nonnegativeSafeInteger(product.price, 'product price'),
-    stock: nonnegativeSafeInteger(product.stock, 'product stock'),
-    isActive: booleanValue(product.isActive, 'product active flag'),
-    imageUrl: optionalText(product.imageUrl),
-    category: optionalText(product.category),
-    sortOrder: int32(product.sortOrder, 'product sort order'),
-  })).sort(compareProductId);
+  const products = payload.products.map((product) => {
+    const canonical = {
+      productId: canonicalText(product.productId, 'product ID'),
+      name: canonicalText(product.name, 'product name'),
+      price: nonnegativeSafeInteger(product.price, 'product price'),
+      stock: nonnegativeSafeInteger(product.stock, 'product stock'),
+      isActive: booleanValue(product.isActive, 'product active flag'),
+      imageUrl: optionalText(product.imageUrl),
+      category: optionalText(product.category),
+      sortOrder: int32(product.sortOrder, 'product sort order'),
+    };
+    return payload.action === 'UPDATE'
+      ? {
+          ...canonical,
+          expectedProductVersion: positiveSafeInteger(
+            product.expectedProductVersion,
+            'product version',
+          ),
+        }
+      : canonical;
+  }).sort(compareProductId);
   return createHash('sha256').update(JSON.stringify({
     kind: 'PRODUCT_ADMIN',
     action: payload.action,
@@ -243,6 +272,120 @@ export function createDatabaseCatalogCommands(dependencies: DatabaseCatalogComma
         return result;
       });
     },
+
+    async update(rawInput: UpdateProductAdminInput): Promise<ProductAdminSuccess> {
+      const input = canonicalizeUpdate(rawInput);
+      const payloadHash = createProductAdminPayloadHash({ action: 'UPDATE', products: [input] });
+      const now = dependencies.now?.() ?? new Date();
+      if (!Number.isFinite(now.getTime())) {
+        throw new Error('A valid product administration timestamp is required.');
+      }
+
+      return dependencies.runTenantTransaction(dependencies.tenantId, async (tx) => {
+        const existing = await readOperation(tx, dependencies.tenantId, input.operationId);
+        if (existing) {
+          return resolveExistingUpdate(tx, dependencies.tenantId, existing, payloadHash, input);
+        }
+        const operation = await tx.execute(sql`
+          INSERT INTO operations
+            (tenant_id, operation_id, operation_kind, payload_hash, status,
+             attempt_count, started_at, created_at, updated_at)
+          VALUES
+            (${dependencies.tenantId}, ${input.operationId}, 'PRODUCT_ADMIN', ${payloadHash},
+             'PENDING', 1, ${now}, ${now}, ${now})
+          ON CONFLICT (tenant_id, operation_id) DO NOTHING
+          RETURNING operation_id
+        `);
+        if (operation.rows.length !== 1) {
+          const winner = await readOperation(tx, dependencies.tenantId, input.operationId);
+          if (!winner) throw new Error('Product administration operation race integrity check failed.');
+          return resolveExistingUpdate(tx, dependencies.tenantId, winner, payloadHash, input);
+        }
+
+        const locked = await tx.execute(sql`
+          SELECT product_id, stock, version
+          FROM products
+          WHERE tenant_id=${dependencies.tenantId}
+            AND product_id=${input.productId}
+            AND deleted_at IS NULL
+          FOR UPDATE
+        `);
+        if (locked.rows.length !== 1) throw new Error('Product not found.');
+        const row = locked.rows[0] as Record<string, unknown>;
+        const stockBefore = nonnegativeSafeInteger(dbSafeInteger(row.stock), 'stored product stock');
+        const versionBefore = positiveSafeInteger(dbSafeInteger(row.version), 'stored product version');
+        if (versionBefore !== input.expectedProductVersion) {
+          throw new Error('Product version is stale.');
+        }
+        const versionAfter = positiveSafeInteger(versionBefore + 1, 'product version successor');
+
+        const updated = await tx.execute(sql`
+          UPDATE products
+          SET name=${input.name}, price=${input.price}, stock=${input.stock},
+              is_active=${input.isActive}, image_url=${input.imageUrl}, category=${input.category},
+              sort_order=${input.sortOrder}, version=${versionAfter}, updated_at=${now}
+          WHERE tenant_id=${dependencies.tenantId}
+            AND product_id=${input.productId}
+            AND deleted_at IS NULL
+            AND version=${input.expectedProductVersion}
+          RETURNING product_id
+        `);
+        if (updated.rows.length !== 1) throw new Error('Product version is stale.');
+
+        const stockDelta = input.stock - stockBefore;
+        const inventoryEventId = stockDelta === 0
+          ? null
+          : createProductAdminInventoryEventId(input.operationId, input.productId);
+        if (inventoryEventId) {
+          await tx.execute(sql`
+            INSERT INTO inventory_ledger
+              (tenant_id, inventory_event_id, product_id, transaction_id, quantity_delta,
+               stock_before, stock_after, reason, operation_id, operation_hash, occurred_at)
+            VALUES
+              (${dependencies.tenantId}, ${inventoryEventId}, ${input.productId}, NULL,
+               ${stockDelta}, ${stockBefore}, ${input.stock}, 'ADMIN_ADJUSTMENT',
+               ${createProductAdminLedgerOperationId(input.operationId, input.productId)},
+               ${payloadHash}, ${now})
+          `);
+        }
+
+        const result: ProductAdminSuccess = {
+          ok: true,
+          operationId: input.operationId,
+          action: 'UPDATE',
+          completedAt: now.toISOString(),
+          products: [{
+            productId: input.productId,
+            name: input.name,
+            price: input.price,
+            stock: input.stock,
+            isActive: input.isActive,
+            imageUrl: input.imageUrl,
+            category: input.category,
+            sortOrder: input.sortOrder,
+            productVersionBefore: versionBefore,
+            productVersionAfter: versionAfter,
+            stockBefore,
+            stockAfter: input.stock,
+            inventoryEventId,
+          }],
+        };
+        await appendOperationAudit(tx, dependencies.tenantId, productAdminAuditInput(result, now));
+        const terminal = await tx.execute(sql`
+          UPDATE operations
+          SET status='SUCCEEDED', result_snapshot=${JSON.stringify(result)}::jsonb,
+              finished_at=${now}, updated_at=${now}
+          WHERE tenant_id=${dependencies.tenantId} AND operation_id=${input.operationId}
+          RETURNING operation_id, status
+        `);
+        if (terminal.rows.length !== 1
+          || (terminal.rows[0] as { operation_id?: unknown; status?: unknown }).operation_id !== input.operationId
+          || (terminal.rows[0] as { status?: unknown }).status !== 'SUCCEEDED') {
+          throw new Error('Product administration terminal operation integrity check failed.');
+        }
+        return result;
+      });
+    },
   };
 }
 
@@ -281,6 +424,103 @@ async function resolveExistingCreate(
   await assertOperationAudit(tx, tenantId, productAdminAuditInput(result, finishedAt));
   await assertSingleOperationAudit(tx, tenantId, result.operationId);
   return result;
+}
+
+async function resolveExistingUpdate(
+  tx: TenantTransaction,
+  tenantId: string,
+  operation: OperationRow,
+  payloadHash: string,
+  input: CanonicalUpdateProductAdminInput,
+): Promise<ProductAdminSuccess> {
+  if (operation.operation_kind !== 'PRODUCT_ADMIN' || operation.payload_hash !== payloadHash) {
+    throw new Error('Product administration operation conflict.');
+  }
+  if (operation.status !== 'SUCCEEDED' || !operation.result_snapshot) {
+    throw new Error('Product administration operation is not replayable.');
+  }
+  const finishedAt = operationTimestamp(operation.finished_at);
+  const result = parseStoredUpdateResult(operation.result_snapshot, input, finishedAt);
+  assertOperationEvidence(operation, result);
+  await assertUpdateLedger(tx, tenantId, result, payloadHash);
+  await assertOperationAudit(tx, tenantId, productAdminAuditInput(result, finishedAt));
+  await assertSingleOperationAudit(tx, tenantId, result.operationId);
+  return result;
+}
+
+function parseStoredUpdateResult(
+  value: unknown,
+  input: CanonicalUpdateProductAdminInput,
+  finishedAt: Date,
+): ProductAdminSuccess {
+  if (!isExactRecord(value, ['action', 'completedAt', 'ok', 'operationId', 'products'])
+    || value.ok !== true || value.action !== 'UPDATE' || value.operationId !== input.operationId
+    || value.completedAt !== finishedAt.toISOString() || !Array.isArray(value.products)
+    || value.products.length !== 1) {
+    throw new Error('Product administration stored result integrity check failed.');
+  }
+  const product = value.products[0];
+  const keys = [
+    'category', 'imageUrl', 'inventoryEventId', 'isActive', 'name', 'price', 'productId',
+    'productVersionAfter', 'productVersionBefore', 'sortOrder', 'stock', 'stockAfter', 'stockBefore',
+  ];
+  if (!isExactRecord(product, keys)) {
+    throw new Error('Product administration stored result integrity check failed.');
+  }
+  const stockBefore = nonnegativeSafeInteger(product.stockBefore, 'stored product stock');
+  const versionBefore = positiveSafeInteger(product.productVersionBefore, 'stored product version');
+  const versionAfter = positiveSafeInteger(product.productVersionAfter, 'stored product version');
+  const expectedEventId = stockBefore === input.stock
+    ? null
+    : createProductAdminInventoryEventId(input.operationId, input.productId);
+  if (product.productId !== input.productId || product.name !== input.name
+    || product.price !== input.price || product.stock !== input.stock
+    || product.isActive !== input.isActive || product.imageUrl !== input.imageUrl
+    || product.category !== input.category || product.sortOrder !== input.sortOrder
+    || versionBefore !== input.expectedProductVersion || versionAfter !== versionBefore + 1
+    || product.stockAfter !== input.stock || product.inventoryEventId !== expectedEventId) {
+    throw new Error('Product administration stored result integrity check failed.');
+  }
+  return value as ProductAdminSuccess;
+}
+
+async function assertUpdateLedger(
+  tx: TenantTransaction,
+  tenantId: string,
+  result: ProductAdminSuccess,
+  payloadHash: string,
+): Promise<void> {
+  const product = result.products[0];
+  const candidateEventId = createProductAdminInventoryEventId(result.operationId, product.productId);
+  const ledgerOperationId = createProductAdminLedgerOperationId(result.operationId, product.productId);
+  const ledger = await tx.execute(sql`
+    SELECT inventory_event_id::text, product_id, transaction_id, quantity_delta,
+           stock_before, stock_after, reason, operation_id, operation_hash, occurred_at
+    FROM inventory_ledger
+    WHERE tenant_id=${tenantId}
+      AND (inventory_event_id=${candidateEventId}::uuid
+        OR operation_id=${ledgerOperationId}
+        OR operation_hash=${payloadHash})
+    ORDER BY inventory_event_id
+  `);
+  if (product.inventoryEventId === null) {
+    if (ledger.rows.length !== 0) throw new Error('Product administration ledger integrity check failed.');
+    return;
+  }
+  if (ledger.rows.length !== 1) throw new Error('Product administration ledger integrity check failed.');
+  const evidence = ledger.rows[0] as Record<string, unknown>;
+  const stockBefore = nonnegativeSafeInteger(product.stockBefore, 'stored product stock');
+  const stockDelta = product.stockAfter - stockBefore;
+  if (evidence.inventory_event_id !== candidateEventId
+    || evidence.product_id !== product.productId || evidence.transaction_id !== null
+    || dbSafeInteger(evidence.quantity_delta) !== stockDelta
+    || dbSafeInteger(evidence.stock_before) !== stockBefore
+    || dbSafeInteger(evidence.stock_after) !== product.stockAfter
+    || evidence.reason !== 'ADMIN_ADJUSTMENT' || evidence.operation_id !== ledgerOperationId
+    || evidence.operation_hash !== payloadHash
+    || operationTimestamp(evidence.occurred_at as Date | string).toISOString() !== result.completedAt) {
+    throw new Error('Product administration ledger integrity check failed.');
+  }
 }
 
 function parseStoredCreateResult(
@@ -448,6 +688,16 @@ function canonicalizeCreate(input: CreateProductAdminInput): CanonicalCreateProd
   };
 }
 
+function canonicalizeUpdate(input: UpdateProductAdminInput): CanonicalUpdateProductAdminInput {
+  return {
+    ...canonicalizeCreate(input),
+    expectedProductVersion: positiveSafeInteger(
+      input.expectedProductVersion,
+      'product version',
+    ),
+  };
+}
+
 function canonicalText(value: unknown, label: string): string {
   if (typeof value !== 'string' || !value.trim()) throw new Error(`A ${label} is required.`);
   return value.trim();
@@ -462,6 +712,13 @@ function optionalText(value: unknown): string | null {
 function nonnegativeSafeInteger(value: unknown, label: string): number {
   if (!Number.isSafeInteger(value) || (value as number) < 0) {
     throw new Error(`The ${label} must be a nonnegative safe integer.`);
+  }
+  return value as number;
+}
+
+function positiveSafeInteger(value: unknown, label: string): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 1) {
+    throw new Error(`The ${label} must be a positive safe integer.`);
   }
   return value as number;
 }

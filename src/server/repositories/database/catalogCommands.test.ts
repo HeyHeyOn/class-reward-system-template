@@ -92,6 +92,27 @@ const createInput = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+async function seedProduct(input: {
+  productId: string;
+  name?: string;
+  price?: number;
+  stock?: number;
+  isActive?: boolean;
+  version?: number;
+}) {
+  const createdAt = new Date('2026-08-28T00:00:00.000Z');
+  await harness.database.query(
+    `INSERT INTO products
+      (tenant_id, product_id, name, price, stock, is_active, sort_order, version,
+       created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $8)`,
+    [
+      harness.tenantOneId, input.productId, input.name ?? '기존 상품', input.price ?? 100,
+      input.stock ?? 5, input.isActive ?? true, input.version ?? 1, createdAt,
+    ],
+  );
+}
+
 describe('PostgreSQL catalog administration commands', () => {
   it('restores operation and audit tamper guards when a fixture callback throws', async () => {
     await expect(withOperationAuditTampering(async () => {
@@ -356,6 +377,220 @@ describe('PostgreSQL catalog administration commands', () => {
     expect(state.products).toHaveLength(1);
     expect(state.operations).toHaveLength(0);
     expect(state.audits).toHaveLength(0);
+  });
+
+  it('updates a product with optimistic versioning and immutable stock-delta evidence', async () => {
+    await seedProduct({ productId: 'P010', name: '기존', price: 100, stock: 5 });
+    const operationId = 'product-update-op-001';
+
+    const result = await commands().update({
+      operationId,
+      productId: 'P010',
+      expectedProductVersion: 1,
+      name: ' 새 상품 ',
+      price: 250,
+      stock: 9,
+      isActive: false,
+      imageUrl: '',
+      category: ' 새 분류 ',
+      sortOrder: 3,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      operationId,
+      action: 'UPDATE',
+      completedAt: NOW.toISOString(),
+      products: [{
+        productId: 'P010', name: '새 상품', price: 250, stock: 9, isActive: false,
+        imageUrl: null, category: '새 분류', sortOrder: 3,
+        productVersionBefore: 1, productVersionAfter: 2,
+        stockBefore: 5, stockAfter: 9,
+        inventoryEventId: createProductAdminInventoryEventId(operationId, 'P010'),
+      }],
+    });
+    const state = await snapshot();
+    expect(state.products).toEqual([expect.objectContaining({
+      product_id: 'P010', name: '새 상품', price: '250', stock: '9', is_active: false,
+      image_url: null, category: '새 분류', sort_order: 3, version: '2', deleted_at: null,
+    })]);
+    expect(state.inventory).toEqual([expect.objectContaining({
+      inventory_event_id: createProductAdminInventoryEventId(operationId, 'P010'),
+      product_id: 'P010', transaction_id: null, quantity_delta: '4',
+      stock_before: '5', stock_after: '9', reason: 'ADMIN_ADJUSTMENT',
+      operation_id: createProductAdminLedgerOperationId(operationId, 'P010'),
+    })]);
+    expect(state.operations).toEqual([expect.objectContaining({
+      operation_id: operationId, operation_kind: 'PRODUCT_ADMIN', status: 'SUCCEEDED',
+      result_snapshot: result,
+    })]);
+    expect(state.audits).toEqual([expect.objectContaining({
+      operation_id: operationId,
+      redacted_details: expect.objectContaining({ action: 'UPDATE', ledgerCount: 1 }),
+    })]);
+  });
+
+  it('exactly replays a product update without incrementing version or stock twice', async () => {
+    await seedProduct({ productId: 'P010', stock: 5 });
+    const input = {
+      operationId: 'product-update-replay-op',
+      productId: 'P010',
+      expectedProductVersion: 1,
+      name: '수정 상품',
+      price: 200,
+      stock: 8,
+      isActive: true,
+      imageUrl: undefined,
+      category: undefined,
+      sortOrder: 1,
+    };
+    const first = await commands().update(input);
+    const second = await commands({ now: () => new Date('2026-08-30T00:00:00.000Z') }).update(input);
+
+    expect(second).toEqual(first);
+    const state = await snapshot();
+    expect(state.products).toEqual([expect.objectContaining({ version: '2', stock: '8' })]);
+    expect(state.inventory).toHaveLength(1);
+    expect(state.operations).toHaveLength(1);
+    expect(state.audits).toHaveLength(1);
+  });
+
+  it('fails closed on update-specific result and ledger corruption', async () => {
+    await seedProduct({ productId: 'P010', stock: 5 });
+    const input = {
+      operationId: 'product-update-corruption-op', productId: 'P010', expectedProductVersion: 1,
+      name: '수정', price: 200, stock: 8, isActive: true, sortOrder: 1,
+    };
+    const result = await commands().update(input);
+    await harness.withImmutableLedgerTampering(() => harness.database.query(
+      'DELETE FROM inventory_ledger WHERE tenant_id=$1 AND inventory_event_id=$2',
+      [harness.tenantOneId, result.products[0].inventoryEventId],
+    ));
+    await expect(commands().update(input)).rejects.toThrow(/ledger integrity/i);
+
+    await withOperationAuditTampering(() => harness.database.query(
+      `UPDATE operations
+       SET result_snapshot=jsonb_set(result_snapshot, '{products,0,productVersionAfter}', '3'::jsonb)
+       WHERE tenant_id=$1 AND operation_id=$2`,
+      [harness.tenantOneId, input.operationId],
+    ));
+    await expect(commands().update(input)).rejects.toThrow(/stored result integrity/i);
+  });
+
+  it('fails closed on deterministic update evidence for a zero stock delta', async () => {
+    await seedProduct({ productId: 'P010', stock: 5 });
+    const input = {
+      operationId: 'product-update-zero-corrupt-op', productId: 'P010', expectedProductVersion: 1,
+      name: '수정', price: 200, stock: 5, isActive: true, sortOrder: 1,
+    };
+    await commands().update(input);
+    await harness.database.query(
+      `INSERT INTO inventory_ledger
+        (tenant_id, inventory_event_id, product_id, transaction_id, quantity_delta,
+         stock_before, stock_after, reason, operation_id, operation_hash, occurred_at)
+       VALUES ($1, $2, 'P010', NULL, 0, 5, 5, 'ADMIN_ADJUSTMENT',
+               'unrelated-operation', 'unrelated-hash', $3)`,
+      [harness.tenantOneId, createProductAdminInventoryEventId(input.operationId, 'P010'), NOW],
+    );
+    await expect(commands().update(input)).rejects.toThrow(/ledger integrity/i);
+  });
+
+  it('rolls back an update when its terminal operation transition is suppressed', async () => {
+    await seedProduct({ productId: 'P010', stock: 5 });
+    await harness.database.exec(`
+      CREATE FUNCTION suppress_product_update_terminal() RETURNS trigger
+      LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.operation_id='product-update-terminal-op' AND NEW.status='SUCCEEDED' THEN
+          RETURN NULL;
+        END IF;
+        RETURN NEW;
+      END;
+      $$;
+      CREATE TRIGGER operations_suppress_product_update_terminal
+      BEFORE UPDATE ON operations
+      FOR EACH ROW EXECUTE FUNCTION suppress_product_update_terminal();
+    `);
+    await expect(commands().update({
+      operationId: 'product-update-terminal-op', productId: 'P010', expectedProductVersion: 1,
+      name: '수정', price: 200, stock: 8, isActive: true, sortOrder: 1,
+    })).rejects.toThrow(/terminal operation/i);
+    const state = await snapshot();
+    expect(state.products).toEqual([expect.objectContaining({ name: '기존 상품', stock: '5', version: '1' })]);
+    expect(state.inventory).toHaveLength(0);
+    expect(state.operations).toHaveLength(0);
+    expect(state.audits).toHaveLength(0);
+  });
+
+  it('rolls back the operation when the expected product version is stale', async () => {
+    await seedProduct({ productId: 'P010', stock: 5, version: 2 });
+    await expect(commands().update({
+      operationId: 'product-update-stale-op', productId: 'P010', expectedProductVersion: 1,
+      name: '수정', price: 200, stock: 8, isActive: true, sortOrder: 1,
+    })).rejects.toThrow(/stale/i);
+    const state = await snapshot();
+    expect(state.products).toEqual([expect.objectContaining({ version: '2', stock: '5', name: '기존 상품' })]);
+    expect(state.inventory).toHaveLength(0);
+    expect(state.operations).toHaveLength(0);
+    expect(state.audits).toHaveLength(0);
+  });
+
+  it('increments the version without fabricating inventory evidence when stock is unchanged', async () => {
+    await seedProduct({ productId: 'P010', stock: 5 });
+    const input = {
+      operationId: 'product-update-no-delta-op', productId: 'P010', expectedProductVersion: 1,
+      name: '이름만 변경', price: 150, stock: 5, isActive: true, sortOrder: 2,
+    };
+    const first = await commands().update(input);
+    const second = await commands().update(input);
+    expect(second).toEqual(first);
+    expect(first.products[0]).toEqual(expect.objectContaining({
+      productVersionBefore: 1, productVersionAfter: 2,
+      stockBefore: 5, stockAfter: 5, inventoryEventId: null,
+    }));
+    const state = await snapshot();
+    expect(state.inventory).toHaveLength(0);
+    expect(state.audits[0]).toEqual(expect.objectContaining({
+      redacted_details: expect.objectContaining({ ledgerCount: 0 }),
+    }));
+  });
+
+  it('replays an earlier update after a later legitimate update changes the live row', async () => {
+    await seedProduct({ productId: 'P010', stock: 5 });
+    const firstInput = {
+      operationId: 'product-update-history-1', productId: 'P010', expectedProductVersion: 1,
+      name: '첫 변경', price: 150, stock: 7, isActive: true, sortOrder: 1,
+    };
+    const first = await commands().update(firstInput);
+    await commands().update({
+      operationId: 'product-update-history-2', productId: 'P010', expectedProductVersion: 2,
+      name: '둘째 변경', price: 175, stock: 9, isActive: false, sortOrder: 2,
+    });
+    expect(await commands().update(firstInput)).toEqual(first);
+  });
+
+  it('rejects tombstoned products and unsafe version successors', async () => {
+    await seedProduct({ productId: 'P010', stock: 5 });
+    await harness.database.query(
+      `UPDATE products SET is_active=false, deleted_at=$3
+       WHERE tenant_id=$1 AND product_id=$2`,
+      [harness.tenantOneId, 'P010', NOW],
+    );
+    await expect(commands().update({
+      operationId: 'product-update-tombstone-op', productId: 'P010', expectedProductVersion: 1,
+      name: '수정', price: 100, stock: 5, isActive: false, sortOrder: 0,
+    })).rejects.toThrow(/not found/i);
+
+    await harness.database.query(
+      `UPDATE products SET deleted_at=NULL, is_active=true, version=9007199254740991
+       WHERE tenant_id=$1 AND product_id=$2`,
+      [harness.tenantOneId, 'P010'],
+    );
+    await expect(commands().update({
+      operationId: 'product-update-overflow-op', productId: 'P010',
+      expectedProductVersion: Number.MAX_SAFE_INTEGER,
+      name: '수정', price: 100, stock: 5, isActive: true, sortOrder: 0,
+    })).rejects.toThrow(/successor|safe integer/i);
   });
 
   it('allows the same product and operation IDs independently in another tenant', async () => {
