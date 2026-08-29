@@ -18,6 +18,7 @@ const MIGRATIONS = [
   '0001_identity_tenants.sql',
   '0002_operational.sql',
   '0003_operations_migrations.sql',
+  '0004_admin_operation_kinds.sql',
 ] as const;
 
 type PgQueryConfig = {

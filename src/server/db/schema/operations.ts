@@ -6,6 +6,7 @@ import { tenants } from './tenants';
 
 export const operationKinds = [
   'CHECKOUT', 'CANCELLATION', 'ADMIN_ADJUSTMENT', 'TASK_REWARD',
+  'STUDENT_ADMIN', 'PRODUCT_ADMIN', 'PROMOTION_ADMIN', 'TASK_ADMIN', 'SETTINGS_ADMIN',
   'MIGRATION_IMPORT', 'CUTOVER', 'EXPORT',
 ] as const;
 export const operationStatuses = ['PENDING', 'SUCCEEDED', 'FAILED'] as const;
@@ -27,7 +28,7 @@ export const operations = pgTable('operations', {
   primaryKey({ name: 'operations_pkey', columns: [table.tenantId, table.operationId] }),
   foreignKey({ name: 'operations_tenant_fk', columns: [table.tenantId], foreignColumns: [tenants.id] }).onDelete('cascade'),
   check('operations_id_check', sql`${table.operationId} = btrim(${table.operationId}) AND length(${table.operationId}) > 0`),
-  check('operations_kind_check', sql`${table.operationKind} IN ('CHECKOUT','CANCELLATION','ADMIN_ADJUSTMENT','TASK_REWARD','MIGRATION_IMPORT','CUTOVER','EXPORT')`),
+  check('operations_kind_check', sql`${table.operationKind} IN ('CHECKOUT','CANCELLATION','ADMIN_ADJUSTMENT','TASK_REWARD','STUDENT_ADMIN','PRODUCT_ADMIN','PROMOTION_ADMIN','TASK_ADMIN','SETTINGS_ADMIN','MIGRATION_IMPORT','CUTOVER','EXPORT')`),
   check('operations_payload_hash_check', sql`${table.payloadHash} ~ '^[0-9a-f]{64}$'`),
   check('operations_status_check', sql`${table.status} IN ('PENDING','SUCCEEDED','FAILED')`),
   check('operations_failure_code_check', sql`${table.failureCode} IS NULL OR length(btrim(${table.failureCode})) > 0`),

@@ -13,6 +13,7 @@ import {
   migrationSnapshots,
   migrationSourceRecords,
   migrationSources,
+  operationKinds,
   operations,
   padletClaimDigestTombstones,
   padletEvidenceClaims,
@@ -31,6 +32,7 @@ const TASK4_TABLES = [
 
 let db: PGlite;
 let migrationSql: string;
+let adminKindMigrationSql: string;
 
 const digest = (boardId: string, postId: string) => createHash('sha256')
   .update(boardId, 'utf8').update('\0').update(postId, 'utf8').digest('hex');
@@ -142,11 +144,17 @@ async function runtime<T>(tenantId: string | undefined, fn: () => Promise<T>) {
 }
 
 beforeEach(async () => {
-  const paths = ['0001_identity_tenants.sql', '0002_operational.sql', '0003_operations_migrations.sql'];
+  const paths = [
+    '0001_identity_tenants.sql',
+    '0002_operational.sql',
+    '0003_operations_migrations.sql',
+    '0004_admin_operation_kinds.sql',
+  ];
   const sql = await Promise.all(paths.map((name) => readFile(resolve(
     process.cwd(), 'src/server/db/migrations', name,
   ), 'utf8')));
   migrationSql = sql[2];
+  adminKindMigrationSql = sql[3];
   db = new PGlite({ extensions: { pgcrypto } });
   for (const statement of sql) await db.exec(statement);
   await seedBase();
@@ -155,6 +163,80 @@ beforeEach(async () => {
 afterEach(async () => { await db?.close(); });
 
 describe('operations and migration schema', () => {
+  it('leaves transaction ownership to the migration runner and preserves existing operations', async () => {
+    const probe = new PGlite({ extensions: { pgcrypto } });
+    try {
+      for (const name of ['0001_identity_tenants.sql', '0002_operational.sql', '0003_operations_migrations.sql']) {
+        await probe.exec(await readFile(resolve(
+          process.cwd(), 'src/server/db/migrations', name,
+        ), 'utf8'));
+      }
+      await probe.query(
+        `INSERT INTO tenants (id, slug, display_name) VALUES ($1, 'probe', 'Probe')`,
+        [T1],
+      );
+      await probe.query(
+        `INSERT INTO operations (tenant_id, operation_id, operation_kind, payload_hash)
+         VALUES ($1, 'existing-op', 'CHECKOUT', $2)`,
+        [T1, HASH_A],
+      );
+
+      await probe.exec('BEGIN');
+      await probe.exec(adminKindMigrationSql);
+      await probe.exec('ROLLBACK');
+      await expect(probe.query(
+        `INSERT INTO operations (tenant_id, operation_id, operation_kind, payload_hash)
+         VALUES ($1, 'rolled-back-kind', 'STUDENT_ADMIN', $2)`,
+        [T1, HASH_A],
+      )).rejects.toThrow();
+
+      await probe.exec(adminKindMigrationSql);
+      expect((await probe.query(
+        `SELECT operation_kind FROM operations WHERE tenant_id=$1 AND operation_id='existing-op'`,
+        [T1],
+      )).rows).toEqual([{ operation_kind: 'CHECKOUT' }]);
+      await expect(probe.query(
+        `INSERT INTO operations (tenant_id, operation_id, operation_kind, payload_hash)
+         VALUES ($1, 'new-kind', 'STUDENT_ADMIN', $2)`,
+        [T1, HASH_A],
+      )).resolves.toBeDefined();
+    } finally {
+      await probe.close();
+    }
+  });
+
+  it('supports idempotent operation kinds for every tenant administrator command family', async () => {
+    const adminKinds = [
+      'STUDENT_ADMIN',
+      'PRODUCT_ADMIN',
+      'PROMOTION_ADMIN',
+      'TASK_ADMIN',
+      'SETTINGS_ADMIN',
+    ] as const;
+    expect(adminKindMigrationSql).not.toMatch(/\b(?:BEGIN|COMMIT)\b/i);
+    expect(operationKinds).toEqual(expect.arrayContaining([...adminKinds]));
+
+    for (const [index, kind] of adminKinds.entries()) {
+      await db.query(
+        `INSERT INTO operations (tenant_id, operation_id, operation_kind, payload_hash)
+         VALUES ($1, $2, $3, $4)`,
+        [T1, `admin-kind-${index}`, kind, HASH_A],
+      );
+    }
+    const rows = await db.query<{ operation_kind: string }>(
+      `SELECT operation_kind FROM operations WHERE tenant_id=$1 AND operation_id LIKE 'admin-kind-%'
+       ORDER BY operation_kind`,
+      [T1],
+    );
+    expect(rows.rows.map((row) => row.operation_kind)).toEqual([...adminKinds].sort());
+
+    const kindCheck = getTableConfig(operations).checks
+      .find((constraint) => constraint.name === 'operations_kind_check');
+    expect(kindCheck).toBeDefined();
+    const renderedCheck = new PgDialect().sqlToQuery(kindCheck!.value).sql;
+    for (const kind of adminKinds) expect(renderedCheck).toContain(kind);
+  });
+
   it('exports every required public Drizzle table without evidence body or secret-shaped columns', () => {
     const tables = [operations, padletEvidenceClaims, padletClaimDigestTombstones,
       migrationJobs, migrationSources, migrationSourceRecords, migrationSnapshots,
@@ -277,7 +359,7 @@ describe('operations and migration schema', () => {
       });
     }
     const fingerprint = createHash('sha256').update(JSON.stringify(materialSnapshot)).digest('hex');
-    expect(fingerprint).toBe('6045d4b7bf2f3cc4399baee9e6d22783ce017f5bed6b058d5a95253969b4b72f');
+    expect(fingerprint).toBe('45ae9080d2534226206fd5b465836d68d313a1c1e38e871d132786bb6baa91c6');
   });
 
   it('binds an arbitrary non-UUID operation ID to one payload and enforces terminal shapes', async () => {
