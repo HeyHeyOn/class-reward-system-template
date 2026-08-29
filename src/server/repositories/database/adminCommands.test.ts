@@ -48,7 +48,7 @@ async function seedStudent(tenantId: string, studentId: string, name: string, ba
 }
 
 async function snapshot(tenantId = harness.tenantOneId) {
-  const [accounts, transactions, operations, items, inventory, completions, adjustments] = await Promise.all([
+  const [accounts, transactions, operations, items, inventory, completions, adjustments, audits] = await Promise.all([
     harness.database.query(`SELECT student_id, balance::text, version FROM accounts WHERE tenant_id=$1 ORDER BY student_id`, [tenantId]),
     harness.database.query(`SELECT transaction_id, occurred_at, student_id, student_name_snapshot, kind,
       legacy_total_amount::text, balance_delta::text, balance_before::text, balance_after::text,
@@ -60,8 +60,10 @@ async function snapshot(tenantId = harness.tenantOneId) {
     harness.database.query(`SELECT transaction_id FROM task_completions WHERE tenant_id=$1`, [tenantId]),
     harness.database.query(`SELECT adjustment_id, transaction_id, mode, requested_amount::text,
       operator_snapshot, legacy_adjustment_id FROM adjustments WHERE tenant_id=$1 ORDER BY adjustment_id`, [tenantId]),
+    harness.database.query(`SELECT operation_id, event_type, entity_type, entity_id,
+      redacted_details, occurred_at FROM audit_events WHERE tenant_id=$1 ORDER BY event_id`, [tenantId]),
   ]);
-  return { accounts: accounts.rows, transactions: transactions.rows, operations: operations.rows, items: items.rows, inventory: inventory.rows, completions: completions.rows, adjustments: adjustments.rows };
+  return { accounts: accounts.rows, transactions: transactions.rows, operations: operations.rows, items: items.rows, inventory: inventory.rows, completions: completions.rows, adjustments: adjustments.rows, audits: audits.rows };
 }
 
 const input = (overrides: Record<string, unknown> = {}) => ({
@@ -100,6 +102,19 @@ describe('PostgreSQL transactional admin balance adjustments', () => {
       transaction_id: `admin-adjustment:${OPERATION_ID}:S001`,
       mode: 'add', requested_amount: '250', operator_snapshot: 'admin', legacy_adjustment_id: null,
     }]);
+    expect(state.audits).toEqual([{
+      operation_id: OPERATION_ID,
+      event_type: 'ADMIN_ADJUSTMENT_COMPLETED',
+      entity_type: 'OPERATION',
+      entity_id: OPERATION_ID,
+      redacted_details: {
+        amount: 250,
+        changedStudentCount: 1,
+        mode: 'add',
+        studentCount: 1,
+      },
+      occurred_at: NOW,
+    }]);
   });
 
   it.each([
@@ -130,7 +145,61 @@ describe('PostgreSQL transactional admin balance adjustments', () => {
     const second = await commands({ now: () => new Date('2026-08-29T00:00:00Z') }).adjust(input());
     expect(second).toEqual(first);
     expect((await snapshot()).transactions).toHaveLength(1);
+    expect((await snapshot()).audits).toHaveLength(1);
     expect((await snapshot()).accounts[0]).toMatchObject({ balance: '1250', version: 2 });
+  });
+
+  it('fails closed when an initially-existing successful replay is missing its immutable audit', async () => {
+    await commands().adjust(input());
+    await harness.database.exec('ALTER TABLE audit_events DISABLE TRIGGER audit_events_immutable');
+    await harness.database.query(
+      'DELETE FROM audit_events WHERE tenant_id=$1 AND operation_id=$2',
+      [harness.tenantOneId, OPERATION_ID],
+    );
+    await harness.database.exec('ALTER TABLE audit_events ENABLE TRIGGER audit_events_immutable');
+
+    await expect(commands().adjust(input())).rejects.toThrow(/audit integrity/i);
+  });
+
+  it('fails closed when a successful replay has a corrupt immutable audit', async () => {
+    await commands().adjust(input());
+    await harness.database.exec('ALTER TABLE audit_events DISABLE TRIGGER audit_events_immutable');
+    await harness.database.query(
+      `UPDATE audit_events SET redacted_details=jsonb_set(redacted_details, '{amount}', '999')
+       WHERE tenant_id=$1 AND operation_id=$2`,
+      [harness.tenantOneId, OPERATION_ID],
+    );
+    await harness.database.exec('ALTER TABLE audit_events ENABLE TRIGGER audit_events_immutable');
+
+    await expect(commands().adjust(input())).rejects.toThrow(/audit integrity/i);
+  });
+
+  it('fails closed when an insert-race successful replay is missing its immutable audit', async () => {
+    await commands().adjust(input());
+    await harness.database.exec('ALTER TABLE audit_events DISABLE TRIGGER audit_events_immutable');
+    await harness.database.query(
+      'DELETE FROM audit_events WHERE tenant_id=$1 AND operation_id=$2',
+      [harness.tenantOneId, OPERATION_ID],
+    );
+    await harness.database.exec('ALTER TABLE audit_events ENABLE TRIGGER audit_events_immutable');
+    const raceRunner: DatabaseAdminCommandDependencies['runTenantTransaction'] = (tenantId, callback) =>
+      harness.runTenantTransaction(tenantId, async (tx) => {
+        let executeCount = 0;
+        const racedTx = new Proxy(tx, {
+          get(target, property, receiver) {
+            if (property !== 'execute') return Reflect.get(target, property, receiver);
+            return async (...args: Parameters<typeof tx.execute>) => {
+              executeCount += 1;
+              if (executeCount === 1) return { rows: [] };
+              return tx.execute(...args);
+            };
+          },
+        });
+        return callback(racedTx);
+      });
+
+    await expect(commands({ runTenantTransaction: raceRunner }).adjust(input()))
+      .rejects.toThrow(/audit integrity/i);
   });
 
   it.each([
@@ -149,6 +218,7 @@ describe('PostgreSQL transactional admin balance adjustments', () => {
     [harness.tenantOneId, OPERATION_ID, kind, hash, status, NOW]);
     await expect(commands().adjust(input())).rejects.toMatchObject({ code });
     expect((await snapshot()).transactions).toEqual([]);
+    expect((await snapshot()).audits).toEqual([]);
   });
 
   it.each([
@@ -204,11 +274,21 @@ describe('PostgreSQL transactional admin balance adjustments', () => {
   it('audits set no-op but omits add/subtract zero ledgers while representing every student', async () => {
     const setResult = await commands().adjust(input({ mode: 'set', amount: 1000 }));
     expect(setResult.students[0]).toMatchObject({ delta: 0, transactionId: `admin-adjustment:${OPERATION_ID}:S001` });
-    expect((await snapshot()).transactions).toHaveLength(1);
+    const setState = await snapshot();
+    expect(setState.transactions).toHaveLength(1);
+    expect(setState.audits[0]).toMatchObject({
+      redacted_details: expect.objectContaining({ changedStudentCount: 0 }),
+    });
 
     const addResult = await commands().adjust(input({ operationId: '40000000-0000-4000-8000-000000000002', amount: 0 }));
     expect(addResult.students[0]).toMatchObject({ delta: 0, transactionId: null });
-    expect((await snapshot()).transactions).toHaveLength(1);
+    const state = await snapshot();
+    expect(state.transactions).toHaveLength(1);
+    expect(state.audits).toHaveLength(2);
+    expect(state.audits[1]).toMatchObject({
+      operation_id: '40000000-0000-4000-8000-000000000002',
+      redacted_details: { amount: 0, changedStudentCount: 0, mode: 'add', studentCount: 1 },
+    });
   });
 
   it.each([

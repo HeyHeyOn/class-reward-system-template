@@ -3,6 +3,7 @@ import 'server-only';
 import { createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import type { TenantTransaction } from '@/server/db/transaction';
+import { appendOperationAudit, assertOperationAudit } from './operationAudit';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -81,6 +82,7 @@ type OperationRow = {
   payload_hash: string;
   status: 'PENDING' | 'SUCCEEDED' | 'FAILED';
   result_snapshot: unknown;
+  finished_at: Date | string | null;
 };
 
 type AccountRow = {
@@ -236,6 +238,11 @@ export function createDatabaseAdminCommands(dependencies: DatabaseAdminCommandDe
           adjustedAt: now.toISOString(),
           students: changes,
         };
+        await appendOperationAudit(
+          tx,
+          dependencies.tenantId,
+          adminAdjustmentAuditInput(input.operationId, result, now),
+        );
         await tx.execute(sql`
           UPDATE operations
           SET status='SUCCEEDED', result_snapshot=${JSON.stringify(result)}::jsonb,
@@ -289,7 +296,7 @@ async function readOperation(
   lock: boolean,
 ): Promise<OperationRow | undefined> {
   const statement = sql`
-    SELECT operation_kind, payload_hash, status, result_snapshot
+    SELECT operation_kind, payload_hash, status, result_snapshot, finished_at
     FROM operations
     WHERE tenant_id=${tenantId} AND operation_id=${operationId}
   `;
@@ -387,7 +394,39 @@ async function resolveExisting(
     FOR UPDATE
   `);
   validateAdjustmentRows(adjustmentResult.rows as AdjustmentRow[], stored);
+  await assertOperationAudit(
+    tx,
+    tenantId,
+    adminAdjustmentAuditInput(input.operationId, stored, requiredAuditDate(operation.finished_at)),
+  );
   return stored;
+}
+
+function adminAdjustmentAuditInput(
+  operationId: string,
+  result: AdminAdjustmentSuccess,
+  occurredAt: Date,
+) {
+  return {
+    operationId,
+    eventType: 'ADMIN_ADJUSTMENT_COMPLETED',
+    entityType: 'OPERATION',
+    entityId: operationId,
+    redactedDetails: {
+      amount: result.amount,
+      changedStudentCount: result.students.filter((student) => student.delta !== 0).length,
+      mode: result.mode,
+      studentCount: result.students.length,
+    },
+    occurredAt,
+  } as const;
+}
+
+function requiredAuditDate(value: Date | string | null): Date {
+  if (value === null) throw new Error('Admin adjustment audit integrity check failed.');
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) throw new Error('Admin adjustment audit integrity check failed.');
+  return date;
 }
 
 function parseStoredResult(snapshot: unknown, input: CanonicalInput): AdminAdjustmentSuccess {
