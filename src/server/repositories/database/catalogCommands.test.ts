@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createDatabaseCatalogCommands,
@@ -802,6 +804,248 @@ describe('PostgreSQL catalog administration commands', () => {
       [harness.tenantOneId, 'P020', new Date('2026-08-30T00:00:00.000Z')],
     );
     await expect(commands().deactivate(input)).rejects.toThrow(/tombstone.*integrity/i);
+  });
+
+  it('batch-updates products in stable ID order with one operation and only changed-stock ledgers', async () => {
+    await seedProduct({ productId: 'P031', name: '둘', stock: 4 });
+    await seedProduct({ productId: 'P030', name: '하나', stock: 2 });
+    const result = await commands().updateBatch({
+      operationId: 'product-update-batch-op',
+      products: [
+        {
+          productId: 'P031', expectedProductVersion: 1, name: '둘 수정', price: 200,
+          stock: 4, isActive: true, imageUrl: '', category: 'B', sortOrder: 2,
+        },
+        {
+          productId: 'P030', expectedProductVersion: 1, name: '하나 수정', price: 100,
+          stock: 5, isActive: true, imageUrl: '', category: 'A', sortOrder: 1,
+        },
+      ],
+    });
+    expect(result.products.map((product) => product.productId)).toEqual(['P030', 'P031']);
+    expect(result.products.map((product) => ({
+      productId: product.productId,
+      version: product.productVersionAfter,
+      stockBefore: product.stockBefore,
+      stockAfter: product.stockAfter,
+      hasLedger: product.inventoryEventId !== null,
+    }))).toEqual([
+      { productId: 'P030', version: 2, stockBefore: 2, stockAfter: 5, hasLedger: true },
+      { productId: 'P031', version: 2, stockBefore: 4, stockAfter: 4, hasLedger: false },
+    ]);
+    const state = await snapshot();
+    expect(state.operations).toHaveLength(1);
+    expect(state.inventory).toHaveLength(1);
+    expect(state.audits).toEqual([expect.objectContaining({
+      operation_id: 'product-update-batch-op',
+      redacted_details: expect.objectContaining({ action: 'UPDATE', productCount: 2, ledgerCount: 1 }),
+    })]);
+  });
+
+  it('exactly replays a canonical product update batch without duplicate mutations', async () => {
+    await seedProduct({ productId: 'P031', stock: 4 });
+    await seedProduct({ productId: 'P030', stock: 2 });
+    const input = {
+      operationId: 'product-update-batch-replay-op',
+      products: [
+        {
+          productId: 'P031', expectedProductVersion: 1, name: '둘', price: 200,
+          stock: 4, isActive: true, imageUrl: '', category: 'B', sortOrder: 2,
+        },
+        {
+          productId: 'P030', expectedProductVersion: 1, name: '하나', price: 100,
+          stock: 5, isActive: true, imageUrl: '', category: 'A', sortOrder: 1,
+        },
+      ],
+    };
+    const first = await commands().updateBatch(input);
+    const second = await commands().updateBatch({ ...input, products: [...input.products].reverse() });
+    expect(second).toEqual(first);
+    const state = await snapshot();
+    expect((state.products as Array<{ product_id: string; version: string }>).map((product) => ({
+      id: product.product_id, version: product.version,
+    }))).toEqual([
+      { id: 'P030', version: '2' }, { id: 'P031', version: '2' },
+    ]);
+    expect(state.inventory).toHaveLength(1);
+    expect(state.operations).toHaveLength(1);
+    expect(state.audits).toHaveLength(1);
+  });
+
+  it('batch-deactivates products in stable ID order with one operation and no stock ledger', async () => {
+    await seedProduct({ productId: 'P041', name: '둘', stock: 4 });
+    await seedProduct({ productId: 'P040', name: '하나', stock: 2 });
+    const result = await commands().deactivateBatch({
+      operationId: 'product-deactivate-batch-op',
+      products: [
+        { productId: 'P041', expectedProductVersion: 1 },
+        { productId: 'P040', expectedProductVersion: 1 },
+      ],
+    });
+    expect(result.products.map((product) => ({
+      id: product.productId,
+      version: product.productVersionAfter,
+      deletedAt: product.deletedAt,
+    }))).toEqual([
+      { id: 'P040', version: 2, deletedAt: NOW.toISOString() },
+      { id: 'P041', version: 2, deletedAt: NOW.toISOString() },
+    ]);
+    const state = await snapshot();
+    expect(state.products).toEqual([
+      expect.objectContaining({ product_id: 'P040', is_active: false, stock: '2', version: '2' }),
+      expect.objectContaining({ product_id: 'P041', is_active: false, stock: '4', version: '2' }),
+    ]);
+    expect(state.inventory).toHaveLength(0);
+    expect(state.operations).toHaveLength(1);
+    expect(state.audits).toEqual([expect.objectContaining({
+      operation_id: 'product-deactivate-batch-op',
+      redacted_details: expect.objectContaining({ action: 'DEACTIVATE', productCount: 2, ledgerCount: 0 }),
+    })]);
+  });
+
+  it('exactly replays a canonical product deactivation batch', async () => {
+    await seedProduct({ productId: 'P041', stock: 4 });
+    await seedProduct({ productId: 'P040', stock: 2 });
+    const input = {
+      operationId: 'product-deactivate-batch-replay-op',
+      products: [
+        { productId: 'P041', expectedProductVersion: 1 },
+        { productId: 'P040', expectedProductVersion: 1 },
+      ],
+    };
+    const first = await commands().deactivateBatch(input);
+    const second = await commands().deactivateBatch({ ...input, products: [...input.products].reverse() });
+    expect(second).toEqual(first);
+    const state = await snapshot();
+    expect(state.inventory).toHaveLength(0);
+    expect(state.operations).toHaveLength(1);
+    expect(state.audits).toHaveLength(1);
+  });
+
+  it('locks all deactivation replay products in one database-ordered query', async () => {
+    const source = await readFile(resolve(process.cwd(), 'src/server/repositories/database/catalogCommands.ts'), 'utf8');
+    const start = source.indexOf('async function resolveExistingDeactivateBatch');
+    const end = source.indexOf('async function resolveExistingDeactivate(', start);
+    const body = source.slice(start, end);
+    expect(body).toMatch(/SELECT[\s\S]*product_id IN \([\s\S]*ORDER BY product_id[\s\S]*FOR UPDATE/);
+  });
+
+  it('rejects oversized and duplicate product batches before entering a tenant transaction', async () => {
+    const transactionSpy = vi.fn(async () => {
+      throw new Error('entered tenant transaction');
+    });
+    const runTenantTransaction: DatabaseCatalogCommandDependencies['runTenantTransaction'] =
+      async (_tenantId, callback) => {
+        await transactionSpy();
+        return callback({} as never);
+      };
+    const isolated = createDatabaseCatalogCommands({
+      tenantId: harness.tenantOneId,
+      runTenantTransaction,
+      now: () => NOW,
+    });
+    const updateProduct = (index: number) => ({
+      productId: `P${String(index).padStart(3, '0')}`,
+      expectedProductVersion: 1,
+      name: '상품', price: 1, stock: 1, isActive: true, imageUrl: '', category: '', sortOrder: 0,
+    });
+    await expect(isolated.updateBatch({
+      operationId: 'oversized-update', products: Array.from({ length: 101 }, (_, index) => updateProduct(index)),
+    })).rejects.toThrow(/at most 100/i);
+    await expect(isolated.deactivateBatch({
+      operationId: 'oversized-deactivate',
+      products: Array.from({ length: 101 }, (_, index) => ({
+        productId: `P${String(index).padStart(3, '0')}`, expectedProductVersion: 1,
+      })),
+    })).rejects.toThrow(/at most 100/i);
+    await expect(isolated.updateBatch({
+      operationId: 'duplicate-update', products: [updateProduct(1), updateProduct(1)],
+    })).rejects.toThrow(/duplicate/i);
+    await expect(isolated.deactivateBatch({
+      operationId: 'duplicate-deactivate',
+      products: [
+        { productId: ' P001 ', expectedProductVersion: 1 },
+        { productId: 'P001', expectedProductVersion: 1 },
+      ],
+    })).rejects.toThrow(/duplicate/i);
+    expect(transactionSpy).not.toHaveBeenCalled();
+    await expect(isolated.updateBatch({
+      operationId: 'exact-update-cap',
+      products: Array.from({ length: 100 }, (_, index) => updateProduct(index)),
+    })).rejects.toThrow(/entered tenant transaction/i);
+    expect(transactionSpy).toHaveBeenCalledTimes(1);
+    transactionSpy.mockClear();
+    await expect(isolated.deactivateBatch({
+      operationId: 'exact-deactivate-cap',
+      products: Array.from({ length: 100 }, (_, index) => ({
+        productId: `P${String(index).padStart(3, '0')}`, expectedProductVersion: 1,
+      })),
+    })).rejects.toThrow(/entered tenant transaction/i);
+    expect(transactionSpy).toHaveBeenCalledTimes(1);
+    transactionSpy.mockClear();
+    await expect(isolated.updateBatch({ operationId: 'empty-update', products: [] }))
+      .rejects.toThrow(/at least one/i);
+    await expect(isolated.deactivateBatch({ operationId: 'empty-deactivate', products: [] }))
+      .rejects.toThrow(/at least one/i);
+    expect(transactionSpy).not.toHaveBeenCalled();
+  });
+
+  it('keeps the outer operation ID authoritative over runtime batch entry fields', async () => {
+    await seedProduct({ productId: 'P060', stock: 1 });
+    await seedProduct({ productId: 'P061', stock: 1 });
+    const updateEntry = {
+      operationId: 'malicious-update-entry',
+      productId: 'P060', expectedProductVersion: 1, name: '수정', price: 1,
+      stock: 2, isActive: true, imageUrl: '', category: '', sortOrder: 0,
+    };
+    const update = await commands().updateBatch({
+      operationId: 'outer-update-operation',
+      products: [updateEntry],
+    });
+    expect(update.operationId).toBe('outer-update-operation');
+    expect(update.products[0].inventoryEventId).toBe(
+      createProductAdminInventoryEventId('outer-update-operation', 'P060'),
+    );
+    const deactivateEntry = {
+      operationId: 'malicious-deactivate-entry',
+      productId: 'P061', expectedProductVersion: 1,
+    };
+    const deactivated = await commands().deactivateBatch({
+      operationId: 'outer-deactivate-operation',
+      products: [deactivateEntry],
+    });
+    expect(deactivated.operationId).toBe('outer-deactivate-operation');
+    const state = await snapshot();
+    expect((state.operations as Array<{ operation_id: string }>).map((row) => row.operation_id).sort())
+      .toEqual(['outer-deactivate-operation', 'outer-update-operation']);
+  });
+
+  it('rolls back whole update and deactivate batches when a later product is stale', async () => {
+    await seedProduct({ productId: 'P050', stock: 2 });
+    await seedProduct({ productId: 'P051', stock: 4, version: 2 });
+    const before = await snapshot();
+    await expect(commands().updateBatch({
+      operationId: 'stale-update-batch',
+      products: [
+        {
+          productId: 'P050', expectedProductVersion: 1, name: '첫째 수정', price: 10,
+          stock: 3, isActive: true, imageUrl: '', category: '', sortOrder: 0,
+        },
+        {
+          productId: 'P051', expectedProductVersion: 1, name: '둘째 수정', price: 10,
+          stock: 5, isActive: true, imageUrl: '', category: '', sortOrder: 0,
+        },
+      ],
+    })).rejects.toThrow(/stale/i);
+    expect(await snapshot()).toEqual(before);
+    await expect(commands().deactivateBatch({
+      operationId: 'stale-deactivate-batch',
+      products: [
+        { productId: 'P050', expectedProductVersion: 1 },
+        { productId: 'P051', expectedProductVersion: 1 },
+      ],
+    })).rejects.toThrow(/stale/i);
+    expect(await snapshot()).toEqual(before);
   });
 
   it('allows the same product and operation IDs independently in another tenant', async () => {
