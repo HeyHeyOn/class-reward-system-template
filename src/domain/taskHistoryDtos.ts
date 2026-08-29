@@ -1,5 +1,5 @@
 import type { TaskCycleState } from './taskCycleState';
-import type { TaskCycleHistoryEvent } from '@/server/repositories/sheets/taskCycleQueries';
+import type { TaskCycleHistoryEvent } from './taskCycleHistory';
 import type { TaskAssignmentSource } from './types';
 
 export type TaskCurrentCycleStatusDto = {

@@ -6,7 +6,13 @@ import {
   projectTaskCycleHistoryFromSnapshot,
   type TaskCycleHistoryEvent,
 } from '@/domain/taskCycleHistory';
-import type { TaskAssignment, TaskCompletion } from '@/domain/types';
+import {
+  buildTaskHistoryDetailDto,
+  buildTaskHistoryListDto,
+  type TaskHistoryDetailDto,
+  type TaskHistoryListDto,
+} from '@/domain/taskHistoryDtos';
+import type { ClassTask, TaskAssignment, TaskCompletion } from '@/domain/types';
 import type { TenantTransaction } from '@/server/db/transaction';
 import { isoString, safeInteger } from './queryProjection';
 import { readDatabaseTasks } from './taskQueries';
@@ -91,7 +97,71 @@ export function createDatabaseTaskCycleQueries(
         ),
       );
     },
+    async listTaskHistory(now?: string): Promise<TaskHistoryListDto[]> {
+      const projectionNow = projectionTimestamp(now);
+      return dependencies.runTenantSnapshot(dependencies.tenantId, async (transaction) => {
+        const tasks = await readDatabaseTasks(transaction, dependencies.tenantId, { activeOnly: false });
+        const snapshot = await readLedgerSnapshot(transaction, dependencies.tenantId, 'ledger');
+        const events = projectTaskCycleHistoryFromSnapshot(snapshot);
+        const tasksById = indexTasksById(tasks);
+        const taskIds = new Set([...tasksById.keys(), ...events.map((event) => event.taskId)]);
+        return Array.from(taskIds).sort().map((taskId) => {
+          const task = tasksById.get(taskId) ?? null;
+          return buildTaskHistoryListDto({
+            taskId,
+            currentTaskDefinitionExists: task !== null,
+            currentTaskInstanceId: task?.taskInstanceId ?? null,
+            currentCycleState: task?.taskInstanceId && task.schedule
+              ? projectTaskCycleState({ task, now: projectionNow, ...snapshot })
+              : null,
+            events: events.filter((event) => event.taskId === taskId),
+          });
+        });
+      });
+    },
+    async getTaskHistoryDetail(
+      filter: { taskId: string; taskInstanceId?: string },
+      now?: string,
+    ): Promise<TaskHistoryDetailDto> {
+      assertCanonicalTaskId(filter.taskId);
+      if (filter.taskInstanceId !== undefined) {
+        assertCanonicalIdentifier(filter.taskInstanceId, 'task instance ID');
+      }
+      const projectionNow = projectionTimestamp(now);
+      return dependencies.runTenantSnapshot(dependencies.tenantId, async (transaction) => {
+        const tasks = await readDatabaseTasks(transaction, dependencies.tenantId, {
+          activeOnly: false,
+          taskId: filter.taskId,
+        });
+        if (tasks.length > 1) throw new Error('Task query returned duplicate tasks.');
+        const task = tasks[0] ?? null;
+        const snapshot = await readLedgerSnapshot(transaction, dependencies.tenantId, 'ledger');
+        return buildTaskHistoryDetailDto({
+          taskId: filter.taskId,
+          requestedTaskInstanceId: filter.taskInstanceId ?? null,
+          currentTaskDefinitionExists: task !== null,
+          currentTaskInstanceId: task?.taskInstanceId ?? null,
+          currentCycleState: task?.taskInstanceId && task.schedule
+            ? projectTaskCycleState({ task, now: projectionNow, ...snapshot })
+            : null,
+          events: projectTaskCycleHistoryFromSnapshot(snapshot, filter),
+        });
+      });
+    },
   };
+}
+
+function projectionTimestamp(now: string | undefined): string {
+  return now === undefined ? new Date().toISOString() : isoString(now, 'Task history projection timestamp');
+}
+
+function indexTasksById(tasks: readonly ClassTask[]): Map<string, ClassTask> {
+  const indexed = new Map<string, ClassTask>();
+  for (const task of tasks) {
+    if (indexed.has(task.taskId)) throw new Error('Task query returned duplicate task IDs.');
+    indexed.set(task.taskId, task);
+  }
+  return indexed;
 }
 
 function assertCanonicalTaskId(taskId: string): void {

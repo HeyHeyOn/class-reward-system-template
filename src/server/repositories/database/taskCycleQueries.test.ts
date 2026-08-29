@@ -184,21 +184,25 @@ async function seedBankCompletion(overrides: Partial<CompletionSeed> = {}) {
   });
 }
 
+async function seedLiveTask(taskId = 'LIVE', taskInstanceId = 'LIVE-I') {
+  await harness.database.query(
+    `INSERT INTO tasks (
+       tenant_id, task_instance_id, task_id, title, description, reward, is_active,
+       sort_order, current_schedule, schedule_schema_version, created_at, updated_at
+     ) VALUES ($1, $2, $3, '현재 과제', '', 5, true, 1, $4::jsonb, 1,
+               '2026-08-01T00:00:00.000Z', '2026-08-01T00:00:00.000Z')`,
+    [harness.tenantOneId, taskInstanceId, taskId, JSON.stringify(SCHEDULE)],
+  );
+  await harness.database.query(
+    `INSERT INTO task_allowed_students (tenant_id, task_instance_id, student_id)
+     VALUES ($1, $2, 'S1')`,
+    [harness.tenantOneId, taskInstanceId],
+  );
+}
+
 describe('database task cycle queries', () => {
   it('projects current cycle state from a strict task and both ledgers in one transaction', async () => {
-    await harness.database.query(
-      `INSERT INTO tasks (
-         tenant_id, task_instance_id, task_id, title, description, reward, is_active,
-         sort_order, current_schedule, schedule_schema_version, created_at, updated_at
-       ) VALUES ($1, 'LIVE-I', 'LIVE', '현재 과제', '', 5, true, 1, $2::jsonb, 1,
-                 '2026-08-01T00:00:00.000Z', '2026-08-01T00:00:00.000Z')`,
-      [harness.tenantOneId, JSON.stringify(SCHEDULE)],
-    );
-    await harness.database.query(
-      `INSERT INTO task_allowed_students (tenant_id, task_instance_id, student_id)
-       VALUES ($1, 'LIVE-I', 'S1')`,
-      [harness.tenantOneId],
-    );
+    await seedLiveTask();
     let transactionCalls = 0;
     const runTenantSnapshot: DatabaseTaskCycleQueryDependencies['runTenantSnapshot'] =
       (tenantId, callback) => {
@@ -243,6 +247,44 @@ describe('database task cycle queries', () => {
 
     await expect(queries().getTaskCycleHistory({ taskId: 'T1' }))
       .resolves.toEqual(projectTaskCycleHistoryFromSnapshot(snapshot, { taskId: 'T1' }));
+  });
+
+  it('builds history list DTOs for both live definitions and event-only deleted tasks', async () => {
+    await seedLiveTask();
+    await seedAssignment({ assignmentId: 'A1', eventSequence: 1, source: 'ADMIN' });
+
+    const list = await queries().listTaskHistory('2026-08-10T00:00:00.000Z');
+    expect(list.map((entry) => entry.taskId)).toEqual(['LIVE', 'T1']);
+    expect(list[0]).toMatchObject({
+      taskId: 'LIVE',
+      currentLifecycle: { taskDefinitionExists: true, taskInstanceId: 'LIVE-I' },
+      cumulativeHistory: { eventCount: 0, lifecycles: [] },
+    });
+    expect(list[1]).toMatchObject({
+      taskId: 'T1',
+      currentLifecycle: { taskDefinitionExists: false, taskInstanceId: null, currentCycleStatus: null },
+      cumulativeHistory: { eventCount: 1 },
+    });
+  });
+
+  it('builds deleted-lifecycle history detail with grouped cloned events', async () => {
+    await seedAssignment({ assignmentId: 'A1', eventSequence: 1, source: 'ADMIN' });
+
+    await expect(queries().getTaskHistoryDetail(
+      { taskId: 'T1', taskInstanceId: 'I1' },
+      '2026-08-10T00:00:00.000Z',
+    )).resolves.toMatchObject({
+      taskId: 'T1',
+      requestedTaskInstanceId: 'I1',
+      currentLifecycle: { taskDefinitionExists: false, taskInstanceId: null, currentCycleStatus: null },
+      cumulativeHistory: {
+        eventCount: 1,
+        lifecycles: [{
+          taskInstanceId: 'I1', isCurrentLifecycle: false, eventCount: 1,
+          events: [expect.objectContaining({ eventType: 'ASSIGNMENT', eventId: 'A1' })],
+        }],
+      },
+    });
   });
 
   it('filters task history by exact lifecycle instance ID', async () => {
