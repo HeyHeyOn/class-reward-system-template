@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
 import {
+  assertStudentAdminDeactivateStateRows,
   createDatabaseStudentCommands,
   createStudentAdminAdjustmentId,
   createStudentAdminLedgerOperationId,
@@ -795,6 +796,353 @@ describe('PostgreSQL student administration commands', () => {
       status: 'ACTIVE', version: '2', deleted_at: null,
     })]);
     expect(state.accounts).toEqual([{ student_id: 'S001', balance: '100', version: '1' }]);
+    expect(state.operations).toHaveLength(0);
+    expect(state.audits).toHaveLength(0);
+  });
+
+  it('atomically batch-updates students in stable ID order and emits only nonzero balance ledgers', async () => {
+    await seedStudent({ studentId: 'S001', name: '첫째', balance: 100 });
+    await seedStudent({ studentId: 'S002', name: '둘째', balance: 200 });
+
+    const result = await commands().updateBatch({
+      operationId: 'student-update-batch-op-001',
+      students: [
+        {
+          studentId: 'S002', expectedStudentVersion: 1, expectedAccountVersion: 1,
+          name: '둘째 수정', balance: 200, status: 'INACTIVE',
+        },
+        {
+          studentId: 'S001', expectedStudentVersion: 1, expectedAccountVersion: 1,
+          name: '첫째 수정', balance: 150, status: 'ACTIVE',
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      operationId: 'student-update-batch-op-001',
+      action: 'UPDATE',
+      students: [
+        expect.objectContaining({
+          studentId: 'S001', balanceBefore: 100, balanceAfter: 150,
+          studentVersionAfter: 2, accountVersionAfter: 2,
+          transactionId: createStudentAdminTransactionId('student-update-batch-op-001', 'S001'),
+        }),
+        expect.objectContaining({
+          studentId: 'S002', balanceBefore: 200, balanceAfter: 200,
+          studentVersionAfter: 2, accountVersionAfter: 2, transactionId: null,
+        }),
+      ],
+    });
+    const state = await snapshot();
+    expect(state.students).toEqual([
+      expect.objectContaining({ student_id: 'S001', name: '첫째 수정', status: 'ACTIVE', version: '2' }),
+      expect.objectContaining({ student_id: 'S002', name: '둘째 수정', status: 'INACTIVE', version: '2' }),
+    ]);
+    expect(state.accounts).toEqual([
+      { student_id: 'S001', balance: '150', version: '2' },
+      { student_id: 'S002', balance: '200', version: '2' },
+    ]);
+    expect(state.transactions).toHaveLength(1);
+    expect(state.adjustments).toHaveLength(1);
+    expect(state.operations).toHaveLength(1);
+    expect(state.audits).toEqual([expect.objectContaining({
+      redacted_details: expect.objectContaining({ action: 'UPDATE', changedStudentCount: 2, ledgerCount: 1 }),
+    })]);
+  });
+
+  it('exactly replays a canonicalized student update batch without duplicate mutations', async () => {
+    await seedStudent({ studentId: 'S001', name: '첫째', balance: 100 });
+    await seedStudent({ studentId: 'S002', name: '둘째', balance: 200 });
+    const input = {
+      operationId: 'student-update-batch-replay-op',
+      students: [
+        {
+          studentId: 'S002', expectedStudentVersion: 1, expectedAccountVersion: 1,
+          name: '둘째 수정', balance: 200, status: 'INACTIVE' as const,
+        },
+        {
+          studentId: 'S001', expectedStudentVersion: 1, expectedAccountVersion: 1,
+          name: '첫째 수정', balance: 150, status: 'ACTIVE' as const,
+        },
+      ],
+    };
+
+    const first = await commands().updateBatch(input);
+    const second = await commands({ now: () => new Date('2026-08-30T00:00:00.000Z') }).updateBatch(input);
+
+    expect(second).toEqual(first);
+    const state = await snapshot();
+    expect(state.students).toEqual([
+      expect.objectContaining({ student_id: 'S001', version: '2' }),
+      expect.objectContaining({ student_id: 'S002', version: '2' }),
+    ]);
+    expect(state.accounts).toEqual([
+      expect.objectContaining({ student_id: 'S001', version: '2' }),
+      expect.objectContaining({ student_id: 'S002', version: '2' }),
+    ]);
+    expect(state.transactions).toHaveLength(1);
+    expect(state.adjustments).toHaveLength(1);
+    expect(state.operations).toHaveLength(1);
+    expect(state.audits).toHaveLength(1);
+  });
+
+  it('ignores an unexpected entry-level operation ID in favor of the update batch operation ID', async () => {
+    await seedStudent({ studentId: 'S001', name: '첫째', balance: 100 });
+    const student = {
+      operationId: 'malicious-entry-operation',
+      studentId: 'S001', expectedStudentVersion: 1, expectedAccountVersion: 1,
+      name: '첫째 수정', balance: 150, status: 'ACTIVE' as const,
+    };
+    const input = {
+      operationId: 'student-update-batch-outer-op',
+      students: [student],
+    };
+
+    const first = await commands().updateBatch(input);
+    await expect(commands().updateBatch(input)).resolves.toEqual(first);
+    expect(first.students[0].transactionId)
+      .toBe(createStudentAdminTransactionId(input.operationId, student.studentId));
+  });
+
+  it('rejects update batches above the shared maximum before opening a transaction', async () => {
+    const student = {
+      studentId: 'S001', expectedStudentVersion: 1, expectedAccountVersion: 1,
+      name: '수정', balance: 100, status: 'ACTIVE' as const,
+    };
+    await expect(commands().updateBatch({
+      operationId: 'student-update-batch-at-limit-op',
+      students: Array.from({ length: 100 }, () => student),
+    })).rejects.toThrow(/duplicate student IDs/i);
+    await expect(commands().updateBatch({
+      operationId: 'student-update-batch-over-limit-op',
+      students: Array.from({ length: 101 }, () => student),
+    })).rejects.toThrow(/at most 100 students/i);
+    expect((await snapshot()).operations).toHaveLength(0);
+  });
+
+  it('rejects duplicate student IDs before starting an update batch operation', async () => {
+    await seedStudent({ studentId: 'S001', name: '첫째', balance: 100 });
+    const student = {
+      studentId: 'S001', expectedStudentVersion: 1, expectedAccountVersion: 1,
+      name: '수정', balance: 100, status: 'ACTIVE' as const,
+    };
+
+    await expect(commands().updateBatch({
+      operationId: 'student-update-batch-duplicate-op',
+      students: [student, student],
+    })).rejects.toThrow(/duplicate student IDs/i);
+
+    const state = await snapshot();
+    expect(state.operations).toHaveLength(0);
+    expect(state.students).toEqual([expect.objectContaining({ name: '첫째', version: '1' })]);
+  });
+
+  it('rolls back an entire update batch when a later account version is stale', async () => {
+    await seedStudent({ studentId: 'S001', name: '첫째', balance: 100 });
+    await seedStudent({ studentId: 'S002', name: '둘째', balance: 200 });
+    await harness.database.query(
+      `UPDATE accounts SET balance=250, version=2 WHERE tenant_id=$1 AND student_id='S002'`,
+      [harness.tenantOneId],
+    );
+
+    await expect(commands().updateBatch({
+      operationId: 'student-update-batch-stale-op',
+      students: [
+        {
+          studentId: 'S001', expectedStudentVersion: 1, expectedAccountVersion: 1,
+          name: '첫째 수정', balance: 150, status: 'ACTIVE',
+        },
+        {
+          studentId: 'S002', expectedStudentVersion: 1, expectedAccountVersion: 1,
+          name: '둘째 수정', balance: 300, status: 'ACTIVE',
+        },
+      ],
+    })).rejects.toThrow(/stale version/i);
+
+    const state = await snapshot();
+    expect(state.students).toEqual([
+      expect.objectContaining({ student_id: 'S001', name: '첫째', version: '1' }),
+      expect.objectContaining({ student_id: 'S002', name: '둘째', version: '1' }),
+    ]);
+    expect(state.accounts).toEqual([
+      { student_id: 'S001', balance: '100', version: '1' },
+      { student_id: 'S002', balance: '250', version: '2' },
+    ]);
+    expect(state.operations).toHaveLength(0);
+    expect(state.transactions).toHaveLength(0);
+    expect(state.audits).toHaveLength(0);
+  });
+
+  it('atomically batch-deactivates students in stable ID order without balance ledgers', async () => {
+    await seedStudent({ studentId: 'S001', name: '첫째', balance: 100 });
+    await seedStudent({ studentId: 'S002', name: '둘째', balance: 200 });
+
+    const result = await commands().deactivateBatch({
+      operationId: 'student-deactivate-batch-op-001',
+      students: [
+        { studentId: 'S002', expectedStudentVersion: 1 },
+        { studentId: 'S001', expectedStudentVersion: 1 },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      operationId: 'student-deactivate-batch-op-001',
+      action: 'DEACTIVATE',
+      students: [
+        expect.objectContaining({
+          studentId: 'S001', status: 'INACTIVE', studentVersionAfter: 2,
+          accountVersionAfter: 1, balanceAfter: 100, transactionId: null,
+        }),
+        expect.objectContaining({
+          studentId: 'S002', status: 'INACTIVE', studentVersionAfter: 2,
+          accountVersionAfter: 1, balanceAfter: 200, transactionId: null,
+        }),
+      ],
+    });
+    const state = await snapshot();
+    expect(state.students).toEqual([
+      expect.objectContaining({ student_id: 'S001', status: 'INACTIVE', version: '2', deleted_at: NOW }),
+      expect.objectContaining({ student_id: 'S002', status: 'INACTIVE', version: '2', deleted_at: NOW }),
+    ]);
+    expect(state.accounts).toEqual([
+      { student_id: 'S001', balance: '100', version: '1' },
+      { student_id: 'S002', balance: '200', version: '1' },
+    ]);
+    expect(state.transactions).toHaveLength(0);
+    expect(state.operations).toHaveLength(1);
+    expect(state.audits).toEqual([expect.objectContaining({
+      redacted_details: expect.objectContaining({ action: 'DEACTIVATE', changedStudentCount: 2, ledgerCount: 0 }),
+    })]);
+  });
+
+  it('exactly replays a canonicalized student deactivation batch', async () => {
+    await seedStudent({ studentId: 'S001', name: '첫째', balance: 100 });
+    await seedStudent({ studentId: 'S002', name: '둘째', balance: 200 });
+    const input = {
+      operationId: 'student-deactivate-batch-replay-op',
+      students: [
+        { studentId: 'S002', expectedStudentVersion: 1 },
+        { studentId: 'S001', expectedStudentVersion: 1 },
+      ],
+    };
+
+    const first = await commands().deactivateBatch(input);
+    const second = await commands({ now: () => new Date('2026-08-30T00:00:00.000Z') })
+      .deactivateBatch(input);
+
+    expect(second).toEqual(first);
+    const state = await snapshot();
+    expect(state.students).toEqual([
+      expect.objectContaining({ student_id: 'S001', version: '2', deleted_at: NOW }),
+      expect.objectContaining({ student_id: 'S002', version: '2', deleted_at: NOW }),
+    ]);
+    expect(state.operations).toHaveLength(1);
+    expect(state.audits).toHaveLength(1);
+    expect(state.transactions).toHaveLength(0);
+  });
+
+  it('ignores an unexpected entry-level operation ID in favor of the deactivate batch operation ID', async () => {
+    await seedStudent({ studentId: 'S001', name: '첫째', balance: 100 });
+    const student = {
+      operationId: 'malicious-deactivate-entry-operation',
+      studentId: 'S001',
+      expectedStudentVersion: 1,
+    };
+    const input = {
+      operationId: 'student-deactivate-batch-outer-op',
+      students: [student],
+    };
+
+    const first = await commands().deactivateBatch(input);
+    await expect(commands().deactivateBatch(input)).resolves.toEqual(first);
+    expect(first.operationId).toBe(input.operationId);
+  });
+
+  it('matches deactivation replay rows by student ID instead of database row order', () => {
+    const result = {
+      ok: true as const,
+      operationId: 'student-deactivate-collation-op',
+      action: 'DEACTIVATE' as const,
+      completedAt: NOW.toISOString(),
+      students: [
+        {
+          studentId: 'Z', name: '첫째', balance: 100, status: 'INACTIVE' as const,
+          studentVersionBefore: 1, studentVersionAfter: 2,
+          accountVersionBefore: 1, accountVersionAfter: 1,
+          balanceBefore: 100, balanceAfter: 100, transactionId: null,
+        },
+        {
+          studentId: 'é', name: '둘째', balance: 200, status: 'INACTIVE' as const,
+          studentVersionBefore: 1, studentVersionAfter: 2,
+          accountVersionBefore: 1, accountVersionAfter: 1,
+          balanceBefore: 200, balanceAfter: 200, transactionId: null,
+        },
+      ],
+    };
+    const databaseRows = [
+      {
+        student_id: 'é', name: '둘째', status: 'INACTIVE', student_version: '2',
+        deleted_at: NOW, balance: '200', account_version: '1',
+      },
+      {
+        student_id: 'Z', name: '첫째', status: 'INACTIVE', student_version: '2',
+        deleted_at: NOW, balance: '100', account_version: '1',
+      },
+    ];
+
+    expect(() => assertStudentAdminDeactivateStateRows(databaseRows, result)).not.toThrow();
+  });
+
+  it('rejects deactivate batches above the shared maximum before opening a transaction', async () => {
+    const student = { studentId: 'S001', expectedStudentVersion: 1 };
+    await expect(commands().deactivateBatch({
+      operationId: 'student-deactivate-batch-at-limit-op',
+      students: Array.from({ length: 100 }, () => student),
+    })).rejects.toThrow(/duplicate student IDs/i);
+    await expect(commands().deactivateBatch({
+      operationId: 'student-deactivate-batch-over-limit-op',
+      students: Array.from({ length: 101 }, () => student),
+    })).rejects.toThrow(/at most 100 students/i);
+    expect((await snapshot()).operations).toHaveLength(0);
+  });
+
+  it('rejects duplicate student IDs before starting a deactivate batch operation', async () => {
+    await seedStudent({ studentId: 'S001', name: '첫째', balance: 100 });
+    const student = { studentId: 'S001', expectedStudentVersion: 1 };
+
+    await expect(commands().deactivateBatch({
+      operationId: 'student-deactivate-batch-duplicate-op',
+      students: [student, student],
+    })).rejects.toThrow(/duplicate student IDs/i);
+
+    const state = await snapshot();
+    expect(state.operations).toHaveLength(0);
+    expect(state.students).toEqual([expect.objectContaining({ status: 'ACTIVE', version: '1' })]);
+  });
+
+  it('rolls back an entire deactivate batch when a later student version is stale', async () => {
+    await seedStudent({ studentId: 'S001', name: '첫째', balance: 100 });
+    await seedStudent({ studentId: 'S002', name: '둘째', balance: 200 });
+    await harness.database.query(
+      `UPDATE students SET version=2 WHERE tenant_id=$1 AND student_id='S002'`,
+      [harness.tenantOneId],
+    );
+
+    await expect(commands().deactivateBatch({
+      operationId: 'student-deactivate-batch-stale-op',
+      students: [
+        { studentId: 'S001', expectedStudentVersion: 1 },
+        { studentId: 'S002', expectedStudentVersion: 1 },
+      ],
+    })).rejects.toThrow(/stale version/i);
+
+    const state = await snapshot();
+    expect(state.students).toEqual([
+      expect.objectContaining({ student_id: 'S001', status: 'ACTIVE', version: '1', deleted_at: null }),
+      expect.objectContaining({ student_id: 'S002', status: 'ACTIVE', version: '2', deleted_at: null }),
+    ]);
     expect(state.operations).toHaveLength(0);
     expect(state.audits).toHaveLength(0);
   });
