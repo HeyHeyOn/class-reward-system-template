@@ -136,6 +136,35 @@ describe('tenant transaction boundary', () => {
     },
   );
 
+  it('starts an explicit repeatable-read snapshot before setting tenant context', async () => {
+    const statements: string[] = [];
+    const connect = vi.fn(async () => ({
+      query: async (text: string) => {
+        statements.push(text);
+        return { rows: [], rowCount: null } as never;
+      },
+      release: vi.fn(),
+    }));
+    const run = createTenantTransactionRunner({
+      pool: { connect },
+      createDatabase: () => ({}) as never,
+    }, { isolationLevel: 'REPEATABLE READ' });
+
+    await expect(run(TENANT_ONE, async () => 'snapshot')).resolves.toBe('snapshot');
+    expect(statements.slice(0, 2)).toEqual([
+      'BEGIN ISOLATION LEVEL REPEATABLE READ',
+      `SELECT set_config('app.tenant_id', $1, true)`,
+    ]);
+  });
+
+  it('rejects unsupported isolation levels before acquiring a connection', () => {
+    const connect = vi.fn();
+    expect(() => createTenantTransactionRunner({
+      pool: { connect },
+    }, { isolationLevel: 'READ UNCOMMITTED' as 'REPEATABLE READ' })).toThrow(/isolation/i);
+    expect(connect).not.toHaveBeenCalled();
+  });
+
   it('allows same-tenant reads and writes while hiding and rejecting cross-tenant rows', async () => {
     const run = harness.runTenantTransaction;
 

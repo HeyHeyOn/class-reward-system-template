@@ -37,6 +37,7 @@ export type TenantTransactionDependencies = {
 export type TenantTransactionOptions = {
   maxAttempts?: number;
   retryDelayMs?: number;
+  isolationLevel?: 'READ COMMITTED' | 'REPEATABLE READ';
 };
 
 export class TenantTransactionError extends Error {
@@ -87,6 +88,7 @@ export function createTenantTransactionRunner(
   const sleep = dependencies.sleep ?? defaultSleep;
   const maxAttempts = defaults.maxAttempts ?? 3;
   const retryDelayMs = defaults.retryDelayMs ?? 10;
+  const isolationLevel = defaults.isolationLevel ?? 'READ COMMITTED';
   const reportCleanupError = (error: unknown) => {
     try {
       dependencies.onCleanupError?.(error);
@@ -100,6 +102,9 @@ export function createTenantTransactionRunner(
   }
   if (!Number.isFinite(retryDelayMs) || retryDelayMs < 0) {
     throw new Error('retryDelayMs must be a nonnegative number.');
+  }
+  if (isolationLevel !== 'READ COMMITTED' && isolationLevel !== 'REPEATABLE READ') {
+    throw new Error('Unsupported tenant transaction isolation level.');
   }
   const maximumDelay = retryDelayMs * Math.max(1, maxAttempts - 1);
   if (retryDelayMs > MAX_TOTAL_RETRY_DELAY_MS || maximumDelay > MAX_TOTAL_RETRY_DELAY_MS) {
@@ -119,7 +124,9 @@ export function createTenantTransactionRunner(
       let committed = false;
       let discardConnection = false;
       try {
-        await connection.query('BEGIN');
+        await connection.query(isolationLevel === 'READ COMMITTED'
+          ? 'BEGIN'
+          : 'BEGIN ISOLATION LEVEL REPEATABLE READ');
         began = true;
         await connection.query(
           `SELECT set_config('app.tenant_id', $1, true)`,
@@ -176,10 +183,17 @@ export function createTenantTransactionRunner(
   };
 }
 
-const productionRunner = createTenantTransactionRunner({
+const productionDependencies: TenantTransactionDependencies = {
   get pool() {
     return getDatabaseClient().pool as Pool;
   },
-});
+};
+
+const productionRunner = createTenantTransactionRunner(productionDependencies);
+const productionSnapshotRunner = createTenantTransactionRunner(
+  productionDependencies,
+  { isolationLevel: 'REPEATABLE READ' },
+);
 
 export const withTenantTransaction = productionRunner;
+export const withTenantSnapshot = productionSnapshotRunner;
