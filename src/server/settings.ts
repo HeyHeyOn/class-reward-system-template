@@ -10,7 +10,7 @@ import { isValidNamedTimeZone } from '@/domain/timeZone';
 
 export type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'black' | 'navy';
 
-export type AppSettings = {
+export type LegacyAppSettings = {
   spreadsheetId: string;
   currencyUnit: string;
   appTitle: string;
@@ -25,6 +25,19 @@ export type AppSettings = {
   source: 'sheet' | 'env' | 'unset';
   adminPasswordConfigured?: boolean;
 };
+
+export type DatabaseAppSettings = {
+  currencyUnit: string;
+  className: string;
+  googleSheetsUrl: string;
+  googleSheetsId: string;
+  googleSheetsModifiedTime: string;
+  padletApiKey: string;
+  source: 'database';
+  path: string;
+};
+
+export type AppSettings = LegacyAppSettings | DatabaseAppSettings;
 
 type SettingsEnv = { [key: string]: string | undefined; GOOGLE_SHEET_ID?: string };
 
@@ -115,7 +128,7 @@ export function getEnvSpreadsheetId(env: SettingsEnv = process.env): string {
   return env.GOOGLE_SHEET_ID?.trim() ?? '';
 }
 
-export async function getAppSettings(options: SettingsOptions = {}): Promise<AppSettings> {
+export async function getAppSettings(options: SettingsOptions = {}): Promise<LegacyAppSettings> {
   const envSpreadsheetId = getEnvSpreadsheetId(options.env ?? process.env);
 
   if (!envSpreadsheetId) {
@@ -151,7 +164,7 @@ export async function getAppSettings(options: SettingsOptions = {}): Promise<App
   return defaultAppSettings(envSpreadsheetId, 'env');
 }
 
-export async function saveAppSettings(options: SaveSettingsOptions): Promise<AppSettings> {
+export async function saveAppSettings(options: SaveSettingsOptions): Promise<LegacyAppSettings> {
   const configuredSpreadsheetId = getEnvSpreadsheetId(options.env ?? process.env);
   const validation = validateSpreadsheetId(options.spreadsheetIdOrUrl);
 
@@ -272,7 +285,10 @@ export function normalizeSystemName(value: unknown): string {
   return trimmed ? trimmed.slice(0, 30) : DEFAULT_SYSTEM_NAME;
 }
 
-function defaultAppSettings(spreadsheetId: string, source: AppSettings['source']): AppSettings {
+function defaultAppSettings(
+  spreadsheetId: string,
+  source: LegacyAppSettings['source'],
+): LegacyAppSettings {
   return {
     spreadsheetId,
     currencyUnit: DEFAULT_CURRENCY_UNIT,
