@@ -13,6 +13,7 @@ import {
 } from '@/server/db/testing/pglite';
 
 import { appendOperationAudit } from './operationAudit';
+import { createDatabaseTransactionCommands } from './transactionCommands';
 
 vi.mock('server-only', () => ({}));
 
@@ -591,6 +592,216 @@ describe('PostgreSQL catalog administration commands', () => {
       expectedProductVersion: Number.MAX_SAFE_INTEGER,
       name: '수정', price: 100, stock: 5, isActive: true, sortOrder: 0,
     })).rejects.toThrow(/successor|safe integer/i);
+  });
+
+  it('deactivates a product as a versioned tombstone without changing stock or creating a ledger', async () => {
+    await seedProduct({ productId: 'P020', name: '삭제 상품', price: 300, stock: 5 });
+    const operationId = 'product-deactivate-op-001';
+    const result = await commands().deactivate({
+      operationId,
+      productId: 'P020',
+      expectedProductVersion: 1,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      operationId,
+      action: 'DEACTIVATE',
+      completedAt: NOW.toISOString(),
+      products: [{
+        productId: 'P020', name: '삭제 상품', price: 300, stock: 5, isActive: false,
+        imageUrl: null, category: null, sortOrder: 0, deletedAt: NOW.toISOString(),
+        productVersionBefore: 1, productVersionAfter: 2,
+        stockBefore: 5, stockAfter: 5, inventoryEventId: null,
+      }],
+    });
+    const state = await snapshot();
+    expect(state.products).toEqual([expect.objectContaining({
+      product_id: 'P020', name: '삭제 상품', price: '300', stock: '5', is_active: false,
+      version: '2', deleted_at: NOW,
+    })]);
+    expect(state.inventory).toHaveLength(0);
+    expect(state.operations).toEqual([expect.objectContaining({
+      operation_id: operationId, operation_kind: 'PRODUCT_ADMIN', status: 'SUCCEEDED',
+      result_snapshot: result,
+    })]);
+    expect(state.audits).toEqual([expect.objectContaining({
+      operation_id: operationId,
+      redacted_details: expect.objectContaining({ action: 'DEACTIVATE', ledgerCount: 0 }),
+    })]);
+  });
+
+  it('exactly replays a product deactivation from frozen tombstone evidence', async () => {
+    await seedProduct({ productId: 'P020', name: ' 삭제 상품 ', price: 300, stock: 5 });
+    const input = {
+      operationId: 'product-deactivate-replay-op', productId: 'P020', expectedProductVersion: 1,
+    };
+    const first = await commands().deactivate(input);
+    const second = await commands({ now: () => new Date('2026-08-30T00:00:00.000Z') }).deactivate(input);
+    expect(second).toEqual(first);
+    expect(second.products[0].name).toBe(' 삭제 상품 ');
+    const state = await snapshot();
+    expect(state.products).toEqual([expect.objectContaining({
+      product_id: 'P020', is_active: false, version: '2', deleted_at: NOW,
+    })]);
+    expect(state.inventory).toHaveLength(0);
+    expect(state.operations).toHaveLength(1);
+    expect(state.audits).toHaveLength(1);
+  });
+
+  it('rejects stale or already tombstoned product deactivation without partial evidence', async () => {
+    await seedProduct({ productId: 'P020', stock: 5, version: 2 });
+    await expect(commands().deactivate({
+      operationId: 'product-deactivate-stale-op', productId: 'P020', expectedProductVersion: 1,
+    })).rejects.toThrow(/stale/i);
+    let state = await snapshot();
+    expect(state.products).toEqual([expect.objectContaining({ version: '2', deleted_at: null })]);
+    expect(state.operations).toHaveLength(0);
+    expect(state.audits).toHaveLength(0);
+
+    const first = await commands().deactivate({
+      operationId: 'product-deactivate-first-op', productId: 'P020', expectedProductVersion: 2,
+    });
+    await expect(commands().deactivate({
+      operationId: 'product-deactivate-second-op', productId: 'P020', expectedProductVersion: 3,
+    })).rejects.toThrow(/already tombstoned/i);
+    state = await snapshot();
+    expect(state.products).toEqual([expect.objectContaining({
+      version: String(first.products[0].productVersionAfter), deleted_at: NOW,
+    })]);
+    expect(state.operations).toHaveLength(1);
+    expect(state.audits).toHaveLength(1);
+  });
+
+  it('fails closed when deactivation replay finds changed tombstone state or unexpected ledger evidence', async () => {
+    await seedProduct({ productId: 'P020', stock: 5 });
+    const input = {
+      operationId: 'product-deactivate-corrupt-op', productId: 'P020', expectedProductVersion: 1,
+    };
+    await commands().deactivate(input);
+    await harness.database.query(
+      `INSERT INTO inventory_ledger
+        (tenant_id, inventory_event_id, product_id, transaction_id, quantity_delta,
+         stock_before, stock_after, reason, operation_id, operation_hash, occurred_at)
+       VALUES ($1, $2, 'P020', NULL, 0, 5, 5, 'ADMIN_ADJUSTMENT',
+               'unrelated-operation', 'unrelated-hash', $3)`,
+      [harness.tenantOneId, createProductAdminInventoryEventId(input.operationId, 'P020'), NOW],
+    );
+    await expect(commands().deactivate(input)).rejects.toThrow(/ledger integrity/i);
+
+    await harness.database.query(
+      `UPDATE products SET name='tampered tombstone'
+       WHERE tenant_id=$1 AND product_id='P020'`,
+      [harness.tenantOneId],
+    );
+    await expect(commands().deactivate(input)).rejects.toThrow(/tombstone.*integrity/i);
+  });
+
+  it('replays deactivation after a legitimate checkout cancellation restores tombstoned stock', async () => {
+    await seedProduct({ productId: 'P020', name: '삭제 상품', price: 300, stock: 5 });
+    await harness.database.query(
+      `INSERT INTO students (tenant_id, student_id, name, status)
+       VALUES ($1, 'S020', '학생', 'ACTIVE')`,
+      [harness.tenantOneId],
+    );
+    await harness.database.query(
+      `INSERT INTO accounts (tenant_id, student_id, balance)
+       VALUES ($1, 'S020', 700)`,
+      [harness.tenantOneId],
+    );
+    await harness.database.query(
+      `INSERT INTO transactions
+        (tenant_id, transaction_id, occurred_at, student_id, student_name_snapshot, kind,
+         legacy_total_amount, balance_delta, balance_before, balance_after, operator_snapshot,
+         legacy_status_snapshot, operation_id, operation_hash, schema_version)
+       VALUES ($1, 'checkout:before-delete', $3, 'S020', '학생',
+               'CHECKOUT', 300, -300, 1000, 700, 'kiosk', 'COMPLETED',
+               'checkout-before-delete-op', $2, 1)`,
+      [harness.tenantOneId, 'c'.repeat(64), NOW],
+    );
+    await harness.database.query(
+      `INSERT INTO transaction_items
+        (tenant_id, transaction_id, line_number, product_id_snapshot, current_product_id,
+         product_name_snapshot, quantity, unit_price_snapshot, subtotal_snapshot,
+         regular_unit_price, regular_total, total_quantity, paid_quantity, free_quantity,
+         final_total, total_discount, adjustments_snapshot, applied_promotions_snapshot)
+       VALUES ($1, 'checkout:before-delete', 1, 'P020', 'P020', '삭제 상품',
+               1, 300, 300, 300, 300, 1, 1, 0, 300, 0, '[]', '[]')`,
+      [harness.tenantOneId],
+    );
+    await harness.database.query(
+      `INSERT INTO inventory_ledger
+        (tenant_id, inventory_event_id, product_id, transaction_id, quantity_delta,
+         stock_before, stock_after, reason, operation_id, operation_hash, occurred_at)
+       VALUES ($1, '40000000-0000-4000-8000-000000000020', 'P020',
+               'checkout:before-delete', -1, 6, 5, 'CHECKOUT', NULL, NULL, $2)`,
+      [harness.tenantOneId, NOW],
+    );
+    const input = {
+      operationId: 'product-deactivate-before-cancel-op', productId: 'P020', expectedProductVersion: 1,
+    };
+    const first = await commands().deactivate(input);
+    const transactionCommandsAt = (timestamp: Date) => createDatabaseTransactionCommands({
+      tenantId: harness.tenantOneId,
+      runTenantTransaction: harness.runTenantTransaction,
+      now: () => timestamp,
+    });
+    await expect(transactionCommandsAt(NOW).cancel({
+      operationId: '30000000-0000-4000-8000-000000000019',
+      transactionId: 'checkout:before-delete',
+    })).rejects.toMatchObject({ code: 'MANUAL_RECONCILIATION_REQUIRED' });
+    await transactionCommandsAt(new Date('2026-08-29T14:00:00.000Z')).cancel({
+      operationId: '30000000-0000-4000-8000-000000000020',
+      transactionId: 'checkout:before-delete',
+    });
+    await harness.database.query(
+      `INSERT INTO transactions
+        (tenant_id, transaction_id, occurred_at, student_id, student_name_snapshot, kind,
+         legacy_total_amount, balance_delta, balance_before, balance_after, operator_snapshot,
+         legacy_status_snapshot, operation_id, operation_hash, schema_version)
+       VALUES ($1, 'checkout:second-before-delete', '2026-08-29T12:30:00Z', 'S020', '학생',
+               'CHECKOUT', 300, -300, 1300, 1000, 'kiosk', 'COMPLETED',
+               'checkout-second-before-delete-op', $2, 1)`,
+      [harness.tenantOneId, 'd'.repeat(64)],
+    );
+    await harness.database.query(
+      `INSERT INTO transaction_items
+        (tenant_id, transaction_id, line_number, product_id_snapshot, current_product_id,
+         product_name_snapshot, quantity, unit_price_snapshot, subtotal_snapshot,
+         regular_unit_price, regular_total, total_quantity, paid_quantity, free_quantity,
+         final_total, total_discount, adjustments_snapshot, applied_promotions_snapshot)
+       VALUES ($1, 'checkout:second-before-delete', 1, 'P020', 'P020', '삭제 상품',
+               1, 300, 300, 300, 300, 1, 1, 0, 300, 0, '[]', '[]')`,
+      [harness.tenantOneId],
+    );
+    await expect(transactionCommandsAt(new Date('2026-08-29T14:00:00.000Z')).cancel({
+      operationId: '30000000-0000-4000-8000-000000000021',
+      transactionId: 'checkout:second-before-delete',
+    })).rejects.toMatchObject({ code: 'MANUAL_RECONCILIATION_REQUIRED' });
+    await transactionCommandsAt(new Date('2026-08-29T15:00:00.000Z')).cancel({
+      operationId: '30000000-0000-4000-8000-000000000022',
+      transactionId: 'checkout:second-before-delete',
+    });
+
+    await expect(commands().deactivate(input)).resolves.toEqual(first);
+    const state = await snapshot();
+    expect(state.products).toEqual([expect.objectContaining({
+      product_id: 'P020', stock: '7', version: '4', is_active: false, deleted_at: NOW,
+    })]);
+  });
+
+  it('fails closed when the frozen tombstone updated timestamp changes', async () => {
+    await seedProduct({ productId: 'P020', stock: 5 });
+    const input = {
+      operationId: 'product-deactivate-updated-at-op', productId: 'P020', expectedProductVersion: 1,
+    };
+    await commands().deactivate(input);
+    await harness.database.query(
+      `UPDATE products SET updated_at=$3
+       WHERE tenant_id=$1 AND product_id=$2`,
+      [harness.tenantOneId, 'P020', new Date('2026-08-30T00:00:00.000Z')],
+    );
+    await expect(commands().deactivate(input)).rejects.toThrow(/tombstone.*integrity/i);
   });
 
   it('allows the same product and operation IDs independently in another tenant', async () => {

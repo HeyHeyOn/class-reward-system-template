@@ -22,6 +22,7 @@ const MIGRATIONS = [
   '0005_mutable_entity_versions.sql',
   '0006_immutable_ledger_guards.sql',
   '0007_inventory_ledger_guard.sql',
+  '0008_product_tombstone_invariant.sql',
 ] as const;
 
 type PgQueryConfig = {

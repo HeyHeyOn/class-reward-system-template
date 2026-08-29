@@ -129,6 +129,8 @@ type ProductRow = {
   product_id: string;
   name: string;
   stock: string;
+  deleted_at: Date | string | null;
+  updated_at: Date | string;
 };
 
 type TaskCompletionRow = {
@@ -267,6 +269,18 @@ export function createDatabaseTransactionCommands(
           const product = productById.get(item.productId);
           if (!product || product.name !== item.productName) {
             throw new TransactionCancellationError('MANUAL_RECONCILIATION_REQUIRED');
+          }
+          if (product.deleted_at !== null) {
+            const deletedAt = product.deleted_at instanceof Date
+              ? product.deleted_at
+              : new Date(product.deleted_at);
+            const updatedAt = product.updated_at instanceof Date
+              ? product.updated_at
+              : new Date(product.updated_at);
+            if (!Number.isFinite(deletedAt.getTime()) || !Number.isFinite(updatedAt.getTime())
+              || now.getTime() <= deletedAt.getTime() || now.getTime() <= updatedAt.getTime()) {
+              throw new TransactionCancellationError('MANUAL_RECONCILIATION_REQUIRED');
+            }
           }
           const before = safeInteger(product.stock, `stock for ${item.productId}`);
           const after = checkedSum(before, item.quantity, `stock for ${item.productId}`);
@@ -642,7 +656,7 @@ async function lockProducts(
   productIds: string[],
 ): Promise<ProductRow[]> {
   const result = await tx.execute(sql`
-    SELECT product_id, name, stock::text AS stock
+    SELECT product_id, name, stock::text AS stock, deleted_at, updated_at
     FROM products
     WHERE tenant_id=${tenantId}
       AND product_id IN (${sql.join(productIds.map((productId) => sql`${productId}`), sql`, `)})

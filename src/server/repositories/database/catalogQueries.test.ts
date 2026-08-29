@@ -212,7 +212,7 @@ describe('database catalog queries', () => {
       imageUrl: null, category: null, sortOrder: 0,
     });
     await harness.database.query(
-      'UPDATE products SET deleted_at = created_at WHERE tenant_id = $1 AND product_id = $2',
+      'UPDATE products SET is_active = false, deleted_at = created_at WHERE tenant_id = $1 AND product_id = $2',
       [harness.tenantOneId, 'P4'],
     );
 

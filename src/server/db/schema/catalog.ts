@@ -32,6 +32,7 @@ export const products = pgTable('products', {
   check('products_stock_check', sql`${table.stock} BETWEEN 0 AND 9007199254740991`),
   check('products_version_check', sql`${table.version} BETWEEN 1 AND 9007199254740991`),
   check('products_deleted_chronology_check', sql`${table.deletedAt} IS NULL OR ${table.deletedAt} >= ${table.createdAt}`),
+  check('products_deleted_status_check', sql`${table.deletedAt} IS NULL OR NOT ${table.isActive}`),
   index('products_active_sort_idx').on(table.tenantId, table.sortOrder, table.productId)
     .where(sql`${table.isActive} AND ${table.deletedAt} IS NULL`),
 ]);
