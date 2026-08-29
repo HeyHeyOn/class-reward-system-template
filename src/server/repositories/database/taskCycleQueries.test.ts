@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TaskCompletion, TaskSchedule } from '@/domain/types';
 import { projectTaskCycleState } from '@/domain/taskCycleState';
+import { projectTaskCycleHistoryFromSnapshot } from '@/domain/taskCycleHistory';
 import {
   createPgliteDatabaseHarness,
   type PgliteDatabaseHarness,
@@ -230,6 +231,47 @@ describe('database task cycle queries', () => {
   it('preserves the Sheets missing-task error for current cycle state', async () => {
     await expect(queries().getTaskCycleState('MISSING', '2026-08-10T00:00:00.000Z'))
       .rejects.toThrow('과제를 찾을 수 없습니다.');
+  });
+
+  it('projects assignment-first task history from the strict database ledger snapshot', async () => {
+    await seedAssignment({ assignmentId: 'A1', eventSequence: 1, source: 'ADMIN' });
+    await seedCompletion({
+      completionId: 'C1', eventSequence: 1, source: 'ADMIN',
+      completedAt: '2026-08-10T09:00:00.000Z',
+    });
+    const snapshot = await queries().loadTaskCycleLedgerSnapshot();
+
+    await expect(queries().getTaskCycleHistory({ taskId: 'T1' }))
+      .resolves.toEqual(projectTaskCycleHistoryFromSnapshot(snapshot, { taskId: 'T1' }));
+  });
+
+  it('filters task history by exact lifecycle instance ID', async () => {
+    await seedAssignment({ assignmentId: 'A1', eventSequence: 1, source: 'ADMIN' });
+    await seedCompletion({
+      completionId: 'LEGACY', eventSequence: 2, taskInstanceId: null, source: null,
+      completedAt: '2026-08-09T09:00:00.000Z',
+      status: 'LEGACY_OK', reward: 0, balanceBefore: 0, balanceAfter: 0,
+    });
+
+    await expect(queries().getTaskCycleHistory({ taskId: 'T1', taskInstanceId: 'I1' }))
+      .resolves.toEqual([
+        expect.objectContaining({ eventType: 'ASSIGNMENT', eventId: 'A1', taskInstanceId: 'I1' }),
+      ]);
+  });
+
+  it.each([
+    { taskId: ' T1' },
+    { taskInstanceId: ' T1-I' },
+    { taskId: '' },
+  ])('rejects noncanonical history filters before opening a snapshot: %o', async (filter) => {
+    let snapshotOpened = false;
+    const runTenantSnapshot: DatabaseTaskCycleQueryDependencies['runTenantSnapshot'] = <TResult>() => {
+      snapshotOpened = true;
+      return Promise.reject(new Error('unexpected snapshot')) as Promise<TResult>;
+    };
+    await expect(queries({ runTenantSnapshot }).getTaskCycleHistory(filter))
+      .rejects.toThrow(/canonical/i);
+    expect(snapshotOpened).toBe(false);
   });
 
   it('reads both ledgers in one tenant transaction and preserves event-sequence order and snapshots', async () => {

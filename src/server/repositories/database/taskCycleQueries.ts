@@ -2,6 +2,10 @@ import 'server-only';
 
 import { sql } from 'drizzle-orm';
 import { projectTaskCycleState, type TaskCycleState } from '@/domain/taskCycleState';
+import {
+  projectTaskCycleHistoryFromSnapshot,
+  type TaskCycleHistoryEvent,
+} from '@/domain/taskCycleHistory';
 import type { TaskAssignment, TaskCompletion } from '@/domain/types';
 import type { TenantTransaction } from '@/server/db/transaction';
 import { isoString, safeInteger } from './queryProjection';
@@ -72,13 +76,30 @@ export function createDatabaseTaskCycleQueries(
         },
       );
     },
+    async getTaskCycleHistory(
+      filter: { taskId?: string; taskInstanceId?: string } = {},
+    ): Promise<TaskCycleHistoryEvent[]> {
+      if (filter.taskId !== undefined) assertCanonicalTaskId(filter.taskId);
+      if (filter.taskInstanceId !== undefined) {
+        assertCanonicalIdentifier(filter.taskInstanceId, 'task instance ID');
+      }
+      return dependencies.runTenantSnapshot(
+        dependencies.tenantId,
+        async (transaction) => projectTaskCycleHistoryFromSnapshot(
+          await readLedgerSnapshot(transaction, dependencies.tenantId, 'ledger'),
+          filter,
+        ),
+      );
+    },
   };
 }
 
 function assertCanonicalTaskId(taskId: string): void {
-  if (!taskId || taskId.trim() !== taskId) {
-    throw new Error('A canonical task ID is required.');
-  }
+  assertCanonicalIdentifier(taskId, 'task ID');
+}
+
+function assertCanonicalIdentifier(value: string, label: string): void {
+  if (!value || value.trim() !== value) throw new Error(`A canonical ${label} is required.`);
 }
 
 async function readLedgerSnapshot(
