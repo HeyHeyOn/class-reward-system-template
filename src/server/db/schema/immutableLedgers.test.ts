@@ -41,6 +41,23 @@ async function seedAdjustment() {
   `);
 }
 
+async function seedInventoryLedger() {
+  await database.exec(`
+    INSERT INTO products
+      (tenant_id, product_id, name, price, stock, is_active, sort_order, created_at, updated_at)
+    VALUES
+      ('10000000-0000-4000-8000-000000000001', 'P001', 'Product', 100, 5, true, 0,
+       '2026-08-29T00:00:00Z', '2026-08-29T00:00:00Z');
+    INSERT INTO inventory_ledger
+      (tenant_id, inventory_event_id, product_id, transaction_id, quantity_delta,
+       stock_before, stock_after, reason, occurred_at)
+    VALUES
+      ('10000000-0000-4000-8000-000000000001',
+       '30000000-0000-4000-8000-000000000001', 'P001', NULL, 5, 0, 5,
+       'ADMIN_ADJUSTMENT', '2026-08-29T00:00:00Z');
+  `);
+}
+
 beforeEach(async () => {
   database = new PGlite();
   await database.waitReady;
@@ -86,5 +103,22 @@ describe('immutable ledger guard migration', () => {
         (SELECT count(*)::text FROM adjustments) AS adjustment_count
     `);
     expect(rows.rows).toEqual([{ transaction_count: '1', adjustment_count: '1' }]);
+  });
+
+  it('database-rejects inventory ledger updates and deletes', async () => {
+    const inventoryGuardSql = await migration('0007_inventory_ledger_guard.sql');
+    expect(inventoryGuardSql).not.toMatch(/^\s*(?:BEGIN|COMMIT)\s*;/im);
+    await applyBaseSchema();
+    await seedAdjustment();
+    await seedInventoryLedger();
+    await database.exec(await migration('0006_immutable_ledger_guards.sql'));
+    await database.exec(inventoryGuardSql);
+
+    await expect(database.exec(
+      "UPDATE inventory_ledger SET reason='LEGACY_IMPORT' WHERE product_id='P001'",
+    )).rejects.toThrow(/immutable ledger row in inventory_ledger/i);
+    await expect(database.exec(
+      "DELETE FROM inventory_ledger WHERE product_id='P001'",
+    )).rejects.toThrow(/immutable ledger row in inventory_ledger/i);
   });
 });

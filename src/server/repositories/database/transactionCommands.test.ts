@@ -546,11 +546,11 @@ describe('database transaction cancellation commands', () => {
 
   it('rejects stored-success or immutable-ledger drift instead of trusting the operation snapshot', async () => {
     await commands().cancel({ operationId: OPERATION_ID, transactionId: ORIGINAL_ID });
-    await harness.database.query(
+    await harness.withImmutableLedgerTampering(() => harness.database.query(
       `UPDATE inventory_ledger SET stock_after=stock_after+1, quantity_delta=quantity_delta+1
        WHERE tenant_id=$1 AND product_id='P001'`,
       [harness.tenantOneId],
-    );
+    ));
     await expect(commands().cancel({ operationId: OPERATION_ID, transactionId: ORIGINAL_ID }))
       .rejects.toThrow(/stored|ledger|snapshot|integrity/i);
   });

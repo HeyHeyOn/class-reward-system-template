@@ -21,6 +21,7 @@ const MIGRATIONS = [
   '0004_admin_operation_kinds.sql',
   '0005_mutable_entity_versions.sql',
   '0006_immutable_ledger_guards.sql',
+  '0007_inventory_ledger_guard.sql',
 ] as const;
 
 type PgQueryConfig = {
@@ -124,6 +125,7 @@ export async function createPgliteDatabaseHarness(): Promise<PgliteDatabaseHarne
         await database.exec(`
           ALTER TABLE transactions DISABLE TRIGGER transactions_immutable;
           ALTER TABLE adjustments DISABLE TRIGGER adjustments_immutable;
+          ALTER TABLE inventory_ledger DISABLE TRIGGER inventory_ledger_immutable;
         `);
         try {
           return await callback();
@@ -131,6 +133,7 @@ export async function createPgliteDatabaseHarness(): Promise<PgliteDatabaseHarne
           await database.exec(`
             ALTER TABLE transactions ENABLE TRIGGER transactions_immutable;
             ALTER TABLE adjustments ENABLE TRIGGER adjustments_immutable;
+            ALTER TABLE inventory_ledger ENABLE TRIGGER inventory_ledger_immutable;
           `);
         }
       },
