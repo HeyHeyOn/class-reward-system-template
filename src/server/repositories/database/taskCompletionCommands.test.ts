@@ -117,7 +117,7 @@ async function seedTenant(
 }
 
 async function snapshot(tenantId = harness.tenantOneId, studentId = STUDENT_ID) {
-  const [account, transactions, completions, operations, claims] = await Promise.all([
+  const [account, transactions, completions, operations, claims, audits] = await Promise.all([
     harness.database.query(`SELECT balance::text, version::text FROM accounts WHERE tenant_id=$1 AND student_id=$2`, [tenantId, studentId]),
     harness.database.query(`SELECT *, legacy_total_amount::text AS legacy_total_amount,
       balance_delta::text AS balance_delta, balance_before::text AS balance_before,
@@ -128,8 +128,16 @@ async function snapshot(tenantId = harness.tenantOneId, studentId = STUDENT_ID) 
       FROM task_completions WHERE tenant_id=$1 ORDER BY completion_id`, [tenantId]),
     harness.database.query(`SELECT * FROM operations WHERE tenant_id=$1 ORDER BY operation_id`, [tenantId]),
     harness.database.query(`SELECT * FROM padlet_evidence_claims ORDER BY board_id, post_id`),
+    harness.database.query(`SELECT * FROM audit_events WHERE tenant_id=$1 ORDER BY event_id`, [tenantId]),
   ]);
-  return { account: account.rows, transactions: transactions.rows, completions: completions.rows, operations: operations.rows, claims: claims.rows };
+  return {
+    account: account.rows,
+    transactions: transactions.rows,
+    completions: completions.rows,
+    operations: operations.rows,
+    claims: claims.rows,
+    audits: audits.rows,
+  };
 }
 
 describe('database task completion command', () => {
@@ -183,6 +191,23 @@ describe('database task completion command', () => {
         cycleEndsAt: '2026-08-29T00:00:00Z', reward: 50, evidence: EVIDENCE,
       }),
     });
+    expect(state.audits).toEqual([
+      expect.objectContaining({
+        operation_id: OPERATION_ID,
+        event_type: 'TASK_REWARD_COMPLETED',
+        entity_type: 'TASK_COMPLETION',
+        entity_id: `task-completion:${OPERATION_ID}`,
+        redacted_details: {
+          cycleId: `v1|${TASK_INSTANCE_ID}|r1|2026-08-28T00:00:00Z`,
+          reward: 50,
+          studentId: STUDENT_ID,
+          taskId: TASK_ID,
+          taskInstanceId: TASK_INSTANCE_ID,
+          transactionId: `task-reward:${OPERATION_ID}`,
+        },
+        occurred_at: NOW,
+      }),
+    ]);
   });
 
   it('returns the exact stored result on retry without another provider call or mutation', async () => {
@@ -198,6 +223,40 @@ describe('database task completion command', () => {
     expect(state.transactions).toHaveLength(1);
     expect(state.completions).toHaveLength(1);
     expect(state.claims).toHaveLength(1);
+    expect(state.audits).toHaveLength(1);
+  });
+
+  it.each([
+    ['missing', `DELETE FROM audit_events WHERE tenant_id=$1 AND operation_id=$2`],
+    ['corrupt', `UPDATE audit_events SET redacted_details=jsonb_build_object('taskId', 'forged') WHERE tenant_id=$1 AND operation_id=$2`],
+  ])('rejects exact replay when the task reward audit is %s', async (_label, mutation) => {
+    const taskCommand = command();
+    await taskCommand.execute({ operationId: OPERATION_ID, taskId: TASK_ID, studentId: STUDENT_ID });
+    await harness.database.query(`ALTER TABLE audit_events DISABLE TRIGGER USER`);
+    try {
+      await harness.database.query(mutation, [harness.tenantOneId, OPERATION_ID]);
+    } finally {
+      await harness.database.query(`ALTER TABLE audit_events ENABLE TRIGGER USER`);
+    }
+
+    await expect(taskCommand.execute({
+      operationId: OPERATION_ID, taskId: TASK_ID, studentId: STUDENT_ID,
+    })).rejects.toThrow(/audit integrity/i);
+    expect((await snapshot()).transactions).toHaveLength(1);
+  });
+
+  it('rejects a different payload for a completed operation without appending an audit', async () => {
+    const taskCommand = command();
+    await taskCommand.execute({ operationId: OPERATION_ID, taskId: TASK_ID, studentId: STUDENT_ID });
+    const before = await snapshot();
+
+    await expect(taskCommand.execute({
+      operationId: OPERATION_ID,
+      taskId: TASK_ID,
+      studentId: STUDENT_ID,
+      payloadHash: 'b'.repeat(64),
+    })).rejects.toMatchObject({ code: 'OPERATION_CONFLICT' });
+    expect(await snapshot()).toEqual(before);
   });
 
   it.each([

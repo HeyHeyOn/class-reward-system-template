@@ -15,6 +15,7 @@ import type {
 import type { TenantTransaction } from '@/server/db/transaction';
 import { isCanonicalPadletPostId, isStrictIsoTimestamp } from '@/server/padletClient';
 import type { DatabasePadletClaimRepository } from './padletClaims';
+import { appendOperationAudit, assertOperationAudit } from './operationAudit';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -284,6 +285,11 @@ export function createDatabaseTaskCompletionCommand(
           completionId,
           ...(evidence ? { evidence } : {}),
         };
+        await appendOperationAudit(
+          tx,
+          dependencies.tenantId,
+          taskRewardAuditInput(input.operationId, result, now),
+        );
         await tx.execute(sql`
           UPDATE operations
           SET status='SUCCEEDED', result_snapshot=${JSON.stringify(result)}::jsonb,
@@ -301,6 +307,7 @@ type OperationRow = {
   payload_hash: string;
   status: 'PENDING' | 'SUCCEEDED' | 'FAILED';
   result_snapshot: unknown;
+  finished_at: Date | string | null;
 };
 
 type TaskRow = {
@@ -567,12 +574,12 @@ async function readOperation(
   lock: boolean,
 ): Promise<OperationRow | null> {
   const result = await tx.execute(lock ? sql`
-    SELECT operation_kind, payload_hash, status, result_snapshot
+    SELECT operation_kind, payload_hash, status, result_snapshot, finished_at
     FROM operations
     WHERE tenant_id=${tenantId} AND operation_id=${operationId}
     FOR UPDATE
   ` : sql`
-    SELECT operation_kind, payload_hash, status, result_snapshot
+    SELECT operation_kind, payload_hash, status, result_snapshot, finished_at
     FROM operations
     WHERE tenant_id=${tenantId} AND operation_id=${operationId}
   `);
@@ -838,7 +845,41 @@ async function resolveExistingOperation(
   if (canonicalResult(stored) !== canonicalResult(expected)) {
     throw new Error('Stored task reward result binding is invalid.');
   }
+  await assertOperationAudit(
+    tx,
+    tenantId,
+    taskRewardAuditInput(input.operationId, stored, requiredAuditDate(operation.finished_at)),
+  );
   return stored;
+}
+
+function taskRewardAuditInput(
+  operationId: string,
+  result: TaskRewardSuccess,
+  occurredAt: Date,
+) {
+  return {
+    operationId,
+    eventType: 'TASK_REWARD_COMPLETED',
+    entityType: 'TASK_COMPLETION',
+    entityId: result.completionId,
+    redactedDetails: {
+      cycleId: result.cycleId,
+      reward: result.reward,
+      studentId: result.studentId,
+      taskId: result.taskId,
+      taskInstanceId: result.taskInstanceId,
+      transactionId: result.transactionId,
+    },
+    occurredAt,
+  } as const;
+}
+
+function requiredAuditDate(value: Date | string | null): Date {
+  if (value === null) throw new Error('Task reward audit integrity check failed.');
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) throw new Error('Task reward audit integrity check failed.');
+  return date;
 }
 
 function parseStoredResult(value: unknown): TaskRewardSuccess {
