@@ -1,13 +1,18 @@
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  assertDeleteBatchEvidenceGroups,
+  bucketBatchDeleteEvidenceRows,
   createDatabaseTaskAdminCommands,
   createTaskAdminAssignmentEventId,
   createTaskAdminPayloadHash,
   createTaskAdminResultHash,
   createTaskAdminTaskInstanceId,
+  groupBatchDeleteReplayEvidence,
   type CreateTaskAdminInput,
+  type DeleteTasksAdminBatchInput,
   type DeleteTaskAdminInput,
   type TaskAdminUpdateSuccess,
   type UpdateTasksAdminBatchInput,
@@ -89,6 +94,17 @@ const deleteInput = (overrides: Partial<DeleteTaskAdminInput> = {}): DeleteTaskA
   operationId: 'task-admin-delete-op', taskId: 'TASK-001', expectedTaskVersion: 1,
   ...overrides,
 });
+
+const deleteBatchEntry = (taskId: string, expectedTaskVersion = 1):
+DeleteTasksAdminBatchInput['tasks'][number] => ({ taskId, expectedTaskVersion });
+
+const batchOperationId = (label: string): string => {
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(label)) {
+    return label;
+  }
+  const hex = createHash('sha256').update(label).digest('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+};
 
 async function appendLaterSameCycleAssignment(
   taskInstanceId: string,
@@ -2454,7 +2470,7 @@ describe('database task administrator DELETE command', () => {
         return harness.runTenantTransaction(tenantId, callback); }, now: () => NOW });
     await expect(counted.delete(deleteInput({ expectedTaskVersion: Number.MAX_SAFE_INTEGER })))
       .rejects.toThrow(/successor|version|safe/i);
-    expect(calls).toBe(1);
+    expect(calls).toBe(0);
     expect(await completeSnapshot()).toEqual(before);
   });
 
@@ -2757,5 +2773,867 @@ describe('database task administrator DELETE command', () => {
     await harness.database.exec(ddl);
     await expect(commands().delete(deleteInput())).rejects.toThrow(/integrity|replayable/i);
     expect(await completeSnapshot()).toEqual(before);
+  });
+});
+
+describe('database task administrator batch DELETE command', () => {
+  it('requires an exact canonical lowercase UUID operation ID before transaction entry', async () => {
+    let calls = 0;
+    const adapter = createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId,
+      runTenantTransaction: async () => { calls += 1; throw new Error('entered transaction'); },
+      now: () => NOW });
+    const canonical = '11111111-1111-4111-8111-abcdefabcdef';
+    for (const operationId of [` ${canonical} `, canonical.toUpperCase(), 'not-a-uuid']) {
+      await expect(adapter.deleteBatch({ operationId,
+        tasks: [deleteBatchEntry('A')] })).rejects.toThrow(/operation ID|UUID|invalid/i);
+    }
+    expect(calls).toBe(0);
+    await expect(adapter.deleteBatch({ operationId: canonical,
+      tasks: [deleteBatchEntry('A')] })).rejects.toThrow(/entered transaction/);
+    expect(calls).toBe(1);
+  });
+
+  it.each([
+    ['claim', 'extra key'], ['claim', 'accessor'],
+    ['terminal', 'extra key'], ['terminal', 'accessor'],
+  ] as const)('rejects batch %s operation identity evidence with an %s', async (stage, shape) => {
+    await commands().create({ ...createInput(), operationId: batchOperationId(`evidence-${stage}-${shape}-create-A`),
+      taskId: 'A', allowedStudentIds: [] });
+    const before = await completeSnapshot();
+    const operationId = stage === 'claim'
+      ? shape === 'extra key' ? '00000000-0000-4000-8000-000000000001'
+        : '00000000-0000-4000-8000-000000000002'
+      : shape === 'extra key' ? '00000000-0000-4000-8000-000000000003'
+        : '00000000-0000-4000-8000-000000000004';
+    const dialect = new PgDialect();
+    let getterCalls = 0;
+    const adapter = createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId, now: () => NOW,
+      runTenantTransaction: (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) =>
+        callback({ execute: async (query) => {
+          const statement = typeof query === 'string' ? query : dialect.sqlToQuery(query as never).sql;
+          const result = await tx.execute(query);
+          const isTarget = stage === 'claim'
+            ? statement.includes('INSERT INTO operations') && statement.includes('RETURNING operation_id')
+            : statement.includes("UPDATE operations SET status='SUCCEEDED'")
+              && statement.includes('RETURNING operation_id');
+          if (!isTarget || result.rows.length !== 1) return result;
+          const original = result.rows[0] as Record<string, unknown>;
+          if (shape === 'extra key') return { ...result,
+            rows: [{ ...original, extra: true }] } as never;
+          const row: Record<string, unknown> = {};
+          Object.defineProperty(row, 'operation_id', { enumerable: true, get: () => {
+            getterCalls += 1; return original.operation_id;
+          } });
+          return { ...result, rows: [row] } as never;
+        } } as typeof tx)),
+    });
+
+    await expect(adapter.deleteBatch({ operationId,
+      tasks: [deleteBatchEntry('A')] })).rejects.toThrow(/operation.*integrity/i);
+    expect(getterCalls).toBe(0);
+    expect(await completeSnapshot()).toEqual(before);
+  });
+
+  it.each([
+    ['pre-audit', 1, '00000000-0000-4000-8000-000000000005'],
+    ['post-terminal', 2, '00000000-0000-4000-8000-000000000006'],
+  ] as const)('rejects duplicate A and missing B task rows at the %s verifier',
+  async (_stage, targetVerifier, operationId) => {
+    await commands().create({ ...createInput(), operationId: batchOperationId(`membership-${targetVerifier}-create-A`),
+      taskId: 'A', allowedStudentIds: [] });
+    await commands().create({ ...createInput(), operationId: batchOperationId(`membership-${targetVerifier}-create-B`),
+      taskId: 'B', allowedStudentIds: [] });
+    const before = await completeSnapshot();
+    const dialect = new PgDialect();
+    let verifier = 0;
+    const adapter = createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId, now: () => NOW,
+      runTenantTransaction: (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) =>
+        callback({ execute: async (query) => {
+          const statement = typeof query === 'string' ? query : dialect.sqlToQuery(query as never).sql;
+          const result = await tx.execute(query);
+          if (statement.includes('FROM tasks WHERE tenant_id=')
+            && statement.includes('task_instance_id IN (') && !statement.includes('deleted_at IS NULL')) {
+            verifier += 1;
+            if (verifier === targetVerifier && result.rows.length === 2) {
+              return { ...result, rows: [result.rows[0], result.rows[0]] } as never;
+            }
+          }
+          return result;
+        } } as typeof tx)),
+    });
+
+    await expect(adapter.deleteBatch({ operationId,
+      tasks: [deleteBatchEntry('A'), deleteBatchEntry('B')] })).rejects.toThrow(/task row integrity/i);
+    expect(verifier).toBe(targetVerifier);
+    expect(await completeSnapshot()).toEqual(before);
+  });
+
+  it('groups replay identities, operation events, and predecessor history with linear access', () => {
+    const run = (targetCount: number) => {
+      let reads = 0;
+      const tracked = <T extends object>(row: T): T => new Proxy(row, { get(target, property, receiver) {
+        reads += 1;
+        return Reflect.get(target, property, receiver) as unknown;
+      } });
+      const targets = Array.from({ length: targetCount }, (_, index) => ({
+        taskInstanceId: `instance-${index}`, taskId: `task-${index}`,
+        assignmentEventIds: [`operation-${index}`],
+      }));
+      const identities = targets.map((target) => tracked({ taskInstanceId: target.taskInstanceId,
+        taskId: target.taskId }));
+      const operationEvents = targets.map((target, index) => tracked({
+        assignment_id: target.assignmentEventIds[0], task_instance_id: target.taskInstanceId,
+        student_id: `student-${index}`, cycle_id: 'cycle', cycle_start_at: NOW.toISOString(),
+        cycle_end_at: null, rule_version: 1, timezone: 'Asia/Seoul', event_sequence: '4',
+      }));
+      const history = targets.flatMap((target, index) => [1, 2, 3, 4].map((sequence) => tracked({
+        assignment_id: sequence === 4 ? target.assignmentEventIds[0] : `prior-${index}-${sequence}`,
+        task_instance_id: target.taskInstanceId, student_id: `student-${index}`, cycle_id: 'cycle',
+        cycle_start_at: NOW.toISOString(), cycle_end_at: null, rule_version: 1,
+        timezone: 'Asia/Seoul', event_sequence: String(sequence),
+      })));
+      const grouped = groupBatchDeleteReplayEvidence(targets, identities, operationEvents, history);
+      expect(grouped.operationEventsByInstance.size).toBe(targetCount);
+      expect(grouped.predecessorByAssignmentId.size).toBe(targetCount);
+      return reads;
+    };
+
+    const one = run(1);
+    expect(run(20)).toBe(one * 20);
+  });
+
+  it('rejects replay evidence assigned to an unknown target bucket', () => {
+    const targets = [{ taskInstanceId: 'known', taskId: 'task', assignmentEventIds: ['operation'] }];
+    const event = { assignment_id: 'operation', task_instance_id: 'unknown', student_id: 'student',
+      cycle_id: 'cycle', cycle_start_at: NOW.toISOString(), cycle_end_at: null, rule_version: 1,
+      timezone: 'Asia/Seoul', event_sequence: '1' };
+    expect(() => groupBatchDeleteReplayEvidence(targets,
+      [{ taskInstanceId: 'known', taskId: 'task' }], [event], [event]))
+      .toThrow(/identity|assignment event integrity/i);
+  });
+
+  it('buckets validated evidence in one pass while preserving per-target order', () => {
+    const targetIds = Array.from({ length: 100 }, (_, index) => `instance-${index}`);
+    const reads = { mirrors: 0, assignments: 0, completions: 0 };
+    const tracked = <T extends object>(row: T, key: keyof T, kind: keyof typeof reads): T =>
+      new Proxy(row, { get(target, property, receiver) {
+        if (property === key) reads[kind] += 1;
+        return Reflect.get(target, property, receiver) as unknown;
+      } });
+    const mirrors = targetIds.flatMap((taskInstanceId) => ['student-b', 'student-a'].map((studentId) =>
+      tracked({ taskInstanceId, studentId }, 'taskInstanceId', 'mirrors')));
+    const assignments = targetIds.flatMap((task_instance_id) => [2, 1, 3].map((sequence) =>
+      tracked({ task_instance_id, sequence }, 'task_instance_id', 'assignments')));
+    const completions = targetIds.flatMap((task_instance_id) => [1, 2].map((sequence) =>
+      tracked({ task_instance_id, sequence }, 'task_instance_id', 'completions')));
+
+    const buckets = bucketBatchDeleteEvidenceRows(targetIds, mirrors, assignments, completions);
+
+    expect(reads).toEqual({ mirrors: mirrors.length, assignments: assignments.length,
+      completions: completions.length });
+    expect([...buckets.mirrorsByInstance]).toHaveLength(100);
+    expect([...buckets.assignmentsByInstance]).toHaveLength(100);
+    expect([...buckets.completionsByInstance]).toHaveLength(100);
+    for (const taskInstanceId of targetIds) {
+      expect(buckets.mirrorsByInstance.get(taskInstanceId)?.map((row) => row.studentId))
+        .toEqual(['student-a', 'student-b']);
+      expect(buckets.assignmentsByInstance.get(taskInstanceId)?.map((row) => row.sequence))
+        .toEqual([2, 1, 3]);
+      expect(buckets.completionsByInstance.get(taskInstanceId)?.map((row) => row.sequence))
+        .toEqual([1, 2]);
+    }
+  });
+
+  it('groups complete-state verifier evidence with linear row access', () => {
+    const targetIds = Array.from({ length: 100 }, (_, index) => `instance-${index}`);
+    const reads = { assignments: 0, completions: 0 };
+    const tracked = <T extends { task_instance_id: string }>(row: T, kind: keyof typeof reads): T =>
+      new Proxy(row, { get(target, property, receiver) {
+        if (property === 'task_instance_id') reads[kind] += 1;
+        return Reflect.get(target, property, receiver) as unknown;
+      } });
+    const expectedAssignments = targetIds.flatMap((task_instance_id) => [3, 1, 2].map(
+      (event_sequence) => ({ task_instance_id, event_sequence: String(event_sequence) })));
+    const expectedCompletions = targetIds.flatMap((task_instance_id) => [1, 2].map(
+      (event_sequence) => ({ task_instance_id, event_sequence: String(event_sequence) })));
+    const parsedAssignments = expectedAssignments.map((row) => tracked({ ...row }, 'assignments'));
+    const parsedCompletions = expectedCompletions.map((row) => tracked({ ...row }, 'completions'));
+    const evidence = targetIds.map((taskInstanceId) => ({ targetAfter: { taskInstanceId },
+      assignments: expectedAssignments.filter((row) => row.task_instance_id === taskInstanceId),
+      completions: expectedCompletions.filter((row) => row.task_instance_id === taskInstanceId) }));
+
+    assertDeleteBatchEvidenceGroups(evidence, parsedAssignments, parsedCompletions);
+
+    expect(reads).toEqual({ assignments: parsedAssignments.length * 2,
+      completions: parsedCompletions.length * 2 });
+  });
+
+  it('simultaneously tombstones canonical targets and preserves immutable evidence', async () => {
+    const a = await commands().create({ ...createInput(), operationId: batchOperationId('create-A'), taskId: 'A',
+      allowedStudentIds: ['S001'], prerequisiteTaskId: null });
+    const b = await commands().create({ ...createInput(), operationId: batchOperationId('create-B'), taskId: 'B',
+      allowedStudentIds: ['S002', 'S001'], prerequisiteTaskId: 'A' });
+    await seedCarryForwardCompletion(a.tasks[0].taskInstanceId, 'completion-A');
+    await seedCarryForwardCompletion(b.tasks[0].taskInstanceId, 'completion-B');
+    const before = await completeSnapshot();
+    const operationId = batchOperationId('batch-delete');
+    const result = await commands().deleteBatch({ operationId, tasks: [
+      deleteBatchEntry('B'), deleteBatchEntry('A'),
+    ] });
+    expect(result).toEqual({ ok: true, operationId, action: 'DELETE',
+      completedAt: NOW.toISOString(), tasks: [
+        { taskId: 'A', taskInstanceId: a.tasks[0].taskInstanceId, versionBefore: 1, versionAfter: 2,
+          assignmentEventIds: ['S001'].map((studentId) => createTaskAdminAssignmentEventId(
+            operationId, 'A', studentId, 'UNASSIGNED')) },
+        { taskId: 'B', taskInstanceId: b.tasks[0].taskInstanceId, versionBefore: 1, versionAfter: 2,
+          assignmentEventIds: ['S001', 'S002'].map((studentId) => createTaskAdminAssignmentEventId(
+            operationId, 'B', studentId, 'UNASSIGNED')) },
+      ] });
+    const after = await completeSnapshot();
+    expect(after.tasks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ task_id: 'A', is_active: false, version: '2', deleted_at: NOW }),
+      expect.objectContaining({ task_id: 'B', is_active: false, version: '2', deleted_at: NOW,
+        prerequisite_task_instance_id: a.tasks[0].taskInstanceId }),
+    ]));
+    expect(after.mirrors).toEqual([]);
+    expect(after.completions).toEqual(before.completions);
+    expect(after.assignments).toHaveLength(before.assignments.length + 3);
+    const audit = await harness.database.query(`SELECT redacted_details FROM audit_events
+      WHERE tenant_id=$1 AND operation_id=$2`, [harness.tenantOneId, operationId]);
+    expect(audit.rows).toEqual([{ redacted_details: expect.objectContaining({
+      action: 'DELETE', taskCount: 2, assignmentEventCount: 3,
+    }) }]);
+  });
+
+  it('validates exact bounds, descriptors, sparse arrays, and versions before transaction entry', async () => {
+    let calls = 0;
+    let getterCalls = 0;
+    const preflight = createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId,
+      runTenantTransaction: async () => { calls += 1; throw new Error('entered transaction'); },
+      now: () => NOW });
+    const valid = { operationId: batchOperationId('batch-delete-preflight'), tasks: [deleteBatchEntry('A')] };
+    const rootTasksGetter = { operationId: valid.operationId } as Record<string, unknown>;
+    Object.defineProperty(rootTasksGetter, 'tasks', { enumerable: true, get: () => {
+      getterCalls += 1; return valid.tasks;
+    } });
+    const taskIdGetter = { expectedTaskVersion: 1 } as Record<string, unknown>;
+    Object.defineProperty(taskIdGetter, 'taskId', { enumerable: true, get: () => {
+      getterCalls += 1; return 'B';
+    } });
+    const sparse = Array(2) as DeleteTasksAdminBatchInput['tasks'][number][];
+    sparse[0] = deleteBatchEntry('A');
+    const invalid: unknown[] = [
+      { ...valid, [Symbol('extra')]: true },
+      rootTasksGetter,
+      { ...valid, tasks: 'not-an-array' },
+      { ...valid, tasks: sparse },
+      { ...valid, tasks: [] },
+      { ...valid, tasks: Array.from({ length: 101 }, (_, index) => deleteBatchEntry(`T${index}`)) },
+      { ...valid, tasks: [deleteBatchEntry('A'), { ...deleteBatchEntry('B'), extra: true }] },
+      { ...valid, tasks: [deleteBatchEntry('A'),
+        { ...deleteBatchEntry('B'), [Symbol('extra')]: true }] },
+      { ...valid, tasks: [deleteBatchEntry('A'), taskIdGetter] },
+      { ...valid, tasks: [deleteBatchEntry(' A '), deleteBatchEntry('A')] },
+      ...[new Number(1), '1', ' 1 ', 1.5, 0, Number.MAX_SAFE_INTEGER, null, undefined]
+        .map((expectedTaskVersion) => ({ ...valid, tasks: [deleteBatchEntry('A'),
+          { taskId: 'B', expectedTaskVersion }] })),
+    ];
+    for (const input of invalid) await expect(preflight.deleteBatch(input as never)).rejects.toThrow();
+    await expect(createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId,
+      runTenantTransaction: async () => { calls += 1; throw new Error('entered transaction'); },
+      now: () => new Date(Number.NaN) }).deleteBatch(valid)).rejects.toThrow(/timestamp.*invalid/i);
+    await expect(preflight.delete(deleteInput({ expectedTaskVersion: Number.MAX_SAFE_INTEGER })))
+      .rejects.toThrow(/version|safe|successor/i);
+    expect(getterCalls).toBe(0);
+    expect(calls).toBe(0);
+    await expect(preflight.deleteBatch({ ...valid,
+      tasks: Array.from({ length: 100 }, (_, index) => deleteBatchEntry(`T${index}`)) }))
+      .rejects.toThrow(/entered transaction/);
+    expect(calls).toBe(1);
+  });
+
+  it('replays reordered input, conflicts on changes, and enforces simultaneous dependents', async () => {
+    await commands().create({ ...createInput(), operationId: batchOperationId('create-A'), taskId: 'A', allowedStudentIds: [] });
+    await commands().create({ ...createInput(), operationId: batchOperationId('create-B'), taskId: 'B', allowedStudentIds: [],
+      prerequisiteTaskId: 'A' });
+    await commands().create({ ...createInput(), operationId: batchOperationId('create-C'), taskId: 'C', allowedStudentIds: [],
+      prerequisiteTaskId: 'A' });
+    await harness.database.query(`UPDATE tasks SET is_active=false WHERE tenant_id=$1 AND task_id='C'`,
+      [harness.tenantOneId]);
+    const blocked = await completeSnapshot();
+    await expect(commands().deleteBatch({ operationId: batchOperationId('blocked-batch'),
+      tasks: [deleteBatchEntry('A'), deleteBatchEntry('B')] })).rejects.toThrow(/dependent/i);
+    expect(await completeSnapshot()).toEqual(blocked);
+    const input: DeleteTasksAdminBatchInput = { operationId: batchOperationId('batch-replay'),
+      tasks: [deleteBatchEntry('C'), deleteBatchEntry('B'), deleteBatchEntry('A')] };
+    const first = await commands().deleteBatch(input);
+    await expect(commands().deleteBatch({ ...input, tasks: [...input.tasks].reverse() }))
+      .resolves.toEqual(first);
+    await expect(commands().deleteBatch({ ...input,
+      tasks: [deleteBatchEntry('A'), deleteBatchEntry('B', 2)] })).rejects.toThrow(/conflict/i);
+    await expect(commands().deleteBatch({ ...input, tasks: [deleteBatchEntry('A')] }))
+      .rejects.toThrow(/conflict/i);
+  });
+
+  it('ignores a tombstoned dependent when validating surviving prerequisites', async () => {
+    await commands().create({ ...createInput(), operationId: batchOperationId('tombstone-create-A'), taskId: 'A',
+      allowedStudentIds: [] });
+    await commands().create({ ...createInput(), operationId: batchOperationId('tombstone-create-D'), taskId: 'D',
+      prerequisiteTaskId: 'A', allowedStudentIds: [] });
+    await commands().delete(deleteInput({ operationId: batchOperationId('tombstone-delete-D'), taskId: 'D' }));
+    await expect(commands().deleteBatch({ operationId: batchOperationId('tombstone-dependent-batch'),
+      tasks: [deleteBatchEntry('A')] })).resolves.toMatchObject({ tasks: [{ taskId: 'A' }] });
+  });
+
+  it('accepts mixed LEGACY, QR, and CARRY_FORWARD histories with reversed assignment rows', async () => {
+    const a = await commands().create({ ...createInput(), operationId: batchOperationId('source-create-A'), taskId: 'A',
+      allowedStudentIds: ['S001'] });
+    const b = await commands().create({ ...createInput(), operationId: batchOperationId('source-create-B'), taskId: 'B',
+      allowedStudentIds: ['S002'] });
+    await harness.database.exec(`ALTER TABLE task_assignments DISABLE TRIGGER task_assignments_append_only;
+      UPDATE task_assignments SET source='LEGACY_SEED', previous_assignment_id=NULL,
+        admin_operation_id=NULL, admin_operation_hash=NULL
+      WHERE tenant_id='${harness.tenantOneId}';
+      ALTER TABLE task_assignments ENABLE ALWAYS TRIGGER task_assignments_append_only;`);
+    await appendLaterSameCycleAssignment(a.tasks[0].taskInstanceId, 'S001', 'source-qr-one',
+      NOW.toISOString(), 'ASSIGNED', 'QR');
+    await appendLaterSameCycleAssignment(a.tasks[0].taskInstanceId, 'S001', 'source-qr-two',
+      NOW.toISOString(), 'UNASSIGNED', 'QR');
+    const initial = await harness.database.query(`SELECT assignment_id, cycle_id, cycle_start_at,
+      cycle_end_at, rule_version, timezone FROM task_assignments
+      WHERE tenant_id=$1 AND task_instance_id=$2 ORDER BY event_sequence LIMIT 1`,
+    [harness.tenantOneId, b.tasks[0].taskInstanceId]);
+    const row = initial.rows[0] as { assignment_id: string; cycle_id: string;
+      cycle_start_at: Date; cycle_end_at: Date | null; rule_version: number; timezone: string };
+    const priorStart = new Date(row.cycle_start_at.getTime() - 86_400_000);
+    const priorCycleId = `v1|${b.tasks[0].taskInstanceId}|r${row.rule_version}|${priorStart.toISOString().replace('.000Z', 'Z')}`;
+    await harness.database.exec('ALTER TABLE task_assignments DISABLE TRIGGER task_assignments_append_only');
+    await harness.database.query(`UPDATE task_assignments SET cycle_id=$1, cycle_start_at=$2, cycle_end_at=$3
+      WHERE tenant_id=$4 AND assignment_id=$5`, [priorCycleId, priorStart.toISOString(),
+      row.cycle_start_at.toISOString(), harness.tenantOneId, row.assignment_id]);
+    await harness.database.exec('ALTER TABLE task_assignments ENABLE ALWAYS TRIGGER task_assignments_append_only');
+    await harness.database.query(`INSERT INTO task_assignments
+      (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id, cycle_start_at,
+       cycle_end_at, rule_version, timezone, student_id, event_type, source,
+       previous_assignment_id, created_at, schema_version, note)
+      VALUES ($1, 'source-carry-B', 'B', $2, $3, $4, $5, $6, $7, 'S002',
+       'ASSIGNED', 'CARRY_FORWARD', $8, $9, 1, NULL)`, [harness.tenantOneId,
+      b.tasks[0].taskInstanceId, row.cycle_id, row.cycle_start_at.toISOString(),
+      row.cycle_end_at?.toISOString() ?? null, row.rule_version, row.timezone, row.assignment_id,
+      NOW.toISOString()]);
+    const dialect = new PgDialect();
+    const adapter = createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId, now: () => NOW,
+      runTenantTransaction: (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) =>
+        callback({ execute: async (query) => {
+          const statement = typeof query === 'string' ? query : dialect.sqlToQuery(query as never).sql;
+          const result = await tx.execute(query);
+          return statement.includes('FROM task_assignments') && statement.includes('FOR UPDATE')
+            ? { ...result, rows: [...result.rows].reverse() } as never : result;
+        } } as typeof tx)),
+    });
+    const result = await adapter.deleteBatch({ operationId: batchOperationId('source-delete-batch'),
+      tasks: [deleteBatchEntry('B'), deleteBatchEntry('A')] });
+    const events = await snapshot();
+    expect(events.assignments).toEqual(expect.arrayContaining([
+      expect.objectContaining({ assignment_id: result.tasks[0].assignmentEventIds[0],
+        previous_assignment_id: 'source-qr-two' }),
+      expect.objectContaining({ assignment_id: result.tasks[1].assignmentEventIds[0],
+        previous_assignment_id: 'source-carry-B' }),
+    ]));
+  });
+
+  it('locks all live tasks by physical ID and preserves every non-lifecycle target field', async () => {
+    const first = await commands().create({ ...createInput(), operationId: batchOperationId('physical-create-Z'), taskId: 'Z',
+      allowedStudentIds: [] });
+    const second = await commands().create({ ...createInput(), operationId: batchOperationId('physical-create-A'), taskId: 'A',
+      allowedStudentIds: [], prerequisiteTaskId: null });
+    const before = await harness.database.query(`SELECT * FROM tasks WHERE tenant_id=$1
+      AND task_id IN ('A','Z') ORDER BY task_id`, [harness.tenantOneId]);
+    const dialect = new PgDialect();
+    let lockSql = '';
+    const adapter = createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId, now: () => NOW,
+      runTenantTransaction: (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) =>
+        callback({ execute: async (query) => {
+          const statement = typeof query === 'string' ? query : dialect.sqlToQuery(query as never).sql;
+          const result = await tx.execute(query);
+          if (!lockSql && statement.includes('FROM tasks') && statement.includes('deleted_at IS NULL')
+            && statement.includes('FOR UPDATE')) {
+            lockSql = statement.replace(/\s+/g, ' ').trim();
+            return { ...result, rows: [...result.rows].reverse() } as never;
+          }
+          return result;
+        } } as typeof tx)),
+    });
+    expect(first.tasks[0].taskInstanceId).not.toBe(second.tasks[0].taskInstanceId);
+    await adapter.deleteBatch({ operationId: batchOperationId('physical-delete'),
+      tasks: [deleteBatchEntry('Z'), deleteBatchEntry('A')] });
+    expect(lockSql).toMatch(/ORDER BY task_instance_id FOR UPDATE/);
+    const after = await harness.database.query(`SELECT * FROM tasks WHERE tenant_id=$1
+      AND task_id IN ('A','Z') ORDER BY task_id`, [harness.tenantOneId]);
+    const lifecycle = new Set(['is_active', 'deleted_at', 'updated_at', 'version']);
+    expect(after.rows.map((raw) => Object.fromEntries(Object.entries(raw as Record<string, unknown>)
+      .filter(([key]) => !lifecycle.has(key))))).toEqual(before.rows.map((raw) =>
+      Object.fromEntries(Object.entries(raw as Record<string, unknown>)
+        .filter(([key]) => !lifecycle.has(key)))));
+    expect(after.rows).toEqual(before.rows.map((raw) => ({ ...(raw as Record<string, unknown>),
+      is_active: false, deleted_at: NOW, updated_at: NOW, version: 2 })));
+  });
+
+  it('uses a constant two setwise verifier phases for one and two targets', async () => {
+    for (const taskId of ['A', 'B', 'C']) await commands().create({
+      ...createInput(), operationId: batchOperationId(`delete-count-create-${taskId}`), taskId, allowedStudentIds: [],
+    });
+    const dialect = new PgDialect();
+    const run = async (operationId: string, taskIds: readonly string[]) => {
+      const statements: string[] = [];
+      const adapter = createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId, now: () => NOW,
+        runTenantTransaction: (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) =>
+          callback({ execute: async (query) => {
+            const statement = typeof query === 'string' ? query : dialect.sqlToQuery(query as never).sql;
+            statements.push(statement.replace(/\s+/g, ' ').trim());
+            return tx.execute(query);
+          } } as typeof tx)),
+      });
+      await adapter.deleteBatch({ operationId, tasks: taskIds.map((taskId) => deleteBatchEntry(taskId)) });
+      const classify = (statement: string) => statement.includes('FROM tasks ')
+        ? 'tasks' : statement.includes('FROM task_allowed_students') ? 'mirrors'
+          : statement.includes('FROM task_completions') ? 'completions'
+            : statement.includes('admin_operation_id=') ? 'operation-events'
+              : statement.includes('FROM task_assignments') ? 'assignments' : 'unknown';
+      const signature = ['tasks', 'mirrors', 'assignments', 'completions', 'tasks', 'operation-events'];
+      const starts = statements.flatMap((_statement, index) =>
+        JSON.stringify(statements.slice(index, index + 6).map(classify)) === JSON.stringify(signature)
+          ? [index] : []);
+      expect(starts).toHaveLength(2);
+      return starts.map((start) => statements.slice(start, start + 6));
+    };
+    const one = await run(batchOperationId('delete-count-one'), ['A']);
+    const two = await run(batchOperationId('delete-count-two'), ['B', 'C']);
+    expect(one.map((phase) => phase.length)).toEqual([6, 6]);
+    expect(two.map((phase) => phase.length)).toEqual([6, 6]);
+    for (const phase of [...one, ...two]) {
+      expect(phase.slice(0, 4).every((statement) => statement.includes(' IN ('))).toBe(true);
+      expect(phase.slice(0, 4).some((statement) =>
+        /task_instance_id=\$\d+/.test(statement))).toBe(false);
+    }
+  });
+
+  it('supports a zero-mirror target and replay after a valid later assignment chain event', async () => {
+    const a = await commands().create({ ...createInput(), operationId: batchOperationId('later-create-A'), taskId: 'A',
+      allowedStudentIds: ['S001'] });
+    await commands().create({ ...createInput(), operationId: batchOperationId('later-create-B'), taskId: 'B',
+      allowedStudentIds: [] });
+    const input: DeleteTasksAdminBatchInput = { operationId: batchOperationId('later-delete-batch'),
+      tasks: [deleteBatchEntry('B'), deleteBatchEntry('A')] };
+    const first = await commands().deleteBatch(input);
+    expect(first.tasks.find((task) => task.taskId === 'B')?.assignmentEventIds).toEqual([]);
+    await appendLaterSameCycleAssignment(a.tasks[0].taskInstanceId, 'S001', 'valid-later-delete-event',
+      '2026-08-30T02:00:00.000Z', 'ASSIGNED');
+    await expect(commands().deleteBatch({ ...input, tasks: [...input.tasks].reverse() }))
+      .resolves.toEqual(first);
+  });
+
+  it('rejects replay when an earlier same-cycle assignment chain link is corrupt', async () => {
+    const created = await commands().create({ ...createInput(), operationId: batchOperationId('create-A'), taskId: 'A',
+      allowedStudentIds: ['S001'] });
+    const input: DeleteTasksAdminBatchInput = { operationId: batchOperationId('batch-chain-replay'),
+      tasks: [deleteBatchEntry('A')] };
+    await commands().deleteBatch(input);
+    await harness.database.exec('ALTER TABLE task_assignments DISABLE TRIGGER task_assignments_append_only');
+    await harness.database.query(`UPDATE task_assignments SET previous_assignment_id=$4
+      WHERE tenant_id=$1 AND task_instance_id=$2 AND assignment_id=$3`,
+    [harness.tenantOneId, created.tasks[0].taskInstanceId,
+      created.tasks[0].assignmentEventIds[0], createTaskAdminAssignmentEventId(
+        input.operationId, 'A', 'S001', 'UNASSIGNED')]);
+    await harness.database.exec('ALTER TABLE task_assignments ENABLE ALWAYS TRIGGER task_assignments_append_only');
+
+    await expect(commands().deleteBatch(input)).rejects.toThrow(/assignment.*chain|assignment event integrity/i);
+  });
+
+  it('rolls back the full batch for stale, missing, and tombstoned second targets', async () => {
+    await commands().create({ ...createInput(), operationId: batchOperationId('create-A'), taskId: 'A', allowedStudentIds: [] });
+    await commands().create({ ...createInput(), operationId: batchOperationId('create-B'), taskId: 'B', allowedStudentIds: [] });
+    for (const [operationId, second] of [
+      [batchOperationId('stale-batch'), deleteBatchEntry('B', 2)],
+      [batchOperationId('missing-batch'), deleteBatchEntry('MISSING')],
+    ] as const) {
+      const before = await completeSnapshot();
+      await expect(commands().deleteBatch({ operationId,
+        tasks: [deleteBatchEntry('A'), second] })).rejects.toThrow(/not found|stale|version/i);
+      expect(await completeSnapshot()).toEqual(before);
+    }
+    await commands().delete(deleteInput({ operationId: batchOperationId('delete-B-first'), taskId: 'B' }));
+    const before = await completeSnapshot();
+    await expect(commands().deleteBatch({ operationId: batchOperationId('tombstoned-batch'),
+      tasks: [deleteBatchEntry('A'), deleteBatchEntry('B')] })).rejects.toThrow(/not found/i);
+    expect(await completeSnapshot()).toEqual(before);
+  });
+
+  const seedDeleteReplayBatch = async (operationId: string, zeroSecond = false) => {
+    const a = await commands().create({ ...createInput(), operationId: batchOperationId(`${operationId}-create-A`),
+      taskId: 'A', allowedStudentIds: ['S001'] });
+    const b = await commands().create({ ...createInput(), operationId: batchOperationId(`${operationId}-create-B`),
+      taskId: 'B', allowedStudentIds: zeroSecond ? [] : ['S002'] });
+    const input: DeleteTasksAdminBatchInput = { operationId: batchOperationId(operationId),
+      tasks: [deleteBatchEntry('B'), deleteBatchEntry('A')] };
+    return { a, b, input, result: await commands().deleteBatch(input) };
+  };
+
+  it('fully validates the canonical batch claim-race winner and conflicts on a changed batch', async () => {
+    const { input, result: winner } = await seedDeleteReplayBatch('delete-batch-race');
+    const racing = () => createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId, now: () => NOW,
+      runTenantTransaction: (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) => {
+        let firstRead = true;
+        return callback({ execute: async (query) => {
+          if (firstRead) { firstRead = false; return { rows: [] } as never; }
+          return tx.execute(query);
+        } } as typeof tx);
+      }),
+    });
+    const replay = await racing().deleteBatch(input);
+    expect(replay).toEqual(winner);
+    expect(Object.isFrozen(replay)).toBe(true);
+    expect(Object.isFrozen(replay.tasks)).toBe(true);
+    expect(replay.tasks.every((task) => Object.isFrozen(task.assignmentEventIds))).toBe(true);
+    await expect(racing().deleteBatch({ ...input,
+      tasks: [deleteBatchEntry('A'), deleteBatchEntry('B', 2)] })).rejects.toThrow(/conflict/i);
+  });
+
+  it.each([
+    ['task RETURN NULL', `CREATE FUNCTION suppress_delete_batch() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF OLD.task_id='B' THEN RETURN NULL; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER suppress_delete_batch BEFORE UPDATE ON tasks FOR EACH ROW
+      EXECUTE FUNCTION suppress_delete_batch()`],
+    ['task RETURN OLD', `CREATE FUNCTION suppress_delete_batch() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF OLD.task_id='B' THEN RETURN OLD; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER suppress_delete_batch BEFORE UPDATE ON tasks FOR EACH ROW
+      EXECUTE FUNCTION suppress_delete_batch()`],
+    ['task mutated RETURNING', `CREATE FUNCTION suppress_delete_batch() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF OLD.task_id='B' THEN NEW.title='mutated'; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER suppress_delete_batch BEFORE UPDATE ON tasks FOR EACH ROW
+      EXECUTE FUNCTION suppress_delete_batch()`],
+    ['mirror DELETE', `CREATE FUNCTION suppress_delete_batch() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF OLD.task_instance_id=(SELECT task_instance_id FROM tasks WHERE tenant_id=OLD.tenant_id
+        AND task_id='B') THEN RETURN NULL; END IF; RETURN OLD; END $$;
+      CREATE TRIGGER suppress_delete_batch BEFORE DELETE ON task_allowed_students FOR EACH ROW
+      EXECUTE FUNCTION suppress_delete_batch()`],
+    ['assignment INSERT', `CREATE FUNCTION suppress_delete_batch() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.admin_operation_id='${batchOperationId('delete-batch-write-fault')}' AND NEW.task_id_snapshot='B'
+        THEN RETURN NULL; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER suppress_delete_batch BEFORE INSERT ON task_assignments FOR EACH ROW
+      EXECUTE FUNCTION suppress_delete_batch()`],
+    ['audit INSERT', `CREATE FUNCTION suppress_delete_batch() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.operation_id='${batchOperationId('delete-batch-write-fault')}' THEN RETURN NULL; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER suppress_delete_batch BEFORE INSERT ON audit_events FOR EACH ROW
+      EXECUTE FUNCTION suppress_delete_batch()`],
+    ['terminal RETURN NULL', `CREATE FUNCTION suppress_delete_batch() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.operation_id='${batchOperationId('delete-batch-write-fault')}' AND NEW.status='SUCCEEDED'
+        THEN RETURN NULL; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER suppress_delete_batch BEFORE UPDATE ON operations FOR EACH ROW
+      EXECUTE FUNCTION suppress_delete_batch()`],
+    ['terminal RETURN OLD', `CREATE FUNCTION suppress_delete_batch() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.operation_id='${batchOperationId('delete-batch-write-fault')}' AND NEW.status='SUCCEEDED'
+        THEN RETURN OLD; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER suppress_delete_batch BEFORE UPDATE ON operations FOR EACH ROW
+      EXECUTE FUNCTION suppress_delete_batch()`],
+    ['terminal mutated', `CREATE FUNCTION suppress_delete_batch() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.operation_id='${batchOperationId('delete-batch-write-fault')}' AND NEW.status='SUCCEEDED' THEN
+        NEW.result_snapshot=jsonb_set(NEW.result_snapshot, '{tasks,0,versionAfter}', '99');
+        END IF; RETURN NEW; END $$;
+      CREATE TRIGGER suppress_delete_batch BEFORE UPDATE ON operations FOR EACH ROW
+      EXECUTE FUNCTION suppress_delete_batch()`],
+  ] as const)('reaches later batch DELETE %s and restores the exact snapshot', async (_label, ddl) => {
+    await commands().create({ ...createInput(), operationId: batchOperationId(`fault-create-A`), taskId: 'A',
+      allowedStudentIds: ['S001'] });
+    await commands().create({ ...createInput(), operationId: batchOperationId(`fault-create-B`), taskId: 'B',
+      allowedStudentIds: ['S002'] });
+    const before = await completeSnapshot();
+    await harness.database.exec(ddl);
+    await expect(commands().deleteBatch({ operationId: batchOperationId('delete-batch-write-fault'),
+      tasks: [deleteBatchEntry('A'), deleteBatchEntry('B')] })).rejects.toThrow(/integrity|replayable|stored/i);
+    expect(await completeSnapshot()).toEqual(before);
+  });
+
+  it.each([
+    ['audit', 'target metadata/version', '', `UPDATE tasks SET title='audit-corrupt', version=version+1
+      WHERE tenant_id=NEW.tenant_id AND task_id='A'`],
+    ['terminal', 'target lifecycle', '', `UPDATE tasks SET deleted_at=NULL, is_active=true
+      WHERE tenant_id=NEW.tenant_id AND task_id='B'`],
+    ['audit', 'mirror recreation', '', `INSERT INTO task_allowed_students
+      (tenant_id, task_instance_id, student_id, created_at)
+      SELECT tenant_id, task_instance_id, 'S001', NEW.occurred_at FROM tasks
+      WHERE tenant_id=NEW.tenant_id AND task_id='A'`],
+    ['terminal', 'assignment tamper', 'assignment', `UPDATE task_assignments SET note='tampered'
+      WHERE tenant_id=NEW.tenant_id AND admin_operation_id='${batchOperationId('delete-batch-post-write')}'`],
+    ['audit', 'assignment injection', '', `INSERT INTO task_assignments
+      (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id, cycle_start_at,
+       cycle_end_at, rule_version, timezone, student_id, event_type, source, previous_assignment_id,
+       created_at, schema_version, note)
+      SELECT tenant_id, assignment_id || ':extra', task_id_snapshot, task_instance_id, cycle_id,
+       cycle_start_at, cycle_end_at, rule_version, timezone, student_id, event_type,
+       'LEGACY_SEED', NULL, created_at, schema_version, NULL FROM task_assignments
+      WHERE tenant_id=NEW.tenant_id ORDER BY event_sequence LIMIT 1`],
+    ['audit', 'completion injection', '', `INSERT INTO task_completions
+      (tenant_id, completion_id, completed_at, task_instance_id, task_id_snapshot,
+       task_name_snapshot, student_id, student_name_snapshot, reward_snapshot, balance_before,
+       balance_after, status, cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone,
+       source, schema_version, created_at)
+      SELECT tenant_id, 'delete-batch-extra-completion', NEW.occurred_at, task_instance_id, task_id,
+       title, 'S001', '하나', reward, 0, reward, 'COMPLETED', 'extra-cycle', NEW.occurred_at,
+       NULL, 1, 'Asia/Seoul', 'BANK', 1, NEW.occurred_at FROM tasks
+      WHERE tenant_id=NEW.tenant_id AND task_id='A'`],
+    ['terminal', 'preexisting completion deletion', 'completion', `DELETE FROM task_completions
+      WHERE tenant_id=NEW.tenant_id`],
+    ['audit', 'surviving graph corruption', 'graph', `UPDATE tasks
+      SET prerequisite_task_instance_id='missing-delete-batch-instance'
+      WHERE tenant_id=NEW.tenant_id AND task_id='SURVIVOR'`],
+    ['terminal', 'extra operation-bound event', '', `INSERT INTO task_assignments
+      (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id, cycle_start_at,
+       cycle_end_at, rule_version, timezone, student_id, event_type, source, previous_assignment_id,
+       admin_operation_id, admin_operation_hash, created_at, schema_version, note)
+      SELECT tenant_id, assignment_id || ':op-extra', task_id_snapshot, task_instance_id, cycle_id,
+       cycle_start_at, cycle_end_at, rule_version, timezone, student_id, event_type, source,
+       previous_assignment_id, admin_operation_id, admin_operation_hash, created_at, schema_version,
+       note FROM task_assignments WHERE tenant_id=NEW.tenant_id
+       AND admin_operation_id='${batchOperationId('delete-batch-post-write')}' ORDER BY event_sequence LIMIT 1`],
+  ] as const)('rejects %s-stage batch DELETE %s and rolls back', async (stage, _label, guard, body) => {
+    const a = await commands().create({ ...createInput(), operationId: batchOperationId(`post-${stage}-create-A`),
+      taskId: 'A', allowedStudentIds: ['S001'] });
+    await commands().create({ ...createInput(), operationId: batchOperationId(`post-${stage}-create-B`),
+      taskId: 'B', allowedStudentIds: ['S002'] });
+    await commands().create({ ...createInput(), operationId: batchOperationId(`post-${stage}-create-survivor`),
+      taskId: 'SURVIVOR', allowedStudentIds: [] });
+    await seedCarryForwardCompletion(a.tasks[0].taskInstanceId, `post-${stage}-completion`);
+    if (guard === 'assignment') await harness.database.exec(
+      'ALTER TABLE task_assignments DISABLE TRIGGER task_assignments_append_only');
+    if (guard === 'completion') await harness.database.exec(
+      'ALTER TABLE task_completions DISABLE TRIGGER task_completions_append_only');
+    if (guard === 'graph') await harness.database.exec('ALTER TABLE tasks DROP CONSTRAINT tasks_prerequisite_fk');
+    const before = await completeSnapshot();
+    const trigger = stage === 'audit'
+      ? `AFTER INSERT ON audit_events FOR EACH ROW WHEN (NEW.operation_id='${batchOperationId('delete-batch-post-write')}')`
+      : `AFTER UPDATE ON operations FOR EACH ROW WHEN
+        (NEW.operation_id='${batchOperationId('delete-batch-post-write')}' AND NEW.status='SUCCEEDED')`;
+    await harness.database.exec(`CREATE FUNCTION mutate_delete_batch_state() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN ${body}; RETURN NEW; END $$;
+      CREATE TRIGGER mutate_delete_batch_state ${trigger} EXECUTE FUNCTION mutate_delete_batch_state()`);
+    await expect(commands().deleteBatch({ operationId: batchOperationId('delete-batch-post-write'),
+      tasks: [deleteBatchEntry('A'), deleteBatchEntry('B')] })).rejects.toThrow(/integrity|cycle|prerequisite/i);
+    expect(await completeSnapshot()).toEqual(before);
+  });
+
+  it.each([
+    ['missing', `DELETE FROM task_assignments WHERE admin_operation_id='${batchOperationId('delete-batch-event-tamper')}'`],
+    ['tampered', `UPDATE task_assignments SET note='tampered'
+      WHERE admin_operation_id='${batchOperationId('delete-batch-event-tamper')}'`],
+    ['extra', `INSERT INTO task_assignments
+      (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id, cycle_start_at,
+       cycle_end_at, rule_version, timezone, student_id, event_type, source, previous_assignment_id,
+       admin_operation_id, admin_operation_hash, created_at, schema_version, note)
+      SELECT tenant_id, assignment_id || ':extra', task_id_snapshot, task_instance_id, cycle_id,
+       cycle_start_at, cycle_end_at, rule_version, timezone, student_id, event_type, source,
+       previous_assignment_id, admin_operation_id, admin_operation_hash, created_at, schema_version,
+       note FROM task_assignments WHERE admin_operation_id='${batchOperationId('delete-batch-event-tamper')}'
+       ORDER BY event_sequence LIMIT 1`],
+  ] as const)('rejects batch DELETE replay with %s original event evidence', async (_label, mutation) => {
+    const { input } = await seedDeleteReplayBatch('delete-batch-event-tamper');
+    await harness.database.exec(`ALTER TABLE task_assignments DISABLE TRIGGER task_assignments_append_only;
+      ${mutation}; ALTER TABLE task_assignments ENABLE ALWAYS TRIGGER task_assignments_append_only`);
+    await expect(commands().deleteBatch(input)).rejects.toThrow(/assignment event integrity/i);
+  });
+
+  it.each([
+    ['task omission', `result_snapshot #- '{tasks,1}'`],
+    ['task addition', `jsonb_set(result_snapshot, '{tasks}',
+      (result_snapshot->'tasks') || (result_snapshot#>'{tasks,0}'))`],
+    ['task reordering', `jsonb_set(result_snapshot, '{tasks}',
+      jsonb_build_array(result_snapshot#>'{tasks,1}', result_snapshot#>'{tasks,0}'))`],
+    ['wrong version', `jsonb_set(result_snapshot, '{tasks,0,versionAfter}', '9')`],
+    ['padded event ID', `jsonb_set(result_snapshot, '{tasks,0,assignmentEventIds,0}',
+      to_jsonb(' ' || (result_snapshot#>>'{tasks,0,assignmentEventIds,0}') || ' '))`],
+  ] as const)('rejects batch DELETE replay stored result %s', async (_label, expression) => {
+    const { input } = await seedDeleteReplayBatch('delete-batch-result-tamper');
+    await harness.database.exec(`ALTER TABLE operations DISABLE TRIGGER operations_update_guard;
+      UPDATE operations SET result_snapshot=${expression}
+      WHERE operation_id='${batchOperationId('delete-batch-result-tamper')}';
+      ALTER TABLE operations ENABLE ALWAYS TRIGGER operations_update_guard`);
+    await expect(commands().deleteBatch(input)).rejects.toThrow(/stored|assignment event integrity/i);
+  });
+
+  it.each([
+    ['missing', `DELETE FROM audit_events WHERE operation_id='${batchOperationId('delete-batch-audit-tamper')}'`],
+    ['extra', `INSERT INTO audit_events
+      (tenant_id, event_id, operation_id, event_type, entity_type, entity_id,
+       redacted_details, occurred_at)
+      SELECT tenant_id, event_id || ':extra', operation_id, event_type, entity_type, entity_id,
+       redacted_details, occurred_at FROM audit_events
+      WHERE operation_id='${batchOperationId('delete-batch-audit-tamper')}'`],
+    ['action', `UPDATE audit_events SET redacted_details=jsonb_set(redacted_details,
+      '{action}', '"CREATE"') WHERE operation_id='${batchOperationId('delete-batch-audit-tamper')}'`],
+    ['count', `UPDATE audit_events SET redacted_details=jsonb_set(redacted_details,
+      '{taskCount}', '1') WHERE operation_id='${batchOperationId('delete-batch-audit-tamper')}'`],
+    ['hash', `UPDATE audit_events SET redacted_details=jsonb_set(redacted_details,
+      '{resultHash}', to_jsonb(repeat('a',64))) WHERE operation_id='${batchOperationId('delete-batch-audit-tamper')}'`],
+    ['time', `UPDATE audit_events SET occurred_at=occurred_at + interval '1 second'
+      WHERE operation_id='${batchOperationId('delete-batch-audit-tamper')}'`],
+  ] as const)('rejects batch DELETE replay audit %s tampering', async (_label, mutation) => {
+    const { input } = await seedDeleteReplayBatch('delete-batch-audit-tamper');
+    await harness.database.exec(`ALTER TABLE audit_events DISABLE TRIGGER audit_events_immutable;
+      ${mutation}; ALTER TABLE audit_events ENABLE ALWAYS TRIGGER audit_events_immutable`);
+    await expect(commands().deleteBatch(input)).rejects.toThrow(/audit/i);
+  });
+
+  it.each([
+    ['kind', 'ALTER TABLE operations DROP CONSTRAINT operations_kind_check', `operation_kind='OTHER'`],
+    ['hash', '', `payload_hash=repeat('a',64)`],
+    ['status', 'ALTER TABLE operations DROP CONSTRAINT operations_terminal_shape_check', `status='PENDING'`],
+    ['attempt', '', `attempt_count=2`],
+    ['timestamp', 'ALTER TABLE operations DROP CONSTRAINT operations_chronology_check',
+      `started_at=started_at - interval '1 second'`],
+  ] as const)('rejects batch DELETE replay operation %s tampering', async (_label, prepare, mutation) => {
+    const { input } = await seedDeleteReplayBatch('delete-batch-operation-tamper');
+    if (prepare) await harness.database.exec(prepare);
+    await harness.database.exec(`ALTER TABLE operations DISABLE TRIGGER operations_update_guard;
+      UPDATE operations SET ${mutation} WHERE operation_id='${batchOperationId('delete-batch-operation-tamper')}';
+      ALTER TABLE operations ENABLE ALWAYS TRIGGER operations_update_guard`);
+    await expect(commands().deleteBatch(input)).rejects.toThrow(/conflict|replayable|timestamp|operation/i);
+  });
+
+  it.each([0, 1] as const)('rejects replay after physical target %s is hard-deleted', async (target) => {
+    const { input, result } = await seedDeleteReplayBatch(`delete-batch-hard-${target}`);
+    const task = result.tasks[target];
+    await harness.database.exec('ALTER TABLE task_assignments DISABLE TRIGGER task_assignments_append_only');
+    await harness.database.query('DELETE FROM task_assignments WHERE tenant_id=$1 AND task_instance_id=$2',
+      [harness.tenantOneId, task.taskInstanceId]);
+    await harness.database.query('DELETE FROM tasks WHERE tenant_id=$1 AND task_instance_id=$2',
+      [harness.tenantOneId, task.taskInstanceId]);
+    await expect(commands().deleteBatch(input)).rejects.toThrow(/physical identity/i);
+  });
+
+  it.each([
+    ['task', 3, 'task_id', 'duplicate'], ['task', 3, 'task_id', 'padded'],
+    ['task', 3, 'task_id', 'boxed'], ['task', 3, 'task_id', 'getter'],
+    ['mirror', 4, 'student_id', 'duplicate'], ['mirror', 4, 'student_id', 'padded'],
+    ['mirror', 4, 'student_id', 'boxed'], ['mirror', 4, 'student_id', 'getter'],
+    ['assignment', 5, 'assignment_id', 'duplicate'], ['assignment', 5, 'assignment_id', 'padded'],
+    ['assignment', 5, 'assignment_id', 'boxed'], ['assignment', 5, 'assignment_id', 'getter'],
+    ['completion', 6, 'completion_id', 'duplicate'], ['completion', 6, 'completion_id', 'padded'],
+    ['completion', 6, 'completion_id', 'boxed'], ['completion', 6, 'completion_id', 'getter'],
+  ] as const)('rejects %s raw batch DELETE row that is %s before writes',
+  async (_label, targetCall, key, mode) => {
+    const a = await commands().create({ ...createInput(), operationId: batchOperationId(`raw-${mode}-create-A`),
+      taskId: 'A', allowedStudentIds: ['S001'] });
+    const b = await commands().create({ ...createInput(), operationId: batchOperationId(`raw-${mode}-create-B`),
+      taskId: 'B', allowedStudentIds: ['S002'] });
+    await seedCarryForwardCompletion(a.tasks[0].taskInstanceId, `raw-${mode}-completion-A`);
+    await seedCarryForwardCompletion(b.tasks[0].taskInstanceId, `raw-${mode}-completion-B`);
+    const before = await completeSnapshot();
+    let call = 0;
+    let getterCalls = 0;
+    const adapter = createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId, now: () => NOW,
+      runTenantTransaction: (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) =>
+        callback({ execute: async (query) => {
+          call += 1;
+          const result = await tx.execute(query);
+          if (call !== targetCall || result.rows.length === 0) return result;
+          if (mode === 'duplicate') return { ...result, rows: [...result.rows, result.rows[0]] } as never;
+          const row = { ...(result.rows[0] as Record<string, unknown>) };
+          const value = row[key];
+          if (mode === 'getter') Object.defineProperty(row, key, { enumerable: true, get: () => {
+            getterCalls += 1; return value;
+          } });
+          else row[key] = mode === 'padded' ? ` ${String(value)} ` : new String(String(value));
+          return { ...result, rows: [row, ...result.rows.slice(1)] } as never;
+        } } as typeof tx)),
+    });
+    await expect(adapter.deleteBatch({ operationId: batchOperationId(`raw-${mode}-delete`),
+      tasks: [deleteBatchEntry('A'), deleteBatchEntry('B')] })).rejects.toThrow(/integrity|invalid/i);
+    expect(call).toBe(targetCall);
+    expect(getterCalls).toBe(0);
+    expect(await completeSnapshot()).toEqual(before);
+  });
+
+  it.each(['duplicate', 'padded', 'boxed', 'getter'] as const)(
+    'rejects raw batch DELETE replay operation identity that is %s without invoking getters', async (mode) => {
+      const { input } = await seedDeleteReplayBatch(`delete-batch-raw-replay-${mode}`);
+      const before = await completeSnapshot();
+      let getterCalls = 0;
+      const adapter = createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId, now: () => NOW,
+        runTenantTransaction: (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) =>
+          callback({ execute: async (query) => {
+            const result = await tx.execute(query);
+            if (!result.rows.some((row) =>
+              (row as { operation_id?: unknown }).operation_id === input.operationId)) return result;
+            if (mode === 'duplicate') return { ...result, rows: [...result.rows, result.rows[0]] } as never;
+            const original = result.rows[0] as Record<string, unknown>;
+            const row = { ...original };
+            if (mode === 'getter') Object.defineProperty(row, 'operation_id', {
+              enumerable: true, get: () => { getterCalls += 1; return original.operation_id; },
+            });
+            else row.operation_id = mode === 'padded'
+              ? ` ${String(original.operation_id)} ` : new String(String(original.operation_id));
+            return { ...result, rows: [row] } as never;
+          } } as typeof tx)),
+      });
+      await expect(adapter.deleteBatch(input)).rejects.toThrow(/operation.*integrity|database identity/i);
+      expect(getterCalls).toBe(0);
+      expect(await completeSnapshot()).toEqual(before);
+    },
+  );
+
+  it('rejects an extra operation event for a batch target whose frozen result had zero events', async () => {
+    const { b, input } = await seedDeleteReplayBatch('delete-batch-zero-extra', true);
+    const operation = await harness.database.query(`SELECT payload_hash FROM operations
+      WHERE tenant_id=$1 AND operation_id=$2`, [harness.tenantOneId, input.operationId]);
+    const task = await harness.database.query(`SELECT current_schedule, created_at FROM tasks
+      WHERE tenant_id=$1 AND task_instance_id=$2`, [harness.tenantOneId, b.tasks[0].taskInstanceId]);
+    const row = task.rows[0] as { current_schedule: Parameters<typeof getTaskCycle>[0]['schedule'];
+      created_at: Date };
+    const cycle = getTaskCycle({ taskInstanceId: b.tasks[0].taskInstanceId,
+      schedule: row.current_schedule, taskCreatedAt: row.created_at.toISOString(), now: NOW.toISOString() });
+    await harness.database.query(`INSERT INTO task_assignments
+      (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id, cycle_start_at,
+       cycle_end_at, rule_version, timezone, student_id, event_type, source, previous_assignment_id,
+       admin_operation_id, admin_operation_hash, created_at, schema_version, note)
+      VALUES ($1, 'delete-batch-zero-extra-event', 'B', $2, $3, $4, $5, 1, 'Asia/Seoul',
+       'S001', 'UNASSIGNED', 'ADMIN', NULL, $6, $7, $8, 1, NULL)`,
+    [harness.tenantOneId, b.tasks[0].taskInstanceId, cycle.cycleId, cycle.startsAt, cycle.endsAt,
+      input.operationId, (operation.rows[0] as { payload_hash: string }).payload_hash, NOW.toISOString()]);
+    await expect(commands().deleteBatch(input)).rejects.toThrow(/assignment event integrity/i);
+  });
+
+  it('rejects raw replay physical business identity mismatch', async () => {
+    const { input } = await seedDeleteReplayBatch('delete-batch-raw-identity');
+    let call = 0;
+    const adapter = createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId, now: () => NOW,
+      runTenantTransaction: (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) =>
+        callback({ execute: async (query) => {
+          call += 1;
+          const result = await tx.execute(query);
+          return call === 2 ? { ...result, rows: result.rows.map((raw) =>
+            ({ ...(raw as Record<string, unknown>), task_id: 'OTHER' })) } as never : result;
+        } } as typeof tx)),
+    });
+    await expect(adapter.deleteBatch(input)).rejects.toThrow(/physical identity/i);
+  });
+
+  it('deletes and replays identical batch task and operation IDs independently by tenant', async () => {
+    for (const tenantId of [harness.tenantOneId, harness.tenantTwoId]) {
+      await commands(tenantId).create({ ...createInput(), operationId: batchOperationId('tenant-delete-create-A'),
+        taskId: 'A', allowedStudentIds: ['S001'] });
+      await commands(tenantId).create({ ...createInput(), operationId: batchOperationId('tenant-delete-create-B'),
+        taskId: 'B', allowedStudentIds: [] });
+    }
+    const input: DeleteTasksAdminBatchInput = { operationId: batchOperationId('tenant-delete-batch'),
+      tasks: [deleteBatchEntry('B'), deleteBatchEntry('A')] };
+    const one = await commands(harness.tenantOneId).deleteBatch(input);
+    const two = await commands(harness.tenantTwoId).deleteBatch(input);
+    expect(two).toEqual(one);
+    await expect(commands(harness.tenantOneId).deleteBatch(input)).resolves.toEqual(one);
+    await expect(commands(harness.tenantTwoId).deleteBatch(input)).resolves.toEqual(two);
+    expect((await snapshot(harness.tenantOneId)).tasks.every((row) =>
+      !(row as { is_active: boolean }).is_active)).toBe(true);
+    expect((await snapshot(harness.tenantTwoId)).tasks.every((row) =>
+      !(row as { is_active: boolean }).is_active)).toBe(true);
   });
 });
