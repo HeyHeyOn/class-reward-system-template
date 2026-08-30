@@ -2,11 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { createConfiguredSheetsStore } from '@/server/googleSheets';
 import { completeTaskForStudent } from '@/server/sheetsRepository';
 import { listTaskCycleProjections } from '@/server/repositories/sheets/taskHistoryQueries';
-import { buildEnrichedStudentTaskProjection } from '@/server/studentTaskProjection';
-import {
-  claimPadletEvidenceForTask,
-  PadletTaskVerificationError,
-} from '@/server/padletTaskVerification';
+import { buildStudentTaskProjection } from '@/server/studentTaskProjection';
 
 type RouteContext = { params: Promise<{ taskId: string }> };
 
@@ -67,18 +63,9 @@ export async function POST(request: Request, context: RouteContext) {
       requestId,
       operationId,
       operationPayloadHash: payloadHash(taskId, studentId),
-      resolveEvidence: async ({ student, now }) => claimPadletEvidenceForTask({
-        tasks: await listTaskCycleProjections(store, { studentId, includeInactive: true, now }),
-        taskId,
+      buildSafeProjection: async (projectionNow) => buildStudentTaskProjection(
+        await listTaskCycleProjections(store, { studentId, includeInactive: false, now: projectionNow }),
         studentId,
-        studentName: student.name,
-        operationId,
-        now,
-      }),
-      buildSafeProjection: async (projectionNow, projectionStudent) => buildEnrichedStudentTaskProjection(
-        await listTaskCycleProjections(store, { studentId, includeInactive: true, now: projectionNow }),
-        studentId,
-        projectionStudent.name,
         projectionNow,
       ),
     });
@@ -105,27 +92,6 @@ export async function POST(request: Request, context: RouteContext) {
       return Response.json({ error: '학생 QR을 인식해 주세요.' }, { status: 400 });
     }
     const message = error instanceof Error ? error.message : '';
-    if (error instanceof PadletTaskVerificationError) {
-      if (error.code === 'SUBMISSION_REQUIRED') {
-        return Response.json({
-          error: '승인된 Padlet 게시물을 제출한 뒤 다시 시도해 주세요.',
-          code: 'PADLET_SUBMISSION_REQUIRED', operationId,
-        }, { status: 400 });
-      }
-      if (error.code === 'OPERATION_CONFLICT') {
-        return Response.json({
-          error: '같은 완료 요청의 내용이 일치하지 않습니다.',
-          code: 'COMPLETION_OPERATION_CONFLICT', operationId,
-        }, { status: 409 });
-      }
-      if (error.code === 'POLICY') {
-        return Response.json({ error: '완료할 수 있는 과제가 아닙니다.', code: 'POLICY_FAILURE', operationId }, { status: 400 });
-      }
-      return Response.json({
-        error: 'Padlet 게시물 확인이 일시적으로 불가능합니다.',
-        code: 'PADLET_CHECK_UNAVAILABLE', operationId, retryable: true,
-      }, { status: 503 });
-    }
     if (isSafeCompletionError(message)) {
       return Response.json({ error: message, code: 'POLICY_FAILURE', operationId }, { status: 400 });
     }

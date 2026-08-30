@@ -10,8 +10,11 @@
 
 - `studentId`: QR 코드 값과 동일한 학생 고유 ID
 - `name`: 학생 이름
+- `number`: 번호
 - `balance`: 현재 잔액
+- `qrValue`: QR에 넣을 값, 기본은 studentId와 동일
 - `status`: `ACTIVE` 또는 `INACTIVE`
+- `note`: 비고
 
 ## 2. Products
 
@@ -46,28 +49,17 @@ adjustmentId,timestamp,studentId,amount,reason,balanceBefore,balanceAfter,operat
 
 ## 5. Tasks
 
-새로 만드는 시트는 아래 34개 canonical 헤더를 순서대로 사용합니다.
+새로 만드는 시트는 아래 33개 canonical 헤더를 순서대로 사용합니다.
 
 ```csv
-taskId,title,description,reward,isActive,sortOrder,createdAt,updatedAt,allowedStudentIds,taskInstanceId,ruleVersion,scheduleEffectiveFrom,recurrenceTimeZone,recurrenceType,recurrenceTime,recurrenceWeekday,recurrenceDayOfMonth,resetCompletionOnCycle,resetAssignmentOnCycle,pendingRuleVersion,pendingEffectiveFrom,pendingTimeZone,pendingRecurrenceType,pendingRecurrenceTime,pendingRecurrenceWeekday,pendingRecurrenceDayOfMonth,pendingResetCompletionOnCycle,pendingResetAssignmentOnCycle,availableFrom,dueAt,prerequisiteTaskId,recurrenceWeekdays,pendingRecurrenceWeekdays,padletBoardId
+taskId,title,description,reward,isActive,sortOrder,createdAt,updatedAt,allowedStudentIds,taskInstanceId,ruleVersion,scheduleEffectiveFrom,recurrenceTimeZone,recurrenceType,recurrenceTime,recurrenceWeekday,recurrenceDayOfMonth,resetCompletionOnCycle,resetAssignmentOnCycle,pendingRuleVersion,pendingEffectiveFrom,pendingTimeZone,pendingRecurrenceType,pendingRecurrenceTime,pendingRecurrenceWeekday,pendingRecurrenceDayOfMonth,pendingResetCompletionOnCycle,pendingResetAssignmentOnCycle,availableFrom,dueAt,prerequisiteTaskId,recurrenceWeekdays,pendingRecurrenceWeekdays
 ```
 
 - `availableFrom`/`dueAt`은 ISO instant이며 시작 포함·마감 제외 기간을 뜻합니다.
 - `prerequisiteTaskId`는 먼저 완료할 활성 과제 하나를 지정합니다.
 - `recurrenceWeekdays`/`pendingRecurrenceWeekdays`는 `1,4`처럼 복수 ISO 요일을 저장합니다.
-- `padletBoardId`는 선택적인 공식 Padlet 보드 ID(16~22자 영숫자)입니다.
 - 기존 시트를 직접 재작성하지 않습니다. 앱의 명시적 과제 mutation이 누락된 새 열을 끝에 append하며 기존 열·행·알 수 없는 사용자 열을 보존합니다.
 - 레거시 `recurrenceWeekday`/`pendingRecurrenceWeekday`는 단일 요일 fallback으로 읽습니다. 복수 요일 저장 시 레거시 단일값 셀은 비웁니다.
-
-## 6. TaskCompletions
-
-Padlet 증거와 BANK 작업 멱등성 열을 기존 canonical 열 뒤에 추가합니다.
-
-```csv
-completionId,timestamp,taskId,studentId,studentName,reward,balanceBefore,balanceAfter,status,note,taskInstanceId,cycleId,cycleStartsAt,cycleEndsAt,ruleVersion,timeZone,source,assignmentId,schemaVersion,operationId,operationPayloadHash,evidenceProvider,evidenceBoardId,evidencePostId,evidenceCreatedAt,evidenceAuthorFullName
-```
-
-`evidenceProvider`부터 `evidenceAuthorFullName`까지는 모두 비어 있거나 모두 유효해야 합니다. 기존·알 수 없는 후행 열은 삭제하거나 순서를 바꾸지 않습니다.
 
 ## 운영 규칙
 

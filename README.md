@@ -47,11 +47,6 @@ ADMIN_PASSWORD=
 # 기존 서비스 계정 방식: OAuth refresh token이 없을 때 fallback
 GOOGLE_SERVICE_ACCOUNT_EMAIL=
 GOOGLE_PRIVATE_KEY=
-
-# Padlet 연동 과제를 사용할 때만 설정(서버 전용)
-PADLET_API_KEY=
-UPSTASH_REDIS_REST_URL=
-UPSTASH_REDIS_REST_TOKEN=
 ```
 
 ## Vercel 배포
@@ -66,7 +61,7 @@ ADMIN_PASSWORD=관리자 페이지 비밀번호
 AUTH_SECRET=긴 무작위 문자열
 ```
 
-Google Sheets 접근용 인증값은 OAuth refresh token 방식 또는 서비스 계정 방식 중 하나를 설정해야 합니다. Padlet 연동 과제를 사용하는 배포는 추가로 Padlet 보드 owner/admin의 API 키와 Upstash Redis REST URL·token을 모두 설정해야 합니다. 해당 값이 없거나 서비스 확인에 실패하면 연동 과제는 fail-closed로 완료를 허용하지 않습니다. 자세한 내용은 `docs/vercel-deploy-guide.md`를 확인하세요.
+Google Sheets 접근용 인증값은 OAuth refresh token 방식 또는 서비스 계정 방식 중 하나를 설정해야 합니다. 자세한 내용은 `docs/vercel-deploy-guide.md`를 확인하세요.
 
 ## Google Sheets 템플릿
 

@@ -898,36 +898,6 @@ describe('BankApp', () => {
     expect(screen.getByRole('button', { name: '완료하기' })).toHaveProperty('disabled', true);
   });
 
-  it('shows Padlet READY as 완료 가능 on the card and allows completion', async () => {
-    const ready = { ...tasks[0], title: '패들렛 준비 과제', padletEligibility: 'READY', padletEligibilityMessage: 'Padlet 게시물이 확인되어 완료할 수 있습니다.', studentStatus: { studentId: 'S001', assigned: true, completed: false } };
-    const base = vi.mocked(fetch).getMockImplementation()!;
-    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/tasks?studentId=S001' ? jsonResponse([ready]) : base(input, init));
-
-    render(<BankApp />);
-    await screen.findByRole('heading', { name: '별빛 은행' });
-    await identifyTaskStudent();
-    const card = await screen.findByRole('button', { name: '패들렛 준비 과제, 완료 가능' });
-    expect(within(card).getByText('완료 가능')).toBeTruthy();
-    fireEvent.click(card);
-    expect(screen.getByRole('button', { name: '완료하기' })).toHaveProperty('disabled', false);
-  });
-
-  it.each([
-    ['SUBMISSION_REQUIRED', '승인된 Padlet 게시물을 작성한 뒤 다시 확인해 주세요.'],
-    ['CHECK_UNAVAILABLE', 'Padlet 게시물 확인이 일시적으로 불가능합니다. 잠시 후 다시 시도해 주세요.'],
-  ])('disables completion for Padlet %s and shows its Korean guidance', async (padletEligibility, padletEligibilityMessage) => {
-    const blocked = { ...tasks[0], title: '패들렛 확인 과제', padletEligibility, padletEligibilityMessage, studentStatus: { studentId: 'S001', assigned: true, completed: false } };
-    const base = vi.mocked(fetch).getMockImplementation()!;
-    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/tasks?studentId=S001' ? jsonResponse([blocked]) : base(input, init));
-
-    render(<BankApp />);
-    await screen.findByRole('heading', { name: '별빛 은행' });
-    await identifyTaskStudent();
-    fireEvent.click(await screen.findByRole('button', { name: '패들렛 확인 과제, 완료 불가' }));
-    const detail = await screen.findByRole('dialog', { name: '패들렛 확인 과제' });
-    expect(within(detail).getByText(padletEligibilityMessage)).toBeTruthy();
-    expect(within(detail).getByRole('button', { name: '완료하기' })).toHaveProperty('disabled', true);
-  });
 
   it('dims completed cards with a filled unrotated pill and removes inline completion metadata', async () => {
     const completed = { ...tasks[0], title: '끝낸 과제', studentStatus: { studentId: 'S001', assigned: true, completed: true } };

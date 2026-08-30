@@ -1,7 +1,6 @@
-import { createHash } from 'node:crypto';
 import { projectTaskCycleState } from '@/domain/taskCycleState';
 import { resolveTaskSchedule } from '@/domain/taskSchedule';
-import type { ClassTask, Student, TaskCompletion, TaskCompletionEvidence, Transaction } from '@/domain/types';
+import type { ClassTask, Student, TaskCompletion, Transaction } from '@/domain/types';
 import { buildTaskCompletionAppendRow, buildTransactionAppendRow, createHeaderIndex, parseStudentRow } from '@/server/sheetsRows';
 import type { RecurringSchemaMigrationStore } from '@/server/storage/tabularStore';
 import { migrateRecurringTaskSchema } from './recurringSchemaMigrator';
@@ -21,10 +20,6 @@ export type TaskCompletionMutation = {
   operationId?: string;
   /** Canonical lower-case payload digest; paired with operationId for BANK calls. */
   operationPayloadHash?: string;
-  /** Server-selected immutable evidence; never accepted from the client payload directly. */
-  evidence?: TaskCompletionEvidence;
-  /** Invoked only after assignment/policy checks and immediately before PENDING. */
-  resolveEvidence?: () => Promise<TaskCompletionEvidence>;
   /** Caller verified canonical recurring headers from a primed request snapshot. */
   schemaReady?: boolean;
   now?: string;
@@ -60,27 +55,13 @@ export async function mutateTaskCompletionNow(mutation: TaskCompletionMutation):
   const { store, task } = mutation;
   if (!task.taskInstanceId || !task.schedule) throw new Error('task completion mutation requires a task instance and schedule');
   const now = mutation.now ?? new Date().toISOString();
-  let bankOperation = mutation.source === 'BANK' ? normalizeBankOperation(mutation) : null;
+  const bankOperation = mutation.source === 'BANK' ? normalizeBankOperation(mutation) : null;
 
   // Migration and assignment validation/materialization must finish before balance or completion mutation.
   if (!mutation.schemaReady) await migrateRecurringTaskSchema(store);
   const preloadedBankCompletions = bankOperation ? await readTaskCompletionsFresh(store) : null;
-  if (bankOperation && !mutation.evidence) {
-    const storedEvidence = preloadedBankCompletions
-      ?.filter((event) => event.operationId === bankOperation?.operationId)
-      .map(taskCompletionEvidence)
-      .find((evidence): evidence is TaskCompletionEvidence => evidence !== null);
-    if (storedEvidence) {
-      bankOperation = {
-        operationId: bankOperation.operationId,
-        operationPayloadHash: bindEvidenceToPayloadHash(bankOperation.operationPayloadHash, storedEvidence),
-        ...storedEvidence,
-      };
-    }
-  }
-  const bankOperationId = bankOperation?.operationId;
-  const hasStoredOperation = Boolean(bankOperationId
-    && preloadedBankCompletions?.some((event) => event.operationId === bankOperationId));
+  const hasStoredOperation = Boolean(bankOperation
+    && preloadedBankCompletions?.some((event) => event.operationId === bankOperation.operationId));
   const studentRows = await store.getRows('Students');
   const studentHeaders = studentRows[0];
   if (!studentHeaders) throw new Error('학생 정보를 찾을 수 없습니다.');
@@ -136,19 +117,6 @@ export async function mutateTaskCompletionNow(mutation: TaskCompletionMutation):
   } else {
     if (state.assignedStudentIds.length === 0) throw new Error('부여된 학생이 없습니다.');
     if (!(studentState?.assigned ?? false)) throw new Error('허가되지 않은 과제입니다.');
-    if (mutation.source === 'BANK' && bankOperation && task.padletBoardId
-      && !taskCompletionEvidence(bankOperation)) {
-      if (!mutation.resolveEvidence) throw new Error('PADLET_EVIDENCE_REQUIRED');
-      const evidence = await mutation.resolveEvidence();
-      if (evidence.evidenceProvider !== 'PADLET' || evidence.evidenceBoardId !== task.padletBoardId) {
-        throw new Error('PADLET_EVIDENCE_REQUIRED');
-      }
-      bankOperation = {
-        operationId: bankOperation.operationId,
-        operationPayloadHash: bindEvidenceToPayloadHash(bankOperation.operationPayloadHash, evidence),
-        ...evidence,
-      };
-    }
 
     await mutateTaskAssignmentNow(store, {
       task,
@@ -229,7 +197,7 @@ export async function mutateTaskCompletionNow(mutation: TaskCompletionMutation):
   return { changed: true, completion, balanceAfter };
 }
 
-type BankOperation = { operationId: string; operationPayloadHash: string } & Partial<TaskCompletionEvidence>;
+type BankOperation = { operationId: string; operationPayloadHash: string };
 
 type BankCompletionInput = {
   store: RecurringSchemaMigrationStore;
@@ -249,39 +217,9 @@ type BankCompletionInput = {
 function normalizeBankOperation(mutation: TaskCompletionMutation): BankOperation | null {
   const operationId = mutation.operationId?.trim() ?? '';
   const operationPayloadHash = mutation.operationPayloadHash?.trim().toLowerCase() ?? '';
-  if (!operationId && !operationPayloadHash && !mutation.evidence) return null;
+  if (!operationId && !operationPayloadHash) return null;
   if (!operationId || !operationPayloadHash) throw new Error('TASK_COMPLETION_OPERATION_METADATA_REQUIRED');
-  if (!mutation.evidence) return { operationId, operationPayloadHash };
-  return {
-    operationId,
-    operationPayloadHash: bindEvidenceToPayloadHash(operationPayloadHash, mutation.evidence),
-    ...mutation.evidence,
-  };
-}
-
-function bindEvidenceToPayloadHash(payloadHash: string, evidence: TaskCompletionEvidence): string {
-  const stablePayload = JSON.stringify({
-    payloadHash,
-    evidenceProvider: evidence.evidenceProvider,
-    evidenceBoardId: evidence.evidenceBoardId,
-    evidencePostId: evidence.evidencePostId,
-    evidenceCreatedAt: evidence.evidenceCreatedAt,
-    evidenceAuthorFullName: evidence.evidenceAuthorFullName,
-  });
-  return `sha256:${createHash('sha256').update(stablePayload).digest('hex')}`;
-}
-
-function taskCompletionEvidence(completion: Partial<TaskCompletionEvidence>): TaskCompletionEvidence | null {
-  if (completion.evidenceProvider !== 'PADLET'
-    || !completion.evidenceBoardId || !completion.evidencePostId
-    || !completion.evidenceCreatedAt || !completion.evidenceAuthorFullName) return null;
-  return {
-    evidenceProvider: completion.evidenceProvider,
-    evidenceBoardId: completion.evidenceBoardId,
-    evidencePostId: completion.evidencePostId,
-    evidenceCreatedAt: completion.evidenceCreatedAt,
-    evidenceAuthorFullName: completion.evidenceAuthorFullName,
-  };
+  return { operationId, operationPayloadHash };
 }
 
 function logicalCompletionBaseId(
@@ -375,12 +313,6 @@ function selectStoredOperationEvents(
     if (event.operationPayloadHash?.trim().toLowerCase() !== operation.operationPayloadHash) {
       throw new Error('TASK_COMPLETION_OPERATION_PAYLOAD_CONFLICT');
     }
-    if (!hasSameEvidence(event, operation)) {
-      throw new Error('TASK_COMPLETION_OPERATION_CHECKPOINT_CONFLICT');
-    }
-    if (first && !hasSameCheckpointSnapshot(event, first)) {
-      throw new Error('TASK_COMPLETION_OPERATION_CHECKPOINT_CONFLICT');
-    }
     if (event.source !== 'BANK' || event.taskId !== taskId || event.studentId !== studentId
       || (first && (event.taskInstanceId !== first.taskInstanceId || event.cycleId !== first.cycleId))) {
       throw new Error('TASK_COMPLETION_OPERATION_IDENTITY_CONFLICT');
@@ -397,16 +329,9 @@ function validateAndSelectOperationEvents(
   studentId: string,
 ): TaskCompletion[] {
   const events = completions.filter((event) => event.operationId === operation.operationId);
-  const first = events[0];
   for (const event of events) {
     if (event.operationPayloadHash?.trim().toLowerCase() !== operation.operationPayloadHash) {
       throw new Error('TASK_COMPLETION_OPERATION_PAYLOAD_CONFLICT');
-    }
-    if (!hasSameEvidence(event, operation)) {
-      throw new Error('TASK_COMPLETION_OPERATION_CHECKPOINT_CONFLICT');
-    }
-    if (first && !hasSameCheckpointSnapshot(event, first)) {
-      throw new Error('TASK_COMPLETION_OPERATION_CHECKPOINT_CONFLICT');
     }
     if (event.source !== 'BANK' || event.taskInstanceId !== taskInstanceId
       || event.cycleId !== cycleId || event.studentId !== studentId) {
@@ -507,38 +432,12 @@ function assertCheckpointShape(events: readonly TaskCompletion[], canonical: Tas
   for (const event of events) {
     if (event.operationId !== canonical.operationId
       || event.operationPayloadHash?.trim().toLowerCase() !== canonical.operationPayloadHash?.trim().toLowerCase()
-      || !hasSameCheckpointSnapshot(event, canonical)) {
+      || event.reward !== canonical.reward || event.balanceBefore !== canonical.balanceBefore
+      || event.balanceAfter !== canonical.balanceAfter || event.assignmentId !== canonical.assignmentId
+      || event.taskId !== canonical.taskId || event.studentName !== canonical.studentName) {
       throw new Error('TASK_COMPLETION_OPERATION_CHECKPOINT_CONFLICT');
     }
   }
-}
-
-function hasSameCheckpointSnapshot(left: TaskCompletion, right: TaskCompletion): boolean {
-  return left.timestamp === right.timestamp
-    && left.taskId === right.taskId
-    && left.studentId === right.studentId
-    && left.studentName === right.studentName
-    && left.reward === right.reward
-    && left.balanceBefore === right.balanceBefore
-    && left.balanceAfter === right.balanceAfter
-    && left.taskInstanceId === right.taskInstanceId
-    && left.cycleId === right.cycleId
-    && left.cycleStartsAt === right.cycleStartsAt
-    && left.cycleEndsAt === right.cycleEndsAt
-    && left.ruleVersion === right.ruleVersion
-    && left.timeZone === right.timeZone
-    && left.source === right.source
-    && left.assignmentId === right.assignmentId
-    && left.schemaVersion === right.schemaVersion
-    && hasSameEvidence(left, right);
-}
-
-function hasSameEvidence(left: Partial<TaskCompletionEvidence>, right: Partial<TaskCompletionEvidence>): boolean {
-  return left.evidenceProvider === right.evidenceProvider
-    && left.evidenceBoardId === right.evidenceBoardId
-    && left.evidencePostId === right.evidencePostId
-    && left.evidenceCreatedAt === right.evidenceCreatedAt
-    && left.evidenceAuthorFullName === right.evidenceAuthorFullName;
 }
 
 function checkpointFrom(pending: TaskCompletion, status: 'BALANCE_APPLIED' | 'SUCCESS'): TaskCompletion {
@@ -622,12 +521,6 @@ function legacyCompletionReference(completionId: string): string {
   return `LEGACY_COMPLETION:${encodeURIComponent(completionId)}`;
 }
 
-function canonicalUtcMilliseconds(value: string): string {
-  const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime())) throw new Error('TaskCompletion timestamp must be a valid instant');
-  return parsed.toISOString();
-}
-
 function createCompletion(input: {
   task: ClassTask; student: Student; cycle: { cycleId: string; startsAt: string; endsAt: string | null };
   ruleVersion: number; timeZone: string; assignmentId: string; timestamp: string;
@@ -639,7 +532,7 @@ function createCompletion(input: {
     completionId: input.completionId ?? (input.operation
       ? operationCheckpointId(input.operation.operationId, input.status)
       : `TC-${crypto.randomUUID()}`),
-    timestamp: input.operation ? canonicalUtcMilliseconds(input.timestamp) : input.timestamp,
+    timestamp: input.timestamp,
     taskId: input.task.taskId,
     studentId: input.student.studentId,
     studentName: input.student.name,
@@ -650,10 +543,8 @@ function createCompletion(input: {
     note: input.note,
     taskInstanceId: input.task.taskInstanceId!,
     cycleId: input.cycle.cycleId,
-    cycleStartsAt: input.operation ? canonicalUtcMilliseconds(input.cycle.startsAt) : input.cycle.startsAt,
-    cycleEndsAt: input.cycle.endsAt === null
-      ? null
-      : input.operation ? canonicalUtcMilliseconds(input.cycle.endsAt) : input.cycle.endsAt,
+    cycleStartsAt: input.cycle.startsAt,
+    cycleEndsAt: input.cycle.endsAt,
     ruleVersion: input.ruleVersion,
     timeZone: input.timeZone,
     source: input.source,

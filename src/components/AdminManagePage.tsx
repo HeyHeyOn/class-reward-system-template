@@ -77,23 +77,6 @@ function seoulLocalToIso(value: string) {
   return value ? new Date(`${value}:00+09:00`).toISOString() : '';
 }
 
-function parsePadletBoardInput(value: string): { ok: true; boardId?: string } | { ok: false } {
-  const trimmed = value.trim();
-  if (!trimmed) return { ok: true };
-  if (/^[A-Za-z0-9]{16,22}$/.test(trimmed)) return { ok: true, boardId: trimmed };
-  try {
-    const url = new URL(trimmed);
-    if (url.protocol !== 'https:'
-      || (url.hostname !== 'padlet.com' && url.hostname !== 'www.padlet.com')
-      || url.port || url.username || url.password || url.search || url.hash) return { ok: false };
-    const terminalSegment = decodeURIComponent(url.pathname.split('/').filter(Boolean).at(-1) ?? '');
-    const match = terminalSegment.match(/(?:^|-)([A-Za-z0-9]{16,22})$/);
-    return match ? { ok: true, boardId: match[1] } : { ok: false };
-  } catch {
-    return { ok: false };
-  }
-}
-
 function taskAvailabilityLabel(task: TaskDraft) {
   if (!task.isActive) return '수동 비활성';
   const state = classifyTaskAvailability(task);
@@ -161,7 +144,7 @@ export function AdminManagePage() {
   const [newProduct, setNewProduct] = useState<NewProductDraft>(EMPTY_PRODUCT);
   const [newTask, setNewTask] = useState<Omit<TaskDraft, 'taskId'>>(EMPTY_TASK);
   const [imageEditor, setImageEditor] = useState<{ productId: string; value: string } | null>(null);
-  const [taskDescriptionEditor, setTaskDescriptionEditor] = useState<{ taskId: string; value: string; padletValue: string } | null>(null);
+  const [taskDescriptionEditor, setTaskDescriptionEditor] = useState<{ taskId: string; value: string } | null>(null);
   const [taskScheduleEditor, setTaskScheduleEditor] = useState<{ taskId: string | null; target: TaskDialogTarget; form: TaskRecurrenceForm; explicit: boolean; opener: HTMLElement | null; availableFrom: string; dueAt: string; prerequisiteTaskId: string; availabilityExplicit: boolean } | null>(null);
   const [dirtyTaskScheduleIds, setDirtyTaskScheduleIds] = useState<string[]>([]);
   const [isSavingTaskSchedule, setIsSavingTaskSchedule] = useState(false);
@@ -986,7 +969,6 @@ export function AdminManagePage() {
         availableFrom: task.availableFrom ?? null,
         dueAt: task.dueAt ?? null,
         prerequisiteTaskId: task.prerequisiteTaskId ?? null,
-        padletBoardId: task.padletBoardId ?? null,
         ...(schedule?.ok ? { schedule: schedule.payload } : {}),
       };
     });
@@ -1182,8 +1164,6 @@ export function AdminManagePage() {
   async function createNewTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     try {
-      const padlet = parsePadletBoardInput(newTask.padletBoardId ?? '');
-      if (!padlet.ok) throw new Error('Padlet URL 또는 게시판 ID 형식이 올바르지 않습니다.');
       const body = {
         taskId: nextPrefixedId(tasks.map((task) => task.taskId), 'T'),
         title: newTask.title,
@@ -1195,7 +1175,6 @@ export function AdminManagePage() {
         availableFrom: newTask.availableFrom ?? '',
         dueAt: newTask.dueAt ?? '',
         prerequisiteTaskId: newTask.prerequisiteTaskId ?? '',
-        padletBoardId: padlet.boardId ?? null,
         ...(newTask.schedule ? (() => {
           const schedule = scheduleFormToPayload(scheduleDtoToForm(newTask.schedule));
           return schedule.ok ? { schedule: schedule.payload } : {};
@@ -1704,10 +1683,6 @@ export function AdminManagePage() {
                   <span>새 과제 설명</span>
                   <textarea aria-label="새 과제 설명" value={newTask.description} onChange={(event) => setNewTask((current) => ({ ...current, description: event.target.value }))} className={`mt-1 min-h-24 w-full rounded-xl border ${semantic.border} ${semantic.input} px-2 py-2 text-sm ${semantic.text} outline-none transition ${semantic.ring} focus:ring-2`} />
                 </label>
-                <TextInput label="새 과제 Padlet URL (선택)" value={newTask.padletBoardId ?? ''} onChange={(value) => setNewTask((current) => ({ ...current, padletBoardId: value }))} compact />
-                <p className={`rounded-xl ${semantic.surfaceRaised} px-3 py-2 text-xs font-bold leading-relaxed ${semantic.mutedText}`}>
-                  Padlet 활동을 확인하려면 학생이 Padlet에 로그인하고 관리자 명단과 동일한 정확한 이름을 사용해야 합니다.
-                </p>
                 <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
                   <NumberInput label="새 과제 보상" value={newTask.reward} onChange={(value) => setNewTask((current) => ({ ...current, reward: value }))} compact />
                   <NumberInput label="새 과제 정렬" value={newTask.sortOrder} onChange={(value) => setNewTask((current) => ({ ...current, sortOrder: value }))} compact />
@@ -1769,7 +1744,7 @@ export function AdminManagePage() {
                     <button
                       aria-label={`${task.taskId} 상세 설정 편집`}
                       className={`h-8 min-w-0 truncate rounded-lg border ${semantic.border} ${semantic.input} px-1 text-left text-[10px] font-bold ${semantic.mutedText}`}
-                      onClick={() => setTaskDescriptionEditor({ taskId: task.taskId, value: task.description, padletValue: task.padletBoardId ?? '' })}
+                      onClick={() => setTaskDescriptionEditor({ taskId: task.taskId, value: task.description })}
                       type="button"
                     >
                       {task.description ? '상세 있음' : '상세'}
@@ -2101,25 +2076,13 @@ export function AdminManagePage() {
                 onChange={(event) => setTaskDescriptionEditor((current) => current ? { ...current, value: event.target.value } : current)}
               />
             </label>
-            <div className="mt-4">
-              <TextInput
-                label="Padlet URL (선택)"
-                value={taskDescriptionEditor.padletValue}
-                onChange={(value) => setTaskDescriptionEditor((current) => current ? { ...current, padletValue: value } : current)}
-              />
-            </div>
             <div className="mt-4 flex gap-2">
               <button type="button" className="flex-1 rounded-xl bg-slate-200 py-3 font-black text-slate-700" onClick={() => setTaskDescriptionEditor(null)}>취소</button>
               <button
                 type="button"
                 className={`flex-1 rounded-xl ${theme.accentBg} py-3 font-black ${theme.actionText}`}
                 onClick={() => {
-                  const padlet = parsePadletBoardInput(taskDescriptionEditor.padletValue);
-                  if (!padlet.ok) {
-                    notify('Padlet URL 또는 게시판 ID 형식이 올바르지 않습니다.');
-                    return;
-                  }
-                  updateTask(taskDescriptionEditor.taskId, { description: taskDescriptionEditor.value, padletBoardId: padlet.boardId });
+                  updateTask(taskDescriptionEditor.taskId, { description: taskDescriptionEditor.value });
                   setTaskDescriptionEditor(null);
                 }}
               >

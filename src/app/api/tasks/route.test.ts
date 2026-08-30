@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createConfiguredSheetsReader, createConfiguredSheetsStore } from '@/server/googleSheets';
-import { createTask, getStudentById } from '@/server/sheetsRepository';
+import { createTask } from '@/server/sheetsRepository';
 import { isAuthorizedAdminRequest } from '@/server/apiAuth';
 import { listTaskCycleProjections } from '@/server/repositories/sheets/taskHistoryQueries';
 import { projectTaskCycleState } from '@/domain/taskCycleState';
 import type { ClassTask, TaskAssignment } from '@/domain/types';
-import { buildEnrichedStudentTaskProjection } from '@/server/studentTaskProjection';
+import { buildStudentTaskProjection } from '@/server/studentTaskProjection';
 import { GET, POST } from './route';
 
 vi.mock('@/server/apiAuth', () => ({
@@ -13,11 +13,11 @@ vi.mock('@/server/apiAuth', () => ({
   unauthorizedAdminResponse: vi.fn(() => new Response(null, { status: 401 })),
 }));
 vi.mock('@/server/googleSheets', () => ({ createConfiguredSheetsReader: vi.fn(), createConfiguredSheetsStore: vi.fn() }));
-vi.mock('@/server/sheetsRepository', () => ({ createTask: vi.fn(), getStudentById: vi.fn() }));
+vi.mock('@/server/sheetsRepository', () => ({ createTask: vi.fn() }));
 vi.mock('@/server/repositories/sheets/taskHistoryQueries', () => ({ listTaskCycleProjections: vi.fn() }));
 vi.mock('@/server/studentTaskProjection', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/server/studentTaskProjection')>();
-  return { ...actual, buildEnrichedStudentTaskProjection: vi.fn(actual.buildEnrichedStudentTaskProjection) };
+  return { ...actual, buildStudentTaskProjection: vi.fn(actual.buildStudentTaskProjection) };
 });
 
 const projected = [{
@@ -29,7 +29,6 @@ describe('GET /api/tasks', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(isAuthorizedAdminRequest).mockReturnValue(true);
-    vi.mocked(getStudentById).mockResolvedValue({ studentId: 'S1', name: '김민준', balance: 0, status: 'ACTIVE' });
   });
 
   it('rejects unauthenticated raw task projections before opening Sheets', async () => {
@@ -62,8 +61,7 @@ describe('GET /api/tasks', () => {
 
     expect(response.status).toBe(200);
     expect(listTaskCycleProjections).toHaveBeenCalledWith({}, { studentId: 'S1', includeInactive: true });
-    expect(getStudentById).toHaveBeenCalledWith({}, 'S1');
-    expect(buildEnrichedStudentTaskProjection).toHaveBeenCalledWith(projected, 'S1', '김민준', expect.any(String));
+    expect(buildStudentTaskProjection).toHaveBeenCalledWith(projected, 'S1', expect.any(String));
   });
 
   it('returns only the requested student status and hides other students from the public student projection', async () => {

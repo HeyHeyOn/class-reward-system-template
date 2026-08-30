@@ -3,7 +3,7 @@ type TaskPayloadMode = 'create' | 'update';
 const COMMON_REQUIRED_KEYS = [
   'title', 'description', 'reward', 'isActive', 'sortOrder', 'allowedStudentIds',
 ] as const;
-const OPTIONAL_KEYS = ['availableFrom', 'dueAt', 'prerequisiteTaskId', 'padletBoardId'] as const;
+const OPTIONAL_KEYS = ['availableFrom', 'dueAt', 'prerequisiteTaskId'] as const;
 
 export type ParsedTaskFields = {
   taskId?: string;
@@ -16,7 +16,6 @@ export type ParsedTaskFields = {
   availableFrom?: string;
   dueAt?: string;
   prerequisiteTaskId?: string;
-  padletBoardId?: string;
 };
 
 export function parseStrictTaskFields(value: unknown, mode: TaskPayloadMode): ParsedTaskFields {
@@ -48,10 +47,6 @@ function parseTaskFields(value: unknown, mode: TaskPayloadMode): ParsedTaskField
     if (Object.hasOwn(input, key) && input[key] !== null && typeof input[key] !== 'string') {
       throw new Error('과제 저장 요청 형식이 올바르지 않습니다.');
     }
-  }
-  if (typeof input.padletBoardId === 'string' && input.padletBoardId.length > 0
-    && !/^[A-Za-z0-9]{16,22}$/.test(input.padletBoardId)) {
-    throw new Error('Padlet 게시판 ID 형식이 올바르지 않습니다. URL이 아닌 게시판 ID를 보내 주세요.');
   }
   return {
     ...(mode === 'create' ? { taskId: input.taskId as string } : {}),

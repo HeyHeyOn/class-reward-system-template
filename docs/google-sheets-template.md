@@ -1,6 +1,6 @@
 # Google Sheets 템플릿
 
-학급 보상 시스템 생성기는 신규 스프레드시트에 아래 **11개 시트**를 순서대로 만듭니다. 시트 이름과 헤더 이름은 대소문자를 포함해 그대로 사용해야 합니다.
+학급 보상 시스템 생성기는 신규 스프레드시트에 아래 **9개 시트**를 순서대로 만듭니다. 시트 이름과 헤더 이름은 대소문자를 포함해 그대로 사용해야 합니다.
 
 1. `Students`
 2. `Products`
@@ -10,9 +10,7 @@
 6. `Tasks`
 7. `TaskAssignments`
 8. `TaskCompletions`
-9. `Promotions`
-10. `PromotionProducts`
-11. `Recovery`
+9. `Recovery`
 
 ## Students
 
@@ -86,7 +84,7 @@ key | value
 신규 생성 시 포함되는 핵심 버전 값:
 
 ```text
-schemaVersion | 3
+schemaVersion | 2
 systemVersion | 0.4.0-phase3
 ```
 
@@ -97,7 +95,7 @@ systemVersion | 0.4.0-phase3
 과제 정의와 versioned recurrence rule을 저장합니다. `current`/`pending`은 저장 형식이며, 관리자 schedule·학급 시간대 변경으로 만든 `pending`은 변경 시각부터 즉시 유효합니다.
 
 ```text
-taskId | title | description | reward | isActive | sortOrder | createdAt | updatedAt | allowedStudentIds | taskInstanceId | ruleVersion | scheduleEffectiveFrom | recurrenceTimeZone | recurrenceType | recurrenceTime | recurrenceWeekday | recurrenceDayOfMonth | resetCompletionOnCycle | resetAssignmentOnCycle | pendingRuleVersion | pendingEffectiveFrom | pendingTimeZone | pendingRecurrenceType | pendingRecurrenceTime | pendingRecurrenceWeekday | pendingRecurrenceDayOfMonth | pendingResetCompletionOnCycle | pendingResetAssignmentOnCycle | availableFrom | dueAt | prerequisiteTaskId | recurrenceWeekdays | pendingRecurrenceWeekdays | padletBoardId
+taskId | title | description | reward | isActive | sortOrder | createdAt | updatedAt | allowedStudentIds | taskInstanceId | ruleVersion | scheduleEffectiveFrom | recurrenceTimeZone | recurrenceType | recurrenceTime | recurrenceWeekday | recurrenceDayOfMonth | resetCompletionOnCycle | resetAssignmentOnCycle | pendingRuleVersion | pendingEffectiveFrom | pendingTimeZone | pendingRecurrenceType | pendingRecurrenceTime | pendingRecurrenceWeekday | pendingRecurrenceDayOfMonth | pendingResetCompletionOnCycle | pendingResetAssignmentOnCycle | availableFrom | dueAt | prerequisiteTaskId | recurrenceWeekdays | pendingRecurrenceWeekdays
 ```
 
 - `taskId`: 과제 고유 ID
@@ -114,9 +112,8 @@ taskId | title | description | reward | isActive | sortOrder | createdAt | updat
 - `availableFrom`, `dueAt`: 과제를 완료할 수 있는 시작·마감 ISO instant. 경계는 시작 포함, 마감 제외(`[availableFrom, dueAt)`)입니다.
 - `prerequisiteTaskId`: 먼저 완료해야 하는 활성 과제 ID. 한 과제만 지정할 수 있으며 자기 참조·미존재·비활성·순환 참조는 거부됩니다.
 - `recurrenceWeekdays`, `pendingRecurrenceWeekdays`: 쉼표로 구분한 ISO 요일(월=1 … 일=7) 목록입니다. 다중 요일의 권위 값이며, 레거시 단일 요일 열은 읽기 fallback으로 보존합니다.
-- `padletBoardId`: 선택적인 Padlet 보드 ID(16~22자 영숫자)입니다. 값이 있으면 해당 회차 시작 이후 학생의 정확한 이름으로 작성된 승인 게시물을 확인해야 학생이 직접 완료할 수 있습니다.
 
-신규 Tasks 템플릿은 위 순서의 34개 canonical 컬럼을 사용하며 레거시 컬럼 `maxCompletionsPerStudent`를 만들지 않습니다. 기존 시트에는 누락된 canonical 열만 끝에 비파괴 추가합니다. 자세한 호환 정책은 [스키마 호환성 정책](architecture/schema-compatibility.md)을 참고하세요.
+신규 Tasks 템플릿은 위 순서의 33개 canonical 컬럼을 사용하며 레거시 컬럼 `maxCompletionsPerStudent`를 만들지 않습니다. 기존 시트에는 새 5개 열만 끝에 비파괴 추가합니다. 자세한 호환 정책은 [스키마 호환성 정책](architecture/schema-compatibility.md)을 참고하세요.
 
 ## TaskAssignments
 
@@ -140,7 +137,7 @@ assignmentId | taskId | taskInstanceId | cycleId | cycleStartsAt | cycleEndsAt |
 과제 완료 및 보상 반영 결과를 기록합니다.
 
 ```text
-completionId | timestamp | taskId | studentId | studentName | reward | balanceBefore | balanceAfter | status | note | taskInstanceId | cycleId | cycleStartsAt | cycleEndsAt | ruleVersion | timeZone | source | assignmentId | schemaVersion | operationId | operationPayloadHash | evidenceProvider | evidenceBoardId | evidencePostId | evidenceCreatedAt | evidenceAuthorFullName
+completionId | timestamp | taskId | studentId | studentName | reward | balanceBefore | balanceAfter | status | note | taskInstanceId | cycleId | cycleStartsAt | cycleEndsAt | ruleVersion | timeZone | source | assignmentId | schemaVersion
 ```
 
 - `completionId`: 완료 기록 고유 ID
@@ -153,10 +150,8 @@ completionId | timestamp | taskId | studentId | studentName | reward | balanceBe
 - `taskInstanceId`, `cycleId`, `cycleStartsAt`, `cycleEndsAt`, `ruleVersion`, `timeZone`: 완료 당시의 과제 cycle/rule 스냅샷
 - `source`, `assignmentId`, `schemaVersion`: 완료 출처, 연결된 배정, 기록 스키마 버전
 - `source`: `BANK`, `ADMIN`, `CARRY_FORWARD`, `ADMIN_RESET` 중 하나
-- `operationId`, `operationPayloadHash`: 학생 BANK 완료 요청의 재시도·조정용 불변 키와 payload 해시
-- `evidence*`: Padlet 연동 완료에서 사용한 provider·보드·게시물·작성 시각·작성자 이름의 불변 증거입니다. 다섯 값은 모두 비어 있거나 모두 유효해야 합니다.
 
-동일한 과제 instance의 **같은 cycle**에서 학생별 보상 성공 완료는 한 번만 인정합니다. 다음 자연 cycle에서 다시 완료할 수 있는 것은 `resetCompletionOnCycle=true`일 때입니다. `false`이면 완료 상태가 승계되어 재보상을 차단합니다. 관리자 완료 표시는 잔액 보상 없이 별도 원장 이벤트로 기록됩니다. `CARRY_FORWARD`도 `reward=0`, `balanceBefore=balanceAfter`인 상태 승계 이벤트이며 잔액을 바꾸거나 `Transactions` 행을 만들지 않습니다. Padlet 게시물은 Redis의 원자 claim으로 전체 시스템에서 한 번만 소비하며, 관리자가 완료 상태를 초기화해도 해당 게시물을 다시 사용할 수 없습니다.
+동일한 과제 instance의 **같은 cycle**에서 학생별 보상 성공 완료는 한 번만 인정합니다. 다음 자연 cycle에서 다시 완료할 수 있는 것은 `resetCompletionOnCycle=true`일 때입니다. `false`이면 완료 상태가 승계되어 재보상을 차단합니다. 관리자 완료 표시는 잔액 보상 없이 별도 원장 이벤트로 기록됩니다. `CARRY_FORWARD`도 `reward=0`, `balanceBefore=balanceAfter`인 상태 승계 이벤트이며 잔액을 바꾸거나 `Transactions` 행을 만들지 않습니다.
 
 ## Recovery
 

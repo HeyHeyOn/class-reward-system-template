@@ -61,18 +61,6 @@ ADMIN_PASSWORD=관리자 페이지 비밀번호
 - Vercel에는 실제 줄바꿈 대신 `\\n`이 포함된 형태로 넣어도 앱에서 처리합니다.
 - `ADMIN_PASSWORD`가 없으면 관리자 페이지 보호가 꺼집니다. 운영 배포에서는 반드시 설정하세요.
 
-### Padlet 연동 과제(선택)
-
-Padlet 연동 과제를 사용하는 경우에만 다음 세 값을 Production 환경에 모두 등록합니다.
-
-```text
-PADLET_API_KEY=대상 보드 owner/admin 계정의 API 키
-UPSTASH_REDIS_REST_URL=Upstash Redis REST URL
-UPSTASH_REDIS_REST_TOKEN=Upstash Redis REST token
-```
-
-Padlet 보드에서는 방문자 로그인을 요구하고 작성자 이름·작성 시각을 표시해야 합니다. CRS 학생 이름과 Padlet `fullName`이 공백 정리 후 대소문자까지 정확히 같아야 하며 `approved` 게시물만 인정합니다. Redis는 `(boardId, postId)`를 전체 시스템에서 원자적으로 한 번만 claim합니다. 세 환경변수 중 하나라도 없거나 Padlet/Redis가 응답하지 않으면 연동 과제는 fail-closed로 완료되지 않습니다. API 키와 token은 클라이언트 응답·로그·Google Sheets에 기록하지 마세요.
-
 ## Google Sheets 권한
 
 ### OAuth refresh token 방식
