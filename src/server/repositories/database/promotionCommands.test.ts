@@ -167,6 +167,14 @@ const deleteInput = () => ({
   expectedPromotionVersion: 1,
 });
 
+const deleteBatchInput = () => ({
+  operationId: 'promotion-delete-batch-operation',
+  promotions: [
+    { promotionId: ' PROMO-002 ', expectedPromotionVersion: 1 },
+    { promotionId: 'PROMO-001', expectedPromotionVersion: 1 },
+  ],
+});
+
 async function snapshot() {
   const [promotions, links, operations, audits] = await Promise.all([
     harness.database.query(
@@ -1996,5 +2004,383 @@ describe('PostgreSQL promotion administration commands', () => {
       ...deleteInput(), expectedPromotionVersion: Number.MAX_SAFE_INTEGER,
     })).rejects.toThrow(/next promotion version/i);
     expect(transactionCallCount).toBe(0);
+  });
+
+  it('exports deleteBatch and atomically tombstones canonical targets with one operation and audit', async () => {
+    await seedUpdateBatchTargets();
+    await harness.database.query(
+      'UPDATE promotions SET is_active=false WHERE tenant_id=$1 AND promotion_id=$2',
+      [harness.tenantOneId, 'PROMO-002'],
+    );
+    await harness.database.query(
+      'DELETE FROM promotion_products WHERE tenant_id=$1 AND promotion_id=$2',
+      [harness.tenantOneId, 'PROMO-002'],
+    );
+    const input = deleteBatchInput();
+    const result = await commands().deleteBatch(input);
+    expect(result).toEqual({
+      ok: true,
+      operationId: input.operationId,
+      action: 'DELETE',
+      completedAt: NOW.toISOString(),
+      promotions: [
+        expect.objectContaining({
+          promotionId: 'PROMO-001', isActive: false, productIds: ['P001', 'P002'],
+          promotionVersionBefore: 1, promotionVersionAfter: 2,
+        }),
+        expect.objectContaining({
+          promotionId: 'PROMO-002', isActive: false, productIds: [],
+          promotionVersionBefore: 1, promotionVersionAfter: 2,
+        }),
+      ],
+    });
+    const state = await snapshot();
+    expect(state.promotions).toEqual([
+      expect.objectContaining({ promotion_id: 'PROMO-001', is_active: false, version: '2', deleted_at: NOW }),
+      expect.objectContaining({ promotion_id: 'PROMO-002', is_active: false, version: '2', deleted_at: NOW }),
+    ]);
+    expect(state.links).toEqual([]);
+    expect(state.operations).toHaveLength(2);
+    expect(state.audits).toHaveLength(2);
+    expect(state.audits[1]).toEqual(expect.objectContaining({
+      redacted_details: expect.objectContaining({ changedPromotionCount: 2, targetProductCount: 2 }),
+    }));
+  });
+
+  it('rejects malformed delete batches and invalid clocks before opening a transaction', async () => {
+    let calls = 0;
+    const batchCommands = createDatabasePromotionCommands({
+      tenantId: harness.tenantOneId,
+      runTenantTransaction: async () => { calls += 1; throw new Error('sentinel'); },
+      now: () => NOW,
+    });
+    const valid = deleteBatchInput().promotions[0];
+    const invalid = [
+      { operationId: 'empty', promotions: [] },
+      { operationId: 'large', promotions: Array.from({ length: 101 }, (_, index) => ({
+        ...valid, promotionId: `PROMO-${index}`,
+      })) },
+      { operationId: 'duplicate', promotions: [
+        { ...valid, promotionId: ' SAME ' }, { ...valid, promotionId: 'SAME' },
+      ] },
+      { operationId: 'nested', promotions: [{ ...valid, operationId: 'forbidden' }] },
+      { operationId: 'later-malformed', promotions: [valid, { ...valid, promotionId: 'LATER', extra: true }] },
+      { operationId: 'later-version', promotions: [valid, { ...valid, promotionId: 'LATER', expectedPromotionVersion: 0 }] },
+      { operationId: 'overflow', promotions: [{ ...valid, expectedPromotionVersion: Number.MAX_SAFE_INTEGER }] },
+    ];
+    for (const value of invalid) await expect(batchCommands.deleteBatch(value as never)).rejects.toThrow();
+    const invalidClock = createDatabasePromotionCommands({
+      tenantId: harness.tenantOneId,
+      runTenantTransaction: async () => { calls += 1; throw new Error('sentinel'); },
+      now: () => new Date(Number.NaN),
+    });
+    await expect(invalidClock.deleteBatch(deleteBatchInput())).rejects.toThrow(/timestamp.*invalid/i);
+    expect(calls).toBe(0);
+
+    const sentinel = new Error('sentinel');
+    const boundary = createDatabasePromotionCommands({
+      tenantId: harness.tenantOneId,
+      runTenantTransaction: async () => { calls += 1; throw sentinel; },
+      now: () => NOW,
+    });
+    await expect(boundary.deleteBatch({
+      operationId: 'size-100',
+      promotions: Array.from({ length: 100 }, (_, index) => ({
+        promotionId: `B-${index}`, expectedPromotionVersion: 1,
+      })),
+    })).rejects.toBe(sentinel);
+    expect(calls).toBe(1);
+  });
+
+  it.each([
+    ['stale later target', async () => {
+      const input = deleteBatchInput();
+      input.promotions[0].expectedPromotionVersion = 2;
+      return input;
+    }],
+    ['missing later target', async () => {
+      await harness.database.query(
+        'DELETE FROM promotion_products WHERE tenant_id=$1 AND promotion_id=$2',
+        [harness.tenantOneId, 'PROMO-002'],
+      );
+      await harness.database.query(
+        'DELETE FROM promotions WHERE tenant_id=$1 AND promotion_id=$2',
+        [harness.tenantOneId, 'PROMO-002'],
+      );
+      return deleteBatchInput();
+    }],
+    ['already tombstoned later target', async () => {
+      await harness.database.query(
+        'UPDATE promotions SET is_active=false, deleted_at=$3 WHERE tenant_id=$1 AND promotion_id=$2',
+        [harness.tenantOneId, 'PROMO-002', NOW.toISOString()],
+      );
+      return deleteBatchInput();
+    }],
+    ['malformed later chronology', async () => {
+      await harness.database.query(
+        'UPDATE promotions SET updated_at=$3 WHERE tenant_id=$1 AND promotion_id=$2',
+        [harness.tenantOneId, 'PROMO-002', '2026-08-30T02:00:00.000Z'],
+      );
+      return deleteBatchInput();
+    }],
+  ] as const)('rolls back deleteBatch before writes for a %s', async (_label, prepare) => {
+    await seedUpdateBatchTargets();
+    const input = await prepare();
+    const before = await snapshot();
+    await expect(commands().deleteBatch(input)).rejects.toThrow(/not found|stale|version|chronology/i);
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('replays a reversed delete batch, conflicts on changed payload, and requires every physical identity', async () => {
+    await seedUpdateBatchTargets();
+    const input = deleteBatchInput();
+    const first = await commands().deleteBatch(input);
+    await expect(commands().deleteBatch({ ...input, promotions: [...input.promotions].reverse() }))
+      .resolves.toEqual(first);
+    await expect(commands().deleteBatch({
+      ...input,
+      promotions: [input.promotions[0], { ...input.promotions[1], expectedPromotionVersion: 2 }],
+    })).rejects.toThrow(/conflict/i);
+    await harness.database.query(
+      "UPDATE promotions SET name='later', version=3 WHERE tenant_id=$1 AND promotion_id=$2",
+      [harness.tenantOneId, 'PROMO-001'],
+    );
+    await expect(commands().deleteBatch(input)).resolves.toEqual(first);
+    await harness.database.query(
+      'DELETE FROM promotions WHERE tenant_id=$1 AND promotion_id=$2',
+      [harness.tenantOneId, 'PROMO-002'],
+    );
+    await expect(commands().deleteBatch(input)).rejects.toThrow(/identity integrity/i);
+  });
+
+  it('re-reads the winning deleteBatch operation after an insert race', async () => {
+    await seedUpdateBatchTargets();
+    const input = deleteBatchInput();
+    const first = await commands().deleteBatch(input);
+    const raceCommands = createDatabasePromotionCommands({
+      tenantId: harness.tenantOneId,
+      now: () => NOW,
+      runTenantTransaction: (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) => {
+        let missed = false;
+        const raceTx = {
+          execute: async (query: Parameters<typeof tx.execute>[0]) => {
+            if (!missed) { missed = true; return { rows: [] } as never; }
+            return tx.execute(query);
+          },
+        } as unknown as typeof tx;
+        return callback(raceTx);
+      }),
+    });
+    await expect(raceCommands.deleteBatch({ ...input, promotions: [...input.promotions].reverse() }))
+      .resolves.toEqual(first);
+  });
+
+  it.each([
+    ['later metadata update', 'promotions', "OLD.promotion_id='PROMO-002'", 'RETURN OLD'],
+    ['audit insert', 'audit_events', "NEW.operation_id='promotion-delete-batch-operation'", 'RETURN NULL'],
+    ['terminal update', 'operations', "NEW.operation_id='promotion-delete-batch-operation' AND NEW.status='SUCCEEDED'", 'RETURN NULL'],
+  ] as const)('rolls back deleteBatch when required %s evidence is suppressed', async (
+    _label, table, condition, triggerResult,
+  ) => {
+    await seedUpdateBatchTargets();
+    const before = await snapshot();
+    await harness.database.exec(`
+      CREATE FUNCTION suppress_required_delete_batch_write() RETURNS trigger
+      LANGUAGE plpgsql AS $$ BEGIN
+        IF ${condition} THEN ${triggerResult}; END IF; RETURN NEW;
+      END $$;
+      CREATE TRIGGER suppress_required_delete_batch_write
+      BEFORE INSERT OR UPDATE OR DELETE ON ${table}
+      FOR EACH ROW EXECUTE FUNCTION suppress_required_delete_batch_write();
+    `);
+    await expect(commands().deleteBatch(deleteBatchInput())).rejects.toThrow(/integrity|replayable/i);
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('reaches a later deleteBatch link deletion failure before rolling back', async () => {
+    await seedUpdateBatchTargets();
+    const before = await snapshot();
+    await harness.database.exec(`
+      CREATE FUNCTION fail_later_delete_batch_link() RETURNS trigger
+      LANGUAGE plpgsql AS $$ BEGIN
+        IF OLD.promotion_id='PROMO-002' THEN
+          RAISE EXCEPTION 'PROMO_002_DELETE_REACHED';
+        END IF;
+        RETURN OLD;
+      END $$;
+      CREATE TRIGGER fail_later_delete_batch_link
+      BEFORE DELETE ON promotion_products
+      FOR EACH ROW EXECUTE FUNCTION fail_later_delete_batch_link();
+    `);
+    let failure: unknown;
+    try {
+      await commands().deleteBatch(deleteBatchInput());
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(Error);
+    const messages: string[] = [];
+    const seen = new Set<unknown>();
+    let current = failure;
+    while (current && typeof current === 'object' && !seen.has(current)) {
+      seen.add(current);
+      if ('message' in current && typeof current.message === 'string') messages.push(current.message);
+      current = 'cause' in current ? current.cause : undefined;
+    }
+    expect(messages.join('\n')).toContain('PROMO_002_DELETE_REACHED');
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it.each([
+    ['later item', `CREATE FUNCTION mutate_delete_batch_earlier() RETURNS trigger
+      LANGUAGE plpgsql AS $$ BEGIN
+        IF NEW.promotion_id='PROMO-002' THEN
+          UPDATE promotions SET name='mutated' WHERE tenant_id=NEW.tenant_id AND promotion_id='PROMO-001';
+        END IF; RETURN NEW; END $$;
+      CREATE TRIGGER mutate_delete_batch_earlier AFTER UPDATE ON promotions
+      FOR EACH ROW EXECUTE FUNCTION mutate_delete_batch_earlier();`],
+    ['audit', `CREATE FUNCTION mutate_delete_batch_after_audit() RETURNS trigger
+      LANGUAGE plpgsql AS $$ BEGIN
+        IF NEW.operation_id='promotion-delete-batch-operation' THEN
+          UPDATE promotions SET schema_version=2 WHERE tenant_id=NEW.tenant_id AND promotion_id='PROMO-001';
+        END IF; RETURN NEW; END $$;
+      CREATE TRIGGER mutate_delete_batch_after_audit AFTER INSERT ON audit_events
+      FOR EACH ROW EXECUTE FUNCTION mutate_delete_batch_after_audit();`],
+    ['terminal', `CREATE FUNCTION mutate_delete_batch_after_terminal() RETURNS trigger
+      LANGUAGE plpgsql AS $$ BEGIN
+        IF NEW.operation_id='promotion-delete-batch-operation' AND NEW.status='SUCCEEDED' THEN
+          UPDATE promotions SET name='mutated' WHERE tenant_id=NEW.tenant_id AND promotion_id='PROMO-001';
+        END IF; RETURN NEW; END $$;
+      CREATE TRIGGER mutate_delete_batch_after_terminal AFTER UPDATE ON operations
+      FOR EACH ROW EXECUTE FUNCTION mutate_delete_batch_after_terminal();`],
+  ] as const)('rolls back deleteBatch for an AFTER mutation on %s', async (_label, ddl) => {
+    await seedUpdateBatchTargets();
+    const before = await snapshot();
+    await harness.database.exec(ddl);
+    await expect(commands().deleteBatch(deleteBatchInput())).rejects.toThrow(/integrity/i);
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('rejects duplicate promotion and link rows returned by deleteBatch adapters', async () => {
+    await seedUpdateBatchTargets();
+    const before = await snapshot();
+    for (const duplicateKind of ['promotion', 'link'] as const) {
+      const malformed = createDatabasePromotionCommands({
+        tenantId: harness.tenantOneId,
+        now: () => NOW,
+        runTenantTransaction: (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) => {
+          let duplicated = false;
+          const malformedTx = {
+            execute: async (query: Parameters<typeof tx.execute>[0]) => {
+              const result = await tx.execute(query);
+              if (!duplicated && result.rows.length > 0) {
+                const row = result.rows[0] as Record<string, unknown>;
+                const matches = duplicateKind === 'promotion'
+                  ? Object.keys(row).length === 18 && 'promotion_id' in row
+                  : Object.keys(row).length === 5 && 'promotion_product_id' in row;
+                if (matches) {
+                  duplicated = true;
+                  return { ...result, rows: [...result.rows, result.rows[0]] } as never;
+                }
+              }
+              return result;
+            },
+          } as unknown as typeof tx;
+          return callback(malformedTx);
+        }),
+      });
+      await expect(malformed.deleteBatch({
+        ...deleteBatchInput(), operationId: `duplicate-${duplicateKind}`,
+      })).rejects.toThrow(/integrity|not found/i);
+      expect(await snapshot()).toEqual(before);
+    }
+  });
+
+  it('fails closed on reordered deleteBatch results, extra audits, and reverse chronology', async () => {
+    await seedUpdateBatchTargets();
+    const input = deleteBatchInput();
+    await commands().deleteBatch(input);
+    await withOperationAuditTampering(async () => {
+      await harness.database.query(
+        `UPDATE operations SET result_snapshot=jsonb_set(result_snapshot, '{promotions}',
+          jsonb_build_array(result_snapshot->'promotions'->1, result_snapshot->'promotions'->0))
+         WHERE tenant_id=$1 AND operation_id=$2`,
+        [harness.tenantOneId, input.operationId],
+      );
+    });
+    await expect(commands().deleteBatch(input)).rejects.toThrow(/stored result integrity/i);
+    await withOperationAuditTampering(async () => {
+      await harness.database.query(
+        `UPDATE operations SET result_snapshot=jsonb_set(result_snapshot, '{promotions}',
+          jsonb_build_array(result_snapshot->'promotions'->1, result_snapshot->'promotions'->0))
+         WHERE tenant_id=$1 AND operation_id=$2`,
+        [harness.tenantOneId, input.operationId],
+      );
+    });
+    await harness.runTenantTransaction(harness.tenantOneId, async (tx) => {
+      await appendOperationAudit(tx, harness.tenantOneId, {
+        operationId: input.operationId, eventType: 'PROMOTION_ADMIN_EXTRA',
+        entityType: 'OPERATION', entityId: input.operationId, occurredAt: NOW,
+        redactedDetails: { action: 'DELETE' },
+      });
+    });
+    await expect(commands().deleteBatch(input)).rejects.toThrow(/audit integrity/i);
+  });
+
+  it('returns deleteBatch promotions and removed links in JavaScript order across database collation', async () => {
+    const javascriptFirstPromotion = 'PROMO-\u{10000}';
+    const databaseFirstPromotion = 'PROMO-\uE000';
+    const javascriptFirstProduct = 'P\u{10000}';
+    const databaseFirstProduct = 'P\uE000';
+    for (const productId of [javascriptFirstProduct, databaseFirstProduct]) {
+      await harness.database.query(
+        `INSERT INTO products
+          (tenant_id, product_id, name, price, stock, is_active, sort_order, version,
+           created_at, updated_at)
+         VALUES ($1, $2, $2, 100, 10, true, 0, 1, $3, $3)`,
+        [harness.tenantOneId, productId, NOW.toISOString()],
+      );
+    }
+    const source = createBatchInput().promotions;
+    await commands().createBatch({
+      operationId: 'delete-collation-create',
+      promotions: [
+        { ...source[0], promotionId: databaseFirstPromotion,
+          productIds: [databaseFirstProduct, javascriptFirstProduct] },
+        { ...source[1], promotionId: javascriptFirstPromotion,
+          productIds: [databaseFirstProduct, javascriptFirstProduct] },
+      ],
+    });
+    await expect(commands().deleteBatch({
+      operationId: 'delete-collation',
+      promotions: [
+        { promotionId: databaseFirstPromotion, expectedPromotionVersion: 1 },
+        { promotionId: javascriptFirstPromotion, expectedPromotionVersion: 1 },
+      ],
+    })).resolves.toMatchObject({ promotions: [
+      { promotionId: javascriptFirstPromotion,
+        productIds: [javascriptFirstProduct, databaseFirstProduct] },
+      { promotionId: databaseFirstPromotion,
+        productIds: [javascriptFirstProduct, databaseFirstProduct] },
+    ] });
+  });
+
+  it('rolls back deleteBatch when a trigger leaves a final link behind', async () => {
+    await seedUpdateBatchTargets();
+    const before = await snapshot();
+    await harness.database.exec(`
+      CREATE FUNCTION restore_deleted_batch_link() RETURNS trigger
+      LANGUAGE plpgsql AS $$ BEGIN
+        IF OLD.promotion_id='PROMO-002' THEN
+          INSERT INTO promotion_products
+            (tenant_id, promotion_product_id, promotion_id, product_id, created_at, schema_version)
+          VALUES (OLD.tenant_id, OLD.promotion_product_id, OLD.promotion_id,
+            OLD.product_id, OLD.created_at, OLD.schema_version);
+        END IF; RETURN OLD; END $$;
+      CREATE TRIGGER restore_deleted_batch_link AFTER DELETE ON promotion_products
+      FOR EACH ROW EXECUTE FUNCTION restore_deleted_batch_link();
+    `);
+    await expect(commands().deleteBatch(deleteBatchInput())).rejects.toThrow(/final link set integrity/i);
+    expect(await snapshot()).toEqual(before);
   });
 });
