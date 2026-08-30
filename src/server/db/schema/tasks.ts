@@ -5,6 +5,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { students } from './students';
 import { tenants } from './tenants';
+import { operations } from './operations';
 
 export const taskAssignmentEvents = ['ASSIGNED', 'UNASSIGNED'] as const;
 export const taskAssignmentSources = ['ADMIN', 'QR', 'LEGACY_SEED', 'CARRY_FORWARD'] as const;
@@ -62,7 +63,9 @@ export const tasks = pgTable('tasks', {
   check('tasks_current_schedule_check', sql`COALESCE((jsonb_typeof(${table.currentSchedule}) = 'object' AND jsonb_typeof(${table.currentSchedule} -> 'ruleVersion') = 'number' AND (${table.currentSchedule} ->> 'ruleVersion') ~ '^[1-9][0-9]*$' AND (${table.currentSchedule} ->> 'ruleVersion')::numeric BETWEEN 1 AND 9007199254740991 AND jsonb_typeof(${table.currentSchedule} -> 'effectiveFrom') = 'string' AND ${table.currentSchedule} ->> 'timeZone' = 'Asia/Seoul' AND jsonb_typeof(${table.currentSchedule} -> 'recurrence') = 'object' AND jsonb_typeof(${table.currentSchedule} -> 'resetCompletionOnCycle') = 'boolean' AND jsonb_typeof(${table.currentSchedule} -> 'resetAssignmentOnCycle') = 'boolean'), false)`),
   check('tasks_pending_schedule_check', sql`${table.pendingSchedule} IS NULL OR COALESCE((jsonb_typeof(${table.pendingSchedule}) = 'object' AND jsonb_typeof(${table.pendingSchedule} -> 'ruleVersion') = 'number' AND (${table.pendingSchedule} ->> 'ruleVersion') ~ '^[1-9][0-9]*$' AND (${table.pendingSchedule} ->> 'ruleVersion')::numeric BETWEEN 1 AND 9007199254740991 AND jsonb_typeof(${table.pendingSchedule} -> 'effectiveFrom') = 'string' AND ${table.pendingSchedule} ->> 'timeZone' = 'Asia/Seoul' AND jsonb_typeof(${table.pendingSchedule} -> 'recurrence') = 'object' AND jsonb_typeof(${table.pendingSchedule} -> 'resetCompletionOnCycle') = 'boolean' AND jsonb_typeof(${table.pendingSchedule} -> 'resetAssignmentOnCycle') = 'boolean'), false)`),
   check('tasks_not_self_prerequisite_check', sql`${table.prerequisiteTaskInstanceId} IS NULL OR ${table.prerequisiteTaskInstanceId} <> ${table.taskInstanceId}`),
-  check('tasks_deleted_chronology_check', sql`${table.deletedAt} IS NULL OR ${table.deletedAt} >= ${table.createdAt}`),
+  check('tasks_updated_chronology_check', sql`${table.updatedAt} >= ${table.createdAt}`),
+  check('tasks_deleted_chronology_check', sql`${table.deletedAt} IS NULL OR ${table.deletedAt} >= ${table.updatedAt}`),
+  check('tasks_deleted_status_check', sql`${table.deletedAt} IS NULL OR NOT ${table.isActive}`),
 ]);
 
 export const taskAllowedStudents = pgTable('task_allowed_students', {
@@ -97,6 +100,8 @@ export const taskAssignments = pgTable('task_assignments', {
   eventType: text('event_type').$type<(typeof taskAssignmentEvents)[number]>().notNull(),
   source: text('source').$type<(typeof taskAssignmentSources)[number]>().notNull(),
   previousAssignmentId: text('previous_assignment_id'),
+  adminOperationId: text('admin_operation_id'),
+  adminOperationHash: text('admin_operation_hash'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   schemaVersion: integer('schema_version').default(1).notNull(),
   note: text('note'),
@@ -106,6 +111,7 @@ export const taskAssignments = pgTable('task_assignments', {
   foreignKey({ name: 'task_assignments_task_fk', columns: [table.tenantId, table.taskInstanceId], foreignColumns: [tasks.tenantId, tasks.taskInstanceId] }),
   foreignKey({ name: 'task_assignments_student_fk', columns: [table.tenantId, table.studentId], foreignColumns: [students.tenantId, students.studentId] }),
   foreignKey({ name: 'task_assignments_previous_fk', columns: [table.tenantId, table.previousAssignmentId], foreignColumns: [table.tenantId, table.assignmentId] }),
+  foreignKey({ name: 'task_assignments_admin_operation_fk', columns: [table.tenantId, table.adminOperationId], foreignColumns: [operations.tenantId, operations.operationId] }),
   index('task_assignments_cycle_student_event_idx').on(table.tenantId, table.taskInstanceId, table.cycleId, table.studentId, table.eventSequence),
   check('task_assignments_id_check', sql`${table.assignmentId} = btrim(${table.assignmentId}) AND length(${table.assignmentId}) > 0`),
   check('task_assignments_task_id_snapshot_check', sql`${table.taskIdSnapshot} = btrim(${table.taskIdSnapshot}) AND length(${table.taskIdSnapshot}) > 0`),
@@ -116,5 +122,8 @@ export const taskAssignments = pgTable('task_assignments', {
   check('task_assignments_timezone_check', sql`${table.timezone} = 'Asia/Seoul'`),
   check('task_assignments_event_type_check', sql`${table.eventType} IN ('ASSIGNED', 'UNASSIGNED')`),
   check('task_assignments_source_check', sql`${table.source} IN ('ADMIN', 'QR', 'LEGACY_SEED', 'CARRY_FORWARD')`),
+  check('task_assignments_admin_operation_pair_check', sql`(${table.adminOperationId} IS NULL) = (${table.adminOperationHash} IS NULL)`),
+  check('task_assignments_admin_operation_id_check', sql`${table.adminOperationId} IS NULL OR (${table.adminOperationId} = btrim(${table.adminOperationId}) AND length(${table.adminOperationId}) > 0)`),
+  check('task_assignments_admin_operation_hash_check', sql`${table.adminOperationHash} IS NULL OR ${table.adminOperationHash} ~ '^[0-9a-f]{64}$'`),
   check('task_assignments_schema_version_check', sql`${table.schemaVersion} >= 1`),
 ]);

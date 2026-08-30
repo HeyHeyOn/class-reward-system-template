@@ -4,6 +4,7 @@ import {
   text, timestamp, unique, uniqueIndex, uuid,
 } from 'drizzle-orm/pg-core';
 import { products } from './catalog';
+import { operations } from './operations';
 import { students } from './students';
 import { taskAssignments, tasks } from './tasks';
 
@@ -157,6 +158,8 @@ export const taskCompletions = pgTable('task_completions', {
   transactionId: text('transaction_id'),
   operationId: text('operation_id'),
   operationHash: text('operation_hash'),
+  adminOperationId: text('admin_operation_id'),
+  adminOperationHash: text('admin_operation_hash'),
   schemaVersion: integer('schema_version').default(1).notNull(),
   evidenceProvider: text('evidence_provider'),
   evidenceBoardId: text('evidence_board_id'),
@@ -171,6 +174,7 @@ export const taskCompletions = pgTable('task_completions', {
   foreignKey({ name: 'task_completions_student_fk', columns: [table.tenantId, table.studentId], foreignColumns: [students.tenantId, students.studentId] }),
   foreignKey({ name: 'task_completions_assignment_fk', columns: [table.tenantId, table.assignmentId], foreignColumns: [taskAssignments.tenantId, taskAssignments.assignmentId] }),
   foreignKey({ name: 'task_completions_transaction_fk', columns: [table.tenantId, table.transactionId], foreignColumns: [transactions.tenantId, transactions.transactionId] }),
+  foreignKey({ name: 'task_completions_admin_operation_fk', columns: [table.tenantId, table.adminOperationId], foreignColumns: [operations.tenantId, operations.operationId] }),
   index('task_completions_cycle_student_event_idx').on(table.tenantId, table.taskInstanceId, table.cycleId, table.studentId, table.eventSequence),
   uniqueIndex('task_completions_operation_unique').on(table.tenantId, table.operationId).where(sql`${table.operationId} IS NOT NULL`),
   check('task_completions_id_check', sql`${table.completionId} = btrim(${table.completionId}) AND length(${table.completionId}) > 0`),
@@ -187,6 +191,9 @@ export const taskCompletions = pgTable('task_completions', {
   check('task_completions_operation_id_check', sql`${table.operationId} IS NULL OR (${table.operationId} = btrim(${table.operationId}) AND length(${table.operationId}) > 0)`),
   check('task_completions_operation_pair_check', sql`(${table.operationId} IS NULL) = (${table.operationHash} IS NULL)`),
   check('task_completions_operation_hash_check', sql`${table.operationHash} IS NULL OR length(btrim(${table.operationHash})) > 0`),
+  check('task_completions_admin_operation_pair_check', sql`(${table.adminOperationId} IS NULL) = (${table.adminOperationHash} IS NULL)`),
+  check('task_completions_admin_operation_id_check', sql`${table.adminOperationId} IS NULL OR (${table.adminOperationId} = btrim(${table.adminOperationId}) AND length(${table.adminOperationId}) > 0)`),
+  check('task_completions_admin_operation_hash_check', sql`${table.adminOperationHash} IS NULL OR ${table.adminOperationHash} ~ '^[0-9a-f]{64}$'`),
   check('task_completions_schema_version_check', sql`${table.schemaVersion} >= 1`),
   check('task_completions_evidence_check', sql`num_nonnulls(${table.evidenceProvider}, ${table.evidenceBoardId}, ${table.evidencePostId}, ${table.evidenceCreatedAt}, ${table.evidenceAuthorFullName}) = 0 OR (num_nonnulls(${table.evidenceProvider}, ${table.evidenceBoardId}, ${table.evidencePostId}, ${table.evidenceCreatedAt}, ${table.evidenceAuthorFullName}) = 5 AND ${table.evidenceProvider} = 'PADLET' AND length(btrim(${table.evidenceBoardId})) > 0 AND length(btrim(${table.evidencePostId})) > 0 AND length(btrim(${table.evidenceAuthorFullName})) > 0)`),
 ]);
