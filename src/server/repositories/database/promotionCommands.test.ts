@@ -11,6 +11,7 @@ import {
 } from '@/server/db/testing/pglite';
 
 import { appendOperationAudit } from './operationAudit';
+import type { TenantTransaction } from '@/server/db/transaction';
 
 vi.mock('server-only', () => ({}));
 
@@ -71,6 +72,23 @@ const createInput = () => ({
     sortOrder: 3,
   },
   productIds: ['P002', ' P001 '],
+});
+
+const updateInput = () => ({
+  operationId: 'promotion-update-operation',
+  promotionId: 'PROMO-001',
+  expectedPromotionVersion: 1,
+  definition: {
+    name: ' 할인 가격 ',
+    description: ' 변경 설명 ',
+    type: 'PROMOTIONAL_PRICE' as const,
+    promotionalUnitPrice: 75,
+    startsAt: '2026-08-31T00:00:00.000Z',
+    endsAt: '2026-10-01T00:00:00.000Z',
+    isActive: false,
+    sortOrder: 7,
+  },
+  productIds: [' P002 '],
 });
 
 async function snapshot() {
@@ -378,5 +396,243 @@ describe('PostgreSQL promotion administration commands', () => {
     expect(state.links).toEqual([]);
     expect(state.operations).toEqual([]);
     expect(state.audits).toEqual([]);
+  });
+
+  it('accepts target and final-link rows in database collation order', async () => {
+    await commands().create(createInput());
+    const javascriptFirst = 'P\u{10000}';
+    const databaseFirst = 'P\uE000';
+    for (const productId of [javascriptFirst, databaseFirst]) {
+      await harness.database.query(
+        `INSERT INTO products
+          (tenant_id, product_id, name, price, stock, is_active, sort_order, version,
+           created_at, updated_at)
+         VALUES ($1, $2, $2, 100, 10, true, 0, 1, $3, $3)`,
+        [harness.tenantOneId, productId, NOW.toISOString()],
+      );
+    }
+    const databaseOrder = await harness.database.query(
+      'SELECT product_id FROM products WHERE tenant_id=$1 AND product_id IN ($2, $3) ORDER BY product_id',
+      [harness.tenantOneId, javascriptFirst, databaseFirst],
+    );
+    expect([javascriptFirst, databaseFirst].sort()).toEqual([javascriptFirst, databaseFirst]);
+    expect(databaseOrder.rows.map(
+      (row) => (row as { product_id?: unknown }).product_id,
+    )).toEqual([databaseFirst, javascriptFirst]);
+
+    const input = { ...updateInput(), productIds: [databaseFirst, javascriptFirst] };
+    await expect(commands().update(input)).resolves.toMatchObject({
+      promotions: [{ productIds: [javascriptFirst, databaseFirst] }],
+    });
+    const stored = await harness.database.query(
+      'SELECT result_snapshot FROM operations WHERE tenant_id=$1 AND operation_id=$2',
+      [harness.tenantOneId, input.operationId],
+    );
+    expect(stored.rows).toEqual([expect.objectContaining({
+      result_snapshot: expect.objectContaining({
+        promotions: [expect.objectContaining({ productIds: [javascriptFirst, databaseFirst] })],
+      }),
+    })]);
+  });
+
+  it('atomically updates metadata, nulls old variant columns, and replaces targets', async () => {
+    await commands().create(createInput());
+    const input = updateInput();
+    const result = await commands().update(input);
+    expect(result).toEqual({
+      ok: true, operationId: input.operationId, action: 'UPDATE', completedAt: NOW.toISOString(),
+      promotions: [{
+        promotionId: input.promotionId, name: '할인 가격', description: '변경 설명',
+        type: 'PROMOTIONAL_PRICE', promotionalUnitPrice: 75,
+        startsAt: '2026-08-31T00:00:00.000Z', endsAt: '2026-10-01T00:00:00.000Z',
+        isActive: false, sortOrder: 7, schemaVersion: 3, productIds: ['P002'],
+        promotionVersionBefore: 1, promotionVersionAfter: 2,
+      }],
+    });
+    const state = await snapshot();
+    expect(state.promotions).toEqual([expect.objectContaining({
+      promotion_id: input.promotionId, name: '할인 가격', description: '변경 설명',
+      type: 'PROMOTIONAL_PRICE', n_plus_one_buy_quantity: null, n_plus_one_free_quantity: null,
+      promotional_price: '75', percent_discount: null, fixed_discount: null,
+      schema_version: 3, version: '2', deleted_at: null,
+    })]);
+    expect(state.links).toEqual([{
+      promotion_product_id: createPromotionAdminLinkId(input.operationId, input.promotionId, 'P002'),
+      promotion_id: input.promotionId, product_id: 'P002', schema_version: 3,
+    }]);
+    expect(state.operations).toHaveLength(2);
+    expect(state.audits).toHaveLength(2);
+  });
+
+  it('accepts PostgreSQL decimal text for an exponential percent discount update', async () => {
+    await commands().create(createInput());
+    const input = {
+      ...updateInput(),
+      definition: {
+        name: updateInput().definition.name,
+        description: updateInput().definition.description,
+        type: 'PERCENT_DISCOUNT' as const,
+        percent: 1e-7,
+        startsAt: updateInput().definition.startsAt,
+        endsAt: updateInput().definition.endsAt,
+        isActive: updateInput().definition.isActive,
+        sortOrder: updateInput().definition.sortOrder,
+      },
+    };
+
+    await expect(commands().update(input)).resolves.toMatchObject({
+      promotions: [{ type: 'PERCENT_DISCOUNT', percent: 1e-7 }],
+    });
+    expect((await snapshot()).promotions).toEqual([expect.objectContaining({
+      type: 'PERCENT_DISCOUNT', promotional_price: null, percent_discount: '0.0000001',
+    })]);
+  });
+
+  it('rolls back stale-version and missing or deleted target updates', async () => {
+    await commands().create(createInput());
+    const before = await snapshot();
+    await expect(commands().update({ ...updateInput(), expectedPromotionVersion: 2 }))
+      .rejects.toThrow(/stale|version/i);
+    await expect(commands().update({ ...updateInput(), operationId: 'update-missing', productIds: ['P404'] }))
+      .rejects.toThrow(/target product not found/i);
+    await harness.database.query(
+      'UPDATE products SET deleted_at=$3, is_active=false WHERE tenant_id=$1 AND product_id=$2',
+      [harness.tenantOneId, 'P002', NOW.toISOString()],
+    );
+    await expect(commands().update({ ...updateInput(), operationId: 'update-deleted' }))
+      .rejects.toThrow(/target product not found/i);
+    await harness.database.query(
+      'UPDATE products SET deleted_at=NULL, is_active=true WHERE tenant_id=$1 AND product_id=$2',
+      [harness.tenantOneId, 'P002'],
+    );
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('replays historical update after later state changes and rejects payload conflicts', async () => {
+    await commands().create(createInput());
+    const input = updateInput();
+    const first = await commands().update(input);
+    await harness.database.query(
+      `UPDATE promotions
+       SET name='나중 이름', version=3, is_active=false, deleted_at='2026-08-30T02:00:00Z',
+           updated_at='2026-08-30T02:00:00Z'
+       WHERE tenant_id=$1 AND promotion_id=$2`,
+      [harness.tenantOneId, input.promotionId],
+    );
+    await harness.database.query(
+      'DELETE FROM promotion_products WHERE tenant_id=$1 AND promotion_id=$2',
+      [harness.tenantOneId, input.promotionId],
+    );
+    await expect(commands().update(input)).resolves.toEqual(first);
+    await expect(commands().update({ ...input, definition: { ...input.definition, name: '충돌' } }))
+      .rejects.toThrow(/conflict/i);
+  });
+
+  it.each([
+    ['metadata update', 'promotions', "OLD.promotion_id='PROMO-001'", 'RETURN OLD'],
+    ['old-link delete', 'promotion_products', "OLD.product_id='P001'", 'RETURN NULL'],
+    ['new-link insert', 'promotion_products', "NEW.product_id='P002'", 'RETURN NULL'],
+    ['audit insert', 'audit_events', "NEW.operation_id='promotion-update-operation'", 'RETURN NULL'],
+    ['terminal update', 'operations', "NEW.operation_id='promotion-update-operation' AND NEW.status='SUCCEEDED'", 'RETURN NULL'],
+  ] as const)('rolls back update when the required %s write is suppressed', async (_target, table, condition, triggerResult) => {
+    await commands().create(createInput());
+    const before = await snapshot();
+    await harness.database.exec(`
+      CREATE FUNCTION suppress_required_promotion_update_write() RETURNS trigger
+      LANGUAGE plpgsql AS $$ BEGIN
+        IF ${condition} THEN ${triggerResult}; END IF;
+        RETURN NEW;
+      END $$;
+      CREATE TRIGGER suppress_required_promotion_update_write
+      BEFORE INSERT OR UPDATE OR DELETE ON ${table}
+      FOR EACH ROW EXECUTE FUNCTION suppress_required_promotion_update_write();
+    `);
+    await expect(commands().update(updateInput())).rejects.toThrow(/integrity|not replayable/i);
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('re-reads the winning update operation when the initial lookup misses an insert race', async () => {
+    await commands().create(createInput());
+    const input = updateInput();
+    const first = await commands().update(input);
+    const raceCommands = createDatabasePromotionCommands({
+      tenantId: harness.tenantOneId,
+      now: () => NOW,
+      runTenantTransaction: (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) => {
+        let missedInitialRead = false;
+        const raceTx = {
+          execute: async (query: Parameters<typeof tx.execute>[0]) => {
+            if (!missedInitialRead) {
+              missedInitialRead = true;
+              return { rows: [] } as never;
+            }
+            return tx.execute(query);
+          },
+        } as unknown as typeof tx;
+        return callback(raceTx);
+      }),
+    });
+    await expect(raceCommands.update(input)).resolves.toEqual(first);
+  });
+
+  it('fails closed on malformed stored update results and extra update audits', async () => {
+    await commands().create(createInput());
+    const input = updateInput();
+    await commands().update(input);
+    await withOperationAuditTampering(async () => {
+      await harness.database.query(
+        `UPDATE operations
+         SET result_snapshot=jsonb_set(result_snapshot, '{promotions,0,promotionVersionAfter}', '99'::jsonb)
+         WHERE tenant_id=$1 AND operation_id=$2`,
+        [harness.tenantOneId, input.operationId],
+      );
+    });
+    await expect(commands().update(input)).rejects.toThrow(/stored result integrity/i);
+
+    await withOperationAuditTampering(async () => {
+      await harness.database.query(
+        `UPDATE operations
+         SET result_snapshot=jsonb_set(result_snapshot, '{promotions,0,promotionVersionAfter}', '2'::jsonb)
+         WHERE tenant_id=$1 AND operation_id=$2`,
+        [harness.tenantOneId, input.operationId],
+      );
+    });
+    await harness.runTenantTransaction(harness.tenantOneId, async (tx) => {
+      await appendOperationAudit(tx, harness.tenantOneId, {
+        operationId: input.operationId,
+        eventType: 'PROMOTION_ADMIN_EXTRA',
+        entityType: 'OPERATION',
+        entityId: input.operationId,
+        occurredAt: NOW,
+        redactedDetails: { action: 'UPDATE' },
+      });
+    });
+    await expect(commands().update(input)).rejects.toThrow(/audit integrity/i);
+  });
+
+  it('accepts an empty replacement target set and rejects a non-finite clock before transaction', async () => {
+    await commands().create(createInput());
+    await expect(commands().update({ ...updateInput(), productIds: [] })).resolves.toMatchObject({
+      action: 'UPDATE', promotions: [{ productIds: [] }],
+    });
+    expect((await snapshot()).links).toEqual([]);
+
+    let transactionCallCount = 0;
+    const runTenantTransaction = <TResult>(
+      tenantId: string,
+      callback: (transaction: TenantTransaction) => Promise<TResult>,
+    ) => {
+      transactionCallCount += 1;
+      return harness.runTenantTransaction(tenantId, callback);
+    };
+    const invalidClockCommands = createDatabasePromotionCommands({
+      tenantId: harness.tenantOneId,
+      runTenantTransaction,
+      now: () => new Date(Number.NaN),
+    });
+    await expect(invalidClockCommands.update({
+      ...updateInput(), operationId: 'invalid-clock', expectedPromotionVersion: 2,
+    })).rejects.toThrow(/timestamp.*invalid/i);
+    expect(transactionCallCount).toBe(0);
   });
 });
