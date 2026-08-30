@@ -103,13 +103,20 @@ const deactivateInput = () => ({
   expectedPromotionVersion: 1,
 });
 
+const deleteInput = () => ({
+  operationId: 'promotion-delete-operation',
+  promotionId: ' PROMO-001 ',
+  expectedPromotionVersion: 1,
+});
+
 async function snapshot() {
   const [promotions, links, operations, audits] = await Promise.all([
     harness.database.query(
       `SELECT promotion_id, name, description, type, n_plus_one_buy_quantity::text,
               n_plus_one_free_quantity::text, promotional_price::text,
               percent_discount::text, fixed_discount::text, starts_at, ends_at,
-              is_active, sort_order, schema_version, version::text, deleted_at
+              is_active, sort_order, schema_version, version::text,
+              created_at, updated_at, deleted_at
        FROM promotions WHERE tenant_id=$1 ORDER BY promotion_id`,
       [harness.tenantOneId],
     ),
@@ -939,5 +946,255 @@ describe('PostgreSQL promotion administration commands', () => {
     `);
     await expect(commands().activate(activateInput())).rejects.toThrow(/integrity|not replayable/i);
     expect(await snapshot()).toEqual(before);
+  });
+
+  it('tombstones an active promotion, preserves its definition, and atomically removes all links', async () => {
+    const created = await commands().create(createInput());
+    const result = await commands().delete(deleteInput());
+    expect(result).toEqual({
+      ...created,
+      operationId: 'promotion-delete-operation',
+      action: 'DELETE',
+      promotions: [{
+        ...created.promotions[0], isActive: false,
+        promotionVersionBefore: 1, promotionVersionAfter: 2,
+      }],
+    });
+    const state = await snapshot();
+    expect(state.promotions).toEqual([expect.objectContaining({
+      promotion_id: 'PROMO-001', name: '하나 더', description: '설명', type: 'N_PLUS_ONE',
+      n_plus_one_buy_quantity: '2', n_plus_one_free_quantity: '1', is_active: false,
+      schema_version: 3, version: '2', deleted_at: NOW,
+    })]);
+    expect(state.links).toEqual([]);
+    expect(state.operations).toHaveLength(2);
+    expect(state.audits).toHaveLength(2);
+  });
+
+  it('deletes an already-inactive promotion and still increments its version', async () => {
+    const created = await commands().create({
+      ...createInput(), definition: { ...createInput().definition, isActive: false },
+    });
+    await expect(commands().delete(deleteInput())).resolves.toEqual({
+      ...created, operationId: deleteInput().operationId, action: 'DELETE',
+      promotions: [{
+        ...created.promotions[0], promotionVersionBefore: 1, promotionVersionAfter: 2,
+      }],
+    });
+    expect((await snapshot()).links).toEqual([]);
+  });
+
+  it('rolls back delete for stale, missing, or already-tombstoned promotions', async () => {
+    await commands().create(createInput());
+    const before = await snapshot();
+    await expect(commands().delete({ ...deleteInput(), expectedPromotionVersion: 2 }))
+      .rejects.toThrow(/stale|version/i);
+    await expect(commands().delete({
+      ...deleteInput(), operationId: 'delete-missing', promotionId: 'PROMO-404',
+    })).rejects.toThrow(/not found/i);
+    expect(await snapshot()).toEqual(before);
+    await harness.database.query(
+      `UPDATE promotions SET is_active=false, deleted_at=$3, updated_at=$3
+       WHERE tenant_id=$1 AND promotion_id=$2`,
+      [harness.tenantOneId, 'PROMO-001', NOW.toISOString()],
+    );
+    const tombstoned = await snapshot();
+    await expect(commands().delete({ ...deleteInput(), operationId: 'delete-tombstoned' }))
+      .rejects.toThrow(/not found/i);
+    expect(await snapshot()).toEqual(tombstoned);
+  });
+
+  it('rejects delete when the clock precedes promotion creation', async () => {
+    await commands().create(createInput());
+    const before = await snapshot();
+    const early = createDatabasePromotionCommands({
+      tenantId: harness.tenantOneId,
+      runTenantTransaction: harness.runTenantTransaction,
+      now: () => new Date('2026-08-29T23:59:59.999Z'),
+    });
+    await expect(early.delete(deleteInput())).rejects.toThrow(/created|chronology|timestamp/i);
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('rejects delete when the clock precedes the latest promotion update and fully rolls back', async () => {
+    await commands().create(createInput());
+    await harness.database.query(
+      `UPDATE promotions SET updated_at=$3
+       WHERE tenant_id=$1 AND promotion_id=$2`,
+      [harness.tenantOneId, 'PROMO-001', '2026-08-30T02:00:00.000Z'],
+    );
+    const before = await snapshot();
+
+    await expect(commands().delete(deleteInput())).rejects.toThrow(/chronology|timestamp/i);
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('rejects delete for a live promotion updated before it was created and fully rolls back', async () => {
+    await commands().create(createInput());
+    await harness.database.query(
+      `UPDATE promotions SET created_at=$3, updated_at=$4
+       WHERE tenant_id=$1 AND promotion_id=$2`,
+      [
+        harness.tenantOneId,
+        'PROMO-001',
+        '2026-08-30T00:30:00.000Z',
+        '2026-08-30T00:29:59.999Z',
+      ],
+    );
+    const before = await snapshot();
+
+    await expect(commands().delete(deleteInput())).rejects.toThrow(/chronology|timestamp/i);
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('replays frozen delete evidence after later direct tombstone mutation and rejects action or version conflicts', async () => {
+    await commands().create(createInput());
+    const input = deleteInput();
+    const first = await commands().delete(input);
+    await harness.database.query(
+      `UPDATE promotions SET name='나중 이름', version=3, updated_at='2026-08-30T02:00:00Z'
+       WHERE tenant_id=$1 AND promotion_id=$2`,
+      [harness.tenantOneId, 'PROMO-001'],
+    );
+    await expect(commands().delete(input)).resolves.toEqual(first);
+    await expect(commands().delete({ ...input, expectedPromotionVersion: 2 }))
+      .rejects.toThrow(/conflict/i);
+    await expect(commands().activate(input)).rejects.toThrow(/conflict/i);
+  });
+
+  it('rejects delete replay after the physical promotion identity is hard-deleted', async () => {
+    await commands().create(createInput());
+    const input = deleteInput();
+    await commands().delete(input);
+    await harness.database.query(
+      'DELETE FROM promotions WHERE tenant_id=$1 AND promotion_id=$2',
+      [harness.tenantOneId, 'PROMO-001'],
+    );
+    await expect(commands().delete(input)).rejects.toThrow(/identity integrity/i);
+  });
+
+  it('re-reads the winning delete operation after an insert race', async () => {
+    await commands().create(createInput());
+    const input = deleteInput();
+    const first = await commands().delete(input);
+    const raceCommands = createDatabasePromotionCommands({
+      tenantId: harness.tenantOneId,
+      now: () => NOW,
+      runTenantTransaction: (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) => {
+        let missedInitialRead = false;
+        const raceTx = {
+          execute: async (query: Parameters<typeof tx.execute>[0]) => {
+            if (!missedInitialRead) {
+              missedInitialRead = true;
+              return { rows: [] } as never;
+            }
+            return tx.execute(query);
+          },
+        } as unknown as typeof tx;
+        return callback(raceTx);
+      }),
+    });
+    await expect(raceCommands.delete(input)).resolves.toEqual(first);
+  });
+
+  it('fails closed on malformed delete result evidence, extra audits, and reverse chronology', async () => {
+    await commands().create(createInput());
+    const input = deleteInput();
+    await commands().delete(input);
+    await withOperationAuditTampering(async () => {
+      await harness.database.query(
+        `UPDATE operations
+         SET result_snapshot=jsonb_set(result_snapshot, '{promotions,0,isActive}', 'true'::jsonb)
+         WHERE tenant_id=$1 AND operation_id=$2`,
+        [harness.tenantOneId, input.operationId],
+      );
+    });
+    await expect(commands().delete(input)).rejects.toThrow(/stored result integrity/i);
+    await withOperationAuditTampering(async () => {
+      await harness.database.query(
+        `UPDATE operations
+         SET result_snapshot=jsonb_set(result_snapshot, '{promotions,0,isActive}', 'false'::jsonb)
+         WHERE tenant_id=$1 AND operation_id=$2`,
+        [harness.tenantOneId, input.operationId],
+      );
+    });
+    await harness.runTenantTransaction(harness.tenantOneId, async (tx) => {
+      await appendOperationAudit(tx, harness.tenantOneId, {
+        operationId: input.operationId,
+        eventType: 'PROMOTION_ADMIN_EXTRA', entityType: 'OPERATION', entityId: input.operationId,
+        occurredAt: NOW, redactedDetails: { action: 'DELETE' },
+      });
+    });
+    await expect(commands().delete(input)).rejects.toThrow(/audit integrity/i);
+    await harness.database.exec('ALTER TABLE operations DROP CONSTRAINT operations_chronology_check');
+    await withOperationAuditTampering(async () => {
+      await harness.database.query(
+        `DELETE FROM audit_events WHERE tenant_id=$1 AND operation_id=$2 AND event_type='PROMOTION_ADMIN_EXTRA'`,
+        [harness.tenantOneId, input.operationId],
+      );
+      await harness.database.query(
+        `UPDATE operations SET started_at=$3, created_at=$3
+         WHERE tenant_id=$1 AND operation_id=$2`,
+        [harness.tenantOneId, input.operationId, '2026-08-30T02:00:00.000Z'],
+      );
+    });
+    await expect(commands().delete(input)).rejects.toThrow(/operation integrity/i);
+  });
+
+  it.each([
+    ['metadata', 'promotions', "OLD.promotion_id='PROMO-001'", 'RETURN OLD'],
+    ['link delete', 'promotion_products', "OLD.product_id='P001'", 'RETURN NULL'],
+    ['audit', 'audit_events', "NEW.operation_id='promotion-delete-operation'", 'RETURN NULL'],
+    ['terminal', 'operations', "NEW.operation_id='promotion-delete-operation' AND NEW.status='SUCCEEDED'", 'RETURN NULL'],
+  ] as const)('rolls back delete when required %s evidence is suppressed', async (_target, table, condition, triggerResult) => {
+    await commands().create(createInput());
+    const before = await snapshot();
+    await harness.database.exec(`
+      CREATE FUNCTION suppress_required_promotion_delete_write() RETURNS trigger
+      LANGUAGE plpgsql AS $$ BEGIN
+        IF ${condition} THEN ${triggerResult}; END IF;
+        RETURN NEW;
+      END $$;
+      CREATE TRIGGER suppress_required_promotion_delete_write
+      BEFORE INSERT OR UPDATE OR DELETE ON ${table}
+      FOR EACH ROW EXECUTE FUNCTION suppress_required_promotion_delete_write();
+    `);
+    await expect(commands().delete(deleteInput())).rejects.toThrow(/integrity|not replayable/i);
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('returns removed delete targets in JavaScript UTF-16 order independent of database collation', async () => {
+    const javascriptFirst = 'P\u{10000}';
+    const databaseFirst = 'P\uE000';
+    for (const productId of [javascriptFirst, databaseFirst]) {
+      await harness.database.query(
+        `INSERT INTO products
+          (tenant_id, product_id, name, price, stock, is_active, sort_order, version,
+           created_at, updated_at)
+         VALUES ($1, $2, $2, 100, 10, true, 0, 1, $3, $3)`,
+        [harness.tenantOneId, productId, NOW.toISOString()],
+      );
+    }
+    await commands().create({ ...createInput(), productIds: [databaseFirst, javascriptFirst] });
+    await expect(commands().delete(deleteInput())).resolves.toMatchObject({
+      promotions: [{ productIds: [javascriptFirst, databaseFirst] }],
+    });
+  });
+
+  it('rejects invalid delete versions and clocks before opening a transaction', async () => {
+    let transactionCallCount = 0;
+    const invalidClockCommands = createDatabasePromotionCommands({
+      tenantId: harness.tenantOneId,
+      runTenantTransaction: (tenantId, callback) => {
+        transactionCallCount += 1;
+        return harness.runTenantTransaction(tenantId, callback);
+      },
+      now: () => new Date(Number.NaN),
+    });
+    await expect(invalidClockCommands.delete(deleteInput())).rejects.toThrow(/timestamp.*invalid/i);
+    await expect(commands().delete({
+      ...deleteInput(), expectedPromotionVersion: Number.MAX_SAFE_INTEGER,
+    })).rejects.toThrow(/next promotion version/i);
+    expect(transactionCallCount).toBe(0);
   });
 });
