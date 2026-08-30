@@ -657,41 +657,78 @@ function TaskCard({ task, studentId, currencyUnit, theme, isBlackTheme, onOpen, 
 function TaskCarousel({ chain, studentId, currencyUnit, theme, isBlackTheme, onOpen, catalog = false, activeTaskId, onActiveTaskChange }: Omit<TaskCardProps, 'task' | 'embedded'> & { chain: StudentTaskChain<BankTask> }) {
   const storedIndex = activeTaskId ? chain.tasks.findIndex((task) => task.taskId === activeTaskId) : -1;
   const externalIndex = storedIndex >= 0 ? storedIndex : chain.initialIndex;
-  const [activeIndex, setActiveIndex] = useState(externalIndex);
+  const [visualIndex, setVisualIndex] = useState(externalIndex);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const animationGenerationRef = useRef(0);
+  const pointerHeldRef = useRef(false);
+  const physicalTouchHeldRef = useRef(false);
   const scrollSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const cancelAnimation = useCallback(() => {
-    if (animationFrameRef.current !== null) cancelAnimationFrame(animationFrameRef.current);
-    animationFrameRef.current = null;
-  }, []);
+  const snapTypeRef = useRef<string | null>(null);
+  const lastPersistedTaskIdRef = useRef(activeTaskId);
+  const pendingSyntheticIndicatorClicksRef = useRef<Array<{ index: number; expiresAt: number }>>([]);
+  const mouseIndicatorClickRef = useRef<number | null>(null);
 
   const clearScrollSettleTimer = useCallback(() => {
     if (scrollSettleTimerRef.current !== null) clearTimeout(scrollSettleTimerRef.current);
     scrollSettleTimerRef.current = null;
   }, []);
 
+  const isInteractionHeld = useCallback(() => pointerHeldRef.current || physicalTouchHeldRef.current, []);
+
+  const restoreScrollSnap = useCallback(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller || snapTypeRef.current === null) return;
+    scroller.style.scrollSnapType = snapTypeRef.current;
+    snapTypeRef.current = null;
+  }, []);
+
+  const cancelAnimation = useCallback(() => {
+    animationGenerationRef.current += 1;
+    if (animationFrameRef.current !== null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(animationFrameRef.current);
+    animationFrameRef.current = null;
+    restoreScrollSnap();
+  }, [restoreScrollSnap]);
+
+  const nearestIndex = useCallback((scroller: HTMLDivElement, fallback = visualIndex) => {
+    const width = scroller.clientWidth;
+    if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(scroller.scrollLeft)) return fallback;
+    return Math.max(0, Math.min(chain.tasks.length - 1, Math.round(scroller.scrollLeft / width)));
+  }, [chain.tasks.length, visualIndex]);
+
+  const updateVisualIndex = useCallback((scroller: HTMLDivElement) => {
+    const nextIndex = nearestIndex(scroller);
+    setVisualIndex((current) => current === nextIndex ? current : nextIndex);
+    return nextIndex;
+  }, [nearestIndex]);
+
   const persistIndex = useCallback((index: number) => {
     const nextIndex = Math.max(0, Math.min(chain.tasks.length - 1, index));
-    setActiveIndex(nextIndex);
-    if (chain.tasks[nextIndex].taskId !== activeTaskId) onActiveTaskChange?.(chain.tasks[nextIndex].taskId);
+    const taskId = chain.tasks[nextIndex].taskId;
+    setVisualIndex((current) => current === nextIndex ? current : nextIndex);
+    if (taskId === activeTaskId || taskId === lastPersistedTaskIdRef.current) return;
+    lastPersistedTaskIdRef.current = taskId;
+    onActiveTaskChange?.(taskId);
   }, [activeTaskId, chain.tasks, onActiveTaskChange]);
 
   const persistScrolledIndex = useCallback(() => {
     clearScrollSettleTimer();
     const scroller = scrollerRef.current;
-    if (!scroller || scroller.clientWidth <= 0 || animationFrameRef.current !== null) return;
-    persistIndex(Math.round(scroller.scrollLeft / scroller.clientWidth));
-  }, [clearScrollSettleTimer, persistIndex]);
+    if (!scroller || isInteractionHeld() || animationFrameRef.current !== null || scroller.clientWidth <= 0) return;
+    persistIndex(nearestIndex(scroller));
+  }, [clearScrollSettleTimer, isInteractionHeld, nearestIndex, persistIndex]);
+
+  const scheduleSettle = useCallback(() => {
+    clearScrollSettleTimer();
+    if (isInteractionHeld() || animationFrameRef.current !== null) return;
+    scrollSettleTimerRef.current = setTimeout(persistScrolledIndex, 160);
+  }, [clearScrollSettleTimer, isInteractionHeld, persistScrolledIndex]);
 
   const interruptAnimation = useCallback(() => {
-    const wasAnimating = animationFrameRef.current !== null;
     cancelAnimation();
-    if (!wasAnimating) return;
     clearScrollSettleTimer();
-    scrollSettleTimerRef.current = setTimeout(persistScrolledIndex, 160);
-  }, [cancelAnimation, clearScrollSettleTimer, persistScrolledIndex]);
+    updateVisualIndex(scrollerRef.current!);
+  }, [cancelAnimation, clearScrollSettleTimer, updateVisualIndex]);
 
   const showSlide = useCallback((index: number) => {
     const nextIndex = Math.max(0, Math.min(chain.tasks.length - 1, index));
@@ -703,39 +740,47 @@ function TaskCarousel({ chain, studentId, currencyUnit, theme, isBlackTheme, onO
     const reducedMotion = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (reducedMotion || typeof requestAnimationFrame !== 'function' || scroller.scrollLeft === targetLeft) {
       scrollTaskCarousel(scroller, targetLeft);
+      setVisualIndex(nextIndex);
       persistIndex(nextIndex);
       return;
     }
 
+    const generation = animationGenerationRef.current;
     const startLeft = scroller.scrollLeft;
+    if (snapTypeRef.current === null) snapTypeRef.current = scroller.style.scrollSnapType;
+    scroller.style.scrollSnapType = 'none';
     let startTime: number | null = null;
     const step = (time: number) => {
+      if (generation !== animationGenerationRef.current) return;
       if (startTime === null) startTime = time;
       const progress = Math.min(1, (time - startTime) / 260);
       const eased = progress < 0.5 ? 4 * progress * progress * progress : 1 - Math.pow(-2 * progress + 2, 3) / 2;
       scrollTaskCarousel(scroller, startLeft + (targetLeft - startLeft) * eased);
+      updateVisualIndex(scroller);
       if (progress < 1) {
         animationFrameRef.current = requestAnimationFrame(step);
       } else {
         animationFrameRef.current = null;
+        restoreScrollSnap();
         persistIndex(nextIndex);
       }
     };
     animationFrameRef.current = requestAnimationFrame(step);
-  }, [cancelAnimation, chain.tasks.length, clearScrollSettleTimer, persistIndex]);
+  }, [cancelAnimation, chain.tasks.length, clearScrollSettleTimer, persistIndex, restoreScrollSnap, updateVisualIndex]);
 
   useEffect(() => {
+    lastPersistedTaskIdRef.current = activeTaskId;
     const scroller = scrollerRef.current;
-    if (!scroller) return;
-    cancelAnimation();
-    setActiveIndex(externalIndex);
+    if (!scroller || isInteractionHeld() || animationFrameRef.current !== null) return;
+    setVisualIndex(externalIndex);
     const left = externalIndex * scroller.clientWidth;
-    scrollTaskCarousel(scroller, left);
-  }, [cancelAnimation, externalIndex]);
+    if (Math.abs(scroller.scrollLeft - left) > 1) scrollTaskCarousel(scroller, left);
+  }, [activeTaskId, externalIndex, isInteractionHeld]);
 
   useEffect(() => () => {
     cancelAnimation();
     clearScrollSettleTimer();
+    pendingSyntheticIndicatorClicksRef.current = [];
   }, [cancelAnimation, clearScrollSettleTimer]);
 
   return (
@@ -744,13 +789,46 @@ function TaskCarousel({ chain, studentId, currencyUnit, theme, isBlackTheme, onO
         ref={scrollerRef}
         data-testid="task-carousel-scroller"
         className="flex items-stretch touch-pan-x snap-x snap-mandatory overflow-x-auto overscroll-x-contain"
-        onPointerDown={interruptAnimation}
-        onTouchStart={interruptAnimation}
-        onWheel={interruptAnimation}
+        onPointerDown={(event) => {
+          if (event.isPrimary === false || event.button > 0) return;
+          const wasHeld = isInteractionHeld();
+          pointerHeldRef.current = true;
+          if (!wasHeld) interruptAnimation();
+        }}
+        onPointerUp={(event) => {
+          if (event.isPrimary === false) return;
+          pointerHeldRef.current = false;
+          scheduleSettle();
+        }}
+        onPointerCancel={(event) => {
+          if (event.isPrimary === false) return;
+          pointerHeldRef.current = false;
+          scheduleSettle();
+        }}
+        onTouchStart={() => {
+          const wasHeld = isInteractionHeld();
+          physicalTouchHeldRef.current = true;
+          if (!wasHeld) interruptAnimation();
+        }}
+        onTouchEnd={(event) => {
+          physicalTouchHeldRef.current = event.touches.length > 0;
+          scheduleSettle();
+        }}
+        onTouchCancel={(event) => {
+          physicalTouchHeldRef.current = event.touches.length > 0;
+          scheduleSettle();
+        }}
+        onWheel={() => {
+          pointerHeldRef.current = false;
+          interruptAnimation();
+          scheduleSettle();
+        }}
         onScroll={() => {
-          if (animationFrameRef.current !== null) return;
-          clearScrollSettleTimer();
-          scrollSettleTimerRef.current = setTimeout(persistScrolledIndex, 160);
+          const scroller = scrollerRef.current;
+          if (!scroller) return;
+          updateVisualIndex(scroller);
+          if (animationFrameRef.current !== null || isInteractionHeld()) return;
+          scheduleSettle();
         }}
         onScrollEnd={persistScrolledIndex}
       >
@@ -760,28 +838,60 @@ function TaskCarousel({ chain, studentId, currencyUnit, theme, isBlackTheme, onO
             data-testid="task-carousel-slide"
             role="group"
             aria-label={`${index + 1} / ${chain.tasks.length}: ${task.title}`}
-            aria-hidden={index === activeIndex ? undefined : true}
-            inert={index === activeIndex ? undefined : true}
+            aria-hidden={index === visualIndex ? undefined : true}
+            inert={index === visualIndex ? undefined : true}
             className="flex min-w-full snap-center snap-always"
           >
             <TaskCard task={task} studentId={studentId} currencyUnit={currencyUnit} theme={theme} isBlackTheme={isBlackTheme} onOpen={onOpen} embedded catalog={catalog} />
           </div>
         ))}
       </div>
-      <button type="button" aria-label="이전 과제" disabled={activeIndex === 0} onClick={() => showSlide(activeIndex - 1)} className="absolute inset-y-0 left-0 z-10 hidden w-12 items-center justify-start pl-2 opacity-0 transition-opacity [@media(hover:hover)_and_(pointer:fine)]:flex hover:opacity-100 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-slate-900 disabled:pointer-events-none"><svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6 rounded-full bg-white/90 p-1 shadow"><path d="M19 12H5m6-6-6 6 6 6" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" /></svg></button>
+      <button type="button" aria-label="이전 과제" disabled={visualIndex === 0} onClick={() => showSlide(visualIndex - 1)} className="absolute inset-y-0 left-0 z-10 hidden w-12 items-center justify-start pl-2 opacity-0 transition-opacity [@media(hover:hover)_and_(pointer:fine)]:flex hover:opacity-100 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-slate-900 disabled:pointer-events-none"><svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6 rounded-full bg-white/90 p-1 shadow"><path d="M19 12H5m6-6-6 6 6 6" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" /></svg></button>
       <div data-testid="task-carousel-indicator" className="absolute bottom-1 left-1/2 z-10 flex -translate-x-1/2 items-center justify-center">
           {chain.tasks.map((task, index) => (
             <button
               key={task.taskId}
               type="button"
               aria-label={`${index + 1}번째 과제 보기`}
-              aria-current={index === activeIndex ? 'true' : undefined}
-              onClick={() => showSlide(index)}
-              className={`flex h-8 w-8 items-center justify-center rounded-full focus-visible:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 ${isBlackTheme ? 'focus-visible:outline-white' : 'focus-visible:outline-slate-900'}`}
-            ><span aria-hidden="true" className={`h-2 w-2 rounded-full ${isBlackTheme ? (index === activeIndex ? 'bg-white' : 'bg-white/40') : (index === activeIndex ? 'bg-slate-800' : 'bg-slate-500/35')}`} /></button>
+              aria-current={index === visualIndex ? 'true' : undefined}
+              onPointerDown={(event) => {
+                if (event.isPrimary === false || event.button > 0) return;
+                if (event.pointerType === 'mouse') {
+                  mouseIndicatorClickRef.current = index;
+                  return;
+                }
+                if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+                event.preventDefault();
+                mouseIndicatorClickRef.current = null;
+                const now = Date.now();
+                pendingSyntheticIndicatorClicksRef.current = [
+                  ...pendingSyntheticIndicatorClicksRef.current.filter((pending) => pending.expiresAt > now),
+                  { index, expiresAt: now + 700 },
+                ].slice(-16);
+                showSlide(index);
+              }}
+              onClick={(event) => {
+                if (event.detail === 0 || mouseIndicatorClickRef.current === index) {
+                  mouseIndicatorClickRef.current = null;
+                  showSlide(index);
+                  return;
+                }
+                const now = Date.now();
+                const pending = pendingSyntheticIndicatorClicksRef.current.filter((entry) => entry.expiresAt > now);
+                const pendingIndex = pending.findIndex((entry) => entry.index === index);
+                if (pendingIndex >= 0) {
+                  pending.splice(pendingIndex, 1);
+                  pendingSyntheticIndicatorClicksRef.current = pending;
+                  return;
+                }
+                pendingSyntheticIndicatorClicksRef.current = pending;
+                showSlide(index);
+              }}
+              className={`flex h-8 w-8 touch-manipulation items-center justify-center rounded-full focus-visible:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 ${isBlackTheme ? 'focus-visible:outline-white' : 'focus-visible:outline-slate-900'}`}
+            ><span aria-hidden="true" className={`h-2 w-2 rounded-full ${isBlackTheme ? (index === visualIndex ? 'bg-white' : 'bg-white/40') : (index === visualIndex ? 'bg-slate-800' : 'bg-slate-500/35')}`} /></button>
           ))}
       </div>
-      <button type="button" aria-label="다음 과제" disabled={activeIndex === chain.tasks.length - 1} onClick={() => showSlide(activeIndex + 1)} className="absolute inset-y-0 right-0 z-10 hidden w-12 items-center justify-end pr-2 opacity-0 transition-opacity [@media(hover:hover)_and_(pointer:fine)]:flex hover:opacity-100 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-slate-900 disabled:pointer-events-none"><svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6 rounded-full bg-white/90 p-1 shadow"><path d="M5 12h14m-6-6 6 6-6 6" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" /></svg></button>
+      <button type="button" aria-label="다음 과제" disabled={visualIndex === chain.tasks.length - 1} onClick={() => showSlide(visualIndex + 1)} className="absolute inset-y-0 right-0 z-10 hidden w-12 items-center justify-end pr-2 opacity-0 transition-opacity [@media(hover:hover)_and_(pointer:fine)]:flex hover:opacity-100 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-slate-900 disabled:pointer-events-none"><svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6 rounded-full bg-white/90 p-1 shadow"><path d="M5 12h14m-6-6 6 6-6 6" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" /></svg></button>
     </section>
   );
 }
