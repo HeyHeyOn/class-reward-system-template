@@ -232,7 +232,8 @@ export function createDatabaseTaskAdminCommands(dependencies: DatabaseTaskAdminC
         }
 
         const liveTasksResult = await tx.execute(sql`
-          SELECT task_instance_id, task_id, prerequisite_task_instance_id, created_at, updated_at, deleted_at
+          SELECT task_instance_id, task_id, is_active, prerequisite_task_instance_id,
+                 created_at, updated_at, deleted_at
           FROM tasks
           WHERE tenant_id=${dependencies.tenantId} AND deleted_at IS NULL
           ORDER BY task_instance_id
@@ -247,8 +248,11 @@ export function createDatabaseTaskAdminCommands(dependencies: DatabaseTaskAdminC
           if (input.prerequisiteTaskId === input.taskId) {
             throw new Error('Task administration prerequisite cycle is not allowed.');
           }
-          const prerequisite = liveTasks.filter((task) => task.taskId === input.prerequisiteTaskId);
-          if (prerequisite.length !== 1) throw new Error('Task administration prerequisite task not found.');
+          const prerequisite = liveTasks.filter((task) =>
+            task.taskId === input.prerequisiteTaskId && task.isActive);
+          if (prerequisite.length !== 1) {
+            throw new Error('Task administration prerequisite task not found or not active.');
+          }
           prerequisiteTaskInstanceId = prerequisite[0].taskInstanceId;
           assertNoPrerequisiteCycle(liveTasks, prerequisiteTaskInstanceId);
         }
@@ -750,8 +754,11 @@ async function updateTaskDefinition(
       if (input.prerequisiteTaskId === input.taskId) {
         throw new Error('Task administration prerequisite cycle is not allowed.');
       }
-      const prerequisite = tasks.filter((task) => task.taskId === input.prerequisiteTaskId);
-      if (prerequisite.length !== 1) throw new Error('Task administration prerequisite task not found.');
+      const prerequisite = tasks.filter((task) =>
+        task.taskId === input.prerequisiteTaskId && task.isActive);
+      if (prerequisite.length !== 1) {
+        throw new Error('Task administration prerequisite task not found or not active.');
+      }
       prerequisiteTaskInstanceId = prerequisite[0].taskInstanceId;
     }
     const proposed = tasks.map((task) => task.taskInstanceId === target.taskInstanceId
@@ -2077,11 +2084,13 @@ function parseLiveTasks(rows: readonly unknown[]) {
     const row = raw as Record<string, unknown>;
     const taskInstanceId = exactDatabaseId(row.task_instance_id);
     const taskId = exactDatabaseId(row.task_id);
-    if (row.deleted_at !== null) throw new Error('Task administration live-task integrity check failed.');
+    if (typeof row.is_active !== 'boolean' || row.deleted_at !== null) {
+      throw new Error('Task administration live-task integrity check failed.');
+    }
     const created = exactDate(row.created_at, 'stored task timestamp');
     const updated = exactDate(row.updated_at, 'stored task timestamp');
     if (updated.getTime() < created.getTime()) throw new Error('Task administration live-task chronology integrity check failed.');
-    return { taskInstanceId, taskId,
+    return { taskInstanceId, taskId, isActive: row.is_active,
       prerequisiteTaskInstanceId: row.prerequisite_task_instance_id === null ? null
         : exactDatabaseId(row.prerequisite_task_instance_id) };
   });

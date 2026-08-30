@@ -228,6 +228,20 @@ describe('database task administrator CREATE command', () => {
     expect(state.assignments).toEqual([]);
   });
 
+  it('rejects an inactive prerequisite and rolls back CREATE before domain writes', async () => {
+    await commands().create({
+      ...createInput(), operationId: 'inactive-prerequisite-op', taskId: 'INACTIVE-BASE',
+      isActive: false, allowedStudentIds: [],
+    });
+    const before = await completeSnapshot();
+
+    await expect(commands().create({
+      ...createInput(), operationId: 'inactive-dependent-op', taskId: 'DEPENDENT',
+      prerequisiteTaskId: 'INACTIVE-BASE', allowedStudentIds: [],
+    })).rejects.toThrow(/prerequisite.*active|active.*prerequisite/i);
+    expect(await completeSnapshot()).toEqual(before);
+  });
+
   it('rejects malformed values and unsafe shapes before transaction entry', async () => {
     let calls = 0;
     const preflight = createDatabaseTaskAdminCommands({
@@ -1136,6 +1150,62 @@ describe('database task administrator UPDATE command', () => {
       expect.objectContaining({ assignment_id: expectedEvents[1], student_id: 'S002',
         event_type: 'ASSIGNED', previous_assignment_id: null }),
     ]));
+  });
+
+  it('rejects an inactive prerequisite and rolls back UPDATE before domain writes', async () => {
+    await commands().create({ ...createInput(), allowedStudentIds: [] });
+    await commands().create({
+      ...createInput(), operationId: 'inactive-prerequisite-op', taskId: 'INACTIVE-BASE',
+      isActive: false, allowedStudentIds: [],
+    });
+    const before = await completeSnapshot();
+
+    await expect(commands().update(updateInput({
+      prerequisiteTaskId: 'INACTIVE-BASE', allowedStudentIds: [],
+    }))).rejects.toThrow(/prerequisite.*active|active.*prerequisite/i);
+    expect(await completeSnapshot()).toEqual(before);
+  });
+
+  it('updates a task to reference an active prerequisite', async () => {
+    await commands().create({ ...createInput(), allowedStudentIds: [] });
+    const prerequisite = await commands().create({
+      ...createInput(), operationId: 'active-prerequisite-op', taskId: 'ACTIVE-BASE',
+      allowedStudentIds: [],
+    });
+
+    await commands().update(updateInput({ prerequisiteTaskId: 'ACTIVE-BASE', allowedStudentIds: [] }));
+
+    expect((await snapshot()).tasks).toContainEqual(expect.objectContaining({
+      task_id: 'TASK-001',
+      prerequisite_task_instance_id: prerequisite.tasks[0].taskInstanceId,
+    }));
+  });
+
+  it.each([
+    ['clear', null],
+    ['replace', 'REPLACEMENT'],
+  ] as const)('can %s an existing prerequisite after it becomes inactive', async (_label, requested) => {
+    const prerequisite = await commands().create({
+      ...createInput(), operationId: 'active-prerequisite-op', taskId: 'ACTIVE-BASE',
+      allowedStudentIds: [],
+    });
+    const replacement = await commands().create({
+      ...createInput(), operationId: 'replacement-prerequisite-op', taskId: 'REPLACEMENT',
+      allowedStudentIds: [],
+    });
+    await commands().create({
+      ...createInput(), taskId: 'TASK-001', prerequisiteTaskId: 'ACTIVE-BASE', allowedStudentIds: [],
+    });
+    await harness.database.query(`UPDATE tasks SET is_active=false
+      WHERE tenant_id=$1 AND task_instance_id=$2`,
+    [harness.tenantOneId, prerequisite.tasks[0].taskInstanceId]);
+
+    await commands().update(updateInput({ prerequisiteTaskId: requested, allowedStudentIds: [] }));
+
+    expect((await snapshot()).tasks).toContainEqual(expect.objectContaining({
+      task_id: 'TASK-001', prerequisite_task_instance_id:
+        requested === null ? null : replacement.tasks[0].taskInstanceId,
+    }));
   });
 
   it('canonicalizes reversed allowed IDs and emits no events for an unchanged set', async () => {
