@@ -18,6 +18,8 @@ vi.mock('server-only', () => ({}));
 const TENANT_ONE_STUDENT = 'S1';
 const BANK_OPERATION_ID = '123e4567-e89b-42d3-a456-426614174000';
 const BANK_OPERATION_HASH = 'a'.repeat(64);
+const READER_ADMIN_OPERATION_ID = 'reader-admin-op';
+const READER_ADMIN_OPERATION_HASH = 'b'.repeat(64);
 const SCHEDULE: TaskSchedule = {
   ruleVersion: 1,
   effectiveFrom: '2026-08-01T00:00:00.000Z',
@@ -38,6 +40,9 @@ let harness: PgliteDatabaseHarness;
 
 beforeEach(async () => {
   harness = await createPgliteDatabaseHarness();
+  await harness.database.exec(`ALTER TABLE task_assignments
+    ADD COLUMN admin_operation_id text,
+    ADD COLUMN admin_operation_hash text`);
   for (const tenantId of [harness.tenantOneId, harness.tenantTwoId]) {
     await harness.database.query(
       `INSERT INTO students (tenant_id, student_id, name, status)
@@ -85,22 +90,33 @@ async function seedAssignment(input: {
   cycleStartAt?: string;
   cycleEndAt?: string | null;
   previousAssignmentId?: string | null;
+  adminOperationId?: unknown;
+  adminOperationHash?: unknown;
 }) {
+  const source = input.source ?? 'ADMIN';
+  const transitionSource = source === 'ADMIN' || source === 'QR';
+  const adminOperationId = input.adminOperationId === undefined
+    ? (transitionSource ? READER_ADMIN_OPERATION_ID : null)
+    : input.adminOperationId;
+  const adminOperationHash = input.adminOperationHash === undefined
+    ? (transitionSource ? READER_ADMIN_OPERATION_HASH : null)
+    : input.adminOperationHash;
   await harness.database.query(
     `INSERT INTO task_assignments (
        tenant_id, assignment_id, event_sequence, task_id_snapshot, task_instance_id,
        cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone, student_id,
-       event_type, source, previous_assignment_id, created_at, schema_version, note
+       event_type, source, previous_assignment_id, admin_operation_id,
+       admin_operation_hash, created_at, schema_version, note
      ) OVERRIDING SYSTEM VALUE
      VALUES ($1, $2, $3, $4, $5, $6, $7,
-             $8, 7, $9, $10, $11, $12, $13, $14, $15, 'note')`,
+             $8, 7, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'note')`,
     [
       input.tenantId ?? harness.tenantOneId, input.assignmentId, input.eventSequence,
       input.taskId ?? 'T1', input.taskInstanceId ?? 'I1', input.cycleId ?? 'cycle-1',
       input.cycleStartAt ?? '2026-08-10T00:00:00.000Z',
       input.cycleEndAt === undefined ? '2026-08-11T00:00:00.000Z' : input.cycleEndAt,
       input.timezone ?? 'Asia/Seoul', input.studentId ?? 'S1', input.eventType ?? 'ASSIGNED',
-      input.source ?? 'ADMIN', input.previousAssignmentId ?? null,
+      source, input.previousAssignmentId ?? null, adminOperationId, adminOperationHash,
       input.createdAt ?? '2026-08-10T01:00:00.000Z', input.schemaVersion ?? 1,
     ],
   );
@@ -317,8 +333,9 @@ describe('database task cycle queries', () => {
   });
 
   it('reads both ledgers in one tenant transaction and preserves event-sequence order and snapshots', async () => {
-    await seedAssignment({ assignmentId: 'A-later-time', eventSequence: 1, source: 'QR', createdAt: '2026-08-10T09:00:00.000Z' });
-    await seedAssignment({ assignmentId: 'A-earlier-time', eventSequence: 2, eventType: 'UNASSIGNED', source: 'QR', createdAt: '2026-08-10T01:00:00.000Z' });
+    await seedAssignment({ assignmentId: 'A-later-time', eventSequence: 1, source: 'QR', createdAt: '2026-08-10T01:00:00.000Z' });
+    await seedAssignment({ assignmentId: 'A-earlier-time', eventSequence: 2, eventType: 'UNASSIGNED', source: 'QR',
+      previousAssignmentId: 'A-later-time', createdAt: '2026-08-10T09:00:00.000Z' });
     await seedCompletion({ completionId: 'C2', eventSequence: 4, completedAt: '2026-08-10T01:00:00.000Z', status: 'CANCELLED', source: 'ADMIN_RESET' });
     await seedCompletion({
       completionId: 'C1', eventSequence: 3, completedAt: '2026-08-10T09:00:00.000Z',
@@ -348,7 +365,7 @@ describe('database task cycle queries', () => {
       assignmentId: 'A-earlier-time', taskId: 'T1', taskInstanceId: 'I1', cycleId: 'cycle-1',
       cycleStartsAt: '2026-08-10T00:00:00.000Z', cycleEndsAt: '2026-08-11T00:00:00.000Z',
       ruleVersion: 7, timeZone: 'Asia/Seoul', studentId: 'S1', status: 'UNASSIGNED',
-      source: 'QR', previousAssignmentId: '', createdAt: '2026-08-10T01:00:00.000Z',
+      source: 'QR', previousAssignmentId: 'A-later-time', createdAt: '2026-08-10T09:00:00.000Z',
       schemaVersion: 1, note: 'note',
     });
     expect(snapshot.completions.map(({ completionId }) => completionId)).toEqual(['C1', 'C2']);
@@ -421,6 +438,151 @@ describe('database task cycle queries', () => {
     await expect(queries().getTaskCompletions()).rejects.toThrow(/event sequence/i);
   });
 
+  it('accepts an ADMIN same-cycle transition linked to its immediate predecessor', async () => {
+    await seedAssignment({ assignmentId: 'A-ASSIGNED', eventSequence: 1 });
+    await seedAssignment({
+      assignmentId: 'A-UNASSIGNED', eventSequence: 2, eventType: 'UNASSIGNED',
+      previousAssignmentId: 'A-ASSIGNED', createdAt: '2026-08-10T02:00:00.000Z',
+    });
+
+    await expect(queries().loadTaskCycleLedgerSnapshot()).resolves.toMatchObject({
+      assignments: [
+        expect.objectContaining({ assignmentId: 'A-ASSIGNED', previousAssignmentId: '' }),
+        expect.objectContaining({
+          assignmentId: 'A-UNASSIGNED', status: 'UNASSIGNED',
+          previousAssignmentId: 'A-ASSIGNED',
+        }),
+      ],
+    });
+  });
+
+  it('accepts a mixed ADMIN to QR to ADMIN immediate same-cycle chain', async () => {
+    await seedAssignment({ assignmentId: 'A-ADMIN-1', eventSequence: 1, source: 'ADMIN' });
+    await seedAssignment({ assignmentId: 'A-QR', eventSequence: 2, source: 'QR',
+      previousAssignmentId: 'A-ADMIN-1', createdAt: '2026-08-10T02:00:00.000Z' });
+    await seedAssignment({ assignmentId: 'A-ADMIN-2', eventSequence: 3, source: 'ADMIN',
+      previousAssignmentId: 'A-QR', createdAt: '2026-08-10T03:00:00.000Z' });
+
+    await expect(queries().loadTaskCycleLedgerSnapshot()).resolves.toMatchObject({
+      assignments: [
+        expect.objectContaining({ assignmentId: 'A-ADMIN-1', previousAssignmentId: '' }),
+        expect.objectContaining({ assignmentId: 'A-QR', previousAssignmentId: 'A-ADMIN-1' }),
+        expect.objectContaining({ assignmentId: 'A-ADMIN-2', previousAssignmentId: 'A-QR' }),
+      ],
+    });
+  });
+
+  it('accepts two same-cycle LEGACY_SEED rows with null predecessors', async () => {
+    await seedAssignment({ assignmentId: 'L1', eventSequence: 1, source: 'LEGACY_SEED' });
+    await seedAssignment({ assignmentId: 'L2', eventSequence: 2, source: 'LEGACY_SEED',
+      createdAt: '2026-08-10T02:00:00.000Z' });
+
+    await expect(queries().loadTaskCycleLedgerSnapshot()).resolves.toMatchObject({
+      assignments: [
+        expect.objectContaining({ assignmentId: 'L1', previousAssignmentId: '' }),
+        expect.objectContaining({ assignmentId: 'L2', previousAssignmentId: '' }),
+      ],
+    });
+  });
+
+  it('accepts ADMIN after LEGACY_SEED only when it points to the latest legacy event', async () => {
+    await seedAssignment({ assignmentId: 'L1', eventSequence: 1, source: 'LEGACY_SEED' });
+    await seedAssignment({ assignmentId: 'L2', eventSequence: 2, source: 'LEGACY_SEED',
+      createdAt: '2026-08-10T02:00:00.000Z' });
+    await seedAssignment({ assignmentId: 'A3', eventSequence: 3, source: 'ADMIN',
+      previousAssignmentId: 'L2', createdAt: '2026-08-10T03:00:00.000Z' });
+
+    await expect(queries().loadTaskCycleLedgerSnapshot()).resolves.toMatchObject({
+      assignments: [expect.anything(), expect.anything(),
+        expect.objectContaining({ assignmentId: 'A3', previousAssignmentId: 'L2' })],
+    });
+  });
+
+  it('rejects ADMIN after LEGACY_SEED when it skips the latest legacy event', async () => {
+    await seedAssignment({ assignmentId: 'L1', eventSequence: 1, source: 'LEGACY_SEED' });
+    await seedAssignment({ assignmentId: 'L2', eventSequence: 2, source: 'LEGACY_SEED',
+      createdAt: '2026-08-10T02:00:00.000Z' });
+    await seedAssignment({ assignmentId: 'A3', eventSequence: 3, source: 'ADMIN',
+      previousAssignmentId: 'L1', createdAt: '2026-08-10T03:00:00.000Z' });
+
+    await expect(queries().loadTaskCycleLedgerSnapshot()).rejects.toThrow(/assignment/i);
+  });
+
+  describe.each(['ADMIN', 'QR'] as const)('%s operation-pair provenance', (source) => {
+    it.each([
+      ['null pair', null, null],
+      ['missing hash', READER_ADMIN_OPERATION_ID, null],
+      ['missing ID', null, READER_ADMIN_OPERATION_HASH],
+      ['uppercase hash', READER_ADMIN_OPERATION_ID, 'A'.repeat(64)],
+      ['bad hash', READER_ADMIN_OPERATION_ID, 'g'.repeat(64)],
+    ])('rejects a stored %s', async (_label, adminOperationId, adminOperationHash) => {
+      await seedAssignment({ assignmentId: 'BAD', eventSequence: 1, source,
+        adminOperationId, adminOperationHash });
+      await expect(queries().loadTaskCycleLedgerSnapshot()).rejects.toThrow(/operation|assignment/i);
+      await expect(queries().getTaskCycleHistory()).rejects.toThrow(/operation|assignment/i);
+    });
+
+    it.each([
+      ['null pair', null, null],
+      ['missing hash', READER_ADMIN_OPERATION_ID, null],
+      ['padded ID', ` ${READER_ADMIN_OPERATION_ID}`, READER_ADMIN_OPERATION_HASH],
+      ['boxed ID', new String(READER_ADMIN_OPERATION_ID), READER_ADMIN_OPERATION_HASH],
+      ['boxed hash', READER_ADMIN_OPERATION_ID, new String(READER_ADMIN_OPERATION_HASH)],
+      ['uppercase hash', READER_ADMIN_OPERATION_ID, 'A'.repeat(64)],
+    ])('rejects adapter %s', async (_label, adminOperationId, adminOperationHash) => {
+      await seedAssignment({ assignmentId: 'A1', eventSequence: 1, source });
+      const runTenantSnapshot: DatabaseTaskCycleQueryDependencies['runTenantSnapshot'] =
+        (tenantId, callback) => harness.runTenantTransaction(tenantId, (transaction) => callback({
+          async execute(query: Parameters<TenantTransaction['execute']>[0]) {
+            const result = await transaction.execute(query);
+            return { ...result, rows: result.rows.map((raw) => {
+              const row = raw as { ledger_kind?: unknown; payload?: unknown };
+              if (row.ledger_kind !== 'assignment' || typeof row.payload !== 'object'
+                || row.payload === null || Array.isArray(row.payload)) return raw;
+              return { ...row, payload: { ...(row.payload as Record<string, unknown>),
+                admin_operation_id: adminOperationId,
+                admin_operation_hash: adminOperationHash } };
+            }) } as never;
+          },
+        } as unknown as TenantTransaction));
+      await expect(queries({ runTenantSnapshot }).loadTaskCycleLedgerSnapshot())
+        .rejects.toThrow(/operation|assignment/i);
+    });
+  });
+
+  describe.each(['ADMIN', 'QR'] as const)('%s same-cycle provenance', (source) => {
+    const corruptions = [
+    ['skipped predecessor', async () => {
+      await seedAssignment({ assignmentId: 'A1', eventSequence: 1 });
+      await seedAssignment({ assignmentId: 'A2', eventSequence: 2,
+        previousAssignmentId: 'A1', createdAt: '2026-08-10T02:00:00.000Z' });
+      await seedAssignment({ assignmentId: 'A3', eventSequence: 3, source,
+        previousAssignmentId: 'A1', createdAt: '2026-08-10T03:00:00.000Z' });
+    }],
+    ['dangling predecessor', async () => {
+      await harness.database.exec('ALTER TABLE task_assignments DROP CONSTRAINT task_assignments_previous_fk');
+      await seedAssignment({ assignmentId: 'A1', eventSequence: 1, source,
+        previousAssignmentId: 'MISSING' });
+    }],
+    ['inverted predecessor timestamp', async () => {
+      await seedAssignment({ assignmentId: 'A1', eventSequence: 1,
+        createdAt: '2026-08-10T02:00:00.000Z' });
+      await seedAssignment({ assignmentId: 'A2', eventSequence: 2, source,
+        previousAssignmentId: 'A1', createdAt: '2026-08-10T01:00:00.000Z' });
+    }],
+    ['cross-student predecessor', async () => {
+      await harness.database.exec('ALTER TABLE task_assignments DROP CONSTRAINT task_assignments_student_fk');
+      await seedAssignment({ assignmentId: 'A1', eventSequence: 1, studentId: 'S2' });
+      await seedAssignment({ assignmentId: 'A2', eventSequence: 2, source,
+        previousAssignmentId: 'A1', createdAt: '2026-08-10T02:00:00.000Z' });
+    }],
+    ] as const;
+    it.each(corruptions)('%s', async (_label, seed) => {
+      await seed();
+      await expect(queries().loadTaskCycleLedgerSnapshot()).rejects.toThrow(/assignment/i);
+    });
+  });
+
   it('accepts a carry-forward assignment only from an earlier assigned cycle event', async () => {
     await seedAssignment({
       assignmentId: 'A-PREVIOUS', eventSequence: 1, cycleId: 'cycle-0',
@@ -439,9 +601,12 @@ describe('database task cycle queries', () => {
 
   it.each([
     ['missing previous assignment', async () => seedAssignment({ assignmentId: 'BAD', eventSequence: 1, source: 'CARRY_FORWARD' })],
-    ['previous assignment on a non-carry event', async () => {
+    ['previous assignment on a legacy-seed non-carry event', async () => {
       await seedAssignment({ assignmentId: 'PREVIOUS', eventSequence: 1 });
-      await seedAssignment({ assignmentId: 'BAD', eventSequence: 2, previousAssignmentId: 'PREVIOUS' });
+      await seedAssignment({
+        assignmentId: 'BAD', eventSequence: 2, source: 'LEGACY_SEED',
+        previousAssignmentId: 'PREVIOUS',
+      });
     }],
     ['previous unassigned status', async () => {
       await seedAssignment({ assignmentId: 'PREVIOUS', eventSequence: 1, eventType: 'UNASSIGNED', cycleId: 'cycle-0', cycleStartAt: '2026-08-09T00:00:00.000Z', cycleEndAt: '2026-08-10T00:00:00.000Z' });

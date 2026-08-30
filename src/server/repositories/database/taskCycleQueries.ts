@@ -195,6 +195,8 @@ async function readLedgerSnapshot(
                'event_type', event_type,
                'source', source,
                'previous_assignment_id', previous_assignment_id,
+               'admin_operation_id', admin_operation_id,
+               'admin_operation_hash', admin_operation_hash,
                'created_at', created_at,
                'schema_version', schema_version,
                'note', note
@@ -291,6 +293,15 @@ function projectAssignment(row: AssignmentRow): TaskAssignment {
     ['ADMIN', 'QR', 'LEGACY_SEED', 'CARRY_FORWARD'] as const,
     'Task assignment source',
   );
+  if (source === 'ADMIN' || source === 'QR') {
+    canonicalRequiredString(row.admin_operation_id, 'Task assignment admin operation ID');
+    if (typeof row.admin_operation_hash !== 'string'
+      || !/^[a-f0-9]{64}$/.test(row.admin_operation_hash)) {
+      throw new Error('Task assignment admin operation hash is invalid.');
+    }
+  } else if (row.admin_operation_id !== null || row.admin_operation_hash !== null) {
+    throw new Error(`${source} task assignment must not have admin operation metadata.`);
+  }
   if (row.timezone !== 'Asia/Seoul') throw new Error('Task assignment time zone must be Asia/Seoul.');
   const cycleStartsAt = isoString(row.cycle_start_at, 'Task assignment cycle start');
   const cycleEndsAt = row.cycle_end_at === null
@@ -321,11 +332,30 @@ function projectAssignment(row: AssignmentRow): TaskAssignment {
 }
 
 function assertAssignmentProvenance(assignments: TaskAssignment[], eventSequences: number[]): void {
-  const byId = new Map(assignments.map((assignment, index) => [
-    assignment.assignmentId,
-    { assignment, eventSequence: eventSequences[index] },
-  ]));
-  assignments.forEach((assignment, index) => {
+  const indexed = assignments.map((assignment, index) => ({
+    assignment,
+    eventSequence: eventSequences[index],
+  }));
+  const byId = new Map(indexed.map((event) => [event.assignment.assignmentId, event]));
+  indexed.forEach(({ assignment, eventSequence }) => {
+    if (assignment.source === 'ADMIN' || assignment.source === 'QR') {
+      const previous = indexed
+        .filter((candidate) => candidate.eventSequence < eventSequence
+          && candidate.assignment.taskId === assignment.taskId
+          && candidate.assignment.taskInstanceId === assignment.taskInstanceId
+          && candidate.assignment.studentId === assignment.studentId
+          && candidate.assignment.cycleId === assignment.cycleId
+          && candidate.assignment.cycleStartsAt === assignment.cycleStartsAt
+          && candidate.assignment.cycleEndsAt === assignment.cycleEndsAt
+          && candidate.assignment.ruleVersion === assignment.ruleVersion
+          && candidate.assignment.timeZone === assignment.timeZone)
+        .sort((left, right) => right.eventSequence - left.eventSequence)[0];
+      if (assignment.previousAssignmentId !== (previous?.assignment.assignmentId ?? '')
+        || (previous && previous.assignment.createdAt > assignment.createdAt)) {
+        throw new Error(`${assignment.source} task assignment provenance is invalid.`);
+      }
+      return;
+    }
     if (assignment.source !== 'CARRY_FORWARD') {
       if (assignment.previousAssignmentId !== '') {
         throw new Error('Non-carry task assignment must not have a previous assignment.');
@@ -337,7 +367,7 @@ function assertAssignmentProvenance(assignments: TaskAssignment[], eventSequence
     }
     const previous = byId.get(assignment.previousAssignmentId);
     if (!previous
-      || previous.eventSequence >= eventSequences[index]
+      || previous.eventSequence >= eventSequence
       || previous.assignment.status !== 'ASSIGNED'
       || previous.assignment.studentId !== assignment.studentId
       || previous.assignment.taskId !== assignment.taskId

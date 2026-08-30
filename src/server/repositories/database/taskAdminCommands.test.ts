@@ -7,6 +7,8 @@ import {
   createTaskAdminPayloadHash,
   createTaskAdminResultHash,
   createTaskAdminTaskInstanceId,
+  type CreateTaskAdminInput,
+  type UpdateTaskAdminInput,
 } from './taskAdminCommands';
 import {
   createPgliteDatabaseHarness,
@@ -37,7 +39,7 @@ beforeEach(async () => {
 
 afterEach(async () => harness.close());
 
-const createInput = () => ({
+const createInput = (overrides: Partial<CreateTaskAdminInput> = {}): CreateTaskAdminInput => ({
   operationId: ' task-admin-create-op ',
   taskId: ' TASK-001 ',
   title: ' 첫 과제 ',
@@ -56,6 +58,7 @@ const createInput = () => ({
     resetCompletionOnCycle: true,
     resetAssignmentOnCycle: false,
   },
+  ...overrides,
 });
 
 const commands = (tenantId = harness.tenantOneId) => createDatabaseTaskAdminCommands({
@@ -64,10 +67,20 @@ const commands = (tenantId = harness.tenantOneId) => createDatabaseTaskAdminComm
   now: () => NOW,
 });
 
+const updateInput = (overrides: Partial<UpdateTaskAdminInput> = {}): UpdateTaskAdminInput => ({
+  operationId: 'task-admin-update-op', taskId: 'TASK-001', expectedTaskVersion: 1,
+  title: '수정 과제', description: '수정 설명', reward: 250, isActive: false,
+  sortOrder: 9, allowedStudentIds: ['S002'], availableFrom: null, dueAt: null,
+  prerequisiteTaskId: null, padletBoardId: null, ...overrides,
+});
+
 async function appendLaterSameCycleAssignment(
   taskInstanceId: string,
   studentId: string,
   assignmentId: string,
+  createdAt = NOW.toISOString(),
+  eventType: 'ASSIGNED' | 'UNASSIGNED' = 'ASSIGNED',
+  source: 'ADMIN' | 'QR' = 'ADMIN',
 ) {
   const task = await harness.database.query(
     `SELECT task_id, current_schedule, created_at FROM tasks
@@ -83,21 +96,26 @@ async function appendLaterSameCycleAssignment(
     taskCreatedAt: row.created_at.toISOString(), now: NOW.toISOString() });
   const operationId = `${assignmentId}-operation`;
   const operationHash = 'a'.repeat(64);
-  const later = '2026-08-30T02:00:00.000Z';
+  const previous = await harness.database.query(`SELECT assignment_id FROM task_assignments
+    WHERE tenant_id=$1 AND task_instance_id=$2 AND student_id=$3
+    ORDER BY event_sequence DESC LIMIT 1`, [harness.tenantOneId, taskInstanceId, studentId]);
+  const previousAssignmentId = (previous.rows[0] as { assignment_id?: string } | undefined)
+    ?.assignment_id ?? null;
   await harness.database.query(`INSERT INTO operations
     (tenant_id, operation_id, operation_kind, payload_hash, status, attempt_count,
      started_at, created_at, updated_at)
     VALUES ($1, $2, 'TASK_ADMIN', $3, 'PENDING', 1, $4, $4, $4)`,
-  [harness.tenantOneId, operationId, operationHash, later]);
+  [harness.tenantOneId, operationId, operationHash, createdAt]);
   await harness.database.query(`INSERT INTO task_assignments
     (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id,
      cycle_start_at, cycle_end_at, rule_version, timezone, student_id, event_type,
      source, previous_assignment_id, admin_operation_id, admin_operation_hash,
      created_at, schema_version, note)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, 1, 'Asia/Seoul', $8, 'ASSIGNED',
-            'ADMIN', NULL, $9, $10, $11, 1, NULL)`,
+    VALUES ($1, $2, $3, $4, $5, $6, $7, 1, 'Asia/Seoul', $8, $9,
+            $10, $11, $12, $13, $14, 1, NULL)`,
   [harness.tenantOneId, assignmentId, row.task_id, taskInstanceId, cycle.cycleId,
-    cycle.startsAt, cycle.endsAt, studentId, operationId, operationHash, later]);
+    cycle.startsAt, cycle.endsAt, studentId, eventType, source, previousAssignmentId, operationId,
+    operationHash, createdAt]);
 }
 
 async function snapshot(tenantId = harness.tenantOneId) {
@@ -120,6 +138,13 @@ async function snapshot(tenantId = harness.tenantOneId) {
   ]);
   return { tasks: tasks.rows, mirrors: mirrors.rows, assignments: assignments.rows,
     operations: operations.rows, audits: audits.rows };
+}
+
+async function completeSnapshot(tenantId = harness.tenantOneId) {
+  const state = await snapshot(tenantId);
+  const completions = await harness.database.query(`SELECT to_jsonb(c)::text AS snapshot
+    FROM task_completions c WHERE tenant_id=$1 ORDER BY event_sequence`, [tenantId]);
+  return { ...state, completions: completions.rows };
 }
 
 describe('database task administrator CREATE command', () => {
@@ -232,11 +257,13 @@ describe('database task administrator CREATE command', () => {
 
   it('replays canonical reordered input, conflicts on changes, and handles a race loser', async () => {
     const input = createInput();
+    const recurrence = input.schedule.recurrence;
+    if (recurrence.type !== 'WEEKLY') throw new Error('weekly fixture required');
     const first = await commands().create(input);
     await expect(commands().create({ ...input,
       allowedStudentIds: [...input.allowedStudentIds].reverse(),
-      schedule: { ...input.schedule, recurrence: { ...input.schedule.recurrence,
-        weekdays: [...input.schedule.recurrence.weekdays].reverse() } },
+      schedule: { ...input.schedule, recurrence: { ...recurrence,
+        weekdays: [...recurrence.weekdays].reverse() } },
     })).resolves.toEqual(first);
     await expect(commands().create({ ...input, reward: 101 })).rejects.toThrow(/conflict/i);
 
@@ -717,5 +744,589 @@ describe('database task administrator CREATE command', () => {
     expect(two).toEqual(one);
     expect((await snapshot(harness.tenantOneId)).tasks).toHaveLength(1);
     expect((await snapshot(harness.tenantTwoId)).tasks).toHaveLength(1);
+  });
+});
+
+describe('database task administrator UPDATE command', () => {
+  it('selects the maximum same-cycle predecessor regardless of adapter row order', async () => {
+    const created = await commands().create({ ...createInput(), allowedStudentIds: ['S001'] });
+    const latestId = 'assignment-latest-before-update';
+    await appendLaterSameCycleAssignment(created.tasks[0].taskInstanceId, 'S001', latestId);
+    let call = 0;
+    const adapter = createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId, now: () => NOW,
+      runTenantTransaction: (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) =>
+        callback({ execute: async (query) => {
+          call += 1;
+          const result = await tx.execute(query);
+          return call === 5 ? { ...result, rows: [...result.rows].reverse() } as never : result;
+        } } as typeof tx)),
+    });
+    const result = await adapter.update(updateInput({ allowedStudentIds: [] }));
+    const state = await snapshot();
+    expect(state.assignments).toContainEqual(expect.objectContaining({
+      assignment_id: result.tasks[0].assignmentEventIds[0], previous_assignment_id: latestId,
+    }));
+  });
+
+  it('rejects a predecessor chain whose later sequence has an earlier timestamp', async () => {
+    const created = await commands().create({ ...createInput(), allowedStudentIds: ['S001'] });
+    await appendLaterSameCycleAssignment(created.tasks[0].taskInstanceId, 'S001',
+      'assignment-inverted-time', '2026-08-30T00:59:59.000Z');
+    const before = await snapshot();
+    await expect(commands().update(updateInput({ allowedStudentIds: [] })))
+      .rejects.toThrow(/assignment event integrity/i);
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('requires every same-cycle event to reference its immediate predecessor', async () => {
+    const created = await commands().create({ ...createInput(), allowedStudentIds: ['S001'] });
+    const first = createTaskAdminAssignmentEventId('task-admin-create-op', 'TASK-001', 'S001');
+    await appendLaterSameCycleAssignment(created.tasks[0].taskInstanceId, 'S001', 'chain-second');
+    await appendLaterSameCycleAssignment(created.tasks[0].taskInstanceId, 'S001', 'chain-third');
+    await harness.database.exec(`ALTER TABLE task_assignments DISABLE TRIGGER task_assignments_append_only;
+      UPDATE task_assignments SET previous_assignment_id='${first}' WHERE assignment_id='chain-third';
+      ALTER TABLE task_assignments ENABLE ALWAYS TRIGGER task_assignments_append_only;`);
+    const before = await snapshot();
+    await expect(commands().update(updateInput({ allowedStudentIds: [] })))
+      .rejects.toThrow(/assignment event integrity/i);
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('accepts a valid prior-cycle CARRY_FORWARD predecessor during UPDATE', async () => {
+    const created = await commands().create({ ...createInput(), allowedStudentIds: ['S001'] });
+    const initial = await harness.database.query(`SELECT assignment_id, cycle_id, cycle_start_at,
+      cycle_end_at, rule_version, timezone FROM task_assignments
+      WHERE tenant_id=$1 AND task_instance_id=$2 ORDER BY event_sequence LIMIT 1`,
+    [harness.tenantOneId, created.tasks[0].taskInstanceId]);
+    const row = initial.rows[0] as {
+      assignment_id: string; cycle_id: string; cycle_start_at: Date; cycle_end_at: Date | null;
+      rule_version: number; timezone: string;
+    };
+    const priorStart = new Date(row.cycle_start_at.getTime() - 86_400_000);
+    const priorCycleId = `v1|${created.tasks[0].taskInstanceId}|r${row.rule_version}|${priorStart.toISOString().replace('.000Z', 'Z')}`;
+    await harness.database.exec(`ALTER TABLE task_assignments DISABLE TRIGGER task_assignments_append_only`);
+    await harness.database.query(`UPDATE task_assignments SET source='LEGACY_SEED',
+      cycle_id=$1, cycle_start_at=$2, cycle_end_at=$3, previous_assignment_id=NULL,
+      admin_operation_id=NULL, admin_operation_hash=NULL WHERE tenant_id=$4 AND assignment_id=$5`,
+    [priorCycleId, priorStart.toISOString(), row.cycle_start_at.toISOString(),
+      harness.tenantOneId, row.assignment_id]);
+    await harness.database.exec(`ALTER TABLE task_assignments ENABLE ALWAYS TRIGGER task_assignments_append_only`);
+    await harness.database.query(`INSERT INTO task_assignments
+      (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id,
+       cycle_start_at, cycle_end_at, rule_version, timezone, student_id, event_type,
+       source, previous_assignment_id, admin_operation_id, admin_operation_hash,
+       created_at, schema_version, note)
+      VALUES ($1, 'valid-carry', 'TASK-001', $2, $3, $4, $5, $6, $7, 'S001',
+        'ASSIGNED', 'CARRY_FORWARD', $8, NULL, NULL, $9, 1, NULL)`,
+    [harness.tenantOneId, created.tasks[0].taskInstanceId, row.cycle_id,
+      row.cycle_start_at.toISOString(), row.cycle_end_at?.toISOString() ?? null,
+      row.rule_version, row.timezone, row.assignment_id, NOW.toISOString()]);
+
+    const result = await commands().update(updateInput({ allowedStudentIds: [] }));
+    const expectedId = createTaskAdminAssignmentEventId(
+      'task-admin-update-op', 'TASK-001', 'S001', 'UNASSIGNED');
+    expect(result.tasks[0].assignmentEventIds).toEqual([expectedId]);
+    expect((await snapshot()).assignments).toContainEqual(expect.objectContaining({
+      assignment_id: expectedId,
+      previous_assignment_id: 'valid-carry',
+    }));
+  });
+
+  it('accepts retained same-cycle LEGACY_SEED rows with null predecessors', async () => {
+    const created = await commands().create({ ...createInput(), allowedStudentIds: ['S001'] });
+    await appendLaterSameCycleAssignment(created.tasks[0].taskInstanceId, 'S001', 'legacy-one');
+    await appendLaterSameCycleAssignment(created.tasks[0].taskInstanceId, 'S001', 'legacy-two');
+    await harness.database.exec(`ALTER TABLE task_assignments DISABLE TRIGGER task_assignments_append_only;
+      UPDATE task_assignments SET source='LEGACY_SEED', previous_assignment_id=NULL,
+        admin_operation_id=NULL, admin_operation_hash=NULL
+      WHERE assignment_id IN ('legacy-one', 'legacy-two');
+      ALTER TABLE task_assignments ENABLE ALWAYS TRIGGER task_assignments_append_only;`);
+
+    const result = await commands().update(updateInput({ allowedStudentIds: [] }));
+    const expectedId = createTaskAdminAssignmentEventId(
+      'task-admin-update-op', 'TASK-001', 'S001', 'UNASSIGNED');
+    expect(result.tasks[0].assignmentEventIds).toEqual([expectedId]);
+    expect((await snapshot()).assignments).toContainEqual(expect.objectContaining({
+      assignment_id: expectedId,
+      previous_assignment_id: 'legacy-two',
+    }));
+  });
+
+  it('appends an authoritative UNASSIGNED event for every mirror removal', async () => {
+    const created = await commands().create({ ...createInput(), allowedStudentIds: ['S001'] });
+    await appendLaterSameCycleAssignment(created.tasks[0].taskInstanceId, 'S001',
+      'already-unassigned', NOW.toISOString(), 'UNASSIGNED');
+    const result = await commands().update(updateInput({ allowedStudentIds: [] }));
+    const expectedId = createTaskAdminAssignmentEventId(
+      'task-admin-update-op', 'TASK-001', 'S001', 'UNASSIGNED');
+    expect(result.tasks[0].assignmentEventIds).toEqual([expectedId]);
+    const state = await snapshot();
+    expect(state.mirrors).toEqual([]);
+    expect(state.assignments).toContainEqual(expect.objectContaining({
+      assignment_id: expectedId,
+      event_type: 'UNASSIGNED',
+      source: 'ADMIN',
+      previous_assignment_id: 'already-unassigned',
+    }));
+    expect(state.audits.filter((row) =>
+      (row as { operation_id: string }).operation_id === 'task-admin-update-op')).toHaveLength(1);
+  });
+
+  it('appends an authoritative ASSIGNED event when a QR-assigned student is added to the mirror', async () => {
+    const created = await commands().create({ ...createInput(), allowedStudentIds: [] });
+    await appendLaterSameCycleAssignment(created.tasks[0].taskInstanceId, 'S001',
+      'qr-already-assigned', NOW.toISOString(), 'ASSIGNED', 'QR');
+    const result = await commands().update(updateInput({ allowedStudentIds: ['S001'] }));
+    const expectedId = createTaskAdminAssignmentEventId(
+      'task-admin-update-op', 'TASK-001', 'S001', 'ASSIGNED');
+    expect(result.tasks[0].assignmentEventIds).toEqual([expectedId]);
+    const state = await snapshot();
+    expect(state.mirrors).toHaveLength(1);
+    expect(state.assignments).toContainEqual(expect.objectContaining({
+      assignment_id: expectedId,
+      event_type: 'ASSIGNED',
+      source: 'ADMIN',
+      previous_assignment_id: 'qr-already-assigned',
+    }));
+  });
+
+  it.each([
+    ['null pair', null, null],
+    ['half pair', 'qr-operation', null],
+    ['bad hash', 'qr-operation', 'A'.repeat(64)],
+  ])('rejects a QR assignment with an invalid admin operation %s at the database boundary',
+  async (_label, operationId, operationHash) => {
+    const created = await commands().create({ ...createInput(), allowedStudentIds: ['S001'] });
+    if (operationId !== null) {
+      await harness.database.query(`INSERT INTO operations
+        (tenant_id, operation_id, operation_kind, payload_hash, status, attempt_count,
+         started_at, created_at, updated_at)
+        VALUES ($1, $2, 'TASK_ADMIN', $3, 'PENDING', 1, $4, $4, $4)`,
+      [harness.tenantOneId, operationId, 'a'.repeat(64), NOW.toISOString()]);
+    }
+    await expect(harness.database.query(`INSERT INTO task_assignments
+      (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id,
+       cycle_start_at, cycle_end_at, rule_version, timezone, student_id, event_type,
+       source, previous_assignment_id, admin_operation_id, admin_operation_hash,
+       created_at, schema_version, note)
+      SELECT $1, 'invalid-qr', 'TASK-001', $2, cycle_id, cycle_start_at, cycle_end_at,
+       rule_version, timezone, 'S001', 'ASSIGNED', 'QR', NULL, $3, $4, $5, 1, NULL
+      FROM task_assignments WHERE tenant_id=$1 AND task_instance_id=$2
+      ORDER BY event_sequence LIMIT 1`, [harness.tenantOneId, created.tasks[0].taskInstanceId,
+      operationId, operationHash, NOW.toISOString()])).rejects.toThrow();
+  });
+
+  it.each([
+    ['null pair', null, null],
+    ['half pair', 'qr-operation', null],
+    ['bad hash', 'qr-operation', 'A'.repeat(64)],
+  ])('rejects malformed QR admin operation %s returned by an adapter',
+  async (_label, operationId, operationHash) => {
+    await commands().create({ ...createInput(), allowedStudentIds: ['S001'] });
+    let call = 0;
+    const adapter = createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId, now: () => NOW,
+      runTenantTransaction: (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) =>
+        callback({ execute: async (query) => {
+          call += 1;
+          const result = await tx.execute(query);
+          if (call !== 5) return result;
+          return { ...result, rows: result.rows.map((raw) => ({ ...(raw as Record<string, unknown>),
+            source: 'QR', admin_operation_id: operationId,
+            admin_operation_hash: operationHash })) } as never;
+        } } as typeof tx)),
+    });
+    await expect(adapter.update(updateInput({ allowedStudentIds: [] })))
+      .rejects.toThrow(/assignment event integrity/i);
+  });
+
+  it('preserves every field of a valid existing completion during UPDATE', async () => {
+    const created = await commands().create({ ...createInput(), allowedStudentIds: ['S001'] });
+    await harness.database.query(`INSERT INTO task_completions
+      (tenant_id, completion_id, completed_at, task_instance_id, task_id_snapshot,
+       task_name_snapshot, student_id, student_name_snapshot, reward_snapshot,
+       balance_before, balance_after, status, note, cycle_id, cycle_start_at, cycle_end_at,
+       rule_version, timezone, source, assignment_id, schema_version, created_at)
+      SELECT tenant_id, 'existing-completion', $3, task_instance_id, task_id_snapshot,
+       'immutable task name', student_id, '하나', 0, -4, -4, 'COMPLETED', 'immutable note',
+       cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone, 'CARRY_FORWARD', assignment_id, 1, $3
+      FROM task_assignments WHERE tenant_id=$1 AND task_instance_id=$2 LIMIT 1`,
+    [harness.tenantOneId, created.tasks[0].taskInstanceId, NOW.toISOString()]);
+    const before = await completeSnapshot();
+    await commands().update(updateInput({ allowedStudentIds: ['S001'] }));
+    expect((await completeSnapshot()).completions).toEqual(before.completions);
+  });
+
+  it('rejects malformed padded completion evidence before mutating UPDATE state', async () => {
+    const created = await commands().create({ ...createInput(), allowedStudentIds: ['S001'] });
+    await harness.database.query(`INSERT INTO task_completions
+      (tenant_id, completion_id, completed_at, task_instance_id, task_id_snapshot,
+       task_name_snapshot, student_id, student_name_snapshot, reward_snapshot,
+       balance_before, balance_after, status, cycle_id, cycle_start_at, cycle_end_at,
+       rule_version, timezone, source, schema_version, created_at)
+      SELECT tenant_id, 'completion-before-padding', $3, task_instance_id, task_id_snapshot,
+       'task', student_id, '하나', 0, 0, 0, 'COMPLETED', cycle_id, cycle_start_at,
+       cycle_end_at, rule_version, timezone, 'CARRY_FORWARD', 1, $3
+      FROM task_assignments WHERE tenant_id=$1 AND task_instance_id=$2 LIMIT 1`,
+    [harness.tenantOneId, created.tasks[0].taskInstanceId, NOW.toISOString()]);
+    await harness.database.exec(`ALTER TABLE task_completions DISABLE TRIGGER task_completions_append_only;
+      ALTER TABLE task_completions DROP CONSTRAINT task_completions_id_check;
+      UPDATE task_completions SET completion_id=' padded-completion ';
+      ALTER TABLE task_completions ENABLE ALWAYS TRIGGER task_completions_append_only;`);
+    const before = await completeSnapshot();
+    await expect(commands().update(updateInput({ allowedStudentIds: ['S001'] })))
+      .rejects.toThrow(/completion event integrity/i);
+    expect(await completeSnapshot()).toEqual(before);
+  });
+
+  it.each([
+    ['task CAS RETURN NULL', `CREATE FUNCTION suppress_update_write() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.version=2 THEN RETURN NULL; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER suppress_update_write BEFORE UPDATE ON tasks
+      FOR EACH ROW EXECUTE FUNCTION suppress_update_write()`],
+    ['task CAS RETURN OLD', `CREATE FUNCTION suppress_update_write() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.version=2 THEN RETURN OLD; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER suppress_update_write BEFORE UPDATE ON tasks
+      FOR EACH ROW EXECUTE FUNCTION suppress_update_write()`],
+    ['mirror DELETE', `CREATE FUNCTION suppress_update_write() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN RETURN NULL; END $$; CREATE TRIGGER suppress_update_write BEFORE DELETE ON task_allowed_students
+      FOR EACH ROW EXECUTE FUNCTION suppress_update_write()`],
+    ['mirror INSERT', `CREATE FUNCTION suppress_update_write() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN RETURN NULL; END $$; CREATE TRIGGER suppress_update_write BEFORE INSERT ON task_allowed_students
+      FOR EACH ROW EXECUTE FUNCTION suppress_update_write()`],
+    ['assignment INSERT', `CREATE FUNCTION suppress_update_write() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.admin_operation_id='task-admin-update-op' THEN RETURN NULL; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER suppress_update_write BEFORE INSERT ON task_assignments
+      FOR EACH ROW EXECUTE FUNCTION suppress_update_write()`],
+    ['audit INSERT', `CREATE FUNCTION suppress_update_write() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.operation_id='task-admin-update-op' THEN RETURN NULL; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER suppress_update_write BEFORE INSERT ON audit_events
+      FOR EACH ROW EXECUTE FUNCTION suppress_update_write()`],
+    ['terminal RETURN NULL', `CREATE FUNCTION suppress_update_write() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.status='SUCCEEDED' AND NEW.operation_id='task-admin-update-op' THEN RETURN NULL; END IF;
+      RETURN NEW; END $$; CREATE TRIGGER suppress_update_write BEFORE UPDATE ON operations
+      FOR EACH ROW EXECUTE FUNCTION suppress_update_write()`],
+    ['terminal RETURN OLD', `CREATE FUNCTION suppress_update_write() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.status='SUCCEEDED' AND NEW.operation_id='task-admin-update-op' THEN RETURN OLD; END IF;
+      RETURN NEW; END $$; CREATE TRIGGER suppress_update_write BEFORE UPDATE ON operations
+      FOR EACH ROW EXECUTE FUNCTION suppress_update_write()`],
+  ])('rolls back the complete snapshot when required UPDATE %s is suppressed', async (_label, ddl) => {
+    await commands().create({ ...createInput(), allowedStudentIds: ['S001'] });
+    const before = await completeSnapshot();
+    await harness.database.exec(ddl);
+    await expect(commands().update(updateInput())).rejects.toThrow(/integrity|replayable/i);
+    expect(await completeSnapshot()).toEqual(before);
+  });
+
+  it.each([
+    ['audit', 'task', false, `UPDATE tasks SET title='audit-tampered', version=version+1
+      WHERE tenant_id=NEW.tenant_id AND task_id='TASK-001'`],
+    ['terminal', 'task', false, `UPDATE tasks SET title='terminal-tampered', version=version+1
+      WHERE tenant_id=NEW.tenant_id AND task_id='TASK-001'`],
+    ['audit', 'mirror add', false, `INSERT INTO task_allowed_students
+      (tenant_id, task_instance_id, student_id, created_at)
+      SELECT tenant_id, task_instance_id, 'S001', NEW.occurred_at FROM tasks
+      WHERE tenant_id=NEW.tenant_id AND task_id='TASK-001'`],
+    ['terminal', 'mirror delete', false, `DELETE FROM task_allowed_students WHERE tenant_id=NEW.tenant_id
+      AND student_id='S002'`],
+    ['audit', 'assignment', false, `INSERT INTO task_assignments
+      (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id, cycle_start_at,
+       cycle_end_at, rule_version, timezone, student_id, event_type, source,
+       previous_assignment_id, admin_operation_id, admin_operation_hash, created_at,
+       schema_version, note)
+      SELECT tenant_id, assignment_id || ':audit-extra', task_id_snapshot, task_instance_id,
+       cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone, student_id,
+       event_type, 'LEGACY_SEED', NULL, NULL, NULL, created_at, schema_version, NULL
+      FROM task_assignments WHERE tenant_id=NEW.tenant_id ORDER BY event_sequence LIMIT 1`],
+    ['terminal', 'assignment', false, `INSERT INTO task_assignments
+      (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id, cycle_start_at,
+       cycle_end_at, rule_version, timezone, student_id, event_type, source,
+       previous_assignment_id, admin_operation_id, admin_operation_hash, created_at,
+       schema_version, note)
+      SELECT tenant_id, assignment_id || ':terminal-extra', task_id_snapshot, task_instance_id,
+       cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone, student_id,
+       event_type, 'LEGACY_SEED', NULL, NULL, NULL, created_at, schema_version, NULL
+      FROM task_assignments WHERE tenant_id=NEW.tenant_id ORDER BY event_sequence LIMIT 1`],
+    ['audit', 'completion insert', false, `INSERT INTO task_completions
+      (tenant_id, completion_id, completed_at, task_instance_id, task_id_snapshot,
+       task_name_snapshot, student_id, student_name_snapshot, reward_snapshot,
+       balance_before, balance_after, status, cycle_id, cycle_start_at, cycle_end_at,
+       rule_version, timezone, source, schema_version, created_at)
+      SELECT tenant_id, 'audit-injected-completion', NEW.occurred_at, task_instance_id, task_id,
+       title, 'S001', '하나', reward, 0, reward, 'COMPLETED', 'audit-cycle',
+       NEW.occurred_at, NULL, 1, 'Asia/Seoul', 'BANK', 1, NEW.occurred_at
+      FROM tasks WHERE tenant_id=NEW.tenant_id AND task_id='TASK-001'`],
+    ['terminal', 'completion insert', false, `INSERT INTO task_completions
+      (tenant_id, completion_id, completed_at, task_instance_id, task_id_snapshot,
+       task_name_snapshot, student_id, student_name_snapshot, reward_snapshot,
+       balance_before, balance_after, status, cycle_id, cycle_start_at, cycle_end_at,
+       rule_version, timezone, source, schema_version, created_at)
+      SELECT tenant_id, 'terminal-injected-completion', NEW.updated_at, task_instance_id, task_id,
+       title, 'S001', '하나', reward, 0, reward, 'COMPLETED', 'terminal-cycle',
+       NEW.updated_at, NULL, 1, 'Asia/Seoul', 'BANK', 1, NEW.updated_at
+      FROM tasks WHERE tenant_id=NEW.tenant_id AND task_id='TASK-001'`],
+  ] as const)('rolls back %s-stage post-write %s mutation',
+  async (stage, _stateClass, needsCompletion, body) => {
+    const created = await commands().create({ ...createInput(), allowedStudentIds: ['S001'] });
+    if (needsCompletion) {
+      await harness.database.query(`INSERT INTO task_completions
+        (tenant_id, completion_id, completed_at, task_instance_id, task_id_snapshot,
+         task_name_snapshot, student_id, student_name_snapshot, reward_snapshot,
+         balance_before, balance_after, status, cycle_id, cycle_start_at, cycle_end_at,
+         rule_version, timezone, source, schema_version, created_at)
+        VALUES ($1, 'update-baseline-completion', $3, $2, 'TASK-001', '과제', 'S001', '하나',
+          0, 0, 0, 'COMPLETED', 'baseline-cycle', $3, NULL, 1, 'Asia/Seoul', 'BANK', 1, $3)`,
+      [harness.tenantOneId, created.tasks[0].taskInstanceId, NOW.toISOString()]);
+    }
+    const before = await completeSnapshot();
+    const trigger = stage === 'audit'
+      ? `AFTER INSERT ON audit_events FOR EACH ROW WHEN (NEW.operation_id='task-admin-update-op')`
+      : `AFTER UPDATE ON operations FOR EACH ROW WHEN
+        (NEW.operation_id='task-admin-update-op' AND NEW.status='SUCCEEDED')`;
+    await harness.database.exec(`CREATE FUNCTION mutate_update_state() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN ${body}; RETURN NEW; END $$;
+      CREATE TRIGGER mutate_update_state ${trigger} EXECUTE FUNCTION mutate_update_state()`);
+    await expect(commands().update(updateInput())).rejects.toThrow(/integrity/i);
+    expect(await completeSnapshot()).toEqual(before);
+  });
+
+  it('atomically updates metadata, preserves schedule/creation, and emits only allowed-student diffs', async () => {
+    const created = await commands().create({ ...createInput(), allowedStudentIds: ['S001'] });
+    const before = (await snapshot()).tasks[0] as Record<string, unknown>;
+    const result = await commands().update(updateInput({ allowedStudentIds: ['S002'] }));
+    const expectedEvents = [
+      createTaskAdminAssignmentEventId('task-admin-update-op', 'TASK-001', 'S001', 'UNASSIGNED'),
+      createTaskAdminAssignmentEventId('task-admin-update-op', 'TASK-001', 'S002', 'ASSIGNED'),
+    ];
+    expect(result).toEqual({ ok: true, operationId: 'task-admin-update-op', action: 'UPDATE',
+      completedAt: NOW.toISOString(), tasks: [{ taskId: 'TASK-001',
+        taskInstanceId: created.tasks[0].taskInstanceId, versionBefore: 1, versionAfter: 2,
+        assignmentEventIds: expectedEvents }] });
+    expect(Object.isFrozen(result)).toBe(true);
+    const state = await snapshot();
+    expect(state.tasks[0]).toEqual(expect.objectContaining({ title: '수정 과제', description: '수정 설명',
+      reward: '250', is_active: false, sort_order: 9, version: '2',
+      created_at: before.created_at, current_schedule: before.current_schedule,
+      pending_schedule: before.pending_schedule }));
+    expect(state.mirrors).toEqual([expect.objectContaining({ student_id: 'S002', created_at: NOW })]);
+    expect(state.assignments).toEqual(expect.arrayContaining([
+      expect.objectContaining({ assignment_id: expectedEvents[0], student_id: 'S001',
+        event_type: 'UNASSIGNED', previous_assignment_id:
+          createTaskAdminAssignmentEventId('task-admin-create-op', 'TASK-001', 'S001') }),
+      expect.objectContaining({ assignment_id: expectedEvents[1], student_id: 'S002',
+        event_type: 'ASSIGNED', previous_assignment_id: null }),
+    ]));
+  });
+
+  it('canonicalizes reversed allowed IDs and emits no events for an unchanged set', async () => {
+    await commands().create(createInput());
+    const first = await commands().update(updateInput({ allowedStudentIds: ['S002', 'S001'] }));
+    expect(first.tasks[0].assignmentEventIds).toEqual([]);
+    await expect(commands().update(updateInput({ allowedStudentIds: [' S001 ', 'S002'] })))
+      .resolves.toEqual(first);
+  });
+
+  it('rejects equal canonical availability instants for CREATE before entering a transaction', async () => {
+    let calls = 0;
+    const preflight = createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId,
+      runTenantTransaction: async () => { calls += 1; throw new Error('sentinel'); }, now: () => NOW });
+    await expect(preflight.create(createInput({
+      availableFrom: '2026-08-30T01:00:00.000Z',
+      dueAt: '2026-08-30T10:00:00+09:00',
+    }))).rejects.toThrow(/dueAt.*after availableFrom/i);
+    expect(calls).toBe(0);
+  });
+
+  it('rejects equal canonical availability instants for UPDATE before entering a transaction', async () => {
+    let calls = 0;
+    const preflight = createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId,
+      runTenantTransaction: async () => { calls += 1; throw new Error('sentinel'); }, now: () => NOW });
+    await expect(preflight.update(updateInput({
+      availableFrom: '2026-08-30T01:00:00.000Z',
+      dueAt: '2026-08-30T10:00:00+09:00',
+    }))).rejects.toThrow(/dueAt.*after availableFrom/i);
+    expect(calls).toBe(0);
+  });
+
+  it('rejects malformed update input before entering a transaction', async () => {
+    let calls = 0;
+    const preflight = createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId,
+      runTenantTransaction: async () => { calls += 1; throw new Error('sentinel'); }, now: () => NOW });
+    for (const input of [
+      { ...updateInput(), schedule: {} }, { ...updateInput(), expectedTaskVersion: 0 },
+      { ...updateInput(), expectedTaskVersion: Number.MAX_SAFE_INTEGER },
+      { ...updateInput(), allowedStudentIds: ['S001', ' S001 '] },
+    ]) await expect(preflight.update(input as never)).rejects.toThrow();
+    expect(calls).toBe(0);
+  });
+
+  it('rolls back stale versions, invalid new students, and prerequisite cycles', async () => {
+    await commands().create({ ...createInput(), allowedStudentIds: [] });
+    await commands().create({ ...createInput(), operationId: 'other-create', taskId: 'OTHER',
+      prerequisiteTaskId: 'TASK-001', allowedStudentIds: [] });
+    const before = await snapshot();
+    await expect(commands().update(updateInput({ expectedTaskVersion: 2 }))).rejects.toThrow(/stale|version/i);
+    await expect(commands().update(updateInput({ operationId: 'bad-student', allowedStudentIds: ['S003'] })))
+      .rejects.toThrow(/active/i);
+    await expect(commands().update(updateInput({ operationId: 'cycle-update', prerequisiteTaskId: 'OTHER',
+      allowedStudentIds: [] }))).rejects.toThrow(/cycle/i);
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('operation claim race loser returns the exact winner and conflicts on a changed hash', async () => {
+    await commands().create({ ...createInput(), allowedStudentIds: [] });
+    const input = updateInput({ allowedStudentIds: [] });
+    const winner = await commands().update(input);
+    const racing = () => createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId, now: () => NOW,
+      runTenantTransaction: (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) => {
+        let firstRead = true;
+        return callback({ execute: async (query) => {
+          if (firstRead) { firstRead = false; return { rows: [] } as never; }
+          return tx.execute(query);
+        } } as typeof tx);
+      }),
+    });
+    const replay = await racing().update(input);
+    expect(replay).toEqual(winner);
+    expect(Object.isFrozen(replay)).toBe(true);
+    await expect(racing().update({ ...input, reward: input.reward + 1 })).rejects.toThrow(/conflict/i);
+  });
+
+  it.each([
+    ['missing', `DELETE FROM audit_events WHERE operation_id='task-admin-update-op'`],
+    ['extra', `INSERT INTO audit_events
+      (tenant_id, event_id, operation_id, event_type, entity_type, entity_id,
+       redacted_details, occurred_at)
+      SELECT tenant_id, event_id || ':extra', operation_id, event_type, entity_type, entity_id,
+       redacted_details, occurred_at FROM audit_events WHERE operation_id='task-admin-update-op'`],
+    ['field', `UPDATE audit_events SET entity_id='tampered'
+      WHERE operation_id='task-admin-update-op'`],
+    ['timestamp', `UPDATE audit_events SET occurred_at=occurred_at + interval '1 second'
+      WHERE operation_id='task-admin-update-op'`],
+  ])('rejects replay with %s audit tamper/cardinality evidence', async (_label, tamper) => {
+    await commands().create({ ...createInput(), allowedStudentIds: [] });
+    const input = updateInput({ allowedStudentIds: [] });
+    await commands().update(input);
+    await harness.database.exec(`ALTER TABLE audit_events DISABLE TRIGGER audit_events_immutable;
+      ${tamper};
+      ALTER TABLE audit_events ENABLE ALWAYS TRIGGER audit_events_immutable`);
+    await expect(commands().update(input)).rejects.toThrow(/audit/i);
+  });
+
+  it('replays after later mutable changes but rejects missing immutable update events', async () => {
+    await commands().create({ ...createInput(), allowedStudentIds: ['S001'] });
+    const input = updateInput({ allowedStudentIds: ['S002'] });
+    const first = await commands().update(input);
+    await harness.database.query(`UPDATE tasks SET title='later', version=3, updated_at=$3
+      WHERE tenant_id=$1 AND task_instance_id=$2`,
+    [harness.tenantOneId, first.tasks[0].taskInstanceId, '2026-08-30T02:00:00.000Z']);
+    await expect(commands().update(input)).resolves.toEqual(first);
+    await harness.database.exec('ALTER TABLE task_assignments DISABLE TRIGGER task_assignments_append_only');
+    await harness.database.query('DELETE FROM task_assignments WHERE tenant_id=$1 AND assignment_id=$2',
+      [harness.tenantOneId, first.tasks[0].assignmentEventIds[0]]);
+    await expect(commands().update(input)).rejects.toThrow(/assignment event integrity/i);
+  });
+
+  it.each([
+    ['event type', (row: Record<string, unknown>) => ({ ...row, event_type: 'BROKEN' })],
+    ['source', (row: Record<string, unknown>) => ({ ...row, source: 'BROKEN' })],
+    ['timezone', (row: Record<string, unknown>) => ({ ...row, timezone: 'UTC' })],
+    ['rule version', (row: Record<string, unknown>) => ({ ...row, rule_version: 0 })],
+    ['schema version', (row: Record<string, unknown>) => ({ ...row, schema_version: 0 })],
+    ['cycle start', (row: Record<string, unknown>) => ({ ...row,
+      cycle_start_at: new Date((row.cycle_start_at as Date).getTime() + 1000) })],
+    ['cycle end', (row: Record<string, unknown>) => ({ ...row,
+      cycle_end_at: new Date((row.cycle_start_at as Date).getTime() - 1000) })],
+    ['admin pair', (row: Record<string, unknown>) => ({ ...row, admin_operation_hash: null })],
+  ] as const)('rejects malformed predecessor %s adapter evidence before use', async (_label, mutate) => {
+    await commands().create({ ...createInput(), allowedStudentIds: ['S001'] });
+    let call = 0;
+    const adapter = createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId, now: () => NOW,
+      runTenantTransaction: (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) =>
+        callback({ execute: async (query) => {
+          call += 1;
+          const result = await tx.execute(query);
+          return call === 5 ? { ...result, rows: result.rows.map((row) =>
+            mutate(row as Record<string, unknown>)) } as never : result;
+        } } as typeof tx)),
+    });
+    await expect(adapter.update(updateInput({ allowedStudentIds: [] })))
+      .rejects.toThrow(/assignment event integrity/i);
+    expect(call).toBe(5);
+  });
+
+  it('rejects an extra immutable event carrying the original update operation ID', async () => {
+    await commands().create({ ...createInput(), allowedStudentIds: ['S001'] });
+    const input = updateInput({ allowedStudentIds: ['S002'] });
+    const first = await commands().update(input);
+    await harness.database.exec('ALTER TABLE task_assignments DISABLE TRIGGER task_assignments_append_only');
+    await harness.database.query(`INSERT INTO task_assignments
+      (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id, cycle_start_at,
+       cycle_end_at, rule_version, timezone, student_id, event_type, source,
+       previous_assignment_id, admin_operation_id, admin_operation_hash, created_at,
+       schema_version, note)
+      SELECT tenant_id, assignment_id || ':extra', task_id_snapshot, task_instance_id, cycle_id,
+       cycle_start_at, cycle_end_at, rule_version, timezone, student_id, event_type, source,
+       previous_assignment_id, admin_operation_id, admin_operation_hash, created_at,
+       schema_version, note FROM task_assignments
+      WHERE tenant_id=$1 AND assignment_id=$2`,
+    [harness.tenantOneId, first.tasks[0].assignmentEventIds[0]]);
+    await expect(commands().update(input)).rejects.toThrow(/assignment event integrity/i);
+  });
+
+  it('rejects raw replay operation evidence and a physical business-ID mismatch', async () => {
+    await commands().create({ ...createInput(), allowedStudentIds: [] });
+    const input = updateInput({ allowedStudentIds: [] });
+    await commands().update(input);
+    for (const targetCall of [1, 2]) {
+      let call = 0;
+      const adapter = createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId, now: () => NOW,
+        runTenantTransaction: (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) =>
+          callback({ execute: async (query) => {
+            call += 1;
+            const result = await tx.execute(query);
+            if (call !== targetCall) return result;
+            const rows = result.rows.map((raw) => targetCall === 1
+              ? { ...(raw as Record<string, unknown>), attempt_count: new String('1'), extra: true }
+              : { ...(raw as Record<string, unknown>), task_id: 'OTHER' });
+            return { ...result, rows } as never;
+          } } as typeof tx)),
+      });
+      await expect(adapter.update(input)).rejects.toThrow(/operation|physical identity/i);
+    }
+  });
+
+  it('rejects non-exact operation chronology during replay', async () => {
+    await commands().create({ ...createInput(), allowedStudentIds: [] });
+    const input = updateInput({ allowedStudentIds: [] });
+    await commands().update(input);
+    await harness.database.exec(`ALTER TABLE operations DISABLE TRIGGER operations_update_guard;
+      UPDATE operations SET started_at=started_at - interval '1 second',
+        created_at=created_at - interval '1 second'
+      WHERE operation_id='task-admin-update-op';
+      ALTER TABLE operations ENABLE TRIGGER operations_update_guard;`);
+    await expect(commands().update(input)).rejects.toThrow(/timestamp integrity/i);
+  });
+
+  it.each([
+    ['reordered', "jsonb_build_array(result_snapshot#>'{tasks,0,assignmentEventIds,1}', result_snapshot#>'{tasks,0,assignmentEventIds,0}')"],
+    ['omitted', "jsonb_build_array(result_snapshot#>'{tasks,0,assignmentEventIds,0}')"],
+    ['duplicate', "jsonb_build_array(result_snapshot#>'{tasks,0,assignmentEventIds,0}', result_snapshot#>'{tasks,0,assignmentEventIds,0}')"],
+  ])('rejects %s frozen update event IDs', async (_label, ids) => {
+    await commands().create({ ...createInput(), allowedStudentIds: ['S001'] });
+    const input = updateInput({ allowedStudentIds: ['S002'] });
+    await commands().update(input);
+    await harness.database.exec(`ALTER TABLE operations DISABLE TRIGGER operations_update_guard;
+      UPDATE operations SET result_snapshot=jsonb_set(result_snapshot,
+        '{tasks,0,assignmentEventIds}', ${ids}) WHERE operation_id='task-admin-update-op';
+      ALTER TABLE operations ENABLE TRIGGER operations_update_guard;`);
+    await expect(commands().update(input)).rejects.toThrow(/assignment event integrity/i);
+  });
+
+  it('isolates update operations and targets by tenant', async () => {
+    await commands(harness.tenantOneId).create(createInput());
+    await commands(harness.tenantTwoId).create(createInput());
+    const one = await commands(harness.tenantOneId).update(updateInput({ allowedStudentIds: [] }));
+    const two = await commands(harness.tenantTwoId).update(updateInput({ allowedStudentIds: [] }));
+    expect(two).toEqual(one);
   });
 });
