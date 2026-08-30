@@ -72,6 +72,7 @@ export const promotions = pgTable('promotions', {
   check('promotions_schema_version_check', sql`${table.schemaVersion} >= 1`),
   check('promotions_version_check', sql`${table.version} BETWEEN 1 AND 9007199254740991`),
   check('promotions_deleted_chronology_check', sql`${table.deletedAt} IS NULL OR ${table.deletedAt} >= ${table.createdAt}`),
+  check('promotions_deleted_status_check', sql`${table.deletedAt} IS NULL OR NOT ${table.isActive}`),
   index('promotions_active_sort_idx').on(table.tenantId, table.sortOrder, table.promotionId)
     .where(sql`${table.isActive} AND ${table.deletedAt} IS NULL`),
 ]);
