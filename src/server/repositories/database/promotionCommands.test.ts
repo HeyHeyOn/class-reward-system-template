@@ -91,6 +91,18 @@ const updateInput = () => ({
   productIds: [' P002 '],
 });
 
+const activateInput = () => ({
+  operationId: 'promotion-activate-operation',
+  promotionId: ' PROMO-001 ',
+  expectedPromotionVersion: 1,
+});
+
+const deactivateInput = () => ({
+  operationId: 'promotion-deactivate-operation',
+  promotionId: ' PROMO-001 ',
+  expectedPromotionVersion: 1,
+});
+
 async function snapshot() {
   const [promotions, links, operations, audits] = await Promise.all([
     harness.database.query(
@@ -634,5 +646,298 @@ describe('PostgreSQL promotion administration commands', () => {
       ...updateInput(), operationId: 'invalid-clock', expectedPromotionVersion: 2,
     })).rejects.toThrow(/timestamp.*invalid/i);
     expect(transactionCallCount).toBe(0);
+  });
+
+  it('activates a promotion while preserving its definition and exact target link identities', async () => {
+    const created = await commands().create({
+      ...createInput(),
+      definition: { ...createInput().definition, isActive: false },
+    });
+    const linksBefore = (await snapshot()).links;
+    const result = await commands().activate(activateInput());
+    expect(result).toEqual({
+      ...created,
+      operationId: 'promotion-activate-operation',
+      action: 'ACTIVATE',
+      promotions: [{
+        ...created.promotions[0],
+        isActive: true,
+        promotionVersionBefore: 1,
+        promotionVersionAfter: 2,
+      }],
+    });
+    const state = await snapshot();
+    expect(state.promotions).toEqual([expect.objectContaining({
+      promotion_id: 'PROMO-001', name: '하나 더', description: '설명', type: 'N_PLUS_ONE',
+      n_plus_one_buy_quantity: '2', n_plus_one_free_quantity: '1', is_active: true,
+      version: '2', deleted_at: null,
+    })]);
+    expect(state.links).toEqual(linksBefore);
+    expect(state.operations).toHaveLength(2);
+    expect(state.audits).toHaveLength(2);
+  });
+
+  it('deactivates a promotion and increments even when it is already in the desired state', async () => {
+    const created = await commands().create(createInput());
+    const linksBefore = (await snapshot()).links;
+    const first = await commands().deactivate(deactivateInput());
+    expect(first).toEqual({
+      ...created,
+      operationId: 'promotion-deactivate-operation',
+      action: 'DEACTIVATE',
+      promotions: [{
+        ...created.promotions[0], isActive: false,
+        promotionVersionBefore: 1, promotionVersionAfter: 2,
+      }],
+    });
+    const second = await commands().deactivate({
+      ...deactivateInput(), operationId: 'promotion-deactivate-again', expectedPromotionVersion: 2,
+    });
+    expect(second).toMatchObject({
+      action: 'DEACTIVATE',
+      promotions: [{ isActive: false, promotionVersionBefore: 2, promotionVersionAfter: 3 }],
+    });
+    expect((await snapshot()).links).toEqual(linksBefore);
+  });
+
+  it('rolls back activation for stale, missing, or tombstoned promotions', async () => {
+    await commands().create({
+      ...createInput(), definition: { ...createInput().definition, isActive: false },
+    });
+    const before = await snapshot();
+    await expect(commands().activate({ ...activateInput(), expectedPromotionVersion: 2 }))
+      .rejects.toThrow(/stale|version/i);
+    await expect(commands().activate({
+      ...activateInput(), operationId: 'activate-missing', promotionId: 'PROMO-404',
+    })).rejects.toThrow(/not found/i);
+    await harness.database.query(
+      `UPDATE promotions SET deleted_at=$3 WHERE tenant_id=$1 AND promotion_id=$2`,
+      [harness.tenantOneId, 'PROMO-001', NOW.toISOString()],
+    );
+    const tombstoned = await snapshot();
+    await expect(commands().activate({ ...activateInput(), operationId: 'activate-tombstoned' }))
+      .rejects.toThrow(/not found/i);
+    expect(await snapshot()).toEqual(tombstoned);
+    expect(before.operations).toHaveLength(1);
+  });
+
+  it('replays a frozen activation result after opposite state, link, and tombstone changes and rejects action conflicts', async () => {
+    await commands().create({
+      ...createInput(), definition: { ...createInput().definition, isActive: false },
+    });
+    const input = activateInput();
+    const first = await commands().activate(input);
+    await harness.database.query(
+      `UPDATE promotions SET is_active=false, version=3, deleted_at=$3, updated_at=$3
+       WHERE tenant_id=$1 AND promotion_id=$2`,
+      [harness.tenantOneId, 'PROMO-001', '2026-08-30T02:00:00.000Z'],
+    );
+    await harness.database.query(
+      `DELETE FROM promotion_products WHERE tenant_id=$1 AND promotion_id=$2 AND product_id=$3`,
+      [harness.tenantOneId, 'PROMO-001', 'P002'],
+    );
+    await expect(commands().activate(input)).resolves.toEqual(first);
+    await expect(commands().deactivate(input)).rejects.toThrow(/conflict/i);
+    await expect(commands().activate({ ...input, expectedPromotionVersion: 2 }))
+      .rejects.toThrow(/conflict/i);
+  });
+
+  it('rejects activation replay after the physical promotion identity is hard-deleted', async () => {
+    await commands().create({
+      ...createInput(), definition: { ...createInput().definition, isActive: false },
+    });
+    const input = activateInput();
+    await commands().activate(input);
+    await harness.database.query(
+      `DELETE FROM promotion_products WHERE tenant_id=$1 AND promotion_id=$2`,
+      [harness.tenantOneId, 'PROMO-001'],
+    );
+    await harness.database.query(
+      `DELETE FROM promotions WHERE tenant_id=$1 AND promotion_id=$2`,
+      [harness.tenantOneId, 'PROMO-001'],
+    );
+
+    await expect(commands().activate(input)).rejects.toThrow(/identity integrity/i);
+  });
+
+  it('rejects activation replay when operation evidence finishes before it starts', async () => {
+    await commands().create({
+      ...createInput(), definition: { ...createInput().definition, isActive: false },
+    });
+    const input = activateInput();
+    await commands().activate(input);
+    await harness.database.exec(
+      'ALTER TABLE operations DROP CONSTRAINT operations_chronology_check',
+    );
+    await withOperationAuditTampering(async () => {
+      await harness.database.query(
+        `UPDATE operations SET started_at=$3, created_at=$3
+         WHERE tenant_id=$1 AND operation_id=$2`,
+        [harness.tenantOneId, input.operationId, '2026-08-30T02:00:00.000Z'],
+      );
+    });
+
+    await expect(commands().activate(input)).rejects.toThrow(/operation integrity/i);
+  });
+
+  it('re-reads the winning activation operation after an insert race', async () => {
+    await commands().create({
+      ...createInput(), definition: { ...createInput().definition, isActive: false },
+    });
+    const input = activateInput();
+    const first = await commands().activate(input);
+    const raceCommands = createDatabasePromotionCommands({
+      tenantId: harness.tenantOneId,
+      now: () => NOW,
+      runTenantTransaction: (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) => {
+        let missedInitialRead = false;
+        const raceTx = {
+          execute: async (query: Parameters<typeof tx.execute>[0]) => {
+            if (!missedInitialRead) {
+              missedInitialRead = true;
+              return { rows: [] } as never;
+            }
+            return tx.execute(query);
+          },
+        } as unknown as typeof tx;
+        return callback(raceTx);
+      }),
+    });
+    await expect(raceCommands.activate(input)).resolves.toEqual(first);
+  });
+
+  it('fails closed on malformed activation evidence and extra audits', async () => {
+    await commands().create({
+      ...createInput(), definition: { ...createInput().definition, isActive: false },
+    });
+    const input = activateInput();
+    await commands().activate(input);
+    await withOperationAuditTampering(async () => {
+      await harness.database.query(
+        `UPDATE operations
+         SET result_snapshot=jsonb_set(result_snapshot, '{promotions,0,isActive}', 'false'::jsonb)
+         WHERE tenant_id=$1 AND operation_id=$2`,
+        [harness.tenantOneId, input.operationId],
+      );
+    });
+    await expect(commands().activate(input)).rejects.toThrow(/stored result integrity/i);
+    await withOperationAuditTampering(async () => {
+      await harness.database.query(
+        `UPDATE operations
+         SET result_snapshot=jsonb_set(result_snapshot, '{promotions,0,isActive}', 'true'::jsonb)
+         WHERE tenant_id=$1 AND operation_id=$2`,
+        [harness.tenantOneId, input.operationId],
+      );
+    });
+    await harness.runTenantTransaction(harness.tenantOneId, async (tx) => {
+      await appendOperationAudit(tx, harness.tenantOneId, {
+        operationId: input.operationId,
+        eventType: 'PROMOTION_ADMIN_EXTRA', entityType: 'OPERATION', entityId: input.operationId,
+        occurredAt: NOW, redactedDetails: { action: 'ACTIVATE' },
+      });
+    });
+    await expect(commands().activate(input)).rejects.toThrow(/audit integrity/i);
+  });
+
+  it('rejects an invalid activation clock before opening a transaction', async () => {
+    let transactionCallCount = 0;
+    const invalidClockCommands = createDatabasePromotionCommands({
+      tenantId: harness.tenantOneId,
+      runTenantTransaction: (tenantId, callback) => {
+        transactionCallCount += 1;
+        return harness.runTenantTransaction(tenantId, callback);
+      },
+      now: () => new Date(Number.NaN),
+    });
+    await expect(invalidClockCommands.activate(activateInput())).rejects.toThrow(/timestamp.*invalid/i);
+    expect(transactionCallCount).toBe(0);
+  });
+
+  it('rejects malformed stored promotion definitions and rolls back the operation claim', async () => {
+    await commands().create({
+      ...createInput(), definition: { ...createInput().definition, isActive: false },
+    });
+    await harness.database.query(
+      `UPDATE promotions SET name=' 하나 더 ' WHERE tenant_id=$1 AND promotion_id=$2`,
+      [harness.tenantOneId, 'PROMO-001'],
+    );
+    const before = await snapshot();
+    await expect(commands().activate(activateInput())).rejects.toThrow(/stored promotion integrity/i);
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('returns activation targets in JavaScript UTF-16 order independent of database collation', async () => {
+    const javascriptFirst = 'P\u{10000}';
+    const databaseFirst = 'P\uE000';
+    for (const productId of [javascriptFirst, databaseFirst]) {
+      await harness.database.query(
+        `INSERT INTO products
+          (tenant_id, product_id, name, price, stock, is_active, sort_order, version,
+           created_at, updated_at)
+         VALUES ($1, $2, $2, 100, 10, true, 0, 1, $3, $3)`,
+        [harness.tenantOneId, productId, NOW.toISOString()],
+      );
+    }
+    await commands().create({
+      ...createInput(),
+      definition: { ...createInput().definition, isActive: false },
+      productIds: [databaseFirst, javascriptFirst],
+    });
+    await expect(commands().activate(activateInput())).resolves.toMatchObject({
+      promotions: [{ productIds: [javascriptFirst, databaseFirst] }],
+    });
+  });
+
+  it('rolls back activation when a trigger mutates percent to a lossy arbitrary-precision decimal', async () => {
+    await commands().create({
+      ...createInput(),
+      definition: {
+        name: ' 정밀 할인 ',
+        description: ' 설명 ',
+        type: 'PERCENT_DISCOUNT',
+        percent: 0.1,
+        startsAt: '2026-08-30T00:00:00.000Z',
+        endsAt: '2026-09-30T00:00:00.000Z',
+        isActive: false,
+        sortOrder: 3,
+      },
+    });
+    const before = await snapshot();
+    await harness.database.exec(`
+      CREATE FUNCTION mutate_activation_percent_precision() RETURNS trigger
+      LANGUAGE plpgsql AS $$ BEGIN
+        NEW.percent_discount := 0.10000000000000001;
+        RETURN NEW;
+      END $$;
+      CREATE TRIGGER mutate_activation_percent_precision
+      BEFORE UPDATE ON promotions
+      FOR EACH ROW EXECUTE FUNCTION mutate_activation_percent_precision();
+    `);
+
+    await expect(commands().activate(activateInput())).rejects.toThrow(/stored promotion|metadata.*integrity/i);
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it.each([
+    ['metadata', 'promotions', "OLD.promotion_id='PROMO-001'", 'RETURN OLD'],
+    ['audit', 'audit_events', "NEW.operation_id='promotion-activate-operation'", 'RETURN NULL'],
+    ['terminal', 'operations', "NEW.operation_id='promotion-activate-operation' AND NEW.status='SUCCEEDED'", 'RETURN NULL'],
+  ] as const)('rolls back activation when required %s evidence is suppressed', async (_target, table, condition, triggerResult) => {
+    await commands().create({
+      ...createInput(), definition: { ...createInput().definition, isActive: false },
+    });
+    const before = await snapshot();
+    await harness.database.exec(`
+      CREATE FUNCTION suppress_required_promotion_activation_write() RETURNS trigger
+      LANGUAGE plpgsql AS $$ BEGIN
+        IF ${condition} THEN ${triggerResult}; END IF;
+        RETURN NEW;
+      END $$;
+      CREATE TRIGGER suppress_required_promotion_activation_write
+      BEFORE INSERT OR UPDATE ON ${table}
+      FOR EACH ROW EXECUTE FUNCTION suppress_required_promotion_activation_write();
+    `);
+    await expect(commands().activate(activateInput())).rejects.toThrow(/integrity|not replayable/i);
+    expect(await snapshot()).toEqual(before);
   });
 });
