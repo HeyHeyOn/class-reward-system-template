@@ -47,6 +47,11 @@ export type UpdateTaskAdminInput = Readonly<{
   padletBoardId?: string | null;
 }>;
 
+export type UpdateTasksAdminBatchInput = Readonly<{
+  operationId: string;
+  tasks: readonly Omit<UpdateTaskAdminInput, 'operationId'>[];
+}>;
+
 export type DeleteTaskAdminInput = Readonly<{
   operationId: string;
   taskId: string;
@@ -368,6 +373,9 @@ export function createDatabaseTaskAdminCommands(dependencies: DatabaseTaskAdminC
     },
     async update(rawInput: UpdateTaskAdminInput): Promise<TaskAdminUpdateSuccess> {
       return updateTaskDefinition(dependencies, rawInput);
+    },
+    async updateBatch(rawInput: UpdateTasksAdminBatchInput): Promise<TaskAdminUpdateSuccess> {
+      return updateTaskDefinitionsBatch(dependencies, rawInput);
     },
     async delete(rawInput: DeleteTaskAdminInput): Promise<TaskAdminDeleteSuccess> {
       return deleteTaskDefinition(dependencies, rawInput);
@@ -941,6 +949,490 @@ async function updateTaskDefinition(
   });
 }
 
+// Batch UPDATE implementation is kept separate from the singleton transaction so the
+// complete graph and every affected ledger can be locked and planned exactly once.
+type CanonicalUpdateBatchInput = Readonly<{
+  operationId: string;
+  tasks: readonly CanonicalUpdateInput[];
+}>;
+
+type BatchUpdatePlan = Readonly<{
+  input: CanonicalUpdateInput;
+  before: LockedUpdateTask;
+  after: LockedUpdateTask;
+  prerequisiteTaskInstanceId: string | null;
+  currentMirrors: readonly ReturnType<typeof parseLockedMirrors>[number][];
+  additions: readonly string[];
+  removals: readonly string[];
+  changes: readonly Readonly<{ studentId: string; eventType: 'ASSIGNED' | 'UNASSIGNED' }>[];
+  oldAssignments: readonly UpdateAssignment[];
+  completions: readonly CompletionEvidence[];
+  cycle: ReturnType<typeof getTaskCycle>;
+  schedule: TaskSchedule;
+  predecessorIds: ReadonlyMap<string, string>;
+  assignmentEventIds: readonly string[];
+}>;
+
+const UPDATE_BATCH_KEYS = ['operationId', 'tasks'] as const;
+const UPDATE_ENTRY_REQUIRED_KEYS = [
+  'taskId', 'expectedTaskVersion', 'title', 'description', 'reward', 'isActive', 'sortOrder',
+  'allowedStudentIds',
+] as const;
+const UPDATE_ENTRY_KEYS = [
+  ...UPDATE_ENTRY_REQUIRED_KEYS, 'availableFrom', 'dueAt', 'prerequisiteTaskId', 'padletBoardId',
+] as const;
+
+function canonicalUpdateBatch(raw: UpdateTasksAdminBatchInput): CanonicalUpdateBatchInput {
+  const root = exactRecord(raw, UPDATE_BATCH_KEYS, 'task update batch input');
+  const operationId = canonicalId(root.operationId, 'operation ID');
+  const entries = exactArray(root.tasks, 'task update batch tasks');
+  if (entries.length < 1 || entries.length > 100) {
+    throw new Error('Task update batch must contain 1 to 100 tasks.');
+  }
+  const tasks = entries.map((rawEntry) => {
+    const entry = exactRecordOptional(rawEntry, UPDATE_ENTRY_REQUIRED_KEYS, UPDATE_ENTRY_KEYS,
+      'task update batch entry');
+    return canonicalUpdate({ ...entry, operationId } as UpdateTaskAdminInput);
+  }).sort((left, right) => compareText(left.taskId, right.taskId));
+  if (new Set(tasks.map((task) => task.taskId)).size !== tasks.length) {
+    throw new Error('Duplicate task ID in update batch.');
+  }
+  if (tasks.reduce((total, task) => total + task.allowedStudentIds.length, 0) > 1000) {
+    throw new Error('Task update batch allowed-student reference limit exceeded.');
+  }
+  return { operationId, tasks };
+}
+
+function updateBatchPayloadHash(input: CanonicalUpdateBatchInput): string {
+  return sha256({ kind: 'TASK_ADMIN', action: 'UPDATE', tasks: input.tasks.map((task) => ({
+    taskId: task.taskId, expectedTaskVersion: task.expectedTaskVersion, title: task.title,
+    description: task.description, reward: task.reward, isActive: task.isActive,
+    sortOrder: task.sortOrder, allowedStudentIds: task.allowedStudentIds,
+    availableFrom: task.availableFrom, dueAt: task.dueAt,
+    prerequisiteTaskId: task.prerequisiteTaskId, padletBoardId: task.padletBoardId,
+  })), schemaVersion: 1 });
+}
+
+function assertFinalActiveTaskGraph(tasks: readonly LockedUpdateTask[]): void {
+  assertCompleteTaskGraph(tasks);
+  const byInstance = new Map(tasks.map((task) => [task.taskInstanceId, task]));
+  for (const task of tasks) {
+    if (task.prerequisiteTaskInstanceId === null) continue;
+    const prerequisite = byInstance.get(task.prerequisiteTaskInstanceId);
+    if (!prerequisite || !prerequisite.isActive) {
+      throw new Error('Task administration prerequisite task not found or not active.');
+    }
+  }
+}
+
+async function updateTaskDefinitionsBatch(
+  dependencies: DatabaseTaskAdminCommandDependencies,
+  rawInput: UpdateTasksAdminBatchInput,
+): Promise<TaskAdminUpdateSuccess> {
+  const input = canonicalUpdateBatch(rawInput);
+  const now = dependencies.now?.() ?? new Date();
+  if (!(now instanceof Date) || !Number.isFinite(now.getTime())) {
+    throw new Error('Task administration current timestamp is invalid.');
+  }
+  const payloadHash = updateBatchPayloadHash(input);
+  return dependencies.runTenantTransaction(dependencies.tenantId, async (tx) => {
+    const existing = await readOperation(tx, dependencies.tenantId, input.operationId);
+    if (existing) return resolveUpdateBatchReplay(tx, dependencies.tenantId, existing, input, payloadHash);
+    const claim = await tx.execute(sql`
+      INSERT INTO operations
+        (tenant_id, operation_id, operation_kind, payload_hash, status, attempt_count,
+         started_at, created_at, updated_at)
+      VALUES (${dependencies.tenantId}, ${input.operationId}, 'TASK_ADMIN', ${payloadHash},
+              'PENDING', 1, ${now}, ${now}, ${now})
+      ON CONFLICT (tenant_id, operation_id) DO NOTHING RETURNING operation_id
+    `);
+    if (claim.rows.length !== 1
+      || (claim.rows[0] as { operation_id?: unknown } | undefined)?.operation_id !== input.operationId) {
+      if (claim.rows.length !== 0) throw new Error('Task administration operation claim integrity check failed.');
+      const winner = await readOperation(tx, dependencies.tenantId, input.operationId);
+      if (!winner) throw new Error('Task administration operation race integrity check failed.');
+      return resolveUpdateBatchReplay(tx, dependencies.tenantId, winner, input, payloadHash);
+    }
+
+    const taskRows = await tx.execute(sql`
+      SELECT task_instance_id, task_id, title, description, reward::text AS reward, is_active,
+        sort_order, available_from, available_until, due_at, prerequisite_task_instance_id,
+        padlet_board_id, current_schedule, pending_schedule, schedule_schema_version,
+        version::text AS version, created_at, updated_at, deleted_at
+      FROM tasks WHERE tenant_id=${dependencies.tenantId} AND deleted_at IS NULL
+      ORDER BY task_instance_id FOR UPDATE
+    `);
+    const allTasks = parseLockedUpdateTasks(taskRows.rows, now);
+    const byBusinessId = new Map(allTasks.map((task) => [task.taskId, task]));
+    const targets = input.tasks.map((entry) => {
+      const target = byBusinessId.get(entry.taskId);
+      if (!target) throw new Error('Task administration update target not found.');
+      if (target.version !== entry.expectedTaskVersion) {
+        throw new Error('Task administration stale task version.');
+      }
+      return target;
+    });
+    const proposed = allTasks.map((task) => {
+      const index = targets.findIndex((target) => target.taskInstanceId === task.taskInstanceId);
+      if (index < 0) return task;
+      const entry = input.tasks[index];
+      let prerequisiteTaskInstanceId: string | null = null;
+      if (entry.prerequisiteTaskId !== null) {
+        const prerequisite = byBusinessId.get(entry.prerequisiteTaskId);
+        if (!prerequisite) throw new Error('Task administration prerequisite task not found or not active.');
+        prerequisiteTaskInstanceId = prerequisite.taskInstanceId;
+      }
+      return { ...task, isActive: entry.isActive, prerequisiteTaskInstanceId };
+    });
+    assertFinalActiveTaskGraph(proposed);
+    const proposedById = new Map(proposed.map((task) => [task.taskInstanceId, task]));
+
+    const desiredStudentIds = [...new Set(input.tasks.flatMap((task) => [...task.allowedStudentIds]))]
+      .sort(compareText);
+    if (desiredStudentIds.length > 0) {
+      const students = await tx.execute(sql`
+        SELECT student_id, status FROM students WHERE tenant_id=${dependencies.tenantId}
+          AND student_id IN (${sql.join(desiredStudentIds.map((id) => sql`${id}`), sql`, `)})
+        ORDER BY student_id FOR UPDATE
+      `);
+      assertExactActiveStudents(students.rows, desiredStudentIds);
+    }
+    const instanceIds = targets.map((task) => task.taskInstanceId);
+    const mirrorRows = await tx.execute(sql`
+      SELECT task_instance_id, student_id, created_at FROM task_allowed_students
+      WHERE tenant_id=${dependencies.tenantId}
+        AND task_instance_id IN (${sql.join(instanceIds.map((id) => sql`${id}`), sql`, `)})
+      ORDER BY task_instance_id, student_id FOR UPDATE
+    `);
+    const parsedMirrors = parseLockedBatchMirrors(mirrorRows.rows, new Set(instanceIds), now);
+    const mirrorsByInstance = new Map<string, ReturnType<typeof parseLockedMirrors>>(
+      instanceIds.map((instanceId) => [instanceId, []]),
+    );
+    for (const mirror of parsedMirrors) mirrorsByInstance.get(mirror.taskInstanceId)!.push(mirror);
+    for (const mirrors of mirrorsByInstance.values()) {
+      mirrors.sort((a, b) => compareText(a.studentId, b.studentId));
+    }
+
+    const assignmentRows = await tx.execute(sql`
+      SELECT assignment_id, event_sequence::text AS event_sequence, task_id_snapshot,
+        task_instance_id, cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone,
+        student_id, event_type, source, previous_assignment_id, admin_operation_id,
+        admin_operation_hash, created_at, schema_version, note
+      FROM task_assignments WHERE tenant_id=${dependencies.tenantId}
+        AND task_instance_id IN (${sql.join(instanceIds.map((id) => sql`${id}`), sql`, `)})
+      ORDER BY task_instance_id, student_id, event_sequence FOR UPDATE
+    `);
+    const assignments = parseUpdateAssignments(assignmentRows.rows, now);
+    assertUpdateAssignmentChains(assignments);
+    const targetByInstance = new Map(targets.map((target) => [target.taskInstanceId, target]));
+    for (const event of assignments) {
+      const target = targetByInstance.get(event.task_instance_id);
+      if (!target || event.task_id_snapshot !== target.taskId) {
+        throw new Error('Task administration assignment event integrity check failed.');
+      }
+    }
+    const completionRows = await tx.execute(sql`
+      SELECT completion_id, event_sequence::text AS event_sequence, completed_at,
+        task_instance_id, task_id_snapshot, task_name_snapshot, student_id,
+        student_name_snapshot, reward_snapshot::text AS reward_snapshot,
+        balance_before::text AS balance_before, balance_after::text AS balance_after,
+        status, note, cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone, source,
+        assignment_id, transaction_id, operation_id, operation_hash, admin_operation_id,
+        admin_operation_hash, schema_version, evidence_provider, evidence_board_id,
+        evidence_post_id, evidence_created_at, evidence_author_full_name, created_at
+      FROM task_completions WHERE tenant_id=${dependencies.tenantId}
+        AND task_instance_id IN (${sql.join(instanceIds.map((id) => sql`${id}`), sql`, `)})
+      ORDER BY task_instance_id, event_sequence FOR UPDATE
+    `);
+    const completions = parseCompletionSnapshots(completionRows.rows);
+    for (const completion of completions) {
+      const target = targetByInstance.get(completion.task_instance_id as string);
+      if (!target || completion.task_id_snapshot !== target.taskId) {
+        throw new Error('Task administration completion event integrity check failed.');
+      }
+    }
+
+    const plans: BatchUpdatePlan[] = input.tasks.map((entry, index) => {
+      const before = targets[index];
+      const proposedTask = proposedById.get(before.taskInstanceId)!;
+      const after: LockedUpdateTask = { ...before, title: entry.title, description: entry.description,
+        reward: entry.reward, isActive: entry.isActive, sortOrder: entry.sortOrder,
+        availableFrom: entry.availableFrom, dueAt: entry.dueAt,
+        prerequisiteTaskInstanceId: proposedTask.prerequisiteTaskInstanceId,
+        padletBoardId: entry.padletBoardId, version: entry.expectedTaskVersion + 1,
+        updatedAt: now.toISOString() };
+      const currentMirrors = mirrorsByInstance.get(before.taskInstanceId)!;
+      const currentIds = currentMirrors.map((row) => row.studentId);
+      const additions = entry.allowedStudentIds.filter((id) => !currentIds.includes(id));
+      const removals = currentIds.filter((id) => !entry.allowedStudentIds.includes(id));
+      const changes = [...additions.map((studentId) => ({ studentId, eventType: 'ASSIGNED' as const })),
+        ...removals.map((studentId) => ({ studentId, eventType: 'UNASSIGNED' as const }))]
+        .sort((a, b) => compareText(a.studentId, b.studentId));
+      const oldAssignments = assignments.filter((event) => event.task_instance_id === before.taskInstanceId);
+      const schedule = resolveTaskSchedule({ currentSchedule: before.currentSchedule,
+        pendingSchedule: before.pendingSchedule, now: now.toISOString() });
+      const cycle = getTaskCycle({ taskInstanceId: before.taskInstanceId, schedule,
+        taskCreatedAt: before.createdAt, now: now.toISOString() });
+      const cycleStart = new Date(cycle.startsAt).toISOString();
+      const cycleEnd = cycle.endsAt ? new Date(cycle.endsAt).toISOString() : null;
+      const latest = new Map<string, UpdateAssignment>();
+      for (const event of oldAssignments) {
+        if (event.cycle_id === cycle.cycleId && event.cycle_start_at === cycleStart
+          && event.cycle_end_at === cycleEnd && event.rule_version === schedule.ruleVersion
+          && event.timezone === schedule.timeZone) {
+          const selected = latest.get(event.student_id);
+          if (!selected || Number(event.event_sequence) > Number(selected.event_sequence)) {
+            latest.set(event.student_id, event);
+          }
+        }
+      }
+      const predecessorIds = new Map([...latest].map(([studentId, event]) =>
+        [studentId, event.assignment_id]));
+      return { input: entry, before, after,
+        prerequisiteTaskInstanceId: proposedTask.prerequisiteTaskInstanceId, currentMirrors,
+        additions, removals, changes, oldAssignments,
+        completions: completions.filter((row) => row.task_instance_id === before.taskInstanceId),
+        cycle, schedule, predecessorIds,
+        assignmentEventIds: changes.map((change) => createTaskAdminAssignmentEventId(
+          input.operationId, entry.taskId, change.studentId, change.eventType)) };
+    });
+
+    const evidence: UpdateEvidence[] = [];
+    for (const plan of plans) {
+      const updated = await tx.execute(sql`
+        UPDATE tasks SET title=${plan.input.title}, description=${plan.input.description},
+          reward=${plan.input.reward}, is_active=${plan.input.isActive}, sort_order=${plan.input.sortOrder},
+          available_from=${plan.input.availableFrom ? new Date(plan.input.availableFrom) : null},
+          due_at=${plan.input.dueAt ? new Date(plan.input.dueAt) : null},
+          prerequisite_task_instance_id=${plan.prerequisiteTaskInstanceId},
+          padlet_board_id=${plan.input.padletBoardId}, version=version + 1, updated_at=${now}
+        WHERE tenant_id=${dependencies.tenantId} AND task_instance_id=${plan.before.taskInstanceId}
+          AND deleted_at IS NULL AND version=${plan.input.expectedTaskVersion}
+        RETURNING task_instance_id, task_id, title, description, reward::text AS reward, is_active,
+          sort_order, available_from, available_until, due_at, prerequisite_task_instance_id,
+          padlet_board_id, current_schedule, pending_schedule, schedule_schema_version,
+          version::text AS version, created_at, updated_at, deleted_at
+      `);
+      assertSingleUpdatedTask(updated.rows, plan.after, now);
+      if (plan.removals.length > 0) {
+        const deleted = await tx.execute(sql`
+          DELETE FROM task_allowed_students WHERE tenant_id=${dependencies.tenantId}
+            AND task_instance_id=${plan.before.taskInstanceId}
+            AND student_id IN (${sql.join(plan.removals.map((id) => sql`${id}`), sql`, `)})
+          RETURNING task_instance_id, student_id, created_at
+        `);
+        assertMirrorSubset(deleted.rows,
+          plan.currentMirrors.filter((row) => plan.removals.includes(row.studentId)));
+      }
+      let addedMirrors: readonly ReturnType<typeof parseLockedMirrors>[number][] = [];
+      if (plan.additions.length > 0) {
+        const inserted = await tx.execute(sql`
+          INSERT INTO task_allowed_students (tenant_id, task_instance_id, student_id, created_at)
+          VALUES ${sql.join(plan.additions.map((studentId) =>
+            sql`(${dependencies.tenantId}, ${plan.before.taskInstanceId}, ${studentId}, ${now})`), sql`, `)}
+          RETURNING task_instance_id, student_id, created_at
+        `);
+        addedMirrors = parseLockedMirrors(inserted.rows, plan.before.taskInstanceId, now);
+        if (addedMirrors.length !== plan.additions.length
+          || plan.additions.some((id) => !addedMirrors.some((row) => row.studentId === id))) {
+          throw new Error('Task administration allowed-student mirror integrity check failed.');
+        }
+      }
+      let insertedAssignments: readonly UpdateAssignment[] = [];
+      if (plan.changes.length > 0) {
+        const inserted = await tx.execute(sql`
+          INSERT INTO task_assignments
+            (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id,
+             cycle_start_at, cycle_end_at, rule_version, timezone, student_id, event_type,
+             source, previous_assignment_id, admin_operation_id, admin_operation_hash,
+             created_at, schema_version, note)
+          VALUES ${sql.join(plan.changes.map((change, index) => sql`
+            (${dependencies.tenantId}, ${plan.assignmentEventIds[index]}, ${plan.input.taskId},
+             ${plan.before.taskInstanceId}, ${plan.cycle.cycleId}, ${new Date(plan.cycle.startsAt)},
+             ${plan.cycle.endsAt ? new Date(plan.cycle.endsAt) : null}, ${plan.schedule.ruleVersion},
+             ${plan.schedule.timeZone}, ${change.studentId}, ${change.eventType}, 'ADMIN',
+             ${plan.predecessorIds.get(change.studentId) ?? null}, ${input.operationId},
+             ${payloadHash}, ${now}, 1, NULL)
+          `), sql`, `)}
+          RETURNING assignment_id, event_sequence::text AS event_sequence, task_id_snapshot,
+            task_instance_id, cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone,
+            student_id, event_type, source, previous_assignment_id, admin_operation_id,
+            admin_operation_hash, created_at, schema_version, note
+        `);
+        insertedAssignments = parseUpdateAssignments(inserted.rows, now);
+        assertInsertedUpdateAssignments(insertedAssignments, plan.changes, plan.assignmentEventIds,
+          plan.before, plan.cycle, plan.schedule, plan.predecessorIds,
+          { ...plan.input, operationId: input.operationId }, payloadHash, now);
+      }
+      const desiredMirrors = [...plan.currentMirrors.filter((row) =>
+        !plan.removals.includes(row.studentId)), ...addedMirrors]
+        .sort((a, b) => compareText(a.studentId, b.studentId));
+      evidence.push({ input: { ...plan.input, operationId: input.operationId }, payloadHash, now,
+        target: plan.after, prerequisiteTaskInstanceId: plan.prerequisiteTaskInstanceId,
+        desiredMirrors, assignments: [...plan.oldAssignments, ...insertedAssignments],
+        completions: plan.completions, assignmentEventIds: plan.assignmentEventIds });
+    }
+    await assertUpdateBatchState(tx, dependencies.tenantId, evidence, input.operationId, now);
+    const result = freezeUpdateResult({ ok: true, operationId: input.operationId, action: 'UPDATE',
+      completedAt: now.toISOString(), tasks: plans.map((plan) => ({ taskId: plan.input.taskId,
+        taskInstanceId: plan.before.taskInstanceId, versionBefore: plan.input.expectedTaskVersion,
+        versionAfter: plan.input.expectedTaskVersion + 1,
+        assignmentEventIds: plan.assignmentEventIds })) });
+    const audit = updateAuditInput(result, now);
+    await appendOperationAudit(tx, dependencies.tenantId, audit);
+    await assertUpdateAudit(tx, dependencies.tenantId, audit);
+    const terminal = await tx.execute(sql`
+      UPDATE operations SET status='SUCCEEDED', result_snapshot=${JSON.stringify(result)}::jsonb,
+        finished_at=${now}, updated_at=${now}
+      WHERE tenant_id=${dependencies.tenantId} AND operation_id=${input.operationId}
+      RETURNING operation_id
+    `);
+    if (terminal.rows.length !== 1
+      || (terminal.rows[0] as { operation_id?: unknown } | undefined)?.operation_id !== input.operationId) {
+      throw new Error('Task administration terminal operation integrity check failed.');
+    }
+    await assertUpdateBatchState(tx, dependencies.tenantId, evidence, input.operationId, now);
+    const stored = await readOperation(tx, dependencies.tenantId, input.operationId);
+    if (!stored) throw new Error('Task administration terminal operation integrity check failed.');
+    return resolveUpdateBatchReplay(tx, dependencies.tenantId, stored, input, payloadHash);
+  });
+}
+
+async function assertUpdateBatchState(tx: TenantTransaction, tenantId: string,
+  evidence: readonly UpdateEvidence[], operationId: string, now: Date): Promise<void> {
+  const instanceIds = evidence.map((item) => item.target.taskInstanceId).sort(compareText);
+  if (instanceIds.length < 1 || instanceIds.length > 100
+    || new Set(instanceIds).size !== instanceIds.length) {
+    throw new Error('Task administration task row integrity check failed.');
+  }
+  const targetIds = new Set(instanceIds);
+  const targets = await tx.execute(sql`
+    SELECT task_instance_id, task_id, title, description, reward::text AS reward, is_active,
+      sort_order, available_from, available_until, due_at, prerequisite_task_instance_id,
+      padlet_board_id, current_schedule, pending_schedule, schedule_schema_version,
+      version::text AS version, created_at, updated_at, deleted_at
+    FROM tasks WHERE tenant_id=${tenantId}
+      AND task_instance_id IN (${sql.join(instanceIds.map((id) => sql`${id}`), sql`, `)})
+    ORDER BY task_instance_id
+  `);
+  const parsedTargets = parseLockedUpdateTasks(targets.rows, now);
+  if (parsedTargets.length !== evidence.length
+    || parsedTargets.some((target) => !targetIds.has(target.taskInstanceId))) {
+    throw new Error('Task administration task row integrity check failed.');
+  }
+  const evidenceByInstance = new Map(evidence.map((item) => [item.target.taskInstanceId, item]));
+  for (const target of parsedTargets) {
+    if (stableJson(target) !== stableJson(evidenceByInstance.get(target.taskInstanceId)?.target)) {
+      throw new Error('Task administration task row integrity check failed.');
+    }
+  }
+
+  const mirrors = await tx.execute(sql`
+    SELECT task_instance_id, student_id, created_at FROM task_allowed_students
+    WHERE tenant_id=${tenantId}
+      AND task_instance_id IN (${sql.join(instanceIds.map((id) => sql`${id}`), sql`, `)})
+    ORDER BY task_instance_id, student_id
+  `);
+  const parsedMirrors = parseLockedBatchMirrors(mirrors.rows, targetIds, now);
+  const mirrorsByInstance = new Map(instanceIds.map((id) =>
+    [id, [] as typeof parsedMirrors]));
+  for (const mirror of parsedMirrors) mirrorsByInstance.get(mirror.taskInstanceId)?.push(mirror);
+  for (const item of evidence) {
+    const actual = mirrorsByInstance.get(item.target.taskInstanceId)
+      ?.sort((left, right) => compareText(left.studentId, right.studentId));
+    const expected = [...item.desiredMirrors]
+      .sort((left, right) => compareText(left.studentId, right.studentId));
+    if (stableJson(actual) !== stableJson(expected)) {
+      throw new Error('Task administration allowed-student mirror integrity check failed.');
+    }
+  }
+
+  const assignments = await tx.execute(sql`
+    SELECT assignment_id, event_sequence::text AS event_sequence, task_id_snapshot,
+      task_instance_id, cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone,
+      student_id, event_type, source, previous_assignment_id, admin_operation_id,
+      admin_operation_hash, created_at, schema_version, note
+    FROM task_assignments WHERE tenant_id=${tenantId}
+      AND task_instance_id IN (${sql.join(instanceIds.map((id) => sql`${id}`), sql`, `)})
+    ORDER BY task_instance_id, student_id, event_sequence
+  `);
+  const parsedAssignments = parseUpdateAssignments(assignments.rows, now);
+  if (parsedAssignments.some((row) => !targetIds.has(row.task_instance_id))) {
+    throw new Error('Task administration assignment event integrity check failed.');
+  }
+  assertUpdateAssignmentChains(parsedAssignments);
+  const assignmentsByInstance = new Map(instanceIds.map((id) =>
+    [id, [] as UpdateAssignment[]]));
+  for (const assignment of parsedAssignments) {
+    assignmentsByInstance.get(assignment.task_instance_id)?.push(assignment);
+  }
+  for (const item of evidence) {
+    const actual = assignmentsByInstance.get(item.target.taskInstanceId)
+      ?.sort((left, right) => Number(left.event_sequence) - Number(right.event_sequence));
+    const expected = [...item.assignments]
+      .sort((left, right) => Number(left.event_sequence) - Number(right.event_sequence));
+    if (stableJson(actual) !== stableJson(expected)) {
+      throw new Error('Task administration assignment event integrity check failed.');
+    }
+  }
+
+  const completions = await tx.execute(sql`
+    SELECT completion_id, event_sequence::text AS event_sequence, completed_at,
+      task_instance_id, task_id_snapshot, task_name_snapshot, student_id,
+      student_name_snapshot, reward_snapshot::text AS reward_snapshot,
+      balance_before::text AS balance_before, balance_after::text AS balance_after,
+      status, note, cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone, source,
+      assignment_id, transaction_id, operation_id, operation_hash, admin_operation_id,
+      admin_operation_hash, schema_version, evidence_provider, evidence_board_id,
+      evidence_post_id, evidence_created_at, evidence_author_full_name, created_at
+    FROM task_completions WHERE tenant_id=${tenantId}
+      AND task_instance_id IN (${sql.join(instanceIds.map((id) => sql`${id}`), sql`, `)})
+    ORDER BY task_instance_id, event_sequence
+  `);
+  const parsedCompletions = parseCompletionSnapshots(completions.rows);
+  if (parsedCompletions.some((row) => typeof row.task_instance_id !== 'string'
+    || !targetIds.has(row.task_instance_id))) {
+    throw new Error('Task administration completion event integrity check failed.');
+  }
+  const completionsByInstance = new Map(instanceIds.map((id) =>
+    [id, [] as CompletionEvidence[]]));
+  for (const completion of parsedCompletions) {
+    if (typeof completion.task_instance_id !== 'string') {
+      throw new Error('Task administration completion event integrity check failed.');
+    }
+    completionsByInstance.get(completion.task_instance_id)?.push(completion);
+  }
+  for (const item of evidence) {
+    if (stableJson(completionsByInstance.get(item.target.taskInstanceId))
+      !== stableJson(item.completions)) {
+      throw new Error('Task administration completion event integrity check failed.');
+    }
+  }
+
+  const graphRows = await tx.execute(sql`
+    SELECT task_instance_id, task_id, title, description, reward::text AS reward, is_active,
+      sort_order, available_from, available_until, due_at, prerequisite_task_instance_id,
+      padlet_board_id, current_schedule, pending_schedule, schedule_schema_version,
+      version::text AS version, created_at, updated_at, deleted_at
+    FROM tasks WHERE tenant_id=${tenantId} AND deleted_at IS NULL ORDER BY task_instance_id
+  `);
+  assertFinalActiveTaskGraph(parseLockedUpdateTasks(graphRows.rows, now));
+  const operationEvents = await tx.execute(sql`
+    SELECT assignment_id, event_sequence::text AS event_sequence, task_id_snapshot,
+      task_instance_id, cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone,
+      student_id, event_type, source, previous_assignment_id, admin_operation_id,
+      admin_operation_hash, created_at, schema_version, note
+    FROM task_assignments WHERE tenant_id=${tenantId} AND admin_operation_id=${operationId}
+    ORDER BY task_instance_id, student_id, event_sequence
+  `);
+  const parsed = parseUpdateAssignments(operationEvents.rows, now);
+  const expected = evidence.flatMap((item) => [...item.assignmentEventIds]).sort(compareText);
+  const actual = parsed.map((row) => row.assignment_id).sort(compareText);
+  if (actual.length !== expected.length || actual.some((id, index) => id !== expected[index])) {
+    throw new Error('Task administration assignment event integrity check failed.');
+  }
+}
+
 function parseLockedUpdateTasks(rows: readonly unknown[], now: Date): LockedUpdateTask[] {
   const failure = 'Task administration live-task integrity check failed.';
   const parsed = rows.map((raw) => {
@@ -1020,6 +1512,23 @@ function parseLockedMirrors(rows: readonly unknown[], taskInstanceId: string, no
     return { taskInstanceId: instance, studentId: exactDatabaseId(row.student_id), createdAt };
   });
   if (new Set(parsed.map((row) => row.studentId)).size !== parsed.length) throw new Error(failure);
+  return parsed;
+}
+
+function parseLockedBatchMirrors(rows: readonly unknown[], taskInstanceIds: ReadonlySet<string>, now: Date) {
+  const failure = 'Task administration allowed-student mirror integrity check failed.';
+  const parsed = rows.map((raw) => {
+    const row = exactEvidenceRecord(raw, MIRROR_ROW_KEYS, failure);
+    const createdAt = evidenceTimestamp(row.created_at, failure);
+    const taskInstanceId = exactDatabaseId(row.task_instance_id);
+    const studentId = exactDatabaseId(row.student_id);
+    if (!taskInstanceIds.has(taskInstanceId) || Date.parse(createdAt) > now.getTime()) {
+      throw new Error(failure);
+    }
+    return { taskInstanceId, studentId, createdAt };
+  });
+  const identities = parsed.map((row) => stableJson([row.taskInstanceId, row.studentId]));
+  if (new Set(identities).size !== identities.length) throw new Error(failure);
   return parsed;
 }
 
@@ -1317,9 +1826,9 @@ async function assertUpdateState(tx: TenantTransaction, tenantId: string, eviden
 }
 
 function freezeUpdateResult(result: TaskAdminUpdateSuccess): TaskAdminUpdateSuccess {
-  const task = Object.freeze({ ...result.tasks[0],
-    assignmentEventIds: Object.freeze([...result.tasks[0].assignmentEventIds]) });
-  return Object.freeze({ ...result, tasks: Object.freeze([task]) });
+  const tasks = result.tasks.map((task) => Object.freeze({ ...task,
+    assignmentEventIds: Object.freeze([...task.assignmentEventIds]) }));
+  return Object.freeze({ ...result, tasks: Object.freeze(tasks) });
 }
 
 function updateResultHash(result: TaskAdminUpdateSuccess) {
@@ -1332,8 +1841,9 @@ function updateResultHash(result: TaskAdminUpdateSuccess) {
 function updateAuditInput(result: TaskAdminUpdateSuccess, occurredAt: Date) {
   return { operationId: result.operationId, eventType: 'TASK_ADMIN_COMPLETED',
     entityType: 'OPERATION', entityId: result.operationId, redactedDetails: {
-      action: 'UPDATE', taskCount: 1,
-      assignmentEventCount: result.tasks[0].assignmentEventIds.length,
+      action: 'UPDATE', taskCount: result.tasks.length,
+      assignmentEventCount: result.tasks.reduce((count, task) =>
+        count + task.assignmentEventIds.length, 0),
       resultHash: updateResultHash(result),
     }, occurredAt } as const;
 }
@@ -1356,21 +1866,149 @@ function parseStoredUpdateResult(raw: unknown): TaskAdminUpdateSuccess {
     throw new Error('Task administration stored result integrity check failed.');
   }
   const tasks = exactArray(value.tasks, 'stored tasks');
-  if (tasks.length !== 1) throw new Error('Task administration stored result integrity check failed.');
-  const task = exactRecordOrdered(tasks[0], ['taskId', 'versionAfter', 'versionBefore',
-    'taskInstanceId', 'assignmentEventIds'], 'stored task result');
-  const versionBefore = safeInteger(task.versionBefore, 'stored task version', 1,
-    Number.MAX_SAFE_INTEGER - 1);
-  if (task.versionAfter !== versionBefore + 1) {
+  if (tasks.length < 1 || tasks.length > 100) {
+    throw new Error('Task administration stored result integrity check failed.');
+  }
+  const parsedTasks = tasks.map((rawTask) => {
+    const task = exactRecordOrdered(rawTask, ['taskId', 'versionAfter', 'versionBefore',
+      'taskInstanceId', 'assignmentEventIds'], 'stored task result');
+    const versionBefore = safeInteger(task.versionBefore, 'stored task version', 1,
+      Number.MAX_SAFE_INTEGER - 1);
+    if (task.versionAfter !== versionBefore + 1) {
+      throw new Error('Task administration stored result integrity check failed.');
+    }
+    const assignmentEventIds = exactArray(task.assignmentEventIds, 'stored assignment event IDs')
+      .map(exactStoredId);
+    if (new Set(assignmentEventIds).size !== assignmentEventIds.length) {
+      throw new Error('Task administration assignment event integrity check failed.');
+    }
+    return { taskId: exactStoredId(task.taskId), taskInstanceId: exactStoredId(task.taskInstanceId),
+      versionBefore, versionAfter: versionBefore + 1, assignmentEventIds };
+  });
+  if (new Set(parsedTasks.map((task) => task.taskId)).size !== parsedTasks.length
+    || new Set(parsedTasks.map((task) => task.taskInstanceId)).size !== parsedTasks.length
+    || parsedTasks.some((task, index) => index > 0
+      && compareText(parsedTasks[index - 1].taskId, task.taskId) >= 0)) {
     throw new Error('Task administration stored result integrity check failed.');
   }
   return freezeUpdateResult({ ok: true, operationId: exactStoredId(value.operationId), action: 'UPDATE',
-    completedAt: strictCanonicalInstant(value.completedAt, 'stored completedAt'), tasks: [{
-      taskId: exactStoredId(task.taskId), taskInstanceId: exactStoredId(task.taskInstanceId),
-      versionBefore, versionAfter: versionBefore + 1,
-      assignmentEventIds: exactArray(task.assignmentEventIds, 'stored assignment event IDs')
-        .map(exactStoredId),
-    }] });
+    completedAt: strictCanonicalInstant(value.completedAt, 'stored completedAt'), tasks: parsedTasks });
+}
+
+function parseStoredSingletonUpdateResult(raw: unknown): TaskAdminUpdateSuccess {
+  const result = parseStoredUpdateResult(raw);
+  if (result.tasks.length !== 1) {
+    throw new Error('Task administration stored result integrity check failed.');
+  }
+  return result;
+}
+
+async function resolveUpdateBatchReplay(tx: TenantTransaction, tenantId: string,
+  operation: StoredOperation, input: CanonicalUpdateBatchInput,
+  payloadHash: string): Promise<TaskAdminUpdateSuccess> {
+  if (operation.operation_kind !== 'TASK_ADMIN' || operation.payload_hash !== payloadHash) {
+    throw new Error('Task administration operation conflict.');
+  }
+  if (operation.status !== 'SUCCEEDED' || operation.failure_code !== null
+    || operation.attempt_count !== '1') {
+    throw new Error('Task administration operation is not replayable.');
+  }
+  const started = exactDate(operation.started_at, 'operation timestamp');
+  const created = exactDate(operation.created_at, 'operation timestamp');
+  const updated = exactDate(operation.updated_at, 'operation timestamp');
+  const finished = exactDate(operation.finished_at, 'operation timestamp');
+  if (started.getTime() !== created.getTime() || started.getTime() !== finished.getTime()
+    || finished.getTime() !== updated.getTime()) {
+    throw new Error('Task administration operation timestamp integrity check failed.');
+  }
+  const result = parseStoredUpdateResult(operation.result_snapshot);
+  if (result.operationId !== input.operationId || result.completedAt !== finished.toISOString()
+    || result.tasks.length !== input.tasks.length) {
+    throw new Error('Task administration stored result integrity check failed.');
+  }
+  for (let index = 0; index < input.tasks.length; index += 1) {
+    const entry = input.tasks[index];
+    const task = result.tasks[index];
+    if (task.taskId !== entry.taskId || task.versionBefore !== entry.expectedTaskVersion
+      || task.versionAfter !== entry.expectedTaskVersion + 1) {
+      throw new Error('Task administration stored result integrity check failed.');
+    }
+  }
+  const instanceIds = result.tasks.map((task) => task.taskInstanceId);
+  const identity = await tx.execute(sql`
+    SELECT task_instance_id, task_id FROM tasks WHERE tenant_id=${tenantId}
+      AND task_instance_id IN (${sql.join(instanceIds.map((id) => sql`${id}`), sql`, `)})
+    ORDER BY task_instance_id
+  `);
+  const identityFailure = 'Task administration physical identity integrity check failed.';
+  const identityRows = identity.rows.map((raw) => {
+    const row = exactEvidenceRecord(raw, ['task_instance_id', 'task_id'] as const, identityFailure);
+    return { taskInstanceId: exactDatabaseId(row.task_instance_id), taskId: exactDatabaseId(row.task_id) };
+  });
+  if (identityRows.length !== result.tasks.length
+    || new Set(identityRows.map((row) => row.taskInstanceId)).size !== identityRows.length
+    || result.tasks.some((task) => !identityRows.some((row) =>
+      row.taskInstanceId === task.taskInstanceId && row.taskId === task.taskId))) {
+    throw new Error(identityFailure);
+  }
+  const operationEvents = await tx.execute(sql`
+    SELECT assignment_id, event_sequence::text AS event_sequence, task_id_snapshot,
+      task_instance_id, cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone,
+      student_id, event_type, source, previous_assignment_id, admin_operation_id,
+      admin_operation_hash, created_at, schema_version, note
+    FROM task_assignments WHERE tenant_id=${tenantId} AND admin_operation_id=${input.operationId}
+    ORDER BY task_instance_id, student_id, event_sequence
+  `);
+  const parsed = parseUpdateAssignments(operationEvents.rows, finished);
+  const frozenIds = result.tasks.flatMap((task) => [...task.assignmentEventIds]);
+  if (new Set(frozenIds).size !== frozenIds.length || parsed.length !== frozenIds.length
+    || new Set(parsed.map((row) => row.assignment_id)).size !== parsed.length
+    || frozenIds.some((id) => !parsed.some((row) => row.assignment_id === id))) {
+    throw new Error('Task administration assignment event integrity check failed.');
+  }
+  const history = await tx.execute(sql`
+    SELECT assignment_id, event_sequence::text AS event_sequence, task_id_snapshot,
+      task_instance_id, cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone,
+      student_id, event_type, source, previous_assignment_id, admin_operation_id,
+      admin_operation_hash, created_at, schema_version, note
+    FROM task_assignments WHERE tenant_id=${tenantId}
+      AND task_instance_id IN (${sql.join(instanceIds.map((id) => sql`${id}`), sql`, `)})
+    ORDER BY task_instance_id, student_id, event_sequence
+  `);
+  const allEvents = parseUpdateAssignments(history.rows, new Date(8640000000000000));
+  // Replay authenticates only this operation's frozen rows. Other history can change later;
+  // it is consulted solely to recover each bound row's immediate predecessor, not re-audited globally.
+  for (let index = 0; index < result.tasks.length; index += 1) {
+    const taskResult = result.tasks[index];
+    const entry = input.tasks[index];
+    const rows = parsed.filter((row) => row.task_instance_id === taskResult.taskInstanceId)
+      .sort((left, right) => compareText(left.student_id, right.student_id));
+    if (rows.length !== taskResult.assignmentEventIds.length
+      || new Set(rows.map((row) => row.student_id)).size !== rows.length
+      || taskResult.assignmentEventIds.some((id, eventIndex) => id !== rows[eventIndex]?.assignment_id)) {
+      throw new Error('Task administration assignment event integrity check failed.');
+    }
+    for (const row of rows) {
+      const expectedType = entry.allowedStudentIds.includes(row.student_id) ? 'ASSIGNED' : 'UNASSIGNED';
+      const prior = allEvents.filter((candidate) => candidate.task_instance_id === taskResult.taskInstanceId
+        && candidate.student_id === row.student_id && candidate.cycle_id === row.cycle_id
+        && candidate.cycle_start_at === row.cycle_start_at && candidate.cycle_end_at === row.cycle_end_at
+        && candidate.rule_version === row.rule_version && candidate.timezone === row.timezone
+        && Number(candidate.event_sequence) < Number(row.event_sequence))
+        .sort((left, right) => Number(right.event_sequence) - Number(left.event_sequence))[0];
+      if (row.task_id_snapshot !== entry.taskId || row.event_type !== expectedType
+        || row.source !== 'ADMIN'
+        || row.assignment_id !== createTaskAdminAssignmentEventId(input.operationId, entry.taskId,
+          row.student_id, expectedType)
+        || row.previous_assignment_id !== (prior?.assignment_id ?? null)
+        || row.admin_operation_id !== input.operationId || row.admin_operation_hash !== payloadHash
+        || row.created_at !== finished.toISOString() || row.schema_version !== 1 || row.note !== null) {
+        throw new Error('Task administration assignment event integrity check failed.');
+      }
+    }
+  }
+  await assertUpdateAudit(tx, tenantId, updateAuditInput(result, finished));
+  return result;
 }
 
 async function resolveUpdateReplay(tx: TenantTransaction, tenantId: string, operation: StoredOperation,
@@ -1390,7 +2028,7 @@ async function resolveUpdateReplay(tx: TenantTransaction, tenantId: string, oper
     || finished.getTime() !== updated.getTime()) {
     throw new Error('Task administration operation timestamp integrity check failed.');
   }
-  const result = parseStoredUpdateResult(operation.result_snapshot);
+  const result = parseStoredSingletonUpdateResult(operation.result_snapshot);
   const taskResult = result.tasks[0];
   if (result.operationId !== input.operationId || result.completedAt !== finished.toISOString()
     || taskResult.taskId !== input.taskId || taskResult.versionBefore !== input.expectedTaskVersion
@@ -2118,14 +2756,15 @@ function assertNoPrerequisiteCycle(
 }
 
 function assertExactActiveStudents(rows: readonly unknown[], expected: readonly string[]) {
+  const failure = 'Task administration allowed student not found or invalid.';
   const actual = rows.map((raw) => {
-    const row = raw as Record<string, unknown>;
+    const row = exactEvidenceRecord(raw, ['student_id', 'status'] as const, failure);
     if (row.status !== 'ACTIVE') throw new Error('Task administration student is not active.');
     return exactDatabaseId(row.student_id);
   });
   if (actual.length !== expected.length || new Set(actual).size !== actual.length
     || expected.some((id) => !actual.includes(id))) {
-    throw new Error('Task administration allowed student not found or invalid.');
+    throw new Error(failure);
   }
 }
 
