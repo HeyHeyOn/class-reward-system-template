@@ -118,6 +118,37 @@ const updateInput = () => ({
   productIds: [' P002 '],
 });
 
+const updateBatchInput = () => ({
+  operationId: 'promotion-update-batch-operation',
+  promotions: [
+    {
+      promotionId: ' PROMO-002 ',
+      expectedPromotionVersion: 1,
+      definition: {
+        name: ' 고정 할인 ',
+        description: ' 둘째 변경 ',
+        type: 'FIXED_DISCOUNT' as const,
+        discountAmount: 15,
+        startsAt: '2026-08-31T00:00:00.000Z',
+        endsAt: '2026-10-01T00:00:00.000Z',
+        isActive: true,
+        sortOrder: 8,
+      },
+      productIds: [],
+    },
+    {
+      promotionId: 'PROMO-001',
+      expectedPromotionVersion: 1,
+      definition: updateInput().definition,
+      productIds: [' P002 '],
+    },
+  ],
+});
+
+async function seedUpdateBatchTargets() {
+  await commands().createBatch(createBatchInput());
+}
+
 const activateInput = () => ({
   operationId: 'promotion-activate-operation',
   promotionId: ' PROMO-001 ',
@@ -883,6 +914,307 @@ describe('PostgreSQL promotion administration commands', () => {
     expect(state.links).toEqual([]);
     expect(state.operations).toEqual([]);
     expect(state.audits).toEqual([]);
+  });
+
+  it('exports updateBatch and atomically updates canonical targets with one operation and audit', async () => {
+    await seedUpdateBatchTargets();
+    const input = updateBatchInput();
+    const result = await commands().updateBatch(input);
+    expect(result).toEqual({
+      ok: true,
+      operationId: input.operationId,
+      action: 'UPDATE',
+      completedAt: NOW.toISOString(),
+      promotions: [
+        expect.objectContaining({
+          promotionId: 'PROMO-001', type: 'PROMOTIONAL_PRICE', productIds: ['P002'],
+          promotionVersionBefore: 1, promotionVersionAfter: 2,
+        }),
+        expect.objectContaining({
+          promotionId: 'PROMO-002', type: 'FIXED_DISCOUNT', productIds: [],
+          promotionVersionBefore: 1, promotionVersionAfter: 2,
+        }),
+      ],
+    });
+    const state = await snapshot();
+    expect(state.promotions).toEqual([
+      expect.objectContaining({ promotion_id: 'PROMO-001', type: 'PROMOTIONAL_PRICE', version: '2' }),
+      expect.objectContaining({ promotion_id: 'PROMO-002', type: 'FIXED_DISCOUNT', version: '2' }),
+    ]);
+    expect(state.links).toEqual([{
+      promotion_product_id: createPromotionAdminLinkId(input.operationId, 'PROMO-001', 'P002'),
+      promotion_id: 'PROMO-001', product_id: 'P002', schema_version: 3,
+    }]);
+    expect(state.operations).toHaveLength(2);
+    expect(state.audits).toHaveLength(2);
+    expect(state.audits[1]).toEqual(expect.objectContaining({
+      redacted_details: expect.objectContaining({ changedPromotionCount: 2, targetProductCount: 1 }),
+    }));
+  });
+
+  it('rejects malformed and over-limit update batches before transaction entry', async () => {
+    let calls = 0;
+    const batchCommands = createDatabasePromotionCommands({
+      tenantId: harness.tenantOneId,
+      runTenantTransaction: async () => { calls += 1; throw new Error('sentinel'); },
+      now: () => NOW,
+    });
+    const valid = updateBatchInput().promotions[0];
+    const invalid = [
+      { operationId: 'empty', promotions: [] },
+      { operationId: 'large', promotions: Array.from({ length: 101 }, (_, index) => ({
+        ...valid, promotionId: `PROMO-${index}`,
+      })) },
+      { operationId: 'duplicate', promotions: [
+        { ...valid, promotionId: ' SAME ' }, { ...valid, promotionId: 'SAME' },
+      ] },
+      { operationId: 'nested', promotions: [{ ...valid, operationId: 'forbidden' }] },
+      { operationId: 'later-malformed', promotions: [valid, { ...valid, promotionId: 'LATER', extra: true }] },
+      { operationId: 'overflow', promotions: [{ ...valid, expectedPromotionVersion: Number.MAX_SAFE_INTEGER }] },
+    ];
+    for (const value of invalid) await expect(batchCommands.updateBatch(value as never)).rejects.toThrow();
+    const products = Array.from({ length: 1001 }, (_, index) => `P-${index}`);
+    await expect(batchCommands.updateBatch({
+      operationId: 'links', promotions: [{ ...valid, productIds: products }],
+    })).rejects.toThrow(/link count.*1000/i);
+    const invalidClockCommands = createDatabasePromotionCommands({
+      tenantId: harness.tenantOneId,
+      runTenantTransaction: async () => { calls += 1; throw new Error('sentinel'); },
+      now: () => new Date(Number.NaN),
+    });
+    await expect(invalidClockCommands.updateBatch({
+      operationId: 'invalid-now', promotions: [valid],
+    })).rejects.toThrow(/timestamp.*invalid/i);
+    expect(calls).toBe(0);
+
+    const transactionSentinel = new Error('sentinel');
+    const boundaryCommands = createDatabasePromotionCommands({
+      tenantId: harness.tenantOneId,
+      runTenantTransaction: async () => { calls += 1; throw transactionSentinel; },
+      now: () => NOW,
+    });
+    await expect(boundaryCommands.updateBatch({
+      operationId: 'size-100', promotions: Array.from({ length: 100 }, (_, index) => ({
+        ...valid, promotionId: `B-${index}`, productIds: [],
+      })),
+    })).rejects.toBe(transactionSentinel);
+    await expect(boundaryCommands.updateBatch({
+      operationId: 'links-1000', promotions: [{ ...valid, productIds: products.slice(0, 1000) }],
+    })).rejects.toBe(transactionSentinel);
+    expect(calls).toBe(2);
+  });
+
+  it('rolls back the whole update batch for a stale later target or malformed chronology', async () => {
+    await seedUpdateBatchTargets();
+    const before = await snapshot();
+    const stale = updateBatchInput();
+    stale.promotions[0].expectedPromotionVersion = 2;
+    await expect(commands().updateBatch(stale)).rejects.toThrow(/stale|version/i);
+    expect(await snapshot()).toEqual(before);
+
+    await harness.database.query(
+      'UPDATE promotions SET updated_at=$3 WHERE tenant_id=$1 AND promotion_id=$2',
+      [harness.tenantOneId, 'PROMO-002', '2026-08-30T02:00:00.000Z'],
+    );
+    const malformed = await snapshot();
+    await expect(commands().updateBatch(updateBatchInput())).rejects.toThrow(/chronology|timestamp/i);
+    expect(await snapshot()).toEqual(malformed);
+  });
+
+  it('replays a reversed update batch exactly and conflicts on changed payload', async () => {
+    await seedUpdateBatchTargets();
+    const input = updateBatchInput();
+    const first = await commands().updateBatch(input);
+    await expect(commands().updateBatch({ ...input, promotions: [...input.promotions].reverse() }))
+      .resolves.toEqual(first);
+    await expect(commands().updateBatch({
+      ...input,
+      promotions: [input.promotions[0], {
+        ...input.promotions[1], definition: { ...input.promotions[1].definition, name: 'changed' },
+      }],
+    })).rejects.toThrow(/conflict/i);
+  });
+
+  it('re-reads a winning updateBatch operation after an insert race', async () => {
+    await seedUpdateBatchTargets();
+    const input = updateBatchInput();
+    const first = await commands().updateBatch(input);
+    const raceCommands = createDatabasePromotionCommands({
+      tenantId: harness.tenantOneId,
+      now: () => NOW,
+      runTenantTransaction: (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) => {
+        let missedInitialRead = false;
+        const raceTx = {
+          execute: async (query: Parameters<typeof tx.execute>[0]) => {
+            if (!missedInitialRead) {
+              missedInitialRead = true;
+              return { rows: [] } as never;
+            }
+            return tx.execute(query);
+          },
+        } as unknown as typeof tx;
+        return callback(raceTx);
+      }),
+    });
+    await expect(raceCommands.updateBatch({
+      ...input, promotions: [...input.promotions].reverse(),
+    })).resolves.toEqual(first);
+  });
+
+  it('replays frozen update-batch evidence after mutation but rejects a hard-missing identity', async () => {
+    await seedUpdateBatchTargets();
+    const input = updateBatchInput();
+    const first = await commands().updateBatch(input);
+    await harness.database.query(
+      `UPDATE promotions SET name='later', version=3, deleted_at=$3, updated_at=$3
+       WHERE tenant_id=$1 AND promotion_id=$2`,
+      [harness.tenantOneId, 'PROMO-001', '2026-08-30T02:00:00.000Z'],
+    );
+    await expect(commands().updateBatch(input)).resolves.toEqual(first);
+    await harness.database.query(
+      'DELETE FROM promotion_products WHERE tenant_id=$1 AND promotion_id=$2',
+      [harness.tenantOneId, 'PROMO-002'],
+    );
+    await harness.database.query(
+      'DELETE FROM promotions WHERE tenant_id=$1 AND promotion_id=$2',
+      [harness.tenantOneId, 'PROMO-002'],
+    );
+    await expect(commands().updateBatch(input)).rejects.toThrow(/identity integrity/i);
+  });
+
+  it('rolls back updateBatch when a later metadata write is suppressed', async () => {
+    await seedUpdateBatchTargets();
+    const before = await snapshot();
+    await harness.database.exec(`
+      CREATE FUNCTION suppress_later_promotion_batch_update() RETURNS trigger
+      LANGUAGE plpgsql AS $$ BEGIN
+        IF OLD.promotion_id='PROMO-002' THEN RETURN OLD; END IF; RETURN NEW;
+      END $$;
+      CREATE TRIGGER suppress_later_promotion_batch_update BEFORE UPDATE ON promotions
+      FOR EACH ROW EXECUTE FUNCTION suppress_later_promotion_batch_update();
+    `);
+    await expect(commands().updateBatch(updateBatchInput())).rejects.toThrow(/integrity/i);
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it.each([
+    ['metadata update', 'promotions', "OLD.promotion_id='PROMO-002'", 'RETURN OLD'],
+    ['old link delete', 'promotion_products', "OLD.promotion_id='PROMO-002'", 'RETURN NULL'],
+    ['new link insert', 'promotion_products', "NEW.promotion_id='PROMO-001'", 'RETURN NULL'],
+    ['audit insert', 'audit_events', "NEW.operation_id='promotion-update-batch-operation'", 'RETURN NULL'],
+    ['terminal update', 'operations', "NEW.operation_id='promotion-update-batch-operation' AND NEW.status='SUCCEEDED'", 'RETURN NULL'],
+  ] as const)('rolls back updateBatch when required %s evidence is suppressed', async (
+    _label, table, condition, triggerResult,
+  ) => {
+    await seedUpdateBatchTargets();
+    const before = await snapshot();
+    await harness.database.exec(`
+      CREATE FUNCTION suppress_required_update_batch_write() RETURNS trigger
+      LANGUAGE plpgsql AS $$ BEGIN
+        IF ${condition} THEN ${triggerResult}; END IF; RETURN NEW;
+      END $$;
+      CREATE TRIGGER suppress_required_update_batch_write
+      BEFORE INSERT OR UPDATE OR DELETE ON ${table}
+      FOR EACH ROW EXECUTE FUNCTION suppress_required_update_batch_write();
+    `);
+    await expect(commands().updateBatch(updateBatchInput())).rejects.toThrow(/integrity|replayable/i);
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('rolls back updateBatch when a later update mutates an earlier target', async () => {
+    await seedUpdateBatchTargets();
+    const before = await snapshot();
+    await harness.database.exec(`
+      CREATE FUNCTION mutate_earlier_after_later_update() RETURNS trigger
+      LANGUAGE plpgsql AS $$ BEGIN
+        IF NEW.promotion_id='PROMO-002' THEN
+          UPDATE promotions SET name='trigger-mutated'
+          WHERE tenant_id=NEW.tenant_id AND promotion_id='PROMO-001';
+        END IF; RETURN NEW;
+      END $$;
+      CREATE TRIGGER mutate_earlier_after_later_update AFTER UPDATE ON promotions
+      FOR EACH ROW EXECUTE FUNCTION mutate_earlier_after_later_update();
+    `);
+    await expect(commands().updateBatch(updateBatchInput())).rejects.toThrow(/integrity/i);
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it.each([
+    ['audit', `CREATE FUNCTION mutate_update_batch_after_audit() RETURNS trigger
+      LANGUAGE plpgsql AS $$ BEGIN
+        IF NEW.operation_id='promotion-update-batch-operation' THEN
+          UPDATE promotions SET schema_version=2
+          WHERE tenant_id=NEW.tenant_id AND promotion_id='PROMO-001';
+        END IF; RETURN NEW; END $$;
+      CREATE TRIGGER mutate_update_batch_after_audit AFTER INSERT ON audit_events
+      FOR EACH ROW EXECUTE FUNCTION mutate_update_batch_after_audit();`],
+    ['terminal', `CREATE FUNCTION mutate_update_batch_after_terminal() RETURNS trigger
+      LANGUAGE plpgsql AS $$ BEGIN
+        IF NEW.operation_id='promotion-update-batch-operation' AND NEW.status='SUCCEEDED' THEN
+          DELETE FROM promotion_products
+          WHERE tenant_id=NEW.tenant_id AND promotion_id='PROMO-001';
+        END IF; RETURN NEW; END $$;
+      CREATE TRIGGER mutate_update_batch_after_terminal AFTER UPDATE ON operations
+      FOR EACH ROW EXECUTE FUNCTION mutate_update_batch_after_terminal();`],
+  ] as const)('rolls back updateBatch when the %s write mutates verified state', async (_label, ddl) => {
+    await seedUpdateBatchTargets();
+    const before = await snapshot();
+    await harness.database.exec(ddl);
+    await expect(commands().updateBatch(updateBatchInput())).rejects.toThrow(/integrity/i);
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('fails closed on reordered stored updateBatch results and extra audits', async () => {
+    await seedUpdateBatchTargets();
+    const input = updateBatchInput();
+    await commands().updateBatch(input);
+    await withOperationAuditTampering(async () => {
+      await harness.database.query(
+        `UPDATE operations SET result_snapshot=jsonb_set(result_snapshot, '{promotions}',
+          jsonb_build_array(result_snapshot->'promotions'->1, result_snapshot->'promotions'->0))
+         WHERE tenant_id=$1 AND operation_id=$2`,
+        [harness.tenantOneId, input.operationId],
+      );
+    });
+    await expect(commands().updateBatch(input)).rejects.toThrow(/stored result integrity/i);
+    await withOperationAuditTampering(async () => {
+      await harness.database.query(
+        `UPDATE operations SET result_snapshot=jsonb_set(result_snapshot, '{promotions}',
+          jsonb_build_array(result_snapshot->'promotions'->1, result_snapshot->'promotions'->0))
+         WHERE tenant_id=$1 AND operation_id=$2`,
+        [harness.tenantOneId, input.operationId],
+      );
+    });
+    await harness.runTenantTransaction(harness.tenantOneId, async (tx) => {
+      await appendOperationAudit(tx, harness.tenantOneId, {
+        operationId: input.operationId, eventType: 'PROMOTION_ADMIN_EXTRA',
+        entityType: 'OPERATION', entityId: input.operationId, occurredAt: NOW,
+        redactedDetails: { action: 'UPDATE' },
+      });
+    });
+    await expect(commands().updateBatch(input)).rejects.toThrow(/audit integrity/i);
+  });
+
+  it('accepts target sets whose database collation differs from JavaScript order', async () => {
+    const javascriptFirst = 'PROMO-\u{10000}';
+    const databaseFirst = 'PROMO-\uE000';
+    await commands().createBatch({
+      operationId: 'collation-create',
+      promotions: [
+        { ...createBatchInput().promotions[0], promotionId: javascriptFirst, productIds: ['P001'] },
+        { ...createBatchInput().promotions[1], promotionId: databaseFirst, productIds: ['P002'] },
+      ],
+    });
+    const base = updateBatchInput().promotions;
+    await expect(commands().updateBatch({
+      operationId: 'collation-update',
+      promotions: [
+        { ...base[0], promotionId: databaseFirst, productIds: ['P001'] },
+        { ...base[1], promotionId: javascriptFirst, productIds: ['P002'] },
+      ],
+    })).resolves.toMatchObject({
+      promotions: [{ promotionId: javascriptFirst }, { promotionId: databaseFirst }],
+    });
   });
 
   it('accepts target and final-link rows in database collation order', async () => {
