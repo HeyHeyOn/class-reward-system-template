@@ -48,7 +48,6 @@ export const REQUIRED_SHEETS: Record<GeneratedSheetName, string[]> = {
     'pendingRuleVersion', 'pendingEffectiveFrom', 'pendingTimeZone', 'pendingRecurrenceType', 'pendingRecurrenceTime',
     'pendingRecurrenceWeekday', 'pendingRecurrenceDayOfMonth', 'pendingResetCompletionOnCycle', 'pendingResetAssignmentOnCycle',
     'availableFrom', 'dueAt', 'prerequisiteTaskId', 'recurrenceWeekdays', 'pendingRecurrenceWeekdays',
-    'padletBoardId',
   ],
   TaskAssignments: [
     'assignmentId', 'taskId', 'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion',
@@ -57,8 +56,6 @@ export const REQUIRED_SHEETS: Record<GeneratedSheetName, string[]> = {
   TaskCompletions: [
     'completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note',
     'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion', 'timeZone', 'source', 'assignmentId', 'schemaVersion',
-    'operationId', 'operationPayloadHash', 'evidenceProvider', 'evidenceBoardId', 'evidencePostId',
-    'evidenceCreatedAt', 'evidenceAuthorFullName',
   ],
   Promotions: [
     'promotionId', 'name', 'description', 'type', 'value', 'buyQuantity', 'freeQuantity',

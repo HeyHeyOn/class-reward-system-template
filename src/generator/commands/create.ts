@@ -14,7 +14,7 @@ export function getCreateCommandPlan(options: { dryRun?: boolean; instanceOption
       action('collect-basic-settings', '기본 설정 입력', '시스템 이름, 매점 제목, 은행 제목, 화폐 단위, 테마, 관리자 암호 설정 여부를 확정합니다.'),
       action('create-sheets-template', '시트 템플릿 생성', '필수 시트와 헤더만 생성하고 실제 학생 개인정보는 수집하지 않습니다.'),
       action('initialize-settings', 'Settings 초기화', 'schemaVersion, systemVersion, systemName, appTitle, bankTitle, currencyUnit, themeColor, className을 기록합니다.'),
-      action('configure-vercel-env', 'Vercel 환경변수 준비', 'Google Sheets 인증과 선택적 Padlet/Upstash 연동에 필요한 배포 환경 이름을 확인하고 값은 출력하지 않습니다.'),
+      action('configure-vercel-env', 'Vercel 환경변수 준비', 'GOOGLE_SHEET_ID, ADMIN_PASSWORD, AUTH_SECRET 등 배포 환경 이름을 확인하고 값은 출력하지 않습니다.'),
       action('deploy-production', 'Production 배포', '새 학급 보상 시스템 인스턴스를 운영 배포합니다.'),
       action('write-result-report', '결과 리포트 작성', '운영 URL, 관리자 URL, 은행 URL, 시트 URL, 운영 가이드를 출력합니다.'),
     ],
@@ -24,10 +24,7 @@ export function getCreateCommandPlan(options: { dryRun?: boolean; instanceOption
       systemVersion: SYSTEM_VERSION,
       settings: buildSettingsRows(instanceOptions),
       sheets: Object.entries(REQUIRED_SHEETS).map(([name, columns]) => ({ name, columns })),
-      vercelEnvNames: [
-        'GOOGLE_SHEET_ID', 'ADMIN_PASSWORD', 'AUTH_SECRET', 'PADLET_API_KEY',
-        'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN',
-      ],
+      vercelEnvNames: ['GOOGLE_SHEET_ID', 'ADMIN_PASSWORD', 'AUTH_SECRET'],
     },
   });
 }

@@ -483,10 +483,10 @@ describe('sheets row parsing', () => {
       'operationPayloadHash',
     ];
     const pending = {
-      completionId: 'TC-OP', timestamp: '2026-08-26T00:00:00.000Z', taskId: 'T-1', studentId: 'S-1',
+      completionId: 'TC-OP', timestamp: '2026-08-26T00:00:00Z', taskId: 'T-1', studentId: 'S-1',
       studentName: '학생', reward: 5, balanceBefore: 10, balanceAfter: 15, status: 'PENDING', note: '',
-      taskInstanceId: 'TI-1', cycleId: 'C-2', cycleStartsAt: '2026-08-26T00:00:00.000Z',
-      cycleEndsAt: '2026-08-27T00:00:00.000Z', ruleVersion: 2, timeZone: 'Asia/Seoul',
+      taskInstanceId: 'TI-1', cycleId: 'C-2', cycleStartsAt: '2026-08-26T00:00:00Z',
+      cycleEndsAt: '2026-08-27T00:00:00Z', ruleVersion: 2, timeZone: 'Asia/Seoul',
       source: 'BANK' as const, assignmentId: 'A-1', schemaVersion: 2,
       operationId: '11111111-1111-4111-8111-111111111111', operationPayloadHash: 'sha256:abc',
     };

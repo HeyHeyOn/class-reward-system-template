@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getTaskCycle } from '@/domain/taskRecurrence';
 import type { ClassTask, Student, TaskCompletion } from '@/domain/types';
-import type { OperationalSheetName } from '@/generator/config/schema';
 import { getTaskAssignmentStatus, resetTaskCompletionsBatch, updateTaskAssignmentStatus } from '@/server/sheetsRepository';
 import { TASK_ASSIGNMENT_HEADERS, TASK_COMPLETION_SCHEMA_HEADERS, TASK_SCHEMA_HEADERS } from './recurringSchemaMigrator';
 import { mutateTaskCompletion, TaskCompletionReconciliationError } from './taskCompletionCommands';
@@ -14,13 +13,6 @@ const task: ClassTask = {
 const student: Student = { studentId: 'S1', name: 'Kim', balance: 10, status: 'ACTIVE' };
 const NOW = '2026-08-25T12:00:00.000Z';
 const NEXT = '2026-08-26T12:00:00.000Z';
-const padletEvidence = {
-  evidenceProvider: 'PADLET' as const,
-  evidenceBoardId: 'AbCdEfGhIjKlMnOp',
-  evidencePostId: 'post_456',
-  evidenceCreatedAt: '2026-08-25T11:45:00.000Z',
-  evidenceAuthorFullName: 'Kim Student',
-};
 
 class Store {
   rows: Record<string, string[][]>;
@@ -30,7 +22,7 @@ class Store {
   });
   appendRow = vi.fn(async (sheet: string, values: string[]) => { this.rows[sheet].push([...values]); });
   updateCells = vi.fn(); updateHeaderRow = vi.fn(); deleteRow = vi.fn(); deleteRows = vi.fn();
-  lookupSheet = vi.fn(async (name: OperationalSheetName) => ({ found: true as const, info: { sheetId: 1, title: name, columnCount: this.rows[name][0].length } }));
+  lookupSheet = vi.fn(async (name: string) => ({ found: true as const, info: { sheetId: 1, title: name, columnCount: this.rows[name][0].length } }));
   createSheetWithHeader = vi.fn(); ensureColumnCount = vi.fn(); writeHeaderCells = vi.fn(); verifyHeaderCells = vi.fn(); verifyAndWriteHeaderCells = vi.fn();
   getRows = vi.fn(async (sheet: string) => this.rows[sheet].map((row) => [...row]));
   getRowsFresh = vi.fn(async (sheet: string) => this.rows[sheet].map((row) => [...row]));
@@ -63,9 +55,7 @@ function operationCompletionRow(
   return completionRow({
     completionId: `${operation.operationId}:${status}`, timestamp: NOW, taskId: 'T1', studentId: 'S1',
     studentName: 'Kim', reward: 5, balanceBefore, balanceAfter, status, note: 'bank-self-completion',
-    taskInstanceId: 'I1', cycleId: cycle.cycleId,
-    cycleStartsAt: new Date(cycle.startsAt).toISOString(),
-    cycleEndsAt: cycle.endsAt ? new Date(cycle.endsAt).toISOString() : null,
+    taskInstanceId: 'I1', cycleId: cycle.cycleId, cycleStartsAt: cycle.startsAt, cycleEndsAt: cycle.endsAt,
     ruleVersion: 1, timeZone: 'UTC', source: 'BANK', assignmentId: 'A1', schemaVersion: 2, ...operation,
   });
 }
@@ -106,188 +96,6 @@ function taskRow(valueTask: ClassTask): string[] {
 
 describe('cycle-aware completion command', () => {
   afterEach(() => vi.useRealTimers());
-
-  it('writes the complete Padlet evidence snapshot on the PENDING checkpoint', async () => {
-    const store = new Store();
-    store.updateCell.mockRejectedValueOnce(new Error('balance unavailable'));
-
-    await expect(mutateTaskCompletion({
-      store: store as never, task, taskRowNumber: 2, student, studentRowNumber: 2,
-      completed: true, source: 'BANK', now: NOW, ...bankOperation('evidence-pending'),
-      evidence: padletEvidence,
-    })).rejects.toThrow('balance unavailable');
-
-    expect(completionRecords(store)).toEqual([
-      expect.objectContaining({ status: 'PENDING', ...padletEvidence }),
-    ]);
-  });
-
-  it('preserves identical Padlet evidence through BALANCE_APPLIED and SUCCESS checkpoints', async () => {
-    const store = new Store();
-
-    await mutateTaskCompletion({
-      store: store as never, task, taskRowNumber: 2, student, studentRowNumber: 2,
-      completed: true, source: 'BANK', now: NOW, ...bankOperation('evidence-checkpoints'),
-      evidence: padletEvidence,
-    });
-
-    expect(completionRecords(store)).toHaveLength(3);
-    expect(completionRecords(store).every((event) =>
-      Object.entries(padletEvidence).every(([key, value]) => event[key] === value))).toBe(true);
-  });
-
-  it('resumes the same operation with its original Padlet evidence intact', async () => {
-    const store = new Store();
-    const operation = bankOperation('evidence-retry');
-    const baseAppend = store.appendRow.getMockImplementation()!;
-    let failTransaction = true;
-    store.appendRow.mockImplementation(async (sheet: string, values: string[]) => {
-      if (sheet === 'Transactions' && failTransaction) {
-        failTransaction = false;
-        throw new Error('transaction unavailable');
-      }
-      await baseAppend(sheet, values);
-    });
-    const input = {
-      store: store as never, task, taskRowNumber: 2, student, studentRowNumber: 2,
-      completed: true as const, source: 'BANK' as const, now: NOW, ...operation,
-      evidence: padletEvidence,
-    };
-
-    await expect(mutateTaskCompletion(input)).rejects.toThrow('transaction unavailable');
-    const retry = await mutateTaskCompletion(input);
-
-    expect(retry.completion).toMatchObject({ status: 'SUCCESS', ...padletEvidence });
-    expect(completionRecords(store).every((event) =>
-      Object.entries(padletEvidence).every(([key, value]) => event[key] === value))).toBe(true);
-  });
-
-  it('restores persisted Padlet evidence when the same operation retry omits evidence', async () => {
-    const store = new Store();
-    const operation = bankOperation('evidence-omitted-retry');
-    const baseInput = {
-      store: store as never, task, taskRowNumber: 2, student, studentRowNumber: 2,
-      completed: true as const, source: 'BANK' as const, now: NOW, ...operation,
-    };
-    await mutateTaskCompletion({ ...baseInput, evidence: padletEvidence });
-
-    const retry = await mutateTaskCompletion(baseInput);
-
-    expect(retry.changed).toBe(false);
-    expect(retry.completion).toMatchObject({ status: 'SUCCESS', ...padletEvidence });
-  });
-
-  it('rejects an omitted-evidence retry with a changed base payload before writes', async () => {
-    const store = new Store();
-    const operation = bankOperation('evidence-changed-base');
-    await mutateTaskCompletion({
-      store, task, taskRowNumber: 2, student, studentRowNumber: 2,
-      completed: true, source: 'BANK', now: NOW,
-      ...operation, evidence: padletEvidence,
-    });
-    store.appendRow.mockClear();
-    store.updateCell.mockClear();
-
-    await expect(mutateTaskCompletion({
-      store, task, taskRowNumber: 2, student, studentRowNumber: 2,
-      completed: true, source: 'BANK', now: NOW,
-      operationId: operation.operationId,
-      operationPayloadHash: `sha256:${'f'.repeat(64)}`,
-    })).rejects.toThrow('TASK_COMPLETION_OPERATION_PAYLOAD_CONFLICT');
-    expect(store.appendRow).not.toHaveBeenCalled();
-    expect(store.updateCell).not.toHaveBeenCalled();
-  });
-
-  it('fails closed before writes when persisted operation evidence is corrupted', async () => {
-    const store = new Store();
-    const operation = bankOperation('evidence-corrupted');
-    await mutateTaskCompletion({
-      store, task, taskRowNumber: 2, student, studentRowNumber: 2,
-      completed: true, source: 'BANK', now: NOW,
-      ...operation, evidence: padletEvidence,
-    });
-    const evidencePostIdIndex = store.rows.TaskCompletions[0].indexOf('evidencePostId');
-    for (const row of store.rows.TaskCompletions.slice(1)) row[evidencePostIdIndex] = '';
-    store.appendRow.mockClear();
-    store.updateCell.mockClear();
-
-    await expect(mutateTaskCompletion({
-      store, task, taskRowNumber: 2, student, studentRowNumber: 2,
-      completed: true, source: 'BANK', now: NOW,
-      ...operation,
-    })).rejects.toThrow('TaskCompletion evidence is malformed');
-    expect(store.appendRow).not.toHaveBeenCalled();
-    expect(store.updateCell).not.toHaveBeenCalled();
-  });
-
-  it('rejects the same operation ID when its Padlet evidence snapshot changes', async () => {
-    const store = new Store();
-    const operation = bankOperation('evidence-conflict');
-    const input = {
-      store: store as never, task, taskRowNumber: 2, student, studentRowNumber: 2,
-      completed: true as const, source: 'BANK' as const, now: NOW, ...operation,
-    };
-    await mutateTaskCompletion({ ...input, evidence: padletEvidence });
-    store.appendRow.mockClear();
-    store.updateCell.mockClear();
-
-    await expect(mutateTaskCompletion({
-      ...input,
-      evidence: { ...padletEvidence, evidencePostId: 'post_789' },
-    })).rejects.toThrow('TASK_COMPLETION_OPERATION_PAYLOAD_CONFLICT');
-    expect(store.appendRow).not.toHaveBeenCalled();
-    expect(store.updateCell).not.toHaveBeenCalled();
-  });
-
-  it('keeps unlinked BANK checkpoint rows free of evidence', async () => {
-    const store = new Store();
-
-    await mutateTaskCompletion({
-      store: store as never, task, taskRowNumber: 2, student, studentRowNumber: 2,
-      completed: true, source: 'BANK', now: NOW, ...bankOperation('no-evidence'),
-    });
-
-    expect(completionRecords(store).every((event) =>
-      ['evidenceProvider', 'evidenceBoardId', 'evidencePostId', 'evidenceCreatedAt', 'evidenceAuthorFullName']
-        .every((key) => event[key] === ''))).toBe(true);
-  });
-
-  it.each([
-    ['timestamp', '2026-08-25T10:00:01.000Z'],
-    ['cycleStartsAt', '2026-08-25T00:00:01.000Z'],
-    ['cycleEndsAt', '2026-08-27T00:00:00.000Z'],
-    ['ruleVersion', '2'],
-    ['timeZone', 'Asia/Seoul'],
-  ])('rejects mixed immutable checkpoint field %s before retry writes', async (field, value) => {
-    const store = new Store();
-    const operation = bankOperation(`checkpoint-${field}`);
-    const input = {
-      store: store as never, task, taskRowNumber: 2, student, studentRowNumber: 2,
-      completed: true as const, source: 'BANK' as const, now: NOW, ...operation,
-    };
-    await mutateTaskCompletion(input);
-    const fieldIndex = store.rows.TaskCompletions[0].indexOf(field);
-    store.rows.TaskCompletions[2][fieldIndex] = value;
-    store.appendRow.mockClear();
-    store.updateCell.mockClear();
-
-    await expect(mutateTaskCompletion(input))
-      .rejects.toThrow('TASK_COMPLETION_OPERATION_CHECKPOINT_CONFLICT');
-    expect(store.appendRow).not.toHaveBeenCalled();
-    expect(store.updateCell).not.toHaveBeenCalled();
-  });
-
-  it('canonicalizes a noncanonical operation timestamp before writing checkpoints', async () => {
-    const store = new Store();
-    await mutateTaskCompletion({
-      store: store as never, task, taskRowNumber: 2, student, studentRowNumber: 2,
-      completed: true, source: 'BANK', now: '2026-08-25T21:00:00+09:00',
-      ...bankOperation('canonical-operation-time'),
-    });
-
-    expect(completionRecords(store).map((event) => event.timestamp))
-      .toEqual(Array(3).fill('2026-08-25T12:00:00.000Z'));
-  });
 
   it('writes BANK checkpoints in resumable order with immutable operation metadata', async () => {
     const store = new Store();

@@ -1432,17 +1432,6 @@ describe('sheets repository', () => {
     expect(append?.[1][TASK_SCHEMA_HEADERS.indexOf('prerequisiteTaskId')]).toBe('PRE');
   });
 
-  it('lets the safe migrator reject a blank physical task header before any ordinary header rewrite', async () => {
-    const taskHeader = [...TASK_SCHEMA_HEADERS.slice(0, 9), ''];
-    const { store } = legacyRecurringStore(['A'], taskHeader);
-
-    await expect(updateTaskDetails(store as never, 'A', {
-      title: 'A', description: '', reward: 1, isActive: true, sortOrder: 1, allowedStudentIds: [],
-      padletBoardId: 'AbCdEfGhIjKlMnOp',
-    })).rejects.toThrow('trailing header names must be non-blank and unique');
-    expect(store.updateHeaderRow).not.toHaveBeenCalled();
-  });
-
   it('rejects an invalid prerequisite before create performs recurring schema migration writes', async () => {
     const { store, migrationWrite } = legacyRecurringStore(['A']);
     await expect(createTask(store as never, {
@@ -1584,7 +1573,7 @@ describe('sheets repository', () => {
     const rows: Record<string, string[][]> = {
       Tasks: [[
         'taskId', 'title', 'description', 'reward', 'isActive', 'sortOrder', 'createdAt', 'updatedAt',
-        'allowedStudentIds', ...scheduleHeaders, 'padletBoardId',
+        'allowedStudentIds', ...scheduleHeaders,
       ]],
       Settings: [['key', 'value'], ['classTimeZone', 'UTC']],
     };
@@ -1639,7 +1628,7 @@ describe('sheets repository', () => {
       async getRows(sheetName: keyof typeof sheetRows) {
         if (sheetName === 'Tasks') return [[
           'taskId', 'title', 'description', 'reward', 'isActive', 'sortOrder', 'createdAt', 'updatedAt',
-          'allowedStudentIds', 'padletBoardId', 'recurrenceType',
+          'allowedStudentIds', 'recurrenceType',
         ]];
         return sheetRows[sheetName];
       },
@@ -1691,7 +1680,7 @@ describe('sheets repository', () => {
     const headers = [
       ' unknown ', ' title ', ...scheduleHeaders.map((header) => ` ${header} `),
       ' taskId ', ' description ', ' reward ', ' isActive ', ' sortOrder ', ' createdAt ', ' updatedAt ',
-      ' allowedStudentIds ', ' padletBoardId ',
+      ' allowedStudentIds ',
     ];
     const taskRows = [headers];
     const appended: string[][] = [];
@@ -1769,7 +1758,6 @@ describe('sheets repository', () => {
       'resetCompletionOnCycle', 'resetAssignmentOnCycle', 'pendingRuleVersion', 'pendingEffectiveFrom',
       'pendingTimeZone', 'pendingRecurrenceType', 'pendingRecurrenceTime', 'pendingRecurrenceWeekday',
       'pendingRecurrenceDayOfMonth', 'pendingResetCompletionOnCycle', 'pendingResetAssignmentOnCycle',
-      'padletBoardId',
     ];
     const store = {
       async getRows(sheetName: keyof typeof sheetRows) {
@@ -2493,107 +2481,6 @@ describe('sheets repository', () => {
     expect(appended.some((row) => row.sheetName === 'TaskCompletions')).toBe(true);
   });
 
-
-  it('rejects Padlet-linked operation completion without verified evidence before mutation', async () => {
-    const writes = vi.fn();
-    const taskValues: Record<string, string> = {
-      taskId: 'T-PADLET', title: 'Padlet task', description: '', reward: '5', isActive: 'TRUE', sortOrder: '1',
-      allowedStudentIds: 'S001', taskInstanceId: 'I-PADLET', ruleVersion: '1',
-      scheduleEffectiveFrom: '2026-08-20T00:00:00.000Z', recurrenceTimeZone: 'Asia/Seoul', recurrenceType: 'NONE',
-      resetCompletionOnCycle: 'FALSE', resetAssignmentOnCycle: 'FALSE', padletBoardId: 'BOARD000000000001',
-    };
-    const store = {
-      async getRows(sheetName: string) {
-        if (sheetName === 'Tasks') return [[...TASK_SCHEMA_HEADERS], TASK_SCHEMA_HEADERS.map((header) => taskValues[header] ?? '')];
-        if (sheetName === 'Students') return [sheetRows.Students[0], sheetRows.Students[1]];
-        if (sheetName === 'TaskAssignments') return [[...TASK_ASSIGNMENT_HEADERS]];
-        if (sheetName === 'TaskCompletions') return [[...TASK_COMPLETION_SCHEMA_HEADERS]];
-        return sheetRows[sheetName as keyof typeof sheetRows] ?? [];
-      },
-      updateCell: writes, updateCells: writes, appendRow: writes,
-    };
-
-    await expect(completeTaskForStudent(withRecurringMigration(store as unknown as LocalStore) as never, 'T-PADLET', 'S001', {
-      requestId: 'request-1', operationId: '11111111-1111-4111-8111-111111111111',
-      operationPayloadHash: 'sha256:test', buildSafeProjection: async () => [],
-    })).rejects.toThrow('PADLET_EVIDENCE_REQUIRED');
-    expect(writes).not.toHaveBeenCalled();
-
-    const unassignedTaskValues: Record<string, string> = { ...taskValues, allowedStudentIds: 'S002' };
-    const unassignedStore = {
-      ...store,
-      async getRows(sheetName: string) {
-        if (sheetName === 'Tasks') return [[...TASK_SCHEMA_HEADERS], TASK_SCHEMA_HEADERS.map((header) => unassignedTaskValues[header] ?? '')];
-        return store.getRows(sheetName);
-      },
-    };
-    const unauthorizedResolver = vi.fn().mockResolvedValue({
-      evidenceProvider: 'PADLET' as const, evidenceBoardId: 'BOARD000000000001', evidencePostId: 'POST1',
-      evidenceCreatedAt: '2026-08-27T01:00:00.000Z', evidenceAuthorFullName: '김민준',
-    });
-    await expect(completeTaskForStudent(
-      withRecurringMigration(unassignedStore as unknown as LocalStore) as never,
-      'T-PADLET', 'S001', {
-        requestId: 'request-unassigned', operationId: '44444444-4444-4444-8444-444444444444',
-        operationPayloadHash: 'sha256:unassigned', buildSafeProjection: async () => [], resolveEvidence: unauthorizedResolver,
-      },
-    )).rejects.toThrow('허가되지 않은 과제입니다.');
-    expect(unauthorizedResolver).not.toHaveBeenCalled();
-
-    await expect(completeTaskForStudent(withRecurringMigration(store as unknown as LocalStore) as never, 'T-PADLET', 'S001', {
-      requestId: 'request-2', operationId: '22222222-2222-4222-8222-222222222222',
-      operationPayloadHash: 'sha256:test-2', buildSafeProjection: async () => [],
-      resolveEvidence: async () => ({
-        evidenceProvider: 'PADLET', evidenceBoardId: 'BOARD000000000002', evidencePostId: 'POST1',
-        evidenceCreatedAt: '2026-08-27T01:00:00.000Z', evidenceAuthorFullName: '김민준',
-      }),
-    })).rejects.toThrow('PADLET_EVIDENCE_REQUIRED');
-    expect(writes).not.toHaveBeenCalled();
-
-    const evidence = {
-      evidenceProvider: 'PADLET' as const, evidenceBoardId: 'BOARD000000000001', evidencePostId: 'POST1',
-      evidenceCreatedAt: '2026-08-27T01:00:00.000Z', evidenceAuthorFullName: '김민준',
-    };
-    const resolveEvidence = vi.fn().mockResolvedValue(evidence);
-    await expect(completeTaskForStudent(withRecurringMigration(store as unknown as LocalStore) as never, 'T-PADLET', 'S001', {
-      requestId: 'request-3', operationId: '33333333-3333-4333-8333-333333333333',
-      operationPayloadHash: 'sha256:test-3', buildSafeProjection: async () => [], resolveEvidence,
-    })).resolves.toMatchObject({ operation: { state: 'SUCCESS' } });
-    expect(resolveEvidence).toHaveBeenCalledOnce();
-    const completionRows = writes.mock.calls
-      .filter(([sheetName, values]) => sheetName === 'TaskCompletions' && Array.isArray(values))
-      .map(([, values]) => values as string[]);
-    expect(completionRows.length).toBeGreaterThanOrEqual(1);
-    for (const row of completionRows) {
-      expect(row[TASK_COMPLETION_SCHEMA_HEADERS.indexOf('evidenceProvider')]).toBe('PADLET');
-      expect(row[TASK_COMPLETION_SCHEMA_HEADERS.indexOf('evidenceBoardId')]).toBe(evidence.evidenceBoardId);
-      expect(row[TASK_COMPLETION_SCHEMA_HEADERS.indexOf('evidencePostId')]).toBe(evidence.evidencePostId);
-    }
-
-    const retryWrites = vi.fn();
-    const retryStudent = [...sheetRows.Students[1]];
-    retryStudent[sheetRows.Students[0].indexOf('balance')] = '3505';
-    const retryStore = {
-      async getRows(sheetName: string) {
-        if (sheetName === 'Tasks') return [[...TASK_SCHEMA_HEADERS], TASK_SCHEMA_HEADERS.map((header) => taskValues[header] ?? '')];
-        if (sheetName === 'Students') return [sheetRows.Students[0], retryStudent];
-        if (sheetName === 'TaskAssignments') return [[...TASK_ASSIGNMENT_HEADERS]];
-        if (sheetName === 'TaskCompletions') return [[...TASK_COMPLETION_SCHEMA_HEADERS], ...completionRows];
-        return sheetRows[sheetName as keyof typeof sheetRows] ?? [];
-      },
-      updateCell: retryWrites, updateCells: retryWrites, appendRow: retryWrites,
-    };
-    const retryResolver = vi.fn().mockRejectedValue(new Error('resolver must not run'));
-    await expect(completeTaskForStudent(
-      withRecurringMigration(retryStore as unknown as LocalStore) as never,
-      'T-PADLET', 'S001', {
-        requestId: 'request-3-retry', operationId: '33333333-3333-4333-8333-333333333333',
-        operationPayloadHash: 'sha256:test-3', buildSafeProjection: async () => [], resolveEvidence: retryResolver,
-      },
-    )).resolves.toMatchObject({ operation: { state: 'SUCCESS' } });
-    expect(retryResolver).not.toHaveBeenCalled();
-    expect(retryWrites).not.toHaveBeenCalled();
-  });
 
   it('rejects completion when a task has no assigned students', async () => {
     const fakeStore = {

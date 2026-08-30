@@ -143,7 +143,6 @@ function toTask(row: TaskRow, taskInstanceId: string): ClassTask {
     ...(optionalTrimmedString(row.prerequisite_task_id, 'Prerequisite task ID')
       ? { prerequisiteTaskId: optionalTrimmedString(row.prerequisite_task_id, 'Prerequisite task ID') }
       : {}),
-    ...(padletBoardId ? { padletBoardId } : {}),
     createdAt: isoString(row.created_at, 'Task created timestamp'),
     taskInstanceId,
     schedule: projectSchedule(row.current_schedule, 'current'),

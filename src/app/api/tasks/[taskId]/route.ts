@@ -10,7 +10,7 @@ type RouteContext = { params: Promise<{ taskId: string }> };
 const FULL_EDIT_REQUIRED_KEYS = [
   'title', 'description', 'reward', 'isActive', 'sortOrder', 'allowedStudentIds',
 ] as const;
-const FULL_EDIT_ALLOWED_KEYS = new Set([...FULL_EDIT_REQUIRED_KEYS, 'schedule', 'availableFrom', 'dueAt', 'prerequisiteTaskId', 'padletBoardId']);
+const FULL_EDIT_ALLOWED_KEYS = new Set([...FULL_EDIT_REQUIRED_KEYS, 'schedule', 'availableFrom', 'dueAt', 'prerequisiteTaskId']);
 
 export const dynamic = 'force-dynamic';
 

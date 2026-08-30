@@ -129,7 +129,7 @@ export type ClassTask = {
   availableFrom?: string;
   dueAt?: string;
   prerequisiteTaskId?: string;
-  /** Padlet board identifier only (never a URL). */
+  /** External evidence board identifier only; provider I/O is composed separately. */
   padletBoardId?: string;
   createdAt?: string;
   /** Always populated by the sheet codec; optional for legacy API callers constructing tasks. */
@@ -140,6 +140,7 @@ export type ClassTask = {
   scheduleReadWarnings?: TaskScheduleReadWarning[];
 };
 
+/** Immutable external-evidence snapshot retained by PostgreSQL completion history. */
 export type TaskCompletionEvidence = {
   evidenceProvider: 'PADLET';
   evidenceBoardId: string;

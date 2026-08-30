@@ -39,6 +39,23 @@ async function identifyTaskStudent(studentId = 'S001') {
   fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 과제 완료' }));
 }
 
+async function renderTaskCarousel(prefix: string, title: string, count = 4) {
+  const linkedTasks = Array.from({ length: count }, (_, index) => ({
+    ...tasks[0], taskId: `${prefix}${index + 1}`, title: `${title} ${index + 1}`, sortOrder: index + 1,
+    prerequisiteTaskId: index ? `${prefix}${index}` : undefined,
+    studentStatus: { studentId: 'S001', assigned: true, completed: false },
+  }));
+  const base = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/tasks?studentId=S001' ? jsonResponse(linkedTasks) : base(input, init));
+  render(<BankApp />);
+  await screen.findByRole('heading', { name: '별빛 은행' });
+  await identifyTaskStudent();
+  const carousel = await screen.findByRole('region', { name: `${title} 1 연결 과제 묶음` });
+  const scroller = within(carousel).getByTestId('task-carousel-scroller');
+  Object.defineProperty(scroller, 'clientWidth', { configurable: true, value: 100 });
+  return { carousel, scroller };
+}
+
 describe('BankApp', () => {
   beforeEach(() => {
     vi.stubGlobal('crypto', { ...globalThis.crypto, randomUUID: vi.fn(() => 'operation-001') });
@@ -600,27 +617,113 @@ describe('BankApp', () => {
     expect(within(carousel).getByRole('button', { name: '이전 과제' })).toBeTruthy();
   });
 
-  it('waits for scrollend before persisting a swiped slide', async () => {
-    const linkedTasks = Array.from({ length: 4 }, (_, index) => ({
-      ...tasks[0], taskId: `SWIPE${index + 1}`, title: `스와이프 과제 ${index + 1}`, sortOrder: index + 1,
-      prerequisiteTaskId: index ? `SWIPE${index}` : undefined,
-      studentStatus: { studentId: 'S001', assigned: true, completed: false },
-    }));
-    const base = vi.mocked(fetch).getMockImplementation()!;
-    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/tasks?studentId=S001' ? jsonResponse(linkedTasks) : base(input, init));
+  it('updates swipe visuals at finite halfway boundaries before durable settle', async () => {
+    const { carousel, scroller } = await renderTaskCarousel('SWIPE', '스와이프 과제');
+    const scrollTo = vi.fn(({ left }: ScrollToOptions) => { scroller.scrollLeft = left ?? 0; });
+    Object.defineProperty(scroller, 'scrollTo', { configurable: true, value: scrollTo });
 
-    render(<BankApp />);
-    await screen.findByRole('heading', { name: '별빛 은행' });
-    await identifyTaskStudent();
-    const carousel = await screen.findByRole('region', { name: '스와이프 과제 1 연결 과제 묶음' });
-    const scroller = within(carousel).getByTestId('task-carousel-scroller');
-    Object.defineProperty(scroller, 'clientWidth', { configurable: true, value: 100 });
-    scroller.scrollLeft = 260;
-
+    scroller.scrollLeft = 49;
     fireEvent.scroll(scroller);
-    expect(within(carousel).getByRole('button', { name: '스와이프 과제 1' })).toBeTruthy();
+    expect(within(carousel).getByRole('button', { name: '1번째 과제 보기' }).getAttribute('aria-current')).toBe('true');
+    scroller.scrollLeft = 50;
+    fireEvent.scroll(scroller);
+    expect(within(carousel).getByRole('button', { name: '2번째 과제 보기' }).getAttribute('aria-current')).toBe('true');
+    expect(scrollTo).not.toHaveBeenCalled();
+    scroller.scrollLeft = 149;
+    fireEvent.scroll(scroller);
+    expect(within(carousel).getByRole('button', { name: '2번째 과제 보기' }).getAttribute('aria-current')).toBe('true');
+    scroller.scrollLeft = 150;
+    fireEvent.scroll(scroller);
+    expect(within(carousel).getByRole('button', { name: '3번째 과제 보기' }).getAttribute('aria-current')).toBe('true');
+    Object.defineProperty(scroller, 'clientWidth', { configurable: true, value: 0 });
+    scroller.scrollLeft = 999;
+    fireEvent.scroll(scroller);
+    expect(within(carousel).getByRole('button', { name: '3번째 과제 보기' }).getAttribute('aria-current')).toBe('true');
+    expect(scrollTo).not.toHaveBeenCalled();
     fireEvent(scroller, new Event('scrollend'));
-    expect(within(carousel).getByRole('button', { name: '스와이프 과제 4' })).toBeTruthy();
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  it('keeps a natively cancelled touch drag non-durable until the physical finger releases', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { carousel, scroller } = await renderTaskCarousel('HELD', '홀드 과제', 3);
+    const scrollTo = vi.fn(({ left }: ScrollToOptions) => { scroller.scrollLeft = left ?? 0; });
+    Object.defineProperty(scroller, 'scrollTo', { configurable: true, value: scrollTo });
+
+    fireEvent.touchStart(scroller, { touches: [{ identifier: 1 }] });
+    fireEvent.pointerDown(scroller, { pointerId: 1, pointerType: 'touch', isPrimary: true, button: 0 });
+    scroller.scrollLeft = 60;
+    fireEvent.scroll(scroller);
+    fireEvent.pointerCancel(scroller, { pointerId: 1, pointerType: 'touch', isPrimary: true });
+
+    expect(within(carousel).getByRole('button', { name: '2번째 과제 보기' }).getAttribute('aria-current')).toBe('true');
+    act(() => { vi.advanceTimersByTime(500); });
+    fireEvent(scroller, new Event('scrollend'));
+    expect(scroller.scrollLeft).toBe(60);
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    fireEvent.touchEnd(scroller, { touches: [], changedTouches: [{ identifier: 1 }] });
+    act(() => { vi.advanceTimersByTime(159); });
+    expect(scrollTo).not.toHaveBeenCalled();
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(scroller.scrollLeft).toBe(100);
+    expect(within(carousel).getByRole('button', { name: '홀드 과제 2' })).toBeTruthy();
+  });
+
+  it('activates touch and pen indicators immediately without duplicating their delayed synthetic click', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => { frames.push(callback); return frames.length; }));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+    const { carousel } = await renderTaskCarousel('DIRECT', '직접 과제', 3);
+    const third = within(carousel).getByRole('button', { name: '3번째 과제 보기' });
+
+    fireEvent.pointerDown(third, { pointerId: 2, pointerType: 'touch', isPrimary: true, button: 0 });
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(1);
+    act(() => { vi.advanceTimersByTime(50); });
+    fireEvent.click(third, { detail: 1 });
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(1);
+    const second = within(carousel).getByRole('button', { name: '2번째 과제 보기' });
+    fireEvent.pointerDown(second, { pointerId: 3, pointerType: 'pen', isPrimary: true, button: 0 });
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(2);
+    act(() => { vi.advanceTimersByTime(50); });
+    fireEvent.click(second, { detail: 1 });
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(2);
+    fireEvent.pointerDown(third, { pointerId: 4, pointerType: 'mouse', isPrimary: true, button: 0 });
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(2);
+    fireEvent.click(third, { detail: 1 });
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(3);
+    fireEvent.click(second, { detail: 0 });
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(4);
+    expect(third.className).toContain('touch-manipulation');
+  });
+
+  it('suppresses delayed synthetic clicks for rapid different touch indicator targets', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => { frames.push(callback); return frames.length; }));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+    const { carousel } = await renderTaskCarousel('CROSS', '교차 과제', 3);
+    const second = within(carousel).getByRole('button', { name: '2번째 과제 보기' });
+    const third = within(carousel).getByRole('button', { name: '3번째 과제 보기' });
+
+    fireEvent.pointerDown(second, { pointerId: 2, pointerType: 'touch', isPrimary: true, button: 0 });
+    fireEvent.pointerDown(third, { pointerId: 3, pointerType: 'touch', isPrimary: true, button: 0 });
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(2);
+
+    act(() => { vi.advanceTimersByTime(50); });
+    fireEvent.click(second, { detail: 1 });
+    fireEvent.click(third, { detail: 1 });
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(second, { detail: 0 });
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(3);
+    fireEvent.pointerDown(third, { pointerId: 4, pointerType: 'mouse', isPrimary: true, button: 0 });
+    fireEvent.click(third, { detail: 1 });
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(4);
   });
 
   it('uses a debounce fallback to persist a settled swipe when scrollend is unavailable', async () => {
@@ -642,7 +745,7 @@ describe('BankApp', () => {
     scroller.scrollLeft = 100;
 
     fireEvent.scroll(scroller);
-    expect(within(carousel).getByRole('button', { name: '대체 과제 1' })).toBeTruthy();
+    expect(within(carousel).getByRole('button', { name: '2번째 과제 보기' }).getAttribute('aria-current')).toBe('true');
     act(() => { vi.advanceTimersByTime(180); });
     expect(within(carousel).getByRole('button', { name: '대체 과제 2' })).toBeTruthy();
   });
@@ -695,11 +798,38 @@ describe('BankApp', () => {
     act(() => { frames.shift()!(130); });
     expect(scroller.scrollLeft).toBeGreaterThan(0);
     expect(scroller.scrollLeft).toBeLessThan(300);
-    expect(within(carousel).getByRole('button', { name: '이동 과제 1' })).toBeTruthy();
+    expect(within(carousel).getByRole('button', { name: '3번째 과제 보기' }).getAttribute('aria-current')).toBe('true');
+    expect(within(carousel).getByRole('button', { name: '다음 과제' })).toHaveProperty('disabled', false);
     act(() => { frames.shift()!(260); });
     expect(scroller.scrollLeft).toBe(300);
     expect(within(carousel).getByRole('button', { name: '이동 과제 4' })).toBeTruthy();
     expect(scrollTo.mock.calls.some(([options]) => options.behavior === 'smooth')).toBe(false);
+  });
+
+  it('restarts rapid indicator retargets from current pixels and ignores stale animation frames', async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => { frames.push(callback); return frames.length; }));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+    const { carousel, scroller } = await renderTaskCarousel('RAPID', '빠른 과제');
+    Object.defineProperty(scroller, 'scrollTo', { configurable: true, value: vi.fn(({ left }: ScrollToOptions) => { scroller.scrollLeft = left ?? 0; }) });
+
+    fireEvent.click(within(carousel).getByRole('button', { name: '4번째 과제 보기' }));
+    const firstStart = frames.shift()!;
+    act(() => { firstStart(0); });
+    const staleFrame = frames.shift()!;
+    act(() => { staleFrame(130); });
+    expect(scroller.scrollLeft).toBe(150);
+    fireEvent.click(within(carousel).getByRole('button', { name: '2번째 과제 보기' }));
+    const restart = frames.pop()!;
+    const beforeStale = scroller.scrollLeft;
+    act(() => { staleFrame(260); });
+    expect(scroller.scrollLeft).toBe(beforeStale);
+    act(() => { restart(300); });
+    const finish = frames.pop()!;
+    act(() => { finish(560); });
+    expect(scroller.scrollLeft).toBe(100);
+    expect(within(carousel).getByRole('button', { name: '빠른 과제 2' })).toBeTruthy();
   });
 
   it('cancels indicator motion and settles the nearest slide when touch input does not scroll', async () => {
@@ -729,8 +859,11 @@ describe('BankApp', () => {
     act(() => { frames.shift()!(0); });
     act(() => { frames.shift()!(130); });
     expect(scroller.scrollLeft).toBe(100);
-    fireEvent.touchStart(scroller);
+    fireEvent.pointerDown(scroller, { pointerId: 1, pointerType: 'touch', isPrimary: true, button: 0 });
     expect(cancelAnimationFrame).toHaveBeenCalled();
+    act(() => { vi.advanceTimersByTime(180); });
+    expect(within(carousel).getByRole('button', { name: '2번째 과제 보기' }).getAttribute('aria-current')).toBe('true');
+    fireEvent.pointerUp(scroller, { pointerId: 1, pointerType: 'touch', isPrimary: true, button: 0 });
     act(() => { vi.advanceTimersByTime(180); });
     expect(within(carousel).getByRole('button', { name: '취소 과제 2' })).toBeTruthy();
   });
@@ -898,36 +1031,6 @@ describe('BankApp', () => {
     expect(screen.getByRole('button', { name: '완료하기' })).toHaveProperty('disabled', true);
   });
 
-  it('shows Padlet READY as 완료 가능 on the card and allows completion', async () => {
-    const ready = { ...tasks[0], title: '패들렛 준비 과제', padletEligibility: 'READY', padletEligibilityMessage: 'Padlet 게시물이 확인되어 완료할 수 있습니다.', studentStatus: { studentId: 'S001', assigned: true, completed: false } };
-    const base = vi.mocked(fetch).getMockImplementation()!;
-    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/tasks?studentId=S001' ? jsonResponse([ready]) : base(input, init));
-
-    render(<BankApp />);
-    await screen.findByRole('heading', { name: '별빛 은행' });
-    await identifyTaskStudent();
-    const card = await screen.findByRole('button', { name: '패들렛 준비 과제, 완료 가능' });
-    expect(within(card).getByText('완료 가능')).toBeTruthy();
-    fireEvent.click(card);
-    expect(screen.getByRole('button', { name: '완료하기' })).toHaveProperty('disabled', false);
-  });
-
-  it.each([
-    ['SUBMISSION_REQUIRED', '승인된 Padlet 게시물을 작성한 뒤 다시 확인해 주세요.'],
-    ['CHECK_UNAVAILABLE', 'Padlet 게시물 확인이 일시적으로 불가능합니다. 잠시 후 다시 시도해 주세요.'],
-  ])('disables completion for Padlet %s and shows its Korean guidance', async (padletEligibility, padletEligibilityMessage) => {
-    const blocked = { ...tasks[0], title: '패들렛 확인 과제', padletEligibility, padletEligibilityMessage, studentStatus: { studentId: 'S001', assigned: true, completed: false } };
-    const base = vi.mocked(fetch).getMockImplementation()!;
-    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/tasks?studentId=S001' ? jsonResponse([blocked]) : base(input, init));
-
-    render(<BankApp />);
-    await screen.findByRole('heading', { name: '별빛 은행' });
-    await identifyTaskStudent();
-    fireEvent.click(await screen.findByRole('button', { name: '패들렛 확인 과제, 완료 불가' }));
-    const detail = await screen.findByRole('dialog', { name: '패들렛 확인 과제' });
-    expect(within(detail).getByText(padletEligibilityMessage)).toBeTruthy();
-    expect(within(detail).getByRole('button', { name: '완료하기' })).toHaveProperty('disabled', true);
-  });
 
   it('dims completed cards with a filled unrotated pill and removes inline completion metadata', async () => {
     const completed = { ...tasks[0], title: '끝낸 과제', studentStatus: { studentId: 'S001', assigned: true, completed: true } };

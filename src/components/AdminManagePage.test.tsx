@@ -1365,7 +1365,7 @@ describe('AdminManagePage', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         tasks: [
-          { taskId: 'T001', title: '책 읽기 수정', description: '책 20분 읽기', reward: 7, isActive: true, sortOrder: 1, allowedStudentIds: ['S001'], availableFrom: null, dueAt: null, prerequisiteTaskId: null, padletBoardId: null },
+          { taskId: 'T001', title: '책 읽기 수정', description: '책 20분 읽기', reward: 7, isActive: true, sortOrder: 1, allowedStudentIds: ['S001'], availableFrom: null, dueAt: null, prerequisiteTaskId: null },
           ],
       }),
     }));

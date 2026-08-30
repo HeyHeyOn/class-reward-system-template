@@ -13,7 +13,6 @@ import type {
   TaskSchedule,
 } from '@/domain/types';
 import type { TenantTransaction } from '@/server/db/transaction';
-import { isCanonicalPadletPostId, isStrictIsoTimestamp } from '@/server/padletClient';
 import type { DatabasePadletClaimRepository } from './padletClaims';
 import { appendOperationAudit, assertOperationAudit } from './operationAudit';
 
@@ -973,6 +972,16 @@ function canonicalTimestamp(value: string): string {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) throw new Error('Invalid task reward timestamp.');
   return date.toISOString();
+}
+
+function isCanonicalPadletPostId(value: string): boolean {
+  return value.length >= 3 && value.length <= 128 && /^[A-Za-z0-9_-]+$/.test(value);
+}
+
+function isStrictIsoTimestamp(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) return false;
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.valueOf()) && parsed.toISOString() === value;
 }
 
 function messageFor(code: TaskRewardCommandErrorCode): string {
