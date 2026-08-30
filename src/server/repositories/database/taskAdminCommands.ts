@@ -47,6 +47,12 @@ export type UpdateTaskAdminInput = Readonly<{
   padletBoardId?: string | null;
 }>;
 
+export type DeleteTaskAdminInput = Readonly<{
+  operationId: string;
+  taskId: string;
+  expectedTaskVersion: number;
+}>;
+
 type RunTenantTransaction = <TResult>(
   tenantId: string,
   callback: (transaction: TenantTransaction) => Promise<TResult>,
@@ -88,7 +94,21 @@ export type TaskAdminUpdateSuccess = Readonly<{
   }>[];
 }>;
 
-export type TaskAdminSuccess = TaskAdminCreateSuccess | TaskAdminUpdateSuccess;
+export type TaskAdminDeleteSuccess = Readonly<{
+  ok: true;
+  operationId: string;
+  action: 'DELETE';
+  completedAt: string;
+  tasks: readonly Readonly<{
+    taskId: string;
+    taskInstanceId: string;
+    versionBefore: number;
+    versionAfter: number;
+    assignmentEventIds: readonly string[];
+  }>[];
+}>;
+
+export type TaskAdminSuccess = TaskAdminCreateSuccess | TaskAdminUpdateSuccess | TaskAdminDeleteSuccess;
 
 type CanonicalInput = Omit<CreateTaskAdminInput, 'schedule' | 'allowedStudentIds'> & {
   allowedStudentIds: readonly string[];
@@ -345,7 +365,232 @@ export function createDatabaseTaskAdminCommands(dependencies: DatabaseTaskAdminC
     async update(rawInput: UpdateTaskAdminInput): Promise<TaskAdminUpdateSuccess> {
       return updateTaskDefinition(dependencies, rawInput);
     },
+    async delete(rawInput: DeleteTaskAdminInput): Promise<TaskAdminDeleteSuccess> {
+      return deleteTaskDefinition(dependencies, rawInput);
+    },
   };
+}
+
+type CanonicalDeleteInput = DeleteTaskAdminInput;
+
+type DeleteEvidence = Readonly<{
+  input: CanonicalDeleteInput;
+  payloadHash: string;
+  now: Date;
+  targetBefore: LockedUpdateTask;
+  targetAfter: Omit<LockedUpdateTask, 'deletedAt'> & { deletedAt: string };
+  assignments: readonly UpdateAssignment[];
+  completions: readonly CompletionEvidence[];
+  assignmentEventIds: readonly string[];
+}>;
+
+const DELETE_KEYS = ['operationId', 'taskId', 'expectedTaskVersion'] as const;
+
+function canonicalDelete(raw: DeleteTaskAdminInput): CanonicalDeleteInput {
+  const input = exactRecord(raw, DELETE_KEYS, 'task delete input');
+  return {
+    operationId: canonicalId(input.operationId, 'operation ID'),
+    taskId: canonicalId(input.taskId, 'task ID'),
+    expectedTaskVersion: safeInteger(input.expectedTaskVersion, 'expected task version',
+      1, Number.MAX_SAFE_INTEGER),
+  };
+}
+
+function deletePayloadHash(input: CanonicalDeleteInput): string {
+  return sha256({ kind: 'TASK_ADMIN', action: 'DELETE', tasks: [{
+    taskId: input.taskId, expectedTaskVersion: input.expectedTaskVersion,
+  }], schemaVersion: 1 });
+}
+
+async function deleteTaskDefinition(
+  dependencies: DatabaseTaskAdminCommandDependencies,
+  rawInput: DeleteTaskAdminInput,
+): Promise<TaskAdminDeleteSuccess> {
+  const input = canonicalDelete(rawInput);
+  const now = dependencies.now?.() ?? new Date();
+  if (!(now instanceof Date) || !Number.isFinite(now.getTime())) {
+    throw new Error('Task administration current timestamp is invalid.');
+  }
+  const payloadHash = deletePayloadHash(input);
+  return dependencies.runTenantTransaction(dependencies.tenantId, async (tx) => {
+    const existing = await readOperation(tx, dependencies.tenantId, input.operationId);
+    if (existing) return resolveDeleteReplay(tx, dependencies.tenantId, existing, input, payloadHash);
+    const claim = await tx.execute(sql`
+      INSERT INTO operations
+        (tenant_id, operation_id, operation_kind, payload_hash, status, attempt_count,
+         started_at, created_at, updated_at)
+      VALUES (${dependencies.tenantId}, ${input.operationId}, 'TASK_ADMIN', ${payloadHash},
+              'PENDING', 1, ${now}, ${now}, ${now})
+      ON CONFLICT (tenant_id, operation_id) DO NOTHING RETURNING operation_id
+    `);
+    if (claim.rows.length !== 1
+      || (claim.rows[0] as { operation_id?: unknown } | undefined)?.operation_id !== input.operationId) {
+      if (claim.rows.length !== 0) throw new Error('Task administration operation claim integrity check failed.');
+      const winner = await readOperation(tx, dependencies.tenantId, input.operationId);
+      if (!winner) throw new Error('Task administration operation race integrity check failed.');
+      return resolveDeleteReplay(tx, dependencies.tenantId, winner, input, payloadHash);
+    }
+
+    const taskRows = await tx.execute(sql`
+      SELECT task_instance_id, task_id, title, description, reward::text AS reward, is_active,
+        sort_order, available_from, available_until, due_at, prerequisite_task_instance_id,
+        padlet_board_id, current_schedule, pending_schedule, schedule_schema_version,
+        version::text AS version, created_at, updated_at, deleted_at
+      FROM tasks WHERE tenant_id=${dependencies.tenantId} AND deleted_at IS NULL
+      ORDER BY task_instance_id FOR UPDATE
+    `);
+    const tasks = parseLockedUpdateTasks(taskRows.rows, now);
+    assertCompleteTaskGraph(tasks);
+    const matches = tasks.filter((task) => task.taskId === input.taskId);
+    if (matches.length !== 1) throw new Error('Task administration delete target not found.');
+    const target = matches[0];
+    if (target.version !== input.expectedTaskVersion) {
+      throw new Error('Task administration stale task version.');
+    }
+    if (target.version === Number.MAX_SAFE_INTEGER) {
+      throw new Error('Task administration task version successor is unsafe.');
+    }
+    if (tasks.some((task) => task.taskInstanceId !== target.taskInstanceId
+      && task.prerequisiteTaskInstanceId === target.taskInstanceId)) {
+      throw new Error('Task administration task has live dependents.');
+    }
+
+    const mirrorLock = await tx.execute(sql`
+      SELECT task_instance_id, student_id, created_at FROM task_allowed_students
+      WHERE tenant_id=${dependencies.tenantId} AND task_instance_id=${target.taskInstanceId}
+      ORDER BY student_id FOR UPDATE
+    `);
+    const mirrors = parseLockedMirrors(mirrorLock.rows, target.taskInstanceId, now)
+      .sort((left, right) => compareText(left.studentId, right.studentId));
+    const assignmentLock = await tx.execute(sql`
+      SELECT assignment_id, event_sequence::text AS event_sequence, task_id_snapshot,
+        task_instance_id, cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone,
+        student_id, event_type, source, previous_assignment_id, admin_operation_id,
+        admin_operation_hash, created_at, schema_version, note
+      FROM task_assignments WHERE tenant_id=${dependencies.tenantId}
+        AND task_instance_id=${target.taskInstanceId}
+      ORDER BY student_id, event_sequence FOR UPDATE
+    `);
+    const oldAssignments = parseUpdateAssignments(assignmentLock.rows, now);
+    assertUpdateAssignmentChains(oldAssignments);
+    for (const event of oldAssignments) {
+      if (event.task_id_snapshot !== target.taskId || event.task_instance_id !== target.taskInstanceId) {
+        throw new Error('Task administration assignment event integrity check failed.');
+      }
+    }
+    const effectiveSchedule = resolveTaskSchedule({ currentSchedule: target.currentSchedule,
+      pendingSchedule: target.pendingSchedule, now: now.toISOString() });
+    const cycle = getTaskCycle({ taskInstanceId: target.taskInstanceId, schedule: effectiveSchedule,
+      taskCreatedAt: target.createdAt, now: now.toISOString() });
+    const cycleStart = new Date(cycle.startsAt).toISOString();
+    const cycleEnd = cycle.endsAt ? new Date(cycle.endsAt).toISOString() : null;
+    const previousByStudent = new Map<string, UpdateAssignment>();
+    for (const event of oldAssignments) {
+      if (event.cycle_id === cycle.cycleId && event.cycle_start_at === cycleStart
+        && event.cycle_end_at === cycleEnd && event.rule_version === effectiveSchedule.ruleVersion
+        && event.timezone === effectiveSchedule.timeZone) {
+        const selected = previousByStudent.get(event.student_id);
+        if (!selected || Number(event.event_sequence) > Number(selected.event_sequence)) {
+          previousByStudent.set(event.student_id, event);
+        }
+      }
+    }
+    const assignmentEventIds = mirrors.map((mirror) => createTaskAdminAssignmentEventId(
+      input.operationId, input.taskId, mirror.studentId, 'UNASSIGNED'));
+    const completionLock = await tx.execute(sql`
+      SELECT completion_id, event_sequence::text AS event_sequence, completed_at,
+        task_instance_id, task_id_snapshot, task_name_snapshot, student_id,
+        student_name_snapshot, reward_snapshot::text AS reward_snapshot,
+        balance_before::text AS balance_before, balance_after::text AS balance_after,
+        status, note, cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone, source,
+        assignment_id, transaction_id, operation_id, operation_hash, admin_operation_id,
+        admin_operation_hash, schema_version, evidence_provider, evidence_board_id,
+        evidence_post_id, evidence_created_at, evidence_author_full_name, created_at
+      FROM task_completions
+      WHERE tenant_id=${dependencies.tenantId} AND task_instance_id=${target.taskInstanceId}
+      ORDER BY event_sequence FOR UPDATE
+    `);
+    const completions = parseCompletionSnapshots(completionLock.rows);
+    if (completions.some((completion) => completion.task_instance_id !== target.taskInstanceId
+      || completion.task_id_snapshot !== target.taskId)) {
+      throw new Error('Task administration completion event integrity check failed.');
+    }
+
+    const updated = await tx.execute(sql`
+      UPDATE tasks SET is_active=false, deleted_at=${now}, updated_at=${now}, version=version + 1
+      WHERE tenant_id=${dependencies.tenantId} AND task_instance_id=${target.taskInstanceId}
+        AND deleted_at IS NULL AND version=${input.expectedTaskVersion}
+      RETURNING task_instance_id, task_id, title, description, reward::text AS reward, is_active,
+        sort_order, available_from, available_until, due_at, prerequisite_task_instance_id,
+        padlet_board_id, current_schedule, pending_schedule, schedule_schema_version,
+        version::text AS version, created_at, updated_at, deleted_at
+    `);
+    const targetAfter = { ...target, isActive: false, version: input.expectedTaskVersion + 1,
+      updatedAt: now.toISOString(), deletedAt: now.toISOString() };
+    assertSingleDeletedTask(updated.rows, targetAfter, now);
+    if (mirrors.length > 0) {
+      const deleted = await tx.execute(sql`
+        DELETE FROM task_allowed_students WHERE tenant_id=${dependencies.tenantId}
+          AND task_instance_id=${target.taskInstanceId}
+        RETURNING task_instance_id, student_id, created_at
+      `);
+      assertMirrorSubset(deleted.rows, mirrors);
+    }
+    let insertedAssignments: readonly UpdateAssignment[] = [];
+    if (mirrors.length > 0) {
+      const inserted = await tx.execute(sql`
+        INSERT INTO task_assignments
+          (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id,
+           cycle_start_at, cycle_end_at, rule_version, timezone, student_id, event_type,
+           source, previous_assignment_id, admin_operation_id, admin_operation_hash,
+           created_at, schema_version, note)
+        VALUES ${sql.join(mirrors.map((mirror, index) => sql`
+          (${dependencies.tenantId}, ${assignmentEventIds[index]}, ${input.taskId},
+           ${target.taskInstanceId}, ${cycle.cycleId}, ${new Date(cycle.startsAt)},
+           ${cycle.endsAt ? new Date(cycle.endsAt) : null}, ${effectiveSchedule.ruleVersion},
+           ${effectiveSchedule.timeZone}, ${mirror.studentId}, 'UNASSIGNED', 'ADMIN',
+           ${previousByStudent.get(mirror.studentId)?.assignment_id ?? null}, ${input.operationId},
+           ${payloadHash}, ${now}, 1, NULL)
+        `), sql`, `)}
+        RETURNING assignment_id, event_sequence::text AS event_sequence, task_id_snapshot,
+          task_instance_id, cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone,
+          student_id, event_type, source, previous_assignment_id, admin_operation_id,
+          admin_operation_hash, created_at, schema_version, note
+      `);
+      insertedAssignments = parseUpdateAssignments(inserted.rows, now);
+      assertInsertedUpdateAssignments(insertedAssignments,
+        mirrors.map((mirror) => ({ studentId: mirror.studentId, eventType: 'UNASSIGNED' as const })),
+        assignmentEventIds, target, cycle, effectiveSchedule,
+        new Map([...previousByStudent].map(([studentId, event]) => [studentId, event.assignment_id])),
+        { ...input, title: target.title, description: target.description, reward: target.reward,
+          isActive: false, sortOrder: target.sortOrder, allowedStudentIds: [], availableFrom: null,
+          dueAt: null, prerequisiteTaskId: null, padletBoardId: null }, payloadHash, now);
+    }
+    const evidence: DeleteEvidence = { input, payloadHash, now, targetBefore: target, targetAfter,
+      assignments: [...oldAssignments, ...insertedAssignments], completions, assignmentEventIds };
+    await assertDeleteState(tx, dependencies.tenantId, evidence);
+    const result = freezeDeleteResult({ ok: true, operationId: input.operationId, action: 'DELETE',
+      completedAt: now.toISOString(), tasks: [{ taskId: input.taskId,
+        taskInstanceId: target.taskInstanceId, versionBefore: input.expectedTaskVersion,
+        versionAfter: input.expectedTaskVersion + 1, assignmentEventIds }] });
+    const audit = deleteAuditInput(result, now);
+    await appendOperationAudit(tx, dependencies.tenantId, audit);
+    await assertDeleteAudit(tx, dependencies.tenantId, audit);
+    const terminal = await tx.execute(sql`
+      UPDATE operations SET status='SUCCEEDED', result_snapshot=${JSON.stringify(result)}::jsonb,
+        finished_at=${now}, updated_at=${now}
+      WHERE tenant_id=${dependencies.tenantId} AND operation_id=${input.operationId}
+      RETURNING operation_id
+    `);
+    if (terminal.rows.length !== 1
+      || (terminal.rows[0] as { operation_id?: unknown } | undefined)?.operation_id !== input.operationId) {
+      throw new Error('Task administration terminal operation integrity check failed.');
+    }
+    await assertDeleteState(tx, dependencies.tenantId, evidence);
+    const stored = await readOperation(tx, dependencies.tenantId, input.operationId);
+    if (!stored) throw new Error('Task administration terminal operation integrity check failed.');
+    return resolveDeleteReplay(tx, dependencies.tenantId, stored, input, payloadHash);
+  });
 }
 
 type CanonicalUpdateInput = Omit<UpdateTaskAdminInput, 'allowedStudentIds'> & {
@@ -1209,6 +1454,229 @@ async function resolveUpdateReplay(tx: TenantTransaction, tenantId: string, oper
     }
   }
   await assertUpdateAudit(tx, tenantId, updateAuditInput(result, finished));
+  return result;
+}
+
+function parseDeletedTask(rows: readonly unknown[], now: Date) {
+  const failure = 'Task administration task row integrity check failed.';
+  if (rows.length !== 1) throw new Error(failure);
+  const row = exactEvidenceRecord(rows[0], FULL_TASK_ROW_KEYS, failure);
+  if (row.deleted_at === null || row.schedule_schema_version !== 1) throw new Error(failure);
+  const createdAt = evidenceTimestamp(row.created_at, failure);
+  const updatedAt = evidenceTimestamp(row.updated_at, failure);
+  const deletedAt = evidenceTimestamp(row.deleted_at, failure);
+  if (Date.parse(createdAt) > Date.parse(updatedAt) || updatedAt !== deletedAt
+    || Date.parse(deletedAt) > now.getTime() || row.is_active !== false) throw new Error(failure);
+  if (typeof row.title !== 'string' || typeof row.description !== 'string'
+    || typeof row.sort_order !== 'number' || !Number.isSafeInteger(row.sort_order)
+    || row.sort_order < INT32_MIN || row.sort_order > INT32_MAX) throw new Error(failure);
+  return {
+    taskInstanceId: exactDatabaseId(row.task_instance_id), taskId: exactDatabaseId(row.task_id),
+    title: row.title, description: row.description,
+    reward: canonicalDatabaseInteger(row.reward, 0, Number.MAX_SAFE_INTEGER, failure),
+    isActive: false, sortOrder: row.sort_order,
+    availableFrom: nullableEvidenceTimestamp(row.available_from, failure),
+    availableUntil: nullableEvidenceTimestamp(row.available_until, failure),
+    dueAt: nullableEvidenceTimestamp(row.due_at, failure),
+    prerequisiteTaskInstanceId: row.prerequisite_task_instance_id === null ? null
+      : exactDatabaseId(row.prerequisite_task_instance_id),
+    padletBoardId: row.padlet_board_id === null ? null : exactDatabaseId(row.padlet_board_id),
+    currentSchedule: parseStoredSchedule(row.current_schedule, failure),
+    pendingSchedule: row.pending_schedule === null ? null : parseStoredSchedule(row.pending_schedule, failure),
+    scheduleSchemaVersion: 1 as const,
+    version: canonicalDatabaseInteger(row.version, 1, Number.MAX_SAFE_INTEGER, failure),
+    createdAt, updatedAt, deletedAt,
+  };
+}
+
+function assertSingleDeletedTask(rows: readonly unknown[], expected: DeleteEvidence['targetAfter'], now: Date) {
+  if (stableJson(parseDeletedTask(rows, now)) !== stableJson(expected)) {
+    throw new Error('Task administration task row integrity check failed.');
+  }
+}
+
+async function assertDeleteState(tx: TenantTransaction, tenantId: string, evidence: DeleteEvidence) {
+  const task = await tx.execute(sql`
+    SELECT task_instance_id, task_id, title, description, reward::text AS reward, is_active,
+      sort_order, available_from, available_until, due_at, prerequisite_task_instance_id,
+      padlet_board_id, current_schedule, pending_schedule, schedule_schema_version,
+      version::text AS version, created_at, updated_at, deleted_at
+    FROM tasks WHERE tenant_id=${tenantId} AND task_instance_id=${evidence.targetAfter.taskInstanceId}
+  `);
+  assertSingleDeletedTask(task.rows, evidence.targetAfter, evidence.now);
+  const mirrors = await tx.execute(sql`SELECT task_instance_id, student_id, created_at
+    FROM task_allowed_students WHERE tenant_id=${tenantId}
+      AND task_instance_id=${evidence.targetAfter.taskInstanceId} ORDER BY student_id`);
+  if (mirrors.rows.length !== 0) {
+    throw new Error('Task administration allowed-student mirror integrity check failed.');
+  }
+  const assignments = await tx.execute(sql`
+    SELECT assignment_id, event_sequence::text AS event_sequence, task_id_snapshot,
+      task_instance_id, cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone,
+      student_id, event_type, source, previous_assignment_id, admin_operation_id,
+      admin_operation_hash, created_at, schema_version, note
+    FROM task_assignments WHERE tenant_id=${tenantId}
+      AND task_instance_id=${evidence.targetAfter.taskInstanceId}
+    ORDER BY student_id, event_sequence
+  `);
+  const parsedAssignments = parseUpdateAssignments(assignments.rows, evidence.now);
+  assertUpdateAssignmentChains(parsedAssignments);
+  const bySequence = (values: readonly UpdateAssignment[]) => [...values]
+    .sort((left, right) => Number(left.event_sequence) - Number(right.event_sequence));
+  if (stableJson(bySequence(parsedAssignments)) !== stableJson(bySequence(evidence.assignments))) {
+    throw new Error('Task administration assignment event integrity check failed.');
+  }
+  const completions = await tx.execute(sql`
+    SELECT completion_id, event_sequence::text AS event_sequence, completed_at,
+      task_instance_id, task_id_snapshot, task_name_snapshot, student_id,
+      student_name_snapshot, reward_snapshot::text AS reward_snapshot,
+      balance_before::text AS balance_before, balance_after::text AS balance_after,
+      status, note, cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone, source,
+      assignment_id, transaction_id, operation_id, operation_hash, admin_operation_id,
+      admin_operation_hash, schema_version, evidence_provider, evidence_board_id,
+      evidence_post_id, evidence_created_at, evidence_author_full_name, created_at
+    FROM task_completions WHERE tenant_id=${tenantId}
+      AND task_instance_id=${evidence.targetAfter.taskInstanceId} ORDER BY event_sequence
+  `);
+  if (stableJson(parseCompletionSnapshots(completions.rows)) !== stableJson(evidence.completions)) {
+    throw new Error('Task administration completion event integrity check failed.');
+  }
+  const dependents = await tx.execute(sql`SELECT task_instance_id FROM tasks
+    WHERE tenant_id=${tenantId} AND deleted_at IS NULL
+      AND prerequisite_task_instance_id=${evidence.targetAfter.taskInstanceId}
+    ORDER BY task_instance_id`);
+  if (dependents.rows.length !== 0) throw new Error('Task administration dependent integrity check failed.');
+}
+
+function freezeDeleteResult(result: TaskAdminDeleteSuccess): TaskAdminDeleteSuccess {
+  const task = Object.freeze({ ...result.tasks[0],
+    assignmentEventIds: Object.freeze([...result.tasks[0].assignmentEventIds]) });
+  return Object.freeze({ ...result, tasks: Object.freeze([task]) });
+}
+
+function deleteResultHash(result: TaskAdminDeleteSuccess) {
+  return sha256(canonicalResultValue(result));
+}
+
+function deleteAuditInput(result: TaskAdminDeleteSuccess, occurredAt: Date) {
+  return { operationId: result.operationId, eventType: 'TASK_ADMIN_COMPLETED',
+    entityType: 'OPERATION', entityId: result.operationId, redactedDetails: {
+      action: 'DELETE', taskCount: 1,
+      assignmentEventCount: result.tasks[0].assignmentEventIds.length,
+      resultHash: deleteResultHash(result),
+    }, occurredAt } as const;
+}
+
+async function assertDeleteAudit(tx: TenantTransaction, tenantId: string,
+  input: ReturnType<typeof deleteAuditInput>) {
+  await assertOperationAudit(tx, tenantId, input);
+  const rows = await tx.execute(sql`SELECT event_type FROM audit_events
+    WHERE tenant_id=${tenantId} AND operation_id=${input.operationId}`);
+  if (rows.rows.length !== 1
+    || (rows.rows[0] as { event_type?: unknown }).event_type !== 'TASK_ADMIN_COMPLETED') {
+    throw new Error('Task administration audit integrity check failed.');
+  }
+}
+
+function parseStoredDeleteResult(raw: unknown): TaskAdminDeleteSuccess {
+  const value = exactRecordOrdered(raw, ['ok', 'tasks', 'action', 'completedAt', 'operationId'],
+    'stored task result');
+  if (value.ok !== true || value.action !== 'DELETE') {
+    throw new Error('Task administration stored result integrity check failed.');
+  }
+  const tasks = exactArray(value.tasks, 'stored tasks');
+  if (tasks.length !== 1) throw new Error('Task administration stored result integrity check failed.');
+  const task = exactRecordOrdered(tasks[0], ['taskId', 'versionAfter', 'versionBefore',
+    'taskInstanceId', 'assignmentEventIds'], 'stored task result');
+  const versionBefore = safeInteger(task.versionBefore, 'stored task version', 1,
+    Number.MAX_SAFE_INTEGER - 1);
+  if (task.versionAfter !== versionBefore + 1) {
+    throw new Error('Task administration stored result integrity check failed.');
+  }
+  return freezeDeleteResult({ ok: true, operationId: exactStoredId(value.operationId), action: 'DELETE',
+    completedAt: strictCanonicalInstant(value.completedAt, 'stored completedAt'), tasks: [{
+      taskId: exactStoredId(task.taskId), taskInstanceId: exactStoredId(task.taskInstanceId),
+      versionBefore, versionAfter: versionBefore + 1,
+      assignmentEventIds: exactArray(task.assignmentEventIds, 'stored assignment event IDs')
+        .map(exactStoredId),
+    }] });
+}
+
+async function resolveDeleteReplay(tx: TenantTransaction, tenantId: string, operation: StoredOperation,
+  input: CanonicalDeleteInput, payloadHash: string): Promise<TaskAdminDeleteSuccess> {
+  if (operation.operation_kind !== 'TASK_ADMIN' || operation.payload_hash !== payloadHash) {
+    throw new Error('Task administration operation conflict.');
+  }
+  if (operation.status !== 'SUCCEEDED' || operation.failure_code !== null
+    || operation.attempt_count !== '1') throw new Error('Task administration operation is not replayable.');
+  const started = exactDate(operation.started_at, 'operation timestamp');
+  const created = exactDate(operation.created_at, 'operation timestamp');
+  const updated = exactDate(operation.updated_at, 'operation timestamp');
+  const finished = exactDate(operation.finished_at, 'operation timestamp');
+  if (started.getTime() !== created.getTime() || started.getTime() !== finished.getTime()
+    || finished.getTime() !== updated.getTime()) {
+    throw new Error('Task administration operation timestamp integrity check failed.');
+  }
+  const result = parseStoredDeleteResult(operation.result_snapshot);
+  const taskResult = result.tasks[0];
+  if (result.operationId !== input.operationId || result.completedAt !== finished.toISOString()
+    || taskResult.taskId !== input.taskId || taskResult.versionBefore !== input.expectedTaskVersion
+    || taskResult.versionAfter !== input.expectedTaskVersion + 1) {
+    throw new Error('Task administration stored result integrity check failed.');
+  }
+  const identity = await tx.execute(sql`SELECT task_instance_id, task_id FROM tasks
+    WHERE tenant_id=${tenantId} AND task_instance_id=${taskResult.taskInstanceId}`);
+  const identityFailure = 'Task administration physical identity integrity check failed.';
+  if (identity.rows.length !== 1) throw new Error(identityFailure);
+  const identityRow = exactEvidenceRecord(identity.rows[0], ['task_instance_id', 'task_id'] as const,
+    identityFailure);
+  if (exactDatabaseId(identityRow.task_instance_id) !== taskResult.taskInstanceId
+    || exactDatabaseId(identityRow.task_id) !== input.taskId) throw new Error(identityFailure);
+  const operationEvents = await tx.execute(sql`
+    SELECT assignment_id, event_sequence::text AS event_sequence, task_id_snapshot,
+      task_instance_id, cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone,
+      student_id, event_type, source, previous_assignment_id, admin_operation_id,
+      admin_operation_hash, created_at, schema_version, note
+    FROM task_assignments WHERE tenant_id=${tenantId} AND admin_operation_id=${input.operationId}
+    ORDER BY assignment_id, event_sequence
+  `);
+  const parsed = parseUpdateAssignments(operationEvents.rows, finished);
+  const history = await tx.execute(sql`
+    SELECT assignment_id, event_sequence::text AS event_sequence, task_id_snapshot,
+      task_instance_id, cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone,
+      student_id, event_type, source, previous_assignment_id, admin_operation_id,
+      admin_operation_hash, created_at, schema_version, note
+    FROM task_assignments WHERE tenant_id=${tenantId}
+      AND task_instance_id=${taskResult.taskInstanceId} ORDER BY student_id, event_sequence
+  `);
+  const allEvents = parseUpdateAssignments(history.rows, new Date(8640000000000000));
+  assertUpdateAssignmentChains(allEvents);
+  const canonicalRows = [...parsed].sort((left, right) => compareText(left.student_id, right.student_id));
+  if (new Set(taskResult.assignmentEventIds).size !== taskResult.assignmentEventIds.length
+    || canonicalRows.length !== taskResult.assignmentEventIds.length
+    || new Set(canonicalRows.map((row) => row.student_id)).size !== canonicalRows.length
+    || taskResult.assignmentEventIds.some((id, index) => id !== canonicalRows[index]?.assignment_id)) {
+    throw new Error('Task administration assignment event integrity check failed.');
+  }
+  for (const row of canonicalRows) {
+    const prior = allEvents.filter((candidate) => candidate.student_id === row.student_id
+      && candidate.task_instance_id === taskResult.taskInstanceId
+      && candidate.cycle_id === row.cycle_id && candidate.cycle_start_at === row.cycle_start_at
+      && candidate.cycle_end_at === row.cycle_end_at && candidate.rule_version === row.rule_version
+      && candidate.timezone === row.timezone
+      && Number(candidate.event_sequence) < Number(row.event_sequence))
+      .sort((left, right) => Number(right.event_sequence) - Number(left.event_sequence))[0];
+    if (row.task_id_snapshot !== input.taskId || row.task_instance_id !== taskResult.taskInstanceId
+      || row.event_type !== 'UNASSIGNED' || row.source !== 'ADMIN'
+      || row.assignment_id !== createTaskAdminAssignmentEventId(input.operationId, input.taskId,
+        row.student_id, 'UNASSIGNED')
+      || row.previous_assignment_id !== (prior?.assignment_id ?? null)
+      || row.admin_operation_id !== input.operationId || row.admin_operation_hash !== payloadHash
+      || row.created_at !== finished.toISOString() || row.schema_version !== 1 || row.note !== null) {
+      throw new Error('Task administration assignment event integrity check failed.');
+    }
+  }
+  await assertDeleteAudit(tx, tenantId, deleteAuditInput(result, finished));
   return result;
 }
 

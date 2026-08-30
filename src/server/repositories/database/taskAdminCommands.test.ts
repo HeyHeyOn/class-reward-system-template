@@ -8,6 +8,7 @@ import {
   createTaskAdminResultHash,
   createTaskAdminTaskInstanceId,
   type CreateTaskAdminInput,
+  type DeleteTaskAdminInput,
   type UpdateTaskAdminInput,
 } from './taskAdminCommands';
 import {
@@ -74,6 +75,11 @@ const updateInput = (overrides: Partial<UpdateTaskAdminInput> = {}): UpdateTaskA
   prerequisiteTaskId: null, padletBoardId: null, ...overrides,
 });
 
+const deleteInput = (overrides: Partial<DeleteTaskAdminInput> = {}): DeleteTaskAdminInput => ({
+  operationId: 'task-admin-delete-op', taskId: 'TASK-001', expectedTaskVersion: 1,
+  ...overrides,
+});
+
 async function appendLaterSameCycleAssignment(
   taskInstanceId: string,
   studentId: string,
@@ -116,6 +122,21 @@ async function appendLaterSameCycleAssignment(
   [harness.tenantOneId, assignmentId, row.task_id, taskInstanceId, cycle.cycleId,
     cycle.startsAt, cycle.endsAt, studentId, eventType, source, previousAssignmentId, operationId,
     operationHash, createdAt]);
+}
+
+async function seedCarryForwardCompletion(taskInstanceId: string, completionId = 'existing-completion') {
+  await harness.database.query(`INSERT INTO task_completions
+    (tenant_id, completion_id, completed_at, task_instance_id, task_id_snapshot,
+     task_name_snapshot, student_id, student_name_snapshot, reward_snapshot,
+     balance_before, balance_after, status, note, cycle_id, cycle_start_at, cycle_end_at,
+     rule_version, timezone, source, assignment_id, schema_version, created_at)
+    SELECT tenant_id, $3, $4, task_instance_id, task_id_snapshot,
+     'immutable task name', student_id, '하나', 0, 0, 0, 'COMPLETED', 'immutable note',
+     cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone, 'CARRY_FORWARD',
+     assignment_id, 1, $4
+    FROM task_assignments WHERE tenant_id=$1 AND task_instance_id=$2
+    ORDER BY event_sequence LIMIT 1`,
+  [harness.tenantOneId, taskInstanceId, completionId, NOW.toISOString()]);
 }
 
 async function snapshot(tenantId = harness.tenantOneId) {
@@ -1328,5 +1349,475 @@ describe('database task administrator UPDATE command', () => {
     const one = await commands(harness.tenantOneId).update(updateInput({ allowedStudentIds: [] }));
     const two = await commands(harness.tenantTwoId).update(updateInput({ allowedStudentIds: [] }));
     expect(two).toEqual(one);
+  });
+});
+
+describe('database task administrator DELETE command', () => {
+  it('atomically tombstones one task, removes mirrors, and appends ordered unassignments', async () => {
+    const created = await commands().create(createInput());
+    await seedCarryForwardCompletion(created.tasks[0].taskInstanceId);
+    const before = await completeSnapshot();
+    const result = await commands().delete(deleteInput());
+    const expectedIds = ['S001', 'S002'].map((studentId) => createTaskAdminAssignmentEventId(
+      'task-admin-delete-op', 'TASK-001', studentId, 'UNASSIGNED'));
+    expect(result).toEqual({ ok: true, operationId: 'task-admin-delete-op', action: 'DELETE',
+      completedAt: NOW.toISOString(), tasks: [{ taskId: 'TASK-001',
+        taskInstanceId: created.tasks[0].taskInstanceId, versionBefore: 1, versionAfter: 2,
+        assignmentEventIds: expectedIds }] });
+    expect(Object.isFrozen(result)).toBe(true);
+    const after = await completeSnapshot();
+    expect(after.tasks).toEqual([expect.objectContaining({
+      task_instance_id: created.tasks[0].taskInstanceId, is_active: false, version: '2',
+      deleted_at: NOW, updated_at: NOW,
+      current_schedule: (before.tasks[0] as Record<string, unknown>).current_schedule,
+      pending_schedule: (before.tasks[0] as Record<string, unknown>).pending_schedule,
+      prerequisite_task_instance_id:
+        (before.tasks[0] as Record<string, unknown>).prerequisite_task_instance_id,
+    })]);
+    expect(after.mirrors).toEqual([]);
+    expect(after.assignments).toHaveLength(4);
+    for (const [index, assignmentId] of expectedIds.entries()) {
+      expect(after.assignments).toContainEqual(expect.objectContaining({ assignment_id: assignmentId,
+        student_id: `S00${index + 1}`, event_type: 'UNASSIGNED', source: 'ADMIN',
+        previous_assignment_id: (before.assignments[index] as { assignment_id: string }).assignment_id }));
+    }
+    expect(after.completions).toEqual(before.completions);
+  });
+
+  it('supports zero mirrors and replays exact frozen zero-event evidence', async () => {
+    await commands().create({ ...createInput(), allowedStudentIds: [] });
+    const first = await commands().delete(deleteInput());
+    expect(first.tasks[0].assignmentEventIds).toEqual([]);
+    await expect(commands().delete(deleteInput())).resolves.toEqual(first);
+    const state = await completeSnapshot();
+    expect(state.mirrors).toEqual([]);
+    expect(state.assignments).toEqual([]);
+  });
+
+  it('rejects malformed input before transaction entry', async () => {
+    let calls = 0;
+    const preflight = createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId,
+      runTenantTransaction: async () => { calls += 1; throw new Error('sentinel'); }, now: () => NOW });
+    const getter = { ...deleteInput() } as Record<string, unknown>;
+    Object.defineProperty(getter, 'taskId', { enumerable: true, get: () => 'TASK-001' });
+    for (const input of [
+      { ...deleteInput(), extra: true }, getter,
+      { ...deleteInput(), expectedTaskVersion: 0 },
+      { ...deleteInput(), expectedTaskVersion: Number.MAX_SAFE_INTEGER + 1 },
+    ]) await expect(preflight.delete(input as never)).rejects.toThrow();
+    expect(calls).toBe(0);
+  });
+
+  it('rolls back stale, missing, tombstoned, and active or inactive dependent targets', async () => {
+    const created = await commands().create({ ...createInput(), allowedStudentIds: [] });
+    await commands().create({ ...createInput(), operationId: 'dependent-create', taskId: 'DEPENDENT',
+      prerequisiteTaskId: 'TASK-001', allowedStudentIds: [] });
+    const before = await completeSnapshot();
+    await expect(commands().delete(deleteInput({ operationId: 'stale-delete', expectedTaskVersion: 2 })))
+      .rejects.toThrow(/stale|version/i);
+    await expect(commands().delete(deleteInput({ operationId: 'active-dependent-delete' })))
+      .rejects.toThrow(/dependent/i);
+    await harness.database.query(`UPDATE tasks SET is_active=false WHERE tenant_id=$1 AND task_id='DEPENDENT'`,
+      [harness.tenantOneId]);
+    const inactiveBefore = await completeSnapshot();
+    await expect(commands().delete(deleteInput({ operationId: 'inactive-dependent-delete' })))
+      .rejects.toThrow(/dependent/i);
+    expect(await completeSnapshot()).toEqual(inactiveBefore);
+    await harness.database.query(`UPDATE tasks SET is_active=true WHERE tenant_id=$1 AND task_id='DEPENDENT'`,
+      [harness.tenantOneId]);
+    expect(await completeSnapshot()).toEqual(before);
+    await harness.database.query(`UPDATE tasks SET prerequisite_task_instance_id=NULL
+      WHERE tenant_id=$1 AND task_id='DEPENDENT'`, [harness.tenantOneId]);
+    await commands().delete(deleteInput({ operationId: 'valid-delete' }));
+    await expect(commands().delete(deleteInput({ operationId: 'already-deleted' })))
+      .rejects.toThrow(/not found/i);
+    await expect(commands().delete(deleteInput({ operationId: 'missing-delete', taskId: 'MISSING' })))
+      .rejects.toThrow(/not found/i);
+    expect(created.tasks[0].taskInstanceId).toBeTruthy();
+  });
+
+  it('accepts retained LEGACY and QR histories and links DELETE to the latest current-cycle event', async () => {
+    const created = await commands().create({ ...createInput(), allowedStudentIds: ['S001'] });
+    const taskInstanceId = created.tasks[0].taskInstanceId;
+    await harness.database.exec(`ALTER TABLE task_assignments DISABLE TRIGGER task_assignments_append_only;
+      UPDATE task_assignments SET source='LEGACY_SEED', previous_assignment_id=NULL,
+        admin_operation_id=NULL, admin_operation_hash=NULL WHERE tenant_id='${harness.tenantOneId}';
+      ALTER TABLE task_assignments ENABLE ALWAYS TRIGGER task_assignments_append_only;`);
+    await appendLaterSameCycleAssignment(taskInstanceId, 'S001', 'qr-before-delete',
+      NOW.toISOString(), 'ASSIGNED', 'QR');
+    const result = await commands().delete(deleteInput());
+    expect((await snapshot()).assignments).toContainEqual(expect.objectContaining({
+      assignment_id: result.tasks[0].assignmentEventIds[0],
+      previous_assignment_id: 'qr-before-delete', event_type: 'UNASSIGNED',
+    }));
+  });
+
+  it('accepts a valid prior-cycle CARRY_FORWARD history before DELETE', async () => {
+    const created = await commands().create({ ...createInput(), allowedStudentIds: ['S001'] });
+    const initial = await harness.database.query(`SELECT assignment_id, cycle_id, cycle_start_at,
+      cycle_end_at, rule_version, timezone FROM task_assignments
+      WHERE tenant_id=$1 AND task_instance_id=$2 ORDER BY event_sequence LIMIT 1`,
+    [harness.tenantOneId, created.tasks[0].taskInstanceId]);
+    const row = initial.rows[0] as { assignment_id: string; cycle_id: string;
+      cycle_start_at: Date; cycle_end_at: Date | null; rule_version: number; timezone: string };
+    const priorStart = new Date(row.cycle_start_at.getTime() - 86_400_000);
+    const priorCycleId = `v1|${created.tasks[0].taskInstanceId}|r${row.rule_version}|${priorStart.toISOString().replace('.000Z', 'Z')}`;
+    await harness.database.exec('ALTER TABLE task_assignments DISABLE TRIGGER task_assignments_append_only');
+    await harness.database.query(`UPDATE task_assignments SET source='LEGACY_SEED', cycle_id=$1,
+      cycle_start_at=$2, cycle_end_at=$3, previous_assignment_id=NULL, admin_operation_id=NULL,
+      admin_operation_hash=NULL WHERE tenant_id=$4 AND assignment_id=$5`,
+    [priorCycleId, priorStart.toISOString(), row.cycle_start_at.toISOString(),
+      harness.tenantOneId, row.assignment_id]);
+    await harness.database.exec('ALTER TABLE task_assignments ENABLE ALWAYS TRIGGER task_assignments_append_only');
+    await harness.database.query(`INSERT INTO task_assignments
+      (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id, cycle_start_at,
+       cycle_end_at, rule_version, timezone, student_id, event_type, source,
+       previous_assignment_id, created_at, schema_version, note)
+      VALUES ($1, 'carry-before-delete', 'TASK-001', $2, $3, $4, $5, $6, $7, 'S001',
+       'ASSIGNED', 'CARRY_FORWARD', $8, $9, 1, NULL)`,
+    [harness.tenantOneId, created.tasks[0].taskInstanceId, row.cycle_id,
+      row.cycle_start_at.toISOString(), row.cycle_end_at?.toISOString() ?? null,
+      row.rule_version, row.timezone, row.assignment_id, NOW.toISOString()]);
+    const result = await commands().delete(deleteInput());
+    expect((await snapshot()).assignments).toContainEqual(expect.objectContaining({
+      assignment_id: result.tasks[0].assignmentEventIds[0], previous_assignment_id: 'carry-before-delete',
+    }));
+  });
+
+  it('rejects an invalid clock before transaction entry', async () => {
+    let calls = 0;
+    const invalidClock = createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId,
+      runTenantTransaction: async () => { calls += 1; throw new Error('sentinel'); },
+      now: () => new Date(Number.NaN) });
+    await expect(invalidClock.delete(deleteInput())).rejects.toThrow(/timestamp.*invalid/i);
+    expect(calls).toBe(0);
+  });
+
+  it.each([
+    ['created after updated', "created_at='2026-08-30T01:00:01Z'"],
+    ['updated after now', "updated_at='2026-08-30T01:00:01Z'"],
+  ])('rejects corrupt target chronology (%s) and rolls back', async (_label, mutation) => {
+    await commands().create({ ...createInput(), allowedStudentIds: [] });
+    await harness.database.exec(`ALTER TABLE tasks DROP CONSTRAINT tasks_updated_chronology_check;
+      UPDATE tasks SET ${mutation} WHERE tenant_id='${harness.tenantOneId}' AND task_id='TASK-001'`);
+    const before = await completeSnapshot();
+    await expect(commands().delete(deleteInput())).rejects.toThrow(/chronology.*integrity|task row integrity/i);
+    expect(await completeSnapshot()).toEqual(before);
+  });
+
+  it('rejects an unsafe stored successor before mutation', async () => {
+    await commands().create({ ...createInput(), allowedStudentIds: [] });
+    await harness.database.query(`UPDATE tasks SET version=$3 WHERE tenant_id=$1 AND task_id=$2`,
+      [harness.tenantOneId, 'TASK-001', Number.MAX_SAFE_INTEGER.toString()]);
+    const before = await completeSnapshot();
+    let calls = 0;
+    const counted = createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId,
+      runTenantTransaction: (tenantId, callback) => { calls += 1;
+        return harness.runTenantTransaction(tenantId, callback); }, now: () => NOW });
+    await expect(counted.delete(deleteInput({ expectedTaskVersion: Number.MAX_SAFE_INTEGER })))
+      .rejects.toThrow(/successor|version|safe/i);
+    expect(calls).toBe(1);
+    expect(await completeSnapshot()).toEqual(before);
+  });
+
+  it.each([
+    ['audit', 'task metadata', false, `UPDATE tasks SET title='audit-tampered', version=version+1
+      WHERE tenant_id=NEW.tenant_id AND task_id='TASK-001'`],
+    ['terminal', 'task metadata', false, `UPDATE tasks SET title='terminal-tampered', version=version+1
+      WHERE tenant_id=NEW.tenant_id AND task_id='TASK-001'`],
+    ['audit', 'task lifecycle', false, `UPDATE tasks SET deleted_at=NULL, updated_at=NEW.occurred_at
+      WHERE tenant_id=NEW.tenant_id AND task_id='TASK-001'`],
+    ['terminal', 'task lifecycle', false, `UPDATE tasks SET deleted_at=NULL, updated_at=NEW.updated_at
+      WHERE tenant_id=NEW.tenant_id AND task_id='TASK-001'`],
+    ['audit', 'mirror recreation', false, `INSERT INTO task_allowed_students
+      (tenant_id, task_instance_id, student_id, created_at)
+      SELECT tenant_id, task_instance_id, 'S001', NEW.occurred_at FROM tasks
+      WHERE tenant_id=NEW.tenant_id AND task_id='TASK-001'`],
+    ['terminal', 'mirror recreation', false, `INSERT INTO task_allowed_students
+      (tenant_id, task_instance_id, student_id, created_at)
+      SELECT tenant_id, task_instance_id, 'S001', NEW.updated_at FROM tasks
+      WHERE tenant_id=NEW.tenant_id AND task_id='TASK-001'`],
+    ['audit', 'extra assignment', false, `INSERT INTO task_assignments
+      (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id, cycle_start_at,
+       cycle_end_at, rule_version, timezone, student_id, event_type, source,
+       previous_assignment_id, created_at, schema_version, note)
+      SELECT tenant_id, assignment_id || ':audit-extra', task_id_snapshot, task_instance_id,
+       cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone, student_id,
+       'ASSIGNED', 'LEGACY_SEED', NULL, created_at, schema_version, NULL
+      FROM task_assignments WHERE tenant_id=NEW.tenant_id ORDER BY event_sequence LIMIT 1`],
+    ['terminal', 'extra assignment', false, `INSERT INTO task_assignments
+      (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id, cycle_start_at,
+       cycle_end_at, rule_version, timezone, student_id, event_type, source,
+       previous_assignment_id, created_at, schema_version, note)
+      SELECT tenant_id, assignment_id || ':terminal-extra', task_id_snapshot, task_instance_id,
+       cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone, student_id,
+       'ASSIGNED', 'LEGACY_SEED', NULL, created_at, schema_version, NULL
+      FROM task_assignments WHERE tenant_id=NEW.tenant_id ORDER BY event_sequence LIMIT 1`],
+    ['audit', 'completion insert', false, `INSERT INTO task_completions
+      (tenant_id, completion_id, completed_at, task_instance_id, task_id_snapshot,
+       task_name_snapshot, student_id, student_name_snapshot, reward_snapshot,
+       balance_before, balance_after, status, cycle_id, cycle_start_at, cycle_end_at,
+       rule_version, timezone, source, schema_version, created_at)
+      SELECT tenant_id, 'audit-delete-completion', NEW.occurred_at, task_instance_id, task_id,
+       title, 'S001', '하나', 0, 0, 0, 'COMPLETED', 'audit-delete-cycle',
+       NEW.occurred_at, NULL, 1, 'Asia/Seoul', 'CARRY_FORWARD', 1, NEW.occurred_at
+      FROM tasks WHERE tenant_id=NEW.tenant_id AND task_id='TASK-001'`],
+    ['terminal', 'completion insert', false, `INSERT INTO task_completions
+      (tenant_id, completion_id, completed_at, task_instance_id, task_id_snapshot,
+       task_name_snapshot, student_id, student_name_snapshot, reward_snapshot,
+       balance_before, balance_after, status, cycle_id, cycle_start_at, cycle_end_at,
+       rule_version, timezone, source, schema_version, created_at)
+      SELECT tenant_id, 'terminal-delete-completion', NEW.updated_at, task_instance_id, task_id,
+       title, 'S001', '하나', 0, 0, 0, 'COMPLETED', 'terminal-delete-cycle',
+       NEW.updated_at, NULL, 1, 'Asia/Seoul', 'CARRY_FORWARD', 1, NEW.updated_at
+      FROM tasks WHERE tenant_id=NEW.tenant_id AND task_id='TASK-001'`],
+    ['audit', 'completion delete', true, `ALTER TABLE task_completions DISABLE TRIGGER task_completions_append_only;
+      DELETE FROM task_completions WHERE tenant_id=NEW.tenant_id;
+      ALTER TABLE task_completions ENABLE ALWAYS TRIGGER task_completions_append_only`],
+    ['terminal', 'completion delete', true, `ALTER TABLE task_completions DISABLE TRIGGER task_completions_append_only;
+      DELETE FROM task_completions WHERE tenant_id=NEW.tenant_id;
+      ALTER TABLE task_completions ENABLE ALWAYS TRIGGER task_completions_append_only`],
+  ] as const)('rolls back %s-stage DELETE %s fault with the complete snapshot',
+  async (stage, _stateClass, needsCompletion, body) => {
+    const created = await commands().create({ ...createInput(), allowedStudentIds: ['S001'] });
+    if (needsCompletion) await seedCarryForwardCompletion(created.tasks[0].taskInstanceId);
+    const before = await completeSnapshot();
+    const trigger = stage === 'audit'
+      ? `AFTER INSERT ON audit_events FOR EACH ROW WHEN (NEW.operation_id='task-admin-delete-op')`
+      : `AFTER UPDATE ON operations FOR EACH ROW WHEN
+        (NEW.operation_id='task-admin-delete-op' AND NEW.status='SUCCEEDED')`;
+    await harness.database.exec(`CREATE FUNCTION mutate_delete_state() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN ${body}; RETURN NEW; END $$;
+      CREATE TRIGGER mutate_delete_state ${trigger} EXECUTE FUNCTION mutate_delete_state()`);
+    await expect(commands().delete(deleteInput())).rejects.toThrow();
+    expect(await completeSnapshot()).toEqual(before);
+  });
+
+  it.each([
+    ['duplicate task', 3, 'task_id', 'duplicate'],
+    ['padded task', 3, 'task_id', 'padded'],
+    ['boxed task', 3, 'task_id', 'boxed'],
+    ['duplicate mirror', 4, 'student_id', 'duplicate'],
+    ['padded mirror', 4, 'student_id', 'padded'],
+    ['boxed mirror', 4, 'student_id', 'boxed'],
+    ['duplicate assignment', 5, 'assignment_id', 'duplicate'],
+    ['padded assignment', 5, 'assignment_id', 'padded'],
+    ['boxed assignment', 5, 'assignment_id', 'boxed'],
+    ['duplicate completion', 6, 'completion_id', 'duplicate'],
+    ['padded completion', 6, 'completion_id', 'padded'],
+    ['boxed completion', 6, 'completion_id', 'boxed'],
+  ] as const)('rejects raw DELETE-path %s evidence before mutation',
+  async (_label, targetCall, key, mode) => {
+    const created = await commands().create({ ...createInput(), allowedStudentIds: ['S001'] });
+    await seedCarryForwardCompletion(created.tasks[0].taskInstanceId);
+    const before = await completeSnapshot();
+    let call = 0;
+    const adapter = createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId, now: () => NOW,
+      runTenantTransaction: (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) =>
+        callback({ execute: async (query) => {
+          call += 1;
+          const result = await tx.execute(query);
+          if (call !== targetCall) return result;
+          if (mode === 'duplicate') return { ...result, rows: [...result.rows, ...result.rows] } as never;
+          return { ...result, rows: result.rows.map((raw) => {
+            const row = raw as Record<string, unknown>;
+            const value = row[key];
+            return { ...row, [key]: mode === 'padded' ? ` ${String(value)} ` : new String(String(value)) };
+          }) } as never;
+        } } as typeof tx)),
+    });
+    await expect(adapter.delete(deleteInput())).rejects.toThrow(/integrity|invalid/i);
+    expect(await completeSnapshot()).toEqual(before);
+  });
+
+  it.each(['duplicate', 'padded', 'boxed'] as const)(
+    'rejects raw replay operation evidence that is %s', async (mode) => {
+      const input = deleteInput();
+      await commands().create({ ...createInput(), allowedStudentIds: [] });
+      await commands().delete(input);
+      const before = await completeSnapshot();
+      const adapter = createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId, now: () => NOW,
+        runTenantTransaction: (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) =>
+          callback({ execute: async (query) => {
+            const result = await tx.execute(query);
+            if (!result.rows.some((row) => (row as { operation_id?: unknown }).operation_id === input.operationId)) {
+              return result;
+            }
+            if (mode === 'duplicate') return { ...result, rows: [...result.rows, ...result.rows] } as never;
+            return { ...result, rows: result.rows.map((raw) => ({ ...(raw as Record<string, unknown>),
+              operation_id: mode === 'padded' ? ` ${input.operationId} ` : new String(input.operationId) })) } as never;
+          } } as typeof tx)),
+      });
+      await expect(adapter.delete(input)).rejects.toThrow(/operation.*integrity|database identity/i);
+      expect(await completeSnapshot()).toEqual(before);
+    },
+  );
+
+  it('replays the exact frozen result, conflicts on changed input, and handles the claim race loser', async () => {
+    await commands().create(createInput());
+    const input = deleteInput();
+    const first = await commands().delete(input);
+    const replay = await commands().delete(input);
+    expect(replay).toEqual(first);
+    expect(Object.isFrozen(replay)).toBe(true);
+    await expect(commands().delete({ ...input, expectedTaskVersion: 2 })).rejects.toThrow(/conflict/i);
+    const racing = createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId, now: () => NOW,
+      runTenantTransaction: (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) => {
+        let firstRead = true;
+        return callback({ execute: async (query) => {
+          if (firstRead) { firstRead = false; return { rows: [] } as never; }
+          return tx.execute(query);
+        } } as typeof tx);
+      }),
+    });
+    await expect(racing.delete(input)).resolves.toEqual(first);
+  });
+
+  it('replays after legitimate later task, mirror, assignment, and completion state', async () => {
+    const created = await commands().create({ ...createInput(), allowedStudentIds: ['S001'] });
+    const input = deleteInput();
+    const first = await commands().delete(input);
+    await harness.database.query(`UPDATE tasks SET title='later', version=3, updated_at=$3, deleted_at=$3
+      WHERE tenant_id=$1 AND task_instance_id=$2`,
+    [harness.tenantOneId, created.tasks[0].taskInstanceId, '2026-08-30T02:00:00.000Z']);
+    await harness.database.query(`INSERT INTO task_allowed_students
+      (tenant_id, task_instance_id, student_id, created_at) VALUES ($1, $2, 'S002', $3)`,
+    [harness.tenantOneId, created.tasks[0].taskInstanceId, '2026-08-30T02:00:00.000Z']);
+    await appendLaterSameCycleAssignment(created.tasks[0].taskInstanceId, 'S002',
+      'later-delete-assignment', '2026-08-30T02:00:00.000Z');
+    await seedCarryForwardCompletion(created.tasks[0].taskInstanceId, 'later-delete-completion');
+    await expect(commands().delete(input)).resolves.toEqual(first);
+  });
+
+  it('rejects replay after the physical task identity is hard-deleted', async () => {
+    const created = await commands().create({ ...createInput(), allowedStudentIds: [] });
+    const input = deleteInput();
+    await commands().delete(input);
+    await harness.database.exec('ALTER TABLE task_assignments DISABLE TRIGGER task_assignments_append_only');
+    await harness.database.query('DELETE FROM task_assignments WHERE tenant_id=$1 AND task_instance_id=$2',
+      [harness.tenantOneId, created.tasks[0].taskInstanceId]);
+    await harness.database.query('DELETE FROM tasks WHERE tenant_id=$1 AND task_instance_id=$2',
+      [harness.tenantOneId, created.tasks[0].taskInstanceId]);
+    await expect(commands().delete(input)).rejects.toThrow(/physical identity/i);
+  });
+
+  it.each([
+    ['missing', `DELETE FROM task_assignments WHERE admin_operation_id='task-admin-delete-op'`],
+    ['tampered', `UPDATE task_assignments SET event_type='ASSIGNED'
+      WHERE admin_operation_id='task-admin-delete-op'`],
+    ['extra', `INSERT INTO task_assignments
+      (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id, cycle_start_at,
+       cycle_end_at, rule_version, timezone, student_id, event_type, source,
+       previous_assignment_id, admin_operation_id, admin_operation_hash, created_at,
+       schema_version, note)
+      SELECT tenant_id, assignment_id || ':extra', task_id_snapshot, task_instance_id, cycle_id,
+       cycle_start_at, cycle_end_at, rule_version, timezone, student_id, event_type, source,
+       previous_assignment_id, admin_operation_id, admin_operation_hash, created_at,
+       schema_version, note FROM task_assignments
+      WHERE admin_operation_id='task-admin-delete-op'`],
+  ])('rejects replay with %s original DELETE assignment evidence', async (_label, tamper) => {
+    const input = deleteInput();
+    await commands().create({ ...createInput(), allowedStudentIds: ['S001'] });
+    await commands().delete(input);
+    await harness.database.exec(`ALTER TABLE task_assignments DISABLE TRIGGER task_assignments_append_only;
+      ${tamper}; ALTER TABLE task_assignments ENABLE ALWAYS TRIGGER task_assignments_append_only`);
+    await expect(commands().delete(input)).rejects.toThrow(/assignment event integrity/i);
+  });
+
+  it('rejects an extra operation-bound event for an originally zero-event DELETE', async () => {
+    const created = await commands().create({ ...createInput(), allowedStudentIds: [] });
+    const input = deleteInput();
+    await commands().delete(input);
+    const task = await harness.database.query('SELECT current_schedule, created_at FROM tasks WHERE task_instance_id=$1',
+      [created.tasks[0].taskInstanceId]);
+    const row = task.rows[0] as { current_schedule: Parameters<typeof getTaskCycle>[0]['schedule']; created_at: Date };
+    const cycle = getTaskCycle({ taskInstanceId: created.tasks[0].taskInstanceId,
+      schedule: row.current_schedule, taskCreatedAt: row.created_at.toISOString(), now: NOW.toISOString() });
+    const operation = await harness.database.query(`SELECT payload_hash FROM operations
+      WHERE tenant_id=$1 AND operation_id='task-admin-delete-op'`, [harness.tenantOneId]);
+    await harness.database.query(`INSERT INTO task_assignments
+      (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id, cycle_start_at,
+       cycle_end_at, rule_version, timezone, student_id, event_type, source,
+       admin_operation_id, admin_operation_hash, created_at, schema_version, note)
+      VALUES ($1, 'zero-delete-extra', 'TASK-001', $2, $3, $4, $5, 1, 'Asia/Seoul',
+       'S001', 'UNASSIGNED', 'ADMIN', 'task-admin-delete-op', $6, $7, 1, NULL)`,
+    [harness.tenantOneId, created.tasks[0].taskInstanceId, cycle.cycleId, cycle.startsAt,
+      cycle.endsAt, (operation.rows[0] as { payload_hash: string }).payload_hash, NOW.toISOString()]);
+    await expect(commands().delete(input)).rejects.toThrow(/assignment event integrity/i);
+  });
+
+  it.each([
+    ['missing', `DELETE FROM audit_events WHERE operation_id='task-admin-delete-op'`],
+    ['extra', `INSERT INTO audit_events
+      (tenant_id, event_id, operation_id, event_type, entity_type, entity_id,
+       redacted_details, occurred_at)
+      SELECT tenant_id, event_id || ':extra', operation_id, event_type, entity_type, entity_id,
+       redacted_details, occurred_at FROM audit_events WHERE operation_id='task-admin-delete-op'`],
+    ['field', `UPDATE audit_events SET entity_id='tampered' WHERE operation_id='task-admin-delete-op'`],
+    ['time', `UPDATE audit_events SET occurred_at=occurred_at + interval '1 second'
+      WHERE operation_id='task-admin-delete-op'`],
+  ])('rejects DELETE replay with %s audit evidence', async (_label, tamper) => {
+    const input = deleteInput();
+    await commands().create({ ...createInput(), allowedStudentIds: [] });
+    await commands().delete(input);
+    await harness.database.exec(`ALTER TABLE audit_events DISABLE TRIGGER audit_events_immutable;
+      ${tamper}; ALTER TABLE audit_events ENABLE ALWAYS TRIGGER audit_events_immutable`);
+    await expect(commands().delete(input)).rejects.toThrow(/audit/i);
+  });
+
+  it.each([
+    ['raw result', `result_snapshot=jsonb_set(result_snapshot, '{tasks,0,taskId}', '"OTHER"')`],
+    ['operation chronology', `started_at=started_at - interval '1 second',
+      created_at=created_at - interval '1 second'`],
+  ])('rejects DELETE replay with tampered %s', async (_label, mutation) => {
+    const input = deleteInput();
+    await commands().create({ ...createInput(), allowedStudentIds: [] });
+    await commands().delete(input);
+    await harness.database.exec(`ALTER TABLE operations DISABLE TRIGGER operations_update_guard;
+      UPDATE operations SET ${mutation} WHERE operation_id='task-admin-delete-op';
+      ALTER TABLE operations ENABLE ALWAYS TRIGGER operations_update_guard`);
+    await expect(commands().delete(input)).rejects.toThrow(/stored result|timestamp integrity/i);
+  });
+
+  it('isolates identical DELETE business and operation IDs by tenant', async () => {
+    await commands(harness.tenantOneId).create(createInput());
+    await commands(harness.tenantTwoId).create(createInput());
+    const one = await commands(harness.tenantOneId).delete(deleteInput());
+    const two = await commands(harness.tenantTwoId).delete(deleteInput());
+    expect(two).toEqual(one);
+    expect((await snapshot(harness.tenantOneId)).tasks).toHaveLength(1);
+    expect((await snapshot(harness.tenantTwoId)).tasks).toHaveLength(1);
+  });
+
+  it.each([
+    ['task CAS RETURN NULL', `CREATE FUNCTION suppress_delete_write() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.deleted_at IS NOT NULL THEN RETURN NULL; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER suppress_delete_write BEFORE UPDATE ON tasks
+      FOR EACH ROW EXECUTE FUNCTION suppress_delete_write()`],
+    ['task CAS RETURN OLD', `CREATE FUNCTION suppress_delete_write() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.deleted_at IS NOT NULL THEN RETURN OLD; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER suppress_delete_write BEFORE UPDATE ON tasks
+      FOR EACH ROW EXECUTE FUNCTION suppress_delete_write()`],
+    ['mirror DELETE', `CREATE FUNCTION suppress_delete_write() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN RETURN NULL; END $$; CREATE TRIGGER suppress_delete_write BEFORE DELETE ON task_allowed_students
+      FOR EACH ROW EXECUTE FUNCTION suppress_delete_write()`],
+    ['assignment INSERT', `CREATE FUNCTION suppress_delete_write() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.admin_operation_id='task-admin-delete-op' THEN RETURN NULL; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER suppress_delete_write BEFORE INSERT ON task_assignments
+      FOR EACH ROW EXECUTE FUNCTION suppress_delete_write()`],
+    ['audit INSERT', `CREATE FUNCTION suppress_delete_write() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.operation_id='task-admin-delete-op' THEN RETURN NULL; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER suppress_delete_write BEFORE INSERT ON audit_events
+      FOR EACH ROW EXECUTE FUNCTION suppress_delete_write()`],
+    ['terminal UPDATE', `CREATE FUNCTION suppress_delete_write() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.operation_id='task-admin-delete-op' AND NEW.status='SUCCEEDED' THEN RETURN NULL; END IF;
+      RETURN NEW; END $$; CREATE TRIGGER suppress_delete_write BEFORE UPDATE ON operations
+      FOR EACH ROW EXECUTE FUNCTION suppress_delete_write()`],
+  ])('rolls back all state when required DELETE %s is suppressed', async (_label, ddl) => {
+    await commands().create(createInput());
+    const before = await completeSnapshot();
+    await harness.database.exec(ddl);
+    await expect(commands().delete(deleteInput())).rejects.toThrow(/integrity|replayable/i);
+    expect(await completeSnapshot()).toEqual(before);
   });
 });
