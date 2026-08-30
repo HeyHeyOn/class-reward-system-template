@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  MAX_PROMOTION_ADMIN_BATCH_SIZE,
+  MAX_PROMOTION_ADMIN_BATCH_LINK_COUNT,
   createDatabasePromotionCommands,
   createPromotionAdminLinkId,
   createPromotionAdminPayloadHash,
@@ -74,6 +76,31 @@ const createInput = () => ({
   productIds: ['P002', ' P001 '],
 });
 
+const createBatchInput = () => ({
+  operationId: 'promotion-create-batch-operation',
+  promotions: [
+    {
+      promotionId: ' PROMO-002 ',
+      definition: {
+        name: ' 둘째 행사 ',
+        description: ' 설명 ',
+        type: 'PROMOTIONAL_PRICE' as const,
+        promotionalUnitPrice: 80,
+        startsAt: '2026-08-30T00:00:00.000Z',
+        endsAt: '2026-09-30T00:00:00.000Z',
+        isActive: true,
+        sortOrder: 4,
+      },
+      productIds: ['P002'],
+    },
+    {
+      promotionId: 'PROMO-001',
+      definition: createInput().definition,
+      productIds: ['P002', ' P001 '],
+    },
+  ],
+});
+
 const updateInput = () => ({
   operationId: 'promotion-update-operation',
   promotionId: 'PROMO-001',
@@ -140,6 +167,447 @@ async function snapshot() {
 }
 
 describe('PostgreSQL promotion administration commands', () => {
+  it('exports the bounded create batch API', async () => {
+    expect(MAX_PROMOTION_ADMIN_BATCH_SIZE).toBe(100);
+    await expect(commands().createBatch(createBatchInput())).resolves.toMatchObject({
+      action: 'CREATE',
+      promotions: [{ promotionId: 'PROMO-001' }, { promotionId: 'PROMO-002' }],
+    });
+  });
+
+  it('rejects malformed create batches and invalid clocks before opening a transaction', async () => {
+    let transactionCallCount = 0;
+    const batchCommands = createDatabasePromotionCommands({
+      tenantId: harness.tenantOneId,
+      runTenantTransaction: (tenantId, callback) => {
+        transactionCallCount += 1;
+        return harness.runTenantTransaction(tenantId, callback);
+      },
+      now: () => new Date(Number.NaN),
+    });
+    const valid = createBatchInput().promotions[0];
+    const invalidInputs = [
+      { operationId: 'empty', promotions: [] },
+      { operationId: 'large', promotions: Array.from({ length: 101 }, (_, index) => ({
+        ...valid, promotionId: `PROMO-${index}`,
+      })) },
+      { operationId: 'duplicate', promotions: [
+        { ...valid, promotionId: ' DUPLICATE ' }, { ...valid, promotionId: 'DUPLICATE' },
+      ] },
+      { operationId: 'malformed', promotions: [valid, {
+        ...valid,
+        promotionId: 'PROMO-LATER',
+        definition: { ...valid.definition, surprise: true },
+      }] },
+      { operationId: 'nested-operation', promotions: [{ ...valid, operationId: 'forbidden' }] },
+    ];
+    for (const input of invalidInputs) {
+      await expect(batchCommands.createBatch(input as never)).rejects.toThrow();
+    }
+    await expect(batchCommands.createBatch({
+      operationId: 'invalid-now', promotions: [valid],
+    })).rejects.toThrow(/timestamp.*invalid/i);
+    expect(transactionCallCount).toBe(0);
+  });
+
+  it('accepts exactly one hundred creates in one transaction', async () => {
+    let transactionCallCount = 0;
+    const batchCommands = createDatabasePromotionCommands({
+      tenantId: harness.tenantOneId,
+      runTenantTransaction: (tenantId, callback) => {
+        transactionCallCount += 1;
+        return harness.runTenantTransaction(tenantId, callback);
+      },
+      now: () => NOW,
+    });
+    const definition = createBatchInput().promotions[0].definition;
+    const result = await batchCommands.createBatch({
+      operationId: 'promotion-create-batch-100',
+      promotions: Array.from({ length: 100 }, (_, index) => ({
+        promotionId: `BATCH-${String(index).padStart(3, '0')}`,
+        definition,
+        productIds: [],
+      })),
+    });
+    expect(result.promotions).toHaveLength(100);
+    expect(transactionCallCount).toBe(1);
+    expect((await snapshot()).operations).toHaveLength(1);
+    expect((await snapshot()).audits).toHaveLength(1);
+  });
+
+  it('rejects more than one thousand canonical create batch links before opening a transaction', async () => {
+    let transactionCallCount = 0;
+    const batchCommands = createDatabasePromotionCommands({
+      tenantId: harness.tenantOneId,
+      runTenantTransaction: async () => {
+        transactionCallCount += 1;
+        throw new Error('transaction sentinel');
+      },
+      now: () => NOW,
+    });
+    const definition = createBatchInput().promotions[0].definition;
+    const promotions = Array.from({ length: 100 }, (_, promotionIndex) => ({
+      promotionId: `BATCH-${String(promotionIndex).padStart(3, '0')}`,
+      definition,
+      productIds: Array.from(
+        { length: promotionIndex === 0 ? 11 : 10 },
+        (_, productIndex) => ` P-${promotionIndex}-${productIndex} `,
+      ),
+    }));
+
+    expect(MAX_PROMOTION_ADMIN_BATCH_LINK_COUNT).toBe(1000);
+    await expect(batchCommands.createBatch({
+      operationId: 'promotion-create-batch-1001-links', promotions,
+    })).rejects.toThrow(/link count.*1000/i);
+    expect(transactionCallCount).toBe(0);
+  });
+
+  it('accepts exactly one thousand canonical create batch links far enough to open a transaction', async () => {
+    const transactionSentinel = new Error('transaction sentinel');
+    let transactionCallCount = 0;
+    const batchCommands = createDatabasePromotionCommands({
+      tenantId: harness.tenantOneId,
+      runTenantTransaction: async () => {
+        transactionCallCount += 1;
+        throw transactionSentinel;
+      },
+      now: () => NOW,
+    });
+    const definition = createBatchInput().promotions[0].definition;
+    const promotions = Array.from({ length: 100 }, (_, promotionIndex) => ({
+      promotionId: `BATCH-${String(promotionIndex).padStart(3, '0')}`,
+      definition,
+      productIds: Array.from(
+        { length: 10 },
+        (_, productIndex) => ` P-${promotionIndex}-${productIndex} `,
+      ),
+    }));
+
+    await expect(batchCommands.createBatch({
+      operationId: 'promotion-create-batch-1000-links', promotions,
+    })).rejects.toBe(transactionSentinel);
+    expect(transactionCallCount).toBe(1);
+  });
+
+  it('atomically creates an ordered batch with one timestamp, exact links, operation, and audit', async () => {
+    const input = createBatchInput();
+    const result = await commands().createBatch(input);
+    expect(result.promotions.map((promotion) => promotion.promotionId)).toEqual(['PROMO-001', 'PROMO-002']);
+    expect(result.completedAt).toBe(NOW.toISOString());
+    expect(result.promotions).toEqual([
+      expect.objectContaining({
+        promotionId: 'PROMO-001', productIds: ['P001', 'P002'], schemaVersion: 3,
+        promotionVersionBefore: null, promotionVersionAfter: 1,
+      }),
+      expect.objectContaining({
+        promotionId: 'PROMO-002', productIds: ['P002'], schemaVersion: 3,
+        promotionVersionBefore: null, promotionVersionAfter: 1,
+      }),
+    ]);
+    const state = await snapshot();
+    expect(state.promotions).toHaveLength(2);
+    expect(state.promotions.every((value) => {
+      const row = value as Record<string, unknown>;
+      return row.created_at instanceof Date
+        && row.created_at.getTime() === NOW.getTime()
+        && row.updated_at instanceof Date && row.updated_at.getTime() === NOW.getTime()
+        && row.version === '1' && row.schema_version === 3;
+    })).toBe(true);
+    expect(state.links).toEqual([
+      { promotion_product_id: createPromotionAdminLinkId(input.operationId, 'PROMO-001', 'P001'), promotion_id: 'PROMO-001', product_id: 'P001', schema_version: 3 },
+      { promotion_product_id: createPromotionAdminLinkId(input.operationId, 'PROMO-001', 'P002'), promotion_id: 'PROMO-001', product_id: 'P002', schema_version: 3 },
+      { promotion_product_id: createPromotionAdminLinkId(input.operationId, 'PROMO-002', 'P002'), promotion_id: 'PROMO-002', product_id: 'P002', schema_version: 3 },
+    ]);
+    expect(state.operations).toHaveLength(1);
+    expect(state.audits).toEqual([expect.objectContaining({
+      redacted_details: expect.objectContaining({ changedPromotionCount: 2, targetProductCount: 3 }),
+    })]);
+  });
+
+  it.each([
+    ['missing later product', async () => ({
+      ...createBatchInput(), promotions: [createBatchInput().promotions[0], {
+        ...createBatchInput().promotions[1], productIds: ['P404'],
+      }],
+    })],
+    ['deleted later product', async () => {
+      await harness.database.query(
+        'UPDATE products SET deleted_at=$3, is_active=false WHERE tenant_id=$1 AND product_id=$2',
+        [harness.tenantOneId, 'P001', NOW.toISOString()],
+      );
+      return createBatchInput();
+    }],
+    ['existing later promotion', async () => {
+      await commands().create({
+        ...createInput(),
+        operationId: 'promotion-create-existing-batch-target',
+        promotionId: 'PROMO-002',
+      });
+      return createBatchInput();
+    }],
+  ] as const)('rolls back the complete batch for a %s', async (_label, prepare) => {
+    const before = await snapshot();
+    const input = await prepare();
+    const prepared = await snapshot();
+    await expect(commands().createBatch(input)).rejects.toThrow(/not found|duplicate|unique|integrity|failed query/i);
+    expect(await snapshot()).toEqual(prepared);
+    if (_label === 'missing later product') expect(prepared).toEqual(before);
+  });
+
+  it.each([
+    ['later promotion', 'promotions', "NEW.promotion_id='PROMO-002'"],
+    ['later link', 'promotion_products', "NEW.promotion_id='PROMO-002'"],
+  ] as const)('rolls back the complete batch when the %s insert is suppressed', async (_label, table, condition) => {
+    await harness.database.exec(`
+      CREATE FUNCTION suppress_required_promotion_batch_insert() RETURNS trigger
+      LANGUAGE plpgsql AS $$ BEGIN IF ${condition} THEN RETURN NULL; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER suppress_required_promotion_batch_insert BEFORE INSERT ON ${table}
+      FOR EACH ROW EXECUTE FUNCTION suppress_required_promotion_batch_insert();
+    `);
+    await expect(commands().createBatch(createBatchInput())).rejects.toThrow(/integrity/i);
+    expect(await snapshot()).toEqual({ promotions: [], links: [], operations: [], audits: [] });
+  });
+
+  it('rolls back when a later promotion trigger mutates an earlier created promotion', async () => {
+    await harness.database.exec(`
+      CREATE FUNCTION mutate_earlier_promotion_after_later_insert() RETURNS trigger
+      LANGUAGE plpgsql AS $$ BEGIN
+        IF NEW.promotion_id = 'PROMO-002' THEN
+          UPDATE promotions SET name = 'trigger-mutated'
+          WHERE tenant_id = NEW.tenant_id AND promotion_id = 'PROMO-001';
+        END IF;
+        RETURN NEW;
+      END $$;
+      CREATE TRIGGER mutate_earlier_promotion_after_later_insert
+      AFTER INSERT ON promotions
+      FOR EACH ROW EXECUTE FUNCTION mutate_earlier_promotion_after_later_insert();
+    `);
+
+    await expect(commands().createBatch(createBatchInput())).rejects.toThrow(/integrity/i);
+    expect(await snapshot()).toEqual({ promotions: [], links: [], operations: [], audits: [] });
+  });
+
+  it('rolls back when the batch audit insert mutates a completely verified promotion', async () => {
+    await harness.database.exec(`
+      CREATE FUNCTION mutate_batch_promotion_after_audit_insert() RETURNS trigger
+      LANGUAGE plpgsql AS $$ BEGIN
+        IF NEW.operation_id = 'promotion-create-batch-operation' THEN
+          UPDATE promotions SET schema_version = 2
+          WHERE tenant_id = NEW.tenant_id AND promotion_id = 'PROMO-001';
+        END IF;
+        RETURN NEW;
+      END $$;
+      CREATE TRIGGER mutate_batch_promotion_after_audit_insert
+      AFTER INSERT ON audit_events
+      FOR EACH ROW EXECUTE FUNCTION mutate_batch_promotion_after_audit_insert();
+    `);
+
+    await expect(commands().createBatch(createBatchInput())).rejects.toThrow(/integrity/i);
+    expect(await snapshot()).toEqual({ promotions: [], links: [], operations: [], audits: [] });
+  });
+
+  it('rolls back when the terminal operation update deletes a completely verified link', async () => {
+    await harness.database.exec(`
+      CREATE FUNCTION delete_batch_link_after_operation_success() RETURNS trigger
+      LANGUAGE plpgsql AS $$ BEGIN
+        IF NEW.operation_id = 'promotion-create-batch-operation' AND NEW.status = 'SUCCEEDED' THEN
+          DELETE FROM promotion_products
+          WHERE tenant_id = NEW.tenant_id AND promotion_id = 'PROMO-001' AND product_id = 'P001';
+        END IF;
+        RETURN NEW;
+      END $$;
+      CREATE TRIGGER delete_batch_link_after_operation_success
+      AFTER UPDATE ON operations
+      FOR EACH ROW EXECUTE FUNCTION delete_batch_link_after_operation_success();
+    `);
+
+    await expect(commands().createBatch(createBatchInput())).rejects.toThrow(/integrity/i);
+    expect(await snapshot()).toEqual({ promotions: [], links: [], operations: [], audits: [] });
+  });
+
+  it('rejects duplicate physical rows returned by the batch product-union lock', async () => {
+    const malformedCommands = createDatabasePromotionCommands({
+      tenantId: harness.tenantOneId,
+      now: () => NOW,
+      runTenantTransaction: (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) => {
+        const malformedTx = {
+          execute: async (query: Parameters<typeof tx.execute>[0]) => {
+            const result = await tx.execute(query);
+            if (result.rows.length > 0 && result.rows.every((row) => (
+              Object.keys(row as object).length === 1 && 'product_id' in (row as object)
+            ))) {
+              return { ...result, rows: [...result.rows, result.rows[0]] } as never;
+            }
+            return result;
+          },
+        } as unknown as typeof tx;
+        return callback(malformedTx);
+      }),
+    });
+
+    await expect(malformedCommands.createBatch(createBatchInput())).rejects.toThrow(/integrity/i);
+    expect(await snapshot()).toEqual({ promotions: [], links: [], operations: [], audits: [] });
+  });
+
+  it('rejects duplicate physical promotion identity rows during batch replay', async () => {
+    const input = createBatchInput();
+    await commands().createBatch(input);
+    const before = await snapshot();
+    const malformedCommands = createDatabasePromotionCommands({
+      tenantId: harness.tenantOneId,
+      now: () => NOW,
+      runTenantTransaction: (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) => {
+        const malformedTx = {
+          execute: async (query: Parameters<typeof tx.execute>[0]) => {
+            const result = await tx.execute(query);
+            if (result.rows.length > 0 && result.rows.every((row) => (
+              Object.keys(row as object).length === 1 && 'promotion_id' in (row as object)
+            ))) {
+              return { ...result, rows: [...result.rows, result.rows[0]] } as never;
+            }
+            return result;
+          },
+        } as unknown as typeof tx;
+        return callback(malformedTx);
+      }),
+    });
+
+    await expect(malformedCommands.createBatch(input)).rejects.toThrow(/identity integrity/i);
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('validates a batch product union independent of database collation', async () => {
+    const javascriptFirst = 'P\u{10000}';
+    const databaseFirst = 'P\uE000';
+    for (const productId of [javascriptFirst, databaseFirst]) {
+      await harness.database.query(
+        `INSERT INTO products
+          (tenant_id, product_id, name, price, stock, is_active, sort_order, version, created_at, updated_at)
+         VALUES ($1, $2, $2, 100, 10, true, 0, 1, $3, $3)`,
+        [harness.tenantOneId, productId, NOW.toISOString()],
+      );
+    }
+    const input = createBatchInput();
+    input.promotions[0].productIds = [databaseFirst] as never;
+    input.promotions[1].productIds = [javascriptFirst] as never;
+    await expect(commands().createBatch(input)).resolves.toMatchObject({
+      promotions: [
+        { promotionId: 'PROMO-001', productIds: [javascriptFirst] },
+        { promotionId: 'PROMO-002', productIds: [databaseFirst] },
+      ],
+    });
+  });
+
+  it('replays a reversed create batch exactly and rejects a changed item', async () => {
+    const input = createBatchInput();
+    const first = await commands().createBatch(input);
+    await expect(commands().createBatch({
+      ...input, promotions: [...input.promotions].reverse(),
+    })).resolves.toEqual(first);
+    await expect(commands().createBatch({
+      ...input,
+      promotions: [input.promotions[0], {
+        ...input.promotions[1], definition: { ...input.promotions[1].definition, name: 'changed' },
+      }],
+    })).rejects.toThrow(/conflict/i);
+    expect((await snapshot()).operations).toHaveLength(1);
+    expect((await snapshot()).audits).toHaveLength(1);
+  });
+
+  it('re-reads a winning batch operation after an insert race', async () => {
+    const input = createBatchInput();
+    const first = await commands().createBatch(input);
+    const raceCommands = createDatabasePromotionCommands({
+      tenantId: harness.tenantOneId,
+      now: () => NOW,
+      runTenantTransaction: (tenantId, callback) => harness.runTenantTransaction(tenantId, async (tx) => {
+        let missedInitialRead = false;
+        const raceTx = {
+          execute: async (query: Parameters<typeof tx.execute>[0]) => {
+            if (!missedInitialRead) {
+              missedInitialRead = true;
+              return { rows: [] } as never;
+            }
+            return tx.execute(query);
+          },
+        } as unknown as typeof tx;
+        return callback(raceTx);
+      }),
+    });
+    await expect(raceCommands.createBatch({
+      ...input, promotions: [...input.promotions].reverse(),
+    })).resolves.toEqual(first);
+  });
+
+  it('replays frozen batch evidence after mutation and tombstone but rejects a hard-missing identity', async () => {
+    const input = createBatchInput();
+    const first = await commands().createBatch(input);
+    await harness.database.query(
+      `UPDATE promotions SET name='later', version=2, deleted_at=$3, updated_at=$3
+       WHERE tenant_id=$1 AND promotion_id=$2`,
+      [harness.tenantOneId, 'PROMO-001', '2026-08-30T02:00:00.000Z'],
+    );
+    await expect(commands().createBatch(input)).resolves.toEqual(first);
+    await harness.database.query(
+      'DELETE FROM promotion_products WHERE tenant_id=$1 AND promotion_id=$2',
+      [harness.tenantOneId, 'PROMO-002'],
+    );
+    await harness.database.query(
+      'DELETE FROM promotions WHERE tenant_id=$1 AND promotion_id=$2',
+      [harness.tenantOneId, 'PROMO-002'],
+    );
+    await expect(commands().createBatch(input)).rejects.toThrow(/identity integrity/i);
+  });
+
+  it('fails closed on reordered stored batch results', async () => {
+    const input = createBatchInput();
+    await commands().createBatch(input);
+    await withOperationAuditTampering(async () => {
+      await harness.database.query(
+        `UPDATE operations SET result_snapshot=jsonb_set(result_snapshot, '{promotions}',
+          jsonb_build_array(result_snapshot->'promotions'->1, result_snapshot->'promotions'->0))
+         WHERE tenant_id=$1 AND operation_id=$2`,
+        [harness.tenantOneId, input.operationId],
+      );
+    });
+    await expect(commands().createBatch(input)).rejects.toThrow(/stored result integrity/i);
+  });
+
+  it.each([
+    ['whitespace-padded promotion name',
+      "jsonb_set(result_snapshot, '{promotions,0,name}', to_jsonb(concat(' ', result_snapshot #>> '{promotions,0,name}', ' ')))"],
+    ['equivalent noncanonical startsAt timestamp',
+      "jsonb_set(result_snapshot, '{promotions,0,startsAt}', to_jsonb('2026-08-30T09:00:00+09:00'::text))"],
+  ] as const)('rejects a stored create batch result with a %s', async (_label, tamperedResult) => {
+    const input = createBatchInput();
+    await commands().createBatch(input);
+    await withOperationAuditTampering(async () => {
+      await harness.database.query(
+        `UPDATE operations SET result_snapshot=${tamperedResult}
+         WHERE tenant_id=$1 AND operation_id=$2`,
+        [harness.tenantOneId, input.operationId],
+      );
+    });
+
+    await expect(commands().createBatch(input)).rejects.toThrow(/stored result integrity/i);
+  });
+
+  it('rejects a stored singleton create result with a whitespace-padded product ID', async () => {
+    const input = createInput();
+    await commands().create(input);
+    await withOperationAuditTampering(async () => {
+      await harness.database.query(
+        `UPDATE operations SET result_snapshot=jsonb_set(
+           result_snapshot, '{promotions,0,productIds,0}',
+           to_jsonb(concat(' ', result_snapshot #>> '{promotions,0,productIds,0}', ' '))
+         ) WHERE tenant_id=$1 AND operation_id=$2`,
+        [harness.tenantOneId, input.operationId],
+      );
+    });
+
+    await expect(commands().create(input)).rejects.toThrow(/stored result integrity/i);
+  });
+
   it('atomically creates promotion metadata, canonical target links, one operation, and one audit', async () => {
     const input = createInput();
     const result = await commands().create(input);

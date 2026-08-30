@@ -45,6 +45,14 @@ export type CreatePromotionAdminInput = Readonly<{
   productIds: readonly string[];
 }>;
 
+export const MAX_PROMOTION_ADMIN_BATCH_SIZE = 100;
+export const MAX_PROMOTION_ADMIN_BATCH_LINK_COUNT = 1000;
+
+export type CreatePromotionsAdminBatchInput = Readonly<{
+  operationId: string;
+  promotions: readonly Omit<CreatePromotionAdminInput, 'operationId'>[];
+}>;
+
 export type UpdatePromotionAdminInput = Readonly<{
   operationId: string;
   promotionId: string;
@@ -163,6 +171,17 @@ export function createPromotionAdminResultHash(result: PromotionAdminSuccess): s
 
 export function createDatabasePromotionCommands(dependencies: DatabasePromotionCommandDependencies) {
   return {
+    async createBatch(rawInput: CreatePromotionsAdminBatchInput): Promise<PromotionAdminSuccess> {
+      const input = canonicalCreateBatch(rawInput);
+      const now = dependencies.now?.() ?? new Date();
+      if (!Number.isFinite(now.getTime())) {
+        throw new Error('Promotion administration current timestamp is invalid.');
+      }
+      const payloadHash = createPromotionAdminPayloadHash({
+        action: 'CREATE', promotions: input.promotions,
+      });
+      return runPromotionCreateBatch(dependencies, input, payloadHash, now);
+    },
     async create(rawInput: CreatePromotionAdminInput): Promise<PromotionAdminSuccess> {
       const input = canonicalCreate(rawInput);
       const payloadHash = createPromotionAdminPayloadHash({
@@ -333,6 +352,313 @@ export function createDatabasePromotionCommands(dependencies: DatabasePromotionC
       return runPromotionDelete(dependencies, input, payloadHash, now);
     },
   };
+}
+
+type CanonicalCreateBatch = ReturnType<typeof canonicalCreateBatch>;
+
+async function runPromotionCreateBatch(
+  dependencies: DatabasePromotionCommandDependencies,
+  input: CanonicalCreateBatch,
+  payloadHash: string,
+  now: Date,
+): Promise<PromotionAdminSuccess> {
+  return dependencies.runTenantTransaction(dependencies.tenantId, async (tx) => {
+    const existing = await readOperation(tx, dependencies.tenantId, input.operationId);
+    if (existing) {
+      return resolveExistingCreateBatch(tx, dependencies.tenantId, existing, payloadHash, input);
+    }
+    const claimed = await tx.execute(sql`
+      INSERT INTO operations
+        (tenant_id, operation_id, operation_kind, payload_hash, status, attempt_count,
+         started_at, created_at, updated_at)
+      VALUES (${dependencies.tenantId}, ${input.operationId}, 'PROMOTION_ADMIN', ${payloadHash},
+        'PENDING', 1, ${now}, ${now}, ${now})
+      ON CONFLICT (tenant_id, operation_id) DO NOTHING
+      RETURNING operation_id
+    `);
+    if (claimed.rows.length !== 1
+      || (claimed.rows[0] as { operation_id?: unknown } | undefined)?.operation_id !== input.operationId) {
+      if (claimed.rows.length !== 0) {
+        throw new Error('Promotion administration operation claim integrity check failed.');
+      }
+      const winner = await readOperation(tx, dependencies.tenantId, input.operationId);
+      if (!winner) throw new Error('Promotion administration operation race integrity check failed.');
+      return resolveExistingCreateBatch(tx, dependencies.tenantId, winner, payloadHash, input);
+    }
+
+    const productIds = [...new Set(input.promotions.flatMap((promotion) => promotion.productIds))]
+      .sort(compareText);
+    if (productIds.length > 0) {
+      const lockedProducts = await tx.execute(sql`
+        SELECT product_id FROM products
+        WHERE tenant_id=${dependencies.tenantId}
+          AND product_id IN (${sql.join(productIds.map((productId) => sql`${productId}`), sql`, `)})
+          AND deleted_at IS NULL
+        ORDER BY product_id
+        FOR UPDATE
+      `);
+      const found = lockedProducts.rows.map((row) => (row as { product_id?: unknown }).product_id);
+      if (!isExactStringSet(found, productIds)) {
+        throw new Error('Promotion target product identity integrity check failed.');
+      }
+    }
+
+    for (const promotion of input.promotions) {
+      const definition = promotion.definition;
+      const inserted = await tx.execute(sql`
+        INSERT INTO promotions
+          (tenant_id, promotion_id, name, description, type,
+           n_plus_one_buy_quantity, n_plus_one_free_quantity, promotional_price,
+           percent_discount, fixed_discount, starts_at, ends_at, is_active,
+           sort_order, schema_version, version, created_at, updated_at)
+        VALUES (${dependencies.tenantId}, ${promotion.promotionId}, ${definition.name},
+          ${definition.description}, ${definition.type}, ${definition.buyQuantity ?? null},
+          ${definition.freeQuantity ?? null}, ${definition.promotionalUnitPrice ?? null},
+          ${definition.percent ?? null}, ${definition.discountAmount ?? null}, ${definition.startsAt},
+          ${definition.endsAt}, ${definition.isActive}, ${definition.sortOrder}, 3, 1, ${now}, ${now})
+        RETURNING promotion_id, name, description, type, n_plus_one_buy_quantity,
+          n_plus_one_free_quantity, promotional_price, percent_discount, fixed_discount,
+          starts_at, ends_at, is_active, sort_order, schema_version, version,
+          created_at, updated_at, deleted_at
+      `);
+      if (inserted.rows.length !== 1) {
+        throw new Error('Promotion administration metadata insert integrity check failed.');
+      }
+      let parsed: ParsedStoredPromotion;
+      try {
+        parsed = parseStoredPromotion(inserted.rows[0], promotion.promotionId, false);
+      } catch {
+        throw new Error('Promotion administration metadata insert integrity check failed.');
+      }
+      if (JSON.stringify(parsed) !== JSON.stringify({
+        definition, schemaVersion: 3, version: 1,
+        createdAt: now.toISOString(), updatedAt: now.toISOString(), deletedAt: null,
+      })) {
+        throw new Error('Promotion administration metadata insert integrity check failed.');
+      }
+
+      for (const productId of promotion.productIds) {
+        const linkId = createPromotionAdminLinkId(input.operationId, promotion.promotionId, productId);
+        const insertedLink = await tx.execute(sql`
+          INSERT INTO promotion_products
+            (tenant_id, promotion_product_id, promotion_id, product_id, created_at, schema_version)
+          VALUES (${dependencies.tenantId}, ${linkId}, ${promotion.promotionId}, ${productId}, ${now}, 3)
+          RETURNING promotion_product_id, promotion_id, product_id, created_at, schema_version
+        `);
+        if (insertedLink.rows.length !== 1
+          || !isExactRecord(insertedLink.rows[0], [
+            'promotion_product_id', 'promotion_id', 'product_id', 'created_at', 'schema_version',
+          ])) {
+          throw new Error('Promotion administration link insert integrity check failed.');
+        }
+        const row = insertedLink.rows[0];
+        if (row.promotion_product_id !== linkId || row.promotion_id !== promotion.promotionId
+          || row.product_id !== productId || row.schema_version !== 3
+          || operationTimestamp(row.created_at).getTime() !== now.getTime()) {
+          throw new Error('Promotion administration link insert integrity check failed.');
+        }
+      }
+    }
+
+    await verifyCompleteCreatedBatch(tx, dependencies.tenantId, input, now);
+
+    const result: PromotionAdminSuccess = {
+      ok: true, operationId: input.operationId, action: 'CREATE', completedAt: now.toISOString(),
+      promotions: input.promotions.map((promotion) => ({
+        promotionId: promotion.promotionId, ...promotion.definition, schemaVersion: 3,
+        productIds: promotion.productIds, promotionVersionBefore: null, promotionVersionAfter: 1,
+      })),
+    };
+    const auditInput = promotionAdminAuditInput(result, now);
+    await appendOperationAudit(tx, dependencies.tenantId, auditInput);
+    await assertOperationAudit(tx, dependencies.tenantId, auditInput);
+    const terminal = await tx.execute(sql`
+      UPDATE operations SET status='SUCCEEDED', result_snapshot=${JSON.stringify(result)}::jsonb,
+        finished_at=${now}, updated_at=${now}
+      WHERE tenant_id=${dependencies.tenantId} AND operation_id=${input.operationId}
+        AND operation_kind='PROMOTION_ADMIN' AND payload_hash=${payloadHash} AND status='PENDING'
+      RETURNING operation_id
+    `);
+    if (terminal.rows.length !== 1
+      || (terminal.rows[0] as { operation_id?: unknown }).operation_id !== input.operationId) {
+      throw new Error('Promotion administration terminal operation integrity check failed.');
+    }
+    await verifyCompleteCreatedBatch(tx, dependencies.tenantId, input, now);
+    const stored = await readOperation(tx, dependencies.tenantId, input.operationId);
+    if (!stored) throw new Error('Promotion administration terminal operation integrity check failed.');
+    return resolveExistingCreateBatch(tx, dependencies.tenantId, stored, payloadHash, input);
+  });
+}
+
+async function verifyCompleteCreatedBatch(
+  tx: TenantTransaction,
+  tenantId: string,
+  input: CanonicalCreateBatch,
+  now: Date,
+): Promise<void> {
+  const promotionIds = input.promotions.map((promotion) => promotion.promotionId);
+  const finalLinks = await tx.execute(sql`
+    SELECT promotion_product_id, promotion_id, product_id, created_at, schema_version
+    FROM promotion_products
+    WHERE tenant_id=${tenantId}
+      AND promotion_id IN (${sql.join(promotionIds.map((promotionId) => sql`${promotionId}`), sql`, `)})
+    ORDER BY promotion_id, product_id, promotion_product_id
+    FOR UPDATE
+  `);
+  const actualLinks = finalLinks.rows.map((row) => {
+    if (!isExactRecord(row, [
+      'promotion_product_id', 'promotion_id', 'product_id', 'created_at', 'schema_version',
+    ]) || typeof row.promotion_product_id !== 'string' || typeof row.promotion_id !== 'string'
+      || typeof row.product_id !== 'string' || row.schema_version !== 3) {
+      throw new Error('Promotion administration final link set integrity check failed.');
+    }
+    return {
+      promotionProductId: row.promotion_product_id,
+      promotionId: row.promotion_id,
+      productId: row.product_id,
+      createdAt: operationTimestamp(row.created_at).toISOString(),
+      schemaVersion: row.schema_version,
+    };
+  }).sort(compareBatchLink);
+  const expectedLinks = input.promotions.flatMap((promotion) => promotion.productIds.map((productId) => ({
+    promotionProductId: createPromotionAdminLinkId(input.operationId, promotion.promotionId, productId),
+    promotionId: promotion.promotionId,
+    productId,
+    createdAt: now.toISOString(),
+    schemaVersion: 3,
+  }))).sort(compareBatchLink);
+  if (JSON.stringify(actualLinks) !== JSON.stringify(expectedLinks)) {
+    throw new Error('Promotion administration final link set integrity check failed.');
+  }
+
+  const finalPromotions = await tx.execute(sql`
+    SELECT promotion_id, name, description, type, n_plus_one_buy_quantity,
+      n_plus_one_free_quantity, promotional_price, percent_discount, fixed_discount,
+      starts_at, ends_at, is_active, sort_order, schema_version, version,
+      created_at, updated_at, deleted_at
+    FROM promotions
+    WHERE tenant_id=${tenantId}
+      AND promotion_id IN (${sql.join(promotionIds.map((promotionId) => sql`${promotionId}`), sql`, `)})
+    ORDER BY promotion_id
+    FOR UPDATE
+  `);
+  const finalPromotionIds = finalPromotions.rows.map(
+    (row) => (row as { promotion_id?: unknown }).promotion_id,
+  );
+  if (!isExactStringSet(finalPromotionIds, promotionIds)) {
+    throw new Error('Promotion administration final promotion set integrity check failed.');
+  }
+  const expectedPromotionsById = new Map(
+    input.promotions.map((promotion) => [promotion.promotionId, promotion] as const),
+  );
+  for (const row of finalPromotions.rows) {
+    const promotionId = (row as { promotion_id: string }).promotion_id;
+    const expected = expectedPromotionsById.get(promotionId);
+    let parsed: ParsedStoredPromotion;
+    try {
+      parsed = parseStoredPromotion(row, promotionId, false);
+    } catch {
+      throw new Error('Promotion administration final promotion set integrity check failed.');
+    }
+    if (!expected || JSON.stringify(parsed) !== JSON.stringify({
+      definition: expected.definition, schemaVersion: 3, version: 1,
+      createdAt: now.toISOString(), updatedAt: now.toISOString(), deletedAt: null,
+    })) {
+      throw new Error('Promotion administration final promotion set integrity check failed.');
+    }
+  }
+}
+
+async function resolveExistingCreateBatch(
+  tx: TenantTransaction,
+  tenantId: string,
+  operation: OperationRow,
+  payloadHash: string,
+  input: CanonicalCreateBatch,
+): Promise<PromotionAdminSuccess> {
+  if (operation.operation_kind !== 'PROMOTION_ADMIN' || operation.payload_hash !== payloadHash) {
+    throw new Error('Promotion administration operation conflict.');
+  }
+  if (operation.status !== 'SUCCEEDED' || !operation.result_snapshot) {
+    throw new Error('Promotion administration operation is not replayable.');
+  }
+  const finishedAt = operationTimestamp(operation.finished_at);
+  const value = operation.result_snapshot;
+  if (!isExactRecord(value, ['action', 'completedAt', 'ok', 'operationId', 'promotions'])
+    || value.ok !== true || value.operationId !== input.operationId || value.action !== 'CREATE'
+    || value.completedAt !== finishedAt.toISOString() || !Array.isArray(value.promotions)
+    || value.promotions.length !== input.promotions.length) {
+    throw new Error('Promotion administration stored result integrity check failed.');
+  }
+  const expectedPromotions: PromotionAdminPromotionResult[] = input.promotions.map((promotion) => ({
+    promotionId: promotion.promotionId, ...promotion.definition, schemaVersion: 3,
+    productIds: promotion.productIds, promotionVersionBefore: null, promotionVersionAfter: 1,
+  }));
+  for (let index = 0; index < expectedPromotions.length; index += 1) {
+    const raw = value.promotions[index];
+    const expected = expectedPromotions[index];
+    if (!isExactRecord(raw, Object.keys(expected))) {
+      throw new Error('Promotion administration stored result integrity check failed.');
+    }
+    try {
+      if (JSON.stringify(canonicalResultPromotion(raw as PromotionAdminPromotionResult))
+        !== JSON.stringify(canonicalResultPromotion(expected))) {
+        throw new Error('mismatch');
+      }
+    } catch {
+      throw new Error('Promotion administration stored result integrity check failed.');
+    }
+    if (!isExactJsonValue(raw, expected)) {
+      throw new Error('Promotion administration stored result integrity check failed.');
+    }
+  }
+  const result: PromotionAdminSuccess = {
+    ok: true, operationId: input.operationId, action: 'CREATE',
+    completedAt: finishedAt.toISOString(), promotions: expectedPromotions,
+  };
+  assertOperationEvidence(operation);
+  const promotionIds = input.promotions.map((promotion) => promotion.promotionId);
+  const identity = await tx.execute(sql`
+    SELECT promotion_id FROM promotions
+    WHERE tenant_id=${tenantId}
+      AND promotion_id IN (${sql.join(promotionIds.map((promotionId) => sql`${promotionId}`), sql`, `)})
+    ORDER BY promotion_id
+    FOR UPDATE
+  `);
+  const found = identity.rows.map((row) => (row as { promotion_id?: unknown }).promotion_id);
+  if (!isExactStringSet(found, promotionIds)) {
+    throw new Error('Promotion administration identity integrity check failed.');
+  }
+  await assertOperationAudit(tx, tenantId, promotionAdminAuditInput(result, finishedAt));
+  const auditCount = await tx.execute(sql`
+    SELECT count(*)::text AS audit_count FROM audit_events
+    WHERE tenant_id=${tenantId} AND operation_id=${input.operationId}
+  `);
+  if (auditCount.rows.length !== 1
+    || (auditCount.rows[0] as { audit_count?: unknown }).audit_count !== '1') {
+    throw new Error('Promotion administration audit integrity check failed.');
+  }
+  return result;
+}
+
+function compareBatchLink(
+  left: { promotionId: string; productId: string; promotionProductId: string },
+  right: { promotionId: string; productId: string; promotionProductId: string },
+): number {
+  return compareText(left.promotionId, right.promotionId)
+    || compareText(left.productId, right.productId)
+    || compareText(left.promotionProductId, right.promotionProductId);
+}
+
+function isExactStringSet(actual: readonly unknown[], expected: readonly string[]): boolean {
+  if (actual.length !== expected.length || new Set(expected).size !== expected.length
+    || actual.some((value) => typeof value !== 'string')) {
+    return false;
+  }
+  const actualStrings = actual as readonly string[];
+  if (new Set(actualStrings).size !== actualStrings.length) return false;
+  const expectedSet = new Set(expected);
+  return actualStrings.every((value) => expectedSet.has(value));
 }
 
 function preparePromotionActivation(
@@ -1128,6 +1454,9 @@ async function resolveExistingCreate(
   if (JSON.stringify(parsedPromotion) !== JSON.stringify(canonicalResultPromotion(expectedPromotion))) {
     throw new Error('Promotion administration stored result integrity check failed.');
   }
+  if (!isExactJsonValue(rawPromotion, expectedPromotion)) {
+    throw new Error('Promotion administration stored result integrity check failed.');
+  }
   const result: PromotionAdminSuccess = {
     ok: true,
     operationId: input.operationId,
@@ -1406,6 +1735,20 @@ function isExactRecord(value: unknown, keys: readonly string[]): value is Record
   return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
 }
 
+function isExactJsonValue(actual: unknown, expected: unknown): boolean {
+  if (Array.isArray(expected)) {
+    return Array.isArray(actual) && actual.length === expected.length
+      && actual.every((value, index) => isExactJsonValue(value, expected[index]));
+  }
+  if (expected && typeof expected === 'object') {
+    const keys = Object.keys(expected);
+    return isExactRecord(actual, keys) && keys.every(
+      (key) => isExactJsonValue(actual[key], (expected as Record<string, unknown>)[key]),
+    );
+  }
+  return actual === expected;
+}
+
 function operationTimestamp(value: unknown): Date {
   if (!(value instanceof Date) && (typeof value !== 'string' || !value.trim())) {
     throw new Error('Promotion administration timestamp integrity check failed.');
@@ -1422,6 +1765,40 @@ function dbPositiveSafeInteger(value: unknown): number {
     : typeof value === 'string' && /^\d+$/.test(value) ? Number(value)
       : value;
   return positiveSafeInteger(parsed, 'stored positive integer');
+}
+
+function canonicalCreateBatch(input: CreatePromotionsAdminBatchInput) {
+  if (!isExactRecord(input, ['operationId', 'promotions'])) {
+    throw new Error('Promotion create batch input fields are invalid.');
+  }
+  const operationId = canonicalText(input.operationId, 'operation ID');
+  if (!Array.isArray(input.promotions) || input.promotions.length < 1
+    || input.promotions.length > MAX_PROMOTION_ADMIN_BATCH_SIZE) {
+    throw new Error(`Promotion create batch size must be between 1 and ${MAX_PROMOTION_ADMIN_BATCH_SIZE}.`);
+  }
+  let linkCount = 0;
+  const promotions = input.promotions.map((promotion) => {
+    if (!isExactRecord(promotion, ['promotionId', 'definition', 'productIds'])) {
+      throw new Error('Promotion create batch item fields are invalid.');
+    }
+    const candidate = promotion as unknown as Omit<CreatePromotionAdminInput, 'operationId'>;
+    const canonical = canonicalCreate({ operationId, ...candidate });
+    if (!Number.isSafeInteger(linkCount + canonical.productIds.length)) {
+      throw new Error('Promotion create batch link count is invalid.');
+    }
+    linkCount += canonical.productIds.length;
+    if (linkCount > MAX_PROMOTION_ADMIN_BATCH_LINK_COUNT) {
+      throw new Error(
+        `Promotion create batch link count must not exceed ${MAX_PROMOTION_ADMIN_BATCH_LINK_COUNT}.`,
+      );
+    }
+    return canonical;
+  }).map(({ promotionId, definition, productIds }) => ({ promotionId, definition, productIds }))
+    .sort(comparePromotionId);
+  if (new Set(promotions.map((promotion) => promotion.promotionId)).size !== promotions.length) {
+    throw new Error('Duplicate promotion ID.');
+  }
+  return { operationId, promotions } as const;
 }
 
 function canonicalCreate(input: CreatePromotionAdminInput) {
