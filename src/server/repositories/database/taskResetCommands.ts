@@ -769,17 +769,54 @@ async function validateCompletionReferences(tx: TenantTransaction, tenantId: str
   const graph = await readTransactionGraph(tx, tenantId,
     [...expectedTransactions.keys()].sort(compareCanonical));
   const transactions = new Map(graph.transactions.map((row) => [row.transaction_id, row]));
+  if (expectedGraph !== undefined && snapshot(graph) !== snapshot(expectedGraph)) {
+    throw new Error(`Task reset transaction graph ${phase} snapshot integrity check failed.`);
+  }
+  validateBankTransactionProvenance(rows, transactions);
+  if (graph.transactions.some((row) => row.kind === 'CANCELLATION'
+    && (row.reverses_transaction_id === null || !transactions.has(row.reverses_transaction_id)))) {
+    throw new Error('Task reset transaction graph transaction identity integrity check failed.');
+  }
   for (const [transactionId, expected] of expectedTransactions) {
     const row = transactions.get(transactionId);
     if (!row || row.kind !== expected.kind || row.operation_id !== expected.operationId
       || row.operation_hash !== expected.hash) {
-      throw new Error('Task reset transaction graph reference integrity check failed.');
+      throw new Error(expected.kind === 'TASK_REWARD'
+        ? 'Task reset BANK completion transaction provenance integrity check failed.'
+        : 'Task reset transaction graph reference integrity check failed.');
     }
   }
-  if (expectedGraph !== undefined && snapshot(graph) !== snapshot(expectedGraph)) {
-    throw new Error(`Task reset transaction graph ${phase} snapshot integrity check failed.`);
-  }
   return graph;
+}
+
+function validateBankTransactionProvenance(rows: readonly Completion[],
+  transactions: ReadonlyMap<string, TransactionGraph['transactions'][number]>) {
+  const failure = 'Task reset BANK completion transaction provenance integrity check failed.';
+  for (const completion of rows) {
+    if (completion.source !== 'BANK') continue;
+    const transaction = completion.transaction_id === null
+      ? undefined : transactions.get(completion.transaction_id);
+    const operationId = completion.operation_id;
+    if (transaction === undefined || operationId === null
+      || completion.operation_hash === null
+      || completion.completion_id !== `task-completion:${operationId}`
+      || completion.transaction_id !== `task-reward:${operationId}`
+      || transaction.transaction_id !== completion.transaction_id
+      || transaction.kind !== 'TASK_REWARD'
+      || transaction.student_id !== completion.student_id
+      || transaction.student_name_snapshot !== completion.student_name_snapshot
+      || transaction.legacy_total_amount !== completion.reward_snapshot
+      || transaction.balance_delta !== completion.reward_snapshot
+      || transaction.balance_before !== completion.balance_before
+      || transaction.balance_after !== completion.balance_after
+      || transaction.occurred_at !== completion.completed_at.getTime()
+      || transaction.operator_snapshot !== 'bank-task-completion'
+      || transaction.legacy_status_snapshot !== 'COMPLETED'
+      || transaction.reverses_transaction_id !== null
+      || transaction.operation_id !== operationId
+      || transaction.operation_hash !== completion.operation_hash
+      || transaction.schema_version !== 1) throw new Error(failure);
+  }
 }
 
 async function readTransactionGraph(tx: TenantTransaction, tenantId: string,
@@ -806,13 +843,10 @@ async function readTransactionGraph(tx: TenantTransaction, tenantId: string,
   const transactions = parseGraphRows(transactionResult, 'transactions',
     (raw) => parseGraphTransaction(raw, tenantId));
   const transactionIds = transactions.map((row) => row.transaction_id);
-  const missing = referencedIds.filter((id) => !transactionIds.includes(id));
   const transactionSequences = transactions.map((row) => row.event_sequence);
   const parents = new Set(transactionIds);
-  if (missing.length > 0 || parents.size !== transactionIds.length
-    || new Set(transactionSequences).size !== transactionSequences.length
-    || transactions.some((row) => row.kind === 'CANCELLATION'
-      && (row.reverses_transaction_id === null || !parents.has(row.reverses_transaction_id)))) {
+  if (parents.size !== transactionIds.length
+    || new Set(transactionSequences).size !== transactionSequences.length) {
     throw new Error('Task reset transaction graph transaction identity integrity check failed.');
   }
   const dependentPredicate = transactionIds.length === 0 ? sql`FALSE`

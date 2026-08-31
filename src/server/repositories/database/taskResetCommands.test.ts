@@ -5,6 +5,7 @@ import { PgDialect } from 'drizzle-orm/pg-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPgliteDatabaseHarness, type PgliteDatabaseHarness } from '@/server/db/testing/pglite';
 import type { TenantTransaction } from '@/server/db/transaction';
+import { createTaskRewardPayloadHash } from './taskCompletionCommands';
 import {
   createDatabaseTaskResetCommands,
   createTaskResetPayloadHash,
@@ -68,8 +69,11 @@ async function seedTask(taskId: string, taskInstanceId: string, title: string,
   const bankOperationId = taskId === 'TASK-001'
     ? 'abcdef00-0000-4000-8000-000000000401'
     : 'abcdef00-0000-4000-8000-000000000402';
-  const bankHash = taskId === 'TASK-001' ? 'd'.repeat(64) : 'e'.repeat(64);
+  const bankHash = createTaskRewardPayloadHash({ taskId, taskInstanceId, taskTitle: title,
+    studentId, studentName, assignmentId, cycleId, cycleStartsAt: CURRENT_START,
+    cycleEndsAt: CURRENT_END, reward: 50 });
   const bankTransactionId = `task-reward:${bankOperationId}`;
+  const bankCompletionId = `task-completion:${bankOperationId}`;
   await harness.database.query(`INSERT INTO operations
     (tenant_id, operation_id, operation_kind, payload_hash, status, result_snapshot,
      attempt_count, started_at, finished_at, created_at, updated_at)
@@ -92,7 +96,7 @@ async function seedTask(taskId: string, taskInstanceId: string, title: string,
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 50, 650, 700, 'COMPLETED',
       'original completion', $9, $10, $11, 1, 'Asia/Seoul', 'BANK', $12, $13,
       $14, $15, 1, $3)`, [
-    harness.tenantOneId, `completion:${taskId}:${studentId}`, '2026-08-31T00:30:00.000Z',
+    harness.tenantOneId, bankCompletionId, '2026-08-31T00:30:00.000Z',
     taskInstanceId, taskId, title, studentId, studentName, cycleId, CURRENT_START,
     CURRENT_END, assignmentId, bankTransactionId, bankOperationId, bankHash,
   ]);
@@ -200,7 +204,7 @@ async function seedCancellationOnlyCompletionWithOriginalDependent() {
   await harness.database.query(`ALTER TABLE task_completions
     DISABLE TRIGGER task_completions_append_only`);
   await harness.database.query(`DELETE FROM task_completions WHERE tenant_id=$1
-    AND completion_id='completion:TASK-001:S001'`, [harness.tenantOneId]);
+    AND completion_id='task-completion:abcdef00-0000-4000-8000-000000000401'`, [harness.tenantOneId]);
   await harness.database.query(`INSERT INTO task_completions
     (tenant_id, completion_id, completed_at, task_instance_id, task_id_snapshot,
      task_name_snapshot, student_id, student_name_snapshot, reward_snapshot,
@@ -209,7 +213,7 @@ async function seedCancellationOnlyCompletionWithOriginalDependent() {
      operation_hash, schema_version, created_at)
     VALUES ($1, 'completion:cancellation-only:S001', $2, 'INSTANCE-001', 'TASK-001',
       '첫째 과제', 'S001', '첫째 학생', 50, 700, 650, 'CANCELLED',
-      'cancels-completion:completion:TASK-001:S001', $3, $4, $5, 1, 'Asia/Seoul',
+      'cancels-completion:task-completion:abcdef00-0000-4000-8000-000000000401', $3, $4, $5, 1, 'Asia/Seoul',
       'ADMIN_RESET', 'assignment:TASK-001:S001', $6, $7, $8, 1, $2)`, [
     harness.tenantOneId, '2026-08-31T00:45:00.000Z',
     'v1|INSTANCE-001|r1|2026-08-31T00:00:00Z', CURRENT_START, CURRENT_END,
@@ -255,7 +259,7 @@ describe('migration 0010 task completion reset provenance', () => {
        student_id, student_name_snapshot, 0, balance_after, balance_after, 'CANCELLED',
        'malformed reset', cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone,
        'ADMIN_RESET', assignment_id, NULL, $4, $5, $6, $7, 1, $3
-      FROM task_completions WHERE tenant_id=$1 AND completion_id='completion:TASK-001:S001'`,
+      FROM task_completions WHERE tenant_id=$1 AND completion_id='task-completion:abcdef00-0000-4000-8000-000000000401'`,
     [harness.tenantOneId, `malformed:${_label}`, NOW, operationId, operationHash,
       adminOperationId, adminOperationHash])).rejects.toThrow(/binding|provenance|operation/i);
   });
@@ -470,7 +474,7 @@ describe('database batch task completion reset command', () => {
        operation_hash, schema_version, created_at)
       VALUES ($1, 'completion:cancellation:S001', $2, 'INSTANCE-001', 'TASK-001',
         '첫째 과제', 'S001', '첫째 학생', 50, 700, 650, 'CANCELLED',
-        'cancels-completion:completion:TASK-001:S001', $3, $4, $5, 1, 'Asia/Seoul',
+        'cancels-completion:task-completion:abcdef00-0000-4000-8000-000000000401', $3, $4, $5, 1, 'Asia/Seoul',
         'ADMIN_RESET', 'assignment:TASK-001:S001', $6, $7, $8, 1, $2)`, [
       harness.tenantOneId, '2026-08-31T00:45:00.000Z',
       'v1|INSTANCE-001|r1|2026-08-31T00:00:00Z', CURRENT_START, CURRENT_END,
@@ -536,7 +540,7 @@ describe('database batch task completion reset command', () => {
         DISABLE TRIGGER task_completions_append_only`);
       await harness.database.query(`UPDATE task_completions
         SET assignment_id='assignment:TASK-001:S003'
-        WHERE tenant_id=$1 AND completion_id='completion:TASK-001:S001'`,
+        WHERE tenant_id=$1 AND completion_id='task-completion:abcdef00-0000-4000-8000-000000000401'`,
       [harness.tenantOneId]);
       const corrupted = await state();
 
@@ -934,6 +938,80 @@ describe('database batch task completion reset command', () => {
       && /\b(task_assignments|accounts)\b/.test(statement.sql))).toEqual([]);
   });
 
+  it.each([
+    ['student identity', (row: Record<string, unknown>) => ({ ...row,
+      student_id: 'S999', student_name_snapshot: '다른 학생' })],
+    ['completion-relative balance arithmetic', (row: Record<string, unknown>) => ({ ...row,
+      balance_before: '600', balance_after: '650' })],
+    ['completion-relative chronology', (row: Record<string, unknown>) => ({ ...row,
+      occurred_at: new Date('2026-08-31T00:29:00.000Z'),
+      created_at: new Date('2026-08-31T00:29:00.000Z') })],
+    ['operator', (row: Record<string, unknown>) => ({ ...row,
+      operator_snapshot: 'other-valid-operator' })],
+    ['status', (row: Record<string, unknown>) => ({ ...row,
+      legacy_status_snapshot: 'SUCCESS' })],
+    ['schema', (row: Record<string, unknown>) => ({ ...row, schema_version: 2 })],
+  ] as const)('rejects consistently observed BANK transaction semantic fault: %s',
+  async (_label, mutate) => {
+    const before = await state();
+    let transactionReads = 0; let auditReached = false; let terminalReached = false;
+    const run = observingRunner((statement, rows) => {
+      if (statement.includes('from audit_events')) auditReached = true;
+      if (statement.startsWith("update operations set status='succeeded'")) terminalReached = true;
+      if (statement.startsWith('select ') && statement.includes('from transactions')) {
+        transactionReads += 1;
+        return rows.map((raw) => (raw as Record<string, unknown>).kind === 'TASK_REWARD'
+          ? mutate(raw as Record<string, unknown>) : raw);
+      }
+      return rows;
+    });
+    await expect(command({ runTenantTransaction: run }).resetBatch({
+      operationId: OPERATION_ID, taskIds: ['TASK-001'],
+    })).rejects.toThrow(/bank completion transaction provenance.*integrity/i);
+    expect(transactionReads).toBe(1);
+    expect(auditReached).toBe(false);
+    expect(terminalReached).toBe(false);
+    expect(await state()).toEqual(before);
+  });
+
+  it('rejects a consistently observed non-deterministic BANK transaction ID before audit', async () => {
+    const before = await state();
+    const replacement = 'task-reward:abcdef00-0000-4000-8000-000000000499';
+    let transactionReads = 0; let auditReached = false;
+    const run = observingRunner((statement, rows) => {
+      if (statement.includes('from audit_events')) auditReached = true;
+      if (statement.startsWith('select ') && statement.includes('from transactions')) {
+        transactionReads += 1;
+        return rows.map((raw) => (raw as Record<string, unknown>).kind === 'TASK_REWARD'
+          ? { ...(raw as Record<string, unknown>), transaction_id: replacement } : raw);
+      }
+      return rows;
+    });
+    await expect(command({ runTenantTransaction: run }).resetBatch({
+      operationId: OPERATION_ID, taskIds: ['TASK-001'],
+    })).rejects.toThrow(/bank completion transaction provenance.*integrity/i);
+    expect(transactionReads).toBe(1);
+    expect(auditReached).toBe(false);
+    expect(await state()).toEqual(before);
+  });
+
+  it('cross-validates multiple BANK completions set-wise on the positive CREATE path', async () => {
+    let transactionReads = 0;
+    const run = observingRunner((statement, rows) => {
+      if (statement.startsWith('select ') && statement.includes('from transactions')) {
+        transactionReads += 1;
+        expect(rows.filter((raw) => (raw as Record<string, unknown>).kind === 'TASK_REWARD'))
+          .toHaveLength(2);
+      }
+      return rows;
+    });
+    await expect(command({ runTenantTransaction: run }).resetBatch({
+      operationId: OPERATION_ID, taskIds: ['TASK-002', 'TASK-001'],
+    })).resolves.toEqual({ taskIds: ['TASK-001', 'TASK-002'],
+      resetEventsAppended: 2, deletedCount: 2 });
+    expect(transactionReads).toBe(3);
+  });
+
   it('captures a referenced cancellation predecessor and its dependents before audit', async () => {
     await seedCancellationOnlyCompletionWithOriginalDependent();
     const before = await state();
@@ -1202,7 +1280,7 @@ describe('database batch task completion reset command', () => {
        operation_hash, schema_version, created_at)
       VALUES ($1, 'completion:later-cancellation:S001', $2, 'INSTANCE-001', 'TASK-001',
         '첫째 과제', 'S001', '첫째 학생', 50, 700, 650, 'CANCELLED',
-        'cancels-completion:completion:TASK-001:S001', $3, $4, $5, 1, 'Asia/Seoul',
+        'cancels-completion:task-completion:abcdef00-0000-4000-8000-000000000401', $3, $4, $5, 1, 'Asia/Seoul',
         'ADMIN_RESET', 'assignment:TASK-001:S001', $6, $7, $8, 1, $2)`, [
       harness.tenantOneId, '2026-08-31T02:00:00.000Z',
       'v1|INSTANCE-001|r1|2026-08-31T00:00:00Z', CURRENT_START, CURRENT_END,
@@ -1210,6 +1288,29 @@ describe('database batch task completion reset command', () => {
     ]);
     await expect(command().resetBatch({ operationId: OPERATION_ID, taskIds: ['TASK-001'] }))
       .resolves.toEqual(first);
+    const missingBank = observingRunner((statement, rows) => statement.startsWith('select ')
+      && statement.includes('from transactions')
+      ? rows.filter((raw) => (raw as Record<string, unknown>).kind !== 'TASK_REWARD') : rows);
+    await expect(command({ runTenantTransaction: missingBank }).resetBatch({
+      operationId: OPERATION_ID, taskIds: ['TASK-001'],
+    })).rejects.toThrow(/bank completion transaction provenance.*integrity/i);
+  });
+
+  it('historical replay rejects corrupted BANK transaction semantic provenance', async () => {
+    await command().resetBatch({ operationId: OPERATION_ID, taskIds: ['TASK-001'] });
+    let graphReached = false;
+    const run = observingRunner((statement, rows) => {
+      if (statement.startsWith('select ') && statement.includes('from transactions')) {
+        graphReached = true;
+        return rows.map((raw) => (raw as Record<string, unknown>).kind === 'TASK_REWARD'
+          ? { ...(raw as Record<string, unknown>), student_name_snapshot: '다른 학생' } : raw);
+      }
+      return rows;
+    });
+    await expect(command({ runTenantTransaction: run }).resetBatch({
+      operationId: OPERATION_ID, taskIds: ['TASK-001'],
+    })).rejects.toThrow(/bank completion transaction provenance.*integrity/i);
+    expect(graphReached).toBe(true);
   });
 
   it('replay tolerates legitimate later assignment history and account lifecycle changes', async () => {
