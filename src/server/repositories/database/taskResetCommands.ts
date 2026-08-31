@@ -19,6 +19,8 @@ const COMPLETION_KEYS = ['completion_id', 'event_sequence', 'completed_at', 'tas
   'transaction_id', 'operation_id', 'operation_hash', 'admin_operation_id',
   'admin_operation_hash', 'schema_version', 'evidence_provider', 'evidence_board_id',
   'evidence_post_id', 'evidence_created_at', 'evidence_author_full_name', 'created_at'] as const;
+const TASK_KEYS = ['task_instance_id', 'task_id', 'current_schedule', 'pending_schedule',
+  'schedule_schema_version', 'version', 'created_at', 'updated_at', 'is_active', 'deleted_at'] as const;
 
 type RunTenantTransaction = <T>(tenantId: string,
   callback: (transaction: TenantTransaction) => Promise<T>) => Promise<T>;
@@ -42,11 +44,13 @@ export type DatabaseTaskResetCommandDependencies = Readonly<{
 
 type CanonicalInput = Readonly<{ operationId: string; taskIds: readonly string[] }>;
 type Task = Readonly<{ task_instance_id: string; task_id: string; current_schedule: TaskSchedule;
-  pending_schedule: TaskSchedule | null; created_at: Date }>;
+  pending_schedule: TaskSchedule | null; schedule_schema_version: number; version: number;
+  created_at: Date; updated_at: Date; is_active: boolean; deleted_at: Date | null }>;
 type Operation = Readonly<{ operation_id: string; operation_kind: string; payload_hash: string;
   status: string; result_snapshot: unknown; finished_at: Date | null; failure_code: string | null;
   attempt_count: string; started_at: Date; created_at: Date; updated_at: Date }>;
 type Completion = ReturnType<typeof parseCompletion>;
+type TaskIdentity = Readonly<{ taskId: string; taskInstanceId: string }>;
 
 export function createTaskResetPayloadHash(raw: DatabaseTaskResetCommandInput): string {
   const input = canonicalInput(raw);
@@ -73,30 +77,35 @@ export function createDatabaseTaskResetCommands(dependencies: DatabaseTaskResetC
           VALUES (${dependencies.tenantId}, ${input.operationId}, 'TASK_ADMIN', ${payloadHash},
             'PENDING', 1, ${now}, ${now}, ${now})
           ON CONFLICT (tenant_id, operation_id) DO NOTHING RETURNING operation_id`);
-        if (claim.rows.length === 0) {
+        const claimRows = adapterRows(claim, 'operation claim rowset');
+        if (claimRows.length === 0) {
           const winner = await readOperation(tx, dependencies.tenantId, input.operationId);
           if (!winner) throw new Error('Task reset operation claim integrity check failed.');
           return replay(tx, dependencies.tenantId, winner, input, payloadHash);
         }
-        assertReturning(claim.rows, ['operation_id'], { operation_id: input.operationId },
+        assertReturning(claimRows, ['operation_id'], { operation_id: input.operationId },
           'operation claim');
 
-        const taskRows = await tx.execute(sql`SELECT task_instance_id, task_id, current_schedule,
-          pending_schedule, created_at FROM tasks WHERE tenant_id=${dependencies.tenantId}
+        const taskRows = await tx.execute(sql`SELECT ${taskColumns()} FROM tasks
+          WHERE tenant_id=${dependencies.tenantId}
           AND deleted_at IS NULL
           AND task_id IN (${sql.join(input.taskIds.map((id) => sql`${id}`), sql`, `)})
           ORDER BY task_instance_id FOR UPDATE`);
-        if (taskRows.rows.length < input.taskIds.length) throw new Error('Task reset target not found.');
-        if (taskRows.rows.length > input.taskIds.length) {
+        const lockedTaskRows = adapterRows(taskRows, 'task rowset');
+        if (lockedTaskRows.length < input.taskIds.length) throw new Error('Task reset target not found.');
+        if (lockedTaskRows.length > input.taskIds.length) {
           throw new Error('Task reset target task integrity check failed.');
         }
         const tasks = new Map<string, Task>();
-        for (const rawTask of taskRows.rows) {
+        const taskInstances = new Set<string>();
+        for (const rawTask of lockedTaskRows) {
           const task = parseTask(rawTask);
-          if (!input.taskIds.includes(task.task_id) || tasks.has(task.task_id)) {
+          if (task.deleted_at !== null || !input.taskIds.includes(task.task_id)
+            || tasks.has(task.task_id) || taskInstances.has(task.task_instance_id)) {
             throw new Error('Task reset target task integrity check failed.');
           }
           tasks.set(task.task_id, task);
+          taskInstances.add(task.task_instance_id);
         }
         if (input.taskIds.some((id) => !tasks.has(id))) throw new Error('Task reset target not found.');
         const instances = [...tasks.values()].map((task) => task.task_instance_id)
@@ -128,32 +137,40 @@ export function createDatabaseTaskResetCommands(dependencies: DatabaseTaskResetC
               ${predecessor.timezone}, 'ADMIN_RESET', ${predecessor.assignment_id}, NULL,
               NULL, NULL, ${input.operationId}, ${payloadHash}, 1, NULL, NULL, NULL, NULL,
               NULL, ${now}) RETURNING ${completionColumns()}`);
-          if (inserted.rows.length !== 1) {
+          const insertedRows = adapterRows(inserted, 'reset event rowset');
+          if (insertedRows.length !== 1) {
             throw new Error('Task reset reset event integrity check failed.');
           }
-          const event = parseCompletion(inserted.rows[0]);
+          const event = parseCompletion(insertedRows[0]);
           validateResetEvent(event, predecessor, input.operationId, payloadHash, now, completionId);
           expected.push(event);
         }
 
+        const identities = [...tasks.values()].map((task) => Object.freeze({
+          taskId: task.task_id, taskInstanceId: task.task_instance_id,
+        })).sort((left, right) => compareCanonical(left.taskId, right.taskId));
         const result = freezeResult({ taskIds: [...input.taskIds],
           resetEventsAppended: latest.length, deletedCount: latest.length });
         await verifyComplete(tx, dependencies.tenantId, tasks, expected, result,
           input.operationId, payloadHash, now);
-        const audit = auditInput(input.operationId, result, now);
+        await assertTaskSnapshots(tx, dependencies.tenantId, tasks, 'pre-audit');
+        const audit = auditInput(input.operationId, result, identities, now);
         await appendOperationAudit(tx, dependencies.tenantId, audit);
         await assertOperationAudit(tx, dependencies.tenantId, audit);
-        await assertOneAudit(tx, dependencies.tenantId, input.operationId);
+        await assertAuditIdentities(tx, dependencies.tenantId, input.operationId, result,
+          identities, now);
         const terminal = await tx.execute(sql`UPDATE operations SET status='SUCCEEDED',
           result_snapshot=${JSON.stringify(result)}::jsonb, finished_at=${now}, updated_at=${now}
           WHERE tenant_id=${dependencies.tenantId} AND operation_id=${input.operationId}
           RETURNING operation_id`);
-        assertReturning(terminal.rows, ['operation_id'], { operation_id: input.operationId },
-          'terminal operation');
+        assertReturning(adapterRows(terminal, 'terminal operation rowset'), ['operation_id'],
+          { operation_id: input.operationId }, 'terminal operation');
+        await assertTaskSnapshots(tx, dependencies.tenantId, tasks, 'post-terminal');
         await verifyComplete(tx, dependencies.tenantId, tasks, expected, result,
           input.operationId, payloadHash, now);
         await assertOperationAudit(tx, dependencies.tenantId, audit);
-        await assertOneAudit(tx, dependencies.tenantId, input.operationId);
+        await assertAuditIdentities(tx, dependencies.tenantId, input.operationId, result,
+          identities, now);
         const stored = await readOperation(tx, dependencies.tenantId, input.operationId);
         if (!stored) throw new Error('Task reset terminal operation integrity check failed.');
         return replay(tx, dependencies.tenantId, stored, input, payloadHash);
@@ -179,21 +196,25 @@ async function replay(tx: TenantTransaction, tenantId: string, operation: Operat
     || result.resetEventsAppended !== result.deletedCount) {
     throw new Error('Task reset stored result integrity check failed.');
   }
+  const identitiesEvidence = await readAuditIdentities(tx, tenantId, input.operationId, result,
+    operation.finished_at);
+  const instanceIds = identitiesEvidence.map((identity) => identity.taskInstanceId);
   const taskRows = await tx.execute(sql`SELECT task_instance_id, task_id FROM tasks
     WHERE tenant_id=${tenantId}
-    AND task_id IN (${sql.join(input.taskIds.map((id) => sql`${id}`), sql`, `)})
+    AND task_instance_id IN (${sql.join(instanceIds.map((id) => sql`${id}`), sql`, `)})
     ORDER BY task_instance_id`);
   const identities = new Map<string, string>();
-  for (const raw of taskRows.rows) {
+  for (const raw of adapterRows(taskRows, 'replay task rowset')) {
     const row = exactRow(raw, ['task_instance_id', 'task_id'], 'replay task evidence');
     const instance = requiredId(row.task_instance_id, 'replay task instance ID');
     const taskId = requiredId(row.task_id, 'replay task ID');
-    if (!input.taskIds.includes(taskId) || identities.has(instance)) {
+    const expectedIdentity = identitiesEvidence.find((identity) => identity.taskInstanceId === instance);
+    if (!expectedIdentity || expectedIdentity.taskId !== taskId || identities.has(instance)) {
       throw new Error('Task reset physical identity integrity check failed.');
     }
     identities.set(instance, taskId);
   }
-  if (new Set(identities.values()).size !== input.taskIds.length) {
+  if (identities.size !== identitiesEvidence.length) {
     throw new Error('Task reset physical identity integrity check failed.');
   }
   const instances = [...identities.keys()].sort(compareCanonical);
@@ -216,8 +237,7 @@ async function replay(tx: TenantTransaction, tenantId: string, operation: Operat
     }
   }
   await assertOperationAudit(tx, tenantId, auditInput(input.operationId, result,
-    operation.finished_at));
-  await assertOneAudit(tx, tenantId, input.operationId);
+    identitiesEvidence, operation.finished_at));
   return result;
 }
 
@@ -280,7 +300,7 @@ async function readCompletions(tx: TenantTransaction, tenantId: string,
     : sql`SELECT ${completionColumns()} FROM task_completions WHERE tenant_id=${tenantId}
       AND task_instance_id IN (${sql.join(instances.map((id) => sql`${id}`), sql`, `)})
       ORDER BY task_instance_id, event_sequence`);
-  return rows.rows.map(parseCompletion);
+  return adapterRows(rows, 'completion rowset').map(parseCompletion);
 }
 
 function completionColumns() {
@@ -458,9 +478,10 @@ async function validateCompletionReferences(tx: TenantTransaction, tenantId: str
       FROM operations WHERE tenant_id=${tenantId}
       AND operation_id IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
       ORDER BY operation_id`);
-    if (result.rows.length !== ids.length) throw new Error('Task reset referenced operation integrity check failed.');
+    const referenceRows = adapterRows(result, 'referenced operation rowset');
+    if (referenceRows.length !== ids.length) throw new Error('Task reset referenced operation integrity check failed.');
     const seen = new Set<string>();
-    for (const raw of result.rows) {
+    for (const raw of referenceRows) {
       const row = exactRow(raw, ['operation_id', 'operation_kind', 'payload_hash'],
         'referenced operation evidence');
       const operationId = requiredId(row.operation_id, 'referenced operation ID');
@@ -478,9 +499,10 @@ async function validateCompletionReferences(tx: TenantTransaction, tenantId: str
       FROM transactions WHERE tenant_id=${tenantId}
       AND transaction_id IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
       ORDER BY transaction_id`);
-    if (result.rows.length !== ids.length) throw new Error('Task reset referenced transaction integrity check failed.');
+    const transactionRows = adapterRows(result, 'referenced transaction rowset');
+    if (transactionRows.length !== ids.length) throw new Error('Task reset referenced transaction integrity check failed.');
     const seen = new Set<string>();
-    for (const raw of result.rows) {
+    for (const raw of transactionRows) {
       const row = exactRow(raw, ['transaction_id', 'kind', 'operation_id', 'operation_hash'],
         'referenced transaction evidence');
       const transactionId = requiredId(row.transaction_id, 'referenced transaction ID');
@@ -526,13 +548,60 @@ function validateResetEvent(event: Completion, predecessor: Completion, operatio
   }
 }
 
+function taskColumns() {
+  return sql`task_instance_id, task_id, current_schedule, pending_schedule,
+    schedule_schema_version, version::text AS version, created_at, updated_at, is_active, deleted_at`;
+}
+
+async function assertTaskSnapshots(tx: TenantTransaction, tenantId: string,
+  expectedByTaskId: ReadonlyMap<string, Task>, phase: string) {
+  const expected = [...expectedByTaskId.values()]
+    .sort((left, right) => compareCanonical(left.task_instance_id, right.task_instance_id));
+  const instanceIds = expected.map((task) => task.task_instance_id);
+  const result = await tx.execute(sql`SELECT ${taskColumns()} FROM tasks
+    WHERE tenant_id=${tenantId}
+    AND task_instance_id IN (${sql.join(instanceIds.map((id) => sql`${id}`), sql`, `)})
+    ORDER BY task_instance_id`);
+  const rows = adapterRows(result, `${phase} task snapshot rowset`);
+  if (rows.length !== expected.length) {
+    throw new Error(`Task reset ${phase} task snapshot integrity check failed.`);
+  }
+  const actual = rows.map(parseTask);
+  const taskIds = new Set<string>();
+  const instanceIdsSeen = new Set<string>();
+  for (const task of actual) {
+    const bound = expectedByTaskId.get(task.task_id);
+    if (!bound || bound.task_instance_id !== task.task_instance_id
+      || taskIds.has(task.task_id) || instanceIdsSeen.has(task.task_instance_id)) {
+      throw new Error(`Task reset ${phase} task snapshot identity integrity check failed.`);
+    }
+    taskIds.add(task.task_id);
+    instanceIdsSeen.add(task.task_instance_id);
+  }
+  if (snapshot(actual) !== snapshot(expected)) {
+    throw new Error(`Task reset ${phase} task snapshot integrity check failed.`);
+  }
+}
+
 function parseTask(raw: unknown): Task {
-  const row = exactRow(raw, ['task_instance_id', 'task_id', 'current_schedule', 'pending_schedule',
-    'created_at'], 'task evidence');
+  const row = exactRow(raw, TASK_KEYS, 'task evidence');
+  const createdAt = requiredDate(row.created_at, 'task created timestamp');
+  const updatedAt = requiredDate(row.updated_at, 'task updated timestamp');
+  const deletedAt = row.deleted_at === null ? null : requiredDate(row.deleted_at,
+    'task deleted timestamp');
+  if (typeof row.is_active !== 'boolean' || updatedAt.getTime() < createdAt.getTime()
+    || (deletedAt !== null && (deletedAt.getTime() < updatedAt.getTime() || row.is_active))) {
+    throw new Error('Task reset task snapshot integrity check failed.');
+  }
+  const scheduleSchemaVersion = requiredSafeInteger(row.schedule_schema_version,
+    'task schedule schema version');
+  if (scheduleSchemaVersion < 1) throw new Error('Task reset task snapshot integrity check failed.');
   return { task_instance_id: requiredId(row.task_instance_id, 'task instance ID'),
     task_id: requiredId(row.task_id, 'task ID'), current_schedule: parseSchedule(row.current_schedule),
     pending_schedule: row.pending_schedule === null ? null : parseSchedule(row.pending_schedule),
-    created_at: requiredDate(row.created_at, 'task created timestamp') };
+    schedule_schema_version: scheduleSchemaVersion,
+    version: requiredPositiveIntegerText(row.version, 'task version'), created_at: createdAt,
+    updated_at: updatedAt, is_active: row.is_active, deleted_at: deletedAt };
 }
 
 function parseSchedule(raw: unknown): TaskSchedule {
@@ -585,9 +654,10 @@ async function readOperation(tx: TenantTransaction, tenantId: string, operationI
     result_snapshot, finished_at, failure_code, attempt_count::text AS attempt_count,
     started_at, created_at, updated_at FROM operations WHERE tenant_id=${tenantId}
     AND operation_id=${operationId} FOR UPDATE`);
-  if (result.rows.length > 1) throw new Error('Task reset operation integrity check failed.');
-  if (result.rows.length === 0) return null;
-  const row = exactRow(result.rows[0], OPERATION_KEYS, 'operation evidence');
+  const rows = adapterRows(result, 'operation rowset');
+  if (rows.length > 1) throw new Error('Task reset operation integrity check failed.');
+  if (rows.length === 0) return null;
+  const row = exactRow(rows[0], OPERATION_KEYS, 'operation evidence');
   if (row.operation_id !== operationId || row.operation_kind !== 'TASK_ADMIN'
     || typeof row.payload_hash !== 'string' || !HASH.test(row.payload_hash)
     || typeof row.status !== 'string' || !['PENDING', 'SUCCEEDED', 'FAILED'].includes(row.status)
@@ -631,21 +701,66 @@ function freezeResult(result: DatabaseTaskResetResult): DatabaseTaskResetResult 
   Object.freeze(result.taskIds); return Object.freeze(result);
 }
 
-function auditInput(operationId: string, result: DatabaseTaskResetResult, occurredAt: Date) {
+function auditInput(operationId: string, result: DatabaseTaskResetResult,
+  identities: readonly TaskIdentity[], occurredAt: Date) {
   return { operationId, eventType: 'TASK_ADMIN_COMPLETED', entityType: 'OPERATION',
     entityId: operationId, redactedDetails: { action: 'COMPLETION_RESET_BATCH',
       taskCount: result.taskIds.length, resetEventCount: result.resetEventsAppended,
-      resultHash: sha256(result) }, occurredAt } as const;
+      resultHash: sha256(result), taskIdentities: identities }, occurredAt } as const;
 }
 
-async function assertOneAudit(tx: TenantTransaction, tenantId: string, operationId: string) {
-  const result = await tx.execute(sql`SELECT event_id FROM audit_events WHERE tenant_id=${tenantId}
+async function readAuditIdentities(tx: TenantTransaction, tenantId: string, operationId: string,
+  result: DatabaseTaskResetResult, occurredAt: Date): Promise<TaskIdentity[]> {
+  const query = await tx.execute(sql`SELECT event_id, operation_id, event_type, entity_type,
+    entity_id, redacted_details, occurred_at FROM audit_events WHERE tenant_id=${tenantId}
     AND operation_id=${operationId} ORDER BY event_id`);
-  if (result.rows.length !== 1) throw new Error('Task reset operation audit set integrity check failed.');
-  const row = exactRow(result.rows[0], ['event_id'], 'audit evidence');
-  if (row.event_id !== operationAuditEventId(operationId, 'TASK_ADMIN_COMPLETED')) {
+  const rows = adapterRows(query, 'audit rowset');
+  if (rows.length !== 1) throw new Error('Task reset operation audit set integrity check failed.');
+  const row = exactRow(rows[0], ['event_id', 'operation_id', 'event_type', 'entity_type',
+    'entity_id', 'redacted_details', 'occurred_at'], 'audit evidence');
+  if (row.event_id !== operationAuditEventId(operationId, 'TASK_ADMIN_COMPLETED')
+    || row.operation_id !== operationId || row.event_type !== 'TASK_ADMIN_COMPLETED'
+    || row.entity_type !== 'OPERATION' || row.entity_id !== operationId
+    || requiredDate(row.occurred_at, 'audit timestamp').getTime() !== occurredAt.getTime()) {
     throw new Error('Task reset operation audit set integrity check failed.');
   }
+  const details = exactRow(row.redacted_details,
+    ['action', 'taskCount', 'resetEventCount', 'resultHash', 'taskIdentities'], 'audit details');
+  if (details.action !== 'COMPLETION_RESET_BATCH' || details.taskCount !== result.taskIds.length
+    || details.resetEventCount !== result.resetEventsAppended || details.resultHash !== sha256(result)) {
+    throw new Error('Task reset operation audit integrity check failed.');
+  }
+  const identities = exactArray(details.taskIdentities, 1, 100, 'audit task identities')
+    .map((raw) => {
+      const identity = exactRow(raw, ['taskId', 'taskInstanceId'], 'audit task identity');
+      return Object.freeze({ taskId: requiredId(identity.taskId, 'audit task ID'),
+        taskInstanceId: requiredId(identity.taskInstanceId, 'audit task instance ID') });
+    });
+  if (identities.length !== result.taskIds.length
+    || identities.some((identity, index) => identity.taskId !== result.taskIds[index])
+    || new Set(identities.map((identity) => identity.taskInstanceId)).size !== identities.length) {
+    throw new Error('Task reset physical identity audit integrity check failed.');
+  }
+  return identities;
+}
+
+async function assertAuditIdentities(tx: TenantTransaction, tenantId: string, operationId: string,
+  result: DatabaseTaskResetResult, expected: readonly TaskIdentity[], occurredAt: Date) {
+  const actual = await readAuditIdentities(tx, tenantId, operationId, result, occurredAt);
+  if (snapshot(actual) !== snapshot(expected)) {
+    throw new Error('Task reset physical identity audit integrity check failed.');
+  }
+}
+
+function adapterRows(rawResult: unknown, label: string): unknown[] {
+  if (typeof rawResult !== 'object' || rawResult === null) {
+    throw new Error(`Task reset ${label} is malformed.`);
+  }
+  const descriptor = Object.getOwnPropertyDescriptor(rawResult, 'rows');
+  if (!descriptor || !Object.hasOwn(descriptor, 'value')) {
+    throw new Error(`Task reset ${label} is malformed.`);
+  }
+  return exactArray(descriptor.value, 0, 10000, label);
 }
 
 function exactArray(raw: unknown, min: number, max: number, label: string): unknown[] {

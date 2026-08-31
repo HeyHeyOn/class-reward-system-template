@@ -238,6 +238,48 @@ describe('database batch task completion reset command', () => {
       taskIds: ['TASK-001'] })).rejects.toThrow(/conflict/i);
   });
 
+  it('rejects zero-event replay when the bound physical task was hard-deleted and recreated', async () => {
+    const zeroOperation = 'abcdef00-0000-4000-8000-000000000302';
+    await command().resetBatch({ operationId: OPERATION_ID, taskIds: ['TASK-001'] });
+    await command().resetBatch({ operationId: zeroOperation, taskIds: ['TASK-001'] });
+    await harness.database.query(`ALTER TABLE task_completions DISABLE TRIGGER task_completions_append_only`);
+    await harness.database.query(`ALTER TABLE task_assignments DISABLE TRIGGER task_assignments_append_only`);
+    await harness.database.query(`DELETE FROM task_completions WHERE tenant_id=$1
+      AND task_instance_id='INSTANCE-001'`, [harness.tenantOneId]);
+    await harness.database.query(`DELETE FROM task_assignments WHERE tenant_id=$1
+      AND task_instance_id='INSTANCE-001'`, [harness.tenantOneId]);
+    await harness.database.query(`DELETE FROM tasks WHERE tenant_id=$1
+      AND task_instance_id='INSTANCE-001'`, [harness.tenantOneId]);
+    await harness.database.query(`INSERT INTO tasks
+      (tenant_id, task_instance_id, task_id, title, description, reward, is_active,
+       sort_order, current_schedule, schedule_schema_version, created_at, updated_at)
+      SELECT tenant_id, 'INSTANCE-RECREATED', 'TASK-001', 'recreated', description, reward,
+        is_active, sort_order, current_schedule, schedule_schema_version, created_at, updated_at
+      FROM tasks WHERE tenant_id=$1 AND task_instance_id='INSTANCE-002'`, [harness.tenantOneId]);
+
+    await expect(command().resetBatch({ operationId: zeroOperation, taskIds: ['TASK-001'] }))
+      .rejects.toThrow(/physical identity|audit.*integrity/i);
+  });
+
+  it('replays against the original tombstoned physical task despite a valid recreated lifecycle', async () => {
+    const zeroOperation = 'abcdef00-0000-4000-8000-000000000302';
+    await command().resetBatch({ operationId: OPERATION_ID, taskIds: ['TASK-001'] });
+    await command().resetBatch({ operationId: zeroOperation, taskIds: ['TASK-001'] });
+    await harness.database.query(`UPDATE tasks SET is_active=false, deleted_at=$2, updated_at=$2
+      WHERE tenant_id=$1 AND task_instance_id='INSTANCE-001'`,
+    [harness.tenantOneId, '2026-08-31T01:01:00.000Z']);
+    await harness.database.query(`INSERT INTO tasks
+      (tenant_id, task_instance_id, task_id, title, description, reward, is_active,
+       sort_order, current_schedule, schedule_schema_version, created_at, updated_at)
+      SELECT tenant_id, 'INSTANCE-RECREATED', 'TASK-001', 'recreated', description, reward,
+        true, sort_order, current_schedule, schedule_schema_version, $2, $2
+      FROM tasks WHERE tenant_id=$1 AND task_instance_id='INSTANCE-001'`,
+    [harness.tenantOneId, '2026-08-31T01:02:00.000Z']);
+
+    await expect(command().resetBatch({ operationId: zeroOperation, taskIds: ['TASK-001'] }))
+      .resolves.toEqual({ taskIds: ['TASK-001'], resetEventsAppended: 0, deletedCount: 0 });
+  });
+
   it('fails a missing target atomically without operation, audit, or earlier reset residue', async () => {
     const before = await state();
     await expect(command().resetBatch({ operationId: OPERATION_ID,
@@ -418,6 +460,100 @@ describe('database batch task completion reset command', () => {
       && sql.includes('from task_completions'));
     expect(completionReads.every((sql) => sql.includes('task_instance_id in ('))).toBe(true);
     expect(completionReads.length).toBeLessThanOrEqual(4);
+  });
+
+  it.each([
+    { taskIds: ['TASK-001'] as const, expectedWidth: 1, label: 'one-target' },
+    { taskIds: ['TASK-002', 'TASK-001'] as const, expectedWidth: 2, label: 'many-target' },
+  ])('uses exactly three set-wise task snapshot reads for a $label reset',
+  async ({ taskIds, expectedWidth }) => {
+    const widths: number[] = [];
+    const run = observingRunner((sql, rows) => {
+      if (sql.startsWith('select task_instance_id, task_id, current_schedule')
+        && sql.includes('from tasks')) widths.push(rows.length);
+      return rows;
+    });
+
+    await command({ runTenantTransaction: run }).resetBatch({ operationId: OPERATION_ID, taskIds });
+
+    expect(widths).toEqual([expectedWidth, expectedWidth, expectedWidth]);
+  });
+
+  it('rejects valid-looking adapter task identity and nested schedule mutations at every snapshot phase',
+    async () => {
+      const pending = { ruleVersion: 2, effectiveFrom: '2026-09-01T00:00:00.000Z',
+        timeZone: 'Asia/Seoul', recurrence: { type: 'DAILY', time: '09:00' },
+        resetCompletionOnCycle: true, resetAssignmentOnCycle: false };
+      await harness.database.query(`UPDATE tasks SET pending_schedule=$2::jsonb
+        WHERE tenant_id=$1 AND task_instance_id='INSTANCE-001'`,
+      [harness.tenantOneId, JSON.stringify(pending)]);
+      const before = await state();
+      const mutations = [
+        ['task ID', (row: Record<string, unknown>) => ({ ...row, task_id: 'TASK-CORRUPTED' })],
+        ['current schedule', (row: Record<string, unknown>) => ({ ...row,
+          current_schedule: { ...(row.current_schedule as Record<string, unknown>),
+            resetAssignmentOnCycle: true } })],
+        ['pending schedule', (row: Record<string, unknown>) => ({ ...row,
+          pending_schedule: { ...(row.pending_schedule as Record<string, unknown>),
+            resetAssignmentOnCycle: true } })],
+      ] as const;
+
+      for (const phase of [1, 2, 3]) {
+        for (const [label, mutate] of mutations) {
+          let snapshotRead = 0;
+          let terminalReached = false;
+          let auditReached = false;
+          const run = observingRunner((sql, rows) => {
+            if (sql.startsWith("update operations set status='succeeded'")) terminalReached = true;
+            if (sql.startsWith('insert into audit_events')) auditReached = true;
+            if (sql.startsWith('select task_instance_id, task_id, current_schedule')
+              && sql.includes('from tasks')) {
+              snapshotRead += 1;
+              if (snapshotRead === phase) return rows.map((raw, index) => index === 0
+                ? mutate(raw as Record<string, unknown>) : raw);
+            }
+            return rows;
+          });
+
+          await expect(command({ runTenantTransaction: run }).resetBatch({
+            operationId: OPERATION_ID, taskIds: ['TASK-001'],
+          }), `${label} mutation at task snapshot read ${phase}`)
+            .rejects.toThrow(/task.*(snapshot|identity|integrity)/i);
+          expect(snapshotRead).toBeGreaterThanOrEqual(phase);
+          if (phase === 2) expect(auditReached).toBe(false);
+          if (phase === 3) expect(terminalReached).toBe(true);
+          expect(await state()).toEqual(before);
+        }
+      }
+    });
+
+  it('fails closed when any exact task snapshot scalar changes before audit', async () => {
+    const before = await state();
+    const mutations = [
+      (row: Record<string, unknown>) => ({ ...row, schedule_schema_version: 2 }),
+      (row: Record<string, unknown>) => ({ ...row, version: '2' }),
+      (row: Record<string, unknown>) => ({ ...row,
+        created_at: new Date('2026-08-29T23:59:59.000Z') }),
+      (row: Record<string, unknown>) => ({ ...row,
+        updated_at: new Date('2026-08-30T00:00:01.000Z') }),
+      (row: Record<string, unknown>) => ({ ...row, is_active: false }),
+      (row: Record<string, unknown>) => ({ ...row, deleted_at: NOW }),
+    ];
+    for (const mutate of mutations) {
+      let snapshotRead = 0;
+      const run = observingRunner((sql, rows) => {
+        if (sql.startsWith('select task_instance_id, task_id, current_schedule')
+          && sql.includes('from tasks') && ++snapshotRead === 2) {
+          return rows.map((raw, index) => index === 0
+            ? mutate(raw as Record<string, unknown>) : raw);
+        }
+        return rows;
+      });
+      await expect(command({ runTenantTransaction: run }).resetBatch({
+        operationId: OPERATION_ID, taskIds: ['TASK-001'],
+      })).rejects.toThrow(/task.*(snapshot|integrity)/i);
+      expect(await state()).toEqual(before);
+    }
   });
 
   it('fails closed on suppressed later reset insertion and rolls back every write', async () => {
