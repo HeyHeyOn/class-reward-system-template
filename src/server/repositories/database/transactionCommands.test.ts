@@ -355,6 +355,29 @@ describe('database transaction cancellation commands', () => {
     expect((await snapshot()).ledger).toHaveLength(0);
   });
 
+  it('keeps task-reward cancellation valid after migration 0010 enforces reset provenance', async () => {
+    await seedValidTaskReward();
+    await harness.database.exec(await readFile(resolve(process.cwd(),
+      'src/server/db/migrations/0010_task_admin_invariants.sql'), 'utf8'));
+
+    await expect(commands().cancel({ operationId: OPERATION_ID, transactionId: REWARD_ORIGINAL_ID }))
+      .resolves.toMatchObject({
+        originalKind: 'TASK_REWARD',
+        cancellationCompletionId: `task-completion-cancellation:${OPERATION_ID}`,
+      });
+    const cancellationResult = await harness.database.query(`SELECT transaction_id, operation_id,
+      operation_hash, admin_operation_id, admin_operation_hash FROM task_completions
+      WHERE tenant_id=$1 AND source='ADMIN_RESET'`, [harness.tenantOneId]);
+    const cancellation = cancellationResult.rows[0] as Record<string, unknown>;
+    expect(cancellation).toMatchObject({
+      transaction_id: `cancellation:${OPERATION_ID}`,
+      operation_id: OPERATION_ID,
+      operation_hash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      admin_operation_id: null,
+      admin_operation_hash: null,
+    });
+  });
+
   it('appends an auditable CANCELLED completion linked to the task reward reversal', async () => {
     await seedValidTaskReward();
 

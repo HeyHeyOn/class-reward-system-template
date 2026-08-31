@@ -63,11 +63,69 @@ AS $$
 DECLARE
   binding_required boolean;
   operation_matches boolean;
+  cancellation_variant boolean;
+  administrator_reset_variant boolean;
 BEGIN
   IF TG_TABLE_NAME = 'task_assignments' THEN
     binding_required := NEW.source IN ('ADMIN', 'QR');
   ELSIF TG_TABLE_NAME = 'task_completions' THEN
-    binding_required := NEW.source IN ('ADMIN', 'ADMIN_RESET');
+    IF NEW.source = 'ADMIN_RESET' THEN
+      cancellation_variant := NEW.operation_id IS NOT NULL
+        AND NEW.operation_hash IS NOT NULL
+        AND NEW.admin_operation_id IS NULL
+        AND NEW.admin_operation_hash IS NULL;
+      administrator_reset_variant := NEW.operation_id IS NULL
+        AND NEW.operation_hash IS NULL
+        AND NEW.admin_operation_id IS NOT NULL
+        AND NEW.admin_operation_hash IS NOT NULL;
+
+      IF cancellation_variant THEN
+        SELECT EXISTS (
+          SELECT 1
+          FROM public.operations o
+          JOIN public.transactions t
+            ON t.tenant_id = o.tenant_id
+           AND t.transaction_id = NEW.transaction_id
+           AND t.kind = 'CANCELLATION'
+           AND t.operation_id = o.operation_id
+           AND t.operation_hash = o.payload_hash
+          WHERE o.tenant_id = NEW.tenant_id
+            AND o.operation_id = NEW.operation_id
+            AND o.operation_kind = 'CANCELLATION'
+            AND o.payload_hash = NEW.operation_hash
+        ) INTO operation_matches;
+        IF NOT operation_matches
+          OR NEW.status <> 'CANCELLED'
+          OR NEW.reward_snapshot <= 0
+          OR NEW.balance_before - NEW.reward_snapshot <> NEW.balance_after THEN
+          RAISE EXCEPTION 'invalid task cancellation reset provenance in %', TG_TABLE_NAME
+            USING ERRCODE = '23514';
+        END IF;
+        RETURN NEW;
+      ELSIF administrator_reset_variant THEN
+        SELECT EXISTS (
+          SELECT 1
+          FROM public.operations
+          WHERE tenant_id = NEW.tenant_id
+            AND operation_id = NEW.admin_operation_id
+            AND operation_kind = 'TASK_ADMIN'
+            AND payload_hash = NEW.admin_operation_hash
+        ) INTO operation_matches;
+        IF NOT operation_matches
+          OR NEW.status <> 'CANCELLED'
+          OR NEW.reward_snapshot <> 0
+          OR NEW.balance_before <> NEW.balance_after
+          OR NEW.transaction_id IS NOT NULL THEN
+          RAISE EXCEPTION 'invalid task administrator reset provenance in %', TG_TABLE_NAME
+            USING ERRCODE = '23514';
+        END IF;
+        RETURN NEW;
+      ELSE
+        RAISE EXCEPTION 'task reset event in % requires exactly one operation binding variant',
+          TG_TABLE_NAME USING ERRCODE = '23514';
+      END IF;
+    END IF;
+    binding_required := NEW.source = 'ADMIN';
   ELSE
     RAISE EXCEPTION 'unsupported task event table %', TG_TABLE_NAME
       USING ERRCODE = '55000';
