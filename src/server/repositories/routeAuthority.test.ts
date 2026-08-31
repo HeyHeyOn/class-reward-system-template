@@ -24,6 +24,7 @@ const READ_AUTHORITY = [
 ] as const;
 const CONFIGURED_MUTATION_AUTHORITY = [
   ['checkout', 'POST', 'createConfiguredCheckoutCommand'],
+  ['tasks/completions/reset', 'POST', 'createConfiguredTaskResetCommand'],
 ] as const;
 
 async function exportedMethodBody(route: string, method: string): Promise<string> {
@@ -77,7 +78,7 @@ describe('tenant mutation route PostgreSQL authority', () => {
       && entry.effect === 'mutation'
       && !configured.has(`${entry.method} ${entry.route}`));
 
-    expect(sheetsMutations).toHaveLength(26);
+    expect(sheetsMutations).toHaveLength(25);
     for (const entry of sheetsMutations) {
       const body = await exportedMethodBody(entry.route.replace(/^\//, ''), entry.method);
       expect(body, `${entry.method} ${entry.route}`).toMatch(/createConfiguredSheetsStore\s*\(/);

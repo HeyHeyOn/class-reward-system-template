@@ -608,6 +608,41 @@ describe('AdminManagePage', () => {
     expect(screen.getByText('이미 이 과제가 부여된 학생입니다.')).toBeTruthy();
   });
 
+  it('sends one canonical reset operation ID and reuses it when the open confirmation retries after failure', async () => {
+    vi.mocked(crypto.randomUUID).mockReturnValue('60000000-0000-4000-8000-000000000001');
+    const fallback = vi.mocked(fetch).getMockImplementation()!;
+    const resetBodies: Array<Record<string, unknown>> = [];
+    let resetAttempt = 0;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input) === '/api/tasks/completions/reset' && init?.method === 'POST') {
+        resetBodies.push(JSON.parse(String(init.body)));
+        resetAttempt += 1;
+        return resetAttempt === 1
+          ? jsonResponse({ error: 'temporary reset failure' }, { status: 400 })
+          : jsonResponse({ taskIds: ['T001'], resetEventsAppended: 1, deletedCount: 1 });
+      }
+      return fallback(input, init);
+    });
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
+    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: '완료 기록 초기화' }));
+    fireEvent.click(screen.getByRole('button', { name: '완료 기록 초기화 확인' }));
+
+    const dialog = await screen.findByRole('dialog', { name: '완료 기록 초기화 확인' });
+    await waitFor(() => expect(within(dialog).getByRole('alert').textContent).toContain('temporary reset failure'));
+    fireEvent.click(within(dialog).getByRole('button', { name: '완료 기록 초기화 확인' }));
+    await waitFor(() => expect(resetBodies).toHaveLength(2));
+
+    expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
+    expect(resetBodies).toEqual([
+      { taskIds: ['T001'], operationId: '60000000-0000-4000-8000-000000000001' },
+      { taskIds: ['T001'], operationId: '60000000-0000-4000-8000-000000000001' },
+    ]);
+  });
+
   it('does not send assignment commands when the loaded desired state is unchanged', async () => {
     render(<AdminManagePage />);
     fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));

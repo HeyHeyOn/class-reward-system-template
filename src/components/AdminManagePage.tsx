@@ -170,7 +170,7 @@ export function AdminManagePage() {
     statusRows: TaskAssignmentStudentStatus[];
     isLoading?: boolean;
   } | null>(null);
-  const [taskResetConfirmation, setTaskResetConfirmation] = useState<{ target: TaskDialogTarget; opener: HTMLElement; resetting: boolean; error: string } | null>(null);
+  const [taskResetConfirmation, setTaskResetConfirmation] = useState<{ target: TaskDialogTarget; opener: HTMLElement; operationId: string; resetting: boolean; error: string } | null>(null);
   const [qrPrintStudents, setQrPrintStudents] = useState<StudentDraft[] | null>(null);
   const [currencyMode, setCurrencyMode] = useState<CurrencyMode>('add');
   const [currencyAmount, setCurrencyAmount] = useState(0);
@@ -1260,19 +1260,19 @@ export function AdminManagePage() {
 
   function requestTaskCompletionReset(target: TaskDialogTarget, opener: HTMLElement) {
     if (target.tasks.length === 0) return notify('선택된 과제가 없습니다.');
-    setTaskResetConfirmation({ target, opener, resetting: false, error: '' });
+    setTaskResetConfirmation({ target, opener, operationId: crypto.randomUUID(), resetting: false, error: '' });
   }
 
   async function confirmTaskCompletionReset() {
     if (!taskResetConfirmation || taskResetConfirmation.resetting) return;
-    const target = taskResetConfirmation.target;
+    const { target, operationId } = taskResetConfirmation;
     const taskIds = target.tasks.map((task) => task.taskId);
     setTaskResetConfirmation((current) => current ? { ...current, resetting: true, error: '' } : current);
     try {
       const response = await fetch('/api/tasks/completions/reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskIds }),
+        body: JSON.stringify({ taskIds, operationId }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? '과제 완료 기록을 초기화하지 못했습니다.');
