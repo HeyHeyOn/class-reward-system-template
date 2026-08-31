@@ -26,6 +26,21 @@ const ASSIGNMENT_KEYS = ['assignment_id', 'event_sequence', 'task_id_snapshot',
   'timezone', 'student_id', 'event_type', 'source', 'previous_assignment_id',
   'admin_operation_id', 'admin_operation_hash', 'created_at', 'schema_version', 'note'] as const;
 const ACCOUNT_KEYS = ['student_id', 'balance', 'version', 'updated_at'] as const;
+const TRANSACTION_KEYS = ['tenant_id', 'transaction_id', 'event_sequence', 'occurred_at',
+  'student_id', 'student_name_snapshot', 'kind', 'legacy_total_amount', 'balance_delta',
+  'balance_before', 'balance_after', 'operator_snapshot', 'legacy_status_snapshot',
+  'reverses_transaction_id', 'operation_id', 'operation_hash', 'schema_version',
+  'created_at'] as const;
+const TRANSACTION_ITEM_KEYS = ['tenant_id', 'item_id', 'transaction_id', 'line_number',
+  'product_id_snapshot', 'current_product_id', 'product_name_snapshot', 'quantity',
+  'unit_price_snapshot', 'subtotal_snapshot', 'regular_unit_price', 'regular_total',
+  'total_quantity', 'paid_quantity', 'free_quantity', 'final_total', 'total_discount',
+  'adjustments_snapshot', 'applied_promotions_snapshot', 'created_at'] as const;
+const ADJUSTMENT_KEYS = ['tenant_id', 'adjustment_id', 'transaction_id', 'mode',
+  'requested_amount', 'operator_snapshot', 'legacy_adjustment_id', 'created_at'] as const;
+const INVENTORY_KEYS = ['tenant_id', 'inventory_event_id', 'event_sequence', 'product_id',
+  'transaction_id', 'quantity_delta', 'stock_before', 'stock_after', 'reason', 'operation_id',
+  'operation_hash', 'occurred_at', 'created_at'] as const;
 
 type RunTenantTransaction = <T>(tenantId: string,
   callback: (transaction: TenantTransaction) => Promise<T>) => Promise<T>;
@@ -57,6 +72,7 @@ type Operation = Readonly<{ operation_id: string; operation_kind: string; payloa
 type Completion = ReturnType<typeof parseCompletion>;
 type Assignment = ReturnType<typeof parseAssignment>;
 type Account = ReturnType<typeof parseAccount>;
+type TransactionGraph = Awaited<ReturnType<typeof readTransactionGraph>>;
 type TaskIdentity = Readonly<{ taskId: string; taskInstanceId: string }>;
 
 export function createTaskResetPayloadHash(raw: DatabaseTaskResetCommandInput): string {
@@ -119,7 +135,8 @@ export function createDatabaseTaskResetCommands(dependencies: DatabaseTaskResetC
           .sort(compareCanonical);
         const initial = await readCompletions(tx, dependencies.tenantId, instances, true);
         validateCompletionSet(initial, tasks);
-        await validateCompletionReferences(tx, dependencies.tenantId, initial);
+        const initialTransactionGraph = await validateCompletionReferences(tx,
+          dependencies.tenantId, initial);
         const initialAssignments = await readAssignments(tx, dependencies.tenantId, instances, true);
         validateAssignmentSet(initialAssignments, tasks);
         const completionStudentIds = [...new Set(initial.map((event) => event.student_id))]
@@ -165,7 +182,7 @@ export function createDatabaseTaskResetCommands(dependencies: DatabaseTaskResetC
         const result = freezeResult({ taskIds: [...input.taskIds],
           resetEventsAppended: latest.length, deletedCount: latest.length });
         await verifyComplete(tx, dependencies.tenantId, tasks, expected, result,
-          input.operationId, payloadHash, now);
+          input.operationId, payloadHash, now, initialTransactionGraph, 'pre-audit');
         await assertTaskSnapshots(tx, dependencies.tenantId, tasks, 'pre-audit');
         await assertAssignmentSnapshots(tx, dependencies.tenantId, tasks, initialAssignments,
           'pre-audit');
@@ -188,20 +205,21 @@ export function createDatabaseTaskResetCommands(dependencies: DatabaseTaskResetC
         await assertAccountSnapshots(tx, dependencies.tenantId, completionStudentIds,
           initialAccounts, 'post-terminal');
         await verifyComplete(tx, dependencies.tenantId, tasks, expected, result,
-          input.operationId, payloadHash, now);
+          input.operationId, payloadHash, now, initialTransactionGraph, 'post-terminal');
         await assertOperationAudit(tx, dependencies.tenantId, audit);
         await assertAuditIdentities(tx, dependencies.tenantId, input.operationId, result,
           identities, now);
         const stored = await readOperation(tx, dependencies.tenantId, input.operationId);
         if (!stored) throw new Error('Task reset terminal operation integrity check failed.');
-        return replay(tx, dependencies.tenantId, stored, input, payloadHash);
+        return replay(tx, dependencies.tenantId, stored, input, payloadHash, true);
       });
     },
   };
 }
 
 async function replay(tx: TenantTransaction, tenantId: string, operation: Operation,
-  input: CanonicalInput, payloadHash: string): Promise<DatabaseTaskResetResult> {
+  input: CanonicalInput, payloadHash: string, referencesAlreadyValidated = false)
+  : Promise<DatabaseTaskResetResult> {
   if (operation.operation_kind !== 'TASK_ADMIN' || operation.payload_hash !== payloadHash) {
     throw new Error('Task reset operation conflict.');
   }
@@ -241,7 +259,7 @@ async function replay(tx: TenantTransaction, tenantId: string, operation: Operat
   const instances = [...identities.keys()].sort(compareCanonical);
   const histories = await readCompletions(tx, tenantId, instances, false);
   validateCompletionIdentities(histories, identities);
-  await validateCompletionReferences(tx, tenantId, histories);
+  if (!referencesAlreadyValidated) await validateCompletionReferences(tx, tenantId, histories);
   const bound = histories.filter((event) => event.admin_operation_id === input.operationId);
   if (bound.length !== result.resetEventsAppended) {
     throw new Error('Task reset operation-bound event integrity check failed.');
@@ -293,11 +311,12 @@ function latestCurrentCompletions(history: readonly Completion[], tasks: Readonl
 
 async function verifyComplete(tx: TenantTransaction, tenantId: string,
   tasks: ReadonlyMap<string, Task>, expected: readonly Completion[], result: DatabaseTaskResetResult,
-  operationId: string, payloadHash: string, now: Date) {
+  operationId: string, payloadHash: string, now: Date, expectedGraph: TransactionGraph,
+  phase: string) {
   const instances = [...tasks.values()].map((task) => task.task_instance_id).sort(compareCanonical);
   const actual = await readCompletions(tx, tenantId, instances, false);
   validateCompletionSet(actual, tasks);
-  await validateCompletionReferences(tx, tenantId, actual);
+  await validateCompletionReferences(tx, tenantId, actual, expectedGraph, phase);
   if (snapshot(canonicalCompletions(actual)) !== snapshot(canonicalCompletions(expected))) {
     throw new Error('Task reset complete-state completion history integrity check failed.');
   }
@@ -605,7 +624,7 @@ function validateCompletionIdentities(rows: readonly Completion[], identities: R
 }
 
 async function validateCompletionReferences(tx: TenantTransaction, tenantId: string,
-  rows: readonly Completion[]) {
+  rows: readonly Completion[], expectedGraph?: TransactionGraph, phase = 'initial') {
   const expectedOperations = new Map<string, { hash: string; kind: 'TASK_REWARD' | 'TASK_ADMIN' | 'CANCELLATION' }>();
   const expectedTransactions = new Map<string, { operationId: string; hash: string; kind: 'TASK_REWARD' | 'CANCELLATION' }>();
   for (const event of rows) {
@@ -642,27 +661,255 @@ async function validateCompletionReferences(tx: TenantTransaction, tenantId: str
       seen.add(operationId);
     }
   }
-  if (expectedTransactions.size > 0) {
-    const ids = [...expectedTransactions.keys()].sort(compareCanonical);
-    const result = await tx.execute(sql`SELECT transaction_id, kind, operation_id, operation_hash
-      FROM transactions WHERE tenant_id=${tenantId}
-      AND transaction_id IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
-      ORDER BY transaction_id`);
-    const transactionRows = adapterRows(result, 'referenced transaction rowset');
-    if (transactionRows.length !== ids.length) throw new Error('Task reset referenced transaction integrity check failed.');
-    const seen = new Set<string>();
-    for (const raw of transactionRows) {
-      const row = exactRow(raw, ['transaction_id', 'kind', 'operation_id', 'operation_hash'],
-        'referenced transaction evidence');
-      const transactionId = requiredId(row.transaction_id, 'referenced transaction ID');
-      const expected = expectedTransactions.get(transactionId);
-      if (!expected || seen.has(transactionId) || row.kind !== expected.kind
-        || row.operation_id !== expected.operationId || row.operation_hash !== expected.hash) {
-        throw new Error('Task reset referenced transaction integrity check failed.');
-      }
-      seen.add(transactionId);
+  const graph = await readTransactionGraph(tx, tenantId,
+    [...expectedTransactions.keys()].sort(compareCanonical));
+  const transactions = new Map(graph.transactions.map((row) => [row.transaction_id, row]));
+  for (const [transactionId, expected] of expectedTransactions) {
+    const row = transactions.get(transactionId);
+    if (!row || row.kind !== expected.kind || row.operation_id !== expected.operationId
+      || row.operation_hash !== expected.hash) {
+      throw new Error('Task reset transaction graph reference integrity check failed.');
     }
   }
+  if (expectedGraph !== undefined && snapshot(graph) !== snapshot(expectedGraph)) {
+    throw new Error(`Task reset transaction graph ${phase} snapshot integrity check failed.`);
+  }
+  return graph;
+}
+
+async function readTransactionGraph(tx: TenantTransaction, tenantId: string,
+  referencedIds: readonly string[]) {
+  const directPredicate = referencedIds.length === 0 ? sql`FALSE`
+    : sql`transaction_id IN (
+      WITH RECURSIVE captured(transaction_id) AS (
+        VALUES ${sql.join(referencedIds.map((id) => sql`(${id})`), sql`, `)}
+        UNION
+        SELECT candidate.transaction_id FROM captured
+        JOIN transactions source ON source.tenant_id=${tenantId}
+          AND source.transaction_id=captured.transaction_id
+        JOIN transactions candidate ON candidate.tenant_id=${tenantId}
+          AND (candidate.transaction_id=source.reverses_transaction_id
+            OR candidate.reverses_transaction_id=source.transaction_id)
+      ) SELECT transaction_id FROM captured)`;
+  const transactionResult = await tx.execute(sql`SELECT tenant_id, transaction_id,
+    event_sequence::text AS event_sequence, occurred_at, student_id, student_name_snapshot,
+    kind, legacy_total_amount::text AS legacy_total_amount, balance_delta::text AS balance_delta,
+    balance_before::text AS balance_before, balance_after::text AS balance_after,
+    operator_snapshot, legacy_status_snapshot, reverses_transaction_id, operation_id,
+    operation_hash, schema_version, created_at FROM transactions WHERE tenant_id=${tenantId}
+    AND (${directPredicate}) ORDER BY transaction_id`);
+  const transactions = parseGraphRows(transactionResult, 'transactions',
+    (raw) => parseGraphTransaction(raw, tenantId));
+  const transactionIds = transactions.map((row) => row.transaction_id);
+  const missing = referencedIds.filter((id) => !transactionIds.includes(id));
+  const transactionSequences = transactions.map((row) => row.event_sequence);
+  const parents = new Set(transactionIds);
+  if (missing.length > 0 || parents.size !== transactionIds.length
+    || new Set(transactionSequences).size !== transactionSequences.length
+    || transactions.some((row) => row.kind === 'CANCELLATION'
+      && (row.reverses_transaction_id === null || !parents.has(row.reverses_transaction_id)))) {
+    throw new Error('Task reset transaction graph transaction identity integrity check failed.');
+  }
+  const dependentPredicate = transactionIds.length === 0 ? sql`FALSE`
+    : sql`transaction_id IN (${sql.join(transactionIds.map((id) => sql`${id}`), sql`, `)})`;
+  const itemResult = await tx.execute(sql`SELECT tenant_id, item_id, transaction_id, line_number,
+    product_id_snapshot, current_product_id, product_name_snapshot,
+    quantity::text AS quantity, unit_price_snapshot::text AS unit_price_snapshot,
+    subtotal_snapshot::text AS subtotal_snapshot, regular_unit_price::text AS regular_unit_price,
+    regular_total::text AS regular_total, total_quantity::text AS total_quantity,
+    paid_quantity::text AS paid_quantity, free_quantity::text AS free_quantity,
+    final_total::text AS final_total, total_discount::text AS total_discount,
+    adjustments_snapshot, applied_promotions_snapshot, created_at FROM transaction_items
+    WHERE tenant_id=${tenantId} AND (${dependentPredicate}) ORDER BY transaction_id, line_number`);
+  const adjustmentResult = await tx.execute(sql`SELECT tenant_id, adjustment_id, transaction_id,
+    mode, requested_amount::text AS requested_amount, operator_snapshot, legacy_adjustment_id,
+    created_at FROM adjustments WHERE tenant_id=${tenantId} AND (${dependentPredicate})
+    ORDER BY transaction_id, adjustment_id`);
+  const inventoryResult = await tx.execute(sql`SELECT tenant_id, inventory_event_id,
+    event_sequence::text AS event_sequence, product_id, transaction_id,
+    quantity_delta::text AS quantity_delta, stock_before::text AS stock_before,
+    stock_after::text AS stock_after, reason, operation_id, operation_hash, occurred_at, created_at
+    FROM inventory_ledger WHERE tenant_id=${tenantId} AND (${dependentPredicate})
+    ORDER BY transaction_id, event_sequence`);
+  const items = parseGraphRows(itemResult, 'transaction items',
+    (raw) => parseGraphItem(raw, tenantId));
+  const adjustments = parseGraphRows(adjustmentResult, 'adjustments',
+    (raw) => parseGraphAdjustment(raw, tenantId));
+  const inventory = parseGraphRows(inventoryResult, 'inventory ledger',
+    (raw) => parseGraphInventory(raw, tenantId));
+  assertGraphChildren(items, parents, (row) => row.item_id, 'transaction item');
+  assertGraphChildren(adjustments, parents, (row) => row.adjustment_id, 'adjustment');
+  assertGraphChildren(inventory, parents, (row) => row.inventory_event_id, 'inventory');
+  assertLogicalKeys(items, (row) => key(row.transaction_id, String(row.line_number)),
+    'transaction item');
+  assertLogicalKeys(adjustments, (row) => row.transaction_id, 'adjustment');
+  assertLogicalKeys(inventory, (row) => String(row.event_sequence), 'inventory');
+  return Object.freeze({
+    transactions: Object.freeze([...transactions].sort((a, b) => compareCanonical(a.transaction_id,
+      b.transaction_id))),
+    items: Object.freeze([...items].sort((a, b) => compareCanonical(a.item_id, b.item_id))),
+    adjustments: Object.freeze([...adjustments].sort((a, b) => compareCanonical(a.adjustment_id,
+      b.adjustment_id))),
+    inventory: Object.freeze([...inventory].sort((a, b) => compareCanonical(a.inventory_event_id,
+      b.inventory_event_id))),
+  });
+}
+
+function parseGraphRows<T>(result: unknown, label: string, parser: (raw: unknown) => T): T[] {
+  const rows = adapterRows(result, `transaction graph ${label} rowset`);
+  try { return rows.map(parser); } catch (error) {
+    if (error instanceof Error && /transaction graph/.test(error.message)) throw error;
+    throw new Error(`Task reset transaction graph ${label} integrity check failed.`);
+  }
+}
+
+function assertGraphChildren<T extends { transaction_id: string }>(rows: readonly T[],
+  parents: ReadonlySet<string>, identity: (row: T) => string, label: string) {
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const id = identity(row);
+    if (!parents.has(row.transaction_id) || seen.has(id)) {
+      throw new Error(`Task reset transaction graph ${label} link integrity check failed.`);
+    }
+    seen.add(id);
+  }
+}
+
+function assertLogicalKeys<T>(rows: readonly T[], logicalKey: (row: T) => string, label: string) {
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const identity = logicalKey(row);
+    if (seen.has(identity)) {
+      throw new Error(`Task reset transaction graph ${label} identity integrity check failed.`);
+    }
+    seen.add(identity);
+  }
+}
+
+function parseGraphTransaction(raw: unknown, tenantId: string) {
+  const row = exactRow(raw, TRANSACTION_KEYS, 'transaction graph transaction evidence');
+  try {
+    const occurredAt = requiredDate(row.occurred_at, 'transaction graph occurred timestamp');
+    const createdAt = requiredDate(row.created_at, 'transaction graph created timestamp');
+    const kind = requiredEnum(row.kind, ['CHECKOUT', 'CANCELLATION', 'ADMIN_ADJUSTMENT',
+      'TASK_REWARD', 'LEGACY'] as const, 'transaction kind');
+    const legacyTotal = requiredSafeIntegerText(row.legacy_total_amount,
+      'transaction graph legacy total');
+    const delta = requiredSafeIntegerText(row.balance_delta, 'transaction graph balance delta');
+    const before = requiredSafeIntegerText(row.balance_before, 'transaction graph balance before');
+    const after = requiredSafeIntegerText(row.balance_after, 'transaction graph balance after');
+    const reverses = nullableId(row.reverses_transaction_id, 'transaction graph reversal ID');
+    const operationId = nullableId(row.operation_id, 'transaction graph operation ID');
+    const operationHash = nullableHash(row.operation_hash, 'transaction graph operation hash');
+    if (row.tenant_id !== tenantId || after - before !== delta
+      || (kind === 'CANCELLATION') !== (reverses !== null)
+      || (operationId === null) !== (operationHash === null)
+      || occurredAt.getTime() > createdAt.getTime()) throw new Error('shape');
+    return Object.freeze({ tenant_id: tenantId,
+      transaction_id: requiredId(row.transaction_id, 'transaction graph transaction ID'),
+      event_sequence: requiredPositiveIntegerText(row.event_sequence,
+        'transaction graph event sequence'), occurred_at: occurredAt.getTime(),
+      student_id: requiredId(row.student_id, 'transaction graph student ID'),
+      student_name_snapshot: requiredString(row.student_name_snapshot,
+        'transaction graph student name'), kind, legacy_total_amount: legacyTotal,
+      balance_delta: delta, balance_before: before, balance_after: after,
+      operator_snapshot: requiredString(row.operator_snapshot, 'transaction graph operator'),
+      legacy_status_snapshot: nullableString(row.legacy_status_snapshot,
+        'transaction graph legacy status'), reverses_transaction_id: reverses,
+      operation_id: operationId, operation_hash: operationHash,
+      schema_version: requiredPositiveInteger(row.schema_version,
+        'transaction graph schema version'), created_at: createdAt.getTime() });
+  } catch { throw new Error('Task reset transaction graph transaction integrity check failed.'); }
+}
+
+function parseGraphItem(raw: unknown, tenantId: string) {
+  const row = exactRow(raw, TRANSACTION_ITEM_KEYS, 'transaction graph item evidence');
+  try {
+    const quantity = requiredSafeIntegerText(row.quantity, 'transaction graph item quantity');
+    const extended = [row.regular_unit_price, row.regular_total, row.total_quantity,
+      row.paid_quantity, row.free_quantity, row.final_total, row.total_discount,
+      row.adjustments_snapshot, row.applied_promotions_snapshot];
+    const count = extended.filter((value) => value !== null).length;
+    if (row.tenant_id !== tenantId || quantity < 1 || (count !== 0 && count !== extended.length)) {
+      throw new Error('shape');
+    }
+    const regularUnitPrice = nullableIntegerText(row.regular_unit_price,
+      'transaction graph regular price');
+    const regularTotal = nullableIntegerText(row.regular_total, 'transaction graph regular total');
+    const totalQuantity = nullableIntegerText(row.total_quantity, 'transaction graph total quantity');
+    const paidQuantity = nullableIntegerText(row.paid_quantity, 'transaction graph paid quantity');
+    const freeQuantity = nullableIntegerText(row.free_quantity, 'transaction graph free quantity');
+    const finalTotal = nullableIntegerText(row.final_total, 'transaction graph final total');
+    const totalDiscount = nullableIntegerText(row.total_discount, 'transaction graph total discount');
+    if (count !== 0 && (regularUnitPrice! < 0 || regularTotal! < 0 || totalQuantity! < 1
+      || paidQuantity! < 0 || freeQuantity! < 0 || finalTotal! < 0 || totalDiscount! < 0
+      || paidQuantity! + freeQuantity! !== totalQuantity!
+      || !Array.isArray(row.adjustments_snapshot) || !Array.isArray(row.applied_promotions_snapshot))) {
+      throw new Error('shape');
+    }
+    return Object.freeze({ tenant_id: tenantId,
+      item_id: requiredId(row.item_id, 'transaction graph item ID'),
+      transaction_id: requiredId(row.transaction_id, 'transaction graph item transaction ID'),
+      line_number: requiredPositiveInteger(row.line_number, 'transaction graph line number'),
+      product_id_snapshot: requiredId(row.product_id_snapshot, 'transaction graph product snapshot'),
+      current_product_id: nullableId(row.current_product_id, 'transaction graph current product'),
+      product_name_snapshot: requiredString(row.product_name_snapshot, 'transaction graph product name'),
+      quantity, unit_price_snapshot: requiredSafeIntegerText(row.unit_price_snapshot,
+        'transaction graph unit price'), subtotal_snapshot: requiredSafeIntegerText(
+        row.subtotal_snapshot, 'transaction graph subtotal'),
+      regular_unit_price: regularUnitPrice, regular_total: regularTotal,
+      total_quantity: totalQuantity, paid_quantity: paidQuantity, free_quantity: freeQuantity,
+      final_total: finalTotal, total_discount: totalDiscount,
+      adjustments_snapshot: row.adjustments_snapshot === null ? null
+        : canonicalJson(row.adjustments_snapshot, 'transaction graph adjustments snapshot'),
+      applied_promotions_snapshot: row.applied_promotions_snapshot === null ? null
+        : canonicalJson(row.applied_promotions_snapshot, 'transaction graph promotions snapshot'),
+      created_at: requiredDate(row.created_at, 'transaction graph item created timestamp').getTime() });
+  } catch { throw new Error('Task reset transaction graph transaction item integrity check failed.'); }
+}
+
+function parseGraphAdjustment(raw: unknown, tenantId: string) {
+  const row = exactRow(raw, ADJUSTMENT_KEYS, 'transaction graph adjustment evidence');
+  try {
+    if (row.tenant_id !== tenantId) throw new Error('tenant');
+    return Object.freeze({ tenant_id: tenantId,
+      adjustment_id: requiredId(row.adjustment_id, 'transaction graph adjustment ID'),
+      transaction_id: requiredId(row.transaction_id, 'transaction graph adjustment transaction ID'),
+      mode: requiredEnum(row.mode, ['add', 'subtract', 'set'] as const, 'adjustment mode'),
+      requested_amount: requiredSafeIntegerText(row.requested_amount,
+        'transaction graph requested amount'), operator_snapshot: requiredString(
+        row.operator_snapshot, 'transaction graph adjustment operator'),
+      legacy_adjustment_id: nullableId(row.legacy_adjustment_id,
+        'transaction graph legacy adjustment ID'),
+      created_at: requiredDate(row.created_at, 'transaction graph adjustment timestamp').getTime() });
+  } catch { throw new Error('Task reset transaction graph adjustment integrity check failed.'); }
+}
+
+function parseGraphInventory(raw: unknown, tenantId: string) {
+  const row = exactRow(raw, INVENTORY_KEYS, 'transaction graph inventory evidence');
+  try {
+    const delta = requiredSafeIntegerText(row.quantity_delta, 'transaction graph inventory delta');
+    const before = requiredSafeIntegerText(row.stock_before, 'transaction graph stock before');
+    const after = requiredSafeIntegerText(row.stock_after, 'transaction graph stock after');
+    const operationId = nullableId(row.operation_id, 'transaction graph inventory operation ID');
+    const operationHash = nullableHash(row.operation_hash, 'transaction graph inventory operation hash');
+    const occurredAt = requiredDate(row.occurred_at, 'transaction graph inventory occurred timestamp');
+    const createdAt = requiredDate(row.created_at, 'transaction graph inventory created timestamp');
+    if (row.tenant_id !== tenantId || after - before !== delta || before < 0 || after < 0
+      || (operationId === null) !== (operationHash === null)
+      || occurredAt.getTime() > createdAt.getTime()) throw new Error('shape');
+    return Object.freeze({ tenant_id: tenantId,
+      inventory_event_id: requiredId(row.inventory_event_id, 'transaction graph inventory ID'),
+      event_sequence: requiredPositiveIntegerText(row.event_sequence,
+        'transaction graph inventory sequence'),
+      product_id: requiredId(row.product_id, 'transaction graph inventory product ID'),
+      transaction_id: requiredId(row.transaction_id, 'transaction graph inventory transaction ID'),
+      quantity_delta: delta, stock_before: before, stock_after: after,
+      reason: requiredEnum(row.reason, ['CHECKOUT', 'CANCELLATION', 'ADMIN_ADJUSTMENT',
+        'LEGACY_IMPORT'] as const, 'inventory reason'), operation_id: operationId,
+      operation_hash: operationHash, occurred_at: occurredAt.getTime(),
+      created_at: createdAt.getTime() });
+  } catch { throw new Error('Task reset transaction graph inventory integrity check failed.'); }
 }
 
 function addReference<T>(references: Map<string, T>, id: string, value: T) {
@@ -978,6 +1225,28 @@ function requiredSafeInteger(value: unknown, label: string): number {
   if (!Number.isSafeInteger(value)) throw new Error(`Task reset ${label} is invalid.`);
   return value as number;
 }
+function requiredPositiveInteger(value: unknown, label: string): number {
+  const parsed = requiredSafeInteger(value, label);
+  if (parsed < 1) throw new Error(`Task reset ${label} is invalid.`);
+  return parsed;
+}
+function requiredString(value: unknown, label: string): string {
+  if (typeof value !== 'string') throw new Error(`Task reset ${label} is invalid.`);
+  return value;
+}
+function nullableString(value: unknown, label: string): string | null {
+  return value === null ? null : requiredString(value, label);
+}
+function nullableId(value: unknown, label: string): string | null {
+  return value === null ? null : requiredId(value, label);
+}
+function requiredEnum<const T extends readonly string[]>(value: unknown, values: T,
+  label: string): T[number] {
+  if (typeof value !== 'string' || !values.includes(value)) {
+    throw new Error(`Task reset ${label} is invalid.`);
+  }
+  return value as T[number];
+}
 function requiredSafeIntegerText(value: unknown, label: string): number {
   if (typeof value !== 'string' || !/^-?(0|[1-9][0-9]*)$/.test(value)) {
     throw new Error(`Task reset ${label} is invalid.`);
@@ -991,10 +1260,39 @@ function requiredPositiveIntegerText(value: unknown, label: string): number {
     || !Number.isSafeInteger(Number(value))) throw new Error(`Task reset ${label} is invalid.`);
   return Number(value);
 }
+function nullableIntegerText(value: unknown, label: string): number | null {
+  return value === null ? null : requiredSafeIntegerText(value, label);
+}
 function nullableHash(value: unknown, label: string): string | null {
   if (value === null) return null;
   if (typeof value !== 'string' || !HASH.test(value)) throw new Error(`Task reset ${label} is invalid.`);
   return value;
+}
+function canonicalJson(value: unknown, label: string): unknown {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new Error(`Task reset ${label} is malformed.`);
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return Object.freeze(exactArray(value, 0, 10000, label)
+      .map((entry) => canonicalJson(entry, label)));
+  }
+  if (typeof value !== 'object' || Object.getPrototypeOf(value) !== Object.prototype
+    || Object.getOwnPropertySymbols(value).length !== 0) {
+    throw new Error(`Task reset ${label} is malformed.`);
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const result: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+  for (const keyName of Object.keys(descriptors).sort(compareCanonical)) {
+    const descriptor = descriptors[keyName];
+    if (!descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) {
+      throw new Error(`Task reset ${label} is malformed.`);
+    }
+    Object.defineProperty(result, keyName, { enumerable: true, configurable: false,
+      writable: false, value: canonicalJson(descriptor.value, label) });
+  }
+  return Object.freeze(result);
 }
 function resetEventId(operationId: string, taskInstanceId: string, studentId: string, cycle: string) {
   return `task-completion-admin-reset:${sha256({ domain: 'task-completion-admin-reset-v1',

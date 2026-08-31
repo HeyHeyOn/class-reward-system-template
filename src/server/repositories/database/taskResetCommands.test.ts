@@ -99,7 +99,8 @@ async function seedTask(taskId: string, taskInstanceId: string, title: string,
 }
 
 async function state(operationId = OPERATION_ID) {
-  const [accounts, assignments, transactions, completions, operations, audits] = await Promise.all([
+  const [accounts, assignments, transactions, transactionItems, adjustments, inventoryLedger,
+    completions, operations, audits] = await Promise.all([
     harness.database.query(`SELECT student_id, balance::text, version::text, updated_at FROM accounts
       WHERE tenant_id=$1 ORDER BY student_id`, [harness.tenantOneId]),
     harness.database.query(`SELECT assignment_id, event_sequence::text, task_id_snapshot,
@@ -109,6 +110,12 @@ async function state(operationId = OPERATION_ID) {
       WHERE tenant_id=$1 ORDER BY event_sequence`, [harness.tenantOneId]),
     harness.database.query(`SELECT * FROM transactions WHERE tenant_id=$1 ORDER BY transaction_id`,
       [harness.tenantOneId]),
+    harness.database.query(`SELECT * FROM transaction_items WHERE tenant_id=$1 ORDER BY item_id`,
+      [harness.tenantOneId]),
+    harness.database.query(`SELECT * FROM adjustments WHERE tenant_id=$1 ORDER BY adjustment_id`,
+      [harness.tenantOneId]),
+    harness.database.query(`SELECT * FROM inventory_ledger WHERE tenant_id=$1
+      ORDER BY inventory_event_id`, [harness.tenantOneId]),
     harness.database.query(`SELECT completion_id, event_sequence::text, completed_at,
       task_instance_id, task_id_snapshot, task_name_snapshot, student_id,
       student_name_snapshot, reward_snapshot::text, balance_before::text,
@@ -124,7 +131,9 @@ async function state(operationId = OPERATION_ID) {
       [harness.tenantOneId, operationId]),
   ]);
   return { accounts: accounts.rows, assignments: assignments.rows, transactions: transactions.rows,
-    completions: completions.rows, operations: operations.rows, audits: audits.rows };
+    transactionItems: transactionItems.rows, adjustments: adjustments.rows,
+    inventoryLedger: inventoryLedger.rows, completions: completions.rows,
+    operations: operations.rows, audits: audits.rows };
 }
 
 function observingRunner(observe: (sql: string, rows: unknown[]) => unknown[]) {
@@ -140,6 +149,72 @@ function observingRunner(observe: (sql: string, rows: unknown[]) => unknown[]) {
     },
   } as unknown as TenantTransaction));
   return run;
+}
+
+async function seedReferencedTransactionDependents() {
+  const transactionId = 'task-reward:abcdef00-0000-4000-8000-000000000401';
+  await harness.database.query(`INSERT INTO products
+    (tenant_id, product_id, name, price, stock, created_at, updated_at)
+    VALUES ($1, 'GRAPH-PRODUCT', '그래프 상품', 50, 10, $2, $2)`,
+  [harness.tenantOneId, '2026-08-30T00:00:00.000Z']);
+  await harness.database.query(`INSERT INTO transaction_items
+    (tenant_id, item_id, transaction_id, line_number, product_id_snapshot,
+     current_product_id, product_name_snapshot, quantity, unit_price_snapshot,
+     subtotal_snapshot, created_at)
+    VALUES ($1, 'abcdef00-0000-4000-8000-000000000701', $2, 1, 'GRAPH-PRODUCT',
+      'GRAPH-PRODUCT', '그래프 상품', 1, 50, 50, $3)`,
+  [harness.tenantOneId, transactionId, '2026-08-31T00:30:00.000Z']);
+  await harness.database.query(`INSERT INTO adjustments
+    (tenant_id, adjustment_id, transaction_id, mode, requested_amount,
+     operator_snapshot, legacy_adjustment_id, created_at)
+    VALUES ($1, 'graph-adjustment', $2, 'add', 50, 'graph-fixture', NULL, $3)`,
+  [harness.tenantOneId, transactionId, '2026-08-31T00:30:00.000Z']);
+  await harness.database.query(`INSERT INTO inventory_ledger
+    (tenant_id, inventory_event_id, product_id, transaction_id, quantity_delta,
+     stock_before, stock_after, reason, operation_id, operation_hash, occurred_at, created_at)
+    VALUES ($1, 'abcdef00-0000-4000-8000-000000000702', 'GRAPH-PRODUCT', $2,
+      -1, 11, 10, 'CHECKOUT', NULL, NULL, $3, $3)`,
+  [harness.tenantOneId, transactionId, '2026-08-31T00:30:00.000Z']);
+}
+
+async function seedCancellationOnlyCompletionWithOriginalDependent() {
+  await seedReferencedTransactionDependents();
+  const cancellationOperationId = 'abcdef00-0000-4000-8000-000000000711';
+  const cancellationHash = '7'.repeat(64);
+  const originalTransactionId = 'task-reward:abcdef00-0000-4000-8000-000000000401';
+  const reversalTransactionId = `cancellation:${cancellationOperationId}`;
+  await harness.database.query(`INSERT INTO operations
+    (tenant_id, operation_id, operation_kind, payload_hash, status, result_snapshot,
+     attempt_count, started_at, finished_at, created_at, updated_at)
+    VALUES ($1, $2, 'CANCELLATION', $3, 'SUCCEEDED', '{}'::jsonb, 1, $4, $4, $4, $4)`,
+  [harness.tenantOneId, cancellationOperationId, cancellationHash,
+    '2026-08-31T00:45:00.000Z']);
+  await harness.database.query(`INSERT INTO transactions
+    (tenant_id, transaction_id, occurred_at, student_id, student_name_snapshot, kind,
+     legacy_total_amount, balance_delta, balance_before, balance_after, operator_snapshot,
+     legacy_status_snapshot, reverses_transaction_id, operation_id, operation_hash, schema_version)
+    VALUES ($1, $2, $3, 'S001', '첫째 학생', 'CANCELLATION', 50, -50, 700, 650,
+      'admin-cancellation', 'CANCEL_REVERSAL', $4, $5, $6, 1)`, [harness.tenantOneId,
+    reversalTransactionId, '2026-08-31T00:45:00.000Z', originalTransactionId,
+    cancellationOperationId, cancellationHash]);
+  await harness.database.query(`ALTER TABLE task_completions
+    DISABLE TRIGGER task_completions_append_only`);
+  await harness.database.query(`DELETE FROM task_completions WHERE tenant_id=$1
+    AND completion_id='completion:TASK-001:S001'`, [harness.tenantOneId]);
+  await harness.database.query(`INSERT INTO task_completions
+    (tenant_id, completion_id, completed_at, task_instance_id, task_id_snapshot,
+     task_name_snapshot, student_id, student_name_snapshot, reward_snapshot,
+     balance_before, balance_after, status, note, cycle_id, cycle_start_at, cycle_end_at,
+     rule_version, timezone, source, assignment_id, transaction_id, operation_id,
+     operation_hash, schema_version, created_at)
+    VALUES ($1, 'completion:cancellation-only:S001', $2, 'INSTANCE-001', 'TASK-001',
+      '첫째 과제', 'S001', '첫째 학생', 50, 700, 650, 'CANCELLED',
+      'cancels-completion:completion:TASK-001:S001', $3, $4, $5, 1, 'Asia/Seoul',
+      'ADMIN_RESET', 'assignment:TASK-001:S001', $6, $7, $8, 1, $2)`, [
+    harness.tenantOneId, '2026-08-31T00:45:00.000Z',
+    'v1|INSTANCE-001|r1|2026-08-31T00:00:00Z', CURRENT_START, CURRENT_END,
+    reversalTransactionId, cancellationOperationId, cancellationHash,
+  ]);
 }
 
 describe('migration 0010 task completion reset provenance', () => {
@@ -689,6 +764,284 @@ describe('database batch task completion reset command', () => {
     expect(selects('accounts').map((statement) => statement.width)).toEqual([width, width, width]);
     expect(statements.filter((statement) => statement.verb !== 'select'
       && /\b(task_assignments|accounts)\b/.test(statement.sql))).toEqual([]);
+  });
+
+  it('captures a referenced cancellation predecessor and its dependents before audit', async () => {
+    await seedCancellationOnlyCompletionWithOriginalDependent();
+    const before = await state();
+    let itemReads = 0; let auditReached = false;
+    const run = observingRunner((statement, rows) => {
+      if (statement.includes('from audit_events')) auditReached = true;
+      if (statement.startsWith('select ') && statement.includes('from transaction_items')
+        && ++itemReads === 2) {
+        return rows.map((raw) => ({ ...(raw as Record<string, unknown>),
+          product_name_snapshot: 'mutated predecessor dependent' }));
+      }
+      return rows;
+    });
+    await expect(command({ runTenantTransaction: run }).resetBatch({
+      operationId: OPERATION_ID, taskIds: ['TASK-001'],
+    })).rejects.toThrow(/transaction graph.*snapshot.*integrity/i);
+    expect(itemReads).toBe(2);
+    expect(auditReached).toBe(false);
+    expect(await state()).toEqual(before);
+  });
+
+  it('uses FALSE graph predicates in all three CREATE phases when there are no references', async () => {
+    await harness.database.query('ALTER TABLE task_completions DISABLE TRIGGER task_completions_append_only');
+    await harness.database.query('DELETE FROM task_completions WHERE tenant_id=$1',
+      [harness.tenantOneId]);
+    const graphReads: string[] = [];
+    const run = observingRunner((statement, rows) => {
+      if (statement.startsWith('select ') && [
+        'from transactions', 'from transaction_items', 'from adjustments', 'from inventory_ledger',
+      ].some((fragment) => statement.includes(fragment))) graphReads.push(statement);
+      return rows;
+    });
+    await command({ runTenantTransaction: run }).resetBatch({
+      operationId: OPERATION_ID, taskIds: ['TASK-001'],
+    });
+    for (const table of ['transactions', 'transaction_items', 'adjustments', 'inventory_ledger']) {
+      const reads = graphReads.filter((statement) => statement.includes(`from ${table}`));
+      expect(reads, table).toHaveLength(3);
+      expect(reads.every((statement) => /\bfalse\b/.test(statement)), table).toBe(true);
+    }
+  });
+
+  it('rejects a fresh physical item ID duplicating a logical transaction line in every phase',
+  async () => {
+    await seedReferencedTransactionDependents();
+    const before = await state();
+    let reads = 0;
+    const run = observingRunner((statement, rows) => {
+      if (statement.startsWith('select ') && statement.includes('from transaction_items')) {
+        reads += 1;
+        return [...rows, { ...(rows[0] as Record<string, unknown>),
+          item_id: 'abcdef00-0000-4000-8000-000000000799' }];
+      }
+      return rows;
+    });
+    await expect(command({ runTenantTransaction: run }).resetBatch({
+      operationId: OPERATION_ID, taskIds: ['TASK-001'],
+    })).rejects.toThrow(/transaction graph.*(item|identity|schema|duplicate).*integrity/i);
+    expect(reads).toBe(1);
+    expect(await state()).toEqual(before);
+  });
+
+  it.each([
+    ['extended arithmetic mismatch', {
+      regular_unit_price: '50', regular_total: '50', total_quantity: '2', paid_quantity: '1',
+      free_quantity: '0', final_total: '50', total_discount: '0', adjustments_snapshot: [],
+      applied_promotions_snapshot: [],
+    }],
+    ['object JSON snapshot', {
+      regular_unit_price: '50', regular_total: '50', total_quantity: '1', paid_quantity: '1',
+      free_quantity: '0', final_total: '50', total_discount: '0', adjustments_snapshot: {},
+      applied_promotions_snapshot: [],
+    }],
+  ] as const)('rejects transaction item extended contract fault: %s', async (_label, fault) => {
+    await seedReferencedTransactionDependents();
+    const before = await state();
+    let reads = 0;
+    const run = observingRunner((statement, rows) => {
+      if (statement.startsWith('select ') && statement.includes('from transaction_items')) {
+        reads += 1;
+        return rows.map((raw) => ({ ...(raw as Record<string, unknown>), ...fault }));
+      }
+      return rows;
+    });
+    await expect(command({ runTenantTransaction: run }).resetBatch({
+      operationId: OPERATION_ID, taskIds: ['TASK-001'],
+    })).rejects.toThrow(/transaction graph.*transaction item.*integrity/i);
+    expect(reads).toBe(1);
+    expect(await state()).toEqual(before);
+  });
+
+  it('preserves nested __proto__ JSON evidence so a later phase mutation is detected', async () => {
+    await seedReferencedTransactionDependents();
+    let reads = 0; let auditReached = false;
+    const extended = {
+      regular_unit_price: '50', regular_total: '50', total_quantity: '1', paid_quantity: '1',
+      free_quantity: '0', final_total: '50', total_discount: '0', applied_promotions_snapshot: [],
+    };
+    const run = observingRunner((statement, rows) => {
+      if (statement.includes('from audit_events')) auditReached = true;
+      if (statement.startsWith('select ') && statement.includes('from transaction_items')) {
+        reads += 1;
+        const phase = reads === 1 ? 'initial' : 'changed';
+        return rows.map((raw) => ({ ...(raw as Record<string, unknown>), ...extended,
+          adjustments_snapshot: JSON.parse(`[{"nested":{"__proto__":{"phase":"${phase}"}}}]`),
+        }));
+      }
+      return rows;
+    });
+    await expect(command({ runTenantTransaction: run }).resetBatch({
+      operationId: OPERATION_ID, taskIds: ['TASK-001'],
+    })).rejects.toThrow(/transaction graph.*snapshot.*integrity/i);
+    expect(reads).toBe(2);
+    expect(auditReached).toBe(false);
+  });
+
+  it('does not let retained Date aliases rewrite the initial graph snapshot', async () => {
+    let retainedOccurred: Date | undefined; let retainedCreated: Date | undefined;
+    let reads = 0; let auditReached = false;
+    const run = observingRunner((statement, rows) => {
+      if (statement.includes('from audit_events')) auditReached = true;
+      if (statement.startsWith('select ') && statement.includes('from transactions')) {
+        reads += 1;
+        const transaction = rows[0] as Record<string, unknown>;
+        if (reads === 1) {
+          retainedOccurred = transaction.occurred_at as Date;
+          retainedCreated = transaction.created_at as Date;
+        } else {
+          retainedOccurred!.setTime(retainedOccurred!.getTime() + 1);
+          retainedCreated!.setTime(retainedCreated!.getTime() + 1);
+          return rows.map((raw, index) => index === 0 ? { ...(raw as Record<string, unknown>),
+            occurred_at: retainedOccurred, created_at: retainedCreated } : raw);
+        }
+      }
+      return rows;
+    });
+    await expect(command({ runTenantTransaction: run }).resetBatch({
+      operationId: OPERATION_ID, taskIds: ['TASK-001'],
+    })).rejects.toThrow(/transaction graph.*snapshot.*integrity/i);
+    expect(reads).toBe(2);
+    expect(auditReached).toBe(false);
+  });
+
+  it.each([
+    { phase: 'pre-audit', occurrence: 2, auditReached: false, terminalReached: false },
+    { phase: 'post-terminal', occurrence: 3, auditReached: true, terminalReached: true },
+  ])('rejects added, removed, changed, and hidden-link transaction graph faults at $phase',
+  async ({ phase, occurrence, auditReached: expectedAudit, terminalReached: expectedTerminal }) => {
+    await seedReferencedTransactionDependents();
+    const tables = [
+      ['transactions', 'from transactions', 'student_name_snapshot'],
+      ['transaction items', 'from transaction_items', 'product_name_snapshot'],
+      ['adjustments', 'from adjustments', 'operator_snapshot'],
+      ['inventory ledger', 'from inventory_ledger', 'reason'],
+    ] as const;
+    const faults = [
+      ['added row', (rows: unknown[]) => [...rows, { ...(rows[0] as Record<string, unknown>) }]],
+      ['removed row', (rows: unknown[]) => rows.slice(1)],
+      ['changed row', (rows: unknown[], field: string) => rows.map((raw, index) => index === 0
+        ? { ...(raw as Record<string, unknown>), [field]: 'adapter-mutation' } : raw)],
+      ['unknown parent', (rows: unknown[]) => rows.map((raw, index) => index === 0
+        ? { ...(raw as Record<string, unknown>), transaction_id: 'transaction:unknown' } : raw)],
+    ] as const;
+    for (const [label, tableFragment, changedField] of tables) {
+      for (const [faultLabel, mutate] of faults) {
+        if (label === 'transactions' && faultLabel === 'unknown parent') continue;
+        const before = await state();
+        let reads = 0; let auditReached = false; let terminalReached = false;
+        const run = observingRunner((statement, rows) => {
+          if (statement.includes('from audit_events')) auditReached = true;
+          if (statement.startsWith("update operations set status='succeeded'")) terminalReached = true;
+          if (statement.startsWith('select ') && statement.includes(tableFragment)
+            && ++reads === occurrence) return mutate(rows, changedField);
+          return rows;
+        });
+        await expect(command({ runTenantTransaction: run }).resetBatch({
+          operationId: OPERATION_ID, taskIds: ['TASK-001'],
+        }), `${label} ${faultLabel} at ${phase}`)
+          .rejects.toThrow(/transaction graph.*(snapshot|identity|link|integrity)/i);
+        expect(reads).toBeGreaterThanOrEqual(occurrence);
+        expect(auditReached).toBe(expectedAudit);
+        expect(terminalReached).toBe(expectedTerminal);
+        expect(await state()).toEqual(before);
+      }
+    }
+  });
+
+  it.each([
+    ['transactions', 'from transactions'],
+    ['transaction items', 'from transaction_items'],
+    ['adjustments', 'from adjustments'],
+    ['inventory ledger', 'from inventory_ledger'],
+  ] as const)('rejects sparse and index-getter %s graph rowsets with zero hooks',
+  async (_label, tableFragment) => {
+    await seedReferencedTransactionDependents();
+    for (const shape of ['sparse', 'getter'] as const) {
+      const before = await state();
+      let hooks = 0; let injected = false;
+      const run = observingRunner((statement, rows) => {
+        if (!injected && statement.startsWith('select ') && statement.includes(tableFragment)) {
+          injected = true;
+          if (shape === 'sparse') return new Array(rows.length) as unknown[];
+          const malformed: unknown[] = [];
+          Object.defineProperty(malformed, '0', { enumerable: true, configurable: true,
+            get: () => { hooks += 1; throw new Error('graph row hook executed'); } });
+          return malformed;
+        }
+        return rows;
+      });
+      await expect(command({ runTenantTransaction: run }).resetBatch({
+        operationId: OPERATION_ID, taskIds: ['TASK-001'],
+      })).rejects.toThrow(/transaction graph.*rowset.*malformed/i);
+      expect(injected).toBe(true);
+      expect(hooks).toBe(0);
+      expect(await state()).toEqual(before);
+    }
+  });
+
+  it.each([
+    { taskIds: ['TASK-001'] as const, label: 'one-target' },
+    { taskIds: ['TASK-002', 'TASK-001'] as const, label: 'many-target' },
+  ])('uses constant verb-classified graph SELECT counts and emits no financial writes for $label',
+  async ({ taskIds }) => {
+    await seedReferencedTransactionDependents();
+    const statements: Array<{ verb: string; sql: string }> = [];
+    const run = observingRunner((statement, rows) => {
+      statements.push({ verb: statement.trimStart().split(/\s+/, 1)[0], sql: statement });
+      return rows;
+    });
+    await command({ runTenantTransaction: run }).resetBatch({ operationId: OPERATION_ID, taskIds });
+    for (const table of ['transactions', 'transaction_items', 'adjustments', 'inventory_ledger']) {
+      expect(statements.filter(({ verb, sql }) => verb === 'select'
+        && sql.includes(`from ${table}`)), table).toHaveLength(3);
+    }
+    expect(statements.filter(({ verb, sql }) => verb !== 'select'
+      && (/\b(transactions|transaction_items|adjustments|inventory_ledger|accounts|products)\b/
+        .test(sql)))).toEqual([]);
+  });
+
+  it('replay validates provenance while tolerating a legitimate later cancellation graph', async () => {
+    const first = await command().resetBatch({ operationId: OPERATION_ID, taskIds: ['TASK-001'] });
+    const cancellationOperationId = 'abcdef00-0000-4000-8000-000000000711';
+    const cancellationHash = '7'.repeat(64);
+    const originalTransactionId = 'task-reward:abcdef00-0000-4000-8000-000000000401';
+    const reversalTransactionId = `cancellation:${cancellationOperationId}`;
+    await harness.database.query(`INSERT INTO operations
+      (tenant_id, operation_id, operation_kind, payload_hash, status, result_snapshot,
+       attempt_count, started_at, finished_at, created_at, updated_at)
+      VALUES ($1, $2, 'CANCELLATION', $3, 'SUCCEEDED', '{}'::jsonb, 1, $4, $4, $4, $4)`,
+    [harness.tenantOneId, cancellationOperationId, cancellationHash,
+      '2026-08-31T02:00:00.000Z']);
+    await harness.database.query(`INSERT INTO transactions
+      (tenant_id, transaction_id, occurred_at, student_id, student_name_snapshot, kind,
+       legacy_total_amount, balance_delta, balance_before, balance_after, operator_snapshot,
+       legacy_status_snapshot, reverses_transaction_id, operation_id, operation_hash,
+       schema_version, created_at)
+      VALUES ($1, $2, $3, 'S001', '첫째 학생', 'CANCELLATION', 50, -50, 700, 650,
+        'admin-cancellation', 'CANCEL_REVERSAL', $4, $5, $6, 1, $3)`,
+    [harness.tenantOneId, reversalTransactionId, '2026-08-31T02:00:00.000Z',
+      originalTransactionId, cancellationOperationId, cancellationHash]);
+    await harness.database.query(`INSERT INTO task_completions
+      (tenant_id, completion_id, completed_at, task_instance_id, task_id_snapshot,
+       task_name_snapshot, student_id, student_name_snapshot, reward_snapshot,
+       balance_before, balance_after, status, note, cycle_id, cycle_start_at, cycle_end_at,
+       rule_version, timezone, source, assignment_id, transaction_id, operation_id,
+       operation_hash, schema_version, created_at)
+      VALUES ($1, 'completion:later-cancellation:S001', $2, 'INSTANCE-001', 'TASK-001',
+        '첫째 과제', 'S001', '첫째 학생', 50, 700, 650, 'CANCELLED',
+        'cancels-completion:completion:TASK-001:S001', $3, $4, $5, 1, 'Asia/Seoul',
+        'ADMIN_RESET', 'assignment:TASK-001:S001', $6, $7, $8, 1, $2)`, [
+      harness.tenantOneId, '2026-08-31T02:00:00.000Z',
+      'v1|INSTANCE-001|r1|2026-08-31T00:00:00Z', CURRENT_START, CURRENT_END,
+      reversalTransactionId, cancellationOperationId, cancellationHash,
+    ]);
+    await expect(command().resetBatch({ operationId: OPERATION_ID, taskIds: ['TASK-001'] }))
+      .resolves.toEqual(first);
   });
 
   it('replay tolerates legitimate later assignment history and account lifecycle changes', async () => {
