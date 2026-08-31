@@ -4,6 +4,8 @@ import { createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import type { TaskCycle } from '@/domain/taskRecurrence';
 import type { TenantTransaction } from '@/server/db/transaction';
+import { createTaskRewardPayloadHash } from './taskCompletionCommands';
+import { createCancellationPayloadHash } from './transactionCommands';
 
 const ASSIGNMENT_KEYS = ['assignment_id', 'event_sequence', 'task_id_snapshot',
   'task_instance_id', 'cycle_id', 'cycle_start_at', 'cycle_end_at', 'rule_version',
@@ -17,6 +19,12 @@ const COMPLETION_KEYS = ['completion_id', 'event_sequence', 'completed_at', 'tas
   'admin_operation_hash', 'schema_version', 'evidence_provider', 'evidence_board_id',
   'evidence_post_id', 'evidence_created_at', 'evidence_author_full_name', 'created_at'] as const;
 const HASH = /^[0-9a-f]{64}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const OPERATION_REFERENCE_KEYS = ['operation_id', 'operation_kind', 'payload_hash'] as const;
+const TRANSACTION_REFERENCE_KEYS = ['transaction_id', 'event_sequence', 'occurred_at', 'student_id',
+  'student_name_snapshot', 'kind', 'legacy_total_amount', 'balance_delta', 'balance_before',
+  'balance_after', 'operator_snapshot', 'legacy_status_snapshot', 'reverses_transaction_id',
+  'operation_id', 'operation_hash', 'schema_version', 'created_at'] as const;
 
 type Assignment = ReturnType<typeof parseAssignment>;
 type Completion = ReturnType<typeof parseCompletion>;
@@ -52,7 +60,7 @@ export async function materializeTaskConfigurationBoundaryCycleInternal(input: R
       AND task_instance_id=${input.taskInstanceId}
     ORDER BY student_id, event_sequence FOR UPDATE`);
   const assignments = exactArray(assignmentResult.rows, 'assignment result').map(parseAssignment);
-  const completions = (await input.tx.execute(sql`SELECT completion_id,
+  const completionResult = await input.tx.execute(sql`SELECT completion_id,
     event_sequence::text AS event_sequence, completed_at, task_instance_id, task_id_snapshot,
     task_name_snapshot, student_id, student_name_snapshot,
     reward_snapshot::text AS reward_snapshot, balance_before::text AS balance_before,
@@ -62,9 +70,10 @@ export async function materializeTaskConfigurationBoundaryCycleInternal(input: R
     evidence_board_id, evidence_post_id, evidence_created_at, evidence_author_full_name, created_at
     FROM task_completions WHERE tenant_id=${input.tenantId}
       AND task_instance_id=${input.taskInstanceId}
-    ORDER BY event_sequence FOR UPDATE`)).rows.map(parseCompletion);
+    ORDER BY event_sequence FOR UPDATE`);
+  const completions = exactArray(completionResult.rows, 'completion result').map(parseCompletion);
 
-  validateEvidence(input, mirrors, assignments, completions);
+  await validateEvidence(input, mirrors, assignments, completions);
   const oldAssignments = latestBySubject(assignments.filter((event) => inOldCycle(input, event)));
   const oldCompletions = latestBySubject(completions.filter((event) => inOldCycle(input, event)));
   const mirrorIds = new Set(mirrors.map((mirror) => mirror.student_id));
@@ -129,7 +138,7 @@ export async function materializeTaskConfigurationBoundaryCycleInternal(input: R
     completionEventIds: Object.freeze(completionEventIds) });
 }
 
-function validateEvidence(input: Parameters<typeof materializeTaskConfigurationBoundaryCycleInternal>[0],
+async function validateEvidence(input: Parameters<typeof materializeTaskConfigurationBoundaryCycleInternal>[0],
   mirrors: readonly Mirror[], assignments: readonly Assignment[], completions: readonly Completion[]) {
   if (input.newRuleVersion !== input.oldRuleVersion + 1
     || input.newCycle.cycleId === input.oldCycle.cycleId
@@ -157,16 +166,7 @@ function validateEvidence(input: Parameters<typeof materializeTaskConfigurationB
     assignmentIds.add(event.assignment_id); assignmentSequences.add(event.event_sequence);
   }
   validateAssignmentChains(assignments, input.now);
-  const completionIds = new Set<string>();
-  let priorSequence = 0;
-  for (const event of completions) {
-    if (event.task_instance_id !== input.taskInstanceId || event.task_id_snapshot !== input.taskId
-      || event.timezone !== input.timeZone || event.cycle_id !== cycleId(event)
-      || event.event_sequence <= priorSequence || completionIds.has(event.completion_id)) {
-      throw new Error('Task cycle materialization completion evidence integrity check failed.');
-    }
-    completionIds.add(event.completion_id); priorSequence = event.event_sequence;
-  }
+  await validateCompletionHistory(input, completions, assignments);
 }
 
 function validateAssignmentChains(assignments: readonly Assignment[], now: Date) {
@@ -221,6 +221,270 @@ function validateAssignmentChains(assignments: readonly Assignment[], now: Date)
       throw new Error(failure);
     }
   });
+}
+
+async function validateCompletionHistory(
+  input: Parameters<typeof materializeTaskConfigurationBoundaryCycleInternal>[0],
+  completions: readonly Completion[], assignments: readonly Assignment[],
+) {
+  const failure = 'Task cycle materialization completion evidence integrity check failed.';
+  const ordered = [...completions].sort((left, right) => left.event_sequence - right.event_sequence);
+  const assignmentById = new Map(assignments.map((event) => [event.assignment_id, event]));
+  const completionIds = new Set<string>(); const sequences = new Set<number>();
+  const operations = new Map<string, { kind: 'TASK_REWARD' | 'TASK_ADMIN' | 'CANCELLATION'; hash: string }>();
+  const transactionIds = new Set<string>();
+  const priorBySubject = new Map<string, Completion>();
+  for (const event of ordered) {
+    const assignment = event.assignment_id === null ? undefined : assignmentById.get(event.assignment_id);
+    const prior = priorBySubject.get(event.student_id);
+    const operationPair = event.operation_id !== null && event.operation_hash !== null;
+    const adminPair = event.admin_operation_id !== null && event.admin_operation_hash !== null;
+    const evidence = [event.evidence_provider, event.evidence_board_id, event.evidence_post_id,
+      event.evidence_created_at, event.evidence_author_full_name];
+    const evidenceCount = evidence.filter((value) => value !== null).length;
+    if (event.task_instance_id !== input.taskInstanceId || event.task_id_snapshot !== input.taskId
+      || event.timezone !== input.timeZone || event.cycle_id !== cycleId(event)
+      || event.rule_version < 1 || event.completed_at > event.created_at
+      || event.completed_at < event.cycle_start_at || event.created_at > input.now
+      || (event.cycle_end_at !== null && (event.cycle_end_at <= event.cycle_start_at
+        || event.completed_at >= event.cycle_end_at))
+      || completionIds.has(event.completion_id) || sequences.has(event.event_sequence)
+      || assignment === undefined || assignment.event_type !== 'ASSIGNED'
+      || assignment.task_instance_id !== event.task_instance_id
+      || assignment.task_id_snapshot !== event.task_id_snapshot
+      || assignment.student_id !== event.student_id || assignment.cycle_id !== event.cycle_id
+      || assignment.cycle_start_at.getTime() !== event.cycle_start_at.getTime()
+      || nullableTime(assignment.cycle_end_at) !== nullableTime(event.cycle_end_at)
+      || assignment.rule_version !== event.rule_version || assignment.timezone !== event.timezone
+      || (prior !== undefined && (prior.completed_at > event.completed_at
+        || prior.created_at > event.created_at))
+      || (evidenceCount !== 0 && (evidenceCount !== evidence.length || event.source !== 'BANK'
+        || event.evidence_provider !== 'PADLET' || event.evidence_board_id === null
+        || !/^[A-Za-z0-9]{16,22}$/.test(event.evidence_board_id)
+        || event.evidence_post_id === null || !/^[A-Za-z0-9_-]{3,128}$/.test(event.evidence_post_id)
+        || event.evidence_author_full_name === null
+        || event.evidence_author_full_name !== event.evidence_author_full_name.trim()
+        || event.evidence_author_full_name.length < 1 || event.evidence_author_full_name.length > 200
+        || event.evidence_author_full_name !== event.student_name_snapshot
+        || event.evidence_created_at === null || event.evidence_created_at < event.cycle_start_at
+        || (event.cycle_end_at !== null && event.evidence_created_at >= event.cycle_end_at)
+        || event.evidence_created_at > event.completed_at))) {
+      throw new Error(failure);
+    }
+    if (event.source === 'BANK') {
+      let semanticHash: string;
+      try {
+        semanticHash = createTaskRewardPayloadHash({ taskId: event.task_id_snapshot,
+          taskInstanceId: event.task_instance_id, taskTitle: event.task_name_snapshot,
+          studentId: event.student_id, studentName: event.student_name_snapshot,
+          assignmentId: event.assignment_id!, cycleId: event.cycle_id,
+          cycleStartsAt: event.cycle_start_at.toISOString(),
+          cycleEndsAt: event.cycle_end_at?.toISOString() ?? null, reward: event.reward_snapshot,
+          ...(evidenceCount === evidence.length && evidenceCount > 0 ? { evidence: {
+            evidenceProvider: event.evidence_provider as 'PADLET',
+            evidenceBoardId: event.evidence_board_id!, evidencePostId: event.evidence_post_id!,
+            evidenceCreatedAt: event.evidence_created_at!.toISOString(),
+            evidenceAuthorFullName: event.evidence_author_full_name!,
+          } } : {}) });
+      } catch { throw new Error(failure); }
+      if (event.status !== 'COMPLETED' || event.reward_snapshot <= 0
+        || event.balance_after !== event.balance_before + event.reward_snapshot
+        || !operationPair || adminPair || event.transaction_id === null
+        || event.note !== 'bank-self-completion'
+        || event.operation_hash !== semanticHash
+        || event.completion_id !== `task-completion:${event.operation_id}`
+        || event.transaction_id !== `task-reward:${event.operation_id}`) throw new Error(failure);
+      addExpectedOperation(operations, event.operation_id!, 'TASK_REWARD', event.operation_hash!, failure);
+      transactionIds.add(event.transaction_id);
+    } else if (event.source === 'ADMIN') {
+      if (event.status !== 'COMPLETED' || event.reward_snapshot !== 0
+        || event.balance_before !== event.balance_after || operationPair || !adminPair
+        || event.transaction_id !== null) throw new Error(failure);
+      addExpectedOperation(operations, event.admin_operation_id!, 'TASK_ADMIN',
+        event.admin_operation_hash!, failure);
+    } else if (event.source === 'CARRY_FORWARD') {
+      const assignmentPredecessor = assignment.previous_assignment_id === null
+        ? undefined : assignmentById.get(assignment.previous_assignment_id);
+      const retainedFirst = prior === undefined && assignment.source === 'CARRY_FORWARD'
+        && assignmentPredecessor !== undefined && assignmentPredecessor.event_type === 'ASSIGNED'
+        && assignmentPredecessor.task_instance_id === event.task_instance_id
+        && assignmentPredecessor.task_id_snapshot === event.task_id_snapshot
+        && assignmentPredecessor.student_id === event.student_id
+        && assignmentPredecessor.cycle_start_at < event.cycle_start_at;
+      if (event.status !== 'COMPLETED' || event.reward_snapshot !== 0
+        || event.balance_before !== event.balance_after || operationPair || adminPair
+        || event.transaction_id !== null
+        || (!retainedFirst && (prior === undefined || prior.status !== 'COMPLETED'
+          || assignment.previous_assignment_id !== prior.assignment_id
+          || prior.balance_after !== event.balance_before
+          || prior.cycle_start_at >= event.cycle_start_at))) throw new Error(failure);
+    } else {
+      const cancellation = operationPair && !adminPair && event.transaction_id !== null
+        && event.reward_snapshot > 0 && event.balance_after === event.balance_before - event.reward_snapshot;
+      const administrator = !operationPair && adminPair && event.transaction_id === null
+        && event.reward_snapshot === 0 && event.balance_before === event.balance_after;
+      if (event.status !== 'CANCELLED' || cancellation === administrator) throw new Error(failure);
+      if (cancellation) {
+        if (event.completion_id !== `task-completion-cancellation:${event.operation_id}`
+          || event.transaction_id !== `cancellation:${event.operation_id}`) throw new Error(failure);
+        addExpectedOperation(operations, event.operation_id!, 'CANCELLATION', event.operation_hash!, failure);
+        transactionIds.add(event.transaction_id!);
+      } else {
+        if (event.note !== 'admin-completion-reset'
+          || event.completion_id !== adminResetCompletionId(event.admin_operation_id!,
+            event.task_instance_id, event.student_id, event.cycle_id)) throw new Error(failure);
+        addExpectedOperation(operations, event.admin_operation_id!, 'TASK_ADMIN',
+          event.admin_operation_hash!, failure);
+      }
+    }
+    priorBySubject.set(event.student_id, event);
+    completionIds.add(event.completion_id); sequences.add(event.event_sequence);
+  }
+  if (transactionIds.size > 0) {
+    const ids = [...transactionIds].sort(compareText);
+    const result = await input.tx.execute(sql`SELECT transaction_id,
+      event_sequence::text AS event_sequence, occurred_at, student_id, student_name_snapshot,
+      kind, legacy_total_amount::text AS legacy_total_amount, balance_delta::text AS balance_delta,
+      balance_before::text AS balance_before, balance_after::text AS balance_after,
+      operator_snapshot, legacy_status_snapshot, reverses_transaction_id, operation_id,
+      operation_hash, schema_version, created_at FROM transactions WHERE tenant_id=${input.tenantId}
+      AND transaction_id IN (WITH RECURSIVE captured(transaction_id) AS
+        (VALUES ${sql.join(ids.map((value) => sql`(${value})`), sql`, `)} UNION
+         SELECT candidate.transaction_id FROM captured
+         JOIN transactions source ON source.tenant_id=${input.tenantId}
+           AND source.transaction_id=captured.transaction_id
+         JOIN transactions candidate ON candidate.tenant_id=${input.tenantId}
+           AND (candidate.transaction_id=source.reverses_transaction_id
+             OR candidate.reverses_transaction_id=source.transaction_id))
+        SELECT transaction_id FROM captured) ORDER BY transaction_id`);
+    const transactions = exactArray(result.rows, 'transaction reference result')
+      .map(parseTransactionReference);
+    const transactionFailure = 'Task cycle materialization transaction reference integrity check failed.';
+    const byId = new Map(transactions.map((row) => [row.transaction_id, row]));
+    const transactionSequences = new Set(transactions.map((row) => row.event_sequence));
+    const reachable = new Set<string>(); const pending = [...ids];
+    while (pending.length > 0) {
+      const current = pending.pop()!;
+      if (reachable.has(current)) continue;
+      if (!byId.has(current)) throw new Error(transactionFailure);
+      reachable.add(current);
+      for (const row of transactions) {
+        if (row.transaction_id === current && row.reverses_transaction_id !== null) {
+          pending.push(row.reverses_transaction_id);
+        }
+        if (row.reverses_transaction_id === current) pending.push(row.transaction_id);
+      }
+    }
+    const cancellationCompletionTransactions = new Set(ordered.filter((event) =>
+      event.source === 'ADMIN_RESET' && event.operation_id !== null)
+      .map((event) => event.transaction_id));
+    if (byId.size !== transactions.length || transactionSequences.size !== transactions.length
+      || reachable.size !== transactions.length
+      || transactions.some((row) => row.kind === 'CANCELLATION'
+        && !cancellationCompletionTransactions.has(row.transaction_id))) {
+      throw new Error(transactionFailure);
+    }
+    for (const event of ordered) {
+      if (event.source === 'BANK') {
+        const row = byId.get(event.transaction_id!);
+        if (!row || row.kind !== 'TASK_REWARD' || row.student_id !== event.student_id
+          || row.student_name_snapshot !== event.student_name_snapshot
+          || row.legacy_total_amount !== event.reward_snapshot || row.balance_delta !== event.reward_snapshot
+          || row.balance_before !== event.balance_before || row.balance_after !== event.balance_after
+          || row.occurred_at.getTime() !== event.completed_at.getTime()
+          || row.operator_snapshot !== 'bank-task-completion' || row.legacy_status_snapshot !== 'COMPLETED'
+          || row.reverses_transaction_id !== null || row.operation_id !== event.operation_id
+          || row.operation_hash !== event.operation_hash || row.schema_version !== 1) throw new Error(failure);
+      } else if (event.source === 'ADMIN_RESET' && event.operation_id !== null) {
+        const reversal = byId.get(event.transaction_id!);
+        const original = reversal?.reverses_transaction_id
+          ? byId.get(reversal.reverses_transaction_id) : undefined;
+        const retainedOriginal = original === undefined ? undefined : ordered.find((candidate) =>
+          candidate.source === 'BANK' && candidate.transaction_id === original.transaction_id);
+        if (!reversal || !original || !retainedOriginal || reversal.kind !== 'CANCELLATION'
+          || reversal.student_id !== event.student_id || reversal.student_name_snapshot !== event.student_name_snapshot
+          || reversal.legacy_total_amount !== event.reward_snapshot
+          || reversal.balance_delta !== -event.reward_snapshot
+          || reversal.balance_before !== event.balance_before || reversal.balance_after !== event.balance_after
+          || reversal.occurred_at.getTime() !== event.completed_at.getTime()
+          || reversal.operator_snapshot !== 'admin-cancellation'
+          || reversal.legacy_status_snapshot !== 'CANCEL_REVERSAL'
+          || reversal.operation_id !== event.operation_id || reversal.operation_hash !== event.operation_hash
+          || original.kind !== 'TASK_REWARD' || original.student_id !== event.student_id
+          || original.student_name_snapshot !== event.student_name_snapshot
+          || original.legacy_total_amount !== event.reward_snapshot
+          || original.balance_delta !== event.reward_snapshot || original.occurred_at > reversal.occurred_at
+          || event.note !== `cancels-completion:task-completion:${original.operation_id}`
+          || original.transaction_id !== `task-reward:${original.operation_id}`
+          || original.operation_id === null || original.operation_hash === null
+          || retainedOriginal.task_instance_id !== event.task_instance_id
+          || retainedOriginal.task_id_snapshot !== event.task_id_snapshot
+          || retainedOriginal.task_name_snapshot !== event.task_name_snapshot
+          || retainedOriginal.student_id !== event.student_id
+          || retainedOriginal.student_name_snapshot !== event.student_name_snapshot
+          || retainedOriginal.reward_snapshot !== event.reward_snapshot
+          || retainedOriginal.cycle_id !== event.cycle_id
+          || retainedOriginal.cycle_start_at.getTime() !== event.cycle_start_at.getTime()
+          || nullableTime(retainedOriginal.cycle_end_at) !== nullableTime(event.cycle_end_at)
+          || retainedOriginal.rule_version !== event.rule_version
+          || retainedOriginal.timezone !== event.timezone
+          || retainedOriginal.assignment_id !== event.assignment_id) throw new Error(failure);
+        let cancellationHash: string;
+        try {
+          cancellationHash = createCancellationPayloadHash(original as never, [], retainedOriginal as never);
+        } catch { throw new Error(failure); }
+        if (event.operation_hash !== cancellationHash) throw new Error(failure);
+        addExpectedOperation(operations, original.operation_id, 'TASK_REWARD', original.operation_hash, failure);
+      }
+    }
+  }
+  if (operations.size > 0) {
+    const ids = [...operations.keys()].sort(compareText);
+    const result = await input.tx.execute(sql`SELECT operation_id, operation_kind, payload_hash
+      FROM operations WHERE tenant_id=${input.tenantId}
+      AND operation_id IN (${sql.join(ids.map((value) => sql`${value}`), sql`, `)})
+      ORDER BY operation_id`);
+    const rows = exactArray(result.rows, 'operation reference result');
+    if (rows.length !== ids.length) throw new Error(failure);
+    const seen = new Set<string>();
+    for (const raw of rows) {
+      const row = exactRow(raw, OPERATION_REFERENCE_KEYS, 'operation reference evidence');
+      const operationId = id(row.operation_id); const expected = operations.get(operationId);
+      if (!expected || seen.has(operationId) || row.operation_kind !== expected.kind
+        || row.payload_hash !== expected.hash) throw new Error(failure);
+      seen.add(operationId);
+    }
+  }
+}
+
+function addExpectedOperation(map: Map<string, { kind: 'TASK_REWARD' | 'TASK_ADMIN' | 'CANCELLATION'; hash: string }>,
+  operationId: string, kind: 'TASK_REWARD' | 'TASK_ADMIN' | 'CANCELLATION', operationHash: string,
+  failure: string) {
+  if (!UUID.test(operationId) || !HASH.test(operationHash)) throw new Error(failure);
+  const prior = map.get(operationId);
+  if (prior && (prior.kind !== kind || prior.hash !== operationHash)) throw new Error(failure);
+  map.set(operationId, { kind, hash: operationHash });
+}
+
+function parseTransactionReference(raw: unknown) {
+  const row = exactRow(raw, TRANSACTION_REFERENCE_KEYS, 'transaction reference evidence');
+  const occurredAt = date(row.occurred_at); const createdAt = date(row.created_at);
+  const before = integerText(row.balance_before); const after = integerText(row.balance_after);
+  const delta = integerText(row.balance_delta);
+  if (!['TASK_REWARD', 'CANCELLATION'].includes(row.kind as string) || after - before !== delta
+    || occurredAt > createdAt || (row.operation_id === null) !== (row.operation_hash === null)) {
+    throw new Error('Task cycle materialization transaction reference integrity check failed.');
+  }
+  return { transaction_id: id(row.transaction_id), event_sequence: positive(row.event_sequence),
+    occurred_at: occurredAt, student_id: id(row.student_id),
+    student_name_snapshot: id(row.student_name_snapshot), kind: row.kind as 'TASK_REWARD' | 'CANCELLATION',
+    legacy_total_amount: integerText(row.legacy_total_amount), balance_delta: delta,
+    balance_before: before, balance_after: after, operator_snapshot: id(row.operator_snapshot),
+    legacy_status_snapshot: row.legacy_status_snapshot === null ? null : id(row.legacy_status_snapshot),
+    reverses_transaction_id: row.reverses_transaction_id === null ? null : id(row.reverses_transaction_id),
+    operation_id: row.operation_id === null ? null : id(row.operation_id),
+    operation_hash: row.operation_hash === null ? null : hash(row.operation_hash),
+    schema_version: integer(row.schema_version), created_at: createdAt };
 }
 
 async function verifyMaterialized(
@@ -354,7 +618,13 @@ function parseCompletion(raw: unknown) {
     timezone: id(row.timezone), source: row.source, assignment_id: nullableId(row.assignment_id),
     transaction_id: nullableId(row.transaction_id), operation_id: nullableId(row.operation_id),
     operation_hash: operationHash, admin_operation_id: nullableId(row.admin_operation_id),
-    admin_operation_hash: adminHash, schema_version: 1, created_at: date(row.created_at) };
+    admin_operation_hash: adminHash, schema_version: 1,
+    evidence_provider: nullableId(row.evidence_provider),
+    evidence_board_id: nullableId(row.evidence_board_id),
+    evidence_post_id: nullableId(row.evidence_post_id),
+    evidence_created_at: nullableDate(row.evidence_created_at),
+    evidence_author_full_name: nullableId(row.evidence_author_full_name),
+    created_at: date(row.created_at) };
 }
 
 function exactRow<const K extends readonly string[]>(raw: unknown, keys: K, label: string) {
@@ -409,6 +679,11 @@ function assignmentMaterializationId(taskInstanceId: string, cycleIdValue: strin
 function completionMaterializationId(taskInstanceId: string, cycleIdValue: string, studentId: string) {
   return `task-completion-materialization:${sha256({ domain: 'task-completion-materialization-v1',
     source: 'CARRY_FORWARD', taskInstanceId, cycleId: cycleIdValue, studentId })}`;
+}
+function adminResetCompletionId(operationId: string, taskInstanceId: string,
+  studentId: string, cycleIdValue: string) {
+  return `task-completion-admin-reset:${sha256({ domain: 'task-completion-admin-reset-v1',
+    operationId, taskInstanceId, studentId, cycleId: cycleIdValue })}`;
 }
 function cycleId(event: { task_instance_id: string; rule_version: number; cycle_start_at: Date }) {
   return `v1|${event.task_instance_id}|r${event.rule_version}|${event.cycle_start_at.toISOString().replace('.000Z', 'Z')}`;

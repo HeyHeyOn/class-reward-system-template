@@ -12,12 +12,19 @@ import {
   createDatabaseTaskCycleQueries,
   type DatabaseTaskCycleQueryDependencies,
 } from './taskCycleQueries';
+import { createDatabaseTaskCompletionCommand } from './taskCompletionCommands';
+import { createDatabaseTransactionCommands } from './transactionCommands';
+import { createDatabasePadletClaimRepository } from './padletClaims';
 
 vi.mock('server-only', () => ({}));
 
 const TENANT_ONE_STUDENT = 'S1';
 const BANK_OPERATION_ID = '123e4567-e89b-42d3-a456-426614174000';
 const BANK_OPERATION_HASH = 'a'.repeat(64);
+const RESET_ADMIN_OPERATION_ID = '40000000-0000-4000-8000-000000000001';
+const RESET_ADMIN_OPERATION_HASH = 'c'.repeat(64);
+const REWARD_OPERATION_ID = '10000000-0000-4000-8000-000000000001';
+const CANCELLATION_OPERATION_ID = '30000000-0000-4000-8000-000000000001';
 const READER_ADMIN_OPERATION_ID = 'reader-admin-op';
 const READER_ADMIN_OPERATION_HASH = 'b'.repeat(64);
 const SCHEDULE: TaskSchedule = {
@@ -41,6 +48,9 @@ let harness: PgliteDatabaseHarness;
 beforeEach(async () => {
   harness = await createPgliteDatabaseHarness();
   await harness.database.exec(`ALTER TABLE task_assignments
+    ADD COLUMN admin_operation_id text,
+    ADD COLUMN admin_operation_hash text`);
+  await harness.database.exec(`ALTER TABLE task_completions
     ADD COLUMN admin_operation_id text,
     ADD COLUMN admin_operation_hash text`);
   for (const tenantId of [harness.tenantOneId, harness.tenantTwoId]) {
@@ -142,6 +152,9 @@ type CompletionSeed = {
   balanceAfter?: number | string;
   operationId?: string | null;
   operationHash?: string | null;
+  transactionId?: string | null;
+  adminOperationId?: string | null;
+  adminOperationHash?: string | null;
   evidence?: readonly [string | null, string | null, string | null, string | null, string | null];
 };
 
@@ -155,13 +168,14 @@ async function seedCompletion(input: CompletionSeed) {
        task_id_snapshot, task_name_snapshot, student_id, student_name_snapshot,
        reward_snapshot, balance_before, balance_after, status, note, cycle_id,
        cycle_start_at, cycle_end_at, rule_version, timezone, source, assignment_id,
-       operation_id, operation_hash, schema_version, evidence_provider,
+       transaction_id, operation_id, operation_hash, admin_operation_id,
+       admin_operation_hash, schema_version, evidence_provider,
        evidence_board_id, evidence_post_id, evidence_created_at,
        evidence_author_full_name
      ) OVERRIDING SYSTEM VALUE
      VALUES ($1, $2, $3, $4, $5, 'T1', '삭제된 과제', 'S1', '학생 하나',
              $6, $7, $8, $9, 'done', $10, $11, $12, $13, $14, $15, $16,
-             $17, $18, $19, $20, $21, $22, $23, $24)`,
+             $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)`,
     [
       input.tenantId ?? harness.tenantOneId, input.completionId, input.eventSequence,
       input.completedAt, cyclePresent ? (input.taskInstanceId ?? 'I1') : null,
@@ -173,7 +187,14 @@ async function seedCompletion(input: CompletionSeed) {
       cyclePresent ? (input.ruleVersion ?? 7) : null,
       cyclePresent ? (input.timezone ?? 'Asia/Seoul') : null,
       source,
-      input.assignmentId ?? null, input.operationId ?? null, input.operationHash ?? null,
+      input.assignmentId ?? null, input.transactionId ?? null,
+      input.operationId ?? null, input.operationHash ?? null,
+      input.adminOperationId === undefined
+        ? (source === 'ADMIN_RESET' ? RESET_ADMIN_OPERATION_ID : null)
+        : input.adminOperationId,
+      input.adminOperationHash === undefined
+        ? (source === 'ADMIN_RESET' ? RESET_ADMIN_OPERATION_HASH : null)
+        : input.adminOperationHash,
       input.schemaVersion ?? 1, ...evidence,
     ],
   );
@@ -216,6 +237,44 @@ async function seedLiveTask(taskId = 'LIVE', taskInstanceId = 'LIVE-I') {
   );
 }
 
+async function runProductionTaskRewardCancellation() {
+  await seedLiveTask('PROD', 'PROD-I');
+  await harness.database.query(
+    `UPDATE tasks SET current_schedule=$2::jsonb WHERE tenant_id=$1 AND task_instance_id='PROD-I'`,
+    [harness.tenantOneId, JSON.stringify({
+      ...SCHEDULE,
+      recurrence: { type: 'DAILY', time: '09:00' },
+      resetCompletionOnCycle: true,
+      resetAssignmentOnCycle: true,
+    })],
+  );
+  await harness.database.query(
+    `INSERT INTO accounts (tenant_id, student_id, balance) VALUES ($1, 'S1', 100)`,
+    [harness.tenantOneId],
+  );
+  await seedAssignment({
+    assignmentId: 'PROD-A', eventSequence: 1, taskId: 'PROD', taskInstanceId: 'PROD-I',
+    cycleId: 'v1|PROD-I|r1|2026-08-10T00:00:00Z',
+    cycleStartAt: '2026-08-10T00:00:00.000Z', cycleEndAt: '2026-08-11T00:00:00.000Z',
+  });
+  await harness.database.query(
+    `UPDATE task_assignments SET rule_version=1 WHERE tenant_id=$1 AND assignment_id='PROD-A'`,
+    [harness.tenantOneId],
+  );
+  const reward = await createDatabaseTaskCompletionCommand({
+    tenantId: harness.tenantOneId,
+    runTenantTransaction: harness.runTenantTransaction,
+    padletClaims: createDatabasePadletClaimRepository(),
+    now: () => new Date('2026-08-10T03:00:00.000Z'),
+  }).execute({ operationId: REWARD_OPERATION_ID, taskId: 'PROD', studentId: 'S1' });
+  const cancellation = await createDatabaseTransactionCommands({
+    tenantId: harness.tenantOneId,
+    runTenantTransaction: harness.runTenantTransaction,
+    now: () => new Date('2026-08-10T10:00:00.000Z'),
+  }).cancel({ operationId: CANCELLATION_OPERATION_ID, transactionId: reward.transactionId });
+  return { reward, cancellation };
+}
+
 describe('database task cycle queries', () => {
   it('keeps internal evidence fields out of the public completion type', () => {
     expectTypeOf<'evidenceProvider' extends keyof TaskCompletion ? true : false>()
@@ -223,6 +282,110 @@ describe('database task cycle queries', () => {
     expectTypeOf<'evidenceBoardId' extends keyof TaskCompletion ? true : false>()
       .toEqualTypeOf<false>();
   });
+
+  it('reads and projects a production task reward cancellation as an ADMIN_RESET', async () => {
+    const { reward, cancellation } = await runProductionTaskRewardCancellation();
+
+    const completions = await queries().getTaskCompletions();
+    const history = await queries().getTaskCycleHistory({ taskId: 'PROD' });
+
+    expect(completions).toEqual([
+      expect.objectContaining({
+        completionId: cancellation.cancellationCompletionId,
+        timestamp: cancellation.cancelledAt,
+        taskId: 'PROD', taskInstanceId: 'PROD-I', studentId: 'S1',
+        reward: 5, balanceBefore: 105, balanceAfter: 100,
+        status: 'RESET', source: 'ADMIN_RESET', assignmentId: 'PROD-A',
+        operationId: CANCELLATION_OPERATION_ID,
+        operationPayloadHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      }),
+      expect.objectContaining({
+        completionId: reward.completionId, reward: 5, balanceBefore: 100,
+        balanceAfter: 105, status: 'SUCCESS', source: 'BANK',
+      }),
+    ]);
+    expect(completions[0]).not.toHaveProperty('transactionId');
+    expect(completions[0]).not.toHaveProperty('adminOperationId');
+    expect(history).toEqual([
+      expect.objectContaining({ eventType: 'ASSIGNMENT', eventId: 'PROD-A',
+        assignmentStatus: 'ASSIGNED', assignmentSource: 'ADMIN' }),
+      expect.objectContaining({ eventType: 'COMPLETION', eventId: reward.completionId,
+        completionStatus: 'SUCCESS', completionSource: 'BANK', reward: 5 }),
+      expect.objectContaining({ eventType: 'COMPLETION', eventId: cancellation.cancellationCompletionId,
+        completionStatus: 'RESET', completionSource: 'ADMIN_RESET', reward: 5 }),
+    ]);
+  });
+
+  it('accepts the mutually exclusive administrator-bound ADMIN_RESET variant', async () => {
+    await seedCompletion({
+      completionId: 'ADMIN-RESET', eventSequence: 1,
+      completedAt: '2026-08-10T03:00:00.000Z', source: 'ADMIN_RESET', status: 'CANCELLED',
+    });
+    await expect(queries().getTaskCompletions()).resolves.toEqual([
+      expect.objectContaining({
+        completionId: 'ADMIN-RESET', reward: 0, balanceBefore: 10, balanceAfter: 10,
+        status: 'RESET', source: 'ADMIN_RESET',
+      }),
+    ]);
+  });
+
+  it.each([
+    ['administrator half binding', {
+      admin_operation_id: RESET_ADMIN_OPERATION_ID, admin_operation_hash: null,
+    }],
+    ['mixed administrator and cancellation bindings', {
+      operation_id: CANCELLATION_OPERATION_ID, operation_hash: 'd'.repeat(64),
+    }],
+    ['cancellation with administrator arithmetic', {
+      operation_id: CANCELLATION_OPERATION_ID, operation_hash: 'd'.repeat(64),
+      admin_operation_id: null, admin_operation_hash: null,
+      transaction_id: `cancellation:${CANCELLATION_OPERATION_ID}`,
+    }],
+    ['cancellation with a wrong transaction ID', {
+      operation_id: CANCELLATION_OPERATION_ID, operation_hash: 'd'.repeat(64),
+      admin_operation_id: null, admin_operation_hash: null,
+      transaction_id: 'cancellation:wrong', reward_snapshot: '5',
+      balance_before: '15', balance_after: '10',
+    }],
+    ['cancellation with a wrong completion ID', {
+      completion_id: 'wrong', operation_id: CANCELLATION_OPERATION_ID,
+      operation_hash: 'd'.repeat(64), admin_operation_id: null, admin_operation_hash: null,
+      transaction_id: `cancellation:${CANCELLATION_OPERATION_ID}`,
+      reward_snapshot: '5', balance_before: '15', balance_after: '10',
+    }],
+    ['cancellation with wrong reversal arithmetic', {
+      completion_id: `task-completion-cancellation:${CANCELLATION_OPERATION_ID}`,
+      operation_id: CANCELLATION_OPERATION_ID, operation_hash: 'd'.repeat(64),
+      admin_operation_id: null, admin_operation_hash: null,
+      transaction_id: `cancellation:${CANCELLATION_OPERATION_ID}`,
+      reward_snapshot: '5', balance_before: '15', balance_after: '11',
+    }],
+    ['administrator reset with evidence', {
+      evidence_provider: 'PADLET', evidence_board_id: 'BOARD000000000001',
+      evidence_post_id: 'post_123', evidence_created_at: '2026-08-10T00:30:00.000Z',
+      evidence_author_full_name: '학생 하나',
+    }],
+  ])('rejects malformed ADMIN_RESET provenance: %s', async (_label, mutation) => {
+    await seedCompletion({
+      completionId: 'ADMIN-RESET', eventSequence: 1,
+      completedAt: '2026-08-10T03:00:00.000Z', source: 'ADMIN_RESET', status: 'CANCELLED',
+    });
+    const runTenantSnapshot: DatabaseTaskCycleQueryDependencies['runTenantSnapshot'] =
+      (tenantId, callback) => harness.runTenantTransaction(tenantId, (transaction) => callback({
+        async execute(query: Parameters<TenantTransaction['execute']>[0]) {
+          const result = await transaction.execute(query);
+          return { ...result, rows: result.rows.map((raw) => {
+            const row = raw as { ledger_kind?: unknown; payload?: unknown };
+            if (row.ledger_kind !== 'completion' || typeof row.payload !== 'object'
+              || row.payload === null || Array.isArray(row.payload)) return raw;
+            return { ...row, payload: { ...(row.payload as Record<string, unknown>), ...mutation } };
+          }) } as never;
+        },
+      } as unknown as TenantTransaction));
+    await expect(queries({ runTenantSnapshot }).getTaskCompletions())
+      .rejects.toThrow(/ADMIN_RESET|operation|evidence/i);
+  });
+
   it('projects current cycle state from a strict task and both ledgers in one transaction', async () => {
     await seedLiveTask();
     let transactionCalls = 0;

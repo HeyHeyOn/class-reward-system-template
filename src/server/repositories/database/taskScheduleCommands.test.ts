@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -8,6 +9,8 @@ import type { TaskCycle } from '@/domain/taskRecurrence';
 import { createDatabaseTaskAdminCommands } from './taskAdminCommands';
 import { createDatabaseTaskScheduleCommands } from './taskScheduleCommands';
 import { materializeTaskConfigurationBoundaryCycleInternal } from './taskCycleMaterialization';
+import { createTaskRewardPayloadHash } from './taskCompletionCommands';
+import { createCancellationPayloadHash } from './transactionCommands';
 import {
   createPgliteDatabaseHarness,
   type PgliteDatabaseHarness,
@@ -29,6 +32,9 @@ const CHAIN_CYCLE_ONE = cycle(1, '2026-08-30T00:00:00Z', '2026-08-31T00:00:00Z')
 const CHAIN_CYCLE_TWO = cycle(2, '2026-08-31T00:00:00Z', '2026-09-01T00:00:00Z');
 const CHAIN_NEW_CYCLE = cycle(3, '2026-08-31T01:00:00Z', '2026-09-01T01:00:00Z');
 const CHAIN_NOW = new Date(CHAIN_NEW_CYCLE.startsAt);
+const REWARD_OPERATION = '10000000-0000-4000-8000-000000000001';
+const ADMIN_OPERATION = '20000000-0000-4000-8000-000000000001';
+const RESET_OPERATION = '30000000-0000-4000-8000-000000000001';
 
 function assignmentRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   const sequence = String(overrides.event_sequence ?? '1');
@@ -59,10 +65,119 @@ function validMixedAssignmentChain() {
   ];
 }
 
-async function materializeWithAssignmentRows(rows: unknown) {
+function completionRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  const sequence = String(overrides.event_sequence ?? '1');
+  return { completion_id: `completion-${sequence}`, event_sequence: sequence,
+    completed_at: new Date('2026-08-30T03:00:00.000Z'), task_instance_id: INSTANCE,
+    task_id_snapshot: 'TASK-CHAIN', task_name_snapshot: 'Chain task', student_id: 'S001',
+    student_name_snapshot: 'Student one', reward_snapshot: '0', balance_before: '10',
+    balance_after: '10', status: 'COMPLETED', note: null, cycle_id: CHAIN_CYCLE_ONE.cycleId,
+    cycle_start_at: new Date(CHAIN_CYCLE_ONE.startsAt), cycle_end_at: new Date(CHAIN_CYCLE_ONE.endsAt),
+    rule_version: 1, timezone: 'Asia/Seoul', source: 'ADMIN', assignment_id: 'assignment-3',
+    transaction_id: null, operation_id: null, operation_hash: null,
+    admin_operation_id: ADMIN_OPERATION, admin_operation_hash: HASH, schema_version: 1,
+    evidence_provider: null, evidence_board_id: null, evidence_post_id: null,
+    evidence_created_at: null, evidence_author_full_name: null,
+    created_at: new Date('2026-08-30T03:00:00.000Z'), ...overrides };
+}
+
+function rewardHash() {
+  return createTaskRewardPayloadHash({ taskId: 'TASK-CHAIN', taskInstanceId: INSTANCE,
+    taskTitle: 'Chain task', studentId: 'S001', studentName: 'Student one',
+    assignmentId: 'assignment-3', cycleId: CHAIN_CYCLE_ONE.cycleId,
+    cycleStartsAt: new Date(CHAIN_CYCLE_ONE.startsAt).toISOString(),
+    cycleEndsAt: new Date(CHAIN_CYCLE_ONE.endsAt).toISOString(), reward: 10 });
+}
+
+function adminResetCompletionId(operationId: string, taskInstanceId = INSTANCE,
+  studentId = 'S001', cycleId = CHAIN_CYCLE_TWO.cycleId) {
+  const digest = createHash('sha256').update(JSON.stringify({
+    domain: 'task-completion-admin-reset-v1', operationId, taskInstanceId, studentId, cycleId,
+  }), 'utf8').digest('hex');
+  return `task-completion-admin-reset:${digest}`;
+}
+
+function validMixedCompletionChain() {
+  const bankHash = rewardHash();
+  return [
+    completionRow({ completion_id: `task-completion:${REWARD_OPERATION}`, event_sequence: '1',
+      completed_at: new Date('2026-08-30T02:00:00.000Z'), created_at: new Date('2026-08-30T02:00:00.000Z'),
+      source: 'BANK', reward_snapshot: '10', balance_before: '0', balance_after: '10',
+      note: 'bank-self-completion', transaction_id: `task-reward:${REWARD_OPERATION}`,
+      operation_id: REWARD_OPERATION, operation_hash: bankHash,
+      admin_operation_id: null, admin_operation_hash: null }),
+    completionRow({ completion_id: 'completion-2', event_sequence: '2' }),
+    completionRow({ completion_id: 'carry-completion', event_sequence: '3',
+      completed_at: new Date(CHAIN_CYCLE_TWO.startsAt), created_at: new Date(CHAIN_CYCLE_TWO.startsAt),
+      source: 'CARRY_FORWARD', assignment_id: 'assignment-4',
+      cycle_id: CHAIN_CYCLE_TWO.cycleId, cycle_start_at: new Date(CHAIN_CYCLE_TWO.startsAt),
+      cycle_end_at: new Date(CHAIN_CYCLE_TWO.endsAt), rule_version: 2,
+      admin_operation_id: null, admin_operation_hash: null }),
+    completionRow({ completion_id: adminResetCompletionId(RESET_OPERATION), event_sequence: '4',
+      completed_at: new Date('2026-08-31T00:30:00.000Z'),
+      created_at: new Date('2026-08-31T00:30:00.000Z'), status: 'CANCELLED',
+      source: 'ADMIN_RESET', note: 'admin-completion-reset', assignment_id: 'assignment-4',
+      cycle_id: CHAIN_CYCLE_TWO.cycleId, cycle_start_at: new Date(CHAIN_CYCLE_TWO.startsAt),
+      cycle_end_at: new Date(CHAIN_CYCLE_TWO.endsAt), rule_version: 2,
+      admin_operation_id: RESET_OPERATION }),
+  ];
+}
+
+function completionReferences() {
+  const bankHash = rewardHash();
+  return {
+    operations: [
+      { operation_id: REWARD_OPERATION, operation_kind: 'TASK_REWARD', payload_hash: bankHash },
+      { operation_id: ADMIN_OPERATION, operation_kind: 'TASK_ADMIN', payload_hash: HASH },
+      { operation_id: RESET_OPERATION, operation_kind: 'TASK_ADMIN', payload_hash: HASH },
+    ],
+    transactions: [{ transaction_id: `task-reward:${REWARD_OPERATION}`, event_sequence: '1',
+      occurred_at: new Date('2026-08-30T02:00:00.000Z'), student_id: 'S001',
+      student_name_snapshot: 'Student one', kind: 'TASK_REWARD', legacy_total_amount: '10',
+      balance_delta: '10', balance_before: '0', balance_after: '10',
+      operator_snapshot: 'bank-task-completion', legacy_status_snapshot: 'COMPLETED',
+      reverses_transaction_id: null, operation_id: REWARD_OPERATION,
+      operation_hash: bankHash, schema_version: 1, created_at: new Date('2026-08-30T02:00:00.000Z') }],
+  };
+}
+
+function validCancellationCompletionChain() {
+  const bank = validMixedCompletionChain()[0];
+  const references = completionReferences();
+  const cancellationHash = createCancellationPayloadHash(references.transactions[0] as never, [], bank as never);
+  return [bank, completionRow({ completion_id: `task-completion-cancellation:${RESET_OPERATION}`,
+    event_sequence: '2', completed_at: new Date('2026-08-30T05:00:00.000Z'),
+    created_at: new Date('2026-08-30T05:00:00.000Z'), source: 'ADMIN_RESET',
+    status: 'CANCELLED', reward_snapshot: '10', balance_before: '10', balance_after: '0',
+    note: `cancels-completion:task-completion:${REWARD_OPERATION}`,
+    transaction_id: `cancellation:${RESET_OPERATION}`, operation_id: RESET_OPERATION,
+    operation_hash: cancellationHash, admin_operation_id: null, admin_operation_hash: null })];
+}
+
+function cancellationReferences() {
+  const references = completionReferences();
+  const bank = validMixedCompletionChain()[0];
+  const cancellationHash = createCancellationPayloadHash(references.transactions[0] as never, [], bank as never);
+  return { operations: [...references.operations.filter((row) => row.operation_id === REWARD_OPERATION),
+    { operation_id: RESET_OPERATION, operation_kind: 'CANCELLATION', payload_hash: cancellationHash }],
+  transactions: [...references.transactions, { transaction_id: `cancellation:${RESET_OPERATION}`,
+    event_sequence: '2', occurred_at: new Date('2026-08-30T05:00:00.000Z'), student_id: 'S001',
+    student_name_snapshot: 'Student one', kind: 'CANCELLATION', legacy_total_amount: '10',
+    balance_delta: '-10', balance_before: '10', balance_after: '0',
+    operator_snapshot: 'admin-cancellation', legacy_status_snapshot: 'CANCEL_REVERSAL',
+    reverses_transaction_id: `task-reward:${REWARD_OPERATION}`, operation_id: RESET_OPERATION,
+    operation_hash: cancellationHash, schema_version: 1,
+    created_at: new Date('2026-08-30T05:00:00.000Z') }] };
+}
+
+async function materializeWithAssignmentRows(rows: unknown, completionRows: unknown = [],
+  references: { operations: Record<string, unknown>[]; transactions: Record<string, unknown>[] }
+    = completionReferences()) {
   const dialect = new PgDialect();
   let assignmentRead = 0;
+  let completionRead = 0;
   let insertedAssignment: Record<string, unknown> | undefined;
+  let insertedCompletion: Record<string, unknown> | undefined;
   const tx = { execute: async (wrapper: SQLWrapper) => {
     const query = dialect.sqlToQuery(wrapper.getSQL());
     const statement = query.sql.toLowerCase().replace(/\s+/g, ' ');
@@ -73,15 +188,35 @@ async function materializeWithAssignmentRows(rows: unknown) {
       if (assignmentRead++ === 0) return { rows };
       return { rows: insertedAssignment ? [insertedAssignment] : [] };
     }
-    if (statement.includes('from task_completions')) return { rows: [] };
+    if (statement.includes('from task_completions')) {
+      if (completionRead++ === 0) return { rows: completionRows };
+      return { rows: insertedCompletion ? [insertedCompletion] : [] };
+    }
+    if (statement.includes('from operations')) return { rows: references.operations };
+    if (statement.includes('from transactions')) return { rows: references.transactions };
     if (statement.startsWith('insert into task_assignments')) {
       const assignmentId = query.params[1] as string;
-      insertedAssignment = assignmentRow({ assignment_id: assignmentId, event_sequence: '5',
-        source: 'CARRY_FORWARD', previous_assignment_id: 'assignment-4',
+      const predecessorId = Array.isArray(rows) ? [...rows]
+        .filter((raw): raw is Record<string, unknown> => typeof raw === 'object' && raw !== null
+          && (raw as Record<string, unknown>).cycle_id === CHAIN_CYCLE_TWO.cycleId)
+        .sort((left, right) => Number(left.event_sequence) - Number(right.event_sequence))
+        .at(-1)?.assignment_id as string | undefined : undefined;
+      insertedAssignment = assignmentRow({ assignment_id: assignmentId, event_sequence: '6',
+        source: 'CARRY_FORWARD', previous_assignment_id: predecessorId ?? 'assignment-4',
         cycle_id: CHAIN_NEW_CYCLE.cycleId, cycle_start_at: new Date(CHAIN_NEW_CYCLE.startsAt),
         cycle_end_at: new Date(CHAIN_NEW_CYCLE.endsAt), rule_version: 3,
         created_at: CHAIN_NOW });
       return { rows: [{ assignment_id: assignmentId }] };
+    }
+    if (statement.startsWith('insert into task_completions')) {
+      const completionId = query.params[1] as string;
+      insertedCompletion = completionRow({ completion_id: completionId, event_sequence: '5',
+        completed_at: CHAIN_NOW, created_at: CHAIN_NOW, source: 'CARRY_FORWARD',
+        assignment_id: insertedAssignment?.assignment_id, cycle_id: CHAIN_NEW_CYCLE.cycleId,
+        cycle_start_at: new Date(CHAIN_NEW_CYCLE.startsAt),
+        cycle_end_at: new Date(CHAIN_NEW_CYCLE.endsAt), rule_version: 3,
+        admin_operation_id: null, admin_operation_hash: null });
+      return { rows: [{ completion_id: completionId }] };
     }
     throw new Error(`unexpected statement: ${statement}`);
   } } as unknown as TenantTransaction;
@@ -89,6 +224,14 @@ async function materializeWithAssignmentRows(rows: unknown) {
     taskId: 'TASK-CHAIN', taskInstanceId: INSTANCE, oldCycle: CHAIN_CYCLE_TWO,
     oldRuleVersion: 2, newCycle: CHAIN_NEW_CYCLE, newRuleVersion: 3,
     timeZone: 'Asia/Seoul', now: CHAIN_NOW });
+}
+
+async function seedAssignmentOperation(operationId: string, payloadHash: string) {
+  await harness.database.query(`INSERT INTO operations
+    (tenant_id, operation_id, operation_kind, payload_hash, status, result_snapshot,
+     attempt_count, started_at, finished_at, created_at, updated_at)
+    VALUES ($1, $2, 'TASK_ADMIN', $3, 'SUCCEEDED', '{}'::jsonb, 1, $4, $4, $4, $4)`,
+  [harness.tenantOneId, operationId, payloadHash, '2026-08-30T01:00:00.000Z']);
 }
 
 beforeEach(async () => {
@@ -178,6 +321,159 @@ describe('database task schedule command configuration boundary', () => {
     expect(getterCalls).toBe(0);
   });
 
+  it('accepts a mixed BANK, ADMIN, carry-forward, and canonical administrator reset chain independent of adapter order', async () => {
+    const result = await materializeWithAssignmentRows(validMixedAssignmentChain().reverse(),
+      validMixedCompletionChain().reverse());
+    expect(result.assignmentEventIds).toHaveLength(1);
+    expect(result.completionEventIds).toHaveLength(0);
+  });
+
+  it('accepts the transaction-cancellation ADMIN_RESET provenance variant', async () => {
+    const result = await materializeWithAssignmentRows(validMixedAssignmentChain().reverse(),
+      validCancellationCompletionChain().reverse(), cancellationReferences());
+    expect(result.assignmentEventIds).toHaveLength(1);
+    expect(result.completionEventIds).toHaveLength(0);
+  });
+
+  it.each([
+    ['BANK operation hash mismatch', (rows: Record<string, unknown>[], references: ReturnType<typeof completionReferences>) => {
+      references.operations[0].payload_hash = 'b'.repeat(64);
+    }],
+    ['BANK transaction semantic mismatch', (_rows: Record<string, unknown>[], references: ReturnType<typeof completionReferences>) => {
+      references.transactions[0].balance_after = '11';
+    }],
+    ['ADMIN wrong operation kind', (_rows: Record<string, unknown>[], references: ReturnType<typeof completionReferences>) => {
+      references.operations[1].operation_kind = 'TASK_REWARD';
+    }],
+    ['carry-forward wrong local assignment', (rows: Record<string, unknown>[]) => {
+      rows[2].assignment_id = 'assignment-3';
+    }],
+    ['carry-forward wrong predecessor balance', (rows: Record<string, unknown>[]) => {
+      rows[2].balance_before = '9'; rows[2].balance_after = '9';
+    }],
+    ['cross-subject completion', (rows: Record<string, unknown>[]) => {
+      rows[1].student_id = 'S002';
+    }],
+    ['duplicate completion ID', (rows: Record<string, unknown>[]) => {
+      rows[3].completion_id = rows[2].completion_id;
+    }],
+    ['duplicate completion sequence', (rows: Record<string, unknown>[]) => {
+      rows[3].event_sequence = rows[2].event_sequence;
+    }],
+  ])('rejects malformed completion history: %s', async (_label, mutate) => {
+    const rows = validMixedCompletionChain(); const references = completionReferences();
+    mutate(rows, references);
+    await expect(materializeWithAssignmentRows(validMixedAssignmentChain(), rows, references))
+      .rejects.toThrow(/completion|operation|transaction/i);
+  });
+
+  it('rejects a cancellation reset with a non-deterministic original completion link', async () => {
+    const rows = validCancellationCompletionChain();
+    rows[1].note = 'cancels-completion:other';
+    await expect(materializeWithAssignmentRows(validMixedAssignmentChain(), rows,
+      cancellationReferences())).rejects.toThrow(/completion|transaction/i);
+  });
+
+  it('rejects a cancellation completion when the append-only original BANK completion is missing', async () => {
+    const rows = validCancellationCompletionChain().slice(1);
+    await expect(materializeWithAssignmentRows(validMixedAssignmentChain(), rows,
+      cancellationReferences())).rejects.toThrow(/completion|transaction/i);
+  });
+
+  it('rejects a captured BANK transaction whose direct reversal has no cancellation completion', async () => {
+    const references = cancellationReferences();
+    references.operations = references.operations.filter((row) => row.operation_id === REWARD_OPERATION);
+    await expect(materializeWithAssignmentRows(validMixedAssignmentChain(),
+      [validCancellationCompletionChain()[0]], references)).rejects.toThrow(/completion|transaction/i);
+  });
+
+  it('rejects an unrelated transaction row injected by the adapter', async () => {
+    const references = completionReferences();
+    references.operations = references.operations.filter((row) => row.operation_id === REWARD_OPERATION);
+    references.transactions.push({ ...references.transactions[0], transaction_id: 'external-transaction',
+      event_sequence: '99', operation_id: '40000000-0000-4000-8000-000000000001' });
+    await expect(materializeWithAssignmentRows(validMixedAssignmentChain(),
+      [validMixedCompletionChain()[0]], references)).rejects.toThrow(/transaction/i);
+  });
+
+  it('rejects duplicate transaction event_sequence evidence', async () => {
+    const references = cancellationReferences();
+    references.transactions[1].event_sequence = references.transactions[0].event_sequence;
+    await expect(materializeWithAssignmentRows(validMixedAssignmentChain(),
+      validCancellationCompletionChain(), references)).rejects.toThrow(/transaction/i);
+  });
+
+  it('rejects per-subject completion timestamps that move backwards with event_sequence', async () => {
+    const rows = validMixedCompletionChain();
+    rows[1].completed_at = new Date('2026-08-30T01:00:00.000Z');
+    await expect(materializeWithAssignmentRows(validMixedAssignmentChain(), rows,
+      completionReferences())).rejects.toThrow(/completion/i);
+  });
+
+  it('rejects carry-forward after an immediate administrator reset instead of stale completed state', async () => {
+    const rows = validMixedCompletionChain();
+    const carry = rows[2]; const reset = rows[3];
+    reset.event_sequence = '3'; reset.completed_at = new Date('2026-08-30T04:00:00.000Z');
+    reset.created_at = new Date('2026-08-30T04:00:00.000Z'); reset.assignment_id = 'assignment-3';
+    reset.cycle_id = CHAIN_CYCLE_ONE.cycleId; reset.cycle_start_at = new Date(CHAIN_CYCLE_ONE.startsAt);
+    reset.cycle_end_at = new Date(CHAIN_CYCLE_ONE.endsAt); reset.rule_version = 1;
+    reset.completion_id = adminResetCompletionId(RESET_OPERATION, INSTANCE, 'S001', CHAIN_CYCLE_ONE.cycleId);
+    carry.event_sequence = '4';
+    await expect(materializeWithAssignmentRows(validMixedAssignmentChain(), rows,
+      completionReferences())).rejects.toThrow(/completion/i);
+  });
+
+  it('rejects carry-forward across an intervening assignment without a completion', async () => {
+    const assignments = [...validMixedAssignmentChain(), assignmentRow({
+      assignment_id: 'assignment-5', event_sequence: '5', source: 'ADMIN',
+      previous_assignment_id: 'assignment-4', cycle_id: CHAIN_CYCLE_TWO.cycleId,
+      cycle_start_at: new Date(CHAIN_CYCLE_TWO.startsAt),
+      cycle_end_at: new Date(CHAIN_CYCLE_TWO.endsAt), rule_version: 2,
+      admin_operation_id: ADMIN_OPERATION, admin_operation_hash: HASH,
+      created_at: new Date('2026-08-31T00:10:00.000Z'),
+    })];
+    const completions = [completionRow({ completion_id: 'prior-completion', event_sequence: '1' }),
+      completionRow({ completion_id: 'stale-carry', event_sequence: '2', source: 'CARRY_FORWARD',
+        completed_at: new Date(CHAIN_CYCLE_TWO.startsAt),
+        created_at: new Date(CHAIN_CYCLE_TWO.startsAt), assignment_id: 'assignment-5',
+        cycle_id: CHAIN_CYCLE_TWO.cycleId, cycle_start_at: new Date(CHAIN_CYCLE_TWO.startsAt),
+        cycle_end_at: new Date(CHAIN_CYCLE_TWO.endsAt), rule_version: 2,
+        admin_operation_id: null, admin_operation_hash: null })];
+    await expect(materializeWithAssignmentRows(assignments, completions, {
+      operations: [{ operation_id: ADMIN_OPERATION, operation_kind: 'TASK_ADMIN',
+        payload_hash: HASH }], transactions: [],
+    })).rejects.toThrow(/completion/i);
+  });
+
+  it.each([
+    ['ID', (row: Record<string, unknown>) => { row.completion_id = 'admin-reset-arbitrary'; }],
+    ['note', (row: Record<string, unknown>) => { row.note = 'arbitrary reset'; }],
+  ])('rejects an administrator ADMIN_RESET with a non-canonical %s', async (_label, mutate) => {
+    const rows = validMixedCompletionChain(); mutate(rows[3]);
+    await expect(materializeWithAssignmentRows(validMixedAssignmentChain(), rows,
+      completionReferences())).rejects.toThrow(/completion/i);
+  });
+
+  it('rejects Padlet evidence created before the exact cycle start', async () => {
+    const rows = validMixedCompletionChain(); const references = completionReferences();
+    const bank = rows[0];
+    Object.assign(bank, { evidence_provider: 'PADLET', evidence_board_id: 'AbCdEfGhIjKlMnOp',
+      evidence_post_id: 'post-001', evidence_created_at: new Date('2026-08-29T23:59:59.999Z'),
+      evidence_author_full_name: 'Student one' });
+    const hash = createTaskRewardPayloadHash({ taskId: 'TASK-CHAIN', taskInstanceId: INSTANCE,
+      taskTitle: 'Chain task', studentId: 'S001', studentName: 'Student one',
+      assignmentId: 'assignment-3', cycleId: CHAIN_CYCLE_ONE.cycleId,
+      cycleStartsAt: new Date(CHAIN_CYCLE_ONE.startsAt).toISOString(),
+      cycleEndsAt: new Date(CHAIN_CYCLE_ONE.endsAt).toISOString(), reward: 10,
+      evidence: { evidenceProvider: 'PADLET', evidenceBoardId: 'AbCdEfGhIjKlMnOp',
+        evidencePostId: 'post-001', evidenceCreatedAt: '2026-08-29T23:59:59.999Z',
+        evidenceAuthorFullName: 'Student one' } });
+    bank.operation_hash = hash; references.operations[0].payload_hash = hash;
+    references.transactions[0].operation_hash = hash;
+    await expect(materializeWithAssignmentRows(validMixedAssignmentChain(), rows, references))
+      .rejects.toThrow(/completion/i);
+  });
+
   it('updates two tasks through one canonical batch command', async () => {
     const admin = createDatabaseTaskAdminCommands({
       tenantId: harness.tenantOneId,
@@ -227,20 +523,22 @@ describe('database task schedule command configuration boundary', () => {
       },
     });
     const taskInstanceId = created.tasks[0].taskInstanceId;
+    await seedAssignmentOperation('00000000-0000-4000-8000-000000000101', HASH);
     await harness.database.query(
       `INSERT INTO task_completions
         (tenant_id, completion_id, completed_at, task_instance_id, task_id_snapshot,
          task_name_snapshot, student_id, student_name_snapshot, reward_snapshot,
          balance_before, balance_after, status, note, cycle_id, cycle_start_at, cycle_end_at,
-         rule_version, timezone, source, assignment_id, schema_version, created_at)
+         rule_version, timezone, source, assignment_id, admin_operation_id,
+         admin_operation_hash, schema_version, created_at)
        SELECT tenant_id, 'schedule-red-completion', $3, task_instance_id, task_id_snapshot,
          '과제', student_id, '하나', 0, 0, 0, 'COMPLETED', NULL, cycle_id,
-         cycle_start_at, cycle_end_at, rule_version, timezone, 'CARRY_FORWARD',
-         assignment_id, 1, $3
+         cycle_start_at, cycle_end_at, rule_version, timezone, 'ADMIN',
+         assignment_id, '00000000-0000-4000-8000-000000000101', $4, 1, $3
        FROM task_assignments
        WHERE tenant_id=$1 AND task_instance_id=$2
        ORDER BY event_sequence DESC LIMIT 1`,
-      [harness.tenantOneId, taskInstanceId, '2026-08-30T01:00:00.000Z'],
+      [harness.tenantOneId, taskInstanceId, '2026-08-30T01:00:00.000Z', HASH],
     );
 
     const editNow = new Date('2026-08-30T02:00:00.000Z');
@@ -359,16 +657,19 @@ describe('database task schedule command configuration boundary', () => {
       WHERE tenant_id=$1 AND operation_id='create-skipped-completer'`, [harness.tenantOneId]);
     const createOperationHash = (createOperation.rows[0] as { payload_hash: string }).payload_hash;
     const s2 = assignments.rows[1] as Record<string, unknown>;
+    await seedAssignmentOperation('00000000-0000-4000-8000-000000000102', HASH);
     await harness.database.query(`INSERT INTO task_completions
       (tenant_id, completion_id, completed_at, task_instance_id, task_id_snapshot,
        task_name_snapshot, student_id, student_name_snapshot, reward_snapshot,
        balance_before, balance_after, status, note, cycle_id, cycle_start_at, cycle_end_at,
-       rule_version, timezone, source, assignment_id, schema_version, created_at)
+       rule_version, timezone, source, assignment_id, admin_operation_id,
+       admin_operation_hash, schema_version, created_at)
       VALUES ($1, 'historical-s2-completion', '2026-08-30T01:10:00.000Z', $2, 'TASK-SKIP',
        'skip', 'S002', '둘', 0, 5, 5, 'COMPLETED', NULL, $3, $4, $5, 1,
-       'Asia/Seoul', 'CARRY_FORWARD', $6, 1, '2026-08-30T01:10:00.000Z')`,
+       'Asia/Seoul', 'ADMIN', $6, '00000000-0000-4000-8000-000000000102', $7,
+       1, '2026-08-30T01:10:00.000Z')`,
     [harness.tenantOneId, instance, s2.cycle_id, s2.cycle_start_at, s2.cycle_end_at,
-      s2.assignment_id]);
+      s2.assignment_id, HASH]);
     await harness.database.query(`INSERT INTO task_assignments
       (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id, cycle_start_at,
        cycle_end_at, rule_version, timezone, student_id, event_type, source,

@@ -17,6 +17,9 @@ import type { TenantTransaction } from '@/server/db/transaction';
 import { isoString, safeInteger } from './queryProjection';
 import { readDatabaseTasks } from './taskQueries';
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const SHA256 = /^[0-9a-f]{64}$/;
+
 export type TaskCycleLedgerSnapshot = Readonly<{
   assignments: TaskAssignment[];
   completions: TaskCompletion[];
@@ -228,8 +231,11 @@ async function readLedgerSnapshot(
                'timezone', timezone,
                'source', source,
                'assignment_id', assignment_id,
+               'transaction_id', transaction_id,
                'operation_id', operation_id,
                'operation_hash', operation_hash,
+               'admin_operation_id', admin_operation_id,
+               'admin_operation_hash', admin_operation_hash,
                'schema_version', schema_version,
                'evidence_provider', evidence_provider,
                'evidence_board_id', evidence_board_id,
@@ -426,6 +432,10 @@ function projectCompletion(row: CompletionRow): TaskCompletion {
   if (operationValues.filter((value) => value !== null).length === 1) {
     throw new Error('Task completion operation ID and hash must be paired.');
   }
+  const adminOperationValues = [row.admin_operation_id, row.admin_operation_hash];
+  if (adminOperationValues.filter((value) => value !== null).length === 1) {
+    throw new Error('Task completion administrator operation ID and hash must be paired.');
+  }
   const evidenceValues = [
     row.evidence_provider, row.evidence_board_id, row.evidence_post_id,
     row.evidence_created_at, row.evidence_author_full_name,
@@ -462,6 +472,7 @@ function projectCompletion(row: CompletionRow): TaskCompletion {
       throw new Error('Task completion cycle window is invalid.');
     }
     const hasOperation = row.operation_id !== null && row.operation_hash !== null;
+    const hasAdminOperation = row.admin_operation_id !== null && row.admin_operation_hash !== null;
     if (source === 'BANK') {
       const expectedBalance = balanceBefore + reward;
       if (storedStatus !== 'COMPLETED'
@@ -476,9 +487,12 @@ function projectCompletion(row: CompletionRow): TaskCompletion {
         || !/^[0-9a-f]{64}$/.test(row.operation_hash)) {
         throw new Error('BANK task completion operation metadata is invalid.');
       }
+    } else if (source === 'ADMIN_RESET') {
+      assertAdminResetWriterShape(row, {
+        reward, balanceBefore, balanceAfter, storedStatus, hasOperation, hasAdminOperation,
+      });
     } else {
-      const requiredStatus = source === 'ADMIN_RESET' ? 'CANCELLED' : 'COMPLETED';
-      if (storedStatus !== requiredStatus || reward !== 0 || balanceBefore !== balanceAfter) {
+      if (storedStatus !== 'COMPLETED' || reward !== 0 || balanceBefore !== balanceAfter) {
         throw new Error(`${source} task completion writer shape is invalid.`);
       }
       if (hasOperation) {
@@ -499,8 +513,8 @@ function projectCompletion(row: CompletionRow): TaskCompletion {
     completion.assignmentId = canonicalRequiredString(row.assignment_id, 'Task completion assignment ID');
   }
   if (row.operation_id !== null && row.operation_hash !== null) {
-    if (!hasCycle || completion.source !== 'BANK') {
-      throw new Error('Task completion operation metadata requires a BANK cycle event.');
+    if (!hasCycle || (completion.source !== 'BANK' && completion.source !== 'ADMIN_RESET')) {
+      throw new Error('Task completion operation metadata requires a BANK or cancellation reset event.');
     }
     completion.operationId = canonicalRequiredString(row.operation_id, 'Task completion operation ID');
     completion.operationPayloadHash = canonicalRequiredString(
@@ -530,6 +544,37 @@ function projectCompletion(row: CompletionRow): TaskCompletion {
     }
   }
   return completion;
+}
+
+function assertAdminResetWriterShape(
+  row: CompletionRow,
+  shape: Readonly<{
+    reward: number;
+    balanceBefore: number;
+    balanceAfter: number;
+    storedStatus: string;
+    hasOperation: boolean;
+    hasAdminOperation: boolean;
+  }>,
+): void {
+  const { reward, balanceBefore, balanceAfter, storedStatus, hasOperation, hasAdminOperation } = shape;
+  if (storedStatus !== 'CANCELLED') {
+    throw new Error('ADMIN_RESET task completion writer shape is invalid.');
+  }
+  const administrator = !hasOperation && hasAdminOperation
+    && row.transaction_id === null && reward === 0 && balanceBefore === balanceAfter
+    && typeof row.admin_operation_id === 'string' && UUID.test(row.admin_operation_id)
+    && typeof row.admin_operation_hash === 'string' && SHA256.test(row.admin_operation_hash);
+  const expectedAfter = balanceBefore - reward;
+  const cancellation = hasOperation && !hasAdminOperation && reward > 0
+    && Number.isSafeInteger(expectedAfter) && balanceAfter === expectedAfter
+    && typeof row.operation_id === 'string' && UUID.test(row.operation_id)
+    && typeof row.operation_hash === 'string' && SHA256.test(row.operation_hash)
+    && row.completion_id === `task-completion-cancellation:${row.operation_id}`
+    && row.transaction_id === `cancellation:${row.operation_id}`;
+  if (administrator === cancellation) {
+    throw new Error('ADMIN_RESET requires exactly one administrator or cancellation operation binding.');
+  }
 }
 
 function assertSchemaVersion(value: unknown, label: string): void {
