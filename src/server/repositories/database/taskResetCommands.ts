@@ -135,10 +135,11 @@ export function createDatabaseTaskResetCommands(dependencies: DatabaseTaskResetC
           .sort(compareCanonical);
         const initial = await readCompletions(tx, dependencies.tenantId, instances, true);
         validateCompletionSet(initial, tasks);
-        const initialTransactionGraph = await validateCompletionReferences(tx,
-          dependencies.tenantId, initial);
         const initialAssignments = await readAssignments(tx, dependencies.tenantId, instances, true);
         validateAssignmentSet(initialAssignments, tasks);
+        validateCompletionAssignments(initial, initialAssignments);
+        const initialTransactionGraph = await validateCompletionReferences(tx,
+          dependencies.tenantId, initial, initialAssignments);
         const completionStudentIds = [...new Set(initial.map((event) => event.student_id))]
           .sort(compareCanonical);
         const initialAccounts = await readAccounts(tx, dependencies.tenantId, completionStudentIds, true);
@@ -181,11 +182,9 @@ export function createDatabaseTaskResetCommands(dependencies: DatabaseTaskResetC
         })).sort((left, right) => compareCanonical(left.taskId, right.taskId));
         const result = freezeResult({ taskIds: [...input.taskIds],
           resetEventsAppended: latest.length, deletedCount: latest.length });
-        await verifyComplete(tx, dependencies.tenantId, tasks, expected, result,
+        await verifyComplete(tx, dependencies.tenantId, tasks, expected, initialAssignments, result,
           input.operationId, payloadHash, now, initialTransactionGraph, 'pre-audit');
         await assertTaskSnapshots(tx, dependencies.tenantId, tasks, 'pre-audit');
-        await assertAssignmentSnapshots(tx, dependencies.tenantId, tasks, initialAssignments,
-          'pre-audit');
         await assertAccountSnapshots(tx, dependencies.tenantId, completionStudentIds,
           initialAccounts, 'pre-audit');
         const audit = auditInput(input.operationId, result, identities, now);
@@ -200,11 +199,9 @@ export function createDatabaseTaskResetCommands(dependencies: DatabaseTaskResetC
         assertReturning(adapterRows(terminal, 'terminal operation rowset'), ['operation_id'],
           { operation_id: input.operationId }, 'terminal operation');
         await assertTaskSnapshots(tx, dependencies.tenantId, tasks, 'post-terminal');
-        await assertAssignmentSnapshots(tx, dependencies.tenantId, tasks, initialAssignments,
-          'post-terminal');
         await assertAccountSnapshots(tx, dependencies.tenantId, completionStudentIds,
           initialAccounts, 'post-terminal');
-        await verifyComplete(tx, dependencies.tenantId, tasks, expected, result,
+        await verifyComplete(tx, dependencies.tenantId, tasks, expected, initialAssignments, result,
           input.operationId, payloadHash, now, initialTransactionGraph, 'post-terminal');
         await assertOperationAudit(tx, dependencies.tenantId, audit);
         await assertAuditIdentities(tx, dependencies.tenantId, input.operationId, result,
@@ -259,7 +256,12 @@ async function replay(tx: TenantTransaction, tenantId: string, operation: Operat
   const instances = [...identities.keys()].sort(compareCanonical);
   const histories = await readCompletions(tx, tenantId, instances, false);
   validateCompletionIdentities(histories, identities);
-  if (!referencesAlreadyValidated) await validateCompletionReferences(tx, tenantId, histories);
+  if (!referencesAlreadyValidated) {
+    const assignments = await readAssignments(tx, tenantId, instances);
+    validateAssignmentIdentities(assignments, identities);
+    validateCompletionAssignments(histories, assignments);
+    await validateCompletionReferences(tx, tenantId, histories, assignments);
+  }
   const bound = histories.filter((event) => event.admin_operation_id === input.operationId);
   if (bound.length !== result.resetEventsAppended) {
     throw new Error('Task reset operation-bound event integrity check failed.');
@@ -310,13 +312,20 @@ function latestCurrentCompletions(history: readonly Completion[], tasks: Readonl
 }
 
 async function verifyComplete(tx: TenantTransaction, tenantId: string,
-  tasks: ReadonlyMap<string, Task>, expected: readonly Completion[], result: DatabaseTaskResetResult,
+  tasks: ReadonlyMap<string, Task>, expected: readonly Completion[],
+  expectedAssignments: readonly Assignment[], result: DatabaseTaskResetResult,
   operationId: string, payloadHash: string, now: Date, expectedGraph: TransactionGraph,
   phase: string) {
   const instances = [...tasks.values()].map((task) => task.task_instance_id).sort(compareCanonical);
   const actual = await readCompletions(tx, tenantId, instances, false);
   validateCompletionSet(actual, tasks);
-  await validateCompletionReferences(tx, tenantId, actual, expectedGraph, phase);
+  const assignments = await readAssignments(tx, tenantId, instances);
+  validateAssignmentSet(assignments, tasks);
+  if (snapshot(canonicalAssignments(assignments)) !== snapshot(canonicalAssignments(expectedAssignments))) {
+    throw new Error(`Task reset ${phase} assignment snapshot integrity check failed.`);
+  }
+  validateCompletionAssignments(actual, assignments);
+  await validateCompletionReferences(tx, tenantId, actual, assignments, expectedGraph, phase);
   if (snapshot(canonicalCompletions(actual)) !== snapshot(canonicalCompletions(expected))) {
     throw new Error('Task reset complete-state completion history integrity check failed.');
   }
@@ -419,15 +428,104 @@ function validateAssignmentSet(rows: readonly Assignment[], tasks: ReadonlyMap<s
     }
     assignmentIds.add(assignment.assignment_id); sequences.add(assignment.event_sequence);
   }
+  validateAssignmentChains(rows);
 }
 
-async function assertAssignmentSnapshots(tx: TenantTransaction, tenantId: string,
-  tasks: ReadonlyMap<string, Task>, expected: readonly Assignment[], phase: string) {
-  const instances = [...tasks.values()].map((task) => task.task_instance_id).sort(compareCanonical);
-  const actual = await readAssignments(tx, tenantId, instances);
-  validateAssignmentSet(actual, tasks);
-  if (snapshot(canonicalAssignments(actual)) !== snapshot(canonicalAssignments(expected))) {
-    throw new Error(`Task reset ${phase} assignment snapshot integrity check failed.`);
+function validateAssignmentIdentities(rows: readonly Assignment[],
+  identities: ReadonlyMap<string, string>) {
+  const assignmentIds = new Set<string>(); const sequences = new Set<number>();
+  for (const assignment of rows) {
+    if (identities.get(assignment.task_instance_id) !== assignment.task_id_snapshot
+      || assignmentIds.has(assignment.assignment_id) || sequences.has(assignment.event_sequence)) {
+      throw new Error('Task reset assignment snapshot identity integrity check failed.');
+    }
+    assignmentIds.add(assignment.assignment_id); sequences.add(assignment.event_sequence);
+  }
+  validateAssignmentChains(rows);
+}
+
+function validateAssignmentChains(rows: readonly Assignment[]) {
+  const failure = 'Task reset assignment source chain integrity check failed.';
+  const ordered = [...rows].sort((left, right) => left.event_sequence - right.event_sequence);
+  const byId = new Map(ordered.map((event) => [event.assignment_id, event]));
+  const local = new Map<string, Assignment[]>();
+  const subjects = new Map<string, Assignment[]>();
+  for (const event of ordered) {
+    const localKey = key(event.task_instance_id, event.task_id_snapshot, event.student_id,
+      event.cycle_id, String(event.cycle_start_at.getTime()), String(nullableTime(event.cycle_end_at)),
+      String(event.rule_version), event.timezone);
+    const subjectKey = key(event.task_instance_id, event.task_id_snapshot, event.student_id);
+    local.set(localKey, [...(local.get(localKey) ?? []), event]);
+    subjects.set(subjectKey, [...(subjects.get(subjectKey) ?? []), event]);
+  }
+  const immediateSubjectPrior = new Map<string, Assignment>();
+  for (const chain of subjects.values()) chain.forEach((event, index) => {
+    if (index > 0) immediateSubjectPrior.set(event.assignment_id, chain[index - 1]);
+  });
+  for (const chain of local.values()) chain.forEach((event, index) => {
+    const priorLocal = index > 0 ? chain[index - 1] : undefined;
+    if (event.source === 'LEGACY_SEED') {
+      if (event.event_type !== 'ASSIGNED' || event.previous_assignment_id !== null) {
+        throw new Error(failure);
+      }
+      return;
+    }
+    if (event.source === 'ADMIN' || event.source === 'QR') {
+      if (event.previous_assignment_id !== (priorLocal?.assignment_id ?? null)
+        || (!priorLocal && event.event_type !== 'ASSIGNED')
+        || (priorLocal !== undefined && priorLocal.created_at.getTime() > event.created_at.getTime())) {
+        throw new Error(failure);
+      }
+      return;
+    }
+    const predecessor = event.previous_assignment_id === null
+      ? undefined : byId.get(event.previous_assignment_id);
+    const immediate = immediateSubjectPrior.get(event.assignment_id);
+    const commonLink = predecessor !== undefined && predecessor === immediate
+      && predecessor.event_type === 'ASSIGNED'
+      && predecessor.task_instance_id === event.task_instance_id
+      && predecessor.task_id_snapshot === event.task_id_snapshot
+      && predecessor.student_id === event.student_id
+      && predecessor.created_at.getTime() <= event.created_at.getTime()
+      && predecessor.cycle_end_at !== null;
+    const naturalCarry = commonLink
+      && predecessor!.cycle_end_at!.getTime() <= event.cycle_start_at.getTime()
+      && predecessor!.cycle_start_at.getTime() < event.cycle_start_at.getTime()
+      && predecessor!.rule_version === event.rule_version;
+    const configurationCarry = commonLink
+      && predecessor!.cycle_end_at!.getTime() > event.cycle_start_at.getTime()
+      && predecessor!.cycle_start_at.getTime() <= event.cycle_start_at.getTime()
+      && predecessor!.rule_version < event.rule_version
+      && event.created_at.getTime() === event.cycle_start_at.getTime();
+    if (event.event_type !== 'ASSIGNED' || (!naturalCarry && !configurationCarry)) {
+      throw new Error(failure);
+    }
+  });
+}
+
+function validateCompletionAssignments(completions: readonly Completion[],
+  assignments: readonly Assignment[]) {
+  const byId = new Map<string, Assignment>();
+  for (const assignment of assignments) {
+    if (byId.has(assignment.assignment_id)) {
+      throw new Error('Task reset completion assignment integrity check failed.');
+    }
+    byId.set(assignment.assignment_id, assignment);
+  }
+  for (const completion of completions) {
+    const assignment = completion.assignment_id === null
+      ? undefined : byId.get(completion.assignment_id);
+    if (assignment === undefined || assignment.event_type !== 'ASSIGNED'
+      || assignment.task_instance_id !== completion.task_instance_id
+      || assignment.task_id_snapshot !== completion.task_id_snapshot
+      || assignment.student_id !== completion.student_id
+      || assignment.cycle_id !== completion.cycle_id
+      || assignment.cycle_start_at.getTime() !== completion.cycle_start_at?.getTime()
+      || nullableTime(assignment.cycle_end_at) !== nullableTime(completion.cycle_end_at)
+      || assignment.rule_version !== completion.rule_version
+      || assignment.timezone !== completion.timezone) {
+      throw new Error('Task reset completion assignment integrity check failed.');
+    }
   }
 }
 
@@ -624,7 +722,8 @@ function validateCompletionIdentities(rows: readonly Completion[], identities: R
 }
 
 async function validateCompletionReferences(tx: TenantTransaction, tenantId: string,
-  rows: readonly Completion[], expectedGraph?: TransactionGraph, phase = 'initial') {
+  rows: readonly Completion[], assignments: readonly Assignment[],
+  expectedGraph?: TransactionGraph, phase = 'initial') {
   const expectedOperations = new Map<string, { hash: string; kind: 'TASK_REWARD' | 'TASK_ADMIN' | 'CANCELLATION' }>();
   const expectedTransactions = new Map<string, { operationId: string; hash: string; kind: 'TASK_REWARD' | 'CANCELLATION' }>();
   for (const event of rows) {
@@ -638,6 +737,12 @@ async function validateCompletionReferences(tx: TenantTransaction, tenantId: str
     if (event.admin_operation_id !== null && event.admin_operation_hash !== null) {
       addReference(expectedOperations, event.admin_operation_id,
         { hash: event.admin_operation_hash, kind: 'TASK_ADMIN' });
+    }
+  }
+  for (const assignment of assignments) {
+    if (assignment.admin_operation_id !== null && assignment.admin_operation_hash !== null) {
+      addReference(expectedOperations, assignment.admin_operation_id,
+        { hash: assignment.admin_operation_hash, kind: 'TASK_ADMIN' });
     }
   }
   if (expectedOperations.size > 0) {

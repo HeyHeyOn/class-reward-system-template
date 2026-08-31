@@ -217,6 +217,15 @@ async function seedCancellationOnlyCompletionWithOriginalDependent() {
   ]);
 }
 
+async function seedAssignmentOperation(operationId: string, hash: string,
+  kind = 'TASK_ADMIN') {
+  await harness.database.query(`INSERT INTO operations
+    (tenant_id, operation_id, operation_kind, payload_hash, status, result_snapshot,
+     attempt_count, started_at, finished_at, created_at, updated_at)
+    VALUES ($1, $2, $3, $4, 'SUCCEEDED', '{}'::jsonb, 1, $5, $5, $5, $5)`,
+  [harness.tenantOneId, operationId, kind, hash, '2026-08-31T00:05:00.000Z']);
+}
+
 describe('migration 0010 task completion reset provenance', () => {
   it.each([
     ['no binding', null, null, null, null],
@@ -507,6 +516,165 @@ describe('database batch task completion reset command', () => {
 
     await expect(command().resetBatch({ operationId: OPERATION_ID,
       taskIds: ['TASK-001', 'TASK-002'] })).resolves.toMatchObject({ resetEventsAppended: 2 });
+  });
+
+  it('rejects a BANK completion repointed to a DB-valid assignment for another student atomically',
+    async () => {
+      await harness.database.query(`INSERT INTO students
+        (tenant_id, student_id, name, status, created_at, updated_at)
+        VALUES ($1, 'S003', '셋째 학생', 'ACTIVE', $2, $2)`,
+      [harness.tenantOneId, '2026-08-30T00:00:00.000Z']);
+      await harness.database.query(`INSERT INTO task_assignments
+        (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id,
+         cycle_start_at, cycle_end_at, rule_version, timezone, student_id, event_type,
+         source, previous_assignment_id, created_at, schema_version, note)
+        VALUES ($1, 'assignment:TASK-001:S003', 'TASK-001', 'INSTANCE-001', $2,
+          $3, $4, 1, 'Asia/Seoul', 'S003', 'ASSIGNED', 'LEGACY_SEED', NULL, $3, 1, NULL)`,
+      [harness.tenantOneId, 'v1|INSTANCE-001|r1|2026-08-31T00:00:00Z',
+        CURRENT_START, CURRENT_END]);
+      await harness.database.query(`ALTER TABLE task_completions
+        DISABLE TRIGGER task_completions_append_only`);
+      await harness.database.query(`UPDATE task_completions
+        SET assignment_id='assignment:TASK-001:S003'
+        WHERE tenant_id=$1 AND completion_id='completion:TASK-001:S001'`,
+      [harness.tenantOneId]);
+      const corrupted = await state();
+
+      await expect(command().resetBatch({ operationId: OPERATION_ID, taskIds: ['TASK-001'] }))
+        .rejects.toThrow(/completion.*assignment.*integrity/i);
+      expect(await state()).toEqual(corrupted);
+      expect((await state()).operations).toEqual([]);
+    });
+
+  it('rejects a CARRY_FORWARD assignment linked to an assignment of another task atomically',
+    async () => {
+      await harness.database.query(`INSERT INTO task_assignments
+        (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id,
+         cycle_start_at, cycle_end_at, rule_version, timezone, student_id, event_type,
+         source, previous_assignment_id, created_at, schema_version, note)
+        VALUES ($1, 'assignment:TASK-001:S001:bad-carry', 'TASK-001', 'INSTANCE-001', $2,
+          $3, $4, 2, 'Asia/Seoul', 'S001', 'ASSIGNED', 'CARRY_FORWARD',
+          'assignment:TASK-002:S002', $3, 1, 'cross-task carry')`,
+      [harness.tenantOneId, 'v1|INSTANCE-001|r2|2026-09-01T00:00:00Z',
+        '2026-09-01T00:00:00.000Z', '2026-09-02T00:00:00.000Z']);
+      const before = await state();
+
+      await expect(command().resetBatch({ operationId: OPERATION_ID, taskIds: ['TASK-001'] }))
+        .rejects.toThrow(/assignment.*(chain|integrity)/i);
+      expect(await state()).toEqual(before);
+      expect((await state()).operations).toEqual([]);
+    });
+
+  it('rejects malformed ADMIN/QR assignment operation binding and immediate predecessor chain',
+    async () => {
+      const operationId = 'abcdef00-0000-4000-8000-000000000681';
+      const operationHash = '8'.repeat(64);
+      await seedAssignmentOperation(operationId, operationHash);
+      await harness.database.query(`INSERT INTO task_assignments
+        (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id,
+         cycle_start_at, cycle_end_at, rule_version, timezone, student_id, event_type,
+         source, previous_assignment_id, admin_operation_id, admin_operation_hash,
+         created_at, schema_version, note) VALUES
+        ($1, 'assignment:TASK-001:S001:admin', 'TASK-001', 'INSTANCE-001', $2, $3, $4,
+          1, 'Asia/Seoul', 'S001', 'UNASSIGNED', 'ADMIN', 'assignment:TASK-001:S001',
+          $5, $6, $7, 1, 'admin'),
+        ($1, 'assignment:TASK-001:S001:qr', 'TASK-001', 'INSTANCE-001', $2, $3, $4,
+          1, 'Asia/Seoul', 'S001', 'ASSIGNED', 'QR', 'assignment:TASK-001:S001',
+          $5, $6, $8, 1, 'qr skip')`, [harness.tenantOneId,
+        'v1|INSTANCE-001|r1|2026-08-31T00:00:00Z', CURRENT_START, CURRENT_END,
+        operationId, operationHash, '2026-08-31T00:10:00.000Z',
+        '2026-08-31T00:20:00.000Z']);
+      const before = await state();
+
+      await expect(command().resetBatch({ operationId: OPERATION_ID, taskIds: ['TASK-001'] }))
+        .rejects.toThrow(/assignment.*(chain|integrity)/i);
+      expect(await state()).toEqual(before);
+    });
+
+  it('rejects a referenced ADMIN assignment operation whose kind is malformed set-wise', async () => {
+    const operationId = 'abcdef00-0000-4000-8000-000000000683';
+    const operationHash = 'b'.repeat(64);
+    await seedAssignmentOperation(operationId, operationHash);
+    await harness.database.query(`INSERT INTO task_assignments
+      (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id,
+       cycle_start_at, cycle_end_at, rule_version, timezone, student_id, event_type,
+       source, previous_assignment_id, admin_operation_id, admin_operation_hash,
+       created_at, schema_version, note)
+      VALUES ($1, 'assignment:TASK-001:S001:admin-kind', 'TASK-001', 'INSTANCE-001', $2,
+        $3, $4, 1, 'Asia/Seoul', 'S001', 'ASSIGNED', 'ADMIN',
+        'assignment:TASK-001:S001', $5, $6, $7, 1, 'admin kind')`, [harness.tenantOneId,
+      'v1|INSTANCE-001|r1|2026-08-31T00:00:00Z', CURRENT_START, CURRENT_END,
+      operationId, operationHash, '2026-08-31T00:10:00.000Z']);
+    const before = await state();
+    const run = observingRunner((sql, rows) => {
+      if (sql.startsWith('select operation_id, operation_kind, payload_hash')
+        && sql.includes('operation_id in (')) return rows.map((raw) =>
+        (raw as Record<string, unknown>).operation_id === operationId
+          ? { ...(raw as Record<string, unknown>), operation_kind: 'CANCELLATION' } : raw);
+      return rows;
+    });
+
+    await expect(command({ runTenantTransaction: run }).resetBatch({
+      operationId: OPERATION_ID, taskIds: ['TASK-001'],
+    })).rejects.toThrow(/referenced operation.*integrity/i);
+    expect(await state()).toEqual(before);
+  });
+
+  it('accepts a mixed LEGACY_SEED, ADMIN/QR, ordinary carry, and boundary carry chain', async () => {
+    const operationId = 'abcdef00-0000-4000-8000-000000000682';
+    const operationHash = 'a'.repeat(64);
+    await seedAssignmentOperation(operationId, operationHash);
+    await harness.database.query(`INSERT INTO task_assignments
+      (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id,
+       cycle_start_at, cycle_end_at, rule_version, timezone, student_id, event_type,
+       source, previous_assignment_id, admin_operation_id, admin_operation_hash,
+       created_at, schema_version, note) VALUES
+      ($1, 'assignment:TASK-001:S001:admin', 'TASK-001', 'INSTANCE-001', $2, $3, $4,
+        1, 'Asia/Seoul', 'S001', 'UNASSIGNED', 'ADMIN', 'assignment:TASK-001:S001',
+        $5, $6, $7, 1, 'admin'),
+      ($1, 'assignment:TASK-001:S001:qr', 'TASK-001', 'INSTANCE-001', $2, $3, $4,
+        1, 'Asia/Seoul', 'S001', 'ASSIGNED', 'QR', 'assignment:TASK-001:S001:admin',
+        $5, $6, $8, 1, 'qr'),
+      ($1, 'assignment:TASK-001:S001:natural', 'TASK-001', 'INSTANCE-001', $9, $10, $11,
+        1, 'Asia/Seoul', 'S001', 'ASSIGNED', 'CARRY_FORWARD',
+        'assignment:TASK-001:S001:qr', NULL, NULL, $10, 1, 'natural carry'),
+      ($1, 'assignment:TASK-001:S001:boundary', 'TASK-001', 'INSTANCE-001', $12, $13, $14,
+        2, 'Asia/Seoul', 'S001', 'ASSIGNED', 'CARRY_FORWARD',
+        'assignment:TASK-001:S001:natural', NULL, NULL, $13, 1, 'boundary carry')`, [
+      harness.tenantOneId, 'v1|INSTANCE-001|r1|2026-08-31T00:00:00Z', CURRENT_START,
+      CURRENT_END, operationId, operationHash, '2026-08-31T00:10:00.000Z',
+      '2026-08-31T00:20:00.000Z', 'v1|INSTANCE-001|r1|2026-09-01T00:00:00Z',
+      '2026-09-01T00:00:00.000Z', '2026-09-02T00:00:00.000Z',
+      'v1|INSTANCE-001|r2|2026-09-01T00:00:00Z', '2026-09-01T00:00:00.000Z',
+      '2026-09-02T00:00:00.000Z']);
+
+    await expect(command().resetBatch({ operationId: OPERATION_ID, taskIds: ['TASK-001'] }))
+      .resolves.toMatchObject({ resetEventsAppended: 1 });
+  });
+
+  it('validates assignment source chains independently of adapter row order', async () => {
+    const operationId = 'abcdef00-0000-4000-8000-000000000684';
+    const operationHash = 'c'.repeat(64);
+    await seedAssignmentOperation(operationId, operationHash);
+    await harness.database.query(`INSERT INTO task_assignments
+      (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id,
+       cycle_start_at, cycle_end_at, rule_version, timezone, student_id, event_type,
+       source, previous_assignment_id, admin_operation_id, admin_operation_hash,
+       created_at, schema_version, note) VALUES
+      ($1, 'assignment:TASK-001:S001:order-admin', 'TASK-001', 'INSTANCE-001', $2, $3, $4,
+        1, 'Asia/Seoul', 'S001', 'UNASSIGNED', 'ADMIN', 'assignment:TASK-001:S001',
+        $5, $6, $7, 1, 'order admin'),
+      ($1, 'assignment:TASK-001:S001:order-qr', 'TASK-001', 'INSTANCE-001', $2, $3, $4,
+        1, 'Asia/Seoul', 'S001', 'ASSIGNED', 'QR', 'assignment:TASK-001:S001:order-admin',
+        $5, $6, $8, 1, 'order qr')`, [harness.tenantOneId,
+      'v1|INSTANCE-001|r1|2026-08-31T00:00:00Z', CURRENT_START, CURRENT_END,
+      operationId, operationHash, '2026-08-31T00:10:00.000Z',
+      '2026-08-31T00:20:00.000Z']);
+    const run = observingRunner((statement, rows) => statement.startsWith('select ')
+      && statement.includes('from task_assignments') ? [...rows].reverse() : rows);
+    await expect(command({ runTenantTransaction: run }).resetBatch({
+      operationId: OPERATION_ID, taskIds: ['TASK-001'],
+    })).resolves.toMatchObject({ resetEventsAppended: 1 });
   });
 
   it('rejects a referenced operation whose set-wise evidence has the wrong kind', async () => {
