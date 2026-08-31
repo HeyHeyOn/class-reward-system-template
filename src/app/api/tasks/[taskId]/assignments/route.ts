@@ -1,6 +1,7 @@
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
-import { createConfiguredSheetsReader, createConfiguredSheetsStore } from '@/server/googleSheets';
-import { getTaskAssignmentStatus, updateTaskAssignmentStatus } from '@/server/sheetsRepository';
+import { createConfiguredSheetsStore } from '@/server/googleSheets';
+import { updateTaskAssignmentStatus } from '@/server/sheetsRepository';
+import { createConfiguredTaskReader } from '@/server/repositories/configuredTasks';
 
 type RouteContext = { params: Promise<{ taskId: string }> };
 const INVALID_ASSIGNMENT_REQUEST = '과제 부여 요청 형식이 올바르지 않습니다.';
@@ -13,8 +14,8 @@ export async function GET(request: Request, context: RouteContext) {
 
   try {
     const { taskId } = await context.params;
-    const reader = await createConfiguredSheetsReader(request);
-    const status = await getTaskAssignmentStatus(reader, decodeURIComponent(taskId));
+    const reader = await createConfiguredTaskReader(request);
+    const status = await reader.getTaskAssignmentStatus(decodeURIComponent(taskId));
     return Response.json(status);
   } catch (error) {
     const message = error instanceof Error ? error.message : '과제 부여 상태를 불러오지 못했습니다.';

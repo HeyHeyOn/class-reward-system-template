@@ -934,4 +934,47 @@ describe('database task cycle queries', () => {
     await seed();
     await expect(queries().getTaskCompletions()).rejects.toThrow();
   });
+
+  it('offers the exact task-list projection in one tenant snapshot', async () => {
+    await seedLiveTask();
+    let snapshots = 0;
+    const runTenantSnapshot: DatabaseTaskCycleQueryDependencies['runTenantSnapshot'] = (tenantId, callback) => {
+      snapshots += 1;
+      return harness.runTenantTransaction(tenantId, callback);
+    };
+
+    const result = await queries({ runTenantSnapshot }).listTaskCycleProjections({
+      studentId: 'S1', now: '2026-08-10T00:00:00.000Z',
+    });
+
+    expect(snapshots).toBe(1);
+    expect(result).toEqual([expect.objectContaining({
+      taskId: 'LIVE',
+      studentStatus: expect.objectContaining({ studentId: 'S1', assigned: true, completed: false }),
+      currentCycle: expect.objectContaining({ students: [expect.objectContaining({ studentId: 'S1' })] }),
+    })]);
+  });
+
+  it('offers exact nullable single-task projection and active-student assignment status', async () => {
+    await seedLiveTask();
+    await harness.database.query(`INSERT INTO students
+      (tenant_id, student_id, name, status, created_at, updated_at)
+      VALUES ($1, 'S2', '학생 둘', 'ACTIVE', $2, $2),
+             ($1, 'S10', '학생 열', 'ACTIVE', $2, $2)`,
+    [harness.tenantOneId, '2026-08-01T00:00:00.000Z']);
+    const now = '2026-08-10T00:00:00.000Z';
+
+    await expect(queries().getTaskCycleProjection('MISSING', { now })).resolves.toBeNull();
+    await expect(queries().getTaskCycleProjection('LIVE', { studentId: 'S1', now }))
+      .resolves.toEqual(expect.objectContaining({ taskId: 'LIVE', currentCycle: expect.any(Object) }));
+    const assignmentStatus = await queries().getTaskAssignmentStatus('LIVE', now);
+    expect(assignmentStatus).toEqual(expect.objectContaining({
+      taskId: 'LIVE',
+      students: [expect.objectContaining({
+        studentId: 'S1', name: '학생 하나', assigned: true, completed: false,
+        assignmentOrigin: 'LEGACY', completionOrigin: 'DEFAULT',
+      }), expect.objectContaining({ studentId: 'S2' }), expect.objectContaining({ studentId: 'S10' })],
+    }));
+    expect(assignmentStatus.students.map((student) => student.studentId)).toEqual(['S1', 'S2', 'S10']);
+  });
 });

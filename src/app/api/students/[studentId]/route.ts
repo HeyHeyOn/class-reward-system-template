@@ -1,6 +1,7 @@
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
-import { createConfiguredSheetsReader, createConfiguredSheetsStore } from '@/server/googleSheets';
-import { deleteStudent, getStudentById, updateStudentDetails } from '@/server/sheetsRepository';
+import { createConfiguredSheetsStore } from '@/server/googleSheets';
+import { createConfiguredStudentReader } from '@/server/repositories/configuredStudents';
+import { deleteStudent, updateStudentDetails } from '@/server/sheetsRepository';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,8 +12,8 @@ type RouteContext = {
 export async function GET(request: Request, context: RouteContext) {
   try {
     const { studentId } = await context.params;
-    const reader = await createConfiguredSheetsReader();
-    const student = await getStudentById(reader, decodeURIComponent(studentId));
+    const reader = await createConfiguredStudentReader();
+    const student = await reader.getStudentById(decodeURIComponent(studentId));
 
     if (!student) {
       return Response.json({ error: '학생을 찾을 수 없습니다.' }, { status: 404 });

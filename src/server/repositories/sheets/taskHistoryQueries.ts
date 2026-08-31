@@ -1,12 +1,13 @@
 import {
-  buildTaskCurrentCycleStatusDto,
   buildTaskHistoryDetailDto,
   buildTaskHistoryListDto,
-  type TaskCurrentCycleStatusDto,
+
   type TaskHistoryDetailDto,
   type TaskHistoryListDto,
 } from '@/domain/taskHistoryDtos';
 import type { ClassTask } from '@/domain/types';
+import { buildTaskCycleProjection, type TaskCycleProjectionDto,
+  type TaskStudentCurrentCycleDto } from '@/server/taskReadProjection';
 import { getTaskById, getTasks, type SheetsReader } from '@/server/sheetsRepository';
 import {
   loadTaskCycleLedgerSnapshot,
@@ -15,18 +16,7 @@ import {
   type TaskCycleLedgerSnapshot,
 } from './taskCycleQueries';
 
-export type TaskStudentCurrentCycleDto = {
-  studentId: string;
-  assigned: boolean;
-  completed: boolean;
-  assignmentOrigin: 'EVENT' | 'CARRY' | 'LEGACY' | 'DEFAULT';
-  completionOrigin: 'EVENT' | 'CARRY' | 'LEGACY' | 'DEFAULT';
-};
-
-export type TaskCycleProjectionDto = ClassTask & {
-  currentCycle: TaskCurrentCycleStatusDto;
-  studentStatus?: TaskStudentCurrentCycleDto;
-};
+export type { TaskCycleProjectionDto, TaskStudentCurrentCycleDto };
 
 /** Reader-only projection: no migration, materialization, or ledger mutation. */
 export async function getTaskCycleProjection(
@@ -44,21 +34,7 @@ function projectTaskCycleProjectionFromSnapshot(
   snapshot: TaskCycleLedgerSnapshot,
 ): TaskCycleProjectionDto {
   const state = projectTaskCycleStateFromSnapshot(task, options.now ?? new Date().toISOString(), snapshot);
-  const studentId = options.studentId;
-  const student = studentId ? state.students[studentId] : undefined;
-  return {
-    ...task,
-    currentCycle: buildTaskCurrentCycleStatusDto(state),
-    ...(studentId ? {
-      studentStatus: {
-        studentId,
-        assigned: student?.assigned ?? false,
-        completed: student?.completed ?? false,
-        assignmentOrigin: student?.assignmentOrigin ?? 'DEFAULT',
-        completionOrigin: student?.completionOrigin ?? 'DEFAULT',
-      },
-    } : {}),
-  };
+  return buildTaskCycleProjection(task, state, options.studentId);
 }
 
 export async function listTaskCycleProjections(

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { isAuthorizedAdminRequest } from '@/server/apiAuth';
 import { createConfiguredSheetsStore, verifySpreadsheetAccess } from '@/server/googleSheets';
 import { getAppSettings, saveAppSettings } from '@/server/settings';
+import { createConfiguredSettingsReader } from '@/server/repositories/configuredSettings';
 import { GET, PATCH, POST } from './route';
 
 vi.mock('@/server/apiAuth', () => ({
@@ -16,6 +17,7 @@ vi.mock('@/server/settings', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/server/settings')>();
   return { ...actual, getAppSettings: vi.fn(), saveAppSettings: vi.fn() };
 });
+vi.mock('@/server/repositories/configuredSettings', () => ({ createConfiguredSettingsReader: vi.fn() }));
 
 describe('/api/settings Seoul-only policy', () => {
   beforeEach(() => {
@@ -25,20 +27,21 @@ describe('/api/settings Seoul-only policy', () => {
   });
 
   it('keeps GET read-only and reports the Seoul compatibility value', async () => {
-    const store = {};
-    vi.mocked(createConfiguredSheetsStore).mockResolvedValue(store as never);
-    vi.mocked(getAppSettings).mockResolvedValue({ classTimeZone: 'Asia/Seoul' } as never);
+    const settingsReader = { getAppSettings: vi.fn(async () => ({ classTimeZone: 'Asia/Seoul' })) };
+    vi.mocked(createConfiguredSettingsReader).mockResolvedValue(settingsReader as never);
     const request = new Request('http://localhost/api/settings');
 
     const response = await GET(request);
 
-    expect(createConfiguredSheetsStore).toHaveBeenCalledWith(request);
-    expect(getAppSettings).toHaveBeenCalledWith({ settingsReader: store });
+    expect(createConfiguredSettingsReader).toHaveBeenCalledWith(request);
+    expect(settingsReader.getAppSettings).toHaveBeenCalledOnce();
+    expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
+    expect(getAppSettings).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual({ classTimeZone: 'Asia/Seoul' });
   });
 
   it('returns a sanitized retryable status when GET cannot read settings', async () => {
-    vi.mocked(createConfiguredSheetsStore).mockRejectedValue(
+    vi.mocked(createConfiguredSettingsReader).mockRejectedValue(
       new Error('Google credential secret for Settings!A:Z'),
     );
 

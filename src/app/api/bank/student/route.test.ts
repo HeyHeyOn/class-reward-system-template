@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createConfiguredSheetsReader } from '@/server/googleSheets';
-import { confirmStudentLookup } from '@/server/studentLookup';
+import { createConfiguredBankReader } from '@/server/repositories/configuredBank';
 import { GET } from './route';
 
-vi.mock('@/server/googleSheets', () => ({ createConfiguredSheetsReader: vi.fn() }));
-vi.mock('@/server/studentLookup', () => ({ confirmStudentLookup: vi.fn() }));
+vi.mock('server-only', () => ({}));
+vi.mock('@/server/repositories/configuredBank', () => ({ createConfiguredBankReader: vi.fn() }));
+const confirmStudent = vi.fn();
 
 const invalidQueryError = { error: '올바른 학생 ID를 입력해 주세요.' };
 const missingStudentError = { error: '학생 정보를 찾을 수 없습니다.', code: 'STUDENT_NOT_FOUND' };
@@ -16,11 +16,11 @@ const unavailableError = {
 describe('GET /api/bank/student', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(createConfiguredSheetsReader).mockResolvedValue({} as never);
+    vi.mocked(createConfiguredBankReader).mockResolvedValue({ confirmStudent } as never);
   });
 
   it('returns exactly the student-safe DTO for one confirmed active student', async () => {
-    vi.mocked(confirmStudentLookup).mockResolvedValue({
+    confirmStudent.mockResolvedValue({
       status: 'FOUND',
       student: {
         studentId: '001-A', name: '김학생', balance: 999999, status: 'ACTIVE', internalNote: 'secret',
@@ -32,8 +32,8 @@ describe('GET /api/bank/student', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(createConfiguredSheetsReader).toHaveBeenCalledWith(request);
-    expect(confirmStudentLookup).toHaveBeenCalledWith(expect.anything(), '001-A');
+    expect(createConfiguredBankReader).toHaveBeenCalledWith(request);
+    expect(confirmStudent).toHaveBeenCalledWith('001-A');
     expect(body).toEqual({ studentId: '001-A', name: '김학생' });
     expect(Object.keys(body)).toEqual(['studentId', 'name']);
   });
@@ -48,12 +48,12 @@ describe('GET /api/bank/student', () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual(invalidQueryError);
-    expect(createConfiguredSheetsReader).not.toHaveBeenCalled();
-    expect(confirmStudentLookup).not.toHaveBeenCalled();
+    expect(createConfiguredBankReader).not.toHaveBeenCalled();
+    expect(confirmStudent).not.toHaveBeenCalled();
   });
 
   it.each(['NOT_FOUND', 'INACTIVE'] as const)('returns a confirmed safe 404 for %s', async (status) => {
-    vi.mocked(confirmStudentLookup).mockResolvedValue({ status });
+    confirmStudent.mockResolvedValue({ status });
 
     const response = await GET(new Request('http://localhost/api/bank/student?studentId=001'));
 
@@ -62,7 +62,7 @@ describe('GET /api/bank/student', () => {
   });
 
   it('returns a retryable 503 instead of not-found for unavailable or malformed student data', async () => {
-    vi.mocked(confirmStudentLookup).mockResolvedValue({ status: 'UNAVAILABLE' });
+    confirmStudent.mockResolvedValue({ status: 'UNAVAILABLE' });
 
     const response = await GET(new Request('http://localhost/api/bank/student?studentId=001'));
 
@@ -71,7 +71,7 @@ describe('GET /api/bank/student', () => {
   });
 
   it('returns a fixed safe 503 without leaking provider errors', async () => {
-    vi.mocked(createConfiguredSheetsReader).mockRejectedValue(
+    vi.mocked(createConfiguredBankReader).mockRejectedValue(
       new Error('Google Sheets credential secret and Students!A:Z'),
     );
 

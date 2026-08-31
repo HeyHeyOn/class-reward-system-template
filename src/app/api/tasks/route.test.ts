@@ -6,6 +6,7 @@ import { listTaskCycleProjections } from '@/server/repositories/sheets/taskHisto
 import { projectTaskCycleState } from '@/domain/taskCycleState';
 import type { ClassTask, TaskAssignment } from '@/domain/types';
 import { buildStudentTaskProjection } from '@/server/studentTaskProjection';
+import { createConfiguredTaskReader } from '@/server/repositories/configuredTasks';
 import { GET, POST } from './route';
 
 vi.mock('@/server/apiAuth', () => ({
@@ -15,6 +16,7 @@ vi.mock('@/server/apiAuth', () => ({
 vi.mock('@/server/googleSheets', () => ({ createConfiguredSheetsReader: vi.fn(), createConfiguredSheetsStore: vi.fn() }));
 vi.mock('@/server/sheetsRepository', () => ({ createTask: vi.fn() }));
 vi.mock('@/server/repositories/sheets/taskHistoryQueries', () => ({ listTaskCycleProjections: vi.fn() }));
+vi.mock('@/server/repositories/configuredTasks', () => ({ createConfiguredTaskReader: vi.fn() }));
 vi.mock('@/server/studentTaskProjection', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/server/studentTaskProjection')>();
   return { ...actual, buildStudentTaskProjection: vi.fn(actual.buildStudentTaskProjection) };
@@ -29,6 +31,24 @@ describe('GET /api/tasks', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(isAuthorizedAdminRequest).mockReturnValue(true);
+    vi.mocked(createConfiguredTaskReader).mockResolvedValue({
+      listTaskCycleProjections: (options: never) => listTaskCycleProjections({} as never, options),
+    } as never);
+  });
+
+  it('delegates GET reads to the configured task reader without opening Sheets directly', async () => {
+    const list = vi.fn(async () => projected);
+    vi.mocked(createConfiguredTaskReader).mockResolvedValue({ listTaskCycleProjections: list } as never);
+
+    const request = new Request('http://localhost/api/tasks');
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    expect(createConfiguredTaskReader).toHaveBeenCalledWith(request);
+    expect(list).toHaveBeenCalledWith({});
+    expect(createConfiguredSheetsReader).not.toHaveBeenCalled();
+    expect(listTaskCycleProjections).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual(projected);
   });
 
   it('rejects unauthenticated raw task projections before opening Sheets', async () => {
@@ -49,8 +69,9 @@ describe('GET /api/tasks', () => {
     const response = await GET(request);
 
     expect(response.status).toBe(200);
-    expect(createConfiguredSheetsReader).toHaveBeenCalledWith(request);
-    expect(listTaskCycleProjections).toHaveBeenCalledWith(reader, {});
+    expect(createConfiguredTaskReader).toHaveBeenCalledWith(request);
+    expect(createConfiguredSheetsReader).not.toHaveBeenCalled();
+    expect(listTaskCycleProjections).toHaveBeenCalledWith({}, {});
     await expect(response.json()).resolves.toEqual(projected);
   });
 
@@ -286,7 +307,7 @@ describe('GET /api/tasks', () => {
   });
 
   it('does not expose provider errors to unauthenticated student callers', async () => {
-    vi.mocked(createConfiguredSheetsReader).mockRejectedValue(new Error('Tasks!A:ZZ credential secret'));
+    vi.mocked(createConfiguredTaskReader).mockRejectedValue(new Error('Tasks!A:ZZ credential secret'));
     const response = await GET(new Request('http://localhost/api/tasks?studentId=S1'));
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({ error: '과제 목록을 불러오지 못했습니다.' });

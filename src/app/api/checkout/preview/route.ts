@@ -1,6 +1,5 @@
 import type { CartItem } from '@/domain/types';
-import { previewCheckoutCart } from '@/server/checkoutService';
-import { createConfiguredSheetsStore } from '@/server/googleSheets';
+import { createConfiguredCheckoutPreviewService } from '@/server/repositories/configuredCheckoutPreview';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,8 +15,8 @@ export async function POST(request: Request) {
   if (!validation.ok) return invalidCartResponse();
 
   try {
-    const store = await createConfiguredSheetsStore(request);
-    const result = await previewCheckoutCart(store, { items: validation.items });
+    const service = await createConfiguredCheckoutPreviewService(request);
+    const result = await service.previewCheckoutCart({ items: validation.items });
     if (!result.ok) {
       switch (result.code) {
         case 'PRICING_FAILED':

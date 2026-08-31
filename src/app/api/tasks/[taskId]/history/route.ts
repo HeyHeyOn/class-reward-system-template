@@ -1,6 +1,5 @@
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
-import { createConfiguredSheetsReader } from '@/server/googleSheets';
-import { getTaskHistoryDetail } from '@/server/repositories/sheets/taskHistoryQueries';
+import { createConfiguredTaskReader } from '@/server/repositories/configuredTasks';
 
 type RouteContext = { params: Promise<{ taskId: string }> };
 const INVALID_HISTORY_QUERY = '과제 기록 조회 요청 형식이 올바르지 않습니다.';
@@ -23,12 +22,12 @@ export async function GET(request: Request, context: RouteContext) {
     }
 
     const { taskId } = await context.params;
-    const reader = await createConfiguredSheetsReader(request);
+    const reader = await createConfiguredTaskReader(request);
     const filter = {
       taskId: decodeURIComponent(taskId),
       ...(taskInstanceIds.length === 1 ? { taskInstanceId: taskInstanceIds[0] } : {}),
     };
-    const detail = await getTaskHistoryDetail(reader, filter);
+    const detail = await reader.getTaskHistoryDetail(filter);
     if (!detail.currentLifecycle.taskDefinitionExists && detail.cumulativeHistory.eventCount === 0) {
       return Response.json({ error: '과제를 찾을 수 없습니다.' }, { status: 404 });
     }

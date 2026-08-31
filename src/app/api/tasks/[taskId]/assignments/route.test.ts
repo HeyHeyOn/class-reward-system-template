@@ -1,24 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createConfiguredSheetsReader, createConfiguredSheetsStore } from '@/server/googleSheets';
 import { getTaskAssignmentStatus, updateTaskAssignmentStatus } from '@/server/sheetsRepository';
+import { createConfiguredTaskReader } from '@/server/repositories/configuredTasks';
 import { GET, PATCH } from './route';
 
 vi.mock('@/server/apiAuth', () => ({ isAuthorizedAdminRequest: () => true, unauthorizedAdminResponse: () => new Response(null, { status: 401 }) }));
 vi.mock('@/server/googleSheets', () => ({ createConfiguredSheetsReader: vi.fn(), createConfiguredSheetsStore: vi.fn() }));
 vi.mock('@/server/sheetsRepository', () => ({ getTaskAssignmentStatus: vi.fn(), updateTaskAssignmentStatus: vi.fn() }));
+vi.mock('@/server/repositories/configuredTasks', () => ({ createConfiguredTaskReader: vi.fn() }));
 
 describe('PATCH /api/tasks/[taskId]/assignments', () => {
   beforeEach(() => vi.clearAllMocks());
   afterEach(() => vi.restoreAllMocks());
 
   it('returns the optional physical assignment source from the write-free GET query', async () => {
-    const reader = {};
-    vi.mocked(createConfiguredSheetsReader).mockResolvedValue(reader as never);
-    vi.mocked(getTaskAssignmentStatus).mockResolvedValue({
+    const status = {
       taskId: 'T1',
-      students: [{ studentId: 'S1', name: 'Student', assigned: true, completed: false, assignmentSource: 'QR' }],
-    });
-    const response = await GET(new Request('http://localhost/api/tasks/T1/assignments'), {
+      students: [{ studentId: 'S1', name: 'Student', assigned: true, completed: false, assignmentSource: 'QR' as const }],
+    };
+    const getStatus = vi.fn(async () => status);
+    vi.mocked(createConfiguredTaskReader).mockResolvedValue({ getTaskAssignmentStatus: getStatus } as never);
+    const request = new Request('http://localhost/api/tasks/T1/assignments');
+    const response = await GET(request, {
       params: Promise.resolve({ taskId: 'T1' }),
     });
 
@@ -26,7 +29,10 @@ describe('PATCH /api/tasks/[taskId]/assignments', () => {
     await expect(response.json()).resolves.toMatchObject({
       students: [{ studentId: 'S1', assignmentSource: 'QR' }],
     });
-    expect(getTaskAssignmentStatus).toHaveBeenCalledWith(reader, 'T1');
+    expect(createConfiguredTaskReader).toHaveBeenCalledWith(request);
+    expect(getStatus).toHaveBeenCalledWith('T1');
+    expect(createConfiguredSheetsReader).not.toHaveBeenCalled();
+    expect(getTaskAssignmentStatus).not.toHaveBeenCalled();
     expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
   });
 

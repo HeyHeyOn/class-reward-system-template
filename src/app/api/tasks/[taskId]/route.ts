@@ -1,7 +1,7 @@
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
-import { createConfiguredSheetsReader, createConfiguredSheetsStore } from '@/server/googleSheets';
-import { deleteTask, getTaskById, updateTaskDetails, updateTaskSchedule, updateTaskScheduleSettings } from '@/server/sheetsRepository';
-import { getTaskCycleProjection } from '@/server/repositories/sheets/taskHistoryQueries';
+import { createConfiguredSheetsStore } from '@/server/googleSheets';
+import { deleteTask, updateTaskDetails, updateTaskSchedule, updateTaskScheduleSettings } from '@/server/sheetsRepository';
+import { createConfiguredTaskReader } from '@/server/repositories/configuredTasks';
 import { parseOptionalTaskScheduleEdit } from '../taskScheduleEdit';
 import { parseStrictTaskFields } from '../taskPayload';
 
@@ -27,13 +27,12 @@ export async function GET(request: Request, context: RouteContext) {
       return Response.json({ error: '과제 조회 요청 형식이 올바르지 않습니다.' }, { status: 400 });
     }
     const { taskId } = await context.params;
-    const reader = await createConfiguredSheetsReader(request);
-    const task = await getTaskById(reader, decodeURIComponent(taskId));
-    if (!task || !task.isActive) return Response.json({ error: '과제를 찾을 수 없습니다.' }, { status: 404 });
-    const projected = await getTaskCycleProjection(reader, task, {
+    const reader = await createConfiguredTaskReader(request);
+    const task = await reader.getTaskCycleProjection(decodeURIComponent(taskId), {
       ...(studentIds.length === 1 ? { studentId: studentIds[0].trim() } : {}),
     });
-    return Response.json(projected);
+    if (!task || !task.isActive) return Response.json({ error: '과제를 찾을 수 없습니다.' }, { status: 404 });
+    return Response.json(task);
   } catch (error) {
     const message = error instanceof Error ? error.message : '과제를 불러오지 못했습니다.';
     return Response.json({ error: message }, { status: 500 });

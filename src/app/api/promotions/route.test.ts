@@ -3,6 +3,7 @@ import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/ap
 import { createConfiguredSheetsReader, createConfiguredSheetsStore } from '@/server/googleSheets';
 import { createPromotion, replacePromotionProducts } from '@/server/repositories/sheets/promotionCommands';
 import { getPromotions } from '@/server/repositories/sheets/promotionQueries';
+import { createConfiguredCatalogReader } from '@/server/repositories/configuredCatalog';
 import { GET, POST } from './route';
 
 vi.mock('@/server/apiAuth', () => ({
@@ -14,6 +15,7 @@ vi.mock('@/server/googleSheets', () => ({
   createConfiguredSheetsStore: vi.fn(),
 }));
 vi.mock('@/server/repositories/sheets/promotionQueries', () => ({ getPromotions: vi.fn() }));
+vi.mock('@/server/repositories/configuredCatalog', () => ({ createConfiguredCatalogReader: vi.fn() }));
 vi.mock('@/server/repositories/sheets/promotionCommands', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/server/repositories/sheets/promotionCommands')>(),
   createPromotion: vi.fn(),
@@ -43,7 +45,7 @@ describe('GET /api/promotions', () => {
     vi.mocked(isAuthorizedAdminRequest).mockReturnValue(true);
   });
 
-  it('rejects unauthorized requests without opening Sheets or querying', async () => {
+  it('rejects unauthorized requests without resolving a catalog', async () => {
     vi.mocked(isAuthorizedAdminRequest).mockReturnValue(false);
     const request = new Request('http://localhost/api/promotions');
 
@@ -53,30 +55,34 @@ describe('GET /api/promotions', () => {
     expect(unauthorizedAdminResponse).toHaveBeenCalledOnce();
     expect(createConfiguredSheetsReader).not.toHaveBeenCalled();
     expect(getPromotions).not.toHaveBeenCalled();
+    expect(createConfiguredCatalogReader).not.toHaveBeenCalled();
   });
 
-  it('uses the request-aware reader and returns every deterministic joined row', async () => {
+  it('uses the configured catalog and returns every deterministic joined row', async () => {
     const request = new Request('http://localhost/api/promotions');
-    const reader = {};
+
     const rows = [
       { promotionId: 'P1', isActive: false, productIds: ['B', 'A'] },
       { promotionId: 'P2', isActive: true, productIds: [] },
     ];
-    vi.mocked(createConfiguredSheetsReader).mockResolvedValue(reader as never);
-    vi.mocked(getPromotions).mockResolvedValue(rows as never);
+    const catalog = { getPromotions: vi.fn(async () => rows) };
+    vi.mocked(createConfiguredCatalogReader).mockResolvedValue(catalog as never);
 
     const response = await GET(request);
 
     expect(response.status).toBe(200);
-    expect(createConfiguredSheetsReader).toHaveBeenCalledWith(request);
-    expect(getPromotions).toHaveBeenCalledWith(reader);
+    expect(createConfiguredCatalogReader).toHaveBeenCalledWith(request);
+    expect(catalog.getPromotions).toHaveBeenCalledOnce();
+    expect(createConfiguredSheetsReader).not.toHaveBeenCalled();
+    expect(getPromotions).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual(rows);
   });
 
   it('returns a safe 500 when a query fails without leaking schema details', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    vi.mocked(createConfiguredSheetsReader).mockResolvedValue({} as never);
-    vi.mocked(getPromotions).mockRejectedValue(new Error('Promotions 시트에 필수 컬럼이 없습니다: type'));
+    vi.mocked(createConfiguredCatalogReader).mockRejectedValue(
+      new Error('Promotions storage has invalid schema detail'),
+    );
 
     const response = await GET(new Request('http://localhost/api/promotions'));
 

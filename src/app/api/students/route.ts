@@ -1,13 +1,14 @@
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
-import { createConfiguredSheetsReader, createConfiguredSheetsStore } from '@/server/googleSheets';
-import { createStudent, getStudents } from '@/server/sheetsRepository';
+import { createConfiguredSheetsStore } from '@/server/googleSheets';
+import { createConfiguredStudentReader } from '@/server/repositories/configuredStudents';
+import { createStudent } from '@/server/sheetsRepository';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const reader = await createConfiguredSheetsReader();
-    const students = await getStudents(reader);
+    const reader = await createConfiguredStudentReader();
+    const students = await reader.getStudents();
 
     return Response.json(students);
   } catch (error) {

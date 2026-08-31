@@ -12,10 +12,13 @@ import {
   type TaskHistoryDetailDto,
   type TaskHistoryListDto,
 } from '@/domain/taskHistoryDtos';
-import type { ClassTask, TaskAssignment, TaskCompletion } from '@/domain/types';
+import type { ClassTask, TaskAssignment, TaskAssignmentStatus, TaskCompletion } from '@/domain/types';
 import type { TenantTransaction } from '@/server/db/transaction';
+import { buildBankTaskProjection, buildTaskCycleProjection,
+  type BankTaskDto, type TaskCycleProjectionDto } from '@/server/taskReadProjection';
 import { isoString, safeInteger } from './queryProjection';
 import { readDatabaseTasks } from './taskQueries';
+import { readDatabaseActiveStudentIdentities } from './studentQueries';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -64,6 +67,77 @@ export function createDatabaseTaskCycleQueries(
           'presentation',
         )).completions,
       );
+    },
+    async listTaskCycleProjections(options: {
+      studentId?: string; includeInactive?: boolean; now?: string;
+    } = {}): Promise<TaskCycleProjectionDto[]> {
+      const now = projectionTimestamp(options.now);
+      return dependencies.runTenantSnapshot(dependencies.tenantId, async (transaction) => {
+        const tasks = await readDatabaseTasks(transaction, dependencies.tenantId, {
+          activeOnly: options.includeInactive !== true,
+        });
+        const snapshot = await readLedgerSnapshot(transaction, dependencies.tenantId, 'ledger');
+        return tasks.map((task) => buildTaskCycleProjection(task,
+          projectTaskCycleState({ task, now, ...snapshot }), options.studentId));
+      });
+    },
+    async getTaskCycleProjection(taskId: string, options: {
+      studentId?: string; now?: string;
+    } = {}): Promise<TaskCycleProjectionDto | null> {
+      assertCanonicalTaskId(taskId);
+      const now = projectionTimestamp(options.now);
+      return dependencies.runTenantSnapshot(dependencies.tenantId, async (transaction) => {
+        const tasks = await readDatabaseTasks(transaction, dependencies.tenantId,
+          { activeOnly: false, taskId });
+        if (tasks.length > 1) throw new Error('Task query returned duplicate tasks.');
+        const task = tasks[0];
+        if (!task) return null;
+        const snapshot = await readLedgerSnapshot(transaction, dependencies.tenantId, 'ledger');
+        return buildTaskCycleProjection(task, projectTaskCycleState({ task, now, ...snapshot }),
+          options.studentId);
+      });
+    },
+    async getTaskAssignmentStatus(taskId: string, now?: string): Promise<TaskAssignmentStatus> {
+      assertCanonicalTaskId(taskId);
+      const projectionNow = projectionTimestamp(now);
+      return dependencies.runTenantSnapshot(dependencies.tenantId, async (transaction) => {
+        const tasks = await readDatabaseTasks(transaction, dependencies.tenantId,
+          { activeOnly: false, taskId });
+        if (tasks.length > 1) throw new Error('Task query returned duplicate tasks.');
+        const task = tasks[0];
+        if (!task) throw new Error('과제를 찾을 수 없습니다.');
+        const [snapshot, students] = await Promise.all([
+          readLedgerSnapshot(transaction, dependencies.tenantId, 'ledger'),
+          readDatabaseActiveStudentIdentities(transaction, dependencies.tenantId),
+        ]);
+        const state = projectTaskCycleState({ task, now: projectionNow, ...snapshot });
+        return {
+          taskId: task.taskId,
+          cycleId: state.cycle.cycleId,
+          startsAt: state.cycle.startsAt,
+          endsAt: state.cycle.endsAt,
+          transition: state.transition,
+          students: students.map((student) => {
+            const projected = state.students[student.studentId];
+            return {
+              studentId: student.studentId,
+              name: student.name,
+              assigned: projected?.assigned ?? false,
+              completed: projected?.completed ?? false,
+              assignmentOrigin: projected?.assignmentOrigin ?? 'DEFAULT',
+              ...(projected?.assignmentEvent?.source
+                ? { assignmentSource: projected.assignmentEvent.source } : {}),
+              completionOrigin: projected?.completionOrigin ?? 'DEFAULT',
+            };
+          }),
+        };
+      });
+    },
+    async getBankTasks(now?: string): Promise<BankTaskDto[]> {
+      const projectionNow = projectionTimestamp(now);
+      return dependencies.runTenantSnapshot(dependencies.tenantId, async (transaction) =>
+        buildBankTaskProjection(await readDatabaseTasks(transaction, dependencies.tenantId,
+          { activeOnly: false }), projectionNow));
     },
     async getTaskCycleState(taskId: string, now?: string): Promise<TaskCycleState> {
       assertCanonicalTaskId(taskId);

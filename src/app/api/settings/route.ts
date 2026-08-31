@@ -1,10 +1,10 @@
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import {
-  getAppSettings,
   saveAppSettings,
   validateSpreadsheetId,
 } from '@/server/settings';
 import { createConfiguredSheetsStore, verifySpreadsheetAccess } from '@/server/googleSheets';
+import { createConfiguredSettingsReader } from '@/server/repositories/configuredSettings';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,8 +24,9 @@ async function parseRequestJson(request: Request): Promise<{ ok: true; body: Rec
 
 export async function GET(request: Request) {
   try {
-    const store = await createConfiguredSheetsStore(request);
-    const settings = await getAppSettings({ settingsReader: store });
+    void request;
+    const settingsReader = await createConfiguredSettingsReader(request);
+    const settings = await settingsReader.getAppSettings();
     return Response.json(settings);
   } catch {
     return Response.json({

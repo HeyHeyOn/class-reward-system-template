@@ -1,13 +1,12 @@
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
-import { createConfiguredSheetsStore } from '@/server/googleSheets';
-import { getTransactions } from '@/server/sheetsRepository';
+import { createConfiguredTransactionReader } from '@/server/repositories/configuredTransactions';
 
 export async function GET(request: Request) {
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
   try {
-    const store = await createConfiguredSheetsStore();
-    const transactions = await getTransactions(store);
+    const reader = await createConfiguredTransactionReader();
+    const transactions = await reader.getTransactions();
 
     return Response.json(transactions);
   } catch (error) {

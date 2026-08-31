@@ -1,6 +1,7 @@
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
-import { createConfiguredSheetsReader, createConfiguredSheetsStore } from '@/server/googleSheets';
-import { createProduct, getActiveProducts, getProducts } from '@/server/sheetsRepository';
+import { createConfiguredSheetsStore } from '@/server/googleSheets';
+import { createConfiguredCatalogReader } from '@/server/repositories/configuredCatalog';
+import { createProduct } from '@/server/sheetsRepository';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,8 +9,10 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const includeInactive = url.searchParams.get('includeInactive') === '1';
-    const reader = await createConfiguredSheetsReader();
-    const products = includeInactive ? await getProducts(reader) : await getActiveProducts(reader);
+    const catalog = await createConfiguredCatalogReader();
+    const products = includeInactive
+      ? await catalog.getProducts()
+      : await catalog.getActiveProducts();
 
     return Response.json(products);
   } catch (error) {

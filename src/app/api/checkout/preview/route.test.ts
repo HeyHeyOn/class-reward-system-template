@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createConfiguredSheetsStore } from '@/server/googleSheets';
 import * as checkoutService from '@/server/checkoutService';
+import { createConfiguredCheckoutPreviewService } from '@/server/repositories/configuredCheckoutPreview';
 import type { OperationalSheetName, TabularStore } from '@/server/storage/tabularStore';
 import { POST as commitCheckout } from '../route';
 import { POST as previewCheckout } from './route';
@@ -8,6 +9,9 @@ import { POST as previewCheckout } from './route';
 vi.mock('@/server/googleSheets', () => ({
   createConfiguredSheetsStore: vi.fn(),
   createConfiguredSheetsReader: vi.fn(),
+}));
+vi.mock('@/server/repositories/configuredCheckoutPreview', () => ({
+  createConfiguredCheckoutPreviewService: vi.fn(),
 }));
 
 class FakeSheetsStore implements TabularStore {
@@ -70,7 +74,16 @@ function request(body: unknown): Request {
 }
 
 describe('POST /api/checkout/preview', () => {
-  beforeEach(() => vi.mocked(createConfiguredSheetsStore).mockReset());
+  beforeEach(() => {
+    vi.mocked(createConfiguredSheetsStore).mockReset();
+    vi.mocked(createConfiguredCheckoutPreviewService).mockReset();
+    vi.mocked(createConfiguredCheckoutPreviewService).mockResolvedValue({
+      previewCheckoutCart: async (input) => checkoutService.previewCheckoutCart(
+        await createConfiguredSheetsStore(),
+        input,
+      ),
+    });
+  });
   afterEach(() => vi.restoreAllMocks());
 
   it.each([

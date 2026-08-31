@@ -1,5 +1,4 @@
-import { createConfiguredSheetsReader } from '@/server/googleSheets';
-import { getStudentById, getTransactions } from '@/server/sheetsRepository';
+import { createConfiguredBankReader } from '@/server/repositories/configuredBank';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,11 +8,11 @@ export async function GET(request: Request) {
     const studentId = String(searchParams.get('studentId') ?? '').trim();
     if (!studentId) return Response.json({ error: '학생 QR을 인식해 주세요.' }, { status: 400 });
 
-    const reader = await createConfiguredSheetsReader();
-    const student = await getStudentById(reader, studentId);
+    const reader = await createConfiguredBankReader(request);
+    const { student, transactions: allTransactions } = await reader.getBalance(studentId);
     if (!student || student.status !== 'ACTIVE') return Response.json({ error: '학생 정보를 찾을 수 없습니다.' }, { status: 404 });
 
-    const transactions = (await getTransactions(reader))
+    const transactions = allTransactions
       .filter((transaction) => transaction.studentId === student.studentId)
       .slice(0, 10);
 

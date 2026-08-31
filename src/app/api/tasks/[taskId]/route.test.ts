@@ -3,6 +3,7 @@ import { createConfiguredSheetsReader, createConfiguredSheetsStore } from '@/ser
 import { deleteTask, getTaskById, updateTaskDetails, updateTaskSchedule, updateTaskScheduleSettings } from '@/server/sheetsRepository';
 import { isAuthorizedAdminRequest } from '@/server/apiAuth';
 import { getTaskCycleProjection } from '@/server/repositories/sheets/taskHistoryQueries';
+import { createConfiguredTaskReader } from '@/server/repositories/configuredTasks';
 import { DELETE, GET, PATCH } from './route';
 
 vi.mock('@/server/apiAuth', () => ({ isAuthorizedAdminRequest: vi.fn(() => true), unauthorizedAdminResponse: () => Response.json({ error: 'unauthorized' }, { status: 401 }) }));
@@ -11,11 +12,35 @@ vi.mock('@/server/sheetsRepository', () => ({
   deleteTask: vi.fn(), getTaskById: vi.fn(), updateTaskDetails: vi.fn(), updateTaskSchedule: vi.fn(), updateTaskScheduleSettings: vi.fn(),
 }));
 vi.mock('@/server/repositories/sheets/taskHistoryQueries', () => ({ getTaskCycleProjection: vi.fn() }));
+vi.mock('@/server/repositories/configuredTasks', () => ({ createConfiguredTaskReader: vi.fn() }));
 
 describe('GET /api/tasks/[taskId]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(isAuthorizedAdminRequest).mockReturnValue(true);
+    vi.mocked(createConfiguredTaskReader).mockResolvedValue({
+      async getTaskCycleProjection(taskId: string, options: never) {
+        const task = await getTaskById({} as never, taskId);
+        return task ? getTaskCycleProjection({} as never, task, options) : null;
+      },
+    } as never);
+  });
+
+  it('delegates GET reads to the configured task reader without opening Sheets directly', async () => {
+    const projected = { taskId: 'T 1', title: 'Read', isActive: true, currentCycle: { cycleId: 'cycle-1' } };
+    const getProjection = vi.fn(async () => projected);
+    vi.mocked(createConfiguredTaskReader).mockResolvedValue({ getTaskCycleProjection: getProjection } as never);
+
+    const request = new Request('http://localhost/api/tasks/T%201');
+    const response = await GET(request, { params: Promise.resolve({ taskId: 'T%201' }) });
+
+    expect(response.status).toBe(200);
+    expect(createConfiguredTaskReader).toHaveBeenCalledWith(request);
+    expect(getProjection).toHaveBeenCalledWith('T 1', {});
+    expect(createConfiguredSheetsReader).not.toHaveBeenCalled();
+    expect(getTaskById).not.toHaveBeenCalled();
+    expect(getTaskCycleProjection).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual(projected);
   });
 
   it('rejects unauthenticated single-task projections before opening Sheets', async () => {
@@ -42,9 +67,10 @@ describe('GET /api/tasks/[taskId]', () => {
     const response = await GET(request, { params: Promise.resolve({ taskId: 'T%201' }) });
 
     expect(response.status).toBe(200);
-    expect(createConfiguredSheetsReader).toHaveBeenCalledWith(request);
-    expect(getTaskById).toHaveBeenCalledWith(reader, 'T 1');
-    expect(getTaskCycleProjection).toHaveBeenCalledWith(reader, task, {});
+    expect(createConfiguredTaskReader).toHaveBeenCalledWith(request);
+    expect(createConfiguredSheetsReader).not.toHaveBeenCalled();
+    expect(getTaskById).toHaveBeenCalledWith({}, 'T 1');
+    expect(getTaskCycleProjection).toHaveBeenCalledWith({}, task, {});
     await expect(response.json()).resolves.toEqual(projected);
   });
 
@@ -76,15 +102,17 @@ describe('GET /api/tasks/[taskId]', () => {
     ['missing', null],
     ['inactive', { taskId: 'T1', isActive: false }],
   ])('returns active-only 404 for %s definitions', async (_label, task) => {
-    vi.mocked(createConfiguredSheetsReader).mockResolvedValue({} as never);
-    vi.mocked(getTaskById).mockResolvedValue(task as never);
+    const getProjection = vi.fn(async () => task);
+    vi.mocked(createConfiguredTaskReader).mockResolvedValue({ getTaskCycleProjection: getProjection } as never);
     const response = await GET(new Request('http://localhost/api/tasks/T1'), { params: Promise.resolve({ taskId: 'T1' }) });
     expect(response.status).toBe(404);
+    expect(getProjection).toHaveBeenCalledWith('T1', {});
+    expect(getTaskById).not.toHaveBeenCalled();
     expect(getTaskCycleProjection).not.toHaveBeenCalled();
   });
 
   it('preserves the public 500 error response', async () => {
-    vi.mocked(createConfiguredSheetsReader).mockRejectedValue(new Error('reader failed'));
+    vi.mocked(createConfiguredTaskReader).mockRejectedValue(new Error('reader failed'));
     const response = await GET(new Request('http://localhost/api/tasks/T1'), { params: Promise.resolve({ taskId: 'T1' }) });
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({ error: 'reader failed' });

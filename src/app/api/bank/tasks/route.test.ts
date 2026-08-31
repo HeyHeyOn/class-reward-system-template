@@ -1,18 +1,42 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createConfiguredSheetsReader } from '@/server/googleSheets';
 import { getTasks } from '@/server/sheetsRepository';
+import { createConfiguredTaskReader } from '@/server/repositories/configuredTasks';
+import { buildBankTaskProjection } from '@/server/taskReadProjection';
 import { GET } from './route';
 
 vi.mock('@/server/googleSheets', () => ({ createConfiguredSheetsReader: vi.fn() }));
 vi.mock('@/server/sheetsRepository', () => ({ getTasks: vi.fn() }));
+vi.mock('@/server/repositories/configuredTasks', () => ({ createConfiguredTaskReader: vi.fn() }));
 
 describe('GET /api/bank/tasks', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-27T00:00:00Z'));
+    vi.mocked(createConfiguredTaskReader).mockResolvedValue({
+      async getBankTasks(now: string) {
+        return buildBankTaskProjection(await getTasks({} as never, { includeInactive: true }), now);
+      },
+    } as never);
   });
   afterEach(() => vi.useRealTimers());
+
+  it('delegates the public projection without opening Sheets directly', async () => {
+    const projected = [{ taskId: 'A', title: 'Available', description: '', reward: 5, sortOrder: 1 }];
+    const getBankTasks = vi.fn(async () => projected);
+    vi.mocked(createConfiguredTaskReader).mockResolvedValue({ getBankTasks } as never);
+
+    const request = new Request('http://localhost/api/bank/tasks');
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(projected);
+    expect(createConfiguredTaskReader).toHaveBeenCalledWith(request);
+    expect(getBankTasks).toHaveBeenCalledWith('2026-08-27T00:00:00.000Z');
+    expect(createConfiguredSheetsReader).not.toHaveBeenCalled();
+    expect(getTasks).not.toHaveBeenCalled();
+  });
 
   it('includes a prerequisite relation when both tasks are visible', async () => {
     vi.mocked(createConfiguredSheetsReader).mockResolvedValue({} as never);
@@ -78,7 +102,8 @@ describe('GET /api/bank/tasks', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(createConfiguredSheetsReader).toHaveBeenCalledWith(request);
+    expect(createConfiguredTaskReader).toHaveBeenCalledWith(request);
+    expect(createConfiguredSheetsReader).not.toHaveBeenCalled();
     expect(body).toEqual([{
       taskId: 'A', title: 'Available', description: '', reward: 5, sortOrder: 1,
       availableFrom: '2026-08-26T00:00:00Z', dueAt: '2026-08-28T00:00:00Z',
@@ -96,7 +121,7 @@ describe('GET /api/bank/tasks', () => {
   });
 
   it('does not expose provider or credential errors to unauthenticated callers', async () => {
-    vi.mocked(createConfiguredSheetsReader).mockRejectedValue(new Error('Google range Tasks!A:ZZ credential secret'));
+    vi.mocked(createConfiguredTaskReader).mockRejectedValue(new Error('Google range Tasks!A:ZZ credential secret'));
     const response = await GET(new Request('http://localhost/api/bank/tasks'));
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({ error: '과제 목록을 불러오지 못했습니다.' });

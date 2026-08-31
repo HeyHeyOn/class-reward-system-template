@@ -1,5 +1,4 @@
-import { createConfiguredSheetsReader } from '@/server/googleSheets';
-import { confirmStudentLookup } from '@/server/studentLookup';
+import { createConfiguredBankReader } from '@/server/repositories/configuredBank';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,8 +19,8 @@ export async function GET(request: Request) {
     const studentId = query[0][1].trim();
     if (!studentId) return Response.json(invalidQueryError, { status: 400 });
 
-    const reader = await createConfiguredSheetsReader(request);
-    const lookup = await confirmStudentLookup(reader, studentId);
+    const reader = await createConfiguredBankReader(request);
+    const lookup = await reader.confirmStudent(studentId);
     if (lookup.status === 'NOT_FOUND' || lookup.status === 'INACTIVE') {
       return Response.json(missingStudentError, { status: 404 });
     }

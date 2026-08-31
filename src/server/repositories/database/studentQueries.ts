@@ -24,38 +24,59 @@ type StudentRow = {
 export function createDatabaseStudentQueries(dependencies: DatabaseStudentQueryDependencies) {
   return {
     async getStudents(): Promise<Student[]> {
-      return dependencies.runTenantTransaction(dependencies.tenantId, async (transaction) => {
-        const result = await transaction.execute(sql`
-          SELECT s.student_id, s.name, a.balance, s.status
-          FROM students s
-          LEFT JOIN accounts a
-            ON a.tenant_id = s.tenant_id AND a.student_id = s.student_id
-          WHERE s.tenant_id = ${dependencies.tenantId}
-            AND s.status = 'ACTIVE' AND s.deleted_at IS NULL
-        `);
-        return (result.rows as StudentRow[])
-          .map(toStudent)
-          .sort(compareStudentsLikeSheets);
-      });
+      return dependencies.runTenantTransaction(dependencies.tenantId, (transaction) =>
+        readDatabaseStudents(transaction, dependencies.tenantId));
     },
 
     async getStudentById(studentId: string): Promise<Student | null> {
       assertCanonicalStudentId(studentId);
       return dependencies.runTenantTransaction(dependencies.tenantId, async (transaction) => {
-        const result = await transaction.execute(sql`
-          SELECT s.student_id, s.name, a.balance, s.status
-          FROM students s
-          LEFT JOIN accounts a
-            ON a.tenant_id = s.tenant_id AND a.student_id = s.student_id
-          WHERE s.tenant_id = ${dependencies.tenantId} AND s.student_id = ${studentId}
-            AND s.deleted_at IS NULL
-        `);
-        if (result.rows.length === 0) return null;
-        if (result.rows.length !== 1) throw new Error('Student query returned duplicate rows.');
-        return toStudent(result.rows[0] as StudentRow);
+        const students = await readDatabaseStudents(transaction, dependencies.tenantId, studentId, false);
+        if (students.length > 1) throw new Error('Student query returned duplicate rows.');
+        return students[0] ?? null;
       });
     },
   };
+}
+
+export async function readDatabaseStudents(
+  transaction: TenantTransaction,
+  tenantId: string,
+  studentId?: string,
+  activeOnly = true,
+): Promise<Student[]> {
+  const result = await transaction.execute(sql`
+    SELECT s.student_id, s.name, a.balance, s.status
+    FROM students s
+    LEFT JOIN accounts a
+      ON a.tenant_id = s.tenant_id AND a.student_id = s.student_id
+    WHERE s.tenant_id = ${tenantId}
+      AND s.deleted_at IS NULL
+      ${activeOnly ? sql`AND s.status = 'ACTIVE'` : sql``}
+      ${studentId === undefined ? sql`` : sql`AND s.student_id = ${studentId}`}
+  `);
+  return (result.rows as StudentRow[])
+    .map(toStudent)
+    .sort(compareStudentsLikeSheets);
+}
+
+export async function readDatabaseActiveStudentIdentities(
+  transaction: TenantTransaction,
+  tenantId: string,
+): Promise<ReadonlyArray<Readonly<{ studentId: string; name: string }>>> {
+  const result = await transaction.execute(sql`
+    SELECT student_id, name FROM students
+    WHERE tenant_id = ${tenantId} AND status = 'ACTIVE' AND deleted_at IS NULL
+    ORDER BY student_id
+  `);
+  return (result.rows as Array<Record<string, unknown>>).map((row) => {
+    if (typeof row.student_id !== 'string' || !row.student_id
+      || typeof row.name !== 'string' || !row.name) {
+      throw new Error('Student identity integrity check failed.');
+    }
+    return { studentId: row.student_id, name: row.name };
+  }).sort((left, right) => left.studentId.localeCompare(right.studentId, 'ko-KR', { numeric: true })
+    || left.name.localeCompare(right.name));
 }
 
 function assertCanonicalStudentId(studentId: string): void {

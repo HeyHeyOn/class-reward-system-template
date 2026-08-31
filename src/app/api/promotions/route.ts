@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
-import { createConfiguredSheetsReader, createConfiguredSheetsStore } from '@/server/googleSheets';
+import { createConfiguredSheetsStore } from '@/server/googleSheets';
+import { createConfiguredCatalogReader } from '@/server/repositories/configuredCatalog';
 import {
   createPromotion,
   replacePromotionProducts,
 } from '@/server/repositories/sheets/promotionCommands';
-import { getPromotions } from '@/server/repositories/sheets/promotionQueries';
 import {
   haveSameProductIds,
   parseCreatePromotionPayload,
@@ -18,8 +18,8 @@ export async function GET(request: Request) {
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
   try {
-    const reader = await createConfiguredSheetsReader(request);
-    return Response.json(await getPromotions(reader));
+    const catalog = await createConfiguredCatalogReader(request);
+    return Response.json(await catalog.getPromotions());
   } catch (error) {
     console.error('Failed to get promotions', error);
     return safeErrorResponse(500, '행사 목록을 불러오지 못했습니다.');

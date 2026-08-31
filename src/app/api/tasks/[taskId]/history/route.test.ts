@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { isAuthorizedAdminRequest } from '@/server/apiAuth';
 import { createConfiguredSheetsReader } from '@/server/googleSheets';
 import { getTaskHistoryDetail } from '@/server/repositories/sheets/taskHistoryQueries';
+import { createConfiguredTaskReader } from '@/server/repositories/configuredTasks';
 import { GET } from './route';
 
 vi.mock('@/server/apiAuth', () => ({ isAuthorizedAdminRequest: vi.fn(), unauthorizedAdminResponse: () => new Response(null, { status: 401 }) }));
 vi.mock('@/server/googleSheets', () => ({ createConfiguredSheetsReader: vi.fn() }));
 vi.mock('@/server/repositories/sheets/taskHistoryQueries', () => ({ getTaskHistoryDetail: vi.fn() }));
+vi.mock('@/server/repositories/configuredTasks', () => ({ createConfiguredTaskReader: vi.fn() }));
 
 const dto = {
   taskId: 'T 1', requestedTaskInstanceId: null,
@@ -18,6 +20,9 @@ describe('GET /api/tasks/[taskId]/history', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(isAuthorizedAdminRequest).mockReturnValue(true);
+    vi.mocked(createConfiguredTaskReader).mockResolvedValue({
+      getTaskHistoryDetail: (filter: never) => getTaskHistoryDetail({} as never, filter),
+    } as never);
   });
 
   it('rejects unauthenticated history before query validation or opening Sheets', async () => {
@@ -31,14 +36,15 @@ describe('GET /api/tasks/[taskId]/history', () => {
   });
 
   it('is an authenticated reader-only Next 16 route and returns deleted-task ledger history', async () => {
-    const reader = { getRows: vi.fn() };
-    vi.mocked(createConfiguredSheetsReader).mockResolvedValue(reader as never);
-    vi.mocked(getTaskHistoryDetail).mockResolvedValue(dto as never);
+    const getHistory = vi.fn(async () => dto);
+    vi.mocked(createConfiguredTaskReader).mockResolvedValue({ getTaskHistoryDetail: getHistory } as never);
     const request = new Request('http://localhost/api/tasks/T%201/history');
     const response = await GET(request, { params: Promise.resolve({ taskId: 'T%201' }) });
     expect(response.status).toBe(200);
-    expect(createConfiguredSheetsReader).toHaveBeenCalledWith(request);
-    expect(getTaskHistoryDetail).toHaveBeenCalledWith(reader, { taskId: 'T 1' });
+    expect(createConfiguredTaskReader).toHaveBeenCalledWith(request);
+    expect(getHistory).toHaveBeenCalledWith({ taskId: 'T 1' });
+    expect(createConfiguredSheetsReader).not.toHaveBeenCalled();
+    expect(getTaskHistoryDetail).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual(dto);
   });
 
@@ -81,7 +87,7 @@ describe('GET /api/tasks/[taskId]/history', () => {
   });
 
   it('returns a provider error as 500 with its Korean message', async () => {
-    vi.mocked(createConfiguredSheetsReader).mockRejectedValue(new Error('Google Sheets 인증에 실패했습니다.'));
+    vi.mocked(createConfiguredTaskReader).mockRejectedValue(new Error('Google Sheets 인증에 실패했습니다.'));
     const response = await GET(new Request('http://localhost/api/tasks/T1/history'), {
       params: Promise.resolve({ taskId: 'T1' }),
     });

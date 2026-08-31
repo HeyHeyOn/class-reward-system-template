@@ -1,12 +1,12 @@
-import { createConfiguredSheetsReader } from '@/server/googleSheets';
-import { getActivePromotions } from '@/server/repositories/sheets/promotionQueries';
+import { createConfiguredCatalogReader } from '@/server/repositories/configuredCatalog';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
-    const reader = await createConfiguredSheetsReader(request);
-    const promotions = await getActivePromotions(reader);
+    void request;
+    const catalog = await createConfiguredCatalogReader(request);
+    const promotions = await catalog.getActivePromotions();
     return Response.json(promotions, { headers: { 'x-server-now': new Date().toISOString() } });
   } catch (error) {
     console.error('Failed to get active promotions', error);

@@ -1,7 +1,7 @@
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
-import { createConfiguredSheetsReader, createConfiguredSheetsStore } from '@/server/googleSheets';
+import { createConfiguredSheetsStore } from '@/server/googleSheets';
 import { createTask } from '@/server/sheetsRepository';
-import { listTaskCycleProjections } from '@/server/repositories/sheets/taskHistoryQueries';
+import { createConfiguredTaskReader } from '@/server/repositories/configuredTasks';
 import { buildStudentTaskProjection } from '@/server/studentTaskProjection';
 import { parseOptionalTaskScheduleEdit } from './taskScheduleEdit';
 import { parseStrictTaskFields } from './taskPayload';
@@ -20,9 +20,9 @@ export async function GET(request: Request) {
     }
     const studentId = studentIds.length === 1 ? studentIds[0].trim() : null;
     if (!studentId && !isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
-    const reader = await createConfiguredSheetsReader(request);
+    const reader = await createConfiguredTaskReader(request);
     const includeInactive = searchParams.get('includeInactive') === '1';
-    const tasks = await listTaskCycleProjections(reader, {
+    const tasks = await reader.listTaskCycleProjections({
       ...(includeInactive || studentId ? { includeInactive: true } : {}),
       ...(studentId ? { studentId } : {}),
     });
