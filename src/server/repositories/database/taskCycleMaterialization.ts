@@ -30,6 +30,143 @@ type Assignment = ReturnType<typeof parseAssignment>;
 type Completion = ReturnType<typeof parseCompletion>;
 type Mirror = ReturnType<typeof parseMirror>;
 
+export type TaskNaturalCycleMaterialization = Readonly<{
+  assignmentEventIds: readonly string[];
+  completionEventIds: readonly string[];
+}>;
+
+/**
+ * Opens the current natural cycle inside an existing tenant transaction.
+ * The task row is locked here so query and command entry points share the
+ * same materialization seam without opening a nested transaction.
+ */
+export async function materializeTaskNaturalCycleInternal(input: Readonly<{
+  tx: TenantTransaction;
+  tenantId: string;
+  taskId: string;
+  taskInstanceId: string;
+  taskTitle: string;
+  schedule: Readonly<{ ruleVersion: number; effectiveFrom: string;
+    recurrence: { type: string }; resetAssignmentOnCycle: boolean;
+    resetCompletionOnCycle: boolean }>;
+  cycle: TaskCycle;
+  isAvailable: boolean;
+  now: Date;
+}>): Promise<TaskNaturalCycleMaterialization> {
+  if (input.schedule.recurrence.type === 'NONE'
+    || new Date(input.cycle.startsAt).getTime() === new Date(input.schedule.effectiveFrom).getTime()) {
+    return Object.freeze({ assignmentEventIds: Object.freeze([]), completionEventIds: Object.freeze([]) });
+  }
+  const locked = await input.tx.execute(sql`SELECT task_instance_id, task_id FROM tasks
+    WHERE tenant_id=${input.tenantId} AND task_instance_id=${input.taskInstanceId} FOR UPDATE`);
+  if (locked.rows.length !== 1 || (locked.rows[0] as Record<string, unknown>).task_instance_id !== input.taskInstanceId
+    || (locked.rows[0] as Record<string, unknown>).task_id !== input.taskId) {
+    throw new Error('Task natural cycle physical identity integrity check failed.');
+  }
+  const mirrors = (await input.tx.execute(sql`SELECT student_id FROM task_allowed_students
+    WHERE tenant_id=${input.tenantId} AND task_instance_id=${input.taskInstanceId}
+    ORDER BY student_id FOR UPDATE`)).rows.map((raw) => id((raw as Record<string, unknown>).student_id));
+  const assignmentRows = (await input.tx.execute(sql`SELECT assignment_id,
+    event_sequence::text AS event_sequence, cycle_id, cycle_start_at, cycle_end_at,
+    rule_version, timezone, student_id, event_type, source
+    FROM task_assignments WHERE tenant_id=${input.tenantId}
+      AND task_instance_id=${input.taskInstanceId}
+    ORDER BY student_id, event_sequence FOR UPDATE`)).rows as Record<string, unknown>[];
+  const completionRows = (await input.tx.execute(sql`SELECT completion_id,
+    event_sequence::text AS event_sequence, cycle_id, cycle_start_at, cycle_end_at,
+    rule_version, timezone, student_id, student_name_snapshot, task_name_snapshot,
+    status, source, reward_snapshot::text AS reward_snapshot,
+    balance_after::text AS balance_after, assignment_id
+    FROM task_completions WHERE tenant_id=${input.tenantId}
+      AND task_instance_id=${input.taskInstanceId}
+    ORDER BY student_id, event_sequence FOR UPDATE`)).rows as Record<string, unknown>[];
+  const start = new Date(input.cycle.startsAt);
+  const assignmentEventIds: string[] = [];
+  const currentAssignments = new Map<string, Record<string, unknown>>();
+  const priorAssignments = new Map<string, Record<string, unknown>>();
+  for (const row of assignmentRows) {
+    const student = id(row.student_id); const rowStart = date(row.cycle_start_at);
+    if (row.cycle_id === input.cycle.cycleId) currentAssignments.set(student, row);
+    else if (rowStart < start && date(row.cycle_end_at).getTime() === start.getTime()
+      && row.rule_version === input.schedule.ruleVersion) {
+      const prior = priorAssignments.get(student);
+      if (!prior || date(prior.cycle_start_at) < rowStart
+        || (date(prior.cycle_start_at).getTime() === rowStart.getTime()
+          && positive(prior.event_sequence) < positive(row.event_sequence))) priorAssignments.set(student, row);
+    }
+  }
+  const carried = new Map<string, { assignmentId: string; predecessor: Record<string, unknown> }>();
+  for (const studentId of [...mirrors].sort(compareText)) {
+    const current = currentAssignments.get(studentId);
+    if (current) {
+      if (current.event_type === 'ASSIGNED') carried.set(studentId,
+        { assignmentId: id(current.assignment_id), predecessor: current });
+      continue;
+    }
+    const predecessor = priorAssignments.get(studentId);
+    if (!input.isAvailable || input.schedule.resetAssignmentOnCycle
+      || predecessor?.event_type !== 'ASSIGNED') {
+      if (!input.isAvailable || input.schedule.resetAssignmentOnCycle) {
+        await input.tx.execute(sql`DELETE FROM task_allowed_students
+          WHERE tenant_id=${input.tenantId} AND task_instance_id=${input.taskInstanceId}
+            AND student_id=${studentId}`);
+      }
+      continue;
+    }
+    const assignmentId = assignmentMaterializationId(input.taskInstanceId, input.cycle.cycleId, studentId);
+    const inserted = await input.tx.execute(sql`INSERT INTO task_assignments
+      (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id,
+       cycle_start_at, cycle_end_at, rule_version, timezone, student_id, event_type,
+       source, previous_assignment_id, admin_operation_id, admin_operation_hash,
+       created_at, schema_version, note)
+      VALUES (${input.tenantId}, ${assignmentId}, ${input.taskId}, ${input.taskInstanceId},
+       ${input.cycle.cycleId}, ${start},
+       ${input.cycle.endsAt ? new Date(input.cycle.endsAt) : null}, ${input.schedule.ruleVersion},
+       'Asia/Seoul', ${studentId}, 'ASSIGNED', 'CARRY_FORWARD',
+       ${id(predecessor.assignment_id)}, NULL, NULL, ${input.now}, 1, NULL)
+      RETURNING assignment_id`);
+    assertOne(inserted.rows, 'assignment_id', assignmentId, 'natural assignment insert');
+    assignmentEventIds.push(assignmentId); carried.set(studentId, { assignmentId, predecessor });
+  }
+  const completionEventIds: string[] = [];
+  if (!input.schedule.resetCompletionOnCycle && input.isAvailable) {
+    for (const [studentId, assignment] of [...carried].sort(([a], [b]) => compareText(a, b))) {
+      if (completionRows.some((row) => row.student_id === studentId
+        && row.cycle_id === input.cycle.cycleId)) continue;
+      const predecessorCycleId = assignment.predecessor.cycle_id;
+      const candidates = completionRows.filter((row) => row.student_id === studentId
+        && row.cycle_id === predecessorCycleId
+        && row.assignment_id === assignment.predecessor.assignment_id)
+        .sort((a, b) => positive(a.event_sequence) - positive(b.event_sequence));
+      const predecessor = candidates.at(-1);
+      if (!predecessor || predecessor.status !== 'COMPLETED') continue;
+      const completionId = completionMaterializationId(input.taskInstanceId,
+        input.cycle.cycleId, studentId);
+      const balance = integerText(predecessor.balance_after);
+      const inserted = await input.tx.execute(sql`INSERT INTO task_completions
+        (tenant_id, completion_id, completed_at, task_instance_id, task_id_snapshot,
+         task_name_snapshot, student_id, student_name_snapshot, reward_snapshot,
+         balance_before, balance_after, status, note, cycle_id, cycle_start_at, cycle_end_at,
+         rule_version, timezone, source, assignment_id, transaction_id, operation_id,
+         operation_hash, admin_operation_id, admin_operation_hash, schema_version,
+         evidence_provider, evidence_board_id, evidence_post_id, evidence_created_at,
+         evidence_author_full_name, created_at)
+        VALUES (${input.tenantId}, ${completionId}, ${input.now}, ${input.taskInstanceId},
+         ${input.taskId}, ${String(predecessor.task_name_snapshot)}, ${studentId},
+         ${String(predecessor.student_name_snapshot)}, 0, ${balance}, ${balance}, 'COMPLETED',
+         NULL, ${input.cycle.cycleId}, ${start},
+         ${input.cycle.endsAt ? new Date(input.cycle.endsAt) : null}, ${input.schedule.ruleVersion},
+         'Asia/Seoul', 'CARRY_FORWARD', ${assignment.assignmentId}, NULL, NULL, NULL,
+         NULL, NULL, 1, NULL, NULL, NULL, NULL, NULL, ${input.now})
+        RETURNING completion_id`);
+      assertOne(inserted.rows, 'completion_id', completionId, 'natural completion insert');
+      completionEventIds.push(completionId);
+    }
+  }
+  return Object.freeze({ assignmentEventIds: Object.freeze(assignmentEventIds),
+    completionEventIds: Object.freeze(completionEventIds) });
+}
+
 export type TaskConfigurationBoundaryMaterialization = Readonly<{
   assignmentEventIds: readonly string[];
   completionEventIds: readonly string[];
@@ -672,14 +809,18 @@ function assertOne(rows: readonly unknown[], key: string, value: string, label: 
   const row = exactRow(rows[0], [key] as const, label);
   if (row[key] !== value) throw new Error(`Task cycle materialization ${label} integrity check failed.`);
 }
-function assignmentMaterializationId(taskInstanceId: string, cycleIdValue: string, studentId: string) {
+export function taskNaturalAssignmentMaterializationId(taskInstanceId: string,
+  cycleIdValue: string, studentId: string) {
   return `task-assignment-materialization:${sha256({ domain: 'task-assignment-materialization-v1',
     source: 'CARRY_FORWARD', taskInstanceId, cycleId: cycleIdValue, studentId })}`;
 }
-function completionMaterializationId(taskInstanceId: string, cycleIdValue: string, studentId: string) {
+const assignmentMaterializationId = taskNaturalAssignmentMaterializationId;
+export function taskNaturalCompletionMaterializationId(taskInstanceId: string,
+  cycleIdValue: string, studentId: string) {
   return `task-completion-materialization:${sha256({ domain: 'task-completion-materialization-v1',
     source: 'CARRY_FORWARD', taskInstanceId, cycleId: cycleIdValue, studentId })}`;
 }
+const completionMaterializationId = taskNaturalCompletionMaterializationId;
 function adminResetCompletionId(operationId: string, taskInstanceId: string,
   studentId: string, cycleIdValue: string) {
   return `task-completion-admin-reset:${sha256({ domain: 'task-completion-admin-reset-v1',

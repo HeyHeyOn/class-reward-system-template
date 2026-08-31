@@ -2,12 +2,14 @@ import 'server-only';
 
 import { createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
+import { isTaskAvailable } from '@/domain/taskAvailability';
 import { getTaskCycle } from '@/domain/taskRecurrence';
 import { resolveTaskSchedule, validateTaskSchedule } from '@/domain/taskSchedule';
 import type { DayOfMonth, IsoWeekday, TaskSchedule } from '@/domain/types';
 import type { TenantTransaction } from '@/server/db/transaction';
 import { appendOperationAudit, assertOperationAudit, operationAuditEventId } from './operationAudit';
 import { createTaskAdminAssignmentEventId } from './taskAdminCommands';
+import { taskNaturalCompletionMaterializationId } from './taskCycleMaterialization';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const HASH = /^[0-9a-f]{64}$/;
@@ -61,9 +63,11 @@ export type DatabaseTaskAssignmentBatchCommandDependencies = Readonly<{
 type Pair = Readonly<{ taskId: string; studentId: string; assigned: boolean; source: 'ADMIN' }>;
 type Canonical = Readonly<{ operationId: string; pairs: readonly Pair[] }>;
 type Task = Readonly<{ task_instance_id: string; task_id: string; current_schedule: TaskSchedule;
-  pending_schedule: TaskSchedule | null; created_at: Date }>;
+  pending_schedule: TaskSchedule | null; created_at: Date; is_active: boolean;
+  available_from: Date | null; due_at: Date | null }>;
 type Mirror = Readonly<{ task_instance_id: string; student_id: string; created_at: Date }>;
 type Assignment = ReturnType<typeof parseAssignment>;
+type Completion = ReturnType<typeof parseCompletion>;
 type Operation = Readonly<{ operation_id: string; operation_kind: string; payload_hash: string;
   status: string; result_snapshot: unknown; finished_at: Date | null; failure_code: string | null;
   attempt_count: string; started_at: Date; created_at: Date; updated_at: Date }>;
@@ -121,7 +125,8 @@ export function createDatabaseTaskAssignmentBatchCommand(
 
         const requestedTaskIds = uniqueCanonical(input.pairs.map((pair) => pair.taskId));
         const taskRows = await tx.execute(sql`SELECT task_instance_id, task_id, current_schedule,
-          pending_schedule, created_at FROM tasks WHERE tenant_id=${dependencies.tenantId}
+          pending_schedule, created_at, is_active, available_from, due_at
+          FROM tasks WHERE tenant_id=${dependencies.tenantId}
           AND deleted_at IS NULL AND task_id IN (${sql.join(requestedTaskIds.map((id) => sql`${id}`), sql`, `)})
           ORDER BY task_instance_id FOR UPDATE`);
         if (taskRows.rows.length !== requestedTaskIds.length) {
@@ -180,9 +185,24 @@ export function createDatabaseTaskAssignmentBatchCommand(
         validateCompletionIdentities(completionRows, tasks);
         const initialMirrors = snapshot(allMirrors);
         const initialHistory = snapshot(allHistory);
-        const initialCompletions = snapshot(completionRows);
         const expectedMirrors = new Map(allMirrors.map((row) => [key(row.task_instance_id, row.student_id), row]));
         const expectedHistory = [...allHistory];
+        const expectedCompletions = [...completionRows];
+        const latestCompletionByAssignment = new Map<string, Completion>();
+        const completionCycleSubjects = new Set<string>();
+        for (const completion of completionRows) {
+          if (completion.assignment_id !== null) {
+            latestCompletionByAssignment.set(completion.assignment_id, completion);
+          }
+          if (completion.task_instance_id !== null && completion.cycle_id !== null) {
+            completionCycleSubjects.add(key(completion.task_instance_id, completion.student_id,
+              completion.cycle_id));
+          }
+        }
+        const completionCarryPlans: Array<Readonly<{ completionId: string; task: Task;
+          studentId: string; cycleId: string; cycleStartsAt: Date; cycleEndsAt: Date | null;
+          ruleVersion: number; timezone: string; assignmentId: string;
+          priorCompletion: Completion }>> = [];
         const expectedHistoryBySubject = new Map(groupTaskAssignmentBatchEvidence(allHistory)
           .map((group) => [group.subjectKey, [...group.events]]));
         const entries: TaskAssignmentBatchEntry[] = [];
@@ -209,13 +229,22 @@ export function createDatabaseTaskAssignmentBatchCommand(
           else {
             const transitionCarry = schedule.ruleVersion > 1
               && new Date(cycle.startsAt).getTime() === new Date(schedule.effectiveFrom).getTime();
+            const canCarry = mirror !== null && task.is_active && isTaskAvailable({
+              ...(task.available_from ? { availableFrom: task.available_from.toISOString() } : {}),
+              ...(task.due_at ? { dueAt: task.due_at.toISOString() } : {}),
+            }, now.toISOString());
             const prior = subjectHistory.filter((event) => event.cycle_start_at.getTime()
               < new Date(cycle.startsAt).getTime() || (transitionCarry
                 && event.cycle_start_at.getTime() === new Date(cycle.startsAt).getTime()
                 && event.rule_version < schedule.ruleVersion)).at(-1);
-            const source = subjectHistory.length === 0 && mirror ? 'LEGACY_SEED' as const
-              : prior?.event_type === 'ASSIGNED' && (schedule.recurrence.type === 'NONE'
-                || !schedule.resetAssignmentOnCycle || (transitionCarry
+            const source = subjectHistory.length === 0 && canCarry ? 'LEGACY_SEED' as const
+              : canCarry && prior?.event_type === 'ASSIGNED'
+                && ((!schedule.resetAssignmentOnCycle
+                  && prior.rule_version === schedule.ruleVersion && prior.cycle_end_at?.getTime()
+                  === new Date(cycle.startsAt).getTime()) || (transitionCarry
+                  && prior.cycle_start_at.getTime() <= new Date(cycle.startsAt).getTime()
+                  && (prior.cycle_end_at === null || prior.cycle_end_at.getTime()
+                    > new Date(cycle.startsAt).getTime())
                   && prior.rule_version < schedule.ruleVersion)) ? 'CARRY_FORWARD' as const : null;
             if (source) {
               const id = materializationId(source, task.task_instance_id, cycle.cycleId, pair.studentId);
@@ -234,6 +263,25 @@ export function createDatabaseTaskAssignmentBatchCommand(
               const event = await readAssignment(tx, dependencies.tenantId, id);
               expectedHistory.push(event); subjectHistory.push(event); predecessor = event; sameCycle = [event];
               materializationEventIds.push(id); effectiveAssigned = true;
+              if (source === 'CARRY_FORWARD' && !schedule.resetCompletionOnCycle && prior) {
+                const priorCompletion = latestCompletionByAssignment.get(prior.assignment_id);
+                const cycleSubject = key(task.task_instance_id, pair.studentId, cycle.cycleId);
+                if (!completionCycleSubjects.has(cycleSubject)
+                  && priorCompletion?.status === 'COMPLETED'
+                  && priorCompletion.student_id === pair.studentId
+                  && priorCompletion.cycle_id === prior.cycle_id) {
+                  completionCarryPlans.push(Object.freeze({
+                    completionId: taskNaturalCompletionMaterializationId(task.task_instance_id,
+                      cycle.cycleId, pair.studentId),
+                    task, studentId: pair.studentId, cycleId: cycle.cycleId,
+                    cycleStartsAt: new Date(cycle.startsAt),
+                    cycleEndsAt: cycle.endsAt ? new Date(cycle.endsAt) : null,
+                    ruleVersion: schedule.ruleVersion, timezone: schedule.timeZone,
+                    assignmentId: id, priorCompletion,
+                  }));
+                  completionCycleSubjects.add(cycleSubject);
+                }
+              }
             } else effectiveAssigned = false;
           }
           if ((mirror !== null) !== effectiveAssigned) {
@@ -278,10 +326,73 @@ export function createDatabaseTaskAssignmentBatchCommand(
             studentId: pair.studentId, assigned: pair.assigned, changed, cycleId: cycle.cycleId,
             transitionEventId, materializationEventIds: Object.freeze(materializationEventIds) }));
         }
+        if (completionCarryPlans.length > 0) {
+          const inserted = await tx.execute(sql`INSERT INTO task_completions
+            (tenant_id, completion_id, completed_at, task_instance_id, task_id_snapshot,
+             task_name_snapshot, student_id, student_name_snapshot, reward_snapshot,
+             balance_before, balance_after, status, note, cycle_id, cycle_start_at, cycle_end_at,
+             rule_version, timezone, source, assignment_id, transaction_id, operation_id,
+             operation_hash, admin_operation_id, admin_operation_hash, schema_version,
+             evidence_provider, evidence_board_id, evidence_post_id, evidence_created_at,
+             evidence_author_full_name, created_at)
+            VALUES ${sql.join(completionCarryPlans.map((plan) => sql`(
+              ${dependencies.tenantId}, ${plan.completionId}, ${now}, ${plan.task.task_instance_id},
+              ${plan.task.task_id}, ${plan.priorCompletion.task_name_snapshot}, ${plan.studentId},
+              ${plan.priorCompletion.student_name_snapshot}, 0, ${plan.priorCompletion.balance_after},
+              ${plan.priorCompletion.balance_after}, 'COMPLETED', NULL, ${plan.cycleId},
+              ${plan.cycleStartsAt}, ${plan.cycleEndsAt}, ${plan.ruleVersion}, ${plan.timezone},
+              'CARRY_FORWARD', ${plan.assignmentId}, NULL, NULL, NULL, NULL, NULL, 1,
+              NULL, NULL, NULL, NULL, NULL, ${now})`), sql`, `)}
+            RETURNING completion_id, event_sequence::text AS event_sequence, completed_at,
+              task_instance_id, task_id_snapshot, task_name_snapshot, student_id,
+              student_name_snapshot, reward_snapshot, balance_before, balance_after, status, note,
+              cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone, source, assignment_id,
+              transaction_id, operation_id, operation_hash, admin_operation_id,
+              admin_operation_hash, schema_version, evidence_provider, evidence_board_id,
+              evidence_post_id, evidence_created_at, evidence_author_full_name, created_at`);
+          if (inserted.rows.length !== completionCarryPlans.length) {
+            throw new Error('Task assignment batch completion materialization integrity check failed.');
+          }
+          const returned = inserted.rows.map(parseCompletion);
+          const returnedById = new Map(returned.map((completion) =>
+            [completion.completion_id, completion]));
+          if (returnedById.size !== completionCarryPlans.length) {
+            throw new Error('Task assignment batch completion materialization integrity check failed.');
+          }
+          for (const plan of completionCarryPlans) {
+            const completion = returnedById.get(plan.completionId);
+            if (!completion || completion.completed_at.getTime() !== now.getTime()
+              || completion.task_instance_id !== plan.task.task_instance_id
+              || completion.task_id_snapshot !== plan.task.task_id
+              || completion.task_name_snapshot !== plan.priorCompletion.task_name_snapshot
+              || completion.student_id !== plan.studentId
+              || completion.student_name_snapshot !== plan.priorCompletion.student_name_snapshot
+              || completion.reward_snapshot !== 0
+              || completion.balance_before !== plan.priorCompletion.balance_after
+              || completion.balance_after !== plan.priorCompletion.balance_after
+              || completion.status !== 'COMPLETED' || completion.note !== null
+              || completion.cycle_id !== plan.cycleId
+              || completion.cycle_start_at?.getTime() !== plan.cycleStartsAt.getTime()
+              || nullableTime(completion.cycle_end_at) !== nullableTime(plan.cycleEndsAt)
+              || completion.rule_version !== plan.ruleVersion || completion.timezone !== plan.timezone
+              || completion.source !== 'CARRY_FORWARD'
+              || completion.assignment_id !== plan.assignmentId
+              || completion.transaction_id !== null || completion.operation_id !== null
+              || completion.operation_hash !== null || completion.admin_operation_id !== null
+              || completion.admin_operation_hash !== null || completion.schema_version !== 1
+              || completion.evidence_provider !== null || completion.evidence_board_id !== null
+              || completion.evidence_post_id !== null || completion.evidence_created_at !== null
+              || completion.evidence_author_full_name !== null
+              || completion.created_at.getTime() !== now.getTime()) {
+              throw new Error('Task assignment batch completion materialization integrity check failed.');
+            }
+            expectedCompletions.push(completion);
+          }
+        }
         const result = freezeResult({ ok: true, operationId: input.operationId,
           action: 'ASSIGNMENT_BATCH', completedAt: now.toISOString(), entries });
         await verifyComplete(tx, dependencies.tenantId, tasks, result, payloadHash,
-          initialMirrors, initialHistory, initialCompletions, expectedMirrors, expectedHistory);
+          initialMirrors, initialHistory, expectedMirrors, expectedHistory, expectedCompletions);
         const audit = auditInput(result, now);
         await appendOperationAudit(tx, dependencies.tenantId, audit);
         await assertOperationAudit(tx, dependencies.tenantId, audit);
@@ -293,7 +404,7 @@ export function createDatabaseTaskAssignmentBatchCommand(
         assertReturning(terminal.rows, ['operation_id'], { operation_id: input.operationId },
           'terminal operation');
         await verifyComplete(tx, dependencies.tenantId, tasks, result, payloadHash,
-          initialMirrors, initialHistory, initialCompletions, expectedMirrors, expectedHistory);
+          initialMirrors, initialHistory, expectedMirrors, expectedHistory, expectedCompletions);
         await assertOperationAudit(tx, dependencies.tenantId, audit);
         await assertOneAudit(tx, dependencies.tenantId, input.operationId);
         const stored = await readOperation(tx, dependencies.tenantId, input.operationId);
@@ -377,8 +488,8 @@ async function replay(tx: TenantTransaction, tenantId: string, operation: Operat
 
 async function verifyComplete(tx: TenantTransaction, tenantId: string, tasks: ReadonlyMap<string, Task>,
   result: TaskAssignmentBatchSuccess, payloadHash: string, _initialMirrors: string,
-  initialHistory: string, initialCompletions: string, expectedMirrors: ReadonlyMap<string, Mirror>,
-  expectedHistory: readonly Assignment[]) {
+  initialHistory: string, expectedMirrors: ReadonlyMap<string, Mirror>,
+  expectedHistory: readonly Assignment[], expectedCompletions: readonly Completion[]) {
   const targetInstances = uniqueCanonical([...tasks.values()].map((task) => task.task_instance_id));
   const mirrors = (await tx.execute(sql`SELECT task_instance_id, student_id, created_at
     FROM task_allowed_students WHERE tenant_id=${tenantId}
@@ -408,7 +519,8 @@ async function verifyComplete(tx: TenantTransaction, tenantId: string, tasks: Re
   }
   const completions = await readCompletions(tx, tenantId, targetInstances, false);
   validateCompletionIdentities(completions, tasks);
-  if (snapshot(completions) !== initialCompletions) {
+  if (snapshot(canonicalCompletions(completions))
+    !== snapshot(canonicalCompletions(expectedCompletions))) {
     throw new Error('Task assignment batch completion history integrity check failed.');
   }
   const expectedBound = result.entries.filter((entry) => entry.transitionEventId !== null).length;
@@ -491,11 +603,17 @@ function exactRow<const K extends readonly string[]>(raw: unknown, keys: K, labe
 
 function parseTask(raw: unknown): Task {
   const row = exactRow(raw, ['task_instance_id', 'task_id', 'current_schedule', 'pending_schedule',
-    'created_at'], 'task evidence');
+    'created_at', 'is_active', 'available_from', 'due_at'], 'task evidence');
+  if (typeof row.is_active !== 'boolean') {
+    throw new Error('Task assignment batch task evidence is malformed.');
+  }
   return { task_instance_id: requiredId(row.task_instance_id, 'task instance ID'),
     task_id: requiredId(row.task_id, 'task ID'), current_schedule: parseSchedule(row.current_schedule),
     pending_schedule: row.pending_schedule === null ? null : parseSchedule(row.pending_schedule),
-    created_at: requiredDate(row.created_at, 'task created timestamp') };
+    created_at: requiredDate(row.created_at, 'task created timestamp'), is_active: row.is_active,
+    available_from: row.available_from === null ? null
+      : requiredDate(row.available_from, 'task available timestamp'),
+    due_at: row.due_at === null ? null : requiredDate(row.due_at, 'task due timestamp') };
 }
 
 function parseSchedule(raw: unknown): TaskSchedule {
@@ -1003,6 +1121,12 @@ function canonicalEvidence(history: readonly Assignment[]): Assignment[] {
     || compareCanonical(left.student_id, right.student_id)
     || left.event_sequence - right.event_sequence
     || compareCanonical(left.assignment_id, right.assignment_id));
+}
+function canonicalCompletions(completions: readonly Completion[]): Completion[] {
+  return [...completions].sort((left, right) =>
+    compareCanonical(left.task_instance_id ?? '', right.task_instance_id ?? '')
+    || left.event_sequence - right.event_sequence
+    || compareCanonical(left.completion_id, right.completion_id));
 }
 function compareCanonical(left: string, right: string): number { return left < right ? -1 : left > right ? 1 : 0; }
 function key(...parts: string[]): string { return JSON.stringify(parts); }

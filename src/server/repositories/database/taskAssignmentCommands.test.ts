@@ -1558,6 +1558,83 @@ describe('database desired task-assignment command', () => {
     await expect(replay.execute(desired)).rejects.toThrow(/integrity/i);
   });
 
+  it('persists natural assignment and completion carry before applying the desired assignment', async () => {
+    const seedNow = new Date('2026-08-30T01:00:00.000Z');
+    await command(harness.tenantOneId, seedNow).execute(input({
+      operationId: 'abcdef00-0000-4000-8000-000000000050',
+    }));
+    const seeded = (await state()).assignments[0] as Record<string, unknown>;
+    await harness.database.query(`UPDATE tasks
+      SET current_schedule=current_schedule || '{"resetCompletionOnCycle":false}'::jsonb
+      WHERE tenant_id=$1 AND task_id='TASK-001'`, [harness.tenantOneId]);
+    await harness.database.query(`INSERT INTO task_completions
+      (tenant_id, completion_id, completed_at, task_instance_id, task_id_snapshot,
+       task_name_snapshot, student_id, student_name_snapshot, reward_snapshot,
+       balance_before, balance_after, status, note, cycle_id, cycle_start_at, cycle_end_at,
+       rule_version, timezone, source, assignment_id, schema_version, created_at)
+      VALUES ($1, 'natural-prior-success', '2026-08-30T02:00:00.000Z', $2, 'TASK-001',
+       '과제', 'S001', '하나', 0, 40, 40, 'COMPLETED', NULL, $3, $4, $5, 1,
+       'Asia/Seoul', 'CARRY_FORWARD', $6, 1, '2026-08-30T02:00:00.000Z')`, [
+      harness.tenantOneId, seeded.task_instance_id, seeded.cycle_id,
+      seeded.cycle_start_at, seeded.cycle_end_at, seeded.assignment_id,
+    ]);
+
+    const result = await command().execute(input({
+      operationId: 'abcdef00-0000-4000-8000-000000000051',
+    }));
+    const snapshot = await state();
+    expect(result.changed).toBe(false);
+    expect(snapshot.assignments.filter((row) =>
+      (row as Record<string, unknown>).cycle_id === result.cycleId)).toHaveLength(1);
+    const carried = await harness.database.query(`SELECT source, status,
+      reward_snapshot::text AS reward_snapshot, balance_before::text AS balance_before,
+      balance_after::text AS balance_after FROM task_completions
+      WHERE tenant_id=$1 AND cycle_id=$2`, [harness.tenantOneId, result.cycleId]);
+    expect(carried.rows).toEqual([{ source: 'CARRY_FORWARD', status: 'COMPLETED',
+      reward_snapshot: '0', balance_before: '40', balance_after: '40' }]);
+  });
+
+  it.each([
+    { label: 'removed mirror', now: new Date('2026-08-31T02:00:00.000Z'),
+      prepare: async () => harness.database.query(
+        `DELETE FROM task_allowed_students WHERE tenant_id=$1`, [harness.tenantOneId]) },
+    { label: 'unavailable task', now: new Date('2026-08-31T02:00:00.000Z'),
+      prepare: async () => harness.database.query(
+        `UPDATE tasks SET due_at='2026-08-30T23:00:00.000Z'
+         WHERE tenant_id=$1 AND task_id='TASK-001'`, [harness.tenantOneId]) },
+    { label: 'skipped natural cycle', now: new Date('2026-09-01T02:00:00.000Z'),
+      prepare: async () => undefined },
+    { label: 'exact-end lower-rule configuration boundary',
+      now: new Date('2026-08-31T00:00:00.000Z'),
+      prepare: async () => harness.database.query(`UPDATE tasks SET pending_schedule=$2::jsonb
+        WHERE tenant_id=$1 AND task_id='TASK-001'`, [harness.tenantOneId, JSON.stringify({
+        ruleVersion: 2, effectiveFrom: '2026-08-31T00:00:00.000Z', timeZone: 'Asia/Seoul',
+        recurrence: { type: 'DAILY', time: '09:00' }, resetCompletionOnCycle: false,
+        resetAssignmentOnCycle: false,
+      })]) },
+    { label: 'stale configuration boundary', now: new Date('2026-09-01T00:00:00.000Z'),
+      prepare: async () => harness.database.query(`UPDATE tasks SET pending_schedule=$2::jsonb
+        WHERE tenant_id=$1 AND task_id='TASK-001'`, [harness.tenantOneId, JSON.stringify({
+        ruleVersion: 2, effectiveFrom: '2026-09-01T00:00:00.000Z', timeZone: 'Asia/Seoul',
+        recurrence: { type: 'DAILY', time: '09:00' }, resetCompletionOnCycle: false,
+        resetAssignmentOnCycle: false,
+      })]) },
+  ])('does not resurrect $label assignment state', async ({ now, prepare }) => {
+    await command(harness.tenantOneId, new Date('2026-08-30T01:00:00.000Z')).execute(input({
+      operationId: 'abcdef00-0000-4000-8000-000000000052',
+    }));
+    await prepare();
+    const result = await command(harness.tenantOneId, now).execute(input({
+      operationId: 'abcdef00-0000-4000-8000-000000000152', assigned: false,
+    }));
+    expect(result.changed).toBe(false);
+    expect(result.materializationEventIds).toEqual([]);
+    const snapshot = await state();
+    expect(snapshot.assignments.some((row) =>
+      (row as Record<string, unknown>).source === 'CARRY_FORWARD')).toBe(false);
+    expect(snapshot.mirrors).toEqual([]);
+  });
+
   it('replays a frozen assignment after a later valid change', async () => {
     const first = await command().execute(input());
     await command(harness.tenantOneId, new Date('2026-08-31T02:00:00.000Z')).execute(input({

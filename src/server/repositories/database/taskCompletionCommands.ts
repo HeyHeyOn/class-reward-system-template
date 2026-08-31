@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { isTaskAvailable } from '@/domain/taskAvailability';
 import { projectTaskCycleState } from '@/domain/taskCycleState';
+import { getTaskCycle } from '@/domain/taskRecurrence';
 import { resolveTaskSchedule } from '@/domain/taskSchedule';
 import type {
   ClassTask,
@@ -15,6 +16,8 @@ import type {
 import type { TenantTransaction } from '@/server/db/transaction';
 import type { DatabasePadletClaimRepository } from './padletClaims';
 import { appendOperationAudit, assertOperationAudit } from './operationAudit';
+import { materializeTaskNaturalCycleInternal,
+  taskNaturalAssignmentMaterializationId } from './taskCycleMaterialization';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -496,6 +499,15 @@ async function authorize(
     toTask(row, allowedByTask.get(row.task_instance_id) ?? [], rowByInstance),
   ]));
   const task = taskByInstance.get(targetRow.task_instance_id);
+  if (task && lock) {
+    const effective = resolveTaskSchedule({ currentSchedule: task.schedule,
+      pendingSchedule: task.pendingSchedule ?? null, now });
+    await materializeTaskNaturalCycleInternal({ tx, tenantId, taskId: task.taskId,
+      taskInstanceId: task.taskInstanceId, taskTitle: task.title, schedule: effective,
+      cycle: getTaskCycle({ taskInstanceId: task.taskInstanceId, schedule: effective,
+        taskCreatedAt: task.createdAt, now }),
+      isAvailable: task.isActive && isTaskAvailable(task, now), now: new Date(now) });
+  }
   if (!task || !(allowedByTask.get(targetRow.task_instance_id) ?? []).includes(input.studentId)) {
     throw new TaskRewardCommandError('POLICY');
   }
@@ -538,12 +550,34 @@ async function authorize(
   `);
   const assignments = (assignmentResult.rows as AssignmentRow[]).map(toAssignment);
   const completions = (completionResult.rows as CompletionRow[]).map(toCompletion);
-  const state = projectTaskCycleState({ task, now, assignments, completions });
   const effectiveSchedule = resolveTaskSchedule({
     currentSchedule: task.schedule,
     pendingSchedule: task.pendingSchedule ?? null,
     now,
   });
+  if (!lock && task.isActive && isTaskAvailable(task, now)
+    && !effectiveSchedule.resetAssignmentOnCycle) {
+    const naturalCycle = getTaskCycle({ taskInstanceId: task.taskInstanceId,
+      schedule: effectiveSchedule, taskCreatedAt: task.createdAt, now });
+    const naturalStart = new Date(naturalCycle.startsAt).getTime();
+    const hasCurrent = assignments.some((event) => event.taskInstanceId === task.taskInstanceId
+      && event.studentId === input.studentId && event.cycleId === naturalCycle.cycleId);
+    const predecessor = assignments.filter((event) => event.taskInstanceId === task.taskInstanceId
+      && event.studentId === input.studentId
+      && new Date(event.cycleStartsAt).getTime() < naturalStart).at(-1);
+    if (!hasCurrent && predecessor?.status === 'ASSIGNED'
+      && naturalStart !== new Date(effectiveSchedule.effectiveFrom).getTime()) {
+      assignments.push({ assignmentId: taskNaturalAssignmentMaterializationId(
+        task.taskInstanceId, naturalCycle.cycleId, input.studentId), taskId: task.taskId,
+      taskInstanceId: task.taskInstanceId, cycleId: naturalCycle.cycleId,
+      cycleStartsAt: naturalCycle.startsAt, cycleEndsAt: naturalCycle.endsAt,
+      ruleVersion: effectiveSchedule.ruleVersion, timeZone: 'Asia/Seoul',
+      studentId: input.studentId, status: 'ASSIGNED', source: 'CARRY_FORWARD',
+      previousAssignmentId: predecessor.assignmentId, createdAt: now,
+      schemaVersion: 1, note: '' });
+    }
+  }
+  const state = projectTaskCycleState({ task, now, assignments, completions });
   const studentState = state.students[input.studentId];
 
   if (!task.isActive || !isTaskAvailable(task, now) || !studentState?.assigned || studentState.completed) {

@@ -406,6 +406,49 @@ describe('database task completion command', () => {
     expect((await snapshot()).claims).toHaveLength(0);
   });
 
+  it('materializes false-flag assignment carry at the next natural boundary before rewarding once', async () => {
+    await harness.database.exec(await readFile(resolve(
+      process.cwd(), 'src/server/db/migrations/0010_task_admin_invariants.sql'), 'utf8'));
+    const naturalNow = new Date('2026-08-29T03:00:00.000Z');
+    await harness.database.query(
+      `UPDATE tasks SET padlet_board_id=NULL, current_schedule=$3::jsonb
+       WHERE tenant_id=$1 AND task_instance_id=$2`,
+      [harness.tenantOneId, TASK_INSTANCE_ID, JSON.stringify({
+        ruleVersion: 1,
+        effectiveFrom: '2026-08-28T00:00:00.000Z',
+        timeZone: 'Asia/Seoul',
+        recurrence: { type: 'DAILY', time: '09:00' },
+        resetCompletionOnCycle: false,
+        resetAssignmentOnCycle: false,
+      })],
+    );
+
+    const result = await command({ now: () => naturalNow }).execute({
+      operationId: OPERATION_ID, taskId: TASK_ID, studentId: STUDENT_ID,
+    });
+
+    expect(result.cycleId).toBe(`v1|${TASK_INSTANCE_ID}|r1|2026-08-29T00:00:00Z`);
+    const rows = await harness.database.query(
+      `SELECT assignment_id, cycle_id, source, previous_assignment_id
+       FROM task_assignments WHERE tenant_id=$1 AND task_instance_id=$2 ORDER BY event_sequence`,
+      [harness.tenantOneId, TASK_INSTANCE_ID],
+    );
+    expect(rows.rows).toHaveLength(2);
+    expect(rows.rows[1]).toEqual(expect.objectContaining({
+      cycle_id: result.cycleId,
+      source: 'CARRY_FORWARD',
+      previous_assignment_id: 'ASSIGNMENT-1',
+    }));
+    expect((await snapshot()).account).toEqual([{ balance: '150', version: '2' }]);
+    await expect(command({ now: () => naturalNow }).execute({
+      operationId: OPERATION_ID, taskId: TASK_ID, studentId: STUDENT_ID,
+    })).resolves.toEqual(result);
+    expect((await harness.database.query(
+      `SELECT assignment_id FROM task_assignments WHERE tenant_id=$1 AND task_instance_id=$2`,
+      [harness.tenantOneId, TASK_INSTANCE_ID],
+    )).rows).toHaveLength(2);
+  });
+
   it('uses the same captured now for a newly effective pending schedule and provider allocation', async () => {
     await harness.database.query(
       `UPDATE tasks SET pending_schedule=$3::jsonb

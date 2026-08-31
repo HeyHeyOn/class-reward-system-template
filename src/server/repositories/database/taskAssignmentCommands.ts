@@ -2,12 +2,15 @@ import 'server-only';
 
 import { createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
+import { isTaskAvailable } from '@/domain/taskAvailability';
 import { getTaskCycle } from '@/domain/taskRecurrence';
 import { resolveTaskSchedule } from '@/domain/taskSchedule';
 import type { TaskSchedule } from '@/domain/types';
 import type { TenantTransaction } from '@/server/db/transaction';
 import { appendOperationAudit, assertOperationAudit, operationAuditEventId } from './operationAudit';
 import { createTaskAdminAssignmentEventId } from './taskAdminCommands';
+import { taskNaturalCompletionMaterializationId } from './taskCycleMaterialization';
+
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const HASH = /^[0-9a-f]{64}$/;
@@ -51,6 +54,10 @@ type CanonicalInput = DatabaseTaskAssignmentCommandInput;
 type TaskRow = Readonly<{
   task_instance_id: string;
   task_id: string;
+  title: string;
+  is_active: boolean;
+  available_from: Date | null;
+  due_at: Date | null;
   current_schedule: TaskSchedule;
   pending_schedule: TaskSchedule | null;
   created_at: Date;
@@ -108,7 +115,8 @@ export function createDatabaseTaskAssignmentCommand(
           'operation claim');
 
         const taskResult = await tx.execute(sql`
-          SELECT task_instance_id, task_id, current_schedule, pending_schedule, created_at
+          SELECT task_instance_id, task_id, title, is_active, available_from, due_at,
+            current_schedule, pending_schedule, created_at
           FROM tasks
           WHERE tenant_id=${dependencies.tenantId} AND deleted_at IS NULL
           ORDER BY task_instance_id
@@ -182,6 +190,7 @@ export function createDatabaseTaskAssignmentCommand(
         let currentMirror = mirrors.find((row) => row.student_id === input.studentId) ?? null;
         const mirrorAssigned = currentMirror !== null;
         const materializationEventIds: string[] = [];
+        let expectedCarriedCompletion: CompletionEvidence | null = null;
         let effectiveAssigned: boolean;
         if (predecessor) {
           effectiveAssigned = predecessor.event_type === 'ASSIGNED';
@@ -189,8 +198,11 @@ export function createDatabaseTaskAssignmentCommand(
           const studentHistory = history.filter((event) => event.student_id === input.studentId);
           const transitionForcesCarry = schedule.ruleVersion > 1
             && new Date(cycle.startsAt).getTime() === new Date(schedule.effectiveFrom).getTime();
-          const normalCarry = schedule.recurrence.type === 'NONE'
-            || !schedule.resetAssignmentOnCycle;
+          const canCarry = mirrorAssigned && task.is_active && isTaskAvailable({
+            ...(task.available_from ? { availableFrom: task.available_from.toISOString() } : {}),
+            ...(task.due_at ? { dueAt: task.due_at.toISOString() } : {}),
+          }, now.toISOString());
+          const normalCarry = !schedule.resetAssignmentOnCycle;
           const prior = [...studentHistory].filter((event) => {
             const startsBefore = event.cycle_start_at.getTime() < new Date(cycle.startsAt).getTime();
             const sameStartOldRule = transitionForcesCarry
@@ -199,10 +211,15 @@ export function createDatabaseTaskAssignmentCommand(
             return startsBefore || sameStartOldRule;
           }).sort((left, right) => left.cycle_start_at.getTime() - right.cycle_start_at.getTime()
             || left.event_sequence - right.event_sequence).at(-1);
-          const source = studentHistory.length === 0 && mirrorAssigned
+          const source = studentHistory.length === 0 && canCarry
             ? 'LEGACY_SEED' as const
-            : prior?.event_type === 'ASSIGNED'
-              && (normalCarry || (transitionForcesCarry
+            : canCarry && prior?.event_type === 'ASSIGNED'
+              && ((normalCarry && prior.rule_version === schedule.ruleVersion
+                && prior.cycle_end_at?.getTime()
+                === new Date(cycle.startsAt).getTime()) || (transitionForcesCarry
+                && prior.cycle_start_at.getTime() <= new Date(cycle.startsAt).getTime()
+                && (prior.cycle_end_at === null || prior.cycle_end_at.getTime()
+                  > new Date(cycle.startsAt).getTime())
                 && prior.rule_version < schedule.ruleVersion))
               ? 'CARRY_FORWARD' as const : null;
           if (source) {
@@ -235,6 +252,58 @@ export function createDatabaseTaskAssignmentCommand(
                 AND assignment_id=${materializationId}
             `)).rows[0]);
             sameCycle = [predecessor];
+            if (source === 'CARRY_FORWARD' && !schedule.resetCompletionOnCycle) {
+              const priorCompletion = completions.filter((completion) =>
+                completion.student_id === input.studentId
+                && completion.assignment_id === prior?.assignment_id
+                && completion.cycle_id === prior?.cycle_id)
+                .sort((left, right) => left.event_sequence - right.event_sequence).at(-1);
+              const alreadyCompleted = completions.some((completion) =>
+                completion.student_id === input.studentId && completion.cycle_id === cycle.cycleId);
+              if (!alreadyCompleted && priorCompletion?.status === 'COMPLETED') {
+                const completionId = taskNaturalCompletionMaterializationId(
+                  task.task_instance_id, cycle.cycleId, input.studentId);
+                const carriedCompletion = await tx.execute(sql`INSERT INTO task_completions
+                  (tenant_id, completion_id, completed_at, task_instance_id, task_id_snapshot,
+                   task_name_snapshot, student_id, student_name_snapshot, reward_snapshot,
+                   balance_before, balance_after, status, note, cycle_id, cycle_start_at, cycle_end_at,
+                   rule_version, timezone, source, assignment_id, transaction_id, operation_id,
+                   operation_hash, admin_operation_id, admin_operation_hash, schema_version,
+                   evidence_provider, evidence_board_id, evidence_post_id, evidence_created_at,
+                   evidence_author_full_name, created_at)
+                  VALUES (${dependencies.tenantId}, ${completionId}, ${now}, ${task.task_instance_id},
+                   ${task.task_id}, ${priorCompletion.task_name_snapshot}, ${input.studentId},
+                   ${priorCompletion.student_name_snapshot}, 0, ${priorCompletion.balance_after},
+                   ${priorCompletion.balance_after}, 'COMPLETED', NULL, ${cycle.cycleId},
+                   ${new Date(cycle.startsAt)}, ${cycle.endsAt ? new Date(cycle.endsAt) : null},
+                   ${schedule.ruleVersion}, ${schedule.timeZone}, 'CARRY_FORWARD',
+                   ${materializationId}, NULL, NULL, NULL, NULL, NULL, 1,
+                   NULL, NULL, NULL, NULL, NULL, ${now}) RETURNING completion_id`);
+                assertExactReturning(carriedCompletion.rows, ['completion_id'],
+                  { completion_id: completionId }, 'completion materialization event');
+                const carriedRows = await tx.execute(sql`SELECT completion_id,
+                  event_sequence::text AS event_sequence, completed_at, task_instance_id,
+                  task_id_snapshot, task_name_snapshot, student_id, student_name_snapshot,
+                  reward_snapshot, balance_before, balance_after, status, note, cycle_id,
+                  cycle_start_at, cycle_end_at, rule_version, timezone, source, assignment_id,
+                  transaction_id, operation_id, operation_hash, admin_operation_id,
+                  admin_operation_hash, schema_version, evidence_provider, evidence_board_id,
+                  evidence_post_id, evidence_created_at, evidence_author_full_name, created_at
+                  FROM task_completions WHERE tenant_id=${dependencies.tenantId}
+                    AND completion_id=${completionId}`);
+                expectedCarriedCompletion = parseCompletion(carriedRows.rows[0]);
+                if (expectedCarriedCompletion.completion_id !== completionId
+                  || expectedCarriedCompletion.source !== 'CARRY_FORWARD'
+                  || expectedCarriedCompletion.status !== 'COMPLETED'
+                  || expectedCarriedCompletion.reward_snapshot !== 0
+                  || expectedCarriedCompletion.balance_before !== priorCompletion.balance_after
+                  || expectedCarriedCompletion.balance_after !== priorCompletion.balance_after
+                  || expectedCarriedCompletion.assignment_id !== materializationId
+                  || expectedCarriedCompletion.cycle_id !== cycle.cycleId) {
+                  throw new Error('Task assignment completion materialization integrity check failed.');
+                }
+              }
+            }
           } else {
             effectiveAssigned = false;
           }
@@ -314,8 +383,10 @@ export function createDatabaseTaskAssignmentCommand(
           taskInstanceId: task.task_instance_id, studentId: input.studentId,
           assigned: input.assigned, changed, cycleId: cycle.cycleId, transitionEventId,
           materializationEventIds });
+        const expectedCompletions = expectedCarriedCompletion
+          ? [...completions, expectedCarriedCompletion] : completions;
         await verifyCurrentState(tx, dependencies.tenantId, result, payloadHash, input.source,
-          currentMirror, mirrors, history, completions);
+          currentMirror, mirrors, history, expectedCompletions);
         const audit = auditInput(result, now);
         await appendOperationAudit(tx, dependencies.tenantId, audit);
         await assertOperationAudit(tx, dependencies.tenantId, audit);
@@ -330,7 +401,7 @@ export function createDatabaseTaskAssignmentCommand(
           'terminal operation');
         await assertExactlyOneOperationAudit(tx, dependencies.tenantId, input.operationId);
         await verifyCurrentState(tx, dependencies.tenantId, result, payloadHash, input.source,
-          currentMirror, mirrors, history, completions);
+          currentMirror, mirrors, history, expectedCompletions);
         const stored = await readOperation(tx, dependencies.tenantId, input.operationId);
         if (!stored) throw new Error('Task assignment terminal operation integrity check failed.');
         return resolveReplay(tx, dependencies.tenantId, stored, input, payloadHash);
@@ -595,10 +666,15 @@ function parseMirror(raw: unknown) {
 }
 
 function parseTaskRow(raw: unknown): TaskRow {
-  const row = exactRow(raw, ['task_instance_id', 'task_id', 'current_schedule',
-    'pending_schedule', 'created_at'], 'task evidence');
+  const row = exactRow(raw, ['task_instance_id', 'task_id', 'title', 'is_active',
+    'available_from', 'due_at', 'current_schedule', 'pending_schedule', 'created_at'],
+  'task evidence');
   return { task_instance_id: requiredId(row.task_instance_id, 'task instance ID'),
-    task_id: requiredId(row.task_id, 'task ID'), current_schedule: row.current_schedule as TaskSchedule,
+    task_id: requiredId(row.task_id, 'task ID'), title: requiredId(row.title, 'task title'),
+    is_active: row.is_active === true, available_from: row.available_from === null
+      ? null : requiredDate(row.available_from, 'task available timestamp'),
+    due_at: row.due_at === null ? null : requiredDate(row.due_at, 'task due timestamp'),
+    current_schedule: row.current_schedule as TaskSchedule,
     pending_schedule: row.pending_schedule as TaskSchedule | null,
     created_at: requiredDate(row.created_at, 'task created timestamp') };
 }

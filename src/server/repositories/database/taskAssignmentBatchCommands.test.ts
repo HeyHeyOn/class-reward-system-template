@@ -8,6 +8,7 @@ import { createPgliteDatabaseHarness, type PgliteDatabaseHarness } from '@/serve
 import type { TenantTransaction } from '@/server/db/transaction';
 import { createDatabaseTaskAdminCommands } from './taskAdminCommands';
 import { createDatabaseTaskAssignmentCommand } from './taskAssignmentCommands';
+import { taskNaturalCompletionMaterializationId } from './taskCycleMaterialization';
 import {
   createDatabaseTaskAssignmentBatchCommand,
   createTaskAssignmentBatchPayloadHash,
@@ -115,19 +116,26 @@ async function seedLegacyMirror(studentId = 'S001') {
   [harness.tenantOneId, task.rows[0].task_instance_id, studentId, '2026-08-30T01:00:00.000Z']);
 }
 
-async function insertCompletionFixture(assignment: Record<string, unknown>) {
+async function insertCompletionFixture(assignment: Record<string, unknown>, options: Readonly<{
+  completionId?: string;
+  operationId?: string;
+  completedAt?: string;
+}> = {}) {
+  const completionId = options.completionId ?? 'fixture:completion';
+  const operationId = options.operationId ?? 'completion-operation';
+  const completedAt = options.completedAt ?? '2026-08-31T02:30:00.000Z';
   await harness.database.query(`INSERT INTO task_completions
     (tenant_id, completion_id, completed_at, task_instance_id, task_id_snapshot,
      task_name_snapshot, student_id, student_name_snapshot, reward_snapshot,
      balance_before, balance_after, status, note, cycle_id, cycle_start_at, cycle_end_at,
      rule_version, timezone, source, assignment_id, operation_id, operation_hash,
      admin_operation_id, admin_operation_hash, schema_version, created_at)
-    VALUES ($1, 'fixture:completion', $2, $3, $4, $4, $5, $5, 100, 0, 100, 'COMPLETED', NULL,
-      $6, $7, $8, $9, 'Asia/Seoul', 'BANK', $10, 'completion-operation', $11,
-      NULL, NULL, 1, $2)`, [harness.tenantOneId, '2026-08-31T02:30:00.000Z',
+    VALUES ($1, $2, $3, $4, $5, $5, $6, $6, 100, 0, 100, 'COMPLETED', NULL,
+      $7, $8, $9, $10, 'Asia/Seoul', 'BANK', $11, $12, $13,
+      NULL, NULL, 1, $3)`, [harness.tenantOneId, completionId, completedAt,
     assignment.task_instance_id, assignment.task_id_snapshot, assignment.student_id,
     assignment.cycle_id, assignment.cycle_start_at, assignment.cycle_end_at,
-    assignment.rule_version, assignment.assignment_id, 'c'.repeat(64)]);
+    assignment.rule_version, assignment.assignment_id, operationId, 'c'.repeat(64)]);
 }
 
 function resultHash(result: unknown) {
@@ -612,6 +620,145 @@ describe('database desired task-assignment batch command', () => {
     ]);
     expect(operations.rows).toHaveLength(1); expect(audits.rows).toHaveLength(1);
     expect(mirrors.rows).toEqual([{ task_id: 'TASK-001', student_id: 'S001' }]);
+  });
+
+  it('carries prior completion once at a natural batch boundary without financial writes', async () => {
+    const admin = createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId,
+      runTenantTransaction: harness.runTenantTransaction,
+      now: () => new Date('2026-08-30T01:00:00.000Z') });
+    await admin.create({ operationId: 'seed-TASK-CARRY', taskId: 'TASK-CARRY', title: 'TASK-CARRY',
+      description: '', reward: 100, isActive: true, sortOrder: 3, allowedStudentIds: [],
+      schedule: { recurrence: { type: 'DAILY', time: '09:00' }, timeZone: 'Asia/Seoul',
+        resetCompletionOnCycle: false, resetAssignmentOnCycle: false } });
+    const priorCarry = await singleton(new Date('2026-08-30T02:00:00.000Z')).execute({
+      operationId: 'abcdef00-0000-4000-8000-000000000138', taskId: 'TASK-CARRY',
+      studentId: 'S001', assigned: true, source: 'ADMIN',
+    });
+    const priorReset = await singleton(new Date('2026-08-30T02:01:00.000Z')).execute({
+      operationId: 'abcdef00-0000-4000-8000-000000000139', taskId: 'TASK-001',
+      studentId: 'S002', assigned: true, source: 'ADMIN',
+    });
+    const priorAssignments = await assignments();
+    await insertCompletionFixture(priorAssignments.find((row) =>
+      row.assignment_id === priorCarry.transitionEventId)!, {
+      completionId: 'fixture:carry-completion', operationId: 'carry-completion-operation',
+      completedAt: '2026-08-30T02:30:00.000Z',
+    });
+    await insertCompletionFixture(priorAssignments.find((row) =>
+      row.assignment_id === priorReset.transitionEventId)!, {
+      completionId: 'fixture:reset-completion', operationId: 'reset-completion-operation',
+      completedAt: '2026-08-30T02:31:00.000Z',
+    });
+    const financialBefore = await Promise.all([
+      harness.database.query(`SELECT * FROM accounts WHERE tenant_id=$1 ORDER BY student_id`,
+        [harness.tenantOneId]),
+      harness.database.query(`SELECT * FROM transactions WHERE tenant_id=$1 ORDER BY event_sequence`,
+        [harness.tenantOneId]),
+    ]);
+    const observed = observingRunner();
+    const subject = createDatabaseTaskAssignmentBatchCommand({ tenantId: harness.tenantOneId,
+      runTenantTransaction: observed.run, now: () => NOW });
+    const desired = { operationId: 'abcdef00-0000-4000-8000-000000000140', targets: [
+      { taskId: 'TASK-CARRY', operations: [{ studentId: 'S001', assigned: true, source: 'ADMIN' as const }] },
+      { taskId: 'TASK-001', operations: [{ studentId: 'S002', assigned: true, source: 'ADMIN' as const }] },
+    ] };
+
+    const result = await subject.execute(desired);
+    expect(result.entries.map((entry) => ({ taskId: entry.taskId, changed: entry.changed,
+      transitionEventId: entry.transitionEventId, materializationCount: entry.materializationEventIds.length })))
+      .toEqual([
+        { taskId: 'TASK-001', changed: false, transitionEventId: null, materializationCount: 1 },
+        { taskId: 'TASK-CARRY', changed: false, transitionEventId: null, materializationCount: 1 },
+      ]);
+    const carryEntry = result.entries.find((entry) => entry.taskId === 'TASK-CARRY')!;
+    const resetEntry = result.entries.find((entry) => entry.taskId === 'TASK-001')!;
+    const carried = await harness.database.query(`SELECT * FROM task_completions
+      WHERE tenant_id=$1 AND source='CARRY_FORWARD' ORDER BY event_sequence`, [harness.tenantOneId]);
+    expect(carried.rows).toEqual([expect.objectContaining({
+      completion_id: taskNaturalCompletionMaterializationId(carryEntry.taskInstanceId,
+        carryEntry.cycleId, carryEntry.studentId),
+      completed_at: NOW, task_instance_id: carryEntry.taskInstanceId, task_id_snapshot: 'TASK-CARRY',
+      student_id: 'S001', reward_snapshot: 0, balance_before: 100, balance_after: 100,
+      status: 'COMPLETED', source: 'CARRY_FORWARD', assignment_id: carryEntry.materializationEventIds[0],
+      transaction_id: null, operation_id: null, operation_hash: null,
+      admin_operation_id: null, admin_operation_hash: null, created_at: NOW,
+    })]);
+    expect(carried.rows.some((row) => (row as Record<string, unknown>).task_instance_id
+      === resetEntry.taskInstanceId)).toBe(false);
+    expect(observed.queries.filter((query) => query.sql.includes('from task_completions'))
+      .every((query) => query.sql.includes('task_instance_id in ('))).toBe(true);
+    expect(observed.queries.some((query) => query.sql.startsWith('insert into transactions')
+      || query.sql.startsWith('update accounts'))).toBe(false);
+    const financialAfter = await Promise.all([
+      harness.database.query(`SELECT * FROM accounts WHERE tenant_id=$1 ORDER BY student_id`,
+        [harness.tenantOneId]),
+      harness.database.query(`SELECT * FROM transactions WHERE tenant_id=$1 ORDER BY event_sequence`,
+        [harness.tenantOneId]),
+    ]);
+    expect(financialAfter).toEqual(financialBefore);
+    await expect(command().execute({ ...desired, targets: [...desired.targets].reverse() }))
+      .resolves.toEqual(result);
+    expect((await harness.database.query(`SELECT completion_id FROM task_completions
+      WHERE tenant_id=$1 AND source='CARRY_FORWARD'`, [harness.tenantOneId])).rows).toHaveLength(1);
+  });
+
+  it.each([
+    { label: 'removed mirror', now: new Date('2026-08-31T02:00:00.000Z'),
+      prepare: async (instanceId: string) => harness.database.query(
+        `DELETE FROM task_allowed_students WHERE tenant_id=$1 AND task_instance_id=$2`,
+        [harness.tenantOneId, instanceId]) },
+    { label: 'unavailable task', now: new Date('2026-08-31T02:00:00.000Z'),
+      prepare: async (instanceId: string) => harness.database.query(
+        `UPDATE tasks SET due_at='2026-08-30T23:00:00.000Z'
+         WHERE tenant_id=$1 AND task_instance_id=$2`, [harness.tenantOneId, instanceId]) },
+    { label: 'skipped natural cycle', now: new Date('2026-09-01T02:00:00.000Z'),
+      prepare: async (instanceId: string) => { void instanceId; } },
+    { label: 'exact-end lower-rule configuration boundary',
+      now: new Date('2026-08-31T00:00:00.000Z'),
+      prepare: async (instanceId: string) => harness.database.query(
+        `UPDATE tasks SET pending_schedule=$3::jsonb WHERE tenant_id=$1 AND task_instance_id=$2`,
+        [harness.tenantOneId, instanceId, JSON.stringify({ ruleVersion: 2,
+          effectiveFrom: '2026-08-31T00:00:00.000Z', timeZone: 'Asia/Seoul',
+          recurrence: { type: 'DAILY', time: '09:00' }, resetCompletionOnCycle: false,
+          resetAssignmentOnCycle: false })]) },
+    { label: 'stale configuration boundary', now: new Date('2026-09-01T00:00:00.000Z'),
+      prepare: async (instanceId: string) => harness.database.query(
+        `UPDATE tasks SET pending_schedule=$3::jsonb WHERE tenant_id=$1 AND task_instance_id=$2`,
+        [harness.tenantOneId, instanceId, JSON.stringify({ ruleVersion: 2,
+          effectiveFrom: '2026-09-01T00:00:00.000Z', timeZone: 'Asia/Seoul',
+          recurrence: { type: 'DAILY', time: '09:00' }, resetCompletionOnCycle: false,
+          resetAssignmentOnCycle: false })]) },
+  ])('does not batch-resurrect $label assignment state', async ({ now, prepare }) => {
+    const admin = createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId,
+      runTenantTransaction: harness.runTenantTransaction,
+      now: () => new Date('2026-08-30T01:00:00.000Z') });
+    await admin.create({ operationId: 'seed-TASK-NO-RESURRECT', taskId: 'TASK-NO-RESURRECT',
+      title: 'TASK-NO-RESURRECT', description: '', reward: 0, isActive: true, sortOrder: 4,
+      allowedStudentIds: [], schedule: { recurrence: { type: 'DAILY', time: '09:00' },
+        timeZone: 'Asia/Seoul', resetCompletionOnCycle: false,
+        resetAssignmentOnCycle: false } });
+    const prior = await singleton(new Date('2026-08-30T02:00:00.000Z')).execute({
+      operationId: 'abcdef00-0000-4000-8000-000000000141', taskId: 'TASK-NO-RESURRECT',
+      studentId: 'S001', assigned: true, source: 'ADMIN',
+    });
+    await prepare(prior.taskInstanceId);
+    const subject = createDatabaseTaskAssignmentBatchCommand({ tenantId: harness.tenantOneId,
+      runTenantTransaction: harness.runTenantTransaction, now: () => now });
+    const result = await subject.execute({
+      operationId: 'abcdef00-0000-4000-8000-000000000142', targets: [{
+        taskId: 'TASK-NO-RESURRECT', operations: [{ studentId: 'S001', assigned: false,
+          source: 'ADMIN' }],
+      }],
+    });
+    expect(result.entries[0]).toEqual(expect.objectContaining({ changed: false,
+      materializationEventIds: [] }));
+    const carry = await harness.database.query(`SELECT assignment_id FROM task_assignments
+      WHERE tenant_id=$1 AND task_instance_id=$2 AND source='CARRY_FORWARD'`,
+    [harness.tenantOneId, prior.taskInstanceId]);
+    const mirrors = await harness.database.query(`SELECT student_id FROM task_allowed_students
+      WHERE tenant_id=$1 AND task_instance_id=$2`, [harness.tenantOneId, prior.taskInstanceId]);
+    expect(carry.rows).toEqual([]);
+    expect(mirrors.rows).toEqual([]);
   });
 
   it('rolls back all earlier work for an invalid later student and isolates tenants', async () => {
