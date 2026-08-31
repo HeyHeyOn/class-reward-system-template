@@ -211,7 +211,8 @@ async function seedCancellationOnlyCompletionWithOriginalDependent() {
      balance_before, balance_after, status, note, cycle_id, cycle_start_at, cycle_end_at,
      rule_version, timezone, source, assignment_id, transaction_id, operation_id,
      operation_hash, schema_version, created_at)
-    VALUES ($1, 'completion:cancellation-only:S001', $2, 'INSTANCE-001', 'TASK-001',
+    VALUES ($1, 'task-completion-cancellation:abcdef00-0000-4000-8000-000000000711', $2,
+      'INSTANCE-001', 'TASK-001',
       '첫째 과제', 'S001', '첫째 학생', 50, 700, 650, 'CANCELLED',
       'cancels-completion:task-completion:abcdef00-0000-4000-8000-000000000401', $3, $4, $5, 1, 'Asia/Seoul',
       'ADMIN_RESET', 'assignment:TASK-001:S001', $6, $7, $8, 1, $2)`, [
@@ -472,7 +473,8 @@ describe('database batch task completion reset command', () => {
        balance_before, balance_after, status, note, cycle_id, cycle_start_at, cycle_end_at,
        rule_version, timezone, source, assignment_id, transaction_id, operation_id,
        operation_hash, schema_version, created_at)
-      VALUES ($1, 'completion:cancellation:S001', $2, 'INSTANCE-001', 'TASK-001',
+      VALUES ($1, 'task-completion-cancellation:abcdef00-0000-4000-8000-000000000501', $2,
+        'INSTANCE-001', 'TASK-001',
         '첫째 과제', 'S001', '첫째 학생', 50, 700, 650, 'CANCELLED',
         'cancels-completion:task-completion:abcdef00-0000-4000-8000-000000000401', $3, $4, $5, 1, 'Asia/Seoul',
         'ADMIN_RESET', 'assignment:TASK-001:S001', $6, $7, $8, 1, $2)`, [
@@ -1033,6 +1035,128 @@ describe('database batch task completion reset command', () => {
     expect(await state()).toEqual(before);
   });
 
+  it.each([
+    ['cancellation student/name', (row: Record<string, unknown>) => row.kind === 'CANCELLATION'
+      ? { ...row, student_id: 'S999', student_name_snapshot: '다른 학생' } : row],
+    ['original student/name', (row: Record<string, unknown>) => row.kind === 'TASK_REWARD'
+      ? { ...row, student_id: 'S999', student_name_snapshot: '다른 학생' } : row],
+    ['reversal reward/delta/balance relation', (row: Record<string, unknown>) =>
+      row.kind === 'CANCELLATION' ? { ...row, legacy_total_amount: '40', balance_delta: '-40',
+        balance_before: '700', balance_after: '660' } : row],
+    ['original reward/delta relation', (row: Record<string, unknown>) => row.kind === 'TASK_REWARD'
+      ? { ...row, legacy_total_amount: '40', balance_delta: '40', balance_before: '650',
+        balance_after: '690' } : row],
+    ['reversal chronology', (row: Record<string, unknown>) => row.kind === 'CANCELLATION'
+      ? { ...row, occurred_at: new Date('2026-08-31T00:20:00.000Z'),
+        created_at: new Date('2026-08-31T00:20:00.000Z') } : row],
+    ['deterministic cancellation transaction ID', (row: Record<string, unknown>) =>
+      row.kind === 'CANCELLATION' ? { ...row,
+        transaction_id: 'cancellation:abcdef00-0000-4000-8000-000000000712' } : row],
+    ['cancellation operator', (row: Record<string, unknown>) => row.kind === 'CANCELLATION'
+      ? { ...row, operator_snapshot: 'other-valid-operator' } : row],
+    ['cancellation status', (row: Record<string, unknown>) => row.kind === 'CANCELLATION'
+      ? { ...row, legacy_status_snapshot: 'SUCCESS' } : row],
+    ['cancellation schema', (row: Record<string, unknown>) => row.kind === 'CANCELLATION'
+      ? { ...row, schema_version: 2 } : row],
+    ['cancellation operation ID', (row: Record<string, unknown>) => row.kind === 'CANCELLATION'
+      ? { ...row, operation_id: 'abcdef00-0000-4000-8000-000000000712' } : row],
+    ['cancellation operation hash', (row: Record<string, unknown>) => row.kind === 'CANCELLATION'
+      ? { ...row, operation_hash: '8'.repeat(64) } : row],
+    ['reversed transaction ID', (row: Record<string, unknown>) => row.kind === 'CANCELLATION'
+      ? { ...row, reverses_transaction_id: row.transaction_id } : row],
+    ['missing original operation binding', (row: Record<string, unknown>) => row.kind === 'TASK_REWARD'
+      ? { ...row, operation_id: null, operation_hash: null } : row],
+    ['non-cancellable original semantic kind', (row: Record<string, unknown>) =>
+      row.kind === 'TASK_REWARD' ? { ...row, kind: 'LEGACY' } : row],
+  ] as const)('rejects consistently observed cancellation semantic fault: %s',
+  async (_label, mutate) => {
+    await seedCancellationOnlyCompletionWithOriginalDependent();
+    const before = await state();
+    let transactionReads = 0; let auditReached = false;
+    const run = observingRunner((statement, rows) => {
+      if (statement.includes('from audit_events')) auditReached = true;
+      if (statement.startsWith('select ') && statement.includes('from transactions')) {
+        transactionReads += 1;
+        return rows.map((raw) => mutate(raw as Record<string, unknown>));
+      }
+      return rows;
+    });
+    await expect(command({ runTenantTransaction: run }).resetBatch({
+      operationId: OPERATION_ID, taskIds: ['TASK-001'],
+    })).rejects.toThrow(/cancellation completion transaction provenance.*integrity/i);
+    expect(transactionReads).toBe(1);
+    expect(auditReached).toBe(false);
+    expect(await state()).toEqual(before);
+  });
+
+  it.each([
+    ['completion ID', (row: Record<string, unknown>) => ({ ...row,
+      completion_id: 'task-completion-cancellation:abcdef00-0000-4000-8000-000000000712' })],
+    ['completion note', (row: Record<string, unknown>) => ({ ...row,
+      note: 'cancels-completion:task-completion:wrong' })],
+  ] as const)('rejects cancellation completion deterministic contract fault: %s',
+  async (_label, mutate) => {
+    await seedCancellationOnlyCompletionWithOriginalDependent();
+    const before = await state();
+    let completionReads = 0;
+    const run = observingRunner((statement, rows) => {
+      if (statement.startsWith('select ') && statement.includes('from task_completions')) {
+        completionReads += 1;
+        return rows.map((raw) => (raw as Record<string, unknown>).operation_id !== null
+          ? mutate(raw as Record<string, unknown>) : raw);
+      }
+      return rows;
+    });
+    await expect(command({ runTenantTransaction: run }).resetBatch({
+      operationId: OPERATION_ID, taskIds: ['TASK-001'],
+    })).rejects.toThrow(/cancellation completion transaction provenance.*integrity/i);
+    expect(completionReads).toBe(1);
+    expect(await state()).toEqual(before);
+  });
+
+  it('rejects cancellation chronology when completion and reversal consistently predate the original',
+  async () => {
+    await seedCancellationOnlyCompletionWithOriginalDependent();
+    const run = observingRunner((statement, rows) => {
+      if (statement.startsWith('select ') && statement.includes('from task_completions')) {
+        return rows.map((raw) => (raw as Record<string, unknown>).operation_id
+          === 'abcdef00-0000-4000-8000-000000000711'
+          ? { ...(raw as Record<string, unknown>),
+            completed_at: new Date('2026-08-31T00:20:00.000Z') } : raw);
+      }
+      if (statement.startsWith('select ') && statement.includes('from transactions')) {
+        return rows.map((raw) => (raw as Record<string, unknown>).kind === 'CANCELLATION'
+          ? { ...(raw as Record<string, unknown>),
+            occurred_at: new Date('2026-08-31T00:20:00.000Z') } : raw);
+      }
+      return rows;
+    });
+    await expect(command({ runTenantTransaction: run }).resetBatch({
+      operationId: OPERATION_ID, taskIds: ['TASK-001'],
+    })).rejects.toThrow(/cancellation completion transaction provenance.*integrity/i);
+  });
+
+  it('reads cancellation and captured original operations together once per CREATE phase', async () => {
+    await seedCancellationOnlyCompletionWithOriginalDependent();
+    const operationReads: string[][] = [];
+    const run = observingRunner((statement, rows) => {
+      if (statement.startsWith('select operation_id, operation_kind, payload_hash')
+        && statement.includes('from operations')) {
+        const ids = rows.map((raw) => String((raw as Record<string, unknown>).operation_id)).sort();
+        if (ids.includes('abcdef00-0000-4000-8000-000000000401')
+          || ids.includes('abcdef00-0000-4000-8000-000000000711')) operationReads.push(ids);
+      }
+      return rows;
+    });
+    await command({ runTenantTransaction: run }).resetBatch({
+      operationId: OPERATION_ID, taskIds: ['TASK-001'],
+    });
+    expect(operationReads).toEqual(Array.from({ length: 3 }, () => [
+      'abcdef00-0000-4000-8000-000000000401',
+      'abcdef00-0000-4000-8000-000000000711',
+    ]));
+  });
+
   it('uses FALSE graph predicates in all three CREATE phases when there are no references', async () => {
     await harness.database.query('ALTER TABLE task_completions DISABLE TRIGGER task_completions_append_only');
     await harness.database.query('DELETE FROM task_completions WHERE tenant_id=$1',
@@ -1278,7 +1402,8 @@ describe('database batch task completion reset command', () => {
        balance_before, balance_after, status, note, cycle_id, cycle_start_at, cycle_end_at,
        rule_version, timezone, source, assignment_id, transaction_id, operation_id,
        operation_hash, schema_version, created_at)
-      VALUES ($1, 'completion:later-cancellation:S001', $2, 'INSTANCE-001', 'TASK-001',
+      VALUES ($1, 'task-completion-cancellation:abcdef00-0000-4000-8000-000000000711', $2,
+        'INSTANCE-001', 'TASK-001',
         '첫째 과제', 'S001', '첫째 학생', 50, 700, 650, 'CANCELLED',
         'cancels-completion:task-completion:abcdef00-0000-4000-8000-000000000401', $3, $4, $5, 1, 'Asia/Seoul',
         'ADMIN_RESET', 'assignment:TASK-001:S001', $6, $7, $8, 1, $2)`, [
@@ -1294,6 +1419,15 @@ describe('database batch task completion reset command', () => {
     await expect(command({ runTenantTransaction: missingBank }).resetBatch({
       operationId: OPERATION_ID, taskIds: ['TASK-001'],
     })).rejects.toThrow(/bank completion transaction provenance.*integrity/i);
+    const drifted = observingRunner((statement, rows) => statement.startsWith('select ')
+      && statement.includes('from task_completions') ? rows.map((raw) => {
+        const row = raw as Record<string, unknown>;
+        return row.source === 'ADMIN_RESET' && row.operation_id === cancellationOperationId
+          ? { ...row, task_name_snapshot: 'wrong copied task name' } : raw;
+      }) : rows);
+    await expect(command({ runTenantTransaction: drifted }).resetBatch({
+      operationId: OPERATION_ID, taskIds: ['TASK-001'],
+    })).rejects.toThrow(/cancellation completion transaction provenance.*integrity/i);
   });
 
   it('historical replay rejects corrupted BANK transaction semantic provenance', async () => {
@@ -1310,6 +1444,25 @@ describe('database batch task completion reset command', () => {
     await expect(command({ runTenantTransaction: run }).resetBatch({
       operationId: OPERATION_ID, taskIds: ['TASK-001'],
     })).rejects.toThrow(/bank completion transaction provenance.*integrity/i);
+    expect(graphReached).toBe(true);
+  });
+
+  it('historical replay rejects corrupted cancellation semantic provenance', async () => {
+    await seedCancellationOnlyCompletionWithOriginalDependent();
+    await command().resetBatch({ operationId: OPERATION_ID, taskIds: ['TASK-001'] });
+    let graphReached = false;
+    const run = observingRunner((statement, rows) => {
+      if (statement.startsWith('select ') && statement.includes('from transactions')) {
+        graphReached = true;
+        return rows.map((raw) => (raw as Record<string, unknown>).kind === 'CANCELLATION'
+          ? { ...(raw as Record<string, unknown>), operator_snapshot: 'other-valid-operator' }
+          : raw);
+      }
+      return rows;
+    });
+    await expect(command({ runTenantTransaction: run }).resetBatch({
+      operationId: OPERATION_ID, taskIds: ['TASK-001'],
+    })).rejects.toThrow(/cancellation completion transaction provenance.*integrity/i);
     expect(graphReached).toBe(true);
   });
 

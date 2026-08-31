@@ -745,6 +745,27 @@ async function validateCompletionReferences(tx: TenantTransaction, tenantId: str
         { hash: assignment.admin_operation_hash, kind: 'TASK_ADMIN' });
     }
   }
+  const graph = await readTransactionGraph(tx, tenantId,
+    [...expectedTransactions.keys()].sort(compareCanonical));
+  const transactions = new Map(graph.transactions.map((row) => [row.transaction_id, row]));
+  if (expectedGraph !== undefined && snapshot(graph) !== snapshot(expectedGraph)) {
+    throw new Error(`Task reset transaction graph ${phase} snapshot integrity check failed.`);
+  }
+  validateBankTransactionProvenance(rows, transactions);
+  validateCancellationTransactionProvenance(rows, transactions, expectedOperations);
+  if (graph.transactions.some((row) => row.kind === 'CANCELLATION'
+    && (row.reverses_transaction_id === null || !transactions.has(row.reverses_transaction_id)))) {
+    throw new Error('Task reset transaction graph transaction identity integrity check failed.');
+  }
+  for (const [transactionId, expected] of expectedTransactions) {
+    const row = transactions.get(transactionId);
+    if (!row || row.kind !== expected.kind || row.operation_id !== expected.operationId
+      || row.operation_hash !== expected.hash) {
+      throw new Error(expected.kind === 'TASK_REWARD'
+        ? 'Task reset BANK completion transaction provenance integrity check failed.'
+        : 'Task reset cancellation completion transaction provenance integrity check failed.');
+    }
+  }
   if (expectedOperations.size > 0) {
     const ids = [...expectedOperations.keys()].sort(compareCanonical);
     const result = await tx.execute(sql`SELECT operation_id, operation_kind, payload_hash
@@ -764,26 +785,6 @@ async function validateCompletionReferences(tx: TenantTransaction, tenantId: str
         throw new Error('Task reset referenced operation integrity check failed.');
       }
       seen.add(operationId);
-    }
-  }
-  const graph = await readTransactionGraph(tx, tenantId,
-    [...expectedTransactions.keys()].sort(compareCanonical));
-  const transactions = new Map(graph.transactions.map((row) => [row.transaction_id, row]));
-  if (expectedGraph !== undefined && snapshot(graph) !== snapshot(expectedGraph)) {
-    throw new Error(`Task reset transaction graph ${phase} snapshot integrity check failed.`);
-  }
-  validateBankTransactionProvenance(rows, transactions);
-  if (graph.transactions.some((row) => row.kind === 'CANCELLATION'
-    && (row.reverses_transaction_id === null || !transactions.has(row.reverses_transaction_id)))) {
-    throw new Error('Task reset transaction graph transaction identity integrity check failed.');
-  }
-  for (const [transactionId, expected] of expectedTransactions) {
-    const row = transactions.get(transactionId);
-    if (!row || row.kind !== expected.kind || row.operation_id !== expected.operationId
-      || row.operation_hash !== expected.hash) {
-      throw new Error(expected.kind === 'TASK_REWARD'
-        ? 'Task reset BANK completion transaction provenance integrity check failed.'
-        : 'Task reset transaction graph reference integrity check failed.');
     }
   }
   return graph;
@@ -816,6 +817,74 @@ function validateBankTransactionProvenance(rows: readonly Completion[],
       || transaction.operation_id !== operationId
       || transaction.operation_hash !== completion.operation_hash
       || transaction.schema_version !== 1) throw new Error(failure);
+  }
+}
+
+function validateCancellationTransactionProvenance(rows: readonly Completion[],
+  transactions: ReadonlyMap<string, TransactionGraph['transactions'][number]>,
+  operations: Map<string, { hash: string;
+    kind: 'TASK_REWARD' | 'TASK_ADMIN' | 'CANCELLATION' }>) {
+  const failure = 'Task reset cancellation completion transaction provenance integrity check failed.';
+  for (const completion of rows) {
+    if (completion.source !== 'ADMIN_RESET' || completion.operation_id === null) continue;
+    const operationId = completion.operation_id;
+    const operationHash = completion.operation_hash;
+    const reversal = completion.transaction_id === null
+      ? undefined : transactions.get(completion.transaction_id);
+    const original = reversal?.reverses_transaction_id === null
+      || reversal?.reverses_transaction_id === undefined
+      ? undefined : transactions.get(reversal.reverses_transaction_id);
+    const originalOperationId = original?.operation_id;
+    const originalOperationHash = original?.operation_hash;
+    const retainedOriginal = originalOperationId === null || originalOperationId === undefined
+      ? undefined : rows.find((row) => row.completion_id === `task-completion:${originalOperationId}`);
+    const retainedMismatch = retainedOriginal !== undefined
+      && (retainedOriginal.task_instance_id !== completion.task_instance_id
+        || retainedOriginal.task_id_snapshot !== completion.task_id_snapshot
+        || retainedOriginal.task_name_snapshot !== completion.task_name_snapshot
+        || retainedOriginal.student_id !== completion.student_id
+        || retainedOriginal.student_name_snapshot !== completion.student_name_snapshot
+        || retainedOriginal.reward_snapshot !== completion.reward_snapshot
+        || retainedOriginal.cycle_id !== completion.cycle_id
+        || nullableTime(retainedOriginal.cycle_start_at) !== nullableTime(completion.cycle_start_at)
+        || nullableTime(retainedOriginal.cycle_end_at) !== nullableTime(completion.cycle_end_at)
+        || retainedOriginal.rule_version !== completion.rule_version
+        || retainedOriginal.timezone !== completion.timezone
+        || retainedOriginal.assignment_id !== completion.assignment_id);
+    if (!UUID.test(operationId) || operationHash === null || reversal === undefined
+      || original === undefined || originalOperationId === null || originalOperationId === undefined
+      || originalOperationHash === null || originalOperationHash === undefined
+      || !UUID.test(originalOperationId)
+      || completion.completion_id !== `task-completion-cancellation:${operationId}`
+      || completion.transaction_id !== `cancellation:${operationId}`
+      || completion.note !== `cancels-completion:task-completion:${originalOperationId}`
+      || reversal.transaction_id !== completion.transaction_id
+      || reversal.kind !== 'CANCELLATION'
+      || reversal.student_id !== completion.student_id
+      || reversal.student_name_snapshot !== completion.student_name_snapshot
+      || reversal.legacy_total_amount !== completion.reward_snapshot
+      || reversal.balance_delta !== -completion.reward_snapshot
+      || reversal.balance_before !== completion.balance_before
+      || reversal.balance_after !== completion.balance_after
+      || reversal.operator_snapshot !== 'admin-cancellation'
+      || reversal.legacy_status_snapshot !== 'CANCEL_REVERSAL'
+      || reversal.operation_id !== operationId
+      || reversal.operation_hash !== operationHash
+      || reversal.occurred_at !== completion.completed_at.getTime()
+      || reversal.schema_version !== 1
+      || original.kind !== 'TASK_REWARD'
+      || original.transaction_id !== `task-reward:${originalOperationId}`
+      || original.student_id !== completion.student_id
+      || original.student_name_snapshot !== completion.student_name_snapshot
+      || original.legacy_total_amount !== completion.reward_snapshot
+      || original.balance_delta !== completion.reward_snapshot
+      || original.operator_snapshot !== 'bank-task-completion'
+      || original.legacy_status_snapshot !== 'COMPLETED'
+      || original.reverses_transaction_id !== null
+      || original.schema_version !== 1
+      || original.occurred_at > reversal.occurred_at || retainedMismatch) throw new Error(failure);
+    addReference(operations, originalOperationId,
+      { hash: originalOperationHash, kind: 'TASK_REWARD' });
   }
 }
 
