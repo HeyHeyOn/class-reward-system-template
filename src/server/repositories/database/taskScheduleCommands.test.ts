@@ -4,8 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SQLWrapper } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import type { TenantTransaction } from '@/server/db/transaction';
+import type { TaskCycle } from '@/domain/taskRecurrence';
 import { createDatabaseTaskAdminCommands } from './taskAdminCommands';
 import { createDatabaseTaskScheduleCommands } from './taskScheduleCommands';
+import { materializeTaskConfigurationBoundaryCycleInternal } from './taskCycleMaterialization';
 import {
   createPgliteDatabaseHarness,
   type PgliteDatabaseHarness,
@@ -15,6 +17,79 @@ vi.mock('server-only', () => ({}));
 
 const NOW = new Date('2026-08-31T01:00:00.000Z');
 let harness: PgliteDatabaseHarness;
+
+const HASH = 'a'.repeat(64);
+const INSTANCE = 'assignment-chain-instance';
+type ClosedTaskCycle = TaskCycle & { endsAt: string; nextResetAt: string };
+const cycle = (ruleVersion: number, startsAt: string, endsAt: string): ClosedTaskCycle => ({
+  cycleId: `v1|${INSTANCE}|r${ruleVersion}|${startsAt.replace('.000Z', 'Z')}`,
+  startsAt, endsAt, nextResetAt: endsAt,
+});
+const CHAIN_CYCLE_ONE = cycle(1, '2026-08-30T00:00:00Z', '2026-08-31T00:00:00Z');
+const CHAIN_CYCLE_TWO = cycle(2, '2026-08-31T00:00:00Z', '2026-09-01T00:00:00Z');
+const CHAIN_NEW_CYCLE = cycle(3, '2026-08-31T01:00:00Z', '2026-09-01T01:00:00Z');
+const CHAIN_NOW = new Date(CHAIN_NEW_CYCLE.startsAt);
+
+function assignmentRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  const sequence = String(overrides.event_sequence ?? '1');
+  return { assignment_id: `assignment-${sequence}`, event_sequence: sequence,
+    task_id_snapshot: 'TASK-CHAIN', task_instance_id: INSTANCE,
+    cycle_id: CHAIN_CYCLE_ONE.cycleId, cycle_start_at: new Date(CHAIN_CYCLE_ONE.startsAt),
+    cycle_end_at: new Date(CHAIN_CYCLE_ONE.endsAt), rule_version: 1,
+    timezone: 'Asia/Seoul', student_id: 'S001', event_type: 'ASSIGNED',
+    source: 'LEGACY_SEED', previous_assignment_id: null, admin_operation_id: null,
+    admin_operation_hash: null, created_at: new Date('2026-08-30T00:00:00.000Z'),
+    schema_version: 1, note: null, ...overrides };
+}
+
+function validMixedAssignmentChain() {
+  return [
+    assignmentRow(),
+    assignmentRow({ assignment_id: 'assignment-2', event_sequence: '2', source: 'ADMIN',
+      previous_assignment_id: 'assignment-1', admin_operation_id: 'admin-operation',
+      admin_operation_hash: HASH, created_at: new Date('2026-08-30T01:00:00.000Z') }),
+    assignmentRow({ assignment_id: 'assignment-3', event_sequence: '3', source: 'QR',
+      previous_assignment_id: 'assignment-2', admin_operation_id: 'qr-operation',
+      admin_operation_hash: HASH, created_at: new Date('2026-08-30T02:00:00.000Z') }),
+    assignmentRow({ assignment_id: 'assignment-4', event_sequence: '4', source: 'CARRY_FORWARD',
+      previous_assignment_id: 'assignment-3', cycle_id: CHAIN_CYCLE_TWO.cycleId,
+      cycle_start_at: new Date(CHAIN_CYCLE_TWO.startsAt),
+      cycle_end_at: new Date(CHAIN_CYCLE_TWO.endsAt), rule_version: 2,
+      created_at: new Date(CHAIN_CYCLE_TWO.startsAt) }),
+  ];
+}
+
+async function materializeWithAssignmentRows(rows: unknown) {
+  const dialect = new PgDialect();
+  let assignmentRead = 0;
+  let insertedAssignment: Record<string, unknown> | undefined;
+  const tx = { execute: async (wrapper: SQLWrapper) => {
+    const query = dialect.sqlToQuery(wrapper.getSQL());
+    const statement = query.sql.toLowerCase().replace(/\s+/g, ' ');
+    if (statement.includes('from task_allowed_students')) return { rows: [{
+      task_instance_id: INSTANCE, student_id: 'S001', created_at: new Date('2026-08-30T00:00:00.000Z'),
+    }] };
+    if (statement.includes('from task_assignments')) {
+      if (assignmentRead++ === 0) return { rows };
+      return { rows: insertedAssignment ? [insertedAssignment] : [] };
+    }
+    if (statement.includes('from task_completions')) return { rows: [] };
+    if (statement.startsWith('insert into task_assignments')) {
+      const assignmentId = query.params[1] as string;
+      insertedAssignment = assignmentRow({ assignment_id: assignmentId, event_sequence: '5',
+        source: 'CARRY_FORWARD', previous_assignment_id: 'assignment-4',
+        cycle_id: CHAIN_NEW_CYCLE.cycleId, cycle_start_at: new Date(CHAIN_NEW_CYCLE.startsAt),
+        cycle_end_at: new Date(CHAIN_NEW_CYCLE.endsAt), rule_version: 3,
+        created_at: CHAIN_NOW });
+      return { rows: [{ assignment_id: assignmentId }] };
+    }
+    throw new Error(`unexpected statement: ${statement}`);
+  } } as unknown as TenantTransaction;
+  return materializeTaskConfigurationBoundaryCycleInternal({ tx, tenantId: 'tenant',
+    taskId: 'TASK-CHAIN', taskInstanceId: INSTANCE, oldCycle: CHAIN_CYCLE_TWO,
+    oldRuleVersion: 2, newCycle: CHAIN_NEW_CYCLE, newRuleVersion: 3,
+    timeZone: 'Asia/Seoul', now: CHAIN_NOW });
+}
 
 beforeEach(async () => {
   harness = await createPgliteDatabaseHarness();
@@ -31,6 +106,78 @@ beforeEach(async () => {
 afterEach(async () => harness.close());
 
 describe('database task schedule command configuration boundary', () => {
+  it('accepts a mixed legacy, administrative, QR, and carry-forward chain in adapter-independent order', async () => {
+    const result = await materializeWithAssignmentRows(validMixedAssignmentChain().reverse());
+    expect(result.assignmentEventIds).toHaveLength(1);
+    expect(result.completionEventIds).toEqual([]);
+  });
+
+  it('accepts multiple retained same-cycle legacy seed roots with null predecessors', async () => {
+    const result = await materializeWithAssignmentRows([
+      assignmentRow(),
+      assignmentRow({ assignment_id: 'legacy-root-2', event_sequence: '2',
+        previous_assignment_id: null, created_at: new Date('2026-08-30T00:10:00.000Z') }),
+    ].reverse());
+    expect(result.assignmentEventIds).toEqual([]);
+    expect(result.completionEventIds).toEqual([]);
+  });
+
+  it.each([
+    ['legacy unassignment', (rows: ReturnType<typeof validMixedAssignmentChain>) => {
+      rows[0].event_type = 'UNASSIGNED';
+    }],
+    ['legacy predecessor', (rows: ReturnType<typeof validMixedAssignmentChain>) => {
+      rows[0].previous_assignment_id = 'foreign-assignment';
+    }],
+    ['incomplete administrative binding', (rows: ReturnType<typeof validMixedAssignmentChain>) => {
+      rows[1].admin_operation_hash = null;
+    }],
+    ['non-immediate administrative predecessor', (rows: ReturnType<typeof validMixedAssignmentChain>) => {
+      rows[2].previous_assignment_id = 'assignment-1';
+    }],
+    ['carry-forward unassignment', (rows: ReturnType<typeof validMixedAssignmentChain>) => {
+      rows[3].event_type = 'UNASSIGNED';
+    }],
+    ['carry-forward missing predecessor', (rows: ReturnType<typeof validMixedAssignmentChain>) => {
+      rows[3].previous_assignment_id = null;
+    }],
+    ['carry-forward without a higher rule version', (rows: ReturnType<typeof validMixedAssignmentChain>) => {
+      rows[3].rule_version = 1;
+      rows[3].cycle_id = cycle(1, CHAIN_CYCLE_TWO.startsAt, CHAIN_CYCLE_TWO.endsAt).cycleId;
+    }],
+    ['duplicate assignment identity', (rows: ReturnType<typeof validMixedAssignmentChain>) => {
+      rows[3].assignment_id = 'assignment-3';
+    }],
+    ['duplicate event sequence', (rows: ReturnType<typeof validMixedAssignmentChain>) => {
+      rows[3].event_sequence = '3';
+    }],
+    ['future-created evidence', (rows: ReturnType<typeof validMixedAssignmentChain>) => {
+      rows[3].created_at = new Date(CHAIN_NOW.getTime() + 1);
+    }],
+    ['evidence created at its exclusive cycle end', (rows: ReturnType<typeof validMixedAssignmentChain>) => {
+      rows[3].created_at = new Date(CHAIN_CYCLE_TWO.endsAt);
+    }],
+  ])('rejects malformed assignment evidence: %s', async (_label, mutate) => {
+    const rows = validMixedAssignmentChain();
+    mutate(rows);
+    await expect(materializeWithAssignmentRows(rows)).rejects.toThrow(/assignment evidence integrity/i);
+  });
+
+  it('rejects a sparse assignment result before iteration', async () => {
+    const sparse = new Array(1);
+    await expect(materializeWithAssignmentRows(sparse)).rejects.toThrow(/assignment.*malformed/i);
+  });
+
+  it('rejects an assignment result index getter without invoking it', async () => {
+    let getterCalls = 0;
+    const rows: unknown[] = [];
+    Object.defineProperty(rows, '0', { enumerable: true, configurable: true,
+      get() { getterCalls += 1; return validMixedAssignmentChain()[0]; } });
+    Object.defineProperty(rows, 'length', { value: 1, writable: true });
+    await expect(materializeWithAssignmentRows(rows)).rejects.toThrow(/assignment.*malformed/i);
+    expect(getterCalls).toBe(0);
+  });
+
   it('updates two tasks through one canonical batch command', async () => {
     const admin = createDatabaseTaskAdminCommands({
       tenantId: harness.tenantOneId,
@@ -96,10 +243,11 @@ describe('database task schedule command configuration boundary', () => {
       [harness.tenantOneId, taskInstanceId, '2026-08-30T01:00:00.000Z'],
     );
 
+    const editNow = new Date('2026-08-30T02:00:00.000Z');
     const commands = createDatabaseTaskScheduleCommands({
       tenantId: harness.tenantOneId,
       runTenantTransaction: harness.runTenantTransaction,
-      now: () => NOW,
+      now: () => editNow,
     });
     await commands.update({
       operationId: '00000000-0000-4000-8000-000000000010',
@@ -156,6 +304,93 @@ describe('database task schedule command configuration boundary', () => {
          AND completion_id <> 'schedule-red-completion'`,
       [harness.tenantOneId, taskInstanceId],
     )).rows).toHaveLength(1);
+  });
+
+  it('derives carry state only from the exact old cycle instead of a later global event', async () => {
+    const admin = createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId,
+      runTenantTransaction: harness.runTenantTransaction,
+      now: () => new Date('2026-08-30T01:00:00.000Z') });
+    const created = await admin.create({ operationId: 'create-exact-old-cycle', taskId: 'TASK-EXACT',
+      title: 'exact', description: '', reward: 1, isActive: true, sortOrder: 0,
+      allowedStudentIds: ['S001'], schedule: { recurrence: { type: 'DAILY', time: '09:00' },
+        timeZone: 'Asia/Seoul', resetCompletionOnCycle: true, resetAssignmentOnCycle: true } });
+    const instance = created.tasks[0].taskInstanceId;
+    const oldAssignment = created.tasks[0].assignmentEventIds[0];
+    await harness.database.query(`INSERT INTO task_assignments
+      (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id, cycle_start_at,
+       cycle_end_at, rule_version, timezone, student_id, event_type, source,
+       previous_assignment_id, admin_operation_id, admin_operation_hash, created_at,
+       schema_version, note)
+      VALUES ($1, 'future-stale-unassignment', 'TASK-EXACT', $2,
+       $3, '2026-08-30T01:30:00.000Z', '2026-09-01T00:00:00.000Z', 2,
+       'Asia/Seoul', 'S001', 'ASSIGNED', 'CARRY_FORWARD', $4, NULL, NULL,
+       '2026-08-30T01:30:00.000Z', 1, NULL)`, [harness.tenantOneId, instance,
+      `v1|${instance}|r2|2026-08-30T01:30:00Z`, oldAssignment]);
+    const result = await createDatabaseTaskScheduleCommands({ tenantId: harness.tenantOneId,
+      runTenantTransaction: harness.runTenantTransaction,
+      now: () => new Date('2026-08-30T02:00:00.000Z') }).update({
+      operationId: '00000000-0000-4000-8000-000000000012', taskId: 'TASK-EXACT',
+      expectedTaskVersion: 1,
+      recurrence: { type: 'WEEKLY', time: '09:00', weekdays: [1] }, timeZone: 'Asia/Seoul',
+      resetCompletionOnCycle: true, resetAssignmentOnCycle: true });
+    const carried = await harness.database.query(`SELECT previous_assignment_id
+      FROM task_assignments WHERE tenant_id=$1 AND assignment_id=$2`,
+    [harness.tenantOneId, result.assignmentEventIds[0]]);
+    expect(carried.rows).toEqual([{ previous_assignment_id: oldAssignment }]);
+  });
+
+  it('skips a historical completer who was later unassigned and is absent from the mirror', async () => {
+    await harness.database.query(`INSERT INTO students
+      (tenant_id, student_id, name, status, created_at, updated_at)
+      VALUES ($1, 'S002', '둘', 'ACTIVE', $2, $2)`,
+    [harness.tenantOneId, NOW.toISOString()]);
+    const created = await createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId,
+      runTenantTransaction: harness.runTenantTransaction,
+      now: () => new Date('2026-08-30T01:00:00.000Z') }).create({
+      operationId: 'create-skipped-completer', taskId: 'TASK-SKIP', title: 'skip',
+      description: '', reward: 1, isActive: true, sortOrder: 0,
+      allowedStudentIds: ['S001', 'S002'], schedule: { recurrence: { type: 'DAILY', time: '09:00' },
+        timeZone: 'Asia/Seoul', resetCompletionOnCycle: true, resetAssignmentOnCycle: true } });
+    const instance = created.tasks[0].taskInstanceId;
+    const assignments = await harness.database.query(`SELECT assignment_id, student_id, cycle_id,
+      cycle_start_at, cycle_end_at FROM task_assignments WHERE tenant_id=$1 AND task_instance_id=$2
+      ORDER BY student_id`, [harness.tenantOneId, instance]);
+    const createOperation = await harness.database.query(`SELECT payload_hash FROM operations
+      WHERE tenant_id=$1 AND operation_id='create-skipped-completer'`, [harness.tenantOneId]);
+    const createOperationHash = (createOperation.rows[0] as { payload_hash: string }).payload_hash;
+    const s2 = assignments.rows[1] as Record<string, unknown>;
+    await harness.database.query(`INSERT INTO task_completions
+      (tenant_id, completion_id, completed_at, task_instance_id, task_id_snapshot,
+       task_name_snapshot, student_id, student_name_snapshot, reward_snapshot,
+       balance_before, balance_after, status, note, cycle_id, cycle_start_at, cycle_end_at,
+       rule_version, timezone, source, assignment_id, schema_version, created_at)
+      VALUES ($1, 'historical-s2-completion', '2026-08-30T01:10:00.000Z', $2, 'TASK-SKIP',
+       'skip', 'S002', '둘', 0, 5, 5, 'COMPLETED', NULL, $3, $4, $5, 1,
+       'Asia/Seoul', 'CARRY_FORWARD', $6, 1, '2026-08-30T01:10:00.000Z')`,
+    [harness.tenantOneId, instance, s2.cycle_id, s2.cycle_start_at, s2.cycle_end_at,
+      s2.assignment_id]);
+    await harness.database.query(`INSERT INTO task_assignments
+      (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id, cycle_start_at,
+       cycle_end_at, rule_version, timezone, student_id, event_type, source,
+       previous_assignment_id, admin_operation_id, admin_operation_hash, created_at,
+       schema_version, note)
+      VALUES ($1, 's2-unassigned', 'TASK-SKIP', $2, $3, $4, $5, 1, 'Asia/Seoul',
+       'S002', 'UNASSIGNED', 'ADMIN', $6, 'create-skipped-completer', $7,
+       '2026-08-30T01:20:00.000Z', 1, NULL)`,
+    [harness.tenantOneId, instance, s2.cycle_id, s2.cycle_start_at, s2.cycle_end_at,
+      s2.assignment_id, createOperationHash]);
+    await harness.database.query(`DELETE FROM task_allowed_students
+      WHERE tenant_id=$1 AND task_instance_id=$2 AND student_id='S002'`,
+    [harness.tenantOneId, instance]);
+    const result = await createDatabaseTaskScheduleCommands({ tenantId: harness.tenantOneId,
+      runTenantTransaction: harness.runTenantTransaction,
+      now: () => new Date('2026-08-30T02:00:00.000Z') }).update({
+      operationId: '00000000-0000-4000-8000-000000000013', taskId: 'TASK-SKIP',
+      expectedTaskVersion: 1,
+      recurrence: { type: 'WEEKLY', time: '09:00', weekdays: [1] }, timeZone: 'Asia/Seoul',
+      resetCompletionOnCycle: true, resetAssignmentOnCycle: true });
+    expect(result.assignmentEventIds).toHaveLength(1);
+    expect(result.completionEventIds).toHaveLength(0);
   });
 
   it('preflights cardinality, duplicates, exact nested data, and UUID before transaction entry', async () => {
