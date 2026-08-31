@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import type { TaskCompletion, TaskSchedule } from '@/domain/types';
 import { projectTaskCycleState } from '@/domain/taskCycleState';
 import { projectTaskCycleHistoryFromSnapshot } from '@/domain/taskCycleHistory';
@@ -217,6 +217,12 @@ async function seedLiveTask(taskId = 'LIVE', taskInstanceId = 'LIVE-I') {
 }
 
 describe('database task cycle queries', () => {
+  it('keeps internal evidence fields out of the public completion type', () => {
+    expectTypeOf<'evidenceProvider' extends keyof TaskCompletion ? true : false>()
+      .toEqualTypeOf<false>();
+    expectTypeOf<'evidenceBoardId' extends keyof TaskCompletion ? true : false>()
+      .toEqualTypeOf<false>();
+  });
   it('projects current cycle state from a strict task and both ledgers in one transaction', async () => {
     await seedLiveTask();
     let transactionCalls = 0;
@@ -372,11 +378,36 @@ describe('database task cycle queries', () => {
     expect(snapshot.completions[0]).toMatchObject({
       completionId: 'C1', timestamp: '2026-08-10T09:00:00.000Z', status: 'SUCCESS',
       source: 'BANK', operationId: BANK_OPERATION_ID, operationPayloadHash: BANK_OPERATION_HASH,
-      evidenceProvider: 'PADLET', evidenceBoardId: 'BOARD000000000001',
-      evidencePostId: 'post_123', evidenceCreatedAt: '2026-08-10T00:30:00.000Z',
-      evidenceAuthorFullName: '학생 하나', schemaVersion: 1,
+      schemaVersion: 1,
     });
     expect(snapshot.completions[1]).toMatchObject({ status: 'RESET', source: 'ADMIN_RESET' });
+  });
+
+  it('omits internal completion evidence from the public TaskCompletion projection', async () => {
+    await seedCanonicalBankAssignment();
+    await seedBankCompletion({
+      evidence: [
+        'PADLET',
+        'BOARD000000000001',
+        'post_123',
+        '2026-08-10T00:30:00.000Z',
+        '학생 하나',
+      ],
+    });
+
+    const [snapshot, completions] = await Promise.all([
+      queries().loadTaskCycleLedgerSnapshot(),
+      queries().getTaskCompletions(),
+    ]);
+
+    for (const completion of [snapshot.completions[0], completions[0]]) {
+      expect(completion).toBeDefined();
+      expect(completion).not.toHaveProperty('evidenceProvider');
+      expect(completion).not.toHaveProperty('evidenceBoardId');
+      expect(completion).not.toHaveProperty('evidencePostId');
+      expect(completion).not.toHaveProperty('evidenceCreatedAt');
+      expect(completion).not.toHaveProperty('evidenceAuthorFullName');
+    }
   });
 
   it('sorts completion presentation by completedAt descending and keeps event order for ties', async () => {

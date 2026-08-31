@@ -528,11 +528,6 @@ function projectCompletion(row: CompletionRow): TaskCompletion {
       || evidenceCreatedAt > completion.timestamp) {
       throw new Error('Task completion evidence provenance is invalid.');
     }
-    completion.evidenceProvider = 'PADLET';
-    completion.evidenceBoardId = boardId;
-    completion.evidencePostId = postId;
-    completion.evidenceCreatedAt = evidenceCreatedAt;
-    completion.evidenceAuthorFullName = author;
   }
   return completion;
 }

@@ -26,6 +26,12 @@ type RunTenantTransaction = <TResult>(
   callback: (transaction: TenantTransaction) => Promise<TResult>,
 ) => Promise<TResult>;
 
+type InternalTaskCompletionTask = ClassTask & Readonly<{
+  taskInstanceId: string;
+  schedule: TaskSchedule;
+  padletBoardId?: string;
+}>;
+
 export type PadletEvidenceResolutionInput = Readonly<{
   taskId: string;
   taskInstanceId: string;
@@ -589,7 +595,7 @@ function toTask(
   row: TaskRow,
   allowedStudentIds: string[],
   rowByInstance: ReadonlyMap<string, TaskRow>,
-): ClassTask & { taskInstanceId: string; schedule: TaskSchedule } {
+): InternalTaskCompletionTask {
   const prerequisite = row.prerequisite_task_instance_id
     ? rowByInstance.get(row.prerequisite_task_instance_id)
     : undefined;

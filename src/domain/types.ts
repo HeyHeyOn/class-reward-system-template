@@ -129,8 +129,7 @@ export type ClassTask = {
   availableFrom?: string;
   dueAt?: string;
   prerequisiteTaskId?: string;
-  /** External evidence board identifier only; provider I/O is composed separately. */
-  padletBoardId?: string;
+
   createdAt?: string;
   /** Always populated by the sheet codec; optional for legacy API callers constructing tasks. */
   taskInstanceId?: string;
@@ -173,12 +172,6 @@ export type TaskCompletion = {
   /** Append-only BANK operation metadata; absent on legacy/admin rows. */
   operationId?: string;
   operationPayloadHash?: string;
-  /** Complete immutable external-evidence snapshot; all fields are absent on non-evidence rows. */
-  evidenceProvider?: 'PADLET';
-  evidenceBoardId?: string;
-  evidencePostId?: string;
-  evidenceCreatedAt?: string;
-  evidenceAuthorFullName?: string;
 };
 
 export type TaskCompletionSource = 'BANK' | 'ADMIN' | 'CARRY_FORWARD' | 'ADMIN_RESET';

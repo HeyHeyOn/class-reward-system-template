@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { TaskSchedule } from '@/domain/types';
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
+import type { ClassTask, TaskSchedule } from '@/domain/types';
 import {
   createPgliteDatabaseHarness,
   type PgliteDatabaseHarness,
@@ -132,6 +132,10 @@ function sheetRow(values: Record<string, string>): string[] {
 }
 
 describe('database task queries', () => {
+  it('keeps internal Padlet configuration out of the public task type', () => {
+    expectTypeOf<'padletBoardId' extends keyof ClassTask ? true : false>()
+      .toEqualTypeOf<false>();
+  });
   it('matches the actual Sheets projection, schedule contracts, allowed-ID semantics, and ordering', async () => {
     await seedTask(harness.tenantOneId, {
       taskId: 'BASE', taskInstanceId: 'INSTANCE-BASE', title: '선행', sortOrder: 1,
