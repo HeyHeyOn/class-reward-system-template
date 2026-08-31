@@ -22,6 +22,9 @@ const READ_AUTHORITY = [
   ['tasks', 'GET', 'createConfiguredTaskReader'],
   ['transactions', 'GET', 'createConfiguredTransactionReader'],
 ] as const;
+const CONFIGURED_MUTATION_AUTHORITY = [
+  ['checkout', 'POST', 'createConfiguredCheckoutCommand'],
+] as const;
 
 async function exportedMethodBody(route: string, method: string): Promise<string> {
   const file = resolve(ROOT, 'src/app/api', route, 'route.ts');
@@ -52,5 +55,32 @@ describe('tenant read route PostgreSQL authority', () => {
     const body = await exportedMethodBody(route, method);
     expect(body).toContain(`${configuredRoot}(`);
     expect(body).not.toMatch(/createConfiguredSheets(?:Reader|Store)\s*\(/);
+  });
+});
+
+describe('tenant mutation route PostgreSQL authority', () => {
+  it.each(CONFIGURED_MUTATION_AUTHORITY)(
+    '%s %s resolves through %s without direct Sheets mutation authority',
+    async (route, method, configuredRoot) => {
+      const body = await exportedMethodBody(route, method);
+      expect(body).toContain(`${configuredRoot}(`);
+      expect(body).not.toMatch(/createConfiguredSheetsStore\s*\(/);
+    },
+  );
+
+  it('keeps every other tenant mutation intentionally on direct Sheets authority', async () => {
+    const configured = new Set(
+      CONFIGURED_MUTATION_AUTHORITY.map(([route, method]) => `${method} /${route}`),
+    );
+    const sheetsMutations = TENANT_ROUTE_INVENTORY.filter((entry) =>
+      entry.scope === 'tenant-data'
+      && entry.effect === 'mutation'
+      && !configured.has(`${entry.method} ${entry.route}`));
+
+    expect(sheetsMutations).toHaveLength(26);
+    for (const entry of sheetsMutations) {
+      const body = await exportedMethodBody(entry.route.replace(/^\//, ''), entry.method);
+      expect(body, `${entry.method} ${entry.route}`).toMatch(/createConfiguredSheetsStore\s*\(/);
+    }
   });
 });

@@ -1,16 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createConfiguredSheetsStore } from '@/server/googleSheets';
-import { createCheckoutPayloadHash, createSheetsCheckoutCommand } from '@/server/checkoutService';
+import { createCheckoutPayloadHash } from '@/server/checkoutService';
+import { createConfiguredCheckoutCommand } from '@/server/repositories/configuredCheckout';
 import { POST } from './route';
 
 const executeCheckout = vi.hoisted(() => vi.fn());
 
-vi.mock('@/server/googleSheets', () => ({
-  createConfiguredSheetsStore: vi.fn(),
-}));
 vi.mock('@/server/checkoutService', () => ({
   createCheckoutPayloadHash: vi.fn(() => 'a'.repeat(64)),
-  createSheetsCheckoutCommand: vi.fn(() => ({ execute: executeCheckout })),
+}));
+vi.mock('@/server/repositories/configuredCheckout', () => ({
+  createConfiguredCheckoutCommand: vi.fn(() => ({ execute: executeCheckout })),
 }));
 
 const expectedPricing = {
@@ -39,8 +38,7 @@ function checkoutRequest(overrides: Record<string, unknown> = {}): Request {
 describe('POST /api/checkout', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(createConfiguredSheetsStore).mockResolvedValue({} as never);
-    vi.mocked(createSheetsCheckoutCommand).mockReturnValue({ execute: executeCheckout });
+    vi.mocked(createConfiguredCheckoutCommand).mockResolvedValue({ execute: executeCheckout });
   });
 
   it('logs internal failures and returns a generic 500 without leaking exception details', async () => {
@@ -80,7 +78,7 @@ describe('POST /api/checkout', () => {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
       }));
       expect(response.status).toBe(400);
-      expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
+      expect(createConfiguredCheckoutCommand).not.toHaveBeenCalled();
     },
   );
 
@@ -92,7 +90,7 @@ describe('POST /api/checkout', () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({ error: '장바구니 형식이 올바르지 않습니다.' });
     expect(createCheckoutPayloadHash).not.toHaveBeenCalled();
-    expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
+    expect(createConfiguredCheckoutCommand).not.toHaveBeenCalled();
   });
 
   it('rejects a missing expectedPricing quote before opening the store', async () => {
@@ -100,7 +98,7 @@ describe('POST /api/checkout', () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({ error: '예상 결제 금액 형식이 올바르지 않습니다.' });
-    expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
+    expect(createConfiguredCheckoutCommand).not.toHaveBeenCalled();
     expect(executeCheckout).not.toHaveBeenCalled();
   });
 
@@ -111,7 +109,7 @@ describe('POST /api/checkout', () => {
 
       expect(response.status).toBe(400);
       await expect(response.json()).resolves.toEqual({ error: '결제 작업 ID 형식이 올바르지 않습니다.' });
-      expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
+      expect(createConfiguredCheckoutCommand).not.toHaveBeenCalled();
       expect(executeCheckout).not.toHaveBeenCalled();
     },
   );
@@ -121,16 +119,18 @@ describe('POST /api/checkout', () => {
       expectedPricing: { ...expectedPricing, totalAmount: 999 },
     }));
     expect(malformed.status).toBe(400);
-    expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
+    expect(createConfiguredCheckoutCommand).not.toHaveBeenCalled();
 
     const success = {
       ok: true as const, transactionId: 'T1', studentId: 'S001', studentName: '민준',
       totalAmount: 300, balanceBefore: 500, balanceAfter: 200, items: expectedPricing.items,
     };
     executeCheckout.mockResolvedValue(success);
-    const response = await POST(checkoutRequest());
+    const request = checkoutRequest();
+    const response = await POST(request);
 
     expect(response.status).toBe(200);
+    expect(createConfiguredCheckoutCommand).toHaveBeenCalledWith(request);
     expect(createCheckoutPayloadHash).toHaveBeenCalledWith({
       operationId: '11111111-1111-4111-8111-111111111111',
       studentId: 'S001',

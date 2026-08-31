@@ -1,8 +1,5 @@
-import { createConfiguredSheetsStore } from '@/server/googleSheets';
-import {
-  createCheckoutPayloadHash,
-  createSheetsCheckoutCommand,
-} from '@/server/checkoutService';
+import { createCheckoutPayloadHash } from '@/server/checkoutService';
+import { createConfiguredCheckoutCommand } from '@/server/repositories/configuredCheckout';
 import type { CartItem } from '@/domain/types';
 import { checkoutPreviewMatchesCart, parseCheckoutPreviewResponse, type CheckoutPreviewPayload } from '@/lib/checkoutSnapshotClient';
 
@@ -30,8 +27,7 @@ export async function POST(request: Request) {
       return Response.json({ error: validation.message }, { status: 400 });
     }
 
-    const store = await createConfiguredSheetsStore();
-    const command = createSheetsCheckoutCommand(store);
+    const command = await createConfiguredCheckoutCommand(request);
     const checkoutInput = {
       operationId: validation.operationId,
       studentId: validation.studentId,

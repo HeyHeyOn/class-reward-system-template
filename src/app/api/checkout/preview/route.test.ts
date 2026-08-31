@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('server-only', () => ({}));
 import { createConfiguredSheetsStore } from '@/server/googleSheets';
 import * as checkoutService from '@/server/checkoutService';
 import { createConfiguredCheckoutPreviewService } from '@/server/repositories/configuredCheckoutPreview';
@@ -84,7 +86,10 @@ describe('POST /api/checkout/preview', () => {
       ),
     });
   });
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
 
   it.each([
     ['non-object body', []],
@@ -248,6 +253,7 @@ describe('POST /api/checkout/preview', () => {
   });
 
   it('matches successful checkout items and total for the same mocked source snapshot', async () => {
+    vi.stubEnv('CLASS_STORE_STORAGE', 'sheets');
     const previewStore = new FakeSheetsStore(sourceRows());
     const checkoutStore = new FakeSheetsStore(sourceRows());
     vi.mocked(createConfiguredSheetsStore)
