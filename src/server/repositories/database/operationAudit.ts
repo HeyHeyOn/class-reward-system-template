@@ -61,7 +61,34 @@ export async function assertOperationAudit(
       AND redacted_details=${input.redactedDetailsJson}::jsonb
       AND occurred_at=${input.occurredAt}
   `);
-  if (result.rows.length !== 1) throw new Error('Operation audit integrity check failed.');
+  const expectedEventId = operationAuditEventId(input.operationId, input.eventType);
+  assertExactAuditEvidence(result.rows, expectedEventId);
+}
+
+function assertExactAuditEvidence(rawRows: unknown, expectedEventId: string): void {
+  if (!Array.isArray(rawRows) || Object.getPrototypeOf(rawRows) !== Array.prototype
+    || Object.getOwnPropertySymbols(rawRows).length) {
+    throw new Error('Operation audit integrity check failed.');
+  }
+  const rowset = Object.getOwnPropertyDescriptors(rawRows) as Record<string, PropertyDescriptor>;
+  if (!rowset.length || rowset.length.enumerable || !Object.hasOwn(rowset.length, 'value')
+    || rowset.length.value !== 1) throw new Error('Operation audit integrity check failed.');
+  const rowKeys = Object.keys(rowset).filter((key) => key !== 'length');
+  if (rowKeys.length !== 1 || rowKeys[0] !== '0' || !rowset['0'].enumerable
+    || !Object.hasOwn(rowset['0'], 'value')) {
+    throw new Error('Operation audit integrity check failed.');
+  }
+  const raw = rowset['0'].value;
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)
+    || Object.getPrototypeOf(raw) !== Object.prototype || Object.getOwnPropertySymbols(raw).length) {
+    throw new Error('Operation audit integrity check failed.');
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(raw);
+  if (Object.keys(descriptors).length !== 1 || !Object.hasOwn(descriptors, 'event_id')
+    || !descriptors.event_id.enumerable || !Object.hasOwn(descriptors.event_id, 'value')
+    || descriptors.event_id.value !== expectedEventId) {
+    throw new Error('Operation audit integrity check failed.');
+  }
 }
 
 function canonicalize(input: OperationAuditInput): CanonicalAuditInput {

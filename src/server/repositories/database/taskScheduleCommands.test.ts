@@ -248,6 +248,111 @@ beforeEach(async () => {
 
 afterEach(async () => harness.close());
 
+async function createScheduleFixture(taskId: string, createdAt = '2026-08-30T01:00:00.000Z') {
+  return createDatabaseTaskAdminCommands({ tenantId: harness.tenantOneId,
+    runTenantTransaction: harness.runTenantTransaction, now: () => new Date(createdAt) }).create({
+    operationId: `create-${taskId}`, taskId, title: taskId, description: '', reward: 1,
+    isActive: true, sortOrder: 0, allowedStudentIds: ['S001'], schedule: {
+      recurrence: { type: 'DAILY', time: '09:00' }, timeZone: 'Asia/Seoul',
+      resetCompletionOnCycle: true, resetAssignmentOnCycle: true,
+    },
+  });
+}
+
+function changedScheduleInput(operationId: string, taskId: string) {
+  return { operationId, taskId, expectedTaskVersion: 1,
+    recurrence: { type: 'WEEKLY' as const, time: '09:00', weekdays: [1] as const },
+    timeZone: 'Asia/Seoul' as const, resetCompletionOnCycle: true,
+    resetAssignmentOnCycle: true };
+}
+
+async function readFullTaskState(taskId: string) {
+  return (await harness.database.query(`SELECT task_instance_id, task_id, title, description,
+    reward::text AS reward, sort_order, prerequisite_task_instance_id, padlet_board_id,
+    current_schedule, pending_schedule, schedule_schema_version, version::text AS version,
+    is_active, available_from, available_until, due_at, created_at, updated_at, deleted_at
+    FROM tasks WHERE tenant_id=$1 AND task_id=$2 ORDER BY task_instance_id`,
+  [harness.tenantOneId, taskId])).rows;
+}
+
+function malformedDenseRows(rows: readonly unknown[], mode: 'sparse' | 'getter', onGetter: () => void) {
+  if (mode === 'sparse') return new Array(Math.max(rows.length, 1));
+  const malformed: unknown[] = [];
+  Object.defineProperty(malformed, '0', { enumerable: true, configurable: true,
+    get() { onGetter(); return rows[0]; } });
+  Object.defineProperty(malformed, 'length', { value: 1, writable: true });
+  return malformed;
+}
+
+async function createConnectedScheduleFixture(taskId: string) {
+  const createdAt = new Date('2026-08-30T01:00:00.000Z');
+  const created = await createScheduleFixture(taskId, createdAt.toISOString());
+  const taskInstanceId = created.tasks[0].taskInstanceId;
+  const assignmentRows = await harness.database.query(`SELECT assignment_id, cycle_id,
+    cycle_start_at, cycle_end_at FROM task_assignments WHERE tenant_id=$1
+    AND task_instance_id=$2 ORDER BY event_sequence`, [harness.tenantOneId, taskInstanceId]);
+  const assignment = assignmentRows.rows[0] as { assignment_id: string; cycle_id: string;
+    cycle_start_at: Date; cycle_end_at: Date | null };
+  const operationId = '40000000-0000-4000-8000-000000000001';
+  const completedAt = new Date('2026-08-30T01:10:00.000Z');
+  const operationHash = createTaskRewardPayloadHash({ taskId, taskInstanceId, taskTitle: taskId,
+    studentId: 'S001', studentName: '하나', assignmentId: assignment.assignment_id,
+    cycleId: assignment.cycle_id, cycleStartsAt: assignment.cycle_start_at.toISOString(),
+    cycleEndsAt: assignment.cycle_end_at?.toISOString() ?? null, reward: 1 });
+  await harness.database.query(`INSERT INTO accounts
+    (tenant_id, student_id, balance, version, updated_at) VALUES ($1, 'S001', 1, 2, $2)`,
+  [harness.tenantOneId, completedAt]);
+  await harness.database.query(`INSERT INTO operations
+    (tenant_id, operation_id, operation_kind, payload_hash, status, result_snapshot,
+     attempt_count, started_at, finished_at, created_at, updated_at)
+    VALUES ($1, $2, 'TASK_REWARD', $3, 'SUCCEEDED', '{}'::jsonb, 1, $4, $4, $4, $4)`,
+  [harness.tenantOneId, operationId, operationHash, completedAt]);
+  const transactionId = `task-reward:${operationId}`;
+  await harness.database.query(`INSERT INTO transactions
+    (tenant_id, transaction_id, occurred_at, student_id, student_name_snapshot, kind,
+     legacy_total_amount, balance_delta, balance_before, balance_after, operator_snapshot,
+     legacy_status_snapshot, operation_id, operation_hash, schema_version, created_at)
+    VALUES ($1, $2, $3, 'S001', '하나', 'TASK_REWARD', 1, 1, 0, 1,
+      'bank-task-completion', 'COMPLETED', $4, $5, 1, $3)`,
+  [harness.tenantOneId, transactionId, completedAt, operationId, operationHash]);
+  await harness.database.query(`INSERT INTO task_completions
+    (tenant_id, completion_id, completed_at, task_instance_id, task_id_snapshot,
+     task_name_snapshot, student_id, student_name_snapshot, reward_snapshot,
+     balance_before, balance_after, status, note, cycle_id, cycle_start_at, cycle_end_at,
+     rule_version, timezone, source, assignment_id, transaction_id, operation_id,
+     operation_hash, schema_version, created_at)
+    VALUES ($1, $2, $3, $4, $5, $5, 'S001', '하나', 1, 0, 1, 'COMPLETED',
+      'bank-self-completion', $6, $7, $8, 1, 'Asia/Seoul', 'BANK', $9, $10, $11, $12, 1, $3)`,
+  [harness.tenantOneId, `task-completion:${operationId}`, completedAt, taskInstanceId, taskId,
+    assignment.cycle_id, assignment.cycle_start_at, assignment.cycle_end_at,
+    assignment.assignment_id, transactionId, operationId, operationHash]);
+  return taskInstanceId;
+}
+
+async function readConnectedScheduleState(taskId: string, operationId: string) {
+  const taskRows = await readFullTaskState(taskId);
+  const taskInstanceId = (taskRows[0] as { task_instance_id: string }).task_instance_id;
+  const query = async (statement: string) => (await harness.database.query(statement,
+    [harness.tenantOneId, taskInstanceId])).rows;
+  return {
+    tasks: taskRows,
+    mirrors: await query(`SELECT * FROM task_allowed_students WHERE tenant_id=$1
+      AND task_instance_id=$2 ORDER BY student_id`),
+    assignments: await query(`SELECT * FROM task_assignments WHERE tenant_id=$1
+      AND task_instance_id=$2 ORDER BY event_sequence`),
+    completions: await query(`SELECT * FROM task_completions WHERE tenant_id=$1
+      AND task_instance_id=$2 ORDER BY event_sequence`),
+    accounts: (await harness.database.query(`SELECT * FROM accounts WHERE tenant_id=$1
+      AND student_id='S001' ORDER BY student_id`, [harness.tenantOneId])).rows,
+    transactions: (await harness.database.query(`SELECT * FROM transactions WHERE tenant_id=$1
+      AND student_id='S001' ORDER BY event_sequence`, [harness.tenantOneId])).rows,
+    operation: (await harness.database.query(`SELECT * FROM operations WHERE tenant_id=$1
+      AND operation_id=$2`, [harness.tenantOneId, operationId])).rows,
+    audit: (await harness.database.query(`SELECT * FROM audit_events WHERE tenant_id=$1
+      AND operation_id=$2`, [harness.tenantOneId, operationId])).rows,
+  };
+}
+
 describe('database task schedule command configuration boundary', () => {
   it('accepts a mixed legacy, administrative, QR, and carry-forward chain in adapter-independent order', async () => {
     const result = await materializeWithAssignmentRows(validMixedAssignmentChain().reverse());
@@ -950,5 +1055,348 @@ describe('database task schedule command configuration boundary', () => {
     const taskRead = statements.findIndex((statement) => statement.includes('from tasks'));
     expect(winnerRead).toBeGreaterThan(0);
     expect(taskRead).toBeGreaterThan(winnerRead);
+  });
+
+  it.each([
+    ['update RETURNING', 'title', false],
+    ['pre-audit verification', 'description', false],
+    ['post-terminal verification', 'reward', true],
+  ])('rejects omitted task metadata corruption at %s and exactly rolls back full state',
+  async (_label, stage, expectsTerminal) => {
+    await createScheduleFixture('TASK-SNAPSHOT');
+    await harness.database.query(`UPDATE tasks SET description='preserve me', reward=77,
+      sort_order=9, padlet_board_id='AbCdEfGhIjKlMnOp' WHERE tenant_id=$1 AND task_id='TASK-SNAPSHOT'`,
+    [harness.tenantOneId]);
+    const before = await readFullTaskState('TASK-SNAPSHOT');
+    const dialect = new PgDialect(); let snapshotRead = 0; let terminalReached = false;
+    const run = async <T>(tenantId: string, callback: (transaction: TenantTransaction) => Promise<T>) =>
+      harness.runTenantTransaction(tenantId, async (transaction) => callback({ ...transaction,
+        execute: async (wrapper: SQLWrapper) => {
+          const query = dialect.sqlToQuery(wrapper.getSQL());
+          const statement = query.sql.toLowerCase().replace(/\s+/g, ' ');
+          if (statement.startsWith('update operations set status=')) terminalReached = true;
+          const result = await transaction.execute(wrapper);
+          const isUpdateReturning = statement.startsWith('update tasks')
+            && statement.includes('set current_schedule=');
+          const isSnapshot = statement.startsWith('select') && statement.includes(' from tasks ')
+            && !statement.includes('for update') && statement.includes('current_schedule');
+          if ((stage === 'title' && isUpdateReturning && statement.includes('title'))
+            || (stage === 'description' && isSnapshot && ++snapshotRead === 1
+              && statement.includes('description'))
+            || (stage === 'reward' && isSnapshot && ++snapshotRead === 2
+              && statement.includes('reward'))) {
+            const rows = [...result.rows] as Record<string, unknown>[];
+            rows[0] = { ...rows[0], [stage]: stage === 'reward' ? '78' : 'corrupted' };
+            return { ...result, rows };
+          }
+          return result;
+        },
+      } as unknown as TenantTransaction));
+    const operationId = `00000000-0000-4000-8000-00000000007${
+      stage === 'title' ? 1 : stage === 'description' ? 2 : 3}`;
+    await expect(createDatabaseTaskScheduleCommands({ tenantId: harness.tenantOneId,
+      runTenantTransaction: run, now: () => NOW }).update(
+      changedScheduleInput(operationId, 'TASK-SNAPSHOT'))).rejects.toThrow(/task.*integrity/i);
+    expect(terminalReached).toBe(expectsTerminal);
+    expect(await readFullTaskState('TASK-SNAPSHOT')).toEqual(before);
+    expect((await harness.database.query(`SELECT operation_id FROM operations
+      WHERE tenant_id=$1 AND operation_id=$2`, [harness.tenantOneId, operationId])).rows)
+      .toHaveLength(0);
+    expect((await harness.database.query(`SELECT event_id FROM audit_events
+      WHERE tenant_id=$1 AND operation_id=$2`, [harness.tenantOneId, operationId])).rows)
+      .toHaveLength(0);
+  });
+
+  it('binds replay to immutable audit physical identities while tolerating later schedule state', async () => {
+    const created = await createScheduleFixture('TASK-PHYSICAL');
+    const operationId = '00000000-0000-4000-8000-000000000080';
+    const first = await createDatabaseTaskScheduleCommands({ tenantId: harness.tenantOneId,
+      runTenantTransaction: harness.runTenantTransaction, now: () => NOW }).update(
+      changedScheduleInput(operationId, 'TASK-PHYSICAL'));
+    const audit = await harness.database.query(`SELECT redacted_details FROM audit_events
+      WHERE tenant_id=$1 AND operation_id=$2`, [harness.tenantOneId, operationId]);
+    expect(audit.rows).toEqual([{ redacted_details: expect.objectContaining({ targetBindings: [{
+      taskId: 'TASK-PHYSICAL', taskInstanceId: created.tasks[0].taskInstanceId,
+    }] }) }]);
+    await harness.database.query(`UPDATE tasks SET current_schedule=jsonb_set(current_schedule,
+      '{effectiveFrom}', '"2026-09-01T00:00:00.000Z"'::jsonb), version=version+1,
+      updated_at='2026-09-01T00:00:00.000Z' WHERE tenant_id=$1 AND task_instance_id=$2`,
+    [harness.tenantOneId, created.tasks[0].taskInstanceId]);
+    await expect(createDatabaseTaskScheduleCommands({ tenantId: harness.tenantOneId,
+      runTenantTransaction: harness.runTenantTransaction,
+      now: () => new Date('2026-09-01T00:00:00.000Z') }).update(
+      changedScheduleInput(operationId, 'TASK-PHYSICAL'))).resolves.toEqual(first);
+  });
+
+  it('tolerates a later tombstone but rejects hard-delete and recreate under the original business ID', async () => {
+    const originalPhysicalId = 'physical-original';
+    const initialSchedule = { ruleVersion: 1, effectiveFrom: '2026-08-30T01:00:00.000Z',
+      timeZone: 'Asia/Seoul', recurrence: { type: 'DAILY', time: '09:00' },
+      resetCompletionOnCycle: true, resetAssignmentOnCycle: true };
+    await harness.database.query(`INSERT INTO tasks
+      (tenant_id, task_instance_id, task_id, title, description, reward, is_active, sort_order,
+       current_schedule, schedule_schema_version, created_at, updated_at)
+      VALUES ($1, $2, 'TASK-RECREATE', 'original', '', 1, true, 0, $3::jsonb, 1, $4, $4)`,
+    [harness.tenantOneId, originalPhysicalId, JSON.stringify(initialSchedule),
+      '2026-08-30T01:00:00.000Z']);
+    const operationId = '00000000-0000-4000-8000-000000000081';
+    const input = changedScheduleInput(operationId, 'TASK-RECREATE');
+    const commands = createDatabaseTaskScheduleCommands({ tenantId: harness.tenantOneId,
+      runTenantTransaction: harness.runTenantTransaction, now: () => NOW });
+    const first = await commands.update(input);
+    await harness.database.query(`UPDATE tasks SET is_active=false, deleted_at=$3, updated_at=$3
+      WHERE tenant_id=$1 AND task_instance_id=$2`,
+    [harness.tenantOneId, originalPhysicalId, '2026-09-01T00:00:00.000Z']);
+    await expect(commands.update(input)).resolves.toEqual(first);
+    await harness.database.query(`DELETE FROM tasks WHERE tenant_id=$1 AND task_instance_id=$2`,
+    [harness.tenantOneId, originalPhysicalId]);
+    const replacementPhysicalId = 'physical-replacement';
+    await harness.database.query(`INSERT INTO tasks
+      (tenant_id, task_instance_id, task_id, title, description, reward, is_active, sort_order,
+       current_schedule, schedule_schema_version, created_at, updated_at)
+      VALUES ($1, $2, 'TASK-RECREATE', 'replacement', '', 1, true, 0, $3::jsonb, 1, $4, $4)`,
+    [harness.tenantOneId, replacementPhysicalId, JSON.stringify(initialSchedule),
+      '2026-09-01T00:00:00.000Z']);
+    expect(replacementPhysicalId).not.toBe(originalPhysicalId);
+    await expect(commands.update(input)).rejects.toThrow(/physical identity.*integrity/i);
+  });
+
+  it.each(['wrong', 'extra', 'boxed', 'getter'] as const)(
+    'rejects %s raw audit verification evidence without invoking accessors', async (variant) => {
+      await createScheduleFixture(`TASK-AUDIT-${variant}`);
+      const operationId = `00000000-0000-4000-8000-00000000008${
+        variant === 'wrong' ? 2 : variant === 'extra' ? 3 : variant === 'boxed' ? 4 : 5}`;
+      let getterCalls = 0; const dialect = new PgDialect();
+      const run = async <T>(tenantId: string, callback: (transaction: TenantTransaction) => Promise<T>) =>
+        harness.runTenantTransaction(tenantId, async (transaction) => callback({ ...transaction,
+          execute: async (wrapper: SQLWrapper) => {
+            const query = dialect.sqlToQuery(wrapper.getSQL());
+            const statement = query.sql.toLowerCase().replace(/\s+/g, ' ');
+            const result = await transaction.execute(wrapper);
+            if (!statement.startsWith('select') || !statement.includes(' from audit_events ')) return result;
+            const base = { ...(result.rows[0] as Record<string, unknown>) };
+            if (variant === 'wrong') base.event_id = 'wrong-audit-id';
+            if (variant === 'extra') base.extra = true;
+            if (variant === 'boxed') return { ...result, rows: [Object.assign(Object.create(null), base)] };
+            if (variant === 'getter') Object.defineProperty(base, 'event_id', { enumerable: true,
+              get() { getterCalls += 1; return 'wrong-audit-id'; } });
+            return { ...result, rows: [base] };
+          },
+        } as unknown as TenantTransaction));
+      await expect(createDatabaseTaskScheduleCommands({ tenantId: harness.tenantOneId,
+        runTenantTransaction: run, now: () => NOW }).update(
+        changedScheduleInput(operationId, `TASK-AUDIT-${variant}`))).rejects.toThrow(/audit.*integrity|audit.*malformed/i);
+      expect(getterCalls).toBe(0);
+    });
+
+  it.each(['sparse', 'getter'] as const)(
+    'rejects %s initial task rowsets without invoking accessors', async (mode) => {
+      const taskId = `TASK-ROWSET-${mode}`;
+      await createScheduleFixture(taskId);
+      let getterCalls = 0; const dialect = new PgDialect(); let injected = false;
+      const run = async <T>(tenantId: string, callback: (transaction: TenantTransaction) => Promise<T>) =>
+        harness.runTenantTransaction(tenantId, async (transaction) => callback({ ...transaction,
+          execute: async (wrapper: SQLWrapper) => {
+            const query = dialect.sqlToQuery(wrapper.getSQL());
+            const statement = query.sql.toLowerCase().replace(/\s+/g, ' ');
+            const result = await transaction.execute(wrapper);
+            if (injected || !statement.startsWith('select') || !statement.includes(' from tasks ')
+              || !statement.includes(' for update')) return result;
+            injected = true;
+            return { ...result, rows: malformedDenseRows(result.rows, mode, () => { getterCalls += 1; }) };
+          },
+        } as unknown as TenantTransaction));
+      const operationId = mode === 'sparse' ? '00000000-0000-4000-8000-000000000086'
+        : '00000000-0000-4000-8000-000000000087';
+      await expect(createDatabaseTaskScheduleCommands({ tenantId: harness.tenantOneId,
+        runTenantTransaction: run, now: () => NOW }).update(
+        changedScheduleInput(operationId, taskId))).rejects.toThrow(/rowset.*malformed|target.*not found/i);
+      expect(injected).toBe(true);
+      expect(getterCalls).toBe(0);
+    });
+
+  it.each([
+    ['pre-audit', 'mirror', 'created_at', false],
+    ['pre-audit', 'assignment', 'task_id_snapshot', false],
+    ['pre-audit', 'completion', 'task_name_snapshot', false],
+    ['pre-audit', 'account', 'balance', false],
+    ['pre-audit', 'transaction', 'operator_snapshot', false],
+    ['pre-audit', 'new-assignment', 'task_id_snapshot', false],
+    ['pre-audit', 'new-completion', 'balance_after', false],
+    ['post-terminal', 'mirror', 'created_at', true],
+    ['post-terminal', 'assignment', 'task_id_snapshot', true],
+    ['post-terminal', 'completion', 'task_name_snapshot', true],
+    ['post-terminal', 'account', 'balance', true],
+    ['post-terminal', 'transaction', 'operator_snapshot', true],
+    ['post-terminal', 'new-assignment', 'task_id_snapshot', true],
+    ['post-terminal', 'new-completion', 'balance_after', true],
+  ] as const)('rejects %s connected-state %s faults and exactly rolls back',
+  async (stage, relation, field, expectsTerminal) => {
+    const taskId = `TASK-CONNECTED-${stage}-${relation}`;
+    await createConnectedScheduleFixture(taskId);
+    const suffix = `${stage}-${relation}`.split('').reduce((sum, value) => sum + value.charCodeAt(0), 0);
+    const operationId = `00000000-0000-4000-8000-${String(900000000000 + suffix).padStart(12, '0')}`;
+    const before = await readConnectedScheduleState(taskId, operationId);
+    const dialect = new PgDialect(); let connectedRead = 0; let injected = false;
+    let terminalReached = false;
+    const run = async <T>(tenantId: string, callback: (transaction: TenantTransaction) => Promise<T>) =>
+      harness.runTenantTransaction(tenantId, async (transaction) => callback({ ...transaction,
+        execute: async (wrapper: SQLWrapper) => {
+          const query = dialect.sqlToQuery(wrapper.getSQL());
+          const statement = query.sql.toLowerCase().replace(/\s+/g, ' ');
+          if (statement.startsWith('update operations set status=')) terminalReached = true;
+          const result = await transaction.execute(wrapper);
+          const connected = relation === 'mirror'
+            ? statement.includes(' from task_allowed_students ') && statement.includes('task_instance_id in')
+              && statement.includes('tenant_id::text as tenant_id')
+            : relation === 'assignment' || relation === 'new-assignment'
+              ? statement.includes(' from task_assignments ') && statement.includes('task_instance_id in')
+                && statement.includes('tenant_id::text as tenant_id')
+              : relation === 'completion' || relation === 'new-completion'
+                ? statement.includes(' from task_completions ') && statement.includes('task_instance_id in')
+                  && statement.includes('tenant_id::text as tenant_id')
+                : relation === 'account'
+                  ? statement.includes(' from accounts ') && statement.includes('student_id in')
+                  : statement.includes(' from transactions ') && statement.includes('with recursive')
+                    && statement.includes('tenant_id::text as tenant_id');
+          if (connected && ++connectedRead === (stage === 'pre-audit' ? 2 : 3)) {
+            const rows = [...result.rows] as Record<string, unknown>[];
+            const rowIndex = relation.startsWith('new-')
+              ? rows.findIndex((row) => row.source === 'CARRY_FORWARD') : 0;
+            if (rowIndex < 0) throw new Error('Expected carried row was not reached.');
+            rows[rowIndex] = { ...rows[rowIndex], [field]: field === 'created_at'
+              ? new Date('2026-08-30T01:00:00.001Z') : field === 'balance' ? '2' : 'corrupted' };
+            injected = true;
+            return { ...result, rows };
+          }
+          return result;
+        },
+      } as unknown as TenantTransaction));
+    await expect(createDatabaseTaskScheduleCommands({ tenantId: harness.tenantOneId,
+      runTenantTransaction: run, now: () => new Date('2026-08-30T02:00:00.000Z') }).update(
+      changedScheduleInput(operationId, taskId))).rejects.toThrow(/connected.*integrity/i);
+    expect(injected).toBe(true);
+    expect(terminalReached).toBe(expectsTerminal);
+    expect(await readConnectedScheduleState(taskId, operationId)).toEqual(before);
+  });
+
+  it('rejects a missing transaction-backed account from connected closure', async () => {
+    const taskId = 'TASK-CONNECTED-MISSING-ACCOUNT';
+    await createConnectedScheduleFixture(taskId);
+    const operationId = '00000000-0000-4000-8000-000000000089';
+    const before = await readConnectedScheduleState(taskId, operationId);
+    const dialect = new PgDialect(); let injected = 0;
+    const run = async <T>(tenantId: string, callback: (transaction: TenantTransaction) => Promise<T>) =>
+      harness.runTenantTransaction(tenantId, async (transaction) => callback({ ...transaction,
+        execute: async (wrapper: SQLWrapper) => {
+          const query = dialect.sqlToQuery(wrapper.getSQL());
+          const statement = query.sql.toLowerCase().replace(/\s+/g, ' ');
+          const result = await transaction.execute(wrapper);
+          if (statement.includes(' from accounts ')
+            && statement.includes('student_id in')) { injected += 1; return { ...result, rows: [] }; }
+          return result;
+        },
+      } as unknown as TenantTransaction));
+    await expect(createDatabaseTaskScheduleCommands({ tenantId: harness.tenantOneId,
+      runTenantTransaction: run, now: () => new Date('2026-08-30T02:00:00.000Z') }).update(
+      changedScheduleInput(operationId, taskId))).rejects.toThrow(/connected.*integrity/i);
+    expect(injected).toBe(1);
+    expect(await readConnectedScheduleState(taskId, operationId)).toEqual(before);
+  });
+
+  it('rejects a claim RETURNING index getter without invoking it', async () => {
+    const taskId = 'TASK-CLAIM-GETTER'; await createScheduleFixture(taskId);
+    const operationId = '00000000-0000-4000-8000-000000000088';
+    const dialect = new PgDialect(); let getterCalls = 0; let injected = false;
+    const run = async <T>(tenantId: string, callback: (transaction: TenantTransaction) => Promise<T>) =>
+      harness.runTenantTransaction(tenantId, async (transaction) => callback({ ...transaction,
+        execute: async (wrapper: SQLWrapper) => {
+          const query = dialect.sqlToQuery(wrapper.getSQL());
+          const statement = query.sql.toLowerCase().replace(/\s+/g, ' ');
+          const result = await transaction.execute(wrapper);
+          if (!injected && statement.startsWith('insert into operations')) {
+            injected = true;
+            return { ...result, rows: malformedDenseRows(result.rows, 'getter', () => { getterCalls += 1; }) };
+          }
+          return result;
+        },
+      } as unknown as TenantTransaction));
+    await expect(createDatabaseTaskScheduleCommands({ tenantId: harness.tenantOneId,
+      runTenantTransaction: run, now: () => NOW }).update(changedScheduleInput(operationId, taskId)))
+      .rejects.toThrow(/claim rowset.*malformed/i);
+    expect(injected).toBe(true); expect(getterCalls).toBe(0);
+    expect((await harness.database.query(`SELECT operation_id FROM operations
+      WHERE tenant_id=$1 AND operation_id=$2`, [harness.tenantOneId, operationId])).rows).toEqual([]);
+  });
+
+  it('uses the same set-wise SQL categories for one and twenty changed schedule targets', async () => {
+    const oneId = 'TASK-COUNT-ONE'; await createScheduleFixture(oneId);
+    const twentyIds = Array.from({ length: 20 }, (_, index) => `TASK-COUNT-${String(index).padStart(2, '0')}`);
+    for (const taskId of twentyIds) await createScheduleFixture(taskId);
+    const dialect = new PgDialect();
+    const execute = async (operationId: string, taskIds: readonly string[]) => {
+      const statements: string[] = [];
+      const run = async <T>(tenantId: string, callback: (transaction: TenantTransaction) => Promise<T>) =>
+        harness.runTenantTransaction(tenantId, async (transaction) => callback({ ...transaction,
+          execute: async (wrapper: SQLWrapper) => {
+            const query = dialect.sqlToQuery(wrapper.getSQL());
+            statements.push(query.sql.toLowerCase().replace(/\s+/g, ' ').trim());
+            return transaction.execute(wrapper);
+          },
+        } as unknown as TenantTransaction));
+      await createDatabaseTaskScheduleCommands({ tenantId: harness.tenantOneId,
+        runTenantTransaction: run, now: () => NOW }).updateBatch({ operationId,
+        tasks: taskIds.map((taskId) => { const single = changedScheduleInput(operationId, taskId);
+          return { taskId: single.taskId, expectedTaskVersion: single.expectedTaskVersion,
+            recurrence: single.recurrence, timeZone: single.timeZone,
+            resetCompletionOnCycle: single.resetCompletionOnCycle,
+            resetAssignmentOnCycle: single.resetAssignmentOnCycle }; }) });
+      return statements;
+    };
+    const classify = (statement: string) => {
+      const relation = ['operations', 'tasks', 'task_allowed_students', 'task_assignments',
+        'task_completions', 'accounts', 'transactions', 'audit_events']
+        .find((table) => statement.includes(` ${table} `) || statement.includes(` ${table}\n`)) ?? 'other';
+      return `${statement.split(' ')[0]}:${relation}`;
+    };
+    const one = await execute('00000000-0000-4000-8000-000000000091', [oneId]);
+    const twenty = await execute('00000000-0000-4000-8000-000000000092', twentyIds);
+    expect(twenty.map(classify)).toEqual(one.map(classify));
+    expect(twenty.some((statement) => /from task_(assignments|completions)[^;]*task_instance_id\s*=\s*\$/i
+      .test(statement))).toBe(false);
+  });
+
+  it('rolls back both targets when later set-wise assignment RETURNING evidence is corrupted', async () => {
+    const taskIds = ['TASK-LATER-A', 'TASK-LATER-B'] as const;
+    for (const taskId of taskIds) await createScheduleFixture(taskId, '2026-08-30T01:00:00.000Z');
+    const before = await Promise.all(taskIds.map(readFullTaskState));
+    const operationId = '00000000-0000-4000-8000-000000000093';
+    const dialect = new PgDialect(); let injected = false;
+    const run = async <T>(tenantId: string, callback: (transaction: TenantTransaction) => Promise<T>) =>
+      harness.runTenantTransaction(tenantId, async (transaction) => callback({ ...transaction,
+        execute: async (wrapper: SQLWrapper) => {
+          const query = dialect.sqlToQuery(wrapper.getSQL());
+          const statement = query.sql.toLowerCase().replace(/\s+/g, ' ').trim();
+          const result = await transaction.execute(wrapper);
+          if (!injected && statement.startsWith('insert into task_assignments')) {
+            injected = true; const rows = result.rows.map((row) => ({ ...(row as Record<string, unknown>) }));
+            (rows.at(-1) as Record<string, unknown>).assignment_id = 'wrong-later-assignment';
+            return { ...result, rows };
+          }
+          return result;
+        },
+      } as unknown as TenantTransaction));
+    const taskInput = (taskId: string) => { const single = changedScheduleInput(operationId, taskId);
+      return { taskId: single.taskId, expectedTaskVersion: single.expectedTaskVersion,
+        recurrence: single.recurrence, timeZone: single.timeZone,
+        resetCompletionOnCycle: single.resetCompletionOnCycle,
+        resetAssignmentOnCycle: single.resetAssignmentOnCycle }; };
+    await expect(createDatabaseTaskScheduleCommands({ tenantId: harness.tenantOneId,
+      runTenantTransaction: run, now: () => new Date('2026-08-30T02:00:00.000Z') }).updateBatch({ operationId,
+      tasks: taskIds.map(taskInput) })).rejects.toThrow(/assignment insert.*integrity/i);
+    expect(injected).toBe(true);
+    expect(await Promise.all(taskIds.map(readFullTaskState))).toEqual(before);
+    expect((await harness.database.query(`SELECT operation_id FROM operations
+      WHERE tenant_id=$1 AND operation_id=$2`, [harness.tenantOneId, operationId])).rows).toEqual([]);
   });
 });

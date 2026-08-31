@@ -172,6 +172,208 @@ export type TaskConfigurationBoundaryMaterialization = Readonly<{
   completionEventIds: readonly string[];
 }>;
 
+export type TaskConfigurationBoundaryMaterializationTarget = Readonly<{
+  taskId: string;
+  taskInstanceId: string;
+  oldCycle: TaskCycle;
+  oldRuleVersion: number;
+  newCycle: TaskCycle;
+  newRuleVersion: number;
+  timeZone: 'Asia/Seoul';
+  now: Date;
+}>;
+
+export type TaskConfigurationBoundaryBatchMaterialization = Readonly<{
+  taskId: string;
+  taskInstanceId: string;
+  assignmentEventIds: readonly string[];
+  completionEventIds: readonly string[];
+}>;
+
+type PlannedAssignment = Readonly<{ target: TaskConfigurationBoundaryMaterializationTarget;
+  studentId: string; assignmentId: string; predecessor: Assignment }>;
+type PlannedCompletion = Readonly<{ target: TaskConfigurationBoundaryMaterializationTarget;
+  studentId: string; completionId: string; assignmentId: string; predecessor: Completion }>;
+
+/**
+ * Set-wise configuration-boundary primitive. The caller owns the transaction and
+ * must already hold every target task lock in physical identity order.
+ */
+export async function materializeTaskConfigurationBoundaryCyclesInternal(input: Readonly<{
+  tx: TenantTransaction;
+  tenantId: string;
+  targets: readonly TaskConfigurationBoundaryMaterializationTarget[];
+}>): Promise<readonly TaskConfigurationBoundaryBatchMaterialization[]> {
+  const targets = exactArray(input.targets, 'batch target list') as
+    TaskConfigurationBoundaryMaterializationTarget[];
+  if (targets.length < 1 || targets.length > 20) {
+    throw new Error('Task cycle materialization batch target count must be 1-20.');
+  }
+  const byInstance = new Map<string, TaskConfigurationBoundaryMaterializationTarget>();
+  const taskIds = new Set<string>();
+  for (const target of targets) {
+    if (typeof target !== 'object' || target === null || Object.getPrototypeOf(target) !== Object.prototype
+      || id(target.taskId) !== target.taskId || id(target.taskInstanceId) !== target.taskInstanceId
+      || byInstance.has(target.taskInstanceId) || taskIds.has(target.taskId)) {
+      throw new Error('Task cycle materialization batch target integrity check failed.');
+    }
+    byInstance.set(target.taskInstanceId, target); taskIds.add(target.taskId);
+  }
+  const instances = [...byInstance.keys()].sort(compareText);
+  const mirrorResult = await input.tx.execute(sql`SELECT task_instance_id, student_id, created_at
+    FROM task_allowed_students WHERE tenant_id=${input.tenantId}
+      AND task_instance_id IN (${sql.join(instances.map((value) => sql`${value}`), sql`, `)})
+    ORDER BY task_instance_id, student_id FOR UPDATE`);
+  const assignmentResult = await input.tx.execute(sql`SELECT assignment_id,
+    event_sequence::text AS event_sequence, task_id_snapshot, task_instance_id, cycle_id,
+    cycle_start_at, cycle_end_at, rule_version, timezone, student_id, event_type, source,
+    previous_assignment_id, admin_operation_id, admin_operation_hash, created_at,
+    schema_version, note FROM task_assignments WHERE tenant_id=${input.tenantId}
+      AND task_instance_id IN (${sql.join(instances.map((value) => sql`${value}`), sql`, `)})
+    ORDER BY task_instance_id, student_id, event_sequence FOR UPDATE`);
+  const completionResult = await input.tx.execute(sql`SELECT completion_id,
+    event_sequence::text AS event_sequence, completed_at, task_instance_id, task_id_snapshot,
+    task_name_snapshot, student_id, student_name_snapshot,
+    reward_snapshot::text AS reward_snapshot, balance_before::text AS balance_before,
+    balance_after::text AS balance_after, status, note, cycle_id, cycle_start_at, cycle_end_at,
+    rule_version, timezone, source, assignment_id, transaction_id, operation_id, operation_hash,
+    admin_operation_id, admin_operation_hash, schema_version, evidence_provider,
+    evidence_board_id, evidence_post_id, evidence_created_at, evidence_author_full_name, created_at
+    FROM task_completions WHERE tenant_id=${input.tenantId}
+      AND task_instance_id IN (${sql.join(instances.map((value) => sql`${value}`), sql`, `)})
+    ORDER BY task_instance_id, event_sequence FOR UPDATE`);
+  const mirrors = exactArray(mirrorResult.rows, 'batch mirror result').map(parseMirror);
+  const assignments = exactArray(assignmentResult.rows, 'batch assignment result').map(parseAssignment);
+  const completions = exactArray(completionResult.rows, 'batch completion result').map(parseCompletion);
+  const mirrorBuckets = bucketByTarget(mirrors, byInstance, 'mirror');
+  const assignmentBuckets = bucketByTarget(assignments, byInstance, 'assignment');
+  const completionBuckets = bucketByTarget(completions, byInstance, 'completion');
+
+  const transactionRoots = [...new Set(completions.map((event) => event.transaction_id)
+    .filter((value): value is string => value !== null))].sort(compareText);
+  let transactionReferences: unknown[] = [];
+  if (transactionRoots.length > 0) {
+    const result = await input.tx.execute(sql`SELECT transaction_id,
+      event_sequence::text AS event_sequence, occurred_at, student_id, student_name_snapshot,
+      kind, legacy_total_amount::text AS legacy_total_amount, balance_delta::text AS balance_delta,
+      balance_before::text AS balance_before, balance_after::text AS balance_after,
+      operator_snapshot, legacy_status_snapshot, reverses_transaction_id, operation_id,
+      operation_hash, schema_version, created_at FROM transactions WHERE tenant_id=${input.tenantId}
+      AND transaction_id IN (WITH RECURSIVE captured(transaction_id) AS
+        (VALUES ${sql.join(transactionRoots.map((value) => sql`(${value})`), sql`, `)} UNION
+         SELECT candidate.transaction_id FROM captured
+         JOIN transactions source ON source.tenant_id=${input.tenantId}
+           AND source.transaction_id=captured.transaction_id
+         JOIN transactions candidate ON candidate.tenant_id=${input.tenantId}
+           AND (candidate.transaction_id=source.reverses_transaction_id
+             OR candidate.reverses_transaction_id=source.transaction_id))
+        SELECT transaction_id FROM captured) ORDER BY transaction_id`);
+    transactionReferences = exactArray(result.rows, 'batch transaction reference result');
+  }
+  const operationIds = [...new Set(completions.flatMap((event) =>
+    [event.operation_id, event.admin_operation_id].filter((value): value is string => value !== null)))]
+    .sort(compareText);
+  let operationReferences: unknown[] = [];
+  if (operationIds.length > 0) {
+    const result = await input.tx.execute(sql`SELECT operation_id, operation_kind, payload_hash
+      FROM operations WHERE tenant_id=${input.tenantId}
+      AND operation_id IN (${sql.join(operationIds.map((value) => sql`${value}`), sql`, `)})
+      ORDER BY operation_id`);
+    operationReferences = exactArray(result.rows, 'batch operation reference result');
+  }
+
+  const assignmentPlans: PlannedAssignment[] = [];
+  const completionPlans: PlannedCompletion[] = [];
+  const state = new Map<string, { oldAssignments: Map<string, Assignment>;
+    oldCompletions: Map<string, Completion>; carried: Map<string, string> }>();
+  for (const target of targets) {
+    const targetAssignments = assignmentBuckets.get(target.taskInstanceId) ?? [];
+    const targetCompletions = completionBuckets.get(target.taskInstanceId) ?? [];
+    const referenceTx = cachedReferenceTransaction(input.tx, targetCompletions,
+      transactionReferences, operationReferences);
+    await validateEvidence({ ...target, tx: referenceTx, tenantId: input.tenantId },
+      mirrorBuckets.get(target.taskInstanceId) ?? [], targetAssignments, targetCompletions);
+    const oldAssignments = latestBySubject(targetAssignments.filter((event) =>
+      inOldCycle({ ...target, tx: referenceTx, tenantId: input.tenantId }, event)));
+    const oldCompletions = latestBySubject(targetCompletions.filter((event) =>
+      inOldCycle({ ...target, tx: referenceTx, tenantId: input.tenantId }, event)));
+    const carried = new Map<string, string>();
+    const students = new Set((mirrorBuckets.get(target.taskInstanceId) ?? [])
+      .map((mirror) => mirror.student_id));
+    for (const studentId of [...students].sort(compareText)) {
+      const predecessor = oldAssignments.get(studentId);
+      if (!predecessor || predecessor.event_type !== 'ASSIGNED') continue;
+      const assignmentId = assignmentMaterializationId(target.taskInstanceId,
+        target.newCycle.cycleId, studentId);
+      assignmentPlans.push({ target, studentId, assignmentId, predecessor });
+      carried.set(studentId, assignmentId);
+      const completion = oldCompletions.get(studentId);
+      if (completion?.status === 'COMPLETED'
+        && completion.assignment_id === predecessor.assignment_id) {
+        completionPlans.push({ target, studentId, assignmentId, predecessor: completion,
+          completionId: completionMaterializationId(target.taskInstanceId,
+            target.newCycle.cycleId, studentId) });
+      }
+    }
+    state.set(target.taskInstanceId, { oldAssignments, oldCompletions, carried });
+  }
+
+  const assignmentReturning = assignmentPlans.length === 0
+    ? await input.tx.execute(sql`SELECT NULL::text AS assignment_id,
+        NULL::text AS task_instance_id WHERE FALSE`)
+    : await input.tx.execute(sql`INSERT INTO task_assignments
+      (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id,
+       cycle_start_at, cycle_end_at, rule_version, timezone, student_id, event_type,
+       source, previous_assignment_id, admin_operation_id, admin_operation_hash,
+       created_at, schema_version, note)
+      VALUES ${sql.join(assignmentPlans.map((plan) => sql`(${input.tenantId},
+       ${plan.assignmentId}, ${plan.target.taskId}, ${plan.target.taskInstanceId},
+       ${plan.target.newCycle.cycleId}, ${new Date(plan.target.newCycle.startsAt)},
+       ${plan.target.newCycle.endsAt ? new Date(plan.target.newCycle.endsAt) : null},
+       ${plan.target.newRuleVersion}, ${plan.target.timeZone}, ${plan.studentId},
+       'ASSIGNED', 'CARRY_FORWARD', ${plan.predecessor.assignment_id}, NULL, NULL,
+       ${plan.target.now}, 1, NULL)`), sql`, `)}
+      ON CONFLICT (tenant_id, assignment_id) DO NOTHING
+      RETURNING assignment_id, task_instance_id`);
+  assertReturningSet(assignmentReturning.rows, 'assignment_id', assignmentPlans.map((plan) =>
+    ({ id: plan.assignmentId, taskInstanceId: plan.target.taskInstanceId })), 'assignment insert');
+
+  const completionReturning = completionPlans.length === 0
+    ? await input.tx.execute(sql`SELECT NULL::text AS completion_id,
+        NULL::text AS task_instance_id WHERE FALSE`)
+    : await input.tx.execute(sql`INSERT INTO task_completions
+      (tenant_id, completion_id, completed_at, task_instance_id, task_id_snapshot,
+       task_name_snapshot, student_id, student_name_snapshot, reward_snapshot,
+       balance_before, balance_after, status, note, cycle_id, cycle_start_at, cycle_end_at,
+       rule_version, timezone, source, assignment_id, transaction_id, operation_id,
+       operation_hash, admin_operation_id, admin_operation_hash, schema_version,
+       evidence_provider, evidence_board_id, evidence_post_id, evidence_created_at,
+       evidence_author_full_name, created_at)
+      VALUES ${sql.join(completionPlans.map((plan) => sql`(${input.tenantId},
+       ${plan.completionId}, ${plan.target.now}, ${plan.target.taskInstanceId},
+       ${plan.target.taskId}, ${plan.predecessor.task_name_snapshot}, ${plan.studentId},
+       ${plan.predecessor.student_name_snapshot}, 0, ${plan.predecessor.balance_after},
+       ${plan.predecessor.balance_after}, 'COMPLETED', NULL, ${plan.target.newCycle.cycleId},
+       ${new Date(plan.target.newCycle.startsAt)},
+       ${plan.target.newCycle.endsAt ? new Date(plan.target.newCycle.endsAt) : null},
+       ${plan.target.newRuleVersion}, ${plan.target.timeZone}, 'CARRY_FORWARD',
+       ${plan.assignmentId}, NULL, NULL, NULL, NULL, NULL, 1, NULL, NULL, NULL,
+       NULL, NULL, ${plan.target.now})`), sql`, `)}
+      ON CONFLICT (tenant_id, completion_id) DO NOTHING
+      RETURNING completion_id, task_instance_id`);
+  assertReturningSet(completionReturning.rows, 'completion_id', completionPlans.map((plan) =>
+    ({ id: plan.completionId, taskInstanceId: plan.target.taskInstanceId })), 'completion insert');
+
+  await verifyBatchMaterialized(input.tx, input.tenantId, targets, assignmentPlans, completionPlans,
+    state);
+  const assignmentByTarget = bucketPlans(assignmentPlans, (plan) => plan.assignmentId);
+  const completionByTarget = bucketPlans(completionPlans, (plan) => plan.completionId);
+  return Object.freeze(targets.map((target) => Object.freeze({ taskId: target.taskId,
+    taskInstanceId: target.taskInstanceId,
+    assignmentEventIds: Object.freeze(assignmentByTarget.get(target.taskInstanceId) ?? []),
+    completionEventIds: Object.freeze(completionByTarget.get(target.taskInstanceId) ?? []) })));
+}
+
 /** Internal command primitive. The caller must hold the task row lock first. */
 export async function materializeTaskConfigurationBoundaryCycleInternal(input: Readonly<{
   tx: TenantTransaction;
@@ -273,6 +475,158 @@ export async function materializeTaskConfigurationBoundaryCycleInternal(input: R
     carriedAssignmentByStudent, oldAssignments, oldCompletions);
   return Object.freeze({ assignmentEventIds: Object.freeze(assignmentEventIds),
     completionEventIds: Object.freeze(completionEventIds) });
+}
+
+function bucketByTarget<T extends { task_instance_id: string }>(rows: readonly T[],
+  targets: ReadonlyMap<string, TaskConfigurationBoundaryMaterializationTarget>, label: string) {
+  const buckets = new Map<string, T[]>();
+  for (const row of rows) {
+    if (!targets.has(row.task_instance_id)) {
+      throw new Error(`Task cycle materialization batch ${label} membership integrity check failed.`);
+    }
+    const bucket = buckets.get(row.task_instance_id) ?? [];
+    bucket.push(row); buckets.set(row.task_instance_id, bucket);
+  }
+  return buckets;
+}
+
+function cachedReferenceTransaction(base: TenantTransaction, completions: readonly Completion[],
+  transactionRows: readonly unknown[], operationRows: readonly unknown[]): TenantTransaction {
+  const roots = new Set(completions.map((event) => event.transaction_id)
+    .filter((value): value is string => value !== null));
+  const parsedTransactions = transactionRows.map((raw) => ({ raw, row: parseTransactionReference(raw) }));
+  const byTransactionId = new Map(parsedTransactions.map((item) => [item.row.transaction_id, item]));
+  const reachable = new Set<string>(); const pending = [...roots];
+  while (pending.length > 0) {
+    const current = pending.pop()!;
+    if (reachable.has(current)) continue;
+    const item = byTransactionId.get(current);
+    if (!item) continue;
+    reachable.add(current);
+    if (item.row.reverses_transaction_id !== null) pending.push(item.row.reverses_transaction_id);
+    for (const candidate of parsedTransactions) {
+      if (candidate.row.reverses_transaction_id === current) pending.push(candidate.row.transaction_id);
+    }
+  }
+  const targetTransactions = parsedTransactions.filter((item) => reachable.has(item.row.transaction_id));
+  const operationIds = new Set(completions.flatMap((event) =>
+    [event.operation_id, event.admin_operation_id].filter((value): value is string => value !== null)));
+  for (const item of targetTransactions) if (item.row.operation_id !== null) {
+    operationIds.add(item.row.operation_id);
+  }
+  const targetOperations = operationRows.filter((raw) => {
+    const row = exactRow(raw, OPERATION_REFERENCE_KEYS, 'operation reference evidence');
+    return operationIds.has(id(row.operation_id));
+  });
+  let call = 0;
+  return { ...base, execute: async () => {
+    if (roots.size > 0 && call++ === 0) return { rows: targetTransactions.map((item) => item.raw) } as never;
+    if (operationIds.size > 0) return { rows: targetOperations } as never;
+    throw new Error('Task cycle materialization unexpected cached reference query.');
+  } } as unknown as TenantTransaction;
+}
+
+function assertReturningSet(rows: unknown, identityKey: 'assignment_id' | 'completion_id',
+  expected: readonly Readonly<{ id: string; taskInstanceId: string }>[], label: string) {
+  const parsed = exactArray(rows, `${label} result`).map((raw) => {
+    const row = exactRow(raw, [identityKey, 'task_instance_id'], label);
+    return { id: id(row[identityKey]), taskInstanceId: id(row.task_instance_id) };
+  });
+  const expectedById = new Map(expected.map((item) => [item.id, item]));
+  if (expectedById.size !== expected.length || parsed.length !== expected.length) {
+    throw new Error(`Task cycle materialization ${label} integrity check failed.`);
+  }
+  for (const item of parsed) {
+    if (expectedById.get(item.id)?.taskInstanceId !== item.taskInstanceId) {
+      throw new Error(`Task cycle materialization ${label} integrity check failed.`);
+    }
+    expectedById.delete(item.id);
+  }
+  if (expectedById.size) throw new Error(`Task cycle materialization ${label} integrity check failed.`);
+}
+
+function bucketPlans<T extends { target: TaskConfigurationBoundaryMaterializationTarget }>(
+  plans: readonly T[], identity: (plan: T) => string) {
+  const buckets = new Map<string, string[]>();
+  for (const plan of plans) {
+    const bucket = buckets.get(plan.target.taskInstanceId) ?? [];
+    bucket.push(identity(plan)); buckets.set(plan.target.taskInstanceId, bucket);
+  }
+  for (const bucket of buckets.values()) bucket.sort(compareText);
+  return buckets;
+}
+
+async function verifyBatchMaterialized(tx: TenantTransaction, tenantId: string,
+  targets: readonly TaskConfigurationBoundaryMaterializationTarget[],
+  assignmentPlans: readonly PlannedAssignment[], completionPlans: readonly PlannedCompletion[],
+  state: ReadonlyMap<string, { oldAssignments: Map<string, Assignment>;
+    oldCompletions: Map<string, Completion>; carried: Map<string, string> }>) {
+  const pairs = targets.map((target) => sql`(${target.taskInstanceId}, ${target.newCycle.cycleId})`);
+  const assignmentResult = await tx.execute(sql`SELECT assignment_id,
+    event_sequence::text AS event_sequence, task_id_snapshot, task_instance_id, cycle_id,
+    cycle_start_at, cycle_end_at, rule_version, timezone, student_id, event_type, source,
+    previous_assignment_id, admin_operation_id, admin_operation_hash, created_at,
+    schema_version, note FROM task_assignments WHERE tenant_id=${tenantId}
+      AND (task_instance_id, cycle_id) IN (${sql.join(pairs, sql`, `)})
+      ORDER BY task_instance_id, student_id, event_sequence`);
+  const assignments = exactArray(assignmentResult.rows, 'batch assignment verification result')
+    .map(parseAssignment);
+  const assignmentById = new Map(assignmentPlans.map((plan) => [plan.assignmentId, plan]));
+  if (assignmentById.size !== assignmentPlans.length || assignments.length !== assignmentPlans.length) {
+    throw new Error('Task cycle materialization assignment set integrity check failed.');
+  }
+  for (const event of assignments) {
+    const plan = assignmentById.get(event.assignment_id);
+    const targetState = state.get(event.task_instance_id);
+    if (!plan || !targetState || event.task_instance_id !== plan.target.taskInstanceId
+      || event.task_id_snapshot !== plan.target.taskId || event.cycle_id !== plan.target.newCycle.cycleId
+      || event.source !== 'CARRY_FORWARD' || event.event_type !== 'ASSIGNED'
+      || event.previous_assignment_id !== plan.predecessor.assignment_id
+      || targetState.oldAssignments.get(event.student_id) !== plan.predecessor
+      || event.rule_version !== plan.target.newRuleVersion
+      || event.created_at.getTime() !== plan.target.now.getTime()) {
+      throw new Error('Task cycle materialization assignment set integrity check failed.');
+    }
+    assignmentById.delete(event.assignment_id);
+  }
+  if (assignmentById.size) throw new Error('Task cycle materialization assignment set integrity check failed.');
+
+  const completionResult = await tx.execute(sql`SELECT completion_id,
+    event_sequence::text AS event_sequence, completed_at, task_instance_id, task_id_snapshot,
+    task_name_snapshot, student_id, student_name_snapshot,
+    reward_snapshot::text AS reward_snapshot, balance_before::text AS balance_before,
+    balance_after::text AS balance_after, status, note, cycle_id, cycle_start_at, cycle_end_at,
+    rule_version, timezone, source, assignment_id, transaction_id, operation_id, operation_hash,
+    admin_operation_id, admin_operation_hash, schema_version, evidence_provider,
+    evidence_board_id, evidence_post_id, evidence_created_at, evidence_author_full_name, created_at
+    FROM task_completions WHERE tenant_id=${tenantId}
+      AND (task_instance_id, cycle_id) IN (${sql.join(pairs, sql`, `)})
+      ORDER BY task_instance_id, event_sequence`);
+  const completions = exactArray(completionResult.rows, 'batch completion verification result')
+    .map(parseCompletion);
+  const completionById = new Map(completionPlans.map((plan) => [plan.completionId, plan]));
+  if (completionById.size !== completionPlans.length || completions.length !== completionPlans.length) {
+    throw new Error('Task cycle materialization completion set integrity check failed.');
+  }
+  for (const event of completions) {
+    const plan = completionById.get(event.completion_id);
+    const targetState = state.get(event.task_instance_id);
+    if (!plan || !targetState || event.task_instance_id !== plan.target.taskInstanceId
+      || event.task_id_snapshot !== plan.target.taskId || event.cycle_id !== plan.target.newCycle.cycleId
+      || event.source !== 'CARRY_FORWARD' || event.status !== 'COMPLETED'
+      || event.reward_snapshot !== 0 || event.balance_before !== plan.predecessor.balance_after
+      || event.balance_after !== plan.predecessor.balance_after
+      || event.assignment_id !== plan.assignmentId
+      || targetState.oldCompletions.get(event.student_id) !== plan.predecessor
+      || targetState.carried.get(event.student_id) !== plan.assignmentId
+      || event.transaction_id !== null || event.operation_id !== null
+      || event.admin_operation_id !== null || event.rule_version !== plan.target.newRuleVersion
+      || event.completed_at.getTime() !== plan.target.now.getTime()) {
+      throw new Error('Task cycle materialization completion set integrity check failed.');
+    }
+    completionById.delete(event.completion_id);
+  }
+  if (completionById.size) throw new Error('Task cycle materialization completion set integrity check failed.');
 }
 
 async function validateEvidence(input: Parameters<typeof materializeTaskConfigurationBoundaryCycleInternal>[0],

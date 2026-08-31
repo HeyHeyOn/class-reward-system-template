@@ -10,6 +10,7 @@ import {
   assertOperationAudit,
   operationAuditEventId,
 } from './operationAudit';
+import type { TenantTransaction } from '@/server/db/transaction';
 
 const OPERATION_ID = 'checkout-op-001';
 const HASH = 'a'.repeat(64);
@@ -80,6 +81,20 @@ describe('operation audit helper', () => {
     await harness.runTenantTransaction(harness.tenantTwoId, async (transaction) => {
       await expect(assertOperationAudit(transaction, harness.tenantTwoId, input))
         .rejects.toThrow(/integrity/i);
+    });
+  });
+
+  it('rejects a sparse audit rowset with a valid first row', async () => {
+    await harness.runTenantTransaction(harness.tenantOneId, async (transaction) => {
+      await appendOperationAudit(transaction, harness.tenantOneId, input);
+    });
+    await harness.runTenantTransaction(harness.tenantOneId, async (transaction) => {
+      const wrapped = { ...transaction, execute: async (...args: Parameters<TenantTransaction['execute']>) => {
+        const result = await transaction.execute(...args);
+        const rows = [...result.rows]; rows.length = 2;
+        return { ...result, rows };
+      } } as unknown as TenantTransaction;
+      await expect(assertOperationAudit(wrapped, harness.tenantOneId, input)).rejects.toThrow(/integrity/i);
     });
   });
 
