@@ -99,9 +99,14 @@ async function seedTask(taskId: string, taskInstanceId: string, title: string,
 }
 
 async function state(operationId = OPERATION_ID) {
-  const [accounts, transactions, completions, operations, audits] = await Promise.all([
-    harness.database.query(`SELECT student_id, balance::text, version::text FROM accounts
+  const [accounts, assignments, transactions, completions, operations, audits] = await Promise.all([
+    harness.database.query(`SELECT student_id, balance::text, version::text, updated_at FROM accounts
       WHERE tenant_id=$1 ORDER BY student_id`, [harness.tenantOneId]),
+    harness.database.query(`SELECT assignment_id, event_sequence::text, task_id_snapshot,
+      task_instance_id, cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone,
+      student_id, event_type, source, previous_assignment_id, admin_operation_id,
+      admin_operation_hash, created_at, schema_version, note FROM task_assignments
+      WHERE tenant_id=$1 ORDER BY event_sequence`, [harness.tenantOneId]),
     harness.database.query(`SELECT * FROM transactions WHERE tenant_id=$1 ORDER BY transaction_id`,
       [harness.tenantOneId]),
     harness.database.query(`SELECT completion_id, event_sequence::text, completed_at,
@@ -118,7 +123,7 @@ async function state(operationId = OPERATION_ID) {
     harness.database.query(`SELECT * FROM audit_events WHERE tenant_id=$1 AND operation_id=$2`,
       [harness.tenantOneId, operationId]),
   ]);
-  return { accounts: accounts.rows, transactions: transactions.rows,
+  return { accounts: accounts.rows, assignments: assignments.rows, transactions: transactions.rows,
     completions: completions.rows, operations: operations.rows, audits: audits.rows };
 }
 
@@ -186,8 +191,8 @@ describe('database batch task completion reset command', () => {
 
     const saved = await state();
     expect(saved.accounts).toEqual([
-      { student_id: 'S001', balance: '700', version: '1' },
-      { student_id: 'S002', balance: '700', version: '1' },
+      expect.objectContaining({ student_id: 'S001', balance: '700', version: '1' }),
+      expect.objectContaining({ student_id: 'S002', balance: '700', version: '1' }),
     ]);
     expect(saved.transactions).toHaveLength(2);
     expect(saved.completions).toHaveLength(4);
@@ -505,7 +510,7 @@ describe('database batch task completion reset command', () => {
           let auditReached = false;
           const run = observingRunner((sql, rows) => {
             if (sql.startsWith("update operations set status='succeeded'")) terminalReached = true;
-            if (sql.startsWith('insert into audit_events')) auditReached = true;
+            if (sql.includes('from audit_events')) auditReached = true;
             if (sql.startsWith('select task_instance_id, task_id, current_schedule')
               && sql.includes('from tasks')) {
               snapshotRead += 1;
@@ -570,6 +575,145 @@ describe('database batch task completion reset command', () => {
       taskIds: ['TASK-001', 'TASK-002'] })).rejects.toThrow(/reset event.*integrity/i);
     expect(insertions).toBe(2);
     expect(await state()).toEqual(before);
+  });
+
+  it.each([
+    { phase: 'pre-audit', occurrence: 2, auditReached: false, terminalReached: false },
+    { phase: 'post-terminal', occurrence: 3, auditReached: true, terminalReached: true },
+  ])('rejects the explicit assignment unchanged-state fault matrix at $phase and rolls back',
+  async ({ phase, occurrence, auditReached: expectedAudit, terminalReached: expectedTerminal }) => {
+    const faults = [
+      ['added row', (rows: unknown[]) => [...rows, { ...(rows[0] as Record<string, unknown>) }]],
+      ['removed row', (rows: unknown[]) => rows.slice(1)],
+      ['changed row', (rows: unknown[]) => rows.map((row, index) => index === 0
+        ? { ...(row as Record<string, unknown>), note: 'adapter mutation' } : row)],
+      ['unknown ID', (rows: unknown[]) => rows.map((row, index) => index === 0
+        ? { ...(row as Record<string, unknown>), assignment_id: 'assignment:UNKNOWN' } : row)],
+    ] as const;
+    for (const [label, mutate] of faults) {
+      const before = await state();
+      let reads = 0; let auditReached = false; let terminalReached = false;
+      const run = observingRunner((sql, rows) => {
+        if (sql.includes('from audit_events')) auditReached = true;
+        if (sql.startsWith("update operations set status='succeeded'")) terminalReached = true;
+        if (sql.startsWith('select assignment_id, event_sequence::text')
+          && sql.includes('from task_assignments') && ++reads === occurrence) return mutate(rows);
+        return rows;
+      });
+      await expect(command({ runTenantTransaction: run }).resetBatch({
+        operationId: OPERATION_ID, taskIds: ['TASK-001'],
+      }), `${label} at ${phase}`).rejects.toThrow(/assignment.*(snapshot|identity|integrity)/i);
+      expect(reads).toBeGreaterThanOrEqual(occurrence);
+      expect(auditReached).toBe(expectedAudit);
+      expect(terminalReached).toBe(expectedTerminal);
+      expect(await state()).toEqual(before);
+    }
+  });
+
+  it.each([
+    { phase: 'pre-audit', occurrence: 2, auditReached: false, terminalReached: false },
+    { phase: 'post-terminal', occurrence: 3, auditReached: true, terminalReached: true },
+  ])('rejects the explicit account unchanged-state fault matrix at $phase and rolls back',
+  async ({ phase, occurrence, auditReached: expectedAudit, terminalReached: expectedTerminal }) => {
+    const faults = [
+      ['added row', (rows: unknown[]) => [...rows, { ...(rows[0] as Record<string, unknown>) }]],
+      ['removed row', (rows: unknown[]) => rows.slice(1)],
+      ['changed row', (rows: unknown[]) => rows.map((row, index) => index === 0
+        ? { ...(row as Record<string, unknown>), balance: '701' } : row)],
+      ['unknown ID', (rows: unknown[]) => rows.map((row, index) => index === 0
+        ? { ...(row as Record<string, unknown>), student_id: 'S-UNKNOWN' } : row)],
+    ] as const;
+    for (const [label, mutate] of faults) {
+      const before = await state();
+      let reads = 0; let auditReached = false; let terminalReached = false;
+      const run = observingRunner((sql, rows) => {
+        if (sql.includes('from audit_events')) auditReached = true;
+        if (sql.startsWith("update operations set status='succeeded'")) terminalReached = true;
+        if (sql.startsWith('select student_id, balance::text') && sql.includes('from accounts')
+          && ++reads === occurrence) return mutate(rows);
+        return rows;
+      });
+      await expect(command({ runTenantTransaction: run }).resetBatch({
+        operationId: OPERATION_ID, taskIds: ['TASK-001'],
+      }), `${label} at ${phase}`).rejects.toThrow(/account.*(snapshot|identity|integrity)/i);
+      expect(reads).toBeGreaterThanOrEqual(occurrence);
+      expect(auditReached).toBe(expectedAudit);
+      expect(terminalReached).toBe(expectedTerminal);
+      expect(await state()).toEqual(before);
+    }
+  });
+
+  it.each([
+    ['assignment', 'select assignment_id, event_sequence::text', 'from task_assignments'],
+    ['account', 'select student_id, balance::text', 'from accounts'],
+  ] as const)('rejects sparse and index-getter %s rowsets without invoking hooks',
+  async (label, prefix, table) => {
+    for (const shape of ['sparse', 'getter'] as const) {
+      const before = await state();
+      let hooks = 0; let injected = false;
+      const run = observingRunner((sql, rows) => {
+        if (!injected && sql.startsWith(prefix) && sql.includes(table)) {
+          injected = true;
+          if (shape === 'sparse') return new Array(rows.length) as unknown[];
+          const malformed: unknown[] = [];
+          Object.defineProperty(malformed, '0', { enumerable: true, configurable: true,
+            get: () => { hooks += 1; throw new Error('row hook executed'); } });
+          return malformed;
+        }
+        return rows;
+      });
+      await expect(command({ runTenantTransaction: run }).resetBatch({
+        operationId: OPERATION_ID, taskIds: ['TASK-001'],
+      })).rejects.toThrow(new RegExp(`${label}.*rowset.*malformed`, 'i'));
+      expect(injected).toBe(true);
+      expect(hooks).toBe(0);
+      expect(await state()).toEqual(before);
+    }
+  });
+
+  it.each([
+    { taskIds: ['TASK-001'] as const, width: 1, label: 'one-target' },
+    { taskIds: ['TASK-002', 'TASK-001'] as const, width: 2, label: 'multi-target' },
+  ])('uses constant verb-classified assignment/account SELECT counts for $label',
+  async ({ taskIds, width }) => {
+    const statements: Array<{ verb: string; sql: string; width: number }> = [];
+    const run = observingRunner((sql, rows) => {
+      statements.push({ verb: sql.trimStart().split(/\s+/, 1)[0], sql, width: rows.length });
+      return rows;
+    });
+    await command({ runTenantTransaction: run }).resetBatch({ operationId: OPERATION_ID, taskIds });
+    const selects = (table: string) => statements.filter((statement) => statement.verb === 'select'
+      && statement.sql.includes(`from ${table}`));
+    expect(selects('task_assignments').map((statement) => statement.width))
+      .toEqual([width, width, width]);
+    expect(selects('accounts').map((statement) => statement.width)).toEqual([width, width, width]);
+    expect(statements.filter((statement) => statement.verb !== 'select'
+      && /\b(task_assignments|accounts)\b/.test(statement.sql))).toEqual([]);
+  });
+
+  it('replay tolerates legitimate later assignment history and account lifecycle changes', async () => {
+    const first = await command().resetBatch({ operationId: OPERATION_ID, taskIds: ['TASK-001'] });
+    await harness.database.query(`UPDATE accounts SET balance=725, version=version+1, updated_at=$3
+      WHERE tenant_id=$1 AND student_id=$2`,
+    [harness.tenantOneId, 'S001', '2026-09-01T00:05:00.000Z']);
+    await harness.database.query(`INSERT INTO task_assignments
+      (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id,
+       cycle_start_at, cycle_end_at, rule_version, timezone, student_id, event_type,
+       source, previous_assignment_id, created_at, schema_version, note)
+      VALUES ($1, 'assignment:TASK-001:S001:later', 'TASK-001', 'INSTANCE-001',
+        'v1|INSTANCE-001|r1|2026-09-01T00:00:00Z', $2, $3, 1, 'Asia/Seoul', 'S001',
+        'ASSIGNED', 'LEGACY_SEED', NULL, $2, 1, 'later cycle')`,
+    [harness.tenantOneId, '2026-09-01T00:00:00.000Z', '2026-09-02T00:00:00.000Z']);
+
+    await expect(command().resetBatch({ operationId: OPERATION_ID, taskIds: ['TASK-001'] }))
+      .resolves.toEqual(first);
+    const after = await state();
+    expect(after.accounts).toEqual(expect.arrayContaining([expect.objectContaining({
+      student_id: 'S001', balance: '725', version: '2',
+    })]));
+    expect(after.assignments).toEqual(expect.arrayContaining([expect.objectContaining({
+      assignment_id: 'assignment:TASK-001:S001:later', note: 'later cycle',
+    })]));
   });
 
   it('is tenant isolated', async () => {
