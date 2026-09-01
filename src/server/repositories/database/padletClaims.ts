@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import type { TaskCompletionEvidence } from '@/domain/types';
 import type { TenantTransaction } from '@/server/db/transaction';
+import { isCanonicalPadletPostId } from '@/server/padletClient';
 
 export type PadletClaimInput = Readonly<{
   tenantId: string;
@@ -19,6 +20,11 @@ export type PadletClaimInput = Readonly<{
  */
 export interface DatabasePadletClaimRepository {
   claim(transaction: TenantTransaction, input: PadletClaimInput): Promise<'CLAIMED' | 'CONFLICT'>;
+  findClaimedPostIds(
+    transaction: TenantTransaction,
+    boardId: string,
+    postIds: readonly string[],
+  ): Promise<readonly string[]>;
 }
 
 const CLAIM_CONFLICT_CONSTRAINTS = new Set([
@@ -29,6 +35,19 @@ const CLAIM_CONFLICT_CONSTRAINTS = new Set([
 
 export function createDatabasePadletClaimRepository(): DatabasePadletClaimRepository {
   return {
+    async findClaimedPostIds(transaction, boardId, postIds) {
+      const requestedPostIds = canonicalClaimLookupRequest(boardId, postIds);
+      const result = await transaction.execute(sql`
+        SELECT post_id
+        FROM padlet_evidence_claims
+        WHERE provider = 'PADLET'
+          AND board_id = ${boardId}
+          AND post_id IN (${sql.join(requestedPostIds.map((postId) => sql`${postId}`), sql`, `)})
+        ORDER BY post_id COLLATE "C"
+      `);
+      return projectClaimedPostIds(result.rows, requestedPostIds);
+    },
+
     async claim(transaction, input) {
       const tupleDigest = padletTupleDigest(
         input.evidence.evidenceBoardId,
@@ -61,6 +80,61 @@ export function createDatabasePadletClaimRepository(): DatabasePadletClaimReposi
       }
     },
   };
+}
+
+function canonicalClaimLookupRequest(boardId: unknown, postIds: unknown): string[] {
+  if (typeof boardId !== 'string'
+    || boardId.length < 1
+    || boardId.length > 128
+    || boardId !== boardId.trim()
+    || !Array.isArray(postIds)
+    || postIds.length < 1
+    || postIds.length > 200) {
+    throw new Error('Invalid Padlet claim lookup request.');
+  }
+
+  const uniquePostIds = new Set<string>();
+  for (const postId of postIds) {
+    if (!isCanonicalPadletPostId(postId) || uniquePostIds.has(postId)) {
+      throw new Error('Invalid Padlet claim lookup request.');
+    }
+    uniquePostIds.add(postId);
+  }
+  return [...uniquePostIds].sort(compareCodeUnits);
+}
+
+function projectClaimedPostIds(rows: readonly unknown[], requestedPostIds: readonly string[]): readonly string[] {
+  const requested = new Set(requestedPostIds);
+  const claimedPostIds: string[] = [];
+  let previous: string | undefined;
+
+  for (const row of rows) {
+    const ownKeys = typeof row === 'object' && row !== null ? Reflect.ownKeys(row) : [];
+    if (typeof row !== 'object' || row === null || Array.isArray(row)
+      || Object.getPrototypeOf(row) !== Object.prototype
+      || ownKeys.length !== 1
+      || ownKeys[0] !== 'post_id') {
+      throw new Error('Invalid Padlet claim lookup result row.');
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(row, 'post_id');
+    if (!descriptor || !descriptor.enumerable || !('value' in descriptor)) {
+      throw new Error('Invalid Padlet claim lookup result row.');
+    }
+    const postId = descriptor.value as unknown;
+    if (!isCanonicalPadletPostId(postId)
+      || !requested.has(postId)
+      || (previous !== undefined && compareCodeUnits(previous, postId) >= 0)) {
+      throw new Error('Invalid Padlet claim lookup result row.');
+    }
+    claimedPostIds.push(postId);
+    previous = postId;
+  }
+
+  return Object.freeze([...claimedPostIds]);
+}
+
+function compareCodeUnits(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 export function padletTupleDigest(boardId: string, postId: string): string {
