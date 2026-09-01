@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { isAuthorizedAdminRequest } from '@/server/apiAuth';
-import { createConfiguredSheetsStore } from '@/server/googleSheets';
-import { cancelTransaction } from '@/server/sheetsRepository';
+import { createConfiguredTransactionCancellation } from '@/server/repositories/configuredTransactionCancellation';
 import { POST } from './route';
 
 vi.mock('@/server/apiAuth', () => ({
   isAuthorizedAdminRequest: vi.fn(() => true),
   unauthorizedAdminResponse: () => Response.json({ error: 'unauthorized' }, { status: 401 }),
 }));
-vi.mock('@/server/googleSheets', () => ({ createConfiguredSheetsStore: vi.fn() }));
-vi.mock('@/server/sheetsRepository', () => ({ cancelTransaction: vi.fn() }));
+vi.mock('@/server/repositories/configuredTransactionCancellation', () => ({
+  createConfiguredTransactionCancellation: vi.fn(),
+}));
 
 describe('POST /api/transactions/[transactionId]/cancel', () => {
   beforeEach(() => {
@@ -25,18 +25,16 @@ describe('POST /api/transactions/[transactionId]/cancel', () => {
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({ error: 'unauthorized' });
-    expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
-    expect(cancelTransaction).not.toHaveBeenCalled();
+    expect(createConfiguredTransactionCancellation).not.toHaveBeenCalled();
   });
 
-  it('returns the repository result after cancelling the decoded transaction ID', async () => {
-    const store = {};
+  it('returns the configured authority result after cancelling the decoded transaction ID', async () => {
     const result = {
       cancelledTransaction: { transactionId: 'TR 1', status: 'CANCELLED' },
       reversalTransaction: { transactionId: 'CANCEL-TR-1', status: 'CANCEL_REVERSAL' },
     };
-    vi.mocked(createConfiguredSheetsStore).mockResolvedValue(store as never);
-    vi.mocked(cancelTransaction).mockResolvedValue(result as never);
+    const cancel = vi.fn(async () => result as never);
+    vi.mocked(createConfiguredTransactionCancellation).mockResolvedValue({ cancel });
     const request = new Request('http://localhost/api/transactions/TR%201/cancel', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -46,7 +44,10 @@ describe('POST /api/transactions/[transactionId]/cancel', () => {
     const response = await POST(request, { params: Promise.resolve({ transactionId: 'TR%201' }) });
 
     expect(response.status).toBe(200);
-    expect(cancelTransaction).toHaveBeenCalledWith(store, 'TR 1', '30000000-0000-4000-8000-000000000001');
+    expect(createConfiguredTransactionCancellation).toHaveBeenCalledWith(request);
+    expect(cancel).toHaveBeenCalledWith({
+      transactionId: 'TR 1', operationId: '30000000-0000-4000-8000-000000000001',
+    });
     await expect(response.json()).resolves.toEqual(result);
   });
 
@@ -54,8 +55,9 @@ describe('POST /api/transactions/[transactionId]/cancel', () => {
     'provider credential detail',
     '취소할 수 없는 거래입니다.',
   ])('returns a safe error without leaking repository detail: %s', async (detail) => {
-    vi.mocked(createConfiguredSheetsStore).mockResolvedValue({} as never);
-    vi.mocked(cancelTransaction).mockRejectedValue(new Error(detail));
+    vi.mocked(createConfiguredTransactionCancellation).mockResolvedValue({
+      cancel: vi.fn(async () => { throw new Error(detail); }),
+    });
     const request = new Request('http://localhost/api/transactions/TR-1/cancel', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -79,7 +81,6 @@ describe('POST /api/transactions/[transactionId]/cancel', () => {
     const response = await POST(request, { params: Promise.resolve({ transactionId: 'TR-1' }) });
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({ error: '올바른 취소 요청이 아닙니다.' });
-    expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
-    expect(cancelTransaction).not.toHaveBeenCalled();
+    expect(createConfiguredTransactionCancellation).not.toHaveBeenCalled();
   });
 });

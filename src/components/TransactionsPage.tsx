@@ -6,7 +6,7 @@ import type { Transaction } from '@/domain/types';
 
 type SettingsResponse = { currencyUnit?: string };
 type ApiError = { error?: string };
-type CancelTransactionResponse = { cancelledTransaction: Transaction; reversalTransaction: Transaction } | Transaction;
+type CancelTransactionResponse = { cancelledTransaction: Transaction; reversalTransaction: Transaction };
 type TransactionFilter = 'all' | 'income' | 'expense';
 
 function formatCurrency(amount: number, unit: string) {
@@ -34,6 +34,53 @@ function formatTimestamp(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString('ko-KR', { hour12: false }).replace(/(오전|오후) /, '');
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isTransaction(value: unknown): value is Transaction {
+  if (!isRecord(value)) return false;
+  const hasString = (key: string) => typeof value[key] === 'string';
+  const hasFiniteNumber = (key: string) => typeof value[key] === 'number'
+    && Number.isFinite(value[key]);
+  const items = value.items;
+  return hasString('transactionId')
+    && hasString('timestamp')
+    && hasString('studentId')
+    && hasString('studentName')
+    && Array.isArray(items)
+    && items.every((item) => isRecord(item)
+      && typeof item.productId === 'string'
+      && typeof item.name === 'string'
+      && typeof item.price === 'number' && Number.isFinite(item.price)
+      && typeof item.quantity === 'number' && Number.isFinite(item.quantity)
+      && typeof item.subtotal === 'number' && Number.isFinite(item.subtotal))
+    && hasFiniteNumber('totalAmount')
+    && hasFiniteNumber('balanceBefore')
+    && hasFiniteNumber('balanceAfter')
+    && hasString('status')
+    && hasString('operator')
+    && (!Object.hasOwn(value, 'cancelledAt') || typeof value.cancelledAt === 'string')
+    && (!Object.hasOwn(value, 'itemsMalformed') || value.itemsMalformed === true);
+}
+
+function isCancelTransactionResponse(
+  value: unknown,
+  expectedTransactionId: string,
+): value is CancelTransactionResponse {
+  if (!isRecord(value)
+    || !Object.hasOwn(value, 'cancelledTransaction')
+    || !Object.hasOwn(value, 'reversalTransaction')
+    || !isTransaction(value.cancelledTransaction)
+    || !isTransaction(value.reversalTransaction)) return false;
+  const { cancelledTransaction, reversalTransaction } = value;
+  return cancelledTransaction.transactionId === expectedTransactionId
+    && cancelledTransaction.status === 'CANCELLED'
+    && reversalTransaction.transactionId !== expectedTransactionId
+    && reversalTransaction.status === 'CANCEL_REVERSAL'
+    && reversalTransaction.studentId === cancelledTransaction.studentId;
 }
 
 export function TransactionsPage() {
@@ -133,12 +180,13 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
       if (!response.ok || 'error' in payload) {
         throw new Error('error' in payload && payload.error ? payload.error : '거래를 취소하지 못했습니다.');
       }
-      const successPayload = payload as CancelTransactionResponse;
-      const cancelledTransaction: Transaction = 'cancelledTransaction' in successPayload ? successPayload.cancelledTransaction : successPayload;
-      const reversalTransaction: Transaction | null = 'reversalTransaction' in successPayload ? successPayload.reversalTransaction : null;
+      if (!isCancelTransactionResponse(payload, transaction.transactionId)) {
+        throw new Error('거래를 취소하지 못했습니다.');
+      }
+      const { cancelledTransaction, reversalTransaction } = payload;
       setTransactions((current) => {
         const updated = current.map((item) => item.transactionId === transaction.transactionId ? cancelledTransaction : item);
-        return reversalTransaction ? [reversalTransaction, ...updated] : updated;
+        return [reversalTransaction, ...updated];
       });
       cancellationOperationIdsRef.current.delete(transaction.transactionId);
     } catch (error) {

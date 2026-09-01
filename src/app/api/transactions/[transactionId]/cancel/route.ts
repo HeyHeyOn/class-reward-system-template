@@ -1,6 +1,5 @@
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
-import { createConfiguredSheetsStore } from '@/server/googleSheets';
-import { cancelTransaction } from '@/server/sheetsRepository';
+import { createConfiguredTransactionCancellation } from '@/server/repositories/configuredTransactionCancellation';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,12 +19,11 @@ export async function POST(request: Request, context: RouteContext) {
 
   try {
     const { transactionId } = await context.params;
-    const store = await createConfiguredSheetsStore();
-    const result = await cancelTransaction(
-      store,
-      decodeURIComponent(transactionId),
-      body.operationId,
-    );
+    const cancellation = await createConfiguredTransactionCancellation(request);
+    const result = await cancellation.cancel({
+      transactionId: decodeURIComponent(transactionId),
+      operationId: body.operationId,
+    });
 
     return Response.json(result);
   } catch {

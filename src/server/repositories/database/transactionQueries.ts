@@ -66,10 +66,37 @@ export function createDatabaseTransactionQueries(
     async getTransactionById(transactionId: string): Promise<Transaction | null> {
       assertCanonicalTransactionId(transactionId);
       return dependencies.runTenantTransaction(dependencies.tenantId, async (transaction) => {
-        const rows = await readTransactionRows(transaction, dependencies.tenantId, transactionId);
+        const rows = await readTransactionRows(transaction, dependencies.tenantId, [transactionId]);
         const projected = projectTransactions(rows);
         if (projected.length > 1) throw new Error('Transaction query returned duplicate rows.');
         return projected[0] ?? null;
+      });
+    },
+
+    async getCancellationPair(originalId: string, reversalId: string): Promise<{
+      cancelledTransaction: Transaction;
+      reversalTransaction: Transaction;
+    }> {
+      assertCanonicalTransactionId(originalId);
+      assertCanonicalTransactionId(reversalId);
+      if (originalId === reversalId) throw new Error('Cancellation pair IDs must be unique.');
+      return dependencies.runTenantTransaction(dependencies.tenantId, async (transaction) => {
+        const rows = await readTransactionRows(
+          transaction,
+          dependencies.tenantId,
+          [originalId, reversalId],
+        );
+        validateCancellationPairRows(rows, originalId, reversalId);
+        const projected = projectTransactions(rows);
+        if (projected.length !== 2) throw new Error('Cancellation pair projection is incomplete.');
+        const byId = new Map(projected.map((entry) => [entry.transactionId, entry]));
+        const cancelledTransaction = byId.get(originalId);
+        const reversalTransaction = byId.get(reversalId);
+        if (cancelledTransaction?.status !== 'CANCELLED'
+          || reversalTransaction?.status !== 'CANCEL_REVERSAL') {
+          throw new Error('Cancellation pair status integrity check failed.');
+        }
+        return { cancelledTransaction, reversalTransaction };
       });
     },
   };
@@ -78,11 +105,13 @@ export function createDatabaseTransactionQueries(
 async function readTransactionRows(
   transaction: TenantTransaction,
   tenantId: string,
-  transactionId?: string,
+  transactionIds?: readonly string[],
 ): Promise<TransactionRow[]> {
-  const idPredicate = transactionId === undefined
+  const idPredicate = transactionIds === undefined
     ? sql``
-    : sql`AND t.transaction_id = ${transactionId}`;
+    : transactionIds.length === 1
+      ? sql`AND t.transaction_id = ${transactionIds[0]}`
+      : sql`AND (t.transaction_id = ${transactionIds[0]} OR t.transaction_id = ${transactionIds[1]})`;
   const result = await transaction.execute(sql`
     SELECT t.transaction_id, t.event_sequence::text AS event_sequence, t.occurred_at,
            t.student_id, t.student_name_snapshot, t.kind,
@@ -148,6 +177,26 @@ async function readTransactionRows(
     ORDER BY t.occurred_at DESC, t.event_sequence ASC, item.line_number ASC
   `);
   return result.rows as TransactionRow[];
+}
+
+function validateCancellationPairRows(
+  rows: TransactionRow[],
+  originalId: string,
+  reversalId: string,
+): void {
+  const ids = new Set(rows.map((row) => requiredSnapshotString(row.transaction_id, 'Transaction ID')));
+  if (ids.size !== 2 || !ids.has(originalId) || !ids.has(reversalId)) {
+    throw new Error('Cancellation pair is missing or has invalid identity.');
+  }
+  const originalRows = rows.filter((row) => row.transaction_id === originalId);
+  const reversalRows = rows.filter((row) => row.transaction_id === reversalId);
+  if (originalRows.length === 0 || reversalRows.length === 0
+    || originalRows.some((row) => row.reverses_transaction_id !== null)
+    || reversalRows.some((row) => row.kind !== 'CANCELLATION'
+      || row.reverses_transaction_id !== originalId
+      || row.legacy_status_snapshot !== 'CANCEL_REVERSAL')) {
+    throw new Error('Cancellation pair linkage integrity check failed.');
+  }
 }
 
 function projectTransactions(rows: TransactionRow[]): Transaction[] {

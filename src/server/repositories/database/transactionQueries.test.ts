@@ -19,6 +19,7 @@ const EXTENDED_ID = 'EXTENDED';
 const ADMIN_ID = 'ADMIN';
 const REVERSAL_ID = 'REVERSAL';
 const TIED_ID = 'TIED';
+const OTHER_TENANT_ONLY_ID = 'OTHER-ONLY';
 
 beforeEach(async () => {
   harness = await createPgliteDatabaseHarness();
@@ -67,6 +68,14 @@ beforeEach(async () => {
     occurredAt: '2026-08-30T00:00:00.000Z',
     kind: 'CHECKOUT', totalAmount: 999, balanceDelta: -999,
     balanceBefore: 2000, balanceAfter: 1001, operator: 'other', status: 'COMPLETED',
+    studentName: '다른 반 학생',
+  });
+  await seedTransaction(harness.tenantTwoId, {
+    transactionId: OTHER_TENANT_ONLY_ID,
+    occurredAt: '2026-08-30T01:00:00.000Z',
+    kind: 'CANCELLATION', totalAmount: -999, balanceDelta: 999,
+    balanceBefore: 1001, balanceAfter: 2000, operator: `cancel:${BASE_ID}`,
+    status: 'CANCEL_REVERSAL', reversesTransactionId: BASE_ID,
     studentName: '다른 반 학생',
   });
 });
@@ -217,6 +226,71 @@ describe('database transaction queries', () => {
       cancelledAt: '2026-08-29T04:00:00.000Z',
     });
     await expect(queries().getTransactionById('missing')).resolves.toBeNull();
+  });
+
+  it('projects an authoritative cancellation pair in one tenant snapshot and one SQL statement', async () => {
+    let snapshots = 0;
+    let statements = 0;
+    const runTenantTransaction: DatabaseTransactionQueryDependencies['runTenantTransaction'] =
+      async (tenantId, callback) => {
+        snapshots += 1;
+        return harness.runTenantTransaction(tenantId, async (transaction) => callback({
+          ...transaction,
+          execute: async (...args: Parameters<typeof transaction.execute>) => {
+            statements += 1;
+            return transaction.execute(...args);
+          },
+        } as unknown as typeof transaction));
+      };
+
+    await expect(queries({ runTenantTransaction }).getCancellationPair(BASE_ID, REVERSAL_ID))
+      .resolves.toEqual({
+        cancelledTransaction: expect.objectContaining({
+          transactionId: BASE_ID,
+          status: 'CANCELLED',
+          cancelledAt: '2026-08-29T04:00:00.000Z',
+        }),
+        reversalTransaction: expect.objectContaining({
+          transactionId: REVERSAL_ID,
+          status: 'CANCEL_REVERSAL',
+        }),
+      });
+    expect(snapshots).toBe(1);
+    expect(statements).toBe(1);
+  });
+
+  it.each([
+    ['', REVERSAL_ID],
+    [' BASE', REVERSAL_ID],
+    [BASE_ID, 'REVERSAL '],
+    [BASE_ID, BASE_ID],
+  ])('rejects malformed or non-unique cancellation pair IDs before opening a snapshot', async (
+    originalId,
+    reversalId,
+  ) => {
+    const runTenantTransaction = vi.fn();
+    await expect(queries({ runTenantTransaction }).getCancellationPair(originalId, reversalId))
+      .rejects.toThrow(/transaction id|unique|pair/i);
+    expect(runTenantTransaction).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when either cancellation pair member is missing or belongs to another tenant', async () => {
+    await expect(queries().getCancellationPair(BASE_ID, 'MISSING'))
+      .rejects.toThrow(/pair|missing|integrity/i);
+    await expect(queries().getCancellationPair(BASE_ID, OTHER_TENANT_ONLY_ID))
+      .rejects.toThrow(/pair|missing|integrity/i);
+    await expect(queries().getCancellationPair(BASE_ID, BASE_ID))
+      .rejects.toThrow(/pair|unique|integrity/i);
+  });
+
+  it('fails closed when the requested reversal does not link to the requested original', async () => {
+    await harness.withImmutableLedgerTampering(() => harness.database.query(
+      'UPDATE transactions SET reverses_transaction_id=$3 WHERE tenant_id=$1 AND transaction_id=$2',
+      [harness.tenantOneId, REVERSAL_ID, ADMIN_ID],
+    ));
+
+    await expect(queries().getCancellationPair(BASE_ID, REVERSAL_ID))
+      .rejects.toThrow(/pair|link|integrity/i);
   });
 
   it('does not expose same-ID transactions or item snapshots from another tenant', async () => {
