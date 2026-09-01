@@ -77,23 +77,33 @@ describe('GET /api/promotions', () => {
     expect(createConfiguredCatalogReader).not.toHaveBeenCalled();
   });
 
-  it('uses the configured catalog and returns every deterministic joined row', async () => {
+  it('uses the configured catalog admin mutation snapshot and returns its exact envelope', async () => {
     const exactRequest = new Request('http://localhost/api/promotions');
-    const rows = [
-      { promotionId: 'P1', isActive: false, productIds: ['B', 'A'] },
-      { promotionId: 'P2', isActive: true, productIds: [] },
-    ];
-    const catalog = { getPromotions: vi.fn(async () => rows) };
+    const snapshot = {
+      promotions: [
+        { promotionId: 'P1', isActive: false, productIds: ['B', 'A'] },
+        { promotionId: 'P2', isActive: true, productIds: [] },
+      ],
+      mutationPreconditions: [
+        { promotionId: 'P1', expectedVersion: 4 },
+        { promotionId: 'P2', expectedVersion: 9 },
+      ],
+    };
+    const catalog = {
+      getPromotions: vi.fn(),
+      getPromotionsForAdminMutation: vi.fn(async () => snapshot),
+    };
     vi.mocked(createConfiguredCatalogReader).mockResolvedValue(catalog as never);
 
     const response = await GET(exactRequest);
 
     expect(response.status).toBe(200);
     expect(createConfiguredCatalogReader).toHaveBeenCalledWith(exactRequest);
-    expect(catalog.getPromotions).toHaveBeenCalledOnce();
+    expect(catalog.getPromotionsForAdminMutation).toHaveBeenCalledOnce();
+    expect(catalog.getPromotions).not.toHaveBeenCalled();
     expect(createConfiguredSheetsReader).not.toHaveBeenCalled();
     expect(getPromotions).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toEqual(rows);
+    await expect(response.json()).resolves.toEqual(snapshot);
   });
 
   it('returns a safe 500 when a query fails without leaking schema details', async () => {

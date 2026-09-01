@@ -7,6 +7,7 @@ import {
   comparePromotions,
   formatPromotionContent,
   formatPromotionPeriod,
+  parsePromotionAdminEnvelope,
   parsePromotionResponse,
   zonedDatetimeLocalToIso,
   isoToZonedDatetimeLocal,
@@ -24,8 +25,18 @@ const percent: Promotion = { ...base, promotionId: 'PROMO-PCT', name: '기존 10
 const nPlusOne: Promotion = { ...base, promotionId: 'PROMO-N', name: '연필 2+1', type: 'N_PLUS_ONE', buyQuantity: 2, freeQuantity: 1, sortOrder: 2 };
 const DEFAULT_OPERATION_ID = '60000000-0000-4000-8000-000000000099';
 
+function promotionEnvelope(promotions: Promotion[], versions = promotions.map((_promotion, index) => index + 1)) {
+  return {
+    promotions,
+    mutationPreconditions: promotions.map((promotion, index) => ({
+      promotionId: promotion.promotionId,
+      expectedVersion: versions[index],
+    })),
+  };
+}
 function response(payload: unknown, status = 200) {
-  return new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } });
+  const body = Array.isArray(payload) ? promotionEnvelope(payload as Promotion[]) : payload;
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -112,6 +123,50 @@ describe('promotion response validation and ordering', () => {
       { ...percent, promotionId: 'Z', sortOrder: 1 },
     ];
     expect(values.sort(comparePromotions).map((value) => value.promotionId)).toEqual(['Z', '😀', 'a']);
+  });
+});
+
+describe('promotion admin envelope validation', () => {
+  it('accepts an exact envelope and returns a separate version map', () => {
+    const parsed = parsePromotionAdminEnvelope(promotionEnvelope([percent, nPlusOne], [7, 11]));
+    expect(parsed?.promotions).toEqual([percent, nPlusOne]);
+    expect(parsed?.preconditions).toEqual(new Map([['PROMO-PCT', 7], ['PROMO-N', 11]]));
+  });
+
+  it.each([
+    ['missing preconditions', { promotions: [percent] }],
+    ['extra envelope key', { ...promotionEnvelope([percent]), extra: true }],
+    ['mismatched id', { promotions: [percent], mutationPreconditions: [{ promotionId: 'OTHER', expectedVersion: 1 }] }],
+    ['reordered ids', { promotions: [percent, nPlusOne], mutationPreconditions: [{ promotionId: nPlusOne.promotionId, expectedVersion: 1 }, { promotionId: percent.promotionId, expectedVersion: 2 }] }],
+    ['duplicate ids', { promotions: [percent, nPlusOne], mutationPreconditions: [{ promotionId: percent.promotionId, expectedVersion: 1 }, { promotionId: percent.promotionId, expectedVersion: 2 }] }],
+    ['zero version', promotionEnvelope([percent], [0])],
+    ['unsafe successor version', promotionEnvelope([percent], [Number.MAX_SAFE_INTEGER])],
+    ['boxed version', { promotions: [percent], mutationPreconditions: [{ promotionId: percent.promotionId, expectedVersion: new Number(1) }] }],
+    ['extra precondition key', { promotions: [percent], mutationPreconditions: [{ promotionId: percent.promotionId, expectedVersion: 1, extra: true }] }],
+  ])('rejects %s atomically', (_label, payload) => {
+    expect(parsePromotionAdminEnvelope(payload)).toBeNull();
+  });
+
+  it('rejects sparse arrays, symbols, getters, and custom prototypes without invoking getters', () => {
+    const getter = vi.fn(() => [percent]);
+    const getterEnvelope = Object.create(Object.prototype, {
+      promotions: { enumerable: true, get: getter },
+      mutationPreconditions: { enumerable: true, value: [{ promotionId: percent.promotionId, expectedVersion: 1 }] },
+    });
+    const sparse = new Array(1);
+    const symbolEnvelope = promotionEnvelope([percent]);
+    Object.defineProperty(symbolEnvelope, Symbol('hidden'), { value: true });
+    const customEnvelope = Object.assign(Object.create({ inherited: true }), promotionEnvelope([percent]));
+    const customPrecondition = Object.assign(Object.create({ inherited: true }), { promotionId: percent.promotionId, expectedVersion: 1 });
+
+    for (const payload of [
+      getterEnvelope,
+      { promotions: [percent], mutationPreconditions: sparse },
+      symbolEnvelope,
+      customEnvelope,
+      { promotions: [percent], mutationPreconditions: [customPrecondition] },
+    ]) expect(parsePromotionAdminEnvelope(payload)).toBeNull();
+    expect(getter).not.toHaveBeenCalled();
   });
 });
 
@@ -867,47 +922,142 @@ describe('PromotionAdminPanel', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('cancels delete without a request and confirms an encoded DELETE with local removal', async () => {
+  it('cancels without a request then deletes with the exact versioned JSON body and local removal', async () => {
     const encoded = { ...percent, promotionId: 'PROMO / 한글' };
-    const fetchMock = vi.fn().mockResolvedValueOnce(response([encoded])).mockResolvedValueOnce(response({ promotionId: encoded.promotionId }));
+    const fetchMock = vi.fn().mockResolvedValueOnce(response(promotionEnvelope([encoded], [23]))).mockResolvedValueOnce(response({ promotionId: encoded.promotionId }));
     vi.stubGlobal('fetch', fetchMock);
     renderPanel();
     await screen.findByText(encoded.name);
     fireEvent.click(screen.getByRole('button', { name: `${encoded.name} 삭제` }));
-    const confirmation = screen.getByRole('dialog', { name: `${encoded.name} 행사 삭제` });
-    fireEvent.click(within(confirmation).getByRole('button', { name: '취소' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '취소' }));
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole('button', { name: `${encoded.name} 삭제` }));
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '삭제 확인' }));
     expect(await screen.findByText('행사를 삭제했습니다.')).toBeTruthy();
     expect(fetchMock.mock.calls[1][0]).toBe('/api/promotions/PROMO%20%2F%20%ED%95%9C%EA%B8%80');
-    expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: 'DELETE' });
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ operationId: DEFAULT_OPERATION_ID, expectedPromotionVersion: 23 });
     expect(screen.queryByTestId('promotion-row')).toBeNull();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('retains an item on generic delete failure and reloads once after the safe partial-failure message', async () => {
+  it('retains the modal and item after generic failure and retries with the identical operation body', async () => {
+    const randomUUID = vi.fn(() => DEFAULT_OPERATION_ID);
+    vi.stubGlobal('crypto', { randomUUID });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response(promotionEnvelope([percent], [7])))
+      .mockResolvedValueOnce(response({ error: 'temporary' }, 500))
+      .mockResolvedValueOnce(response({ promotionId: percent.promotionId }));
+    vi.stubGlobal('fetch', fetchMock);
+    renderPanel();
+    await screen.findByText(percent.name);
+    fireEvent.click(screen.getByRole('button', { name: `${percent.name} 삭제` }));
+    const confirm = within(screen.getByRole('dialog')).getByRole('button', { name: '삭제 확인' });
+    fireEvent.click(confirm);
+    expect((await within(screen.getByRole('dialog')).findByRole('alert')).textContent).toContain('temporary');
+    expect(screen.getByTestId('promotion-row')).toBeTruthy();
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '삭제 확인' }));
+    await screen.findByText('행사를 삭제했습니다.');
+
+    const bodies = fetchMock.mock.calls.slice(1).map((call) => JSON.parse(String(call[1]?.body)));
+    expect(bodies).toEqual([
+      { operationId: DEFAULT_OPERATION_ID, expectedPromotionVersion: 7 },
+      { operationId: DEFAULT_OPERATION_ID, expectedPromotionVersion: 7 },
+    ]);
+    expect(randomUUID).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['malformed', { extra: true }],
+    ['wrong id', { promotionId: nPlusOne.promotionId }],
+  ])('retains an ambiguous %s 2xx and succeeds on an identical retry', async (_label, ambiguous) => {
+    const randomUUID = vi.fn(() => DEFAULT_OPERATION_ID);
+    vi.stubGlobal('crypto', { randomUUID });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response(promotionEnvelope([percent], [9])))
+      .mockResolvedValueOnce(response(ambiguous))
+      .mockResolvedValueOnce(response({ promotionId: percent.promotionId }));
+    vi.stubGlobal('fetch', fetchMock);
+    renderPanel();
+    await screen.findByText(percent.name);
+    fireEvent.click(screen.getByRole('button', { name: `${percent.name} 삭제` }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '삭제 확인' }));
+    expect((await within(screen.getByRole('dialog')).findByRole('alert')).textContent).toContain('행사 삭제 응답');
+    expect(screen.getByTestId('promotion-row')).toBeTruthy();
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '삭제 확인' }));
+    await screen.findByText('행사를 삭제했습니다.');
+    expect(fetchMock.mock.calls[2][1]?.body).toBe(fetchMock.mock.calls[1][1]?.body);
+    expect(randomUUID).toHaveBeenCalledOnce();
+  });
+
+  it('mints a new operation ID after cancel and after an authoritative version change', async () => {
+    const randomUUID = vi.fn()
+      .mockReturnValueOnce('60000000-0000-4000-8000-000000000031')
+      .mockReturnValueOnce('60000000-0000-4000-8000-000000000032')
+      .mockReturnValueOnce('60000000-0000-4000-8000-000000000033');
+    vi.stubGlobal('crypto', { randomUUID });
     const partial = '대상 상품 연결은 삭제되었지만 행사 삭제를 완료하지 못했습니다. 새로고침 후 재시도해 주세요.';
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(response([percent]))
-      .mockResolvedValueOnce(response({ error: '행사를 삭제하지 못했습니다.' }, 500))
+      .mockResolvedValueOnce(response(promotionEnvelope([percent], [4])))
+      .mockResolvedValueOnce(response({ error: 'temporary' }, 500))
       .mockResolvedValueOnce(response({ error: partial }, 500))
-      .mockResolvedValueOnce(response([]));
+      .mockResolvedValueOnce(response(promotionEnvelope([percent], [5])))
+      .mockResolvedValueOnce(response({ error: 'temporary' }, 500));
     vi.stubGlobal('fetch', fetchMock);
     renderPanel();
     await screen.findByText(percent.name);
 
     fireEvent.click(screen.getByRole('button', { name: `${percent.name} 삭제` }));
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '삭제 확인' }));
-    expect((await screen.findByRole('alert')).textContent).toContain('행사를 삭제하지 못했습니다.');
-    expect(screen.getByTestId('promotion-row')).toBeTruthy();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-
+    await within(screen.getByRole('dialog')).findByRole('alert');
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '취소' }));
     fireEvent.click(screen.getByRole('button', { name: `${percent.name} 삭제` }));
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '삭제 확인' }));
-    expect((await screen.findByRole('alert')).textContent).toContain(partial);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '삭제 확인' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
+
+    expect(fetchMock.mock.calls.slice(1).filter((call) => call[1]?.method === 'DELETE').map((call) => JSON.parse(String(call[1]?.body)))).toEqual([
+      { operationId: '60000000-0000-4000-8000-000000000031', expectedPromotionVersion: 4 },
+      { operationId: '60000000-0000-4000-8000-000000000032', expectedPromotionVersion: 4 },
+      { operationId: '60000000-0000-4000-8000-000000000033', expectedPromotionVersion: 5 },
+    ]);
+    expect(randomUUID).toHaveBeenCalledTimes(3);
+  });
+
+  it('blocks DELETE when a locally created item has no authoritative precondition', async () => {
+    const created: Promotion = { ...nPlusOne, promotionId: `PROMO-${DEFAULT_OPERATION_ID}`, name: '새 행사', sortOrder: 7 };
+    const fetchMock = vi.fn().mockResolvedValueOnce(response([])).mockResolvedValueOnce(response(created, 201));
+    vi.stubGlobal('fetch', fetchMock);
+    renderPanel();
+    await screen.findByText('등록된 행사가 없습니다.');
+    fillCommon(created.name);
+    fireEvent.click(screen.getByRole('button', { name: '행사 추가' }));
+    await screen.findByText('행사를 추가했습니다.');
+    fireEvent.click(screen.getByRole('button', { name: `${created.name} 삭제` }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '삭제 확인' }));
+    expect((await within(screen.getByRole('dialog')).findByRole('alert')).textContent).toContain('새로고침');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId('promotion-row')).toBeTruthy();
+  });
+
+  it('performs exactly one authoritative GET and no automatic DELETE replay after a safe partial failure', async () => {
+    const partial = '대상 상품 연결은 삭제되었지만 행사 삭제를 완료하지 못했습니다. 새로고침 후 재시도해 주세요.';
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response(promotionEnvelope([percent], [3])))
+      .mockResolvedValueOnce(response({ error: partial }, 500))
+      .mockResolvedValueOnce(response(promotionEnvelope([percent], [4])));
+    vi.stubGlobal('fetch', fetchMock);
+    renderPanel();
+    await screen.findByText(percent.name);
+    fireEvent.click(screen.getByRole('button', { name: `${percent.name} 삭제` }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '삭제 확인' }));
+    expect((await within(screen.getByRole('dialog')).findByRole('alert')).textContent).toContain(partial);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(fetchMock.mock.calls.filter((call) => call[1]?.method === 'DELETE')).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter((call) => call[0] === '/api/promotions')).toHaveLength(2);
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.getByTestId('promotion-row')).toBeTruthy();
   });
 
   it.each(['white', 'black', 'navy'] as const)('applies semantic %s theme variables to panel, list, fields, and modal', async (themeColor) => {

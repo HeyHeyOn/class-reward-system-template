@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { isAuthorizedAdminRequest } from '@/server/apiAuth';
 import { createConfiguredSheetsStore } from '@/server/googleSheets';
+import { createConfiguredPromotionDeletion } from '@/server/repositories/configuredPromotionDeletion';
 import {
   deletePromotion,
   PromotionDeletePartialFailure,
@@ -15,6 +16,9 @@ vi.mock('@/server/apiAuth', () => ({
   unauthorizedAdminResponse: vi.fn(() => Response.json({ error: 'unauthorized' }, { status: 401 })),
 }));
 vi.mock('@/server/googleSheets', () => ({ createConfiguredSheetsStore: vi.fn() }));
+vi.mock('@/server/repositories/configuredPromotionDeletion', () => ({
+  createConfiguredPromotionDeletion: vi.fn(),
+}));
 vi.mock('@/server/repositories/sheets/promotionCommands', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/server/repositories/sheets/promotionCommands')>(),
   deletePromotion: vi.fn(),
@@ -39,9 +43,20 @@ function patch(body: unknown, promotionId = 'PROMO-1') {
   return { request, response: PATCH(request, { params: Promise.resolve({ promotionId }) }) };
 }
 
-function remove(promotionId = 'PROMO-1') {
-  const request = new Request(`http://localhost/api/promotions/${promotionId}`, { method: 'DELETE' });
-  return { request, response: DELETE(request, { params: Promise.resolve({ promotionId }) }) };
+const DELETE_OPERATION_ID = 'aaaaaaaa-1111-4111-8111-111111111111';
+
+function remove(
+  body: unknown = { operationId: DELETE_OPERATION_ID, expectedPromotionVersion: 4 },
+  promotionId = 'PROMO-1',
+  contentType = 'application/json',
+  params: Promise<{ promotionId: string }> = Promise.resolve({ promotionId }),
+) {
+  const request = new Request(`http://localhost/api/promotions/${promotionId}`, {
+    method: 'DELETE',
+    headers: contentType ? { 'content-type': contentType } : {},
+    body: typeof body === 'string' ? body : JSON.stringify(body),
+  });
+  return { request, response: DELETE(request, { params }) };
 }
 
 describe('PATCH /api/promotions/[promotionId]', () => {
@@ -251,61 +266,130 @@ describe('PATCH /api/promotions/[promotionId]', () => {
 });
 
 describe('DELETE /api/promotions/[promotionId]', () => {
+  const removeCommand = vi.fn();
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(isAuthorizedAdminRequest).mockReturnValue(true);
-    vi.mocked(createConfiguredSheetsStore).mockResolvedValue({} as never);
+    vi.mocked(createConfiguredPromotionDeletion).mockResolvedValue({ delete: removeCommand });
   });
 
-  it('rejects unauthorized requests before opening Sheets', async () => {
+  it('rejects unauthorized requests before media type, JSON, params, or configured authority', async () => {
     vi.mocked(isAuthorizedAdminRequest).mockReturnValue(false);
+    const then = vi.fn();
+    const params = { then } as unknown as Promise<{ promotionId: string }>;
 
-    const result = await remove().response;
+    const result = await remove('{', 'PROMO-1', 'text/plain', params).response;
 
     expect(result.status).toBe(401);
+    expect(then).not.toHaveBeenCalled();
+    expect(createConfiguredPromotionDeletion).not.toHaveBeenCalled();
     expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
     expect(deletePromotion).not.toHaveBeenCalled();
+    expect(removeCommand).not.toHaveBeenCalled();
   });
 
-  it('creates the request-scoped store and returns only the safely deleted promotion ID', async () => {
-    vi.mocked(deletePromotion).mockResolvedValue({ promotionId: 'PROMO-1' });
+  it('passes the exact Request and command input and projects only the deleted promotion ID', async () => {
+    removeCommand.mockResolvedValue({ promotionId: 'PROMO-1', ignored: 'must not leak' });
     const { request, response } = remove();
 
     const result = await response;
 
     expect(result.status).toBe(200);
-    expect(createConfiguredSheetsStore).toHaveBeenCalledWith(request);
-    expect(deletePromotion).toHaveBeenCalledWith({}, 'PROMO-1');
+    expect(createConfiguredPromotionDeletion).toHaveBeenCalledWith(request);
+    expect(removeCommand).toHaveBeenCalledWith({
+      operationId: DELETE_OPERATION_ID,
+      promotionId: 'PROMO-1',
+      expectedPromotionVersion: 4,
+    });
+    expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
+    expect(deletePromotion).not.toHaveBeenCalled();
     await expect(result.json()).resolves.toEqual({ promotionId: 'PROMO-1' });
   });
 
   it.each(['PROMO%2F1', '%25', '%'])(
     'passes the framework-decoded route ID %s to the delete command unchanged',
     async (promotionId) => {
-      vi.mocked(deletePromotion).mockResolvedValue({ promotionId });
+      removeCommand.mockResolvedValue({ promotionId });
 
-      const result = await remove(promotionId).response;
+      const result = await remove(undefined, promotionId).response;
 
       expect(result.status).toBe(200);
-      expect(deletePromotion).toHaveBeenCalledWith({}, promotionId);
+      expect(removeCommand).toHaveBeenCalledWith({
+        operationId: DELETE_OPERATION_ID,
+        promotionId,
+        expectedPromotionVersion: 4,
+      });
       await expect(result.json()).resolves.toEqual({ promotionId });
     },
   );
 
-  it('returns a safe normal 500 when store creation fails without leaking provider details', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    vi.mocked(createConfiguredSheetsStore).mockRejectedValue(new Error('private service account detail'));
-
-    const result = await remove().response;
-
-    expect(result.status).toBe(500);
-    await expect(result.json()).resolves.toEqual({ error: '행사를 삭제하지 못했습니다.' });
-    expect(deletePromotion).not.toHaveBeenCalled();
+  it.each([
+    'application/json',
+    'Application/JSON',
+    ' APPLICATION/JSON ; charset=utf-8',
+  ])('accepts exact JSON media type token %s case-insensitively with parameters', async (contentType) => {
+    removeCommand.mockResolvedValue({ promotionId: 'PROMO-1' });
+    const result = await remove(undefined, 'PROMO-1', contentType).response;
+    expect(result.status).toBe(200);
+    expect(removeCommand).toHaveBeenCalledOnce();
   });
 
-  it('returns a safe normal 500 for command failures', async () => {
+  it.each(['', 'application/jsonp', 'application/json-seq', 'text/json'])(
+    'rejects non-JSON media type %s before JSON, params, or configured authority',
+    async (contentType) => {
+      const then = vi.fn();
+      const params = { then } as unknown as Promise<{ promotionId: string }>;
+      const result = await remove('{', 'PROMO-1', contentType, params).response;
+      expect(result.status).toBe(400);
+      await expect(result.json()).resolves.toEqual({ error: '행사 삭제 요청 형식이 올바르지 않습니다.' });
+      expect(then).not.toHaveBeenCalled();
+      expect(createConfiguredPromotionDeletion).not.toHaveBeenCalled();
+      expect(removeCommand).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['malformed JSON', '{'],
+    ['null body', null],
+    ['array body', []],
+    ['primitive body', 4],
+    ['extra key', { operationId: DELETE_OPERATION_ID, expectedPromotionVersion: 4, extra: true }],
+    ['missing operation ID', { expectedPromotionVersion: 4 }],
+    ['missing version', { operationId: DELETE_OPERATION_ID }],
+    ['boxed-looking operation ID', { operationId: {}, expectedPromotionVersion: 4 }],
+    ['boxed-looking version', { operationId: DELETE_OPERATION_ID, expectedPromotionVersion: {} }],
+    ['wrong operation ID type', { operationId: 1, expectedPromotionVersion: 4 }],
+    ['uppercase operation ID', { operationId: DELETE_OPERATION_ID.toUpperCase(), expectedPromotionVersion: 4 }],
+    ['padded operation ID', { operationId: ` ${DELETE_OPERATION_ID}`, expectedPromotionVersion: 4 }],
+    ['UUID version zero', { operationId: 'aaaaaaaa-1111-0111-8111-111111111111', expectedPromotionVersion: 4 }],
+    ['invalid UUID variant', { operationId: 'aaaaaaaa-1111-4111-7111-111111111111', expectedPromotionVersion: 4 }],
+    ['zero version', { operationId: DELETE_OPERATION_ID, expectedPromotionVersion: 0 }],
+    ['negative version', { operationId: DELETE_OPERATION_ID, expectedPromotionVersion: -1 }],
+    ['fractional version', { operationId: DELETE_OPERATION_ID, expectedPromotionVersion: 1.5 }],
+    ['string version', { operationId: DELETE_OPERATION_ID, expectedPromotionVersion: '4' }],
+    ['unsafe successor', { operationId: DELETE_OPERATION_ID, expectedPromotionVersion: Number.MAX_SAFE_INTEGER }],
+  ])('rejects %s before params or configured authority', async (_label, body) => {
+    const then = vi.fn();
+    const params = { then } as unknown as Promise<{ promotionId: string }>;
+    const result = await remove(body, 'PROMO-1', 'application/json', params).response;
+    expect(result.status).toBe(400);
+    await expect(result.json()).resolves.toEqual({ error: '행사 삭제 요청 형식이 올바르지 않습니다.' });
+    expect(then).not.toHaveBeenCalled();
+    expect(createConfiguredPromotionDeletion).not.toHaveBeenCalled();
+    expect(removeCommand).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['root resolution', 'root'],
+    ['command', 'command'],
+  ])('returns a generic safe 500 for %s errors', async (_label, failureAt) => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    vi.mocked(deletePromotion).mockRejectedValue(new Error('provider row secret'));
+    if (failureAt === 'root') {
+      vi.mocked(createConfiguredPromotionDeletion).mockRejectedValue(new Error('private authority detail'));
+    } else {
+      removeCommand.mockRejectedValue(new Error('private command detail'));
+    }
 
     const result = await remove().response;
 
@@ -315,7 +399,7 @@ describe('DELETE /api/promotions/[promotionId]', () => {
 
   it('returns the distinct safe partial-failure contract without provider details', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    vi.mocked(deletePromotion).mockRejectedValue(new PromotionDeletePartialFailure());
+    removeCommand.mockRejectedValue(new PromotionDeletePartialFailure());
 
     const result = await remove().response;
 

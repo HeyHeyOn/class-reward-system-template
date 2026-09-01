@@ -16,7 +16,7 @@ export async function GET(request: Request) {
 
   try {
     const catalog = await createConfiguredCatalogReader(request);
-    return Response.json(await catalog.getPromotions());
+    return Response.json(await catalog.getPromotionsForAdminMutation());
   } catch (error) {
     console.error('Failed to get promotions', error);
     return safeErrorResponse(500, '행사 목록을 불러오지 못했습니다.');

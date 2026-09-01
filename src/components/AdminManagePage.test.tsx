@@ -62,7 +62,7 @@ describe('AdminManagePage', () => {
         }
         if (url === '/api/products?includeInactive=1') return jsonResponse(products);
         if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
-        if (url === '/api/promotions') return jsonResponse([]);
+        if (url === '/api/promotions') return jsonResponse({ promotions: [], mutationPreconditions: [] });
         if (url === '/api/transactions') return jsonResponse(transactions);
         if (url === '/api/settings' && init?.method === 'POST') return jsonResponse({ spreadsheetId: 'sheet-new', currencyUnit: '별', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'purple', fontFamily: 'school-safe-poster', source: 'runtime' });
         if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue', fontFamily: 'school-safe-board-marker', source: 'runtime' });

@@ -5,7 +5,6 @@ import { calculatePromotionPrice } from '@/domain/promotions';
 import type { Product, Promotion } from '@/domain/types';
 import {
   comparePromotionDisplayOrder,
-  parsePromotionListResponse,
   parsePromotionResponse,
 } from '@/lib/promotionClient';
 import { normalizeThemeColor, themeStyles, type ThemeColor } from '../uiTheme';
@@ -154,6 +153,103 @@ function canonicalPromotionOrder(promotions: Promotion[]): Promotion[] {
   return [...promotions].sort(comparePromotions);
 }
 
+type PromotionAdminEnvelope = {
+  promotions: Promotion[];
+  preconditions: Map<string, number>;
+};
+
+type DataRecord = Record<string, PropertyDescriptor & { value: unknown }>;
+
+function isCanonicalDataDescriptor(descriptor: PropertyDescriptor | undefined): descriptor is PropertyDescriptor & { value: unknown } {
+  return Boolean(descriptor && Object.hasOwn(descriptor, 'value')
+    && descriptor.writable === true && descriptor.enumerable === true && descriptor.configurable === true);
+}
+
+function exactOrdinaryDataRecord(value: unknown, expectedKeys: readonly string[]): DataRecord | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)
+    || Object.getPrototypeOf(value) !== Object.prototype || Object.getOwnPropertySymbols(value).length !== 0) return null;
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const keys = Object.keys(descriptors);
+  if (keys.length !== expectedKeys.length || expectedKeys.some((key) => !Object.hasOwn(descriptors, key))) return null;
+  if (keys.some((key) => !isCanonicalDataDescriptor(descriptors[key]))) return null;
+  return descriptors as DataRecord;
+}
+
+function exactDenseArrayValues(value: unknown): unknown[] | null {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype
+    || Object.getOwnPropertySymbols(value).length !== 0) return null;
+  const descriptors = Object.getOwnPropertyDescriptors(value) as Record<string, PropertyDescriptor>;
+  const lengthDescriptor = descriptors.length;
+  if (!lengthDescriptor || !Object.hasOwn(lengthDescriptor, 'value') || typeof lengthDescriptor.value !== 'number'
+    || lengthDescriptor.writable !== true || lengthDescriptor.enumerable !== false || lengthDescriptor.configurable !== false) return null;
+  const length = lengthDescriptor.value;
+  const keys = Object.keys(descriptors).filter((key) => key !== 'length');
+  if (keys.length !== length) return null;
+  const values: unknown[] = [];
+  for (let index = 0; index < length; index += 1) {
+    const descriptor = descriptors[String(index)];
+    if (!isCanonicalDataDescriptor(descriptor)) return null;
+    values.push(descriptor.value);
+  }
+  return values;
+}
+
+const PROMOTION_COMMON_KEYS = [
+  'promotionId', 'name', 'description', 'productIds', 'startsAt', 'endsAt', 'isActive',
+  'sortOrder', 'createdAt', 'updatedAt', 'schemaVersion', 'type',
+] as const;
+
+function promotionTypeKeys(type: unknown): readonly string[] | null {
+  if (type === 'N_PLUS_ONE') return ['buyQuantity', 'freeQuantity'];
+  if (type === 'PROMOTIONAL_PRICE') return ['promotionalUnitPrice'];
+  if (type === 'PERCENT_DISCOUNT') return ['percent'];
+  if (type === 'FIXED_DISCOUNT') return ['discountAmount'];
+  return null;
+}
+
+function parseStrictPromotionList(value: unknown): Promotion[] | null {
+  const values = exactDenseArrayValues(value);
+  if (!values) return null;
+  const parsed: Promotion[] = [];
+  for (const item of values) {
+    const baseDescriptors = exactOrdinaryDataRecord(item, Object.keys(Object.getOwnPropertyDescriptors(item ?? {})));
+    if (!baseDescriptors) return null;
+    const typeKeys = promotionTypeKeys(baseDescriptors.type?.value);
+    if (!typeKeys || !exactOrdinaryDataRecord(item, [...PROMOTION_COMMON_KEYS, ...typeKeys])) return null;
+    const productIds = exactDenseArrayValues(baseDescriptors.productIds.value);
+    if (!productIds || productIds.some((id) => typeof id !== 'string')) return null;
+    const promotion = parsePromotionResponse(item);
+    if (!promotion) return null;
+    parsed.push(promotion);
+  }
+  return new Set(parsed.map((promotion) => promotion.promotionId)).size === parsed.length ? parsed : null;
+}
+
+export function parsePromotionAdminEnvelope(value: unknown): PromotionAdminEnvelope | null {
+  const envelope = exactOrdinaryDataRecord(value, ['promotions', 'mutationPreconditions']);
+  if (!envelope) return null;
+  const promotions = parseStrictPromotionList(envelope.promotions.value);
+  const preconditionValues = exactDenseArrayValues(envelope.mutationPreconditions.value);
+  if (!promotions || !preconditionValues || preconditionValues.length !== promotions.length) return null;
+  const preconditions = new Map<string, number>();
+  for (let index = 0; index < preconditionValues.length; index += 1) {
+    const descriptors = exactOrdinaryDataRecord(preconditionValues[index], ['promotionId', 'expectedVersion']);
+    if (!descriptors) return null;
+    const promotionId = descriptors.promotionId.value;
+    const expectedVersion = descriptors.expectedVersion.value;
+    if (typeof promotionId !== 'string' || !promotionId.trim() || promotionId !== promotions[index].promotionId
+      || preconditions.has(promotionId) || typeof expectedVersion !== 'number'
+      || !Number.isSafeInteger(expectedVersion) || expectedVersion < 1 || expectedVersion >= Number.MAX_SAFE_INTEGER) return null;
+    preconditions.set(promotionId, expectedVersion);
+  }
+  return { promotions, preconditions };
+}
+
+function parseDeleteSuccess(value: unknown, targetId: string): boolean {
+  const descriptors = exactOrdinaryDataRecord(value, ['promotionId']);
+  return descriptors !== null && descriptors.promotionId.value === targetId;
+}
+
 const UNKNOWN_PRODUCT_LABEL = '알 수 없는 상품';
 
 function summarizeProductTargets(productIds: string[], productNames: Map<string, string>) {
@@ -231,6 +327,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
   const [message, setMessage] = useState('');
   const [formError, setFormError] = useState('');
   const [editError, setEditError] = useState('');
+  const [deleteError, setDeleteError] = useState('');
   const [previewProductId, setPreviewProductId] = useState('');
   const [previewQuantity, setPreviewQuantity] = useState(1);
   const mountedRef = useRef(true);
@@ -238,7 +335,9 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
   const mutationGenerationRef = useRef(0);
   const mutationInFlightRef = useRef(false);
   const creationAttemptRef = useRef<{ semanticKey: string; operationId: string } | null>(null);
+  const deletionAttemptRef = useRef<{ semanticKey: string; operationId: string; expectedVersion: number } | null>(null);
   const promotionsRef = useRef<Promotion[]>([]);
+  const promotionPreconditionsRef = useRef<Map<string, number>>(new Map());
   const editGenerationRef = useRef(0);
   const editOpenerRef = useRef<HTMLButtonElement | null>(null);
   const editNameRef = useRef<HTMLInputElement | null>(null);
@@ -262,11 +361,12 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
       const response = await fetch('/api/promotions', { cache: 'no-store' });
       const payload: unknown = await response.json();
       if (!response.ok) throw new Error(readError(payload, '행사 목록을 불러오지 못했습니다.'));
-      const parsed = parsePromotionListResponse(payload);
+      const parsed = parsePromotionAdminEnvelope(payload);
       if (!parsed) throw new Error('행사 목록 형식이 올바르지 않습니다.');
       if (mountedRef.current && loadGenerationRef.current === generation) {
-        const ordered = canonicalPromotionOrder(parsed);
+        const ordered = canonicalPromotionOrder(parsed.promotions);
         promotionsRef.current = ordered;
+        promotionPreconditionsRef.current = parsed.preconditions;
         setPromotions(ordered);
       }
     } catch (error) {
@@ -462,49 +562,68 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
     if (editingId || deleteTarget || saving) return;
     deleteOpenerRef.current = opener;
     setDeleteTarget(promotion);
+    setDeleteError('');
     setFormError('');
     setMessage('');
   }
 
   function closeDelete() {
     if (saving) return;
+    deletionAttemptRef.current = null;
     setDeleteTarget(null);
+    setDeleteError('');
   }
 
   async function confirmDelete() {
     if (!deleteTarget || !mountedRef.current || mutationInFlightRef.current) return;
     const target = deleteTarget;
+    const expectedVersion = promotionPreconditionsRef.current.get(target.promotionId);
+    if (expectedVersion === undefined) {
+      deletionAttemptRef.current = null;
+      setDeleteError('삭제 전제 조건을 확인할 수 없습니다. 행사 목록을 새로고침한 후 다시 시도해 주세요.');
+      return;
+    }
+    const semanticKey = JSON.stringify([target.promotionId, expectedVersion]);
+    if (deletionAttemptRef.current?.semanticKey !== semanticKey) {
+      deletionAttemptRef.current = { semanticKey, operationId: crypto.randomUUID(), expectedVersion };
+    }
+    const attempt = deletionAttemptRef.current;
     mutationInFlightRef.current = true;
     const mutationGeneration = mutationGenerationRef.current + 1;
     mutationGenerationRef.current = mutationGeneration;
     setSaving(true);
-    setFormError('');
+    setDeleteError('');
     try {
-      const response = await fetch(`/api/promotions/${encodeURIComponent(target.promotionId)}`, { method: 'DELETE' });
+      const response = await fetch(`/api/promotions/${encodeURIComponent(target.promotionId)}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operationId: attempt.operationId, expectedPromotionVersion: attempt.expectedVersion }),
+      });
       const payload: unknown = await response.json();
       if (!response.ok) {
         const safeMessage = readError(payload, '행사를 삭제하지 못했습니다.');
         if (mountedRef.current && mutationGenerationRef.current === mutationGeneration) {
-          setDeleteTarget(null);
-          setFormError(safeMessage);
+          setDeleteError(safeMessage);
           if (safeMessage.includes('대상 상품 연결은 삭제되었지만')) void loadPromotions();
         }
         return;
       }
-      if (!payload || typeof payload !== 'object' || !('promotionId' in payload) || payload.promotionId !== target.promotionId) {
+      if (!parseDeleteSuccess(payload, target.promotionId)) {
         throw new Error('행사 삭제 응답 형식이 올바르지 않습니다.');
       }
       if (!mountedRef.current || mutationGenerationRef.current !== mutationGeneration) return;
       const nextPromotions = promotionsRef.current.filter((promotion) => promotion.promotionId !== target.promotionId);
       loadGenerationRef.current += 1;
       promotionsRef.current = nextPromotions;
+      promotionPreconditionsRef.current.delete(target.promotionId);
       setPromotions(nextPromotions);
+      deletionAttemptRef.current = null;
       setDeleteTarget(null);
+      setDeleteError('');
       setMessage('행사를 삭제했습니다.');
     } catch (caught) {
       if (mountedRef.current && mutationGenerationRef.current === mutationGeneration) {
-        setDeleteTarget(null);
-        setFormError(caught instanceof Error ? caught.message : '행사를 삭제하지 못했습니다.');
+        setDeleteError(caught instanceof Error ? caught.message : '행사를 삭제하지 못했습니다.');
       }
     } finally {
       if (mutationGenerationRef.current === mutationGeneration) {
@@ -619,7 +738,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
       </div> : null}
 
       {deleteTarget ? <div ref={deleteDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="promotion-delete-title" className={`${theme.text} fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4`} onMouseDown={(event) => { if (event.target === event.currentTarget) closeDelete(); }} onKeyDown={(event) => { if (event.key === 'Tab' && !event.shiftKey && event.target === deleteConfirmRef.current) { event.preventDefault(); deleteCancelRef.current?.focus(); } else if (event.key === 'Tab' && event.shiftKey && event.target === deleteCancelRef.current) { event.preventDefault(); deleteConfirmRef.current?.focus(); } else trapDialogFocus(event); if (event.key === 'Escape') closeDelete(); }}>
-        <div className={`${theme.surface} ${theme.border} w-full max-w-md rounded-2xl border p-5 shadow-2xl`}><h2 id="promotion-delete-title" className="text-lg font-black">{deleteTarget.name} 행사 삭제</h2><p className={`${theme.mutedText} mt-2`}>이 행사를 삭제할까요? 삭제 후에는 되돌릴 수 없습니다.</p>{saving ? <p role="status" className="mt-2 font-bold">삭제 중…</p> : null}<div className="mt-4 flex justify-end gap-2"><button ref={deleteCancelRef} type="button" disabled={saving} className={`${theme.accentSoft} ${theme.accentText} rounded-lg px-4 py-2 font-bold disabled:opacity-50`} onClick={closeDelete}>취소</button><button ref={deleteConfirmRef} type="button" disabled={saving} className="rounded-lg bg-red-700 px-4 py-2 font-black text-white disabled:opacity-50" onClick={() => void confirmDelete()}>삭제 확인</button></div></div>
+        <div className={`${theme.surface} ${theme.border} w-full max-w-md rounded-2xl border p-5 shadow-2xl`}><h2 id="promotion-delete-title" className="text-lg font-black">{deleteTarget.name} 행사 삭제</h2><p className={`${theme.mutedText} mt-2`}>이 행사를 삭제할까요? 삭제 후에는 되돌릴 수 없습니다.</p>{deleteError ? <p role="alert" className="mt-2 rounded-lg bg-rose-100 p-2 text-sm font-bold text-rose-800">{deleteError}</p> : null}{saving ? <p role="status" className="mt-2 font-bold">삭제 중…</p> : null}<div className="mt-4 flex justify-end gap-2"><button ref={deleteCancelRef} type="button" disabled={saving} className={`${theme.accentSoft} ${theme.accentText} rounded-lg px-4 py-2 font-bold disabled:opacity-50`} onClick={closeDelete}>취소</button><button ref={deleteConfirmRef} type="button" disabled={saving} className="rounded-lg bg-red-700 px-4 py-2 font-black text-white disabled:opacity-50" onClick={() => void confirmDelete()}>삭제 확인</button></div></div>
       </div> : null}
     </section>
   );

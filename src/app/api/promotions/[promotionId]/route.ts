@@ -1,7 +1,7 @@
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { createConfiguredSheetsStore } from '@/server/googleSheets';
+import { createConfiguredPromotionDeletion } from '@/server/repositories/configuredPromotionDeletion';
 import {
-  deletePromotion,
   PROMOTION_DELETE_PARTIAL_FAILURE_MESSAGE,
   PromotionDeletePartialFailure,
   replacePromotionProducts,
@@ -17,6 +17,8 @@ import {
 export const dynamic = 'force-dynamic';
 
 type RouteContext = { params: Promise<{ promotionId: string }> };
+
+const CANONICAL_OPERATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 export async function PATCH(request: Request, { params }: RouteContext) {
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
@@ -63,10 +65,34 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 export async function DELETE(request: Request, { params }: RouteContext) {
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
+  const mediaType = request.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();
+  if (mediaType !== 'application/json') {
+    return safeErrorResponse(400, '행사 삭제 요청 형식이 올바르지 않습니다.');
+  }
+
+  let payload: { operationId: string; expectedPromotionVersion: number };
+  try {
+    const candidate: unknown = await request.json();
+    if (!isDeletePromotionPayload(candidate)) {
+      return safeErrorResponse(400, '행사 삭제 요청 형식이 올바르지 않습니다.');
+    }
+    payload = candidate;
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return safeErrorResponse(400, '행사 삭제 요청 형식이 올바르지 않습니다.');
+    }
+    console.error('Unexpected promotion deletion payload parsing failure', error);
+    return safeErrorResponse(500, '행사를 삭제하지 못했습니다.');
+  }
+
   try {
     const promotionId = (await params).promotionId;
-    const store = await createConfiguredSheetsStore(request);
-    const deleted = await deletePromotion(store, promotionId);
+    const command = await createConfiguredPromotionDeletion(request);
+    const deleted = await command.delete({
+      operationId: payload.operationId,
+      promotionId,
+      expectedPromotionVersion: payload.expectedPromotionVersion,
+    });
     return Response.json({ promotionId: deleted.promotionId });
   } catch (error) {
     console.error('Failed to delete promotion', error);
@@ -75,6 +101,30 @@ export async function DELETE(request: Request, { params }: RouteContext) {
     }
     return safeErrorResponse(500, '행사를 삭제하지 못했습니다.');
   }
+}
+
+function isDeletePromotionPayload(
+  value: unknown,
+): value is { operationId: string; expectedPromotionVersion: number } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || Object.getPrototypeOf(value) !== Object.prototype) return false;
+  const keys = Reflect.ownKeys(value);
+  if (keys.length !== 2 || !keys.includes('operationId') || !keys.includes('expectedPromotionVersion')) {
+    return false;
+  }
+  const operationId = Object.getOwnPropertyDescriptor(value, 'operationId');
+  const expectedVersion = Object.getOwnPropertyDescriptor(value, 'expectedPromotionVersion');
+  if (!isOrdinaryDataDescriptor(operationId) || !isOrdinaryDataDescriptor(expectedVersion)) return false;
+  return typeof operationId.value === 'string' && CANONICAL_OPERATION_ID.test(operationId.value)
+    && Number.isSafeInteger(expectedVersion.value) && expectedVersion.value > 0
+    && expectedVersion.value < Number.MAX_SAFE_INTEGER;
+}
+
+function isOrdinaryDataDescriptor(
+  descriptor: PropertyDescriptor | undefined,
+): descriptor is PropertyDescriptor & { value: unknown } {
+  return Boolean(descriptor?.enumerable && descriptor.writable && descriptor.configurable
+    && Object.hasOwn(descriptor, 'value'));
 }
 
 function safeErrorResponse(status: number, message: string): Response {
