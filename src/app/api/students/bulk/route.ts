@@ -1,6 +1,6 @@
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
-import { createConfiguredSheetsStore } from '@/server/googleSheets';
-import { bulkAdjustStudentBalances, type StudentBulkBalanceUpdate } from '@/server/sheetsRepository';
+import { createConfiguredAdminAdjustmentCommand } from '@/server/repositories/configuredAdminAdjustment';
+import type { StudentBulkBalanceUpdate } from '@/server/sheetsRepository';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,8 +16,17 @@ export async function PATCH(request: Request) {
   }
 
   try {
-    const store = await createConfiguredSheetsStore();
-    return Response.json(await bulkAdjustStudentBalances(store, payload));
+    const command = await createConfiguredAdminAdjustmentCommand(request);
+    const result = await command.adjust({
+      operationId: payload.operationId,
+      studentIds: payload.studentIds,
+      mode: payload.mode,
+      amount: payload.amount,
+    });
+    return Response.json(result.students.map(({ studentId, balanceAfter }) => ({
+      studentId,
+      balance: balanceAfter,
+    })));
   } catch {
     return Response.json({ error: '학생 재화를 일괄 수정하지 못했습니다.' }, { status: 400 });
   }
