@@ -1454,12 +1454,152 @@ describe('AdminManagePage', () => {
       expect(fetch).toHaveBeenCalledWith('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId: 'P003', name: '간식쿠폰', price: 1000, stock: 5, isActive: true, imageUrl: 'https://example.com/snack.png', category: '쿠폰', sortOrder: 3 }),
+        body: JSON.stringify({ operationId: '50000000-0000-4000-8000-000000000001', productId: 'P003', name: '간식쿠폰', price: 1000, stock: 5, isActive: true, imageUrl: 'https://example.com/snack.png', category: '쿠폰', sortOrder: 3 }),
       });
     });
 
     await waitFor(() => expect(window.alert).toHaveBeenCalledWith('S003 추가 완료'));
     await waitFor(() => expect(window.alert).toHaveBeenCalledWith('P003 추가 완료'));
+  });
+
+  it('suppresses synchronous duplicate product creation and reuses a failed unchanged attempt ID', async () => {
+    vi.mocked(crypto.randomUUID)
+      .mockReturnValueOnce('50000000-0000-4000-8000-000000000021')
+      .mockReturnValueOnce('50000000-0000-4000-8000-000000000022');
+    const first = deferredResponse({ error: 'temporary failure' }, { status: 400 });
+    const second = deferredResponse({
+      productId: 'P003', name: '간식쿠폰', price: 1000, stock: 5,
+      isActive: true, imageUrl: '', category: '', sortOrder: 1,
+    });
+    const responses = [first.response, second.response];
+    const fallback = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) =>
+      String(input) === '/api/products' && init?.method === 'POST'
+        ? responses.shift()!
+        : fallback(input, init));
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '매점 관리' }));
+    fireEvent.change(screen.getByLabelText('새 상품명'), { target: { value: '간식쿠폰' } });
+    fireEvent.change(screen.getByLabelText('새 상품 가격'), { target: { value: '1000' } });
+    fireEvent.change(screen.getByLabelText('새 상품 재고'), { target: { value: '5' } });
+    const create = screen.getByRole('button', { name: '새 상품 추가' });
+
+    fireEvent.click(create);
+    fireEvent.click(create);
+    expect(vi.mocked(fetch).mock.calls.filter(([url, init]) =>
+      String(url) === '/api/products' && init?.method === 'POST')).toHaveLength(1);
+    expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
+
+    first.resolve();
+    await waitFor(() => expect(alert).toHaveBeenCalledWith('temporary failure'));
+    fireEvent.click(create);
+    expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
+    second.resolve();
+    await waitFor(() => expect(alert).toHaveBeenCalledWith('P003 추가 완료'));
+
+    const bodies = vi.mocked(fetch).mock.calls
+      .filter(([url, init]) => String(url) === '/api/products' && init?.method === 'POST')
+      .map(([, init]) => JSON.parse(String(init?.body)));
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1].operationId).toBe(bodies[0].operationId);
+    expect(screen.getByLabelText('새 상품명')).toHaveProperty('value', '');
+    expect(screen.getByLabelText('새 상품 가격')).toHaveProperty('value', '0');
+  });
+
+  it('retains the product attempt and draft after a malformed 2xx response', async () => {
+    vi.mocked(crypto.randomUUID).mockReturnValue('50000000-0000-4000-8000-000000000025');
+    const created = {
+      productId: 'P003', name: '간식쿠폰', price: 1000, stock: 5,
+      isActive: true, imageUrl: '', category: '', sortOrder: 1,
+    };
+    const responses = [jsonResponse({}), jsonResponse(created)];
+    const fallback = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) =>
+      String(input) === '/api/products' && init?.method === 'POST'
+        ? responses.shift()!
+        : fallback(input, init));
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '매점 관리' }));
+    const name = screen.getByLabelText('새 상품명');
+    const create = screen.getByRole('button', { name: '새 상품 추가' });
+    fireEvent.change(name, { target: { value: '간식쿠폰' } });
+    fireEvent.change(screen.getByLabelText('새 상품 가격'), { target: { value: '1000' } });
+    fireEvent.change(screen.getByLabelText('새 상품 재고'), { target: { value: '5' } });
+
+    fireEvent.click(create);
+    await waitFor(() => expect(alert).toHaveBeenCalledWith('상품을 추가하지 못했습니다.'));
+    expect(name).toHaveProperty('value', '간식쿠폰');
+
+    fireEvent.click(create);
+    await waitFor(() => expect(alert).toHaveBeenCalledWith('P003 추가 완료'));
+    const bodies = vi.mocked(fetch).mock.calls
+      .filter(([url, init]) => String(url) === '/api/products' && init?.method === 'POST')
+      .map(([, init]) => JSON.parse(String(init?.body)));
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1].operationId).toBe(bodies[0].operationId);
+    expect(crypto.randomUUID).toHaveBeenCalledOnce();
+    expect(name).toHaveProperty('value', '');
+  });
+
+  it('preserves a newer product draft when an earlier creation succeeds', async () => {
+    const created = {
+      productId: 'P003', name: '상품 A', price: 1000, stock: 5,
+      isActive: true, imageUrl: '', category: '', sortOrder: 1,
+    };
+    const request = deferredResponse(created);
+    const fallback = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) =>
+      String(input) === '/api/products' && init?.method === 'POST'
+        ? request.response
+        : fallback(input, init));
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '매점 관리' }));
+    const name = screen.getByLabelText('새 상품명');
+    fireEvent.change(name, { target: { value: '상품 A' } });
+    fireEvent.change(screen.getByLabelText('새 상품 가격'), { target: { value: '1000' } });
+    fireEvent.change(screen.getByLabelText('새 상품 재고'), { target: { value: '5' } });
+    fireEvent.click(screen.getByRole('button', { name: '새 상품 추가' }));
+
+    fireEvent.change(name, { target: { value: '상품 B' } });
+    request.resolve();
+    await waitFor(() => expect(alert).toHaveBeenCalledWith('P003 추가 완료'));
+
+    expect(name).toHaveProperty('value', '상품 B');
+  });
+
+  it('allocates a new product creation operation ID when a failed draft changes', async () => {
+    vi.mocked(crypto.randomUUID)
+      .mockReturnValueOnce('50000000-0000-4000-8000-000000000031')
+      .mockReturnValueOnce('50000000-0000-4000-8000-000000000032');
+    const fallback = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) =>
+      String(input) === '/api/products' && init?.method === 'POST'
+        ? jsonResponse({ error: 'temporary failure' }, { status: 400 })
+        : fallback(input, init));
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '매점 관리' }));
+    const name = screen.getByLabelText('새 상품명');
+    const create = screen.getByRole('button', { name: '새 상품 추가' });
+    fireEvent.change(name, { target: { value: '간식쿠폰' } });
+    fireEvent.click(create);
+    await waitFor(() => expect(alert).toHaveBeenCalledWith('temporary failure'));
+
+    fireEvent.change(name, { target: { value: '다른쿠폰' } });
+    fireEvent.click(create);
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([url, init]) =>
+      String(url) === '/api/products' && init?.method === 'POST')).toHaveLength(2));
+
+    const bodies = vi.mocked(fetch).mock.calls
+      .filter(([url, init]) => String(url) === '/api/products' && init?.method === 'POST')
+      .map(([, init]) => JSON.parse(String(init?.body)));
+    expect(bodies.map((body) => body.operationId)).toEqual([
+      '50000000-0000-4000-8000-000000000031',
+      '50000000-0000-4000-8000-000000000032',
+    ]);
   });
 
   it('shows a loading popup after recognizing a currency QR before the result popup', async () => {

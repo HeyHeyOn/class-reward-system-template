@@ -62,6 +62,27 @@ type NewProductDraft = {
   sortOrder: number;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isCreatedProduct(value: unknown, expectedProductId: string): value is Product {
+  if (!isRecord(value)) return false;
+  return value.productId === expectedProductId
+    && typeof value.name === 'string'
+    && Boolean(value.name.trim())
+    && Number.isSafeInteger(value.price)
+    && (value.price as number) >= 0
+    && Number.isSafeInteger(value.stock)
+    && (value.stock as number) >= 0
+    && typeof value.isActive === 'boolean'
+    && (!Object.hasOwn(value, 'imageUrl') || typeof value.imageUrl === 'string')
+    && (!Object.hasOwn(value, 'category') || typeof value.category === 'string')
+    && Number.isInteger(value.sortOrder)
+    && (value.sortOrder as number) >= -2147483648
+    && (value.sortOrder as number) <= 2147483647;
+}
+
 const EMPTY_STUDENT: NewStudentDraft = { studentId: '', name: '', balance: 0, status: 'ACTIVE' };
 const EMPTY_PRODUCT: NewProductDraft = { name: '', price: 0, stock: 0, isActive: true, imageUrl: '', category: '', sortOrder: 1 };
 const EMPTY_TASK: Omit<TaskDraft, 'taskId'> = { title: '', description: '', reward: 0, isActive: true, sortOrder: 1, allowedStudentIds: [] };
@@ -144,6 +165,8 @@ export function AdminManagePage() {
   const [message, setMessage] = useState('학생/상품 목록을 불러오는 중입니다.');
   const [newStudent, setNewStudent] = useState<NewStudentDraft>(EMPTY_STUDENT);
   const [newProduct, setNewProduct] = useState<NewProductDraft>(EMPTY_PRODUCT);
+  const productCreationAttempt = useRef<{ semanticKey: string; operationId: string } | null>(null);
+  const productCreationInFlight = useRef(false);
   const [newTask, setNewTask] = useState<Omit<TaskDraft, 'taskId'>>(EMPTY_TASK);
   const [imageEditor, setImageEditor] = useState<{ productId: string; value: string } | null>(null);
   const [taskDescriptionEditor, setTaskDescriptionEditor] = useState<{ taskId: string; value: string } | null>(null);
@@ -1329,25 +1352,58 @@ export function AdminManagePage() {
 
   async function createNewProduct(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (productCreationInFlight.current) return;
+    const body = {
+      productId: nextPrefixedId(products.map((product) => product.productId), 'P'),
+      name: newProduct.name,
+      price: newProduct.price,
+      stock: newProduct.stock,
+      isActive: newProduct.isActive,
+      imageUrl: newProduct.imageUrl,
+      category: newProduct.category,
+      sortOrder: newProduct.sortOrder,
+    };
+    const semanticKey = JSON.stringify(body);
+    if (productCreationAttempt.current?.semanticKey !== semanticKey) {
+      productCreationAttempt.current = { semanticKey, operationId: crypto.randomUUID() };
+    }
+    const operationId = productCreationAttempt.current.operationId;
+    productCreationInFlight.current = true;
     try {
-      const body = {
-        productId: nextPrefixedId(products.map((product) => product.productId), 'P'),
-        name: newProduct.name,
-        price: newProduct.price,
-        stock: newProduct.stock,
-        isActive: newProduct.isActive,
-        imageUrl: newProduct.imageUrl,
-        category: newProduct.category,
-        sortOrder: newProduct.sortOrder,
-      };
-      const response = await fetch('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? '상품을 추가하지 못했습니다.');
+      const response = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operationId, ...body }),
+      });
+      const payload: unknown = await response.json();
+      if (!response.ok) {
+        throw new Error(isRecord(payload) && typeof payload.error === 'string'
+          ? payload.error
+          : '상품을 추가하지 못했습니다.');
+      }
+      if (!isCreatedProduct(payload, body.productId)) {
+        throw new Error('상품을 추가하지 못했습니다.');
+      }
       setProducts((current) => [...current, payload].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)));
-      setNewProduct(EMPTY_PRODUCT);
+      setNewProduct((current) => {
+        const currentSemanticKey = JSON.stringify({
+          productId: body.productId,
+          name: current.name,
+          price: current.price,
+          stock: current.stock,
+          isActive: current.isActive,
+          imageUrl: current.imageUrl,
+          category: current.category,
+          sortOrder: current.sortOrder,
+        });
+        return currentSemanticKey === semanticKey ? EMPTY_PRODUCT : current;
+      });
+      productCreationAttempt.current = null;
       notify(`${payload.productId} 추가 완료`);
     } catch (error) {
       notify(error instanceof Error ? error.message : '상품을 추가하지 못했습니다.');
+    } finally {
+      productCreationInFlight.current = false;
     }
   }
 
