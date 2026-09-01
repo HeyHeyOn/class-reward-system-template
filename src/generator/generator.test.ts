@@ -237,7 +237,7 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
     expect(rendered).toContain('themeColor: purple');
     expect(rendered).toContain('Students: studentId, name, balance, status');
     expect(rendered).toContain('TaskAssignments: assignmentId, taskId, taskInstanceId');
-    expect(rendered).toContain('Vercel 환경변수: GOOGLE_SHEET_ID, ADMIN_PASSWORD, AUTH_SECRET');
+    expect(rendered).toContain('Vercel 환경변수: CLASS_STORE_STORAGE, GOOGLE_SHEET_ID, ADMIN_PASSWORD, AUTH_SECRET');
     expect(rendered).not.toContain('비밀번호');
   });
 

@@ -19,6 +19,7 @@ Vercel Project Settings → Environment Variables에 아래 값을 등록합니�
 서비스 계정을 만들지 않고, 최초 1회 승인받은 선생님 Google 계정 권한으로 Sheets를 수정하려면 아래 값을 사용합니다. 이 방식에서는 학생 키오스크와 암호 관리자 화면 모두 Google 로그인 없이 동작하고, Vercel 서버가 `GOOGLE_REFRESH_TOKEN`으로 Sheets API에 접근합니다.
 
 ```text
+CLASS_STORE_STORAGE=sheets
 GOOGLE_SHEET_ID=스프레드시트 ID
 GOOGLE_CLIENT_ID=Google OAuth 클라이언트 ID
 GOOGLE_CLIENT_SECRET=Google OAuth 클라이언트 보안 비밀
@@ -46,6 +47,7 @@ Google refresh token의 계정은 해당 스프레드시트에 편집 권한이 
 기존처럼 서비스 계정을 쓰려면 아래 값을 사용합니다.
 
 ```text
+CLASS_STORE_STORAGE=sheets
 GOOGLE_SHEET_ID=스프레드시트 ID
 GOOGLE_SERVICE_ACCOUNT_EMAIL=서비스계정 이메일
 GOOGLE_PRIVATE_KEY=서비스계정 private key
@@ -84,7 +86,7 @@ ADMIN_PASSWORD=관리자 페이지 비밀번호
 1. GitHub 저장소에 프로젝트를 올립니다.
 2. Vercel에서 Import Project를 선택합니다.
 3. Framework Preset은 Next.js로 둡니다.
-4. 환경변수를 등록합니다.
+4. 환경변수에 `CLASS_STORE_STORAGE=sheets`를 포함해 등록합니다. 이 값이 없거나 다른 값이면 앱은 저장소를 추측하거나 Sheets로 자동 fallback하지 않고 시작을 거부합니다.
 5. Deploy를 실행합니다.
 6. 배포 후 아래 주소를 확인합니다.
 

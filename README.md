@@ -35,6 +35,7 @@ npm run dev
 `.env.example`을 참고해 `.env.local` 또는 Vercel 환경변수를 설정합니다.
 
 ```text
+CLASS_STORE_STORAGE=sheets
 GOOGLE_SHEET_ID=
 
 # OAuth refresh token 방식 권장: 학생/키오스크는 Google 로그인 없이 작동
@@ -56,6 +57,7 @@ GOOGLE_PRIVATE_KEY=
 필수 기본 환경변수:
 
 ```text
+CLASS_STORE_STORAGE=sheets
 GOOGLE_SHEET_ID=생성기가 만든 스프레드시트 ID
 ADMIN_PASSWORD=관리자 페이지 비밀번호
 AUTH_SECRET=긴 무작위 문자열

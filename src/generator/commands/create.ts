@@ -24,7 +24,7 @@ export function getCreateCommandPlan(options: { dryRun?: boolean; instanceOption
       systemVersion: SYSTEM_VERSION,
       settings: buildSettingsRows(instanceOptions),
       sheets: Object.entries(REQUIRED_SHEETS).map(([name, columns]) => ({ name, columns })),
-      vercelEnvNames: ['GOOGLE_SHEET_ID', 'ADMIN_PASSWORD', 'AUTH_SECRET'],
+      vercelEnvNames: ['CLASS_STORE_STORAGE', 'GOOGLE_SHEET_ID', 'ADMIN_PASSWORD', 'AUTH_SECRET'],
     },
   });
 }

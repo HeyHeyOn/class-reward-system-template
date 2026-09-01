@@ -42,7 +42,7 @@ export function getDoctorCommandPlan(options: { dryRun?: boolean; targetOptions?
           systemVersion: SYSTEM_VERSION,
           settings: [],
           sheets: [],
-          vercelEnvNames: ['GOOGLE_SHEET_ID', 'ADMIN_PASSWORD', 'AUTH_SECRET'],
+          vercelEnvNames: ['CLASS_STORE_STORAGE', 'GOOGLE_SHEET_ID', 'ADMIN_PASSWORD', 'AUTH_SECRET'],
           doctorRoutes: DOCTOR_ROUTES,
           // This generator currently emits a plan/manifest; a future Sheets executor must use
           // these exact header-only ranges rather than broadening reads into data rows.
