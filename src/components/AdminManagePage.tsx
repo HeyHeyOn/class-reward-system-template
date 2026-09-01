@@ -83,6 +83,14 @@ function isCreatedProduct(value: unknown, expectedProductId: string): value is P
     && (value.sortOrder as number) <= 2147483647;
 }
 
+function isCreatedStudent(value: unknown, expected: NewStudentDraft): value is Student {
+  if (!isRecord(value) || Object.keys(value).length !== 4) return false;
+  return value.studentId === expected.studentId.trim()
+    && value.name === expected.name.trim()
+    && value.balance === expected.balance
+    && value.status === expected.status;
+}
+
 const EMPTY_STUDENT: NewStudentDraft = { studentId: '', name: '', balance: 0, status: 'ACTIVE' };
 const EMPTY_PRODUCT: NewProductDraft = { name: '', price: 0, stock: 0, isActive: true, imageUrl: '', category: '', sortOrder: 1 };
 const EMPTY_TASK: Omit<TaskDraft, 'taskId'> = { title: '', description: '', reward: 0, isActive: true, sortOrder: 1, allowedStudentIds: [] };
@@ -164,6 +172,8 @@ export function AdminManagePage() {
   const bulkBalanceInFlight = useRef(false);
   const [message, setMessage] = useState('학생/상품 목록을 불러오는 중입니다.');
   const [newStudent, setNewStudent] = useState<NewStudentDraft>(EMPTY_STUDENT);
+  const studentCreationAttempt = useRef<{ semanticKey: string; operationId: string } | null>(null);
+  const studentCreationInFlight = useRef(false);
   const [newProduct, setNewProduct] = useState<NewProductDraft>(EMPTY_PRODUCT);
   const productCreationAttempt = useRef<{ semanticKey: string; operationId: string } | null>(null);
   const productCreationInFlight = useRef(false);
@@ -1337,16 +1347,47 @@ export function AdminManagePage() {
 
   async function createNewStudent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (studentCreationInFlight.current) return;
+    const body = {
+      studentId: newStudent.studentId,
+      name: newStudent.name,
+      balance: newStudent.balance,
+      status: newStudent.status,
+    };
+    const semanticBody = { ...body, studentId: body.studentId.trim(), name: body.name.trim() };
+    const semanticKey = JSON.stringify(semanticBody);
+    if (studentCreationAttempt.current?.semanticKey !== semanticKey) {
+      studentCreationAttempt.current = { semanticKey, operationId: crypto.randomUUID() };
+    }
+    const operationId = studentCreationAttempt.current.operationId;
+    studentCreationInFlight.current = true;
     try {
-      const body = { studentId: newStudent.studentId, name: newStudent.name, balance: newStudent.balance, status: newStudent.status };
-      const response = await fetch('/api/students', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? '학생을 추가하지 못했습니다.');
+      const response = await fetch('/api/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operationId, ...body }),
+      });
+      const payload: unknown = await response.json();
+      if (!response.ok) {
+        throw new Error(isRecord(payload) && typeof payload.error === 'string'
+          ? payload.error
+          : '학생을 추가하지 못했습니다.');
+      }
+      if (!isCreatedStudent(payload, semanticBody)) {
+        throw new Error('학생을 추가하지 못했습니다.');
+      }
       setStudents((current) => sortStudentsById([...current, payload]));
-      setNewStudent(EMPTY_STUDENT);
+      setNewStudent((current) => JSON.stringify({
+        ...current,
+        studentId: current.studentId.trim(),
+        name: current.name.trim(),
+      }) === semanticKey ? EMPTY_STUDENT : current);
+      studentCreationAttempt.current = null;
       notify(`${payload.studentId} 추가 완료`);
     } catch (error) {
       notify(error instanceof Error ? error.message : '학생을 추가하지 못했습니다.');
+    } finally {
+      studentCreationInFlight.current = false;
     }
   }
 

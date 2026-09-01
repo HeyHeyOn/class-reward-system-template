@@ -26,6 +26,7 @@ const CONFIGURED_MUTATION_AUTHORITY = [
   ['checkout', 'POST', 'createConfiguredCheckoutCommand'],
   ['products', 'POST', 'createConfiguredProductCreation'],
   ['promotions', 'POST', 'createConfiguredPromotionCreation'],
+  ['students', 'POST', 'createConfiguredStudentCreation'],
   ['students/bulk', 'PATCH', 'createConfiguredAdminAdjustmentCommand'],
   ['tasks/completions/reset', 'POST', 'createConfiguredTaskResetCommand'],
   ['transactions/[transactionId]/cancel', 'POST', 'createConfiguredTransactionCancellation'],
@@ -82,8 +83,8 @@ describe('tenant mutation route PostgreSQL authority', () => {
       && entry.effect === 'mutation'
       && !configured.has(`${entry.method} ${entry.route}`));
 
-    expect(CONFIGURED_MUTATION_AUTHORITY).toHaveLength(6);
-    expect(sheetsMutations).toHaveLength(21);
+    expect(CONFIGURED_MUTATION_AUTHORITY).toHaveLength(7);
+    expect(sheetsMutations).toHaveLength(20);
     for (const entry of sheetsMutations) {
       const body = await exportedMethodBody(entry.route.replace(/^\//, ''), entry.method);
       expect(body, `${entry.method} ${entry.route}`).toMatch(/createConfiguredSheetsStore\s*\(/);

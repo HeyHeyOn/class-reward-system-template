@@ -1449,7 +1449,7 @@ describe('AdminManagePage', () => {
       expect(fetch).toHaveBeenCalledWith('/api/students', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId: 'S003', name: '박도윤', balance: 0, status: 'ACTIVE' }),
+        body: JSON.stringify({ operationId: '50000000-0000-4000-8000-000000000001', studentId: 'S003', name: '박도윤', balance: 0, status: 'ACTIVE' }),
       });
       expect(fetch).toHaveBeenCalledWith('/api/products', {
         method: 'POST',
@@ -1460,6 +1460,100 @@ describe('AdminManagePage', () => {
 
     await waitFor(() => expect(window.alert).toHaveBeenCalledWith('S003 추가 완료'));
     await waitFor(() => expect(window.alert).toHaveBeenCalledWith('P003 추가 완료'));
+  });
+
+  it('suppresses synchronous duplicate student creation and reuses an unchanged attempt through failure and malformed 2xx', async () => {
+    vi.mocked(crypto.randomUUID)
+      .mockReturnValueOnce('50000000-0000-4000-8000-000000000031')
+      .mockReturnValueOnce('50000000-0000-4000-8000-000000000032');
+    const first = deferredResponse({ error: 'temporary student failure' }, { status: 400 });
+    const malformed = deferredResponse({ studentId: 'S003', name: '박도윤', balance: 99, status: 'ACTIVE' });
+    const valid = deferredResponse({ studentId: 'S003', name: '박도윤', balance: 0, status: 'ACTIVE' });
+    const responses = [first.response, malformed.response, valid.response];
+    const fallback = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) =>
+      String(input) === '/api/students' && init?.method === 'POST'
+        ? responses.shift()!
+        : fallback(input, init));
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '학생 관리' }));
+    fireEvent.change(screen.getByLabelText('새 학생 ID'), { target: { value: ' S003 ' } });
+    fireEvent.change(screen.getByLabelText('새 학생 이름'), { target: { value: '박도윤' } });
+    const create = screen.getByRole('button', { name: '새 학생 추가' });
+
+    fireEvent.click(create);
+    fireEvent.click(create);
+    expect(vi.mocked(fetch).mock.calls.filter(([url, init]) =>
+      String(url) === '/api/students' && init?.method === 'POST')).toHaveLength(1);
+    expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
+
+    first.resolve();
+    await waitFor(() => expect(alert).toHaveBeenCalledWith('temporary student failure'));
+    fireEvent.change(screen.getByLabelText('새 학생 ID'), { target: { value: 'S003' } });
+    fireEvent.click(create);
+    malformed.resolve();
+    await waitFor(() => expect(alert).toHaveBeenCalledWith('학생을 추가하지 못했습니다.'));
+    expect(screen.getByLabelText('새 학생 ID')).toHaveProperty('value', 'S003');
+    expect(screen.queryByLabelText('S003 이름')).toBeNull();
+
+    fireEvent.click(create);
+    valid.resolve();
+    await screen.findByLabelText('S003 이름');
+    expect(alert).toHaveBeenCalledWith('S003 추가 완료');
+    expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
+
+    const bodies = vi.mocked(fetch).mock.calls
+      .filter(([url, init]) => String(url) === '/api/students' && init?.method === 'POST')
+      .map(([, init]) => JSON.parse(String(init?.body)));
+    expect(bodies).toHaveLength(3);
+    expect(bodies.map((body) => body.operationId)).toEqual([
+      '50000000-0000-4000-8000-000000000031',
+      '50000000-0000-4000-8000-000000000031',
+      '50000000-0000-4000-8000-000000000031',
+    ]);
+    expect(screen.getByLabelText('새 학생 ID')).toHaveProperty('value', '');
+    expect(screen.getByLabelText('새 학생 이름')).toHaveProperty('value', '');
+  });
+
+  it('preserves newer in-flight student draft edits and gives the changed draft a new operation ID', async () => {
+    vi.mocked(crypto.randomUUID)
+      .mockReturnValueOnce('50000000-0000-4000-8000-000000000041')
+      .mockReturnValueOnce('50000000-0000-4000-8000-000000000042');
+    const first = deferredResponse({ studentId: 'S003', name: '박도윤', balance: 0, status: 'ACTIVE' });
+    const second = deferredResponse({ studentId: 'S004', name: '새 초안', balance: -10, status: 'ACTIVE' });
+    const responses = [first.response, second.response];
+    const fallback = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) =>
+      String(input) === '/api/students' && init?.method === 'POST'
+        ? responses.shift()!
+        : fallback(input, init));
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '학생 관리' }));
+    fireEvent.change(screen.getByLabelText('새 학생 ID'), { target: { value: 'S003' } });
+    fireEvent.change(screen.getByLabelText('새 학생 이름'), { target: { value: '박도윤' } });
+    fireEvent.click(screen.getByRole('button', { name: '새 학생 추가' }));
+    fireEvent.change(screen.getByLabelText('새 학생 ID'), { target: { value: 'S004' } });
+    fireEvent.change(screen.getByLabelText('새 학생 이름'), { target: { value: '새 초안' } });
+    fireEvent.change(screen.getByLabelText('새 학생 잔액'), { target: { value: '-10' } });
+
+    first.resolve();
+    await screen.findByLabelText('S003 이름');
+    expect(screen.getByLabelText('새 학생 ID')).toHaveProperty('value', 'S004');
+    expect(screen.getByLabelText('새 학생 이름')).toHaveProperty('value', '새 초안');
+    expect(screen.getByLabelText('새 학생 잔액')).toHaveProperty('value', '-10');
+
+    fireEvent.click(screen.getByRole('button', { name: '새 학생 추가' }));
+    second.resolve();
+    await screen.findByLabelText('S004 이름');
+    const bodies = vi.mocked(fetch).mock.calls
+      .filter(([url, init]) => String(url) === '/api/students' && init?.method === 'POST')
+      .map(([, init]) => JSON.parse(String(init?.body)));
+    expect(bodies.map((body) => body.operationId)).toEqual([
+      '50000000-0000-4000-8000-000000000041',
+      '50000000-0000-4000-8000-000000000042',
+    ]);
   });
 
   it('suppresses synchronous duplicate product creation and reuses a failed unchanged attempt ID', async () => {
