@@ -70,6 +70,7 @@ export type DatabaseTaskCompletionCommandInput = Readonly<{
 export type TaskRewardSuccess = Readonly<{
   ok: true;
   operationId: string;
+  completedAt: string;
   taskId: string;
   taskInstanceId: string;
   taskTitle: string;
@@ -280,6 +281,7 @@ export function createDatabaseTaskCompletionCommand(
         const result: TaskRewardSuccess = {
           ok: true,
           operationId: input.operationId,
+          completedAt: nowIso,
           taskId: fresh.task.taskId,
           taskInstanceId: fresh.task.taskInstanceId,
           taskTitle: fresh.task.title,
@@ -386,6 +388,7 @@ type CompletionRow = {
 
 type RewardSnapshotRow = {
   completion_id: string;
+  completed_at: Date | string;
   task_instance_id: string | null;
   task_id_snapshot: string;
   task_name_snapshot: string;
@@ -776,7 +779,7 @@ async function resolveExistingOperation(
   if (operation.status !== 'SUCCEEDED') throw new TaskRewardCommandError('OPERATION_CONFLICT');
 
   const snapshotResult = await tx.execute(sql`
-    SELECT tc.completion_id, tc.task_instance_id, tc.task_id_snapshot,
+    SELECT tc.completion_id, tc.completed_at, tc.task_instance_id, tc.task_id_snapshot,
            tc.task_name_snapshot, tc.student_id, tc.student_name_snapshot,
            tc.reward_snapshot::text AS reward_snapshot,
            tc.balance_before::text AS completion_balance_before,
@@ -837,6 +840,7 @@ async function resolveExistingOperation(
     evidenceAuthorFullName: row.evidence_author_full_name,
   });
   const reward = safeInteger(row.reward_snapshot, 'stored task reward');
+  const completedAt = iso(row.completed_at);
   const balanceBefore = safeInteger(row.completion_balance_before, 'stored completion balance before');
   const balanceAfter = safeInteger(row.completion_balance_after, 'stored completion balance after');
   if (safeInteger(row.balance_delta, 'stored transaction balance delta') !== reward
@@ -867,6 +871,7 @@ async function resolveExistingOperation(
   const expected: TaskRewardSuccess = {
     ok: true,
     operationId: input.operationId,
+    completedAt,
     taskId: row.task_id_snapshot,
     taskInstanceId: row.task_instance_id,
     taskTitle: row.task_name_snapshot,
@@ -880,36 +885,44 @@ async function resolveExistingOperation(
     completionId: row.completion_id,
     ...(evidence ? { evidence } : {}),
   };
-  const stored = parseStoredResult(operation.result_snapshot);
-  if (canonicalResult(stored) !== canonicalResult(expected)) {
+  const stored = parseStoredResult(operation.result_snapshot, completedAt);
+  if (canonicalResult(stored.result) !== canonicalResult(expected)) {
     throw new Error('Stored task reward result binding is invalid.');
   }
   await assertOperationAudit(
     tx,
     tenantId,
-    taskRewardAuditInput(input.operationId, stored, requiredAuditDate(operation.finished_at)),
+    taskRewardAuditInput(
+      input.operationId,
+      stored.result,
+      requiredAuditDate(operation.finished_at),
+      stored.legacy,
+    ),
   );
-  return stored;
+  return stored.result;
 }
 
 function taskRewardAuditInput(
   operationId: string,
   result: TaskRewardSuccess,
   occurredAt: Date,
+  legacy = false,
 ) {
+  const redactedDetails = {
+    ...(!legacy ? { completedAt: result.completedAt } : {}),
+    cycleId: result.cycleId,
+    reward: result.reward,
+    studentId: result.studentId,
+    taskId: result.taskId,
+    taskInstanceId: result.taskInstanceId,
+    transactionId: result.transactionId,
+  };
   return {
     operationId,
     eventType: 'TASK_REWARD_COMPLETED',
     entityType: 'TASK_COMPLETION',
     entityId: result.completionId,
-    redactedDetails: {
-      cycleId: result.cycleId,
-      reward: result.reward,
-      studentId: result.studentId,
-      taskId: result.taskId,
-      taskInstanceId: result.taskInstanceId,
-      transactionId: result.transactionId,
-    },
+    redactedDetails,
     occurredAt,
   } as const;
 }
@@ -921,8 +934,22 @@ function requiredAuditDate(value: Date | string | null): Date {
   return date;
 }
 
-function parseStoredResult(value: unknown): TaskRewardSuccess {
-  if (!isRecord(value) || value.ok !== true
+type ParsedStoredResult = Readonly<{
+  result: TaskRewardSuccess;
+  legacy: boolean;
+}>;
+
+function parseStoredResult(value: unknown, fallbackCompletedAt: string): ParsedStoredResult {
+  const baseKeys = [
+    'ok', 'operationId', 'taskId', 'taskInstanceId', 'taskTitle', 'studentId', 'studentName',
+    'reward', 'balanceBefore', 'balanceAfter', 'cycleId', 'transactionId', 'completionId',
+  ] as const;
+  const hasEvidence = isRecord(value) && Object.hasOwn(value, 'evidence');
+  const currentKeys = [...baseKeys, 'completedAt', ...(hasEvidence ? ['evidence'] : [])];
+  const legacyKeys = [...baseKeys, ...(hasEvidence ? ['evidence'] : [])];
+  const current = hasExactKeys(value, currentKeys);
+  const legacy = hasExactKeys(value, legacyKeys);
+  if ((!current && !legacy) || !isRecord(value) || value.ok !== true
     || !isString(value.operationId) || !isString(value.taskId) || !isString(value.taskInstanceId)
     || !isString(value.taskTitle) || !isString(value.studentId) || !isString(value.studentName)
     || !Number.isSafeInteger(value.reward) || !Number.isSafeInteger(value.balanceBefore)
@@ -930,32 +957,45 @@ function parseStoredResult(value: unknown): TaskRewardSuccess {
     || !isString(value.transactionId) || !isString(value.completionId)) {
     throw new Error('Stored task reward result is invalid.');
   }
-  const hasEvidence = Object.hasOwn(value, 'evidence');
-  const expectedKeys = 13 + (hasEvidence ? 1 : 0);
-  if (Object.keys(value).length !== expectedKeys) throw new Error('Stored task reward result is invalid.');
+  const completedAt = current ? value.completedAt : fallbackCompletedAt;
+  if (typeof completedAt !== 'string' || !isStrictIsoTimestamp(completedAt)) {
+    throw new Error('Stored task reward result is invalid.');
+  }
   const evidence = hasEvidence ? normalizePadletEvidence(value.evidence) : undefined;
   return {
-    ok: true,
-    operationId: value.operationId,
-    taskId: value.taskId,
-    taskInstanceId: value.taskInstanceId,
-    taskTitle: value.taskTitle,
-    studentId: value.studentId,
-    studentName: value.studentName,
-    reward: value.reward as number,
-    balanceBefore: value.balanceBefore as number,
-    balanceAfter: value.balanceAfter as number,
-    cycleId: value.cycleId,
-    transactionId: value.transactionId,
-    completionId: value.completionId,
-    ...(evidence ? { evidence } : {}),
+    legacy,
+    result: {
+      ok: true,
+      operationId: value.operationId,
+      completedAt,
+      taskId: value.taskId,
+      taskInstanceId: value.taskInstanceId,
+      taskTitle: value.taskTitle,
+      studentId: value.studentId,
+      studentName: value.studentName,
+      reward: value.reward as number,
+      balanceBefore: value.balanceBefore as number,
+      balanceAfter: value.balanceAfter as number,
+      cycleId: value.cycleId,
+      transactionId: value.transactionId,
+      completionId: value.completionId,
+      ...(evidence ? { evidence } : {}),
+    },
   };
+}
+
+function hasExactKeys(value: unknown, expected: readonly string[]): value is Record<string, unknown> {
+  if (!isRecord(value) || Object.getPrototypeOf(value) !== Object.prototype
+    || Object.getOwnPropertySymbols(value).length !== 0) return false;
+  const keys = Object.keys(value);
+  return keys.length === expected.length && expected.every((key) => keys.includes(key));
 }
 
 function canonicalResult(result: TaskRewardSuccess): string {
   return JSON.stringify({
     ok: true,
     operationId: result.operationId,
+    completedAt: result.completedAt,
     taskId: result.taskId,
     taskInstanceId: result.taskInstanceId,
     taskTitle: result.taskTitle,

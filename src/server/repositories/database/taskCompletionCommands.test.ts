@@ -147,6 +147,7 @@ describe('database task completion command', () => {
     expect(result).toEqual({
       ok: true,
       operationId: OPERATION_ID,
+      completedAt: NOW.toISOString(),
       taskId: TASK_ID,
       taskInstanceId: TASK_INSTANCE_ID,
       taskTitle: '과제',
@@ -198,6 +199,7 @@ describe('database task completion command', () => {
         entity_type: 'TASK_COMPLETION',
         entity_id: `task-completion:${OPERATION_ID}`,
         redacted_details: {
+          completedAt: NOW.toISOString(),
           cycleId: `v1|${TASK_INSTANCE_ID}|r1|2026-08-28T00:00:00Z`,
           reward: 50,
           studentId: STUDENT_ID,
@@ -212,11 +214,15 @@ describe('database task completion command', () => {
 
   it('returns the exact stored result on retry without another provider call or mutation', async () => {
     const resolvePadletEvidence = vi.fn().mockResolvedValue(EVIDENCE);
-    const taskCommand = command({ resolvePadletEvidence });
+    let clock = NOW;
+    const taskCommand = command({ resolvePadletEvidence, now: () => clock });
     const first = await taskCommand.execute({ operationId: OPERATION_ID, taskId: TASK_ID, studentId: STUDENT_ID });
+    clock = new Date('2030-01-01T00:00:00.000Z');
     const second = await taskCommand.execute({ operationId: OPERATION_ID, taskId: TASK_ID, studentId: STUDENT_ID });
 
     expect(second).toEqual(first);
+    expect(first.completedAt).toBe(NOW.toISOString());
+    expect(second.completedAt).toBe(NOW.toISOString());
     expect(resolvePadletEvidence).toHaveBeenCalledOnce();
     const state = await snapshot();
     expect(state.account).toEqual([{ balance: '150', version: '2' }]);
@@ -224,6 +230,65 @@ describe('database task completion command', () => {
     expect(state.completions).toHaveLength(1);
     expect(state.claims).toHaveLength(1);
     expect(state.audits).toHaveLength(1);
+  });
+
+  it('replays an exact legacy success by deriving completedAt from its completion ledger', async () => {
+    const taskCommand = command();
+    const first = await taskCommand.execute({
+      operationId: OPERATION_ID, taskId: TASK_ID, studentId: STUDENT_ID,
+    });
+    await harness.database.query(`ALTER TABLE operations DISABLE TRIGGER operations_update_guard`);
+    try {
+      await harness.database.query(
+        `UPDATE operations SET result_snapshot=result_snapshot - 'completedAt'
+         WHERE tenant_id=$1 AND operation_id=$2`,
+        [harness.tenantOneId, OPERATION_ID],
+      );
+    } finally {
+      await harness.database.query(`ALTER TABLE operations ENABLE TRIGGER operations_update_guard`);
+    }
+    await harness.database.query(`ALTER TABLE audit_events DISABLE TRIGGER USER`);
+    try {
+      await harness.database.query(
+        `UPDATE audit_events SET redacted_details=redacted_details - 'completedAt'
+         WHERE tenant_id=$1 AND operation_id=$2`,
+        [harness.tenantOneId, OPERATION_ID],
+      );
+    } finally {
+      await harness.database.query(`ALTER TABLE audit_events ENABLE TRIGGER USER`);
+    }
+
+    await expect(taskCommand.execute({
+      operationId: OPERATION_ID, taskId: TASK_ID, studentId: STUDENT_ID,
+    })).resolves.toEqual(first);
+  });
+
+  it.each([
+    ['legacy result with current audit',
+      `UPDATE operations SET result_snapshot=result_snapshot - 'completedAt' WHERE tenant_id=$1 AND operation_id=$2`],
+    ['current result with legacy audit',
+      `UPDATE audit_events SET redacted_details=redacted_details - 'completedAt' WHERE tenant_id=$1 AND operation_id=$2`],
+    ['legacy result with malformed extra field',
+      `UPDATE operations SET result_snapshot=(result_snapshot - 'completedAt') || '{"extra":true}'::jsonb WHERE tenant_id=$1 AND operation_id=$2`],
+  ])('rejects mixed or malformed legacy replay: %s', async (_label, mutation) => {
+    const taskCommand = command();
+    await taskCommand.execute({ operationId: OPERATION_ID, taskId: TASK_ID, studentId: STUDENT_ID });
+    await harness.database.exec(`
+      ALTER TABLE operations DISABLE TRIGGER operations_update_guard;
+      ALTER TABLE audit_events DISABLE TRIGGER USER;
+    `);
+    try {
+      await harness.database.query(mutation, [harness.tenantOneId, OPERATION_ID]);
+    } finally {
+      await harness.database.exec(`
+        ALTER TABLE operations ENABLE TRIGGER operations_update_guard;
+        ALTER TABLE audit_events ENABLE TRIGGER USER;
+      `);
+    }
+
+    await expect(taskCommand.execute({
+      operationId: OPERATION_ID, taskId: TASK_ID, studentId: STUDENT_ID,
+    })).rejects.toThrow(/stored|audit|binding/i);
   });
 
   it.each([
@@ -261,6 +326,7 @@ describe('database task completion command', () => {
 
   it.each([
     ['transaction operation ID', `UPDATE transactions SET operation_id='other-operation' WHERE tenant_id=$1 AND transaction_id=$2`],
+    ['completion timestamp', `UPDATE task_completions SET completed_at='2030-01-01T00:00:00Z' WHERE tenant_id=$1 AND transaction_id=$2`],
     ['completion source', `UPDATE task_completions SET source='ADMIN' WHERE tenant_id=$1 AND transaction_id=$2`],
     ['transaction legacy status', `UPDATE transactions SET legacy_status_snapshot='PENDING' WHERE tenant_id=$1 AND transaction_id=$2`],
     ['transaction legacy total', `UPDATE transactions SET legacy_total_amount=49 WHERE tenant_id=$1 AND transaction_id=$2`],
