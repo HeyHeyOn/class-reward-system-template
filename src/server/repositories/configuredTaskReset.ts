@@ -61,7 +61,9 @@ export function createTaskResetCommandRepositoryCreators(
       };
       return {
         async resetBatch(input) {
-          return dependencies.resetTaskCompletionsBatch(await configuredStore(), [...input.taskIds]);
+          return dependencies.resetTaskCompletionsBatch(await configuredStore(), [...input.taskIds], {
+            operationId: input.operationId.trim(),
+          });
         },
       };
     },

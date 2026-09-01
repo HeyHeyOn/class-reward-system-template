@@ -71,6 +71,8 @@ export type TabularReader = {
   /** Forces a provider read and replaces any request-scoped cached snapshot. */
   getRowsFresh?(sheetName: OperationalSheetName): Promise<string[][]>;
   primeRows?(sheetNames: readonly OperationalSheetName[]): Promise<void>;
+  /** Replaces all named caches from one coherent provider batch snapshot. */
+  primeRowsFresh?(sheetNames: readonly OperationalSheetName[]): Promise<void>;
 };
 
 export type TabularStore = TabularReader & {

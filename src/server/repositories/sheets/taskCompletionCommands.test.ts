@@ -21,6 +21,9 @@ class Store {
     this.rows[sheet][row - 1][index] = String(value);
   });
   appendRow = vi.fn(async (sheet: string, values: string[]) => { this.rows[sheet].push([...values]); });
+  appendRows = vi.fn(async (sheet: string, rows: string[][]) => {
+    this.rows[sheet].push(...rows.map((row) => [...row]));
+  });
   updateCells = vi.fn(); updateHeaderRow = vi.fn(); deleteRow = vi.fn(); deleteRows = vi.fn();
   lookupSheet = vi.fn(async (name: string) => ({ found: true as const, info: { sheetId: 1, title: name, columnCount: this.rows[name][0].length } }));
   createSheetWithHeader = vi.fn(); ensureColumnCount = vi.fn(); writeHeaderCells = vi.fn(); verifyHeaderCells = vi.fn(); verifyAndWriteHeaderCells = vi.fn();

@@ -1,10 +1,12 @@
 import type { ClassTask, Product, Student, TaskAssignmentStatus, TaskCompletion, TaskRecurrence, Transaction } from '@/domain/types';
+import { createHash } from 'node:crypto';
 import {
   DEFAULT_CLASS_TIME_ZONE,
   normalizeLegacyTimeZone,
+  resolveTaskSchedule,
   serializeTaskScheduleCells,
 } from '@/domain/taskSchedule';
-import type { TaskCycleState } from '@/domain/taskCycleState';
+import { projectTaskCycleState, type TaskCycleState } from '@/domain/taskCycleState';
 import { isTaskAvailable, validateTaskAvailability } from '@/domain/taskAvailability';
 import { validateTaskPrerequisiteGraph } from '@/domain/taskPrerequisite';
 import {
@@ -15,7 +17,7 @@ import {
 } from '@/server/repositories/sheets/taskAssignmentCommands';
 export { updateTaskAssignmentsBatch };
 export type { TaskBatchAssignmentOperation, TaskBatchAssignmentTarget };
-import { mutateTaskCompletion, mutateTaskCompletionNow } from '@/server/repositories/sheets/taskCompletionCommands';
+import { mutateTaskCompletionNow } from '@/server/repositories/sheets/taskCompletionCommands';
 import {
   prepareImmediateTaskScheduleState,
   updateTaskSchedulesBatch,
@@ -36,12 +38,14 @@ import {
 } from '@/server/repositories/sheets/taskCycleQueries';
 import {
   buildTaskAppendRow,
+  buildTaskCompletionAppendRow,
 
   buildTransactionAppendRow,
   createHeaderIndex,
   isCheckoutLineSnapshot,
   parseProductRow,
   parseStudentRow,
+  parseTaskAssignmentRows,
   parseTaskCompletionRow,
   parseTaskRow,
   parseTransactionRow,
@@ -755,38 +759,508 @@ async function deleteTasksBatchNow(store: RecurringSchemaMigrationStore, taskIds
   return { taskIds: uniqueIds, deletedTaskCount: uniqueIds.length, deletedCompletionCount: 0 };
 }
 
-export async function resetTaskCompletionsBatch(store: RecurringSchemaMigrationStore, taskIds: string[]): Promise<{ taskIds: string[]; resetEventsAppended: number; deletedCount: number }> {
+export async function resetTaskCompletionsBatch(
+  store: RecurringSchemaMigrationStore,
+  taskIds: string[],
+  options: { operationId?: string } = {},
+): Promise<{ taskIds: string[]; resetEventsAppended: number; deletedCount: number }> {
   const uniqueIds = normalizeUniqueIds(taskIds);
   if (uniqueIds.length === 0) throw new Error('선택된 과제가 없습니다.');
-  const recordsById = new Map((await getTaskRecords(store)).map((record) => [record.task.taskId, record]));
-  const missingIds = uniqueIds.filter((taskId) => !recordsById.has(taskId));
-  if (missingIds.length > 0) throw new Error(`과제를 찾을 수 없습니다: ${missingIds.join(', ')}`);
-
-  await migrateRecurringSchemaIfNeeded(store);
-  const studentsById = new Map((await getStudents(store)).map((student) => [student.studentId, student]));
-  let resetCount = 0;
-  for (const taskId of uniqueIds) {
-    const record = recordsById.get(taskId)!;
-    const cycleState = await readTaskCycleState(store, record.task, new Date().toISOString());
-    for (const studentId of cycleState.completedStudentIds) {
-      const student = studentsById.get(studentId);
-      if (!student) continue;
-      const studentRecord = await getStudentRecordById(store, studentId);
-      if (!studentRecord) continue;
-      const result = await mutateTaskCompletion({
-        store,
-        task: record.task,
-        taskRowNumber: record.rowNumber,
-        student,
-        studentRowNumber: studentRecord.rowNumber,
-        completed: false,
-        source: 'ADMIN',
-      });
-      if (result.changed) resetCount += 1;
+  const operationId = options.operationId?.trim() || undefined;
+  const canonicalTaskIds = [...uniqueIds].sort();
+  const resultTaskIds = operationId ? canonicalTaskIds : uniqueIds;
+  const operationPayloadHash = operationId ? resetOperationPayloadHash(canonicalTaskIds) : undefined;
+  return enqueueTaskCommand(taskCommandQueueKey(''), async () => {
+    // Reject invalid requests before the schema command is allowed to write anything. On the
+    // missing-task path, operation rows remain authoritative and are inspected without migration.
+    const requestedRecords = new Map((await getTaskRecords(store)).map((record) => [record.task.taskId, record]));
+    const missingIds = uniqueIds.filter((taskId) => !requestedRecords.has(taskId));
+    if (missingIds.length > 0) {
+      if (operationId && operationPayloadHash) {
+        const [completionRows, settingsRows] = await Promise.all([
+          store.getRows('TaskCompletions'),
+          store.getRows('Settings'),
+        ]);
+        const replay = inspectStoredResetOperation(
+          completionRows, settingsRows, operationId, operationPayloadHash, canonicalTaskIds, resultTaskIds,
+        );
+        if (replay) return replay;
+      }
+      throw new Error(`과제를 찾을 수 없습니다: ${missingIds.join(', ')}`);
     }
+
+    await migrateRecurringSchemaIfNeeded(store);
+    const snapshotNames: OperationalSheetName[] = [
+      'Tasks', 'Students', 'TaskAssignments', 'TaskCompletions',
+      ...(operationId ? ['Settings' as const] : []),
+    ];
+    let snapshotRows: string[][][];
+    if (store.primeRowsFresh) {
+      await store.primeRowsFresh(snapshotNames);
+      snapshotRows = await Promise.all(snapshotNames.map((sheetName) => store.getRows(sheetName)));
+    } else if (store.getRowsFresh) {
+      snapshotRows = await Promise.all(snapshotNames.map((sheetName) => store.getRowsFresh!(sheetName)));
+    } else {
+      await store.primeRows?.(snapshotNames);
+      snapshotRows = await Promise.all(snapshotNames.map((sheetName) => store.getRows(sheetName)));
+    }
+    const [taskRows, studentRows, assignmentRows, completionRows, settingsRows = []] = snapshotRows;
+    const taskRecords = await getTaskRecords({
+      getRows: async (sheetName) => sheetName === 'Tasks' ? taskRows : store.getRows(sheetName),
+    });
+
+    const recordsById = new Map(taskRecords.map((record) => [record.task.taskId, record]));
+    const postMigrationMissingIds = uniqueIds.filter((taskId) => !recordsById.has(taskId));
+    if (postMigrationMissingIds.length > 0) {
+      throw new Error(`과제를 찾을 수 없습니다: ${postMigrationMissingIds.join(', ')}`);
+    }
+
+    const studentHeaders = studentRows[0] ?? [];
+    const assignmentHeaders = assignmentRows[0] ?? [];
+    const completionHeaders = completionRows[0] ?? [];
+    const studentHeaderIndex = createHeaderIndex(studentHeaders);
+    const assignmentHeaderIndex = createHeaderIndex(assignmentHeaders);
+    const completionHeaderIndex = createHeaderIndex(completionHeaders);
+    assertRequiredColumns(studentHeaderIndex, REQUIRED_STUDENT_COLUMNS, 'Students');
+    assertRequiredColumns(assignmentHeaderIndex, TASK_ASSIGNMENT_HEADERS, 'TaskAssignments');
+    assertRequiredColumns(completionHeaderIndex, TASK_COMPLETION_SCHEMA_HEADERS, 'TaskCompletions');
+
+    const completionDataRows = completionRows.slice(1).filter(isNonblankSheetRow);
+    const parsedCompletions = completionDataRows.map((row) => parseTaskCompletionRow(row, completionHeaderIndex));
+    if (operationId && operationPayloadHash) {
+      const replay = inspectStoredResetOperation(
+        completionRows, settingsRows, operationId, operationPayloadHash, canonicalTaskIds, resultTaskIds,
+      );
+      if (replay) return replay;
+    }
+
+    const studentDataRows = studentRows.slice(1).filter(isNonblankSheetRow);
+    const parsedStudents = studentDataRows.map((row) => parseStudentRow(row, studentHeaderIndex));
+    if (parsedStudents.some((student) => student === null)) throwResetIntegrityError();
+    const studentsById = new Map(parsedStudents
+      .filter((student): student is Student => student !== null)
+      .map((student) => [student.studentId, student]));
+    const assignmentDataRows = assignmentRows.slice(1).filter(isNonblankSheetRow);
+    const assignments = parseTaskAssignmentRows(assignmentDataRows, assignmentHeaderIndex);
+    if (assignments.length !== assignmentDataRows.length) throwResetIntegrityError();
+    if (parsedCompletions.some((completion) => completion === null)) throwResetIntegrityError();
+    const completions = parsedCompletions.filter((completion): completion is TaskCompletion => completion !== null);
+    const allocatedCompletionIds = new Set(completions.map((completion) => completion.completionId));
+    const plannedCompletions: TaskCompletion[] = [];
+    let resetCount = 0;
+    const now = new Date().toISOString();
+    const operationIdentity = operationId ? resetOperationIdentity(operationId) : undefined;
+    let operationEventTimestamp: string | undefined;
+
+    for (const taskId of operationId ? canonicalTaskIds : uniqueIds) {
+      const task = recordsById.get(taskId)!.task;
+      if (!task.taskInstanceId || !task.schedule) {
+        throw new Error('task cycle projection requires a task instance and schedule');
+      }
+      const schedule = resolveTaskSchedule({
+        currentSchedule: task.schedule,
+        pendingSchedule: task.pendingSchedule ?? null,
+        now,
+      });
+      let state = projectTaskCycleState({ task, now, assignments, completions });
+      const completedStudentIds = operationId
+        ? [...state.completedStudentIds].sort(compareRawCodeUnits)
+        : state.completedStudentIds;
+      for (const studentId of completedStudentIds) {
+        const student = studentsById.get(studentId);
+        if (!student) throwResetIntegrityError();
+        let effective = state.students[studentId];
+        const effectiveCompletion = effective.completionEvent;
+        if (!effectiveCompletion) continue;
+        if (operationId) {
+          if (!effectiveCompletion.timestamp) throwResetIntegrityError();
+          if (operationEventTimestamp === undefined
+            || effectiveCompletion.timestamp > operationEventTimestamp) {
+            operationEventTimestamp = effectiveCompletion.timestamp;
+          }
+        }
+        const assignmentId = effectiveCompletion.assignmentId
+          || `LEGACY_COMPLETION:${encodeURIComponent(effectiveCompletion.completionId)}`;
+
+        if (effective.assigned && (effective.completionOrigin === 'CARRY' || effective.completionOrigin === 'LEGACY')) {
+          const carry: TaskCompletion = {
+            completionId: operationIdentity
+              ? allocateDeterministicCarryCompletionId(allocatedCompletionIds, operationIdentity, {
+                taskId: task.taskId,
+                taskInstanceId: task.taskInstanceId,
+                cycleId: state.cycle.cycleId,
+                studentId: student.studentId,
+              })
+              : allocateResetCompletionId(allocatedCompletionIds),
+            timestamp: now,
+            taskId: task.taskId,
+            studentId: student.studentId,
+            studentName: student.name,
+            reward: 0,
+            balanceBefore: student.balance,
+            balanceAfter: student.balance,
+            status: effective.completed ? 'SUCCESS' : 'RESET',
+            note: 'materialized cycle carry',
+            taskInstanceId: task.taskInstanceId,
+            cycleId: state.cycle.cycleId,
+            cycleStartsAt: state.cycle.startsAt,
+            cycleEndsAt: state.cycle.endsAt,
+            ruleVersion: schedule.ruleVersion,
+            timeZone: schedule.timeZone,
+            source: 'CARRY_FORWARD',
+            assignmentId,
+            schemaVersion: 2,
+          };
+          plannedCompletions.push(carry);
+          completions.push(carry);
+          state = projectTaskCycleState({ task, now, assignments, completions });
+          effective = state.students[studentId];
+        }
+
+        const reset: TaskCompletion = {
+          completionId: operationId ? `PENDING-RESET-${resetCount + 1}` : allocateResetCompletionId(allocatedCompletionIds),
+          timestamp: now,
+          taskId: task.taskId,
+          studentId: student.studentId,
+          studentName: student.name,
+          reward: 0,
+          balanceBefore: student.balance,
+          balanceAfter: student.balance,
+          status: 'RESET',
+          note: 'admin-reset',
+          taskInstanceId: task.taskInstanceId,
+          cycleId: state.cycle.cycleId,
+          cycleStartsAt: state.cycle.startsAt,
+          cycleEndsAt: state.cycle.endsAt,
+          ruleVersion: schedule.ruleVersion,
+          timeZone: schedule.timeZone,
+          source: 'ADMIN_RESET',
+          assignmentId: effective.completionEvent?.assignmentId || assignmentId,
+          schemaVersion: 2,
+          ...(operationId && operationPayloadHash ? { operationId, operationPayloadHash } : {}),
+        };
+        plannedCompletions.push(reset);
+        completions.push(reset);
+        resetCount += 1;
+      }
+    }
+
+    if (operationId && plannedCompletions.length > 0) {
+      if (!operationEventTimestamp) throwResetIntegrityError();
+      for (const completion of plannedCompletions) completion.timestamp = operationEventTimestamp;
+    }
+
+    if (plannedCompletions.length > 250) {
+      throw new Error('한 번에 초기화할 수 있는 완료 내역은 250행까지입니다.');
+    }
+    if (resetCount === 0) {
+      if (!operationId || !operationPayloadHash) {
+        return { taskIds: resultTaskIds, resetEventsAppended: 0, deletedCount: 0 };
+      }
+      if (!store.appendRows) {
+        throw new Error('현재 Sheets 저장소가 완료 내역 일괄 추가를 지원하지 않습니다.');
+      }
+      const marker = buildZeroResetOperationMarker(operationId, operationPayloadHash, canonicalTaskIds);
+      const markerRow = buildResetOperationMarkerRow(settingsRows, marker.key, marker.value);
+      try {
+        await store.appendRows('Settings', [markerRow]);
+      } catch {
+        try {
+          if (!store.getRowsFresh) throw new Error('fresh read unavailable');
+          const observedSettings = await store.getRowsFresh('Settings');
+          if (hasExactResetOperationMarker(observedSettings, marker.key, marker.value)) {
+            return { taskIds: resultTaskIds, resetEventsAppended: 0, deletedCount: 0 };
+          }
+        } catch {
+          // Provider and parse details are deliberately hidden by the stable contract below.
+        }
+        throw new Error('과제 완료 초기화 저장 결과를 확인할 수 없습니다.');
+      }
+      return { taskIds: resultTaskIds, resetEventsAppended: 0, deletedCount: 0 };
+    }
+    if (operationId) {
+      if (!operationIdentity) throwResetIntegrityError();
+      let resetIndex = 0;
+      for (const completion of plannedCompletions) {
+        if (completion.source !== 'ADMIN_RESET') continue;
+        resetIndex += 1;
+        const deterministicId = resetOperationCompletionId(operationIdentity, resetIndex, resetCount);
+        if (allocatedCompletionIds.has(deterministicId)) throwResetOperationConflict();
+        allocatedCompletionIds.add(deterministicId);
+        completion.completionId = deterministicId;
+      }
+    }
+    if (!store.appendRows) {
+      throw new Error('현재 Sheets 저장소가 완료 내역 일괄 추가를 지원하지 않습니다.');
+    }
+    const plannedRows = plannedCompletions.map((completion) =>
+      buildTaskCompletionAppendRow(completionHeaders, completion));
+    try {
+      await store.appendRows('TaskCompletions', plannedRows);
+    } catch {
+      try {
+        if (!store.getRowsFresh) throw new Error('fresh read unavailable');
+        const observedRows = await store.getRowsFresh('TaskCompletions');
+        const observedHeaderIndex = createHeaderIndex(observedRows[0] ?? []);
+        assertRequiredColumns(observedHeaderIndex, TASK_COMPLETION_SCHEMA_HEADERS, 'TaskCompletions');
+        if (plannedCompletionsExactlyObserved(plannedCompletions, observedRows, observedHeaderIndex)) {
+          return { taskIds: resultTaskIds, resetEventsAppended: resetCount, deletedCount: resetCount };
+        }
+      } catch {
+        // Provider and parse details are deliberately hidden by the stable contract below.
+      }
+      throw new Error('과제 완료 초기화 저장 결과를 확인할 수 없습니다.');
+    }
+    // Keep the legacy property name while reporting appended reset events, never deletions.
+    return { taskIds: resultTaskIds, resetEventsAppended: resetCount, deletedCount: resetCount };
+  });
+}
+
+const RESET_INTEGRITY_ERROR = '과제 완료 초기화 데이터 무결성을 확인할 수 없습니다.';
+const RESET_OPERATION_CONFLICT_ERROR = '과제 완료 초기화 작업이 충돌하거나 손상되었습니다.';
+const RESET_OPERATION_ID_PATTERN = /^TC-RESET-([a-f0-9]{64})-([1-9]\d*)-([1-9]\d*)$/;
+
+function resetOperationPayloadHash(canonicalTaskIds: readonly string[]): string {
+  return `sha256:${createHash('sha256').update(JSON.stringify(canonicalTaskIds)).digest('hex')}`;
+}
+
+function resetOperationIdentity(operationId: string): string {
+  return createHash('sha256').update(operationId).digest('hex');
+}
+
+function resetOperationCompletionId(identity: string, index: number, total: number): string {
+  return `TC-RESET-${identity}-${index}-${total}`;
+}
+
+type ResetBatchResult = { taskIds: string[]; resetEventsAppended: number; deletedCount: number };
+
+function buildZeroResetOperationMarker(
+  operationId: string,
+  payloadHash: string,
+  taskIds: readonly string[],
+): { key: string; value: string } {
+  return {
+    key: `taskResetOperation:${resetOperationIdentity(operationId)}`,
+    value: JSON.stringify({ version: 1, operationId, payloadHash, taskIds, resultCount: 0 }),
+  };
+}
+
+function buildResetOperationMarkerRow(settingsRows: string[][], key: string, value: string): string[] {
+  const headers = settingsRows[0] ?? [];
+  const headerIndex = createHeaderIndex(headers);
+  try {
+    assertRequiredColumns(headerIndex, ['key', 'value'], 'Settings');
+  } catch {
+    return throwResetOperationConflict();
   }
-  // Keep the legacy property name while reporting appended reset events, never deletions.
-  return { taskIds: uniqueIds, resetEventsAppended: resetCount, deletedCount: resetCount };
+  return headers.map((header) => {
+    if (header.trim() === 'key') return key;
+    if (header.trim() === 'value') return value;
+    return '';
+  });
+}
+
+function resetOperationMarkerCandidates(settingsRows: string[][], key: string): string[] {
+  const headerIndex = createHeaderIndex(settingsRows[0] ?? []);
+  const keyColumn = headerIndex.get('key');
+  const valueColumn = headerIndex.get('value');
+  if (keyColumn === undefined || valueColumn === undefined) {
+    if (settingsRows.some((row) => isNonblankSheetRow(row))) throwResetOperationConflict();
+    return [];
+  }
+  return settingsRows.slice(1)
+    .filter(isNonblankSheetRow)
+    .filter((row) => String(row[keyColumn] ?? '').trim() === key)
+    .map((row) => String(row[valueColumn] ?? ''));
+}
+
+function hasExactResetOperationMarker(settingsRows: string[][], key: string, value: string): boolean {
+  const candidates = resetOperationMarkerCandidates(settingsRows, key);
+  return candidates.length >= 1 && candidates.every((candidate) => candidate === value);
+}
+
+function inspectStoredResetOperation(
+  completionRows: string[][],
+  settingsRows: string[][],
+  operationId: string,
+  payloadHash: string,
+  canonicalTaskIds: readonly string[],
+  resultTaskIds: string[],
+): ResetBatchResult | null {
+  const completionHeaderIndex = createHeaderIndex(completionRows[0] ?? []);
+  const operationColumn = completionHeaderIndex.get('operationId');
+  const completionIdColumn = completionHeaderIndex.get('completionId');
+  const operationIdentity = resetOperationIdentity(operationId);
+  const rawOperationRows = completionRows.slice(1)
+    .filter(isNonblankSheetRow)
+    .filter((row) => {
+      if (operationColumn !== undefined && String(row[operationColumn] ?? '').trim() === operationId) return true;
+      if (completionIdColumn === undefined) return false;
+      const match = RESET_OPERATION_ID_PATTERN.exec(String(row[completionIdColumn] ?? '').trim());
+      return match?.[1] === operationIdentity;
+    });
+  const marker = buildZeroResetOperationMarker(operationId, payloadHash, canonicalTaskIds);
+  const markerCandidates = resetOperationMarkerCandidates(settingsRows, marker.key);
+
+  if (markerCandidates.length > 0) {
+    if (!markerCandidates.every((candidate) => candidate === marker.value) || rawOperationRows.length > 0) {
+      throwResetOperationConflict();
+    }
+    return { taskIds: resultTaskIds, resetEventsAppended: 0, deletedCount: 0 };
+  }
+  if (rawOperationRows.length === 0) return null;
+  try {
+    assertRequiredColumns(completionHeaderIndex, TASK_COMPLETION_SCHEMA_HEADERS, 'TaskCompletions');
+  } catch {
+    return throwResetOperationConflict();
+  }
+  if (completionIdColumn === undefined) throwResetOperationConflict();
+  const rawRowsByCompletionId = new Map<string, string[][]>();
+  for (const row of rawOperationRows) {
+    const completionId = String(row[completionIdColumn] ?? '').trim();
+    const group = rawRowsByCompletionId.get(completionId) ?? [];
+    group.push(row);
+    rawRowsByCompletionId.set(completionId, group);
+  }
+  const operationRows: TaskCompletion[] = [];
+  for (const candidates of rawRowsByCompletionId.values()) {
+    const parsedCandidates = candidates.map((row) => parseTaskCompletionRow(row, completionHeaderIndex));
+    const first = parsedCandidates[0];
+    if (!first || parsedCandidates.some((candidate) =>
+      !candidate || !sameImmutableTaskCompletion(first, candidate))) {
+      throwResetOperationConflict();
+    }
+    operationRows.push(first);
+  }
+  return validateResetOperationReplay(
+    operationRows,
+    operationId,
+    payloadHash,
+    new Set(canonicalTaskIds),
+    resultTaskIds,
+  );
+}
+
+function plannedCompletionsExactlyObserved(
+  planned: readonly TaskCompletion[],
+  observedRows: string[][],
+  observedHeaderIndex: Map<string, number>,
+): boolean {
+  const idColumn = observedHeaderIndex.get('completionId');
+  if (idColumn === undefined) return false;
+  for (const expected of planned) {
+    const candidates = observedRows.slice(1)
+      .filter(isNonblankSheetRow)
+      .filter((row) => String(row[idColumn] ?? '').trim() === expected.completionId);
+    if (candidates.length < 1 || candidates.some((candidate) => {
+      const observed = parseTaskCompletionRow(candidate, observedHeaderIndex);
+      return !observed || !sameImmutableTaskCompletion(expected, observed);
+    })) return false;
+  }
+  return true;
+}
+
+function sameImmutableTaskCompletion(expected: TaskCompletion, observed: TaskCompletion): boolean {
+  const keys: Array<keyof TaskCompletion> = [
+    'completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward',
+    'balanceBefore', 'balanceAfter', 'status', 'note', 'taskInstanceId', 'cycleId',
+    'cycleStartsAt', 'cycleEndsAt', 'ruleVersion', 'timeZone', 'source', 'assignmentId',
+    'schemaVersion', 'operationId', 'operationPayloadHash',
+  ];
+  return keys.every((key) => expected[key] === observed[key]);
+}
+
+function validateResetOperationReplay(
+  rows: TaskCompletion[],
+  operationId: string,
+  payloadHash: string,
+  selectedTaskIds: Set<string>,
+  resultTaskIds: string[],
+): { taskIds: string[]; resetEventsAppended: number; deletedCount: number } {
+  const identity = resetOperationIdentity(operationId);
+  let expectedTotal: number | undefined;
+  let operationTimestamp: string | undefined;
+  const indexes = new Set<number>();
+  const logicalTargets = new Set<string>();
+  for (const row of rows) {
+    const match = RESET_OPERATION_ID_PATTERN.exec(row.completionId);
+    const logicalTarget = JSON.stringify([row.taskId, row.taskInstanceId, row.cycleId, row.studentId]);
+    if (row.operationId !== operationId
+      || row.operationPayloadHash !== payloadHash
+      || row.source !== 'ADMIN_RESET'
+      || row.status !== 'RESET'
+      || row.note !== 'admin-reset'
+      || !selectedTaskIds.has(row.taskId)
+      || !row.timestamp
+      || (operationTimestamp !== undefined && operationTimestamp !== row.timestamp)
+      || !row.assignmentId
+      || !row.studentId
+      || !row.taskInstanceId
+      || !row.cycleId
+      || !row.cycleStartsAt
+      || !row.timeZone
+      || logicalTargets.has(logicalTarget)
+      || row.reward !== 0
+      || row.balanceBefore !== row.balanceAfter
+      || !match
+      || match[1] !== identity) throwResetOperationConflict();
+    operationTimestamp = row.timestamp;
+    logicalTargets.add(logicalTarget);
+    const index = Number(match[2]);
+    const total = Number(match[3]);
+    if (!Number.isSafeInteger(index) || !Number.isSafeInteger(total) || index > total
+      || (expectedTotal !== undefined && expectedTotal !== total) || indexes.has(index)) {
+      throwResetOperationConflict();
+    }
+    expectedTotal = total;
+    indexes.add(index);
+  }
+  if (expectedTotal === undefined || rows.length !== expectedTotal || indexes.size !== expectedTotal
+    || Array.from({ length: expectedTotal }, (_, index) => index + 1).some((index) => !indexes.has(index))) {
+    throwResetOperationConflict();
+  }
+  return { taskIds: resultTaskIds, resetEventsAppended: expectedTotal, deletedCount: expectedTotal };
+}
+
+function throwResetOperationConflict(): never {
+  throw new Error(RESET_OPERATION_CONFLICT_ERROR);
+}
+
+function isNonblankSheetRow(row: readonly string[]): boolean {
+  return row.some((cell) => cell.trim() !== '');
+}
+
+function throwResetIntegrityError(): never {
+  throw new Error(RESET_INTEGRITY_ERROR);
+}
+
+function allocateResetCompletionId(allocatedIds: Set<string>): string {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const completionId = `TC-${crypto.randomUUID()}`;
+    if (allocatedIds.has(completionId)) continue;
+    allocatedIds.add(completionId);
+    return completionId;
+  }
+  return throwResetIntegrityError();
+}
+
+function allocateDeterministicCarryCompletionId(
+  allocatedIds: Set<string>,
+  operationIdentity: string,
+  target: { taskId: string; taskInstanceId: string; cycleId: string; studentId: string },
+): string {
+  const logicalTarget = [target.taskId, target.taskInstanceId, target.cycleId, target.studentId];
+  const identity = createHash('sha256')
+    .update(JSON.stringify([operationIdentity, ...logicalTarget]))
+    .digest('hex');
+  const completionId = `TC-CARRY-${identity}`;
+  if (allocatedIds.has(completionId)) throwResetOperationConflict();
+  allocatedIds.add(completionId);
+  return completionId;
+}
+
+function compareRawCodeUnits(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 export async function deleteTask(store: RecurringSchemaMigrationStore, taskId: string): Promise<{ taskId: string; taskDefinitionDeleted: true; deletedCompletionCount: number }> {

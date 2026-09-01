@@ -136,65 +136,109 @@ export async function updateTaskAssignmentsBatch(
 
     const context: BatchMutationContext = {
       store, now, assignmentHeaders, completionHeaders, assignments, completions,
-      assignmentTouchedTaskIds: new Set(),
-      canonicalAppendCount: 0,
+      pendingAssignments: [], pendingCompletions: [], canonicalAppendCount: 0,
     };
-    let appliedCount = 0;
-    const failures: TaskBatchAssignmentFailure[] = [];
-    const work = targets.flatMap(({ record, operations }) => operations.map((operation) => ({ record, operation })));
-    let abortedAt = -1;
-    for (let workIndex = 0; workIndex < work.length; workIndex += 1) {
-      const { record, operation } = work[workIndex];
+    const work = targets.flatMap(({ record, operations }) => operations.map((operation) => ({
+      record,
+      operation,
+      assignmentChanges: false,
+      completionChanges: false,
+      plannedAssignmentRows: false,
+      plannedCompletionRows: false,
+    })));
+
+    let planningIndex = 0;
+    try {
+      for (; planningIndex < work.length; planningIndex += 1) {
+        const item = work[planningIndex];
+        const { record, operation } = item;
         const student = studentsById.get(operation.studentId)!.student;
         const initialStudentState = projectTaskCycleState({
-          task: record.task, now, assignments, completions,
+          task: record.task, now, assignments: context.assignments, completions: context.completions,
         }).students[student.studentId];
-        const assignmentChanges = operation.assigned !== undefined
+        item.assignmentChanges = operation.assigned !== undefined
           && (initialStudentState?.assigned ?? false) !== operation.assigned;
-        const completionChanges = operation.completed !== undefined
+        item.completionChanges = operation.completed !== undefined
           && (initialStudentState?.completed ?? false) !== operation.completed;
-        try {
-          const mutateAssignment = async () => {
-            if (operation.assigned === undefined) return;
-            await mutateBatchAssignment(context, record.task, student.studentId, operation.assigned);
-          };
-          const mutateCompletion = async () => {
-            if (operation.completed === undefined) return;
-            await mutateBatchCompletion(context, record.task, student, operation.completed);
-          };
-          if (operation.assigned === false && operation.completed !== undefined) {
-            await mutateCompletion();
-            await mutateAssignment();
-          } else {
-            await mutateAssignment();
-            await mutateCompletion();
+        const assignmentCount = context.pendingAssignments.length;
+        const completionCount = context.pendingCompletions.length;
+        const planAssignment = () => {
+          if (operation.assigned !== undefined) {
+            planBatchAssignment(context, record.task, student.studentId, operation.assigned);
           }
-          if (assignmentChanges || completionChanges) appliedCount += 1;
-        } catch (error) {
-          failures.push({ taskId: record.task.taskId, studentId: student.studentId, code: 'OPERATION_FAILED' });
-          if (error instanceof BatchProviderAbortError) {
-            abortedAt = workIndex;
-            break;
+        };
+        const planCompletion = () => {
+          if (operation.completed !== undefined) {
+            planBatchCompletion(
+              context,
+              record.task,
+              student,
+              operation.completed,
+              operation.assigned === false && operation.completed === true,
+            );
           }
+        };
+        // Preserve the logical completion reset before the final unassignment in the in-memory projection.
+        if (operation.assigned === false && operation.completed !== undefined) {
+          planCompletion();
+          planAssignment();
+        } else {
+          planAssignment();
+          planCompletion();
         }
+        item.plannedAssignmentRows = context.pendingAssignments.length > assignmentCount;
+        item.plannedCompletionRows = context.pendingCompletions.length > completionCount;
+      }
+    } catch {
+      return abortAllWork(work, planningIndex);
+    }
+
+    try {
+      await flushAssignmentBatch(context);
+    } catch {
+      return abortUnresolvedBatch(work);
+    }
+
+    try {
+      await flushCompletionBatch(context);
+    } catch {
+      const failed = work.filter((item) => item.plannedCompletionRows);
+      const warnings = await mirrorBatchAssignments(
+        context, recordsById, new Set(requestedTargets.map((target) => target.taskId)),
+      );
+      const result: TaskBatchAssignmentResult = {
+        appliedCount: work.filter((item) => (item.assignmentChanges || item.completionChanges)
+          && !item.plannedCompletionRows).length,
+        failures: failed.map(({ record, operation }) => ({
+          taskId: record.task.taskId, studentId: operation.studentId, code: 'OPERATION_FAILED',
+        })),
+        aborted: true,
+        notAttempted: [],
+      };
+      if (warnings.length > 0) result.warnings = warnings;
+      return result;
     }
 
     const warnings = await mirrorBatchAssignments(
-      context,
-      recordsById,
-      new Set(requestedTargets.map((target) => target.taskId)),
+      context, recordsById, new Set(requestedTargets.map((target) => target.taskId)),
     );
-    const result: TaskBatchAssignmentResult = { appliedCount, failures };
+    const result: TaskBatchAssignmentResult = {
+      appliedCount: work.filter((item) => item.assignmentChanges || item.completionChanges).length,
+      failures: [],
+    };
     if (warnings.length > 0) result.warnings = warnings;
-    if (abortedAt >= 0) {
-      result.aborted = true;
-      result.notAttempted = work.slice(abortedAt + 1).map(({ record, operation }) => ({
-        taskId: record.task.taskId, studentId: operation.studentId,
-      }));
-    }
     return result;
   });
 }
+
+type BatchWorkItem = {
+  record: { task: ClassTask; rowNumber: number };
+  operation: TaskBatchAssignmentOperation;
+  assignmentChanges: boolean;
+  completionChanges: boolean;
+  plannedAssignmentRows: boolean;
+  plannedCompletionRows: boolean;
+};
 
 type BatchMutationContext = {
   store: RecurringSchemaMigrationStore;
@@ -203,46 +247,61 @@ type BatchMutationContext = {
   completionHeaders: string[];
   assignments: TaskAssignment[];
   completions: TaskCompletion[];
-  assignmentTouchedTaskIds: Set<string>;
+  pendingAssignments: TaskAssignment[];
+  pendingCompletions: TaskCompletion[];
   canonicalAppendCount: number;
 };
 
-class BatchProviderAbortError extends Error {
-  constructor() {
-    super('batch provider operation aborted');
-    this.name = 'BatchProviderAbortError';
-  }
+function abortAllWork(work: BatchWorkItem[], failedIndex = 0): TaskBatchAssignmentResult {
+  const failed = work[failedIndex];
+  const notAttempted = work.filter((_, index) => index !== failedIndex);
+  return {
+    appliedCount: 0,
+    failures: failed ? [{
+      taskId: failed.record.task.taskId, studentId: failed.operation.studentId, code: 'OPERATION_FAILED',
+    }] : [],
+    aborted: true,
+    notAttempted: notAttempted.map(({ record, operation }) => ({
+      taskId: record.task.taskId, studentId: operation.studentId,
+    })),
+  };
+}
+
+function abortUnresolvedBatch(work: BatchWorkItem[]): TaskBatchAssignmentResult {
+  return {
+    appliedCount: 0,
+    failures: work.map(({ record, operation }) => ({
+      taskId: record.task.taskId, studentId: operation.studentId, code: 'OPERATION_FAILED',
+    })),
+    aborted: true,
+    notAttempted: [],
+  };
 }
 
 function reserveCanonicalAppend(context: BatchMutationContext): void {
-  if (context.canonicalAppendCount >= MAX_BATCH_CANONICAL_APPENDS) throw new BatchProviderAbortError();
+  if (context.canonicalAppendCount >= MAX_BATCH_CANONICAL_APPENDS) throw new Error('batch append budget exceeded');
   context.canonicalAppendCount += 1;
 }
 
-async function appendBatchAssignment(context: BatchMutationContext, assignment: TaskAssignment): Promise<void> {
-  reserveCanonicalAppend(context);
-  try {
-    await context.store.appendRow(
-      'TaskAssignments',
-      buildTaskAssignmentAppendRow(context.assignmentHeaders, assignment),
-    );
-  } catch (error) {
-    try {
-      assignment = await reconcileAssignmentAppend(context.store, assignment.assignmentId, error);
-    } catch {
-      throw new BatchProviderAbortError();
-    }
-  }
-  if (!context.assignments.some((event) => event.assignmentId === assignment.assignmentId)) {
-    context.assignments.push(assignment);
-  }
-  context.assignmentTouchedTaskIds.add(assignment.taskId);
+function planBatchAssignment(context: BatchMutationContext, task: ClassTask, studentId: string, assigned: boolean): void {
+  const state = materializeBatchAssignments(context, task);
+  const existing = state.students[studentId];
+  if ((existing?.assigned ?? false) === assigned) return;
+  const schedule = resolveTaskSchedule({
+    currentSchedule: task.schedule!, pendingSchedule: task.pendingSchedule ?? null, now: context.now,
+  });
+  planAssignmentEvent(context, createAssignment({
+    task, cycle: state.cycle, ruleVersion: schedule.ruleVersion, timeZone: schedule.timeZone,
+    studentId, status: assigned ? 'ASSIGNED' : 'UNASSIGNED', source: 'ADMIN',
+    previousAssignmentId: existing?.assignmentEvent?.assignmentId ?? '', createdAt: context.now,
+    assignmentId: `A-${crypto.randomUUID()}`, note: '',
+  }));
 }
 
-async function materializeBatchAssignments(
+function materializeBatchAssignments(
   context: BatchMutationContext,
   task: ClassTask,
-): Promise<ReturnType<typeof projectTaskCycleState>> {
+): ReturnType<typeof projectTaskCycleState> {
   const effectiveSchedule = resolveTaskSchedule({
     currentSchedule: task.schedule!, pendingSchedule: task.pendingSchedule ?? null, now: context.now,
   });
@@ -255,13 +314,12 @@ async function materializeBatchAssignments(
   for (const legacyStudentId of legacyStudentIds) {
     const assignmentId = deterministicId('LEGACY', task.taskInstanceId!, state.cycle.cycleId, legacyStudentId);
     if (existingAssignmentIds.has(assignmentId)) continue;
-    const seed = createAssignment({
+    planAssignmentEvent(context, createAssignment({
       task, cycle: state.cycle, ruleVersion: effectiveSchedule.ruleVersion,
       timeZone: effectiveSchedule.timeZone, studentId: legacyStudentId, status: 'ASSIGNED',
       source: 'LEGACY_SEED', previousAssignmentId: '', createdAt: context.now, assignmentId,
       note: 'legacy allowedStudentIds seed',
-    });
-    await appendBatchAssignment(context, seed);
+    }));
     existingAssignmentIds.add(assignmentId);
   }
   if (legacyStudentIds.length > 0) {
@@ -269,18 +327,21 @@ async function materializeBatchAssignments(
       task, now: context.now, assignments: context.assignments, completions: context.completions,
     });
   }
-
   const carries = Object.entries(state.students)
     .filter(([, student]) => student.assignmentOrigin === 'CARRY' && student.assignmentEvent)
-    .map(([studentId, student]) => createAssignment({
+    .map(([carryStudentId, student]) => createAssignment({
       task, cycle: state.cycle, ruleVersion: effectiveSchedule.ruleVersion,
-      timeZone: effectiveSchedule.timeZone, studentId,
+      timeZone: effectiveSchedule.timeZone, studentId: carryStudentId,
       status: student.assigned ? 'ASSIGNED' : 'UNASSIGNED', source: 'CARRY_FORWARD',
       previousAssignmentId: student.assignmentEvent!.assignmentId, createdAt: context.now,
-      assignmentId: deterministicId('CARRY', task.taskInstanceId!, state.cycle.cycleId, studentId),
+      assignmentId: deterministicId('CARRY', task.taskInstanceId!, state.cycle.cycleId, carryStudentId),
       note: 'materialized cycle carry',
-    }));
-  for (const carry of carries) await appendBatchAssignment(context, carry);
+    }))
+    .filter((carry) => !existingAssignmentIds.has(carry.assignmentId));
+  for (const carry of carries) {
+    planAssignmentEvent(context, carry);
+    existingAssignmentIds.add(carry.assignmentId);
+  }
   if (carries.length > 0) {
     state = projectTaskCycleState({
       task, now: context.now, assignments: context.assignments, completions: context.completions,
@@ -289,130 +350,163 @@ async function materializeBatchAssignments(
   return state;
 }
 
-async function mutateBatchAssignment(
-  context: BatchMutationContext,
-  task: ClassTask,
-  studentId: string,
-  assigned: boolean,
-): Promise<void> {
-  const state = await materializeBatchAssignments(context, task);
-  const existing = state.students[studentId];
-  if ((existing?.assigned ?? false) === assigned) return;
-  const schedule = resolveTaskSchedule({
-    currentSchedule: task.schedule!, pendingSchedule: task.pendingSchedule ?? null, now: context.now,
-  });
-  await appendBatchAssignment(context, createAssignment({
-    task, cycle: state.cycle, ruleVersion: schedule.ruleVersion, timeZone: schedule.timeZone,
-    studentId, status: assigned ? 'ASSIGNED' : 'UNASSIGNED', source: 'ADMIN',
-    previousAssignmentId: existing?.assignmentEvent?.assignmentId ?? '', createdAt: context.now,
-    assignmentId: `A-${crypto.randomUUID()}`, note: '',
-  }));
+function planAssignmentEvent(context: BatchMutationContext, assignment: TaskAssignment): void {
+  reserveCanonicalAppend(context);
+  context.pendingAssignments.push(assignment);
+  context.assignments.push(assignment);
 }
 
-async function mutateBatchCompletion(
+function findPriorAssignmentForCompletionRecovery(
+  assignments: TaskAssignment[],
+  task: ClassTask,
+  studentId: string,
+  latestEvent: TaskAssignment | null | undefined,
+): TaskAssignment | null {
+  if (!latestEvent || latestEvent.status !== 'UNASSIGNED' || !latestEvent.previousAssignmentId
+    || latestEvent.taskId !== task.taskId || latestEvent.taskInstanceId !== task.taskInstanceId
+    || latestEvent.studentId !== studentId) return null;
+  return assignments.find((event) => event.assignmentId === latestEvent.previousAssignmentId
+    && event.status === 'ASSIGNED'
+    && event.taskId === latestEvent.taskId
+    && event.taskInstanceId === latestEvent.taskInstanceId
+    && event.cycleId === latestEvent.cycleId
+    && event.studentId === latestEvent.studentId) ?? null;
+}
+
+function planBatchCompletion(
   context: BatchMutationContext,
   task: ClassTask,
   student: Student,
   completed: boolean,
-): Promise<void> {
+  allowLinkedUnassignmentRecovery: boolean,
+): void {
   let state = projectTaskCycleState({
     task, now: context.now, assignments: context.assignments, completions: context.completions,
   });
   let studentState = state.students[student.studentId];
+  if (allowLinkedUnassignmentRecovery && !studentState?.assigned && studentState?.completionEvent
+    && studentState.completionEvent.taskInstanceId === task.taskInstanceId
+    && studentState.completionEvent.cycleId === state.cycle.cycleId
+    && studentState.completed === completed) return;
   const resetEvent = !completed && studentState?.completed && !studentState.assigned
     ? studentState.completionEvent ?? null
     : null;
   let assignmentId = resetEvent
     ? resetEvent.assignmentId || legacyCompletionReference(resetEvent.completionId)
     : '';
-
   if (!resetEvent) {
-    if (state.assignedStudentIds.length === 0) throw new Error('부여된 학생이 없습니다.');
-    if (!(studentState?.assigned ?? false)) throw new Error('허가되지 않은 과제입니다.');
-    state = await materializeBatchAssignments(context, task);
-    studentState = state.students[student.studentId];
-    assignmentId = studentState?.assignmentEvent?.assignmentId ?? '';
-    if (!studentState?.assigned || !assignmentId) throw new Error('허가되지 않은 과제입니다.');
+    const recoveryAssignment = allowLinkedUnassignmentRecovery
+      ? findPriorAssignmentForCompletionRecovery(
+        context.assignments, task, student.studentId, studentState?.assignmentEvent,
+      )
+      : null;
+    if (!studentState?.assigned && !recoveryAssignment) {
+      if (state.assignedStudentIds.length === 0) throw new Error('부여된 학생이 없습니다.');
+      throw new Error('허가되지 않은 과제입니다.');
+    }
+    if (recoveryAssignment) {
+      assignmentId = recoveryAssignment.assignmentId;
+    } else {
+      state = materializeBatchAssignments(context, task);
+      studentState = state.students[student.studentId];
+      assignmentId = studentState?.assignmentEvent?.assignmentId ?? '';
+      if (!studentState?.assigned || !assignmentId) throw new Error('허가되지 않은 과제입니다.');
+    }
   }
-
   const schedule = resolveTaskSchedule({
     currentSchedule: task.schedule!, pendingSchedule: task.pendingSchedule ?? null, now: context.now,
   });
   if (!resetEvent
     && (studentState!.completionOrigin === 'CARRY' || studentState!.completionOrigin === 'LEGACY')
     && studentState!.completionEvent) {
-    const carry = createBatchCompletion({
+    planCompletionEvent(context, createBatchCompletion({
       task, student, cycle: state.cycle, ruleVersion: schedule.ruleVersion, timeZone: schedule.timeZone,
       assignmentId, timestamp: context.now, source: 'CARRY_FORWARD',
       status: studentState!.completed ? 'SUCCESS' : 'RESET', note: 'materialized cycle carry',
-    });
-    await appendBatchCompletion(context, carry);
+    }));
     state = projectTaskCycleState({
       task, now: context.now, assignments: context.assignments, completions: context.completions,
     });
   }
-
   const effectiveCompleted = state.students[student.studentId]?.completed ?? false;
   if (effectiveCompleted === completed) return;
-  const completion = createBatchCompletion({
+  planCompletionEvent(context, createBatchCompletion({
     task, student, cycle: state.cycle, ruleVersion: schedule.ruleVersion, timeZone: schedule.timeZone,
     assignmentId, timestamp: context.now, source: completed ? 'ADMIN' : 'ADMIN_RESET',
     status: completed ? 'SUCCESS' : 'RESET', note: completed ? 'admin-completion' : 'admin-reset',
-  });
-  await appendBatchCompletion(context, completion);
+  }));
 }
 
-async function appendBatchCompletion(context: BatchMutationContext, completion: TaskCompletion): Promise<void> {
+function planCompletionEvent(context: BatchMutationContext, completion: TaskCompletion): void {
   reserveCanonicalAppend(context);
+  context.pendingCompletions.push(completion);
+  context.completions.push(completion);
+}
+
+async function flushAssignmentBatch(context: BatchMutationContext): Promise<void> {
+  if (context.pendingAssignments.length === 0) return;
+  if (!context.store.appendRows) throw new Error('batch append unavailable');
+  const rows = context.pendingAssignments.map((event) =>
+    buildTaskAssignmentAppendRow(context.assignmentHeaders, event));
   try {
-    await context.store.appendRow(
-      'TaskCompletions', buildTaskCompletionAppendRow(context.completionHeaders, completion),
-    );
+    await context.store.appendRows('TaskAssignments', rows);
   } catch (error) {
-    try {
-      completion = await reconcileCompletionAppend(context.store, completion.completionId, error);
-    } catch {
-      throw new BatchProviderAbortError();
-    }
-  }
-  if (!context.completions.some((event) => event.completionId === completion.completionId)) {
-    context.completions.push(completion);
+    await reconcileAssignmentBatch(
+      context.store, new Set(context.pendingAssignments.map((event) => event.assignmentId)), error,
+    );
   }
 }
 
-async function reconcileAssignmentAppend(
+async function flushCompletionBatch(context: BatchMutationContext): Promise<void> {
+  if (context.pendingCompletions.length === 0) return;
+  if (!context.store.appendRows) throw new Error('batch append unavailable');
+  const rows = context.pendingCompletions.map((event) =>
+    buildTaskCompletionAppendRow(context.completionHeaders, event));
+  try {
+    await context.store.appendRows('TaskCompletions', rows);
+  } catch (error) {
+    await reconcileCompletionBatch(
+      context.store, new Set(context.pendingCompletions.map((event) => event.completionId)), error,
+    );
+  }
+}
+
+async function reconcileAssignmentBatch(
   store: RecurringSchemaMigrationStore,
-  assignmentId: string,
+  assignmentIds: Set<string>,
   appendError: unknown,
-): Promise<TaskAssignment> {
+): Promise<void> {
   if (!store.getRowsFresh) throw appendError;
   try {
     const rows = await store.getRowsFresh('TaskAssignments');
     const [headers, ...dataRows] = rows;
     if (!headers) throw appendError;
-    const observed = parseTaskAssignmentRows(dataRows, createHeaderIndex(headers))
-      .find((event) => event.assignmentId === assignmentId);
-    if (observed) return observed;
+    for (const event of parseTaskAssignmentRows(dataRows, createHeaderIndex(headers))) {
+      assignmentIds.delete(event.assignmentId);
+    }
+    if (assignmentIds.size === 0) return;
   } catch (reconciliationError) {
     if (reconciliationError === appendError) throw reconciliationError;
   }
   throw appendError;
 }
 
-async function reconcileCompletionAppend(
+async function reconcileCompletionBatch(
   store: RecurringSchemaMigrationStore,
-  completionId: string,
+  completionIds: Set<string>,
   appendError: unknown,
-): Promise<TaskCompletion> {
+): Promise<void> {
   if (!store.getRowsFresh) throw appendError;
   try {
     const rows = await store.getRowsFresh('TaskCompletions');
     const [headers, ...dataRows] = rows;
     if (!headers) throw appendError;
     const index = createHeaderIndex(headers);
-    const observed = dataRows.map((row) => parseTaskCompletionRow(row, index))
-      .find((event): event is TaskCompletion => event?.completionId === completionId);
-    if (observed) return observed;
+    for (const row of dataRows) {
+      const event = parseTaskCompletionRow(row, index);
+      if (event) completionIds.delete(event.completionId);
+    }
+    if (completionIds.size === 0) return;
   } catch (reconciliationError) {
     if (reconciliationError === appendError) throw reconciliationError;
   }
@@ -457,23 +551,28 @@ async function mirrorBatchAssignments(
       taskId, code: LEGACY_MIRROR_WARNING,
     }));
   }
-  const warnings: TaskBatchAssignmentWarning[] = [];
-  for (const taskId of mirrorTaskIds) {
+  const updates = mirrorTaskIds.flatMap((taskId) => {
     const record = recordsById.get(taskId)!;
     const state = projectTaskCycleState({
       task: record.task, now: context.now, assignments: observedAssignments, completions: context.completions,
     });
     const allowedStudentIds = state.assignedStudentIds.join(',');
-    if (record.task.allowedStudentIds.join(',') === allowedStudentIds) continue;
-    try {
-      await context.store.updateCell(
-        'Tasks', record.rowNumber, 'allowedStudentIds', allowedStudentIds,
-      );
-    } catch {
-      warnings.push({ taskId, code: LEGACY_MIRROR_WARNING });
-    }
+    return record.task.allowedStudentIds.join(',') === allowedStudentIds
+      ? []
+      : [{ taskId, rowNumber: record.rowNumber, allowedStudentIds }];
+  });
+  if (updates.length === 0) return [];
+  if (!context.store.updateCells) {
+    return updates.map(({ taskId }) => ({ taskId, code: LEGACY_MIRROR_WARNING }));
   }
-  return warnings;
+  try {
+    await context.store.updateCells('Tasks', updates.map(({ rowNumber, allowedStudentIds }) => ({
+      rowNumber, columnName: 'allowedStudentIds', value: allowedStudentIds,
+    })));
+    return [];
+  } catch {
+    return updates.map(({ taskId }) => ({ taskId, code: LEGACY_MIRROR_WARNING }));
+  }
 }
 
 function legacyCompletionReference(completionId: string): string {
@@ -697,6 +796,25 @@ async function appendCanonical(
   } catch (error) {
     await reconcileAssignmentAppend(store, assignment.assignmentId, error);
   }
+}
+
+async function reconcileAssignmentAppend(
+  store: RecurringSchemaMigrationStore,
+  assignmentId: string,
+  appendError: unknown,
+): Promise<void> {
+  if (!store.getRowsFresh) throw appendError;
+  try {
+    const rows = await store.getRowsFresh('TaskAssignments');
+    const [headers, ...dataRows] = rows;
+    if (!headers) throw appendError;
+    const observed = parseTaskAssignmentRows(dataRows, createHeaderIndex(headers))
+      .some((event) => event.assignmentId === assignmentId);
+    if (observed) return;
+  } catch (reconciliationError) {
+    if (reconciliationError === appendError) throw reconciliationError;
+  }
+  throw appendError;
 }
 
 async function readFreshTaskAssignments(store: RecurringSchemaMigrationStore): Promise<TaskAssignment[]> {

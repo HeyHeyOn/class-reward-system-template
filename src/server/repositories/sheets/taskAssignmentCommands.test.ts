@@ -15,11 +15,19 @@ const task: ClassTask = {
 class MemoryStore {
   rows: Record<string, string[][]>;
   appendRow = vi.fn(async (sheet: string, values: string[]) => { this.rows[sheet].push([...values]); });
+  appendRows = vi.fn(async (sheet: string, rows: string[][]) => {
+    this.rows[sheet].push(...rows.map((row) => [...row]));
+  });
   updateCell = vi.fn(async (sheet: string, row: number, column: string, value: string | number) => {
     const index = this.rows[sheet][0].indexOf(column);
     this.rows[sheet][row - 1][index] = String(value);
   });
-  updateCells = vi.fn();
+  updateCells = vi.fn(async (sheet: string, updates: Array<{ rowNumber: number; columnName: string; value: string | number }>) => {
+    for (const update of updates) {
+      const index = this.rows[sheet][0].indexOf(update.columnName);
+      this.rows[sheet][update.rowNumber - 1][index] = String(update.value);
+    }
+  });
   updateHeaderRow = vi.fn();
   deleteRow = vi.fn();
   deleteRows = vi.fn();
@@ -42,7 +50,7 @@ class MemoryStore {
       pendingResetCompletionOnCycle: '', pendingResetAssignmentOnCycle: '',
     };
     this.rows = {
-      Students: [['studentId', 'name', 'balance', 'qrValue', 'status', 'note'], ['S1', 'Student 1', '0', 'S1', 'ACTIVE', ''], ['S2', 'Student 2', '0', 'S2', 'ACTIVE', '']],
+      Students: [['studentId', 'name', 'balance', 'qrValue', 'status', 'note'], ['S1', 'Student 1', '0', 'S1', 'ACTIVE', ''], ['S2', 'Student 2', '0', 'S2', 'ACTIVE', ''], ['S3', 'Student 3', '0', 'S3', 'ACTIVE', ''], ['S4', 'Student 4', '0', 'S4', 'ACTIVE', '']],
       Tasks: [[...TASK_SCHEMA_HEADERS], TASK_SCHEMA_HEADERS.map((header) => values[header] ?? '')],
       TaskCompletions: [[...TASK_COMPLETION_SCHEMA_HEADERS]],
       TaskAssignments: [[...TASK_ASSIGNMENT_HEADERS], ...(options.assignments ?? [])],
@@ -479,6 +487,71 @@ describe('assignment ledger mutation command', () => {
 });
 
 describe('batch explicit assignment command', () => {
+  it('flushes a mixed two-task four-student request with one provider batch per ledger and one mirror batch', async () => {
+    const store = new MemoryStore();
+    const t2 = store.rows.Tasks[1].map((value) => value);
+    t2[TASK_SCHEMA_HEADERS.indexOf('taskId')] = 'T2';
+    t2[TASK_SCHEMA_HEADERS.indexOf('taskInstanceId')] = 'I2';
+    store.rows.Tasks.push(t2);
+
+    const result = await updateTaskAssignmentsBatch(store, [
+      { taskId: 'T1', operations: [
+        { studentId: 'S1', assigned: true, completed: true, source: 'ADMIN' },
+        { studentId: 'S2', assigned: true, source: 'ADMIN' },
+      ] },
+      { taskId: 'T2', operations: [
+        { studentId: 'S3', assigned: true, source: 'ADMIN' },
+        { studentId: 'S4', assigned: true, completed: true, source: 'ADMIN' },
+      ] },
+    ], { now: () => NOW });
+
+    expect(result).toEqual({ appliedCount: 4, failures: [] });
+    expect(store.appendRows.mock.calls.filter(([sheet]) => sheet === 'TaskAssignments')).toHaveLength(1);
+    expect(store.appendRows.mock.calls.filter(([sheet]) => sheet === 'TaskCompletions')).toHaveLength(1);
+    expect(store.appendRow).not.toHaveBeenCalled();
+    expect(store.updateCells.mock.calls.filter(([sheet]) => sheet === 'Tasks')).toHaveLength(1);
+    expect(store.updateCell).not.toHaveBeenCalled();
+    expect(store.rows.TaskAssignments.slice(1)).toHaveLength(4);
+    expect(store.rows.TaskCompletions.slice(1)).toHaveLength(2);
+    expect(store.rows.Tasks.slice(1).map((row) => row[TASK_SCHEMA_HEADERS.indexOf('allowedStudentIds')]))
+      .toEqual(['S1,S2', 'S3,S4']);
+  });
+
+  it('performs no ledger provider writes for a canonical no-op', async () => {
+    const current = assignmentRow({
+      assignmentId: 'A-current', cycleId: 'v1|I1|r1|2026-08-25T00:00:00Z',
+      cycleStartsAt: '2026-08-25T00:00:00.000Z', cycleEndsAt: '2026-08-26T00:00:00.000Z',
+    });
+    const store = new MemoryStore({ assignments: [current] });
+
+    await expect(updateTaskAssignmentsBatch(store, [{
+      taskId: 'T1', operations: [{ studentId: 'S1', assigned: true, source: 'ADMIN' }],
+    }], { now: () => NOW })).resolves.toEqual({ appliedCount: 0, failures: [] });
+
+    expect(store.appendRows).not.toHaveBeenCalled();
+    expect(store.appendRow).not.toHaveBeenCalled();
+  });
+
+  it('reconciles every row after a multi-row completion batch response loss with one fresh ledger read', async () => {
+    const store = new MemoryStore();
+    store.appendRows.mockImplementation(async (sheet: string, rows: string[][]) => {
+      store.rows[sheet].push(...rows.map((row) => [...row]));
+      if (sheet === 'TaskCompletions') throw new Error('private provider range response lost');
+    });
+
+    const result = await updateTaskAssignmentsBatch(store, [{ taskId: 'T1', operations: [
+      { studentId: 'S1', assigned: true, completed: true, source: 'ADMIN' },
+      { studentId: 'S2', assigned: true, completed: true, source: 'ADMIN' },
+    ] }], { now: () => NOW });
+
+    expect(result).toEqual({ appliedCount: 2, failures: [] });
+    expect(store.appendRows.mock.calls.filter(([sheet]) => sheet === 'TaskCompletions')).toHaveLength(1);
+    expect(store.rows.TaskCompletions.slice(1)).toHaveLength(2);
+    expect(store.getRowsFresh.mock.calls.filter(([sheet]) => sheet === 'TaskCompletions')).toHaveLength(2);
+    expect(store.updateCells).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(result)).not.toMatch(/provider|range/);
+  });
+
   it('uses a fresh physical assignment snapshot before deciding a batch no-op', async () => {
     const current = assignmentRow({
       assignmentId: 'A-current', cycleId: 'v1|I1|r1|2026-08-25T00:00:00Z',
@@ -543,7 +616,11 @@ describe('batch explicit assignment command', () => {
     }] }], { now: () => NOW });
     expect(result).toEqual({ appliedCount: 0, failures: [] });
     expect(store.appendRow).not.toHaveBeenCalled();
-    expect(store.updateCell).toHaveBeenCalledWith('Tasks', 2, 'allowedStudentIds', 'S1');
+    expect(store.appendRows).not.toHaveBeenCalled();
+    expect(store.updateCells).toHaveBeenCalledWith('Tasks', [
+      { rowNumber: 2, columnName: 'allowedStudentIds', value: 'S1' },
+    ]);
+    expect(store.updateCell).not.toHaveBeenCalled();
     expect(store.lookupSheet.mock.calls.filter(([sheet]) => sheet === 'Tasks')).toHaveLength(1);
     expect(store.getRows.mock.calls.filter(([sheet]) => sheet === 'Students')).toHaveLength(1);
   });
@@ -631,8 +708,8 @@ describe('batch explicit assignment command', () => {
 
   it('reconciles a committed deterministic legacy seed after append response loss without duplicating it on retry', async () => {
     const store = new MemoryStore({ allowed: ['S1'] });
-    store.appendRow.mockImplementationOnce(async (sheet: string, values: string[]) => {
-      store.rows[sheet].push([...values]);
+    store.appendRows.mockImplementationOnce(async (sheet: string, rows: string[][]) => {
+      store.rows[sheet].push(...rows.map((row) => [...row]));
       throw new Error('response lost after commit');
     });
     const request = [{ taskId: 'T1', operations: [{ studentId: 'S1', assigned: true, source: 'ADMIN' as const }] }];
@@ -668,8 +745,8 @@ describe('batch explicit assignment command', () => {
 
   it('reconciles a committed deterministic carry after response loss without duplicating it on retry', async () => {
     const store = new MemoryStore({ assignments: [assignmentRow()] });
-    store.appendRow.mockImplementationOnce(async (sheet: string, values: string[]) => {
-      store.rows[sheet].push([...values]);
+    store.appendRows.mockImplementationOnce(async (sheet: string, rows: string[][]) => {
+      store.rows[sheet].push(...rows.map((row) => [...row]));
       throw new Error('response lost after carry commit');
     });
     const request = [{ taskId: 'T1', operations: [{ studentId: 'S1', assigned: true, source: 'ADMIN' as const }] }];
@@ -756,9 +833,9 @@ describe('batch explicit assignment command', () => {
     const store = new MemoryStore({ assignments: [current] });
     store.rows.TaskCompletions.push(completionRow());
     const appendOrder: string[] = [];
-    store.appendRow.mockImplementation(async (sheet: string, values: string[]) => {
+    store.appendRows.mockImplementation(async (sheet: string, rows: string[][]) => {
       appendOrder.push(sheet);
-      store.rows[sheet].push([...values]);
+      store.rows[sheet].push(...rows.map((row) => [...row]));
     });
 
     const result = await updateTaskAssignmentsBatch(store, [{
@@ -766,9 +843,147 @@ describe('batch explicit assignment command', () => {
     }], { now: () => NOW });
 
     expect(result).toEqual({ appliedCount: 1, failures: [] });
-    expect(appendOrder).toEqual(['TaskCompletions', 'TaskAssignments']);
+    expect(appendOrder).toEqual(['TaskAssignments', 'TaskCompletions']);
     expect(store.rows.TaskCompletions.at(-1)![TASK_COMPLETION_SCHEMA_HEADERS.indexOf('source')]).toBe('ADMIN_RESET');
     expect(store.rows.TaskAssignments.at(-1)![TASK_ASSIGNMENT_HEADERS.indexOf('status')]).toBe('UNASSIGNED');
+  });
+
+  it('retries completion after the paired unassignment committed without appending another assignment event', async () => {
+    const current = assignmentRow({
+      assignmentId: 'A-current', cycleId: 'v1|I1|r1|2026-08-25T00:00:00Z',
+      cycleStartsAt: '2026-08-25T00:00:00.000Z', cycleEndsAt: '2026-08-26T00:00:00.000Z',
+    });
+    const store = new MemoryStore({ assignments: [current] });
+    let failCompletion = true;
+    store.appendRows.mockImplementation(async (sheet: string, rows: string[][]) => {
+      if (sheet === 'TaskCompletions' && failCompletion) {
+        failCompletion = false;
+        throw new Error('completion unavailable');
+      }
+      store.rows[sheet].push(...rows.map((row) => [...row]));
+    });
+    const request = [{ taskId: 'T1', operations: [
+      { studentId: 'S1', assigned: false, completed: true, source: 'ADMIN' as const },
+    ] }];
+
+    await expect(updateTaskAssignmentsBatch(store, request, { now: () => NOW })).resolves.toMatchObject({
+      appliedCount: 0,
+      failures: [{ taskId: 'T1', studentId: 'S1', code: 'OPERATION_FAILED' }],
+    });
+    await expect(updateTaskAssignmentsBatch(store, request, { now: () => NOW }))
+      .resolves.toEqual({ appliedCount: 1, failures: [] });
+
+    const assignmentEvents = store.rows.TaskAssignments.slice(1);
+    expect(assignmentEvents.filter((row) => row[TASK_ASSIGNMENT_HEADERS.indexOf('status')] === 'UNASSIGNED'))
+      .toHaveLength(1);
+    expect(store.rows.TaskCompletions.slice(1)).toHaveLength(1);
+    expect(store.rows.TaskCompletions[1][TASK_COMPLETION_SCHEMA_HEADERS.indexOf('assignmentId')]).toBe('A-current');
+  });
+
+  it('treats a committed paired completion response loss as success and makes retry a no-op', async () => {
+    const current = assignmentRow({
+      assignmentId: 'A-current', cycleId: 'v1|I1|r1|2026-08-25T00:00:00Z',
+      cycleStartsAt: '2026-08-25T00:00:00.000Z', cycleEndsAt: '2026-08-26T00:00:00.000Z',
+    });
+    const store = new MemoryStore({ assignments: [current] });
+    store.appendRows.mockImplementation(async (sheet: string, rows: string[][]) => {
+      store.rows[sheet].push(...rows.map((row) => [...row]));
+      if (sheet === 'TaskCompletions') throw new Error('completion response lost');
+    });
+    const request = [{ taskId: 'T1', operations: [
+      { studentId: 'S1', assigned: false, completed: true, source: 'ADMIN' as const },
+    ] }];
+
+    await expect(updateTaskAssignmentsBatch(store, request, { now: () => NOW }))
+      .resolves.toEqual({ appliedCount: 1, failures: [] });
+    await expect(updateTaskAssignmentsBatch(store, request, { now: () => NOW }))
+      .resolves.toEqual({ appliedCount: 0, failures: [] });
+
+    expect(store.appendRows.mock.calls.filter(([sheet]) => sheet === 'TaskAssignments')).toHaveLength(1);
+    expect(store.appendRows.mock.calls.filter(([sheet]) => sheet === 'TaskCompletions')).toHaveLength(1);
+    expect(store.rows.TaskCompletions).toHaveLength(2);
+    expect(store.rows.TaskCompletions[1][TASK_COMPLETION_SCHEMA_HEADERS.indexOf('assignmentId')]).toBe('A-current');
+  });
+
+  it('blocks standalone completion after a linked unassignment without ledger or mirror writes', async () => {
+    const assigned = assignmentRow({
+      assignmentId: 'A-current', cycleId: 'v1|I1|r1|2026-08-25T00:00:00Z',
+      cycleStartsAt: '2026-08-25T00:00:00.000Z', cycleEndsAt: '2026-08-26T00:00:00.000Z',
+    });
+    const unassigned = assignmentRow({
+      assignmentId: 'A-unassigned', status: 'UNASSIGNED', previousAssignmentId: 'A-current',
+      cycleId: 'v1|I1|r1|2026-08-25T00:00:00Z', cycleStartsAt: '2026-08-25T00:00:00.000Z',
+      cycleEndsAt: '2026-08-26T00:00:00.000Z', createdAt: '2026-08-25T11:00:00.000Z',
+    });
+    const anotherStudent = assignmentRow({
+      assignmentId: 'A-s2', studentId: 'S2', cycleId: 'v1|I1|r1|2026-08-25T00:00:00Z',
+      cycleStartsAt: '2026-08-25T00:00:00.000Z', cycleEndsAt: '2026-08-26T00:00:00.000Z',
+    });
+    const store = new MemoryStore({ assignments: [assigned, unassigned, anotherStudent] });
+
+    await expect(updateTaskAssignmentsBatch(store, [{ taskId: 'T1', operations: [
+      { studentId: 'S1', completed: true, source: 'ADMIN' },
+    ] }], { now: () => NOW })).resolves.toEqual({
+      appliedCount: 0,
+      failures: [{ taskId: 'T1', studentId: 'S1', code: 'OPERATION_FAILED' }],
+      aborted: true,
+      notAttempted: [],
+    });
+    expect(store.appendRows).not.toHaveBeenCalled();
+    expect(store.appendRow).not.toHaveBeenCalled();
+    expect(store.updateCells).not.toHaveBeenCalled();
+    expect(store.updateCell).not.toHaveBeenCalled();
+  });
+
+  it('blocks standalone completion retries after paired completion already committed', async () => {
+    const assigned = assignmentRow({
+      assignmentId: 'A-current', cycleId: 'v1|I1|r1|2026-08-25T00:00:00Z',
+      cycleStartsAt: '2026-08-25T00:00:00.000Z', cycleEndsAt: '2026-08-26T00:00:00.000Z',
+    });
+    const unassigned = assignmentRow({
+      assignmentId: 'A-unassigned', status: 'UNASSIGNED', previousAssignmentId: 'A-current',
+      cycleId: 'v1|I1|r1|2026-08-25T00:00:00Z', cycleStartsAt: '2026-08-25T00:00:00.000Z',
+      cycleEndsAt: '2026-08-26T00:00:00.000Z', createdAt: '2026-08-25T11:00:00.000Z',
+    });
+    const anotherStudent = assignmentRow({
+      assignmentId: 'A-s2', studentId: 'S2', cycleId: 'v1|I1|r1|2026-08-25T00:00:00Z',
+      cycleStartsAt: '2026-08-25T00:00:00.000Z', cycleEndsAt: '2026-08-26T00:00:00.000Z',
+    });
+    const store = new MemoryStore({ assignments: [assigned, unassigned, anotherStudent] });
+    store.rows.TaskCompletions.push(completionRow({ assignmentId: 'A-current' }));
+
+    await expect(updateTaskAssignmentsBatch(store, [{ taskId: 'T1', operations: [
+      { studentId: 'S1', completed: true, source: 'ADMIN' },
+    ] }], { now: () => NOW })).resolves.toEqual({
+      appliedCount: 0,
+      failures: [{ taskId: 'T1', studentId: 'S1', code: 'OPERATION_FAILED' }],
+      aborted: true,
+      notAttempted: [],
+    });
+    expect(store.appendRows).not.toHaveBeenCalled();
+    expect(store.updateCells).not.toHaveBeenCalled();
+  });
+
+  it('does not authorize completion from an unassignment whose prior assignment is absent', async () => {
+    const unassigned = assignmentRow({
+      assignmentId: 'A-unassigned', status: 'UNASSIGNED', previousAssignmentId: 'A-missing',
+      cycleId: 'v1|I1|r1|2026-08-25T00:00:00Z', cycleStartsAt: '2026-08-25T00:00:00.000Z',
+      cycleEndsAt: '2026-08-26T00:00:00.000Z',
+    });
+    const anotherStudent = assignmentRow({
+      assignmentId: 'A-s2', studentId: 'S2', cycleId: 'v1|I1|r1|2026-08-25T00:00:00Z',
+      cycleStartsAt: '2026-08-25T00:00:00.000Z', cycleEndsAt: '2026-08-26T00:00:00.000Z',
+    });
+    const store = new MemoryStore({ assignments: [unassigned, anotherStudent] });
+
+    await expect(updateTaskAssignmentsBatch(store, [{ taskId: 'T1', operations: [
+      { studentId: 'S1', assigned: false, completed: true, source: 'ADMIN' },
+    ] }], { now: () => NOW })).resolves.toMatchObject({
+      appliedCount: 0,
+      failures: [{ taskId: 'T1', studentId: 'S1', code: 'OPERATION_FAILED' }],
+      aborted: true,
+    });
+    expect(store.appendRows).not.toHaveBeenCalled();
   });
 
   it('reports mirror failures as sanitized warnings after canonical success and updates each task at most once', async () => {
@@ -777,9 +992,7 @@ describe('batch explicit assignment command', () => {
     t2[TASK_SCHEMA_HEADERS.indexOf('taskId')] = 'T2';
     t2[TASK_SCHEMA_HEADERS.indexOf('taskInstanceId')] = 'I2';
     store.rows.Tasks.push(t2);
-    store.updateCell.mockImplementation(async (_sheet: string, row: number) => {
-      if (row === 2) throw new Error('provider private A1:Z99');
-    });
+    store.updateCells.mockRejectedValueOnce(new Error('provider private A1:Z99'));
 
     const result = await updateTaskAssignmentsBatch(store, [
       { taskId: 'T1', operations: [
@@ -792,23 +1005,97 @@ describe('batch explicit assignment command', () => {
     expect(result).toEqual({
       appliedCount: 3,
       failures: [],
-      warnings: [{ taskId: 'T1', code: 'LEGACY_MIRROR_UPDATE_FAILED' }],
+      warnings: [
+        { taskId: 'T1', code: 'LEGACY_MIRROR_UPDATE_FAILED' },
+        { taskId: 'T2', code: 'LEGACY_MIRROR_UPDATE_FAILED' },
+      ],
     });
     expect(JSON.stringify(result)).not.toMatch(/provider|A1|Z99/);
     expect(store.getRows.mock.calls.filter(([sheet]) => sheet === 'TaskAssignments')).toHaveLength(2);
     expect(store.getRowsFresh.mock.calls.filter(([sheet]) => sheet === 'TaskAssignments')).toHaveLength(2);
-    expect(store.updateCell.mock.calls.filter(([sheet]) => sheet === 'Tasks')).toHaveLength(2);
+    expect(store.updateCells.mock.calls.filter(([sheet]) => sheet === 'Tasks')).toHaveLength(1);
+    expect(store.updateCell).not.toHaveBeenCalled();
+  });
+
+  it('attributes a second-operation planning error and retry-covers all unflushed work', async () => {
+    const store = new MemoryStore();
+
+    const result = await updateTaskAssignmentsBatch(store, [{ taskId: 'T1', operations: [
+      { studentId: 'S1', assigned: true, source: 'ADMIN' },
+      { studentId: 'S2', completed: true, source: 'ADMIN' },
+    ] }], { now: () => NOW });
+
+    expect(result).toEqual({
+      appliedCount: 0,
+      failures: [{ taskId: 'T1', studentId: 'S2', code: 'OPERATION_FAILED' }],
+      aborted: true,
+      notAttempted: [{ taskId: 'T1', studentId: 'S1' }],
+    });
+    expect(store.appendRows).not.toHaveBeenCalled();
+    expect(store.appendRow).not.toHaveBeenCalled();
+    expect(store.updateCells).not.toHaveBeenCalled();
+    expect(store.updateCell).not.toHaveBeenCalled();
+  });
+
+  it('reconciles the assignment mirror when a mixed batch completion flush fails', async () => {
+    const store = new MemoryStore();
+    store.appendRows.mockImplementation(async (sheet: string, rows: string[][]) => {
+      if (sheet === 'TaskCompletions') throw new Error('completion unavailable');
+      store.rows[sheet].push(...rows.map((row) => [...row]));
+    });
+
+    const result = await updateTaskAssignmentsBatch(store, [{ taskId: 'T1', operations: [
+      { studentId: 'S1', assigned: true, source: 'ADMIN' },
+      { studentId: 'S2', assigned: true, completed: true, source: 'ADMIN' },
+    ] }], { now: () => NOW });
+
+    expect(result).toEqual({
+      appliedCount: 1,
+      failures: [{ taskId: 'T1', studentId: 'S2', code: 'OPERATION_FAILED' }],
+      aborted: true,
+      notAttempted: [],
+    });
+    expect(store.updateCells).toHaveBeenCalledWith('Tasks', [
+      { rowNumber: 2, columnName: 'allowedStudentIds', value: 'S1,S2' },
+    ]);
+    expect(store.rows.Tasks[1][TASK_SCHEMA_HEADERS.indexOf('allowedStudentIds')]).toBe('S1,S2');
+    expect(store.appendRows.mock.calls.filter(([sheet]) => sheet === 'TaskAssignments')).toHaveLength(1);
+    expect(store.appendRows.mock.calls.filter(([sheet]) => sheet === 'TaskCompletions')).toHaveLength(1);
+  });
+
+  it('returns sanitized mirror warnings when reconciliation after completion failure cannot update Tasks', async () => {
+    const store = new MemoryStore();
+    store.appendRows.mockImplementation(async (sheet: string, rows: string[][]) => {
+      if (sheet === 'TaskCompletions') throw new Error('completion provider private range');
+      store.rows[sheet].push(...rows.map((row) => [...row]));
+    });
+    store.updateCells.mockRejectedValueOnce(new Error('mirror provider private A1:Z99'));
+
+    const result = await updateTaskAssignmentsBatch(store, [{ taskId: 'T1', operations: [
+      { studentId: 'S1', assigned: true, source: 'ADMIN' },
+      { studentId: 'S2', assigned: true, completed: true, source: 'ADMIN' },
+    ] }], { now: () => NOW });
+
+    expect(result).toEqual({
+      appliedCount: 1,
+      failures: [{ taskId: 'T1', studentId: 'S2', code: 'OPERATION_FAILED' }],
+      aborted: true,
+      notAttempted: [],
+      warnings: [{ taskId: 'T1', code: 'LEGACY_MIRROR_UPDATE_FAILED' }],
+    });
+    expect(store.updateCells).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(result)).not.toMatch(/provider|private|range|A1|Z99/);
   });
 
   it('reports a combined pair failure after its first subwrite and makes the sparse pair exactly retryable', async () => {
     const store = new MemoryStore();
     let failCompletion = true;
-    store.appendRow.mockImplementation(async (sheet: string, values: string[]) => {
+    store.appendRows.mockImplementation(async (sheet: string, rows: string[][]) => {
       if (sheet === 'TaskCompletions' && failCompletion) {
         failCompletion = false;
         throw new Error('provider cells A1:Z999 private');
       }
-      store.rows[sheet].push([...values]);
+      store.rows[sheet].push(...rows.map((row) => [...row]));
     });
     const retryTarget = { taskId: 'T1', operations: [{ studentId: 'S1', assigned: true, completed: true, source: 'ADMIN' as const }] };
 
@@ -831,8 +1118,8 @@ describe('batch explicit assignment command', () => {
 
   it('reconciles a committed completion after response loss and does not append it again on retry', async () => {
     const store = new MemoryStore();
-    store.appendRow.mockImplementation(async (sheet: string, values: string[]) => {
-      store.rows[sheet].push([...values]);
+    store.appendRows.mockImplementation(async (sheet: string, rows: string[][]) => {
+      store.rows[sheet].push(...rows.map((row) => [...row]));
       if (sheet === 'TaskCompletions') throw new Error('completion response lost');
     });
     const retryTarget = { taskId: 'T1', operations: [{ studentId: 'S1', assigned: true, completed: true, source: 'ADMIN' as const }] };
@@ -846,9 +1133,12 @@ describe('batch explicit assignment command', () => {
     expect(store.getRowsFresh).toHaveBeenCalledWith('TaskCompletions');
   });
 
-  it('circuit-breaks remaining operations after an unreconciled provider append failure', async () => {
+  it('retry-covers every submitted operation after a partial assignment batch commit', async () => {
     const store = new MemoryStore();
-    store.appendRow.mockRejectedValueOnce(new Error('provider unavailable private range'));
+    store.appendRows.mockImplementationOnce(async (sheet: string, rows: string[][]) => {
+      store.rows[sheet].push([...rows[0]]);
+      throw new Error('provider unavailable private range');
+    });
 
     const result = await updateTaskAssignmentsBatch(store, [{ taskId: 'T1', operations: [
       { studentId: 'S1', assigned: true, source: 'ADMIN' },
@@ -857,11 +1147,39 @@ describe('batch explicit assignment command', () => {
 
     expect(result).toEqual({
       appliedCount: 0,
-      failures: [{ taskId: 'T1', studentId: 'S1', code: 'OPERATION_FAILED' }],
+      failures: [
+        { taskId: 'T1', studentId: 'S1', code: 'OPERATION_FAILED' },
+        { taskId: 'T1', studentId: 'S2', code: 'OPERATION_FAILED' },
+      ],
       aborted: true,
-      notAttempted: [{ taskId: 'T1', studentId: 'S2' }],
+      notAttempted: [],
     });
-    expect(store.appendRow).toHaveBeenCalledTimes(1);
+    expect(store.rows.TaskAssignments.slice(1)).toHaveLength(1);
+    expect(store.updateCells).not.toHaveBeenCalled();
+    expect(store.updateCell).not.toHaveBeenCalled();
+    expect(JSON.stringify(result)).not.toMatch(/provider|private|range/);
+  });
+
+  it('retry-covers every submitted operation after an unreconciled assignment batch failure', async () => {
+    const store = new MemoryStore();
+    store.appendRows.mockRejectedValueOnce(new Error('provider unavailable private range'));
+
+    const result = await updateTaskAssignmentsBatch(store, [{ taskId: 'T1', operations: [
+      { studentId: 'S1', assigned: true, source: 'ADMIN' },
+      { studentId: 'S2', assigned: true, source: 'ADMIN' },
+    ] }], { now: () => NOW });
+
+    expect(result).toEqual({
+      appliedCount: 0,
+      failures: [
+        { taskId: 'T1', studentId: 'S1', code: 'OPERATION_FAILED' },
+        { taskId: 'T1', studentId: 'S2', code: 'OPERATION_FAILED' },
+      ],
+      aborted: true,
+      notAttempted: [],
+    });
+    expect(store.appendRows).toHaveBeenCalledTimes(1);
+    expect(store.appendRow).not.toHaveBeenCalled();
     expect(JSON.stringify(result)).not.toMatch(/provider|private|range/);
   });
 
@@ -879,6 +1197,7 @@ describe('batch explicit assignment command', () => {
       aborted: true,
       notAttempted: [],
     });
-    expect(store.appendRow).toHaveBeenCalledTimes(250);
+    expect(store.appendRows).not.toHaveBeenCalled();
+    expect(store.appendRow).not.toHaveBeenCalled();
   });
 });

@@ -19,7 +19,7 @@ function activeTenant() {
 }
 
 describe('configured task reset mutation composition root', () => {
-  it('keeps explicit Sheets lazy, forwards the exact Request, and ignores operationId only in the legacy adapter', async () => {
+  it('keeps explicit Sheets lazy and forwards the exact trimmed operationId', async () => {
     const request = new Request('http://localhost/api/tasks/completions/reset', { method: 'POST' });
     const store = { marker: 'sheets' };
     const resetTaskCompletionsBatch = vi.fn(async () => RESULT);
@@ -39,9 +39,11 @@ describe('configured task reset mutation composition root', () => {
     });
 
     expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
-    await expect(command.resetBatch(INPUT)).resolves.toBe(RESULT);
+    await expect(command.resetBatch({ ...INPUT, operationId: `  ${INPUT.operationId}  ` })).resolves.toBe(RESULT);
     expect(createConfiguredSheetsStore).toHaveBeenCalledWith(request);
-    expect(resetTaskCompletionsBatch).toHaveBeenCalledWith(store, INPUT.taskIds);
+    expect(resetTaskCompletionsBatch).toHaveBeenCalledWith(store, INPUT.taskIds, {
+      operationId: INPUT.operationId,
+    });
     expect(getCentralTenantContext).not.toHaveBeenCalled();
     expect(postgresGetter).not.toHaveBeenCalled();
   });

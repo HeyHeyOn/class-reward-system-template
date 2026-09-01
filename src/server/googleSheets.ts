@@ -77,16 +77,27 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
     const missingNames = Array.from(new Set(sheetNames)).filter((sheetName) => !this.rows.has(sheetName));
     if (missingNames.length === 0) return;
 
+    await this.batchPrimeRows(missingNames);
+  }
+
+  async primeRowsFresh(sheetNames: readonly OperationalSheetName[]): Promise<void> {
+    const names = Array.from(new Set(sheetNames));
+    for (const sheetName of names) this.rows.delete(sheetName);
+    if (names.length === 0) return;
+    await this.batchPrimeRows(names);
+  }
+
+  private async batchPrimeRows(sheetNames: readonly OperationalSheetName[]): Promise<void> {
     const sheets = await this.getSheetsClient();
     const response = await this.readWithRetry(() => sheets.spreadsheets.values.batchGet({
       spreadsheetId: this.spreadsheetId,
-      ranges: missingNames.map((sheetName) => isRecurringSheet(sheetName) ? quoteSheetTitle(sheetName) : SHEET_RANGES[sheetName]),
+      ranges: sheetNames.map((sheetName) => isRecurringSheet(sheetName) ? quoteSheetTitle(sheetName) : SHEET_RANGES[sheetName]),
     }));
     const valueRanges = response.data.valueRanges ?? [];
-    if (valueRanges.length !== missingNames.length) {
+    if (valueRanges.length !== sheetNames.length) {
       throw new Error('Google Sheets batch read returned an incomplete snapshot.');
     }
-    missingNames.forEach((sheetName, index) => {
+    sheetNames.forEach((sheetName, index) => {
       this.rows.set(sheetName, Promise.resolve(normalizeRows(valueRanges[index].values ?? [])));
     });
   }
@@ -361,6 +372,13 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
 
   private async resolveLiveRange(sheets: Awaited<ReturnType<typeof createSheetsClient>>, sheetName: OperationalSheetName): Promise<string | null> {
     if (!isRecurringSheet(sheetName)) return SHEET_RANGES[sheetName];
+    const cached = this.rows.get(sheetName);
+    if (cached) {
+      const header = (await cached)[0];
+      if (header?.length) {
+        return a1Range(sheetName, `A:${columnIndexToLetter(header.length - 1)}`);
+      }
+    }
     const lookup = await this.lookupSheet(sheetName);
     if (!lookup.found) return null;
     const header = await this.readWithRetry(() => sheets.spreadsheets.values.get({ spreadsheetId: this.spreadsheetId, range: a1Range(sheetName, '1:1') }));

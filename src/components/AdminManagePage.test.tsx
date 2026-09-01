@@ -85,6 +85,22 @@ describe('AdminManagePage', () => {
           t001AssignmentStatus = t001AssignmentStatus.map((row) => ({ ...row, completed: false }));
           return jsonResponse({ taskIds: ['T001', 'T002'], deletedCount: 3 });
         }
+        if (url === '/api/tasks/assignments/batch' && init?.method === 'POST') {
+          const body = JSON.parse(String(init.body ?? '{}')) as {
+            targets?: Array<{ taskId?: string; operations?: Array<{ studentId?: string; assigned?: boolean; completed?: boolean }> }>;
+          };
+          for (const target of body.targets ?? []) {
+            if (target.taskId !== 'T001') continue;
+            for (const operation of target.operations ?? []) {
+              t001AssignmentStatus = t001AssignmentStatus.map((row) => row.studentId === operation.studentId ? {
+                ...row,
+                ...(typeof operation.assigned === 'boolean' ? { assigned: operation.assigned } : {}),
+                ...(typeof operation.completed === 'boolean' ? { completed: operation.completed } : {}),
+              } : row);
+            }
+          }
+          return jsonResponse({ appliedCount: body.targets?.flatMap((target) => target.operations ?? []).length ?? 0, aborted: false, failures: [], notAttempted: [], warnings: [] });
+        }
         if (url === '/api/tasks/T001/assignments' && init?.method === 'PATCH') {
           const body = JSON.parse(String(init.body ?? '{}'));
           t001AssignmentStatus = t001AssignmentStatus.map((row) => row.studentId === body.studentId ? {
@@ -541,6 +557,7 @@ describe('AdminManagePage', () => {
       body: expect.stringContaining('"allowedStudentIds":["S001"]'),
     })));
 
+    fireEvent.change(screen.getByLabelText('T002 과제명'), { target: { value: '수학 학습지 초안' } });
     fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
     expect(screen.getByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeTruthy();
     expect(await screen.findByText('완료 여부')).toBeTruthy();
@@ -575,15 +592,19 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'S001 김민준 부여 상태' }));
     fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
 
-    await waitFor(() => expect((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.filter(([url, init]) => String(url) === '/api/tasks/T001/assignments' && init?.method === 'PATCH')).toHaveLength(2));
-    const assignmentPatchBodies = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
-      .filter(([url, init]) => String(url) === '/api/tasks/T001/assignments' && init?.method === 'PATCH')
-      .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
-    expect(assignmentPatchBodies).toEqual([
-      { studentId: 'S001', assigned: false, source: 'ADMIN' },
-      { studentId: 'S002', assigned: true, completed: true, source: 'ADMIN' },
-    ]);
+    await waitFor(() => expect((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.filter(([url, init]) => String(url) === '/api/tasks/assignments/batch' && init?.method === 'POST')).toHaveLength(1));
+    const assignmentBatchCall = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
+      .find(([url, init]) => String(url) === '/api/tasks/assignments/batch' && init?.method === 'POST')!;
+    expect(JSON.parse(String((assignmentBatchCall[1] as RequestInit).body))).toEqual({ targets: [{
+      taskId: 'T001',
+      operations: [
+        { studentId: 'S001', assigned: false, source: 'ADMIN' },
+        { studentId: 'S002', assigned: true, completed: true, source: 'ADMIN' },
+      ],
+    }] });
+    expect((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.some(([url, init]) => String(url) === '/api/tasks/T001/assignments' && init?.method === 'PATCH')).toBe(false);
     expect(alert).toHaveBeenCalledWith('과제 부여 저장 완료');
+    expect(screen.getByLabelText('T002 과제명')).toHaveProperty('value', '수학 학습지 초안');
 
     fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
     expect(await screen.findByText('완료 여부')).toBeTruthy();
@@ -655,29 +676,131 @@ describe('AdminManagePage', () => {
 
     await waitFor(() => expect(alert).toHaveBeenCalledWith('과제 부여 저장 완료'));
     expect((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.some(([url, init]) => String(url) === '/api/tasks/T001/assignments' && init?.method === 'PATCH')).toBe(false);
+    expect((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.some(([url, init]) => String(url) === '/api/tasks/assignments/batch' && init?.method === 'POST')).toBe(false);
   });
 
-  it('reconciles a failed combined command and retries only its unresolved completion change', async () => {
+  it('accepts a successful batch response that omits optional fields without reconciling', async () => {
+    const baseFetch = fetch as unknown as ReturnType<typeof vi.fn>;
+    const defaultFetch = baseFetch.getMockImplementation() as (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+    let assignmentGetCount = 0;
+    baseFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/tasks/assignments/batch' && init?.method === 'POST') {
+        return jsonResponse({ appliedCount: 2, failures: [] });
+      }
+      if (url === '/api/tasks/T001/assignments') assignmentGetCount += 1;
+      return defaultFetch(input, init);
+    });
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
+    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'S001 김민준 부여 상태' }));
+    fireEvent.click(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }));
+    fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
+
+    await waitFor(() => expect(alert).toHaveBeenCalledWith('과제 부여 저장 완료'));
+    expect(screen.queryByRole('dialog', { name: '과제 부여' })).toBeNull();
+    expect(assignmentGetCount).toBe(1);
+  });
+
+  it.each([
+    ['missing appliedCount', { failures: [] }],
+    ['negative appliedCount', { appliedCount: -1, failures: [] }],
+    ['fractional appliedCount', { appliedCount: 0.5, failures: [] }],
+    ['unsafe appliedCount', { appliedCount: Number.MAX_SAFE_INTEGER + 1, failures: [] }],
+    ['appliedCount larger than the submitted command count', { appliedCount: 2, failures: [] }],
+    ['missing failures', { appliedCount: 1 }],
+    ['unexpected top-level detail', { appliedCount: 1, failures: [], detail: 'private' }],
+    ['non-array failures', { appliedCount: 1, failures: {} }],
+    ['non-boolean aborted', { appliedCount: 0, failures: [], aborted: 'false' }],
+    ['non-array notAttempted', { appliedCount: 0, failures: [], notAttempted: {} }],
+    ['non-array warnings', { appliedCount: 1, failures: [], warnings: {} }],
+    ['foreign failure task', { appliedCount: 0, failures: [{ taskId: 'T002', studentId: 'S002', code: 'OPERATION_FAILED' }] }],
+    ['foreign failure student', { appliedCount: 0, failures: [{ taskId: 'T001', studentId: 'S001', code: 'OPERATION_FAILED' }] }],
+    ['unknown failure code', { appliedCount: 0, failures: [{ taskId: 'T001', studentId: 'S002', code: 'PRIVATE_PROVIDER_ERROR' }] }],
+    ['failure with provider detail', { appliedCount: 0, failures: [{ taskId: 'T001', studentId: 'S002', code: 'OPERATION_FAILED', message: 'private detail' }] }],
+    ['malformed failure item', { appliedCount: 0, failures: [null] }],
+    ['foreign notAttempted pair', { appliedCount: 0, failures: [], notAttempted: [{ taskId: 'T002', studentId: 'S002' }] }],
+    ['notAttempted item with extra fields', { appliedCount: 0, failures: [], notAttempted: [{ taskId: 'T001', studentId: 'S002', detail: 'private' }] }],
+    ['duplicate failure pair', { appliedCount: 0, failures: [{ taskId: 'T001', studentId: 'S002', code: 'OPERATION_FAILED' }, { taskId: 'T001', studentId: 'S002', code: 'OPERATION_FAILED' }] }],
+    ['duplicate notAttempted pair', { appliedCount: 0, failures: [], notAttempted: [{ taskId: 'T001', studentId: 'S002' }, { taskId: 'T001', studentId: 'S002' }] }],
+    ['duplicate pair across result lists', { appliedCount: 0, failures: [{ taskId: 'T001', studentId: 'S002', code: 'OPERATION_FAILED' }], notAttempted: [{ taskId: 'T001', studentId: 'S002' }] }],
+    ['unknown warning code', { appliedCount: 1, failures: [], warnings: [{ taskId: 'T001', code: 'PRIVATE_PROVIDER_WARNING' }] }],
+    ['foreign warning task', { appliedCount: 1, failures: [], warnings: [{ taskId: 'T002', code: 'LEGACY_MIRROR_UPDATE_FAILED' }] }],
+    ['duplicate warning', { appliedCount: 1, failures: [], warnings: [{ taskId: 'T001', code: 'LEGACY_MIRROR_UPDATE_FAILED' }, { taskId: 'T001', code: 'LEGACY_MIRROR_UPDATE_FAILED' }] }],
+    ['warning with extra fields', { appliedCount: 1, failures: [], warnings: [{ taskId: 'T001', code: 'LEGACY_MIRROR_UPDATE_FAILED', detail: 'private' }] }],
+  ])('rejects a malformed successful batch response: %s', async (_caseName, payload) => {
+    const baseFetch = fetch as unknown as ReturnType<typeof vi.fn>;
+    const defaultFetch = baseFetch.getMockImplementation() as (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+    let assignmentGetCount = 0;
+    baseFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/tasks/assignments/batch' && init?.method === 'POST') return jsonResponse(payload);
+      if (url === '/api/tasks/T001/assignments') assignmentGetCount += 1;
+      return defaultFetch(input, init);
+    });
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
+    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }));
+    fireEvent.click(screen.getByRole('button', { name: 'S002 이서연 완료 상태' }));
+    fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
+
+    await waitFor(() => expect(alert).toHaveBeenCalledWith('과제 부여 저장 결과를 확인하지 못했습니다.'));
+    expect(assignmentGetCount).toBe(1);
+    expect(screen.getByRole('dialog', { name: '과제 부여' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }).textContent).toContain('부여');
+    expect(screen.getByRole('button', { name: 'S002 이서연 완료 상태' }).textContent).toContain('완료');
+
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+    fireEvent.click(screen.getByRole('button', { name: 'QR 과제 부여' }));
+    expect(screen.getByRole('button', { name: '책 읽기 과제 선택' }).textContent).toContain('부여 학생 1명');
+  });
+
+  it('sends explicit unassignment with a standalone completion intent for an unassigned student', async () => {
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
+    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
+
+    fireEvent.click(screen.getByRole('button', { name: 'S002 이서연 완료 상태' }));
+    fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/assignments/batch', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ targets: [{
+        taskId: 'T001',
+        operations: [{ studentId: 'S002', assigned: false, completed: true, source: 'ADMIN' }],
+      }] }),
+    })));
+  });
+
+  it('reconciles a failed complete-then-unassign command and retries the explicit paired intent', async () => {
     const baseFetch = fetch as unknown as ReturnType<typeof vi.fn>;
     const defaultFetch = baseFetch.getMockImplementation() as (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
     let assignmentStatus = [
       { studentId: 'S001', name: '김민준', assigned: true, completed: true },
-      { studentId: 'S002', name: '이서연', assigned: false, completed: false },
+      { studentId: 'S002', name: '이서연', assigned: true, completed: false },
     ];
-    const patchBodies: Array<Record<string, unknown>> = [];
+    const batchBodies: Array<Record<string, unknown>> = [];
     let assignmentGetCount = 0;
     baseFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === '/api/tasks/T001/assignments' && init?.method === 'PATCH') {
+      if (url === '/api/tasks/assignments/batch' && init?.method === 'POST') {
         const body = JSON.parse(String(init.body));
-        patchBodies.push(body);
-        assignmentStatus = assignmentStatus.map((row) => row.studentId === body.studentId ? {
+        batchBodies.push(body);
+        assignmentStatus = assignmentStatus.map((row) => row.studentId === 'S002' ? {
           ...row,
-          ...(typeof body.assigned === 'boolean' ? { assigned: body.assigned } : {}),
-          ...(patchBodies.length > 1 && typeof body.completed === 'boolean' ? { completed: body.completed } : {}),
+          assigned: false,
+          ...(batchBodies.length > 1 ? { completed: true } : {}),
         } : row);
-        if (patchBodies.length === 1) return jsonResponse({ error: '완료 기록 저장 실패' }, { status: 500 });
-        return jsonResponse({ taskId: 'T001', students: assignmentStatus });
+        return batchBodies.length === 1
+          ? jsonResponse({ appliedCount: 0, aborted: false, failures: [{ taskId: 'T001', studentId: 'S002', code: 'OPERATION_FAILED' }], notAttempted: [], warnings: [] })
+          : jsonResponse({ appliedCount: 1, aborted: false, failures: [], notAttempted: [], warnings: [] });
       }
       if (url === '/api/tasks/T001/assignments') {
         assignmentGetCount += 1;
@@ -694,19 +817,21 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'S002 이서연 완료 상태' }));
     fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
 
-    await waitFor(() => expect(alert).toHaveBeenCalledWith(expect.stringContaining('완료 기록 저장 실패')));
+    await waitFor(() => expect(alert).toHaveBeenCalledWith(expect.stringContaining('과제 부여 일부 저장 실패')));
+    expect(alert).not.toHaveBeenCalledWith(expect.stringContaining('provider stack detail'));
     expect(assignmentGetCount).toBe(2);
     expect(screen.getByRole('dialog', { name: '과제 부여' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }).textContent).toContain('부여');
+    expect(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }).textContent).toContain('미부여');
     expect(screen.getByRole('button', { name: 'S002 이서연 완료 상태' }).textContent).toContain('완료');
     expect(alert).not.toHaveBeenCalledWith('과제 부여 저장 완료');
 
     fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
-    await waitFor(() => expect(patchBodies).toHaveLength(2));
-    expect(patchBodies).toEqual([
-      { studentId: 'S002', assigned: true, completed: true, source: 'ADMIN' },
-      { studentId: 'S002', completed: true, source: 'ADMIN' },
+    await waitFor(() => expect(batchBodies).toHaveLength(2));
+    expect(batchBodies).toEqual([
+      { targets: [{ taskId: 'T001', operations: [{ studentId: 'S002', assigned: false, completed: true, source: 'ADMIN' }] }] },
+      { targets: [{ taskId: 'T001', operations: [{ studentId: 'S002', assigned: false, completed: true, source: 'ADMIN' }] }] },
     ]);
+    expect(baseFetch.mock.calls.some(([url, init]) => String(url) === '/api/tasks/T001/assignments' && init?.method === 'PATCH')).toBe(false);
     await waitFor(() => expect(alert).toHaveBeenCalledWith('과제 부여 저장 완료'));
   });
 
@@ -719,9 +844,9 @@ describe('AdminManagePage', () => {
     ];
     baseFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === '/api/tasks/T001/assignments' && init?.method === 'PATCH') {
+      if (url === '/api/tasks/assignments/batch' && init?.method === 'POST') {
         assignmentStatus = assignmentStatus.map((row) => row.studentId === 'S002' ? { ...row, assigned: true } : row);
-        return jsonResponse({ error: '완료 기록 저장 실패' }, { status: 500 });
+        return jsonResponse({ appliedCount: 0, aborted: false, failures: [{ taskId: 'T001', studentId: 'S002', code: 'OPERATION_FAILED' }], notAttempted: [], warnings: [] });
       }
       if (url === '/api/tasks/T001/assignments') return jsonResponse({ taskId: 'T001', students: assignmentStatus });
       return defaultFetch(input, init);
@@ -734,7 +859,7 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }));
     fireEvent.click(screen.getByRole('button', { name: 'S002 이서연 완료 상태' }));
     fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
-    await waitFor(() => expect(alert).toHaveBeenCalledWith(expect.stringContaining('완료 기록 저장 실패')));
+    await waitFor(() => expect(alert).toHaveBeenCalledWith(expect.stringContaining('과제 부여 일부 저장 실패')));
     fireEvent.click(screen.getByRole('button', { name: '취소' }));
 
     fireEvent.click(screen.getByRole('button', { name: 'QR 과제 부여' }));

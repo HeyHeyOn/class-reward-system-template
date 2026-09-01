@@ -66,6 +66,84 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+type AssignmentBatchFailure = { taskId: string; studentId: string; code: 'OPERATION_FAILED' };
+type AssignmentBatchNotAttempted = { taskId: string; studentId: string };
+type AssignmentBatchWarning = { taskId: string; code: 'LEGACY_MIRROR_UPDATE_FAILED' };
+type AssignmentBatchResult = {
+  appliedCount: number;
+  failures: AssignmentBatchFailure[];
+  aborted: boolean;
+  notAttempted: AssignmentBatchNotAttempted[];
+  warnings: AssignmentBatchWarning[];
+};
+
+function hasExactKeys(value: Record<string, unknown>, expected: string[]): boolean {
+  const keys = Object.keys(value).sort();
+  const sortedExpected = [...expected].sort();
+  return keys.length === sortedExpected.length
+    && keys.every((key, index) => key === sortedExpected[index]);
+}
+
+function parseAssignmentBatchResult(
+  value: unknown,
+  taskId: string,
+  submittedStudentIds: Set<string>,
+  commandCount: number,
+): AssignmentBatchResult | null {
+  if (!isRecord(value)
+    || Object.keys(value).some((key) => !['appliedCount', 'failures', 'aborted', 'notAttempted', 'warnings'].includes(key))
+    || !Object.hasOwn(value, 'appliedCount')
+    || !Number.isSafeInteger(value.appliedCount)
+    || Number(value.appliedCount) < 0
+    || Number(value.appliedCount) > commandCount
+    || !Object.hasOwn(value, 'failures')
+    || !Array.isArray(value.failures)) return null;
+  if (Object.hasOwn(value, 'aborted') && typeof value.aborted !== 'boolean') return null;
+  if (Object.hasOwn(value, 'notAttempted') && !Array.isArray(value.notAttempted)) return null;
+  if (Object.hasOwn(value, 'warnings') && !Array.isArray(value.warnings)) return null;
+
+  const failuresValue = value.failures;
+  const notAttemptedValue = Object.hasOwn(value, 'notAttempted') ? value.notAttempted as unknown[] : [];
+  const warningsValue = Object.hasOwn(value, 'warnings') ? value.warnings as unknown[] : [];
+  const failures: AssignmentBatchFailure[] = [];
+  const notAttempted: AssignmentBatchNotAttempted[] = [];
+  const warnings: AssignmentBatchWarning[] = [];
+  const resultPairs = new Set<string>();
+  for (const item of failuresValue) {
+    if (!isRecord(item) || !hasExactKeys(item, ['taskId', 'studentId', 'code'])
+      || item.taskId !== taskId || typeof item.studentId !== 'string'
+      || !submittedStudentIds.has(item.studentId) || item.code !== 'OPERATION_FAILED') return null;
+    const pair = `${item.taskId}\u0000${item.studentId}`;
+    if (resultPairs.has(pair)) return null;
+    resultPairs.add(pair);
+    failures.push({ taskId, studentId: item.studentId, code: 'OPERATION_FAILED' });
+  }
+  for (const item of notAttemptedValue) {
+    if (!isRecord(item) || !hasExactKeys(item, ['taskId', 'studentId'])
+      || item.taskId !== taskId || typeof item.studentId !== 'string'
+      || !submittedStudentIds.has(item.studentId)) return null;
+    const pair = `${item.taskId}\u0000${item.studentId}`;
+    if (resultPairs.has(pair)) return null;
+    resultPairs.add(pair);
+    notAttempted.push({ taskId, studentId: item.studentId });
+  }
+  const warningTaskIds = new Set<string>();
+  for (const item of warningsValue) {
+    if (!isRecord(item) || !hasExactKeys(item, ['taskId', 'code'])
+      || item.taskId !== taskId || item.code !== 'LEGACY_MIRROR_UPDATE_FAILED'
+      || warningTaskIds.has(taskId)) return null;
+    warningTaskIds.add(taskId);
+    warnings.push({ taskId, code: 'LEGACY_MIRROR_UPDATE_FAILED' });
+  }
+  return {
+    appliedCount: Number(value.appliedCount),
+    failures,
+    aborted: Object.hasOwn(value, 'aborted') ? value.aborted as boolean : false,
+    notAttempted,
+    warnings,
+  };
+}
+
 function isCreatedProduct(value: unknown, expectedProductId: string): value is Product {
   if (!isRecord(value)) return false;
   return value.productId === expectedProductId
@@ -1029,7 +1107,7 @@ export function AdminManagePage() {
       if (wasAssigned === assigned && wasCompleted === completed) return [];
       return [{
         studentId: student.studentId,
-        ...(wasAssigned !== assigned ? { assigned } : {}),
+        ...(wasAssigned !== assigned || (wasCompleted !== completed && completed && !assigned) ? { assigned } : {}),
         ...(wasCompleted !== completed ? { completed } : {}),
         source: 'ADMIN' as const,
       }];
@@ -1041,68 +1119,72 @@ export function AdminManagePage() {
       return;
     }
 
+    const session = { ...assignmentRequest.current };
+    const isCurrentSession = () => assignmentRequest.current.id === session.id
+      && assignmentRequest.current.taskId === session.taskId;
+    const desiredState = {
+      assignedIds: [...taskAssignmentEditor.assignedIds],
+      completedIds: [...taskAssignmentEditor.completedIds],
+    };
     let authoritativeAssignedIds = [...taskAssignmentEditor.initialAssignedIds];
     let authoritativeCompletedIds = [...taskAssignmentEditor.initialCompletedIds];
-    const failures: Array<{ command: AssignmentCommand; message: string }> = [];
     let reconciliationFailureMessage = '';
     setIsSavingChanges(true);
     try {
-      for (const command of commands) {
-        try {
-          const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/assignments`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(command),
-          });
-          const payload = await response.json();
-          if (!response.ok) throw new Error(payload.error ?? '과제 부여 내용을 저장하지 못했습니다.');
-          if (Array.isArray(payload.students)) {
-            const status = normalizeTaskAssignmentStatus(payload as TaskAssignmentStatus);
-            authoritativeAssignedIds = status.assignedIds;
-            authoritativeCompletedIds = status.completedIds;
-            setTasks((current) => reconcileTaskAssignmentProjection(current, taskId, status));
-            setTaskAssignmentEditor((current) => current?.taskId === taskId ? { ...current, statusRows: status.statusRows } : current);
-          } else {
-            if (typeof command.assigned === 'boolean') {
-              authoritativeAssignedIds = command.assigned
-                ? Array.from(new Set([...authoritativeAssignedIds, command.studentId]))
-                : authoritativeAssignedIds.filter((id) => id !== command.studentId);
-            }
-            if (typeof command.completed === 'boolean') {
-              authoritativeCompletedIds = command.completed
-                ? Array.from(new Set([...authoritativeCompletedIds, command.studentId]))
-                : authoritativeCompletedIds.filter((id) => id !== command.studentId);
-            }
-          }
-        } catch (error) {
-          failures.push({ command, message: error instanceof Error ? error.message : '과제 부여 내용을 저장하지 못했습니다.' });
-        }
+      const response = await fetch('/api/tasks/assignments/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targets: [{ taskId, operations: commands }] }),
+      });
+      const rawPayload: unknown = await response.json().catch(() => ({}));
+      if (!isCurrentSession()) return;
+      if (!response.ok) {
+        const errorMessage = isRecord(rawPayload) && typeof rawPayload.error === 'string'
+          ? rawPayload.error
+          : '과제 부여 내용을 저장하지 못했습니다.';
+        throw new Error(errorMessage);
       }
-
-      if (failures.length > 0) {
-        try {
-          const reconciledStatus = await loadTaskAssignmentStatus(taskId);
-          authoritativeAssignedIds = reconciledStatus.assignedIds;
-          authoritativeCompletedIds = reconciledStatus.completedIds;
-          setTasks((current) => reconcileTaskAssignmentProjection(current, taskId, reconciledStatus));
-          setTaskAssignmentEditor((current) => current?.taskId === taskId ? { ...current, statusRows: reconciledStatus.statusRows } : current);
-        } catch (error) {
-          reconciliationFailureMessage = error instanceof Error
-            ? `, 최신 부여 상태 확인 실패: ${error.message}`
-            : ', 최신 부여 상태를 확인하지 못했습니다.';
-        }
-      }
-
-      setTasks((current) => current.map((item) => item.taskId === taskId ? { ...item, allowedStudentIds: authoritativeAssignedIds } : item));
-      if (failures.length === 0) {
+      const result = parseAssignmentBatchResult(
+        rawPayload, taskId, new Set(commands.map((command) => command.studentId)), commands.length,
+      );
+      if (!result) throw new Error('과제 부여 저장 결과를 확인하지 못했습니다.');
+      const { aborted, failures, notAttempted, warnings } = result;
+      if (failures.length === 0 && notAttempted.length === 0 && !aborted) {
+        setTasks((current) => current.map((item) => item.taskId === taskId
+          ? { ...item, allowedStudentIds: desiredState.assignedIds }
+          : item));
+        setIsSavingChanges(false);
         closeTaskAssignmentEditor();
-        notify('과제 부여 저장 완료');
+        if (warnings.length > 0) {
+          notify(`과제 부여 저장은 완료됐지만 기존 호환 목록 반영에 실패했습니다 (${formatTaskWarnings(warnings, tasks)}). 새로고침 후 확인해 주세요.`);
+        } else {
+          notify('과제 부여 저장 완료');
+        }
         return;
+      }
+
+      const pendingPairs = new Set([...failures, ...notAttempted].flatMap((item) =>
+        item.taskId && item.studentId ? [`${item.taskId}\u0000${item.studentId}`] : []));
+      const pendingCommands = pendingPairs.size > 0
+        ? commands.filter((command) => pendingPairs.has(`${taskId}\u0000${command.studentId}`))
+        : commands;
+      let reconciledStatus: ReturnType<typeof normalizeTaskAssignmentStatus> | null = null;
+      try {
+        reconciledStatus = await loadTaskAssignmentStatus(taskId);
+        if (!isCurrentSession()) return;
+        authoritativeAssignedIds = reconciledStatus.assignedIds;
+        authoritativeCompletedIds = reconciledStatus.completedIds;
+        setTasks((current) => reconcileTaskAssignmentProjection(current, taskId, reconciledStatus!));
+      } catch (error) {
+        if (!isCurrentSession()) return;
+        reconciliationFailureMessage = error instanceof Error
+          ? `, 최신 부여 상태 확인 실패: ${error.message}`
+          : ', 최신 부여 상태를 확인하지 못했습니다.';
       }
 
       let retryAssignedIds = [...authoritativeAssignedIds];
       let retryCompletedIds = [...authoritativeCompletedIds];
-      for (const { command } of failures) {
+      for (const command of pendingCommands) {
         if (typeof command.assigned === 'boolean') {
           retryAssignedIds = command.assigned
             ? Array.from(new Set([...retryAssignedIds, command.studentId]))
@@ -1120,10 +1202,18 @@ export function AdminManagePage() {
         completedIds: retryCompletedIds,
         initialAssignedIds: authoritativeAssignedIds,
         initialCompletedIds: authoritativeCompletedIds,
+        ...(reconciledStatus ? { statusRows: reconciledStatus.statusRows } : {}),
       } : current);
-      notify(`과제 부여 일부 저장 실패 (${commands.length - failures.length}/${commands.length}건 저장): ${failures.map((failure) => failure.message).join(', ')}${reconciliationFailureMessage}`);
+      const retryItems = [
+        ...failures,
+        ...notAttempted.map((item) => ({ ...item, code: 'NOT_ATTEMPTED' })),
+      ];
+      const warningText = warnings.length > 0 ? ` 기존 호환 목록 반영 실패: ${formatTaskWarnings(warnings, tasks)}.` : '';
+      notify(`${aborted ? '과제 부여 처리가 중단되었습니다. ' : '과제 부여 일부 저장 실패. '}다시 시도 대상: ${formatAssignmentFailures(retryItems, tasks, students)}.${warningText}${reconciliationFailureMessage}`);
+    } catch (error) {
+      if (isCurrentSession()) notify(error instanceof Error ? error.message : '과제 부여 내용을 저장하지 못했습니다.');
     } finally {
-      setIsSavingChanges(false);
+      if (isCurrentSession()) setIsSavingChanges(false);
     }
   }
 

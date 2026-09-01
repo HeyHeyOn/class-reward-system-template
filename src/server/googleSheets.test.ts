@@ -120,6 +120,33 @@ describe('GoogleSheetsStore auth and recurring ranges', () => {
     await expect(store.getRows('Tasks')).resolves.toEqual([['taskId', 'title'], ['T1', 'Read']]);
   });
 
+  it('fresh-primes one coherent named snapshot after invalidating stale request rows', async () => {
+    googleMocks.sheetsValuesGet.mockResolvedValueOnce({ data: { values: [['taskId'], ['STALE']] } });
+    googleMocks.sheetsValuesBatchGet.mockResolvedValueOnce({ data: { valueRanges: [
+      { values: [['taskId'], ['FRESH']] },
+      { values: [['studentId'], ['S-FRESH']] },
+      { values: [['assignmentId'], ['A-FRESH']] },
+      { values: [['completionId'], ['C-FRESH']] },
+      { values: [['key', 'value'], ['currencyUnit', '원']] },
+    ] } });
+    const store = new GoogleSheetsStore('sheet-123');
+
+    await expect(store.getRows('Tasks')).resolves.toEqual([['taskId'], ['STALE']]);
+    await store.primeRowsFresh(['Tasks', 'Students', 'TaskAssignments', 'TaskCompletions', 'Settings']);
+
+    expect(googleMocks.sheetsValuesBatchGet).toHaveBeenCalledTimes(1);
+    expect(googleMocks.sheetsValuesBatchGet).toHaveBeenCalledWith({
+      spreadsheetId: 'sheet-123',
+      ranges: ["'Tasks'", "'Students'!A:Z", "'TaskAssignments'", "'TaskCompletions'", "'Settings'!A:Z"],
+    });
+    await expect(store.getRows('Tasks')).resolves.toEqual([['taskId'], ['FRESH']]);
+    await expect(store.getRows('Students')).resolves.toEqual([['studentId'], ['S-FRESH']]);
+    expect(googleMocks.sheetsValuesGet).toHaveBeenCalledTimes(1);
+    expect(googleMocks.sheetsApi.spreadsheets.get).not.toHaveBeenCalled();
+    expect(googleMocks.sheetsApi.spreadsheets.values.append).not.toHaveBeenCalled();
+    expect(googleMocks.sheetsApi.spreadsheets.values.update).not.toHaveBeenCalled();
+  });
+
   it('updates an existing setting through the adapter when its value header has surrounding whitespace', async () => {
     googleMocks.sheetsValuesGet.mockResolvedValue({
       data: { values: [['key', ' value '], ['currencyUnit', '원']] },
@@ -409,6 +436,40 @@ describe('GoogleSheetsStore auth and recurring ranges', () => {
         requestBody: { requests: [{ addSheet: { properties: { title: sheetName } } }] },
       });
       expect(googleMocks.sheetsApi.spreadsheets.values.append).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it.each(['getRows', 'primeRows'] as const)(
+    'uses the %s request snapshot header for one recurring multi-row append without metadata or header reads',
+    async (cacheSource) => {
+      const rows = [taskHeader, [...taskHeader.map((_, index) => `value${index + 1}`)]];
+      const appended = [
+        Array.from({ length: 29 }, (_, index) => `new-a-${index + 1}`),
+        Array.from({ length: 29 }, (_, index) => `new-b-${index + 1}`),
+      ];
+      if (cacheSource === 'getRows') {
+        googleMocks.sheetsValuesGet.mockResolvedValueOnce({ data: { values: rows } });
+      } else {
+        googleMocks.sheetsValuesBatchGet.mockResolvedValueOnce({
+          data: { valueRanges: [{ values: rows }] },
+        });
+      }
+      const store = new GoogleSheetsStore('sheet-123');
+
+      if (cacheSource === 'getRows') await store.getRows('Tasks');
+      else await store.primeRows(['Tasks']);
+      await store.appendRows('Tasks', appended);
+
+      expect(googleMocks.sheetsApi.spreadsheets.values.append).toHaveBeenCalledTimes(1);
+      expect(googleMocks.sheetsApi.spreadsheets.values.append).toHaveBeenCalledWith({
+        spreadsheetId: 'sheet-123',
+        range: "'Tasks'!A:AC",
+        valueInputOption: 'RAW',
+        insertDataOption: 'INSERT_ROWS',
+        requestBody: { values: appended },
+      });
+      expect(googleMocks.sheetsApi.spreadsheets.get).not.toHaveBeenCalled();
+      expect(googleMocks.sheetsValuesGet).toHaveBeenCalledTimes(cacheSource === 'getRows' ? 1 : 0);
     },
   );
 

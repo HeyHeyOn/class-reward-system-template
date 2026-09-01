@@ -222,6 +222,144 @@ function versionedScheduleMutationStore(warning?: 'current' | 'pending', coordin
   return { store, writes, migrationWrite, taskWrite };
 }
 
+function resetBatchStore({
+  taskCount = 2,
+  studentsPerTask = 2,
+  completed = true,
+  appendOutcome = 'success',
+}: {
+  taskCount?: number;
+  studentsPerTask?: number;
+  completed?: boolean;
+  appendOutcome?: 'success' | 'observed-error' | 'duplicate-observed-error' | 'wrong-payload-error' | 'duplicate-wrong-payload-error' | 'settings-observed-error' | 'duplicate-settings-observed-error' | 'partial-error' | 'unobserved-error' | 'missing';
+} = {}) {
+  const taskIds = Array.from({ length: taskCount }, (_, index) => `RESET-T${index + 1}`);
+  const startsAt = '2026-01-01T00:00:00Z';
+  const taskRows = taskIds.map((taskId, taskIndex) => {
+    const studentIds = Array.from({ length: studentsPerTask }, (_, studentIndex) => `RESET-S${taskIndex + 1}-${studentIndex + 1}`);
+    const values: Record<string, string> = {
+      taskId,
+      title: taskId,
+      description: '',
+      reward: '10',
+      isActive: 'TRUE',
+      sortOrder: String(taskIndex + 1),
+      createdAt: startsAt,
+      updatedAt: startsAt,
+      allowedStudentIds: studentIds.join(','),
+      taskInstanceId: `${taskId}-INSTANCE`,
+      ruleVersion: '1',
+      scheduleEffectiveFrom: startsAt,
+      recurrenceTimeZone: 'UTC',
+      recurrenceType: 'NONE',
+      resetCompletionOnCycle: 'FALSE',
+      resetAssignmentOnCycle: 'FALSE',
+    };
+    return TASK_SCHEMA_HEADERS.map((header) => values[header] ?? '');
+  });
+  const studentRows: string[][] = [];
+  const assignmentRows: string[][] = [];
+  const completionRows: string[][] = [];
+  for (const [taskIndex, taskId] of taskIds.entries()) {
+    const taskInstanceId = `${taskId}-INSTANCE`;
+    const cycleId = `v1|${taskInstanceId}|r1|${startsAt}`;
+    for (let studentIndex = 0; studentIndex < studentsPerTask; studentIndex += 1) {
+      const studentId = `RESET-S${taskIndex + 1}-${studentIndex + 1}`;
+      const studentName = `Student ${taskIndex + 1}-${studentIndex + 1}`;
+      const assignmentId = `RESET-A${taskIndex + 1}-${studentIndex + 1}`;
+      studentRows.push([studentId, studentName, String(100 + studentIndex), studentId, 'ACTIVE', '']);
+      const assignment: Record<string, string> = {
+        assignmentId, taskId, taskInstanceId, cycleId, cycleStartsAt: startsAt, cycleEndsAt: '',
+        ruleVersion: '1', timeZone: 'UTC', studentId, status: 'ASSIGNED', source: 'ADMIN',
+        previousAssignmentId: '', createdAt: startsAt, schemaVersion: '2', note: '',
+      };
+      assignmentRows.push(TASK_ASSIGNMENT_HEADERS.map((header) => assignment[header] ?? ''));
+      if (completed) {
+        const completion: Record<string, string> = {
+          completionId: `RESET-C${taskIndex + 1}-${studentIndex + 1}`,
+          timestamp: '2026-01-02T00:00:00Z', taskId, studentId, studentName,
+          reward: '10', balanceBefore: String(90 + studentIndex), balanceAfter: String(100 + studentIndex),
+          status: 'SUCCESS', note: 'original', taskInstanceId, cycleId, cycleStartsAt: startsAt,
+          cycleEndsAt: '', ruleVersion: '1', timeZone: 'UTC', source: 'BANK', assignmentId, schemaVersion: '2',
+        };
+        completionRows.push(TASK_COMPLETION_SCHEMA_HEADERS.map((header) => completion[header] ?? ''));
+      }
+    }
+  }
+  const rows: Record<string, string[][]> = {
+    Tasks: [[...TASK_SCHEMA_HEADERS], ...taskRows],
+    Students: [['studentId', 'name', 'balance', 'qrValue', 'status', 'note'], ...studentRows],
+    TaskAssignments: [[...TASK_ASSIGNMENT_HEADERS], ...assignmentRows],
+    TaskCompletions: [[...TASK_COMPLETION_SCHEMA_HEADERS], ...completionRows],
+    Settings: [['key', 'value']],
+  };
+  const appendRow = vi.fn();
+  const appendRows = vi.fn(async (sheetName: string, appendedRows: string[][]) => {
+    if (sheetName === 'Settings') {
+      rows.Settings.push(...appendedRows.map((row) => [...row]));
+      if (appendOutcome === 'duplicate-settings-observed-error') {
+        rows.Settings.push(...appendedRows.map((row) => [...row]));
+      }
+      if (appendOutcome === 'settings-observed-error' || appendOutcome === 'duplicate-settings-observed-error') {
+        throw new Error('provider range Settings!A2:B2');
+      }
+      return;
+    }
+    if (appendOutcome === 'duplicate-observed-error') {
+      rows.TaskCompletions.push(
+        ...appendedRows.map((row) => [...row]),
+        ...appendedRows.map((row) => [...row]),
+      );
+      throw new Error('provider range TaskCompletions!A99:U102');
+    }
+    if (appendOutcome === 'duplicate-wrong-payload-error') {
+      const exactRows = appendedRows.map((row) => [...row]);
+      const wrongRows = appendedRows.map((row) => [...row]);
+      wrongRows[0][TASK_COMPLETION_SCHEMA_HEADERS.indexOf('studentName')] = 'WRONG OBSERVED NAME';
+      rows.TaskCompletions.push(...exactRows, ...wrongRows);
+      throw new Error('provider range TaskCompletions!A99:U102');
+    }
+    if (appendOutcome === 'observed-error') {
+      rows.TaskCompletions.push(...appendedRows.map((row) => [...row]));
+      throw new Error('provider range TaskCompletions!A99:U102');
+    }
+    if (appendOutcome === 'wrong-payload-error') {
+      const wrongRows = appendedRows.map((row) => [...row]);
+      wrongRows[0][TASK_COMPLETION_SCHEMA_HEADERS.indexOf('studentName')] = 'WRONG OBSERVED NAME';
+      rows.TaskCompletions.push(...wrongRows);
+      throw new Error('provider range TaskCompletions!A99:U102');
+    }
+    if (appendOutcome === 'partial-error') {
+      rows.TaskCompletions.push([...appendedRows[0]]);
+      throw new Error('provider range TaskCompletions!A99:U102');
+    }
+    if (appendOutcome === 'unobserved-error') throw new Error('provider range TaskCompletions!A99:U102');
+    rows.TaskCompletions.push(...appendedRows.map((row) => [...row]));
+  });
+  const getRows = vi.fn(async (sheetName: string) => (rows[sheetName] ?? []).map((row) => [...row]));
+  const getRowsFresh = vi.fn(async (sheetName: string) => (rows[sheetName] ?? []).map((row) => [...row]));
+  const primeRows = vi.fn(async () => undefined);
+  const primeRowsFresh = vi.fn(async () => undefined);
+  const store = {
+    getRows,
+    getRowsFresh,
+    primeRows,
+    primeRowsFresh,
+    updateCell: vi.fn(),
+    appendRow,
+    ...(appendOutcome === 'missing' ? {} : { appendRows }),
+    async lookupSheet(sheetName: string) {
+      return { found: true as const, info: { sheetId: 1, title: sheetName, columnCount: rows[sheetName][0].length } };
+    },
+    createSheetWithHeader: vi.fn(),
+    ensureColumnCount: vi.fn(),
+    writeHeaderCells: vi.fn(),
+    verifyHeaderCells: vi.fn(),
+    verifyAndWriteHeaderCells: vi.fn(),
+  };
+  return { store, rows, taskIds, appendRow, appendRows, getRows, getRowsFresh, primeRows, primeRowsFresh };
+}
+
 const scheduleUpdate = (recurrence: TaskRecurrence) => ({
   title: 'Task edited', description: '', reward: 1, isActive: true, sortOrder: 1,
   schedule: { recurrence, timeZone: 'UTC', resetCompletionOnCycle: false, resetAssignmentOnCycle: false },
@@ -2293,6 +2431,706 @@ describe('sheets repository', () => {
     } as unknown as LocalStore) as never, ['T002'])).resolves.toEqual({
       taskIds: ['T002'], resetEventsAppended: 0, deletedCount: 0,
     });
+  });
+
+  it('resets multiple tasks and students with one canonical completion batch append', async () => {
+    const fixture = resetBatchStore();
+
+    await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds)).resolves.toEqual({
+      taskIds: fixture.taskIds,
+      resetEventsAppended: 4,
+      deletedCount: 4,
+    });
+
+    expect(fixture.appendRows).toHaveBeenCalledTimes(1);
+    expect(fixture.appendRows.mock.calls[0][0]).toBe('TaskCompletions');
+    expect(fixture.appendRow).not.toHaveBeenCalled();
+    expect(fixture.store.updateCell).not.toHaveBeenCalled();
+    const appended = fixture.appendRows.mock.calls[0][1];
+    const header = fixture.rows.TaskCompletions[0];
+    const cell = (row: string[], name: string) => row[header.indexOf(name)];
+    expect(appended).toHaveLength(4);
+    for (const row of appended) {
+      expect(cell(row, 'source')).toBe('ADMIN_RESET');
+      expect(cell(row, 'status')).toBe('RESET');
+      expect(cell(row, 'reward')).toBe('0');
+      expect(cell(row, 'balanceBefore')).toBe(cell(row, 'balanceAfter'));
+      expect(cell(row, 'taskInstanceId')).toMatch(/-INSTANCE$/);
+      expect(cell(row, 'cycleId')).toContain('|r1|');
+      expect(cell(row, 'assignmentId')).toMatch(/^RESET-A/);
+    }
+  });
+
+  it('plans byte-identical operation batches from independent snapshots despite time and task order differences', async () => {
+    const operationId = '10101010-1010-4010-8010-101010101010';
+    const firstFixture = resetBatchStore({ taskCount: 2, studentsPerTask: 1 });
+    const secondFixture = resetBatchStore({ taskCount: 2, studentsPerTask: 1 });
+
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-02-01T01:00:00.000Z'));
+    const firstResult = await resetTaskCompletionsBatch(
+      firstFixture.store as never,
+      firstFixture.taskIds,
+      { operationId },
+    );
+    vi.setSystemTime(new Date('2026-02-01T20:00:00.000Z'));
+    const secondResult = await resetTaskCompletionsBatch(
+      secondFixture.store as never,
+      [...secondFixture.taskIds].reverse(),
+      { operationId },
+    );
+
+    const firstBatch = structuredClone(firstFixture.appendRows.mock.calls[0][1]);
+    const secondBatch = structuredClone(secondFixture.appendRows.mock.calls[0][1]);
+    expect(secondResult).toEqual(firstResult);
+    expect(secondBatch).toEqual(firstBatch);
+    expect(JSON.stringify(secondBatch)).toBe(JSON.stringify(firstBatch));
+    const timestampColumn = firstFixture.rows.TaskCompletions[0].indexOf('timestamp');
+    expect(firstBatch.map((row) => row[timestampColumn])).toEqual([
+      '2026-01-02T00:00:00Z',
+      '2026-01-02T00:00:00Z',
+    ]);
+
+    const replayFixture = resetBatchStore({ taskCount: 2, studentsPerTask: 1 });
+    replayFixture.rows.TaskCompletions.push(
+      ...firstBatch.map((row) => [...row]),
+      ...secondBatch.map((row) => [...row]),
+    );
+    vi.setSystemTime(new Date('2026-02-01T23:00:00.000Z'));
+    await expect(resetTaskCompletionsBatch(
+      replayFixture.store as never,
+      [...replayFixture.taskIds].reverse(),
+      { operationId },
+    )).resolves.toEqual(firstResult);
+    expect(replayFixture.appendRows).not.toHaveBeenCalled();
+  });
+
+  it('plans byte-identical deterministic carry and reset rows for independent legacy assigned snapshots', async () => {
+    const operationId = '12121212-1212-4212-8212-121212121212';
+    const configureLegacyCarry = (fixture: ReturnType<typeof resetBatchStore>) => {
+      const taskHeader = fixture.rows.Tasks[0];
+      fixture.rows.Tasks[1][taskHeader.indexOf('recurrenceType')] = 'DAILY';
+      fixture.rows.Tasks[1][taskHeader.indexOf('recurrenceTime')] = '00:00';
+      const completionHeader = fixture.rows.TaskCompletions[0];
+      for (const column of [
+        'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion',
+        'timeZone', 'source', 'assignmentId', 'schemaVersion',
+      ]) fixture.rows.TaskCompletions[1][completionHeader.indexOf(column)] = '';
+    };
+    const firstFixture = resetBatchStore({ taskCount: 1, studentsPerTask: 1 });
+    const secondFixture = resetBatchStore({ taskCount: 1, studentsPerTask: 1 });
+    configureLegacyCarry(firstFixture);
+    configureLegacyCarry(secondFixture);
+
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-02-02T01:00:00.000Z'));
+    const firstResult = await resetTaskCompletionsBatch(
+      firstFixture.store as never, firstFixture.taskIds, { operationId },
+    );
+    vi.setSystemTime(new Date('2026-02-02T20:00:00.000Z'));
+    const secondResult = await resetTaskCompletionsBatch(
+      secondFixture.store as never, [...secondFixture.taskIds].reverse(), { operationId },
+    );
+
+    const firstBatch = structuredClone(firstFixture.appendRows.mock.calls[0][1]);
+    const secondBatch = structuredClone(secondFixture.appendRows.mock.calls[0][1]);
+    const header = firstFixture.rows.TaskCompletions[0];
+    expect(firstBatch.map((row) => row[header.indexOf('source')])).toEqual(['CARRY_FORWARD', 'ADMIN_RESET']);
+    expect(secondResult).toEqual(firstResult);
+    expect(JSON.stringify(secondBatch)).toBe(JSON.stringify(firstBatch));
+    expect(firstBatch.map((row) => row[header.indexOf('timestamp')])).toEqual([
+      '2026-01-02T00:00:00Z',
+      '2026-01-02T00:00:00Z',
+    ]);
+
+    const replayFixture = resetBatchStore({ taskCount: 1, studentsPerTask: 1 });
+    configureLegacyCarry(replayFixture);
+    replayFixture.rows.TaskCompletions.push(
+      ...firstBatch.map((row) => [...row]),
+      ...secondBatch.map((row) => [...row]),
+    );
+    replayFixture.appendRows.mockClear();
+    await expect(resetTaskCompletionsBatch(
+      replayFixture.store as never, replayFixture.taskIds, { operationId },
+    )).resolves.toEqual(firstResult);
+    expect(replayFixture.appendRows).not.toHaveBeenCalled();
+  });
+
+  it('rejects a deterministic carry ID collision with an unrelated existing completion', async () => {
+    const operationId = '13131313-1313-4313-8313-131313131313';
+    const configureLegacyCarry = (fixture: ReturnType<typeof resetBatchStore>) => {
+      const taskHeader = fixture.rows.Tasks[0];
+      fixture.rows.Tasks[1][taskHeader.indexOf('recurrenceType')] = 'DAILY';
+      fixture.rows.Tasks[1][taskHeader.indexOf('recurrenceTime')] = '00:00';
+      const completionHeader = fixture.rows.TaskCompletions[0];
+      for (const column of [
+        'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion',
+        'timeZone', 'source', 'assignmentId', 'schemaVersion',
+      ]) fixture.rows.TaskCompletions[1][completionHeader.indexOf(column)] = '';
+    };
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-02-02T01:00:00.000Z'));
+    const plannedFixture = resetBatchStore({ taskCount: 1, studentsPerTask: 1 });
+    configureLegacyCarry(plannedFixture);
+    await resetTaskCompletionsBatch(
+      plannedFixture.store as never, plannedFixture.taskIds, { operationId },
+    );
+    const header = plannedFixture.rows.TaskCompletions[0];
+    const deterministicCarryId = plannedFixture.appendRows.mock.calls[0][1][0][header.indexOf('completionId')];
+
+    const collisionFixture = resetBatchStore({ taskCount: 1, studentsPerTask: 1 });
+    configureLegacyCarry(collisionFixture);
+    collisionFixture.rows.TaskCompletions[1][header.indexOf('completionId')] = deterministicCarryId;
+
+    await expect(resetTaskCompletionsBatch(
+      collisionFixture.store as never, collisionFixture.taskIds, { operationId },
+    )).rejects.toThrow('과제 완료 초기화 작업이 충돌하거나 손상되었습니다.');
+    expect(collisionFixture.appendRows).not.toHaveBeenCalled();
+  });
+
+  it('keeps direct reset timestamps current and completion IDs random', async () => {
+    const fixture = resetBatchStore({ taskCount: 1, studentsPerTask: 1 });
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-04T05:06:07.000Z'));
+    const uuid = vi.spyOn(crypto, 'randomUUID').mockReturnValue('direct-random-id' as never);
+
+    await resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds);
+
+    const header = fixture.rows.TaskCompletions[0];
+    const [row] = fixture.appendRows.mock.calls[0][1];
+    expect(row[header.indexOf('timestamp')]).toBe('2026-03-04T05:06:07.000Z');
+    expect(row[header.indexOf('completionId')]).toBe('TC-direct-random-id');
+    expect(uuid).toHaveBeenCalledTimes(1);
+    uuid.mockRestore();
+  });
+
+  it('persists operation metadata on every ADMIN_RESET event but not carry rows', async () => {
+    const fixture = resetBatchStore({ taskCount: 1, studentsPerTask: 1 });
+    const taskHeader = fixture.rows.Tasks[0];
+    fixture.rows.Tasks[1][taskHeader.indexOf('recurrenceType')] = 'DAILY';
+    fixture.rows.Tasks[1][taskHeader.indexOf('recurrenceTime')] = '00:00';
+    const operationId = '11111111-1111-4111-8111-111111111111';
+
+    await resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId });
+
+    const header = fixture.rows.TaskCompletions[0];
+    const appended = fixture.appendRows.mock.calls[0][1];
+    const source = header.indexOf('source');
+    const operation = header.indexOf('operationId');
+    const payloadHash = header.indexOf('operationPayloadHash');
+    expect(appended.map((row) => row[source])).toEqual(['CARRY_FORWARD', 'ADMIN_RESET']);
+    expect(appended[0][operation]).toBe('');
+    expect(appended[0][payloadHash]).toBe('');
+    expect(appended[1][operation]).toBe(operationId);
+    expect(appended[1][payloadHash]).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(appended[1][0]).toMatch(/^TC-RESET-[a-f0-9]{64}-1-1$/);
+  });
+
+  it('replays reordered canonically equivalent Unicode task IDs without appending', async () => {
+    const fixture = resetBatchStore({ taskCount: 2, studentsPerTask: 1 });
+    const precomposedTaskId = 'RESET-\u00e9';
+    const decomposedTaskId = 'RESET-e\u0301';
+    expect(precomposedTaskId).not.toBe(decomposedTaskId);
+    expect(precomposedTaskId.localeCompare(decomposedTaskId)).toBe(0);
+    for (const rows of Object.values(fixture.rows)) {
+      for (const row of rows) {
+        for (let index = 0; index < row.length; index += 1) {
+          row[index] = row[index]
+            .replaceAll(fixture.taskIds[0], precomposedTaskId)
+            .replaceAll(fixture.taskIds[1], decomposedTaskId);
+        }
+      }
+    }
+    fixture.taskIds.splice(0, fixture.taskIds.length, precomposedTaskId, decomposedTaskId);
+    const operationId = '21212121-2121-4121-8121-212121212121';
+
+    const first = await resetTaskCompletionsBatch(
+      fixture.store as never, [precomposedTaskId, decomposedTaskId], { operationId },
+    );
+    const second = await resetTaskCompletionsBatch(
+      fixture.store as never, [decomposedTaskId, precomposedTaskId], { operationId },
+    );
+
+    expect(second).toEqual(first);
+    expect(first.taskIds).toEqual([decomposedTaskId, precomposedTaskId]);
+    expect(fixture.appendRows).toHaveBeenCalledTimes(1);
+  });
+
+  it('replays a complete operation with reordered taskIds without appending after a later SUCCESS', async () => {
+    const fixture = resetBatchStore({ taskCount: 2, studentsPerTask: 1 });
+    const operationId = '22222222-2222-4222-8222-222222222222';
+    const first = await resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId });
+    const header = fixture.rows.TaskCompletions[0];
+    const later = [...fixture.rows.TaskCompletions[1]];
+    later[header.indexOf('completionId')] = 'TC-LATER';
+    later[header.indexOf('timestamp')] = '2026-01-03T00:00:00Z';
+    later[header.indexOf('operationId')] = '';
+    later[header.indexOf('operationPayloadHash')] = '';
+    fixture.rows.TaskCompletions.push(later);
+
+    await expect(resetTaskCompletionsBatch(
+      fixture.store as never, [...fixture.taskIds].reverse(), { operationId },
+    )).resolves.toEqual(first);
+    expect(fixture.appendRows).toHaveBeenCalledTimes(1);
+  });
+
+  it('replays pre-populated exact duplicate deterministic ADMIN_RESET rows from independent processes', async () => {
+    const fixture = resetBatchStore({ taskCount: 1, studentsPerTask: 2 });
+    const operationId = '23232323-2323-4323-8323-232323232323';
+    const original = await resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId });
+    const header = fixture.rows.TaskCompletions[0];
+    const operationColumn = header.indexOf('operationId');
+    const durableOperationRows = fixture.rows.TaskCompletions
+      .slice(1)
+      .filter((row) => row[operationColumn] === operationId)
+      .map((row) => [...row]);
+    fixture.rows.TaskCompletions.push(...durableOperationRows.map((row) => [...row]));
+    fixture.appendRows.mockClear();
+
+    await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId }))
+      .resolves.toEqual(original);
+    expect(original).toMatchObject({ resetEventsAppended: 2, deletedCount: 2 });
+    expect(fixture.appendRows).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['timestamp', '2026-01-03T00:00:00.000Z'],
+    ['taskId', 'RESET-OTHER'],
+    ['studentId', 'RESET-OTHER-STUDENT'],
+    ['studentName', 'Other student'],
+    ['reward', '1'],
+    ['reward', 'malformed'],
+    ['balanceBefore', '999'],
+    ['balanceAfter', '999'],
+    ['status', 'SUCCESS'],
+    ['note', 'other-note'],
+    ['taskInstanceId', 'OTHER-INSTANCE'],
+    ['cycleId', 'v2|OTHER-INSTANCE|r2|2026-01-01T00:00:00Z'],
+    ['cycleStartsAt', '2025-12-31T00:00:00Z'],
+    ['cycleEndsAt', '2026-01-04T00:00:00Z'],
+    ['ruleVersion', '2'],
+    ['timeZone', 'Asia/Seoul'],
+    ['source', 'BANK'],
+    ['assignmentId', 'OTHER-ASSIGNMENT'],
+    ['schemaVersion', '1'],
+    ['operationId', '25252525-2525-4525-8525-252525252525'],
+    ['operationPayloadHash', 'sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'],
+  ] as const)('conflicts when a duplicate deterministic completion differs in immutable %s', async (column, value) => {
+    const fixture = resetBatchStore({ taskCount: 1, studentsPerTask: 1 });
+    const operationId = '24242424-2424-4424-8424-242424242424';
+    await resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId });
+    const header = fixture.rows.TaskCompletions[0];
+    const original = fixture.rows.TaskCompletions.find((row) => row[header.indexOf('operationId')] === operationId)!;
+    const conflictingDuplicate = [...original];
+    conflictingDuplicate[header.indexOf(column)] = value;
+    fixture.rows.TaskCompletions.push(conflictingDuplicate);
+    fixture.appendRows.mockClear();
+
+    await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId }))
+      .rejects.toThrow('과제 완료 초기화 작업이 충돌하거나 손상되었습니다.');
+    expect(fixture.appendRows).not.toHaveBeenCalled();
+  });
+
+  it('rejects reuse of an operationId for a different normalized task set without append', async () => {
+    const fixture = resetBatchStore({ taskCount: 2, studentsPerTask: 1 });
+    const operationId = '33333333-3333-4333-8333-333333333333';
+    await resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId });
+
+    await expect(resetTaskCompletionsBatch(fixture.store as never, [fixture.taskIds[0]], { operationId }))
+      .rejects.toThrow('과제 완료 초기화 작업이 충돌하거나 손상되었습니다.');
+    expect(fixture.appendRows).toHaveBeenCalledTimes(1);
+  });
+
+  it('replays a completed reset after its task definitions are deleted without migration or append', async () => {
+    const fixture = resetBatchStore({ taskCount: 1, studentsPerTask: 1 });
+    const operationId = '31313131-3131-4131-8131-313131313131';
+    const first = await resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId });
+    fixture.rows.Tasks.splice(1);
+    fixture.appendRows.mockClear();
+    fixture.store.createSheetWithHeader.mockClear();
+
+    await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId }))
+      .resolves.toEqual(first);
+    expect(fixture.appendRows).not.toHaveBeenCalled();
+    expect(fixture.store.createSheetWithHeader).not.toHaveBeenCalled();
+  });
+
+  it('reports stable operation conflict for a different task set after a task definition is deleted', async () => {
+    const fixture = resetBatchStore({ taskCount: 2, studentsPerTask: 1 });
+    const operationId = '32323232-3232-4232-8232-323232323232';
+    await resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId });
+    fixture.rows.Tasks.splice(1);
+    fixture.appendRows.mockClear();
+
+    await expect(resetTaskCompletionsBatch(fixture.store as never, [fixture.taskIds[0]], { operationId }))
+      .rejects.toThrow('과제 완료 초기화 작업이 충돌하거나 손상되었습니다.');
+    expect(fixture.appendRows).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['partial index set', (rows: string[][]) => { rows.pop(); }],
+    ['wrong immutable reward', (rows: string[][], header: string[]) => { rows[rows.length - 1][header.indexOf('reward')] = '1'; }],
+    ['unrelated source', (rows: string[][], header: string[]) => { rows[rows.length - 1][header.indexOf('source')] = 'BANK'; }],
+    ['different timestamp', (rows: string[][], header: string[]) => { rows[rows.length - 1][header.indexOf('timestamp')] = '2026-01-03T00:00:00.000Z'; }],
+    ['wrong note', (rows: string[][], header: string[]) => { rows[rows.length - 1][header.indexOf('note')] = 'reset'; }],
+    ['blank assignmentId', (rows: string[][], header: string[]) => { rows[rows.length - 1][header.indexOf('assignmentId')] = ''; }],
+    ['blank studentId', (rows: string[][], header: string[]) => { rows[rows.length - 1][header.indexOf('studentId')] = ''; }],
+    ['blank taskInstanceId', (rows: string[][], header: string[]) => { rows[rows.length - 1][header.indexOf('taskInstanceId')] = ''; }],
+    ['blank cycleId', (rows: string[][], header: string[]) => { rows[rows.length - 1][header.indexOf('cycleId')] = ''; }],
+    ['blank cycleStartsAt', (rows: string[][], header: string[]) => { rows[rows.length - 1][header.indexOf('cycleStartsAt')] = ''; }],
+    ['blank timeZone', (rows: string[][], header: string[]) => { rows[rows.length - 1][header.indexOf('timeZone')] = ''; }],
+    ['duplicate logical target', (rows: string[][], header: string[]) => {
+      for (const column of ['taskId', 'taskInstanceId', 'cycleId', 'studentId']) {
+        rows[rows.length - 1][header.indexOf(column)] = rows[rows.length - 2][header.indexOf(column)];
+      }
+    }],
+  ] as const)('fails closed for malformed stored operation rows: %s', async (_label, corrupt) => {
+    const fixture = resetBatchStore({ taskCount: 1, studentsPerTask: 2 });
+    const operationId = '44444444-4444-4444-8444-444444444444';
+    await resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId });
+    corrupt(fixture.rows.TaskCompletions, fixture.rows.TaskCompletions[0]);
+
+    await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId }))
+      .rejects.toThrow('과제 완료 초기화 작업이 충돌하거나 손상되었습니다.');
+    expect(fixture.appendRows).toHaveBeenCalledTimes(1);
+  });
+
+  it('persists and replays a zero-event operation with one durable Settings batch append', async () => {
+    const fixture = resetBatchStore({ completed: false });
+    const operationId = '55555555-5555-4555-8555-555555555555';
+
+    const first = await resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId });
+    expect(first).toMatchObject({ resetEventsAppended: 0, deletedCount: 0 });
+    expect(fixture.appendRows).toHaveBeenCalledTimes(1);
+    expect(fixture.appendRows.mock.calls[0][0]).toBe('Settings');
+    expect(fixture.appendRows.mock.calls[0][1]).toHaveLength(1);
+    const [key, value] = fixture.appendRows.mock.calls[0][1][0];
+    expect(key).toMatch(/^taskResetOperation:[a-f0-9]{64}$/);
+    expect(JSON.parse(value)).toEqual({
+      version: 1,
+      operationId,
+      payloadHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+      taskIds: [...fixture.taskIds].sort(),
+      resultCount: 0,
+    });
+
+    const completion = TASK_COMPLETION_SCHEMA_HEADERS.map(() => '');
+    completion[TASK_COMPLETION_SCHEMA_HEADERS.indexOf('completionId')] = 'TC-LATER';
+    completion[TASK_COMPLETION_SCHEMA_HEADERS.indexOf('timestamp')] = '2026-01-03T00:00:00.000Z';
+    completion[TASK_COMPLETION_SCHEMA_HEADERS.indexOf('taskId')] = fixture.taskIds[0];
+    completion[TASK_COMPLETION_SCHEMA_HEADERS.indexOf('studentId')] = 'RESET-S1-1';
+    completion[TASK_COMPLETION_SCHEMA_HEADERS.indexOf('studentName')] = 'Student 1-1';
+    completion[TASK_COMPLETION_SCHEMA_HEADERS.indexOf('reward')] = '10';
+    completion[TASK_COMPLETION_SCHEMA_HEADERS.indexOf('balanceBefore')] = '90';
+    completion[TASK_COMPLETION_SCHEMA_HEADERS.indexOf('balanceAfter')] = '100';
+    completion[TASK_COMPLETION_SCHEMA_HEADERS.indexOf('status')] = 'SUCCESS';
+    fixture.rows.TaskCompletions.push(completion);
+
+    await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId }))
+      .resolves.toEqual(first);
+    expect(fixture.appendRows).toHaveBeenCalledTimes(1);
+  });
+
+  it('conflicts when a zero-event operationId is replayed with a different payload', async () => {
+    const fixture = resetBatchStore({ completed: false });
+    const operationId = '56565656-5656-4656-8656-565656565656';
+    await resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId });
+
+    await expect(resetTaskCompletionsBatch(fixture.store as never, [fixture.taskIds[0]], { operationId }))
+      .rejects.toThrow('과제 완료 초기화 작업이 충돌하거나 손상되었습니다.');
+    expect(fixture.appendRows).toHaveBeenCalledTimes(1);
+  });
+
+  it('reconciles one exact zero-event Settings marker after response loss', async () => {
+    const fixture = resetBatchStore({ completed: false, appendOutcome: 'settings-observed-error' });
+    const operationId = '57575757-5757-4757-8757-575757575757';
+
+    await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId }))
+      .resolves.toMatchObject({ resetEventsAppended: 0, deletedCount: 0 });
+    expect(fixture.getRowsFresh).toHaveBeenCalledTimes(1);
+    expect(fixture.getRowsFresh).toHaveBeenCalledWith('Settings');
+    expect(fixture.appendRows).toHaveBeenCalledTimes(1);
+  });
+
+  it('replays pre-populated exact duplicate zero-event Settings markers from independent processes', async () => {
+    const fixture = resetBatchStore({ completed: false });
+    const operationId = '58585858-5858-4858-8858-585858585858';
+    const original = await resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId });
+    fixture.rows.Settings.push([...fixture.rows.Settings[1]]);
+    fixture.appendRows.mockClear();
+
+    await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId }))
+      .resolves.toEqual(original);
+    expect(fixture.appendRows).not.toHaveBeenCalled();
+  });
+
+  it('conflicts when duplicate zero-event Settings markers have mixed values', async () => {
+    const fixture = resetBatchStore({ completed: false });
+    const operationId = '59595959-5959-4959-8959-595959595959';
+    await resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId });
+    const conflicting = [...fixture.rows.Settings[1]];
+    conflicting[1] = JSON.stringify({ ...JSON.parse(conflicting[1]), resultCount: 1 });
+    fixture.rows.Settings.push(conflicting);
+    fixture.appendRows.mockClear();
+
+    await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId }))
+      .rejects.toThrow('과제 완료 초기화 작업이 충돌하거나 손상되었습니다.');
+    expect(fixture.appendRows).not.toHaveBeenCalled();
+  });
+
+  it('conflicts when a duplicate zero-event marker value differs only by whitespace', async () => {
+    const fixture = resetBatchStore({ completed: false });
+    const operationId = '5a5a5a5a-5a5a-4a5a-8a5a-5a5a5a5a5a5a';
+    await resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId });
+    const conflicting = [...fixture.rows.Settings[1]];
+    conflicting[1] = `${conflicting[1]} `;
+    fixture.rows.Settings.push(conflicting);
+    fixture.appendRows.mockClear();
+
+    await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId }))
+      .rejects.toThrow('과제 완료 초기화 작업이 충돌하거나 손상되었습니다.');
+    expect(fixture.appendRows).not.toHaveBeenCalled();
+  });
+
+  it('reconciles response loss when duplicate zero-event marker appends are all exact', async () => {
+    const fixture = resetBatchStore({ completed: false, appendOutcome: 'duplicate-settings-observed-error' });
+    const operationId = '60606060-6060-4060-8060-606060606060';
+
+    await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId }))
+      .resolves.toMatchObject({ resetEventsAppended: 0, deletedCount: 0 });
+    expect(fixture.rows.Settings.slice(1)).toHaveLength(2);
+  });
+
+  it('reconciles response loss once and later replays the complete operation without append', async () => {
+    const fixture = resetBatchStore({ taskCount: 1, studentsPerTask: 2, appendOutcome: 'observed-error' });
+    const operationId = '66666666-6666-4666-8666-666666666666';
+
+    const first = await resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId });
+    await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId }))
+      .resolves.toEqual(first);
+    expect(fixture.appendRows).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps request read calls bounded independently of reset event count', async () => {
+    const small = resetBatchStore({ taskCount: 1, studentsPerTask: 1 });
+    const large = resetBatchStore({ taskCount: 2, studentsPerTask: 10 });
+
+    await resetTaskCompletionsBatch(small.store as never, small.taskIds);
+    await resetTaskCompletionsBatch(large.store as never, large.taskIds);
+
+    expect(large.primeRowsFresh).toHaveBeenCalledWith(['Tasks', 'Students', 'TaskAssignments', 'TaskCompletions']);
+    expect(large.getRows.mock.calls.map(([sheetName]) => sheetName)).toEqual(
+      small.getRows.mock.calls.map(([sheetName]) => sheetName),
+    );
+    expect(large.getRowsFresh).not.toHaveBeenCalled();
+  });
+
+  it('falls back to bounded parallel fresh reads when coherent fresh priming is unavailable', async () => {
+    const fixture = resetBatchStore({ taskCount: 1, studentsPerTask: 1 });
+    delete (fixture.store as { primeRowsFresh?: unknown }).primeRowsFresh;
+
+    await resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds);
+
+    expect(fixture.getRowsFresh.mock.calls.map(([sheetName]) => sheetName)).toEqual([
+      'Tasks', 'Students', 'TaskAssignments', 'TaskCompletions',
+    ]);
+    expect(fixture.primeRows).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['student', 'Students', 'balance'],
+    ['assignment', 'TaskAssignments', 'ruleVersion'],
+    ['completion', 'TaskCompletions', 'reward'],
+  ] as const)('rejects a nonblank malformed %s snapshot row before append', async (_label, sheetName, columnName) => {
+    const fixture = resetBatchStore({ taskCount: 1, studentsPerTask: 1 });
+    const header = fixture.rows[sheetName][0];
+    fixture.rows[sheetName][1][header.indexOf(columnName)] = 'malformed';
+
+    await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds))
+      .rejects.toThrow('과제 완료 초기화 데이터 무결성을 확인할 수 없습니다.');
+    expect(fixture.appendRows).not.toHaveBeenCalled();
+  });
+
+  it('rejects a completed projected student missing from Students before append', async () => {
+    const fixture = resetBatchStore({ taskCount: 1, studentsPerTask: 1 });
+    fixture.rows.Students.splice(1, 1);
+
+    await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds))
+      .rejects.toThrow('과제 완료 초기화 데이터 무결성을 확인할 수 없습니다.');
+    expect(fixture.appendRows).not.toHaveBeenCalled();
+  });
+
+  it('appends only ADMIN_RESET for a cycle-less legacy completion that is currently unassigned', async () => {
+    const fixture = resetBatchStore({ taskCount: 1, studentsPerTask: 1 });
+    fixture.rows.TaskAssignments.splice(1, 1);
+    const taskHeader = fixture.rows.Tasks[0];
+    fixture.rows.Tasks[1][taskHeader.indexOf('allowedStudentIds')] = '';
+    const completionHeader = fixture.rows.TaskCompletions[0];
+    for (const column of ['taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion', 'timeZone', 'source', 'assignmentId', 'schemaVersion']) {
+      fixture.rows.TaskCompletions[1][completionHeader.indexOf(column)] = '';
+    }
+
+    await resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds);
+
+    const appended = fixture.appendRows.mock.calls[0][1];
+    expect(appended).toHaveLength(1);
+    expect(appended[0][completionHeader.indexOf('source')]).toBe('ADMIN_RESET');
+    expect(appended[0][completionHeader.indexOf('assignmentId')]).toBe('LEGACY_COMPLETION:RESET-C1-1');
+  });
+
+  it.each([
+    ['assigned', 'ASSIGNED', ['CARRY_FORWARD', 'ADMIN_RESET']],
+    ['unassigned', 'UNASSIGNED', ['ADMIN_RESET']],
+  ] as const)('materializes carried completion rows set-wise when carried assignment is %s', async (_label, status, expectedSources) => {
+    const fixture = resetBatchStore({ taskCount: 1, studentsPerTask: 1 });
+    const taskHeader = fixture.rows.Tasks[0];
+    fixture.rows.Tasks[1][taskHeader.indexOf('recurrenceType')] = 'DAILY';
+    fixture.rows.Tasks[1][taskHeader.indexOf('recurrenceTime')] = '00:00';
+    const assignmentHeader = fixture.rows.TaskAssignments[0];
+    fixture.rows.TaskAssignments[1][assignmentHeader.indexOf('status')] = status;
+    const completionHeader = fixture.rows.TaskCompletions[0];
+
+    await resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds);
+
+    const appended = fixture.appendRows.mock.calls[0][1];
+    expect(appended.map((row) => row[completionHeader.indexOf('source')])).toEqual(expectedSources);
+  });
+
+  it('rejects physical carry plus reset rows over the 250-row budget', async () => {
+    const fixture = resetBatchStore({ taskCount: 1, studentsPerTask: 126 });
+    const taskHeader = fixture.rows.Tasks[0];
+    fixture.rows.Tasks[1][taskHeader.indexOf('recurrenceType')] = 'DAILY';
+    fixture.rows.Tasks[1][taskHeader.indexOf('recurrenceTime')] = '00:00';
+
+    await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds))
+      .rejects.toThrow('한 번에 초기화할 수 있는 완료 내역은 250행까지입니다.');
+    expect(fixture.appendRows).not.toHaveBeenCalled();
+  });
+
+  it('regenerates a colliding completion ID and appends only unique planned IDs', async () => {
+    const fixture = resetBatchStore({ taskCount: 1, studentsPerTask: 1 });
+    fixture.rows.TaskCompletions[1][0] = 'TC-collision';
+    const uuid = vi.spyOn(crypto, 'randomUUID')
+      .mockReturnValueOnce('collision' as never)
+      .mockReturnValueOnce('unique-id' as never);
+
+    await resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds);
+
+    const completionIdColumn = fixture.rows.TaskCompletions[0].indexOf('completionId');
+    expect(fixture.appendRows.mock.calls[0][1].map((row) => row[completionIdColumn])).toEqual(['TC-unique-id']);
+    expect(uuid).toHaveBeenCalledTimes(2);
+    uuid.mockRestore();
+  });
+
+  it('fails closed before append when completion ID regeneration is exhausted', async () => {
+    const fixture = resetBatchStore({ taskCount: 1, studentsPerTask: 1 });
+    fixture.rows.TaskCompletions[1][0] = 'TC-collision';
+    const uuid = vi.spyOn(crypto, 'randomUUID').mockReturnValue('collision' as never);
+
+    await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds))
+      .rejects.toThrow('과제 완료 초기화 데이터 무결성을 확인할 수 없습니다.');
+    expect(fixture.appendRows).not.toHaveBeenCalled();
+    expect(uuid).toHaveBeenCalledTimes(8);
+    uuid.mockRestore();
+  });
+
+  it('does not reconcile response loss from a pre-existing colliding completion ID', async () => {
+    const fixture = resetBatchStore({ taskCount: 1, studentsPerTask: 1, appendOutcome: 'unobserved-error' });
+    fixture.rows.TaskCompletions[1][0] = 'TC-collision';
+    const uuid = vi.spyOn(crypto, 'randomUUID')
+      .mockReturnValueOnce('collision' as never)
+      .mockReturnValueOnce('new-id' as never);
+
+    await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds))
+      .rejects.toThrow('과제 완료 초기화 저장 결과를 확인할 수 없습니다.');
+    expect(fixture.appendRows.mock.calls[0][1][0][0]).toBe('TC-new-id');
+    uuid.mockRestore();
+  });
+
+  it('performs no completion write when none of the selected students are completed', async () => {
+    const fixture = resetBatchStore({ completed: false });
+
+    await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds)).resolves.toEqual({
+      taskIds: fixture.taskIds, resetEventsAppended: 0, deletedCount: 0,
+    });
+    expect(fixture.appendRows).not.toHaveBeenCalled();
+    expect(fixture.appendRow).not.toHaveBeenCalled();
+    expect(fixture.store.updateCell).not.toHaveBeenCalled();
+  });
+
+  it('reconciles a lost multi-row append response only when every planned completion is observed exactly', async () => {
+    const fixture = resetBatchStore({ appendOutcome: 'observed-error' });
+
+    await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds)).resolves.toMatchObject({
+      resetEventsAppended: 4, deletedCount: 4,
+    });
+    expect(fixture.appendRows).toHaveBeenCalledTimes(1);
+    expect(fixture.getRowsFresh).toHaveBeenCalledTimes(1);
+    expect(fixture.getRowsFresh).toHaveBeenCalledWith('TaskCompletions');
+    expect(fixture.appendRow).not.toHaveBeenCalled();
+  });
+
+  it('reconciles overlapping exact duplicate completion appends after response loss', async () => {
+    const fixture = resetBatchStore({
+      taskCount: 1, studentsPerTask: 2, appendOutcome: 'duplicate-observed-error',
+    });
+
+    await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds))
+      .resolves.toMatchObject({ resetEventsAppended: 2, deletedCount: 2 });
+    expect(fixture.rows.TaskCompletions).toHaveLength(1 + 2 + 4);
+  });
+
+  it('fails closed when overlapping append reconciliation contains one conflicting duplicate', async () => {
+    const fixture = resetBatchStore({
+      taskCount: 1, studentsPerTask: 1, appendOutcome: 'duplicate-wrong-payload-error',
+    });
+
+    await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds))
+      .rejects.toThrow('과제 완료 초기화 저장 결과를 확인할 수 없습니다.');
+  });
+
+  it('fails closed when response-loss reconciliation observes the planned ID with a different payload', async () => {
+    const fixture = resetBatchStore({ taskCount: 1, studentsPerTask: 1, appendOutcome: 'wrong-payload-error' });
+
+    const operation = resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds);
+    await expect(operation).rejects.toThrow('과제 완료 초기화 저장 결과를 확인할 수 없습니다.');
+    await expect(operation).rejects.not.toThrow(/provider|range|TaskCompletions!/i);
+    expect(fixture.getRowsFresh).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['partial-error', 'unobserved-error'] as const)(
+    'fails closed with a sanitized error when a %s batch append is not fully observed',
+    async (appendOutcome) => {
+      const fixture = resetBatchStore({ appendOutcome });
+
+      const operation = resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds);
+      await expect(operation).rejects.toThrow('과제 완료 초기화 저장 결과를 확인할 수 없습니다.');
+      await expect(operation).rejects.not.toThrow(/provider|range|TaskCompletions!/i);
+      expect(fixture.appendRows).toHaveBeenCalledTimes(1);
+      expect(fixture.getRowsFresh).toHaveBeenCalledTimes(1);
+      expect(fixture.appendRow).not.toHaveBeenCalled();
+      expect(fixture.store.updateCell).not.toHaveBeenCalled();
+    },
+  );
+
+  it('fails closed without writes when appendRows is unavailable', async () => {
+    const fixture = resetBatchStore({ appendOutcome: 'missing' });
+
+    await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds))
+      .rejects.toThrow('현재 Sheets 저장소가 완료 내역 일괄 추가를 지원하지 않습니다.');
+    expect(fixture.appendRows).not.toHaveBeenCalled();
+    expect(fixture.appendRow).not.toHaveBeenCalled();
+    expect(fixture.store.updateCell).not.toHaveBeenCalled();
+  });
+
+  it('rejects more than 250 planned canonical rows before the business append', async () => {
+    const fixture = resetBatchStore({ taskCount: 1, studentsPerTask: 251 });
+
+    await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds))
+      .rejects.toThrow('한 번에 초기화할 수 있는 완료 내역은 250행까지입니다.');
+    expect(fixture.appendRows).not.toHaveBeenCalled();
+    expect(fixture.appendRow).not.toHaveBeenCalled();
+    expect(fixture.store.updateCell).not.toHaveBeenCalled();
   });
 
 
