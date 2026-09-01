@@ -226,6 +226,30 @@ function parseSheetsResult(
   return safeResult(title, reward, name, tasks, input);
 }
 
+export function parseConfiguredTaskCompletionResult(
+  value: unknown,
+  expected: Readonly<{ operationId: string; taskId: string; studentId: string }>,
+): ConfiguredTaskCompletionResult {
+  assertExactRecord(value, ['task', 'student', 'tasks', 'operation']);
+  const task = dataValue(value, 'task');
+  const student = dataValue(value, 'student');
+  const operation = dataValue(value, 'operation');
+  assertExactRecord(task, ['taskId', 'title', 'reward']);
+  assertExactRecord(student, ['studentId', 'name']);
+  assertExactRecord(operation, ['operationId', 'state']);
+  const title = dataValue(task, 'title');
+  const reward = dataValue(task, 'reward');
+  const name = dataValue(student, 'name');
+  if (dataValue(task, 'taskId') !== expected.taskId
+    || dataValue(student, 'studentId') !== expected.studentId
+    || dataValue(operation, 'operationId') !== expected.operationId
+    || dataValue(operation, 'state') !== 'SUCCESS'
+    || !isCanonicalText(title) || !isNonnegativeSafeInteger(reward)
+    || !isCanonicalText(name)) throw integrityError();
+  const tasks = parseSafeTasks(dataValue(value, 'tasks'), expected);
+  return safeResult(title, reward, name, tasks, expected);
+}
+
 type ParsedDatabaseResult = Readonly<{
   completedAt: string;
   taskTitle: string;
@@ -275,7 +299,10 @@ function parseEvidence(value: unknown, studentName: unknown, completedAt: string
     || createdAt > completedAt || author !== studentName || !isCanonicalText(author)) throw integrityError();
 }
 
-function parseSafeTasks(value: unknown, input: ConfiguredTaskCompletionInput): StudentTaskProjectionDto[] {
+function parseSafeTasks(
+  value: unknown,
+  input: Readonly<{ taskId: string; studentId: string }>,
+): StudentTaskProjectionDto[] {
   if (!isStrictArray(value)) throw integrityError();
   const tasks = value.map(parseSafeTask);
   const targets = tasks.filter((task) => task.taskId === input.taskId);
@@ -396,7 +423,7 @@ function safeResult(
   reward: number,
   name: string,
   tasks: StudentTaskProjectionDto[],
-  input: ConfiguredTaskCompletionInput,
+  input: Readonly<{ operationId: string; taskId: string; studentId: string }>,
 ): ConfiguredTaskCompletionResult {
   return {
     task: { taskId: input.taskId, title, reward },
