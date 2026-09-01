@@ -18,7 +18,7 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
   it('defines the reward-system schema without student auto-import as an MVP capability', () => {
     expect(SYSTEM_NAME_KO).toBe('학급 보상 시스템');
     expect(GENERATOR_NAME_KO).toBe('학급 보상 시스템 생성기');
-    expect(LATEST_SCHEMA_VERSION).toBe(3);
+    expect(LATEST_SCHEMA_VERSION).toBe(4);
     expect(DEFAULT_SETTINGS).toEqual(
       expect.arrayContaining([
         { key: 'schemaVersion', value: String(LATEST_SCHEMA_VERSION) },
@@ -228,7 +228,7 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
       ]),
     );
 
-    expect(rendered).toContain('0.4.0-phase3');
+    expect(rendered).toContain('0.4.1');
     expect(rendered).toContain('인스턴스 설정');
     expect(rendered).toContain('className: 4학년 1반');
     expect(rendered).toContain('appTitle: 별빛 매점');
@@ -286,7 +286,7 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
       ]),
     );
 
-    expect(rendered).toContain('0.4.0-phase3');
+    expect(rendered).toContain('0.4.1');
     expect(rendered).toContain('읽기 전용 production doctor');
     expect(rendered).toContain('baseUrl: https://class-store-six.vercel.app');
     expect(rendered).toContain('vercelProject: class-store');

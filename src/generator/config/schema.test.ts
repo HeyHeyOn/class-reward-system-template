@@ -26,7 +26,8 @@ const EXPECTED_SHEETS = [
   [
     'TaskCompletions',
     ['completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note',
-      'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion', 'timeZone', 'source', 'assignmentId', 'schemaVersion'],
+      'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion', 'timeZone', 'source', 'assignmentId', 'schemaVersion',
+      'operationId', 'operationPayloadHash'],
   ],
   ['Promotions', [
     'promotionId', 'name', 'description', 'type', 'value', 'buyQuantity', 'freeQuantity',
@@ -43,8 +44,8 @@ describe('REQUIRED_SHEETS', () => {
     expect(Object.entries(REQUIRED_SHEETS)).toEqual(EXPECTED_SHEETS);
   });
 
-  it('exposes eleven generated and ten operational sheets for schema v3', () => {
-    expect(LATEST_SCHEMA_VERSION).toBe(3);
+  it('exposes eleven generated and ten operational sheets for schema v4', () => {
+    expect(LATEST_SCHEMA_VERSION).toBe(4);
     expect(GENERATED_SHEET_NAMES).toHaveLength(11);
     expect(OPERATIONAL_SHEET_NAMES).toHaveLength(10);
     expect(OPERATIONAL_SHEET_NAMES).toContain('Promotions');
@@ -62,6 +63,7 @@ describe('REQUIRED_SHEETS', () => {
   it('defines the schema-v2 recurring ledger dimensions exactly', () => {
     expect(REQUIRED_SHEETS.Tasks).toHaveLength(33);
     expect(REQUIRED_SHEETS.TaskAssignments).toHaveLength(15);
+    expect(REQUIRED_SHEETS.TaskCompletions).toHaveLength(21);
   });
 
   it('does not add maxCompletionsPerStudent to newly generated Tasks sheets', () => {

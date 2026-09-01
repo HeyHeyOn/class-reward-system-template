@@ -1,6 +1,6 @@
 # Google Sheets 템플릿
 
-학급 보상 시스템 생성기는 신규 스프레드시트에 아래 **9개 시트**를 순서대로 만듭니다. 시트 이름과 헤더 이름은 대소문자를 포함해 그대로 사용해야 합니다.
+학급 보상 시스템 생성기는 신규 스프레드시트에 아래 **11개 시트**를 순서대로 만듭니다. 시트 이름과 헤더 이름은 대소문자를 포함해 그대로 사용해야 합니다.
 
 1. `Students`
 2. `Products`
@@ -10,7 +10,9 @@
 6. `Tasks`
 7. `TaskAssignments`
 8. `TaskCompletions`
-9. `Recovery`
+9. `Promotions`
+10. `PromotionProducts`
+11. `Recovery`
 
 ## Students
 
@@ -84,8 +86,8 @@ key | value
 신규 생성 시 포함되는 핵심 버전 값:
 
 ```text
-schemaVersion | 2
-systemVersion | 0.4.0-phase3
+schemaVersion | 4
+systemVersion | 0.4.1
 ```
 
 그 밖에 `systemName`, `appTitle`, `bankTitle`, `currencyUnit`, `classTimeZone`, `themeColor`, `qrManualInputEnabled` 등의 설정을 저장합니다. 신규 인스턴스의 `classTimeZone` 기본값은 `Asia/Seoul`입니다. `schemaVersion`은 시트 구조 호환성, `systemVersion`은 생성된 시스템 릴리스를 식별합니다.
@@ -137,7 +139,7 @@ assignmentId | taskId | taskInstanceId | cycleId | cycleStartsAt | cycleEndsAt |
 과제 완료 및 보상 반영 결과를 기록합니다.
 
 ```text
-completionId | timestamp | taskId | studentId | studentName | reward | balanceBefore | balanceAfter | status | note | taskInstanceId | cycleId | cycleStartsAt | cycleEndsAt | ruleVersion | timeZone | source | assignmentId | schemaVersion
+completionId | timestamp | taskId | studentId | studentName | reward | balanceBefore | balanceAfter | status | note | taskInstanceId | cycleId | cycleStartsAt | cycleEndsAt | ruleVersion | timeZone | source | assignmentId | schemaVersion | operationId | operationPayloadHash
 ```
 
 - `completionId`: 완료 기록 고유 ID
@@ -149,9 +151,28 @@ completionId | timestamp | taskId | studentId | studentName | reward | balanceBe
 - `note`: 운영 메모
 - `taskInstanceId`, `cycleId`, `cycleStartsAt`, `cycleEndsAt`, `ruleVersion`, `timeZone`: 완료 당시의 과제 cycle/rule 스냅샷
 - `source`, `assignmentId`, `schemaVersion`: 완료 출처, 연결된 배정, 기록 스키마 버전
+- `operationId`, `operationPayloadHash`: 응답 유실·재시도 시 같은 논리 작업인지 검증하는 불변 메타데이터
 - `source`: `BANK`, `ADMIN`, `CARRY_FORWARD`, `ADMIN_RESET` 중 하나
 
 동일한 과제 instance의 **같은 cycle**에서 학생별 보상 성공 완료는 한 번만 인정합니다. 다음 자연 cycle에서 다시 완료할 수 있는 것은 `resetCompletionOnCycle=true`일 때입니다. `false`이면 완료 상태가 승계되어 재보상을 차단합니다. 관리자 완료 표시는 잔액 보상 없이 별도 원장 이벤트로 기록됩니다. `CARRY_FORWARD`도 `reward=0`, `balanceBefore=balanceAfter`인 상태 승계 이벤트이며 잔액을 바꾸거나 `Transactions` 행을 만들지 않습니다.
+
+## Promotions
+
+상품에 적용할 행사 정의와 적용 기간, 우선순위를 저장합니다.
+
+```text
+promotionId | name | description | type | value | buyQuantity | freeQuantity | startsAt | endsAt | isActive | sortOrder | createdAt | updatedAt | schemaVersion
+```
+
+행사 행의 `schemaVersion`은 현재 `3`이며, 전체 생성 템플릿의 `schemaVersion=4`와는 별개의 행 형식 버전입니다.
+
+## PromotionProducts
+
+행사와 적용 상품의 연결 관계를 저장합니다.
+
+```text
+promotionProductId | promotionId | productId | createdAt | schemaVersion
+```
 
 ## Recovery
 

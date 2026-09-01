@@ -56,6 +56,7 @@ export const REQUIRED_SHEETS: Record<GeneratedSheetName, string[]> = {
   TaskCompletions: [
     'completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note',
     'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion', 'timeZone', 'source', 'assignmentId', 'schemaVersion',
+    'operationId', 'operationPayloadHash',
   ],
   Promotions: [
     'promotionId', 'name', 'description', 'type', 'value', 'buyQuantity', 'freeQuantity',
