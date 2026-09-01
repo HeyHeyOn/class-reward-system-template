@@ -73,6 +73,7 @@ type PromotionSeed = {
   createdAt: string;
   updatedAt: string;
   schemaVersion: number;
+  version?: number;
 };
 
 async function seedProduct(tenantId: string, product: ProductSeed) {
@@ -94,8 +95,8 @@ async function seedPromotion(tenantId: string, promotion: PromotionSeed) {
        tenant_id, promotion_id, name, description, type,
        n_plus_one_buy_quantity, n_plus_one_free_quantity, promotional_price,
        percent_discount, fixed_discount, starts_at, ends_at, is_active, sort_order,
-       created_at, updated_at, schema_version
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+       created_at, updated_at, schema_version, version
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
     [
       tenantId, promotion.promotionId, promotion.name, promotion.description, promotion.type,
       promotion.type === 'N_PLUS_ONE' ? promotion.buyQuantity : null,
@@ -104,7 +105,7 @@ async function seedPromotion(tenantId: string, promotion: PromotionSeed) {
       promotion.type === 'PERCENT_DISCOUNT' ? promotion.value : null,
       promotion.type === 'FIXED_DISCOUNT' ? promotion.value : null,
       promotion.startsAt, promotion.endsAt, promotion.isActive, promotion.sortOrder,
-      promotion.createdAt, promotion.updatedAt, promotion.schemaVersion,
+      promotion.createdAt, promotion.updatedAt, promotion.schemaVersion, promotion.version ?? 1,
     ],
   );
 }
@@ -299,6 +300,129 @@ describe('database catalog queries', () => {
     await expect(queries().getPromotions()).resolves.toEqual(expected);
     expect(expected.map(({ promotionId }) => promotionId)).toEqual(['PROMO-A', 'PROMO-Z', 'PROMO-P', 'PROMO-F']);
     expect(expected.find(({ promotionId }) => promotionId === 'PROMO-Z')?.productIds).toEqual(['P1', 'P2']);
+  });
+
+  it('reads ordered promotion mutation preconditions from the same joined tenant snapshot', async () => {
+    await seedPromotion(harness.tenantOneId, {
+      promotionId: 'PROMO-Z', name: '묶음', description: '', type: 'N_PLUS_ONE',
+      buyQuantity: 2, freeQuantity: 1, startsAt: '2026-01-01T00:00:00.000Z',
+      endsAt: '2027-01-01T00:00:00.000Z', isActive: true, sortOrder: 1,
+      createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z',
+      schemaVersion: 3, version: 7,
+    });
+    await seedPromotion(harness.tenantOneId, {
+      promotionId: 'PROMO-A', name: '특가', description: '', type: 'FIXED_DISCOUNT', value: 10,
+      startsAt: '2026-01-01T00:00:00.000Z', endsAt: '2027-01-01T00:00:00.000Z',
+      isActive: false, sortOrder: 1, createdAt: '2026-01-03T00:00:00.000Z',
+      updatedAt: '2026-01-04T00:00:00.000Z', schemaVersion: 3, version: 3,
+    });
+    await seedPromotionProduct(harness.tenantOneId, 'LINK-2', 'PROMO-Z', 'P2');
+    await seedPromotionProduct(harness.tenantOneId, 'LINK-1', 'PROMO-Z', 'P1');
+    let snapshots = 0;
+    let queriesRun = 0;
+    const runTenantTransaction: DatabaseCatalogQueryDependencies['runTenantTransaction'] =
+      (tenantId, callback) => {
+        snapshots += 1;
+        return harness.runTenantTransaction(tenantId, async (transaction) => {
+          const execute = transaction.execute.bind(transaction);
+          const counted = Object.create(transaction) as typeof transaction;
+          counted.execute = (async (...args: Parameters<typeof execute>) => {
+            queriesRun += 1;
+            return execute(...args);
+          }) as never;
+          return callback(counted);
+        });
+      };
+
+    const result = await queries({ runTenantTransaction }).getPromotionsForAdminMutation();
+
+    expect(result.promotions.map(({ promotionId }) => promotionId)).toEqual(['PROMO-A', 'PROMO-Z']);
+    expect(result.promotions[1].productIds).toEqual(['P1', 'P2']);
+    expect(result.mutationPreconditions).toEqual([
+      { promotionId: 'PROMO-A', expectedVersion: 3 },
+      { promotionId: 'PROMO-Z', expectedVersion: 7 },
+    ]);
+    expect(result.promotions.every((promotion) => !Object.hasOwn(promotion, 'version'))).toBe(true);
+    expect(snapshots).toBe(1);
+    expect(queriesRun).toBe(1);
+  });
+
+  it('returns an empty promotion mutation snapshot from tenant-scoped SQL', async () => {
+    const execute = vi.fn(async () => ({ rows: [] }));
+    const runTenantTransaction: DatabaseCatalogQueryDependencies['runTenantTransaction'] =
+      async (tenantId, callback) => {
+        expect(tenantId).toBe(harness.tenantOneId);
+        return callback({ execute } as never);
+      };
+
+    await expect(queries({ runTenantTransaction }).getPromotionsForAdminMutation()).resolves.toEqual({
+      promotions: [], mutationPreconditions: [],
+    });
+    expect(execute).toHaveBeenCalledOnce();
+    const query = (execute.mock.calls as unknown as [[unknown]])[0]?.[0];
+    expect(JSON.stringify(query)).toContain('tenant_id');
+    expect(JSON.stringify(query)).toContain('version');
+  });
+
+  it('strictly rejects malformed promotion version evidence without coercion', async () => {
+    const hook = vi.fn(() => { throw new Error('coercion invoked'); });
+    const base = () => ({
+      promotion_id: 'PROMO-1', name: '할인', description: '', type: 'FIXED_DISCOUNT',
+      n_plus_one_buy_quantity: null, n_plus_one_free_quantity: null,
+      promotional_price: null, percent_discount: null, fixed_discount: 10,
+      starts_at: '2026-01-01T00:00:00.000Z', ends_at: '2027-01-01T00:00:00.000Z',
+      is_active: true, sort_order: 1, created_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-01-01T00:00:00.000Z', schema_version: 3,
+      product_id: null, product_schema_version: null, version: 2,
+    });
+    const getter = base();
+    Object.defineProperty(getter, 'version', { enumerable: true, get: hook });
+    const custom = Object.assign(Object.create({}), base());
+    const missing = base() as Record<string, unknown>;
+    delete missing.version;
+    const hiddenExtra = base();
+    Object.defineProperty(hiddenExtra, 'hidden', { value: true });
+    const readonlyVersion = base();
+    Object.defineProperty(readonlyVersion, 'version', {
+      value: 2, enumerable: true, writable: false, configurable: true,
+    });
+    const fixedVersion = base();
+    Object.defineProperty(fixedVersion, 'version', {
+      value: 2, enumerable: true, writable: true, configurable: false,
+    });
+    const invalid = [getter, custom, { ...base(), unknown: true }, missing,
+      hiddenExtra, readonlyVersion, fixedVersion,
+      { ...base(), version: new Number(2) },
+      { ...base(), version: { valueOf: hook, toString: hook } },
+      { ...base(), version: 0 }, { ...base(), version: -1 }, { ...base(), version: 1.5 },
+      { ...base(), version: Number.MAX_SAFE_INTEGER }];
+
+    for (const row of invalid) {
+      const runTenantTransaction: DatabaseCatalogQueryDependencies['runTenantTransaction'] =
+        async (_tenantId, callback) => callback({ execute: async () => ({ rows: [row] }) } as never);
+      await expect(queries({ runTenantTransaction }).getPromotionsForAdminMutation())
+        .rejects.toThrow(/version|integrity/i);
+    }
+    expect(hook).not.toHaveBeenCalled();
+  });
+
+  it('rejects inconsistent versions across joined rows for one promotion', async () => {
+    const row = {
+      promotion_id: 'PROMO-1', name: '할인', description: '', type: 'FIXED_DISCOUNT',
+      n_plus_one_buy_quantity: null, n_plus_one_free_quantity: null,
+      promotional_price: null, percent_discount: null, fixed_discount: 10,
+      starts_at: '2026-01-01T00:00:00.000Z', ends_at: '2027-01-01T00:00:00.000Z',
+      is_active: true, sort_order: 1, created_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-01-01T00:00:00.000Z', schema_version: 3,
+      product_id: 'P1', product_schema_version: 3, version: 2,
+    };
+    const runTenantTransaction: DatabaseCatalogQueryDependencies['runTenantTransaction'] =
+      async (_tenantId, callback) => callback({
+        execute: async () => ({ rows: [row, { ...row, product_id: 'P2', version: 3 }] }),
+      } as never);
+
+    await expect(queries({ runTenantTransaction }).getPromotionsForAdminMutation())
+      .rejects.toThrow(/version|integrity/i);
   });
 
   it('returns active promotions regardless of whether their time window is past or future', async () => {

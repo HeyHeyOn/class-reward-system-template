@@ -52,6 +52,20 @@ type PromotionRow = {
   product_schema_version: unknown;
 };
 
+type PromotionAdminMutationRow = PromotionRow & { version: unknown };
+
+export type PromotionAdminMutationSnapshot = {
+  promotions: Promotion[];
+  mutationPreconditions: { promotionId: string; expectedVersion: number }[];
+};
+
+const PROMOTION_ROW_KEYS = [
+  'promotion_id', 'name', 'description', 'type', 'n_plus_one_buy_quantity',
+  'n_plus_one_free_quantity', 'promotional_price', 'percent_discount', 'fixed_discount',
+  'starts_at', 'ends_at', 'is_active', 'sort_order', 'created_at', 'updated_at',
+  'schema_version', 'product_id', 'product_schema_version',
+] as const;
+
 export function createDatabaseCatalogQueries(dependencies: DatabaseCatalogQueryDependencies) {
   return {
     async getProducts(): Promise<Product[]> {
@@ -121,6 +135,52 @@ export function createDatabaseCatalogQueries(dependencies: DatabaseCatalogQueryD
       });
     },
 
+    async getPromotionsForAdminMutation(): Promise<PromotionAdminMutationSnapshot> {
+      return dependencies.runTenantTransaction(dependencies.tenantId, async (transaction) => {
+        const result = await transaction.execute(sql`
+          SELECT p.promotion_id, p.name, p.description, p.type,
+                 p.n_plus_one_buy_quantity, p.n_plus_one_free_quantity,
+                 p.promotional_price, p.percent_discount, p.fixed_discount,
+                 p.starts_at, p.ends_at, p.is_active, p.sort_order,
+                 p.created_at, p.updated_at, p.schema_version, pp.product_id,
+                 pp.schema_version AS product_schema_version, p.version
+          FROM promotions p
+          LEFT JOIN promotion_products pp
+            ON pp.tenant_id = ${dependencies.tenantId}
+           AND pp.promotion_id = p.promotion_id
+          WHERE p.tenant_id = ${dependencies.tenantId}
+            AND p.deleted_at IS NULL
+          ORDER BY p.sort_order, p.promotion_id, pp.product_id
+        `);
+        if (!Array.isArray(result.rows) || Object.getPrototypeOf(result.rows) !== Array.prototype) {
+          throw new Error('Promotion mutation version integrity check failed.');
+        }
+        const rows = result.rows.map(parsePromotionAdminMutationRow);
+        const promotions = projectPromotions(rows);
+        const versions = new Map<string, number>();
+        for (const row of rows) {
+          const promotionId = requiredTrimmedString(row.promotion_id, 'Promotion ID');
+          const version = positiveVersion(row.version);
+          const existing = versions.get(promotionId);
+          if (existing !== undefined && existing !== version) {
+            throw new Error('Promotion mutation version integrity check failed.');
+          }
+          versions.set(promotionId, version);
+        }
+        const mutationPreconditions = promotions.map(({ promotionId }) => {
+          const expectedVersion = versions.get(promotionId);
+          if (expectedVersion === undefined) {
+            throw new Error('Promotion mutation version integrity check failed.');
+          }
+          return { promotionId, expectedVersion };
+        });
+        if (versions.size !== mutationPreconditions.length) {
+          throw new Error('Promotion mutation version integrity check failed.');
+        }
+        return { promotions, mutationPreconditions };
+      });
+    },
+
     async getActivePromotions(): Promise<Promotion[]> {
       return dependencies.runTenantTransaction(dependencies.tenantId, async (transaction) => {
         const result = await transaction.execute(sql`
@@ -168,6 +228,36 @@ export function createDatabaseCatalogQueries(dependencies: DatabaseCatalogQueryD
       });
     },
   };
+}
+
+function parsePromotionAdminMutationRow(value: unknown): PromotionAdminMutationRow {
+  const expectedKeys = [...PROMOTION_ROW_KEYS, 'version'];
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || Object.getPrototypeOf(value) !== Object.prototype
+    || Object.getOwnPropertySymbols(value).length !== 0) {
+    throw new Error('Promotion mutation version integrity check failed.');
+  }
+  const keys = Reflect.ownKeys(value);
+  if (keys.length !== expectedKeys.length
+    || keys.some((key) => typeof key !== 'string' || !expectedKeys.includes(key))) {
+    throw new Error('Promotion mutation version integrity check failed.');
+  }
+  for (const key of expectedKeys) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !descriptor.enumerable || !descriptor.writable || !descriptor.configurable
+      || !Object.hasOwn(descriptor, 'value')) {
+      throw new Error('Promotion mutation version integrity check failed.');
+    }
+  }
+  return value as PromotionAdminMutationRow;
+}
+
+function positiveVersion(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value)
+    || value < 1 || value >= Number.MAX_SAFE_INTEGER) {
+    throw new Error('Promotion mutation version integrity check failed.');
+  }
+  return value;
 }
 
 function assertCanonicalProductId(productId: string): void {
