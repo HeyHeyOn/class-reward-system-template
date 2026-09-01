@@ -1,9 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('server-only', () => ({}));
+
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { createConfiguredSheetsReader, createConfiguredSheetsStore } from '@/server/googleSheets';
-import { createPromotion, replacePromotionProducts } from '@/server/repositories/sheets/promotionCommands';
-import { getPromotions } from '@/server/repositories/sheets/promotionQueries';
 import { createConfiguredCatalogReader } from '@/server/repositories/configuredCatalog';
+import {
+  PromotionCreationTargetPartialFailure,
+  createConfiguredPromotionCreation,
+} from '@/server/repositories/configuredPromotionCreation';
+import { getPromotions } from '@/server/repositories/sheets/promotionQueries';
 import { GET, POST } from './route';
 
 vi.mock('@/server/apiAuth', () => ({
@@ -16,12 +22,12 @@ vi.mock('@/server/googleSheets', () => ({
 }));
 vi.mock('@/server/repositories/sheets/promotionQueries', () => ({ getPromotions: vi.fn() }));
 vi.mock('@/server/repositories/configuredCatalog', () => ({ createConfiguredCatalogReader: vi.fn() }));
-vi.mock('@/server/repositories/sheets/promotionCommands', async (importOriginal) => ({
-  ...await importOriginal<typeof import('@/server/repositories/sheets/promotionCommands')>(),
-  createPromotion: vi.fn(),
-  replacePromotionProducts: vi.fn(),
+vi.mock('@/server/repositories/configuredPromotionCreation', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/server/repositories/configuredPromotionCreation')>(),
+  createConfiguredPromotionCreation: vi.fn(),
 }));
 
+const OPERATION_ID = 'aaaaaaaa-1111-4111-8111-111111111111';
 const common = {
   name: '행사',
   description: '설명',
@@ -31,12 +37,27 @@ const common = {
   sortOrder: 2,
 };
 
-function post(body: unknown) {
-  return POST(new Request('http://localhost/api/promotions', {
+function request(body: unknown, contentType = 'application/json') {
+  return new Request('http://localhost/api/promotions', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  }));
+    headers: contentType ? { 'content-type': contentType } : {},
+    body: typeof body === 'string' ? body : JSON.stringify(body),
+  });
+}
+
+function validBody(overrides: Record<string, unknown> = {}) {
+  return {
+    operationId: OPERATION_ID,
+    ...common,
+    type: 'FIXED_DISCOUNT' as const,
+    discountAmount: 100,
+    productIds: [],
+    ...overrides,
+  };
+}
+
+function bodyWithoutOperationId() {
+  return Object.fromEntries(Object.entries(validBody()).filter(([key]) => key !== 'operationId'));
 }
 
 describe('GET /api/promotions', () => {
@@ -47,9 +68,7 @@ describe('GET /api/promotions', () => {
 
   it('rejects unauthorized requests without resolving a catalog', async () => {
     vi.mocked(isAuthorizedAdminRequest).mockReturnValue(false);
-    const request = new Request('http://localhost/api/promotions');
-
-    const response = await GET(request);
+    const response = await GET(new Request('http://localhost/api/promotions'));
 
     expect(response.status).toBe(401);
     expect(unauthorizedAdminResponse).toHaveBeenCalledOnce();
@@ -59,8 +78,7 @@ describe('GET /api/promotions', () => {
   });
 
   it('uses the configured catalog and returns every deterministic joined row', async () => {
-    const request = new Request('http://localhost/api/promotions');
-
+    const exactRequest = new Request('http://localhost/api/promotions');
     const rows = [
       { promotionId: 'P1', isActive: false, productIds: ['B', 'A'] },
       { promotionId: 'P2', isActive: true, productIds: [] },
@@ -68,10 +86,10 @@ describe('GET /api/promotions', () => {
     const catalog = { getPromotions: vi.fn(async () => rows) };
     vi.mocked(createConfiguredCatalogReader).mockResolvedValue(catalog as never);
 
-    const response = await GET(request);
+    const response = await GET(exactRequest);
 
     expect(response.status).toBe(200);
-    expect(createConfiguredCatalogReader).toHaveBeenCalledWith(request);
+    expect(createConfiguredCatalogReader).toHaveBeenCalledWith(exactRequest);
     expect(catalog.getPromotions).toHaveBeenCalledOnce();
     expect(createConfiguredSheetsReader).not.toHaveBeenCalled();
     expect(getPromotions).not.toHaveBeenCalled();
@@ -92,20 +110,22 @@ describe('GET /api/promotions', () => {
 });
 
 describe('POST /api/promotions', () => {
+  const create = vi.fn();
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(isAuthorizedAdminRequest).mockReturnValue(true);
-    vi.mocked(createConfiguredSheetsStore).mockResolvedValue({} as never);
+    vi.mocked(createConfiguredPromotionCreation).mockResolvedValue({ create });
   });
 
-  it('rejects unauthorized requests before parsing JSON or opening Sheets', async () => {
+  it('rejects unauthorized requests before media-type checks, JSON parsing, or configured root resolution', async () => {
     vi.mocked(isAuthorizedAdminRequest).mockReturnValue(false);
-    const response = await POST(new Request('http://localhost/api/promotions', { method: 'POST', body: '{' }));
+
+    const response = await POST(request('{', 'text/plain'));
 
     expect(response.status).toBe(401);
+    expect(createConfiguredPromotionCreation).not.toHaveBeenCalled();
     expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
-    expect(createPromotion).not.toHaveBeenCalled();
-    expect(replacePromotionProducts).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -113,183 +133,153 @@ describe('POST /api/promotions', () => {
     ['PROMOTIONAL_PRICE', { promotionalUnitPrice: 350 }],
     ['PERCENT_DISCOUNT', { percent: 12.5 }],
     ['FIXED_DISCOUNT', { discountAmount: 100 }],
-  ] as const)('forwards the exact %s definition and returns the final joined promotion', async (type, rule) => {
-    const payload = { promotionId: `PROMO-${type}`, ...common, type, ...rule, productIds: ['P2', 'P1'] };
-    const definition = { promotionId: payload.promotionId, ...common, type, ...rule };
-    const created = { ...definition, productIds: [] };
-    const final = { ...definition, productIds: ['P1', 'P2'] };
-    vi.mocked(createPromotion).mockResolvedValue(created as never);
-    vi.mocked(replacePromotionProducts).mockResolvedValue(final as never);
-    const request = new Request('http://localhost/api/promotions', {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload),
-    });
+  ] as const)('forwards exact %s configured input and returns the full legacy promotion', async (type, rule) => {
+    const body = {
+      operationId: OPERATION_ID,
+      promotionId: `PROMO-${type}`,
+      ...common,
+      type,
+      ...rule,
+      productIds: ['P2', 'P1'],
+    };
+    const definition = { ...common, type, ...rule };
+    const final = {
+      promotionId: body.promotionId,
+      ...definition,
+      productIds: ['P1', 'P2'],
+      createdAt: '2026-09-01T00:00:00.000Z',
+      updatedAt: '2026-09-01T00:00:00.000Z',
+      schemaVersion: 3,
+    };
+    create.mockResolvedValue(final);
+    const exactRequest = request(body, 'application/json; charset=utf-8');
 
-    const response = await POST(request);
+    const response = await POST(exactRequest);
 
     expect(response.status).toBe(201);
-    expect(createConfiguredSheetsStore).toHaveBeenCalledWith(request);
-    expect(createPromotion).toHaveBeenCalledWith({}, definition);
-    expect(replacePromotionProducts).toHaveBeenCalledWith({}, payload.promotionId, ['P2', 'P1']);
+    expect(createConfiguredPromotionCreation).toHaveBeenCalledWith(exactRequest);
+    expect(create).toHaveBeenCalledWith({
+      operationId: OPERATION_ID,
+      promotionId: body.promotionId,
+      definition,
+      productIds: ['P2', 'P1'],
+    });
+    expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual(final);
   });
 
-  it('generates a stable prefixed server ID when promotionId is omitted', async () => {
-    const payload = { ...common, type: 'FIXED_DISCOUNT', discountAmount: 100, productIds: [] };
-    vi.mocked(createPromotion).mockImplementation(async (_store, definition) => ({ ...definition, productIds: [] }) as never);
+  it('generates only the fallback promotion ID server-side when it is omitted', async () => {
+    create.mockImplementation(async (input) => ({
+      promotionId: input.promotionId,
+      ...input.definition,
+      productIds: input.productIds,
+      createdAt: '2026-09-01T00:00:00.000Z',
+      updatedAt: '2026-09-01T00:00:00.000Z',
+      schemaVersion: 3,
+    }));
 
-    const response = await post(payload);
-
-    expect(response.status).toBe(201);
-    const definition = vi.mocked(createPromotion).mock.calls[0][1];
-    expect(definition).toEqual({
-      promotionId: expect.stringMatching(/^PROMO-[0-9a-f-]{36}$/),
-      ...common,
-      type: 'FIXED_DISCOUNT',
-      discountAmount: 100,
-    });
-    expect(replacePromotionProducts).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toEqual({ ...definition, productIds: [] });
-  });
-
-  it.each([
-    ['null', null],
-    ['number', 123],
-    ['blank', ''],
-    ['whitespace', '   '],
-  ])('rejects an explicit %s promotionId before creating a store', async (_label, promotionId) => {
-    const response = await post({
-      promotionId,
-      ...common,
-      type: 'FIXED_DISCOUNT',
-      discountAmount: 100,
-      productIds: [],
-    });
-
-    expect(response.status).toBe(400);
-    expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
-    expect(createPromotion).not.toHaveBeenCalled();
-    expect(replacePromotionProducts).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    ['a number', ['P1', 123]],
-    ['null', ['P1', null]],
-    ['a blank ID', ['P1', '   ']],
-    ['normalized duplicates', [' P1 ', 'P1']],
-  ])('rejects productIds containing %s before creating a store', async (_label, productIds) => {
-    const response = await post({
-      ...common,
-      type: 'FIXED_DISCOUNT',
-      discountAmount: 100,
-      productIds,
-    });
-
-    expect(response.status).toBe(400);
-    expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
-    expect(createPromotion).not.toHaveBeenCalled();
-    expect(replacePromotionProducts).not.toHaveBeenCalled();
-  });
-
-  it('trims explicit promotion and product IDs before commands run', async () => {
-    const payload = {
-      promotionId: ' PROMO-1 ',
-      ...common,
-      type: 'FIXED_DISCOUNT' as const,
-      discountAmount: 100,
-      productIds: [' P2 ', 'P1 '],
-    };
-    vi.mocked(createPromotion).mockResolvedValue({
-      promotionId: 'PROMO-1',
-      ...common,
-      type: 'FIXED_DISCOUNT',
-      discountAmount: 100,
-      productIds: [],
-    } as never);
-    vi.mocked(replacePromotionProducts).mockResolvedValue({ promotionId: 'PROMO-1' } as never);
-
-    const response = await post(payload);
+    const response = await POST(request(validBody()));
 
     expect(response.status).toBe(201);
-    expect(createPromotion).toHaveBeenCalledWith({}, {
-      promotionId: 'PROMO-1',
-      ...common,
-      type: 'FIXED_DISCOUNT',
-      discountAmount: 100,
+    expect(create).toHaveBeenCalledWith({
+      operationId: OPERATION_ID,
+      promotionId: `PROMO-${OPERATION_ID}`,
+      definition: { ...common, type: 'FIXED_DISCOUNT', discountAmount: 100 },
+      productIds: [],
     });
-    expect(replacePromotionProducts).toHaveBeenCalledWith({}, 'PROMO-1', ['P2', 'P1']);
+  });
+
+  it('keeps a generated fallback promotion ID stable for operation retries', async () => {
+    create.mockImplementation(async (input) => ({
+      promotionId: input.promotionId,
+      ...input.definition,
+      productIds: input.productIds,
+      createdAt: '2026-09-01T00:00:00.000Z',
+      updatedAt: '2026-09-01T00:00:00.000Z',
+      schemaVersion: 3,
+    }));
+
+    await POST(request(validBody()));
+    await POST(request(validBody()));
+
+    const firstId = create.mock.calls[0][0].promotionId;
+    const secondId = create.mock.calls[1][0].promotionId;
+    expect(secondId).toBe(firstId);
   });
 
   it.each([
-    ['unknown key', { ...common, type: 'FIXED_DISCOUNT', discountAmount: 100, productIds: [], surprise: true }],
-    ['irrelevant rule key', { ...common, type: 'FIXED_DISCOUNT', discountAmount: 100, percent: 10, productIds: [] }],
-    ['non-array targets', { ...common, type: 'FIXED_DISCOUNT', discountAmount: 100, productIds: 'P1' }],
-    ['boolean string', { ...common, type: 'FIXED_DISCOUNT', discountAmount: 100, productIds: [], isActive: 'false' }],
-    ['array body', []],
-  ])('rejects %s before creating a store', async (_label, payload) => {
-    const response = await post(payload);
-
-    expect(response.status).toBe(400);
-    expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
-    expect(createPromotion).not.toHaveBeenCalled();
-    expect(replacePromotionProducts).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    ['sortOrder string', { ...common, sortOrder: '2', type: 'FIXED_DISCOUNT', discountAmount: 100, productIds: [] }],
-    ['rule numeric string', { ...common, type: 'FIXED_DISCOUNT', discountAmount: '100', productIds: [] }],
-    ['blank name', { ...common, name: '   ', type: 'FIXED_DISCOUNT', discountAmount: 100, productIds: [] }],
-    ['invalid date', { ...common, startsAt: 'not-a-date', type: 'FIXED_DISCOUNT', discountAmount: 100, productIds: [] }],
-    ['invalid date range', { ...common, startsAt: '2026-10-01T00:00:00.000Z', type: 'FIXED_DISCOUNT', discountAmount: 100, productIds: [] }],
-  ])('rejects malformed or semantic %s before opening Sheets', async (_label, payload) => {
-    const response = await post(payload);
+    ['missing media type', validBody(), ''],
+    ['wrong media type', validBody(), 'text/json'],
+    ['lookalike media type', validBody(), 'application/json-patch+json'],
+    ['malformed JSON', '{', 'application/json'],
+    ['missing operationId', bodyWithoutOperationId(), 'application/json'],
+    ['uppercase operationId', validBody({ operationId: OPERATION_ID.toUpperCase() }), 'application/json'],
+    ['noncanonical operationId', validBody({ operationId: '11111111-1111-0111-8111-111111111111' }), 'application/json'],
+    ['unknown key', validBody({ surprise: true }), 'application/json'],
+    ['irrelevant rule key', validBody({ percent: 10 }), 'application/json'],
+    ['non-array targets', validBody({ productIds: 'P1' }), 'application/json'],
+    ['boolean string', validBody({ isActive: 'false' }), 'application/json'],
+    ['array body', [], 'application/json'],
+    ['sortOrder string', validBody({ sortOrder: '2' }), 'application/json'],
+    ['rule numeric string', validBody({ discountAmount: '100' }), 'application/json'],
+    ['blank name', validBody({ name: '   ' }), 'application/json'],
+    ['invalid date', validBody({ startsAt: 'not-a-date' }), 'application/json'],
+    ['invalid date range', validBody({ startsAt: '2026-10-01T00:00:00.000Z' }), 'application/json'],
+    ['explicit null promotionId', validBody({ promotionId: null }), 'application/json'],
+    ['normalized duplicate targets', validBody({ productIds: [' P1 ', 'P1'] }), 'application/json'],
+  ])('returns exact safe 400 for %s before resolving configured authority', async (_label, body, contentType) => {
+    const response = await POST(request(body, contentType));
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({ error: '행사 요청 형식이 올바르지 않습니다.' });
+    expect(createConfiguredPromotionCreation).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
     expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
-    expect(createPromotion).not.toHaveBeenCalled();
-    expect(replacePromotionProducts).not.toHaveBeenCalled();
   });
 
-  it('returns a safe 500 when store creation fails', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    vi.mocked(createConfiguredSheetsStore).mockRejectedValue(new Error('private provider credential'));
+  it('trims explicit promotion and product IDs before the command runs', async () => {
+    create.mockResolvedValue({ promotionId: 'PROMO-1' });
 
-    const response = await post({ ...common, type: 'PERCENT_DISCOUNT', percent: 10, productIds: [] });
+    const response = await POST(request(validBody({
+      promotionId: ' PROMO-1 ',
+      productIds: [' P2 ', 'P1 '],
+    })));
 
-    expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toEqual({ error: '행사를 추가하지 못했습니다.' });
-    expect(createPromotion).not.toHaveBeenCalled();
-  });
-
-  it('returns a safe 500 and does not write targets after failed metadata creation', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    vi.mocked(createPromotion).mockRejectedValue(new Error('provider secret detail'));
-
-    const response = await post({ ...common, type: 'PERCENT_DISCOUNT', percent: 10, productIds: ['P1'] });
-
-    expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toEqual({ error: '행사를 추가하지 못했습니다.' });
-    expect(replacePromotionProducts).not.toHaveBeenCalled();
-  });
-
-  it('warns that metadata may be saved when target replacement fails after create', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const sequence: string[] = [];
-    vi.mocked(createPromotion).mockImplementation(async (_store, definition) => {
-      sequence.push('create');
-      return { ...definition, productIds: [] } as never;
+    expect(response.status).toBe(201);
+    expect(create).toHaveBeenCalledWith({
+      operationId: OPERATION_ID,
+      promotionId: 'PROMO-1',
+      definition: { ...common, type: 'FIXED_DISCOUNT', discountAmount: 100 },
+      productIds: ['P2', 'P1'],
     });
-    vi.mocked(replacePromotionProducts).mockImplementation(async () => {
-      sequence.push('replace');
-      throw new Error('provider target secret');
-    });
+  });
 
-    const response = await post({ ...common, type: 'PERCENT_DISCOUNT', percent: 10, productIds: ['P1'] });
+  it('maps only the typed target partial failure to the existing exact warning', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    create.mockRejectedValue(new PromotionCreationTargetPartialFailure({ cause: new Error('secret') }));
 
-    expect(sequence).toEqual(['create', 'replace']);
+    const response = await POST(request(validBody()));
+
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({
       error: '행사 정보는 저장되었을 수 있지만 대상 상품 저장에 실패했습니다. 새로고침 후 확인하고 다시 시도해 주세요.',
     });
+  });
+
+  it.each([
+    ['root resolution', 'root'],
+    ['command or domain', 'command'],
+  ])('maps %s errors to generic safe 500 without details', async (_label, failureAt) => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    if (failureAt === 'root') {
+      vi.mocked(createConfiguredPromotionCreation).mockRejectedValue(new Error('private root detail'));
+    } else {
+      create.mockRejectedValue(new Error('private command detail'));
+    }
+
+    const response = await POST(request(validBody()));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: '행사를 추가하지 못했습니다.' });
   });
 });

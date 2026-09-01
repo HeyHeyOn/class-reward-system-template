@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { StrictMode } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Product, Promotion } from '@/domain/types';
 import {
   PromotionAdminPanel,
@@ -22,6 +22,7 @@ const base = {
 };
 const percent: Promotion = { ...base, promotionId: 'PROMO-PCT', name: '기존 10% 할인', type: 'PERCENT_DISCOUNT', percent: 10 };
 const nPlusOne: Promotion = { ...base, promotionId: 'PROMO-N', name: '연필 2+1', type: 'N_PLUS_ONE', buyQuantity: 2, freeQuantity: 1, sortOrder: 2 };
+const DEFAULT_OPERATION_ID = '60000000-0000-4000-8000-000000000099';
 
 function response(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } });
@@ -51,6 +52,7 @@ function fillCommon(name = '새 행사') {
   fireEvent.click(screen.getByLabelText('연필 (P001) 대상'));
 }
 
+beforeEach(() => { vi.stubGlobal('crypto', { randomUUID: vi.fn(() => DEFAULT_OPERATION_ID) }); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('datetime-local helpers', () => {
@@ -127,7 +129,7 @@ describe('PromotionAdminPanel', () => {
 
   it('keeps a created promotion when the initial GET resolves stale after the POST', async () => {
     const initial = deferred<Response>();
-    const created: Promotion = { ...base, promotionId: 'PROMO-NEW', name: '새 행사', description: '새 설명', type: 'N_PLUS_ONE', buyQuantity: 2, freeQuantity: 1, sortOrder: 7 };
+    const created: Promotion = { ...base, promotionId: `PROMO-${DEFAULT_OPERATION_ID}`, name: '새 행사', description: '새 설명', type: 'N_PLUS_ONE', buyQuantity: 2, freeQuantity: 1, sortOrder: 7 };
     const fetchMock = vi.fn().mockReturnValueOnce(initial.promise).mockResolvedValueOnce(response(created, 201));
     vi.stubGlobal('fetch', fetchMock);
     renderPanel();
@@ -171,7 +173,7 @@ describe('PromotionAdminPanel', () => {
 
   it.each(['resolve', 'reject'] as const)('does not continue a pending POST after unmount when it %s', async (outcome) => {
     const mutation = deferred<Response>();
-    const created: Promotion = { ...base, promotionId: 'PROMO-NEW', name: '새 행사', description: '새 설명', type: 'N_PLUS_ONE', buyQuantity: 2, freeQuantity: 1, sortOrder: 7 };
+    const created: Promotion = { ...base, promotionId: `PROMO-${DEFAULT_OPERATION_ID}`, name: '새 행사', description: '새 설명', type: 'N_PLUS_ONE', buyQuantity: 2, freeQuantity: 1, sortOrder: 7 };
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const fetchMock = vi.fn().mockResolvedValueOnce(response([])).mockReturnValueOnce(mutation.promise);
     vi.stubGlobal('fetch', fetchMock);
@@ -227,7 +229,7 @@ describe('PromotionAdminPanel', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    mutation.resolve(response({ ...base, promotionId: 'PROMO-NEW', name: '새 행사', description: '새 설명', type: 'N_PLUS_ONE', buyQuantity: 2, freeQuantity: 1, sortOrder: 7 }, 201));
+    mutation.resolve(response({ ...base, promotionId: `PROMO-${DEFAULT_OPERATION_ID}`, name: '새 행사', description: '새 설명', type: 'N_PLUS_ONE', buyQuantity: 2, freeQuantity: 1, sortOrder: 7 }, 201));
     await mutation.promise;
   });
 
@@ -323,7 +325,8 @@ describe('PromotionAdminPanel', () => {
   });
 
   it('creates with the exact type-specific payload and appends the returned promotion', async () => {
-    const created: Promotion = { ...base, promotionId: 'PROMO-NEW', name: '새 행사', description: '새 설명', type: 'FIXED_DISCOUNT', discountAmount: 100, sortOrder: 7 };
+    vi.stubGlobal('crypto', { randomUUID: vi.fn(() => '60000000-0000-4000-8000-000000000001') });
+    const created: Promotion = { ...base, promotionId: 'PROMO-60000000-0000-4000-8000-000000000001', name: '새 행사', description: '새 설명', type: 'FIXED_DISCOUNT', discountAmount: 100, sortOrder: 7 };
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(response([]))
       .mockResolvedValueOnce(response(created, 201));
@@ -339,10 +342,61 @@ describe('PromotionAdminPanel', () => {
     expect(request[0]).toBe('/api/promotions');
     expect(request[1]).toMatchObject({ method: 'POST', headers: { 'Content-Type': 'application/json' } });
     expect(JSON.parse(String(request[1]?.body))).toEqual({
+      operationId: '60000000-0000-4000-8000-000000000001',
       name: '새 행사', description: '새 설명', startsAt: '2026-08-10T00:30:00.000Z', endsAt: '2026-08-20T09:00:00.000Z',
       isActive: true, sortOrder: 7, type: 'FIXED_DISCOUNT', discountAmount: 100, productIds: ['P001'],
     });
     expect(screen.getByTestId('promotion-row').textContent).not.toContain('PROMO-NEW');
+  });
+
+  it('reuses the create operation ID after a malformed 2xx response', async () => {
+    const randomUUID = vi.fn(() => '60000000-0000-4000-8000-000000000011');
+    vi.stubGlobal('crypto', { randomUUID });
+    const created: Promotion = { ...base, promotionId: 'PROMO-60000000-0000-4000-8000-000000000011', name: '재시도 행사', type: 'N_PLUS_ONE', buyQuantity: 2, freeQuantity: 1 };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response([]))
+      .mockResolvedValueOnce(response({ bad: true }, 201))
+      .mockResolvedValueOnce(response(created, 201));
+    vi.stubGlobal('fetch', fetchMock);
+    renderPanel();
+    await screen.findByText('등록된 행사가 없습니다.');
+    fillCommon('재시도 행사');
+
+    fireEvent.click(screen.getByRole('button', { name: '행사 추가' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('행사 응답 형식이 올바르지 않습니다.');
+    fireEvent.click(screen.getByRole('button', { name: '행사 추가' }));
+    await screen.findByText('행사를 추가했습니다.');
+
+    const bodies = fetchMock.mock.calls.slice(1).map((call) => JSON.parse(String(call[1]?.body)));
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1].operationId).toBe(bodies[0].operationId);
+    expect(randomUUID).toHaveBeenCalledOnce();
+  });
+
+  it('allocates a new create operation ID after a failed draft changes', async () => {
+    const randomUUID = vi.fn()
+      .mockReturnValueOnce('60000000-0000-4000-8000-000000000021')
+      .mockReturnValueOnce('60000000-0000-4000-8000-000000000022');
+    vi.stubGlobal('crypto', { randomUUID });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response([]))
+      .mockResolvedValue(response({ error: 'temporary' }, 500));
+    vi.stubGlobal('fetch', fetchMock);
+    renderPanel();
+    await screen.findByText('등록된 행사가 없습니다.');
+    fillCommon('첫 행사');
+
+    fireEvent.click(screen.getByRole('button', { name: '행사 추가' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('temporary');
+    fireEvent.change(screen.getByLabelText('행사명'), { target: { value: '둘째 행사' } });
+    fireEvent.click(screen.getByRole('button', { name: '행사 추가' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+
+    const bodies = fetchMock.mock.calls.slice(1).map((call) => JSON.parse(String(call[1]?.body)));
+    expect(bodies.map((body) => body.operationId)).toEqual([
+      '60000000-0000-4000-8000-000000000021',
+      '60000000-0000-4000-8000-000000000022',
+    ]);
   });
 
   it('edits with a full exact payload and toggles activation with activation-only PATCH', async () => {
@@ -379,7 +433,7 @@ describe('PromotionAdminPanel', () => {
   });
 
   it('submits a fractional percentage exactly and exposes a non-integer step', async () => {
-    const created: Promotion = { ...percent, promotionId: 'PROMO-12-5', name: '12.5 할인', percent: 12.5, sortOrder: 7 };
+    const created: Promotion = { ...percent, promotionId: `PROMO-${DEFAULT_OPERATION_ID}`, name: '12.5 할인', percent: 12.5, sortOrder: 7 };
     const fetchMock = vi.fn().mockResolvedValueOnce(response([])).mockResolvedValueOnce(response(created, 201));
     vi.stubGlobal('fetch', fetchMock);
     renderPanel();
@@ -418,6 +472,21 @@ describe('PromotionAdminPanel', () => {
     expect((await within(dialog).findByRole('alert')).textContent).toContain('행사 응답 형식이 올바르지 않습니다.');
     expect(screen.getByText('기존 10% 할인')).toBeTruthy();
     expect(screen.queryByText('망가진 수정')).toBeNull();
+  });
+
+  it('rejects a valid create response not bound to the operation ID', async () => {
+    const mismatched: Promotion = { ...nPlusOne, promotionId: 'PROMO-CROSSED', name: '교차 응답' };
+    const fetchMock = vi.fn().mockResolvedValueOnce(response([])).mockResolvedValueOnce(response(mismatched, 201));
+    vi.stubGlobal('fetch', fetchMock);
+    renderPanel();
+    await screen.findByText('등록된 행사가 없습니다.');
+
+    fillCommon('새 행사 시도');
+    fireEvent.click(screen.getByRole('button', { name: '행사 추가' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('행사 응답 ID가 올바르지 않습니다.');
+    expect(screen.queryByText('교차 응답')).toBeNull();
+    expect(screen.getByLabelText('행사명')).toHaveProperty('value', '새 행사 시도');
   });
 
   it('rejects a create response whose ID already exists without mutating the list', async () => {
@@ -472,7 +541,7 @@ describe('PromotionAdminPanel', () => {
 
   it('reorders immediately after a low-priority create and a priority edit', async () => {
     const later: Promotion = { ...percent, promotionId: 'LATER', name: '나중 행사', sortOrder: 5 };
-    const first: Promotion = { ...nPlusOne, promotionId: 'FIRST', name: '먼저 행사', sortOrder: 0 };
+    const first: Promotion = { ...nPlusOne, promotionId: `PROMO-${DEFAULT_OPERATION_ID}`, name: '먼저 행사', sortOrder: 0 };
     const edited: Promotion = { ...later, sortOrder: -1 };
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(response([later]))

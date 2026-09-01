@@ -1,13 +1,10 @@
-import { randomUUID } from 'node:crypto';
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
-import { createConfiguredSheetsStore } from '@/server/googleSheets';
 import { createConfiguredCatalogReader } from '@/server/repositories/configuredCatalog';
 import {
-  createPromotion,
-  replacePromotionProducts,
-} from '@/server/repositories/sheets/promotionCommands';
+  PromotionCreationTargetPartialFailure,
+  createConfiguredPromotionCreation,
+} from '@/server/repositories/configuredPromotionCreation';
 import {
-  haveSameProductIds,
   parseCreatePromotionPayload,
   PromotionPayloadError,
 } from './payload';
@@ -29,6 +26,11 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
+  const mediaType = request.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();
+  if (mediaType !== 'application/json') {
+    return safeErrorResponse(400, '행사 요청 형식이 올바르지 않습니다.');
+  }
+
   let payload: ReturnType<typeof parseCreatePromotionPayload>;
   try {
     payload = parseCreatePromotionPayload(await request.json());
@@ -40,25 +42,24 @@ export async function POST(request: Request) {
     return safeErrorResponse(500, '행사를 추가하지 못했습니다.');
   }
 
-  const promotionId = payload.promotionId ?? `PROMO-${randomUUID()}`;
+  const promotionId = payload.promotionId ?? `PROMO-${payload.operationId}`;
   try {
-    const store = await createConfiguredSheetsStore(request);
-    const created = await createPromotion(store, { promotionId, ...payload.definition });
-    let promotion = created;
-    if (!haveSameProductIds(created.productIds, payload.productIds)) {
-      try {
-        promotion = await replacePromotionProducts(store, promotionId, payload.productIds);
-      } catch (error) {
-        console.error('Failed to replace promotion products after create', error);
-        return safeErrorResponse(
-          500,
-          '행사 정보는 저장되었을 수 있지만 대상 상품 저장에 실패했습니다. 새로고침 후 확인하고 다시 시도해 주세요.',
-        );
-      }
-    }
+    const command = await createConfiguredPromotionCreation(request);
+    const promotion = await command.create({
+      operationId: payload.operationId,
+      promotionId,
+      definition: payload.definition,
+      productIds: payload.productIds,
+    });
     return Response.json(promotion, { status: 201 });
   } catch (error) {
     console.error('Failed to create promotion', error);
+    if (error instanceof PromotionCreationTargetPartialFailure) {
+      return safeErrorResponse(
+        500,
+        '행사 정보는 저장되었을 수 있지만 대상 상품 저장에 실패했습니다. 새로고침 후 확인하고 다시 시도해 주세요.',
+      );
+    }
     return safeErrorResponse(500, '행사를 추가하지 못했습니다.');
   }
 }

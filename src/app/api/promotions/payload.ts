@@ -3,6 +3,8 @@ import {
   type PromotionDefinitionInput,
 } from '@/server/repositories/sheets/promotionCommands';
 
+const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
 const COMMON_KEYS = [
   'name',
   'description',
@@ -26,6 +28,7 @@ type ParsedDefinitionPayload = {
 };
 
 export type ParsedCreatePromotionPayload = ParsedDefinitionPayload & {
+  operationId: string;
   promotionId?: string;
 };
 
@@ -43,12 +46,16 @@ export class PromotionPayloadError extends Error {
 export function parseCreatePromotionPayload(value: unknown): ParsedCreatePromotionPayload {
   return asPayloadError(() => {
     const candidate = exactObject(value);
+    if (typeof candidate.operationId !== 'string' || !CANONICAL_UUID.test(candidate.operationId)) {
+      throw new Error('operationId must be a canonical UUID');
+    }
     const parsed = parseDefinition(candidate, true);
     const promotionId = Object.hasOwn(candidate, 'promotionId')
       ? parseNonBlankId(candidate.promotionId, 'promotionId')
       : undefined;
     return {
       ...parsed,
+      operationId: candidate.operationId,
       ...(promotionId === undefined ? {} : { promotionId }),
     };
   });
@@ -91,6 +98,7 @@ function parseDefinition(
     ...COMMON_KEYS,
     ...ruleKeys,
     'productIds',
+    ...(allowPromotionId ? ['operationId'] : []),
     ...(allowPromotionId && Object.hasOwn(candidate, 'promotionId') ? ['promotionId'] : []),
   ]);
   const actualKeys = Object.keys(candidate);

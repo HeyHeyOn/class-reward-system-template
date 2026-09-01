@@ -237,6 +237,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
   const loadGenerationRef = useRef(0);
   const mutationGenerationRef = useRef(0);
   const mutationInFlightRef = useRef(false);
+  const creationAttemptRef = useRef<{ semanticKey: string; operationId: string } | null>(null);
   const promotionsRef = useRef<Promotion[]>([]);
   const editGenerationRef = useRef(0);
   const editOpenerRef = useRef<HTMLButtonElement | null>(null);
@@ -362,17 +363,26 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
       return;
     }
     setFormError('');
+    const createPayload = exactPayload(draft);
+    const semanticKey = JSON.stringify(createPayload);
+    if (creationAttemptRef.current?.semanticKey !== semanticKey) {
+      creationAttemptRef.current = { semanticKey, operationId: crypto.randomUUID() };
+    }
+    const operationId = creationAttemptRef.current.operationId;
     setSaving(true);
     try {
       const response = await fetch('/api/promotions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(exactPayload(draft)),
+        body: JSON.stringify({ operationId, ...createPayload }),
       });
       const payload: unknown = await response.json();
       if (!response.ok) throw new Error(readError(payload, '행사를 추가하지 못했습니다.'));
       const returned = parsePromotionResponse(payload);
       if (!returned) throw new Error('행사 응답 형식이 올바르지 않습니다.');
+      if (returned.promotionId !== `PROMO-${operationId}`) {
+        throw new Error('행사 응답 ID가 올바르지 않습니다.');
+      }
       if (promotionsRef.current.some((promotion) => promotion.promotionId === returned.promotionId)) {
         throw new Error('행사 응답 ID가 올바르지 않습니다.');
       }
@@ -385,6 +395,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
       setLoadError('');
       setMessage('행사를 추가했습니다.');
       setDraft(EMPTY_DRAFT);
+      creationAttemptRef.current = null;
     } catch (caught) {
       if (mountedRef.current && mutationGenerationRef.current === mutationGeneration) {
         setFormError(caught instanceof Error ? caught.message : '행사를 저장하지 못했습니다.');
