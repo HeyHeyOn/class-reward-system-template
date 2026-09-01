@@ -18,6 +18,79 @@ export type ParsedTaskFields = {
   prerequisiteTaskId?: string;
 };
 
+export type ParsedTaskCreate = Omit<ParsedTaskFields, 'taskId' | 'availableFrom' | 'dueAt' | 'prerequisiteTaskId'> & {
+  operationId: string;
+  taskId: string;
+  availableFrom: string | null;
+  dueAt: string | null;
+  prerequisiteTaskId: string | null;
+};
+
+const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const INT32_MIN = -2147483648;
+const INT32_MAX = 2147483647;
+
+function invalidTaskPayload(): Error {
+  return new Error('과제 저장 요청 형식이 올바르지 않습니다.');
+}
+
+export function parseStrictTaskCreate(value: unknown): ParsedTaskCreate {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw invalidTaskPayload();
+  const input = value as Record<string, unknown>;
+  const required = ['operationId', 'taskId', ...COMMON_REQUIRED_KEYS];
+  const allowed = new Set([...required, ...OPTIONAL_KEYS, 'schedule']);
+  if (!required.every((key) => Object.hasOwn(input, key))
+    || Object.keys(input).some((key) => !allowed.has(key))) throw invalidTaskPayload();
+  if (typeof input.operationId !== 'string' || !CANONICAL_UUID.test(input.operationId)
+    || typeof input.taskId !== 'string' || !input.taskId.trim()
+    || typeof input.title !== 'string' || !input.title.trim()
+    || typeof input.description !== 'string'
+    || !Number.isSafeInteger(input.reward) || (input.reward as number) < 0
+    || typeof input.isActive !== 'boolean'
+    || !Number.isInteger(input.sortOrder) || (input.sortOrder as number) < INT32_MIN
+    || (input.sortOrder as number) > INT32_MAX
+    || !Array.isArray(input.allowedStudentIds)
+    || input.allowedStudentIds.some((id) => typeof id !== 'string' || !id.trim())) {
+    throw invalidTaskPayload();
+  }
+  const allowedStudentIds = (input.allowedStudentIds as string[]).map((id) => id.trim()).sort();
+  if (new Set(allowedStudentIds).size !== allowedStudentIds.length) throw invalidTaskPayload();
+  for (const key of OPTIONAL_KEYS) {
+    if (Object.hasOwn(input, key) && input[key] !== null && typeof input[key] !== 'string') {
+      throw invalidTaskPayload();
+    }
+  }
+  const optionalText = (key: typeof OPTIONAL_KEYS[number]) => {
+    const optionalValue = input[key];
+    return typeof optionalValue === 'string' && optionalValue.trim() ? optionalValue.trim() : null;
+  };
+  const optionalInstant = (key: 'availableFrom' | 'dueAt') => {
+    const value = optionalText(key);
+    if (value === null) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) throw invalidTaskPayload();
+    return parsed.toISOString();
+  };
+  const availableFrom = optionalInstant('availableFrom');
+  const dueAt = optionalInstant('dueAt');
+  if (availableFrom !== null && dueAt !== null && Date.parse(dueAt) <= Date.parse(availableFrom)) {
+    throw invalidTaskPayload();
+  }
+  return {
+    operationId: input.operationId,
+    taskId: input.taskId.trim(),
+    title: input.title.trim(),
+    description: input.description.trim(),
+    reward: input.reward as number,
+    isActive: input.isActive,
+    sortOrder: input.sortOrder as number,
+    allowedStudentIds,
+    availableFrom,
+    dueAt,
+    prerequisiteTaskId: optionalText('prerequisiteTaskId'),
+  };
+}
+
 export function parseStrictTaskFields(value: unknown, mode: TaskPayloadMode): ParsedTaskFields {
   return parseTaskFields(value, mode);
 }

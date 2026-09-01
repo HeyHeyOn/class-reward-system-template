@@ -91,6 +91,212 @@ function isCreatedStudent(value: unknown, expected: NewStudentDraft): value is S
     && value.status === expected.status;
 }
 
+function buildTaskCreationBody(draft: Omit<TaskDraft, 'taskId'>, taskId: string) {
+  const schedule = draft.schedule
+    ? scheduleFormToPayload(scheduleDtoToForm(draft.schedule))
+    : null;
+  return {
+    taskId,
+    title: draft.title,
+    description: draft.description,
+    reward: draft.reward,
+    isActive: draft.isActive,
+    sortOrder: draft.sortOrder,
+    allowedStudentIds: draft.allowedStudentIds ?? [],
+    availableFrom: draft.availableFrom ?? '',
+    dueAt: draft.dueAt ?? '',
+    prerequisiteTaskId: draft.prerequisiteTaskId ?? '',
+    ...(schedule?.ok ? { schedule: schedule.payload } : {}),
+  };
+}
+
+function canonicalTaskCreationBody(body: ReturnType<typeof buildTaskCreationBody>) {
+  const canonicalInstant = (value: string) => {
+    if (!value.trim()) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? value.trim() : parsed.toISOString();
+  };
+  const schedule = body.schedule ?? {
+    recurrence: { type: 'NONE' as const },
+    timeZone: 'Asia/Seoul',
+    resetCompletionOnCycle: false,
+    resetAssignmentOnCycle: false,
+  };
+  const recurrence = schedule.recurrence.type === 'WEEKLY'
+    ? { ...schedule.recurrence, weekdays: [...schedule.recurrence.weekdays].sort((a, b) => a - b) }
+    : { ...schedule.recurrence };
+  return {
+    taskId: body.taskId.trim(),
+    title: body.title.trim(),
+    description: body.description.trim(),
+    reward: body.reward,
+    isActive: body.isActive,
+    sortOrder: body.sortOrder,
+    allowedStudentIds: [...new Set(body.allowedStudentIds.map((id) => id.trim()))].sort(),
+    availableFrom: canonicalInstant(body.availableFrom),
+    dueAt: canonicalInstant(body.dueAt),
+    prerequisiteTaskId: body.prerequisiteTaskId.trim() || null,
+    schedule: { ...schedule, recurrence },
+  };
+}
+
+function isCreatedTask(
+  value: unknown,
+  expected: ReturnType<typeof canonicalTaskCreationBody>,
+): value is ClassTask {
+  if (!isRecord(value)) return false;
+  const expectedKeys = [
+    'taskId', 'title', 'description', 'reward', 'isActive', 'sortOrder',
+    'allowedStudentIds', 'createdAt', 'taskInstanceId', 'schedule', 'pendingSchedule',
+    ...(expected.availableFrom ? ['availableFrom'] : []),
+    ...(expected.dueAt ? ['dueAt'] : []),
+    ...(expected.prerequisiteTaskId ? ['prerequisiteTaskId'] : []),
+  ].sort();
+  const actualKeys = Object.keys(value).sort();
+  if (actualKeys.length !== expectedKeys.length
+    || actualKeys.some((key, index) => key !== expectedKeys[index])
+    || value.taskId !== expected.taskId || value.title !== expected.title
+    || value.description !== expected.description || value.reward !== expected.reward
+    || value.isActive !== expected.isActive || value.sortOrder !== expected.sortOrder
+    || !Array.isArray(value.allowedStudentIds)
+    || JSON.stringify(value.allowedStudentIds) !== JSON.stringify(expected.allowedStudentIds)
+    || typeof value.createdAt !== 'string' || new Date(value.createdAt).toISOString() !== value.createdAt
+    || typeof value.taskInstanceId !== 'string' || !value.taskInstanceId.trim()
+    || value.pendingSchedule !== null
+    || value.availableFrom !== (expected.availableFrom ?? undefined)
+    || value.dueAt !== (expected.dueAt ?? undefined)
+    || value.prerequisiteTaskId !== (expected.prerequisiteTaskId ?? undefined)
+    || !isRecord(value.schedule)) return false;
+  const schedule = value.schedule;
+  if (Object.keys(schedule).sort().join(',') !== [
+    'effectiveFrom', 'recurrence', 'resetAssignmentOnCycle',
+    'resetCompletionOnCycle', 'ruleVersion', 'timeZone',
+  ].sort().join(',')) return false;
+  return schedule.ruleVersion === 1
+    && schedule.effectiveFrom === value.createdAt
+    && schedule.timeZone === expected.schedule.timeZone
+    && schedule.resetCompletionOnCycle === expected.schedule.resetCompletionOnCycle
+    && schedule.resetAssignmentOnCycle === expected.schedule.resetAssignmentOnCycle
+    && JSON.stringify(schedule.recurrence) === JSON.stringify(expected.schedule.recurrence);
+}
+
+function isCompleteTaskProjection(value: unknown, taskId: string): value is ClassTask {
+  if (!isRecord(value) || value.taskId !== taskId
+    || typeof value.title !== 'string' || !value.title || value.title.trim() !== value.title
+    || typeof value.description !== 'string' || value.description.trim() !== value.description
+    || !Number.isSafeInteger(value.reward) || Number(value.reward) < 0
+    || typeof value.isActive !== 'boolean'
+    || !Number.isInteger(value.sortOrder) || Number(value.sortOrder) < -2147483648
+    || Number(value.sortOrder) > 2147483647
+    || !Array.isArray(value.allowedStudentIds)
+    || value.allowedStudentIds.some((studentId) => typeof studentId !== 'string'
+      || !studentId || studentId.trim() !== studentId)
+    || new Set(value.allowedStudentIds).size !== value.allowedStudentIds.length
+    || value.allowedStudentIds.some((studentId, index, ids) => index > 0 && ids[index - 1] > studentId)
+    || typeof value.createdAt !== 'string' || !isCanonicalInstant(value.createdAt)
+    || typeof value.taskInstanceId !== 'string' || !value.taskInstanceId
+    || value.taskInstanceId.trim() !== value.taskInstanceId
+    || !isCanonicalOptionalInstant(value, 'availableFrom')
+    || !isCanonicalOptionalInstant(value, 'dueAt')
+    || !isCanonicalOptionalId(value, 'prerequisiteTaskId')
+    || !isCompleteTaskSchedule(value.schedule)
+    || !isCompleteCurrentCycle(value.currentCycle)) return false;
+  const availableFrom = typeof value.availableFrom === 'string' ? value.availableFrom : null;
+  const dueAt = typeof value.dueAt === 'string' ? value.dueAt : null;
+  if (availableFrom && dueAt && Date.parse(dueAt) <= Date.parse(availableFrom)) return false;
+  return Object.hasOwn(value, 'pendingSchedule')
+    && (value.pendingSchedule === null || isCompleteTaskSchedule(value.pendingSchedule));
+}
+
+function isCanonicalOptionalInstant(value: Record<string, unknown>, key: string): boolean {
+  if (!Object.hasOwn(value, key)) return true;
+  return typeof value[key] === 'string' && isCanonicalInstant(value[key]);
+}
+
+function isCanonicalOptionalId(value: Record<string, unknown>, key: string): boolean {
+  if (!Object.hasOwn(value, key)) return true;
+  return typeof value[key] === 'string' && Boolean(value[key]) && value[key].trim() === value[key];
+}
+
+function isCompleteCurrentCycle(value: unknown): boolean {
+  if (!isRecord(value) || Object.keys(value).sort().join(',') !== [
+    'assignedStudentIds', 'completedStudentIds', 'cycleId', 'endsAt',
+    'startsAt', 'students', 'transition',
+  ].sort().join(',')
+    || typeof value.cycleId !== 'string' || !value.cycleId || value.cycleId.trim() !== value.cycleId
+    || typeof value.startsAt !== 'string' || !isCanonicalInstant(value.startsAt)
+    || (value.endsAt !== null && (typeof value.endsAt !== 'string' || !isCanonicalInstant(value.endsAt)))
+    || (typeof value.endsAt === 'string' && Date.parse(value.endsAt) <= Date.parse(value.startsAt))
+    || !['PERMANENT', 'INITIAL_CYCLE', 'SCHEDULE_CHANGE_FIRST_CYCLE', 'NATURAL_BOUNDARY'].includes(String(value.transition))
+    || !isCanonicalIdList(value.assignedStudentIds)
+    || !isCanonicalIdList(value.completedStudentIds)
+    || !Array.isArray(value.students)) return false;
+  const origins = ['EVENT', 'CARRY', 'LEGACY', 'DEFAULT'];
+  const sources = ['ADMIN', 'QR', 'LEGACY_SEED', 'CARRY_FORWARD'];
+  const students = value.students;
+  if (students.some((student, index) => {
+    if (!isRecord(student)) return true;
+    const keys = Object.keys(student).sort();
+    const expectedKeys = [
+      'assigned', 'assignmentOrigin', 'completed', 'completionOrigin', 'studentId',
+      ...(Object.hasOwn(student, 'assignmentSource') ? ['assignmentSource'] : []),
+    ].sort();
+    return keys.length !== expectedKeys.length || keys.some((key, keyIndex) => key !== expectedKeys[keyIndex])
+      || typeof student.studentId !== 'string' || !student.studentId
+      || student.studentId.trim() !== student.studentId
+      || (index > 0 && isRecord(students[index - 1]) && String(students[index - 1].studentId) >= student.studentId)
+      || typeof student.assigned !== 'boolean' || typeof student.completed !== 'boolean'
+      || !origins.includes(String(student.assignmentOrigin)) || !origins.includes(String(student.completionOrigin))
+      || (Object.hasOwn(student, 'assignmentSource') && !sources.includes(String(student.assignmentSource)));
+  })) return false;
+  const assigned = students.filter((student) => isRecord(student) && student.assigned === true)
+    .map((student) => student.studentId);
+  const completed = students.filter((student) => isRecord(student) && student.completed === true)
+    .map((student) => student.studentId);
+  return JSON.stringify(value.assignedStudentIds) === JSON.stringify(assigned)
+    && JSON.stringify(value.completedStudentIds) === JSON.stringify(completed);
+}
+
+function isCanonicalIdList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((id, index, ids) => typeof id === 'string'
+    && Boolean(id) && id.trim() === id && (index === 0 || ids[index - 1] < id));
+}
+
+function isCompleteTaskSchedule(value: unknown): boolean {
+  if (!isRecord(value) || Object.keys(value).sort().join(',') !== [
+    'effectiveFrom', 'recurrence', 'resetAssignmentOnCycle',
+    'resetCompletionOnCycle', 'ruleVersion', 'timeZone',
+  ].sort().join(',')
+    || !Number.isSafeInteger(value.ruleVersion) || Number(value.ruleVersion) < 1
+    || typeof value.effectiveFrom !== 'string' || !isCanonicalInstant(value.effectiveFrom)
+    || value.timeZone !== 'Asia/Seoul'
+    || typeof value.resetCompletionOnCycle !== 'boolean'
+    || typeof value.resetAssignmentOnCycle !== 'boolean'
+    || !isRecord(value.recurrence)) return false;
+  const recurrence = value.recurrence;
+  if (recurrence.type === 'NONE') return Object.keys(recurrence).length === 1;
+  if (recurrence.type === 'DAILY') return Object.keys(recurrence).length === 2 && isTaskTime(recurrence.time);
+  if (recurrence.type === 'WEEKLY') return Object.keys(recurrence).length === 3
+    && isTaskTime(recurrence.time) && Array.isArray(recurrence.weekdays)
+    && recurrence.weekdays.length > 0
+    && recurrence.weekdays.every((day, index, days) => Number.isInteger(day)
+      && Number(day) >= 1 && Number(day) <= 7 && (index === 0 || Number(days[index - 1]) < Number(day)));
+  return recurrence.type === 'MONTHLY' && Object.keys(recurrence).length === 3
+    && isTaskTime(recurrence.time) && Number.isInteger(recurrence.dayOfMonth)
+    && Number(recurrence.dayOfMonth) >= 1 && Number(recurrence.dayOfMonth) <= 31;
+}
+
+function isTaskTime(value: unknown): boolean {
+  if (typeof value !== 'string' || !/^\d{2}:\d{2}$/.test(value)) return false;
+  const [hour, minute] = value.split(':').map(Number);
+  return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
+}
+
+function isCanonicalInstant(value: string): boolean {
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString() === value;
+}
+
 const EMPTY_STUDENT: NewStudentDraft = { studentId: '', name: '', balance: 0, status: 'ACTIVE' };
 const EMPTY_PRODUCT: NewProductDraft = { name: '', price: 0, stock: 0, isActive: true, imageUrl: '', category: '', sortOrder: 1 };
 const EMPTY_TASK: Omit<TaskDraft, 'taskId'> = { title: '', description: '', reward: 0, isActive: true, sortOrder: 1, allowedStudentIds: [] };
@@ -178,6 +384,8 @@ export function AdminManagePage() {
   const productCreationAttempt = useRef<{ semanticKey: string; operationId: string } | null>(null);
   const productCreationInFlight = useRef(false);
   const [newTask, setNewTask] = useState<Omit<TaskDraft, 'taskId'>>(EMPTY_TASK);
+  const taskCreationAttempt = useRef<{ semanticKey: string; operationId: string } | null>(null);
+  const taskCreationInFlight = useRef(false);
   const [imageEditor, setImageEditor] = useState<{ productId: string; value: string } | null>(null);
   const [taskDescriptionEditor, setTaskDescriptionEditor] = useState<{ taskId: string; value: string } | null>(null);
   const [taskScheduleEditor, setTaskScheduleEditor] = useState<{ taskId: string | null; target: TaskDialogTarget; form: TaskRecurrenceForm; explicit: boolean; opener: HTMLElement | null; availableFrom: string; dueAt: string; prerequisiteTaskId: string; availabilityExplicit: boolean } | null>(null);
@@ -1211,44 +1419,64 @@ export function AdminManagePage() {
 
   async function createNewTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (taskCreationInFlight.current) return;
+    const body = buildTaskCreationBody(
+      newTask,
+      nextPrefixedId(tasks.map((task) => task.taskId), 'T'),
+    );
+    const canonicalBody = canonicalTaskCreationBody(body);
+    const semanticKey = JSON.stringify(canonicalBody);
+    if (!taskCreationAttempt.current || taskCreationAttempt.current.semanticKey !== semanticKey) {
+      taskCreationAttempt.current = { semanticKey, operationId: crypto.randomUUID() };
+    }
+    const operationId = taskCreationAttempt.current.operationId;
+    taskCreationInFlight.current = true;
     try {
-      const body = {
-        taskId: nextPrefixedId(tasks.map((task) => task.taskId), 'T'),
-        title: newTask.title,
-        description: newTask.description,
-        reward: newTask.reward,
-        isActive: newTask.isActive,
-        sortOrder: newTask.sortOrder,
-        allowedStudentIds: newTask.allowedStudentIds ?? [],
-        availableFrom: newTask.availableFrom ?? '',
-        dueAt: newTask.dueAt ?? '',
-        prerequisiteTaskId: newTask.prerequisiteTaskId ?? '',
-        ...(newTask.schedule ? (() => {
-          const schedule = scheduleFormToPayload(scheduleDtoToForm(newTask.schedule));
-          return schedule.ok ? { schedule: schedule.payload } : {};
-        })() : {}),
-      };
-      const response = await fetch('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? '과제를 추가하지 못했습니다.');
-      const createdTask = normalizeAdminTask(payload as TaskDraft);
-      setTasks((current) => [...current, createdTask].sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title)));
-      setNewTask(EMPTY_TASK);
+      const response = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operationId, ...body }),
+      });
+      const payload: unknown = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(isRecord(payload) && typeof payload.error === 'string'
+          ? payload.error : '과제를 추가하지 못했습니다.');
+      }
+      if (!isCreatedTask(payload, canonicalBody)) throw new Error('과제를 추가하지 못했습니다.');
+      const createdTask = normalizeAdminTask(payload);
+      setTasks((current) => [...current.filter((task) => task.taskId !== createdTask.taskId), createdTask]
+        .sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title)));
+      setNewTask((current) => JSON.stringify(canonicalTaskCreationBody(buildTaskCreationBody(current, body.taskId))) === semanticKey
+        ? EMPTY_TASK : current);
+      if (taskCreationAttempt.current?.operationId === operationId) taskCreationAttempt.current = null;
       notify(`${createdTask.taskId} 과제 추가 완료`);
       if (createdTask.schedule?.recurrence.type !== 'NONE') {
         try {
           const taskResponse = await fetch('/api/tasks?includeInactive=1', { cache: 'no-store' });
-          const taskPayload = await taskResponse.json();
-          if (!taskResponse.ok || !Array.isArray(taskPayload)) throw new Error(taskPayload?.error ?? '최신 과제 회차를 불러오지 못했습니다.');
-          if (!taskPayload.some((task: ClassTask) => task.taskId === createdTask.taskId)) throw new Error('생성한 과제의 최신 회차가 아직 조회되지 않습니다.');
-          setTasks((current) => reconcileTaskProjections(current, taskPayload, [createdTask.taskId], [createdTask.taskId]));
+          const taskPayload: unknown = await taskResponse.json().catch(() => null);
+          if (!taskResponse.ok || !Array.isArray(taskPayload)) {
+            throw new Error(isRecord(taskPayload) && typeof taskPayload.error === 'string'
+              ? taskPayload.error : '최신 과제 회차를 불러오지 못했습니다.');
+          }
+          const matchingTasks = taskPayload.filter((task) => isRecord(task) && task.taskId === createdTask.taskId);
+          if (matchingTasks.length !== 1 || !isCompleteTaskProjection(matchingTasks[0], createdTask.taskId)) {
+            throw new Error('생성한 과제의 최신 회차가 아직 조회되지 않습니다.');
+          }
+          const refreshedTask = normalizeAdminTask(matchingTasks[0] as TaskDraft);
+          setTasks((current) => {
+            const next = current.some((task) => task.taskId === refreshedTask.taskId)
+              ? current.map((task) => task.taskId === refreshedTask.taskId ? refreshedTask : task)
+              : [...current, refreshedTask];
+            return next.sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title));
+          });
         } catch (error) {
           notify(`${createdTask.taskId} 과제는 추가되었지만 회차 정보를 새로고침하지 못했습니다: ${error instanceof Error ? error.message : '최신 과제 회차를 불러오지 못했습니다.'}`);
-          return;
         }
       }
     } catch (error) {
       notify(error instanceof Error ? error.message : '과제를 추가하지 못했습니다.');
+    } finally {
+      taskCreationInFlight.current = false;
     }
   }
 

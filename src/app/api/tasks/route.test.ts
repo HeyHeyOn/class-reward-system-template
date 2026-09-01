@@ -7,6 +7,7 @@ import { projectTaskCycleState } from '@/domain/taskCycleState';
 import type { ClassTask, TaskAssignment } from '@/domain/types';
 import { buildStudentTaskProjection } from '@/server/studentTaskProjection';
 import { createConfiguredTaskReader } from '@/server/repositories/configuredTasks';
+import { createConfiguredTaskCreation } from '@/server/repositories/configuredTaskCreation';
 import { GET, POST } from './route';
 
 vi.mock('@/server/apiAuth', () => ({
@@ -17,6 +18,7 @@ vi.mock('@/server/googleSheets', () => ({ createConfiguredSheetsReader: vi.fn(),
 vi.mock('@/server/sheetsRepository', () => ({ createTask: vi.fn() }));
 vi.mock('@/server/repositories/sheets/taskHistoryQueries', () => ({ listTaskCycleProjections: vi.fn() }));
 vi.mock('@/server/repositories/configuredTasks', () => ({ createConfiguredTaskReader: vi.fn() }));
+vi.mock('@/server/repositories/configuredTaskCreation', () => ({ createConfiguredTaskCreation: vi.fn() }));
 vi.mock('@/server/studentTaskProjection', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/server/studentTaskProjection')>();
   return { ...actual, buildStudentTaskProjection: vi.fn(actual.buildStudentTaskProjection) };
@@ -320,16 +322,26 @@ describe('POST /api/tasks', () => {
     vi.mocked(isAuthorizedAdminRequest).mockReturnValue(true);
   });
 
-  it('passes a strict recurring schedule to task creation', async () => {
-    const store = {};
+  it('authenticates before inspecting media type, body, or configured authority', async () => {
+    vi.mocked(isAuthorizedAdminRequest).mockReturnValue(false);
+    const request = new Request('http://localhost/api/tasks', { method: 'POST' });
+    const response = await POST(request);
+    expect(response.status).toBe(401);
+    expect(createConfiguredTaskCreation).not.toHaveBeenCalled();
+  });
+
+  it('passes the exact Request and canonical strict recurring CREATE input to configured authority', async () => {
     const created = { ...projected[0], schedule: { ruleVersion: 1 } };
-    vi.mocked(createConfiguredSheetsStore).mockResolvedValue(store as never);
-    vi.mocked(createTask).mockResolvedValue(created as never);
+    const create = vi.fn(async () => created);
+    vi.mocked(createConfiguredTaskCreation).mockResolvedValue({ create } as never);
     const request = new Request('http://localhost/api/tasks', {
       method: 'POST',
+      headers: { 'content-type': 'application/json; charset=utf-8' },
       body: JSON.stringify({
-        taskId: 'T1', title: 'Read', description: '', reward: 5, isActive: true,
-        sortOrder: 1, allowedStudentIds: ['S1'],
+        operationId: '11111111-1111-4111-8111-111111111111',
+        taskId: ' T1 ', title: ' Read ', description: ' detail ', reward: 5, isActive: true,
+        sortOrder: 1, allowedStudentIds: [' S2 ', 'S1'], availableFrom: ' ', dueAt: null,
+        prerequisiteTaskId: '',
         schedule: {
           timeZone: 'Asia/Seoul',
           recurrence: { type: 'MONTHLY', time: '17:45', dayOfMonth: 31 },
@@ -342,57 +354,133 @@ describe('POST /api/tasks', () => {
     const response = await POST(request);
 
     expect(response.status).toBe(201);
-    expect(createConfiguredSheetsStore).toHaveBeenCalledWith(request);
-    expect(createTask).toHaveBeenCalledWith(store, expect.objectContaining({
-      taskId: 'T1',
+    expect(createConfiguredTaskCreation).toHaveBeenCalledWith(request);
+    expect(create).toHaveBeenCalledWith({
+      operationId: '11111111-1111-4111-8111-111111111111',
+      taskId: 'T1', title: 'Read', description: 'detail', reward: 5, isActive: true,
+      sortOrder: 1, allowedStudentIds: ['S1', 'S2'], availableFrom: null, dueAt: null,
+      prerequisiteTaskId: null,
       schedule: {
         timeZone: 'Asia/Seoul',
         recurrence: { type: 'MONTHLY', time: '17:45', dayOfMonth: 31 },
         resetCompletionOnCycle: true,
         resetAssignmentOnCycle: false,
       },
-    }));
+    });
+    expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
+    expect(createTask).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual(created);
   });
 
-  it('rejects malformed schedules before opening Sheets', async () => {
+  it('rejects malformed schedules before opening configured authority', async () => {
     const response = await POST(new Request('http://localhost/api/tasks', {
       method: 'POST',
       body: JSON.stringify({
-        taskId: 'T1', title: 'Read', reward: 5, isActive: true, sortOrder: 1,
+        operationId: '11111111-1111-4111-8111-111111111111', taskId: 'T1', title: 'Read',
+        description: '', reward: 5, isActive: true, sortOrder: 1, allowedStudentIds: [],
         schedule: { timeZone: 'Asia/Seoul', recurrence: { type: 'MONTHLY', time: '09:00', dayOfMonth: 32 }, resetCompletionOnCycle: true, resetAssignmentOnCycle: false },
       }),
     }));
 
     expect(response.status).toBe(400);
-    expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
-    expect(createTask).not.toHaveBeenCalled();
+    expect(createConfiguredTaskCreation).not.toHaveBeenCalled();
+  });
+
+  it('canonicalizes optional instants before configured authority', async () => {
+    const create = vi.fn(async (input: unknown) => input);
+    vi.mocked(createConfiguredTaskCreation).mockResolvedValue({ create } as never);
+    const response = await POST(new Request('http://localhost/api/tasks', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        operationId: '11111111-1111-4111-8111-111111111111', taskId: 'T1', title: 'Read',
+        description: '', reward: 5, isActive: true, sortOrder: 1, allowedStudentIds: [],
+        availableFrom: '2026-09-01T00:00:00Z', dueAt: '2026-09-02T09:00:00+09:00',
+      }),
+    }));
+
+    expect(response.status).toBe(201);
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      availableFrom: '2026-09-01T00:00:00.000Z',
+      dueAt: '2026-09-02T00:00:00.000Z',
+    }));
   });
 
   it.each([
-    ['unknown field', { taskId: 'T1', title: 'Read', description: '', reward: 5, isActive: true, sortOrder: 1, allowedStudentIds: [], surprise: true }],
-    ['coerced reward', { taskId: 'T1', title: 'Read', description: '', reward: '5', isActive: true, sortOrder: 1, allowedStudentIds: [] }],
-    ['coerced active flag', { taskId: 'T1', title: 'Read', description: '', reward: 5, isActive: 'true', sortOrder: 1, allowedStudentIds: [] }],
-    ['non-string availability', { taskId: 'T1', title: 'Read', description: '', reward: 5, isActive: true, sortOrder: 1, allowedStudentIds: [], availableFrom: 123 }],
-  ])('strictly rejects %s before opening Sheets', async (_label, body) => {
+    ['invalid instant', 'not-a-date', '2026-09-02T00:00:00.000Z'],
+    ['non-increasing range', '2026-09-02T00:00:00.000Z', '2026-09-02T00:00:00.000Z'],
+  ])('rejects %s before configured authority', async (_label, availableFrom, dueAt) => {
+    const response = await POST(new Request('http://localhost/api/tasks', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        operationId: '11111111-1111-4111-8111-111111111111', taskId: 'T1', title: 'Read',
+        description: '', reward: 5, isActive: true, sortOrder: 1, allowedStudentIds: [],
+        availableFrom, dueAt,
+      }),
+    }));
+
+    expect(response.status).toBe(400);
+    expect(createConfiguredTaskCreation).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-class timezone before opening configured authority', async () => {
+    const response = await POST(new Request('http://localhost/api/tasks', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        operationId: '11111111-1111-4111-8111-111111111111', taskId: 'T1', title: 'Read',
+        description: '', reward: 5, isActive: true, sortOrder: 1, allowedStudentIds: [],
+        schedule: { timeZone: 'UTC', recurrence: { type: 'NONE' }, resetCompletionOnCycle: false, resetAssignmentOnCycle: false },
+      }),
+    }));
+
+    expect(response.status).toBe(400);
+    expect(createConfiguredTaskCreation).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['missing operationId', { taskId: 'T1', title: 'Read', description: '', reward: 5, isActive: true, sortOrder: 1, allowedStudentIds: [] }],
+    ['uppercase operationId', { operationId: '11111111-1111-4111-8111-AAAAAAAAAAAA', taskId: 'T1', title: 'Read', description: '', reward: 5, isActive: true, sortOrder: 1, allowedStudentIds: [] }],
+    ['padded operationId', { operationId: ' 11111111-1111-4111-8111-111111111111 ', taskId: 'T1', title: 'Read', description: '', reward: 5, isActive: true, sortOrder: 1, allowedStudentIds: [] }],
+    ['unknown field', { operationId: '11111111-1111-4111-8111-111111111111', taskId: 'T1', title: 'Read', description: '', reward: 5, isActive: true, sortOrder: 1, allowedStudentIds: [], surprise: true }],
+    ['blank taskId', { operationId: '11111111-1111-4111-8111-111111111111', taskId: ' ', title: 'Read', description: '', reward: 5, isActive: true, sortOrder: 1, allowedStudentIds: [] }],
+    ['blank title', { operationId: '11111111-1111-4111-8111-111111111111', taskId: 'T1', title: ' ', description: '', reward: 5, isActive: true, sortOrder: 1, allowedStudentIds: [] }],
+    ['negative reward', { operationId: '11111111-1111-4111-8111-111111111111', taskId: 'T1', title: 'Read', description: '', reward: -1, isActive: true, sortOrder: 1, allowedStudentIds: [] }],
+    ['unsafe reward', { operationId: '11111111-1111-4111-8111-111111111111', taskId: 'T1', title: 'Read', description: '', reward: Number.MAX_SAFE_INTEGER + 1, isActive: true, sortOrder: 1, allowedStudentIds: [] }],
+    ['out of int32 sort', { operationId: '11111111-1111-4111-8111-111111111111', taskId: 'T1', title: 'Read', description: '', reward: 5, isActive: true, sortOrder: 2147483648, allowedStudentIds: [] }],
+    ['coerced reward', { operationId: '11111111-1111-4111-8111-111111111111', taskId: 'T1', title: 'Read', description: '', reward: '5', isActive: true, sortOrder: 1, allowedStudentIds: [] }],
+    ['duplicate students', { operationId: '11111111-1111-4111-8111-111111111111', taskId: 'T1', title: 'Read', description: '', reward: 5, isActive: true, sortOrder: 1, allowedStudentIds: ['S1', ' S1 '] }],
+    ['blank student', { operationId: '11111111-1111-4111-8111-111111111111', taskId: 'T1', title: 'Read', description: '', reward: 5, isActive: true, sortOrder: 1, allowedStudentIds: [' '] }],
+    ['non-string availability', { operationId: '11111111-1111-4111-8111-111111111111', taskId: 'T1', title: 'Read', description: '', reward: 5, isActive: true, sortOrder: 1, allowedStudentIds: [], availableFrom: 123 }],
+  ])('strictly rejects %s before opening configured authority', async (_label, body) => {
     const response = await POST(new Request('http://localhost/api/tasks', {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
     }));
     expect(response.status).toBe(400);
-    expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
-    expect(createTask).not.toHaveBeenCalled();
+    expect(createConfiguredTaskCreation).not.toHaveBeenCalled();
   });
 
-  it('keeps omitted schedules backward compatible', async () => {
-    vi.mocked(createConfiguredSheetsStore).mockResolvedValue({} as never);
-    vi.mocked(createTask).mockResolvedValue(projected[0] as never);
+  it.each(['', 'text/plain', 'application/jsonp', 'application/json-seq'])(
+    'rejects non-JSON media type %j before parsing or opening authority', async (contentType) => {
+      const response = await POST(new Request('http://localhost/api/tasks', {
+        method: 'POST', headers: contentType ? { 'content-type': contentType } : {}, body: '{}',
+      }));
+      expect(response.status).toBe(400);
+      expect(createConfiguredTaskCreation).not.toHaveBeenCalled();
+    },
+  );
+
+  it('keeps omitted schedules backward compatible while authority supplies its PostgreSQL default', async () => {
+    const create = vi.fn(async (input: unknown) => {
+      void input;
+      return projected[0];
+    });
+    vi.mocked(createConfiguredTaskCreation).mockResolvedValue({ create } as never);
 
     const response = await POST(new Request('http://localhost/api/tasks', {
-      method: 'POST',
-      body: JSON.stringify({ taskId: 'T1', title: 'Read', description: '', reward: 5, isActive: true, sortOrder: 1, allowedStudentIds: [] }),
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ operationId: '11111111-1111-4111-8111-111111111111', taskId: 'T1', title: 'Read', description: '', reward: 5, isActive: true, sortOrder: 1, allowedStudentIds: [] }),
     }));
 
     expect(response.status).toBe(201);
-    const create = vi.mocked(createTask).mock.calls[0][1];
-    expect(create).not.toHaveProperty('schedule');
+    expect(create.mock.calls[0][0]).not.toHaveProperty('schedule');
   });
 });

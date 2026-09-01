@@ -1,10 +1,9 @@
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
-import { createConfiguredSheetsStore } from '@/server/googleSheets';
-import { createTask } from '@/server/sheetsRepository';
+import { createConfiguredTaskCreation } from '@/server/repositories/configuredTaskCreation';
 import { createConfiguredTaskReader } from '@/server/repositories/configuredTasks';
 import { buildStudentTaskProjection } from '@/server/studentTaskProjection';
 import { parseOptionalTaskScheduleEdit } from './taskScheduleEdit';
-import { parseStrictTaskFields } from './taskPayload';
+import { parseStrictTaskCreate } from './taskPayload';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,15 +41,20 @@ export async function POST(request: Request) {
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
   try {
+    const mediaType = request.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();
+    if (mediaType !== 'application/json') throw new Error('과제 저장 요청 형식이 올바르지 않습니다.');
     const payload: unknown = await request.json();
-    const fields = parseStrictTaskFields(payload, 'create');
+    const fields = parseStrictTaskCreate(payload);
     const input = payload as Record<string, unknown>;
+    if (input.schedule && typeof input.schedule === 'object' && !Array.isArray(input.schedule)
+      && (input.schedule as Record<string, unknown>).timeZone !== 'Asia/Seoul') {
+      throw new Error('과제 저장 요청 형식이 올바르지 않습니다.');
+    }
     const schedule = parseOptionalTaskScheduleEdit(input.schedule);
-    const store = await createConfiguredSheetsStore(request);
-    const task = await createTask(store, {
+    const command = await createConfiguredTaskCreation(request);
+    const task = await command.create({
       ...fields,
-      taskId: fields.taskId!,
-      ...(schedule === undefined ? {} : { schedule }),
+      ...(schedule === undefined ? {} : { schedule: { ...schedule, timeZone: 'Asia/Seoul' as const } }),
     });
     return Response.json(task, { status: 201 });
   } catch (error) {
