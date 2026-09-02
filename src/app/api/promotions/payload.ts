@@ -4,6 +4,7 @@ import {
 } from '@/server/repositories/sheets/promotionCommands';
 
 const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const CANONICAL_PATCH_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 const COMMON_KEYS = [
   'name',
@@ -33,8 +34,8 @@ export type ParsedCreatePromotionPayload = ParsedDefinitionPayload & {
 };
 
 export type ParsedPatchPromotionPayload =
-  | { kind: 'activation'; isActive: boolean }
-  | ({ kind: 'definition' } & ParsedDefinitionPayload);
+  | { kind: 'activation'; operationId: string; expectedPromotionVersion: number; isActive: boolean }
+  | ({ kind: 'definition'; operationId: string; expectedPromotionVersion: number } & ParsedDefinitionPayload);
 
 export class PromotionPayloadError extends Error {
   constructor(message = 'Promotion payload is invalid', options?: ErrorOptions) {
@@ -64,17 +65,24 @@ export function parseCreatePromotionPayload(value: unknown): ParsedCreatePromoti
 export function parsePatchPromotionPayload(value: unknown): ParsedPatchPromotionPayload {
   return asPayloadError(() => {
     const candidate = exactObject(value);
-    if (Object.keys(candidate).length === 1 && Object.hasOwn(candidate, 'isActive')) {
+    const operationId = candidate.operationId;
+    const expectedPromotionVersion = candidate.expectedPromotionVersion;
+    if (typeof operationId !== 'string' || !CANONICAL_PATCH_UUID.test(operationId)
+      || !Number.isSafeInteger(expectedPromotionVersion) || (expectedPromotionVersion as number) <= 0
+      || (expectedPromotionVersion as number) >= Number.MAX_SAFE_INTEGER) throw invalidPayload();
+    if (Object.keys(candidate).length === 3 && Object.hasOwn(candidate, 'isActive')) {
       if (typeof candidate.isActive !== 'boolean') throw new Error('isActive must be a boolean');
-      return { kind: 'activation', isActive: candidate.isActive };
+      return { kind: 'activation', operationId, expectedPromotionVersion: expectedPromotionVersion as number, isActive: candidate.isActive };
     }
-    return { kind: 'definition', ...parseDefinition(candidate, false) };
+    return { kind: 'definition', operationId, expectedPromotionVersion: expectedPromotionVersion as number,
+      ...parseDefinition(candidate, false, true) };
   });
 }
 
 function parseDefinition(
   candidate: Record<string, unknown>,
   allowPromotionId: boolean,
+  patchControls = false,
 ): ParsedDefinitionPayload {
   const type = candidate.type;
   if (typeof type !== 'string' || !(type in RULE_KEYS)) throw invalidPayload();
@@ -100,6 +108,7 @@ function parseDefinition(
     'productIds',
     ...(allowPromotionId ? ['operationId'] : []),
     ...(allowPromotionId && Object.hasOwn(candidate, 'promotionId') ? ['promotionId'] : []),
+    ...(patchControls ? ['operationId', 'expectedPromotionVersion'] : []),
   ]);
   const actualKeys = Object.keys(candidate);
   if (actualKeys.length !== expectedKeys.size || actualKeys.some((key) => !expectedKeys.has(key))) {
@@ -146,8 +155,18 @@ export function haveSameProductIds(left: string[], right: string[]): boolean {
 }
 
 function exactObject(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw invalidPayload();
-  return value as Record<string, unknown>;
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || Object.getPrototypeOf(value) !== Object.prototype) throw invalidPayload();
+  const keys = Reflect.ownKeys(value);
+  if (keys.some((key) => typeof key !== 'string')) throw invalidPayload();
+  const result: Record<string, unknown> = {};
+  for (const key of keys as string[]) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !descriptor.enumerable || !descriptor.writable || !descriptor.configurable
+      || !Object.hasOwn(descriptor, 'value')) throw invalidPayload();
+    result[key] = descriptor.value;
+  }
+  return result;
 }
 
 function parseNonBlankId(value: unknown, field: string): string {

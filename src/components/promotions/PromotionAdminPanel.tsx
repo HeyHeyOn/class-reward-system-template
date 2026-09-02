@@ -250,7 +250,19 @@ function parseDeleteSuccess(value: unknown, targetId: string): boolean {
   return descriptors !== null && descriptors.promotionId.value === targetId;
 }
 
+function parsePatchAcknowledgement(value: unknown, targetId: string): number | null {
+  const receipt = exactOrdinaryDataRecord(value, ['promotionId', 'mutationPrecondition']);
+  if (!receipt || receipt.promotionId.value !== targetId) return null;
+  const precondition = exactOrdinaryDataRecord(receipt.mutationPrecondition.value, ['promotionId', 'expectedVersion']);
+  if (!precondition || precondition.promotionId.value !== targetId) return null;
+  const expectedVersion = precondition.expectedVersion.value;
+  return typeof expectedVersion === 'number' && Number.isSafeInteger(expectedVersion)
+    && expectedVersion > 0 && expectedVersion < Number.MAX_SAFE_INTEGER ? expectedVersion : null;
+}
+
 const UNKNOWN_PRODUCT_LABEL = '알 수 없는 상품';
+const PROMOTION_MUTATION_TARGET_PARTIAL_FAILURE_MESSAGE =
+  '행사 정보는 저장되었을 수 있지만 대상 상품 수정에 실패했습니다. 새로고침 후 확인하고 다시 시도해 주세요.';
 
 function summarizeProductTargets(productIds: string[], productNames: Map<string, string>) {
   const labels = [...new Set(productIds.map((productId) => productNames.get(productId) ?? UNKNOWN_PRODUCT_LABEL))];
@@ -292,6 +304,35 @@ function exactPayload(draft: Draft) {
     case 'PERCENT_DISCOUNT': return { ...common, percent: draft.percent };
     case 'FIXED_DISCOUNT': return { ...common, discountAmount: draft.discountAmount };
   }
+}
+
+function canonicalEditPayload(draft: Draft) {
+  return {
+    ...exactPayload(draft),
+    description: draft.description.trim(),
+    productIds: [...new Set(draft.productIds.map((productId) => productId.trim()))].sort(),
+  };
+}
+
+function promotionMatchesEditPayload(promotion: Promotion, payload: ReturnType<typeof canonicalEditPayload>): boolean {
+  if (promotion.name !== payload.name || promotion.description !== payload.description
+    || promotion.startsAt !== payload.startsAt || promotion.endsAt !== payload.endsAt
+    || promotion.isActive !== payload.isActive || promotion.sortOrder !== payload.sortOrder
+    || promotion.type !== payload.type || promotion.productIds.length !== payload.productIds.length
+    || promotion.productIds.some((productId, index) => productId !== payload.productIds[index])) return false;
+  if (promotion.type === 'N_PLUS_ONE') {
+    return payload.type === 'N_PLUS_ONE' && 'buyQuantity' in payload && 'freeQuantity' in payload
+      && promotion.buyQuantity === payload.buyQuantity && promotion.freeQuantity === payload.freeQuantity;
+  }
+  if (promotion.type === 'PROMOTIONAL_PRICE') {
+    return payload.type === 'PROMOTIONAL_PRICE' && 'promotionalUnitPrice' in payload
+      && promotion.promotionalUnitPrice === payload.promotionalUnitPrice;
+  }
+  if (promotion.type === 'PERCENT_DISCOUNT') {
+    return payload.type === 'PERCENT_DISCOUNT' && 'percent' in payload && promotion.percent === payload.percent;
+  }
+  return payload.type === 'FIXED_DISCOUNT' && 'discountAmount' in payload
+    && promotion.discountAmount === payload.discountAmount;
 }
 
 function draftPromotion(draft: Draft, promotionId: string): Promotion {
@@ -336,6 +377,8 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
   const mutationInFlightRef = useRef(false);
   const creationAttemptRef = useRef<{ semanticKey: string; operationId: string } | null>(null);
   const deletionAttemptRef = useRef<{ semanticKey: string; operationId: string; expectedVersion: number } | null>(null);
+  const editAttemptRef = useRef<{ semanticKey: string; operationId: string; expectedVersion: number } | null>(null);
+  const activationAttemptRef = useRef<{ semanticKey: string; operationId: string; expectedVersion: number } | null>(null);
   const promotionsRef = useRef<Promotion[]>([]);
   const promotionPreconditionsRef = useRef<Map<string, number>>(new Map());
   const editGenerationRef = useRef(0);
@@ -443,6 +486,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
 
   function closeEdit() {
     if (saving) return;
+    editAttemptRef.current = null;
     editGenerationRef.current += 1;
     setEditingId(null);
     setEditDraft(null);
@@ -519,6 +563,18 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
       setEditError(error);
       return;
     }
+    const expectedVersion = promotionPreconditionsRef.current.get(id);
+    if (expectedVersion === undefined) {
+      editAttemptRef.current = null;
+      setEditError('수정 전제 조건을 확인할 수 없습니다. 행사 목록을 새로고침한 후 다시 시도해 주세요.');
+      return;
+    }
+    const editPayload = canonicalEditPayload(draftToSave);
+    const semanticKey = JSON.stringify(['edit', id, editPayload]);
+    if (editAttemptRef.current?.semanticKey !== semanticKey) {
+      editAttemptRef.current = { semanticKey, operationId: crypto.randomUUID().toLowerCase(), expectedVersion };
+    }
+    const attempt = editAttemptRef.current;
     mutationInFlightRef.current = true;
     const mutationGeneration = mutationGenerationRef.current + 1;
     mutationGenerationRef.current = mutationGeneration;
@@ -529,20 +585,49 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
       const response = await fetch(`/api/promotions/${encodeURIComponent(id)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(exactPayload(draftToSave)),
+        body: JSON.stringify({ operationId: attempt.operationId, expectedPromotionVersion: attempt.expectedVersion, ...editPayload }),
       });
       const payload: unknown = await response.json();
-      if (!response.ok) throw new Error(readError(payload, '행사를 수정하지 못했습니다.'));
-      const returned = parsePromotionResponse(payload);
-      if (!returned) throw new Error('행사 응답 형식이 올바르지 않습니다.');
-      if (returned.promotionId !== id) throw new Error('행사 응답 ID가 올바르지 않습니다.');
+      if (!response.ok) {
+        const safeMessage = readError(payload, '행사를 수정하지 못했습니다.');
+        if (safeMessage === PROMOTION_MUTATION_TARGET_PARTIAL_FAILURE_MESSAGE) {
+          if (mountedRef.current && mutationGenerationRef.current === mutationGeneration
+            && editGenerationRef.current === editGeneration) {
+            setEditError(safeMessage);
+            void loadPromotions();
+          }
+          return;
+        }
+        throw new Error(safeMessage);
+      }
+      const acknowledgedVersion = parsePatchAcknowledgement(payload, id);
+      if (acknowledgedVersion === null) throw new Error('행사 수정 응답 형식이 올바르지 않습니다.');
       if (!mountedRef.current || mutationGenerationRef.current !== mutationGeneration || editGenerationRef.current !== editGeneration) return;
-      const nextPromotions = canonicalPromotionOrder(promotionsRef.current.map((promotion) => promotion.promotionId === id ? returned : promotion));
-      loadGenerationRef.current += 1;
+
+      const refreshGeneration = loadGenerationRef.current + 1;
+      loadGenerationRef.current = refreshGeneration;
+      let parsed: PromotionAdminEnvelope;
+      try {
+        const refreshResponse = await fetch('/api/promotions', { cache: 'no-store' });
+        const refreshPayload: unknown = await refreshResponse.json();
+        if (!refreshResponse.ok) throw new Error();
+        const candidate = parsePromotionAdminEnvelope(refreshPayload);
+        const refreshed = candidate?.promotions.find((promotion) => promotion.promotionId === id);
+        if (!candidate || !refreshed || candidate.preconditions.get(id) !== acknowledgedVersion
+          || !promotionMatchesEditPayload(refreshed, editPayload)) throw new Error();
+        parsed = candidate;
+      } catch {
+        throw new Error('수정은 확인되었지만 행사 목록을 새로고침하지 못했습니다. 목록을 새로고침한 후 다시 확인해 주세요.');
+      }
+      if (!mountedRef.current || mutationGenerationRef.current !== mutationGeneration
+        || editGenerationRef.current !== editGeneration || loadGenerationRef.current !== refreshGeneration) return;
+      const nextPromotions = canonicalPromotionOrder(parsed.promotions);
       promotionsRef.current = nextPromotions;
+      promotionPreconditionsRef.current = parsed.preconditions;
       setPromotions(nextPromotions);
       setLoading(false);
       setLoadError('');
+      editAttemptRef.current = null;
       setMessage('행사를 수정했습니다.');
       setEditingId(null);
       setEditDraft(null);
@@ -636,7 +721,21 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
   async function toggleActivation(promotion: Promotion) {
     if (!mountedRef.current || mutationInFlightRef.current) return;
     const next = !promotion.isActive;
-    if (!next && !window.confirm(`${promotion.name} 행사를 비활성화할까요?`)) return;
+    if (!next && !window.confirm(`${promotion.name} 행사를 비활성화할까요?`)) {
+      activationAttemptRef.current = null;
+      return;
+    }
+    const expectedVersion = promotionPreconditionsRef.current.get(promotion.promotionId);
+    if (expectedVersion === undefined) {
+      activationAttemptRef.current = null;
+      setFormError('활성 상태 변경 전제 조건을 확인할 수 없습니다. 행사 목록을 새로고침한 후 다시 시도해 주세요.');
+      return;
+    }
+    const semanticKey = JSON.stringify(['activation', promotion.promotionId, expectedVersion, next]);
+    if (activationAttemptRef.current?.semanticKey !== semanticKey) {
+      activationAttemptRef.current = { semanticKey, operationId: crypto.randomUUID().toLowerCase(), expectedVersion };
+    }
+    const attempt = activationAttemptRef.current;
     mutationInFlightRef.current = true;
     const mutationGeneration = mutationGenerationRef.current + 1;
     mutationGenerationRef.current = mutationGeneration;
@@ -645,20 +744,40 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
     setFormError('');
     try {
       const response = await fetch(`/api/promotions/${encodeURIComponent(promotion.promotionId)}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isActive: next }),
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operationId: attempt.operationId, expectedPromotionVersion: attempt.expectedVersion, isActive: next }),
       });
       const payload: unknown = await response.json();
       if (!response.ok) throw new Error(readError(payload, '행사 활성 상태를 변경하지 못했습니다.'));
-      const returned = parsePromotionResponse(payload);
-      if (!returned) throw new Error('행사 응답 형식이 올바르지 않습니다.');
-      if (returned.promotionId !== promotion.promotionId) throw new Error('행사 응답 ID가 올바르지 않습니다.');
+      const acknowledgedVersion = parsePatchAcknowledgement(payload, promotion.promotionId);
+      if (acknowledgedVersion === null) {
+        throw new Error('행사 활성 상태 변경 응답 형식이 올바르지 않습니다.');
+      }
       if (!mountedRef.current || mutationGenerationRef.current !== mutationGeneration) return;
-      const nextPromotions = canonicalPromotionOrder(promotionsRef.current.map((item) => item.promotionId === promotion.promotionId ? returned : item));
-      loadGenerationRef.current += 1;
+
+      const refreshGeneration = loadGenerationRef.current + 1;
+      loadGenerationRef.current = refreshGeneration;
+      let parsed: PromotionAdminEnvelope;
+      try {
+        const refreshResponse = await fetch('/api/promotions', { cache: 'no-store' });
+        const refreshPayload: unknown = await refreshResponse.json();
+        if (!refreshResponse.ok) throw new Error();
+        const candidate = parsePromotionAdminEnvelope(refreshPayload);
+        const refreshed = candidate?.promotions.find((item) => item.promotionId === promotion.promotionId);
+        if (!candidate || !refreshed || candidate.preconditions.get(promotion.promotionId) !== acknowledgedVersion
+          || refreshed.isActive !== next) throw new Error();
+        parsed = candidate;
+      } catch {
+        throw new Error('활성 상태 변경은 확인되었지만 행사 목록을 새로고침하지 못했습니다. 목록을 새로고침한 후 다시 확인해 주세요.');
+      }
+      if (!mountedRef.current || mutationGenerationRef.current !== mutationGeneration || loadGenerationRef.current !== refreshGeneration) return;
+      const nextPromotions = canonicalPromotionOrder(parsed.promotions);
       promotionsRef.current = nextPromotions;
+      promotionPreconditionsRef.current = parsed.preconditions;
       setPromotions(nextPromotions);
       setLoading(false);
       setLoadError('');
+      activationAttemptRef.current = null;
       setMessage(next ? '행사를 재활성화했습니다.' : '행사를 비활성화했습니다.');
     } catch (caught) {
       if (mountedRef.current && mutationGenerationRef.current === mutationGeneration) {

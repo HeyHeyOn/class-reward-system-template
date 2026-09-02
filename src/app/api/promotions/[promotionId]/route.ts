@@ -1,15 +1,15 @@
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
-import { createConfiguredSheetsStore } from '@/server/googleSheets';
 import { createConfiguredPromotionDeletion } from '@/server/repositories/configuredPromotionDeletion';
+import {
+  createConfiguredPromotionMutation,
+  PROMOTION_MUTATION_TARGET_PARTIAL_FAILURE_MESSAGE,
+  PromotionMutationTargetPartialFailure,
+} from '@/server/repositories/configuredPromotionMutation';
 import {
   PROMOTION_DELETE_PARTIAL_FAILURE_MESSAGE,
   PromotionDeletePartialFailure,
-  replacePromotionProducts,
-  setPromotionActive,
-  updatePromotion,
 } from '@/server/repositories/sheets/promotionCommands';
 import {
-  haveSameProductIds,
   parsePatchPromotionPayload,
   PromotionPayloadError,
 } from '../payload';
@@ -22,6 +22,11 @@ const CANONICAL_OPERATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab]
 
 export async function PATCH(request: Request, { params }: RouteContext) {
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
+
+  const mediaType = request.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();
+  if (mediaType !== 'application/json') {
+    return safeErrorResponse(400, '행사 요청 형식이 올바르지 않습니다.');
+  }
 
   let payload: ReturnType<typeof parsePatchPromotionPayload>;
   try {
@@ -36,30 +41,58 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
   try {
     const promotionId = (await params).promotionId;
-    const store = await createConfiguredSheetsStore(request);
-
-    if (payload.kind === 'activation') {
-      return Response.json(await setPromotionActive(store, promotionId, payload.isActive));
-    }
-
-    const updated = await updatePromotion(store, promotionId, payload.definition);
-    let promotion = updated;
-    if (!haveSameProductIds(updated.productIds, payload.productIds)) {
-      try {
-        promotion = await replacePromotionProducts(store, promotionId, payload.productIds);
-      } catch (error) {
-        console.error('Failed to replace promotion products after update', error);
-        return safeErrorResponse(
-          500,
-          '행사 정보는 저장되었을 수 있지만 대상 상품 수정에 실패했습니다. 새로고침 후 확인하고 다시 시도해 주세요.',
-        );
-      }
-    }
-    return Response.json(promotion);
+    const command = await createConfiguredPromotionMutation(request);
+    const result = await command.patch(payload.kind === 'activation'
+      ? { kind: 'activation', operationId: payload.operationId, promotionId,
+        expectedPromotionVersion: payload.expectedPromotionVersion, isActive: payload.isActive }
+      : { kind: 'definition', operationId: payload.operationId, promotionId,
+        expectedPromotionVersion: payload.expectedPromotionVersion,
+        definition: payload.definition, productIds: payload.productIds });
+    const acknowledgement = configuredMutationAcknowledgement(result, promotionId);
+    return Response.json(acknowledgement);
   } catch (error) {
     console.error('Failed to update promotion', error);
+    if (error instanceof PromotionMutationTargetPartialFailure) {
+      return safeErrorResponse(500, PROMOTION_MUTATION_TARGET_PARTIAL_FAILURE_MESSAGE);
+    }
     return safeErrorResponse(500, '행사를 수정하지 못했습니다.');
   }
+}
+
+function configuredMutationAcknowledgement(
+  value: unknown,
+  promotionId: string,
+): { promotionId: string; mutationPrecondition: { promotionId: string; expectedVersion: number } } {
+  const result = exactDataRecord(value, ['mutationPrecondition', 'promotionId']);
+  if (result.promotionId.value !== promotionId) {
+    throw new Error('Invalid promotion mutation result.');
+  }
+  const condition = exactDataRecord(result.mutationPrecondition.value, ['expectedVersion', 'promotionId']);
+  const expectedVersion = condition.expectedVersion.value;
+  if (condition.promotionId.value !== promotionId || !Number.isSafeInteger(expectedVersion)
+    || (expectedVersion as number) <= 0) throw new Error('Invalid promotion mutation result.');
+  return { promotionId, mutationPrecondition: { promotionId, expectedVersion: expectedVersion as number } };
+}
+
+function exactDataRecord(value: unknown, expectedKeys: readonly string[]): Record<string, PropertyDescriptor & { value: unknown }> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || Object.getPrototypeOf(value) !== Object.prototype) throw new Error('Invalid promotion mutation result.');
+  const keys = Reflect.ownKeys(value);
+  const actualKeys = keys.every((key): key is string => typeof key === 'string')
+    ? [...keys].sort()
+    : [];
+  const canonicalExpectedKeys = [...expectedKeys].sort();
+  if (actualKeys.length !== canonicalExpectedKeys.length
+    || canonicalExpectedKeys.some((key, index) => actualKeys[index] !== key)) {
+    throw new Error('Invalid promotion mutation result.');
+  }
+  const result: Record<string, PropertyDescriptor & { value: unknown }> = Object.create(null);
+  for (const key of expectedKeys) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!isOrdinaryDataDescriptor(descriptor)) throw new Error('Invalid promotion mutation result.');
+    result[key] = descriptor;
+  }
+  return result;
 }
 
 export async function DELETE(request: Request, { params }: RouteContext) {
