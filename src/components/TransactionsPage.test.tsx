@@ -231,6 +231,37 @@ describe('TransactionsPage', () => {
     expect(screen.getAllByText('-500별').length).toBeGreaterThan(0);
   });
 
+  it('describes current-balance inverse effects and task reset without the old wording', async () => {
+    render(<TransactionsPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'T002 거래 취소' }));
+    expect(confirm).toHaveBeenLastCalledWith(expect.stringContaining('현재 잔액에서 보상 금액을 회수'));
+    expect(confirm).toHaveBeenLastCalledWith(expect.stringContaining('과제 완료도 함께 취소'));
+    expect(confirm).not.toHaveBeenLastCalledWith(expect.stringContaining('이전 잔액'));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'T001 거래 취소' })).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('button', { name: 'T001 거래 취소' }));
+    expect(confirm).toHaveBeenLastCalledWith(expect.stringContaining('현재 잔액에 반대 거래 효과'));
+    expect(confirm).not.toHaveBeenLastCalledWith(expect.stringContaining('이전 잔액'));
+  });
+
+  it('surfaces a safe server integrity error instead of a generic cancellation failure', async () => {
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/transactions' && !init?.method) return jsonResponse(transactions);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별' });
+      if (url === '/api/transactions/T002/cancel' && init?.method === 'POST') {
+        return jsonResponse({ error: '과제 완료 기록 무결성을 확인할 수 없어 취소하지 않았습니다.' }, { status: 409 });
+      }
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+    render(<TransactionsPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'T002 거래 취소' }));
+    expect(await screen.findByText('과제 완료 기록 무결성을 확인할 수 없어 취소하지 않았습니다.')).toBeTruthy();
+    expect(screen.queryByText('거래를 취소하지 못했습니다.')).toBeNull();
+  });
+
   it('globally suppresses a second row cancellation while another destructive request is pending', async () => {
     const first = deferredResponse({
       cancelledTransaction: { ...transactions[0], status: 'CANCELLED' },

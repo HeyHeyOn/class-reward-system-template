@@ -24,6 +24,16 @@ export type CrossSheetCellUpdate = {
   value: string | number;
 };
 
+export type AtomicSheetAppend = {
+  sheetName: OperationalSheetName;
+  values: Array<string | number>;
+};
+
+export type AtomicSheetMutation = {
+  updates: CrossSheetCellUpdate[];
+  appends: AtomicSheetAppend[];
+};
+
 export type SheetInfo = {
   sheetId: number;
   title: OperationalSheetName;
@@ -84,6 +94,7 @@ export type TabularStore = TabularReader & {
   ): Promise<void>;
   updateCells?(sheetName: OperationalSheetName, updates: SheetCellUpdate[]): Promise<void>;
   updateCellsAtomicallyAcrossSheets?(updates: CrossSheetCellUpdate[]): Promise<void>;
+  applyAtomicMutation?(mutation: AtomicSheetMutation): Promise<void>;
   updateHeaderRow?(sheetName: OperationalSheetName, headers: string[]): Promise<void>;
   appendRow(sheetName: OperationalSheetName, values: string[]): Promise<void>;
   appendRows?(sheetName: OperationalSheetName, rows: string[][]): Promise<void>;

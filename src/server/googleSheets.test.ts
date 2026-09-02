@@ -147,6 +147,95 @@ describe('GoogleSheetsStore auth and recurring ranges', () => {
     expect(googleMocks.sheetsApi.spreadsheets.values.update).not.toHaveBeenCalled();
   });
 
+  it('commits cross-sheet cell updates and ledger appends in one atomic provider request', async () => {
+    googleMocks.sheetsApi.spreadsheets.get.mockResolvedValueOnce({ data: { sheets: [
+      { properties: { sheetId: 1, title: 'Students', gridProperties: { rowCount: 100, columnCount: 6 } } },
+      { properties: { sheetId: 2, title: 'Transactions', gridProperties: { rowCount: 100, columnCount: 10 } } },
+      { properties: { sheetId: 3, title: 'TaskCompletions', gridProperties: { rowCount: 100, columnCount: 19 } } },
+    ] } });
+    const store = new GoogleSheetsStore('sheet-123');
+
+    await store.applyAtomicMutation({
+      updates: [
+        { sheetName: 'Students', rowNumber: 2, columnNumber: 3, value: 900 },
+        { sheetName: 'Transactions', rowNumber: 4, columnNumber: 9, value: 'CANCELLED' },
+      ],
+      appends: [
+        { sheetName: 'Transactions', values: ['CANCEL-1', '2026-09-02T00:00:00.000Z', 5] },
+        { sheetName: 'TaskCompletions', values: ['TC-CANCEL-1', '2026-09-02T00:00:00.000Z'] },
+      ],
+    });
+
+    expect(googleMocks.sheetsApi.spreadsheets.batchUpdate).toHaveBeenCalledTimes(1);
+    expect(googleMocks.sheetsApi.spreadsheets.batchUpdate).toHaveBeenCalledWith({
+      spreadsheetId: 'sheet-123',
+      requestBody: { requests: [
+        { updateCells: {
+          range: { sheetId: 1, startRowIndex: 1, endRowIndex: 2, startColumnIndex: 2, endColumnIndex: 3 },
+          rows: [{ values: [{ userEnteredValue: { numberValue: 900 } }] }],
+          fields: 'userEnteredValue',
+        } },
+        { updateCells: {
+          range: { sheetId: 2, startRowIndex: 3, endRowIndex: 4, startColumnIndex: 8, endColumnIndex: 9 },
+          rows: [{ values: [{ userEnteredValue: { stringValue: 'CANCELLED' } }] }],
+          fields: 'userEnteredValue',
+        } },
+        { appendCells: {
+          sheetId: 2,
+          rows: [{ values: [
+            { userEnteredValue: { stringValue: 'CANCEL-1' } },
+            { userEnteredValue: { stringValue: '2026-09-02T00:00:00.000Z' } },
+            { userEnteredValue: { numberValue: 5 } },
+          ] }],
+          fields: 'userEnteredValue',
+        } },
+        { appendCells: {
+          sheetId: 3,
+          rows: [{ values: [
+            { userEnteredValue: { stringValue: 'TC-CANCEL-1' } },
+            { userEnteredValue: { stringValue: '2026-09-02T00:00:00.000Z' } },
+          ] }],
+          fields: 'userEnteredValue',
+        } },
+      ] },
+    });
+  });
+
+  it('invalidates affected caches after an atomic mutation instead of guessing append locations', async () => {
+    googleMocks.sheetsValuesGet
+      .mockReset()
+      .mockResolvedValueOnce({ data: { values: [['studentId', 'name', 'balance'], ['S1', 'old name', '100']] } })
+      .mockResolvedValueOnce({ data: { values: [['studentId', 'name', 'balance'], ['S1', 'fresh name', '90']] } });
+    googleMocks.sheetsApi.spreadsheets.get.mockResolvedValueOnce({ data: { sheets: [
+      { properties: { sheetId: 1, title: 'Students', gridProperties: { rowCount: 100, columnCount: 3 } } },
+    ] } });
+    const store = new GoogleSheetsStore('sheet-123');
+    await store.getRows('Students');
+
+    await store.applyAtomicMutation({
+      updates: [{ sheetName: 'Students', rowNumber: 2, columnNumber: 3, value: 90 }],
+      appends: [],
+    });
+
+    await expect(store.getRows('Students')).resolves.toEqual([
+      ['studentId', 'name', 'balance'], ['S1', 'fresh name', '90'],
+    ]);
+    expect(googleMocks.sheetsValuesGet).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects out-of-grid updates and over-wide appends before the provider write', async () => {
+    googleMocks.sheetsApi.spreadsheets.get.mockResolvedValueOnce({ data: { sheets: [
+      { properties: { sheetId: 1, title: 'Students', gridProperties: { rowCount: 10, columnCount: 3 } } },
+    ] } });
+    const store = new GoogleSheetsStore('sheet-123');
+
+    await expect(store.applyAtomicMutation({
+      updates: [{ sheetName: 'Students', rowNumber: 11, columnNumber: 3, value: 90 }],
+      appends: [{ sheetName: 'Students', values: ['S1', 'name', 90, 'extra'] }],
+    })).rejects.toThrow(/row|column|grid|범위|열/i);
+    expect(googleMocks.sheetsApi.spreadsheets.batchUpdate).not.toHaveBeenCalled();
+  });
+
   it('updates an existing setting through the adapter when its value header has surrounding whitespace', async () => {
     googleMocks.sheetsValuesGet.mockResolvedValue({
       data: { values: [['key', ' value '], ['currencyUnit', '원']] },
