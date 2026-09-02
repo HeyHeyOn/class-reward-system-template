@@ -435,8 +435,15 @@ function auditedLegacyTaskCancellationFixture() {
     Settings: [['key', 'value'], ['classTimeZone', 'UTC']],
   };
   const writes: TestAtomicMutation[] = [];
+  const freshPrimes: string[][] = [];
   const primitiveWrite = vi.fn();
   const store = {
+    async primeRowsFresh(sheetNames: readonly string[]) {
+      freshPrimes.push([...sheetNames]);
+      if (sheetNames.includes('Products')) {
+        throw new Error('legacy-unlinked cancellation must not fresh-prime Products');
+      }
+    },
     async getRows(sheetName: string) { return rows[sheetName].map((row) => [...row]); },
     updateCell: primitiveWrite,
     appendRow: primitiveWrite,
@@ -445,7 +452,7 @@ function auditedLegacyTaskCancellationFixture() {
       applyTestAtomicMutation(rows, mutation);
     },
   };
-  return { rows, writes, primitiveWrite, store };
+  return { rows, writes, freshPrimes, primitiveWrite, store };
 }
 
 const BULK_OPERATION_ID = 'a0000000-0000-4000-8000-000000000001';
@@ -608,9 +615,14 @@ describe('sheets repository', () => {
     const updates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
     const appended: Array<{ sheetName: string; values: string[] }> = [];
     let transactionReads = 0;
+    const callOrder: string[] = [];
     const fakeStore = {
       ...fakeReader,
+      async primeRowsFresh(sheetNames: readonly string[]) {
+        callOrder.push(`prime:${sheetNames.join(',')}`);
+      },
       async getRows(sheetName: keyof typeof sheetRows) {
+        callOrder.push(`read:${sheetName}`);
         if (sheetName === 'Transactions') transactionReads += 1;
         if (sheetName === 'Students') return [sheetRows.Students[0], ['S001', '김민준', '2900', 'S001', 'ACTIVE', ''], sheetRows.Students[2]];
         return sheetRows[sheetName];
@@ -634,6 +646,13 @@ describe('sheets repository', () => {
       cancelledTransaction: { transactionId: 'TR001', status: 'CANCELLED' },
       reversalTransaction: { status: 'CANCEL_REVERSAL', totalAmount: -600, balanceBefore: 2900, balanceAfter: 3500 },
     });
+    expect(callOrder).toEqual([
+      'prime:Transactions,Students',
+      'read:Transactions',
+      'read:Students',
+      'prime:Products',
+      'read:Products',
+    ]);
     expect(updates).toEqual([
       { sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: 3500 },
       { sheetName: 'Products', rowNumber: 3, columnName: 'stock', value: 22 },
@@ -965,6 +984,96 @@ describe('sheets repository', () => {
     expect(writes).toHaveLength(0);
   });
 
+  it('cancels a legacy-unlinked TASK_REWARD atomically without TaskCompletions or Product effects', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-02T01:00:00.000Z'));
+    const { rows, writes, freshPrimes, primitiveWrite, store } = auditedLegacyTaskCancellationFixture();
+    rows.TaskCompletions.splice(1, 1);
+    const beforeProducts = structuredClone(rows.Products);
+    const beforeCompletions = structuredClone(rows.TaskCompletions);
+    const operationId = '30000000-0000-4000-8000-000000000020';
+
+    const result = await cancelTransaction(store as never, 'TASK-A-SUCCESS', operationId);
+
+    expect(freshPrimes).toEqual([
+      ['Transactions', 'Students'],
+      ['Tasks', 'TaskAssignments', 'TaskCompletions', 'Settings'],
+    ]);
+    expect(writes).toHaveLength(1);
+    expect(writes[0].updates).toEqual([
+      { sheetName: 'Students', rowNumber: 2, columnNumber: 3, value: 70 },
+      { sheetName: 'Transactions', rowNumber: 2, columnNumber: 9, value: 'CANCELLED' },
+    ]);
+    expect(writes[0].appends.map(({ sheetName }) => sheetName)).toEqual(['Transactions']);
+    expect(rows.Students[1][2]).toBe('70');
+    expect(rows.Transactions[1][8]).toBe('CANCELLED');
+    expect(rows.Products).toEqual(beforeProducts);
+    expect(rows.TaskCompletions).toEqual(beforeCompletions);
+    expect(result.reversalTransaction.operator).toBe('cancel-task-unlinked:TASK-A-SUCCESS');
+    expect(primitiveWrite).not.toHaveBeenCalled();
+    await expect(getTransactions(store as never)).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        transactionId: 'TASK-A-SUCCESS',
+        status: 'CANCELLED',
+        cancelledAt: result.reversalTransaction.timestamp,
+      }),
+    ]));
+  });
+
+  it('replays a legacy-unlinked TASK_REWARD with the same operation ID without TaskCompletions access or another mutation', async () => {
+    const { rows, writes, store } = auditedLegacyTaskCancellationFixture();
+    rows.TaskCompletions.splice(1, 1);
+    const operationId = '30000000-0000-4000-8000-000000000021';
+    const first = await cancelTransaction(store as never, 'TASK-A-SUCCESS', operationId);
+    const originalGetRows = store.getRows;
+    const taskCompletionReads = vi.fn();
+    store.getRows = async (sheetName: string) => {
+      if (sheetName === 'TaskCompletions') {
+        taskCompletionReads();
+        throw new Error('legacy-unlinked replay must not access TaskCompletions');
+      }
+      return originalGetRows(sheetName);
+    };
+
+    await expect(cancelTransaction(store as never, 'TASK-A-SUCCESS', operationId)).resolves.toEqual(first);
+    expect(taskCompletionReads).not.toHaveBeenCalled();
+    expect(writes).toHaveLength(1);
+    await expect(cancelTransaction(
+      store as never,
+      'TASK-A-SUCCESS',
+      '30000000-0000-4000-8000-000000000022',
+    )).rejects.toThrow(/이미|무결성|다른/);
+    expect(writes).toHaveLength(1);
+  });
+
+  it('rejects duplicate exact linked completions instead of using legacy-unlinked cancellation', async () => {
+    const { rows, writes, store } = auditedLegacyTaskCancellationFixture();
+    rows.TaskCompletions.push([...rows.TaskCompletions[1]]);
+
+    await expect(cancelTransaction(
+      store as never,
+      'TASK-A-SUCCESS',
+      '30000000-0000-4000-8000-000000000023',
+    )).rejects.toThrow(/완료 기록|중복|무결성/);
+    expect(writes).toHaveLength(0);
+  });
+
+  it.each([
+    ['malformed', 'reward', 'not-a-number'],
+    ['mismatched', 'taskId', 'OTHER-TASK'],
+  ])('rejects a %s exact linked completion instead of using legacy-unlinked cancellation', async (_label, columnName, value) => {
+    const { rows, writes, store } = auditedLegacyTaskCancellationFixture();
+    const header = new Map(rows.TaskCompletions[0].map((name, index) => [name, index]));
+    rows.TaskCompletions[1][header.get(columnName)!] = value;
+
+    await expect(cancelTransaction(
+      store as never,
+      'TASK-A-SUCCESS',
+      '30000000-0000-4000-8000-000000000024',
+    )).rejects.toThrow(/완료 기록|무결성/);
+    expect(writes).toHaveLength(0);
+  });
+
   it('atomically appends a legacy completion RESET, preserves B, projects A incomplete, and replays the full pair', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-09-02T01:00:00.000Z'));
@@ -1130,9 +1239,11 @@ describe('sheets repository', () => {
     const store = {
       async primeRowsFresh(sheetNames: readonly string[]) {
         callOrder.push(`prime:${sheetNames.join(',')}`);
+        if (sheetNames.includes('Products')) throw new Error('admin cancellation must not fresh-prime Products');
       },
       async getRows(sheetName: keyof typeof rows) {
         callOrder.push(`read:${sheetName}`);
+        if (sheetName === 'Products') throw new Error('admin cancellation must not read Products');
         return rows[sheetName].map((row) => [...row]);
       },
       updateCell: primitiveWrite,
@@ -1153,10 +1264,9 @@ describe('sheets repository', () => {
     });
 
     expect(callOrder).toEqual([
-      'prime:Transactions,Students,Products',
+      'prime:Transactions,Students',
       'read:Transactions',
       'read:Students',
-      'read:Products',
     ]);
     expect(atomicMutations).toHaveLength(1);
     expect(atomicMutations[0].updates).toEqual([

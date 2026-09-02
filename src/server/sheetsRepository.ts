@@ -1388,8 +1388,12 @@ export async function getTransactionRecords(reader: SheetsReader): Promise<Trans
 
 const CANCELLATION_OPERATOR_PREFIX = 'cancel:';
 const TASK_CANCELLATION_OPERATOR_PREFIX = 'cancel-task:';
+const UNLINKED_TASK_CANCELLATION_OPERATOR_PREFIX = 'cancel-task-unlinked:';
 
 function cancellationOriginalId(operator: string): string {
+  if (operator.startsWith(UNLINKED_TASK_CANCELLATION_OPERATOR_PREFIX)) {
+    return operator.slice(UNLINKED_TASK_CANCELLATION_OPERATOR_PREFIX.length);
+  }
   if (operator.startsWith(TASK_CANCELLATION_OPERATOR_PREFIX)) {
     return operator.slice(TASK_CANCELLATION_OPERATOR_PREFIX.length);
   }
@@ -1453,7 +1457,7 @@ async function cancelTransactionNow(
   }
 
   if (store.primeRowsFresh) {
-    await store.primeRowsFresh(['Transactions', 'Students', 'Products']);
+    await store.primeRowsFresh(['Transactions', 'Students']);
   }
 
   const transactionRows = await store.getRows('Transactions');
@@ -1488,9 +1492,11 @@ async function cancelTransactionNow(
   if (rawLinkedCandidate && !existingReversal) {
     throw new Error('거래 취소 기록의 무결성을 확인할 수 없어 수동 조정이 필요합니다.');
   }
-  const needsTaskCompletionReset = transaction.status === 'TASK_REWARD'
-    || (transaction.status === 'CANCELLED'
-      && existingReversal?.operator === `${TASK_CANCELLATION_OPERATOR_PREFIX}${normalizedId}`);
+  const isLinkedTaskReplay = transaction.status === 'CANCELLED'
+    && existingReversal?.operator === `${TASK_CANCELLATION_OPERATOR_PREFIX}${normalizedId}`;
+  const isUnlinkedTaskReplay = transaction.status === 'CANCELLED'
+    && existingReversal?.operator === `${UNLINKED_TASK_CANCELLATION_OPERATOR_PREFIX}${normalizedId}`;
+  const needsTaskCompletionReset = transaction.status === 'TASK_REWARD' || isLinkedTaskReplay;
   if (deterministicReversalId) {
     const rawIdCollisions = rawRecords
       .filter(({ row }) => row[transactionIdColumn]?.trim() === deterministicReversalId);
@@ -1508,7 +1514,14 @@ async function cancelTransactionNow(
       throw new Error('취소 작업 ID가 다른 거래에 사용되었습니다.');
     }
     if (existingReversal && !needsTaskCompletionReset) {
-      validateSheetsCancellationReplay(transaction, existingReversal, deterministicReversalId, false);
+      validateSheetsCancellationReplay(
+        transaction,
+        existingReversal,
+        deterministicReversalId,
+        isUnlinkedTaskReplay
+          ? UNLINKED_TASK_CANCELLATION_OPERATOR_PREFIX
+          : CANCELLATION_OPERATOR_PREFIX,
+      );
       return {
         cancelledTransaction: { ...transaction, cancelledAt: existingReversal.timestamp },
         reversalTransaction: existingReversal,
@@ -1526,15 +1539,47 @@ async function cancelTransactionNow(
   }
   if (transaction.itemsMalformed) throw new Error('거래 상품 스냅샷이 올바르지 않습니다.');
 
+  let studentRecord: StudentRecord | undefined;
+  let studentHeaderIndex: Map<string, number> | undefined;
+  if (!existingReversal) {
+    const studentRows = await store.getRows('Students');
+    const [studentHeaders, ...studentDataRows] = studentRows;
+    if (!studentHeaders) throw new Error('학생 정보를 찾을 수 없습니다.');
+    studentHeaderIndex = createHeaderIndex(studentHeaders);
+    assertRequiredColumns(studentHeaderIndex, REQUIRED_STUDENT_COLUMNS, 'Students');
+    const studentIdColumn = studentHeaderIndex.get('studentId') ?? -1;
+    const rawStudentMatches = studentDataRows
+      .map((row, index) => ({ row, rowNumber: index + 2 }))
+      .filter(({ row }) => row[studentIdColumn]?.trim() === transaction.studentId);
+    if (rawStudentMatches.length !== 1) {
+      if (rawStudentMatches.length === 0) throw new Error('학생 정보를 찾을 수 없습니다.');
+      throw new Error('학생 ID가 중복되어 무결성을 확인할 수 없습니다.');
+    }
+    const rawStudentMatch = rawStudentMatches[0];
+    const parsedStudent = parseStudentRow(rawStudentMatch.row, studentHeaderIndex);
+    if (!parsedStudent || parsedStudent.studentId !== transaction.studentId) {
+      throw new Error('학생 정보의 무결성을 확인할 수 없습니다.');
+    }
+    studentRecord = { student: parsedStudent, rowNumber: rawStudentMatch.rowNumber };
+  }
+
   const cancellationTimestamp = existingReversal?.timestamp ?? new Date().toISOString();
-  const taskResetContext = needsTaskCompletionReset
-    ? await resolveTaskRewardResetContext(store, transaction, normalizedId, cancellationTimestamp, existingReversal)
+  const taskRewardResolution = needsTaskCompletionReset
+    ? await resolveTaskRewardResetContext(
+      store, transaction, normalizedId, cancellationTimestamp, existingReversal, studentRecord?.student,
+    )
     : null;
+  const taskResetContext = taskRewardResolution?.kind === 'linked'
+    ? taskRewardResolution.context
+    : null;
+  const isLegacyUnlinkedCancellation = taskRewardResolution?.kind === 'legacy-unlinked';
   if (existingReversal) {
     if (!deterministicReversalId || !taskResetContext || !operationId) {
       throw new Error('거래 취소 기록의 무결성을 확인할 수 없어 수동 조정이 필요합니다.');
     }
-    validateSheetsCancellationReplay(transaction, existingReversal, deterministicReversalId, true);
+    validateSheetsCancellationReplay(
+      transaction, existingReversal, deterministicReversalId, TASK_CANCELLATION_OPERATOR_PREFIX,
+    );
     validateTaskRewardResetReplay(taskResetContext, existingReversal, operationId);
     return {
       cancelledTransaction: { ...transaction, cancelledAt: existingReversal.timestamp },
@@ -1542,28 +1587,14 @@ async function cancelTransactionNow(
     };
   }
 
-  const [studentRows, productRows] = await Promise.all([
-    store.getRows('Students'),
-    store.getRows('Products'),
-  ]);
-  const [studentHeaders, ...studentDataRows] = studentRows;
-  if (!studentHeaders) throw new Error('학생 정보를 찾을 수 없습니다.');
-  const studentHeaderIndex = createHeaderIndex(studentHeaders);
-  assertRequiredColumns(studentHeaderIndex, REQUIRED_STUDENT_COLUMNS, 'Students');
-  const studentIdColumn = studentHeaderIndex.get('studentId') ?? -1;
-  const rawStudentMatches = studentDataRows
-    .map((row, index) => ({ row, rowNumber: index + 2 }))
-    .filter(({ row }) => row[studentIdColumn]?.trim() === transaction.studentId);
-  if (rawStudentMatches.length !== 1) {
-    if (rawStudentMatches.length === 0) throw new Error('학생 정보를 찾을 수 없습니다.');
-    throw new Error('학생 ID가 중복되어 무결성을 확인할 수 없습니다.');
-  }
-  const rawStudentMatch = rawStudentMatches[0];
-  const parsedStudent = parseStudentRow(rawStudentMatch.row, studentHeaderIndex);
-  if (!parsedStudent || parsedStudent.studentId !== transaction.studentId) {
+  if (!studentRecord || !studentHeaderIndex) {
     throw new Error('학생 정보의 무결성을 확인할 수 없습니다.');
   }
-  const studentRecord: StudentRecord = { student: parsedStudent, rowNumber: rawStudentMatch.rowNumber };
+  let productRows: string[][] = [];
+  if (transaction.status === 'COMPLETED') {
+    if (store.primeRowsFresh) await store.primeRowsFresh(['Products']);
+    productRows = await store.getRows('Products');
+  }
 
   const productsById = new Map<string, ProductRecord>();
   if (transaction.status === 'COMPLETED') {
@@ -1630,7 +1661,9 @@ async function cancelTransactionNow(
     status: 'CANCEL_REVERSAL',
     operator: taskResetContext
       ? `${TASK_CANCELLATION_OPERATOR_PREFIX}${transaction.transactionId}`
-      : `${CANCELLATION_OPERATOR_PREFIX}${transaction.transactionId}`,
+      : isLegacyUnlinkedCancellation
+        ? `${UNLINKED_TASK_CANCELLATION_OPERATOR_PREFIX}${transaction.transactionId}`
+        : `${CANCELLATION_OPERATOR_PREFIX}${transaction.transactionId}`,
   };
   const taskReset = taskResetContext
     ? buildTaskRewardReset(taskResetContext, reversalTransaction, operationId)
@@ -1675,6 +1708,10 @@ type TaskRewardResetContext = {
   snapshot: Required<Pick<TaskCompletion, 'taskInstanceId' | 'cycleId' | 'cycleStartsAt' | 'ruleVersion' | 'timeZone' | 'source' | 'assignmentId' | 'schemaVersion'>> & Pick<TaskCompletion, 'cycleEndsAt'>;
 };
 
+type TaskRewardCancellationResolution =
+  | { kind: 'linked'; context: TaskRewardResetContext }
+  | { kind: 'legacy-unlinked' };
+
 function taskRewardCompletionId(transactionId: string): string {
   if (transactionId.startsWith('TASK-LOGICAL-')) {
     try {
@@ -1693,7 +1730,8 @@ async function resolveTaskRewardResetContext(
   transactionId: string,
   cancelledAt: string,
   existingReversal?: Transaction,
-): Promise<TaskRewardResetContext> {
+  student?: Student,
+): Promise<TaskRewardCancellationResolution> {
   if (store.primeRowsFresh) {
     await store.primeRowsFresh(['Tasks', 'TaskAssignments', 'TaskCompletions', 'Settings']);
   }
@@ -1710,6 +1748,38 @@ async function resolveTaskRewardResetContext(
 
   const idColumn = headerIndex.get('completionId')!;
   const rawMatches = rows.slice(1).filter((row) => String(row[idColumn] ?? '').trim() === completionId);
+  if (rawMatches.length === 0) {
+    if (existingReversal || !student) {
+      throw new Error('과제 완료 기록이 없거나 중복되어 무결성을 확인할 수 없습니다.');
+    }
+    const item = transaction.items[0];
+    if (transaction.items.length !== 1 || !item || isCheckoutLineSnapshot(item)) {
+      throw new Error('레거시 과제 보상 거래 상품의 무결성이 일치하지 않아 취소하지 않았습니다.');
+    }
+    const taskRows = await store.getRows('Tasks');
+    const taskHeaderIndex = createHeaderIndex(taskRows[0] ?? []);
+    assertRequiredColumns(taskHeaderIndex, REQUIRED_TASK_COLUMNS, 'Tasks');
+    const taskIdColumn = taskHeaderIndex.get('taskId') ?? -1;
+    const rawTaskMatches = taskRows.slice(1)
+      .filter((row) => String(row[taskIdColumn] ?? '').trim() === item.productId);
+    const taskRecord = await getTaskRecordById(store, item.productId);
+    if (rawTaskMatches.length !== 1 || !taskRecord) {
+      throw new Error('레거시 과제 보상 거래의 현재 과제를 하나로 확인할 수 없어 취소하지 않았습니다.');
+    }
+    const reward = taskRecord.task.reward;
+    const validTransaction = transaction.studentId === student.studentId
+      && transaction.studentName === student.name
+      && item.productId === taskRecord.task.taskId
+      && item.name === taskRecord.task.title
+      && item.price === -reward && item.quantity === 1 && item.subtotal === -reward
+      && transaction.totalAmount === -reward
+      && transaction.balanceAfter === transaction.balanceBefore + reward
+      && transaction.totalAmount === transaction.balanceBefore - transaction.balanceAfter;
+    if (!validTransaction) {
+      throw new Error('레거시 과제 보상 거래와 현재 과제의 무결성이 일치하지 않아 취소하지 않았습니다.');
+    }
+    return { kind: 'legacy-unlinked' };
+  }
   if (rawMatches.length !== 1) throw new Error('과제 완료 기록이 없거나 중복되어 무결성을 확인할 수 없습니다.');
   const original = parseTaskCompletionRow(rawMatches[0], headerIndex);
   if (!original || original.status !== 'SUCCESS') throw new Error('과제 완료 기록이 손상되어 무결성을 확인할 수 없습니다.');
@@ -1745,12 +1815,15 @@ async function resolveTaskRewardResetContext(
       throw new Error('연결된 완료 기록이 현재 유효한 과제 완료가 아니어서 취소하지 않았습니다.');
     }
     return {
-      headers, rows, original,
-      snapshot: {
-        taskInstanceId: original.taskInstanceId, cycleId: original.cycleId,
-        cycleStartsAt: original.cycleStartsAt, cycleEndsAt: original.cycleEndsAt,
-        ruleVersion: original.ruleVersion, timeZone: original.timeZone, source: 'ADMIN_RESET',
-        assignmentId: original.assignmentId, schemaVersion: 2,
+      kind: 'linked',
+      context: {
+        headers, rows, original,
+        snapshot: {
+          taskInstanceId: original.taskInstanceId, cycleId: original.cycleId,
+          cycleStartsAt: original.cycleStartsAt, cycleEndsAt: original.cycleEndsAt,
+          ruleVersion: original.ruleVersion, timeZone: original.timeZone, source: 'ADMIN_RESET',
+          assignmentId: original.assignmentId, schemaVersion: 2,
+        },
       },
     };
   }
@@ -1777,12 +1850,15 @@ async function resolveTaskRewardResetContext(
   }
   const schedule = resolveTaskSchedule({ currentSchedule: task.schedule, pendingSchedule: task.pendingSchedule ?? null, now: cancelledAt });
   return {
-    headers, rows, original,
-    snapshot: {
-      taskInstanceId: task.taskInstanceId, cycleId: state.cycle.cycleId,
-      cycleStartsAt: state.cycle.startsAt, cycleEndsAt: state.cycle.endsAt,
-      ruleVersion: schedule.ruleVersion, timeZone: schedule.timeZone, source: 'ADMIN_RESET',
-      assignmentId: `LEGACY_COMPLETION:${encodeURIComponent(original.completionId)}`, schemaVersion: 2,
+    kind: 'linked',
+    context: {
+      headers, rows, original,
+      snapshot: {
+        taskInstanceId: task.taskInstanceId, cycleId: state.cycle.cycleId,
+        cycleStartsAt: state.cycle.startsAt, cycleEndsAt: state.cycle.endsAt,
+        ruleVersion: schedule.ruleVersion, timeZone: schedule.timeZone, source: 'ADMIN_RESET',
+        assignmentId: `LEGACY_COMPLETION:${encodeURIComponent(original.completionId)}`, schemaVersion: 2,
+      },
     },
   };
 }
@@ -1835,13 +1911,11 @@ function validateSheetsCancellationReplay(
   original: Transaction,
   reversal: Transaction,
   expectedReversalId: string,
-  taskCancellation: boolean,
+  operatorPrefix: string,
 ): void {
   const reversalDelta = original.balanceBefore - original.balanceAfter;
   const expectedTotal = -reversalDelta;
-  const expectedOperator = taskCancellation
-    ? `${TASK_CANCELLATION_OPERATOR_PREFIX}${original.transactionId}`
-    : `${CANCELLATION_OPERATOR_PREFIX}${original.transactionId}`;
+  const expectedOperator = `${operatorPrefix}${original.transactionId}`;
   const item = reversal.items[0];
   const valid = Number.isSafeInteger(reversalDelta)
     && Number.isSafeInteger(expectedTotal)
