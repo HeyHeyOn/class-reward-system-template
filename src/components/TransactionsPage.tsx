@@ -162,7 +162,10 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
   async function cancelTransaction(transaction: Transaction) {
     if (transaction.status === 'CANCELLED'
       || cancellationInFlightRef.current.size > 0) return;
-    if (!window.confirm(`${transaction.studentName} 학생의 ${formatSignedStudentAmount(transaction, currencyUnit)} 거래를 취소하고 이전 잔액으로 되돌릴까요?`)) return;
+    const confirmation = transaction.status === 'TASK_REWARD'
+      ? `${transaction.studentName} 학생의 ${formatSignedStudentAmount(transaction, currencyUnit)} 과제 보상을 취소할까요? 현재 잔액에서 보상 금액을 회수하고 과제 완료도 함께 취소합니다.`
+      : `${transaction.studentName} 학생의 ${formatSignedStudentAmount(transaction, currencyUnit)} 거래를 취소할까요? 현재 잔액에 반대 거래 효과를 적용합니다.`;
+    if (!window.confirm(confirmation)) return;
 
     cancellationInFlightRef.current.add(transaction.transactionId);
     const operationId = cancellationOperationIdsRef.current.get(transaction.transactionId)

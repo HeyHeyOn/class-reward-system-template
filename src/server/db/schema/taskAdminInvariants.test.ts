@@ -78,7 +78,9 @@ async function insertCompletion(
      cycle_id,cycle_start_at,rule_version,timezone,source,operation_id,operation_hash,
      admin_operation_id,admin_operation_hash)
     VALUES ($1,$2,'2026-01-01T01:00:00Z','task-instance-1','task-1','Task One',
-      'student-1','Student One',0,0,0,'COMPLETED','cycle-1','2026-01-01T00:00:00Z',
+      'student-1','Student One',0,0,0,
+      CASE WHEN $3 = 'ADMIN_RESET' THEN 'CANCELLED' ELSE 'COMPLETED' END,
+      'cycle-1','2026-01-01T00:00:00Z',
       1,'Asia/Seoul',$3,$4,$5,$6,$7)`,
   [T1, id, source, bankOperationId, bankOperationId ? HASH_B : null, operationId, hash]);
 }

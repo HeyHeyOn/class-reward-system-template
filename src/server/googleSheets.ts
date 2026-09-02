@@ -6,6 +6,7 @@ import {
   MigrationConflictError,
   SheetProviderError,
   type AdditiveSchemaMigrationStore,
+  type AtomicSheetMutation,
   type CrossSheetCellUpdate,
   type HeaderWritePrecondition,
   type OperationalSheetName,
@@ -170,6 +171,94 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
     for (const update of updates) {
       this.patchCachedCellByIndex(update.sheetName, update.rowNumber, update.columnNumber - 1, update.value);
     }
+  }
+
+  async applyAtomicMutation(mutation: AtomicSheetMutation): Promise<void> {
+    const { updates, appends } = mutation;
+    if (updates.length === 0 && appends.length === 0) return;
+    for (const update of updates) {
+      if (!Number.isSafeInteger(update.rowNumber) || update.rowNumber < 1) {
+        throw new RangeError(`Invalid one-based row number: ${update.rowNumber}`);
+      }
+      if (!Number.isSafeInteger(update.columnNumber) || update.columnNumber < 1) {
+        throw new RangeError(`Invalid one-based column number: ${update.columnNumber}`);
+      }
+    }
+    if (appends.some((append) => append.values.length === 0)) {
+      throw new RangeError('Atomic append rows must contain at least one cell');
+    }
+
+    const sheets = await this.getSheetsClient();
+    const requiredNames = new Set<OperationalSheetName>([
+      ...updates.map((update) => update.sheetName),
+      ...appends.map((append) => append.sheetName),
+    ]);
+    const metadata = await this.readWithRetry(() => sheets.spreadsheets.get({
+      spreadsheetId: this.spreadsheetId,
+      fields: 'sheets.properties(sheetId,title,gridProperties(rowCount,columnCount))',
+    }));
+    const sheetInfo = new Map<OperationalSheetName, { sheetId: number; rowCount: number; columnCount: number }>();
+    for (const sheet of metadata.data.sheets ?? []) {
+      const title = sheet.properties?.title as OperationalSheetName | undefined;
+      const sheetId = sheet.properties?.sheetId;
+      const rowCount = sheet.properties?.gridProperties?.rowCount;
+      const columnCount = sheet.properties?.gridProperties?.columnCount;
+      if (title && requiredNames.has(title) && sheetId !== undefined && sheetId !== null
+        && Number.isSafeInteger(rowCount) && Number(rowCount) > 0
+        && Number.isSafeInteger(columnCount) && Number(columnCount) > 0) {
+        sheetInfo.set(title, { sheetId, rowCount: Number(rowCount), columnCount: Number(columnCount) });
+      }
+    }
+    for (const sheetName of requiredNames) {
+      if (!sheetInfo.has(sheetName)) throw new Error(`${sheetName} 시트를 찾을 수 없거나 grid 정보를 확인할 수 없습니다.`);
+    }
+    for (const update of updates) {
+      const info = sheetInfo.get(update.sheetName)!;
+      if (update.rowNumber > info.rowCount || update.columnNumber > info.columnCount) {
+        throw new RangeError(`${update.sheetName} update coordinate is outside the sheet grid`);
+      }
+      if (typeof update.value === 'number' && !Number.isFinite(update.value)) {
+        throw new RangeError('Atomic mutation numbers must be finite');
+      }
+    }
+    for (const append of appends) {
+      const info = sheetInfo.get(append.sheetName)!;
+      if (append.values.length > info.columnCount) {
+        throw new RangeError(`${append.sheetName} append row exceeds the sheet column grid`);
+      }
+      if (append.values.some((value) => typeof value === 'number' && !Number.isFinite(value))) {
+        throw new RangeError('Atomic mutation numbers must be finite');
+      }
+    }
+
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: this.spreadsheetId,
+      requestBody: {
+        requests: [
+          ...updates.map((update) => ({
+            updateCells: {
+              range: {
+                sheetId: sheetInfo.get(update.sheetName)!.sheetId,
+                startRowIndex: update.rowNumber - 1,
+                endRowIndex: update.rowNumber,
+                startColumnIndex: update.columnNumber - 1,
+                endColumnIndex: update.columnNumber,
+              },
+              rows: [{ values: [{ userEnteredValue: sheetCellValue(update.value) }] }],
+              fields: 'userEnteredValue',
+            },
+          })),
+          ...appends.map((append) => ({
+            appendCells: {
+              sheetId: sheetInfo.get(append.sheetName)!.sheetId,
+              rows: [{ values: append.values.map((value) => ({ userEnteredValue: sheetCellValue(value) })) }],
+              fields: 'userEnteredValue',
+            },
+          })),
+        ],
+      },
+    });
+    for (const sheetName of requiredNames) this.rows.delete(sheetName);
   }
 
   async updateHeaderRow(sheetName: OperationalSheetName, headers: string[]): Promise<void> {
@@ -514,6 +603,10 @@ async function createSheetsClient(request?: Request) {
   });
 
   return google.sheets({ version: 'v4', auth });
+}
+
+function sheetCellValue(value: string | number): { stringValue: string } | { numberValue: number } {
+  return typeof value === 'number' ? { numberValue: value } : { stringValue: value };
 }
 
 function normalizeRows(rows: unknown[][]): string[][] {
