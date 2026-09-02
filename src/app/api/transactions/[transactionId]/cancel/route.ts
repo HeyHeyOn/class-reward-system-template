@@ -21,7 +21,7 @@ export async function POST(request: Request, context: RouteContext) {
     const { transactionId } = await context.params;
     const cancellation = await createConfiguredTransactionCancellation(request);
     const result = await cancellation.cancel({
-      transactionId: decodeURIComponent(transactionId),
+      transactionId,
       operationId: body.operationId,
     });
 
