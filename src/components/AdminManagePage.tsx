@@ -454,6 +454,8 @@ export function AdminManagePage() {
   const [bulkAmount, setBulkAmount] = useState(0);
   const bulkBalanceAttempt = useRef<{ semanticKey: string; operationId: string } | null>(null);
   const bulkBalanceInFlight = useRef(false);
+  const studentSaveAttempt = useRef<{ semanticKey: string; operationId: string } | null>(null);
+  const studentSaveInFlight = useRef(false);
   const [message, setMessage] = useState('학생/상품 목록을 불러오는 중입니다.');
   const [newStudent, setNewStudent] = useState<NewStudentDraft>(EMPTY_STUDENT);
   const studentCreationAttempt = useRef<{ semanticKey: string; operationId: string } | null>(null);
@@ -1328,22 +1330,32 @@ export function AdminManagePage() {
   }
 
   async function saveStudentRows(rows: StudentDraft[], label: string) {
+    if (studentSaveInFlight.current) return;
+    const studentPayload = buildStudentPayload(rows);
+    const semanticKey = JSON.stringify(studentPayload);
+    if (studentSaveAttempt.current?.semanticKey !== semanticKey) {
+      studentSaveAttempt.current = { semanticKey, operationId: crypto.randomUUID() };
+    }
+    const operationId = studentSaveAttempt.current.operationId;
+    studentSaveInFlight.current = true;
     setIsSavingChanges(true);
     try {
       const response = await fetch('/api/students/batch', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ students: buildStudentPayload(rows) }),
+        body: JSON.stringify({ operationId, students: studentPayload }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? '학생 명단을 저장하지 못했습니다.');
       const savedStudents = payload as StudentDraft[];
       const savedMap = new Map(savedStudents.map((student) => [student.studentId, student]));
       setStudents((current) => current.map((student) => savedMap.has(student.studentId) ? { ...student, ...savedMap.get(student.studentId) } : student));
+      studentSaveAttempt.current = null;
       notify(`${label} ${rows.length}명 저장 완료`);
     } catch (error) {
       notify(error instanceof Error ? error.message : '학생 명단을 저장하지 못했습니다.');
     } finally {
+      studentSaveInFlight.current = false;
       setIsSavingChanges(false);
     }
   }

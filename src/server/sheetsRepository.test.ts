@@ -23,6 +23,7 @@ import {
   updateProductDetailsBatch,
   updateStudentDetails,
   updateStudentDetailsBatch,
+  updateStudentDetailsBatchWithBalanceTransactions,
   updateTaskDetails,
   updateTaskSchedule,
   updateTaskDetailsBatch,
@@ -1648,6 +1649,149 @@ describe('sheets repository', () => {
     ).resolves.toEqual({ studentId: 'S001', name: '김민준', balance: -1, status: 'ACTIVE' });
 
     expect(updates).toContainEqual({ sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: -1 });
+  });
+
+  it('records only changed student-list balances in one atomic save and replays the operation safely', async () => {
+    const { rows, writes, store: baseStore } = statefulBulkStore();
+    rows.Students.push(['S003', '박지민', '900', 'S003', 'ACTIVE', '']);
+    const store = {
+      ...baseStore,
+      async applyAtomicMutation(mutation: TestAtomicMutation) {
+        writes.push('atomic:Students+Transactions');
+        applyTestAtomicMutation(rows, mutation);
+      },
+    };
+    const operationId = '30000000-0000-4000-8000-000000000001';
+    const updates = [
+      { studentId: 'S001', name: '김민준 수정', balance: 4000, status: 'INACTIVE' as const },
+      { studentId: 'S002', name: '이서연', balance: -100, status: 'ACTIVE' as const },
+      { studentId: 'S003', name: '박지민 수정', balance: 900, status: 'INACTIVE' as const },
+    ];
+
+    await expect(updateStudentDetailsBatchWithBalanceTransactions(store, updates, operationId)).resolves.toEqual(updates);
+
+    expect(rows.Students[1].slice(1, 5)).toEqual(['김민준 수정', '4000', 'S001', 'INACTIVE']);
+    expect(rows.Students[2].slice(1, 5)).toEqual(['이서연', '-100', 'S002', 'ACTIVE']);
+    expect(rows.Students[3].slice(1, 5)).toEqual(['박지민 수정', '900', 'S003', 'INACTIVE']);
+    const adjustments = rows.Transactions.slice(2);
+    expect(adjustments).toHaveLength(2);
+    expect(adjustments.map((row) => row.slice(2, 10))).toEqual([
+      ['S001', '김민준 수정', expect.stringContaining('관리자 잔액 지정'), '-500', '3500', '4000', 'ADMIN_ADJUSTMENT', 'admin'],
+      ['S002', '이서연', expect.stringContaining('관리자 잔액 지정'), '1300', '1200', '-100', 'ADMIN_ADJUSTMENT', 'admin'],
+    ]);
+    expect(writes).toEqual(['atomic:Students+Transactions']);
+
+    await expect(updateStudentDetailsBatchWithBalanceTransactions(store, updates, operationId)).resolves.toEqual(updates);
+    expect(rows.Transactions.slice(2)).toHaveLength(2);
+    expect(writes).toEqual(['atomic:Students+Transactions']);
+
+    await expect(updateStudentDetailsBatchWithBalanceTransactions(store, [
+      { ...updates[0], balance: 4500 }, updates[1], updates[2],
+    ], operationId)).rejects.toThrow('무결성');
+    expect(writes).toEqual(['atomic:Students+Transactions']);
+  });
+
+  it('persists and replays a zero-balance-change student-list operation marker', async () => {
+    const { rows, writes, store: baseStore } = statefulBulkStore();
+    const store = {
+      ...baseStore,
+      async applyAtomicMutation(mutation: TestAtomicMutation) {
+        writes.push(`atomic:${mutation.updates.map((update) => update.sheetName).concat(
+          mutation.appends.map((append) => append.sheetName),
+        ).join('+')}`);
+        applyTestAtomicMutation(rows, mutation);
+      },
+    };
+    const operationId = '22000000-0000-4000-8000-000000000001';
+    const updates = [
+      { studentId: 'S001', name: '김민준 수정', balance: 3500, status: 'ACTIVE' as const },
+      { studentId: 'S002', name: '이서연', balance: 1200, status: 'ACTIVE' as const },
+    ];
+
+    const first = await updateStudentDetailsBatchWithBalanceTransactions(store, updates, operationId);
+    expect(first).toEqual([
+      { studentId: 'S001', name: '김민준 수정', balance: 3500, status: 'ACTIVE' },
+      { studentId: 'S002', name: '이서연', balance: 1200, status: 'ACTIVE' },
+    ]);
+    expect(rows.Transactions.filter((row) => row[0].startsWith('ADMIN-LIST-'))).toHaveLength(0);
+    expect(rows.Settings).toHaveLength(3);
+    const markerRow = rows.Settings.at(-1)!;
+    expect(markerRow[0]).toMatch(/^studentListSaveOperation:[a-f0-9]{64}$/);
+    expect(JSON.parse(markerRow[1])).toEqual({
+      version: 1,
+      operationId,
+      payloadHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+      studentIds: ['S001', 'S002'],
+      resultCount: 0,
+    });
+    expect(writes).toEqual(['atomic:Students+Students+Students+Students+Settings']);
+
+    await expect(updateStudentDetailsBatchWithBalanceTransactions(store, updates, operationId)).resolves.toEqual(first);
+    expect(writes).toHaveLength(1);
+    await expect(updateStudentDetailsBatchWithBalanceTransactions(store, [
+      { ...updates[0], name: '충돌 이름' },
+      updates[1],
+    ], operationId)).rejects.toThrow('학생 명단 저장 거래의 무결성이 일치하지 않아 수동 조정이 필요합니다.');
+    expect(writes).toHaveLength(1);
+  });
+
+  it('serializes concurrent student-list retries so one ledger row is written', async () => {
+    const { rows, store: baseStore } = statefulBulkStore();
+    let entered = 0;
+    let active = 0;
+    let maxActive = 0;
+    let releaseFirst!: () => void;
+    let notifyFirst!: () => void;
+    const firstEntered = new Promise<void>((resolve) => { notifyFirst = resolve; });
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const store = {
+      ...baseStore,
+      async applyAtomicMutation(mutation: TestAtomicMutation) {
+        entered += 1;
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        if (entered === 1) {
+          notifyFirst();
+          await firstGate;
+        }
+        applyTestAtomicMutation(rows, mutation);
+        active -= 1;
+      },
+    };
+    const updates = [{ studentId: 'S001', name: '김민준', balance: 4000, status: 'ACTIVE' as const }];
+    const operationId = '23000000-0000-4000-8000-000000000001';
+
+    const first = updateStudentDetailsBatchWithBalanceTransactions(store, updates, operationId);
+    await firstEntered;
+    const second = updateStudentDetailsBatchWithBalanceTransactions(store, updates, operationId);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    releaseFirst();
+    await Promise.all([first, second]);
+
+    expect(maxActive).toBe(1);
+    expect(rows.Transactions.filter((row) => row[0].startsWith('ADMIN-LIST-'))).toHaveLength(1);
+  });
+
+  it('rejects non-canonical student-list transaction count residue', async () => {
+    const { rows, store: baseStore } = statefulBulkStore();
+    const store = {
+      ...baseStore,
+      async applyAtomicMutation(mutation: TestAtomicMutation) {
+        applyTestAtomicMutation(rows, mutation);
+      },
+    };
+    const updates = [
+      { studentId: 'S001', name: '김민준', balance: 4000, status: 'ACTIVE' as const },
+      { studentId: 'S002', name: '이서연', balance: 1000, status: 'ACTIVE' as const },
+    ];
+    const operationId = '24000000-0000-4000-8000-000000000001';
+    await updateStudentDetailsBatchWithBalanceTransactions(store, updates, operationId);
+    for (const row of rows.Transactions.filter((candidate) => candidate[0].startsWith('ADMIN-LIST-'))) {
+      row[0] = row[0].replace('-002-', '-2-');
+    }
+
+    await expect(updateStudentDetailsBatchWithBalanceTransactions(store, updates, operationId))
+      .rejects.toThrow('학생 명단 저장 거래의 무결성이 일치하지 않아 수동 조정이 필요합니다.');
   });
 
   it('batch updates students through one store call', async () => {

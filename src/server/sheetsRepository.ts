@@ -2233,6 +2233,125 @@ export async function updateStudentDetailsBatch(store: SheetsStore, updates: Stu
   return students;
 }
 
+export function updateStudentDetailsBatchWithBalanceTransactions(
+  store: SheetsStore,
+  updates: StudentBatchUpdate[],
+  operationId: string,
+): Promise<Student[]> {
+  return enqueueTaskCommand(taskCommandQueueKey(''), () =>
+    updateStudentDetailsBatchWithBalanceTransactionsNow(store, updates, operationId));
+}
+
+async function updateStudentDetailsBatchWithBalanceTransactionsNow(
+  store: SheetsStore,
+  updates: StudentBatchUpdate[],
+  operationId: string,
+): Promise<Student[]> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(operationId)) {
+    throw new Error('작업 ID 형식이 올바르지 않습니다.');
+  }
+  if (!store.applyAtomicMutation) {
+    throw new Error('현재 Sheets 저장소가 원자적 학생 재화 수정을 지원하지 않습니다.');
+  }
+  if (!Array.isArray(updates) || updates.length === 0) throw new Error('저장할 학생이 없습니다.');
+
+  const [studentRows, transactionRows, settingsRows] = await Promise.all([
+    store.getRows('Students'),
+    store.getRows('Transactions'),
+    store.getRows('Settings'),
+  ]);
+  const recordsById = getStudentRecordsFromRows(studentRows);
+  const normalized = updates
+    .map((update) => ({ ...update, studentId: update.studentId.trim(), name: update.name.trim() }))
+    .sort((left, right) => left.studentId.localeCompare(right.studentId));
+  const duplicateIds = findDuplicates(normalized.map((update) => update.studentId));
+  if (duplicateIds.length > 0) throw new Error(`중복된 학생 ID가 있습니다: ${duplicateIds.join(', ')}`);
+
+  const students: Student[] = normalized.map((update) => {
+    validateStudentId(update.studentId);
+    validateStudentUpdate(update);
+    if (!recordsById.has(update.studentId)) throw new Error(`학생을 찾을 수 없습니다: ${update.studentId}`);
+    return { studentId: update.studentId, name: update.name, balance: update.balance, status: update.status };
+  });
+  const transactionHeaderIndex = createHeaderIndex(transactionRows[0] ?? []);
+  const transactionItemsColumn = TRANSACTION_ITEM_COLUMN_ALIASES.find(
+    (column) => (transactionHeaderIndex.get(column) ?? -1) >= 0,
+  );
+  if (!transactionItemsColumn
+    || !requireColumns(transactionHeaderIndex, [...REQUIRED_TRANSACTION_COLUMNS, transactionItemsColumn]).ok) {
+    throw studentListSaveReconciliationError();
+  }
+
+  const payloadHash = await sha256Hex(JSON.stringify(students));
+  const operationPrefix = `ADMIN-LIST-${operationId}-`;
+  const operationRows = getRawBulkOperationRows(transactionRows, operationPrefix);
+  const marker = buildStudentListSaveOperationMarker(operationId, payloadHash, students);
+  const markerCandidates = studentListSaveOperationMarkerCandidates(settingsRows, marker.key);
+  if (markerCandidates.length > 0) {
+    if (!markerCandidates.every((candidate) => candidate === marker.value) || operationRows.length > 0) {
+      throw studentListSaveReconciliationError();
+    }
+    validateStudentListProfiles(students, recordsById);
+    return students;
+  }
+  if (operationRows.length > 0) {
+    validateStudentListSaveReplay(
+      transactionRows,
+      operationRows,
+      students,
+      recordsById,
+      payloadHash,
+      operationPrefix,
+      transactionItemsColumn,
+    );
+    return students;
+  }
+
+  const changes = students.flatMap((student) => {
+    const record = recordsById.get(student.studentId)!;
+    if (record.student.balance === student.balance) return [];
+    const transactionAmount = checkedSafeIntegerAddition(record.student.balance, -student.balance);
+    return [{ record, student, transactionAmount }];
+  });
+  const timestamp = new Date().toISOString();
+  const transactionHeaders = transactionRows[0] ?? TRANSACTION_HEADERS;
+  const transactionBase = `${operationPrefix}${payloadHash}-${String(changes.length).padStart(3, '0')}-`;
+  const studentHeaderIndex = createHeaderIndex(studentRows[0] ?? []);
+  const profileUpdates = students.flatMap((student) => {
+    const record = recordsById.get(student.studentId)!;
+    return [
+      { sheetName: 'Students' as const, rowNumber: record.rowNumber, columnNumber: studentHeaderIndex.get('name')! + 1, value: student.name },
+      { sheetName: 'Students' as const, rowNumber: record.rowNumber, columnNumber: studentHeaderIndex.get('status')! + 1, value: student.status },
+    ];
+  });
+  const balanceUpdates = changes.map(({ record, student }) => ({
+    sheetName: 'Students' as const,
+    rowNumber: record.rowNumber,
+    columnNumber: studentHeaderIndex.get('balance')! + 1,
+    value: student.balance,
+  }));
+
+  await store.applyAtomicMutation({
+    updates: [...profileUpdates, ...balanceUpdates],
+    appends: changes.length === 0
+      ? [{ sheetName: 'Settings' as const, values: buildStudentListSaveOperationMarkerRow(settingsRows, marker) }]
+      : await Promise.all(changes.map(async ({ record, student, transactionAmount }) => ({
+        sheetName: 'Transactions' as const,
+        values: buildBalanceAdjustmentTransactionRow(
+          transactionHeaders,
+          student,
+          record.student.balance,
+          student.balance,
+          'set',
+          transactionAmount,
+          `${transactionBase}${(await sha256Hex(student.studentId)).slice(0, 12)}`,
+          timestamp,
+        ),
+      }))),
+  });
+  return students;
+}
+
 export async function deleteStudent(store: SheetsStore, studentId: string): Promise<{ studentId: string }> {
   const record = await getStudentRecordById(store, studentId);
   if (!record) throw new Error('학생을 찾을 수 없습니다.');
@@ -2323,19 +2442,44 @@ export async function bulkAdjustStudentBalances(
   const cellUpdates = changes.map(({ record, balance }) => ({
     rowNumber: record.rowNumber, columnName: 'balance', value: balance,
   }));
-  await applyCellUpdates(store, 'Students', cellUpdates);
-  for (const { record, balance, transactionAmount } of changes) {
-    await appendBalanceAdjustmentTransaction(
-      store,
-      transactionHeaders,
-      record.student,
-      record.student.balance,
-      balance,
-      update.mode,
-      transactionAmount,
-      expectedTransactionIds.get(record.student.studentId)!,
-      timestamp,
-    );
+  if (store.applyAtomicMutation) {
+    const studentHeaderIndex = createHeaderIndex(studentRows[0] ?? []);
+    await store.applyAtomicMutation({
+      updates: cellUpdates.map((cell) => ({
+        sheetName: 'Students' as const,
+        rowNumber: cell.rowNumber,
+        columnNumber: (studentHeaderIndex.get(cell.columnName) ?? -1) + 1,
+        value: cell.value,
+      })),
+      appends: changes.map(({ record, balance, transactionAmount }) => ({
+        sheetName: 'Transactions' as const,
+        values: buildBalanceAdjustmentTransactionRow(
+          transactionHeaders,
+          record.student,
+          record.student.balance,
+          balance,
+          update.mode,
+          transactionAmount,
+          expectedTransactionIds.get(record.student.studentId)!,
+          timestamp,
+        ),
+      })),
+    });
+  } else {
+    await applyCellUpdates(store, 'Students', cellUpdates);
+    for (const { record, balance, transactionAmount } of changes) {
+      await appendBalanceAdjustmentTransaction(
+        store,
+        transactionHeaders,
+        record.student,
+        record.student.balance,
+        balance,
+        update.mode,
+        transactionAmount,
+        expectedTransactionIds.get(record.student.studentId)!,
+        timestamp,
+      );
+    }
   }
   return results;
 }
@@ -2569,6 +2713,189 @@ async function sha256Hex(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
+type StudentListSaveOperationMarker = { key: string; value: string };
+
+function buildStudentListSaveOperationMarker(
+  operationId: string,
+  payloadHash: string,
+  students: readonly Student[],
+): StudentListSaveOperationMarker {
+  return {
+    key: `studentListSaveOperation:${createHash('sha256').update(operationId).digest('hex')}`,
+    value: JSON.stringify({
+      version: 1,
+      operationId,
+      payloadHash: `sha256:${payloadHash}`,
+      studentIds: students.map((student) => student.studentId),
+      resultCount: 0,
+    }),
+  };
+}
+
+function studentListSaveOperationMarkerCandidates(settingsRows: string[][], key: string): string[] {
+  const headerIndex = createHeaderIndex(settingsRows[0] ?? []);
+  const keyColumn = headerIndex.get('key');
+  const valueColumn = headerIndex.get('value');
+  if (keyColumn === undefined || valueColumn === undefined) throw studentListSaveReconciliationError();
+  return settingsRows.slice(1)
+    .filter(isNonblankSheetRow)
+    .filter((row) => String(row[keyColumn] ?? '').trim() === key)
+    .map((row) => String(row[valueColumn] ?? ''));
+}
+
+function buildStudentListSaveOperationMarkerRow(
+  settingsRows: string[][],
+  marker: StudentListSaveOperationMarker,
+): string[] {
+  const headers = settingsRows[0] ?? [];
+  const headerIndex = createHeaderIndex(headers);
+  if (headerIndex.get('key') === undefined || headerIndex.get('value') === undefined) {
+    throw studentListSaveReconciliationError();
+  }
+  return headers.map((header) => {
+    if (header.trim() === 'key') return marker.key;
+    if (header.trim() === 'value') return marker.value;
+    return '';
+  });
+}
+
+function validateStudentListProfiles(
+  students: readonly Student[],
+  recordsById: ReadonlyMap<string, StudentRecord>,
+): void {
+  for (const student of students) {
+    const current = recordsById.get(student.studentId)?.student;
+    if (!current
+      || current.name !== student.name
+      || current.balance !== student.balance
+      || current.status !== student.status) {
+      throw studentListSaveReconciliationError();
+    }
+  }
+}
+
+function validateStudentListSaveReplay(
+  transactionRows: string[][],
+  operationRows: RawBulkOperationRow[],
+  students: Student[],
+  recordsById: ReadonlyMap<string, StudentRecord>,
+  payloadHash: string,
+  operationPrefix: string,
+  transactionItemsColumn: typeof TRANSACTION_ITEM_COLUMN_ALIASES[number],
+): void {
+  const headerIndex = createHeaderIndex(transactionRows[0] ?? []);
+  if (!requireColumns(headerIndex, [...REQUIRED_TRANSACTION_COLUMNS, transactionItemsColumn]).ok) {
+    throw studentListSaveReconciliationError();
+  }
+  const byStudentId = new Map(students.map((student) => [student.studentId, student]));
+  for (const student of students) {
+    const current = recordsById.get(student.studentId)?.student;
+    if (!current || current.name !== student.name || current.balance !== student.balance || current.status !== student.status) {
+      throw studentListSaveReconciliationError();
+    }
+  }
+
+  const cell = (row: string[], column: string) => row[headerIndex.get(column)!]?.trim() ?? '';
+  const safeInteger = (value: string): number | null => {
+    if (!/^-?(0|[1-9]\d*)$/.test(value)) return null;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) ? parsed : null;
+  };
+  const prefix = `${operationPrefix}${payloadHash}-`;
+  let expectedCount: number | undefined;
+  let expectedCountCell: string | undefined;
+  let timestamp: string | undefined;
+  const observedStudentIds = new Set<string>();
+  for (const { row } of operationRows) {
+    const transactionId = cell(row, 'transactionId');
+    if (!transactionId.startsWith(prefix)) throw studentListSaveReconciliationError();
+    const [countCell, studentHash, ...extra] = transactionId.slice(prefix.length).split('-');
+    const count = /^\d+$/.test(countCell) ? Number(countCell) : NaN;
+    if (!Number.isSafeInteger(count) || count <= 0 || countCell !== String(count).padStart(3, '0')
+      || extra.length > 0 || !/^[0-9a-f]{12}$/.test(studentHash)
+      || (expectedCount !== undefined && (expectedCount !== count || expectedCountCell !== countCell))) {
+      throw studentListSaveReconciliationError();
+    }
+    expectedCount = count;
+    expectedCountCell = countCell;
+
+    const studentId = cell(row, 'studentId');
+    const student = byStudentId.get(studentId);
+    const balanceBefore = safeInteger(cell(row, 'balanceBefore'));
+    const balanceAfter = safeInteger(cell(row, 'balanceAfter'));
+    const totalAmount = safeInteger(cell(row, 'totalAmount'));
+    let items: unknown;
+    try { items = JSON.parse(cell(row, transactionItemsColumn)); } catch { throw studentListSaveReconciliationError(); }
+    if (!student || observedStudentIds.has(studentId) || balanceBefore === null || balanceAfter === null || totalAmount === null
+      || balanceBefore === balanceAfter || !Array.isArray(items) || items.length !== 1
+      || typeof items[0] !== 'object' || items[0] === null || Array.isArray(items[0])) {
+      throw studentListSaveReconciliationError();
+    }
+    const item = items[0] as Record<string, unknown>;
+    const expectedTotal = checkedSafeIntegerAddition(balanceBefore, -balanceAfter);
+    const rowTimestamp = cell(row, 'timestamp');
+    let validTimestamp = false;
+    try { validTimestamp = new Date(rowTimestamp).toISOString() === rowTimestamp; } catch { validTimestamp = false; }
+    const expectedId = `${prefix}${countCell}-${createHash('sha256').update(studentId, 'utf8').digest('hex').slice(0, 12)}`;
+    if (transactionId !== expectedId
+      || cell(row, 'studentName') !== student.name
+      || cell(row, 'status') !== 'ADMIN_ADJUSTMENT'
+      || cell(row, 'operator') !== 'admin'
+      || balanceAfter !== student.balance
+      || totalAmount !== expectedTotal
+      || Object.keys(item).sort().join('|') !== 'name|price|productId|quantity|subtotal'
+      || item.productId !== 'ADMIN-SET'
+      || item.name !== '관리자 잔액 지정'
+      || item.price !== expectedTotal
+      || item.quantity !== 1
+      || item.subtotal !== expectedTotal
+      || !validTimestamp
+      || (timestamp !== undefined && timestamp !== rowTimestamp)) {
+      throw studentListSaveReconciliationError();
+    }
+    timestamp = rowTimestamp;
+    observedStudentIds.add(studentId);
+  }
+  if (expectedCount !== operationRows.length || observedStudentIds.size !== operationRows.length) {
+    throw studentListSaveReconciliationError();
+  }
+}
+
+function studentListSaveReconciliationError(): Error {
+  return new Error('학생 명단 저장 거래의 무결성이 일치하지 않아 수동 조정이 필요합니다.');
+}
+
+function buildBalanceAdjustmentTransactionRow(
+  transactionHeaders: string[],
+  student: Student,
+  balanceBefore: number,
+  balanceAfter: number,
+  mode: StudentBulkBalanceMode,
+  transactionAmount: number,
+  transactionId: string,
+  timestamp: string,
+): string[] {
+  const label = mode === 'add' ? '관리자 지급' : mode === 'subtract' ? '관리자 회수' : '관리자 잔액 지정';
+  return buildTransactionAppendRow(transactionHeaders, {
+    transactionId,
+    timestamp,
+    studentId: student.studentId,
+    studentName: student.name,
+    items: [{
+      productId: `ADMIN-${mode.toUpperCase()}`,
+      name: label,
+      price: transactionAmount,
+      quantity: 1,
+      subtotal: transactionAmount,
+    }],
+    totalAmount: transactionAmount,
+    balanceBefore,
+    balanceAfter,
+    status: 'ADMIN_ADJUSTMENT',
+    operator: 'admin',
+  });
+}
+
 async function appendBalanceAdjustmentTransaction(
   store: SheetsStore,
   transactionHeaders: string[],
@@ -2580,27 +2907,16 @@ async function appendBalanceAdjustmentTransaction(
   transactionId: string,
   timestamp: string,
 ): Promise<void> {
-  const label = mode === 'add' ? '관리자 지급' : mode === 'subtract' ? '관리자 회수' : '관리자 잔액 지정';
-  const item = {
-    productId: `ADMIN-${mode.toUpperCase()}`,
-    name: label,
-    price: transactionAmount,
-    quantity: 1,
-    subtotal: transactionAmount,
-  };
-  const transaction: Transaction = {
-    transactionId,
-    timestamp,
-    studentId: student.studentId,
-    studentName: student.name,
-    items: [item],
-    totalAmount: transactionAmount,
+  await store.appendRow('Transactions', buildBalanceAdjustmentTransactionRow(
+    transactionHeaders,
+    student,
     balanceBefore,
     balanceAfter,
-    status: 'ADMIN_ADJUSTMENT',
-    operator: 'admin',
-  };
-  await store.appendRow('Transactions', buildTransactionAppendRow(transactionHeaders, transaction));
+    mode,
+    transactionAmount,
+    transactionId,
+    timestamp,
+  ));
 }
 
 function buildStudentAppendRow(headers: string[] | undefined, student: Student): string[] {
@@ -2733,7 +3049,11 @@ function validateStudentBulkBalanceUpdate(update: StudentBulkBalanceUpdate) {
   const duplicateIds = findDuplicates(studentIds);
   if (duplicateIds.length > 0) throw new Error(`중복된 학생 ID가 있습니다: ${duplicateIds.join(', ')}`);
   if (update.mode !== 'set' && update.mode !== 'add' && update.mode !== 'subtract') throw new Error('일괄 작업 방식이 올바르지 않습니다.');
-  if (!Number.isSafeInteger(update.amount) || update.amount < 0) throw new Error('금액은 0 이상의 안전한 정수여야 합니다.');
+  if (!Number.isSafeInteger(update.amount) || (update.mode !== 'set' && update.amount < 0)) {
+    throw new Error(update.mode === 'set'
+      ? '목표 잔액은 안전한 정수여야 합니다.'
+      : '금액은 0 이상의 안전한 정수여야 합니다.');
+  }
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(update.operationId)) {
     throw new Error('작업 ID 형식이 올바르지 않습니다.');
   }
