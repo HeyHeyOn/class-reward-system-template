@@ -75,9 +75,29 @@ describe('POST /api/transactions/[transactionId]/cancel', () => {
   });
 
   it.each([
-    'provider credential detail',
-    '취소할 수 없는 거래입니다.',
-  ])('returns a safe error without leaking repository detail: %s', async (detail) => {
+    ['provider credential detail', 'unexpected', 'provider credential detail'],
+    ['취소할 수 없는 거래입니다.', 'transaction-not-cancellable', null],
+    ['과제 완료 기록 스냅샷이 손상되어 취소하지 않았습니다.', 'task-completion-snapshot-invalid', null],
+    ['과제 완료 RESET 기록의 무결성을 확인할 수 없어 취소하지 않았습니다.', 'task-reset-integrity-unverifiable', null],
+    ['과제 완료 RESET 기록의 무결성이 일치하지 않아 취소하지 않았습니다.', 'task-reset-integrity-mismatch', null],
+    ['거래 취소 기록의 무결성이 일치하지 않아 수동 조정이 필요합니다.', 'cancellation-record-integrity-mismatch', null],
+    ['Cancellation restoration requires safe integer values', 'restoration-values-unsafe', null],
+    ['Safe integer overflow: 안전한 정수 범위를 벗어났습니다.', 'safe-integer-overflow', null],
+    [
+      '거래 상품을 찾을 수 없어 수동 조정이 필요합니다: product-secret-id-901',
+      'transaction-product-missing',
+      'product-secret-id-901',
+    ],
+    [
+      'TaskCompletions 템플릿/스키마를 업데이트해 주세요. 필수 컬럼이 없습니다: oauthTokenSecret',
+      'task-completions-schema-invalid',
+      'oauthTokenSecret',
+    ],
+    ['Transactions 시트에 필수 컬럼이 없습니다: passwordHash', 'transactions-schema-invalid', 'passwordHash'],
+    ['Students 시트에 필수 컬럼이 없습니다: guardianAccessToken', 'students-schema-invalid', 'guardianAccessToken'],
+    ['Products 시트에 필수 컬럼이 없습니다: privateSupplierId', 'products-schema-invalid', 'privateSupplierId'],
+  ])('returns a safe error while logging a safe operator reason for %s', async (detail, reason, sensitiveSuffix) => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     vi.mocked(createConfiguredTransactionCancellation).mockResolvedValue({
       cancel: vi.fn(async () => { throw new Error(detail); }),
     });
@@ -91,6 +111,11 @@ describe('POST /api/transactions/[transactionId]/cancel', () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({ error: '거래를 취소하지 못했습니다.' });
+    expect(consoleError).toHaveBeenCalledWith('transaction_cancellation_failed', { reason });
+    const logged = JSON.stringify(consoleError.mock.calls);
+    expect(logged).not.toContain('TR-1');
+    expect(logged).not.toContain(detail);
+    if (sensitiveSuffix) expect(logged).not.toContain(sensitiveSuffix);
   });
 
   it.each([
