@@ -35,6 +35,7 @@ describe('configured catalog read composition root', () => {
     const databaseAdapter = {
       getProducts: vi.fn(async () => PRODUCTS),
       getActiveProducts: vi.fn(async () => PRODUCTS),
+      getProductsForAdminMutation: vi.fn(async () => ({ products: [], mutationPreconditions: [] })),
       getPromotions: vi.fn(async () => []),
       getActivePromotions: vi.fn(async () => []),
       getPromotionsForAdminMutation: vi.fn(async () => ({ promotions: [], mutationPreconditions: [] })),
@@ -147,11 +148,71 @@ describe('configured catalog read composition root', () => {
     expect(second.mutationPreconditions).toEqual([{ promotionId: 'PROMO-1', expectedVersion: 1 }]);
   });
 
+  it('builds a deeply detached Sheets product mutation snapshot with one lazy read and exact Request', async () => {
+    const request = new Request('http://localhost/api/products?includeInactive=1');
+    const reader = { getRows: vi.fn() };
+    const source = PRODUCTS.map((product) => ({ ...product }));
+    const createConfiguredSheetsReader = vi.fn(async () => reader);
+    const getProducts = vi.fn(async () => source);
+    const creators = createCatalogRepositoryCreators({
+      createDatabaseCatalogQueries: vi.fn(), withTenantSnapshot: vi.fn(),
+      createConfiguredSheetsReader, getProducts, getActiveProducts: vi.fn(),
+      getPromotions: vi.fn(), getActivePromotions: vi.fn(),
+    }, request);
+    const catalog = await createConfiguredCatalogReader({
+      env: { CLASS_STORE_STORAGE: 'sheets' }, getCentralTenantContext: vi.fn(), creators,
+    });
+    expect(createConfiguredSheetsReader).not.toHaveBeenCalled();
+
+    const snapshot = await catalog.getProductsForAdminMutation();
+
+    expect(createConfiguredSheetsReader).toHaveBeenCalledWith(request);
+    expect(getProducts).toHaveBeenCalledOnce();
+    expect(getProducts).toHaveBeenCalledWith(reader);
+    expect(snapshot).toEqual({
+      products: PRODUCTS,
+      mutationPreconditions: [{ productId: 'P001', expectedVersion: 1 }],
+    });
+    expect(snapshot.products).not.toBe(source);
+    expect(snapshot.products[0]).not.toBe(source[0]);
+    snapshot.products[0].name = '변조';
+    snapshot.mutationPreconditions[0].expectedVersion = 99;
+    const second = await catalog.getProductsForAdminMutation();
+    expect(second.products[0].name).toBe('연필');
+    expect(second.mutationPreconditions).toEqual([{ productId: 'P001', expectedVersion: 1 }]);
+  });
+
+  it('uses the PostgreSQL product mutation snapshot without creating or falling back to Sheets', async () => {
+    const dbError = new Error('database unavailable');
+    const databaseAdapter = {
+      getProducts: vi.fn(), getActiveProducts: vi.fn(), getPromotions: vi.fn(),
+      getActivePromotions: vi.fn(), getPromotionsForAdminMutation: vi.fn(),
+      getProductsForAdminMutation: vi.fn(async () => { throw dbError; }),
+    };
+    const createDatabaseCatalogQueries = vi.fn(() => databaseAdapter);
+    const sheetsGetter = vi.fn(() => { throw new Error('Sheets accessed'); });
+    const creators = createCatalogRepositoryCreators({
+      createDatabaseCatalogQueries, withTenantSnapshot: vi.fn(),
+      createConfiguredSheetsReader: vi.fn(), getProducts: vi.fn(), getActiveProducts: vi.fn(),
+      getPromotions: vi.fn(), getActivePromotions: vi.fn(),
+    });
+    Object.defineProperty(creators, 'createSheets', { enumerable: true, value: sheetsGetter });
+    const catalog = await createConfiguredCatalogReader({
+      env: { CLASS_STORE_STORAGE: 'postgresql' },
+      getCentralTenantContext: () => activeTenant(), creators,
+    });
+
+    await expect(catalog.getProductsForAdminMutation()).rejects.toBe(dbError);
+    expect(createDatabaseCatalogQueries).toHaveBeenCalledWith(expect.objectContaining({ tenantId: TENANT_ID }));
+    expect(sheetsGetter).not.toHaveBeenCalled();
+  });
+
   it('uses the tenant-bound PostgreSQL admin snapshot and never falls back to Sheets', async () => {
     const dbError = new Error('database unavailable');
     const databaseAdapter = {
       getProducts: vi.fn(), getActiveProducts: vi.fn(), getPromotions: vi.fn(),
       getActivePromotions: vi.fn(),
+      getProductsForAdminMutation: vi.fn(),
       getPromotionsForAdminMutation: vi.fn(async () => { throw dbError; }),
     };
     const createDatabaseCatalogQueries = vi.fn(() => databaseAdapter);

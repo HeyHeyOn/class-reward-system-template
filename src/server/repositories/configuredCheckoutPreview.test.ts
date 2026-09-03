@@ -30,6 +30,7 @@ describe('configured checkout preview composition root', () => {
         expect(received).toBe(transaction);
         return getProducts();
       }),
+      getProductsForAdminMutation: vi.fn(),
       getActiveProducts: vi.fn(), getProductById: vi.fn(), getPromotions: vi.fn(),
       getPromotionsForAdminMutation: vi.fn(),
       getActivePromotions: () => runTenantTransaction(TENANT_ID, async (received: unknown) => {

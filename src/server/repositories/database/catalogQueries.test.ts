@@ -56,6 +56,7 @@ type ProductSeed = {
   category: string | null;
   sortOrder: number;
   deletedAt?: string;
+  version?: number;
 };
 
 type PromotionSeed = {
@@ -79,12 +80,12 @@ type PromotionSeed = {
 async function seedProduct(tenantId: string, product: ProductSeed) {
   await harness.database.query(
     `INSERT INTO products (
-       tenant_id, product_id, name, price, stock, is_active, image_url, category, sort_order, deleted_at
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+       tenant_id, product_id, name, price, stock, is_active, image_url, category, sort_order, deleted_at, version
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
     [
       tenantId, product.productId, product.name, product.price, product.stock,
       product.isActive, product.imageUrl, product.category, product.sortOrder,
-      product.deletedAt ?? null,
+      product.deletedAt ?? null, product.version ?? 1,
     ],
   );
 }
@@ -138,6 +139,118 @@ describe('database catalog queries', () => {
 
     await expect(queries().getProducts()).resolves.toEqual(expected);
     expect(expected.map(({ productId }) => productId)).toEqual(['P3', 'P1', 'P2']);
+  });
+
+  it('reads ordered product mutation preconditions from one tenant-scoped snapshot', async () => {
+    await harness.database.query(
+      `UPDATE products SET version = CASE product_id WHEN 'P1' THEN 7 WHEN 'P2' THEN 3 ELSE 5 END
+       WHERE tenant_id = $1`,
+      [harness.tenantOneId],
+    );
+    let snapshots = 0;
+    let queriesRun = 0;
+    const runTenantTransaction: DatabaseCatalogQueryDependencies['runTenantTransaction'] =
+      (tenantId, callback) => {
+        snapshots += 1;
+        return harness.runTenantTransaction(tenantId, async (transaction) => {
+          const execute = transaction.execute.bind(transaction);
+          const counted = Object.create(transaction) as typeof transaction;
+          counted.execute = (async (...args: Parameters<typeof execute>) => {
+            queriesRun += 1;
+            return execute(...args);
+          }) as never;
+          return callback(counted);
+        });
+      };
+
+    const result = await queries({ runTenantTransaction }).getProductsForAdminMutation();
+
+    expect(result.products.map(({ productId }) => productId)).toEqual(['P3', 'P1', 'P2']);
+    expect(result.mutationPreconditions).toEqual([
+      { productId: 'P3', expectedVersion: 5 },
+      { productId: 'P1', expectedVersion: 7 },
+      { productId: 'P2', expectedVersion: 3 },
+    ]);
+    expect(result.products.every((product) => !Object.hasOwn(product, 'version'))).toBe(true);
+    expect(snapshots).toBe(1);
+    expect(queriesRun).toBe(1);
+  });
+
+  it('returns an empty product mutation snapshot from tenant-scoped nondeleted SQL', async () => {
+    const execute = vi.fn(async () => ({ rows: [] }));
+    const runTenantTransaction: DatabaseCatalogQueryDependencies['runTenantTransaction'] =
+      async (tenantId, callback) => {
+        expect(tenantId).toBe(harness.tenantOneId);
+        return callback({ execute } as never);
+      };
+
+    await expect(queries({ runTenantTransaction }).getProductsForAdminMutation()).resolves.toEqual({
+      products: [], mutationPreconditions: [],
+    });
+    expect(execute).toHaveBeenCalledOnce();
+    const query = (execute.mock.calls as unknown as [[unknown]])[0]?.[0];
+    const rendered = JSON.stringify(query);
+    expect(rendered).toContain('tenant_id');
+    expect(rendered).toContain('deleted_at');
+    expect(rendered).toContain('version');
+    expect(rendered.match(/double precision/g)).toHaveLength(3);
+  });
+
+  it('strictly rejects malformed product mutation rows before coercion hooks run', async () => {
+    const hook = vi.fn(() => { throw new Error('coercion invoked'); });
+    const base = () => ({
+      product_id: 'P1', name: '연필', price: 100, stock: 5, is_active: true,
+      image_url: null, category: null, sort_order: 1, version: 2,
+    });
+    const getter = base();
+    Object.defineProperty(getter, 'price', { enumerable: true, get: hook });
+    const custom = Object.assign(Object.create({}), base());
+    const missing = base() as Record<string, unknown>;
+    delete missing.stock;
+    const hiddenExtra = base();
+    Object.defineProperty(hiddenExtra, 'hidden', { value: true });
+    const readonlyPrice = base();
+    Object.defineProperty(readonlyPrice, 'price', {
+      value: 100, enumerable: true, writable: false, configurable: true,
+    });
+    const fixedPrice = base();
+    Object.defineProperty(fixedPrice, 'price', {
+      value: 100, enumerable: true, writable: true, configurable: false,
+    });
+    const invalid = [
+      getter, custom, { ...base(), extra: true }, missing, hiddenExtra, readonlyPrice, fixedPrice,
+      Object.assign(base(), { [Symbol('extra')]: true }),
+      { ...base(), product_id: ' P1' }, { ...base(), name: ' 연필' },
+      { ...base(), price: new Number(100) }, { ...base(), price: -1 },
+      { ...base(), stock: '5' }, { ...base(), stock: -1 },
+      { ...base(), is_active: new Boolean(true) }, { ...base(), image_url: new String('x') },
+      { ...base(), category: { toString: hook, valueOf: hook } },
+      { ...base(), sort_order: 1.5 }, { ...base(), version: new Number(2) },
+      { ...base(), version: { valueOf: hook, toString: hook } },
+      { ...base(), version: 0 }, { ...base(), version: Number.MAX_SAFE_INTEGER },
+    ];
+
+    for (const row of invalid) {
+      const runTenantTransaction: DatabaseCatalogQueryDependencies['runTenantTransaction'] =
+        async (_tenantId, callback) => callback({ execute: async () => ({ rows: [row] }) } as never);
+      await expect(queries({ runTenantTransaction }).getProductsForAdminMutation())
+        .rejects.toThrow(/product mutation|integrity/i);
+    }
+    expect(hook).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate product identities in mutation evidence', async () => {
+    const row = {
+      product_id: 'P1', name: '연필', price: 100, stock: 5, is_active: true,
+      image_url: null, category: null, sort_order: 1, version: 2,
+    };
+    const runTenantTransaction: DatabaseCatalogQueryDependencies['runTenantTransaction'] =
+      async (_tenantId, callback) => callback({
+        execute: async () => ({ rows: [row, { ...row, version: 3 }] }),
+      } as never);
+
+    await expect(queries({ runTenantTransaction }).getProductsForAdminMutation())
+      .rejects.toThrow(/product mutation|integrity/i);
   });
 
   it('returns only active products in the same Sheets ordering', async () => {

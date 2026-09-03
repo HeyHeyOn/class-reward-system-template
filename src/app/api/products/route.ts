@@ -11,12 +11,13 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const includeInactive = url.searchParams.get('includeInactive') === '1';
+    if (includeInactive) {
+      if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
+      const catalog = await createConfiguredCatalogReader(request);
+      return Response.json(await catalog.getProductsForAdminMutation());
+    }
     const catalog = await createConfiguredCatalogReader();
-    const products = includeInactive
-      ? await catalog.getProducts()
-      : await catalog.getActiveProducts();
-
-    return Response.json(products);
+    return Response.json(await catalog.getActiveProducts());
   } catch (error) {
     const message = error instanceof Error ? error.message : '상품 목록을 불러오지 못했습니다.';
 

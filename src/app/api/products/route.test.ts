@@ -48,32 +48,57 @@ describe('products GET catalog authority', () => {
     vi.clearAllMocks();
   });
 
-  it.each([
-    ['0', 'getActiveProducts', activeProducts],
-    ['1', 'getProducts', allProducts],
-  ] as const)('delegates includeInactive=%s to the active catalog adapter', async (
-    includeInactive,
-    selectedMethod,
-    expected,
-  ) => {
+  it('keeps the ordinary non-admin response compatible', async () => {
     const catalog = {
       getProducts: vi.fn(async () => allProducts),
       getActiveProducts: vi.fn(async () => activeProducts),
+      getProductsForAdminMutation: vi.fn(),
     };
     mocks.createConfiguredCatalogReader.mockResolvedValueOnce(catalog);
 
-    const response = await GET(new Request(
-      `https://example.test/api/products?includeInactive=${includeInactive}`,
-    ));
+    const response = await GET(new Request('https://example.test/api/products'));
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual(expected);
-    expect(catalog[selectedMethod]).toHaveBeenCalledOnce();
-    expect(catalog[selectedMethod === 'getProducts' ? 'getActiveProducts' : 'getProducts'])
-      .not.toHaveBeenCalled();
+    expect(await response.json()).toEqual(activeProducts);
+    expect(catalog.getActiveProducts).toHaveBeenCalledOnce();
+    expect(catalog.getProducts).not.toHaveBeenCalled();
+    expect(catalog.getProductsForAdminMutation).not.toHaveBeenCalled();
     expect(mocks.createConfiguredSheetsReader).not.toHaveBeenCalled();
     expect(mocks.getProducts).not.toHaveBeenCalled();
     expect(mocks.getActiveProducts).not.toHaveBeenCalled();
+  });
+
+  it('authenticates the inactive admin path before resolving a catalog', async () => {
+    mocks.isAuthorizedAdminRequest.mockReturnValueOnce(false);
+    const request = new Request('https://example.test/api/products?includeInactive=1');
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(401);
+    expect(mocks.unauthorizedAdminResponse).toHaveBeenCalledOnce();
+    expect(mocks.createConfiguredCatalogReader).not.toHaveBeenCalled();
+  });
+
+  it('returns the exact admin mutation envelope and forwards the identical Request', async () => {
+    const request = new Request('https://example.test/api/products?includeInactive=1');
+    const snapshot = {
+      products: allProducts,
+      mutationPreconditions: [{ productId: 'P001', expectedVersion: 7 }],
+    };
+    const catalog = {
+      getProducts: vi.fn(), getActiveProducts: vi.fn(),
+      getProductsForAdminMutation: vi.fn(async () => snapshot),
+    };
+    mocks.createConfiguredCatalogReader.mockResolvedValueOnce(catalog);
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    expect(mocks.createConfiguredCatalogReader).toHaveBeenCalledWith(request);
+    expect(catalog.getProductsForAdminMutation).toHaveBeenCalledOnce();
+    expect(catalog.getProducts).not.toHaveBeenCalled();
+    expect(catalog.getActiveProducts).not.toHaveBeenCalled();
+    expect(await response.json()).toEqual(snapshot);
   });
 
   it('preserves the existing GET error projection', async () => {

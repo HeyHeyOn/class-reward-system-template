@@ -31,6 +31,13 @@ type ProductRow = {
   sort_order: unknown;
 };
 
+type ProductAdminMutationRow = ProductRow & { version: unknown };
+
+export type ProductAdminMutationSnapshot = {
+  products: Product[];
+  mutationPreconditions: { productId: string; expectedVersion: number }[];
+};
+
 type PromotionRow = {
   promotion_id: unknown;
   name: unknown;
@@ -66,6 +73,11 @@ const PROMOTION_ROW_KEYS = [
   'schema_version', 'product_id', 'product_schema_version',
 ] as const;
 
+const PRODUCT_ADMIN_MUTATION_ROW_KEYS = [
+  'product_id', 'name', 'price', 'stock', 'is_active', 'image_url', 'category',
+  'sort_order', 'version',
+] as const;
+
 export function createDatabaseCatalogQueries(dependencies: DatabaseCatalogQueryDependencies) {
   return {
     async getProducts(): Promise<Product[]> {
@@ -79,6 +91,46 @@ export function createDatabaseCatalogQueries(dependencies: DatabaseCatalogQueryD
         return (result.rows as ProductRow[])
           .map(toProduct)
           .sort(compareProductsLikeSheets);
+      });
+    },
+
+    async getProductsForAdminMutation(): Promise<ProductAdminMutationSnapshot> {
+      return dependencies.runTenantTransaction(dependencies.tenantId, async (transaction) => {
+        const result = await transaction.execute(sql`
+          SELECT product_id, name,
+                 price::double precision AS price,
+                 stock::double precision AS stock,
+                 is_active, image_url, category, sort_order,
+                 version::double precision AS version
+          FROM products
+          WHERE tenant_id = ${dependencies.tenantId} AND deleted_at IS NULL
+          ORDER BY created_at, product_id
+        `);
+        if (!Array.isArray(result.rows) || Object.getPrototypeOf(result.rows) !== Array.prototype) {
+          throw productMutationIntegrityError();
+        }
+        const seen = new Set<string>();
+        const entries = result.rows.map((value) => {
+          const row = parseProductAdminMutationRow(value);
+          const product = toCanonicalMutationProduct(row);
+          if (seen.has(product.productId)) throw productMutationIntegrityError();
+          seen.add(product.productId);
+          return {
+            product,
+            precondition: {
+              productId: product.productId,
+              expectedVersion: productMutationVersion(row.version),
+            },
+          };
+        }).sort((left, right) => compareProductsLikeSheets(left.product, right.product));
+        const products = entries.map(({ product }) => product);
+        const mutationPreconditions = entries.map(({ precondition }) => precondition);
+        if (products.length !== mutationPreconditions.length
+          || products.some(({ productId }, index) =>
+            mutationPreconditions[index]?.productId !== productId)) {
+          throw productMutationIntegrityError();
+        }
+        return { products, mutationPreconditions };
       });
     },
 
@@ -228,6 +280,83 @@ export function createDatabaseCatalogQueries(dependencies: DatabaseCatalogQueryD
       });
     },
   };
+}
+
+function parseProductAdminMutationRow(value: unknown): ProductAdminMutationRow {
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || Object.getPrototypeOf(value) !== Object.prototype
+    || Object.getOwnPropertySymbols(value).length !== 0) {
+    throw productMutationIntegrityError();
+  }
+  const keys = Reflect.ownKeys(value);
+  if (keys.length !== PRODUCT_ADMIN_MUTATION_ROW_KEYS.length
+    || keys.some((key) => typeof key !== 'string'
+      || !PRODUCT_ADMIN_MUTATION_ROW_KEYS.includes(
+        key as typeof PRODUCT_ADMIN_MUTATION_ROW_KEYS[number],
+      ))) {
+    throw productMutationIntegrityError();
+  }
+  for (const key of PRODUCT_ADMIN_MUTATION_ROW_KEYS) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !descriptor.enumerable || !descriptor.writable || !descriptor.configurable
+      || !Object.hasOwn(descriptor, 'value')) {
+      throw productMutationIntegrityError();
+    }
+  }
+  return value as ProductAdminMutationRow;
+}
+
+function toCanonicalMutationProduct(row: ProductAdminMutationRow): Product {
+  const productId = canonicalRequiredString(row.product_id);
+  const name = canonicalRequiredString(row.name);
+  const price = canonicalNonnegativeSafeInteger(row.price);
+  const stock = canonicalNonnegativeSafeInteger(row.stock);
+  const sortOrder = canonicalSafeInteger(row.sort_order);
+  if (!productId || !name || price === undefined || stock === undefined
+    || sortOrder === undefined || typeof row.is_active !== 'boolean') {
+    throw productMutationIntegrityError();
+  }
+  const imageUrl = canonicalOptionalString(row.image_url);
+  const category = canonicalOptionalString(row.category);
+  if (imageUrl === false || category === false) throw productMutationIntegrityError();
+  return {
+    productId, name, price, stock, isActive: row.is_active,
+    imageUrl: imageUrl ?? undefined,
+    category: category ?? undefined,
+    sortOrder,
+  };
+}
+
+function canonicalRequiredString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 && value.trim() === value
+    ? value : undefined;
+}
+
+function canonicalOptionalString(value: unknown): string | null | false {
+  if (value === null) return null;
+  return typeof value === 'string' && value.length > 0 && value.trim() === value
+    ? value : false;
+}
+
+function canonicalSafeInteger(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) ? value : undefined;
+}
+
+function canonicalNonnegativeSafeInteger(value: unknown): number | undefined {
+  const parsed = canonicalSafeInteger(value);
+  return parsed !== undefined && parsed >= 0 ? parsed : undefined;
+}
+
+function productMutationVersion(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value)
+    || value < 1 || value >= Number.MAX_SAFE_INTEGER) {
+    throw productMutationIntegrityError();
+  }
+  return value;
+}
+
+function productMutationIntegrityError(): Error {
+  return new Error('Product mutation version integrity check failed.');
 }
 
 function parsePromotionAdminMutationRow(value: unknown): PromotionAdminMutationRow {

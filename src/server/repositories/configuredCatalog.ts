@@ -7,6 +7,7 @@ import type { CentralTenantContextInput } from '@/server/repositories/context';
 import { type RepositoryCreators } from '@/server/repositories/factory';
 import {
   createDatabaseCatalogQueries,
+  type ProductAdminMutationSnapshot,
   type PromotionAdminMutationSnapshot,
 } from '@/server/repositories/database/catalogQueries';
 import {
@@ -23,6 +24,7 @@ import { getActiveProducts, getProducts, type SheetsReader } from '@/server/shee
 export type CatalogReader = Readonly<{
   getProducts: () => Promise<Product[]>;
   getActiveProducts: () => Promise<Product[]>;
+  getProductsForAdminMutation: () => Promise<ProductAdminMutationSnapshot>;
   getPromotions: () => Promise<Promotion[]>;
   getActivePromotions: () => Promise<Promotion[]>;
   getPromotionsForAdminMutation: () => Promise<PromotionAdminMutationSnapshot>;
@@ -74,6 +76,17 @@ export function createCatalogRepositoryCreators(
         },
         async getActiveProducts() {
           return dependencies.getActiveProducts(await configuredReader());
+        },
+        async getProductsForAdminMutation() {
+          const products = (await dependencies.getProducts(await configuredReader()))
+            .map((product) => ({ ...product }));
+          return {
+            products,
+            mutationPreconditions: products.map(({ productId }) => ({
+              productId,
+              expectedVersion: 1,
+            })),
+          };
         },
         async getPromotions() {
           return dependencies.getPromotions(await configuredReader());
