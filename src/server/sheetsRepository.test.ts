@@ -455,6 +455,44 @@ function auditedLegacyTaskCancellationFixture() {
   return { rows, writes, freshPrimes, primitiveWrite, store };
 }
 
+function addVersionedIndependentReset(rows: Record<string, string[][]>): { reset: string[]; success: string[] } {
+  const header = new Map(rows.TaskCompletions[0].map((name, index) => [name, index]));
+  const success = rows.TaskCompletions[1];
+  const setCell = (row: string[], name: string, value: string) => { row[header.get(name)!] = value; };
+  setCell(success, 'taskInstanceId', 'task-instance-a');
+  setCell(success, 'cycleId', 'cycle-a');
+  setCell(success, 'cycleStartsAt', '2026-09-01T00:00:00.000Z');
+  setCell(success, 'cycleEndsAt', '2026-09-08T00:00:00.000Z');
+  setCell(success, 'ruleVersion', '7');
+  setCell(success, 'timeZone', 'UTC');
+  setCell(success, 'source', 'BANK');
+  setCell(success, 'assignmentId', 'assignment-a');
+  setCell(success, 'schemaVersion', '2');
+  setCell(success, 'operationId', '20000000-0000-4000-8000-000000000001');
+  setCell(success, 'operationPayloadHash', `sha256:${'a'.repeat(64)}`);
+  const pending = [...success];
+  setCell(pending, 'completionId', 'A-PENDING');
+  setCell(pending, 'status', 'PENDING');
+  setCell(pending, 'note', 'bank-self-completion:pending');
+  const balanceApplied = [...success];
+  setCell(balanceApplied, 'completionId', 'A-BALANCE-APPLIED');
+  setCell(balanceApplied, 'status', 'BALANCE_APPLIED');
+  setCell(balanceApplied, 'note', 'bank-self-completion:balance_applied');
+  rows.TaskCompletions.splice(1, 0, pending, balanceApplied);
+  const reset = [...success];
+  setCell(reset, 'completionId', 'A-RESET-EARLIER');
+  setCell(reset, 'timestamp', '2026-09-02T00:03:00.000Z');
+  setCell(reset, 'reward', '0');
+  setCell(reset, 'balanceBefore', '90');
+  setCell(reset, 'balanceAfter', '90');
+  setCell(reset, 'status', 'RESET');
+  setCell(reset, 'source', 'ADMIN_RESET');
+  setCell(reset, 'operationId', '');
+  setCell(reset, 'operationPayloadHash', '');
+  rows.TaskCompletions.push(reset);
+  return { reset, success };
+}
+
 const BULK_OPERATION_ID = 'a0000000-0000-4000-8000-000000000001';
 
 function statefulBulkStore() {
@@ -1112,6 +1150,99 @@ describe('sheets repository', () => {
         cancelledAt: first.reversalTransaction.timestamp,
       }),
     ]));
+  });
+
+  it('cancels a task reward after an independent reset without appending a duplicate reset', async () => {
+    const { rows, writes, store } = auditedLegacyTaskCancellationFixture();
+    addVersionedIndependentReset(rows);
+    rows.Students[1][2] = '0';
+    const completionsBefore = structuredClone(rows.TaskCompletions);
+    const operationId = '30000000-0000-4000-8000-000000000025';
+
+    const first = await cancelTransaction(store as never, 'TASK-A-SUCCESS', operationId);
+
+    expect(first.reversalTransaction).toMatchObject({
+      balanceBefore: 0,
+      balanceAfter: -20,
+      operator: 'cancel-task-pre-reset:TASK-A-SUCCESS',
+    });
+    expect(rows.Students[1][2]).toBe('-20');
+    expect(rows.TaskCompletions).toEqual(completionsBefore);
+    expect(writes).toHaveLength(1);
+    expect(writes[0].appends.map(({ sheetName }) => sheetName)).toEqual(['Transactions']);
+    await expect(cancelTransaction(store as never, 'TASK-A-SUCCESS', operationId)).resolves.toEqual(first);
+    expect(writes).toHaveLength(1);
+  });
+
+  it('fails a pre-reset cancellation replay closed when the independent reset is malformed', async () => {
+    const { rows, writes, store } = auditedLegacyTaskCancellationFixture();
+    const { reset } = addVersionedIndependentReset(rows);
+    const operationId = '30000000-0000-4000-8000-000000000027';
+    await cancelTransaction(store as never, 'TASK-A-SUCCESS', operationId);
+    reset[rows.TaskCompletions[0].indexOf('reward')] = 'not-a-number';
+
+    await expect(cancelTransaction(store as never, 'TASK-A-SUCCESS', operationId)).rejects.toThrow(/완료|무결성/);
+    expect(writes).toHaveLength(1);
+  });
+
+  it('fails closed when newer same-lifecycle completion evidence is malformed', async () => {
+    const { rows, writes, store } = auditedLegacyTaskCancellationFixture();
+    const { reset } = addVersionedIndependentReset(rows);
+    const malformed = [...reset];
+    malformed[rows.TaskCompletions[0].indexOf('completionId')] = 'A-MALFORMED-LATER';
+    malformed[rows.TaskCompletions[0].indexOf('reward')] = 'not-a-number';
+    rows.TaskCompletions.push(malformed);
+
+    await expect(cancelTransaction(
+      store as never,
+      'TASK-A-SUCCESS',
+      '30000000-0000-4000-8000-000000000028',
+    )).rejects.toThrow(/완료|무결성/);
+    expect(writes).toHaveLength(0);
+  });
+
+  it('fails a pre-reset replay closed when later same-lifecycle event semantics are invalid', async () => {
+    const { rows, writes, store } = auditedLegacyTaskCancellationFixture();
+    const { reset } = addVersionedIndependentReset(rows);
+    const operationId = '30000000-0000-4000-8000-000000000030';
+    await cancelTransaction(store as never, 'TASK-A-SUCCESS', operationId);
+    const invalidLater = [...reset];
+    invalidLater[rows.TaskCompletions[0].indexOf('completionId')] = 'A-INVALID-LATER';
+    invalidLater[rows.TaskCompletions[0].indexOf('timestamp')] = '2026-09-03T00:00:00.000Z';
+    invalidLater[rows.TaskCompletions[0].indexOf('reward')] = '5';
+    rows.TaskCompletions.push(invalidLater);
+
+    await expect(cancelTransaction(store as never, 'TASK-A-SUCCESS', operationId)).rejects.toThrow(/완료|무결성/);
+    expect(writes).toHaveLength(1);
+  });
+
+  it('rejects an independent reset that does not immediately follow the linked success', async () => {
+    const { rows, writes, store } = auditedLegacyTaskCancellationFixture();
+    const { success } = addVersionedIndependentReset(rows);
+    const intervening = [...success];
+    intervening[rows.TaskCompletions[0].indexOf('completionId')] = 'A-OTHER-SUCCESS';
+    intervening[rows.TaskCompletions[0].indexOf('timestamp')] = '2026-09-02T00:02:00.000Z';
+    rows.TaskCompletions.splice(-1, 0, intervening);
+
+    await expect(cancelTransaction(
+      store as never,
+      'TASK-A-SUCCESS',
+      '30000000-0000-4000-8000-000000000029',
+    )).rejects.toThrow(/완료|무결성/);
+    expect(writes).toHaveLength(0);
+  });
+
+  it('permits a task reward cancellation inverse balance to become negative', async () => {
+    const { rows, writes, store } = auditedLegacyTaskCancellationFixture();
+    rows.Students[1][2] = '0';
+    const operationId = '30000000-0000-4000-8000-000000000026';
+
+    const first = await cancelTransaction(store as never, 'TASK-A-SUCCESS', operationId);
+
+    expect(first.reversalTransaction).toMatchObject({ balanceBefore: 0, balanceAfter: -20 });
+    expect(rows.Students[1][2]).toBe('-20');
+    await expect(cancelTransaction(store as never, 'TASK-A-SUCCESS', operationId)).resolves.toEqual(first);
+    expect(writes).toHaveLength(1);
   });
 
   it('fails a TASK_REWARD replay closed when its RESET is missing', async () => {

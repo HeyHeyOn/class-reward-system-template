@@ -280,8 +280,8 @@ export function parseTransactionRow(row: string[], headerIndex: HeaderIndex): Tr
   const studentId = getRowCell(row, headerIndex, 'studentId');
   const studentName = getRowCell(row, headerIndex, 'studentName');
   const totalAmount = parseSafeIntegerCell(getRowCell(row, headerIndex, 'totalAmount'));
-  const balanceBefore = parseSafeNonNegativeIntegerCell(getRowCell(row, headerIndex, 'balanceBefore'));
-  const balanceAfter = parseSafeNonNegativeIntegerCell(getRowCell(row, headerIndex, 'balanceAfter'));
+  const balanceBefore = parseSafeIntegerCell(getRowCell(row, headerIndex, 'balanceBefore'));
+  const balanceAfter = parseSafeIntegerCell(getRowCell(row, headerIndex, 'balanceAfter'));
 
   if (!transactionId || !timestamp || !studentId || !studentName || totalAmount === null || balanceBefore === null || balanceAfter === null) {
     return null;

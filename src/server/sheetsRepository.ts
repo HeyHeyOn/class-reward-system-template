@@ -1389,8 +1389,12 @@ export async function getTransactionRecords(reader: SheetsReader): Promise<Trans
 const CANCELLATION_OPERATOR_PREFIX = 'cancel:';
 const TASK_CANCELLATION_OPERATOR_PREFIX = 'cancel-task:';
 const UNLINKED_TASK_CANCELLATION_OPERATOR_PREFIX = 'cancel-task-unlinked:';
+const PRE_RESET_TASK_CANCELLATION_OPERATOR_PREFIX = 'cancel-task-pre-reset:';
 
 function cancellationOriginalId(operator: string): string {
+  if (operator.startsWith(PRE_RESET_TASK_CANCELLATION_OPERATOR_PREFIX)) {
+    return operator.slice(PRE_RESET_TASK_CANCELLATION_OPERATOR_PREFIX.length);
+  }
   if (operator.startsWith(UNLINKED_TASK_CANCELLATION_OPERATOR_PREFIX)) {
     return operator.slice(UNLINKED_TASK_CANCELLATION_OPERATOR_PREFIX.length);
   }
@@ -1496,7 +1500,11 @@ async function cancelTransactionNow(
     && existingReversal?.operator === `${TASK_CANCELLATION_OPERATOR_PREFIX}${normalizedId}`;
   const isUnlinkedTaskReplay = transaction.status === 'CANCELLED'
     && existingReversal?.operator === `${UNLINKED_TASK_CANCELLATION_OPERATOR_PREFIX}${normalizedId}`;
-  const needsTaskCompletionReset = transaction.status === 'TASK_REWARD' || isLinkedTaskReplay;
+  const isPreResetTaskReplay = transaction.status === 'CANCELLED'
+    && existingReversal?.operator === `${PRE_RESET_TASK_CANCELLATION_OPERATOR_PREFIX}${normalizedId}`;
+  const needsTaskCompletionReset = transaction.status === 'TASK_REWARD'
+    || isLinkedTaskReplay
+    || isPreResetTaskReplay;
   if (deterministicReversalId) {
     const rawIdCollisions = rawRecords
       .filter(({ row }) => row[transactionIdColumn]?.trim() === deterministicReversalId);
@@ -1520,7 +1528,9 @@ async function cancelTransactionNow(
         deterministicReversalId,
         isUnlinkedTaskReplay
           ? UNLINKED_TASK_CANCELLATION_OPERATOR_PREFIX
-          : CANCELLATION_OPERATOR_PREFIX,
+          : isPreResetTaskReplay
+            ? PRE_RESET_TASK_CANCELLATION_OPERATOR_PREFIX
+            : CANCELLATION_OPERATOR_PREFIX,
       );
       return {
         cancelledTransaction: { ...transaction, cancelledAt: existingReversal.timestamp },
@@ -1573,7 +1583,20 @@ async function cancelTransactionNow(
     ? taskRewardResolution.context
     : null;
   const isLegacyUnlinkedCancellation = taskRewardResolution?.kind === 'legacy-unlinked';
+  const isPreResetTaskCancellation = taskRewardResolution?.kind === 'already-reset';
   if (existingReversal) {
+    if (isPreResetTaskReplay) {
+      if (!deterministicReversalId || !operationId || !isPreResetTaskCancellation) {
+        throw new Error('거래 취소 기록의 무결성을 확인할 수 없어 수동 조정이 필요합니다.');
+      }
+      validateSheetsCancellationReplay(
+        transaction, existingReversal, deterministicReversalId, PRE_RESET_TASK_CANCELLATION_OPERATOR_PREFIX,
+      );
+      return {
+        cancelledTransaction: { ...transaction, cancelledAt: existingReversal.timestamp },
+        reversalTransaction: existingReversal,
+      };
+    }
     if (!deterministicReversalId || !taskResetContext || !operationId) {
       throw new Error('거래 취소 기록의 무결성을 확인할 수 없어 수동 조정이 필요합니다.');
     }
@@ -1641,7 +1664,6 @@ async function cancelTransactionNow(
   const reversalDelta = transaction.balanceBefore - transaction.balanceAfter;
   if (!Number.isSafeInteger(reversalDelta)) throw new Error('Cancellation balance delta exceeds the safe integer range');
   const reversalBalanceAfter = checkedSafeIntegerAddition(studentRecord.student.balance, reversalDelta);
-  if (reversalBalanceAfter < 0) throw new Error('거래 취소 후 잔액은 0보다 작아질 수 없습니다.');
   const reversalTotalAmount = -reversalDelta;
   const reversalTransaction: Transaction = {
     transactionId: deterministicReversalId ?? `CANCEL-${transaction.transactionId}-${Date.now().toString(36)}`,
@@ -1663,6 +1685,8 @@ async function cancelTransactionNow(
       ? `${TASK_CANCELLATION_OPERATOR_PREFIX}${transaction.transactionId}`
       : isLegacyUnlinkedCancellation
         ? `${UNLINKED_TASK_CANCELLATION_OPERATOR_PREFIX}${transaction.transactionId}`
+        : isPreResetTaskCancellation
+          ? `${PRE_RESET_TASK_CANCELLATION_OPERATOR_PREFIX}${transaction.transactionId}`
         : `${CANCELLATION_OPERATOR_PREFIX}${transaction.transactionId}`,
   };
   const taskReset = taskResetContext
@@ -1710,7 +1734,34 @@ type TaskRewardResetContext = {
 
 type TaskRewardCancellationResolution =
   | { kind: 'linked'; context: TaskRewardResetContext }
-  | { kind: 'legacy-unlinked' };
+  | { kind: 'legacy-unlinked' }
+  | { kind: 'already-reset' };
+
+function isValidVersionedCompletionEvent(event: TaskCompletion): boolean {
+  if (![event.reward, event.balanceBefore, event.balanceAfter].every(Number.isSafeInteger)
+    || event.reward < 0) return false;
+  const unchangedBalance = event.balanceAfter === event.balanceBefore;
+  if (event.source === 'BANK') {
+    return (event.status === 'PENDING' || event.status === 'BALANCE_APPLIED' || event.status === 'SUCCESS')
+      && Number.isSafeInteger(event.balanceBefore + event.reward)
+      && event.balanceAfter === event.balanceBefore + event.reward;
+  }
+  if (event.source === 'ADMIN') {
+    return event.status === 'SUCCESS' && event.reward === 0 && unchangedBalance;
+  }
+  if (event.source === 'CARRY_FORWARD') {
+    return (event.status === 'SUCCESS' || event.status === 'RESET')
+      && event.reward === 0 && unchangedBalance;
+  }
+  if (event.source === 'ADMIN_RESET') {
+    const cancellationBalance = event.balanceBefore - event.reward;
+    return event.status === 'RESET'
+      && ((event.reward === 0 && unchangedBalance)
+        || (event.reward > 0 && Number.isSafeInteger(cancellationBalance)
+          && event.balanceAfter === cancellationBalance));
+  }
+  return false;
+}
 
 function taskRewardCompletionId(transactionId: string): string {
   if (transactionId.startsWith('TASK-LOGICAL-')) {
@@ -1799,18 +1850,45 @@ async function resolveTaskRewardResetContext(
       || original.assignmentId === undefined) {
       throw new Error('과제 완료 기록 스냅샷이 손상되어 취소하지 않았습니다.');
     }
-    const effective = rows.slice(1)
-      .map((row) => parseTaskCompletionRow(row, headerIndex))
-      .filter((event): event is TaskCompletion => event !== null
-        && event.taskInstanceId === original.taskInstanceId
-        && event.cycleId === original.cycleId
-        && event.studentId === original.studentId)
-      .at(-1);
+    const taskInstanceColumn = headerIndex.get('taskInstanceId')!;
+    const cycleIdColumn = headerIndex.get('cycleId')!;
+    const studentIdColumn = headerIndex.get('studentId')!;
+    const scopedRows = rows.slice(1).filter((row) =>
+      String(row[taskInstanceColumn] ?? '').trim() === original.taskInstanceId
+      && String(row[cycleIdColumn] ?? '').trim() === original.cycleId
+      && String(row[studentIdColumn] ?? '').trim() === original.studentId);
+    const scopedEvents = scopedRows.map((row) => parseTaskCompletionRow(row, headerIndex));
+    if (scopedEvents.some((event) => event === null)) {
+      throw new Error('과제 완료 기록이 손상되어 무결성을 확인할 수 없습니다.');
+    }
+    const events = scopedEvents as TaskCompletion[];
+    if (events.some((event) => !isValidVersionedCompletionEvent(event)
+      || event.taskId !== original.taskId
+      || event.studentName !== original.studentName
+      || event.assignmentId !== original.assignmentId
+      || event.cycleStartsAt !== original.cycleStartsAt
+      || event.cycleEndsAt !== original.cycleEndsAt
+      || event.ruleVersion !== original.ruleVersion
+      || event.timeZone !== original.timeZone
+      || event.schemaVersion !== original.schemaVersion)) {
+      throw new Error('과제 완료 기록 스냅샷이 손상되어 취소하지 않았습니다.');
+    }
+    const originalIndex = events.findIndex((event) => event.completionId === original.completionId);
+    const independentReset = events[originalIndex + 1];
+    const effective = events.at(-1);
     const isInitialCancellation = effective?.completionId === original.completionId
       && effective.status === 'SUCCESS';
     const isReplayProjection = existingReversal
       && effective?.completionId === `RESET-${existingReversal.transactionId}`
       && effective.status === 'RESET' && effective.source === 'ADMIN_RESET';
+    const hasExactIndependentReset = independentReset?.status === 'RESET'
+      && independentReset.source === 'ADMIN_RESET'
+      && independentReset.reward === 0
+      && independentReset.balanceBefore === independentReset.balanceAfter;
+    const isIndependentReset = hasExactIndependentReset
+      && ((!existingReversal && effective?.completionId === independentReset.completionId)
+        || existingReversal?.operator === `${PRE_RESET_TASK_CANCELLATION_OPERATOR_PREFIX}${transactionId}`);
+    if (isIndependentReset) return { kind: 'already-reset' };
     if (!isInitialCancellation && !isReplayProjection) {
       throw new Error('연결된 완료 기록이 현재 유효한 과제 완료가 아니어서 취소하지 않았습니다.');
     }

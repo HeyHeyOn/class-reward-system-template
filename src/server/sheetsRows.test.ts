@@ -278,19 +278,23 @@ describe('sheets row parsing', () => {
     expect(parseTransactionRow(row, createHeaderIndex(headers))?.items).toEqual([]);
   });
 
-  it('requires transaction money cells to be safe integers and balances to be nonnegative', () => {
+  it('requires transaction money cells to be safe integers while preserving negative balances', () => {
     const headers = [
       'transactionId', 'timestamp', 'studentId', 'studentName', 'items',
       'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator',
     ];
-    const valid = ['TR-MONEY', '2026-08-15T00:00:00.000Z', 'S001', '학생', '[]', '-5', '10', '15', 'TASK_REWARD', 'bank'];
+    const valid = ['TR-MONEY', '2026-08-15T00:00:00.000Z', 'S001', '학생', '[]', '-5', '-1', '-6', 'TASK_REWARD', 'bank'];
     const index = createHeaderIndex(headers);
 
-    expect(parseTransactionRow(valid, index)?.totalAmount).toBe(-5);
+    expect(parseTransactionRow(valid, index)).toMatchObject({
+      totalAmount: -5,
+      balanceBefore: -1,
+      balanceAfter: -6,
+    });
     for (const [column, value] of [
       [5, '1.5'], [5, '9007199254740992'],
-      [6, '-1'], [6, '1.5'], [6, '9007199254740992'],
-      [7, '-1'], [7, '1.5'], [7, '9007199254740992'],
+      [6, '1.5'], [6, '9007199254740992'],
+      [7, '1.5'], [7, '9007199254740992'],
     ] as const) {
       const malformed = [...valid];
       malformed[column] = value;
