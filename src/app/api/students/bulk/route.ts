@@ -44,7 +44,7 @@ async function parseBulkBalanceBody(request: Request): Promise<StudentBulkBalanc
       || record.studentIds.some((id) => typeof id !== 'string' || !id.trim())
       || (record.mode !== 'set' && record.mode !== 'add' && record.mode !== 'subtract')
       || !Number.isSafeInteger(record.amount)
-      || (record.amount as number) < 0
+      || (record.mode !== 'set' && (record.amount as number) < 0)
       || typeof record.operationId !== 'string'
       || !CANONICAL_UUID.test(record.operationId)) {
       return null;

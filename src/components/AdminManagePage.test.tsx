@@ -1376,6 +1376,7 @@ describe('AdminManagePage', () => {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          operationId: '50000000-0000-4000-8000-000000000001',
           students: [
             { studentId: 'S001', name: '김민준 수정', balance: 4000, status: 'ACTIVE' },
             ],

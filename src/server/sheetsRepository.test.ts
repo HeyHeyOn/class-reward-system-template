@@ -23,6 +23,7 @@ import {
   updateProductDetailsBatch,
   updateStudentDetails,
   updateStudentDetailsBatch,
+  updateStudentDetailsBatchWithBalanceTransactions,
   updateTaskDetails,
   updateTaskSchedule,
   updateTaskDetailsBatch,
@@ -435,8 +436,15 @@ function auditedLegacyTaskCancellationFixture() {
     Settings: [['key', 'value'], ['classTimeZone', 'UTC']],
   };
   const writes: TestAtomicMutation[] = [];
+  const freshPrimes: string[][] = [];
   const primitiveWrite = vi.fn();
   const store = {
+    async primeRowsFresh(sheetNames: readonly string[]) {
+      freshPrimes.push([...sheetNames]);
+      if (sheetNames.includes('Products')) {
+        throw new Error('legacy-unlinked cancellation must not fresh-prime Products');
+      }
+    },
     async getRows(sheetName: string) { return rows[sheetName].map((row) => [...row]); },
     updateCell: primitiveWrite,
     appendRow: primitiveWrite,
@@ -445,7 +453,45 @@ function auditedLegacyTaskCancellationFixture() {
       applyTestAtomicMutation(rows, mutation);
     },
   };
-  return { rows, writes, primitiveWrite, store };
+  return { rows, writes, freshPrimes, primitiveWrite, store };
+}
+
+function addVersionedIndependentReset(rows: Record<string, string[][]>): { reset: string[]; success: string[] } {
+  const header = new Map(rows.TaskCompletions[0].map((name, index) => [name, index]));
+  const success = rows.TaskCompletions[1];
+  const setCell = (row: string[], name: string, value: string) => { row[header.get(name)!] = value; };
+  setCell(success, 'taskInstanceId', 'task-instance-a');
+  setCell(success, 'cycleId', 'cycle-a');
+  setCell(success, 'cycleStartsAt', '2026-09-01T00:00:00.000Z');
+  setCell(success, 'cycleEndsAt', '2026-09-08T00:00:00.000Z');
+  setCell(success, 'ruleVersion', '7');
+  setCell(success, 'timeZone', 'UTC');
+  setCell(success, 'source', 'BANK');
+  setCell(success, 'assignmentId', 'assignment-a');
+  setCell(success, 'schemaVersion', '2');
+  setCell(success, 'operationId', '20000000-0000-4000-8000-000000000001');
+  setCell(success, 'operationPayloadHash', `sha256:${'a'.repeat(64)}`);
+  const pending = [...success];
+  setCell(pending, 'completionId', 'A-PENDING');
+  setCell(pending, 'status', 'PENDING');
+  setCell(pending, 'note', 'bank-self-completion:pending');
+  const balanceApplied = [...success];
+  setCell(balanceApplied, 'completionId', 'A-BALANCE-APPLIED');
+  setCell(balanceApplied, 'status', 'BALANCE_APPLIED');
+  setCell(balanceApplied, 'note', 'bank-self-completion:balance_applied');
+  rows.TaskCompletions.splice(1, 0, pending, balanceApplied);
+  const reset = [...success];
+  setCell(reset, 'completionId', 'A-RESET-EARLIER');
+  setCell(reset, 'timestamp', '2026-09-02T00:03:00.000Z');
+  setCell(reset, 'reward', '0');
+  setCell(reset, 'balanceBefore', '90');
+  setCell(reset, 'balanceAfter', '90');
+  setCell(reset, 'status', 'RESET');
+  setCell(reset, 'source', 'ADMIN_RESET');
+  setCell(reset, 'operationId', '');
+  setCell(reset, 'operationPayloadHash', '');
+  rows.TaskCompletions.push(reset);
+  return { reset, success };
 }
 
 const BULK_OPERATION_ID = 'a0000000-0000-4000-8000-000000000001';
@@ -608,9 +654,14 @@ describe('sheets repository', () => {
     const updates: Array<{ sheetName: string; rowNumber: number; columnName: string; value: string | number }> = [];
     const appended: Array<{ sheetName: string; values: string[] }> = [];
     let transactionReads = 0;
+    const callOrder: string[] = [];
     const fakeStore = {
       ...fakeReader,
+      async primeRowsFresh(sheetNames: readonly string[]) {
+        callOrder.push(`prime:${sheetNames.join(',')}`);
+      },
       async getRows(sheetName: keyof typeof sheetRows) {
+        callOrder.push(`read:${sheetName}`);
         if (sheetName === 'Transactions') transactionReads += 1;
         if (sheetName === 'Students') return [sheetRows.Students[0], ['S001', '김민준', '2900', 'S001', 'ACTIVE', ''], sheetRows.Students[2]];
         return sheetRows[sheetName];
@@ -634,6 +685,13 @@ describe('sheets repository', () => {
       cancelledTransaction: { transactionId: 'TR001', status: 'CANCELLED' },
       reversalTransaction: { status: 'CANCEL_REVERSAL', totalAmount: -600, balanceBefore: 2900, balanceAfter: 3500 },
     });
+    expect(callOrder).toEqual([
+      'prime:Transactions,Students',
+      'read:Transactions',
+      'read:Students',
+      'prime:Products',
+      'read:Products',
+    ]);
     expect(updates).toEqual([
       { sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: 3500 },
       { sheetName: 'Products', rowNumber: 3, columnName: 'stock', value: 22 },
@@ -965,6 +1023,96 @@ describe('sheets repository', () => {
     expect(writes).toHaveLength(0);
   });
 
+  it('cancels a legacy-unlinked TASK_REWARD atomically without TaskCompletions or Product effects', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-02T01:00:00.000Z'));
+    const { rows, writes, freshPrimes, primitiveWrite, store } = auditedLegacyTaskCancellationFixture();
+    rows.TaskCompletions.splice(1, 1);
+    const beforeProducts = structuredClone(rows.Products);
+    const beforeCompletions = structuredClone(rows.TaskCompletions);
+    const operationId = '30000000-0000-4000-8000-000000000020';
+
+    const result = await cancelTransaction(store as never, 'TASK-A-SUCCESS', operationId);
+
+    expect(freshPrimes).toEqual([
+      ['Transactions', 'Students'],
+      ['Tasks', 'TaskAssignments', 'TaskCompletions', 'Settings'],
+    ]);
+    expect(writes).toHaveLength(1);
+    expect(writes[0].updates).toEqual([
+      { sheetName: 'Students', rowNumber: 2, columnNumber: 3, value: 70 },
+      { sheetName: 'Transactions', rowNumber: 2, columnNumber: 9, value: 'CANCELLED' },
+    ]);
+    expect(writes[0].appends.map(({ sheetName }) => sheetName)).toEqual(['Transactions']);
+    expect(rows.Students[1][2]).toBe('70');
+    expect(rows.Transactions[1][8]).toBe('CANCELLED');
+    expect(rows.Products).toEqual(beforeProducts);
+    expect(rows.TaskCompletions).toEqual(beforeCompletions);
+    expect(result.reversalTransaction.operator).toBe('cancel-task-unlinked:TASK-A-SUCCESS');
+    expect(primitiveWrite).not.toHaveBeenCalled();
+    await expect(getTransactions(store as never)).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        transactionId: 'TASK-A-SUCCESS',
+        status: 'CANCELLED',
+        cancelledAt: result.reversalTransaction.timestamp,
+      }),
+    ]));
+  });
+
+  it('replays a legacy-unlinked TASK_REWARD with the same operation ID without TaskCompletions access or another mutation', async () => {
+    const { rows, writes, store } = auditedLegacyTaskCancellationFixture();
+    rows.TaskCompletions.splice(1, 1);
+    const operationId = '30000000-0000-4000-8000-000000000021';
+    const first = await cancelTransaction(store as never, 'TASK-A-SUCCESS', operationId);
+    const originalGetRows = store.getRows;
+    const taskCompletionReads = vi.fn();
+    store.getRows = async (sheetName: string) => {
+      if (sheetName === 'TaskCompletions') {
+        taskCompletionReads();
+        throw new Error('legacy-unlinked replay must not access TaskCompletions');
+      }
+      return originalGetRows(sheetName);
+    };
+
+    await expect(cancelTransaction(store as never, 'TASK-A-SUCCESS', operationId)).resolves.toEqual(first);
+    expect(taskCompletionReads).not.toHaveBeenCalled();
+    expect(writes).toHaveLength(1);
+    await expect(cancelTransaction(
+      store as never,
+      'TASK-A-SUCCESS',
+      '30000000-0000-4000-8000-000000000022',
+    )).rejects.toThrow(/이미|무결성|다른/);
+    expect(writes).toHaveLength(1);
+  });
+
+  it('rejects duplicate exact linked completions instead of using legacy-unlinked cancellation', async () => {
+    const { rows, writes, store } = auditedLegacyTaskCancellationFixture();
+    rows.TaskCompletions.push([...rows.TaskCompletions[1]]);
+
+    await expect(cancelTransaction(
+      store as never,
+      'TASK-A-SUCCESS',
+      '30000000-0000-4000-8000-000000000023',
+    )).rejects.toThrow(/완료 기록|중복|무결성/);
+    expect(writes).toHaveLength(0);
+  });
+
+  it.each([
+    ['malformed', 'reward', 'not-a-number'],
+    ['mismatched', 'taskId', 'OTHER-TASK'],
+  ])('rejects a %s exact linked completion instead of using legacy-unlinked cancellation', async (_label, columnName, value) => {
+    const { rows, writes, store } = auditedLegacyTaskCancellationFixture();
+    const header = new Map(rows.TaskCompletions[0].map((name, index) => [name, index]));
+    rows.TaskCompletions[1][header.get(columnName)!] = value;
+
+    await expect(cancelTransaction(
+      store as never,
+      'TASK-A-SUCCESS',
+      '30000000-0000-4000-8000-000000000024',
+    )).rejects.toThrow(/완료 기록|무결성/);
+    expect(writes).toHaveLength(0);
+  });
+
   it('atomically appends a legacy completion RESET, preserves B, projects A incomplete, and replays the full pair', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-09-02T01:00:00.000Z'));
@@ -1003,6 +1151,99 @@ describe('sheets repository', () => {
         cancelledAt: first.reversalTransaction.timestamp,
       }),
     ]));
+  });
+
+  it('cancels a task reward after an independent reset without appending a duplicate reset', async () => {
+    const { rows, writes, store } = auditedLegacyTaskCancellationFixture();
+    addVersionedIndependentReset(rows);
+    rows.Students[1][2] = '0';
+    const completionsBefore = structuredClone(rows.TaskCompletions);
+    const operationId = '30000000-0000-4000-8000-000000000025';
+
+    const first = await cancelTransaction(store as never, 'TASK-A-SUCCESS', operationId);
+
+    expect(first.reversalTransaction).toMatchObject({
+      balanceBefore: 0,
+      balanceAfter: -20,
+      operator: 'cancel-task-pre-reset:TASK-A-SUCCESS',
+    });
+    expect(rows.Students[1][2]).toBe('-20');
+    expect(rows.TaskCompletions).toEqual(completionsBefore);
+    expect(writes).toHaveLength(1);
+    expect(writes[0].appends.map(({ sheetName }) => sheetName)).toEqual(['Transactions']);
+    await expect(cancelTransaction(store as never, 'TASK-A-SUCCESS', operationId)).resolves.toEqual(first);
+    expect(writes).toHaveLength(1);
+  });
+
+  it('fails a pre-reset cancellation replay closed when the independent reset is malformed', async () => {
+    const { rows, writes, store } = auditedLegacyTaskCancellationFixture();
+    const { reset } = addVersionedIndependentReset(rows);
+    const operationId = '30000000-0000-4000-8000-000000000027';
+    await cancelTransaction(store as never, 'TASK-A-SUCCESS', operationId);
+    reset[rows.TaskCompletions[0].indexOf('reward')] = 'not-a-number';
+
+    await expect(cancelTransaction(store as never, 'TASK-A-SUCCESS', operationId)).rejects.toThrow(/완료|무결성/);
+    expect(writes).toHaveLength(1);
+  });
+
+  it('fails closed when newer same-lifecycle completion evidence is malformed', async () => {
+    const { rows, writes, store } = auditedLegacyTaskCancellationFixture();
+    const { reset } = addVersionedIndependentReset(rows);
+    const malformed = [...reset];
+    malformed[rows.TaskCompletions[0].indexOf('completionId')] = 'A-MALFORMED-LATER';
+    malformed[rows.TaskCompletions[0].indexOf('reward')] = 'not-a-number';
+    rows.TaskCompletions.push(malformed);
+
+    await expect(cancelTransaction(
+      store as never,
+      'TASK-A-SUCCESS',
+      '30000000-0000-4000-8000-000000000028',
+    )).rejects.toThrow(/완료|무결성/);
+    expect(writes).toHaveLength(0);
+  });
+
+  it('fails a pre-reset replay closed when later same-lifecycle event semantics are invalid', async () => {
+    const { rows, writes, store } = auditedLegacyTaskCancellationFixture();
+    const { reset } = addVersionedIndependentReset(rows);
+    const operationId = '30000000-0000-4000-8000-000000000030';
+    await cancelTransaction(store as never, 'TASK-A-SUCCESS', operationId);
+    const invalidLater = [...reset];
+    invalidLater[rows.TaskCompletions[0].indexOf('completionId')] = 'A-INVALID-LATER';
+    invalidLater[rows.TaskCompletions[0].indexOf('timestamp')] = '2026-09-03T00:00:00.000Z';
+    invalidLater[rows.TaskCompletions[0].indexOf('reward')] = '5';
+    rows.TaskCompletions.push(invalidLater);
+
+    await expect(cancelTransaction(store as never, 'TASK-A-SUCCESS', operationId)).rejects.toThrow(/완료|무결성/);
+    expect(writes).toHaveLength(1);
+  });
+
+  it('rejects an independent reset that does not immediately follow the linked success', async () => {
+    const { rows, writes, store } = auditedLegacyTaskCancellationFixture();
+    const { success } = addVersionedIndependentReset(rows);
+    const intervening = [...success];
+    intervening[rows.TaskCompletions[0].indexOf('completionId')] = 'A-OTHER-SUCCESS';
+    intervening[rows.TaskCompletions[0].indexOf('timestamp')] = '2026-09-02T00:02:00.000Z';
+    rows.TaskCompletions.splice(-1, 0, intervening);
+
+    await expect(cancelTransaction(
+      store as never,
+      'TASK-A-SUCCESS',
+      '30000000-0000-4000-8000-000000000029',
+    )).rejects.toThrow(/완료|무결성/);
+    expect(writes).toHaveLength(0);
+  });
+
+  it('permits a task reward cancellation inverse balance to become negative', async () => {
+    const { rows, writes, store } = auditedLegacyTaskCancellationFixture();
+    rows.Students[1][2] = '0';
+    const operationId = '30000000-0000-4000-8000-000000000026';
+
+    const first = await cancelTransaction(store as never, 'TASK-A-SUCCESS', operationId);
+
+    expect(first.reversalTransaction).toMatchObject({ balanceBefore: 0, balanceAfter: -20 });
+    expect(rows.Students[1][2]).toBe('-20');
+    await expect(cancelTransaction(store as never, 'TASK-A-SUCCESS', operationId)).resolves.toEqual(first);
+    expect(writes).toHaveLength(1);
   });
 
   it('fails a TASK_REWARD replay closed when its RESET is missing', async () => {
@@ -1130,9 +1371,11 @@ describe('sheets repository', () => {
     const store = {
       async primeRowsFresh(sheetNames: readonly string[]) {
         callOrder.push(`prime:${sheetNames.join(',')}`);
+        if (sheetNames.includes('Products')) throw new Error('admin cancellation must not fresh-prime Products');
       },
       async getRows(sheetName: keyof typeof rows) {
         callOrder.push(`read:${sheetName}`);
+        if (sheetName === 'Products') throw new Error('admin cancellation must not read Products');
         return rows[sheetName].map((row) => [...row]);
       },
       updateCell: primitiveWrite,
@@ -1153,10 +1396,9 @@ describe('sheets repository', () => {
     });
 
     expect(callOrder).toEqual([
-      'prime:Transactions,Students,Products',
+      'prime:Transactions,Students',
       'read:Transactions',
       'read:Students',
-      'read:Products',
     ]);
     expect(atomicMutations).toHaveLength(1);
     expect(atomicMutations[0].updates).toEqual([
@@ -1407,6 +1649,149 @@ describe('sheets repository', () => {
     ).resolves.toEqual({ studentId: 'S001', name: '김민준', balance: -1, status: 'ACTIVE' });
 
     expect(updates).toContainEqual({ sheetName: 'Students', rowNumber: 2, columnName: 'balance', value: -1 });
+  });
+
+  it('records only changed student-list balances in one atomic save and replays the operation safely', async () => {
+    const { rows, writes, store: baseStore } = statefulBulkStore();
+    rows.Students.push(['S003', '박지민', '900', 'S003', 'ACTIVE', '']);
+    const store = {
+      ...baseStore,
+      async applyAtomicMutation(mutation: TestAtomicMutation) {
+        writes.push('atomic:Students+Transactions');
+        applyTestAtomicMutation(rows, mutation);
+      },
+    };
+    const operationId = '30000000-0000-4000-8000-000000000001';
+    const updates = [
+      { studentId: 'S001', name: '김민준 수정', balance: 4000, status: 'INACTIVE' as const },
+      { studentId: 'S002', name: '이서연', balance: -100, status: 'ACTIVE' as const },
+      { studentId: 'S003', name: '박지민 수정', balance: 900, status: 'INACTIVE' as const },
+    ];
+
+    await expect(updateStudentDetailsBatchWithBalanceTransactions(store, updates, operationId)).resolves.toEqual(updates);
+
+    expect(rows.Students[1].slice(1, 5)).toEqual(['김민준 수정', '4000', 'S001', 'INACTIVE']);
+    expect(rows.Students[2].slice(1, 5)).toEqual(['이서연', '-100', 'S002', 'ACTIVE']);
+    expect(rows.Students[3].slice(1, 5)).toEqual(['박지민 수정', '900', 'S003', 'INACTIVE']);
+    const adjustments = rows.Transactions.slice(2);
+    expect(adjustments).toHaveLength(2);
+    expect(adjustments.map((row) => row.slice(2, 10))).toEqual([
+      ['S001', '김민준 수정', expect.stringContaining('관리자 잔액 지정'), '-500', '3500', '4000', 'ADMIN_ADJUSTMENT', 'admin'],
+      ['S002', '이서연', expect.stringContaining('관리자 잔액 지정'), '1300', '1200', '-100', 'ADMIN_ADJUSTMENT', 'admin'],
+    ]);
+    expect(writes).toEqual(['atomic:Students+Transactions']);
+
+    await expect(updateStudentDetailsBatchWithBalanceTransactions(store, updates, operationId)).resolves.toEqual(updates);
+    expect(rows.Transactions.slice(2)).toHaveLength(2);
+    expect(writes).toEqual(['atomic:Students+Transactions']);
+
+    await expect(updateStudentDetailsBatchWithBalanceTransactions(store, [
+      { ...updates[0], balance: 4500 }, updates[1], updates[2],
+    ], operationId)).rejects.toThrow('무결성');
+    expect(writes).toEqual(['atomic:Students+Transactions']);
+  });
+
+  it('persists and replays a zero-balance-change student-list operation marker', async () => {
+    const { rows, writes, store: baseStore } = statefulBulkStore();
+    const store = {
+      ...baseStore,
+      async applyAtomicMutation(mutation: TestAtomicMutation) {
+        writes.push(`atomic:${mutation.updates.map((update) => update.sheetName).concat(
+          mutation.appends.map((append) => append.sheetName),
+        ).join('+')}`);
+        applyTestAtomicMutation(rows, mutation);
+      },
+    };
+    const operationId = '22000000-0000-4000-8000-000000000001';
+    const updates = [
+      { studentId: 'S001', name: '김민준 수정', balance: 3500, status: 'ACTIVE' as const },
+      { studentId: 'S002', name: '이서연', balance: 1200, status: 'ACTIVE' as const },
+    ];
+
+    const first = await updateStudentDetailsBatchWithBalanceTransactions(store, updates, operationId);
+    expect(first).toEqual([
+      { studentId: 'S001', name: '김민준 수정', balance: 3500, status: 'ACTIVE' },
+      { studentId: 'S002', name: '이서연', balance: 1200, status: 'ACTIVE' },
+    ]);
+    expect(rows.Transactions.filter((row) => row[0].startsWith('ADMIN-LIST-'))).toHaveLength(0);
+    expect(rows.Settings).toHaveLength(3);
+    const markerRow = rows.Settings.at(-1)!;
+    expect(markerRow[0]).toMatch(/^studentListSaveOperation:[a-f0-9]{64}$/);
+    expect(JSON.parse(markerRow[1])).toEqual({
+      version: 1,
+      operationId,
+      payloadHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+      studentIds: ['S001', 'S002'],
+      resultCount: 0,
+    });
+    expect(writes).toEqual(['atomic:Students+Students+Students+Students+Settings']);
+
+    await expect(updateStudentDetailsBatchWithBalanceTransactions(store, updates, operationId)).resolves.toEqual(first);
+    expect(writes).toHaveLength(1);
+    await expect(updateStudentDetailsBatchWithBalanceTransactions(store, [
+      { ...updates[0], name: '충돌 이름' },
+      updates[1],
+    ], operationId)).rejects.toThrow('학생 명단 저장 거래의 무결성이 일치하지 않아 수동 조정이 필요합니다.');
+    expect(writes).toHaveLength(1);
+  });
+
+  it('serializes concurrent student-list retries so one ledger row is written', async () => {
+    const { rows, store: baseStore } = statefulBulkStore();
+    let entered = 0;
+    let active = 0;
+    let maxActive = 0;
+    let releaseFirst!: () => void;
+    let notifyFirst!: () => void;
+    const firstEntered = new Promise<void>((resolve) => { notifyFirst = resolve; });
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const store = {
+      ...baseStore,
+      async applyAtomicMutation(mutation: TestAtomicMutation) {
+        entered += 1;
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        if (entered === 1) {
+          notifyFirst();
+          await firstGate;
+        }
+        applyTestAtomicMutation(rows, mutation);
+        active -= 1;
+      },
+    };
+    const updates = [{ studentId: 'S001', name: '김민준', balance: 4000, status: 'ACTIVE' as const }];
+    const operationId = '23000000-0000-4000-8000-000000000001';
+
+    const first = updateStudentDetailsBatchWithBalanceTransactions(store, updates, operationId);
+    await firstEntered;
+    const second = updateStudentDetailsBatchWithBalanceTransactions(store, updates, operationId);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    releaseFirst();
+    await Promise.all([first, second]);
+
+    expect(maxActive).toBe(1);
+    expect(rows.Transactions.filter((row) => row[0].startsWith('ADMIN-LIST-'))).toHaveLength(1);
+  });
+
+  it('rejects non-canonical student-list transaction count residue', async () => {
+    const { rows, store: baseStore } = statefulBulkStore();
+    const store = {
+      ...baseStore,
+      async applyAtomicMutation(mutation: TestAtomicMutation) {
+        applyTestAtomicMutation(rows, mutation);
+      },
+    };
+    const updates = [
+      { studentId: 'S001', name: '김민준', balance: 4000, status: 'ACTIVE' as const },
+      { studentId: 'S002', name: '이서연', balance: 1000, status: 'ACTIVE' as const },
+    ];
+    const operationId = '24000000-0000-4000-8000-000000000001';
+    await updateStudentDetailsBatchWithBalanceTransactions(store, updates, operationId);
+    for (const row of rows.Transactions.filter((candidate) => candidate[0].startsWith('ADMIN-LIST-'))) {
+      row[0] = row[0].replace('-002-', '-2-');
+    }
+
+    await expect(updateStudentDetailsBatchWithBalanceTransactions(store, updates, operationId))
+      .rejects.toThrow('학생 명단 저장 거래의 무결성이 일치하지 않아 수동 조정이 필요합니다.');
   });
 
   it('batch updates students through one store call', async () => {

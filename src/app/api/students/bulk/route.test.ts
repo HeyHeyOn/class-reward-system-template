@@ -65,6 +65,16 @@ describe('PATCH /api/students/bulk', () => {
     await expect(response.json()).resolves.toEqual([{ studentId: 'S001', balance: 20 }]);
   });
 
+  it('allows a negative safe-integer target for set mode', async () => {
+    const adjust = vi.fn(async () => ({ students: [{ studentId: 'S001', balanceAfter: -10 }] }));
+    vi.mocked(createConfiguredAdminAdjustmentCommand).mockResolvedValue({ adjust });
+
+    const response = await PATCH(request({ studentIds: ['S001'], mode: 'set', amount: -10, operationId }));
+
+    expect(response.status).toBe(200);
+    expect(adjust).toHaveBeenCalledWith({ studentIds: ['S001'], mode: 'set', amount: -10, operationId });
+  });
+
   it.each([
     ['missing JSON content type', { studentIds: ['S001'], mode: 'add', amount: 1, operationId }, {}],
     ['malformed JSON', '{', { 'Content-Type': 'application/json' }],
