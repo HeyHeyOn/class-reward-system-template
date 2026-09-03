@@ -51,7 +51,7 @@ describe('POST /api/transactions/[transactionId]/cancel', () => {
     await expect(response.json()).resolves.toEqual(result);
   });
 
-  it('preserves percent sequences in the transaction ID already decoded by Next', async () => {
+  it('recovers stored percent sequences from the raw request path when Next decodes params again', async () => {
     const transactionId = 'TASK-LOGICAL-TC-BANK-T008-legacy%253AT008%257Cr4-INITIAL';
     const result = {
       cancelledTransaction: { transactionId, status: 'CANCELLED' },
@@ -65,7 +65,9 @@ describe('POST /api/transactions/[transactionId]/cancel', () => {
       body: JSON.stringify({ operationId: '30000000-0000-4000-8000-000000000001' }),
     });
 
-    const response = await POST(request, { params: Promise.resolve({ transactionId }) });
+    const response = await POST(request, {
+      params: Promise.resolve({ transactionId: decodeURIComponent(transactionId) }),
+    });
 
     expect(response.status).toBe(200);
     expect(cancel).toHaveBeenCalledWith({

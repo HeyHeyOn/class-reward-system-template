@@ -63,7 +63,8 @@ export async function POST(request: Request, context: RouteContext) {
 
   let transactionId = 'unknown';
   try {
-    ({ transactionId } = await context.params);
+    const params = await context.params;
+    transactionId = transactionIdFromRequestPath(request) ?? params.transactionId;
     const cancellation = await createConfiguredTransactionCancellation(request);
     const result = await cancellation.cancel({
       transactionId,
@@ -76,6 +77,21 @@ export async function POST(request: Request, context: RouteContext) {
       reason: cancellationFailureReason(error),
     });
     return Response.json({ error: '거래를 취소하지 못했습니다.' }, { status: 400 });
+  }
+}
+
+function transactionIdFromRequestPath(request: Request): string | null {
+  try {
+    const pathname = new URL(request.url).pathname;
+    const prefix = '/api/transactions/';
+    const suffix = '/cancel';
+    if (!pathname.startsWith(prefix) || !pathname.endsWith(suffix)) return null;
+
+    const encodedTransactionId = pathname.slice(prefix.length, -suffix.length);
+    if (!encodedTransactionId || encodedTransactionId.includes('/')) return null;
+    return decodeURIComponent(encodedTransactionId);
+  } catch {
+    return null;
   }
 }
 
