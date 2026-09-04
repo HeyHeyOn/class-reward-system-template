@@ -35,6 +35,7 @@ type GoogleSessionState = {
   loading: boolean;
   enabled: boolean;
   authenticated: boolean;
+  generatorGranted: boolean;
   email?: string;
   name?: string;
   error?: string;
@@ -43,7 +44,7 @@ type GoogleSessionState = {
 type WizardStep = 'choose' | 'notice' | 'google' | 'vercel' | 'github' | 'settings' | 'deploy' | 'links' | 'update';
 
 export function AdminGeneratorPage() {
-  const [session, setSession] = useState<GoogleSessionState>({ loading: false, enabled: true, authenticated: false });
+  const [session, setSession] = useState<GoogleSessionState>({ loading: false, enabled: true, authenticated: false, generatorGranted: false });
   const [step, setStep] = useState<WizardStep>(() => {
     if (typeof window === 'undefined') return 'choose';
     return new URLSearchParams(window.location.search).get('step') === 'google' ? 'google' : 'choose';
@@ -68,16 +69,25 @@ export function AdminGeneratorPage() {
         const response = await fetch('/api/google/session');
         const data = await response.json();
         if (cancelled) return;
+        const authenticated = Boolean(data.authenticated);
+        let generatorGranted = false;
+        if (authenticated) {
+          const grantResponse = await fetch('/api/generator/grant');
+          const grantData = await grantResponse.json();
+          generatorGranted = grantResponse.ok && grantData.ready === true;
+        }
+        if (cancelled) return;
         setSession({
           loading: false,
           enabled: data.enabled !== false,
-          authenticated: Boolean(data.authenticated),
+          authenticated,
+          generatorGranted,
           email: typeof data.email === 'string' ? data.email : undefined,
           name: typeof data.name === 'string' ? data.name : undefined,
         });
       } catch {
         if (!cancelled) {
-          setSession({ loading: false, enabled: true, authenticated: false, error: '로그인 상태를 확인하지 못했습니다.' });
+          setSession({ loading: false, enabled: true, authenticated: false, generatorGranted: false, error: '로그인 상태를 확인하지 못했습니다.' });
         }
       }
     }
@@ -236,9 +246,20 @@ function GoogleLoginStep({ session, onBack, onNext }: { session: GoogleSessionSt
       </div>
       {session.error ? <p className="mt-3 rounded-2xl bg-red-50 p-3 text-sm font-black text-red-700">{session.error}</p> : null}
       {session.authenticated ? (
-        <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-black text-emerald-800">
-          Google 로그인 완료: {session.email ?? session.name}
-        </div>
+        <>
+          <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-black text-emerald-800">
+            Google 로그인 완료: {session.email ?? session.name}
+          </div>
+          {session.generatorGranted ? (
+            <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-black text-emerald-800">
+              Google Sheets 생성 권한 완료
+            </div>
+          ) : (
+            <Link href="/api/google/login?purpose=generator" className="mt-3 inline-flex rounded-2xl bg-slate-950 px-6 py-4 text-lg font-black text-white hover:bg-slate-800">
+              Google Sheets 생성 권한 부여
+            </Link>
+          )}
+        </>
       ) : (
         <Link href="/api/google/login" className="mt-5 inline-flex rounded-2xl bg-slate-950 px-6 py-4 text-lg font-black text-white hover:bg-slate-800">
           Google로 로그인하기
@@ -246,7 +267,7 @@ function GoogleLoginStep({ session, onBack, onNext }: { session: GoogleSessionSt
       )}
       <div className="mt-5 flex flex-wrap gap-2">
         <button type="button" onClick={onBack} className="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-200">이전</button>
-        <button type="button" disabled={!session.authenticated} onClick={onNext} className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600">Google 로그인 완료, 다음</button>
+        <button type="button" disabled={!session.authenticated || !session.generatorGranted} onClick={onNext} className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600">Google 로그인 및 시트 권한 완료, 다음</button>
       </div>
     </section>
   );

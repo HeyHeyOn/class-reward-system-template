@@ -1,8 +1,18 @@
 import { randomBytes } from 'node:crypto';
+import { NextResponse } from 'next/server';
 import { createClassRewardSpreadsheet } from '@/generator/createSpreadsheet';
 import { normalizeClassRewardCreateOptions } from '@/generator/createOptions';
 import { THEME_COLORS } from '@/generator/config/schema';
-import { getGoogleSessionFromRequest } from '@/server/googleOAuth';
+import { isGeneratorDeployment } from '@/server/deploymentMode';
+import { claimGeneratorGrant } from '@/server/repositories/configuredGeneratorGrantClaims';
+import {
+  clearGeneratorGrantCookie,
+  getGeneratorGrantFromRequest,
+  getGoogleSessionFromRequest,
+  revokeGeneratorGrant,
+  type GeneratorGrant,
+  type GoogleSession,
+} from '@/server/googleOAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,10 +27,29 @@ type CreateRequestBody = {
 };
 
 export async function POST(request: Request) {
+  let grant: GeneratorGrant | null = null;
   try {
+    if (!isGeneratorDeployment()) {
+      return grantResponse({ error: '생성 API는 생성기 배포에서만 사용할 수 있습니다.' }, 404);
+    }
+
+    const session = getGoogleSessionFromRequest(request);
+    if (!session) {
+      return grantResponse({ error: '먼저 Google 계정으로 로그인해 주세요.' }, 401);
+    }
+    grant = getGeneratorGrantFromRequest(request, session);
+    if (!grant) {
+      return grantResponse({ error: 'Google Sheets 생성 권한이 없거나 만료되었습니다. 같은 Google 계정으로 권한을 다시 승인해 주세요.' }, 401);
+    }
+
+    const claimed = await claimGeneratorGrant(grant);
+    if (!claimed) {
+      return grantResponse({ error: 'Google Sheets 생성 권한이 이미 사용되었거나 만료되었습니다. 권한을 다시 승인해 주세요.' }, 401);
+    }
+
     const body = (await request.json()) as CreateRequestBody;
     if (body.selfServiceAcknowledged !== true) {
-      return Response.json({ error: '개인 Google/Vercel 계정 사용 안내를 숙지했다는 확인이 필요합니다.' }, { status: 400 });
+      throw new Error('개인 Google/Vercel 계정 사용 안내를 숙지했다는 확인이 필요합니다.');
     }
 
     const options = normalizeClassRewardCreateOptions({
@@ -33,12 +62,12 @@ export async function POST(request: Request) {
     });
 
     if (!THEME_COLORS.includes(options.themeColor as (typeof THEME_COLORS)[number])) {
-      return Response.json({ error: `지원하지 않는 테마입니다: ${options.themeColor}` }, { status: 400 });
+      throw new Error(`지원하지 않는 테마입니다: ${options.themeColor}`);
     }
 
-    const result = await createClassRewardSpreadsheet(options, request);
-    const deploymentEnv = buildRequiredVercelEnv(result.spreadsheetId, request);
-    return Response.json({
+    const result = await createClassRewardSpreadsheet(options, request, grant);
+    const deploymentEnv = buildRequiredVercelEnv(result.spreadsheetId, session, grant);
+    return grantResponse({
       ok: true,
       ...result,
       requiredVercelEnv: deploymentEnv,
@@ -51,29 +80,39 @@ export async function POST(request: Request) {
       deploymentGuide: buildDeploymentGuide(result.spreadsheetId),
     });
   } catch (error) {
+    if (grant) {
+      await revokeGeneratorGrant(grant).catch(() => undefined);
+    }
     const message = error instanceof Error ? error.message : '시스템을 생성하지 못했습니다.';
-    return Response.json({ error: message }, { status: 400 });
+    return grantResponse({ error: message }, 400);
   }
+}
+
+function grantResponse(body: unknown, status = 200) {
+  const response = NextResponse.json(body, { status });
+  // The browser cannot retry with a consumed grant after either success or failure.
+  clearGeneratorGrantCookie(response);
+  return response;
 }
 
 function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-function buildRequiredVercelEnv(spreadsheetId: string, request: Request) {
-  const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
-  const session = getGoogleSessionFromRequest(request);
+function buildRequiredVercelEnv(spreadsheetId: string, session: GoogleSession, grant: GeneratorGrant) {
+  const clientId = process.env.GENERATOR_GOOGLE_CLIENT_ID?.trim();
+  const clientSecret = process.env.GENERATOR_GOOGLE_CLIENT_SECRET?.trim();
 
-  if (!clientId || !clientSecret || !session?.refreshToken) {
-    throw new Error('운영 앱 배포에 필요한 Google 인증값을 만들지 못했습니다. Google 로그아웃 후 다시 로그인한 다음 생성해 주세요.');
+  if (!clientId || !clientSecret) {
+    throw new Error('운영 앱 배포에 필요한 생성기 Google OAuth 인증값을 만들지 못했습니다.');
   }
 
   return [
     { name: 'GOOGLE_SHEET_ID', value: spreadsheetId, secret: false },
     { name: 'GOOGLE_CLIENT_ID', value: clientId, secret: false },
+    // Intentionally distributed only to this consenting user's generated deployment.
     { name: 'GOOGLE_CLIENT_SECRET', value: clientSecret, secret: true },
-    { name: 'GOOGLE_REFRESH_TOKEN', value: session.refreshToken, secret: true },
+    { name: 'GOOGLE_REFRESH_TOKEN', value: grant.refreshToken, secret: true },
     { name: 'ADMIN_PASSWORD', value: session.email, secret: true },
     { name: 'AUTH_SECRET', value: randomBytes(32).toString('base64url'), secret: true },
   ];

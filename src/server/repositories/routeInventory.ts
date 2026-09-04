@@ -26,6 +26,7 @@ export const TENANT_ROUTE_INVENTORY: readonly TenantRouteInventoryEntry[] = [
   tenantMutation('/checkout', 'POST'),
   tenantRead('/checkout/preview', 'POST'),
   platform('/generator/create', 'POST', 'mutation'),
+  platform('/generator/grant', 'GET', 'read'),
   platform('/google/callback', 'GET', 'read'),
   platform('/google/login', 'GET', 'read'),
   platform('/google/logout', 'POST', 'mutation'),

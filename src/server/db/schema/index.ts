@@ -1,4 +1,5 @@
 export * from './catalog';
+export * from './generatorGrants';
 export * from './identity';
 export * from './ledger';
 export * from './migrations';

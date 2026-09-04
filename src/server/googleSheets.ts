@@ -1,7 +1,7 @@
 import { google } from 'googleapis';
 import { getEnvSpreadsheetId } from '@/server/settings';
 import { verifyRequiredOperationalSheetHeaders, type SheetsReader } from '@/server/sheetsRepository';
-import { createDeploymentSheetsAuth, createUserSheetsAuth, isGoogleOAuthEnabled } from '@/server/googleOAuth';
+import { createDeploymentSheetsAuth } from '@/server/googleOAuth';
 import {
   MigrationConflictError,
   SheetProviderError,
@@ -668,15 +668,10 @@ export async function verifySpreadsheetAccess(reader: SheetsReader): Promise<voi
 
 export const createConfiguredSheetsReader = createConfiguredSheetsStore;
 
-async function createSheetsClient(request?: Request) {
-  if (request && isGoogleOAuthEnabled()) {
-    const origin = new URL(request.url).origin;
-    const userAuth = createUserSheetsAuth(request, origin);
-    if (userAuth) {
-      return google.sheets({ version: 'v4', auth: userAuth.auth });
-    }
-  }
-
+async function createSheetsClient(_request?: Request) {
+  // Retain the request parameter for store API compatibility; identity sessions
+  // intentionally never supply Sheets credentials.
+  void _request;
   const deploymentAuth = createDeploymentSheetsAuth();
   if (deploymentAuth) {
     return google.sheets({ version: 'v4', auth: deploymentAuth });

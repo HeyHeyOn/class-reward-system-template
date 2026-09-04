@@ -14,12 +14,12 @@ function googleSessionCookie(issuedAt: number): string {
   const key = createHash('sha256').update(googleEnv.AUTH_SECRET).digest();
   const cipher = createCipheriv('aes-256-gcm', key, iv);
   const plaintext = Buffer.from(JSON.stringify({
+    subject: 'google-subject-123',
     email: 'teacher@example.com',
-    refreshToken: 'refresh-token',
     issuedAt,
   }));
   const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
-  return ['v1', iv.toString('base64url'), cipher.getAuthTag().toString('base64url'), ciphertext.toString('base64url')].join('.');
+  return ['v2', iv.toString('base64url'), cipher.getAuthTag().toString('base64url'), ciphertext.toString('base64url')].join('.');
 }
 
 function requestWithCookie(name: string, value: string): Request {

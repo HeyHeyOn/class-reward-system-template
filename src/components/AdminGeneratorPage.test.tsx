@@ -2,8 +2,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AdminGeneratorPage } from './AdminGeneratorPage';
 
-function stubGeneratorFetch(options?: { authenticated?: boolean; createResponse?: Record<string, unknown> }) {
+function stubGeneratorFetch(options?: { authenticated?: boolean; generatorGranted?: boolean; createResponse?: Record<string, unknown> }) {
   const authenticated = options?.authenticated ?? true;
+  const generatorGranted = options?.generatorGranted ?? authenticated;
   const fetchSpy = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url === '/api/google/session') {
@@ -12,6 +13,12 @@ function stubGeneratorFetch(options?: { authenticated?: boolean; createResponse?
         json: async () => authenticated
           ? ({ enabled: true, authenticated: true, email: 'teacher@example.com', name: '김선생님' })
           : ({ enabled: true, authenticated: false }),
+      };
+    }
+    if (url === '/api/generator/grant') {
+      return {
+        ok: true,
+        json: async () => ({ ready: generatorGranted }),
       };
     }
     if (url === '/api/generator/create' && init?.method === 'POST') {
@@ -61,7 +68,7 @@ async function goThroughAuthenticatedCreateSteps() {
   await goToCreateNotice();
   await passNotice();
   await waitFor(() => expect(screen.getByText(/Google 로그인 완료: teacher@example.com/)).toBeTruthy());
-  fireEvent.click(screen.getByRole('button', { name: 'Google 로그인 완료, 다음' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Google 로그인 및 시트 권한 완료, 다음' }));
   expect(screen.getByRole('heading', { name: 'Vercel 로그인하기' })).toBeTruthy();
   expect(screen.getByRole('link', { name: 'Vercel 열기' }).getAttribute('href')).toBe('https://vercel.com/login');
   fireEvent.click(screen.getByRole('button', { name: '로그인/가입을 완료했습니다' }));
@@ -130,7 +137,7 @@ describe('AdminGeneratorPage', () => {
     expect(nextButton).toHaveProperty('disabled', false);
   });
 
-  it('places Google login after the notice and blocks creation steps until authenticated', async () => {
+  it('places ordinary Google identity login after the notice and blocks creation steps until authenticated', async () => {
     stubGeneratorFetch({ authenticated: false });
 
     render(<AdminGeneratorPage />);
@@ -138,10 +145,21 @@ describe('AdminGeneratorPage', () => {
     await passNotice();
 
     expect(screen.getByRole('heading', { name: 'Google 로그인하기' })).toBeTruthy();
-    expect(screen.getByText(/이용하실 Google 계정으로 로그인하여 스프레드시트 권한을 부여/)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Google로 로그인하기' }).getAttribute('href')).toBe('/api/google/login');
-    expect(screen.getByRole('button', { name: 'Google 로그인 완료, 다음' })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: 'Google 로그인 및 시트 권한 완료, 다음' })).toHaveProperty('disabled', true);
     expect(screen.queryByRole('heading', { name: 'Vercel 로그인하기' })).toBeNull();
+  });
+
+  it('requires the separate generator grant after identity login before enabling creation', async () => {
+    stubGeneratorFetch({ authenticated: true, generatorGranted: false });
+
+    render(<AdminGeneratorPage />);
+    await goToCreateNotice();
+    await passNotice();
+    await waitFor(() => expect(screen.getByText(/Google 로그인 완료: teacher@example.com/)).toBeTruthy());
+
+    expect(screen.getByRole('link', { name: 'Google Sheets 생성 권한 부여' }).getAttribute('href')).toBe('/api/google/login?purpose=generator');
+    expect(screen.getByRole('button', { name: 'Google 로그인 및 시트 권한 완료, 다음' })).toHaveProperty('disabled', true);
   });
 
   it('renders Vercel and GitHub preparation steps before the settings/create page', async () => {

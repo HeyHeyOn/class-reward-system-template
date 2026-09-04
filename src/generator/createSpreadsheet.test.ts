@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { REQUIRED_SHEETS } from './config/schema';
-import { buildSpreadsheetSheetDefinitions, buildSpreadsheetValueRanges } from './createSpreadsheet';
+import { buildSpreadsheetSheetDefinitions, buildSpreadsheetValueRanges, createGeneratorSheetsAuth } from './createSpreadsheet';
 
 const OPTIONS = {
   appTitle: '학급 매점',
@@ -25,6 +25,48 @@ function columnIndexToLetter(index: number): string {
 }
 
 describe('spreadsheet initialization values', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('authenticates generator Sheets calls as the consenting user rather than the deployment account', () => {
+    vi.stubEnv('GOOGLE_CLIENT_ID', 'client-id.apps.googleusercontent.com');
+    vi.stubEnv('GOOGLE_CLIENT_SECRET', 'client-secret');
+    vi.stubEnv('GENERATOR_GOOGLE_CLIENT_ID', 'generator-client-id.apps.googleusercontent.com');
+    vi.stubEnv('GENERATOR_GOOGLE_CLIENT_SECRET', 'generator-client-secret');
+    vi.stubEnv('GOOGLE_REFRESH_TOKEN', 'central-deployment-refresh-token');
+    const request = new Request('https://generator.example/api/generator/create');
+
+    const result = createGeneratorSheetsAuth(request, {
+      purpose: 'generator',
+      subject: 'google-subject-123',
+      email: 'teacher@example.com',
+      refreshToken: 'consenting-user-refresh-token',
+      grantId: 'grant-id-that-is-at-least-thirty-two-characters',
+      expiresAt: Date.now() + 600_000,
+      clientFingerprint: 'a'.repeat(64),
+      issuedAt: Date.now(),
+    });
+
+    expect(result.authMode).toBe('google-login');
+    expect(result.ownerEmail).toBe('teacher@example.com');
+    expect(result.auth.credentials.refresh_token).toBe('consenting-user-refresh-token');
+    expect(result.auth.credentials.refresh_token).not.toBe(process.env.GOOGLE_REFRESH_TOKEN);
+    expect(result.auth._clientId).toBe('generator-client-id.apps.googleusercontent.com');
+  });
+
+  it('does not use legacy Google client credentials for a generator grant', () => {
+    vi.stubEnv('GOOGLE_CLIENT_ID', 'legacy-client-id.apps.googleusercontent.com');
+    vi.stubEnv('GOOGLE_CLIENT_SECRET', 'legacy-client-secret');
+    const issuedAt = Date.now();
+
+    expect(() => createGeneratorSheetsAuth(new Request('https://generator.example/api/generator/create'), {
+      purpose: 'generator', subject: 'google-subject-123', email: 'teacher@example.com',
+      refreshToken: 'consenting-user-refresh-token', grantId: 'grant-id-that-is-at-least-thirty-two-characters',
+      expiresAt: issuedAt + 600_000, clientFingerprint: 'a'.repeat(64), issuedAt,
+    })).toThrow(/GENERATOR_GOOGLE_CLIENT_ID/);
+  });
+
   it('includes a canonical header range for every required sheet', () => {
     const ranges = buildSpreadsheetValueRanges(OPTIONS);
 

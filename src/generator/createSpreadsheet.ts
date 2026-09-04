@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { google } from 'googleapis';
-import { createDeploymentSheetsAuth, createGoogleOAuthClient, createUserSheetsAuth, isGoogleOAuthEnabled } from '@/server/googleOAuth';
+import { isGeneratorDeployment } from '@/server/deploymentMode';
+import { createDeploymentSheetsAuth, createGeneratorGoogleOAuthClient, createGoogleOAuthClient, isGoogleOAuthEnabled, type GeneratorGrant } from '@/server/googleOAuth';
 import { buildSettingsRows, normalizeClassRewardCreateOptions } from './createOptions.ts';
 import { REQUIRED_SHEETS } from './config/schema.ts';
 import type { ClassRewardInstanceOptions } from './types.ts';
@@ -58,9 +59,13 @@ export function buildSpreadsheetSheetDefinitions() {
   }));
 }
 
-export async function createClassRewardSpreadsheet(optionsInput: Partial<ClassRewardInstanceOptions>, request: Request): Promise<GeneratedSpreadsheet> {
+export async function createClassRewardSpreadsheet(
+  optionsInput: Partial<ClassRewardInstanceOptions>,
+  request: Request,
+  generatorGrant?: GeneratorGrant,
+): Promise<GeneratedSpreadsheet> {
   const options = normalizeClassRewardCreateOptions(optionsInput);
-  const { auth, authMode, ownerEmail } = createGeneratorSheetsAuth(request);
+  const { auth, authMode, ownerEmail } = createGeneratorSheetsAuth(request, generatorGrant);
   const recovery: RecoveryMetadata = { ownerEmail, recoveryCode: generateRecoveryCode() };
   const sheets = google.sheets({ version: 'v4', auth });
   const title = buildSpreadsheetTitle(options);
@@ -130,14 +135,18 @@ function hashRecoveryCode(value: string): string {
   return createHash('sha256').update(value.trim().toUpperCase()).digest('hex');
 }
 
-function createGeneratorSheetsAuth(request: Request) {
-  if (isGoogleOAuthEnabled()) {
-    const origin = new URL(request.url).origin;
-    const userAuth = createUserSheetsAuth(request, origin);
-    if (userAuth) return { auth: userAuth.auth, authMode: 'google-login' as const, ownerEmail: userAuth.session.email };
-    throw new Error('선생님 개인 Google 계정 로그인이 필요합니다. 먼저 Google 로그인 후 다시 생성해 주세요.');
+export function createGeneratorSheetsAuth(request: Request, generatorGrant?: GeneratorGrant) {
+  if (generatorGrant) {
+    const userAuth = createGeneratorGoogleOAuthClient(new URL(request.url).origin);
+    userAuth.setCredentials({ refresh_token: generatorGrant.refreshToken });
+    return { auth: userAuth, authMode: 'google-login' as const, ownerEmail: generatorGrant.email };
   }
 
+  if (isGoogleOAuthEnabled() && isGeneratorDeployment()) {
+    throw new Error('선생님 개인 Google Sheets 생성 권한이 필요합니다. 권한을 다시 승인해 주세요.');
+  }
+
+  // Standalone/system deployments retain their configured deployment OAuth.
   const deploymentAuth = createDeploymentSheetsAuth();
   if (deploymentAuth) return { auth: deploymentAuth, authMode: 'deployment-oauth' as const };
 
