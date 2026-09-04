@@ -201,6 +201,56 @@ describe('GoogleSheetsStore auth and recurring ranges', () => {
     });
   });
 
+  it('commits both unique claims, an exact data-cell clear, and the marker append in one request', async () => {
+    googleMocks.sheetsApi.spreadsheets.get.mockResolvedValueOnce({ data: { sheets: [
+      { properties: { sheetId: 2, title: 'Products', gridProperties: { rowCount: 100, columnCount: 8 } } },
+      { properties: { sheetId: 4, title: 'Settings', gridProperties: { rowCount: 100, columnCount: 2 } } },
+    ] } });
+    const providerError = new Error('opaque provider conflict');
+    googleMocks.sheetsApi.spreadsheets.batchUpdate.mockRejectedValueOnce(providerError);
+    const store = new GoogleSheetsStore('sheet-123');
+
+    await expect(store.applyAtomicMutation({
+      uniqueClaims: [
+        { name: `product_deletion_${'a'.repeat(64)}`, sheetName: 'Products', rowNumber: 1, columnNumber: 1 },
+        { name: `product_deletion_resource_${'b'.repeat(64)}`, sheetName: 'Products', rowNumber: 1, columnNumber: 1 },
+      ],
+      exactCellClears: [{ sheetName: 'Products', columnNumber: 1, startRowNumber: 2, value: 'P001' }],
+      updates: [],
+      appends: [{ sheetName: 'Settings', values: ['operation-key', 'operation-value'] }],
+    })).rejects.toBe(providerError);
+
+    expect(googleMocks.sheetsApi.spreadsheets.batchUpdate).toHaveBeenCalledTimes(1);
+    expect(googleMocks.sheetsApi.spreadsheets.batchUpdate).toHaveBeenCalledWith({
+      spreadsheetId: 'sheet-123',
+      requestBody: { requests: [
+        { addNamedRange: { namedRange: {
+          name: `product_deletion_${'a'.repeat(64)}`,
+          range: { sheetId: 2, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 1 },
+        } } },
+        { addNamedRange: { namedRange: {
+          name: `product_deletion_resource_${'b'.repeat(64)}`,
+          range: { sheetId: 2, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 1 },
+        } } },
+        { findReplace: {
+          find: 'P001', replacement: '', matchCase: true, matchEntireCell: true,
+          searchByRegex: false, includeFormulas: false,
+          range: { sheetId: 2, startRowIndex: 1, startColumnIndex: 0, endColumnIndex: 1 },
+        } },
+        { appendCells: {
+          sheetId: 4,
+          rows: [{ values: [
+            { userEnteredValue: { stringValue: 'operation-key' } },
+            { userEnteredValue: { stringValue: 'operation-value' } },
+          ] }],
+          fields: 'userEnteredValue',
+        } },
+      ] },
+    });
+    expect(googleMocks.sheetsApi.spreadsheets.values.batchUpdate).not.toHaveBeenCalled();
+    expect(googleMocks.sheetsApi.spreadsheets.values.append).not.toHaveBeenCalled();
+  });
+
   it('invalidates affected caches after an atomic mutation instead of guessing append locations', async () => {
     googleMocks.sheetsValuesGet
       .mockReset()
@@ -396,6 +446,38 @@ describe('GoogleSheetsStore auth and recurring ranges', () => {
     await expect(store.getRowsFresh('Students')).resolves.toEqual([['studentId'], ['S002']]);
     await expect(store.getRows('Students')).resolves.toEqual([['studentId'], ['S002']]);
     expect(googleMocks.sheetsValuesGet).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads formulas directly without using or replacing the rendered-value cache', async () => {
+    googleMocks.sheetsValuesGet
+      .mockResolvedValueOnce({ data: { values: [['productId'], ['P001']] } })
+      .mockResolvedValueOnce({ data: { values: [['productId'], ['="P001"']] } })
+      .mockResolvedValueOnce({ data: { values: [['productId'], ['P002']] } });
+    const store = new GoogleSheetsStore('sheet-123');
+
+    await expect(store.getRows('Products')).resolves.toEqual([['productId'], ['P001']]);
+    await expect(store.getRowsWithFormulasFresh('Products')).resolves.toEqual([['productId'], ['="P001"']]);
+    await expect(store.getRowsFresh('Products')).resolves.toEqual([['productId'], ['P002']]);
+
+    expect(googleMocks.sheetsValuesGet).toHaveBeenNthCalledWith(2, {
+      spreadsheetId: 'sheet-123', range: "'Products'!A:Z", valueRenderOption: 'FORMULA',
+    });
+    expect(googleMocks.sheetsValuesGet).toHaveBeenCalledTimes(3);
+  });
+
+  it('checks atomic claims from fresh metadata and exact-matches the named range name', async () => {
+    googleMocks.sheetsApi.spreadsheets.get
+      .mockResolvedValueOnce({ data: { namedRanges: [{ name: 'product_identity_exact' }] } })
+      .mockResolvedValueOnce({ data: { namedRanges: [{ name: ' product_identity_exact ' }] } });
+    const store = new GoogleSheetsStore('sheet-123');
+
+    await expect(store.hasAtomicClaim('product_identity_exact')).resolves.toBe(true);
+    await expect(store.hasAtomicClaim('product_identity_exact')).resolves.toBe(false);
+
+    expect(googleMocks.sheetsApi.spreadsheets.get).toHaveBeenCalledTimes(2);
+    expect(googleMocks.sheetsApi.spreadsheets.get).toHaveBeenNthCalledWith(1, {
+      spreadsheetId: 'sheet-123', fields: 'namedRanges(name)',
+    });
   });
 
   it('keeps the request-scoped snapshot coherent after update and append writes', async () => {

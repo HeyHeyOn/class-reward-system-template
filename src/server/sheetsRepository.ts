@@ -1,5 +1,6 @@
 import type { ClassTask, Product, Student, TaskAssignmentStatus, TaskCompletion, TaskRecurrence, Transaction } from '@/domain/types';
 import { createHash } from 'node:crypto';
+import { types as nodeUtilTypes } from 'node:util';
 import {
   DEFAULT_CLASS_TIME_ZONE,
   normalizeLegacyTimeZone,
@@ -162,6 +163,15 @@ export type StudentBatchUpdate = StudentUpdate & {
 export type ProductBatchUpdate = ProductUpdate & {
   productId: string;
 };
+
+export type ProductDeletionInput = {
+  operationId: string;
+  productId: string;
+  expectedProductVersion: number;
+};
+
+const productDeletionQueueKeys = new WeakMap<SheetsStore, string>();
+let nextProductDeletionQueueKey = 1;
 
 export type TaskBatchUpdate = TaskUpdate & {
   taskId: string;
@@ -2489,8 +2499,13 @@ export async function createProduct(store: SheetsStore, create: ProductCreate): 
   validateProductId(productId);
   validateProductUpdate(create);
 
-  if ((await getProductRecords(store)).some(({ product }) => product.productId === productId)) {
+  const productRows = await store.getRows('Products');
+  if (getProductRecordsFromRows(productRows).some(({ product }) => product.productId === productId)) {
     throw new Error('이미 존재하는 상품 ID입니다.');
+  }
+
+  if (hasProductDeletionTombstone(await store.getRows('Settings'), productId)) {
+    throw new Error('삭제 이력이 있는 상품 ID는 다시 사용할 수 없습니다.');
   }
 
   const imageUrl = create.imageUrl?.trim() || undefined;
@@ -2506,16 +2521,35 @@ export async function createProduct(store: SheetsStore, create: ProductCreate): 
     sortOrder: create.sortOrder,
   };
 
-  await store.appendRow('Products', [
-    product.productId,
-    product.name,
-    String(product.price),
-    String(product.stock),
-    product.isActive ? 'TRUE' : 'FALSE',
-    product.imageUrl ?? '',
-    product.category ?? '',
-    String(product.sortOrder),
-  ]);
+  if (!store.applyAtomicMutation) {
+    throw new Error('현재 Sheets 저장소가 원자적 상품 생성을 지원하지 않습니다.');
+  }
+  const productHeaders = productRows[0] ?? [];
+  const productHeaderIndex = createHeaderIndex(productHeaders);
+  const productIdColumn = productHeaderIndex.get('productId');
+  if (productIdColumn === undefined) throw new Error('Products 시트에 productId 컬럼이 없습니다.');
+  const productValues = Array<string>(productHeaders.length).fill('');
+  const setProductValue = (header: string, value: string) => {
+    const index = productHeaderIndex.get(header);
+    if (index === undefined || index < 0) throw new Error(`Products 시트에 ${header} 컬럼이 없거나 중복되었습니다.`);
+    productValues[index] = value;
+  };
+  setProductValue('productId', product.productId);
+  setProductValue('name', product.name);
+  setProductValue('price', String(product.price));
+  setProductValue('stock', String(product.stock));
+  setProductValue('isActive', product.isActive ? 'TRUE' : 'FALSE');
+  setProductValue('imageUrl', product.imageUrl ?? '');
+  setProductValue('category', product.category ?? '');
+  setProductValue('sortOrder', String(product.sortOrder));
+  await store.applyAtomicMutation({
+    updates: [],
+    appends: [{
+      sheetName: 'Products',
+      values: productValues,
+    }],
+    uniqueClaim: productIdentityClaim(productId, productIdColumn + 1),
+  });
 
   return product;
 }
@@ -2597,13 +2631,275 @@ export async function updateProductDetailsBatch(store: SheetsStore, updates: Pro
   return products.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
 }
 
-export async function deleteProduct(store: SheetsStore, productId: string): Promise<{ productId: string }> {
-  const record = (await getProductRecords(store)).find(({ product }) => product.productId === productId);
-  if (!record) throw new Error('상품을 찾을 수 없습니다.');
-  if (!store.deleteRow) throw new Error('현재 Sheets 저장소가 행 삭제를 지원하지 않습니다.');
+export async function deleteProduct(
+  store: SheetsStore,
+  input: ProductDeletionInput,
+): Promise<{ productId: string }> {
+  const snapshot = validatedProductDeletionInputSnapshot(input);
+  return enqueueTaskCommand(productDeletionQueueKey(store), () => deleteProductNow(store, snapshot));
+}
 
-  await store.deleteRow('Products', record.rowNumber);
-  return { productId };
+function productDeletionQueueKey(store: SheetsStore): string {
+  const existing = productDeletionQueueKeys.get(store);
+  if (existing) return existing;
+  const created = `PRODUCT_DELETIONS:${nextProductDeletionQueueKey}`;
+  nextProductDeletionQueueKey += 1;
+  productDeletionQueueKeys.set(store, created);
+  return created;
+}
+
+function validatedProductDeletionInputSnapshot(
+  input: ProductDeletionInput,
+): Readonly<ProductDeletionInput> {
+  if (nodeUtilTypes.isProxy(input) || !input || typeof input !== 'object' || Array.isArray(input)
+    || Object.getPrototypeOf(input) !== Object.prototype) {
+    throw productDeletionInputIntegrityError();
+  }
+  const expectedKeys = ['operationId', 'productId', 'expectedProductVersion'] as const;
+  const keys = Reflect.ownKeys(input);
+  if (keys.length !== expectedKeys.length
+    || keys.some((key) => typeof key !== 'string'
+      || !expectedKeys.includes(key as typeof expectedKeys[number]))) {
+    throw productDeletionInputIntegrityError();
+  }
+  const values = Object.fromEntries(expectedKeys.map((key) => {
+    const descriptor = Object.getOwnPropertyDescriptor(input, key);
+    if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) {
+      throw productDeletionInputIntegrityError();
+    }
+    return [key, descriptor.value];
+  })) as Record<typeof expectedKeys[number], unknown>;
+  if (typeof values.operationId !== 'string'
+    || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(values.operationId)
+    || typeof values.productId !== 'string' || values.productId.length === 0
+    || values.productId.trim() !== values.productId
+    || typeof values.expectedProductVersion !== 'number'
+    || !Number.isSafeInteger(values.expectedProductVersion)
+    || values.expectedProductVersion <= 0
+    || values.expectedProductVersion >= Number.MAX_SAFE_INTEGER) {
+    throw productDeletionInputIntegrityError();
+  }
+  return Object.freeze({
+    operationId: values.operationId,
+    productId: values.productId,
+    expectedProductVersion: values.expectedProductVersion,
+  });
+}
+
+function productDeletionInputIntegrityError(): Error {
+  return new Error('Product deletion input integrity check failed.');
+}
+
+async function deleteProductNow(
+  store: SheetsStore,
+  input: Readonly<ProductDeletionInput>,
+): Promise<{ productId: string }> {
+  const marker = buildProductDeletionOperationMarker(input);
+  if (store.primeRowsFresh) await store.primeRowsFresh(['Products', 'Settings']);
+  const [productRows, settingsRows] = await Promise.all([
+    store.getRows('Products'),
+    store.getRows('Settings'),
+  ]);
+  const candidates = productDeletionOperationMarkerCandidates(settingsRows, marker.key);
+  if (candidates.length > 0) {
+    if (candidates.length !== 1 || candidates[0] !== marker.value) {
+      throw productDeletionReconciliationError();
+    }
+    return { productId: input.productId };
+  }
+  if (input.expectedProductVersion !== 1) throw new Error('Product version is stale.');
+  if (!store.applyAtomicMutation) {
+    throw new Error('현재 Sheets 저장소가 원자적 상품 삭제를 지원하지 않습니다.');
+  }
+
+  const headers = productRows[0] ?? [];
+  const headerIndex = createHeaderIndex(headers);
+  const records = getProductRecordsFromRows(productRows);
+  const matchingRecords = records.filter(({ product }) => product.productId === input.productId);
+  if (matchingRecords.length === 0) throw new Error('상품을 찾을 수 없습니다.');
+  const productIdColumn = headerIndex.get('productId');
+  if (productIdColumn === undefined) throw productDeletionReconciliationError();
+  const matchingIdCells = productRows.slice(1)
+    .map((row) => String(row[productIdColumn] ?? ''))
+    .filter((value) => value.trim() === input.productId);
+  if (matchingRecords.length !== 1 || matchingIdCells.length !== 1) {
+    throw productDeletionReconciliationError();
+  }
+  if (!store.getRowsWithFormulasFresh) {
+    throw new Error('현재 Sheets 저장소가 수식 인식 상품 삭제를 지원하지 않습니다.');
+  }
+  if (!store.hasAtomicClaim) {
+    throw new Error('현재 Sheets 저장소가 원자적 상품 ID 예약 확인을 지원하지 않습니다.');
+  }
+  const formulaRows = await store.getRowsWithFormulasFresh('Products');
+  const formulaProductIdColumn = createHeaderIndex(formulaRows[0] ?? []).get('productId');
+  const targetRowNumber = matchingRecords[0].rowNumber;
+  if (formulaProductIdColumn === undefined
+    || formulaRows.length !== productRows.length
+    || formulaRows[targetRowNumber - 1]?.[formulaProductIdColumn] !== matchingIdCells[0]) {
+    throw new Error('상품 ID 수식 또는 삭제 스냅샷 무결성을 확인할 수 없습니다.');
+  }
+  const identityClaim = productIdentityClaim(input.productId, productIdColumn + 1);
+  const identityClaimExists = await store.hasAtomicClaim(identityClaim.name);
+  const operationClaimName = `product_deletion_${createHash('sha256').update(input.operationId).digest('hex')}`;
+  const resourceClaimName = `product_deletion_resource_${createHash('sha256')
+    .update(JSON.stringify([input.productId, input.expectedProductVersion]))
+    .digest('hex')}`;
+  try {
+    await store.applyAtomicMutation({
+      uniqueClaims: [
+        ...(identityClaimExists ? [] : [identityClaim]),
+        ...[operationClaimName, resourceClaimName].map((name) => ({
+          name,
+          sheetName: 'Products' as const,
+          rowNumber: 1,
+          columnNumber: productIdColumn + 1,
+        })),
+      ],
+      exactCellClears: [{
+        sheetName: 'Products',
+        columnNumber: productIdColumn + 1,
+        startRowNumber: 2,
+        value: matchingIdCells[0],
+      }],
+      updates: [],
+      appends: [{
+        sheetName: 'Settings',
+        values: buildProductDeletionOperationMarkerRow(settingsRows, marker),
+      }],
+    });
+  } catch (providerError) {
+    if (!store.primeRowsFresh) throw providerError;
+    try {
+      await store.primeRowsFresh(['Products', 'Settings']);
+    } catch {
+      throw providerError;
+    }
+    const refreshedSettingsRows = await store.getRows('Settings');
+    const refreshedCandidates = productDeletionOperationMarkerCandidates(refreshedSettingsRows, marker.key);
+    if (refreshedCandidates.length === 1 && refreshedCandidates[0] === marker.value) {
+      return { productId: input.productId };
+    }
+    if (refreshedCandidates.length > 0) throw productDeletionReconciliationError();
+    throw providerError;
+  }
+  return { productId: input.productId };
+}
+
+type ProductDeletionOperationMarker = { key: string; value: string };
+
+function productIdentityClaim(productId: string, columnNumber: number) {
+  return {
+    name: `product_identity_${createHash('sha256').update(productId).digest('hex')}`,
+    sheetName: 'Products' as const,
+    rowNumber: 1,
+    columnNumber,
+  };
+}
+
+function buildProductDeletionOperationMarker(
+  input: ProductDeletionInput,
+): ProductDeletionOperationMarker {
+  return {
+    key: `productDeletionOperation:${createHash('sha256').update(input.operationId).digest('hex')}`,
+    value: JSON.stringify({
+      version: 1,
+      operationId: input.operationId,
+      productId: input.productId,
+      expectedProductVersion: input.expectedProductVersion,
+      result: { productId: input.productId },
+    }),
+  };
+}
+
+function productDeletionOperationMarkerCandidates(
+  settingsRows: string[][],
+  key: string,
+): string[] {
+  const headerIndex = createHeaderIndex(settingsRows[0] ?? []);
+  const keyColumn = headerIndex.get('key');
+  const valueColumn = headerIndex.get('value');
+  if (keyColumn === undefined || keyColumn < 0 || valueColumn === undefined || valueColumn < 0) {
+    throw productDeletionReconciliationError();
+  }
+  return settingsRows.slice(1)
+    .filter(isNonblankSheetRow)
+    .filter((row) => row[keyColumn] === key)
+    .map((row) => String(row[valueColumn] ?? ''));
+}
+
+function hasProductDeletionTombstone(settingsRows: string[][], productId: string): boolean {
+  const headerIndex = createHeaderIndex(settingsRows[0] ?? []);
+  const keyColumn = headerIndex.get('key');
+  const valueColumn = headerIndex.get('value');
+  if (keyColumn === undefined || keyColumn < 0 || valueColumn === undefined || valueColumn < 0) {
+    throw productDeletionReconciliationError();
+  }
+  return settingsRows.slice(1).some((row) => {
+    const key = row[keyColumn];
+    const value = row[valueColumn];
+    if (typeof key !== 'string' || typeof value !== 'string'
+      || !/^productDeletionOperation:[a-f0-9]{64}$/.test(key)) return false;
+    try {
+      const parsed = JSON.parse(value) as {
+        version?: unknown;
+        operationId?: unknown;
+        productId?: unknown;
+        expectedProductVersion?: unknown;
+        result?: { productId?: unknown };
+      };
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)
+        || parsed.version !== 1
+        || typeof parsed.operationId !== 'string'
+        || parsed.productId !== productId
+        || parsed.expectedProductVersion !== 1
+        || !parsed.result || typeof parsed.result !== 'object' || Array.isArray(parsed.result)
+        || parsed.result.productId !== productId) return false;
+      const canonical = buildProductDeletionOperationMarker({
+        operationId: parsed.operationId,
+        productId,
+        expectedProductVersion: 1,
+      });
+      return canonical.key === key && canonical.value === value;
+    } catch {
+      return false;
+    }
+  });
+}
+
+function buildProductDeletionOperationMarkerRow(
+  settingsRows: string[][],
+  marker: ProductDeletionOperationMarker,
+): string[] {
+  const headers = settingsRows[0] ?? [];
+  const headerIndex = createHeaderIndex(headers);
+  const keyColumn = headerIndex.get('key');
+  const valueColumn = headerIndex.get('value');
+  if (keyColumn === undefined || keyColumn < 0 || valueColumn === undefined || valueColumn < 0) {
+    throw productDeletionReconciliationError();
+  }
+  return headers.map((header) => {
+    if (header.trim() === 'key') return marker.key;
+    if (header.trim() === 'value') return marker.value;
+    return '';
+  });
+}
+
+function getProductRecordsFromRows(rows: string[][]): ProductRecord[] {
+  const [headers, ...dataRows] = rows;
+  if (!headers) return [];
+  const headerIndex = createHeaderIndex(headers);
+  assertRequiredColumns(headerIndex, REQUIRED_PRODUCT_COLUMNS, 'Products');
+  return dataRows
+    .map((row, index) => {
+      const product = parseProductRow(row, headerIndex);
+      return product ? { product, rowNumber: index + 2 } : null;
+    })
+    .filter((record): record is ProductRecord => Boolean(record));
+}
+
+function productDeletionReconciliationError(): Error {
+  return new Error('상품 삭제 작업 기록의 무결성이 일치하지 않아 수동 조정이 필요합니다.');
 }
 
 export async function deleteProductsBatch(store: SheetsStore, productIds: string[]): Promise<{ productIds: string[] }> {

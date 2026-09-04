@@ -29,9 +29,29 @@ export type AtomicSheetAppend = {
   values: Array<string | number>;
 };
 
+export type AtomicSheetUniqueClaim = {
+  name: string;
+  sheetName: OperationalSheetName;
+  rowNumber: number;
+  columnNumber: number;
+};
+
+export type AtomicSheetExactCellClear = {
+  sheetName: OperationalSheetName;
+  columnNumber: number;
+  startRowNumber: number;
+  value: string;
+};
+
 export type AtomicSheetMutation = {
   updates: CrossSheetCellUpdate[];
   appends: AtomicSheetAppend[];
+  /** A spreadsheet-wide provider-enforced claim committed atomically with the mutation. */
+  uniqueClaim?: AtomicSheetUniqueClaim;
+  /** Additional provider-enforced claims; duplicate names abort the whole provider batch. */
+  uniqueClaims?: AtomicSheetUniqueClaim[];
+  /** Exact entire-cell clears resolved by the provider, without relying on a captured row. */
+  exactCellClears?: AtomicSheetExactCellClear[];
 };
 
 export type SheetInfo = {
@@ -80,6 +100,8 @@ export type TabularReader = {
   getRows(sheetName: OperationalSheetName): Promise<string[][]>;
   /** Forces a provider read and replaces any request-scoped cached snapshot. */
   getRowsFresh?(sheetName: OperationalSheetName): Promise<string[][]>;
+  /** Reads provider formulas directly and never consults or replaces rendered-value caches. */
+  getRowsWithFormulasFresh?(sheetName: OperationalSheetName): Promise<string[][]>;
   primeRows?(sheetNames: readonly OperationalSheetName[]): Promise<void>;
   /** Replaces all named caches from one coherent provider batch snapshot. */
   primeRowsFresh?(sheetNames: readonly OperationalSheetName[]): Promise<void>;
@@ -95,6 +117,8 @@ export type TabularStore = TabularReader & {
   updateCells?(sheetName: OperationalSheetName, updates: SheetCellUpdate[]): Promise<void>;
   updateCellsAtomicallyAcrossSheets?(updates: CrossSheetCellUpdate[]): Promise<void>;
   applyAtomicMutation?(mutation: AtomicSheetMutation): Promise<void>;
+  /** Fresh, exact provider metadata check for a spreadsheet-wide atomic claim. */
+  hasAtomicClaim?(name: string): Promise<boolean>;
   updateHeaderRow?(sheetName: OperationalSheetName, headers: string[]): Promise<void>;
   appendRow(sheetName: OperationalSheetName, values: string[]): Promise<void>;
   appendRows?(sheetName: OperationalSheetName, rows: string[][]): Promise<void>;

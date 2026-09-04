@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { types as nodeUtilTypes } from 'node:util';
 import { sql } from 'drizzle-orm';
 import type { Product, Promotion } from '@/domain/types';
 import type { TenantTransaction } from '@/server/db/transaction';
@@ -106,11 +107,9 @@ export function createDatabaseCatalogQueries(dependencies: DatabaseCatalogQueryD
           WHERE tenant_id = ${dependencies.tenantId} AND deleted_at IS NULL
           ORDER BY created_at, product_id
         `);
-        if (!Array.isArray(result.rows) || Object.getPrototypeOf(result.rows) !== Array.prototype) {
-          throw productMutationIntegrityError();
-        }
+        const rows = parseProductAdminMutationRows(result.rows);
         const seen = new Set<string>();
-        const entries = result.rows.map((value) => {
+        const entries = rows.map((value) => {
           const row = parseProductAdminMutationRow(value);
           const product = toCanonicalMutationProduct(row);
           if (seen.has(product.productId)) throw productMutationIntegrityError();
@@ -283,7 +282,7 @@ export function createDatabaseCatalogQueries(dependencies: DatabaseCatalogQueryD
 }
 
 function parseProductAdminMutationRow(value: unknown): ProductAdminMutationRow {
-  if (!value || typeof value !== 'object' || Array.isArray(value)
+  if (nodeUtilTypes.isProxy(value) || !value || typeof value !== 'object' || Array.isArray(value)
     || Object.getPrototypeOf(value) !== Object.prototype
     || Object.getOwnPropertySymbols(value).length !== 0) {
     throw productMutationIntegrityError();
@@ -306,9 +305,38 @@ function parseProductAdminMutationRow(value: unknown): ProductAdminMutationRow {
   return value as ProductAdminMutationRow;
 }
 
+function parseProductAdminMutationRows(value: unknown): unknown[] {
+  if (nodeUtilTypes.isProxy(value) || !Array.isArray(value)
+    || Object.getPrototypeOf(value) !== Array.prototype) {
+    throw productMutationIntegrityError();
+  }
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
+  if (!lengthDescriptor || lengthDescriptor.enumerable || !lengthDescriptor.writable
+    || lengthDescriptor.configurable || !Object.hasOwn(lengthDescriptor, 'value')) {
+    throw productMutationIntegrityError();
+  }
+  const length = lengthDescriptor.value;
+  const keys = Reflect.ownKeys(value);
+  if (typeof length !== 'number' || !Number.isSafeInteger(length) || length < 0
+    || keys.length !== length + 1
+    || keys.some((key, index) => key !== (index < length ? String(index) : 'length'))) {
+    throw productMutationIntegrityError();
+  }
+  const rows: unknown[] = [];
+  for (let index = 0; index < length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!descriptor || !descriptor.enumerable || !descriptor.writable || !descriptor.configurable
+      || !Object.hasOwn(descriptor, 'value')) {
+      throw productMutationIntegrityError();
+    }
+    rows.push(descriptor.value);
+  }
+  return rows;
+}
+
 function toCanonicalMutationProduct(row: ProductAdminMutationRow): Product {
   const productId = canonicalRequiredString(row.product_id);
-  const name = canonicalRequiredString(row.name);
+  const name = normalizedRequiredString(row.name);
   const price = canonicalNonnegativeSafeInteger(row.price);
   const stock = canonicalNonnegativeSafeInteger(row.stock);
   const sortOrder = canonicalSafeInteger(row.sort_order);
@@ -332,10 +360,16 @@ function canonicalRequiredString(value: unknown): string | undefined {
     ? value : undefined;
 }
 
+function normalizedRequiredString(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim();
+  return normalized || undefined;
+}
+
 function canonicalOptionalString(value: unknown): string | null | false {
-  if (value === null) return null;
-  return typeof value === 'string' && value.length > 0 && value.trim() === value
-    ? value : false;
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'string') return false;
+  return value.trim() || null;
 }
 
 function canonicalSafeInteger(value: unknown): number | undefined {

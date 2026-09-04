@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { types as nodeUtilTypes } from 'node:util';
 import { withTenantTransaction } from '@/server/db/transaction';
 import { createConfiguredSheetsStore } from '@/server/googleSheets';
 import type { CentralTenantContextInput } from '@/server/repositories/context';
@@ -14,7 +15,11 @@ import {
   resolveCompatibilityConfiguredRepository,
   type CompatibilityCentralTenantEnv,
 } from '@/server/repositories/configuredRepository';
-import { deleteProduct, type SheetsStore } from '@/server/sheetsRepository';
+import {
+  deleteProduct,
+  type ProductDeletionInput,
+  type SheetsStore,
+} from '@/server/sheetsRepository';
 
 export type ConfiguredProductDeletionInput = DeactivateProductAdminInput;
 export type ConfiguredProductDeletionResult = Readonly<{ productId: string }>;
@@ -33,7 +38,7 @@ type ProductDeletionCreatorDependencies = Readonly<{
   }) => DatabaseProductDeletionCommand;
   withTenantTransaction: typeof withTenantTransaction;
   createConfiguredSheetsStore: (request?: Request) => Promise<SheetsStore>;
-  deleteProduct: (store: SheetsStore, productId: string) => Promise<{ productId: string }>;
+  deleteProduct: (store: SheetsStore, input: ProductDeletionInput) => Promise<{ productId: string }>;
 }>;
 
 export type ConfiguredProductDeletionOptions = Readonly<{
@@ -56,10 +61,10 @@ export function createProductDeletionRepositoryCreators(
       });
       return {
         async delete(input) {
-          assertProductDeletionInput(input);
-          const rawResult = await commands.deactivate(input);
-          assertProductDeletionResult(rawResult, input);
-          return { productId: input.productId };
+          const snapshot = validatedProductDeletionInputSnapshot(input);
+          const rawResult = await commands.deactivate(snapshot);
+          assertProductDeletionResult(rawResult, snapshot);
+          return { productId: snapshot.productId };
         },
       };
     },
@@ -71,14 +76,14 @@ export function createProductDeletionRepositoryCreators(
       };
       return {
         async delete(input) {
-          assertProductDeletionInput(input);
+          const snapshot = validatedProductDeletionInputSnapshot(input);
           const deleted = await dependencies.deleteProduct(
             await configuredStore(),
-            input.productId,
+            snapshot,
           );
           const values = exactOrdinaryDataValues(deleted, ['productId']);
-          if (!values || values.productId !== input.productId) throw resultIntegrityError();
-          return { productId: input.productId };
+          if (!values || values.productId !== snapshot.productId) throw resultIntegrityError();
+          return { productId: snapshot.productId };
         },
       };
     },
@@ -87,7 +92,10 @@ export function createProductDeletionRepositoryCreators(
 
 const CANONICAL_OPERATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
-function assertProductDeletionInput(input: ConfiguredProductDeletionInput): void {
+function validatedProductDeletionInputSnapshot(
+  input: ConfiguredProductDeletionInput,
+): Readonly<ProductDeletionInput> {
+  if (nodeUtilTypes.isProxy(input)) throw resultIntegrityError();
   const values = exactOrdinaryDataValues(
     input,
     ['operationId', 'productId', 'expectedProductVersion'],
@@ -102,6 +110,11 @@ function assertProductDeletionInput(input: ConfiguredProductDeletionInput): void
     || values.expectedProductVersion >= Number.MAX_SAFE_INTEGER) {
     throw resultIntegrityError();
   }
+  return Object.freeze({
+    operationId: values.operationId,
+    productId: values.productId,
+    expectedProductVersion: values.expectedProductVersion,
+  });
 }
 
 function assertProductDeletionResult(

@@ -163,8 +163,10 @@ describe('configured product deletion composition root', () => {
     Object.defineProperty(getter, 'productId', { enumerable: true, get: hook });
     const symbol = { ...INPUT, [Symbol('extra')]: true };
     const custom = Object.assign(Object.create({}), INPUT);
+    const proxyHook = vi.fn(() => { throw new Error('proxy trap invoked'); });
+    const proxy = new Proxy({ ...INPUT }, { getOwnPropertyDescriptor: proxyHook });
     const malformed = [
-      getter, symbol, custom, { ...INPUT, extra: true },
+      getter, symbol, custom, proxy, { ...INPUT, extra: true },
       { ...INPUT, operationId: 'NOT-A-UUID' },
       { ...INPUT, operationId: 'aaaaaaaa-1111-4111-8111-111111111111'.toUpperCase() },
       { ...INPUT, productId: '' }, { ...INPUT, productId: ' P-001' },
@@ -186,6 +188,7 @@ describe('configured product deletion composition root', () => {
       expect(sheetsDeps.removeFromSheets).not.toHaveBeenCalled();
     }
     expect(hook).not.toHaveBeenCalled();
+    expect(proxyHook).not.toHaveBeenCalled();
   });
 
   it('rejects symbols, accessors, custom prototypes, descriptor changes, sparse/exotic arrays, and coercion hooks without invocation', async () => {
@@ -219,7 +222,7 @@ describe('configured product deletion composition root', () => {
     expect(hook).not.toHaveBeenCalled();
   });
 
-  it('keeps Sheets lazy and memoized, forwards the exact Request, strips command-only fields, and validates exact identity', async () => {
+  it('keeps Sheets lazy and memoized, forwards the exact Request and input values, and validates exact identity', async () => {
     const request = new Request('http://localhost/api/products/P-001', { method: 'DELETE' });
     const store = { marker: 'sheets' };
     const deps = dependencies();
@@ -236,14 +239,47 @@ describe('configured product deletion composition root', () => {
     await expect(command.delete(INPUT)).resolves.toEqual({ productId: INPUT.productId });
     expect(deps.createSheetsStore).toHaveBeenCalledOnce();
     expect(deps.createSheetsStore).toHaveBeenCalledWith(request);
-    expect(deps.removeFromSheets).toHaveBeenNthCalledWith(1, store, INPUT.productId);
-    expect(deps.removeFromSheets).toHaveBeenNthCalledWith(2, store, INPUT.productId);
+    expect(deps.removeFromSheets).toHaveBeenNthCalledWith(1, store, { ...INPUT });
+    expect(deps.removeFromSheets).toHaveBeenNthCalledWith(2, store, { ...INPUT });
+    expect(deps.removeFromSheets.mock.calls[0][1]).not.toBe(INPUT);
+    expect(deps.removeFromSheets.mock.calls[1][1]).not.toBe(INPUT);
     expect(deps.createDatabaseCatalogCommands).not.toHaveBeenCalled();
 
     deps.removeFromSheets.mockResolvedValueOnce({ productId: 'OTHER' });
     await expect(command.delete(INPUT)).rejects.toThrow(/integrity/i);
     deps.removeFromSheets.mockResolvedValueOnce({ productId: INPUT.productId, extra: true });
     await expect(command.delete(INPUT)).rejects.toThrow(/integrity/i);
+  });
+
+  it('snapshots validated Sheets deletion input before awaiting the configured store', async () => {
+    let releaseStore!: () => void;
+    const storeReady = new Promise<Record<string, string>>((resolve) => {
+      releaseStore = () => resolve({ marker: 'sheets' });
+    });
+    const deps = dependencies();
+    deps.createSheetsStore.mockReturnValue(storeReady);
+    deps.removeFromSheets.mockImplementation(async (_store, input) => {
+      expect(Object.isFrozen(input)).toBe(true);
+      return { productId: input.productId };
+    });
+    const command = await createConfiguredProductDeletion({
+      env: { CLASS_STORE_STORAGE: 'sheets' }, getCentralTenantContext: vi.fn(),
+      creators: createProductDeletionRepositoryCreators(deps.value as never),
+    });
+    const mutable = { ...INPUT };
+
+    const pending = command.delete(mutable);
+    mutable.operationId = '22222222-2222-4222-8222-222222222222';
+    mutable.productId = 'P-MUTATED';
+    mutable.expectedProductVersion = 9;
+    releaseStore();
+
+    await expect(pending).resolves.toEqual({ productId: INPUT.productId });
+    expect(deps.removeFromSheets).toHaveBeenCalledWith(
+      { marker: 'sheets' },
+      { ...INPUT },
+    );
+    expect(deps.removeFromSheets.mock.calls[0][1]).not.toBe(mutable);
   });
 
   it('preserves selected backend errors and never falls back in either direction', async () => {

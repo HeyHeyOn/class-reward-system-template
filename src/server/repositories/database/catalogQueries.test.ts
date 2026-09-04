@@ -196,6 +196,106 @@ describe('database catalog queries', () => {
     expect(rendered.match(/double precision/g)).toHaveLength(3);
   });
 
+  it('normalizes product mutation fields exactly like the established product projection', async () => {
+    await seedProduct(harness.tenantOneId, {
+      productId: 'P5', name: '  공백 상품  ', price: 1, stock: 1, isActive: true,
+      imageUrl: '   ', category: '  분류  ', sortOrder: 5, version: 4,
+    });
+
+    const expected = await queries().getProductById('P5');
+    const snapshot = await queries().getProductsForAdminMutation();
+
+    expect(snapshot.products.find(({ productId }) => productId === 'P5')).toEqual(expected);
+    expect(snapshot.mutationPreconditions.find(({ productId }) => productId === 'P5')).toEqual({
+      productId: 'P5', expectedVersion: 4,
+    });
+  });
+
+  it('rejects hostile product row arrays before invoking any array hooks', async () => {
+    const row = {
+      product_id: 'P1', name: '연필', price: 100, stock: 5, is_active: true,
+      image_url: null, category: null, sort_order: 1, version: 2,
+    };
+    const hook = vi.fn(() => row);
+    const sparse = new Array(1);
+    const decorated = [row];
+    Object.defineProperty(decorated, 'extra', { value: true });
+    const accessorIndex = [row];
+    Object.defineProperty(accessorIndex, '0', {
+      enumerable: true, configurable: true, get: hook,
+    });
+    const readonlyIndex = [row];
+    Object.defineProperty(readonlyIndex, '0', {
+      value: row, enumerable: true, writable: false, configurable: true,
+    });
+    const fixedLength = [row];
+    Object.defineProperty(fixedLength, 'length', { writable: false });
+    const ownMap = [row];
+    Object.defineProperty(ownMap, 'map', {
+      configurable: true, get: () => {
+        hook();
+        return Array.prototype.map;
+      },
+    });
+    const symbolDecorated = [row];
+    Object.defineProperty(symbolDecorated, Symbol('extra'), {
+      configurable: true, get: hook,
+    });
+    const hostileRows = [
+      sparse, decorated, accessorIndex, readonlyIndex, fixedLength, ownMap, symbolDecorated,
+    ];
+
+    const outcomes = await Promise.all(hostileRows.map(async (rows) => {
+      const runTenantTransaction: DatabaseCatalogQueryDependencies['runTenantTransaction'] =
+        async (_tenantId, callback) => callback({ execute: async () => ({ rows }) } as never);
+      try {
+        return await queries({ runTenantTransaction }).getProductsForAdminMutation();
+      } catch (error) {
+        return error;
+      }
+    }));
+
+    expect(outcomes).toHaveLength(hostileRows.length);
+    for (const outcome of outcomes) {
+      expect(outcome).toBeInstanceOf(Error);
+      expect((outcome as Error).message).toMatch(/product mutation|integrity/i);
+    }
+    expect(hook).not.toHaveBeenCalled();
+  });
+
+  it('rejects proxy-wrapped product row arrays before invoking proxy traps', async () => {
+    const trap = vi.fn(() => { throw new Error('proxy trap invoked'); });
+    const rows = new Proxy([], {
+      getPrototypeOf: trap,
+      ownKeys: trap,
+      getOwnPropertyDescriptor: trap,
+    });
+    const runTenantTransaction: DatabaseCatalogQueryDependencies['runTenantTransaction'] =
+      async (_tenantId, callback) => callback({ execute: async () => ({ rows }) } as never);
+
+    await expect(queries({ runTenantTransaction }).getProductsForAdminMutation())
+      .rejects.toThrow(/product mutation|integrity/i);
+    expect(trap).not.toHaveBeenCalled();
+  });
+
+  it('rejects proxy-wrapped product rows before invoking proxy traps', async () => {
+    const trap = vi.fn(() => { throw new Error('row proxy trap invoked'); });
+    const row = new Proxy({
+      product_id: 'P1', name: '연필', price: 100, stock: 5, is_active: true,
+      image_url: null, category: null, sort_order: 1, version: 2,
+    }, {
+      getPrototypeOf: trap,
+      ownKeys: trap,
+      getOwnPropertyDescriptor: trap,
+    });
+    const runTenantTransaction: DatabaseCatalogQueryDependencies['runTenantTransaction'] =
+      async (_tenantId, callback) => callback({ execute: async () => ({ rows: [row] }) } as never);
+
+    await expect(queries({ runTenantTransaction }).getProductsForAdminMutation())
+      .rejects.toThrow(/product mutation|integrity/i);
+    expect(trap).not.toHaveBeenCalled();
+  });
+
   it('strictly rejects malformed product mutation rows before coercion hooks run', async () => {
     const hook = vi.fn(() => { throw new Error('coercion invoked'); });
     const base = () => ({
@@ -220,7 +320,7 @@ describe('database catalog queries', () => {
     const invalid = [
       getter, custom, { ...base(), extra: true }, missing, hiddenExtra, readonlyPrice, fixedPrice,
       Object.assign(base(), { [Symbol('extra')]: true }),
-      { ...base(), product_id: ' P1' }, { ...base(), name: ' 연필' },
+      { ...base(), product_id: ' P1' },
       { ...base(), price: new Number(100) }, { ...base(), price: -1 },
       { ...base(), stock: '5' }, { ...base(), stock: -1 },
       { ...base(), is_active: new Boolean(true) }, { ...base(), image_url: new String('x') },

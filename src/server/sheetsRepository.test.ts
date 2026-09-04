@@ -406,13 +406,28 @@ const fakeReader = {
 type TestAtomicMutation = {
   updates: Array<{ sheetName: string; rowNumber: number; columnNumber: number; value: string | number }>;
   appends: Array<{ sheetName: string; values: Array<string | number> }>;
+  uniqueClaim?: { name: string; sheetName: string; rowNumber: number; columnNumber: number };
+  uniqueClaims?: Array<{ name: string; sheetName: string; rowNumber: number; columnNumber: number }>;
+  exactCellClears?: Array<{ sheetName: string; columnNumber: number; startRowNumber: number; value: string }>;
 };
 
 function applyTestAtomicMutation(rows: Record<string, string[][]>, mutation: TestAtomicMutation): void {
   for (const update of mutation.updates) {
     rows[update.sheetName][update.rowNumber - 1][update.columnNumber - 1] = String(update.value);
   }
+  for (const clear of mutation.exactCellClears ?? []) {
+    for (const row of rows[clear.sheetName].slice(clear.startRowNumber - 1)) {
+      if (row[clear.columnNumber - 1] === clear.value) row[clear.columnNumber - 1] = '';
+    }
+  }
   for (const append of mutation.appends) rows[append.sheetName].push(append.values.map(String));
+}
+
+function existingProductIdentityCapabilities(productRows: () => string[][]) {
+  return {
+    async getRowsWithFormulasFresh() { return structuredClone(productRows()); },
+    async hasAtomicClaim(name: string) { return name.startsWith('product_identity_'); },
+  };
 }
 
 function auditedLegacyTaskCancellationFixture() {
@@ -1874,14 +1889,13 @@ describe('sheets repository', () => {
     ]);
   });
 
-  it('appends a new product row with default imageUrl column', async () => {
-    const appended: Array<{ sheetName: string; values: string[] }> = [];
+  it('atomically claims product identity and appends a new product row', async () => {
+    const mutations: TestAtomicMutation[] = [];
     const fakeStore = {
       ...fakeReader,
       async updateCell() {},
-      async appendRow(sheetName: 'Students' | 'Products', values: string[]) {
-        appended.push({ sheetName, values });
-      },
+      appendRow: vi.fn(),
+      async applyAtomicMutation(mutation: TestAtomicMutation) { mutations.push(structuredClone(mutation)); },
     };
 
     await expect(
@@ -1906,12 +1920,594 @@ describe('sheets repository', () => {
       sortOrder: 4,
     });
 
-    expect(appended).toEqual([
-      { sheetName: 'Products', values: ['P004', '간식쿠폰', '1000', '5', 'TRUE', 'https://example.com/snack.png', '쿠폰', '4'] },
+    expect(mutations).toEqual([{
+      updates: [],
+      appends: [{
+        sheetName: 'Products',
+        values: ['P004', '간식쿠폰', '1000', '5', 'TRUE', 'https://example.com/snack.png', '쿠폰', '4'],
+      }],
+      uniqueClaim: {
+        name: 'product_identity_00be3dd19f080c4255bba1ed6fcfbe7d8490f6a0299e336c906b212ee035bb80',
+        sheetName: 'Products', rowNumber: 1, columnNumber: 1,
+      },
+    }]);
+    expect(fakeStore.appendRow).not.toHaveBeenCalled();
+  });
+
+  it('aligns an atomically created product with reordered and extended headers', async () => {
+    const rows = structuredClone(sheetRows) as Record<string, string[][]>;
+    rows.Products = [[
+      'name', 'productId', 'stock', 'price', 'sortOrder', 'isActive', 'category', 'custom', 'imageUrl',
+    ]];
+    const mutations: TestAtomicMutation[] = [];
+    const store = {
+      async getRows(sheetName: string) { return structuredClone(rows[sheetName]); },
+      updateCell: vi.fn(),
+      appendRow: vi.fn(),
+      async applyAtomicMutation(mutation: TestAtomicMutation) { mutations.push(structuredClone(mutation)); },
+    };
+
+    await createProduct(store, {
+      productId: 'P004',
+      name: '간식쿠폰',
+      price: 1000,
+      stock: 5,
+      isActive: true,
+      imageUrl: 'https://example.com/snack.png',
+      category: '쿠폰',
+      sortOrder: 4,
+    });
+
+    expect(mutations[0].appends).toEqual([{
+      sheetName: 'Products',
+      values: ['간식쿠폰', 'P004', '5', '1000', '4', 'TRUE', '쿠폰', '', 'https://example.com/snack.png'],
+    }]);
+    expect(mutations[0].uniqueClaim?.columnNumber).toBe(2);
+  });
+
+  it('rejects duplicate normalized optional product headers before atomic creation', async () => {
+    const rows = structuredClone(sheetRows) as Record<string, string[][]>;
+    rows.Products = [[...rows.Products[0], ' imageUrl ']];
+    const applyAtomicMutation = vi.fn();
+    const store = {
+      async getRows(sheetName: string) { return structuredClone(rows[sheetName]); },
+      updateCell: vi.fn(),
+      appendRow: vi.fn(),
+      applyAtomicMutation,
+    };
+
+    await expect(createProduct(store, {
+      productId: 'P004', name: '상품', price: 100, stock: 1, isActive: true, sortOrder: 4,
+    })).rejects.toThrow(/imageUrl|Products|컬럼/);
+    expect(applyAtomicMutation).not.toHaveBeenCalled();
+  });
+
+  it('prevents a delayed creator from resurrecting an identity another store created and deleted', async () => {
+    const rows = structuredClone(sheetRows) as Record<string, string[][]>;
+    rows.Products = [rows.Products[0]];
+    const providerClaims = new Set<string>();
+    const makeStore = () => ({
+      async getRows(sheetName: string) { return structuredClone(rows[sheetName]); },
+      async primeRowsFresh() {},
+      async getRowsWithFormulasFresh() { return structuredClone(rows.Products); },
+      async hasAtomicClaim(name: string) { return providerClaims.has(name); },
+      updateCell: vi.fn(), appendRow: vi.fn(),
+      async applyAtomicMutation(mutation: TestAtomicMutation) {
+        const claims = mutation.uniqueClaims ?? (mutation.uniqueClaim ? [mutation.uniqueClaim] : []);
+        if (claims.some((claim) => providerClaims.has(claim.name))) throw new Error('duplicate provider claim');
+        claims.forEach((claim) => providerClaims.add(claim.name));
+        applyTestAtomicMutation(rows, mutation);
+      },
+    });
+    const delayed = makeStore();
+    let releaseDelayed!: () => void;
+    const delayedPreflight = new Promise<void>((resolve) => { releaseDelayed = resolve; });
+    const readNormally = delayed.getRows;
+    delayed.getRows = async (sheetName: string) => {
+      const snapshot = await readNormally(sheetName);
+      if (sheetName === 'Settings') await delayedPreflight;
+      return snapshot;
+    };
+    const input = { productId: 'P004', name: '상품', price: 100, stock: 1, isActive: true, sortOrder: 1 };
+    const delayedCreate = createProduct(delayed, input);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const winner = makeStore();
+    await createProduct(winner, input);
+    await deleteProduct(winner, {
+      operationId: '10000000-0000-4000-8000-000000000013', productId: 'P004', expectedProductVersion: 1,
+    });
+    releaseDelayed();
+
+    await expect(delayedCreate).rejects.toThrow('duplicate provider claim');
+    expect(rows.Products.slice(1).filter((row) => row[0] === 'P004')).toHaveLength(0);
+  });
+
+  it('rejects a formula-backed product ID before any deletion mutation or marker append', async () => {
+    const rows = structuredClone(sheetRows) as Record<string, string[][]>;
+    const formulaRows = structuredClone(rows.Products);
+    formulaRows[2][0] = '="P001"';
+    const applyAtomicMutation = vi.fn();
+    const store = {
+      async getRows(sheetName: string) { return structuredClone(rows[sheetName]); },
+      async primeRowsFresh() {},
+      async getRowsWithFormulasFresh() { return formulaRows; },
+      async hasAtomicClaim() { return false; },
+      updateCell: vi.fn(), appendRow: vi.fn(), applyAtomicMutation,
+    };
+
+    await expect(deleteProduct(store, {
+      operationId: '10000000-0000-4000-8000-000000000010',
+      productId: 'P001', expectedProductVersion: 1,
+    })).rejects.toThrow(/formula|수식|무결성/i);
+    expect(applyAtomicMutation).not.toHaveBeenCalled();
+    expect(rows.Settings).toHaveLength(2);
+  });
+
+  it('bootstraps a legacy product identity claim in the same deletion batch', async () => {
+    const mutations: TestAtomicMutation[] = [];
+    const store = {
+      async getRows(sheetName: keyof typeof sheetRows) { return structuredClone(sheetRows[sheetName]); },
+      async primeRowsFresh() {},
+      async getRowsWithFormulasFresh() { return structuredClone(sheetRows.Products); },
+      async hasAtomicClaim() { return false; },
+      updateCell: vi.fn(), appendRow: vi.fn(),
+      async applyAtomicMutation(mutation: TestAtomicMutation) { mutations.push(structuredClone(mutation)); },
+    };
+
+    await deleteProduct(store, {
+      operationId: '10000000-0000-4000-8000-000000000011', productId: 'P001', expectedProductVersion: 1,
+    });
+
+    expect(mutations[0].uniqueClaims?.map((claim) => claim.name)).toEqual([
+      'product_identity_df1e40051eff4bcf9b4ebc93083bfcad7f5195746b3e657de6b72bf3cb8897c3',
+      expect.stringMatching(/^product_deletion_[a-f0-9]{64}$/),
+      expect.stringMatching(/^product_deletion_resource_[a-f0-9]{64}$/),
     ]);
   });
 
-  it('deletes student and product rows by located sheet row number', async () => {
+  it('omits only an existing identity claim while retaining deletion operation and resource claims', async () => {
+    const mutations: TestAtomicMutation[] = [];
+    const store = {
+      async getRows(sheetName: keyof typeof sheetRows) { return structuredClone(sheetRows[sheetName]); },
+      async primeRowsFresh() {},
+      async getRowsWithFormulasFresh() { return structuredClone(sheetRows.Products); },
+      async hasAtomicClaim(name: string) { return name.startsWith('product_identity_'); },
+      updateCell: vi.fn(), appendRow: vi.fn(),
+      async applyAtomicMutation(mutation: TestAtomicMutation) { mutations.push(structuredClone(mutation)); },
+    };
+
+    await deleteProduct(store, {
+      operationId: '10000000-0000-4000-8000-000000000012', productId: 'P001', expectedProductVersion: 1,
+    });
+
+    expect(mutations[0].uniqueClaims?.map((claim) => claim.name)).toEqual([
+      expect.stringMatching(/^product_deletion_[a-f0-9]{64}$/),
+      expect.stringMatching(/^product_deletion_resource_[a-f0-9]{64}$/),
+    ]);
+  });
+
+  it('rejects recreating a product ID reserved by a durable deletion tombstone', async () => {
+    const rows = structuredClone(sheetRows) as Record<string, string[][]>;
+    rows.Settings.push([
+      'productDeletionOperation:303617b9730210ef3c86c52dc2aecc4dce54aaca6af8c8b0f4ceec9ecc54e57e',
+      JSON.stringify({
+        version: 1,
+        operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        productId: 'P004',
+        expectedProductVersion: 1,
+        result: { productId: 'P004' },
+      }),
+    ]);
+    const appendRow = vi.fn();
+    const store = {
+      async getRows(sheetName: string) { return rows[sheetName]; },
+      updateCell: vi.fn(),
+      appendRow,
+    };
+
+    await expect(createProduct(store, {
+      productId: 'P004',
+      name: '재생성 상품',
+      price: 1000,
+      stock: 1,
+      isActive: true,
+      sortOrder: 4,
+    })).rejects.toThrow(/상품 ID|삭제/);
+    expect(appendRow).not.toHaveBeenCalled();
+  });
+
+  it('does not accept a whitespace-wrapped deletion marker key as exact replay evidence', async () => {
+    const rows = structuredClone(sheetRows) as Record<string, string[][]>;
+    const markerValue = JSON.stringify({
+      version: 1,
+      operationId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      productId: 'P999',
+      expectedProductVersion: 1,
+      result: { productId: 'P999' },
+    });
+    rows.Settings.push([
+      ' productDeletionOperation:00f765af1c54eb24e437746c4f64b5841490757b647bf3a392b042f872ad7090 ',
+      markerValue,
+    ]);
+    const store = {
+      async getRows(sheetName: string) { return rows[sheetName]; },
+      async primeRowsFresh() {},
+      updateCell: vi.fn(),
+      appendRow: vi.fn(),
+      applyAtomicMutation: vi.fn(),
+    };
+
+    await expect(deleteProduct(store, {
+      operationId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      productId: 'P999',
+      expectedProductVersion: 1,
+    })).rejects.toThrow('상품을 찾을 수 없습니다.');
+    expect(store.applyAtomicMutation).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate normalized Settings marker headers before deletion mutation', async () => {
+    const rows = structuredClone(sheetRows) as Record<string, string[][]>;
+    rows.Settings[0] = ['key', ' key ', 'value'];
+    const applyAtomicMutation = vi.fn();
+    const store = {
+      async getRows(sheetName: string) { return structuredClone(rows[sheetName]); },
+      async primeRowsFresh() {},
+      async getRowsWithFormulasFresh() { return structuredClone(rows.Products); },
+      async hasAtomicClaim() { return false; },
+      updateCell: vi.fn(),
+      appendRow: vi.fn(),
+      applyAtomicMutation,
+    };
+
+    await expect(deleteProduct(store, {
+      operationId: '10000000-0000-4000-8000-000000000014',
+      productId: 'P001',
+      expectedProductVersion: 1,
+    })).rejects.toThrow(/무결성|Settings|header|컬럼/i);
+    expect(applyAtomicMutation).not.toHaveBeenCalled();
+  });
+
+  it('durably replays a version-bound product deletion without a second mutation', async () => {
+    const rows = structuredClone(sheetRows) as Record<string, string[][]>;
+    let cachedRows = structuredClone(rows);
+    const writes: TestAtomicMutation[] = [];
+    let loseFirstResponse = true;
+    const store = {
+      async getRows(sheetName: string) { return cachedRows[sheetName]; },
+      async primeRowsFresh() { cachedRows = structuredClone(rows); },
+      ...existingProductIdentityCapabilities(() => cachedRows.Products),
+      updateCell: vi.fn(),
+      appendRow: vi.fn(),
+      async applyAtomicMutation(mutation: TestAtomicMutation) {
+        writes.push(structuredClone(mutation));
+        applyTestAtomicMutation(rows, mutation);
+        if (loseFirstResponse) {
+          loseFirstResponse = false;
+          throw new Error('response lost after commit');
+        }
+      },
+    };
+    const input = {
+      operationId: '10000000-0000-4000-8000-000000000001',
+      productId: 'P001',
+      expectedProductVersion: 1,
+    };
+
+    const firstResult = await deleteProduct(store, input);
+    const replay = await deleteProduct(store, input);
+
+    expect(firstResult).toEqual({ productId: 'P001' });
+    expect(replay).toEqual({ productId: 'P001' });
+    expect(writes).toHaveLength(1);
+    expect(rows.Products[2][0]).toBe('');
+    expect(rows.Settings).toHaveLength(3);
+  });
+
+  it('allows only one provider mutation across stale workers and durably replays the same operation', async () => {
+    const providerRows = structuredClone(sheetRows) as Record<string, string[][]>;
+    const providerClaims = new Set<string>();
+    const attempts: TestAtomicMutation[] = [];
+    let commits = 0;
+    const makeWorker = () => {
+      let cachedRows = structuredClone(providerRows);
+      let refreshes = 0;
+      return {
+        async getRows(sheetName: string) { return cachedRows[sheetName]; },
+        async primeRowsFresh() {
+          refreshes += 1;
+          if (refreshes > 1) cachedRows = structuredClone(providerRows);
+        },
+        ...existingProductIdentityCapabilities(() => cachedRows.Products),
+        updateCell: vi.fn(),
+        appendRow: vi.fn(),
+        async applyAtomicMutation(mutation: TestAtomicMutation) {
+          attempts.push(structuredClone(mutation));
+          const claims = mutation.uniqueClaims ?? (mutation.uniqueClaim ? [mutation.uniqueClaim] : []);
+          if (claims.length === 0) throw new Error('missing provider claim');
+          if (claims.some((claim) => providerClaims.has(claim.name))) throw new Error('provider rejected duplicate claim');
+          for (const claim of claims) providerClaims.add(claim.name);
+          applyTestAtomicMutation(providerRows, mutation);
+          commits += 1;
+        },
+      };
+    };
+    const input = {
+      operationId: '10000000-0000-4000-8000-000000000004',
+      productId: 'P001',
+      expectedProductVersion: 1,
+    };
+
+    await expect(Promise.all([
+      deleteProduct(makeWorker(), input),
+      deleteProduct(makeWorker(), input),
+    ])).resolves.toEqual([{ productId: 'P001' }, { productId: 'P001' }]);
+    await expect(deleteProduct(makeWorker(), input)).resolves.toEqual({ productId: 'P001' });
+
+    expect(attempts).toHaveLength(2);
+    expect(commits).toBe(1);
+    expect(providerRows.Settings).toHaveLength(3);
+    expect(providerRows.Products[2][0]).toBe('');
+    expect(attempts[0].uniqueClaims).toHaveLength(2);
+    expect(attempts[0].uniqueClaims?.[0].name).toMatch(/^product_deletion_[a-f0-9]{64}$/);
+    expect(attempts[1].uniqueClaims).toEqual(attempts[0].uniqueClaims);
+  });
+
+  it('allows only one provider mutation for different operations deleting the same product version', async () => {
+    const providerRows = structuredClone(sheetRows) as Record<string, string[][]>;
+    const staleRows = structuredClone(providerRows);
+    const providerClaims = new Set<string>();
+    const attempts: TestAtomicMutation[] = [];
+    let commits = 0;
+    const makeWorker = () => {
+      let cachedRows = structuredClone(staleRows);
+      let refreshes = 0;
+      return {
+        async getRows(sheetName: string) { return cachedRows[sheetName]; },
+        async primeRowsFresh() {
+          refreshes += 1;
+          if (refreshes > 1) cachedRows = structuredClone(providerRows);
+        },
+        ...existingProductIdentityCapabilities(() => cachedRows.Products),
+        updateCell: vi.fn(), appendRow: vi.fn(),
+        async applyAtomicMutation(mutation: TestAtomicMutation) {
+          attempts.push(structuredClone(mutation));
+          const claims = mutation.uniqueClaims ?? [];
+          if (claims.length !== 2) throw new Error('two provider claims required');
+          if (claims.some((claim) => providerClaims.has(claim.name))) {
+            throw new Error('opaque provider conflict');
+          }
+          for (const claim of claims) providerClaims.add(claim.name);
+          applyTestAtomicMutation(providerRows, mutation);
+          commits += 1;
+        },
+      };
+    };
+
+    const results = await Promise.allSettled([
+      deleteProduct(makeWorker(), {
+        operationId: '10000000-0000-4000-8000-000000000006',
+        productId: 'P001', expectedProductVersion: 1,
+      }),
+      deleteProduct(makeWorker(), {
+        operationId: '10000000-0000-4000-8000-000000000007',
+        productId: 'P001', expectedProductVersion: 1,
+      }),
+    ]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].reason).toMatchObject({ message: 'opaque provider conflict' });
+    expect(attempts).toHaveLength(2);
+    expect(attempts[0].uniqueClaims?.[0].name).not.toBe(attempts[1].uniqueClaims?.[0].name);
+    expect(attempts[0].uniqueClaims?.[1].name).toBe(attempts[1].uniqueClaims?.[1].name);
+    expect(commits).toBe(1);
+    expect(providerRows.Settings).toHaveLength(3);
+    expect(providerRows.Products[2][0]).toBe('');
+  });
+
+  it('clears the target product ID rather than a captured row after a provider row shift', async () => {
+    const rows = structuredClone(sheetRows) as Record<string, string[][]>;
+    const writes: TestAtomicMutation[] = [];
+    const store = {
+      async getRows(sheetName: string) { return structuredClone(rows[sheetName]); },
+      async primeRowsFresh() {},
+      ...existingProductIdentityCapabilities(() => rows.Products),
+      updateCell: vi.fn(), appendRow: vi.fn(),
+      async applyAtomicMutation(mutation: TestAtomicMutation) {
+        writes.push(structuredClone(mutation));
+        rows.Products.splice(1, 0, ['P-SHIFTED', '새 상품', '100', '1', 'TRUE', '', '', '0']);
+        applyTestAtomicMutation(rows, mutation);
+      },
+    };
+
+    await expect(deleteProduct(store, {
+      operationId: '10000000-0000-4000-8000-000000000008',
+      productId: 'P001', expectedProductVersion: 1,
+    })).resolves.toEqual({ productId: 'P001' });
+
+    expect(writes[0].updates).toEqual([]);
+    expect(writes[0].exactCellClears).toEqual([{
+      sheetName: 'Products', columnNumber: 1, startRowNumber: 2, value: 'P001',
+    }]);
+    expect(rows.Products.find((row) => row[1] === '연필')?.[0]).toBe('');
+    expect(rows.Products.find((row) => row[1] === '지우개')?.[0]).toBe('P002');
+    expect(rows.Products.find((row) => row[1] === '새 상품')?.[0]).toBe('P-SHIFTED');
+  });
+
+  it('rejects duplicate product IDs in the deletion snapshot before provider mutation', async () => {
+    const rows = structuredClone(sheetRows) as Record<string, string[][]>;
+    rows.Products.push([...rows.Products[2]]);
+    const applyAtomicMutation = vi.fn();
+    const store = {
+      async getRows(sheetName: string) { return structuredClone(rows[sheetName]); },
+      updateCell: vi.fn(), appendRow: vi.fn(), applyAtomicMutation,
+    };
+
+    await expect(deleteProduct(store, {
+      operationId: '10000000-0000-4000-8000-000000000009',
+      productId: 'P001', expectedProductVersion: 1,
+    })).rejects.toThrow(/무결성|중복|duplicate/i);
+    expect(applyAtomicMutation).not.toHaveBeenCalled();
+  });
+
+  it('does not let a stale worker with a different binding piggyback on an existing claim', async () => {
+    const providerRows = structuredClone(sheetRows) as Record<string, string[][]>;
+    const staleRows = structuredClone(providerRows);
+    const providerClaims = new Set<string>();
+    const makeWorker = (startStale: boolean) => {
+      let cachedRows = structuredClone(startStale ? staleRows : providerRows);
+      let refreshes = 0;
+      return {
+        async getRows(sheetName: string) { return cachedRows[sheetName]; },
+        async primeRowsFresh() {
+          refreshes += 1;
+          if (!startStale || refreshes > 1) cachedRows = structuredClone(providerRows);
+        },
+        ...existingProductIdentityCapabilities(() => cachedRows.Products),
+        updateCell: vi.fn(), appendRow: vi.fn(),
+        async applyAtomicMutation(mutation: TestAtomicMutation) {
+          const claims = mutation.uniqueClaims ?? (mutation.uniqueClaim ? [mutation.uniqueClaim] : []);
+          if (claims.length === 0) throw new Error('missing provider claim');
+          if (claims.some((claim) => providerClaims.has(claim.name))) throw new Error('provider rejected duplicate claim');
+          for (const claim of claims) providerClaims.add(claim.name);
+          applyTestAtomicMutation(providerRows, mutation);
+        },
+      };
+    };
+    const operationId = '10000000-0000-4000-8000-000000000005';
+    await deleteProduct(makeWorker(false), { operationId, productId: 'P001', expectedProductVersion: 1 });
+
+    await expect(deleteProduct(makeWorker(true), {
+      operationId,
+      productId: 'P002',
+      expectedProductVersion: 1,
+    })).rejects.toThrow(/무결성|충돌|일치/);
+    expect(providerRows.Products[1][0]).toBe('P002');
+    expect(providerRows.Settings).toHaveLength(3);
+  });
+
+  it('rejects reuse of a product deletion operation ID for another target or version', async () => {
+    const rows = structuredClone(sheetRows) as Record<string, string[][]>;
+    const writes: TestAtomicMutation[] = [];
+    const store = {
+      async getRows(sheetName: string) { return rows[sheetName]; },
+      ...existingProductIdentityCapabilities(() => rows.Products),
+      updateCell: vi.fn(),
+      appendRow: vi.fn(),
+      async applyAtomicMutation(mutation: TestAtomicMutation) {
+        writes.push(structuredClone(mutation));
+        applyTestAtomicMutation(rows, mutation);
+      },
+    };
+    const operationId = '10000000-0000-4000-8000-000000000002';
+    await deleteProduct(store, { operationId, productId: 'P001', expectedProductVersion: 1 });
+
+    await expect(deleteProduct(store, {
+      operationId, productId: 'P002', expectedProductVersion: 1,
+    })).rejects.toThrow(/무결성|충돌|일치/);
+    await expect(deleteProduct(store, {
+      operationId, productId: 'P001', expectedProductVersion: 2,
+    })).rejects.toThrow(/무결성|충돌|일치/);
+    expect(writes).toHaveLength(1);
+    expect(rows.Products[1][0]).toBe('P002');
+  });
+
+  it('rejects a stale Sheets product version before deletion', async () => {
+    const writes = vi.fn();
+    const store = {
+      async getRows(sheetName: keyof typeof sheetRows) { return structuredClone(sheetRows[sheetName]); },
+      updateCell: vi.fn(), appendRow: vi.fn(), applyAtomicMutation: writes,
+    };
+
+    await expect(deleteProduct(store, {
+      operationId: '10000000-0000-4000-8000-000000000003',
+      productId: 'P001',
+      expectedProductVersion: 2,
+    })).rejects.toThrow(/version|버전|stale/i);
+    expect(writes).not.toHaveBeenCalled();
+  });
+
+  it('snapshots queued deletion input and serializes only operations for the same store', async () => {
+    let releaseStoreA!: () => void;
+    let markStoreAEntered!: () => void;
+    const storeABlocked = new Promise<void>((resolve) => { releaseStoreA = resolve; });
+    const storeAEntered = new Promise<void>((resolve) => { markStoreAEntered = resolve; });
+    const makeStore = (blockFirstPrime: boolean) => {
+      const rows = structuredClone(sheetRows) as Record<string, string[][]>;
+      let primeCalls = 0;
+      const store = {
+        async primeRowsFresh() {
+          primeCalls += 1;
+          if (blockFirstPrime && primeCalls === 1) {
+            markStoreAEntered();
+            await storeABlocked;
+          }
+        },
+        async getRows(sheetName: string) { return structuredClone(rows[sheetName]); },
+        async getRowsWithFormulasFresh() { return structuredClone(rows.Products); },
+        async hasAtomicClaim() { return true; },
+        updateCell: vi.fn(), appendRow: vi.fn(),
+        async applyAtomicMutation(mutation: TestAtomicMutation) {
+          applyTestAtomicMutation(rows, mutation);
+        },
+      };
+      return { rows, store, getPrimeCalls: () => primeCalls };
+    };
+    const storeA = makeStore(true);
+    const storeB = makeStore(false);
+    const firstA = deleteProduct(storeA.store, {
+      operationId: '10000000-0000-4000-8000-000000000020',
+      productId: 'P002', expectedProductVersion: 1,
+    });
+    await storeAEntered;
+    const mutableSecondInput = {
+      operationId: '10000000-0000-4000-8000-000000000021',
+      productId: 'P001', expectedProductVersion: 1,
+    };
+    const secondA = deleteProduct(storeA.store, mutableSecondInput);
+    let storeBSettled = false;
+    const deletionB = deleteProduct(storeB.store, {
+      operationId: '10000000-0000-4000-8000-000000000022',
+      productId: 'P001', expectedProductVersion: 1,
+    }).finally(() => { storeBSettled = true; });
+    mutableSecondInput.operationId = '20000000-0000-4000-8000-000000000021';
+    mutableSecondInput.productId = 'P-MUTATED';
+    mutableSecondInput.expectedProductVersion = 9;
+
+    await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
+    const storeBSettledBeforeRelease = storeBSettled;
+    const storeAPrimesBeforeRelease = storeA.getPrimeCalls();
+    releaseStoreA();
+    const results = await Promise.allSettled([firstA, secondA, deletionB]);
+
+    expect(storeBSettledBeforeRelease).toBe(true);
+    expect(storeAPrimesBeforeRelease).toBe(1);
+    expect(results).toEqual([
+      { status: 'fulfilled', value: { productId: 'P002' } },
+      { status: 'fulfilled', value: { productId: 'P001' } },
+      { status: 'fulfilled', value: { productId: 'P001' } },
+    ]);
+    expect(storeA.rows.Products.find((row) => row[1] === '지우개')?.[0]).toBe('');
+    expect(storeA.rows.Products.find((row) => row[1] === '연필')?.[0]).toBe('');
+  });
+
+  it('rejects Proxy deletion input before touching the store or invoking traps', async () => {
+    const trap = vi.fn(() => { throw new Error('proxy trap invoked'); });
+    const input = new Proxy({
+      operationId: '10000000-0000-4000-8000-000000000023',
+      productId: 'P001', expectedProductVersion: 1,
+    }, { getOwnPropertyDescriptor: trap });
+    const store = { getRows: vi.fn(), updateCell: vi.fn(), appendRow: vi.fn() };
+
+    await expect(deleteProduct(store, input)).rejects.toThrow(/integrity/i);
+    expect(trap).not.toHaveBeenCalled();
+    expect(store.getRows).not.toHaveBeenCalled();
+  });
+
+  it('deletes student rows by located sheet row number', async () => {
     const deletedRows: Array<{ sheetName: string; rowNumber: number }> = [];
     const fakeStore = {
       ...fakeReader,
@@ -1923,11 +2519,8 @@ describe('sheets repository', () => {
     };
 
     await expect(deleteStudent(fakeStore, 'S001')).resolves.toEqual({ studentId: 'S001' });
-    await expect(deleteProduct(fakeStore, 'P001')).resolves.toEqual({ productId: 'P001' });
-
     expect(deletedRows).toEqual([
       { sheetName: 'Students', rowNumber: 2 },
-      { sheetName: 'Products', rowNumber: 3 },
     ]);
   });
 

@@ -74,6 +74,35 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
     return cloneRows(await pending);
   }
 
+  async getRowsWithFormulasFresh(sheetName: OperationalSheetName): Promise<string[][]> {
+    const sheets = await this.getSheetsClient();
+    const range = isRecurringSheet(sheetName) ? quoteSheetTitle(sheetName) : SHEET_RANGES[sheetName];
+    const response = await this.readWithRetry(() => sheets.spreadsheets.values.get({
+      spreadsheetId: this.spreadsheetId,
+      range,
+      valueRenderOption: 'FORMULA',
+    }));
+    return normalizeRows(response.data.values ?? []);
+  }
+
+  async hasAtomicClaim(name: string): Promise<boolean> {
+    if (!/^[A-Za-z_][A-Za-z0-9_]{0,249}$/.test(name)) {
+      throw new RangeError('Atomic claim name is not a valid bounded named-range identifier');
+    }
+    const sheets = await this.getSheetsClient();
+    const response = await this.readWithRetry(() => sheets.spreadsheets.get({
+      spreadsheetId: this.spreadsheetId,
+      fields: 'namedRanges(name)',
+    }));
+    const namedRanges = response.data.namedRanges;
+    if (namedRanges === undefined || namedRanges === null) return false;
+    if (!Array.isArray(namedRanges)
+      || namedRanges.some((namedRange) => !namedRange || typeof namedRange.name !== 'string')) {
+      throw new Error('Google Sheets named-range metadata was malformed.');
+    }
+    return namedRanges.some((namedRange) => namedRange.name === name);
+  }
+
   async primeRows(sheetNames: readonly OperationalSheetName[]): Promise<void> {
     const missingNames = Array.from(new Set(sheetNames)).filter((sheetName) => !this.rows.has(sheetName));
     if (missingNames.length === 0) return;
@@ -174,8 +203,9 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
   }
 
   async applyAtomicMutation(mutation: AtomicSheetMutation): Promise<void> {
-    const { updates, appends } = mutation;
-    if (updates.length === 0 && appends.length === 0) return;
+    const { updates, appends, uniqueClaim, uniqueClaims = [], exactCellClears = [] } = mutation;
+    const claims = [...(uniqueClaim ? [uniqueClaim] : []), ...uniqueClaims];
+    if (updates.length === 0 && appends.length === 0 && claims.length === 0 && exactCellClears.length === 0) return;
     for (const update of updates) {
       if (!Number.isSafeInteger(update.rowNumber) || update.rowNumber < 1) {
         throw new RangeError(`Invalid one-based row number: ${update.rowNumber}`);
@@ -187,11 +217,32 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
     if (appends.some((append) => append.values.length === 0)) {
       throw new RangeError('Atomic append rows must contain at least one cell');
     }
-
+    for (const claim of claims) {
+      if (!/^[A-Za-z_][A-Za-z0-9_]{0,249}$/.test(claim.name)) {
+        throw new RangeError('Atomic mutation claim name is not a valid bounded named-range identifier');
+      }
+      if (!Number.isSafeInteger(claim.rowNumber) || claim.rowNumber < 1) {
+        throw new RangeError(`Invalid one-based claim row number: ${claim.rowNumber}`);
+      }
+      if (!Number.isSafeInteger(claim.columnNumber) || claim.columnNumber < 1) {
+        throw new RangeError(`Invalid one-based claim column number: ${claim.columnNumber}`);
+      }
+    }
+    for (const clear of exactCellClears) {
+      if (!Number.isSafeInteger(clear.startRowNumber) || clear.startRowNumber < 1) {
+        throw new RangeError(`Invalid one-based exact-clear start row number: ${clear.startRowNumber}`);
+      }
+      if (!Number.isSafeInteger(clear.columnNumber) || clear.columnNumber < 1) {
+        throw new RangeError(`Invalid one-based exact-clear column number: ${clear.columnNumber}`);
+      }
+      if (clear.value.length === 0) throw new RangeError('Atomic exact-cell clear value must not be empty');
+    }
     const sheets = await this.getSheetsClient();
     const requiredNames = new Set<OperationalSheetName>([
       ...updates.map((update) => update.sheetName),
       ...appends.map((append) => append.sheetName),
+      ...claims.map((claim) => claim.sheetName),
+      ...exactCellClears.map((clear) => clear.sheetName),
     ]);
     const metadata = await this.readWithRetry(() => sheets.spreadsheets.get({
       spreadsheetId: this.spreadsheetId,
@@ -230,11 +281,37 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
         throw new RangeError('Atomic mutation numbers must be finite');
       }
     }
+    for (const claim of claims) {
+      const info = sheetInfo.get(claim.sheetName)!;
+      if (claim.rowNumber > info.rowCount || claim.columnNumber > info.columnCount) {
+        throw new RangeError(`${claim.sheetName} claim coordinate is outside the sheet grid`);
+      }
+    }
+    for (const clear of exactCellClears) {
+      const info = sheetInfo.get(clear.sheetName)!;
+      if (clear.startRowNumber > info.rowCount || clear.columnNumber > info.columnCount) {
+        throw new RangeError(`${clear.sheetName} exact-clear range is outside the sheet grid`);
+      }
+    }
 
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId: this.spreadsheetId,
       requestBody: {
         requests: [
+          ...claims.map((claim) => ({
+            addNamedRange: {
+              namedRange: {
+                name: claim.name,
+                range: {
+                  sheetId: sheetInfo.get(claim.sheetName)!.sheetId,
+                  startRowIndex: claim.rowNumber - 1,
+                  endRowIndex: claim.rowNumber,
+                  startColumnIndex: claim.columnNumber - 1,
+                  endColumnIndex: claim.columnNumber,
+                },
+              },
+            },
+          })),
           ...updates.map((update) => ({
             updateCells: {
               range: {
@@ -246,6 +323,22 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
               },
               rows: [{ values: [{ userEnteredValue: sheetCellValue(update.value) }] }],
               fields: 'userEnteredValue',
+            },
+          })),
+          ...exactCellClears.map((clear) => ({
+            findReplace: {
+              find: clear.value,
+              replacement: '',
+              matchCase: true,
+              matchEntireCell: true,
+              searchByRegex: false,
+              includeFormulas: false,
+              range: {
+                sheetId: sheetInfo.get(clear.sheetName)!.sheetId,
+                startRowIndex: clear.startRowNumber - 1,
+                startColumnIndex: clear.columnNumber - 1,
+                endColumnIndex: clear.columnNumber,
+              },
             },
           })),
           ...appends.map((append) => ({
