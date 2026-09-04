@@ -62,6 +62,128 @@ type NewProductDraft = {
   sortOrder: number;
 };
 
+export type ProductAdminState = {
+  products: Product[];
+  mutationPreconditions: Map<string, number>;
+};
+
+const PRODUCT_REQUIRED_KEYS = ['productId', 'name', 'price', 'stock', 'isActive', 'sortOrder'] as const;
+const PRODUCT_OPTIONAL_KEYS = ['imageUrl', 'category'] as const;
+
+function strictDataDescriptors(
+  value: unknown,
+  expectedKeys: readonly string[],
+): Record<string, PropertyDescriptor> | null {
+  if (typeof value !== 'object' || value === null || Object.getPrototypeOf(value) !== Object.prototype) return null;
+  const keys = Reflect.ownKeys(value);
+  if (keys.length !== expectedKeys.length
+    || keys.some((key) => typeof key !== 'string' || !expectedKeys.includes(key))) return null;
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  for (const key of expectedKeys) {
+    const descriptor = descriptors[key];
+    if (!descriptor || !Object.hasOwn(descriptor, 'value')
+      || descriptor.enumerable !== true || descriptor.writable !== true
+      || descriptor.configurable !== true) return null;
+  }
+  return descriptors;
+}
+
+function strictArrayValues(value: unknown): unknown[] | null {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) return null;
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
+  if (!lengthDescriptor || !Object.hasOwn(lengthDescriptor, 'value')
+    || !Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value < 0
+    || lengthDescriptor.enumerable !== false
+    || lengthDescriptor.writable !== true || lengthDescriptor.configurable !== false) return null;
+  const keys = Reflect.ownKeys(value);
+  if (keys.length !== lengthDescriptor.value + 1 || keys[keys.length - 1] !== 'length') return null;
+  const result: unknown[] = [];
+  for (let index = 0; index < lengthDescriptor.value; index += 1) {
+    const key = String(index);
+    if (keys[index] !== key) return null;
+    const descriptor = descriptors[key];
+    if (!descriptor || !Object.hasOwn(descriptor, 'value')
+      || descriptor.enumerable !== true || descriptor.writable !== true
+      || descriptor.configurable !== true) return null;
+    result.push(descriptor.value);
+  }
+  return result;
+}
+
+function invalidProductEnvelope(): never {
+  throw new Error('상품 관리자 응답 형식이 올바르지 않습니다.');
+}
+
+export function parseProductAdminEnvelope(value: unknown): ProductAdminState {
+  const envelope = strictDataDescriptors(value, ['products', 'mutationPreconditions']);
+  if (!envelope) return invalidProductEnvelope();
+  const productValues = strictArrayValues(envelope.products.value);
+  const preconditionValues = strictArrayValues(envelope.mutationPreconditions.value);
+  if (!productValues || !preconditionValues || productValues.length !== preconditionValues.length) {
+    return invalidProductEnvelope();
+  }
+
+  const products: Product[] = [];
+  const mutationPreconditions = new Map<string, number>();
+  const productIds = new Set<string>();
+  for (let index = 0; index < productValues.length; index += 1) {
+    const productValue = productValues[index];
+    if (typeof productValue !== 'object' || productValue === null
+      || Object.getPrototypeOf(productValue) !== Object.prototype) return invalidProductEnvelope();
+    const ownKeys = Reflect.ownKeys(productValue);
+    if (ownKeys.some((key) => typeof key !== 'string'
+      || (![...PRODUCT_REQUIRED_KEYS, ...PRODUCT_OPTIONAL_KEYS].includes(key as never)))) return invalidProductEnvelope();
+    const optionalKeys = PRODUCT_OPTIONAL_KEYS.filter((key) => ownKeys.includes(key));
+    const productDescriptors = strictDataDescriptors(productValue, [...PRODUCT_REQUIRED_KEYS, ...optionalKeys]);
+    if (!productDescriptors) return invalidProductEnvelope();
+    const productId = productDescriptors.productId.value;
+    const name = productDescriptors.name.value;
+    const price = productDescriptors.price.value;
+    const stock = productDescriptors.stock.value;
+    const isActive = productDescriptors.isActive.value;
+    const sortOrder = productDescriptors.sortOrder.value;
+    if (typeof productId !== 'string' || !productId || productId.trim() !== productId
+      || typeof name !== 'string' || !name || name.trim() !== name
+      || !Number.isSafeInteger(price) || price < 0
+      || !Number.isSafeInteger(stock) || stock < 0
+      || typeof isActive !== 'boolean'
+      || !Number.isInteger(sortOrder) || sortOrder < -2147483648 || sortOrder > 2147483647
+      || (productDescriptors.imageUrl && typeof productDescriptors.imageUrl.value !== 'string')
+      || (productDescriptors.category && typeof productDescriptors.category.value !== 'string')
+      || productIds.has(productId)) return invalidProductEnvelope();
+
+    const preconditionDescriptors = strictDataDescriptors(
+      preconditionValues[index],
+      ['productId', 'expectedVersion'],
+    );
+    if (!preconditionDescriptors) return invalidProductEnvelope();
+    const preconditionProductId = preconditionDescriptors.productId.value;
+    const expectedVersion = preconditionDescriptors.expectedVersion.value;
+    if (preconditionProductId !== productId || mutationPreconditions.has(productId)
+      || !Number.isSafeInteger(expectedVersion) || expectedVersion <= 0
+      || expectedVersion >= Number.MAX_SAFE_INTEGER) return invalidProductEnvelope();
+
+    productIds.add(productId);
+    products.push({
+      productId,
+      name,
+      price,
+      stock,
+      isActive,
+      sortOrder,
+      ...(productDescriptors.imageUrl ? { imageUrl: productDescriptors.imageUrl.value } : {}),
+      ...(productDescriptors.category ? { category: productDescriptors.category.value } : {}),
+    });
+    mutationPreconditions.set(productId, expectedVersion);
+  }
+  return { products, mutationPreconditions };
+}
+
+export function getProductExpectedVersion(state: ProductAdminState, productId: string): number | undefined {
+  return state.mutationPreconditions.get(productId);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -445,7 +567,11 @@ export function AdminManagePage() {
   const [hasOpenedTransactions, setHasOpenedTransactions] = useState(false);
   const storeTabRefs = useRef<Record<StoreTab, HTMLButtonElement | null>>({ inventory: null, promotions: null });
   const [students, setStudents] = useState<StudentDraft[]>([]);
-  const [products, setProducts] = useState<ProductDraft[]>([]);
+  const [productAdminState, setProductAdminState] = useState<ProductAdminState>({
+    products: [],
+    mutationPreconditions: new Map(),
+  });
+  const products = productAdminState.products;
   const [tasks, setTasks] = useState<TaskDraft[]>([]);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
@@ -530,6 +656,7 @@ export function AdminManagePage() {
       if (!studentResponse.ok) throw new Error(studentPayload.error ?? '학생 목록을 불러오지 못했습니다.');
       if (!productResponse.ok) throw new Error(productPayload.error ?? '상품 목록을 불러오지 못했습니다.');
       if (!taskResponse.ok) throw new Error(taskPayload.error ?? '과제 목록을 불러오지 못했습니다.');
+      const parsedProducts = parseProductAdminEnvelope(productPayload as unknown);
 
       if (!shouldApply()) return;
       setSettings({
@@ -541,17 +668,16 @@ export function AdminManagePage() {
         qrManualInputEnabled: Boolean(settingsPayload?.qrManualInputEnabled),
       });
       setStudents(studentPayload);
-      setProducts(productPayload);
+      setProductAdminState(parsedProducts);
       setTasks((taskPayload as TaskDraft[]).map(normalizeAdminTask));
       setSelectedStudentIds((ids) => ids.filter((id) => studentPayload.some((student: Student) => student.studentId === id)));
-      setSelectedProductIds((ids) => ids.filter((id) => productPayload.some((product: Product) => product.productId === id)));
+      setSelectedProductIds((ids) => ids.filter((id) => parsedProducts.products.some((product) => product.productId === id)));
       setSelectedTaskIds((ids) => ids.filter((id) => taskPayload.some((task: ClassTask) => task.taskId === id)));
       setMessage('');
       setIsInitialLoading(false);
     } catch (error) {
       if (!shouldApply()) return;
       setStudents([]);
-      setProducts([]);
       setTasks([]);
       setMessage(error instanceof Error ? error.message : '목록을 불러오지 못했습니다.');
       setIsInitialLoading(false);
@@ -588,7 +714,10 @@ export function AdminManagePage() {
   }
 
   function updateProduct(productId: string, patch: Partial<ProductDraft>) {
-    setProducts((current) => current.map((product) => (product.productId === productId ? { ...product, ...patch } : product)));
+    setProductAdminState((current) => ({
+      ...current,
+      products: current.products.map((product) => (product.productId === productId ? { ...product, ...patch } : product)),
+    }));
   }
 
   function updateTask(taskId: string, patch: Partial<TaskDraft>) {
@@ -807,8 +936,9 @@ export function AdminManagePage() {
       ]);
       const [productPayload, settingsPayload] = await Promise.all([productResponse.json(), settingsResponse.json().catch(() => null)]);
       if (!productResponse.ok) throw new Error(productPayload.error ?? '상품 목록을 불러오지 못했습니다.');
-      setProducts(productPayload);
-      setSelectedProductIds((ids) => ids.filter((id) => productPayload.some((product: Product) => product.productId === id)));
+      const parsedProducts = parseProductAdminEnvelope(productPayload as unknown);
+      setProductAdminState(parsedProducts);
+      setSelectedProductIds((ids) => ids.filter((id) => parsedProducts.products.some((product) => product.productId === id)));
       setSettings({
         currencyUnit: settingsPayload?.currencyUnit ?? '원',
         appTitle: settingsPayload?.appTitle ?? '학급 매점',
@@ -1381,7 +1511,10 @@ export function AdminManagePage() {
       if (!response.ok) throw new Error(payload.error ?? '매점 목록을 저장하지 못했습니다.');
       const savedProducts = payload as ProductDraft[];
       const savedMap = new Map(savedProducts.map((product) => [product.productId, product]));
-      setProducts((current) => current.map((product) => savedMap.has(product.productId) ? { ...product, ...savedMap.get(product.productId) } : product));
+      setProductAdminState((current) => ({
+        ...current,
+        products: current.products.map((product) => savedMap.has(product.productId) ? { ...product, ...savedMap.get(product.productId) } : product),
+      }));
       notify(`${label} ${rows.length}개 저장 완료`);
     } catch (error) {
       notify(error instanceof Error ? error.message : '매점 목록을 저장하지 못했습니다.');
@@ -1491,7 +1624,14 @@ export function AdminManagePage() {
       const response = await fetch(`/api/products/${encodeURIComponent(productId)}`, { method: 'DELETE' });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? '상품을 삭제하지 못했습니다.');
-      setProducts((current) => current.filter((product) => product.productId !== productId));
+      setProductAdminState((current) => {
+        const mutationPreconditions = new Map(current.mutationPreconditions);
+        mutationPreconditions.delete(productId);
+        return {
+          products: current.products.filter((product) => product.productId !== productId),
+          mutationPreconditions,
+        };
+      });
       setSelectedProductIds((current) => current.filter((id) => id !== productId));
       if (!options.silent) notify(`${productId} 삭제 완료`);
     } catch (error) {
@@ -1511,7 +1651,14 @@ export function AdminManagePage() {
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? '상품을 삭제하지 못했습니다.');
       const deletedIds = Array.isArray(payload.productIds) ? payload.productIds : idsToDelete;
-      setProducts((current) => current.filter((product) => !deletedIds.includes(product.productId)));
+      setProductAdminState((current) => {
+        const mutationPreconditions = new Map(current.mutationPreconditions);
+        deletedIds.forEach((id: string) => mutationPreconditions.delete(id));
+        return {
+          products: current.products.filter((product) => !deletedIds.includes(product.productId)),
+          mutationPreconditions,
+        };
+      });
       setSelectedProductIds((current) => current.filter((id) => !deletedIds.includes(id)));
       notify(`선택 상품 ${deletedIds.length}개 삭제 완료`);
     } catch (error) {
@@ -1755,7 +1902,10 @@ export function AdminManagePage() {
       if (!isCreatedProduct(payload, body.productId)) {
         throw new Error('상품을 추가하지 못했습니다.');
       }
-      setProducts((current) => [...current, payload].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)));
+      setProductAdminState((current) => ({
+        ...current,
+        products: [...current.products, payload].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)),
+      }));
       setNewProduct((current) => {
         const currentSemanticKey = JSON.stringify({
           productId: body.productId,

@@ -1,6 +1,10 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AdminManagePage } from './AdminManagePage';
+import {
+  AdminManagePage,
+  getProductExpectedVersion,
+  parseProductAdminEnvelope,
+} from './AdminManagePage';
 
 const students = [
   { studentId: 'S001', name: '김민준', balance: 3200, status: 'ACTIVE' },
@@ -10,6 +14,18 @@ const products = [
   { productId: 'P001', name: '연필', price: 300, stock: 19, isActive: true, imageUrl: 'https://example.com/pencil.png', category: '문구', sortOrder: 1 },
   { productId: 'P002', name: '지우개', price: 500, stock: 10, isActive: true, category: '문구', sortOrder: 2 },
 ];
+function adminProductEnvelope(
+  rows = products,
+  versions = rows.map((_, index) => index + 11),
+) {
+  return {
+    products: rows,
+    mutationPreconditions: rows.map((product, index) => ({
+      productId: product.productId,
+      expectedVersion: versions[index],
+    })),
+  };
+}
 const tasks = [
   { taskId: 'T001', title: '책 읽기', description: '책 10분 읽기', reward: 5, isActive: true, sortOrder: 1, allowedStudentIds: ['S001'] },
   { taskId: 'T002', title: '수학 학습지', description: '1장 풀기', reward: 10, isActive: true, sortOrder: 2, allowedStudentIds: [] },
@@ -42,6 +58,170 @@ function deferredResponse(payload: unknown, init?: ResponseInit) {
   return { resolve, response: gate.then(() => jsonResponse(payload, init)) };
 }
 
+describe('parseProductAdminEnvelope', () => {
+  const product = (overrides: Record<string, unknown> = {}) => ({
+    productId: 'P001',
+    name: '연필',
+    price: 300,
+    stock: 19,
+    isActive: true,
+    sortOrder: 1,
+    ...overrides,
+  });
+  const envelope = (rows: unknown[], versions?: unknown[]) => ({
+    products: rows,
+    mutationPreconditions: rows.map((row, index) => ({
+      productId: (row as { productId?: unknown }).productId,
+      expectedVersion: versions?.[index] ?? index + 1,
+    })),
+  });
+
+  it('accepts empty envelopes and optional product text both absent and present', () => {
+    const empty = parseProductAdminEnvelope({ products: [], mutationPreconditions: [] });
+    expect(empty.products).toEqual([]);
+    expect([...empty.mutationPreconditions]).toEqual([]);
+
+    const parsed = parseProductAdminEnvelope(envelope([
+      product(),
+      product({ productId: 'P002', imageUrl: '', category: '문구' }),
+    ], [7, 8]));
+    expect(parsed.products).toEqual([
+      product(),
+      product({ productId: 'P002', imageUrl: '', category: '문구' }),
+    ]);
+    expect([...parsed.mutationPreconditions]).toEqual([['P001', 7], ['P002', 8]]);
+    expect(getProductExpectedVersion(parsed, 'P002')).toBe(8);
+  });
+
+  it('returns freshly detached products and a fresh precondition map', () => {
+    const source = envelope([product({ imageUrl: 'before' })], [9]);
+    const parsed = parseProductAdminEnvelope(source);
+    source.products[0] = product({ imageUrl: 'after' });
+    source.mutationPreconditions[0].expectedVersion = 10;
+    expect(parsed.products[0]).toEqual(product({ imageUrl: 'before' }));
+    expect(getProductExpectedVersion(parsed, 'P001')).toBe(9);
+  });
+
+  it.each([
+    ['missing outer key', { products: [] }],
+    ['extra outer key', { products: [], mutationPreconditions: [], extra: true }],
+    ['custom outer prototype', Object.assign(Object.create(null), { products: [], mutationPreconditions: [] })],
+  ])('rejects %s', (_label, value) => {
+    expect(() => parseProductAdminEnvelope(value)).toThrow();
+  });
+
+  it('rejects symbol outer keys and accessors without invoking their hooks', () => {
+    const withSymbol = { products: [], mutationPreconditions: [], [Symbol('extra')]: true };
+    expect(() => parseProductAdminEnvelope(withSymbol)).toThrow();
+
+    let hooks = 0;
+    const withGetter = { mutationPreconditions: [] } as Record<string, unknown>;
+    Object.defineProperty(withGetter, 'products', {
+      enumerable: true,
+      configurable: true,
+      get() { hooks += 1; return []; },
+    });
+    expect(() => parseProductAdminEnvelope(withGetter)).toThrow();
+    expect(hooks).toBe(0);
+  });
+
+  it.each([
+    ['sparse products', (() => { const value = [product(), product({ productId: 'P002' })]; delete value[0]; return value; })()],
+    ['decorated products', Object.assign([product()], { extra: true })],
+    ['exotic products', Object.setPrototypeOf([product()], Object.create(Array.prototype))],
+    ['sparse preconditions', (() => { const value = [{ productId: 'P001', expectedVersion: 1 }]; delete value[0]; return value; })()],
+    ['decorated preconditions', Object.assign([{ productId: 'P001', expectedVersion: 1 }], { extra: true })],
+    ['exotic preconditions', Object.setPrototypeOf([{ productId: 'P001', expectedVersion: 1 }], Object.create(Array.prototype))],
+  ])('rejects %s arrays', (label, array) => {
+    const value = label.includes('products')
+      ? { products: array, mutationPreconditions: [{ productId: 'P001', expectedVersion: 1 }] }
+      : { products: [product()], mutationPreconditions: array };
+    expect(() => parseProductAdminEnvelope(value)).toThrow();
+  });
+
+  it('rejects noncanonical array descriptors', () => {
+    const rows = [product()];
+    Object.defineProperty(rows, '0', { value: rows[0], enumerable: false, writable: true, configurable: true });
+    expect(() => parseProductAdminEnvelope({
+      products: rows,
+      mutationPreconditions: [{ productId: 'P001', expectedVersion: 1 }],
+    })).toThrow();
+  });
+
+  it.each([
+    ['missing field', (() => { const value = product(); delete (value as { stock?: unknown }).stock; return value; })()],
+    ['extra field', product({ extra: true })],
+    ['custom prototype', Object.assign(Object.create(null), product())],
+    ['blank id', product({ productId: '' })],
+    ['untrimmed id', product({ productId: ' P001' })],
+    ['blank name', product({ name: ' ' })],
+    ['boxed name', product({ name: new String('연필') })],
+    ['negative price', product({ price: -1 })],
+    ['unsafe price', product({ price: Number.MAX_SAFE_INTEGER + 1 })],
+    ['fractional stock', product({ stock: 1.5 })],
+    ['boxed active', product({ isActive: new Boolean(true) })],
+    ['sort order below int32', product({ sortOrder: -2147483649 })],
+    ['sort order above int32', product({ sortOrder: 2147483648 })],
+    ['boxed optional text', product({ imageUrl: new String('image') })],
+  ])('rejects malformed product: %s', (_label, row) => {
+    expect(() => parseProductAdminEnvelope(envelope([row]))).toThrow();
+  });
+
+  it('rejects product accessors without invoking them', () => {
+    let hooks = 0;
+    const row = product();
+    Object.defineProperty(row, 'name', {
+      enumerable: true,
+      configurable: true,
+      get() { hooks += 1; return '연필'; },
+    });
+    expect(() => parseProductAdminEnvelope(envelope([row]))).toThrow();
+    expect(hooks).toBe(0);
+  });
+
+  it('rejects duplicate product IDs', () => {
+    expect(() => parseProductAdminEnvelope(envelope([product(), product()]))).toThrow();
+  });
+
+  it.each([
+    ['count mismatch', { products: [product()], mutationPreconditions: [] }],
+    ['order mismatch', {
+      products: [product(), product({ productId: 'P002' })],
+      mutationPreconditions: [{ productId: 'P002', expectedVersion: 1 }, { productId: 'P001', expectedVersion: 2 }],
+    }],
+    ['identity mismatch', {
+      products: [product()],
+      mutationPreconditions: [{ productId: 'P999', expectedVersion: 1 }],
+    }],
+    ['duplicate precondition IDs', {
+      products: [product(), product({ productId: 'P002' })],
+      mutationPreconditions: [{ productId: 'P001', expectedVersion: 1 }, { productId: 'P001', expectedVersion: 2 }],
+    }],
+    ['zero version', envelope([product()], [0])],
+    ['max safe version', envelope([product()], [Number.MAX_SAFE_INTEGER])],
+    ['boxed version', envelope([product()], [new Number(1)])],
+  ])('rejects malformed preconditions: %s', (_label, value) => {
+    expect(() => parseProductAdminEnvelope(value)).toThrow();
+  });
+
+  it('rejects precondition extras and accessors without invoking hooks', () => {
+    expect(() => parseProductAdminEnvelope({
+      products: [product()],
+      mutationPreconditions: [{ productId: 'P001', expectedVersion: 1, extra: true }],
+    })).toThrow();
+
+    let hooks = 0;
+    const precondition = { productId: 'P001' } as Record<string, unknown>;
+    Object.defineProperty(precondition, 'expectedVersion', {
+      enumerable: true,
+      configurable: true,
+      get() { hooks += 1; return 1; },
+    });
+    expect(() => parseProductAdminEnvelope({ products: [product()], mutationPreconditions: [precondition] })).toThrow();
+    expect(hooks).toBe(0);
+  });
+});
+
 describe('AdminManagePage', () => {
   beforeEach(() => {
     let t001AssignmentStatus = [
@@ -60,7 +240,7 @@ describe('AdminManagePage', () => {
           if (init?.method === 'POST') return jsonResponse({ studentId: 'S003', name: '박도윤', balance: 0, status: 'ACTIVE' });
           return jsonResponse(students);
         }
-        if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+        if (url === '/api/products?includeInactive=1') return jsonResponse(adminProductEnvelope());
         if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
         if (url === '/api/promotions') return jsonResponse({ promotions: [], mutationPreconditions: [] });
         if (url === '/api/transactions') return jsonResponse(transactions);
@@ -262,7 +442,7 @@ describe('AdminManagePage', () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/students') return jsonResponse(students);
-      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/products?includeInactive=1') return jsonResponse(adminProductEnvelope());
       if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
       if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', themeColor: 'black' });
       if (url === '/api/tasks/T001/history') return new Promise<Response>(() => undefined);
@@ -346,7 +526,7 @@ describe('AdminManagePage', () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/students') return jsonResponse(students);
-      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/products?includeInactive=1') return jsonResponse(adminProductEnvelope());
       if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
       if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', themeColor });
       if (url === '/api/tasks/T001/assignments') return new Promise<Response>(() => undefined);
@@ -415,7 +595,7 @@ describe('AdminManagePage', () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/students') return jsonResponse(students);
-      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/products?includeInactive=1') return jsonResponse(adminProductEnvelope());
       if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
       if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', themeColor });
       return jsonResponse({ error: 'not found' }, { status: 404 });
@@ -444,7 +624,7 @@ describe('AdminManagePage', () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/students') return jsonResponse(students);
-      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/products?includeInactive=1') return jsonResponse(adminProductEnvelope());
       if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
       if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', themeColor });
       if (url === '/api/tasks/T001/history') return new Promise<Response>(() => undefined);
@@ -467,7 +647,7 @@ describe('AdminManagePage', () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/students') return jsonResponse(students);
-      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/products?includeInactive=1') return jsonResponse(adminProductEnvelope());
       if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
       if (url === '/api/transactions') return jsonResponse([]);
       if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', themeColor });
@@ -883,7 +1063,7 @@ describe('AdminManagePage', () => {
     baseFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/students') return jsonResponse(students);
-      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/products?includeInactive=1') return jsonResponse(adminProductEnvelope());
       if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
       if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue', source: 'runtime' });
       if (url === '/api/transactions') return jsonResponse(transactions);
@@ -954,7 +1134,7 @@ describe('AdminManagePage', () => {
     baseFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/students') return jsonResponse(students);
-      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/products?includeInactive=1') return jsonResponse(adminProductEnvelope());
       if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
       if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue' });
       if (url === '/api/transactions') return jsonResponse(transactions);
@@ -994,7 +1174,7 @@ describe('AdminManagePage', () => {
     let productFetchCount = 0;
     let taskFetchCount = 0;
     const studentRefresh = deferredResponse(refreshedStudents);
-    const productRefresh = deferredResponse(refreshedProducts);
+    const productRefresh = deferredResponse(adminProductEnvelope(refreshedProducts, [21, 22]));
     const taskRefresh = deferredResponse(refreshedTasks);
     const baseFetch = fetch as unknown as ReturnType<typeof vi.fn>;
     baseFetch.mockImplementation(async (input: RequestInfo | URL) => {
@@ -1005,7 +1185,7 @@ describe('AdminManagePage', () => {
       }
       if (url === '/api/products?includeInactive=1') {
         productFetchCount += 1;
-        return productFetchCount === 1 ? jsonResponse(products) : productRefresh.response;
+        return productFetchCount === 1 ? jsonResponse(adminProductEnvelope()) : productRefresh.response;
       }
       if (url === '/api/tasks?includeInactive=1') {
         taskFetchCount += 1;
@@ -1039,6 +1219,58 @@ describe('AdminManagePage', () => {
     taskRefresh.resolve();
     await screen.findByDisplayValue('책 읽기 새로고침');
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '새로고침 중' })).toBeNull());
+  });
+
+  it('commits no product half when the initial admin envelope is malformed', async () => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/students') return jsonResponse(students);
+      if (url === '/api/products?includeInactive=1') return jsonResponse({
+        products,
+        mutationPreconditions: [{ productId: 'P001', expectedVersion: 11 }],
+      });
+      if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', themeColor: 'blue' });
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+
+    render(<AdminManagePage />);
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '시트 정보 불러오는 중' })).toBeNull());
+    fireEvent.click(screen.getByRole('tab', { name: '매점 관리' }));
+    expect(screen.queryByLabelText('P001 상품명')).toBeNull();
+    expect(screen.queryByLabelText('P002 상품명')).toBeNull();
+  });
+
+  it('retains the previously validated product pair after a malformed refresh', async () => {
+    let productFetchCount = 0;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/students') return jsonResponse(students);
+      if (url === '/api/products?includeInactive=1') {
+        productFetchCount += 1;
+        return productFetchCount === 1
+          ? jsonResponse(adminProductEnvelope(products, [31, 32]))
+          : jsonResponse({
+            products: [{ ...products[0], name: '절대 반영되면 안 됨' }, products[1]],
+            mutationPreconditions: [
+              { productId: 'P001', expectedVersion: 0 },
+              { productId: 'P002', expectedVersion: 42 },
+            ],
+          });
+      }
+      if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
+      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', themeColor: 'blue' });
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+
+    render(<AdminManagePage />);
+    fireEvent.click(await screen.findByRole('tab', { name: '매점 관리' }));
+    expect(await screen.findByDisplayValue('연필')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '상품 · 재고 관리 새로고침' }));
+
+    await waitFor(() => expect(alert).toHaveBeenCalled());
+    expect(screen.getByDisplayValue('연필')).toBeTruthy();
+    expect(screen.queryByDisplayValue('절대 반영되면 안 됨')).toBeNull();
   });
 
   it('renders unified admin tabs with kiosk-style design language', async () => {
@@ -1145,7 +1377,7 @@ describe('AdminManagePage', () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/students') return jsonResponse(students);
-      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/products?includeInactive=1') return jsonResponse(adminProductEnvelope());
       if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
       if (url === '/api/transactions') return jsonResponse([]);
       if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'green', source: 'runtime' });
@@ -1161,7 +1393,7 @@ describe('AdminManagePage', () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/students') return jsonResponse(students);
-      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/products?includeInactive=1') return jsonResponse(adminProductEnvelope());
       if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
       if (url === '/api/transactions') return jsonResponse([]);
       if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'black', source: 'runtime' });
@@ -1188,7 +1420,7 @@ describe('AdminManagePage', () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/students') return jsonResponse(students);
-      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/products?includeInactive=1') return jsonResponse(adminProductEnvelope());
       if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
       if (url === '/api/transactions') return jsonResponse([]);
       if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'navy', source: 'runtime' });
@@ -1213,7 +1445,7 @@ describe('AdminManagePage', () => {
         studentCalls += 1;
         return studentCalls === 1 ? jsonResponse(students) : reloadGate.response;
       }
-      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/products?includeInactive=1') return jsonResponse(adminProductEnvelope());
       if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
       if (url === '/api/transactions') return jsonResponse([]);
       if (url === '/api/settings' && init?.method === 'POST') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', source: 'runtime', adminPasswordConfigured: true });
@@ -1239,7 +1471,7 @@ describe('AdminManagePage', () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/students') return studentGate.response;
-      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/products?includeInactive=1') return jsonResponse(adminProductEnvelope());
       if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
       if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', source: 'runtime' });
       return jsonResponse({ error: 'not found' }, { status: 404 });
@@ -1947,7 +2179,7 @@ describe('AdminManagePage', () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/students') return jsonResponse(students);
-      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/products?includeInactive=1') return jsonResponse(adminProductEnvelope());
       if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
       if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue', source: 'runtime' });
       if (url === '/api/students/bulk' && init?.method === 'PATCH') return currencyRequest.response;
@@ -2088,7 +2320,7 @@ describe('AdminManagePage', () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/students') return jsonResponse(students);
-      if (url === '/api/products?includeInactive=1') return jsonResponse(products);
+      if (url === '/api/products?includeInactive=1') return jsonResponse(adminProductEnvelope());
       if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
       if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue', source: 'runtime' });
       if (url === '/api/students/bulk' && init?.method === 'PATCH') return jsonResponse({ error: '잔액은 0보다 작아질 수 없습니다.' }, { status: 400 });
