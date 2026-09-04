@@ -1273,6 +1273,343 @@ describe('AdminManagePage', () => {
     expect(screen.queryByDisplayValue('절대 반영되면 안 됨')).toBeNull();
   });
 
+  describe('Gate C2 single product deletion', () => {
+    const deleteCalls = () => vi.mocked(fetch).mock.calls.filter(([url, init]) => String(url).startsWith('/api/products/') && init?.method === 'DELETE');
+
+    async function openProductDelete(productId = 'P001') {
+      fireEvent.click(await screen.findByRole('tab', { name: '매점 관리' }));
+      const opener = await screen.findByRole('button', { name: `${productId} 상품 삭제` });
+      opener.focus();
+      fireEvent.click(opener);
+      return { opener, dialog: screen.getByRole('dialog', { name: /상품 삭제 확인/ }) };
+    }
+
+    it('opens without deleting and cancel or Escape clears the attempt and restores the opener', async () => {
+      render(<AdminManagePage />);
+      const { opener, dialog } = await openProductDelete();
+      expect(within(dialog).getByText(/연필/)).toBeTruthy();
+      expect(deleteCalls()).toHaveLength(0);
+      expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: '상품 삭제 확인' }));
+      fireEvent.click(within(dialog).getByRole('button', { name: '상품 삭제 취소' }));
+      expect(document.activeElement).toBe(opener);
+      fireEvent.click(opener);
+      fireEvent.keyDown(screen.getByRole('dialog', { name: /상품 삭제 확인/ }), { key: 'Escape' });
+      expect(screen.queryByRole('dialog', { name: /상품 삭제 확인/ })).toBeNull();
+      expect(document.activeElement).toBe(opener);
+      expect(deleteCalls()).toHaveLength(0);
+    });
+
+    it('blocks a locally created product with no loaded precondition before UUID generation or fetch', async () => {
+      render(<AdminManagePage />);
+      fireEvent.click(await screen.findByRole('tab', { name: '매점 관리' }));
+      fireEvent.change(screen.getByLabelText('새 상품명'), { target: { value: '새 상품' } });
+      fireEvent.click(screen.getByRole('button', { name: '새 상품 추가' }));
+      await screen.findByLabelText('P003 상품명');
+      vi.mocked(crypto.randomUUID).mockClear();
+      fireEvent.click(screen.getByRole('button', { name: 'P003 상품 삭제' }));
+      fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
+      expect((await screen.findByRole('alert')).textContent).toMatch(/새로고침/);
+      expect(crypto.randomUUID).not.toHaveBeenCalled();
+      expect(deleteCalls()).toHaveLength(0);
+    });
+
+    it('sends the exact encoded URL, header, and version-bound body and locks duplicate confirmation', async () => {
+      const pending = deferredResponse({ productId: 'P/001' });
+      const encodedProducts = [{ ...products[0], productId: 'P/001' }, products[1]];
+      const fallback = vi.mocked(fetch).getMockImplementation()!;
+      vi.mocked(fetch).mockImplementation(async (input, init) => {
+        if (String(input) === '/api/products?includeInactive=1') return jsonResponse(adminProductEnvelope(encodedProducts, [41, 42]));
+        if (String(input) === '/api/products/P%2F001' && init?.method === 'DELETE') return pending.response;
+        return fallback(input, init);
+      });
+      vi.mocked(crypto.randomUUID).mockReturnValue('a0000000-0000-4000-8000-00000000000b');
+      render(<AdminManagePage />);
+      const { dialog } = await openProductDelete('P/001');
+      const confirmDelete = within(dialog).getByRole('button', { name: '상품 삭제 확인' });
+      fireEvent.click(confirmDelete);
+      fireEvent.click(confirmDelete);
+      expect(confirmDelete).toHaveProperty('disabled', true);
+      fireEvent.keyDown(dialog, { key: 'Escape' });
+      expect(screen.getByRole('dialog', { name: /상품 삭제 확인/ })).toBeTruthy();
+      expect(deleteCalls()).toEqual([['/api/products/P%2F001', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operationId: 'a0000000-0000-4000-8000-00000000000b', expectedProductVersion: 41 }),
+      }]]);
+      expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
+      pending.resolve();
+      await waitFor(() => expect(screen.queryByLabelText('P/001 상품명')).toBeNull());
+    });
+
+    it('keeps keyboard focus and the active attempt isolated while deletion is pending', async () => {
+      const pending = deferredResponse({ productId: 'P001' });
+      const fallback = vi.mocked(fetch).getMockImplementation()!;
+      vi.mocked(fetch).mockImplementation(async (input, init) => {
+        if (String(input) === '/api/products/P001' && init?.method === 'DELETE') return pending.response;
+        return fallback(input, init);
+      });
+      vi.mocked(crypto.randomUUID).mockReturnValue('10000000-0000-4000-8000-000000000001');
+      render(<AdminManagePage />);
+      const { dialog } = await openProductDelete();
+      fireEvent.click(within(dialog).getByRole('button', { name: '상품 삭제 확인' }));
+      expect(fireEvent.keyDown(dialog, { key: 'Tab' })).toBe(false);
+      const backgroundDelete = document.querySelector<HTMLButtonElement>('[aria-label="P002 상품 삭제"]');
+      expect(backgroundDelete).toBeTruthy();
+      fireEvent.click(backgroundDelete!);
+      expect(within(dialog).getByText(/연필/)).toBeTruthy();
+      expect(within(dialog).queryByText(/지우개/)).toBeNull();
+      expect(deleteCalls()).toHaveLength(1);
+      expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
+
+      pending.resolve();
+      await waitFor(() => expect(screen.queryByLabelText('P001 상품명')).toBeNull());
+      expect(screen.getByLabelText('P002 상품명')).toBeTruthy();
+    });
+
+    it('rejects a noncanonical UUID without normalizing or fetching', async () => {
+      vi.mocked(crypto.randomUUID).mockReturnValue('A0000000-0000-4000-8000-00000000000B');
+      render(<AdminManagePage />);
+      await openProductDelete();
+      fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
+      expect((await screen.findByRole('alert')).textContent).toMatch(/삭제 요청을 만들지 못했습니다/);
+      expect(deleteCalls()).toHaveLength(0);
+      expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
+    });
+
+    const ambiguousCases: Array<[string, () => Promise<Response>]> = [
+      ['transport rejection', async () => { throw new Error('private transport detail'); }],
+      ['non-2xx', async () => jsonResponse({ error: 'private backend detail' }, { status: 503 })],
+      ['malformed JSON', async () => ({ ok: true, json: async () => { throw new SyntaxError('bad json'); } } as unknown as Response)],
+      ['missing productId', async () => ({ ok: true, json: async () => ({}) } as Response)],
+      ['extra field', async () => ({ ok: true, json: async () => ({ productId: 'P001', extra: true }) } as Response)],
+      ['symbol field', async () => ({ ok: true, json: async () => ({ productId: 'P001', [Symbol('extra')]: true }) } as Response)],
+      ['non-writable data', async () => ({ ok: true, json: async () => {
+        const value = { productId: 'P001' };
+        Object.defineProperty(value, 'productId', { value: 'P001', enumerable: true, writable: false, configurable: true });
+        return value;
+      } } as Response)],
+      ['custom prototype', async () => ({ ok: true, json: async () => Object.assign(Object.create(null), { productId: 'P001' }) } as Response)],
+      ['boxed productId', async () => ({ ok: true, json: async () => ({ productId: new String('P001') }) } as Response)],
+      ['wrong productId', async () => ({ ok: true, json: async () => ({ productId: 'P002' }) } as Response)],
+    ];
+
+    it.each(ambiguousCases)('retains the exact attempt and every draft after ambiguous %s', async (_label, failure) => {
+      const fallback = vi.mocked(fetch).getMockImplementation()!;
+      vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/products/P001' && init?.method === 'DELETE' ? failure() : fallback(input, init));
+      render(<AdminManagePage />);
+      fireEvent.click(await screen.findByRole('tab', { name: '매점 관리' }));
+      fireEvent.change(screen.getByLabelText('P002 상품명'), { target: { value: '지우개 초안' } });
+      fireEvent.change(screen.getByLabelText('새 상품명'), { target: { value: '새 상품 초안' } });
+      fireEvent.click(screen.getByLabelText('P001 선택'));
+      fireEvent.click(screen.getByLabelText('P002 선택'));
+      fireEvent.click(screen.getByRole('button', { name: 'P001 상품 삭제' }));
+      fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
+      const dialog = await screen.findByRole('dialog', { name: /상품 삭제 확인/ });
+      await within(dialog).findByRole('alert');
+      fireEvent.click(within(dialog).getByRole('button', { name: '상품 삭제 확인' }));
+      await waitFor(() => expect(deleteCalls()).toHaveLength(2));
+      expect(deleteCalls()[0][1]).toEqual(deleteCalls()[1][1]);
+      expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
+      expect(screen.getByLabelText('P001 상품명')).toBeTruthy();
+      expect(screen.getByLabelText('P002 상품명')).toHaveProperty('value', '지우개 초안');
+      expect(screen.getByLabelText('새 상품명')).toHaveProperty('value', '새 상품 초안');
+      expect(screen.getByLabelText('P001 선택')).toHaveProperty('checked', true);
+      expect(screen.getByLabelText('P002 선택')).toHaveProperty('checked', true);
+      expect(within(dialog).getByRole('alert').textContent).not.toContain('private');
+    });
+
+    it('does not invoke an accessor and mints a new UUID after Escape dismisses a failed attempt', async () => {
+      let hooks = 0;
+      const hostile = {} as Record<string, unknown>;
+      Object.defineProperty(hostile, 'productId', { enumerable: true, configurable: true, get() { hooks += 1; return 'P001'; } });
+      const fallback = vi.mocked(fetch).getMockImplementation()!;
+      vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/products/P001' && init?.method === 'DELETE' ? ({ ok: true, json: async () => hostile } as Response) : fallback(input, init));
+      vi.mocked(crypto.randomUUID).mockReturnValueOnce('10000000-0000-4000-8000-000000000001').mockReturnValueOnce('20000000-0000-4000-8000-000000000002');
+      render(<AdminManagePage />);
+      const { opener } = await openProductDelete();
+      fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
+      const failedDialog = await screen.findByRole('dialog', { name: /상품 삭제 확인/ });
+      await within(failedDialog).findByRole('alert');
+      fireEvent.keyDown(failedDialog, { key: 'Escape' });
+      expect(screen.queryByRole('dialog', { name: /상품 삭제 확인/ })).toBeNull();
+      expect(document.activeElement).toBe(opener);
+      fireEvent.click(opener);
+      fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
+      await waitFor(() => expect(deleteCalls()).toHaveLength(2));
+      expect(hooks).toBe(0);
+      expect(crypto.randomUUID).toHaveBeenCalledTimes(2);
+      expect(deleteCalls().map(([, init]) => init?.body)).toEqual([
+        JSON.stringify({ operationId: '10000000-0000-4000-8000-000000000001', expectedProductVersion: 11 }),
+        JSON.stringify({ operationId: '20000000-0000-4000-8000-000000000002', expectedProductVersion: 11 }),
+      ]);
+    });
+
+    it('retains an attempt across same-version and malformed refreshes, but invalidates it on changed versions', async () => {
+      let productGet = 0;
+      const fallback = vi.mocked(fetch).getMockImplementation()!;
+      vi.mocked(fetch).mockImplementation(async (input, init) => {
+        if (String(input) === '/api/products?includeInactive=1') {
+          productGet += 1;
+          if (productGet === 1) return jsonResponse(adminProductEnvelope(products, [11, 12]));
+          if (productGet === 2) return jsonResponse(adminProductEnvelope([{ ...products[0], name: '서버 연필' }, products[1]], [11, 12]));
+          if (productGet === 3) return jsonResponse({ products, mutationPreconditions: [] });
+          return jsonResponse(adminProductEnvelope(products, [21, 12]));
+        }
+        if (String(input) === '/api/products/P001' && init?.method === 'DELETE') return jsonResponse({ productId: 'wrong' });
+        return fallback(input, init);
+      });
+      render(<AdminManagePage />);
+      await openProductDelete();
+      fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
+      await screen.findByRole('alert');
+      fireEvent.click(screen.getByRole('button', { name: '상품 · 재고 관리 새로고침', hidden: true }));
+      await screen.findByDisplayValue('서버 연필');
+      expect(screen.getByRole('dialog', { name: /상품 삭제 확인/ })).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: '상품 · 재고 관리 새로고침', hidden: true }));
+      await waitFor(() => expect(alert).toHaveBeenCalled());
+      expect(screen.getByRole('dialog', { name: /상품 삭제 확인/ })).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
+      await waitFor(() => expect(deleteCalls()).toHaveLength(2));
+      expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
+      fireEvent.click(screen.getByRole('button', { name: '상품 · 재고 관리 새로고침', hidden: true }));
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: /상품 삭제 확인/ })).toBeNull());
+    });
+
+    it('clears the retained attempt and dialog when a valid refresh removes the target', async () => {
+      let productGet = 0;
+      const fallback = vi.mocked(fetch).getMockImplementation()!;
+      vi.mocked(fetch).mockImplementation(async (input, init) => {
+        if (String(input) === '/api/products?includeInactive=1') {
+          productGet += 1;
+          return productGet === 1
+            ? jsonResponse(adminProductEnvelope(products, [11, 12]))
+            : jsonResponse(adminProductEnvelope([products[1]], [12]));
+        }
+        if (String(input) === '/api/products/P001' && init?.method === 'DELETE') return jsonResponse({ productId: 'wrong' });
+        return fallback(input, init);
+      });
+      render(<AdminManagePage />);
+      await openProductDelete();
+      fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
+      await screen.findByRole('alert');
+      fireEvent.click(screen.getByRole('button', { name: '상품 · 재고 관리 새로고침', hidden: true }));
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: /상품 삭제 확인/ })).toBeNull());
+      expect(screen.queryByLabelText('P001 상품명')).toBeNull();
+      expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
+    });
+
+    it('guards a late old success after version-changing refresh', async () => {
+      const oldDelete = deferredResponse({ productId: 'P001' });
+      let productGet = 0;
+      const fallback = vi.mocked(fetch).getMockImplementation()!;
+      vi.mocked(fetch).mockImplementation(async (input, init) => {
+        if (String(input) === '/api/products?includeInactive=1') {
+          productGet += 1;
+          return jsonResponse(productGet === 1 ? adminProductEnvelope(products, [11, 12]) : adminProductEnvelope([{ ...products[0], name: '새 버전 연필' }, products[1]], [99, 12]));
+        }
+        if (String(input) === '/api/products/P001' && init?.method === 'DELETE') return oldDelete.response;
+        return fallback(input, init);
+      });
+      render(<AdminManagePage />);
+      await openProductDelete();
+      fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
+      fireEvent.click(screen.getByRole('button', { name: '상품 · 재고 관리 새로고침', hidden: true }));
+      await screen.findByDisplayValue('새 버전 연필');
+      expect(screen.queryByRole('dialog', { name: /상품 삭제 확인/ })).toBeNull();
+      oldDelete.resolve();
+      await act(async () => undefined);
+      expect(screen.getByLabelText('P001 상품명')).toHaveProperty('value', '새 버전 연필');
+    });
+
+    it('does not let an older settings reload resurrect a product deleted after that reload started', async () => {
+      const staleLoad = deferredResponse(adminProductEnvelope(products, [11, 12]));
+      const fallback = vi.mocked(fetch).getMockImplementation()!;
+      let productGets = 0;
+      vi.mocked(fetch).mockImplementation(async (input, init) => {
+        if (String(input) === '/api/products?includeInactive=1') {
+          productGets += 1;
+          if (productGets === 2) return staleLoad.response;
+        }
+        if (String(input) === '/api/products/P001' && init?.method === 'DELETE') {
+          return jsonResponse({ productId: 'P001' });
+        }
+        return fallback(input, init);
+      });
+      vi.mocked(crypto.randomUUID).mockReturnValue('10000000-0000-4000-8000-000000000001');
+      render(<AdminManagePage />);
+      await screen.findByText('관리자 목록도 이 설정을 사용합니다: 학생 2명 · 상품 2개');
+      fireEvent.change(screen.getByLabelText('Google Sheets 주소 또는 시트 ID'), { target: { value: 'sheet-new' } });
+      fireEvent.click(screen.getByRole('button', { name: '시스템 설정 저장' }));
+      await waitFor(() => expect(productGets).toBe(2));
+
+      fireEvent.click(screen.getByRole('tab', { name: '매점 관리' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'P001 상품 삭제' }));
+      fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
+      await waitFor(() => expect(screen.queryByLabelText('P001 상품명')).toBeNull());
+
+      staleLoad.resolve();
+      await act(async () => undefined);
+      expect(screen.queryByLabelText('P001 상품명')).toBeNull();
+      expect(screen.getByLabelText('P002 상품명')).toBeTruthy();
+    });
+
+    it('applies unrelated settings from a stale manual product refresh without restoring deleted products', async () => {
+      const staleProducts = deferredResponse(adminProductEnvelope(products, [11, 12]));
+      const fallback = vi.mocked(fetch).getMockImplementation()!;
+      let productGets = 0;
+      let staleRefreshStarted = false;
+      vi.mocked(fetch).mockImplementation(async (input, init) => {
+        if (String(input) === '/api/products?includeInactive=1') {
+          productGets += 1;
+          if (productGets === 2) {
+            staleRefreshStarted = true;
+            return staleProducts.response;
+          }
+        }
+        if (String(input) === '/api/settings' && !init?.method && staleRefreshStarted) {
+          return jsonResponse({ currencyUnit: '달', appTitle: '새 매점', bankTitle: '새 은행', themeColor: 'purple', fontFamily: 'default' });
+        }
+        if (String(input) === '/api/products/P001' && init?.method === 'DELETE') {
+          return jsonResponse({ productId: 'P001' });
+        }
+        return fallback(input, init);
+      });
+      vi.mocked(crypto.randomUUID).mockReturnValue('10000000-0000-4000-8000-000000000001');
+      const { container } = render(<AdminManagePage />);
+      fireEvent.click(await screen.findByRole('tab', { name: '매점 관리' }));
+      fireEvent.click(screen.getByRole('button', { name: '상품 · 재고 관리 새로고침' }));
+      await waitFor(() => expect(productGets).toBe(2));
+
+      fireEvent.click(screen.getByRole('button', { name: 'P001 상품 삭제' }));
+      fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
+      await waitFor(() => expect(screen.queryByLabelText('P001 상품명')).toBeNull());
+      staleProducts.resolve();
+      await waitFor(() => expect((container.querySelector('[data-testid="admin-shell"]') as HTMLElement).style.getPropertyValue('--theme-shell')).toBe('#F7EDFC'));
+      expect(screen.queryByLabelText('P001 상품명')).toBeNull();
+    });
+
+    it('removes only the confirmed target and preserves unrelated drafts, selection, and preconditions', async () => {
+      vi.mocked(crypto.randomUUID).mockReturnValueOnce('10000000-0000-4000-8000-000000000001').mockReturnValueOnce('20000000-0000-4000-8000-000000000002');
+      render(<AdminManagePage />);
+      fireEvent.click(await screen.findByRole('tab', { name: '매점 관리' }));
+      fireEvent.change(screen.getByLabelText('P002 상품명'), { target: { value: '지우개 초안' } });
+      fireEvent.change(screen.getByLabelText('새 상품명'), { target: { value: '새 상품 초안' } });
+      fireEvent.click(screen.getByLabelText('P001 선택'));
+      fireEvent.click(screen.getByLabelText('P002 선택'));
+      fireEvent.click(screen.getByRole('button', { name: 'P001 상품 삭제' }));
+      fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
+      await waitFor(() => expect(screen.queryByLabelText('P001 상품명')).toBeNull());
+      expect(alert).toHaveBeenCalledWith('P001 삭제 완료');
+      expect(screen.getByLabelText('P002 상품명')).toHaveProperty('value', '지우개 초안');
+      expect(screen.getByLabelText('새 상품명')).toHaveProperty('value', '새 상품 초안');
+      expect(screen.getByLabelText('P002 선택')).toHaveProperty('checked', true);
+      fireEvent.click(screen.getByRole('button', { name: 'P002 상품 삭제' }));
+      fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
+      await waitFor(() => expect(deleteCalls()).toHaveLength(2));
+      expect(deleteCalls()[1][1]?.body).toBe(JSON.stringify({ operationId: '20000000-0000-4000-8000-000000000002', expectedProductVersion: 12 }));
+    });
+  });
+
   it('renders unified admin tabs with kiosk-style design language', async () => {
     const { container } = render(<AdminManagePage />);
 

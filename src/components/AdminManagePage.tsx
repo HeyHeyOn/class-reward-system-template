@@ -62,6 +62,20 @@ type NewProductDraft = {
   sortOrder: number;
 };
 
+type ProductDeleteAttempt = {
+  productId: string;
+  expectedProductVersion: number;
+  operationId: string;
+};
+
+type ProductDeleteConfirmation = {
+  productId: string;
+  name: string;
+  opener: HTMLElement;
+  deleting: boolean;
+  error: string;
+};
+
 export type ProductAdminState = {
   products: Product[];
   mutationPreconditions: Map<string, number>;
@@ -182,6 +196,17 @@ export function parseProductAdminEnvelope(value: unknown): ProductAdminState {
 
 export function getProductExpectedVersion(state: ProductAdminState, productId: string): number | undefined {
   return state.mutationPreconditions.get(productId);
+}
+
+function isCanonicalOperationId(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value);
+}
+
+function parseProductDeleteResult(value: unknown, expectedProductId: string): { productId: string } | null {
+  const descriptors = strictDataDescriptors(value, ['productId']);
+  if (!descriptors || typeof descriptors.productId.value !== 'string'
+    || descriptors.productId.value !== expectedProductId) return null;
+  return { productId: descriptors.productId.value };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -589,6 +614,10 @@ export function AdminManagePage() {
   const [newProduct, setNewProduct] = useState<NewProductDraft>(EMPTY_PRODUCT);
   const productCreationAttempt = useRef<{ semanticKey: string; operationId: string } | null>(null);
   const productCreationInFlight = useRef(false);
+  const [productDeleteConfirmation, setProductDeleteConfirmation] = useState<ProductDeleteConfirmation | null>(null);
+  const productDeleteAttempt = useRef<ProductDeleteAttempt | null>(null);
+  const productDeleteInFlight = useRef(false);
+  const productMutationEpoch = useRef(0);
   const [newTask, setNewTask] = useState<Omit<TaskDraft, 'taskId'>>(EMPTY_TASK);
   const taskCreationAttempt = useRef<{ semanticKey: string; operationId: string } | null>(null);
   const taskCreationInFlight = useRef(false);
@@ -638,6 +667,7 @@ export function AdminManagePage() {
 
   const loadLinkedSheetData = useCallback(async (options: { silent?: boolean; shouldApply?: () => boolean } = {}) => {
     const shouldApply = options.shouldApply ?? (() => true);
+    const productEpochAtStart = productMutationEpoch.current;
 
     if (!options.silent && shouldApply()) {
       setIsInitialLoading(true);
@@ -668,10 +698,20 @@ export function AdminManagePage() {
         qrManualInputEnabled: Boolean(settingsPayload?.qrManualInputEnabled),
       });
       setStudents(studentPayload);
-      setProductAdminState(parsedProducts);
+      if (productMutationEpoch.current === productEpochAtStart) {
+        setProductAdminState(parsedProducts);
+        const retainedProductDeleteAttempt = productDeleteAttempt.current;
+        if (retainedProductDeleteAttempt
+          && parsedProducts.mutationPreconditions.get(retainedProductDeleteAttempt.productId)
+            !== retainedProductDeleteAttempt.expectedProductVersion) {
+          productDeleteAttempt.current = null;
+          productDeleteInFlight.current = false;
+          setProductDeleteConfirmation(null);
+        }
+        setSelectedProductIds((ids) => ids.filter((id) => parsedProducts.products.some((product) => product.productId === id)));
+      }
       setTasks((taskPayload as TaskDraft[]).map(normalizeAdminTask));
       setSelectedStudentIds((ids) => ids.filter((id) => studentPayload.some((student: Student) => student.studentId === id)));
-      setSelectedProductIds((ids) => ids.filter((id) => parsedProducts.products.some((product) => product.productId === id)));
       setSelectedTaskIds((ids) => ids.filter((id) => taskPayload.some((task: ClassTask) => task.taskId === id)));
       setMessage('');
       setIsInitialLoading(false);
@@ -896,6 +936,25 @@ export function AdminManagePage() {
     setTaskDeleteConfirmation(null);
   }
 
+  function requestProductDelete(product: ProductDraft, opener: HTMLElement) {
+    if (productDeleteConfirmation || productDeleteInFlight.current) return;
+    productDeleteAttempt.current = null;
+    productDeleteInFlight.current = false;
+    setProductDeleteConfirmation({
+      productId: product.productId,
+      name: product.name,
+      opener,
+      deleting: false,
+      error: '',
+    });
+  }
+
+  function cancelProductDelete() {
+    if (productDeleteInFlight.current || productDeleteConfirmation?.deleting) return;
+    productDeleteAttempt.current = null;
+    setProductDeleteConfirmation(null);
+  }
+
   function notify(messageText: string) {
     window.alert(messageText);
   }
@@ -929,6 +988,7 @@ export function AdminManagePage() {
 
   async function refreshProducts() {
     setIsRefreshingLists(true);
+    const productEpochAtStart = productMutationEpoch.current;
     try {
       const [productResponse, settingsResponse] = await Promise.all([
         fetch('/api/products?includeInactive=1', { cache: 'no-store' }),
@@ -937,8 +997,18 @@ export function AdminManagePage() {
       const [productPayload, settingsPayload] = await Promise.all([productResponse.json(), settingsResponse.json().catch(() => null)]);
       if (!productResponse.ok) throw new Error(productPayload.error ?? '상품 목록을 불러오지 못했습니다.');
       const parsedProducts = parseProductAdminEnvelope(productPayload as unknown);
-      setProductAdminState(parsedProducts);
-      setSelectedProductIds((ids) => ids.filter((id) => parsedProducts.products.some((product) => product.productId === id)));
+      if (productMutationEpoch.current === productEpochAtStart) {
+        setProductAdminState(parsedProducts);
+        const retainedProductDeleteAttempt = productDeleteAttempt.current;
+        if (retainedProductDeleteAttempt
+          && parsedProducts.mutationPreconditions.get(retainedProductDeleteAttempt.productId)
+            !== retainedProductDeleteAttempt.expectedProductVersion) {
+          productDeleteAttempt.current = null;
+          productDeleteInFlight.current = false;
+          setProductDeleteConfirmation(null);
+        }
+        setSelectedProductIds((ids) => ids.filter((id) => parsedProducts.products.some((product) => product.productId === id)));
+      }
       setSettings({
         currencyUnit: settingsPayload?.currencyUnit ?? '원',
         appTitle: settingsPayload?.appTitle ?? '학급 매점',
@@ -1619,11 +1689,51 @@ export function AdminManagePage() {
     }
   }
 
-  async function deleteProductRow(productId: string, options: { silent?: boolean } = {}) {
+  async function confirmProductDelete() {
+    if (!productDeleteConfirmation || productDeleteInFlight.current) return;
+    const { productId } = productDeleteConfirmation;
+    const expectedProductVersion = productAdminState.mutationPreconditions.get(productId);
+    if (!Number.isSafeInteger(expectedProductVersion) || Number(expectedProductVersion) <= 0) {
+      setProductDeleteConfirmation((current) => current?.productId === productId
+        ? { ...current, error: '상품 삭제 전 목록을 새로고침해 주세요.' }
+        : current);
+      return;
+    }
+
+    let attempt = productDeleteAttempt.current;
+    if (!attempt || attempt.productId !== productId
+      || attempt.expectedProductVersion !== expectedProductVersion) {
+      const operationId = crypto.randomUUID();
+      if (!isCanonicalOperationId(operationId)) {
+        productDeleteAttempt.current = null;
+        setProductDeleteConfirmation((current) => current?.productId === productId
+          ? { ...current, error: '안전한 상품 삭제 요청을 만들지 못했습니다. 다시 시도해 주세요.' }
+          : current);
+        return;
+      }
+      attempt = { productId, expectedProductVersion: Number(expectedProductVersion), operationId };
+      productDeleteAttempt.current = attempt;
+    }
+
+    productDeleteInFlight.current = true;
+    setProductDeleteConfirmation((current) => current?.productId === productId
+      ? { ...current, deleting: true, error: '' }
+      : current);
     try {
-      const response = await fetch(`/api/products/${encodeURIComponent(productId)}`, { method: 'DELETE' });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error ?? '상품을 삭제하지 못했습니다.');
+      const response = await fetch(`/api/products/${encodeURIComponent(productId)}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          operationId: attempt.operationId,
+          expectedProductVersion: attempt.expectedProductVersion,
+        }),
+      });
+      const payload: unknown = await response.json();
+      if (!response.ok || !parseProductDeleteResult(payload, productId)) {
+        throw new Error('ambiguous product deletion');
+      }
+      if (productDeleteAttempt.current !== attempt) return;
+      productMutationEpoch.current += 1;
       setProductAdminState((current) => {
         const mutationPreconditions = new Map(current.mutationPreconditions);
         mutationPreconditions.delete(productId);
@@ -1633,9 +1743,16 @@ export function AdminManagePage() {
         };
       });
       setSelectedProductIds((current) => current.filter((id) => id !== productId));
-      if (!options.silent) notify(`${productId} 삭제 완료`);
-    } catch (error) {
-      notify(error instanceof Error ? error.message : '상품을 삭제하지 못했습니다.');
+      productDeleteAttempt.current = null;
+      productDeleteInFlight.current = false;
+      setProductDeleteConfirmation(null);
+      notify(`${productId} 삭제 완료`);
+    } catch {
+      if (productDeleteAttempt.current !== attempt) return;
+      productDeleteInFlight.current = false;
+      setProductDeleteConfirmation((current) => current?.productId === productId
+        ? { ...current, deleting: false, error: '상품 삭제 결과를 확인하지 못했습니다. 같은 창에서 다시 시도해 주세요.' }
+        : current);
     }
   }
 
@@ -2049,7 +2166,7 @@ export function AdminManagePage() {
 
   return (
     <main data-testid="admin-shell" style={rootStyle} className={`min-h-screen ${theme.shell} ${theme.pageText} p-2 sm:p-3 lg:p-5`}>
-      <div data-testid="admin-background" inert={taskHistory || taskDeleteConfirmation || taskScheduleEditor || taskAssignmentEditor || taskResetConfirmation ? true : undefined} aria-hidden={taskHistory || taskDeleteConfirmation || taskScheduleEditor || taskAssignmentEditor || taskResetConfirmation ? true : undefined}>
+      <div data-testid="admin-background" inert={taskHistory || taskDeleteConfirmation || productDeleteConfirmation || taskScheduleEditor || taskAssignmentEditor || taskResetConfirmation ? true : undefined} aria-hidden={taskHistory || taskDeleteConfirmation || productDeleteConfirmation || taskScheduleEditor || taskAssignmentEditor || taskResetConfirmation ? true : undefined}>
       <section className="mx-auto flex w-full max-w-[1280px] flex-col gap-3 lg:gap-4">
         <header data-testid="admin-header" className={`rounded-[1.25rem] border ${semantic.border} ${semantic.surface} px-4 py-4 text-center ${semantic.text} shadow-sm sm:rounded-[1.75rem] md:px-6`}>
           <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -2261,7 +2378,7 @@ export function AdminManagePage() {
                     <label className={`flex h-8 items-center justify-center rounded-lg ${theme.softBg} text-[10px] font-bold ${theme.softText}`}>
                       <input aria-label={`${product.productId} 판매중`} checked={Boolean(product.isActive)} onChange={(event) => updateProduct(product.productId, { isActive: event.target.checked })} type="checkbox" />
                     </label>
-                    <button aria-label={`${product.productId} 상품 삭제`} className="h-8 rounded-lg bg-rose-100 px-1 text-[10px] font-black text-rose-700" onClick={() => deleteProductRow(product.productId)} type="button">
+                    <button aria-label={`${product.productId} 상품 삭제`} className="h-8 rounded-lg bg-rose-100 px-1 text-[10px] font-black text-rose-700" onClick={(event) => requestProductDelete(product, event.currentTarget)} type="button">
                       삭제
                     </button>
                   </div>
@@ -2566,6 +2683,13 @@ export function AdminManagePage() {
           confirmation={taskDeleteConfirmation}
           onCancel={cancelTaskDelete}
           onConfirm={() => void confirmTaskDelete()}
+        />
+      ) : null}
+      {productDeleteConfirmation ? (
+        <ProductDeleteConfirmDialog
+          confirmation={productDeleteConfirmation}
+          onCancel={cancelProductDelete}
+          onConfirm={() => void confirmProductDelete()}
         />
       ) : null}
       {taskAssignmentEditor ? (
@@ -2885,6 +3009,56 @@ function TaskDeleteConfirmDialog({
         <div className="mt-4 flex gap-2">
           <button ref={confirmRef} type="button" aria-label="과제 삭제 확인" disabled={confirmation.deleting} onClick={onConfirm} className="flex-1 rounded-xl bg-rose-600 py-3 font-black text-white disabled:cursor-not-allowed disabled:opacity-60">{confirmation.deleting ? '삭제 중...' : '삭제'}</button>
           <button type="button" aria-label="과제 삭제 취소" disabled={confirmation.deleting} onClick={onCancel} className="flex-1 rounded-xl bg-[var(--theme-surface-raised)] py-3 font-black text-[var(--theme-text)] disabled:cursor-not-allowed disabled:opacity-60">취소</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ProductDeleteConfirmDialog({ confirmation, onCancel, onConfirm }: {
+  confirmation: ProductDeleteConfirmation;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const dialogRef = useRef<HTMLElement>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    confirmRef.current?.focus();
+    return () => confirmation.opener.focus();
+  }, [confirmation.opener]);
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLElement>) {
+    if (event.key === 'Escape' && !confirmation.deleting) {
+      event.preventDefault();
+      event.stopPropagation();
+      onCancel();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLButtonElement>('button:not([disabled])') ?? []);
+    if (!controls.length) {
+      event.preventDefault();
+      return;
+    }
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    if ((event.shiftKey && document.activeElement === first)
+      || (!event.shiftKey && document.activeElement === last)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <section ref={dialogRef} role="dialog" aria-modal="true" aria-label={`${confirmation.name} 상품 삭제 확인`} onKeyDown={handleKeyDown} className="w-full max-w-md rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-5 text-[var(--theme-text)] shadow-2xl">
+        <h2 className="text-xl font-black">상품을 삭제할까요?</h2>
+        <p className="mt-3 rounded-xl bg-[var(--theme-surface-raised)] p-4 font-bold"><strong>{confirmation.name}</strong> ({confirmation.productId}) 상품을 삭제합니다.</p>
+        {confirmation.error ? <p role="alert" className="mt-3 rounded-xl border border-rose-500 bg-rose-100 p-3 text-sm font-bold text-rose-800">{confirmation.error}</p> : null}
+        <div className="mt-4 flex gap-2">
+          <button ref={confirmRef} type="button" aria-label="상품 삭제 확인" disabled={confirmation.deleting} onClick={onConfirm} className="flex-1 rounded-xl bg-rose-600 py-3 font-black text-white disabled:cursor-not-allowed disabled:opacity-60">{confirmation.deleting ? '삭제 중...' : '삭제'}</button>
+          <button type="button" aria-label="상품 삭제 취소" disabled={confirmation.deleting} onClick={onCancel} className="flex-1 rounded-xl bg-[var(--theme-surface-raised)] py-3 font-black text-[var(--theme-text)] disabled:cursor-not-allowed disabled:opacity-60">취소</button>
         </div>
       </section>
     </div>
