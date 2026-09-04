@@ -1,7 +1,10 @@
 import { createCipheriv, createHash, randomBytes } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('server-only', () => ({}));
 import { createSignedAdminSessionToken } from '@/server/adminAuth';
 import { isAuthorizedAdminRequest } from '@/server/apiAuth';
+import { runWithTrustedTenantRequestContext } from '@/server/trustedTenantRequestContext';
 
 const googleEnv = {
   AUTH_SECRET: 'test-auth-secret',
@@ -76,7 +79,37 @@ describe('api auth', () => {
     expect(isAuthorizedAdminRequest(new Request('https://example.com/api/products'), googleEnv)).toBe(false);
   });
 
+  it('accepts only dispatcher-verified tenant membership for scoped admin handlers', () => {
+    const tenant = { id: '20000000-0000-4000-8000-000000000001', slug: 'alpha-class', displayName: 'Alpha', lifecycle: 'ACTIVE' as const, timezone: 'Asia/Seoul' as const };
+    const session = { subject: 'subject-1', email: 'owner@example.com', issuedAt: 1 };
+    const membership = { id: '30000000-0000-4000-8000-000000000001', tenantId: tenant.id, userId: '10000000-0000-4000-8000-000000000001', googleSubject: session.subject, role: 'OWNER' as const };
+
+    expect(runWithTrustedTenantRequestContext({ tenant, session, membership }, () =>
+      isAuthorizedAdminRequest(new Request('https://example.com/api/products'), googleEnv)))
+      .toBe(true);
+  });
+
+  it('does not fall back to a valid legacy Google session inside a public scoped tenant context', () => {
+    const tenant = { id: '20000000-0000-4000-8000-000000000001', slug: 'alpha-class', displayName: 'Alpha', lifecycle: 'ACTIVE' as const, timezone: 'Asia/Seoul' as const };
+    const request = requestWithCookie('class_store_google_auth', googleSessionCookie(Date.now()));
+
+    expect(runWithTrustedTenantRequestContext({ tenant }, () =>
+      isAuthorizedAdminRequest(request, googleEnv)))
+      .toBe(false);
+  });
+
   it('preserves auth-disabled access when no admin or Google authentication is configured', () => {
     expect(isAuthorizedAdminRequest(new Request('https://example.com/api/products'), {})).toBe(true);
+  });
+
+  it('does not grant unscoped PostgreSQL authority from a legacy global admin cookie', () => {
+    const legacyEnv = {
+      ADMIN_PASSWORD: 'legacy-global-password',
+      AUTH_SECRET: 'session-signing-secret',
+      CLASS_STORE_STORAGE: 'postgresql',
+    };
+    const token = createSignedAdminSessionToken('legacy-global-password', legacyEnv);
+
+    expect(isAuthorizedAdminRequest(requestWithCookie('class_store_admin', token), legacyEnv)).toBe(false);
   });
 });

@@ -35,6 +35,7 @@ async function discoverRoutes() {
   for (const path of routeFiles) {
     const source = await readFile(path, 'utf8');
     const route = `/${path.slice(appRoot.length + 1).replaceAll('\\', '/').replace(/\/route\.ts$/, '')}`;
+    if (route === '/c/[slug]/[...path]') continue;
     for (const method of exportedHttpMethods(source)) discovered.push({ route, method });
   }
   return discovered.sort(compareRouteMethod);

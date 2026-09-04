@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { Transaction } from '@/domain/types';
+import { tenantFetch } from '@/lib/tenantApiPath';
 
 type SettingsResponse = { currencyUnit?: string };
 type ApiError = { error?: string };
@@ -83,7 +84,7 @@ function isCancelTransactionResponse(
     && reversalTransaction.studentId === cancelledTransaction.studentId;
 }
 
-export function TransactionsPage() {
+export function TransactionsPage({ adminHref = '/admin' }: { adminHref?: string }) {
   return (
     <main className="min-h-screen bg-[#dbeaf6] p-3 text-slate-950 sm:p-4 md:p-6">
       <section className="mx-auto flex w-full max-w-[1100px] flex-col gap-4">
@@ -91,7 +92,7 @@ export function TransactionsPage() {
           <p className="text-sm font-black tracking-[0.24em] text-sky-600">Class Reward System Admin</p>
           <h1 className="mt-2 text-4xl font-black tracking-tight md:text-5xl">거래 내역 확인</h1>
           <p className="mx-auto mt-2 max-w-2xl text-sm font-bold text-slate-500 md:text-base">Transactions 시트에 기록된 수입과 지출을 최신순으로 확인합니다.</p>
-          <Link className="mt-5 inline-flex rounded-2xl bg-slate-950 px-5 py-3 font-black text-white" href="/admin">관리자 센터로 돌아가기</Link>
+          <Link className="mt-5 inline-flex rounded-2xl bg-slate-950 px-5 py-3 font-black text-white" href={adminHref}>관리자 센터로 돌아가기</Link>
         </header>
         <TransactionsPanel />
       </section>
@@ -112,8 +113,8 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
   const loadTransactions = useCallback(async (options: { shouldApply?: () => boolean } = {}) => {
     const shouldApply = options.shouldApply ?? (() => true);
     const [transactionsResponse, settingsResponse] = await Promise.all([
-      fetch('/api/transactions', { cache: 'no-store' }),
-      fetch('/api/settings', { cache: 'no-store' }),
+      tenantFetch('/api/transactions', { cache: 'no-store' }),
+      tenantFetch('/api/settings', { cache: 'no-store' }),
     ]);
     const transactionsPayload = (await transactionsResponse.json()) as Transaction[] | ApiError;
     const settingsPayload = (await settingsResponse.json().catch(() => null)) as SettingsResponse | null;
@@ -174,7 +175,7 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
     setCancelingId(transaction.transactionId);
     setMessage('');
     try {
-      const response = await fetch(`/api/transactions/${encodeURIComponent(transaction.transactionId)}/cancel`, {
+      const response = await tenantFetch(`/api/transactions/${encodeURIComponent(transaction.transactionId)}/cancel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ operationId }),

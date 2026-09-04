@@ -4,9 +4,11 @@ import { NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import {
   GOOGLE_AUTH_COOKIE,
+  consumeGoogleStateCookie,
   createGoogleAuthUrl,
   exchangeGoogleCodeForGeneratorGrant,
   getGoogleSessionFromRequest,
+  setGoogleStateCookie,
   setGoogleSessionCookie,
 } from '@/server/googleOAuth';
 
@@ -24,6 +26,22 @@ afterEach(() => {
 });
 
 describe('ordinary Google identity OAuth', () => {
+  it('binds and consumes only the exact classes return target with the OAuth state', () => {
+    const issued = NextResponse.json({ ok: true });
+    setGoogleStateCookie(issued, 'state-123', '/classes');
+    const cookie = /class_store_google_state=([^;]+)/.exec(issued.headers.get('set-cookie') ?? '')?.[1] ?? '';
+    const consumed = NextResponse.json({ ok: true });
+
+    expect(consumeGoogleStateCookie(new Request('https://class-store.example/api/google/callback', {
+      headers: { cookie: `class_store_google_state=${cookie}` },
+    }), consumed, 'state-123')).toEqual({ state: 'state-123', returnTo: '/classes' });
+
+    const tampered = encodeURIComponent(JSON.stringify({ state: 'state-123', returnTo: 'https://evil.example' }));
+    expect(consumeGoogleStateCookie(new Request('https://class-store.example/api/google/callback', {
+      headers: { cookie: `class_store_google_state=${tampered}` },
+    }), NextResponse.json({ ok: true }), 'state-123')).toBeNull();
+  });
+
   it('requests exactly the identity scopes without offline or forced consent options', () => {
     vi.stubEnv('GOOGLE_CLIENT_ID', env.GOOGLE_CLIENT_ID);
     vi.stubEnv('GOOGLE_CLIENT_SECRET', env.GOOGLE_CLIENT_SECRET);

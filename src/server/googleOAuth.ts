@@ -33,6 +33,11 @@ export type GoogleSession = {
   issuedAt: number;
 };
 
+export type GoogleIdentityState = Readonly<{
+  state: string;
+  returnTo?: '/classes';
+}>;
+
 export type GeneratorConsentState = {
   purpose: 'generator';
   state: string;
@@ -132,8 +137,9 @@ export function createGeneratorConsentAuthUrl(origin: string, state: string): st
   });
 }
 
-export function setGoogleStateCookie(response: NextResponse, state: string) {
-  response.cookies.set(STATE_COOKIE, state, {
+export function setGoogleStateCookie(response: NextResponse, state: string, returnTo?: '/classes') {
+  const value = returnTo ? JSON.stringify({ state, returnTo } satisfies GoogleIdentityState) : state;
+  response.cookies.set(STATE_COOKIE, value, {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
@@ -142,10 +148,28 @@ export function setGoogleStateCookie(response: NextResponse, state: string) {
   });
 }
 
-export function consumeGoogleStateCookie(request: Request, response: NextResponse, submittedState: string): boolean {
-  const savedState = getCookieValue(request, STATE_COOKIE);
+export function consumeGoogleStateCookie(
+  request: Request,
+  response: NextResponse,
+  submittedState: string,
+): GoogleIdentityState | null {
+  const savedValue = getCookieValue(request, STATE_COOKIE);
   response.cookies.set(STATE_COOKIE, '', { path: '/', maxAge: 0 });
-  return Boolean(savedState && submittedState && safeEqual(savedState, submittedState));
+  if (!savedValue || !submittedState) return null;
+  let saved: GoogleIdentityState = { state: savedValue };
+  if (savedValue.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(savedValue) as unknown;
+      if (!isRecord(parsed)
+        || Object.keys(parsed).some((key) => key !== 'state' && key !== 'returnTo')
+        || typeof parsed.state !== 'string'
+        || (parsed.returnTo !== undefined && parsed.returnTo !== '/classes')) return null;
+      saved = { state: parsed.state, ...(parsed.returnTo === '/classes' ? { returnTo: '/classes' } : {}) };
+    } catch {
+      return null;
+    }
+  }
+  return safeEqual(saved.state, submittedState) ? saved : null;
 }
 
 export function setGeneratorConsentStateCookie(response: NextResponse, state: GeneratorConsentState) {

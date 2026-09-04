@@ -1,5 +1,6 @@
 import { isAdminAuthEnabled, isValidAdminSession } from '@/server/adminAuth';
 import { getGoogleSessionFromRequest, isGoogleOAuthEnabled } from '@/server/googleOAuth';
+import { getOptionalTrustedTenantRequestContext } from '@/server/trustedTenantRequestContext';
 
 const ADMIN_SESSION_COOKIE = 'class_store_admin';
 
@@ -9,9 +10,18 @@ type ApiAuthEnv = {
   AUTH_SECRET?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
+  CLASS_STORE_STORAGE?: string;
 };
 
 export function isAuthorizedAdminRequest(request: Request, env: ApiAuthEnv = process.env): boolean {
+  const trusted = getOptionalTrustedTenantRequestContext();
+  if (trusted) {
+    return Boolean(trusted.membership && trusted.session
+      && trusted.membership.tenantId === trusted.tenant.id
+      && trusted.membership.googleSubject === trusted.session.subject
+      && (trusted.membership.role === 'OWNER' || trusted.membership.role === 'ADMIN'));
+  }
+  if (env.CLASS_STORE_STORAGE === 'postgresql') return false;
   const googleOAuthEnabled = isGoogleOAuthEnabled(env);
   const adminAuthEnabled = isAdminAuthEnabled(env);
   const cookies = parseCookieHeader(request.headers.get('cookie') ?? '');

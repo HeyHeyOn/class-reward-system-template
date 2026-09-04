@@ -6,6 +6,7 @@ import {
   resolveRepositoryFromEnv,
   type RepositoryCreators,
 } from '@/server/repositories/factory';
+import { getOptionalTrustedTenantRequestContext } from '@/server/trustedTenantRequestContext';
 
 export type CompatibilityCentralTenantEnv = StorageSelectionEnv & Readonly<{
   CLASS_STORE_CENTRAL_TENANT_ID?: string;
@@ -32,6 +33,14 @@ export function getCompatibilityCentralTenantContext(
 export function resolveCompatibilityConfiguredRepository<TPostgreSQLAdapter, TSheetsAdapter>(
   options: CompatibilityConfiguredRepositoryOptions<TPostgreSQLAdapter, TSheetsAdapter>,
 ): Promise<ResolvedRepository<TPostgreSQLAdapter, TSheetsAdapter>> {
+  const trustedTenant = getOptionalTrustedTenantRequestContext();
+  if (trustedTenant) {
+    return resolveRepositoryFromEnv(
+      { CLASS_STORE_STORAGE: 'postgresql' },
+      { tenantId: trustedTenant.tenant.id, tenantStatus: trustedTenant.tenant.lifecycle },
+      options.creators,
+    );
+  }
   const centralTenant = options.env.CLASS_STORE_STORAGE === 'postgresql'
     ? options.getCentralTenantContext(options.env)
     : undefined;

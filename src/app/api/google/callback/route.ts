@@ -23,6 +23,7 @@ export async function GET(request: Request) {
   const successPath = isGeneratorDeployment() ? '/admin/generator?step=google' : '/admin';
   const response = NextResponse.redirect(new URL(successPath, request.url));
   let issuedGeneratorGrant: GeneratorGrant | null = null;
+  let identityReturnTo: '/classes' | undefined;
 
   try {
     if (!code) throw new Error(url.searchParams.get('error_description') || url.searchParams.get('error') || 'Google 인증 코드가 없습니다.');
@@ -40,16 +41,29 @@ export async function GET(request: Request) {
       return response;
     }
 
-    if (!consumeGoogleStateCookie(request, response, state)) throw new Error('Google 로그인 상태값이 올바르지 않습니다. 다시 로그인해 주세요.');
+    const identityState = consumeGoogleStateCookie(request, response, state);
+    if (!identityState) throw new Error('Google 로그인 상태값이 올바르지 않습니다. 다시 로그인해 주세요.');
+    if (identityState.returnTo === '/classes') identityReturnTo = '/classes';
     const session = await exchangeGoogleCodeForSession(url.origin, code);
     setGoogleSessionCookie(response, session);
+    if (identityState.returnTo) {
+      response.headers.set('location', new URL(identityState.returnTo, request.url).toString());
+    }
     return response;
   } catch (error) {
     if (issuedGeneratorGrant) {
       await revokeGeneratorGrant(issuedGeneratorGrant).catch(() => undefined);
     }
+    if (!isGeneratorConsent && !identityReturnTo) {
+      const failedIdentityState = consumeGoogleStateCookie(request, response, state);
+      if (failedIdentityState?.returnTo === '/classes') identityReturnTo = '/classes';
+    }
     const message = encodeURIComponent(error instanceof Error ? error.message : 'Google 로그인에 실패했습니다.');
-    const errorPath = isGeneratorDeployment() ? `/admin/generator?error=${message}` : `/admin/login?error=${message}`;
+    const errorPath = isGeneratorDeployment()
+      ? `/admin/generator?error=${message}`
+      : identityReturnTo
+        ? `/classes?error=${message}`
+        : `/admin/login?error=${message}`;
     const errorResponse = NextResponse.redirect(new URL(errorPath, request.url));
     if (isGeneratorConsent) {
       consumeGeneratorConsentStateCookie(request, errorResponse, state);

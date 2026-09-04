@@ -7,11 +7,13 @@ vi.mock('@/server/googleSheets', () => ({ createConfiguredSheetsReader: vi.fn() 
 describe('/api/admin/login', () => {
   const originalAuthSecret = process.env.AUTH_SECRET;
   const originalAdminPassword = process.env.ADMIN_PASSWORD;
+  const originalStorage = process.env.CLASS_STORE_STORAGE;
 
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.AUTH_SECRET = 'session-signing-secret';
     delete process.env.ADMIN_PASSWORD;
+    delete process.env.CLASS_STORE_STORAGE;
   });
 
   afterEach(() => {
@@ -19,6 +21,8 @@ describe('/api/admin/login', () => {
     else process.env.AUTH_SECRET = originalAuthSecret;
     if (originalAdminPassword === undefined) delete process.env.ADMIN_PASSWORD;
     else process.env.ADMIN_PASSWORD = originalAdminPassword;
+    if (originalStorage === undefined) delete process.env.CLASS_STORE_STORAGE;
+    else process.env.CLASS_STORE_STORAGE = originalStorage;
   });
 
   it.each([
@@ -35,5 +39,18 @@ describe('/api/admin/login', () => {
 
     expect(response.status).toBe(401);
     expect(response.headers.get('set-cookie')).toBeNull();
+  });
+
+  it('does not accept environment passwords in central PostgreSQL mode', async () => {
+    process.env.CLASS_STORE_STORAGE = 'postgresql';
+    process.env.ADMIN_PASSWORD = 'legacy-global-password';
+
+    const response = await POST(new Request('http://localhost/api/admin/login', {
+      method: 'POST', body: JSON.stringify({ password: 'legacy-global-password' }),
+    }));
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get('set-cookie')).toBeNull();
+    expect(createConfiguredSheetsReader).not.toHaveBeenCalled();
   });
 });

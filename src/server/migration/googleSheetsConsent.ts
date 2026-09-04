@@ -61,6 +61,11 @@ type EphemeralOAuthClient = {
   getToken(code: string): Promise<{ tokens: Credentials }>;
   setCredentials(credentials: Credentials): void;
   revokeToken(token: string): Promise<unknown>;
+  request?: (options: {
+    url: string;
+    method?: string;
+    params?: Readonly<Record<string, unknown>>;
+  }) => PromiseLike<{ data: unknown }>;
 };
 
 export type EphemeralMigrationAuthorization = {

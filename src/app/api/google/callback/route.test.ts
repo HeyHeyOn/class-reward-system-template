@@ -113,4 +113,22 @@ describe('GET /api/google/callback', () => {
     expect(response.status).toBe(307);
     expect(response.headers.get('location')).toBe('https://teacher-app.vercel.app/admin');
   });
+
+  it('returns identity users to the classes page only when the consumed state bound that target', async () => {
+    mocks.consumeGoogleState.mockReturnValueOnce({ state: 'state-123', returnTo: '/classes' } as never);
+
+    const response = await GET(new Request('https://teacher-app.vercel.app/api/google/callback?code=ok&state=state-123'));
+
+    expect(response.headers.get('location')).toBe('https://teacher-app.vercel.app/classes');
+  });
+
+  it('returns a failed class-selection identity flow to classes instead of the legacy admin login', async () => {
+    mocks.consumeGoogleState.mockReturnValue({ state: 'state-123', returnTo: '/classes' } as never);
+    mocks.exchangeSession.mockRejectedValueOnce(new Error('identity exchange failed'));
+
+    const response = await GET(new Request('https://teacher-app.vercel.app/api/google/callback?code=bad&state=state-123'));
+
+    expect(decodeURIComponent(response.headers.get('location') ?? ''))
+      .toBe('https://teacher-app.vercel.app/classes?error=identity exchange failed');
+  });
 });

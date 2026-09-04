@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isGeneratorDeployment, isSystemDeployment } from '@/server/deploymentMode';
+import {
+  compatibilityRedirectForPath,
+  parseTenantSlug,
+  TenantContextError,
+} from '@/server/tenantContext';
 
 const ADMIN_SESSION_COOKIE = 'class_store_admin';
 const GOOGLE_AUTH_COOKIE = 'class_store_google_auth';
@@ -25,6 +30,21 @@ export async function proxy(request: NextRequest) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
+  if (isSystemDeployment()) {
+    const scopedResponse = scopedTenantCanonicalResponse(request);
+    if (scopedResponse) return scopedResponse;
+
+    const compatibilityTarget = compatibilityRedirectForPath(
+      pathname,
+      process.env.CLASS_STORE_DEFAULT_TENANT_SLUG?.trim() || undefined,
+    );
+    if (compatibilityTarget) {
+      const target = request.nextUrl.clone();
+      target.pathname = compatibilityTarget;
+      return NextResponse.redirect(target);
+    }
+  }
+
   if (!pathname.startsWith('/admin') || pathname === '/admin/login') {
     return NextResponse.next();
   }
@@ -45,8 +65,24 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/bank', '/api/:path*'],
+  matcher: ['/', '/admin/:path*', '/bank', '/c/:path*', '/api/:path*'],
 };
+
+function scopedTenantCanonicalResponse(request: NextRequest): NextResponse | null {
+  const match = /^\/c\/([^/]+)(\/.*)?$/.exec(request.nextUrl.pathname);
+  if (!match) return null;
+  try {
+    const requestedSlug = decodeURIComponent(match[1]);
+    const parsed = parseTenantSlug(requestedSlug);
+    if (!parsed.needsRedirect) return null;
+    const target = request.nextUrl.clone();
+    target.pathname = `/c/${parsed.slug}${match[2] ?? ''}`;
+    return NextResponse.redirect(target);
+  } catch (error) {
+    if (!(error instanceof TenantContextError)) throw error;
+    return NextResponse.rewrite(new URL('/404', request.url), { status: 404 });
+  }
+}
 
 function isGeneratorBlockedRoute(pathname: string): boolean {
   if (pathname === '/admin/generator') return false;

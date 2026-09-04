@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { ReactNode, RefCallback, UIEventHandler } from 'react';
 import type { ClassTask, Transaction } from '@/domain/types';
 import { getFontFamilyCss, type FontFamily } from '@/lib/fontSettings';
+import { tenantFetch } from '@/lib/tenantApiPath';
 import { QrScanner } from './QrScanner';
 import { formatStudentTaskDue, formatStudentTaskRecurrence } from '@/domain/taskStudentDisplay';
 import { buildStudentTaskChains, type StudentTaskChain } from '@/domain/studentTaskChains';
@@ -176,7 +177,7 @@ export function BankApp() {
 
   const loadSettings = useCallback(async () => {
     try {
-      const response = await fetch('/api/settings', { cache: 'no-store' });
+      const response = await tenantFetch('/api/settings', { cache: 'no-store' });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.error ?? '설정을 불러오지 못했습니다.');
       setSettings((current) => ({ ...current, ...payload }));
@@ -190,7 +191,7 @@ export function BankApp() {
     setPublicTasksLoading(true);
     setPublicTasksError('');
     try {
-      const response = await fetch('/api/bank/tasks', { cache: 'no-store' });
+      const response = await tenantFetch('/api/bank/tasks', { cache: 'no-store' });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? '공개 과제 목록을 불러오지 못했습니다.');
       setPublicTasks(Array.isArray(payload) ? payload : []);
@@ -231,8 +232,8 @@ export function BankApp() {
     try {
       const requestOptions = { cache: 'no-store' as const, signal: controller.signal };
       const [tasksResponse, studentResponse] = await Promise.all([
-        fetch(`/api/tasks?studentId=${encodeURIComponent(studentId)}`, requestOptions),
-        fetch(`/api/bank/student?studentId=${encodeURIComponent(studentId)}`, requestOptions),
+        tenantFetch(`/api/tasks?studentId=${encodeURIComponent(studentId)}`, requestOptions),
+        tenantFetch(`/api/bank/student?studentId=${encodeURIComponent(studentId)}`, requestOptions),
       ]);
       const [tasksPayload, studentPayload] = await Promise.all([tasksResponse.json(), studentResponse.json()]);
       if (!studentResponse.ok) {
@@ -285,7 +286,7 @@ export function BankApp() {
     setLoadingDialog({ title: '내 계좌 확인 중', message: 'QR을 인식했습니다. 내 계좌를 불러오는 중입니다.' });
     setErrorMessage('');
     try {
-      const response = await fetch(`/api/bank/balance?studentId=${encodeURIComponent(studentId)}`, { cache: 'no-store' });
+      const response = await tenantFetch(`/api/bank/balance?studentId=${encodeURIComponent(studentId)}`, { cache: 'no-store' });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? '잔액을 불러오지 못했습니다.');
       setBalanceResult(payload);
@@ -332,7 +333,7 @@ export function BankApp() {
         let response: Response | null = null;
         let payload: unknown = null;
         try {
-          response = await fetch(`/api/tasks/${encodeURIComponent(operation.taskId)}/complete`, {
+          response = await tenantFetch(`/api/tasks/${encodeURIComponent(operation.taskId)}/complete`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ studentId: operation.studentId, operationId: operation.operationId }),

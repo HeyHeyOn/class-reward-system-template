@@ -3,6 +3,9 @@ import { ADMIN_SESSION_COOKIE, createSignedAdminSessionToken, verifyAdminPasswor
 import { createConfiguredSheetsReader } from '@/server/googleSheets';
 
 export async function POST(request: Request) {
+  if (process.env.CLASS_STORE_STORAGE === 'postgresql') {
+    return Response.json({ error: 'Not found.' }, { status: 404 });
+  }
   const body = (await request.json().catch(() => ({}))) as { password?: unknown };
   const rawPassword = typeof body.password === 'string' ? body.password : '';
   const password = rawPassword.startsWith('class-store-admin:') ? rawPassword.slice('class-store-admin:'.length) : rawPassword;

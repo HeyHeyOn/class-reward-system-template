@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 import { FONT_FAMILY_OPTIONS, normalizeFontFamily, type FontFamily } from '@/lib/fontSettings';
+import { tenantFetch } from '@/lib/tenantApiPath';
 
 type SettingsResponse = {
   spreadsheetId: string;
@@ -39,7 +40,7 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
     let ignore = false;
 
     async function loadSettings() {
-      const response = await fetch('/api/settings', { cache: 'no-store' });
+      const response = await tenantFetch('/api/settings', { cache: 'no-store' });
       const settings = (await response.json()) as SettingsResponse;
 
       if (!ignore) {
@@ -69,7 +70,7 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
     setMessage('');
 
     try {
-      const response = await fetch('/api/settings', {
+      const response = await tenantFetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ spreadsheetIdOrUrl, currencyUnit, appTitle, bankTitle, themeColor, fontFamily, qrManualInputEnabled, adminPassword: adminPassword.trim() || undefined }),

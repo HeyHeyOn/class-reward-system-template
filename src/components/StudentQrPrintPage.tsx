@@ -4,6 +4,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { Student } from '@/domain/types';
+import { tenantFetch } from '@/lib/tenantApiPath';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -20,7 +21,7 @@ export function StudentQrPrintPage() {
       setMessage('학생 목록을 불러오는 중입니다.');
 
       try {
-        const response = await fetch('/api/students');
+        const response = await tenantFetch('/api/students');
         const payload = await response.json();
 
         if (!response.ok) {

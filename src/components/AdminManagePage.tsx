@@ -10,6 +10,7 @@ import { SettingsForm } from './SettingsForm';
 import { QrScanner } from './QrScanner';
 import { TransactionsPanel } from './TransactionsPage';
 import { getFontFamilyCss, type FontFamily } from '@/lib/fontSettings';
+import { tenantFetch, tenantPagePath } from '@/lib/tenantApiPath';
 import { normalizeAdminTask, resolveEffectiveAdminTaskSchedule, scheduleDtoToForm, scheduleFormToPayload, type NormalizedAdminTask, type TaskRecurrenceForm } from './taskRecurrenceEditor';
 import { TaskRecurrenceFields, TaskScheduleProjection } from './tasks/TaskRecurrenceFields';
 import { TaskHistoryDialog, type TaskHistoryDialogState } from './tasks/TaskHistoryDialog';
@@ -676,10 +677,10 @@ export function AdminManagePage() {
 
     try {
       const [studentResponse, productResponse, taskResponse, settingsResponse] = await Promise.all([
-        fetch('/api/students', { cache: 'no-store' }),
-        fetch('/api/products?includeInactive=1', { cache: 'no-store' }),
-        fetch('/api/tasks?includeInactive=1', { cache: 'no-store' }),
-        fetch('/api/settings', { cache: 'no-store' }),
+        tenantFetch('/api/students', { cache: 'no-store' }),
+        tenantFetch('/api/products?includeInactive=1', { cache: 'no-store' }),
+        tenantFetch('/api/tasks?includeInactive=1', { cache: 'no-store' }),
+        tenantFetch('/api/settings', { cache: 'no-store' }),
       ]);
       const [studentPayload, productPayload, taskPayload, settingsPayload] = await Promise.all([studentResponse.json(), productResponse.json(), taskResponse.json(), settingsResponse.json().catch(() => null)]);
 
@@ -817,7 +818,7 @@ export function AdminManagePage() {
       const taskIds = taskScheduleEditor.target.tasks.map((task) => task.taskId);
       setIsSavingTaskSchedule(true);
       try {
-        const response = await fetch('/api/tasks/schedules/batch', {
+        const response = await tenantFetch('/api/tasks/schedules/batch', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -833,7 +834,7 @@ export function AdminManagePage() {
         if (!isCurrentSession()) return;
         if (!response.ok) throw new Error(payload.error ?? '반복 설정을 저장하지 못했습니다.');
         try {
-          const taskResponse = await fetch('/api/tasks?includeInactive=1', { cache: 'no-store' });
+          const taskResponse = await tenantFetch('/api/tasks?includeInactive=1', { cache: 'no-store' });
           const taskPayload = await taskResponse.json().catch(() => null);
           if (!isCurrentSession()) return;
           if (!taskResponse.ok || !Array.isArray(taskPayload)) throw new Error('refresh failed');
@@ -858,7 +859,7 @@ export function AdminManagePage() {
       if (!task) return notify('과제를 찾을 수 없습니다.');
       setIsSavingTaskSchedule(true);
       try {
-        const response = await fetch(`/api/tasks/${encodeURIComponent(task.taskId)}`, {
+        const response = await tenantFetch(`/api/tasks/${encodeURIComponent(task.taskId)}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -871,7 +872,7 @@ export function AdminManagePage() {
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error ?? '반복 설정을 저장하지 못했습니다.');
         try {
-          const taskResponse = await fetch('/api/tasks?includeInactive=1', { cache: 'no-store' });
+          const taskResponse = await tenantFetch('/api/tasks?includeInactive=1', { cache: 'no-store' });
           const taskPayload = await taskResponse.json().catch(() => null);
           if (!isCurrentSession()) return;
           if (!taskResponse.ok || !Array.isArray(taskPayload)) throw new Error('refresh failed');
@@ -910,7 +911,7 @@ export function AdminManagePage() {
     setTaskDeleteConfirmation(null);
     setTaskHistory({ taskId: task.taskId, title: task.title, loading: true, error: '', detail: null });
     try {
-      const response = await fetch(`/api/tasks/${encodeURIComponent(task.taskId)}/history`, { cache: 'no-store' });
+      const response = await tenantFetch(`/api/tasks/${encodeURIComponent(task.taskId)}/history`, { cache: 'no-store' });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? '과제 기록을 불러오지 못했습니다.');
       if (historyRequestId.current !== requestId) return;
@@ -963,8 +964,8 @@ export function AdminManagePage() {
     setIsRefreshingLists(true);
     try {
       const [studentResponse, settingsResponse] = await Promise.all([
-        fetch('/api/students', { cache: 'no-store' }),
-        fetch('/api/settings', { cache: 'no-store' }),
+        tenantFetch('/api/students', { cache: 'no-store' }),
+        tenantFetch('/api/settings', { cache: 'no-store' }),
       ]);
       const [studentPayload, settingsPayload] = await Promise.all([studentResponse.json(), settingsResponse.json().catch(() => null)]);
       if (!studentResponse.ok) throw new Error(studentPayload.error ?? '학생 목록을 불러오지 못했습니다.');
@@ -991,8 +992,8 @@ export function AdminManagePage() {
     const productEpochAtStart = productMutationEpoch.current;
     try {
       const [productResponse, settingsResponse] = await Promise.all([
-        fetch('/api/products?includeInactive=1', { cache: 'no-store' }),
-        fetch('/api/settings', { cache: 'no-store' }),
+        tenantFetch('/api/products?includeInactive=1', { cache: 'no-store' }),
+        tenantFetch('/api/settings', { cache: 'no-store' }),
       ]);
       const [productPayload, settingsPayload] = await Promise.all([productResponse.json(), settingsResponse.json().catch(() => null)]);
       if (!productResponse.ok) throw new Error(productPayload.error ?? '상품 목록을 불러오지 못했습니다.');
@@ -1029,8 +1030,8 @@ export function AdminManagePage() {
     setIsRefreshingLists(true);
     try {
       const [taskResponse, settingsResponse] = await Promise.all([
-        fetch('/api/tasks?includeInactive=1', { cache: 'no-store' }),
-        fetch('/api/settings', { cache: 'no-store' }),
+        tenantFetch('/api/tasks?includeInactive=1', { cache: 'no-store' }),
+        tenantFetch('/api/settings', { cache: 'no-store' }),
       ]);
       const [taskPayload, settingsPayload] = await Promise.all([taskResponse.json(), settingsResponse.json().catch(() => null)]);
       if (!taskResponse.ok) throw new Error(taskPayload.error ?? '과제 목록을 불러오지 못했습니다.');
@@ -1069,7 +1070,7 @@ export function AdminManagePage() {
   }
 
   async function loadTaskAssignmentStatus(taskId: string) {
-    const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/assignments`, { cache: 'no-store' });
+    const response = await tenantFetch(`/api/tasks/${encodeURIComponent(taskId)}/assignments`, { cache: 'no-store' });
     const payload = await response.json() as TaskAssignmentStatus & { error?: string };
     if (!response.ok) throw new Error(payload.error ?? '과제 부여 상태를 불러오지 못했습니다.');
     return normalizeTaskAssignmentStatus(payload);
@@ -1228,7 +1229,7 @@ export function AdminManagePage() {
       const targets = taskAssignmentEditor.retryTargets ?? taskAssignmentEditor.target.tasks.map((task) => ({ taskId: task.taskId, operations }));
       setIsSavingChanges(true);
       try {
-        const response = await fetch('/api/tasks/assignments/batch', {
+        const response = await tenantFetch('/api/tasks/assignments/batch', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ targets }),
@@ -1242,7 +1243,7 @@ export function AdminManagePage() {
         const aborted = payload.aborted === true;
         if (failures.length === 0 && notAttempted.length === 0 && !aborted) {
           try {
-            const taskResponse = await fetch('/api/tasks?includeInactive=1', { cache: 'no-store' });
+            const taskResponse = await tenantFetch('/api/tasks?includeInactive=1', { cache: 'no-store' });
             const taskPayload = await taskResponse.json().catch(() => null);
             if (!isCurrentSession()) return;
             if (!taskResponse.ok || !Array.isArray(taskPayload)) throw new Error('refresh failed');
@@ -1333,7 +1334,7 @@ export function AdminManagePage() {
     let reconciliationFailureMessage = '';
     setIsSavingChanges(true);
     try {
-      const response = await fetch('/api/tasks/assignments/batch', {
+      const response = await tenantFetch('/api/tasks/assignments/batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ targets: [{ taskId, operations: commands }] }),
@@ -1462,7 +1463,7 @@ export function AdminManagePage() {
     setQrTaskLoading(false);
     setIsSavingChanges(true);
     try {
-      const response = await fetch(`/api/tasks/${encodeURIComponent(task.taskId)}/assignments`, {
+      const response = await tenantFetch(`/api/tasks/${encodeURIComponent(task.taskId)}/assignments`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ studentId: student.studentId, assigned: true, source: 'QR' }),
@@ -1540,7 +1541,7 @@ export function AdminManagePage() {
     studentSaveInFlight.current = true;
     setIsSavingChanges(true);
     try {
-      const response = await fetch('/api/students/batch', {
+      const response = await tenantFetch('/api/students/batch', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ operationId, students: studentPayload }),
@@ -1572,7 +1573,7 @@ export function AdminManagePage() {
   async function saveProductRows(rows: ProductDraft[], label: string) {
     setIsSavingChanges(true);
     try {
-      const response = await fetch('/api/products/batch', {
+      const response = await tenantFetch('/api/products/batch', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ products: buildProductPayload(rows) }),
@@ -1605,7 +1606,7 @@ export function AdminManagePage() {
   async function saveTaskRows(rows: TaskDraft[], label: string) {
     setIsSavingChanges(true);
     try {
-      const response = await fetch('/api/tasks/batch', {
+      const response = await tenantFetch('/api/tasks/batch', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tasks: buildTaskPayload(rows) }),
@@ -1626,7 +1627,7 @@ export function AdminManagePage() {
 
   async function deleteStudentRow(studentId: string, options: { silent?: boolean } = {}) {
     try {
-      const response = await fetch(`/api/students/${encodeURIComponent(studentId)}`, { method: 'DELETE' });
+      const response = await tenantFetch(`/api/students/${encodeURIComponent(studentId)}`, { method: 'DELETE' });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? '학생을 삭제하지 못했습니다.');
       setStudents((current) => current.filter((student) => student.studentId !== studentId));
@@ -1641,7 +1642,7 @@ export function AdminManagePage() {
     if (selectedStudentIds.length === 0) return notify('선택된 학생이 없습니다.');
     const idsToDelete = [...selectedStudentIds];
     try {
-      const response = await fetch('/api/students/batch', {
+      const response = await tenantFetch('/api/students/batch', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ studentIds: idsToDelete }),
@@ -1671,7 +1672,7 @@ export function AdminManagePage() {
     const operationId = bulkBalanceAttempt.current.operationId;
     bulkBalanceInFlight.current = true;
     try {
-      const response = await fetch('/api/students/bulk', {
+      const response = await tenantFetch('/api/students/bulk', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ studentIds, mode: bulkMode, amount: bulkAmount, operationId }),
@@ -1720,7 +1721,7 @@ export function AdminManagePage() {
       ? { ...current, deleting: true, error: '' }
       : current);
     try {
-      const response = await fetch(`/api/products/${encodeURIComponent(productId)}`, {
+      const response = await tenantFetch(`/api/products/${encodeURIComponent(productId)}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1760,7 +1761,7 @@ export function AdminManagePage() {
     if (selectedProductIds.length === 0) return notify('선택된 상품이 없습니다.');
     const idsToDelete = [...selectedProductIds];
     try {
-      const response = await fetch('/api/products/batch', {
+      const response = await tenantFetch('/api/products/batch', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ productIds: idsToDelete }),
@@ -1798,7 +1799,7 @@ export function AdminManagePage() {
     const operationId = taskCreationAttempt.current.operationId;
     taskCreationInFlight.current = true;
     try {
-      const response = await fetch('/api/tasks', {
+      const response = await tenantFetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ operationId, ...body }),
@@ -1818,7 +1819,7 @@ export function AdminManagePage() {
       notify(`${createdTask.taskId} 과제 추가 완료`);
       if (createdTask.schedule?.recurrence.type !== 'NONE') {
         try {
-          const taskResponse = await fetch('/api/tasks?includeInactive=1', { cache: 'no-store' });
+          const taskResponse = await tenantFetch('/api/tasks?includeInactive=1', { cache: 'no-store' });
           const taskPayload: unknown = await taskResponse.json().catch(() => null);
           if (!taskResponse.ok || !Array.isArray(taskPayload)) {
             throw new Error(isRecord(taskPayload) && typeof taskPayload.error === 'string'
@@ -1851,7 +1852,7 @@ export function AdminManagePage() {
     const { taskId } = taskDeleteConfirmation;
     setTaskDeleteConfirmation((current) => current ? { ...current, deleting: true, error: '' } : current);
     try {
-      const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, { method: 'DELETE' });
+      const response = await tenantFetch(`/api/tasks/${encodeURIComponent(taskId)}`, { method: 'DELETE' });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? '과제를 삭제하지 못했습니다.');
       setTasks((current) => current.filter((task) => task.taskId !== taskId));
@@ -1869,7 +1870,7 @@ export function AdminManagePage() {
     if (selectedTaskIds.length === 0) return notify('선택된 과제가 없습니다.');
     const idsToDelete = [...selectedTaskIds];
     try {
-      const response = await fetch('/api/tasks/batch', {
+      const response = await tenantFetch('/api/tasks/batch', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ taskIds: idsToDelete }),
@@ -1896,7 +1897,7 @@ export function AdminManagePage() {
     const taskIds = target.tasks.map((task) => task.taskId);
     setTaskResetConfirmation((current) => current ? { ...current, resetting: true, error: '' } : current);
     try {
-      const response = await fetch('/api/tasks/completions/reset', {
+      const response = await tenantFetch('/api/tasks/completions/reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ taskIds, operationId }),
@@ -1905,7 +1906,7 @@ export function AdminManagePage() {
       if (!response.ok) throw new Error(payload.error ?? '과제 완료 기록을 초기화하지 못했습니다.');
       let taskPayload: unknown;
       try {
-        const taskResponse = await fetch('/api/tasks?includeInactive=1', { cache: 'no-store' });
+        const taskResponse = await tenantFetch('/api/tasks?includeInactive=1', { cache: 'no-store' });
         taskPayload = await taskResponse.json().catch(() => null);
         if (!taskResponse.ok || !Array.isArray(taskPayload)) throw new Error('refresh failed');
       } catch {
@@ -1956,7 +1957,7 @@ export function AdminManagePage() {
     const operationId = studentCreationAttempt.current.operationId;
     studentCreationInFlight.current = true;
     try {
-      const response = await fetch('/api/students', {
+      const response = await tenantFetch('/api/students', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ operationId, ...body }),
@@ -2005,7 +2006,7 @@ export function AdminManagePage() {
     const operationId = productCreationAttempt.current.operationId;
     productCreationInFlight.current = true;
     try {
-      const response = await fetch('/api/products', {
+      const response = await tenantFetch('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ operationId, ...body }),
@@ -2060,7 +2061,7 @@ export function AdminManagePage() {
     setCurrencyScannerOpen(false);
     setCurrencyLoading(true);
     try {
-      const response = await fetch('/api/students/bulk', {
+      const response = await tenantFetch('/api/students/bulk', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ studentIds: [studentId], mode, amount, operationId }),
@@ -2208,8 +2209,8 @@ export function AdminManagePage() {
               </button>
             );
           })}
-          <AdminNavLink href="/" title="매점 바로가기" className={theme.idleTab} />
-          <AdminNavLink href="/bank" title="은행 바로가기" className={theme.idleTab} />
+          <AdminNavLink href={tenantPagePath('/')} title="매점 바로가기" className={theme.idleTab} />
+          <AdminNavLink href={tenantPagePath('/bank')} title="은행 바로가기" className={theme.idleTab} />
         </nav>
 
         {activeTab === 'settings' ? (

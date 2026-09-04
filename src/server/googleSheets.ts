@@ -2,6 +2,7 @@ import { google } from 'googleapis';
 import { getEnvSpreadsheetId } from '@/server/settings';
 import { verifyRequiredOperationalSheetHeaders, type SheetsReader } from '@/server/sheetsRepository';
 import { createDeploymentSheetsAuth } from '@/server/googleOAuth';
+import { getOptionalTrustedTenantRequestContext } from '@/server/trustedTenantRequestContext';
 import {
   MigrationConflictError,
   SheetProviderError,
@@ -647,6 +648,9 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
 }
 
 export async function createConfiguredSheetsStore(request?: Request): Promise<GoogleSheetsStore> {
+  if (getOptionalTrustedTenantRequestContext()) {
+    throw new Error('Deployment Google Sheets fallback is unavailable in a scoped tenant request.');
+  }
   const spreadsheetId = getEnvSpreadsheetId();
 
   if (!spreadsheetId) {

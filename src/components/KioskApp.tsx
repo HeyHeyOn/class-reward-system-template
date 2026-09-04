@@ -7,6 +7,7 @@ import type { CartItem, CheckoutLineSnapshot, Product, Promotion, Student } from
 import { checkoutPreviewMatchesCart, parseCheckoutPreviewResponse, parseCheckoutSuccessResponse, type CheckoutPreviewPayload, type CheckoutSuccessPayload } from '@/lib/checkoutSnapshotClient';
 import { getFontFamilyCss, type FontFamily } from '@/lib/fontSettings';
 import { effectivePromotionsForProduct, parsePromotionListResponse, promotionBadgeLabel } from '@/lib/promotionClient';
+import { tenantFetch } from '@/lib/tenantApiPath';
 import { QrScanner } from './QrScanner';
 import { PromotionPills } from './promotions/PromotionPills';
 import { normalizeThemeColor, themeStyles, type ThemeColor, type ThemeStyles } from './uiTheme';
@@ -97,9 +98,9 @@ export function KioskApp() {
     setLoadError('');
     try {
       const [productResponse, settingsResponse, promotionResponse] = await Promise.all([
-        fetch('/api/products', { cache: 'no-store' }),
-        fetch('/api/settings', { cache: 'no-store' }),
-        fetch('/api/promotions/active', { cache: 'no-store' }),
+        tenantFetch('/api/products', { cache: 'no-store' }),
+        tenantFetch('/api/settings', { cache: 'no-store' }),
+        tenantFetch('/api/promotions/active', { cache: 'no-store' }),
       ]);
       const payload: unknown = await productResponse.json();
       const settings = await settingsResponse.json().catch(() => null) as KioskSettings | null;
@@ -321,7 +322,7 @@ export function KioskApp() {
     const checkoutCartKey = cartKey;
 
     try {
-      const studentResponse = await fetch(`/api/students/${encodeURIComponent(studentId)}`, { cache: 'no-store' });
+      const studentResponse = await tenantFetch(`/api/students/${encodeURIComponent(studentId)}`, { cache: 'no-store' });
       const studentPayload = (await studentResponse.json()) as Student | ApiError;
 
       if (!studentResponse.ok || isApiError(studentPayload)) {
@@ -333,7 +334,7 @@ export function KioskApp() {
         return;
       }
 
-      const checkoutResponse = await fetch('/api/checkout', {
+      const checkoutResponse = await tenantFetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

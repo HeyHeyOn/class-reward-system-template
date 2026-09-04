@@ -13,7 +13,13 @@ declare global {
   }
 }
 
-export function AdminLoginPage({ googleLoginEnabled = true }: { googleLoginEnabled?: boolean }) {
+export function AdminLoginPage({
+  googleLoginEnabled = true,
+  membershipOnly = false,
+}: {
+  googleLoginEnabled?: boolean;
+  membershipOnly?: boolean;
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -27,6 +33,21 @@ export function AdminLoginPage({ googleLoginEnabled = true }: { googleLoginEnabl
   const [isScanning, setIsScanning] = useState(false);
 
   useEffect(() => () => stopScan(), []);
+
+  if (membershipOnly) {
+    return (
+      <main className="min-h-screen bg-slate-100 px-4 py-10 text-[#25313f]">
+        <section className="mx-auto max-w-md rounded-[2rem] bg-white p-8 shadow-[0_20px_60px_rgba(37,49,63,0.15)]">
+          <p className="text-sm font-bold uppercase tracking-[0.3em] text-[#4f8fba]">Class Store Admin</p>
+          <h1 className="mt-3 text-3xl font-black">학급 관리자 로그인</h1>
+          <p className="mt-3 text-sm text-[#627184]">Google 계정으로 로그인한 뒤 관리자 권한이 있는 학급을 선택합니다.</p>
+          <a className="mt-8 flex w-full items-center justify-center rounded-2xl bg-[#4285f4] px-5 py-3 text-center font-black text-white shadow-[0_10px_30px_rgba(66,133,244,0.25)]" href="/api/google/login?returnTo=%2Fclasses">
+            Google 계정으로 로그인
+          </a>
+        </section>
+      </main>
+    );
+  }
 
   async function submitPassword(value = password, fromQr = false) {
     setSubmittingFromQr(fromQr);

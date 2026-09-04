@@ -37,6 +37,16 @@ describe('GET /api/google/login', () => {
     expect(location).not.toContain('accounts.google.com');
   });
 
+  it('allows identity-only OAuth for class selection even when the legacy system has a Sheets refresh token', async () => {
+    process.env.GOOGLE_REFRESH_TOKEN = 'stored-refresh-token';
+
+    const response = await GET(new Request('https://teacher-app.vercel.app/api/google/login?returnTo=%2Fclasses'));
+
+    expect(response.headers.get('location')).toContain('accounts.google.com');
+    expect(oauthMocks.createGoogleAuthUrl).toHaveBeenCalledOnce();
+    expect(oauthMocks.setGoogleStateCookie).toHaveBeenCalledWith(expect.anything(), 'state-123', '/classes');
+  });
+
   it('starts OAuth in the generator web page even when it has a Sheets refresh token for creating spreadsheets', async () => {
     process.env.GOOGLE_REFRESH_TOKEN = 'generator-refresh-token';
     process.env.NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT = 'generator';
@@ -66,6 +76,18 @@ describe('GET /api/google/login', () => {
       clientFingerprint: 'a'.repeat(64),
     }));
     expect(oauthMocks.setGoogleStateCookie).not.toHaveBeenCalled();
+  });
+
+  it('binds the exact classes return target to the ordinary OAuth state cookie', async () => {
+    await GET(new Request('https://teacher-app.vercel.app/api/google/login?returnTo=%2Fclasses'));
+
+    expect(oauthMocks.setGoogleStateCookie).toHaveBeenCalledWith(expect.anything(), 'state-123', '/classes');
+  });
+
+  it('does not bind an external return target', async () => {
+    await GET(new Request('https://teacher-app.vercel.app/api/google/login?returnTo=https%3A%2F%2Fevil.example'));
+
+    expect(oauthMocks.setGoogleStateCookie).toHaveBeenCalledWith(expect.anything(), 'state-123', undefined);
   });
 
   it('refuses generator consent without an already authenticated ordinary session', async () => {

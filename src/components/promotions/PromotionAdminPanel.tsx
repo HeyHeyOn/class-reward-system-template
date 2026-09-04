@@ -7,6 +7,7 @@ import {
   comparePromotionDisplayOrder,
   parsePromotionResponse,
 } from '@/lib/promotionClient';
+import { tenantFetch } from '@/lib/tenantApiPath';
 import { normalizeThemeColor, themeStyles, type ThemeColor } from '../uiTheme';
 
 export { parsePromotionResponse } from '@/lib/promotionClient';
@@ -401,7 +402,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
     setLoading(true);
     setLoadError('');
     try {
-      const response = await fetch('/api/promotions', { cache: 'no-store' });
+      const response = await tenantFetch('/api/promotions', { cache: 'no-store' });
       const payload: unknown = await response.json();
       if (!response.ok) throw new Error(readError(payload, '행사 목록을 불러오지 못했습니다.'));
       const parsed = parsePromotionAdminEnvelope(payload);
@@ -515,7 +516,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
     const operationId = creationAttemptRef.current.operationId;
     setSaving(true);
     try {
-      const response = await fetch('/api/promotions', {
+      const response = await tenantFetch('/api/promotions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ operationId, ...createPayload }),
@@ -582,7 +583,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
     setMessage('');
     setSaving(true);
     try {
-      const response = await fetch(`/api/promotions/${encodeURIComponent(id)}`, {
+      const response = await tenantFetch(`/api/promotions/${encodeURIComponent(id)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ operationId: attempt.operationId, expectedPromotionVersion: attempt.expectedVersion, ...editPayload }),
@@ -608,7 +609,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
       loadGenerationRef.current = refreshGeneration;
       let parsed: PromotionAdminEnvelope;
       try {
-        const refreshResponse = await fetch('/api/promotions', { cache: 'no-store' });
+        const refreshResponse = await tenantFetch('/api/promotions', { cache: 'no-store' });
         const refreshPayload: unknown = await refreshResponse.json();
         if (!refreshResponse.ok) throw new Error();
         const candidate = parsePromotionAdminEnvelope(refreshPayload);
@@ -679,7 +680,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
     setSaving(true);
     setDeleteError('');
     try {
-      const response = await fetch(`/api/promotions/${encodeURIComponent(target.promotionId)}`, {
+      const response = await tenantFetch(`/api/promotions/${encodeURIComponent(target.promotionId)}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ operationId: attempt.operationId, expectedPromotionVersion: attempt.expectedVersion }),
@@ -743,7 +744,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
     setMessage('');
     setFormError('');
     try {
-      const response = await fetch(`/api/promotions/${encodeURIComponent(promotion.promotionId)}`, {
+      const response = await tenantFetch(`/api/promotions/${encodeURIComponent(promotion.promotionId)}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ operationId: attempt.operationId, expectedPromotionVersion: attempt.expectedVersion, isActive: next }),
       });
@@ -759,7 +760,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
       loadGenerationRef.current = refreshGeneration;
       let parsed: PromotionAdminEnvelope;
       try {
-        const refreshResponse = await fetch('/api/promotions', { cache: 'no-store' });
+        const refreshResponse = await tenantFetch('/api/promotions', { cache: 'no-store' });
         const refreshPayload: unknown = await refreshResponse.json();
         if (!refreshResponse.ok) throw new Error();
         const candidate = parsePromotionAdminEnvelope(refreshPayload);
