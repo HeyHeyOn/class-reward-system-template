@@ -100,4 +100,129 @@ describe('tenant membership authorization', () => {
     })).rejects.toMatchObject({ code: 'NOT_A_MEMBER', status: 403 });
     expect(findByTenantAndSubject).toHaveBeenCalledWith(BETA_ID, session.subject);
   });
+
+  it('falls back to an exact-tenant compatibility session when a Google identity is not a member', async () => {
+    const getCompatibilitySession = vi.fn(async () => ({ tenantId: ALPHA_ID }));
+
+    await expect(resolveTenantAdminContext(
+      'alpha-class',
+      new Request('https://example.test/c/alpha-class/admin'),
+      {
+        findBySlug: async () => alpha,
+        findByTenantAndSubject: async () => null,
+        getSession: () => session,
+        getCompatibilitySession,
+      },
+    )).resolves.toMatchObject({ compatibilitySession: { tenantId: ALPHA_ID } });
+    expect(getCompatibilitySession).toHaveBeenCalledWith(expect.any(Request), ALPHA_ID);
+  });
+
+  it.each(['OWNER', 'ADMIN'] as const)(
+    'prefers a valid Google %s membership without invoking compatibility verification',
+    async (role) => {
+      const getCompatibilitySession = vi.fn(async () => ({ tenantId: ALPHA_ID }));
+
+      await expect(resolveTenantAdminContext(
+        'alpha-class',
+        new Request('https://example.test/c/alpha-class/admin'),
+        {
+          findBySlug: async () => alpha,
+          findByTenantAndSubject: async () => ({
+            id: '30000000-0000-4000-8000-000000000001',
+            tenantId: ALPHA_ID,
+            userId: '10000000-0000-4000-8000-000000000001',
+            googleSubject: session.subject,
+            role,
+          }),
+          getSession: () => session,
+          getCompatibilitySession,
+        },
+      )).resolves.toMatchObject({ session, membership: { role } });
+      expect(getCompatibilitySession).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['missing', null],
+    ['invalid', null],
+    ['wrong-tenant', { tenantId: BETA_ID }],
+  ])('preserves NOT_A_MEMBER when the compatibility session is %s', async (_label, compatibilitySession) => {
+    await expect(resolveTenantAdminContext(
+      'alpha-class',
+      new Request('https://example.test/c/alpha-class/admin'),
+      {
+        findBySlug: async () => alpha,
+        findByTenantAndSubject: async () => null,
+        getSession: () => session,
+        getCompatibilitySession: compatibilitySession === null && _label === 'missing'
+          ? undefined
+          : async () => compatibilitySession,
+      },
+    )).rejects.toMatchObject({ code: 'NOT_A_MEMBER', status: 403 });
+  });
+
+  it.each([
+    ['MEMBERSHIP_CONTEXT_MISMATCH', {
+      id: '30000000-0000-4000-8000-000000000002',
+      tenantId: BETA_ID,
+      userId: '10000000-0000-4000-8000-000000000001',
+      googleSubject: session.subject,
+      role: 'OWNER' as const,
+    }],
+    ['UNSUPPORTED_MEMBERSHIP_ROLE', {
+      id: '30000000-0000-4000-8000-000000000001',
+      tenantId: ALPHA_ID,
+      userId: '10000000-0000-4000-8000-000000000001',
+      googleSubject: session.subject,
+      role: 'VIEWER' as never,
+    }],
+  ] as const)('does not replace %s with compatibility authority', async (code, membership) => {
+    const getCompatibilitySession = vi.fn(async () => ({ tenantId: ALPHA_ID }));
+
+    await expect(resolveTenantAdminContext(
+      'alpha-class',
+      new Request('https://example.test/c/alpha-class/admin'),
+      {
+        findBySlug: async () => alpha,
+        findByTenantAndSubject: async () => membership,
+        getSession: () => session,
+        getCompatibilitySession,
+      },
+    )).rejects.toMatchObject({ code, status: 403 });
+    expect(getCompatibilitySession).not.toHaveBeenCalled();
+  });
+
+  it('propagates membership store failures without invoking compatibility verification', async () => {
+    const failure = new Error('membership store unavailable');
+    const getCompatibilitySession = vi.fn(async () => ({ tenantId: ALPHA_ID }));
+
+    await expect(resolveTenantAdminContext(
+      'alpha-class',
+      new Request('https://example.test/c/alpha-class/admin'),
+      {
+        findBySlug: async () => alpha,
+        findByTenantAndSubject: async () => { throw failure; },
+        getSession: () => session,
+        getCompatibilitySession,
+      },
+    )).rejects.toBe(failure);
+    expect(getCompatibilitySession).not.toHaveBeenCalled();
+  });
+
+  it('accepts a compatibility session only when it verifies for the canonical tenant', async () => {
+    const getCompatibilitySession = vi.fn(async (_request: Request, tenantId: string) =>
+      tenantId === ALPHA_ID ? { tenantId: ALPHA_ID } : null);
+    const dependencies = {
+      findBySlug: async (slug: string) => slug === 'alpha-class' ? alpha : { ...alpha, id: BETA_ID, slug },
+      findByTenantAndSubject: vi.fn(),
+      getSession: () => null,
+      getCompatibilitySession,
+    };
+
+    await expect(resolveTenantAdminContext('alpha-class', new Request('https://example.test/c/alpha-class/admin'), dependencies))
+      .resolves.toMatchObject({ compatibilitySession: { tenantId: ALPHA_ID } });
+    await expect(resolveTenantAdminContext('beta-class', new Request('https://example.test/c/beta-class/admin'), dependencies))
+      .rejects.toMatchObject({ code: 'UNAUTHENTICATED', status: 401 });
+    expect(getCompatibilitySession).toHaveBeenLastCalledWith(expect.any(Request), BETA_ID);
+  });
 });

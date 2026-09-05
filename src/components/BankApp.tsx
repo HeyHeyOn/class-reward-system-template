@@ -16,7 +16,7 @@ type BankView = 'home' | 'balance-scan' | 'balance-result' | 'tasks-scan' | 'tas
 type BalanceResult = { studentId: string; name: string; balance: number; transactions?: Transaction[] } | null;
 type TaskResult = { message: string; balanceAfter?: number; reward?: number; studentName?: string } | null;
 type TaskStudentStatus = { studentId: string; assigned: boolean; completed?: boolean };
-type CompletionOperation = { operationId: string; studentId: string; taskId: string };
+type CompletionOperation = { operationId: string; studentId: string; studentQr: string; taskId: string };
 type CompletionFailureMode = 'policy' | 'unknown' | 'conflict' | 'manual' | null;
 type IdentifyFailureMode = 'temporary' | 'missing' | 'other' | null;
 type BankTask = Omit<ClassTask, 'allowedStudentIds'> & {
@@ -139,6 +139,7 @@ export function BankApp() {
   const [publicTasksError, setPublicTasksError] = useState('');
   const [selectedTask, setSelectedTask] = useState<BankTask | null>(null);
   const [taskStudentId, setTaskStudentId] = useState('');
+  const [taskStudentQr, setTaskStudentQr] = useState('');
   const [taskStudentName, setTaskStudentName] = useState('');
   const [taskCarouselPositions, setTaskCarouselPositions] = useState<Record<string, string>>({});
   const [publicCarouselPositions, setPublicCarouselPositions] = useState<Record<string, string>>({});
@@ -222,6 +223,7 @@ export function BankApp() {
     setPendingTaskStudentId(studentId);
     setIdentifyFailureMode(null);
     setTaskStudentId('');
+    setTaskStudentQr('');
     setTaskStudentName('');
     setTasks([]);
     setSelectedTask(null);
@@ -245,11 +247,14 @@ export function BankApp() {
         throw new Error(studentPayload?.error ?? '학생 이름을 불러오지 못했습니다.');
       }
       if (!tasksResponse.ok) throw new Error(tasksPayload?.error ?? '과제 목록을 불러오지 못했습니다.');
-      if (studentPayload?.studentId !== studentId || typeof studentPayload?.name !== 'string' || !studentPayload.name.trim()) {
+      if (typeof studentPayload?.studentId !== 'string' || !studentPayload.studentId.trim()
+        || (!studentId.startsWith('csq1.') && studentPayload.studentId !== studentId)
+        || typeof studentPayload?.name !== 'string' || !studentPayload.name.trim()) {
         throw new Error('학생 정보를 확인하지 못했습니다.');
       }
       if (requestId !== taskRequestId.current) return;
-      setTaskStudentId(studentId);
+      setTaskStudentId(studentPayload.studentId.trim());
+      setTaskStudentQr(studentId);
       setTaskStudentName(studentPayload.name.trim());
       setTasks(Array.isArray(tasksPayload) ? tasksPayload : []);
       setTaskCarouselPositions({});
@@ -264,6 +269,7 @@ export function BankApp() {
       setTaskResult({ message });
       setIdentifyFailureMode(failureMode);
       setTaskStudentId('');
+      setTaskStudentQr('');
       setTaskStudentName('');
       setTasks([]);
       setSelectedTask(null);
@@ -312,7 +318,7 @@ export function BankApp() {
       if (!studentId || !selectedTask) return;
       const status = getTaskStudentStatus(selectedTask, studentId);
       if (!status.assigned || status.completed === true) return;
-      operation = { operationId: crypto.randomUUID(), studentId, taskId: selectedTask.taskId };
+      operation = { operationId: crypto.randomUUID(), studentId, studentQr: taskStudentQr, taskId: selectedTask.taskId };
       activeCompletion.current = operation;
       setPendingCompletionTaskId(operation.taskId);
     }
@@ -336,7 +342,7 @@ export function BankApp() {
           response = await tenantFetch(`/api/tasks/${encodeURIComponent(operation.taskId)}/complete`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ studentId: operation.studentId, operationId: operation.operationId }),
+            body: JSON.stringify({ studentId: operation.studentQr, operationId: operation.operationId }),
           });
           const text = await response.text();
           try {

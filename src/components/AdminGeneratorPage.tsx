@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { parseClassRewardArgs, renderCliResult } from '@/generator/cli.ts';
+import { useQrObjectUrl } from '@/lib/qrCodeClient';
 
 const THEMES = [
   { value: 'blue', label: '파랑' },
@@ -655,19 +656,25 @@ function SystemLinksPanel({ onBack }: { onBack: () => void }) {
 }
 
 function GeneratedLinkCard({ label, href, note }: { label: string; href: string; note: string }) {
-  const qrSrc = `/api/qrcode?value=${encodeURIComponent(href)}`;
+  const qrSrc = useQrObjectUrl({
+    key: href,
+    endpoint: '/api/qrcode/link',
+    body: { kind: 'system-link', url: href },
+  });
   return (
     <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
       <h3 className="text-lg font-black text-slate-950">{label}</h3>
       <p className="mt-1 text-xs font-bold text-slate-500">{note}</p>
       <a href={href} target="_blank" rel="noreferrer" className="mt-2 block break-all text-sm font-black text-sky-700 underline">{href}</a>
       <div className="mt-3 rounded-2xl bg-white p-3 text-center">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={qrSrc} alt={`${label} QR 코드`} className="mx-auto h-36 w-36" />
+        {qrSrc ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={qrSrc} alt={`${label} QR 코드`} className="mx-auto h-36 w-36" />
+        ) : <p className="flex h-36 items-center justify-center text-xs font-bold text-slate-500">{qrSrc === null ? 'QR 생성 실패' : 'QR 생성 중'}</p>}
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" onClick={() => void navigator.clipboard?.writeText(href)} className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-black text-white">주소 복사</button>
-        <a href={qrSrc} download={`${label}.svg`} className="rounded-xl bg-white px-3 py-2 text-xs font-black text-slate-700 shadow-sm">QR 이미지 저장</a>
+        {qrSrc ? <a href={qrSrc} download={`${label}.svg`} className="rounded-xl bg-white px-3 py-2 text-xs font-black text-slate-700 shadow-sm">QR 이미지 저장</a> : null}
       </div>
     </section>
   );

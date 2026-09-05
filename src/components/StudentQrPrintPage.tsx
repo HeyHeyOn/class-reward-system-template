@@ -4,7 +4,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { Student } from '@/domain/types';
-import { tenantFetch } from '@/lib/tenantApiPath';
+import { useQrObjectUrls } from '@/lib/qrCodeClient';
+import { tenantApiPath, tenantFetch } from '@/lib/tenantApiPath';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -12,6 +13,7 @@ export function StudentQrPrintPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [message, setMessage] = useState('학생 목록을 불러오는 중입니다.');
+  const [qrAttempt, setQrAttempt] = useState(0);
 
   useEffect(() => {
     let isMounted = true;
@@ -49,6 +51,16 @@ export function StudentQrPrintPage() {
   }, []);
 
   const studentCountText = useMemo(() => `총 ${students.length}명`, [students.length]);
+  const qrRequests = useMemo(() => students.map((student) => ({
+    key: `${qrAttempt}:${student.studentId}`,
+    endpoint: tenantApiPath('/api/qrcode'),
+    body: { kind: 'student' as const, studentId: student.studentId },
+  })), [qrAttempt, students]);
+  const qrUrls = useQrObjectUrls(qrRequests);
+  const qrUrlFor = (studentId: string) => qrUrls[`${qrAttempt}:${studentId}`];
+  const hasQrFailure = students.some((student) => qrUrlFor(student.studentId) === null);
+  const allQrsReady = students.length > 0
+    && students.every((student) => Boolean(qrUrlFor(student.studentId)));
 
   return (
     <main className="min-h-screen bg-[#f6f1e8] px-6 py-8 text-slate-950 print:bg-white print:px-0 print:py-0">
@@ -65,12 +77,21 @@ export function StudentQrPrintPage() {
             <span className="rounded-full bg-amber-100 px-4 py-2 text-sm font-bold text-amber-900">{studentCountText}</span>
             <button
               className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300"
-              disabled={students.length === 0}
+              disabled={!allQrsReady}
               onClick={() => window.print()}
               type="button"
             >
               QR 카드 인쇄하기
             </button>
+            {hasQrFailure ? (
+              <button
+                className="rounded-2xl bg-red-100 px-5 py-3 text-sm font-black text-red-800"
+                onClick={() => setQrAttempt((current) => current + 1)}
+                type="button"
+              >
+                QR 생성 다시 시도
+              </button>
+            ) : null}
           </div>
         </header>
 
@@ -91,11 +112,17 @@ export function StudentQrPrintPage() {
               key={student.studentId}
             >
               <div className="mx-auto mb-4 flex h-48 w-48 items-center justify-center rounded-3xl border border-slate-100 bg-white p-3 print:h-40 print:w-40">
-                <img
-                  alt={`${student.name} QR 코드`}
-                  className="h-full w-full"
-                  src={`/api/qrcode?value=${encodeURIComponent(student.studentId)}`}
-                />
+                {qrUrlFor(student.studentId) ? (
+                  <img
+                    alt={`${student.name} QR 코드`}
+                    className="h-full w-full"
+                    src={qrUrlFor(student.studentId) as string}
+                  />
+                ) : qrUrlFor(student.studentId) === null ? (
+                  <span className="text-sm font-bold text-red-700">QR 생성 실패</span>
+                ) : (
+                  <span className="text-sm font-bold text-slate-500">QR 생성 중</span>
+                )}
               </div>
               <h2 className="text-2xl font-black">{student.name}</h2>
               <p className="mt-1 text-lg font-bold text-slate-600">

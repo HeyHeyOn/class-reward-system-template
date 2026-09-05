@@ -389,6 +389,36 @@ describe('BankApp', () => {
     expect(await screen.findByRole('dialog', { name: '책 10분 읽기' })).toBeTruthy();
   });
 
+  it('uses the canonical student ID for projections but keeps the signed QR in the completion POST body', async () => {
+    const signedQr = 'csq1.k1.signed-payload.signed-signature';
+    const encoded = encodeURIComponent(signedQr);
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/settings') return jsonResponse({ bankTitle: '별빛 은행', currencyUnit: '별', qrManualInputEnabled: true });
+      if (url === '/api/bank/tasks') return jsonResponse([]);
+      if (url === `/api/bank/student?studentId=${encoded}`) return jsonResponse({ studentId: 'S001', name: '김민준' });
+      if (url === `/api/tasks?studentId=${encoded}`) return jsonResponse(tasks.map((task) => ({
+        ...task, studentStatus: { studentId: 'S001', assigned: true, completed: false },
+      })));
+      if (url === '/api/tasks/T001/complete' && init?.method === 'POST') {
+        const operationId = JSON.parse(String(init.body)).operationId;
+        return jsonResponse(completionSuccess(operationId));
+      }
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    }));
+
+    render(<BankApp />);
+    await screen.findByRole('heading', { name: '별빛 은행' });
+    await identifyTaskStudent(signedQr);
+    await screen.findByRole('dialog', { name: '과제 완료' });
+    fireEvent.click(screen.getByRole('button', { name: /책 10분 읽기/ }));
+    fireEvent.click(await screen.findByRole('button', { name: '완료하기' }));
+
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url) === '/api/tasks/T001/complete')).toBe(true));
+    const call = vi.mocked(fetch).mock.calls.find(([url]) => String(url) === '/api/tasks/T001/complete')!;
+    expect(JSON.parse(String(call[1]?.body))).toEqual({ studentId: signedQr, operationId: 'operation-001' });
+  });
+
   it('identifies the student before fetching and displays only authoritative current assignments', async () => {
     const projectedTasks = [
       { ...tasks[0], allowedStudentIds: [], currentCycle: { cycleId: 'cycle-1', startsAt: '2026-05-20T00:00:00.000Z', endsAt: '2026-05-27T00:00:00.000Z' }, studentStatus: { studentId: 'S 001', assigned: true, completed: false } },

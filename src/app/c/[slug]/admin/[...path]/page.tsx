@@ -21,7 +21,7 @@ export default async function TenantAdminSubroute({
     case 'login':
       return (
         <Suspense fallback={null}>
-          <AdminLoginPage googleLoginEnabled membershipOnly />
+          <AdminLoginPage googleLoginEnabled tenantScoped />
         </Suspense>
       );
     case 'manage':

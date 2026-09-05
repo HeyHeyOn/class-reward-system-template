@@ -12,11 +12,13 @@ function route(method: Method, pattern: string, access: TenantApiAccessResolver,
 }
 
 const ROUTES: readonly TenantApiRoute[] = [
+  route('POST', 'admin/login', 'public', async (r) => (await import('@/app/api/admin/login/route')).POST(r)),
   route('GET', 'bank/balance', 'public', async (r) => (await import('@/app/api/bank/balance/route')).GET(r)),
   route('GET', 'bank/student', 'public', async (r) => (await import('@/app/api/bank/student/route')).GET(r)),
   route('GET', 'bank/tasks', 'public', async (r) => (await import('@/app/api/bank/tasks/route')).GET(r)),
   route('POST', 'checkout', 'public', async (r) => (await import('@/app/api/checkout/route')).POST(r)),
   route('POST', 'checkout/preview', 'public', async (r) => (await import('@/app/api/checkout/preview/route')).POST(r)),
+  route('POST', 'qrcode', 'admin', async (r) => (await import('@/app/api/qrcode/route')).POST(r)),
   route('GET', 'products', (r) => new URL(r.url).searchParams.get('includeInactive') === '1' ? 'admin' : 'public', async (r) => (await import('@/app/api/products/route')).GET(r)),
   route('POST', 'products', 'admin', async (r) => (await import('@/app/api/products/route')).POST(r)),
   route('PATCH', 'products/[productId]', 'admin', async (r, c) => (await import('@/app/api/products/[productId]/route')).PATCH(r, c as never)),

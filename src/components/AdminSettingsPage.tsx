@@ -2,7 +2,8 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 import { FONT_FAMILY_OPTIONS, normalizeFontFamily, type FontFamily } from '@/lib/fontSettings';
-import { tenantFetch } from '@/lib/tenantApiPath';
+import { useQrObjectUrl } from '@/lib/qrCodeClient';
+import { tenantApiPath, tenantFetch } from '@/lib/tenantApiPath';
 
 type SettingsResponse = {
   spreadsheetId: string;
@@ -35,6 +36,10 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
   const [adminPassword, setAdminPassword] = useState('');
   const [savedAdminPassword, setSavedAdminPassword] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const adminQrUrl = useQrObjectUrl(savedAdminPassword ? {
+    key: 'admin', endpoint: tenantApiPath('/api/qrcode'),
+    body: { kind: 'admin', password: savedAdminPassword },
+  } : null);
 
   useEffect(() => {
     let ignore = false;
@@ -212,8 +217,14 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
       {savedAdminPassword ? (
         <div className="mt-4 rounded-2xl bg-sky-50 p-4 text-center">
           <p className="text-sm font-black text-sky-900">관리자 QR 로그인 코드</p>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="mx-auto mt-3 h-48 w-48 rounded-xl bg-white p-2" alt="관리자 로그인 QR" src={`/api/qrcode?value=${encodeURIComponent(`class-store-admin:${savedAdminPassword}`)}`} />
+          {adminQrUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img className="mx-auto mt-3 h-48 w-48 rounded-xl bg-white p-2" alt="관리자 로그인 QR" src={adminQrUrl} />
+          ) : adminQrUrl === null ? (
+            <p className="mt-3 text-sm font-bold text-red-700">QR 생성 실패</p>
+          ) : (
+            <p className="mt-3 text-sm font-bold text-slate-500">QR 생성 중</p>
+          )}
           <p className="mt-2 text-xs font-bold text-slate-500">로그인 화면의 QR 로그인으로 인식하면 암호가 자동 입력됩니다.</p>
         </div>
       ) : null}

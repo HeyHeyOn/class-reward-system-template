@@ -96,4 +96,22 @@ describe('tenant API dispatcher', () => {
     });
     expect(response.status).toBe(404);
   });
+
+  it('resolves the canonical tenant before invoking only the exact public login POST', async () => {
+    const handler = vi.fn(async () => Response.json({ tenantId: getTrustedTenantRequestContext().tenant.id }));
+    const deps = dependencies();
+    const dispatch = createTenantApiDispatcher(deps, [{ method: 'POST', pattern: 'admin/login', access: 'public', handler }]);
+    const response = await dispatch(new Request('https://example.test/api/c/alpha-class/admin/login', { method: 'POST' }), {
+      slug: 'alpha-class', path: ['admin', 'login'],
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ tenantId: ALPHA_ID });
+    expect(deps.findBySlug).toHaveBeenCalledWith('alpha-class');
+    expect(deps.getSession).not.toHaveBeenCalled();
+
+    const getResponse = await dispatch(new Request('https://example.test/api/c/alpha-class/admin/login'), {
+      slug: 'alpha-class', path: ['admin', 'login'],
+    });
+    expect(getResponse.status).toBe(404);
+  });
 });

@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdminGeneratorPage } from './AdminGeneratorPage';
 
 function stubGeneratorFetch(options?: { authenticated?: boolean; generatorGranted?: boolean; createResponse?: Record<string, unknown> }) {
@@ -48,6 +48,9 @@ function stubGeneratorFetch(options?: { authenticated?: boolean; generatorGrante
         }),
       };
     }
+    if (url === '/api/qrcode/link' && init?.method === 'POST') {
+      return new Response('<svg/>', { headers: { 'Content-Type': 'image/svg+xml' } });
+    }
     throw new Error(`Unexpected fetch: ${url}`);
   });
   vi.stubGlobal('fetch', fetchSpy);
@@ -78,6 +81,13 @@ async function goThroughAuthenticatedCreateSteps() {
 }
 
 describe('AdminGeneratorPage', () => {
+  beforeEach(() => {
+    let blobNumber = 0;
+    const NativeURL = URL;
+    class TestURL extends NativeURL {}
+    Object.assign(TestURL, { createObjectURL: vi.fn(() => `blob:link-${++blobNumber}`), revokeObjectURL: vi.fn() });
+    vi.stubGlobal('URL', TestURL);
+  });
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
@@ -213,7 +223,17 @@ describe('AdminGeneratorPage', () => {
     fireEvent.change(screen.getByLabelText('Vercel 접속 주소'), { target: { value: 'https://sunny-class.vercel.app' } });
     expect(screen.getByRole('heading', { name: '관리자 페이지' })).toBeTruthy();
     expect(screen.getByText('https://sunny-class.vercel.app/admin')).toBeTruthy();
-    expect(screen.getByRole('img', { name: '매점 페이지 QR 코드' }).getAttribute('src')).toBe('/api/qrcode?value=https%3A%2F%2Fsunny-class.vercel.app');
+    await waitFor(() => expect(screen.getByRole('img', { name: '매점 페이지 QR 코드' }).getAttribute('src')).toBe('blob:link-2'));
+    const qrCalls = fetchSpy.mock.calls.filter(([input]) => String(input) === '/api/qrcode/link');
+    expect(qrCalls).toHaveLength(3);
+    expect(qrCalls.map(([, init]) => init?.body)).toEqual([
+      JSON.stringify({ kind: 'system-link', url: 'https://sunny-class.vercel.app/admin' }),
+      JSON.stringify({ kind: 'system-link', url: 'https://sunny-class.vercel.app' }),
+      JSON.stringify({ kind: 'system-link', url: 'https://sunny-class.vercel.app/bank' }),
+    ]);
+    expect(qrCalls.every(([, init]) => init?.method === 'POST' && init.headers && (init.headers as Record<string, string>)['Content-Type'] === 'application/json')).toBe(true);
+    expect(fetchSpy.mock.calls.every(([input]) => !String(input).includes('?value='))).toBe(true);
+    expect(screen.getAllByRole('link', { name: 'QR 이미지 저장' })[0]?.getAttribute('href')).toMatch(/^blob:link-/);
     expect(screen.getAllByText('QR 이미지 저장')).toHaveLength(3);
   });
 });

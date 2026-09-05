@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createConfiguredBankReader } from '@/server/repositories/configuredBank';
+import { resolveStudentQrForCurrentTenant, StudentQrValidationError } from '@/server/studentQr';
 import { GET } from './route';
 
 vi.mock('@/server/repositories/configuredBank', () => ({ createConfiguredBankReader: vi.fn() }));
+vi.mock('@/server/studentQr', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/server/studentQr')>()), resolveStudentQrForCurrentTenant: vi.fn(),
+}));
 
 const student = { studentId: 'S1', name: '학생', balance: 123, status: 'ACTIVE' as const };
 const transactions = Array.from({ length: 11 }, (_, index) => ({
@@ -17,6 +21,7 @@ describe('GET /api/bank/balance', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(resolveStudentQrForCurrentTenant).mockReturnValue({ studentId: 'S1', format: 'SIGNED' });
     vi.mocked(createConfiguredBankReader).mockResolvedValue({ getBalance, confirmStudent: vi.fn() });
   });
 
@@ -29,12 +34,22 @@ describe('GET /api/bank/balance', () => {
       studentId: 'S1', name: '학생', balance: 123, transactions: transactions.slice(0, 10),
     });
     expect(getBalance).toHaveBeenCalledWith('S1');
+    expect(resolveStudentQrForCurrentTenant).toHaveBeenCalledWith('S1');
   });
 
   it('preserves validation before selecting a backend', async () => {
     const response = await GET(new Request('http://localhost/api/bank/balance'));
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({ error: '학생 QR을 인식해 주세요.' });
+    expect(createConfiguredBankReader).not.toHaveBeenCalled();
+  });
+
+  it('does not disclose invalid or wrong-tenant signed QR details', async () => {
+    vi.mocked(resolveStudentQrForCurrentTenant).mockImplementation(() => { throw new StudentQrValidationError(); });
+    const response = await GET(new Request('http://localhost/api/bank/balance?studentId=csq1.wrong-tenant'));
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({ error: '학생 정보를 찾을 수 없습니다.' });
     expect(createConfiguredBankReader).not.toHaveBeenCalled();
   });
 

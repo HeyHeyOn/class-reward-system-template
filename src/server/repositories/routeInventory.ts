@@ -18,7 +18,7 @@ const platform = (
 ): TenantRouteInventoryEntry => ({ route, method, scope: 'platform', effect });
 
 export const TENANT_ROUTE_INVENTORY: readonly TenantRouteInventoryEntry[] = [
-  platform('/admin/login', 'POST', 'mutation'),
+  tenantMutation('/admin/login', 'POST'),
   platform('/admin/logout', 'POST', 'mutation'),
   tenantRead('/bank/balance'),
   tenantRead('/bank/student'),
@@ -42,7 +42,9 @@ export const TENANT_ROUTE_INVENTORY: readonly TenantRouteInventoryEntry[] = [
   tenantRead('/promotions/active'),
   tenantRead('/promotions'),
   tenantMutation('/promotions', 'POST'),
-  platform('/qrcode', 'GET', 'read'),
+  { route: '/qrcode', method: 'GET', scope: 'unsupported', effect: 'none' },
+  tenantRead('/qrcode', 'POST'),
+  platform('/qrcode/link', 'POST', 'read'),
   tenantRead('/settings'),
   { route: '/settings', method: 'PATCH', scope: 'unsupported', effect: 'none' },
   tenantMutation('/settings', 'POST'),

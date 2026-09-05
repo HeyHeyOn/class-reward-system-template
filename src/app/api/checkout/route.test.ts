@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createCheckoutPayloadHash } from '@/server/checkoutService';
 import { createConfiguredCheckoutCommand } from '@/server/repositories/configuredCheckout';
+import { resolveStudentQrForCurrentTenant, StudentQrValidationError } from '@/server/studentQr';
 import { POST } from './route';
 
 const executeCheckout = vi.hoisted(() => vi.fn());
@@ -10,6 +11,10 @@ vi.mock('@/server/checkoutService', () => ({
 }));
 vi.mock('@/server/repositories/configuredCheckout', () => ({
   createConfiguredCheckoutCommand: vi.fn(() => ({ execute: executeCheckout })),
+}));
+vi.mock('@/server/studentQr', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/server/studentQr')>()),
+  resolveStudentQrForCurrentTenant: vi.fn(),
 }));
 
 const expectedPricing = {
@@ -38,7 +43,28 @@ function checkoutRequest(overrides: Record<string, unknown> = {}): Request {
 describe('POST /api/checkout', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(resolveStudentQrForCurrentTenant).mockReturnValue({ studentId: 'S001', format: 'SIGNED' });
     vi.mocked(createConfiguredCheckoutCommand).mockResolvedValue({ execute: executeCheckout });
+  });
+
+  it('resolves the body QR inside the trusted tenant before hashing or executing checkout', async () => {
+    executeCheckout.mockResolvedValue({ ok: true });
+    const response = await POST(checkoutRequest({ studentId: 'csq1.signed-token' }));
+
+    expect(response.status).toBe(200);
+    expect(resolveStudentQrForCurrentTenant).toHaveBeenCalledWith('csq1.signed-token');
+    expect(createCheckoutPayloadHash).toHaveBeenCalledWith(expect.objectContaining({ studentId: 'S001' }));
+    expect(executeCheckout).toHaveBeenCalledWith(expect.objectContaining({ studentId: 'S001' }));
+  });
+
+  it('maps invalid or wrong-tenant QR values to a nondisclosing failure before selecting a backend', async () => {
+    vi.mocked(resolveStudentQrForCurrentTenant).mockImplementation(() => { throw new StudentQrValidationError(); });
+    const response = await POST(checkoutRequest({ studentId: 'csq1.wrong-tenant' }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: '학생 정보를 찾을 수 없습니다.' });
+    expect(createConfiguredCheckoutCommand).not.toHaveBeenCalled();
+    expect(createCheckoutPayloadHash).not.toHaveBeenCalled();
   });
 
   it('logs internal failures and returns a generic 500 without leaking exception details', async () => {

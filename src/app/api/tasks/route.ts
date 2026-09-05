@@ -2,6 +2,7 @@ import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/ap
 import { createConfiguredTaskCreation } from '@/server/repositories/configuredTaskCreation';
 import { createConfiguredTaskReader } from '@/server/repositories/configuredTasks';
 import { buildStudentTaskProjection } from '@/server/studentTaskProjection';
+import { resolveStudentQrForCurrentTenant, StudentQrValidationError } from '@/server/studentQr';
 import { parseOptionalTaskScheduleEdit } from './taskScheduleEdit';
 import { parseStrictTaskCreate } from './taskPayload';
 
@@ -17,7 +18,8 @@ export async function GET(request: Request) {
       || (studentIds.length === 1 && (!studentIds[0].trim() || searchParams.has('includeInactive')))) {
       return Response.json({ error: '과제 조회 요청 형식이 올바르지 않습니다.' }, { status: 400 });
     }
-    const studentId = studentIds.length === 1 ? studentIds[0].trim() : null;
+    const qrValue = studentIds.length === 1 ? studentIds[0].trim() : null;
+    const studentId = qrValue ? resolveStudentQrForCurrentTenant(qrValue).studentId : null;
     if (!studentId && !isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
     const reader = await createConfiguredTaskReader(request);
     const includeInactive = searchParams.get('includeInactive') === '1';
@@ -30,7 +32,9 @@ export async function GET(request: Request) {
     return Response.json(buildStudentTaskProjection(tasks, studentId, now));
   } catch (error) {
     if (new URL(request.url).searchParams.has('studentId')) {
-      return Response.json({ error: '과제 목록을 불러오지 못했습니다.' }, { status: 500 });
+      return error instanceof StudentQrValidationError
+        ? Response.json({ error: '학생 정보를 찾을 수 없습니다.' }, { status: 404 })
+        : Response.json({ error: '과제 목록을 불러오지 못했습니다.' }, { status: 500 });
     }
     const message = error instanceof Error ? error.message : '과제 목록을 불러오지 못했습니다.';
     return Response.json({ error: message }, { status: 500 });

@@ -2,6 +2,7 @@ import { createCheckoutPayloadHash } from '@/server/checkoutService';
 import { createConfiguredCheckoutCommand } from '@/server/repositories/configuredCheckout';
 import type { CartItem } from '@/domain/types';
 import { checkoutPreviewMatchesCart, parseCheckoutPreviewResponse, type CheckoutPreviewPayload } from '@/lib/checkoutSnapshotClient';
+import { resolveStudentQrForCurrentTenant, StudentQrValidationError } from '@/server/studentQr';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,10 +28,11 @@ export async function POST(request: Request) {
       return Response.json({ error: validation.message }, { status: 400 });
     }
 
+    const { studentId } = resolveStudentQrForCurrentTenant(validation.studentId);
     const command = await createConfiguredCheckoutCommand(request);
     const checkoutInput = {
       operationId: validation.operationId,
-      studentId: validation.studentId,
+      studentId,
       items: validation.items,
       expectedPricing: validation.expectedPricing,
       operator: 'kiosk',
@@ -48,7 +50,10 @@ export async function POST(request: Request) {
     }
 
     return Response.json(result);
-  } catch {
+  } catch (error) {
+    if (error instanceof StudentQrValidationError) {
+      return Response.json({ error: '학생 정보를 찾을 수 없습니다.' }, { status: 400 });
+    }
     console.error('checkout_failed');
     return Response.json({ error: '결제를 처리하지 못했습니다.' }, { status: 500 });
   }

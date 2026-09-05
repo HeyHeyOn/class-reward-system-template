@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AdminLoginPage } from '@/components/AdminLoginPage';
 
 vi.mock('next/navigation', () => ({
@@ -7,13 +7,33 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-describe('AdminLoginPage tenant membership mode', () => {
-  it('offers only ordinary Google identity login returning to class selection', () => {
-    render(<AdminLoginPage membershipOnly />);
+describe('AdminLoginPage tenant mode', () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-    expect(screen.getByRole('link', { name: 'Google 계정으로 로그인' }).getAttribute('href'))
-      .toBe('/api/google/login?returnTo=%2Fclasses');
-    expect(screen.queryByLabelText('QR 로그인 값')).toBeNull();
-    expect(screen.queryByLabelText('관리자 암호')).toBeNull();
+  it('keeps Google membership login and offers the imported compatibility paths', () => {
+    render(<AdminLoginPage tenantScoped />);
+
+    expect(screen.getByRole('link', { name: 'Google 계정으로 로그인' })).toBeTruthy();
+    expect(screen.getByLabelText('QR 로그인 값')).toBeTruthy();
+    expect(screen.getByLabelText('관리자 비밀번호')).toBeTruthy();
+  });
+
+  it('uses tenantFetch with an explicit kind and preserves the QR prefix only in the body', async () => {
+    window.history.replaceState({}, '', '/c/alpha-class/admin/login');
+    const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(
+      async () => Response.json({ ok: true }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    render(<AdminLoginPage tenantScoped />);
+    const credential = 'class-store-admin:secret-value';
+    fireEvent.change(screen.getByLabelText('QR 로그인 값'), { target: { value: credential } });
+    fireEvent.click(screen.getByRole('button', { name: '적용' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(fetchMock).toHaveBeenCalledWith('/api/c/alpha-class/admin/login', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ kind: 'qr', value: credential }),
+    }));
+    expect(fetchMock.mock.calls[0]?.[0]).not.toContain('secret-value');
   });
 });

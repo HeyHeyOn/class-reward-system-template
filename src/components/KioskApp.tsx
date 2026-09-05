@@ -339,7 +339,7 @@ export function KioskApp() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           operationId: checkoutOperationId(studentPayload.studentId, cartItems, currentPreview),
-          studentId: studentPayload.studentId,
+          studentId,
           items: cartItems,
           expectedPricing: currentPreview,
         }),

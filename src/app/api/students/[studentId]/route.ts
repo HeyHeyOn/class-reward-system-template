@@ -2,6 +2,7 @@ import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/ap
 import { createConfiguredSheetsStore } from '@/server/googleSheets';
 import { createConfiguredStudentReader } from '@/server/repositories/configuredStudents';
 import { deleteStudent, updateStudentDetails } from '@/server/sheetsRepository';
+import { resolveStudentQrForCurrentTenant, StudentQrValidationError } from '@/server/studentQr';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,8 +13,10 @@ type RouteContext = {
 export async function GET(request: Request, context: RouteContext) {
   try {
     const { studentId } = await context.params;
+    const qrValue = decodeURIComponent(studentId);
+    const resolved = resolveStudentQrForCurrentTenant(qrValue);
     const reader = await createConfiguredStudentReader();
-    const student = await reader.getStudentById(decodeURIComponent(studentId));
+    const student = await reader.getStudentById(resolved.studentId);
 
     if (!student) {
       return Response.json({ error: '학생을 찾을 수 없습니다.' }, { status: 404 });
@@ -21,6 +24,9 @@ export async function GET(request: Request, context: RouteContext) {
 
     return Response.json(student);
   } catch (error) {
+    if (error instanceof StudentQrValidationError) {
+      return Response.json({ error: '학생을 찾을 수 없습니다.' }, { status: 404 });
+    }
     const message = error instanceof Error ? error.message : '학생 정보를 불러오지 못했습니다.';
 
     return Response.json({ error: message }, { status: 500 });

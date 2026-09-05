@@ -3,6 +3,7 @@ import {
   parseConfiguredTaskCompletionResult,
 } from '@/server/repositories/configuredTaskCompletion';
 import { TaskRewardCommandError } from '@/server/repositories/database/taskCompletionCommands';
+import { resolveStudentQrForCurrentTenant } from '@/server/studentQr';
 
 type RouteContext = { params: Promise<{ taskId: string }> };
 
@@ -91,9 +92,10 @@ export async function POST(request: Request, context: RouteContext) {
     const rawStudentId = dataValue(payload, 'studentId');
     const rawOperationId = dataValue(payload, 'operationId');
     if (typeof rawStudentId !== 'string' || typeof rawOperationId !== 'string') return qrFailure();
-    studentId = rawStudentId.trim();
+    const qrValue = rawStudentId.trim();
     operationId = rawOperationId;
-    if (!taskId || !studentId || !OPERATION_ID_PATTERN.test(operationId)) return qrFailure();
+    if (!taskId || !qrValue || !OPERATION_ID_PATTERN.test(operationId)) return qrFailure();
+    studentId = resolveStudentQrForCurrentTenant(qrValue).studentId;
   } catch {
     return qrFailure();
   }

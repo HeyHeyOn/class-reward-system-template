@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   getStudentById: vi.fn(),
   updateStudentDetails: vi.fn(),
   deleteStudent: vi.fn(),
+  resolveStudentQrForCurrentTenant: vi.fn(),
 }));
 
 vi.mock('@/server/repositories/configuredStudents', () => ({
@@ -21,6 +22,10 @@ vi.mock('@/server/sheetsRepository', () => ({
   updateStudentDetails: mocks.updateStudentDetails,
   deleteStudent: mocks.deleteStudent,
 }));
+vi.mock('@/server/studentQr', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/server/studentQr')>()),
+  resolveStudentQrForCurrentTenant: mocks.resolveStudentQrForCurrentTenant,
+}));
 
 import { GET } from '@/app/api/students/[studentId]/route';
 
@@ -31,6 +36,7 @@ const context = { params: Promise.resolve({ studentId: 'S%201' }) };
 describe('student by-id GET read authority', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.resolveStudentQrForCurrentTenant.mockReturnValue({ studentId: 'S 1', format: 'SIGNED' });
   });
 
   it('delegates the decoded ID to the configured student reader', async () => {
@@ -44,6 +50,7 @@ describe('student by-id GET read authority', () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual(student);
+    expect(mocks.resolveStudentQrForCurrentTenant).toHaveBeenCalledWith('S 1');
     expect(configuredReader.getStudentById).toHaveBeenCalledWith('S 1');
     expect(configuredReader.getStudents).not.toHaveBeenCalled();
     expect(mocks.createConfiguredSheetsReader).not.toHaveBeenCalled();

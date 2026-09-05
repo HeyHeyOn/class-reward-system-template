@@ -10,7 +10,11 @@ describe('tenantApiPath', () => {
   it('keeps legacy pages on compatibility API routes', () => {
     expect(tenantApiPath('/api/products', '/admin')).toBe('/api/products');
     expect(tenantApiPath('/api/google/session', '/c/alpha-class/admin')).toBe('/api/google/session');
-    expect(tenantApiPath('/api/qrcode?value=S001', '/c/alpha-class/admin')).toBe('/api/qrcode?value=S001');
+  });
+
+  it('scopes student QR rendering to the tenant selected by this tab', () => {
+    expect(tenantApiPath('/api/qrcode?studentId=S001', '/c/alpha-class/admin'))
+      .toBe('/api/c/alpha-class/qrcode?studentId=S001');
   });
 
   it('rejects malformed or noncanonical scoped pathnames', () => {

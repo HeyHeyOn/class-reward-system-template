@@ -428,6 +428,27 @@ describe('KioskApp', () => {
     expect(await screen.findByRole('heading', { name: '장바구니 (0)' })).toBeTruthy();
   });
 
+  it('keeps a signed QR in the checkout POST body after the student-safe lookup', async () => {
+    const signedQr = 'csq1.k1.signed-payload.signed-signature';
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input) === `/api/students/${encodeURIComponent(signedQr)}`) return jsonResponse(studentBefore);
+      return base(input, init);
+    });
+
+    render(<KioskApp />);
+    expect(await screen.findByText('연필')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '연필 300별 담기' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'QR 결제' })).toHaveProperty('disabled', false));
+    fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
+    fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: signedQr } });
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 결제하기' }));
+
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input) === '/api/checkout')).toBe(true));
+    const checkoutCall = vi.mocked(fetch).mock.calls.find(([input]) => String(input) === '/api/checkout')!;
+    expect(JSON.parse(String(checkoutCall[1]?.body))).toMatchObject({ studentId: signedQr });
+  });
+
   it('shows a payment failure popup when QR is invalid', async () => {
     render(<KioskApp />);
 

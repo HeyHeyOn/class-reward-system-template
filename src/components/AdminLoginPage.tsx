@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { tenantFetch, tenantPagePath } from '@/lib/tenantApiPath';
 
 type BarcodeDetectorCtor = new (options?: { formats?: string[] }) => {
   detect(source: CanvasImageSource): Promise<Array<{ rawValue: string }>>;
@@ -16,9 +17,11 @@ declare global {
 export function AdminLoginPage({
   googleLoginEnabled = true,
   membershipOnly = false,
+  tenantScoped = false,
 }: {
   googleLoginEnabled?: boolean;
   membershipOnly?: boolean;
+  tenantScoped?: boolean;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -49,21 +52,21 @@ export function AdminLoginPage({
     );
   }
 
-  async function submitPassword(value = password, fromQr = false) {
+  async function submitCredential(value: string, kind: 'password' | 'qr', fromQr = false) {
     setSubmittingFromQr(fromQr);
     setIsSubmitting(true);
     setMessage('');
 
     try {
-      const response = await fetch('/api/admin/login', {
+      const response = await tenantFetch('/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: normalizeQrPassword(value) }),
+        body: JSON.stringify({ kind, value }),
       });
       const body = (await response.json()) as { error?: string };
 
       if (!response.ok) throw new Error(body.error ?? '로그인하지 못했습니다.');
-      router.replace(searchParams.get('next') || '/admin');
+      router.replace(searchParams.get('next') || tenantPagePath('/admin'));
       router.refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '로그인하지 못했습니다.');
@@ -74,7 +77,7 @@ export function AdminLoginPage({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await submitPassword(password);
+    await submitCredential(password, 'password');
   }
 
   async function startScan() {
@@ -98,9 +101,8 @@ export function AdminLoginPage({
         const value = codes[0]?.rawValue;
         if (value) {
           stopScan();
-          const normalized = normalizeQrPassword(value);
-          setPassword(normalized);
-          await submitPassword(normalized, true);
+          setQrText(value);
+          await submitCredential(value, 'qr', true);
           return;
         }
         scanTimerRef.current = window.setTimeout(scan, 350);
@@ -121,9 +123,7 @@ export function AdminLoginPage({
   }
 
   function applyQrText() {
-    const normalized = normalizeQrPassword(qrText);
-    setPassword(normalized);
-    void submitPassword(normalized, true);
+    void submitCredential(qrText, 'qr', true);
   }
 
   return (
@@ -141,7 +141,7 @@ export function AdminLoginPage({
 
         {googleLoginEnabled ? (
           <>
-            <a className="mt-8 flex w-full items-center justify-center rounded-2xl bg-[#4285f4] px-5 py-3 text-center font-black text-white shadow-[0_10px_30px_rgba(66,133,244,0.25)]" href="/api/google/login">
+            <a className="mt-8 flex w-full items-center justify-center rounded-2xl bg-[#4285f4] px-5 py-3 text-center font-black text-white shadow-[0_10px_30px_rgba(66,133,244,0.25)]" href={tenantScoped ? `/api/google/login?returnTo=${encodeURIComponent(tenantPagePath('/admin'))}` : '/api/google/login'}>
               Google 계정으로 로그인
             </a>
 
@@ -186,8 +186,4 @@ function LoadingDialog({ title, message }: { title: string; message: string }) {
       </section>
     </div>
   );
-}
-
-function normalizeQrPassword(value: string): string {
-  return value.trim().startsWith('class-store-admin:') ? value.trim().slice('class-store-admin:'.length) : value.trim();
 }

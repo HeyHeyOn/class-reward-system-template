@@ -8,6 +8,7 @@ import type { ClassTask, TaskAssignment } from '@/domain/types';
 import { buildStudentTaskProjection } from '@/server/studentTaskProjection';
 import { createConfiguredTaskReader } from '@/server/repositories/configuredTasks';
 import { createConfiguredTaskCreation } from '@/server/repositories/configuredTaskCreation';
+import { resolveStudentQrForCurrentTenant, StudentQrValidationError } from '@/server/studentQr';
 import { GET, POST } from './route';
 
 vi.mock('@/server/apiAuth', () => ({
@@ -19,6 +20,10 @@ vi.mock('@/server/sheetsRepository', () => ({ createTask: vi.fn() }));
 vi.mock('@/server/repositories/sheets/taskHistoryQueries', () => ({ listTaskCycleProjections: vi.fn() }));
 vi.mock('@/server/repositories/configuredTasks', () => ({ createConfiguredTaskReader: vi.fn() }));
 vi.mock('@/server/repositories/configuredTaskCreation', () => ({ createConfiguredTaskCreation: vi.fn() }));
+vi.mock('@/server/studentQr', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/server/studentQr')>()),
+  resolveStudentQrForCurrentTenant: vi.fn(),
+}));
 vi.mock('@/server/studentTaskProjection', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/server/studentTaskProjection')>();
   return { ...actual, buildStudentTaskProjection: vi.fn(actual.buildStudentTaskProjection) };
@@ -32,6 +37,9 @@ const projected = [{
 describe('GET /api/tasks', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(resolveStudentQrForCurrentTenant).mockImplementation((value) => ({
+      studentId: String(value).trim(), format: 'LEGACY',
+    }));
     vi.mocked(isAuthorizedAdminRequest).mockReturnValue(true);
     vi.mocked(createConfiguredTaskReader).mockResolvedValue({
       listTaskCycleProjections: (options: never) => listTaskCycleProjections({} as never, options),
@@ -85,6 +93,26 @@ describe('GET /api/tasks', () => {
     expect(response.status).toBe(200);
     expect(listTaskCycleProjections).toHaveBeenCalledWith({}, { studentId: 'S1', includeInactive: true });
     expect(buildStudentTaskProjection).toHaveBeenCalledWith(projected, 'S1', expect.any(String));
+  });
+
+  it('resolves a signed QR inside the trusted tenant before reading student task state', async () => {
+    vi.mocked(resolveStudentQrForCurrentTenant).mockReturnValue({ studentId: 'S1', format: 'SIGNED' });
+    vi.mocked(listTaskCycleProjections).mockResolvedValue(projected as never);
+    const response = await GET(new Request('http://localhost/api/tasks?studentId=csq1.signed-token'));
+
+    expect(response.status).toBe(200);
+    expect(resolveStudentQrForCurrentTenant).toHaveBeenCalledWith('csq1.signed-token');
+    expect(listTaskCycleProjections).toHaveBeenCalledWith({}, { studentId: 'S1', includeInactive: true });
+    expect(buildStudentTaskProjection).toHaveBeenCalledWith(projected, 'S1', expect.any(String));
+  });
+
+  it('rejects invalid or wrong-tenant QR without selecting a reader', async () => {
+    vi.mocked(resolveStudentQrForCurrentTenant).mockImplementation(() => { throw new StudentQrValidationError(); });
+    const response = await GET(new Request('http://localhost/api/tasks?studentId=csq1.wrong-tenant'));
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({ error: '학생 정보를 찾을 수 없습니다.' });
+    expect(createConfiguredTaskReader).not.toHaveBeenCalled();
   });
 
   it('returns only the requested student status and hides other students from the public student projection', async () => {

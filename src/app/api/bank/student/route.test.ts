@@ -1,9 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createConfiguredBankReader } from '@/server/repositories/configuredBank';
+import { resolveStudentQrForCurrentTenant } from '@/server/studentQr';
 import { GET } from './route';
 
 vi.mock('server-only', () => ({}));
 vi.mock('@/server/repositories/configuredBank', () => ({ createConfiguredBankReader: vi.fn() }));
+vi.mock('@/server/studentQr', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/server/studentQr')>()),
+  resolveStudentQrForCurrentTenant: vi.fn(),
+}));
 const confirmStudent = vi.fn();
 
 const invalidQueryError = { error: '올바른 학생 ID를 입력해 주세요.' };
@@ -16,6 +21,7 @@ const unavailableError = {
 describe('GET /api/bank/student', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(resolveStudentQrForCurrentTenant).mockReturnValue({ studentId: '001-A', format: 'SIGNED' });
     vi.mocked(createConfiguredBankReader).mockResolvedValue({ confirmStudent } as never);
   });
 
@@ -33,6 +39,7 @@ describe('GET /api/bank/student', () => {
 
     expect(response.status).toBe(200);
     expect(createConfiguredBankReader).toHaveBeenCalledWith(request);
+    expect(resolveStudentQrForCurrentTenant).toHaveBeenCalledWith('001-A');
     expect(confirmStudent).toHaveBeenCalledWith('001-A');
     expect(body).toEqual({ studentId: '001-A', name: '김학생' });
     expect(Object.keys(body)).toEqual(['studentId', 'name']);

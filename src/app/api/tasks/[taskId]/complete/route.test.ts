@@ -9,7 +9,13 @@ vi.mock('@/server/repositories/configuredTaskCompletion', async (importOriginal)
 import { createConfiguredTaskCompletion } from '@/server/repositories/configuredTaskCompletion';
 import { TaskRewardCommandError,
   type TaskRewardCommandErrorCode } from '@/server/repositories/database/taskCompletionCommands';
+import { resolveStudentQrForCurrentTenant, StudentQrValidationError } from '@/server/studentQr';
 import { POST } from './route';
+
+vi.mock('@/server/studentQr', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/server/studentQr')>()),
+  resolveStudentQrForCurrentTenant: vi.fn(),
+}));
 
 const operationId = '11111111-1111-4111-8111-111111111111';
 const task = {
@@ -51,8 +57,26 @@ async function responseFor(body: unknown = { studentId: ' S1 ', operationId }) {
 describe('POST /api/tasks/[taskId]/complete', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(resolveStudentQrForCurrentTenant).mockReturnValue({ studentId: 'S1', format: 'SIGNED' });
     execute.mockResolvedValue(safeResult);
     vi.mocked(createConfiguredTaskCompletion).mockResolvedValue({ execute });
+  });
+
+  it('resolves the body QR in the trusted tenant before selecting or executing completion authority', async () => {
+    const response = await responseFor({ studentId: 'csq1.signed-token', operationId });
+
+    expect(response.status).toBe(200);
+    expect(resolveStudentQrForCurrentTenant).toHaveBeenCalledWith('csq1.signed-token');
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({ studentId: 'S1' }));
+  });
+
+  it('rejects an invalid or wrong-tenant QR without selecting completion authority', async () => {
+    vi.mocked(resolveStudentQrForCurrentTenant).mockImplementation(() => { throw new StudentQrValidationError(); });
+    const response = await responseFor({ studentId: 'csq1.wrong-tenant', operationId });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: '학생 QR을 인식해 주세요.' });
+    expect(createConfiguredTaskCompletion).not.toHaveBeenCalled();
   });
 
   it('resolves the configured authority once with the identical Request and executes the exact command', async () => {

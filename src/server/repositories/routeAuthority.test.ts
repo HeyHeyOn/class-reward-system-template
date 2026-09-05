@@ -13,6 +13,7 @@ const READ_AUTHORITY = [
   ['products', 'GET', 'createConfiguredCatalogReader'],
   ['promotions/active', 'GET', 'createConfiguredCatalogReader'],
   ['promotions', 'GET', 'createConfiguredCatalogReader'],
+  ['qrcode', 'POST', 'createConfiguredStudentReader'],
   ['settings', 'GET', 'createConfiguredSettingsReader'],
   ['students/[studentId]', 'GET', 'createConfiguredStudentReader'],
   ['students', 'GET', 'createConfiguredStudentReader'],
@@ -23,6 +24,7 @@ const READ_AUTHORITY = [
   ['transactions', 'GET', 'createConfiguredTransactionReader'],
 ] as const;
 const CONFIGURED_MUTATION_AUTHORITY = [
+  ['admin/login', 'POST', 'getProductionTenantLegacyAdminAuth'],
   ['checkout', 'POST', 'createConfiguredCheckoutCommand'],
   ['products', 'POST', 'createConfiguredProductCreation'],
   ['products/[productId]', 'DELETE', 'createConfiguredProductDeletion'],
@@ -57,7 +59,7 @@ describe('tenant read route PostgreSQL authority', () => {
       .sort((left, right) => `${left[0]}:${left[1]}`.localeCompare(`${right[0]}:${right[1]}`));
     const authority = READ_AUTHORITY.map(([route, method]) => [route, method] as string[])
       .sort((left, right) => `${left[0]}:${left[1]}`.localeCompare(`${right[0]}:${right[1]}`));
-    expect(inventory).toHaveLength(15);
+    expect(inventory).toHaveLength(16);
     expect(authority).toEqual(inventory);
   });
 
@@ -88,7 +90,7 @@ describe('tenant mutation route PostgreSQL authority', () => {
       && entry.effect === 'mutation'
       && !configured.has(`${entry.method} ${entry.route}`));
 
-    expect(CONFIGURED_MUTATION_AUTHORITY).toHaveLength(12);
+    expect(CONFIGURED_MUTATION_AUTHORITY).toHaveLength(13);
     expect(sheetsMutations).toHaveLength(15);
     for (const entry of sheetsMutations) {
       const body = await exportedMethodBody(entry.route.replace(/^\//, ''), entry.method);

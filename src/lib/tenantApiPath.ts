@@ -1,5 +1,5 @@
 const TENANT_PATH = /^\/c\/([a-z0-9]+(?:-[a-z0-9]+)*)(?:\/|$)/;
-const PLATFORM_API = /^\/api\/(?:google|generator|qrcode)(?:\/|\?|$)/;
+const PLATFORM_API = /^\/api\/(?:google|generator)(?:\/|\?|$)/;
 
 export function tenantApiPath(apiPath: string, pathname?: string): string {
   if (!apiPath.startsWith('/api/') || PLATFORM_API.test(apiPath)) return apiPath;

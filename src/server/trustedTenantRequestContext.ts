@@ -1,13 +1,14 @@
 // node:async_hooks makes this module server-runtime-only while keeping route unit tests importable.
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { GoogleSession } from '@/server/googleOAuth';
-import type { TenantMembership } from '@/server/tenantAuth';
+import type { TenantCompatibilitySession, TenantMembership } from '@/server/tenantAuth';
 import type { TenantRecord } from '@/server/tenantContext';
 
 export type TrustedTenantRequestContext = Readonly<{
   tenant: TenantRecord;
   session?: GoogleSession;
   membership?: TenantMembership;
+  compatibilitySession?: TenantCompatibilitySession;
 }>;
 
 const storage = new AsyncLocalStorage<TrustedTenantRequestContext>();

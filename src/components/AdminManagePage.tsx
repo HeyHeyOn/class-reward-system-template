@@ -10,7 +10,8 @@ import { SettingsForm } from './SettingsForm';
 import { QrScanner } from './QrScanner';
 import { TransactionsPanel } from './TransactionsPage';
 import { getFontFamilyCss, type FontFamily } from '@/lib/fontSettings';
-import { tenantFetch, tenantPagePath } from '@/lib/tenantApiPath';
+import { useQrObjectUrls } from '@/lib/qrCodeClient';
+import { tenantApiPath, tenantFetch, tenantPagePath } from '@/lib/tenantApiPath';
 import { normalizeAdminTask, resolveEffectiveAdminTaskSchedule, scheduleDtoToForm, scheduleFormToPayload, type NormalizedAdminTask, type TaskRecurrenceForm } from './taskRecurrenceEditor';
 import { TaskRecurrenceFields, TaskScheduleProjection } from './tasks/TaskRecurrenceFields';
 import { TaskHistoryDialog, type TaskHistoryDialogState } from './tasks/TaskHistoryDialog';
@@ -649,6 +650,14 @@ export function AdminManagePage() {
   } | null>(null);
   const [taskResetConfirmation, setTaskResetConfirmation] = useState<{ target: TaskDialogTarget; opener: HTMLElement; operationId: string; resetting: boolean; error: string } | null>(null);
   const [qrPrintStudents, setQrPrintStudents] = useState<StudentDraft[] | null>(null);
+  const qrPrintRequests = useMemo(() => (qrPrintStudents ?? []).map((student) => ({
+    key: student.studentId,
+    endpoint: tenantApiPath('/api/qrcode'),
+    body: { kind: 'student' as const, studentId: student.studentId },
+  })), [qrPrintStudents]);
+  const qrPrintUrls = useQrObjectUrls(qrPrintRequests);
+  const allQrPrintUrlsReady = Boolean(qrPrintStudents?.length)
+    && qrPrintStudents!.every((student) => Boolean(qrPrintUrls[student.studentId]));
   const [currencyMode, setCurrencyMode] = useState<CurrencyMode>('add');
   const [currencyAmount, setCurrencyAmount] = useState(0);
   const [currencyScannerOpen, setCurrencyScannerOpen] = useState(false);
@@ -1432,22 +1441,36 @@ export function AdminManagePage() {
     setQrTaskPickerOpen(true);
   }
 
+  async function resolveScannedStudent(decodedText: string): Promise<StudentDraft> {
+    const qrValue = decodedText.trim();
+    const response = await tenantFetch(`/api/bank/student?studentId=${encodeURIComponent(qrValue)}`, { cache: 'no-store' });
+    const payload: unknown = await response.json().catch(() => null);
+    if (!response.ok || !isRecord(payload) || typeof payload.studentId !== 'string') {
+      throw new Error('잘못된 QR입니다.');
+    }
+    const student = students.find((item) => item.studentId === payload.studentId && item.status === 'ACTIVE');
+    if (!student) throw new Error('잘못된 QR입니다.');
+    return student;
+  }
+
   async function assignTaskByQr(decodedText: string) {
-    const studentId = decodedText.trim();
+    const qrValue = decodedText.trim();
     const taskId = qrTaskScan?.taskId;
-    if (!studentId || !taskId) return;
+    if (!qrValue || !taskId) return;
     setQrTaskScan(null);
     setQrTaskLoading(true);
     await new Promise((resolve) => window.setTimeout(resolve, 50));
 
     const task = tasks.find((item) => item.taskId === taskId);
-    const student = students.find((item) => item.studentId === studentId && item.status === 'ACTIVE');
     if (!task) {
       setQrTaskResult({ status: 'failure', taskId, message: '과제를 찾을 수 없습니다.' });
       setQrTaskLoading(false);
       return;
     }
-    if (!student) {
+    let student: StudentDraft;
+    try {
+      student = await resolveScannedStudent(qrValue);
+    } catch {
       setQrTaskResult({ status: 'failure', taskId, message: '잘못된 QR입니다.' });
       setQrTaskLoading(false);
       return;
@@ -2047,20 +2070,22 @@ export function AdminManagePage() {
   }
 
   async function applyCurrencyToStudent(decodedText: string, retry?: { mode: CurrencyMode; amount: number }) {
-    const studentId = decodedText.trim();
-    if (!studentId) return;
+    const qrValue = decodedText.trim();
+    if (!qrValue) return;
     if (currencyInFlight.current) return;
     const mode = retry?.mode ?? currencyMode;
     const amount = retry?.amount ?? currencyAmount;
-    const semanticKey = JSON.stringify({ studentIds: [studentId], mode, amount });
-    if (currencyAttempt.current?.semanticKey !== semanticKey) {
-      currencyAttempt.current = { semanticKey, operationId: crypto.randomUUID() };
-    }
-    const operationId = currencyAttempt.current.operationId;
+    let studentId = qrValue;
     currencyInFlight.current = true;
     setCurrencyScannerOpen(false);
     setCurrencyLoading(true);
     try {
+      studentId = (await resolveScannedStudent(qrValue)).studentId;
+      const semanticKey = JSON.stringify({ studentIds: [studentId], mode, amount });
+      if (currencyAttempt.current?.semanticKey !== semanticKey) {
+        currencyAttempt.current = { semanticKey, operationId: crypto.randomUUID() };
+      }
+      const operationId = currencyAttempt.current.operationId;
       const response = await tenantFetch('/api/students/bulk', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -2572,12 +2597,12 @@ export function AdminManagePage() {
                 <p className="mt-1 text-sm font-bold text-[var(--theme-muted-text)]">선택한 학생 {qrPrintStudents.length}명의 QR만 출력합니다.</p>
               </div>
               <div className="flex gap-2">
-                <button type="button" className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-black text-white" onClick={() => window.print()}>인쇄</button>
+                <button type="button" disabled={!allQrPrintUrlsReady} className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300" onClick={() => window.print()}>인쇄</button>
                 <button type="button" className="rounded-xl bg-slate-200 px-4 py-2 text-sm font-black text-slate-700" onClick={() => setQrPrintStudents(null)}>닫기</button>
               </div>
             </div>
             <div className="mt-4 grid gap-4 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
-              {qrPrintStudents.map((student) => <StudentQrCard key={student.studentId} student={student} />)}
+              {qrPrintStudents.map((student) => <StudentQrCard key={student.studentId} student={student} qrUrl={qrPrintUrls[student.studentId]} />)}
             </div>
           </section>
         </div>
@@ -2585,7 +2610,7 @@ export function AdminManagePage() {
       {qrPrintStudents ? (
         <section data-qr-print-document aria-label="선택 학생 QR 인쇄 영역">
           <div data-qr-print-grid className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 print:grid-cols-3 print:gap-3">
-            {qrPrintStudents.map((student) => <StudentQrCard key={`print-${student.studentId}`} student={student} />)}
+            {qrPrintStudents.map((student) => <StudentQrCard key={`print-${student.studentId}`} student={student} qrUrl={qrPrintUrls[student.studentId]} />)}
           </div>
         </section>
       ) : null}
@@ -3147,11 +3172,11 @@ function AdminNavLink({ href, title, className }: { href: string; title: string;
   );
 }
 
-function StudentQrCard({ student }: { student: Student }) {
+function StudentQrCard({ student, qrUrl }: { student: Student; qrUrl: string | null | undefined }) {
   return (
     <article className="break-inside-avoid rounded-3xl border-2 border-slate-200 bg-white p-5 text-center text-slate-950 shadow-sm print:rounded-2xl print:border print:p-4 print:shadow-none">
       <div className="mx-auto mb-4 flex h-48 w-48 items-center justify-center rounded-3xl border border-slate-100 bg-white p-3 print:h-40 print:w-40">
-        <img alt={`${student.name} QR 코드`} className="h-full w-full" src={`/api/qrcode?value=${encodeURIComponent(student.studentId)}`} />
+        {qrUrl ? <img alt={`${student.name} QR 코드`} className="h-full w-full" src={qrUrl} /> : <span className={`text-sm font-bold ${qrUrl === null ? 'text-red-700' : 'text-slate-500'}`}>{qrUrl === null ? 'QR 생성 실패' : 'QR 생성 중'}</span>}
       </div>
       <h3 className="text-2xl font-black">{student.name}</h3>
       <p className="mt-1 text-lg font-bold text-slate-600">{student.studentId}</p>

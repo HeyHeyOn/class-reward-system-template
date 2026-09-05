@@ -1,4 +1,5 @@
 import { createConfiguredBankReader } from '@/server/repositories/configuredBank';
+import { resolveStudentQrForCurrentTenant, StudentQrValidationError } from '@/server/studentQr';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,8 +17,9 @@ export async function GET(request: Request) {
       return Response.json(invalidQueryError, { status: 400 });
     }
 
-    const studentId = query[0][1].trim();
-    if (!studentId) return Response.json(invalidQueryError, { status: 400 });
+    const qrValue = query[0][1].trim();
+    if (!qrValue) return Response.json(invalidQueryError, { status: 400 });
+    const { studentId } = resolveStudentQrForCurrentTenant(qrValue);
 
     const reader = await createConfiguredBankReader(request);
     const lookup = await reader.confirmStudent(studentId);
@@ -29,7 +31,10 @@ export async function GET(request: Request) {
     }
 
     return Response.json({ studentId: lookup.student.studentId, name: lookup.student.name });
-  } catch {
+  } catch (error) {
+    if (error instanceof StudentQrValidationError) {
+      return Response.json(missingStudentError, { status: 404 });
+    }
     return Response.json(unavailableError, { status: 503 });
   }
 }

@@ -230,6 +230,8 @@ describe('AdminManagePage', () => {
     ];
     vi.stubGlobal('alert', vi.fn());
     vi.stubGlobal('confirm', vi.fn(() => true));
+    let qrBlobNumber = 0;
+    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => `blob:manage-qr-${++qrBlobNumber}`), revokeObjectURL: vi.fn() });
     vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue('50000000-0000-4000-8000-000000000001');
     vi.stubGlobal(
       'fetch',
@@ -244,6 +246,14 @@ describe('AdminManagePage', () => {
         if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
         if (url === '/api/promotions') return jsonResponse({ promotions: [], mutationPreconditions: [] });
         if (url === '/api/transactions') return jsonResponse(transactions);
+        if (url.startsWith('/api/bank/student?studentId=')) {
+          const scanned = decodeURIComponent(url.slice(url.indexOf('=') + 1));
+          const studentId = scanned.startsWith('csq1.') ? 'S001' : scanned.trim();
+          const student = students.find((item) => item.studentId === studentId && item.status === 'ACTIVE');
+          return student
+            ? jsonResponse({ studentId: student.studentId, name: student.name, balance: student.balance })
+            : jsonResponse({ error: '학생 정보를 찾을 수 없습니다.' }, { status: 404 });
+        }
         if (url === '/api/settings' && init?.method === 'POST') return jsonResponse({ spreadsheetId: 'sheet-new', currencyUnit: '별', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'purple', fontFamily: 'school-safe-poster', source: 'runtime' });
         if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue', fontFamily: 'school-safe-board-marker', source: 'runtime' });
         if (url === '/api/products' && init?.method === 'POST') {
@@ -335,6 +345,7 @@ describe('AdminManagePage', () => {
           return jsonResponse(products[1]);
         }
 
+        if (url === '/api/qrcode' && init?.method === 'POST') return new Response('<svg/>', { headers: { 'Content-Type': 'image/svg+xml' } });
         return jsonResponse({ error: 'not found' }, { status: 404 });
       }),
     );
@@ -651,6 +662,7 @@ describe('AdminManagePage', () => {
       if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
       if (url === '/api/transactions') return jsonResponse([]);
       if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', themeColor });
+      if (url === '/api/bank/student?studentId=S001') return jsonResponse({ studentId: 'S001', name: '김민준', balance: 3200 });
       if (url === '/api/students/bulk' && init?.method === 'PATCH') return currencyRequest.response;
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
@@ -1052,6 +1064,7 @@ describe('AdminManagePage', () => {
 
 
   it('assigns a selected task to a scanned student QR, saves it immediately, and shows saving progress', async () => {
+    const signedQr = 'csq1.current.c2lnbmVkLXN0dWRlbnQ.signature';
     const qrTaskSave = deferredResponse({
       taskId: 'T002',
       students: [
@@ -1067,6 +1080,7 @@ describe('AdminManagePage', () => {
       if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
       if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue', source: 'runtime' });
       if (url === '/api/transactions') return jsonResponse(transactions);
+      if (url === `/api/bank/student?studentId=${encodeURIComponent(signedQr)}`) return jsonResponse({ studentId: 'S002', name: '이서연', balance: 1500 });
       if (url === '/api/tasks/T002/assignments' && init?.method === 'PATCH') return qrTaskSave.response;
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
@@ -1081,7 +1095,7 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByRole('button', { name: '수학 학습지 과제 선택' }));
     expect(screen.getByRole('dialog', { name: '수학 학습지 QR 과제 부여' })).toBeTruthy();
     expect(screen.getByText('수학 학습지')).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('과제 부여 학생 QR 직접 입력'), { target: { value: 'S002' } });
+    fireEvent.change(screen.getByLabelText('과제 부여 학생 QR 직접 입력'), { target: { value: signedQr } });
     fireEvent.click(screen.getByRole('button', { name: '직접 입력 적용' }));
 
     expect(await screen.findByRole('dialog', { name: 'QR 인식 중' })).toBeTruthy();
@@ -1092,6 +1106,7 @@ describe('AdminManagePage', () => {
       method: 'PATCH',
       body: JSON.stringify({ studentId: 'S002', assigned: true, source: 'QR' }),
     })));
+    expect(fetch).toHaveBeenCalledWith(`/api/bank/student?studentId=${encodeURIComponent(signedQr)}`, { cache: 'no-store' });
     expect(baseFetch.mock.calls.some(([url, init]) => String(url) === '/api/tasks/batch' && init?.method === 'PATCH')).toBe(false);
     qrTaskSave.resolve();
 
@@ -1787,6 +1802,7 @@ describe('AdminManagePage', () => {
       if (url === '/api/transactions') return jsonResponse([]);
       if (url === '/api/settings' && init?.method === 'POST') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', source: 'runtime', adminPasswordConfigured: true });
       if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', source: 'runtime' });
+      if (url === '/api/qrcode' && init?.method === 'POST') return new Response('<svg/>', { headers: { 'Content-Type': 'image/svg+xml' } });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
 
@@ -1797,7 +1813,11 @@ describe('AdminManagePage', () => {
 
     expect(await screen.findByText('관리자 QR 로그인 코드')).toBeTruthy();
     expect(screen.queryByRole('dialog', { name: '시트 정보 불러오는 중' })).toBeNull();
-    expect(screen.getByRole('img', { name: '관리자 로그인 QR' }).getAttribute('src')).toContain('class-store-admin%3Anew-admin-pass');
+    await waitFor(() => expect(screen.getByRole('img', { name: '관리자 로그인 QR' }).getAttribute('src')).toBe('blob:manage-qr-1'));
+    expect(fetch).toHaveBeenCalledWith('/api/qrcode', expect.objectContaining({
+      method: 'POST', body: JSON.stringify({ kind: 'admin', password: 'new-admin-pass' }),
+    }));
+    expect(vi.mocked(fetch).mock.calls.every(([input]) => !String(input).includes('class-store-admin:'))).toBe(true);
 
     reloadGate.resolve();
     await waitFor(() => expect(screen.getByText(/시스템 설정을 저장/)).toBeTruthy());
@@ -1914,9 +1934,17 @@ describe('AdminManagePage', () => {
     const printDocument = document.querySelector('[data-qr-print-document]');
     expect(printDocument).toBeTruthy();
     expect(printDocument?.querySelector('[data-qr-print-grid]')).toBeTruthy();
-    expect(screen.getAllByAltText('김민준 QR 코드')[0].getAttribute('src')).toBe('/api/qrcode?value=S001');
+    await waitFor(() => expect(screen.getAllByAltText('김민준 QR 코드')[0].getAttribute('src')).toBe('blob:manage-qr-1'));
     expect(screen.queryByAltText('이서연 QR 코드')).toBeNull();
+    const qrCalls = vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/qrcode');
+    expect(qrCalls).toHaveLength(1);
+    expect(qrCalls[0]?.[1]).toEqual({
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'student', studentId: 'S001' }), signal: expect.any(AbortSignal),
+    });
+    expect(screen.getAllByAltText('김민준 QR 코드').every((image) => !String(image.getAttribute('src')).includes('S001'))).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: '닫기' }));
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:manage-qr-1');
     expect(document.body.classList.contains('qr-selection-printing')).toBe(false);
 
     fireEvent.change(screen.getByLabelText('S001 이름'), { target: { value: '김민준 수정' } });
@@ -2519,6 +2547,7 @@ describe('AdminManagePage', () => {
       if (url === '/api/products?includeInactive=1') return jsonResponse(adminProductEnvelope());
       if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
       if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue', source: 'runtime' });
+      if (url === '/api/bank/student?studentId=S001') return jsonResponse({ studentId: 'S001', name: '김민준', balance: 3200 });
       if (url === '/api/students/bulk' && init?.method === 'PATCH') return currencyRequest.response;
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
@@ -2539,6 +2568,7 @@ describe('AdminManagePage', () => {
   });
 
   it('adjusts one scanned student from the currency grant/collect tab with retryable result popups', async () => {
+    const signedQr = 'csq1.current.c2lnbmVkLXN0dWRlbnQ.signature';
     render(<AdminManagePage />);
 
     fireEvent.click(await screen.findByRole('tab', { name: '화폐 지급/회수' }));
@@ -2547,10 +2577,11 @@ describe('AdminManagePage', () => {
     fireEvent.change(screen.getByLabelText('지급/회수 금액'), { target: { value: '700' } });
     fireEvent.click(screen.getByRole('button', { name: 'QR 인식 시작' }));
     expect(await screen.findByRole('dialog', { name: '학생 QR 인식' })).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('학생 QR 직접 입력'), { target: { value: 'S001' } });
+    fireEvent.change(screen.getByLabelText('학생 QR 직접 입력'), { target: { value: signedQr } });
     fireEvent.click(screen.getByRole('button', { name: '직접 입력 적용' }));
 
     await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(`/api/bank/student?studentId=${encodeURIComponent(signedQr)}`, { cache: 'no-store' });
       expect(fetch).toHaveBeenCalledWith('/api/students/bulk', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -2660,6 +2691,7 @@ describe('AdminManagePage', () => {
       if (url === '/api/products?includeInactive=1') return jsonResponse(adminProductEnvelope());
       if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
       if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'blue', source: 'runtime' });
+      if (url === '/api/bank/student?studentId=S002') return jsonResponse({ studentId: 'S002', name: '이서연', balance: 1500 });
       if (url === '/api/students/bulk' && init?.method === 'PATCH') return jsonResponse({ error: '잔액은 0보다 작아질 수 없습니다.' }, { status: 400 });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
@@ -3868,5 +3900,36 @@ describe('AdminManagePage', () => {
     expect(screen.getByLabelText('시작 시각')).toHaveProperty('value', '');
     expect(screen.getByLabelText('기한')).toHaveProperty('value', '');
     expect(screen.getByLabelText('선행 과제')).toHaveProperty('value', '');
+  });
+
+  it('disables selected-student printing while QR generation is pending or failed and retries on reopen', async () => {
+    const baseFetch = vi.mocked(fetch).getMockImplementation()!;
+    let resolveFirstQr!: (response: Response) => void;
+    const firstQr = new Promise<Response>((resolve) => { resolveFirstQr = resolve; });
+    let qrAttempt = 0;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input) !== '/api/qrcode') return baseFetch(input, init);
+      qrAttempt += 1;
+      return qrAttempt === 1
+        ? firstQr
+        : new Response('<svg/>', { headers: { 'Content-Type': 'image/svg+xml' } });
+    });
+    render(<AdminManagePage />);
+
+    fireEvent.click(await screen.findByRole('tab', { name: '학생 관리' }));
+    fireEvent.click(await screen.findByLabelText('S001 선택'));
+    fireEvent.click(screen.getByRole('button', { name: '선택 학생 QR 발급' }));
+    const printButton = await screen.findByRole('button', { name: '인쇄' });
+    expect(printButton).toHaveProperty('disabled', true);
+
+    resolveFirstQr(jsonResponse({ error: 'not an svg' }));
+    expect(await screen.findAllByText('QR 생성 실패')).toHaveLength(2);
+    expect(printButton).toHaveProperty('disabled', true);
+
+    fireEvent.click(screen.getByRole('button', { name: '닫기' }));
+    fireEvent.click(screen.getByRole('button', { name: '선택 학생 QR 발급' }));
+    const retriedPrintButton = await screen.findByRole('button', { name: '인쇄' });
+    await waitFor(() => expect(retriedPrintButton).toHaveProperty('disabled', false));
+    expect(qrAttempt).toBe(2);
   });
 });
