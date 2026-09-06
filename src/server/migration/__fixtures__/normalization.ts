@@ -19,7 +19,10 @@ export const payloadHash = `sha256:${sha(canonicalJson(binding))}`;
 const rows: Record<string, string[][]> = {
   Students: [['S1', 'Alice', '100', 'ACTIVE']],
   Products: [['P1', 'Pencil', '20', '5', 'TRUE', '', 'school', '1']],
-  Transactions: [['TX1', at, 'S1', 'Alice', JSON.stringify([{ productId: 'P1', name: 'Pencil', price: 20, quantity: 1, subtotal: 20 }]), '20', '100', '80', 'COMPLETED', 'kiosk']],
+  Transactions: [
+    ['TX1', at, 'S1', 'Alice', JSON.stringify([{ productId: 'P1', name: 'Pencil', price: 20, quantity: 1, subtotal: 20 }]), '20', '100', '80', 'COMPLETED', 'kiosk'],
+    ['TX-ADJ1', at, 'S1', 'Alice', JSON.stringify([{ productId: 'ADMIN-ADD', name: '관리자 지급', price: -10, quantity: 1, subtotal: -10 }]), '-10', '80', '90', 'ADMIN_ADJUSTMENT', 'admin'],
+  ],
   Adjustments: [['ADJ1', at, 'S1', '10', 'add', 'admin']],
   Settings: [
     ['schemaVersion', '3'], ['classTimeZone', 'Asia/Seoul'], ['themeColor', 'blue'],

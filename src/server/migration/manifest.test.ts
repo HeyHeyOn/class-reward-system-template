@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createLegacyNormalizationManifest } from './manifest';
 import { finalizeRedisSnapshot, makeRedis, makeSheets, payloadHash, sha, tupleDigest } from './__fixtures__/normalization';
@@ -36,8 +38,56 @@ describe('legacy normalization manifest', () => {
     ]);
     expect(manifest.records.students[0]).toMatchObject({ studentId: 'S1', name: 'Alice', status: 'ACTIVE' });
     expect(manifest.records.accounts[0]).toMatchObject({ studentId: 'S1', balance: 100 });
-    expect(manifest.records.transactions[0]).toMatchObject({ transactionId: 'TX1', totalAmount: 20, balanceBefore: 100, balanceAfter: 80, status: 'COMPLETED' });
-    expect(manifest.records.transaction_items[0]).toMatchObject({ transactionId: 'TX1', productId: 'P1', quantity: 1, subtotal: 20 });
+    expect(manifest.records.transactions).toHaveLength(2);
+    const transactionKeys = [
+      'balanceAfter', 'balanceBefore', 'balanceDelta', 'kind', 'legacyStatusSnapshot',
+      'legacyTotalAmount', 'occurredAt', 'operatorSnapshot', 'studentId', 'studentNameSnapshot',
+      'tenantId', 'transactionId',
+    ].sort();
+    const checkoutTransaction = manifest.records.transactions.find((row) => row.transactionId === 'TX1')!;
+    expect(checkoutTransaction).toMatchObject({
+      transactionId: 'TX1', legacyTotalAmount: 20, balanceBefore: 100, balanceAfter: 80,
+      kind: 'CHECKOUT', legacyStatusSnapshot: 'COMPLETED',
+    });
+    expect(Object.keys(checkoutTransaction).sort()).toEqual(transactionKeys);
+    const adjustmentTransaction = manifest.records.transactions.find((row) => row.transactionId === 'TX-ADJ1')!;
+    expect(adjustmentTransaction).toMatchObject({
+      transactionId: 'TX-ADJ1', legacyTotalAmount: -10, balanceBefore: 80, balanceAfter: 90,
+      kind: 'ADMIN_ADJUSTMENT', legacyStatusSnapshot: 'ADMIN_ADJUSTMENT',
+    });
+    expect(Object.keys(adjustmentTransaction).sort()).toEqual(transactionKeys);
+    const checkoutItem = manifest.records.transaction_items.find((item) => item.transactionId === 'TX1')!;
+    expect(checkoutItem).toMatchObject({
+      transactionId: 'TX1', productIdSnapshot: 'P1', currentProductId: 'P1',
+      productNameSnapshot: 'Pencil', quantity: 1, unitPriceSnapshot: 20, subtotalSnapshot: 20,
+    });
+    expect(Object.keys(checkoutItem).sort()).toEqual([
+      'currentProductId', 'itemId', 'lineNumber', 'productIdSnapshot', 'productNameSnapshot',
+      'quantity', 'subtotalSnapshot', 'tenantId', 'transactionId', 'unitPriceSnapshot',
+    ].sort());
+    const adjustmentItem = manifest.records.transaction_items.find((item) => item.transactionId === 'TX-ADJ1')!;
+    expect(adjustmentItem).toMatchObject({
+      transactionId: 'TX-ADJ1', productIdSnapshot: 'ADMIN-ADD', currentProductId: null,
+      productNameSnapshot: '관리자 지급', quantity: 1, unitPriceSnapshot: -10, subtotalSnapshot: -10,
+    });
+    expect(Object.keys(adjustmentItem).sort()).toEqual(Object.keys(checkoutItem).sort());
+    expect(manifest.records.adjustments).toEqual([{
+      tenantId: input().tenantId, adjustmentId: 'ADJ1', legacyAdjustmentId: 'ADJ1',
+      transactionId: 'TX-ADJ1', requestedAmount: 10, mode: 'add', operatorSnapshot: 'admin',
+    }]);
+    const adjustmentSource = manifest.sourceRecords.find((record) => record.source.kind === 'SHEET'
+      && record.source.tab === 'Adjustments');
+    expect(adjustmentSource).toMatchObject({ mappingStatus: 'STAGED', targetTable: 'adjustments', targetId: 'ADJ1' });
+    expect(adjustmentSource?.canonicalRecord).toMatchObject({
+      timestamp: '2026-08-31T00:00:00.000Z', studentId: 'S1', amount: 10, operator: 'admin',
+    });
+    const transactionSource = manifest.sourceRecords.find((record) => record.source.kind === 'SHEET'
+      && record.source.tab === 'Transactions' && record.source.rowNumber === 2);
+    expect(transactionSource?.canonicalRecord).toMatchObject({
+      timestamp: '2026-08-31T00:00:00.000Z', studentId: 'S1', totalAmount: 20,
+      items: [expect.objectContaining({ productId: 'P1', name: 'Pencil', price: 20, subtotal: 20 })],
+    });
+    expect(manifest.mappings).toContainEqual(expect.objectContaining({ targetTable: 'adjustments', targetId: 'ADJ1' }));
     expect(manifest.records.tasks[0]).toMatchObject({ taskId: 'T1', taskInstanceId: 'TI1' });
     expect(manifest.records.padlet_evidence_claims[0]).toMatchObject({ tupleDigest, operationId: 'op-1' });
     expect(manifest.records.padlet_evidence_claims[0].provenances).toHaveLength(2);
@@ -173,6 +223,334 @@ describe('legacy normalization manifest', () => {
       .toEqual(expect.arrayContaining(['Transactions', 'Adjustments']));
     expect(manifest.records.transactions).toEqual([]);
     expect(manifest.records.adjustments).toEqual([]);
+  });
+
+  it('quarantines a valid adjustment and its malformed duplicate before correlation', () => {
+    const sheets = makeSheets(3, (tabs) => {
+      tabs.Adjustments.rows.push({
+        rowNumber: 3,
+        cells: ['ADJ1', 'not-an-instant', 'S1', '10', 'add', 'admin'],
+        hash: sha('recomputed-by-helper'),
+      });
+    });
+    const manifest = createLegacyNormalizationManifest(input(sheets, undefined));
+    const adjustmentSources = manifest.sourceRecords.filter((row) => row.source.kind === 'SHEET'
+      && row.source.tab === 'Adjustments');
+    const transactionSource = manifest.sourceRecords.find((row) => row.source.kind === 'SHEET'
+      && row.source.tab === 'Transactions' && row.source.rowNumber === 3);
+    const implicatedDigests = new Set([...adjustmentSources, transactionSource]
+      .flatMap((row) => row?.source.kind === 'SHEET' ? [row.source.rowHash] : []));
+
+    expect(adjustmentSources).toHaveLength(2);
+    expect(adjustmentSources.every((row) => row.mappingStatus === 'QUARANTINED'
+      && row.errorCodes.includes('DUPLICATE_LEDGER_ID'))).toBe(true);
+    expect(transactionSource).toMatchObject({
+      mappingStatus: 'QUARANTINED',
+      errorCodes: expect.arrayContaining(['AMBIGUOUS_ADJUSTMENT_TRANSACTION']),
+    });
+    expect(manifest.records.adjustments).toEqual([]);
+    expect(manifest.records.transactions.some((row) => row.transactionId === 'TX-ADJ1')).toBe(false);
+    expect(manifest.records.transaction_items.some((row) => row.transactionId === 'TX-ADJ1')).toBe(false);
+    expect(manifest.mappings.some((mapping) => implicatedDigests.has(mapping.sourceDigest))).toBe(false);
+    expect(manifest.records.transactions).toContainEqual(expect.objectContaining({ transactionId: 'TX1' }));
+    expect(manifest.records.transaction_items).toContainEqual(expect.objectContaining({ transactionId: 'TX1' }));
+  });
+
+  it('quarantines a valid transaction and its malformed duplicate before adjustment correlation', () => {
+    const sheets = makeSheets(3, (tabs) => {
+      const malformed = [...tabs.Transactions.rows[1].cells];
+      malformed[3] = '';
+      tabs.Transactions.rows.push({
+        rowNumber: 4,
+        cells: malformed,
+        hash: sha('recomputed-by-helper'),
+      });
+    });
+    const manifest = createLegacyNormalizationManifest(input(sheets, undefined));
+    const transactionSources = manifest.sourceRecords.filter((row) => row.source.kind === 'SHEET'
+      && row.source.tab === 'Transactions' && [3, 4].includes(row.source.rowNumber));
+    const adjustmentSource = manifest.sourceRecords.find((row) => row.source.kind === 'SHEET'
+      && row.source.tab === 'Adjustments');
+    const implicatedDigests = new Set([...transactionSources, adjustmentSource]
+      .flatMap((row) => row?.source.kind === 'SHEET' ? [row.source.rowHash] : []));
+
+    expect(transactionSources).toHaveLength(2);
+    expect(transactionSources.every((row) => row.mappingStatus === 'QUARANTINED'
+      && row.errorCodes.includes('DUPLICATE_LEDGER_ID'))).toBe(true);
+    expect(adjustmentSource).toMatchObject({
+      mappingStatus: 'QUARANTINED',
+      errorCodes: expect.arrayContaining(['AMBIGUOUS_ADJUSTMENT_TRANSACTION']),
+    });
+    expect(manifest.records.adjustments).toEqual([]);
+    expect(manifest.records.transactions.some((row) => row.transactionId === 'TX-ADJ1')).toBe(false);
+    expect(manifest.records.transaction_items.some((row) => row.transactionId === 'TX-ADJ1')).toBe(false);
+    expect(manifest.mappings.some((mapping) => implicatedDigests.has(mapping.sourceDigest))).toBe(false);
+    expect(manifest.records.transactions).toContainEqual(expect.objectContaining({ transactionId: 'TX1' }));
+    expect(manifest.records.transaction_items).toContainEqual(expect.objectContaining({ transactionId: 'TX1' }));
+  });
+
+  it.each([
+    ['add', 10, -5, 5, -10, 'ADMIN-ADD', '관리자 지급'],
+    ['subtract', 10, 5, -5, 10, 'ADMIN-SUBTRACT', '관리자 회수'],
+    ['set', 0, -5, 0, -5, 'ADMIN-SET', '관리자 잔액 지정'],
+  ] as const)('correlates an exact %s adjustment across signed and zero balances', (mode, amount, before, after, total, productId, name) => {
+    const sheets = makeSheets(3, (tabs) => {
+      tabs.Adjustments.rows[0].cells = ['ADJ1', '2026-08-31T00:00:00.000Z', 'S1', String(amount), mode, 'operator-1'];
+      tabs.Transactions.rows[1].cells = [
+        'TX-ADJ1', '2026-08-31T00:00:00.000Z', 'S1', 'Alice',
+        JSON.stringify([{ productId, name, price: total, quantity: 1, subtotal: total }]),
+        String(total), String(before), String(after), 'ADMIN_ADJUSTMENT', 'operator-1',
+      ];
+    });
+    const manifest = createLegacyNormalizationManifest(input(sheets, undefined));
+
+    expect(manifest.status).toBe('READY_FOR_IMPORT');
+    expect(manifest.records.adjustments).toEqual([expect.objectContaining({
+      adjustmentId: 'ADJ1', legacyAdjustmentId: 'ADJ1', transactionId: 'TX-ADJ1',
+      requestedAmount: amount, mode, operatorSnapshot: 'operator-1',
+    })]);
+    expect(manifest.records.transactions.filter((row) => row.transactionId === 'TX-ADJ1')).toHaveLength(1);
+  });
+
+  it('correlates a negative set target with its exact ADMIN-SET transaction', () => {
+    const sheets = makeSheets(3, (tabs) => {
+      tabs.Adjustments.rows[0].cells = [
+        'ADJ1', '2026-08-31T00:00:00.000Z', 'S1', '-5', 'set', 'operator-1',
+      ];
+      tabs.Transactions.rows[1].cells = [
+        'TX-ADJ1', '2026-08-31T00:00:00.000Z', 'S1', 'Alice',
+        JSON.stringify([{
+          productId: 'ADMIN-SET', name: '관리자 잔액 지정', price: -5, quantity: 1, subtotal: -5,
+        }]),
+        '-5', '-10', '-5', 'ADMIN_ADJUSTMENT', 'operator-1',
+      ];
+    });
+    const manifest = createLegacyNormalizationManifest(input(sheets, undefined));
+
+    expect(manifest.records.adjustments).toEqual([expect.objectContaining({
+      adjustmentId: 'ADJ1', legacyAdjustmentId: 'ADJ1', transactionId: 'TX-ADJ1',
+      requestedAmount: -5, mode: 'set', operatorSnapshot: 'operator-1',
+    })]);
+    expect(manifest.status).toBe('READY_FOR_IMPORT');
+    expect(manifest.records.transactions).toContainEqual(expect.objectContaining({
+      transactionId: 'TX-ADJ1', legacyTotalAmount: -5, balanceBefore: -10,
+      balanceAfter: -5, balanceDelta: 5, kind: 'ADMIN_ADJUSTMENT',
+      legacyStatusSnapshot: 'ADMIN_ADJUSTMENT',
+    }));
+    expect(manifest.records.transaction_items).toContainEqual(expect.objectContaining({
+      transactionId: 'TX-ADJ1', productIdSnapshot: 'ADMIN-SET', currentProductId: null,
+      productNameSnapshot: '관리자 잔액 지정', unitPriceSnapshot: -5,
+      quantity: 1, subtotalSnapshot: -5,
+    }));
+  });
+
+  it.each([
+    ['wrong sentinel product ID', (item: Record<string, unknown>) => { item.productId = 'ADMIN-SUBTRACT'; }],
+    ['wrong sentinel name', (item: Record<string, unknown>) => { item.name = '관리자 회수'; }],
+    ['item amount inconsistent with the ledger delta', (item: Record<string, unknown>) => {
+      item.price = -9;
+      item.subtotal = -9;
+    }],
+  ])('quarantines a standalone ADMIN_ADJUSTMENT with %s', (_label, corruptItem) => {
+    const sheets = makeSheets(3, (tabs) => {
+      tabs.Adjustments.rows = [];
+      const item = JSON.parse(tabs.Transactions.rows[1].cells[4]) as Record<string, unknown>[];
+      corruptItem(item[0]);
+      tabs.Transactions.rows[1].cells[4] = JSON.stringify(item);
+    });
+    const manifest = createLegacyNormalizationManifest(input(sheets, undefined));
+    const transactionSource = manifest.sourceRecords.find((record) => record.source.kind === 'SHEET'
+      && record.source.tab === 'Transactions' && record.source.rowNumber === 3);
+
+    expect(manifest.status).toBe('BLOCKED');
+    expect(transactionSource).toMatchObject({
+      mappingStatus: 'QUARANTINED',
+      errorCodes: ['MALFORMED_REQUIRED_HISTORY'],
+    });
+    expect(manifest.records.transactions.some((row) => row.transactionId === 'TX-ADJ1')).toBe(false);
+    expect(manifest.records.transaction_items.some((row) => row.transactionId === 'TX-ADJ1')).toBe(false);
+    expect(manifest.mappings.some((mapping) => mapping.sourceDigest === sheets.tabs.Transactions.rows[1].hash)).toBe(false);
+    expect(manifest.records.transactions).toContainEqual(expect.objectContaining({ transactionId: 'TX1' }));
+    expect(manifest.records.transaction_items).toContainEqual(expect.objectContaining({ transactionId: 'TX1' }));
+  });
+
+  it.each([
+    ['no candidate', (tabs: MutableSheetsTabs) => { tabs.Transactions.rows.splice(1, 1); }],
+    ['timestamp', (tabs: MutableSheetsTabs) => { tabs.Transactions.rows[1].cells[1] = '2026-09-01T00:00:00.000Z'; }],
+    ['student', (tabs: MutableSheetsTabs) => { tabs.Transactions.rows[1].cells[2] = 'OTHER'; }],
+    ['operator', (tabs: MutableSheetsTabs) => { tabs.Transactions.rows[1].cells[9] = 'other-admin'; }],
+    ['status', (tabs: MutableSheetsTabs) => { tabs.Transactions.rows[1].cells[8] = 'TASK_REWARD'; }],
+    ['item label', (tabs: MutableSheetsTabs) => { tabs.Transactions.rows[1].cells[4] = JSON.stringify([{ productId: 'ADMIN-ADD', name: '관리자 회수', price: -10, quantity: 1, subtotal: -10 }]); }],
+    ['item product', (tabs: MutableSheetsTabs) => { tabs.Transactions.rows[1].cells[4] = JSON.stringify([{ productId: 'ADMIN-SUBTRACT', name: '관리자 지급', price: -10, quantity: 1, subtotal: -10 }]); }],
+    ['item amount', (tabs: MutableSheetsTabs) => { tabs.Transactions.rows[1].cells[4] = JSON.stringify([{ productId: 'ADMIN-ADD', name: '관리자 지급', price: -9, quantity: 1, subtotal: -9 }]); }],
+    ['balance arithmetic', (tabs: MutableSheetsTabs) => { tabs.Transactions.rows[1].cells[7] = '89'; }],
+    ['unsafe requested amount', (tabs: MutableSheetsTabs) => { tabs.Adjustments.rows[0].cells[3] = '-1'; }],
+  ] as const)('blocks an adjustment with %s without dropping the valid checkout', (_label, corrupt) => {
+    const manifest = createLegacyNormalizationManifest(input(makeSheets(3, corrupt), undefined));
+    const adjustment = manifest.sourceRecords.find((record) => record.source.kind === 'SHEET'
+      && record.source.tab === 'Adjustments');
+
+    expect(manifest.status).toBe('BLOCKED');
+    expect(adjustment).toMatchObject({ mappingStatus: 'QUARANTINED' });
+    expect(adjustment?.errorCodes).toEqual(expect.arrayContaining([
+      expect.stringMatching(/AMBIGUOUS_ADJUSTMENT_TRANSACTION|MALFORMED_REQUIRED_HISTORY/),
+    ]));
+    expect(manifest.records.adjustments).toEqual([]);
+    expect(manifest.mappings.some((mapping) => mapping.targetTable === 'adjustments')).toBe(false);
+    expect(manifest.records.transactions).toContainEqual(expect.objectContaining({ transactionId: 'TX1' }));
+  });
+
+  it('quarantines a structurally valid orphan ADMIN_ADJUSTMENT transaction', () => {
+    const orphaned = createLegacyNormalizationManifest(input(makeSheets(3, (tabs) => {
+      tabs.Adjustments.rows = [];
+    }), undefined));
+    const transactionSource = orphaned.sourceRecords.find((row) => row.source.kind === 'SHEET'
+      && row.source.tab === 'Transactions' && row.source.rowNumber === 3);
+
+    expect(transactionSource).toMatchObject({
+      mappingStatus: 'QUARANTINED', errorCodes: ['AMBIGUOUS_ADJUSTMENT_TRANSACTION'],
+    });
+    expect(orphaned.records.transactions.some((row) => row.transactionId === 'TX-ADJ1')).toBe(false);
+    expect(orphaned.records.transaction_items.some((row) => row.transactionId === 'TX-ADJ1')).toBe(false);
+    expect(orphaned.mappings.some((mapping) => transactionSource?.source.kind === 'SHEET'
+      && mapping.sourceDigest === transactionSource.source.rowHash)).toBe(false);
+    expect(orphaned.records.transactions).toContainEqual(expect.objectContaining({ transactionId: 'TX1' }));
+    expect(orphaned.records.transaction_items).toContainEqual(expect.objectContaining({ transactionId: 'TX1' }));
+  });
+
+  it('adds the ambiguity diagnostic to duplicate transaction candidates that already have errors', () => {
+    const duplicated = createLegacyNormalizationManifest(input(makeSheets(3, (tabs) => {
+      tabs.Transactions.rows.push({
+        rowNumber: 4,
+        cells: [...tabs.Transactions.rows[1].cells],
+        hash: sha('recomputed-by-helper'),
+      });
+    }), undefined));
+    const adjustmentSource = duplicated.sourceRecords.find((row) => row.source.kind === 'SHEET'
+      && row.source.tab === 'Adjustments');
+    const transactionSources = duplicated.sourceRecords.filter((row) => row.source.kind === 'SHEET'
+      && row.source.tab === 'Transactions' && [3, 4].includes(row.source.rowNumber));
+
+    expect(adjustmentSource?.errorCodes).toContain('AMBIGUOUS_ADJUSTMENT_TRANSACTION');
+    expect(transactionSources).toHaveLength(2);
+    expect(transactionSources.every((row) => row.errorCodes.includes('DUPLICATE_LEDGER_ID')
+      && row.errorCodes.includes('AMBIGUOUS_ADJUSTMENT_TRANSACTION'))).toBe(true);
+    expect(duplicated.records.adjustments).toEqual([]);
+    expect(duplicated.records.transactions.some((row) => row.transactionId === 'TX-ADJ1')).toBe(false);
+    expect(duplicated.records.transaction_items.some((row) => row.transactionId === 'TX-ADJ1')).toBe(false);
+    expect(duplicated.records.transactions).toContainEqual(expect.objectContaining({ transactionId: 'TX1' }));
+  });
+
+  it('quarantines exact adjustment pairs when duplicate adjustment IDs already have errors', () => {
+    const sheets = makeSheets(3, (tabs) => {
+      tabs.Adjustments.rows.push({
+        rowNumber: 3,
+        cells: ['ADJ1', '2026-09-01T00:00:00.000Z', 'S1', '20', 'add', 'admin'],
+        hash: sha('recomputed-by-helper'),
+      });
+      tabs.Transactions.rows.push({
+        rowNumber: 4,
+        cells: [
+          'TX-ADJ2', '2026-09-01T00:00:00.000Z', 'S1', 'Alice',
+          JSON.stringify([{
+            productId: 'ADMIN-ADD', name: '관리자 지급', price: -20, quantity: 1, subtotal: -20,
+          }]),
+          '-20', '90', '110', 'ADMIN_ADJUSTMENT', 'admin',
+        ],
+        hash: sha('recomputed-by-helper'),
+      });
+    });
+    const manifest = createLegacyNormalizationManifest(input(sheets, undefined));
+    const adjustmentSources = manifest.sourceRecords.filter((row) => row.source.kind === 'SHEET'
+      && row.source.tab === 'Adjustments');
+    const transactionSources = manifest.sourceRecords.filter((row) => row.source.kind === 'SHEET'
+      && row.source.tab === 'Transactions' && [3, 4].includes(row.source.rowNumber));
+    const implicatedSourceDigests = new Set([...adjustmentSources, ...transactionSources].map((row) => (
+      row.source.kind === 'SHEET' ? row.source.rowHash : ''
+    )));
+
+    expect(adjustmentSources).toHaveLength(2);
+    expect(transactionSources).toHaveLength(2);
+    expect([...adjustmentSources, ...transactionSources].every((row) => row.mappingStatus === 'QUARANTINED'
+      && row.errorCodes.includes('AMBIGUOUS_ADJUSTMENT_TRANSACTION'))).toBe(true);
+    expect(adjustmentSources.every((row) => row.errorCodes.includes('DUPLICATE_LEDGER_ID'))).toBe(true);
+    expect(manifest.records.adjustments).toEqual([]);
+    expect(manifest.records.transactions.some((row) => ['TX-ADJ1', 'TX-ADJ2'].includes(String(row.transactionId)))).toBe(false);
+    expect(manifest.records.transaction_items.some((row) => ['TX-ADJ1', 'TX-ADJ2'].includes(String(row.transactionId)))).toBe(false);
+    expect(manifest.mappings.some((mapping) => implicatedSourceDigests.has(mapping.sourceDigest))).toBe(false);
+    expect(manifest.records.transactions).toContainEqual(expect.objectContaining({ transactionId: 'TX1' }));
+    expect(manifest.records.transaction_items).toContainEqual(expect.objectContaining({ transactionId: 'TX1' }));
+  });
+
+  it('quarantines an adjustment and every competing transaction in an ambiguous correlation', () => {
+    const twoCandidates = createLegacyNormalizationManifest(input(makeSheets(3, (tabs) => {
+      const duplicate = [...tabs.Transactions.rows[1].cells]; duplicate[0] = 'TX-ADJ2';
+      tabs.Transactions.rows.push({ rowNumber: 4, cells: duplicate, hash: sha('recomputed-by-helper') });
+    }), undefined));
+    const implicated = new Set(['TX-ADJ1', 'TX-ADJ2']);
+    const competingSources = twoCandidates.sourceRecords.filter((row) => row.source.kind === 'SHEET'
+      && row.source.tab === 'Transactions' && [3, 4].includes(row.source.rowNumber));
+
+    expect(twoCandidates.records.adjustments).toEqual([]);
+    expect(twoCandidates.quarantines.find((row) => row.source.kind === 'SHEET' && row.source.tab === 'Adjustments')?.errorCodes)
+      .toContain('AMBIGUOUS_ADJUSTMENT_TRANSACTION');
+    expect(competingSources).toHaveLength(2);
+    expect(competingSources.every((row) => row.mappingStatus === 'QUARANTINED'
+      && row.errorCodes.includes('AMBIGUOUS_ADJUSTMENT_TRANSACTION'))).toBe(true);
+    expect(twoCandidates.records.transactions.some((row) => implicated.has(String(row.transactionId)))).toBe(false);
+    expect(twoCandidates.records.transaction_items.some((row) => implicated.has(String(row.transactionId)))).toBe(false);
+    expect(twoCandidates.mappings.some((mapping) => mapping.targetTable === 'adjustments'
+      || implicated.has(mapping.targetId)
+      || (mapping.targetTable === 'transaction_items' && [3, 4].some((rowNumber) => competingSources
+        .some((source) => source.source.kind === 'SHEET' && source.source.rowNumber === rowNumber
+          && source.source.rowHash === mapping.sourceDigest))))).toBe(false);
+    expect(twoCandidates.records.transactions).toContainEqual(expect.objectContaining({ transactionId: 'TX1' }));
+    expect(twoCandidates.records.transaction_items).toContainEqual(expect.objectContaining({ transactionId: 'TX1' }));
+  });
+
+  it('quarantines every adjustment and its sole competing transaction when the transaction would be reused', () => {
+    const reused = createLegacyNormalizationManifest(input(makeSheets(3, (tabs) => {
+      const second = [...tabs.Adjustments.rows[0].cells]; second[0] = 'ADJ2';
+      tabs.Adjustments.rows.push({ rowNumber: 3, cells: second, hash: sha('recomputed-by-helper') });
+    }), undefined));
+    const adjustmentSources = reused.sourceRecords.filter((row) => row.source.kind === 'SHEET' && row.source.tab === 'Adjustments');
+    const transactionSource = reused.sourceRecords.find((row) => row.source.kind === 'SHEET'
+      && row.source.tab === 'Transactions' && row.source.rowNumber === 3);
+    expect(adjustmentSources).toHaveLength(2);
+    expect(adjustmentSources.every((row) => row.mappingStatus === 'QUARANTINED'
+      && row.errorCodes.includes('AMBIGUOUS_ADJUSTMENT_TRANSACTION'))).toBe(true);
+    expect(transactionSource).toMatchObject({
+      mappingStatus: 'QUARANTINED', errorCodes: expect.arrayContaining(['AMBIGUOUS_ADJUSTMENT_TRANSACTION']),
+    });
+    expect(reused.records.adjustments).toEqual([]);
+    expect(reused.records.transactions.some((row) => row.transactionId === 'TX-ADJ1')).toBe(false);
+    expect(reused.records.transaction_items.some((row) => row.transactionId === 'TX-ADJ1')).toBe(false);
+    expect(reused.mappings.some((mapping) => mapping.targetId === 'TX-ADJ1'
+      || mapping.targetTable === 'adjustments'
+      || (mapping.targetTable === 'transaction_items' && transactionSource?.source.kind === 'SHEET'
+        && mapping.sourceDigest === transactionSource.source.rowHash))).toBe(false);
+    expect(reused.records.transactions).toContainEqual(expect.objectContaining({ transactionId: 'TX1' }));
+    expect(reused.records.transaction_items).toContainEqual(expect.objectContaining({ transactionId: 'TX1' }));
+  });
+
+  it('emits only DB-compatible adjustment foreign keys to exactly one staged transaction', () => {
+    const manifest = createLegacyNormalizationManifest(input());
+    for (const adjustment of manifest.records.adjustments) {
+      expect(typeof adjustment.transactionId).toBe('string');
+      expect(String(adjustment.transactionId).trim()).not.toBe('');
+      expect(manifest.records.transactions.filter((transaction) => transaction.transactionId === adjustment.transactionId)).toHaveLength(1);
+    }
+  });
+
+  it('preindexes adjustment transaction candidates instead of rescanning transactions per adjustment', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/server/migration/normalize.ts'), 'utf8');
+    const correlation = source.slice(
+      source.indexOf('function correlateAdjustments'),
+      source.indexOf('\nfunction markDuplicates'),
+    );
+
+    expect(correlation).toContain('const transactionIndex = new Map<string, Entry[]>();');
+    expect(correlation).not.toMatch(/for \(const adjustment[\s\S]*transactions\.filter/);
   });
 
   it('reports broken references with stable codes and quarantines referencing rows', () => {
@@ -453,6 +831,7 @@ describe('legacy normalization manifest', () => {
       const first = tabs.Students.rows[0];
       const cells = ['S2', 'Bob', '0', 'INACTIVE'];
       tabs.Students.rows = [{ rowNumber: 3, cells, hash: sha(JSON.stringify(cells)) }, first];
+      tabs.Transactions.rows.reverse();
     });
     const reversed = makeSheets(3, (tabs) => {
       const first = tabs.Students.rows[0];
@@ -462,6 +841,8 @@ describe('legacy normalization manifest', () => {
     const a = createLegacyNormalizationManifest(input(second, undefined));
     const b = createLegacyNormalizationManifest(input(reversed, undefined));
     expect(a.records.students).toEqual(b.records.students);
+    expect(a.records.adjustments).toEqual(b.records.adjustments);
+    expect(a.sourceFingerprint).toBe(b.sourceFingerprint);
     expect(a.mappings.map(({ targetTable, targetId }) => [targetTable, targetId])).toEqual(b.mappings.map(({ targetTable, targetId }) => [targetTable, targetId]));
   });
 
@@ -584,13 +965,19 @@ describe('legacy normalization manifest', () => {
 
     expect(manifest.status).toBe('READY_FOR_IMPORT');
     expect(manifest.records.transactions).toEqual(expect.arrayContaining([
-      expect.objectContaining({ transactionId: 'TX1', status: 'CANCELLED' }),
+      expect.objectContaining({ transactionId: 'TX1', legacyStatusSnapshot: 'CANCELLED' }),
       expect.objectContaining({
-        transactionId: 'CANCEL-TX1', kind: 'CANCELLATION', totalAmount: -20,
-        balanceDelta: 20, reversesTransactionId: 'TX1', status: 'CANCEL_REVERSAL',
+        transactionId: 'CANCEL-TX1', kind: 'CANCELLATION', legacyTotalAmount: -20,
+        balanceDelta: 20, reversesTransactionId: 'TX1', legacyStatusSnapshot: 'CANCEL_REVERSAL',
       }),
     ]));
-    expect(manifest.records.transaction_items).toHaveLength(1);
+    const reversal = manifest.records.transactions.find((row) => row.transactionId === 'CANCEL-TX1')!;
+    expect(Object.keys(reversal).sort()).toEqual([
+      'balanceAfter', 'balanceBefore', 'balanceDelta', 'kind', 'legacyStatusSnapshot',
+      'legacyTotalAmount', 'occurredAt', 'operatorSnapshot', 'reversesTransactionId', 'studentId',
+      'studentNameSnapshot', 'tenantId', 'transactionId',
+    ].sort());
+    expect(manifest.records.transaction_items).toHaveLength(2);
   });
 
   it.each([
@@ -608,9 +995,9 @@ describe('legacy normalization manifest', () => {
     const manifest = createLegacyNormalizationManifest(input(sheets, undefined));
 
     expect(manifest.status).toBe('BLOCKED');
-    expect(manifest.records.transactions).toEqual([]);
+    expect(manifest.records.transactions).toEqual([expect.objectContaining({ transactionId: 'TX-ADJ1' })]);
     expect(manifest.mappings.some((mapping) => mapping.targetTable === 'transactions'
-      || mapping.targetTable === 'transaction_items')).toBe(false);
+      && mapping.targetId === 'CANCEL-TX1')).toBe(false);
     expect(manifest.blockingConflicts.map(({ code }) => code)).toContain('MALFORMED_CANCELLATION_HISTORY');
   });
 
@@ -624,11 +1011,18 @@ describe('legacy normalization manifest', () => {
       tabs.Transactions.rows[0].cells[4] = JSON.stringify([extended]);
     }), undefined));
     expect(manifest.status).toBe('READY_FOR_IMPORT');
-    expect(manifest.records.transaction_items[0]).toMatchObject(extended);
+    expect(manifest.records.transaction_items[0]).toMatchObject({
+      productIdSnapshot: 'P1', currentProductId: 'P1', productNameSnapshot: 'Pencil',
+      quantity: 1, unitPriceSnapshot: 20, subtotalSnapshot: 20,
+      regularUnitPrice: 20, regularTotal: 20, totalQuantity: 1, paidQuantity: 1,
+      freeQuantity: 0, finalTotal: 20, totalDiscount: 0,
+      adjustmentsSnapshot: [], appliedPromotionsSnapshot: [],
+    });
     expect(Object.keys(manifest.records.transaction_items[0]).sort()).toEqual([
-      'adjustments', 'appliedPromotions', 'finalTotal', 'freeQuantity', 'itemId', 'lineNumber', 'name',
-      'paidQuantity', 'price', 'productId', 'quantity', 'regularTotal', 'regularUnitPrice', 'subtotal',
-      'tenantId', 'totalDiscount', 'totalQuantity', 'transactionId',
+      'adjustmentsSnapshot', 'appliedPromotionsSnapshot', 'currentProductId', 'finalTotal', 'freeQuantity',
+      'itemId', 'lineNumber', 'paidQuantity', 'productIdSnapshot', 'productNameSnapshot', 'quantity',
+      'regularTotal', 'regularUnitPrice', 'subtotalSnapshot', 'tenantId', 'totalDiscount', 'totalQuantity',
+      'transactionId', 'unitPriceSnapshot',
     ].sort());
   });
 
@@ -640,8 +1034,8 @@ describe('legacy normalization manifest', () => {
     const manifest = createLegacyNormalizationManifest(input(makeSheets(3, (tabs) => {
       tabs.Transactions.rows[0].cells[4] = JSON.stringify([item]);
     }), undefined));
-    expect(manifest.records.transactions).toEqual([]);
-    expect(manifest.records.transaction_items).toEqual([]);
+    expect(manifest.records.transactions).toEqual([expect.objectContaining({ transactionId: 'TX-ADJ1' })]);
+    expect(manifest.records.transaction_items).toEqual([expect.objectContaining({ transactionId: 'TX-ADJ1' })]);
     expect(manifest.blockingConflicts.map((entry) => entry.code)).toContain('MALFORMED_REQUIRED_HISTORY');
     expect(JSON.stringify(manifest)).not.toContain('do-not-copy');
   });

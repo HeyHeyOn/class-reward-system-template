@@ -26,7 +26,8 @@ export type SourceMapping = Readonly<{ sourceDigest: string; targetTable: string
 type Target = { table: string; id: string; record: Record<string, unknown> };
 type Ref = { code: string; table: string; id: string };
 type Entry = {
-  source: SourcePointer; tab: string; identity: string; redacted: NormalizedSourceRecord['redactedSourceRecord'];
+  source: SourcePointer; tab: string; identity: string; sourcePrimaryIdentity: string | null;
+  redacted: NormalizedSourceRecord['redactedSourceRecord'];
   canonical: Record<string, unknown> | null; targets: Target[]; refs: Ref[]; warnings: string[]; errors: string[];
 };
 
@@ -122,6 +123,7 @@ export function normalizeLegacySnapshots(input: { tenantId: string; migrationJob
     pushDiagnostics(conflicts, diag(code, path, input.sheets.digest));
   });
   validateTransactionCancellations(entries);
+  correlateAdjustments(entries, input.tenantId);
   validateReferences(entries);
   propagateClaimErrors(entries);
 
@@ -157,10 +159,11 @@ export function normalizeLegacySnapshots(input: { tenantId: string; migrationJob
 function makeEntry(sheets: SheetsSnapshot, tab: string, row: SheetSnapshotRow, headers: readonly string[], index: Map<string, number>, tenantId: string, jobId: string, badHeader: boolean): Entry {
   const cell = (name: string) => { const position = index.get(name); return position === undefined || position < 0 ? '' : String(row.cells[position] ?? '').trim(); };
   const source: SourcePointer = { kind: 'SHEET', artifactDigest: sheets.digest, tab, rowNumber: row.rowNumber, rowHash: row.hash };
+  const sourcePrimaryIdentity = canonicalId(cell(primaryField(tab)));
   const identity = cell(primaryField(tab)) || row.hash;
   const known = knownHeaders(sheets.schemaVersion, tab);
   const recognizedFieldCount = headers.filter((header) => known.has(header.trim())).length;
-  const entry: Entry = { source, tab, identity, redacted: { identityDigest: sha256(identity), recognizedFieldCount, omittedFieldCount: headers.length - recognizedFieldCount }, canonical: null, targets: [], refs: [], warnings: [], errors: badHeader ? ['INVALID_HEADER'] : [] };
+  const entry: Entry = { source, tab, identity, sourcePrimaryIdentity, redacted: { identityDigest: sha256(identity), recognizedFieldCount, omittedFieldCount: headers.length - recognizedFieldCount }, canonical: null, targets: [], refs: [], warnings: [], errors: badHeader ? ['INVALID_HEADER'] : [] };
   if (badHeader) return entry;
   const target = (table: string, id: string, record: Record<string, unknown>) => entry.targets.push({ table, id, record: { ...record } });
   const requiredId = (name: string) => canonicalId(cell(name));
@@ -179,8 +182,9 @@ function makeEntry(sheets: SheetsSnapshot, tab: string, row: SheetSnapshotRow, h
     normalizeTransaction(entry, cell, tenantId, jobId, target, malformed);
   } else if (tab === 'Adjustments') {
     const id = requiredId('adjustmentId'), timestamp = canonicalInstant(cell('timestamp')), studentId = requiredId('studentId'), amount = safeInteger(cell('amount')), mode = cell('mode'), operator = cell('operator');
-    if (!id || !timestamp || !studentId || amount === null || !['add', 'subtract', 'set'].includes(mode) || !operator) malformed();
-    else { entry.canonical = { adjustmentId: id, timestamp, studentId, amount, mode, operatorDigest: sha256(operator) }; entry.refs.push({ code: 'BROKEN_STUDENT_REFERENCE', table: 'students', id: studentId }); target('adjustments', id, { tenantId, adjustmentId: id, occurredAt: timestamp, studentId, requestedAmount: amount, mode, operatorSnapshot: operator }); }
+    if (!id || !timestamp || !studentId || amount === null || !['add', 'subtract', 'set'].includes(mode) || !operator
+      || (mode !== 'set' && amount < 0)) malformed();
+    else { entry.canonical = { adjustmentId: id, timestamp, studentId, amount, mode, operator, operatorDigest: sha256(operator) }; entry.refs.push({ code: 'BROKEN_STUDENT_REFERENCE', table: 'students', id: studentId }); }
   } else if (tab === 'Settings') {
     const key = cell('key'), value = cell('value');
     if (!key) malformed();
@@ -224,35 +228,65 @@ function normalizeTransaction(entry: Entry, cell: (name: string) => string, tena
       { code: 'BROKEN_TRANSACTION_REFERENCE', table: 'transactions', id: originalId },
       { code: 'BROKEN_STUDENT_REFERENCE', table: 'students', id: studentId },
     );
-    target('transactions', id, { tenantId, transactionId: id, occurredAt: timestamp, studentId, studentNameSnapshot: studentName, kind: 'CANCELLATION', legacyTotalAmount: total, totalAmount: total, balanceDelta, balanceBefore: before, balanceAfter: after, operatorSnapshot: operator, legacyStatusSnapshot: status, status, reversesTransactionId: originalId });
+    target('transactions', id, { tenantId, transactionId: id, occurredAt: timestamp, studentId, studentNameSnapshot: studentName, kind: 'CANCELLATION', legacyTotalAmount: total, balanceDelta, balanceBefore: before, balanceAfter: after, operatorSnapshot: operator, legacyStatusSnapshot: status, reversesTransactionId: originalId });
     return;
   }
 
   const purchase = status === 'COMPLETED' || status === 'CANCELLED';
+  const adminAdjustment = status === 'ADMIN_ADJUSTMENT';
   if ((purchase && (!items.length || total < 0 || balanceDelta !== -total))
-    || (!purchase && items.length !== 0)
+    || (adminAdjustment ? items.length !== 1 : !purchase && items.length !== 0)
     || (status === 'TASK_REWARD' && balanceDelta !== total)
     || (status === 'ADMIN_ADJUSTMENT' && balanceDelta !== -total)) { malformed(); return; }
   const canonicalItems: Record<string, unknown>[] = [];
   const productIds = new Set<string>();
   let itemTotal = 0;
   for (let line = 0; line < items.length; line += 1) {
-    const item = canonicalTransactionItem(items[line]);
+    const item = canonicalTransactionItem(items[line], adminAdjustment);
     if (!item || productIds.has(item.productId)) { malformed(); return; }
     const productId = item.productId;
     productIds.add(productId);
     const nextTotal = itemTotal + item.subtotal;
     if (!Number.isSafeInteger(nextTotal)) { malformed(); return; }
     itemTotal = nextTotal;
-    entry.refs.push({ code: 'BROKEN_PRODUCT_REFERENCE', table: 'products', id: productId });
+    if (!adminAdjustment) entry.refs.push({ code: 'BROKEN_PRODUCT_REFERENCE', table: 'products', id: productId });
     const itemId = deterministicId(tenantId, jobId, 'transaction_items', id, String(line + 1), canonicalJson(item));
     canonicalItems.push({ ...item, itemId, transactionId: id, lineNumber: line + 1 });
   }
   if (purchase && itemTotal !== total) { malformed(); return; }
   entry.canonical = { transactionId: id, timestamp, studentId, studentName, items: canonicalItems, totalAmount: total, balanceBefore: before, balanceAfter: after, status, operator };
   entry.refs.push({ code: 'BROKEN_STUDENT_REFERENCE', table: 'students', id: studentId });
-  target('transactions', id, { tenantId, transactionId: id, occurredAt: timestamp, studentId, studentNameSnapshot: studentName, kind: transactionKind(status), legacyTotalAmount: total, totalAmount: total, balanceDelta, balanceBefore: before, balanceAfter: after, operatorSnapshot: operator, legacyStatusSnapshot: status, status });
-  canonicalItems.forEach((item) => target('transaction_items', String(item.itemId), { tenantId, ...item }));
+  target('transactions', id, { tenantId, transactionId: id, occurredAt: timestamp, studentId, studentNameSnapshot: studentName, kind: transactionKind(status), legacyTotalAmount: total, balanceDelta, balanceBefore: before, balanceAfter: after, operatorSnapshot: operator, legacyStatusSnapshot: status });
+  canonicalItems.forEach((item) => target(
+    'transaction_items', String(item.itemId), stagedTransactionItem(item, tenantId, adminAdjustment),
+  ));
+}
+
+function stagedTransactionItem(item: Record<string, unknown>, tenantId: string, adminAdjustment: boolean) {
+  const record: Record<string, unknown> = {
+    tenantId,
+    itemId: item.itemId,
+    transactionId: item.transactionId,
+    lineNumber: item.lineNumber,
+    productIdSnapshot: item.productId,
+    currentProductId: adminAdjustment ? null : item.productId,
+    productNameSnapshot: item.name,
+    quantity: item.quantity,
+    unitPriceSnapshot: item.price,
+    subtotalSnapshot: item.subtotal,
+  };
+  if ('regularUnitPrice' in item) Object.assign(record, {
+    regularUnitPrice: item.regularUnitPrice,
+    regularTotal: item.regularTotal,
+    totalQuantity: item.totalQuantity,
+    paidQuantity: item.paidQuantity,
+    freeQuantity: item.freeQuantity,
+    finalTotal: item.finalTotal,
+    totalDiscount: item.totalDiscount,
+    adjustmentsSnapshot: item.adjustments,
+    appliedPromotionsSnapshot: item.appliedPromotions,
+  });
+  return record;
 }
 
 const LEGACY_TRANSACTION_ITEM_KEYS = ['productId', 'name', 'price', 'quantity', 'subtotal'] as const;
@@ -261,7 +295,7 @@ const EXTENDED_TRANSACTION_ITEM_KEYS = [
   'paidQuantity', 'freeQuantity', 'finalTotal', 'totalDiscount', 'adjustments', 'appliedPromotions',
 ] as const;
 
-function canonicalTransactionItem(value: unknown): ({ productId: string; name: string; price: number; quantity: number; subtotal: number } & Record<string, unknown>) | null {
+function canonicalTransactionItem(value: unknown, signedLegacy = false): ({ productId: string; name: string; price: number; quantity: number; subtotal: number } & Record<string, unknown>) | null {
   if (!isPlainRecord(value)) return null;
   const keys = Object.keys(value);
   const legacy = exactKeys(keys, LEGACY_TRANSACTION_ITEM_KEYS);
@@ -269,12 +303,16 @@ function canonicalTransactionItem(value: unknown): ({ productId: string; name: s
   if (!legacy && !extended) return null;
   const productId = typeof value.productId === 'string' ? canonicalId(value.productId) : null;
   const name = typeof value.name === 'string' && value.name.length > 0 && value.name === value.name.trim() ? value.name : null;
-  if (!productId || !name || !nonnegativeSafeInteger(value.price) || !positiveSafeInteger(value.quantity)
-    || !nonnegativeSafeInteger(value.subtotal) || !Number.isSafeInteger(value.price * value.quantity)) return null;
+  const price = typeof value.price === 'number' && Number.isSafeInteger(value.price) ? value.price : null;
+  const subtotal = typeof value.subtotal === 'number' && Number.isSafeInteger(value.subtotal) ? value.subtotal : null;
+  if (!productId || !name || price === null || subtotal === null
+    || (!signedLegacy && (price < 0 || subtotal < 0)) || !positiveSafeInteger(value.quantity)
+    || !Number.isSafeInteger(price * value.quantity)) return null;
   if (legacy) {
-    if (value.price * value.quantity !== value.subtotal) return null;
-    return { productId, name, price: value.price, quantity: value.quantity, subtotal: value.subtotal };
+    if (price * value.quantity !== subtotal) return null;
+    return { productId, name, price, quantity: value.quantity, subtotal };
   }
+  if (signedLegacy) return null;
   if (!exactExtendedItemChildren(value)) return null;
   const parsed = parseCheckoutLineSnapshot(value);
   return parsed ? {
@@ -308,7 +346,6 @@ function exactExtendedItemChildren(value: Record<string, unknown>): boolean {
 function exactKeys(actual: readonly string[], expected: readonly string[]): boolean {
   return actual.length === expected.length && expected.every((key) => actual.includes(key));
 }
-function nonnegativeSafeInteger(value: unknown): value is number { return Number.isSafeInteger(value) && (value as number) >= 0; }
 function positiveSafeInteger(value: unknown): value is number { return Number.isSafeInteger(value) && (value as number) > 0; }
 
 function normalizeTask(entry: Entry, cell: (name: string) => string, index: Map<string, number>, row: SheetSnapshotRow, version: number, tenantId: string, target: (table: string, id: string, record: Record<string, unknown>) => void, malformed: () => void) {
@@ -397,6 +434,101 @@ function normalizePromotion(entry: Entry, row: SheetSnapshotRow, index: Map<stri
   target('promotions', id, { tenantId, ...promotion });
 }
 
+function correlateAdjustments(entries: Entry[], tenantId: string) {
+  const transactionIndex = new Map<string, Entry[]>();
+  for (const entry of entries) {
+    if (entry.tab !== 'Transactions' || !entry.canonical
+      || entry.canonical.status !== 'ADMIN_ADJUSTMENT') continue;
+    const key = adjustmentTransactionKey(entry.canonical);
+    if (!key) {
+      if (!entry.errors.includes('MALFORMED_REQUIRED_HISTORY')) entry.errors.push('MALFORMED_REQUIRED_HISTORY');
+      continue;
+    }
+    const group = transactionIndex.get(key) ?? [];
+    group.push(entry);
+    transactionIndex.set(key, group);
+  }
+
+  const adjustmentIndex = new Map<string, Entry[]>();
+  for (const entry of entries) {
+    if (entry.tab !== 'Adjustments' || !entry.canonical) continue;
+    const key = adjustmentKey(entry.canonical);
+    if (!key) continue;
+    const group = adjustmentIndex.get(key) ?? [];
+    group.push(entry);
+    adjustmentIndex.set(key, group);
+  }
+
+  const keys = new Set([...adjustmentIndex.keys(), ...transactionIndex.keys()]);
+  for (const key of keys) {
+    const adjustments = adjustmentIndex.get(key) ?? [];
+    const transactions = transactionIndex.get(key) ?? [];
+    if (adjustments.length !== 1 || transactions.length !== 1) {
+      for (const implicated of [...adjustments, ...transactions]) {
+        if (!implicated.errors.includes('AMBIGUOUS_ADJUSTMENT_TRANSACTION')) {
+          implicated.errors.push('AMBIGUOUS_ADJUSTMENT_TRANSACTION');
+        }
+      }
+      continue;
+    }
+    const adjustment = adjustments[0];
+    const transaction = transactions[0];
+    if (adjustment.errors.length > 0 || transaction.errors.length > 0) {
+      for (const implicated of [adjustment, transaction]) {
+        if (!implicated.errors.includes('AMBIGUOUS_ADJUSTMENT_TRANSACTION')) {
+          implicated.errors.push('AMBIGUOUS_ADJUSTMENT_TRANSACTION');
+        }
+      }
+      continue;
+    }
+    const transactionId = String(transaction.canonical!.transactionId);
+    const value = adjustment.canonical!;
+    value.transactionId = transactionId;
+    adjustment.refs.push({ code: 'BROKEN_TRANSACTION_REFERENCE', table: 'transactions', id: transactionId });
+    adjustment.targets.push({
+      table: 'adjustments', id: String(value.adjustmentId), record: {
+        tenantId, adjustmentId: value.adjustmentId, transactionId,
+        mode: value.mode, requestedAmount: value.amount, operatorSnapshot: value.operator,
+        legacyAdjustmentId: value.adjustmentId,
+      },
+    });
+  }
+}
+
+function adjustmentKey(adjustment: Record<string, unknown>): string | null {
+  const { timestamp, studentId, operator, mode, amount } = adjustment;
+  if (typeof timestamp !== 'string' || typeof studentId !== 'string' || typeof operator !== 'string'
+    || !['add', 'subtract', 'set'].includes(String(mode)) || !Number.isSafeInteger(amount)
+    || (mode !== 'set' && (amount as number) < 0)) return null;
+  return canonicalJson([timestamp, studentId, operator, mode, amount]);
+}
+
+function adjustmentTransactionKey(transaction: Record<string, unknown>): string | null {
+  const { timestamp, studentId, operator, status, totalAmount, balanceBefore, balanceAfter } = transaction;
+  if (status !== 'ADMIN_ADJUSTMENT' || typeof timestamp !== 'string' || typeof studentId !== 'string'
+    || typeof operator !== 'string' || !Number.isSafeInteger(totalAmount)
+    || !Number.isSafeInteger(balanceBefore) || !Number.isSafeInteger(balanceAfter)
+    || !Array.isArray(transaction.items) || transaction.items.length !== 1) return null;
+  const item = transaction.items[0] as Record<string, unknown>;
+  const before = balanceBefore as number;
+  const after = balanceAfter as number;
+  const total = totalAmount as number;
+  let mode: 'add' | 'subtract' | 'set';
+  let requested: number;
+  if (item.productId === 'ADMIN-ADD' && item.name === '관리자 지급') {
+    mode = 'add'; requested = after - before;
+    if (!Number.isSafeInteger(requested) || requested < 0 || total !== -requested) return null;
+  } else if (item.productId === 'ADMIN-SUBTRACT' && item.name === '관리자 회수') {
+    mode = 'subtract'; requested = before - after;
+    if (!Number.isSafeInteger(requested) || requested < 0 || total !== requested) return null;
+  } else if (item.productId === 'ADMIN-SET' && item.name === '관리자 잔액 지정') {
+    mode = 'set'; requested = after;
+    if (!Number.isSafeInteger(requested) || !Number.isSafeInteger(before - after) || total !== before - after) return null;
+  } else return null;
+  if (item.price !== total || item.quantity !== 1 || item.subtotal !== total) return null;
+  return canonicalJson([timestamp, studentId, operator, mode, requested]);
+}
+
 function markDuplicates(entries: Entry[]) {
   const byTarget = new Map<string, Entry[]>();
   for (const entry of entries) for (const target of entry.targets) {
@@ -409,6 +541,11 @@ function markDuplicates(entries: Entry[]) {
       : entry.tab === 'Settings' ? 'DUPLICATE_SETTING_KEY' : 'DUPLICATE_PRIMARY_ID');
   }
   markBusinessDuplicate(entries.filter((entry) => entry.tab === 'Tasks' && entry.canonical), (entry) => String(entry.canonical!.taskId));
+  markBusinessDuplicate(
+    entries.filter((entry) => FINANCIAL_TABS.has(entry.tab) && entry.sourcePrimaryIdentity),
+    (entry) => `${entry.tab}\0${entry.sourcePrimaryIdentity}`,
+    'DUPLICATE_LEDGER_ID',
+  );
   markBusinessDuplicate(entries.filter((entry) => entry.tab === 'PromotionProducts' && entry.canonical), (entry) => `${entry.canonical!.promotionId}\0${entry.canonical!.productId}`);
   markBusinessDuplicate(entries.filter((entry) => entry.tab === 'TaskCompletions' && entry.canonical?.operationId), (entry) => String(entry.canonical!.operationId), 'DUPLICATE_LEDGER_ID');
 }
@@ -738,7 +875,7 @@ function normalizeClaims(input: { tenantId: string; migrationJobId: string; shee
 }
 
 function derivedEntry(source: SourcePointer, tab: string, identity: string, table: string, id: string, record: Record<string, unknown>): Entry {
-  return { source, tab, identity, redacted: { identityDigest: sha256(identity), recognizedFieldCount: 1, omittedFieldCount: 0 }, canonical: record, targets: [{ table, id, record: { ...record } }], refs: [], warnings: [], errors: [] };
+  return { source, tab, identity, sourcePrimaryIdentity: null, redacted: { identityDigest: sha256(identity), recognizedFieldCount: 1, omittedFieldCount: 0 }, canonical: record, targets: [{ table, id, record: { ...record } }], refs: [], warnings: [], errors: [] };
 }
 function redisPointer(redis: RedisClaimSnapshot, provenance: string, value: string): SourcePointer { return { kind: 'REDIS', artifactDigest: redis.digest, provenance, sourceDigest: sha256(value) }; }
 function claimBindingKey(record: Record<string, unknown>) { return canonicalJson({ boardId: record.boardId, postId: record.postId, ownerDigest: record.ownerDigest, operationId: record.operationId, operationPayloadHash: record.operationPayloadHash ?? null, taskId: record.taskId ?? null, studentId: record.studentId ?? null, cycleStartsAt: record.cycleStartsAt ?? null, evidenceCreatedAt: record.evidenceCreatedAt ?? null, evidenceAuthorFullName: record.evidenceAuthorFullName ?? null }); }
