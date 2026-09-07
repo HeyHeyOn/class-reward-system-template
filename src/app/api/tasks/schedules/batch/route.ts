@@ -1,3 +1,4 @@
+import { legacyWriteFreezeResponse } from '@/server/legacyDeploymentMode';
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { createConfiguredSheetsStore } from '@/server/googleSheets';
 import { updateTaskSchedulesBatch } from '@/server/sheetsRepository';
@@ -10,6 +11,9 @@ const INVALID_REQUEST = '과제 일정 일괄 요청 형식이 올바르지 않�
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
+  const frozen = legacyWriteFreezeResponse();
+  if (frozen) return frozen;
+
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
   let taskIds: string[];

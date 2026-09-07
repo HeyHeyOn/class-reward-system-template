@@ -1,3 +1,4 @@
+import { legacyWriteFreezeResponse } from '@/server/legacyDeploymentMode';
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { createConfiguredTaskCreation } from '@/server/repositories/configuredTaskCreation';
 import { createConfiguredTaskReader } from '@/server/repositories/configuredTasks';
@@ -42,6 +43,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const frozen = legacyWriteFreezeResponse();
+  if (frozen) return frozen;
+
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
   try {

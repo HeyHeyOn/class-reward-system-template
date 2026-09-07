@@ -1,3 +1,4 @@
+import { legacyWriteFreezeResponse } from '@/server/legacyDeploymentMode';
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { createConfiguredTransactionCancellation } from '@/server/repositories/configuredTransactionCancellation';
 
@@ -56,6 +57,9 @@ const CANCELLATION_FAILURE_PREFIX_REASONS: ReadonlyArray<readonly [string, strin
 ];
 
 export async function POST(request: Request, context: RouteContext) {
+  const frozen = legacyWriteFreezeResponse();
+  if (frozen) return frozen;
+
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
   const body = await parseCancellationBody(request);

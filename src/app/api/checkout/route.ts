@@ -1,3 +1,4 @@
+import { legacyWriteFreezeResponse } from '@/server/legacyDeploymentMode';
 import { createCheckoutPayloadHash } from '@/server/checkoutService';
 import { createConfiguredCheckoutCommand } from '@/server/repositories/configuredCheckout';
 import type { CartItem } from '@/domain/types';
@@ -16,6 +17,9 @@ type CheckoutRequestBody = {
 };
 
 export async function POST(request: Request) {
+  const frozen = legacyWriteFreezeResponse();
+  if (frozen) return frozen;
+
   try {
     const rawBody: unknown = await request.json();
     if (!rawBody || typeof rawBody !== 'object' || Array.isArray(rawBody)) {

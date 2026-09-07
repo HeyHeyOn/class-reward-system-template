@@ -1,3 +1,4 @@
+import { legacyWriteFreezeResponse } from '@/server/legacyDeploymentMode';
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { createConfiguredSheetsStore } from '@/server/googleSheets';
 import { deleteStudentsBatch, updateStudentDetailsBatchWithBalanceTransactions } from '@/server/sheetsRepository';
@@ -10,6 +11,9 @@ const PATCH_BODY_KEYS = ['operationId', 'students'];
 const PATCH_STUDENT_KEYS = ['balance', 'name', 'status', 'studentId'];
 
 export async function PATCH(request: Request) {
+  const frozen = legacyWriteFreezeResponse();
+  if (frozen) return frozen;
+
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
   try {
@@ -41,6 +45,9 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const frozen = legacyWriteFreezeResponse();
+  if (frozen) return frozen;
+
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
   try {

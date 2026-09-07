@@ -1,3 +1,4 @@
+import { legacyWriteFreezeResponse } from '@/server/legacyDeploymentMode';
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { createConfiguredSheetsStore } from '@/server/googleSheets';
 import { deleteTask, updateTaskDetails, updateTaskSchedule, updateTaskScheduleSettings } from '@/server/sheetsRepository';
@@ -40,6 +41,9 @@ export async function GET(request: Request, context: RouteContext) {
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
+  const frozen = legacyWriteFreezeResponse();
+  if (frozen) return frozen;
+
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
   try {
@@ -94,6 +98,9 @@ export async function PATCH(request: Request, context: RouteContext) {
 }
 
 export async function DELETE(_request: Request, context: RouteContext) {
+  const frozen = legacyWriteFreezeResponse();
+  if (frozen) return frozen;
+
   if (!isAuthorizedAdminRequest(_request)) return unauthorizedAdminResponse();
 
   try {

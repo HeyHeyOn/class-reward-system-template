@@ -1,3 +1,4 @@
+import { legacyWriteFreezeResponse } from '@/server/legacyDeploymentMode';
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import {
   saveAppSettings,
@@ -46,6 +47,9 @@ export async function PATCH(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const frozen = legacyWriteFreezeResponse();
+  if (frozen) return frozen;
+
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
   const parsed = await parseRequestJson(request);

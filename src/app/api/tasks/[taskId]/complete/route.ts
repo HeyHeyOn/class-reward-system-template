@@ -1,3 +1,4 @@
+import { legacyWriteFreezeResponse } from '@/server/legacyDeploymentMode';
 import {
   createConfiguredTaskCompletion,
   parseConfiguredTaskCompletionResult,
@@ -74,6 +75,9 @@ function statusUnknown(operationId: string): Response {
 }
 
 export async function POST(request: Request, context: RouteContext) {
+  const frozen = legacyWriteFreezeResponse();
+  if (frozen) return frozen;
+
   const contentType = request.headers.get('content-type');
   if (contentType?.split(';', 1)[0].trim().toLowerCase() !== 'application/json') return qrFailure();
 

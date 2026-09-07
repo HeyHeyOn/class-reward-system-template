@@ -1,3 +1,4 @@
+import { legacyWriteFreezeResponse } from '@/server/legacyDeploymentMode';
 import { randomBytes } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { createClassRewardSpreadsheet } from '@/generator/createSpreadsheet';
@@ -27,6 +28,9 @@ type CreateRequestBody = {
 };
 
 export async function POST(request: Request) {
+  const frozen = legacyWriteFreezeResponse('generator-sheets');
+  if (frozen) return frozen;
+
   let grant: GeneratorGrant | null = null;
   try {
     if (!isGeneratorDeployment()) {

@@ -1,3 +1,4 @@
+import { legacyWriteFreezeResponse } from '@/server/legacyDeploymentMode';
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import {
   createConfiguredStudentCreation,
@@ -26,6 +27,9 @@ const CREATE_KEY_SET = new Set<string>(CREATE_KEYS);
 const CREATE_ERROR = '학생을 추가하지 못했습니다.';
 
 export async function POST(request: Request) {
+  const frozen = legacyWriteFreezeResponse();
+  if (frozen) return frozen;
+
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
   const payload = await parseStudentCreationBody(request);

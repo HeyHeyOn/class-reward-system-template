@@ -1,3 +1,4 @@
+import { legacyWriteFreezeResponse } from '@/server/legacyDeploymentMode';
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { createConfiguredSheetsStore } from '@/server/googleSheets';
 import { createConfiguredProductDeletion } from '@/server/repositories/configuredProductDeletion';
@@ -10,6 +11,9 @@ type RouteContext = {
 };
 
 export async function PATCH(request: Request, context: RouteContext) {
+  const frozen = legacyWriteFreezeResponse();
+  if (frozen) return frozen;
+
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
   try {
@@ -36,6 +40,9 @@ export async function PATCH(request: Request, context: RouteContext) {
 
 
 export async function DELETE(request: Request, context: RouteContext) {
+  const frozen = legacyWriteFreezeResponse();
+  if (frozen) return frozen;
+
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
   const mediaType = request.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();

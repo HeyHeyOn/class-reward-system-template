@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
+import { LegacyMigrationNotice } from '@/server/LegacyMigrationNotice';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -17,7 +19,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko">
-      <body>{children}</body>
+      <body>
+        {children}
+        <Suspense fallback={null}><LegacyMigrationNotice /></Suspense>
+      </body>
     </html>
   );
 }

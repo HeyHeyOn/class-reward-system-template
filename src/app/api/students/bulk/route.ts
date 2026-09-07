@@ -1,3 +1,4 @@
+import { legacyWriteFreezeResponse } from '@/server/legacyDeploymentMode';
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { createConfiguredAdminAdjustmentCommand } from '@/server/repositories/configuredAdminAdjustment';
 import type { StudentBulkBalanceUpdate } from '@/server/sheetsRepository';
@@ -8,6 +9,9 @@ const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]
 const BULK_BODY_KEYS = ['amount', 'mode', 'operationId', 'studentIds'];
 
 export async function PATCH(request: Request) {
+  const frozen = legacyWriteFreezeResponse();
+  if (frozen) return frozen;
+
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
   const payload = await parseBulkBalanceBody(request);

@@ -1,3 +1,4 @@
+import { legacyWriteFreezeResponse } from '@/server/legacyDeploymentMode';
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { createConfiguredSheetsStore } from '@/server/googleSheets';
 import { deleteTasksBatch, updateTaskDetailsBatch } from '@/server/sheetsRepository';
@@ -7,6 +8,9 @@ import { parseStrictBatchTaskFields } from '../taskPayload';
 export const dynamic = 'force-dynamic';
 
 export async function PATCH(request: Request) {
+  const frozen = legacyWriteFreezeResponse();
+  if (frozen) return frozen;
+
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
   try {
@@ -42,6 +46,9 @@ function parseScheduleProperty(task: Record<string, unknown>) {
 }
 
 export async function DELETE(request: Request) {
+  const frozen = legacyWriteFreezeResponse();
+  if (frozen) return frozen;
+
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
   try {

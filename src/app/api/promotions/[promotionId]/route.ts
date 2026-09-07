@@ -1,3 +1,4 @@
+import { legacyWriteFreezeResponse } from '@/server/legacyDeploymentMode';
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { createConfiguredPromotionDeletion } from '@/server/repositories/configuredPromotionDeletion';
 import {
@@ -21,6 +22,9 @@ type RouteContext = { params: Promise<{ promotionId: string }> };
 const CANONICAL_OPERATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 export async function PATCH(request: Request, { params }: RouteContext) {
+  const frozen = legacyWriteFreezeResponse();
+  if (frozen) return frozen;
+
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
   const mediaType = request.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();
@@ -96,6 +100,9 @@ function exactDataRecord(value: unknown, expectedKeys: readonly string[]): Recor
 }
 
 export async function DELETE(request: Request, { params }: RouteContext) {
+  const frozen = legacyWriteFreezeResponse();
+  if (frozen) return frozen;
+
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
   const mediaType = request.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();

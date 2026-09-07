@@ -1,3 +1,4 @@
+import { legacyWriteFreezeResponse } from '@/server/legacyDeploymentMode';
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { createConfiguredCatalogReader } from '@/server/repositories/configuredCatalog';
 import {
@@ -34,6 +35,9 @@ const CREATE_KEYS = new Set<string>([...REQUIRED_CREATE_KEYS, ...OPTIONAL_CREATE
 const CREATE_ERROR = '상품을 추가하지 못했습니다.';
 
 export async function POST(request: Request) {
+  const frozen = legacyWriteFreezeResponse();
+  if (frozen) return frozen;
+
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
   const payload = await parseProductCreationBody(request);
