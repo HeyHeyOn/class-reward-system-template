@@ -6,6 +6,7 @@ import { parseCheckoutLineSnapshot } from '@/lib/checkoutSnapshotClient';
 import type { TenantTransaction } from '@/server/db/transaction';
 import { withTenantTransaction } from '@/server/db/transaction';
 import type { LegacyNormalizationManifest } from './manifest';
+import type { ReconciliationDiagnostic } from './report';
 import { canonicalTransactionItem, adjustmentKey, adjustmentTransactionKey, sameAssignmentCompletionTuple, cancellationOriginalId } from './semanticValidators';
 import { canonicalJson, isHexDigest, isPlainRecord, sha256 } from './validators';
 
@@ -174,6 +175,98 @@ export async function importLegacyNormalizationManifest(input: LegacyMigrationIm
     importedTargetRecords: work.length,
     deferredTargetRecords: [...DEFERRED_TABLES].reduce((count, table) => count + (input.manifest.records[table]?.length ?? 0), 0),
   };
+}
+
+/** Read-only verification; not an import bypass or READY capability. All callers
+ * get the same full semantic validation before any database evidence is trusted. */
+export async function inspectLegacyImport(
+  transaction: TenantTransaction, input: LegacyMigrationImportInput,
+  currentManifest: LegacyNormalizationManifest,
+): Promise<ReconciliationDiagnostic[]> {
+  const issues: ReconciliationDiagnostic[] = [];
+  try {
+    assertInput(input);
+  } catch {
+    return [{ category: 'INTEGRITY', code: 'INVALID_MANIFEST' }];
+  }
+  try {
+    assertInput({ ...input, manifest: currentManifest });
+    // Both complete manifests have passed shape/digest/semantic validation.
+    // Fingerprints/artifact summaries alone cannot authenticate normalized bytes.
+    if (!equalJson(currentManifest, input.manifest)) {
+      issues.push({ category: 'SOURCES', code: 'SOURCE_MUTATION' });
+    }
+  } catch {
+    issues.push({ category: 'SOURCES', code: 'INVALID_CURRENT_MANIFEST' });
+  }
+  // Match the importer's lock order, including competing nonterminal jobs.
+  const { rows: tenants } = await transaction.execute(sql`SELECT lifecycle FROM tenants WHERE id=${input.tenantId} FOR UPDATE`);
+  try {
+    if (tenants.length !== 1 || tenants[0].lifecycle !== 'IMPORTING') throw new Error('binding');
+    await assertBoundImport(transaction, input, true);
+  } catch {
+    return [...issues, { category: 'INTEGRITY', code: 'BINDING_MISMATCH' }];
+  }
+  const { rows: snapshots } = await transaction.execute(sql`SELECT artifact_digest,redacted_manifest,source_id,snapshot_id,row_count::text AS row_count FROM migration_snapshots WHERE tenant_id=${input.tenantId} AND job_id=${input.migrationJobId} AND phase='PREFLIGHT' AND redacted_manifest->>'bindingKind'='LEGACY_NORMALIZATION_IMPORT' FOR UPDATE`);
+  if (snapshots.length !== 1 || snapshots[0].artifact_digest !== input.manifest.manifestDigest
+    || snapshots[0].source_id !== sourceIdFor('SHEET', input.manifest.sourceArtifacts.sheets.digest)
+    || snapshots[0].snapshot_id !== `import:${input.manifest.manifestDigest}`
+    || snapshots[0].row_count !== String(input.manifest.sourceRecords.length)
+    || !equalJson(snapshots[0].redacted_manifest, { bindingKind: 'LEGACY_NORMALIZATION_IMPORT', sourceFingerprint: input.manifest.sourceFingerprint, manifestDigest: input.manifest.manifestDigest })) {
+    return [...issues, { category: 'INTEGRITY', code: 'BINDING_MISMATCH' }];
+  }
+  const artifacts = [
+    { kind: 'SHEET' as const, provider: 'GOOGLE_SHEETS', digest: input.manifest.sourceArtifacts.sheets.digest, external: input.manifest.sourceArtifacts.sheets.spreadsheetIdDigest, schemaVersion: input.manifest.metadata.sheetSchemaVersion },
+    ...(input.manifest.sourceArtifacts.redis ? [{ kind: 'REDIS' as const, provider: 'LEGACY_REDIS_BRIDGE', digest: input.manifest.sourceArtifacts.redis.digest, external: input.manifest.sourceArtifacts.redis.digest, schemaVersion: null }] : []),
+  ];
+  const { rows: sources } = await transaction.execute(sql`SELECT * FROM migration_sources WHERE tenant_id=${input.tenantId} AND job_id=${input.migrationJobId} LIMIT ${artifacts.length + 1} FOR UPDATE`);
+  if (sources.length !== artifacts.length || artifacts.some((artifact) => !sources.some((row) =>
+    row.source_id === sourceIdFor(artifact.kind, artifact.digest) && row.provider === artifact.provider
+    && row.external_source_id === artifact.external && row.source_fingerprint === artifact.digest
+    && Number(row.schema_version ?? 0) === Number(artifact.schemaVersion ?? 0)))) {
+    return [...issues, { category: 'SOURCES', code: 'BINDING_MISMATCH' }];
+  }
+  const checkpoints = projectSourceRecords(input.manifest, input.tenantId, input.migrationJobId);
+  const { rows: persisted } = await transaction.execute(sql`SELECT * FROM migration_source_records WHERE tenant_id=${input.tenantId} AND job_id=${input.migrationJobId} LIMIT ${checkpoints.length + 1} FOR UPDATE`);
+  if (persisted.length !== checkpoints.length) issues.push({ category: 'CHECKPOINTS', code: 'CARDINALITY_MISMATCH' });
+  // Cardinality first. A Map alone would hide repeated/missing provenance.
+  const byId = new Map(persisted.map((row) => [row.record_id, row]));
+  if (byId.size !== persisted.length) issues.push({ category: 'CHECKPOINTS', code: 'CARDINALITY_MISMATCH' });
+  for (const record of checkpoints) {
+    const row = byId.get(record.recordId);
+    const status = record.deferred ? 'STAGED' : record.targetTable ? 'IMPORTED' : 'SKIPPED';
+    const expected = {
+      source_id: record.sourceId, source_collection: record.sourceCollection,
+      source_record_id: record.sourceRecordId, source_row_number: record.sourceRowNumber,
+      source_row_hash: record.sourceRowHash, redacted_record: record.redactedRecord,
+      canonical_record: record.canonicalRecord, warning_details: record.warningDetails,
+      error_details: record.errorDetails, mapping_status: status,
+      target_table: record.deferred ? null : record.targetTable,
+      target_id: record.deferred ? null : record.targetId,
+    };
+    if (!row || !Object.entries(expected).every(([key, value]) => equalDatabaseValue(row[key], value))) {
+      issues.push({ category: 'CHECKPOINTS', code: 'CHECKPOINT_INCOMPLETE', rowReference: record.recordId });
+    }
+  }
+  const work = projectTargets(input.manifest, input.tenantId);
+  for (const table of ['tenant_settings', ...TABLE_ORDER.filter((table) => table !== 'settings' && !DEFERRED_TABLES.has(table))]) {
+    const expected = work.filter((record) => record.table === table);
+    const descriptor = table === 'tenant_settings' ? { idColumns: ['tenant_id'] } : DESCRIPTORS[table];
+    const { rows } = await transaction.execute(sql`SELECT * FROM ${sql.identifier(table)} WHERE tenant_id=${input.tenantId} LIMIT ${expected.length + 1} FOR UPDATE`);
+    if (rows.length !== expected.length) issues.push({ category: 'INTEGRITY', code: 'CARDINALITY_MISMATCH', rowReference: table });
+    const key = (row: Record<string, unknown>) => canonicalJson(descriptor.idColumns.map((column) => row[column]));
+    const actual = new Map(rows.map((row) => [key(row), row]));
+    if (actual.size !== rows.length) issues.push({ category: 'INTEGRITY', code: 'CARDINALITY_MISMATCH', rowReference: table });
+    for (const record of expected) {
+      const row = actual.get(key(record.value));
+      if (!row || !Object.entries(record.value).every(([column, value]) => equalDatabaseValue(row[column], value))) {
+        issues.push({ category: 'INTEGRITY', code: 'ROW_MISMATCH', rowReference: `${table}\0${record.id}` });
+      }
+    }
+  }
+  try { await assertHistoricalOrder(transaction, input.tenantId, work); }
+  catch { issues.push({ category: 'RECURRENCE', code: 'HISTORY_ORDER' }); }
+  return issues;
 }
 
 function assertInput(input: LegacyMigrationImportInput): void {
@@ -1268,10 +1361,14 @@ async function ensureSources(transaction: TenantTransaction, input: LegacyMigrat
   }
 }
 
-async function assertBoundImport(transaction: TenantTransaction, input: LegacyMigrationImportInput): Promise<void> {
+async function assertBoundImport(transaction: TenantTransaction, input: LegacyMigrationImportInput,
+  readOnlyReconciliation = false): Promise<void> {
   const { rows } = await transaction.execute(sql`SELECT t.lifecycle,j.status,j.source_fingerprint,(SELECT count(*)::int FROM migration_snapshots s WHERE s.tenant_id=j.tenant_id AND s.job_id=j.job_id AND s.phase='PREFLIGHT' AND s.artifact_digest=${input.manifest.manifestDigest} AND s.redacted_manifest->>'bindingKind'='LEGACY_NORMALIZATION_IMPORT') AS manifest_count FROM tenants t JOIN migration_jobs j ON j.tenant_id=t.id WHERE t.id=${input.tenantId} AND j.job_id=${input.migrationJobId} FOR UPDATE OF t,j`);
   const row = rows[0] as Record<string, unknown> | undefined;
-  if (!row || row.lifecycle !== 'IMPORTING' || row.status !== 'IMPORTING' || row.source_fingerprint !== input.manifest.sourceFingerprint || Number(row.manifest_count) !== 1) throw new Error('Migration import binding is no longer valid.');
+  // Import writes retain the strict IMPORTING-only default. Only the read-only
+  // audit can inspect a preparatory state; this flag is not exported to callers.
+  const statuses = readOnlyReconciliation ? ['IMPORTING', 'RECONCILING', 'READY'] : ['IMPORTING'];
+  if (!row || row.lifecycle !== 'IMPORTING' || !statuses.includes(String(row.status)) || row.source_fingerprint !== input.manifest.sourceFingerprint || Number(row.manifest_count) !== 1) throw new Error('Migration import binding is no longer valid.');
   await assertSoleImportOwner(transaction, input);
 }
 
@@ -1301,6 +1398,8 @@ function projectTargets(manifest: LegacyNormalizationManifest, tenantId: string)
       if (table === 'task_completions' && !nonBlank(projectedRow.taskNameSnapshot)) invalidManifest();
       const projected = descriptor.project(projectedRow, tenantId);
       // Original schema/status/note/IDs remain unchanged in canonical staging.
+      // Workbook schema is source metadata, not the operational schedule codec.
+      if (table === 'tasks') Object.assign(projected, { schedule_schema_version: 1 });
       if (table === 'task_assignments') Object.assign(projected, { schema_version: 1, note: null });
       if (table === 'task_completions' && row.source === 'CARRY_FORWARD') {
         Object.assign(projected, { schema_version: 1, status: 'COMPLETED', created_at: row.timestamp,
