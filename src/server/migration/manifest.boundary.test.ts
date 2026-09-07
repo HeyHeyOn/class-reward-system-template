@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  finalizeSheetsSnapshot, makeRedis, makeSheets, sha,
+  finalizeSheetsSnapshot, makeRedis, makeSheets, makeSupportedSheets, sha,
 } from './__fixtures__/normalization';
 import { createLegacyNormalizationManifest } from './manifest';
 import { captureSheetsSnapshot, stableRowHash, type SheetsSnapshot } from './sheetsSnapshot';
@@ -220,7 +220,7 @@ describe('manifest trust boundary', () => {
     const callerBinding = redis.operationBindings[0].binding;
     const callerEvidence = callerBinding.evidence;
     const manifest = createLegacyNormalizationManifest(input(sheets, redis));
-    const exportedBinding = manifest.records.legacy_operation_bindings[0].binding as {
+    const exportedBinding = manifest.sourceRecords.find((source) => source.canonicalRecord?.binding)!.canonicalRecord!.binding as {
       taskId: string; evidence: { evidenceAuthorFullName: string };
     };
 
@@ -237,7 +237,7 @@ describe('manifest trust boundary', () => {
   });
 
   it('keeps physical artifact digests while fingerprinting semantic normalized output', () => {
-    const make = (reverse: boolean) => makeSheets(3, (tabs) => {
+    const make = (reverse: boolean) => makeSupportedSheets(3, (tabs) => {
       const first = tabs.Students.rows[0];
       const cells = ['S2', 'Bob', '0', 'INACTIVE'];
       const second = { rowNumber: 3, cells, hash: stableRowHash(cells) };

@@ -770,6 +770,8 @@ describe('BankApp', () => {
     await screen.findByRole('heading', { name: '별빛 은행' });
     await identifyTaskStudent();
     const carousel = await screen.findByRole('region', { name: '대체 과제 1 연결 과제 묶음' });
+    // Flush carousel initialization effects before simulating a swipe.
+    await act(async () => {});
     const scroller = within(carousel).getByTestId('task-carousel-scroller');
     Object.defineProperty(scroller, 'clientWidth', { configurable: true, value: 100 });
     scroller.scrollLeft = 100;

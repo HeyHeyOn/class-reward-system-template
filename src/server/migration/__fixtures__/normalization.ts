@@ -33,7 +33,7 @@ const rows: Record<string, string[][]> = {
     'TI1', '1', at, 'Asia/Seoul', 'NONE', '', '', '', 'FALSE', 'FALSE',
     '', '', '', '', '', '', '', '', '', '', '', '', '', '', '',
   ]],
-  TaskAssignments: [['AS1', 'T1', 'TI1', 'CYCLE1', at, later, '1', 'Asia/Seoul', 'S1', 'ASSIGNED', 'ADMIN', '', at, '2', 'seed']],
+  TaskAssignments: [['AS1', 'T1', 'TI1', 'CYCLE1', at, later, '1', 'Asia/Seoul', 'S1', 'ASSIGNED', 'LEGACY_SEED', '', at, '2', 'seed']],
   TaskCompletions: [[
     'C1', at, 'T1', 'S1', 'Alice', '10', '80', '90', 'SUCCESS', 'done',
     'TI1', 'CYCLE1', at, later, '1', 'Asia/Seoul', 'BANK', 'AS1', '2', 'op-1', payloadHash,
@@ -79,6 +79,37 @@ export function makeSheets(schemaVersion: 1 | 2 | 3 = 3, mutate?: (tabs: Record<
     snapshotVersion: 1, spreadsheetId: 'sheet-1', sourceRevision: 'rev-1', capturedAt: at,
     schemaVersion, missingOptionalTabs: [], tabs,
     credentialHashes: { adminPasswordHash: sha('admin'), recoveryCodeHash: sha('recovery') }, digest: '',
+  });
+}
+
+/** Authentic supported nonfinancial history. Keep makeSheets unchanged: it is
+ * the original BANK acquisition fixture used by evidence/quarantine regressions.
+ * Mutations run after source construction and before acquisition hashes seal. */
+export function makeSupportedSheets(schemaVersion: 1 | 2 | 3 = 3, mutate?: Parameters<typeof makeSheets>[1]): SheetsSnapshot {
+  if (schemaVersion === 1) return makeSheets(schemaVersion, mutate);
+  // A non-financial retained completion can be represented without minting BANK
+  // or administrator authority. Its prior assignment is authentic Sheet history.
+  return makeSheets(schemaVersion, (tabs) => {
+    const assign = tabs.TaskAssignments;
+    const root = structuredClone(assign.rows[0]);
+    const set = (tab: typeof assign, row: typeof root, values: Record<string, string>) => {
+      for (const [key, value] of Object.entries(values)) {
+        const index = tab.headers.indexOf(key);
+        if (index >= 0) row.cells[index] = value;
+      }
+    };
+    set(assign, root, { assignmentId: 'AS0', cycleId: 'v1|TI1|r1|2026-08-30T00:00:00Z',
+      cycleStartsAt: '2026-08-30T00:00:00.000Z', cycleEndsAt: '2026-08-31T00:00:00.000Z',
+      createdAt: '2026-08-30T00:00:00.000Z', note: '' });
+    set(assign, assign.rows[0], { source: 'CARRY_FORWARD', previousAssignmentId: 'AS0',
+      cycleId: 'v1|TI1|r2|2026-08-31T00:00:00Z', ruleVersion: '2', note: 'original assignment note' });
+    assign.rows.unshift(root);
+    const completion = tabs.TaskCompletions;
+    set(completion, completion.rows[0], { source: 'CARRY_FORWARD', reward: '0', balanceBefore: '90',
+      cycleId: 'v1|TI1|r2|2026-08-31T00:00:00Z', ruleVersion: '2', operationId: '', operationPayloadHash: '',
+      evidenceProvider: '', evidenceBoardId: '', evidencePostId: '', evidenceCreatedAt: '',
+      evidenceAuthorFullName: '', note: 'original completion note' });
+    mutate?.(tabs);
   });
 }
 

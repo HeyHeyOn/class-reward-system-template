@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createLegacyNormalizationManifest } from './manifest';
-import { finalizeRedisSnapshot, makeRedis, makeSheets, payloadHash, sha, tupleDigest } from './__fixtures__/normalization';
+import { finalizeRedisSnapshot, makeRedis, makeSheets, makeSupportedSheets, payloadHash, sha, tupleDigest } from './__fixtures__/normalization';
 import { normalizeLegacySnapshots } from './normalize';
 import { canonicalJson } from './validators';
 
@@ -28,7 +28,7 @@ function redisArtifact(mutate: (redis: MutableRedisFixture) => void) {
 
 describe('legacy normalization manifest', () => {
   it('normalizes every generated operational sheet into deterministic target collections', () => {
-    const manifest = createLegacyNormalizationManifest(input());
+    const manifest = createLegacyNormalizationManifest(input(makeSupportedSheets()));
     expect(manifest.manifestVersion).toBe(1);
     expect(manifest.status).toBe('READY_FOR_IMPORT');
     expect(Object.keys(manifest.records)).toEqual([
@@ -90,7 +90,7 @@ describe('legacy normalization manifest', () => {
     expect(manifest.mappings).toContainEqual(expect.objectContaining({ targetTable: 'adjustments', targetId: 'ADJ1' }));
     expect(manifest.records.tasks[0]).toMatchObject({ taskId: 'T1', taskInstanceId: 'TI1' });
     expect(manifest.records.padlet_evidence_claims[0]).toMatchObject({ tupleDigest, operationId: 'op-1' });
-    expect(manifest.records.padlet_evidence_claims[0].provenances).toHaveLength(2);
+    expect(manifest.records.padlet_evidence_claims[0].provenances).toHaveLength(1);
     expect(manifest.records.settings).toEqual(expect.arrayContaining([
       expect.objectContaining({ key: 'schemaVersion', value: '3' }),
       expect.objectContaining({ key: 'classTimeZone', value: 'Asia/Seoul' }),
@@ -106,7 +106,7 @@ describe('legacy normalization manifest', () => {
   });
 
   it.each([1, 2, 3] as const)('supports schema snapshot version %s and missing optional tabs', (version) => {
-    const manifest = createLegacyNormalizationManifest(input(makeSheets(version), undefined));
+    const manifest = createLegacyNormalizationManifest(input(makeSupportedSheets(version), undefined));
     expect(manifest.metadata.sheetSchemaVersion).toBe(version);
     expect(manifest.blockingConflicts).toEqual([]);
     expect(manifest.status).toBe('READY_FOR_IMPORT');
@@ -294,7 +294,7 @@ describe('legacy normalization manifest', () => {
     ['subtract', 10, 5, -5, 10, 'ADMIN-SUBTRACT', '관리자 회수'],
     ['set', 0, -5, 0, -5, 'ADMIN-SET', '관리자 잔액 지정'],
   ] as const)('correlates an exact %s adjustment across signed and zero balances', (mode, amount, before, after, total, productId, name) => {
-    const sheets = makeSheets(3, (tabs) => {
+    const sheets = makeSupportedSheets(3, (tabs) => {
       tabs.Adjustments.rows[0].cells = ['ADJ1', '2026-08-31T00:00:00.000Z', 'S1', String(amount), mode, 'operator-1'];
       tabs.Transactions.rows[1].cells = [
         'TX-ADJ1', '2026-08-31T00:00:00.000Z', 'S1', 'Alice',
@@ -313,7 +313,7 @@ describe('legacy normalization manifest', () => {
   });
 
   it('correlates a negative set target with its exact ADMIN-SET transaction', () => {
-    const sheets = makeSheets(3, (tabs) => {
+    const sheets = makeSupportedSheets(3, (tabs) => {
       tabs.Adjustments.rows[0].cells = [
         'ADJ1', '2026-08-31T00:00:00.000Z', 'S1', '-5', 'set', 'operator-1',
       ];
@@ -640,13 +640,69 @@ describe('legacy normalization manifest', () => {
     expect(normalized.sourceRecords.some((item) => item.mappingStatus === 'QUARANTINED' && item.source.kind === 'SHEET' && item.source.tab === 'TaskCompletions')).toBe(true);
   });
 
-  it('emits a source record and mapping for both sources that exactly agree on one claim', () => {
+  it.each([
+    [], ['op-1'], ['op-2'], ['op-1', 'op-1'], ['op-1', 'op-2'], ['op-2', 'op-3'],
+  ].map((operations) => ({ operations })))('preserves original BANK contributor ownership for Redis operations $operations', ({ operations }) => {
+    const base = makeRedis();
+    const redis = makeRedis({ operationBindings: operations.map((operationId) => ({
+      ...structuredClone(base.operationBindings[0]), operationId,
+    })) });
+    const create = () => createLegacyNormalizationManifest(input(makeSheets(3, (tabs) => {
+      for (const tab of [tabs.TaskAssignments, tabs.TaskCompletions]) {
+        tab.rows[0].cells[tab.headers.indexOf('cycleId')] = 'v1|TI1|r1|2026-08-31T00:00:00Z';
+      }
+    }), redis));
+    // Acquisition admits at most one Redis owner per tuple. Many contributors
+    // here cannot reach normalization, even if their bindings agree exactly.
+    if (operations.length > 1) {
+      expect(create).toThrow('Legacy migration input is structurally invalid.');
+      return;
+    }
+    const manifest = create();
+    expect(manifest.status).toBe('BLOCKED');
+    const claims = manifest.sourceRecords.filter((row) => row.canonicalRecord?.provider === 'PADLET');
+    expect(claims).toHaveLength(operations.length + 1);
+    const sheet = claims.find((row) => row.source.kind === 'SHEET')!;
+    expect(sheet.canonicalRecord).toMatchObject({ operationId: 'op-1', ownerDigest: sha('op-1'),
+      operationPayloadHash: payloadHash, taskId: 'T1', studentId: 'S1' });
+    for (const original of redis.v2Claims) {
+      const source = claims.find((row) => row.source.kind === 'REDIS'
+        && row.source.sourceDigest === sha(canonicalJson(original)))!;
+      expect(source?.canonicalRecord).toMatchObject({ operationId: original.operationId,
+        ownerDigest: original.ownerDigest, tupleDigest: original.tupleDigest });
+      const binding = manifest.sourceRecords.find((row) => row.source.kind === 'REDIS'
+        && row.canonicalRecord?.binding && row.canonicalRecord.operationId === original.operationId);
+      expect(binding?.canonicalRecord).toMatchObject({ operationId: original.operationId,
+        ownerDigest: original.ownerDigest, binding: base.operationBindings[0].binding, payloadHash });
+      if (operations.some((operation) => operation !== 'op-1')) {
+        expect(source.canonicalRecord?.provenances).toEqual([source.source]);
+        expect(sheet.canonicalRecord?.provenances).toEqual([sheet.source]);
+      }
+    }
+    for (const source of claims) expect(source.mappingStatus).toBe('QUARANTINED');
+    if (operations.length > 1 || operations.some((operation) => operation !== 'op-1')) {
+      expect(manifest.blockingConflicts.map((row) => row.code)).toContain('CLAIM_BINDING_CONFLICT');
+    }
+    for (const table of ['task_completions', 'padlet_evidence_claims', 'legacy_operation_bindings']) {
+      expect(manifest.records[table] ?? []).toEqual([]);
+      expect(manifest.mappings.filter((row) => row.targetTable === table)).toEqual([]);
+    }
+    expect(manifest.records.transactions).toHaveLength(2);
+  });
+
+  it('retains both agreeing claim contributors canonically without publishing BANK authority', () => {
     const manifest = createLegacyNormalizationManifest(input());
-    const targetId = manifest.mappings.find((mapping) => mapping.targetTable === 'padlet_evidence_claims')?.targetId;
-    expect(targetId).toBeTruthy();
-    expect(manifest.mappings.filter((mapping) => mapping.targetTable === 'padlet_evidence_claims' && mapping.targetId === targetId)).toHaveLength(2);
-    expect(manifest.sourceRecords.filter((record) => record.targetTable === 'padlet_evidence_claims' && record.targetId === targetId)).toHaveLength(2);
-    expect(manifest.records.padlet_evidence_claims).toHaveLength(1);
+    const claims = manifest.sourceRecords.filter((record) => record.canonicalRecord?.provider === 'PADLET');
+    expect(claims).toHaveLength(2);
+    expect(claims.map((record) => record.source.kind).sort()).toEqual(['REDIS', 'SHEET']);
+    for (const source of claims) {
+      expect(source.mappingStatus).toBe('QUARANTINED');
+      expect(source.errorCodes).toContain('UNSUPPORTED_LEGACY_BANK_AUTHORITY');
+      expect(source.canonicalRecord).toMatchObject({ tupleDigest, operationId: 'op-1',
+        provenances: expect.arrayContaining(claims.map((record) => record.source)) });
+    }
+    expect(manifest.mappings.filter((mapping) => mapping.targetTable === 'padlet_evidence_claims')).toEqual([]);
+    expect(manifest.records.padlet_evidence_claims).toEqual([]);
   });
 
   it.each([
@@ -654,13 +710,14 @@ describe('legacy normalization manifest', () => {
     (redis: MutableRedisFixture) => { redis.operationBindings = [{ ...redis.operationBindings[0], payloadHash: `sha256:${sha('wrong')}` }]; },
   ])('atomically quarantines inconsistent Redis claims, bindings, and matching Sheet claims', (breakRedis) => {
     const normalized = normalizeLegacySnapshots(input(makeSheets(), redisArtifact(breakRedis)));
+    expect(normalized.blockingConflicts.map(({ code }) => code)).toContain('CLAIM_BINDING_CONFLICT');
     expect(normalized.records.padlet_evidence_claims).toEqual([]);
     expect(normalized.records.legacy_operation_bindings).toEqual([]);
     expect(normalized.sourceRecords.some((item) => item.mappingStatus === 'QUARANTINED' && item.source.kind === 'SHEET' && item.source.tab === 'TaskCompletions')).toBe(true);
   });
 
   it('derives metadata from the exact validated UTC setting', () => {
-    const manifest = createLegacyNormalizationManifest(input(makeSheets(3, (tabs) => {
+    const manifest = createLegacyNormalizationManifest(input(makeSupportedSheets(3, (tabs) => {
       const timezone = tabs.Settings.rows.find((row) => row.cells[0] === 'classTimeZone')!;
       timezone.cells[1] = 'UTC';
     }), undefined));
@@ -706,7 +763,7 @@ describe('legacy normalization manifest', () => {
   });
 
   it('canonicalizes valid optional task instants and preserves empty values as null', () => {
-    const manifest = createLegacyNormalizationManifest(input(makeSheets(3, (tabs) => {
+    const manifest = createLegacyNormalizationManifest(input(makeSupportedSheets(3, (tabs) => {
       tabs.Tasks.rows[0].cells[28] = '2026-08-31T01:00:00.000Z';
       tabs.Tasks.rows[0].cells[29] = '2026-09-01T01:00:00.000Z';
     }), undefined));
@@ -782,18 +839,15 @@ describe('legacy normalization manifest', () => {
   });
 
   it('does not flag acyclic prerequisite and predecessor chains', () => {
-    const manifest = createLegacyNormalizationManifest(input(makeSheets(3, (tabs) => {
+    const manifest = createLegacyNormalizationManifest(input(makeSupportedSheets(3, (tabs) => {
       const firstTask = tabs.Tasks.rows[0];
       const secondTask = [...firstTask.cells];
       secondTask[0] = 'T2'; secondTask[9] = 'TI2'; secondTask[30] = 'T1';
       tabs.Tasks.rows.push({ rowNumber: 3, cells: secondTask, hash: sha('recomputed-by-helper') });
 
-      const firstAssignment = tabs.TaskAssignments.rows[0];
-      const secondAssignment = [...firstAssignment.cells];
-      secondAssignment[0] = 'AS2'; secondAssignment[11] = 'AS1';
-      tabs.TaskAssignments.rows.push({ rowNumber: 3, cells: secondAssignment, hash: sha('recomputed-by-helper') });
     }), undefined));
 
+    expect(manifest.status).toBe('READY_FOR_IMPORT');
     expect(manifest.sourceRecords.flatMap((record) => record.errorCodes)).not.toEqual(expect.arrayContaining([
       'CYCLIC_TASK_PREREQUISITE', 'CYCLIC_ASSIGNMENT_PREDECESSOR',
     ]));
@@ -818,7 +872,12 @@ describe('legacy normalization manifest', () => {
       const row = tabs.TaskCompletions.rows[0].cells;
       row[6] = '-10'; row[7] = '0'; row[20] = payloadHash;
     });
-    expect(createLegacyNormalizationManifest(input(valid, makeRedis())).records.task_completions[0]).toMatchObject({ balanceBefore: -10, balanceAfter: 0 });
+    const preserved = createLegacyNormalizationManifest(input(valid, makeRedis()));
+    const completion = preserved.sourceRecords.find((record) => record.canonicalRecord?.completionId === 'C1');
+    expect(completion).toMatchObject({ mappingStatus: 'QUARANTINED',
+      canonicalRecord: { source: 'BANK', balanceBefore: -10, balanceAfter: 0, operationPayloadHash: payloadHash } });
+    expect(completion?.errorCodes).toContain('UNSUPPORTED_LEGACY_BANK_AUTHORITY');
+    expect(completion?.errorCodes).not.toContain('MALFORMED_REQUIRED_HISTORY');
 
     const invalid = makeSheets(3, (tabs) => { tabs.TaskCompletions.rows[0].cells[22] = 'BOARD-1'; });
     const manifest = createLegacyNormalizationManifest(input(invalid, undefined));
@@ -827,19 +886,21 @@ describe('legacy normalization manifest', () => {
   });
 
   it('uses stable ordering and target IDs when semantically identified rows are permuted', () => {
-    const second = makeSheets(3, (tabs) => {
+    const second = makeSupportedSheets(3, (tabs) => {
       const first = tabs.Students.rows[0];
       const cells = ['S2', 'Bob', '0', 'INACTIVE'];
       tabs.Students.rows = [{ rowNumber: 3, cells, hash: sha(JSON.stringify(cells)) }, first];
       tabs.Transactions.rows.reverse();
     });
-    const reversed = makeSheets(3, (tabs) => {
+    const reversed = makeSupportedSheets(3, (tabs) => {
       const first = tabs.Students.rows[0];
       const cells = ['S2', 'Bob', '0', 'INACTIVE'];
       tabs.Students.rows = [first, { rowNumber: 3, cells, hash: sha(JSON.stringify(cells)) }];
     });
     const a = createLegacyNormalizationManifest(input(second, undefined));
     const b = createLegacyNormalizationManifest(input(reversed, undefined));
+    expect(a.status).toBe('READY_FOR_IMPORT');
+    expect(b.status).toBe('READY_FOR_IMPORT');
     expect(a.records.students).toEqual(b.records.students);
     expect(a.records.adjustments).toEqual(b.records.adjustments);
     expect(a.sourceFingerprint).toBe(b.sourceFingerprint);
@@ -856,7 +917,7 @@ describe('legacy normalization manifest', () => {
   });
 
   it('stages the exact sorted canonical allowed-student token sequence when it is unique', () => {
-    const sheets = makeSheets(3, (tabs) => {
+    const sheets = makeSupportedSheets(3, (tabs) => {
       tabs.Students.rows.push({ rowNumber: 3, cells: ['S2', 'Bob', '0', 'ACTIVE'], hash: sha('recomputed-by-helper') });
       tabs.Tasks.rows[0].cells[8] = ' S2 ; S1 ';
     });
@@ -866,7 +927,7 @@ describe('legacy normalization manifest', () => {
     expect(manifest.records.task_allowed_students.map((row) => row.studentId).sort()).toEqual(['S1', 'S2']);
   });
 
-  it('preserves signed and rewarding ADMIN history instead of applying carry-forward invariants', () => {
+  it('quarantines ADMIN completion history that lacks exact administrator operation provenance', () => {
     const sheets = makeSheets(3, (tabs) => {
       const completion = tabs.TaskCompletions.rows[0].cells;
       completion[5] = '-10'; completion[6] = '90'; completion[7] = '80';
@@ -874,19 +935,21 @@ describe('legacy normalization manifest', () => {
       completion.splice(21, 5, '', '', '', '', '');
     });
     const manifest = createLegacyNormalizationManifest(input(sheets, undefined));
-    expect(manifest.status).toBe('READY_FOR_IMPORT');
-    expect(manifest.records.task_completions[0]).toMatchObject({ source: 'ADMIN', reward: -10, balanceBefore: 90, balanceAfter: 80 });
+    expect(manifest.status).toBe('BLOCKED');
+    expect(manifest.records.task_completions).toEqual([]);
+    expect(manifest.blockingConflicts.map(({ code }) => code)).toContain('MISSING_ADMIN_OPERATION_PROVENANCE');
   });
 
-  it('accepts exact administrator and transaction-cancellation reset history while rejecting carry mutations', () => {
+  it('quarantines reset history without exact administrator or cancellation transaction provenance', () => {
     const cancellation = makeSheets(3, (tabs) => {
       const completion = tabs.TaskCompletions.rows[0].cells;
       completion[5] = '10'; completion[6] = '90'; completion[7] = '80'; completion[8] = 'RESET';
       completion[16] = 'ADMIN_RESET';
       completion.splice(21, 5, '', '', '', '', '');
     });
-    expect(createLegacyNormalizationManifest(input(cancellation, undefined)).records.task_completions[0])
-      .toMatchObject({ source: 'ADMIN_RESET', status: 'RESET', reward: 10, balanceBefore: 90, balanceAfter: 80 });
+    const cancellationManifest = createLegacyNormalizationManifest(input(cancellation, undefined));
+    expect(cancellationManifest.records.task_completions).toEqual([]);
+    expect(cancellationManifest.blockingConflicts.map(({ code }) => code)).toContain('MISSING_ADMIN_OPERATION_PROVENANCE');
 
     const carry = makeSheets(3, (tabs) => {
       const completion = tabs.TaskCompletions.rows[0].cells;
@@ -896,6 +959,14 @@ describe('legacy normalization manifest', () => {
     const blocked = createLegacyNormalizationManifest(input(carry, undefined));
     expect(blocked.records.task_completions).toEqual([]);
     expect(blocked.blockingConflicts.map((item) => item.code)).toContain('MALFORMED_REQUIRED_HISTORY');
+  });
+
+  it.each(['ADMIN', 'QR'])('quarantines %s assignments because the legacy schema has no admin operation provenance', (source) => {
+    const sheets = makeSheets(3, (tabs) => { tabs.TaskAssignments.rows[0].cells[10] = source; });
+    const value = createLegacyNormalizationManifest(input(sheets, undefined));
+    expect(value.status).toBe('BLOCKED');
+    expect(value.records.task_assignments).toEqual([]);
+    expect(value.blockingConflicts.map(({ code }) => code)).toContain('MISSING_ADMIN_OPERATION_PROVENANCE');
   });
 
   it.each([
@@ -938,6 +1009,7 @@ describe('legacy normalization manifest', () => {
       artifact.operationBindings = [structuredClone(artifact.operationBindings[0]), structuredClone(artifact.operationBindings[0])];
     });
     const normalized = normalizeLegacySnapshots(input(makeSheets(), redis));
+    expect(normalized.blockingConflicts.map(({ code }) => code)).toContain('CLAIM_BINDING_CONFLICT');
     expect(normalized.records.padlet_evidence_claims).toEqual([]);
     expect(normalized.records.legacy_operation_bindings).toEqual([]);
     expect(normalized.sourceRecords.filter((row) => row.source.kind === 'REDIS' && row.mappingStatus === 'QUARANTINED')).toHaveLength(4);
@@ -948,12 +1020,13 @@ describe('legacy normalization manifest', () => {
     ['claim without binding', (redis: MutableRedisFixture) => { redis.operationBindings = []; }],
   ])('quarantines an unmatched Redis %s', (_label, mutate) => {
     const normalized = normalizeLegacySnapshots(input(makeSheets(3, (tabs) => { tabs.TaskCompletions.rows = []; }), redisArtifact(mutate)));
+    expect(normalized.blockingConflicts.map(({ code }) => code)).toContain('CLAIM_BINDING_CONFLICT');
     expect(normalized.records.padlet_evidence_claims).toEqual([]);
     expect(normalized.records.legacy_operation_bindings ?? []).toEqual([]);
   });
 
   it('stages an authentic zero-item cancellation reversal linked to its cancelled original', () => {
-    const sheets = makeSheets(3, (tabs) => {
+    const sheets = makeSupportedSheets(3, (tabs) => {
       tabs.Transactions.rows[0].cells[8] = 'CANCELLED';
       tabs.Transactions.rows.push({
         rowNumber: 3,
@@ -1007,7 +1080,7 @@ describe('legacy normalization manifest', () => {
       regularUnitPrice: 20, regularTotal: 20, totalQuantity: 1, paidQuantity: 1,
       freeQuantity: 0, finalTotal: 20, totalDiscount: 0, adjustments: [], appliedPromotions: [],
     };
-    const manifest = createLegacyNormalizationManifest(input(makeSheets(3, (tabs) => {
+    const manifest = createLegacyNormalizationManifest(input(makeSupportedSheets(3, (tabs) => {
       tabs.Transactions.rows[0].cells[4] = JSON.stringify([extended]);
     }), undefined));
     expect(manifest.status).toBe('READY_FOR_IMPORT');

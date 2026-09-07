@@ -214,6 +214,12 @@
 
 **Rule:** imports write only to non-active tenant staging records until reconciliation passes.
 
+**Approved operational-compatibility boundary:** Historical BANK completions whose legacy evidence cannot establish the full modern command/transaction contract are blocking quarantined before `READY_FOR_IMPORT`, including UUID-shaped legacy operation bindings. Preserve original canonical records and source/evidence provenance under the existing redaction policy, propagate blocking conflicts to related operation/claim contributors, and never silently skip or relabel financial history. The importer independently rejects correlated forged-READY bypasses before opening a transaction; it must not manufacture UUIDs, modern hashes, or missing transactions, or relax production readers. Affected tenants cannot complete migration or cut over. Full operational support for these historical BANK variants requires a separately approved audited migration-provenance design.
+
+**Supported-history acceptance:** Project legacy schema/status only for fully validated, semantically equivalent supported nonfinancial events, preserving original source values in canonical staging. Verify real normalization → production-migration import → history query, natural carry, and configuration-boundary materialization, plus a positive current-writer BANK integration. Test retained evidence/readback and quarantine propagation; keep existing deep validation tests reachable rather than letting every negative case fail trivially at the early quarantine gate.
+
+**Downstream contract (Tasks 17–24):** Reconciliation and final-delta processing retain these blocking conflicts; zero numeric deltas cannot override unsupported required history. Administration UI/API and exported reports show preserved-source diagnostics and an explicit blocked state without credentials. Runbooks and canary acceptance prohibit activation while such conflicts remain unresolved; this implementation approval does not authorize live cutover.
+
 ### Task 17: Implement reconciliation gates
 
 **Files:**

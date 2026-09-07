@@ -1,10 +1,11 @@
+import { unsupportedOperationalRecords } from './operationalProjection';
 import { parsePromotionRow, parseTaskRow, createHeaderIndex } from '@/server/sheetsRows';
-import { parseCheckoutLineSnapshot } from '@/lib/checkoutSnapshotClient';
+import { canonicalTransactionItem, adjustmentKey, adjustmentTransactionKey, sameAssignmentCompletionTuple, cancellationOriginalId } from './semanticValidators';
 import type { SheetsSnapshot, SheetSnapshotRow } from './sheetsSnapshot';
 import type { RedisClaimSnapshot } from './redisClaimSnapshot';
 import {
   canonicalId, canonicalInstant, canonicalJson, compareCodeUnits, deterministicId,
-  isHexDigest, isPlainRecord, safeInteger, sha256, strictBoolean,
+  isHexDigest, safeInteger, sha256, strictBoolean,
 } from './validators';
 
 export type Diagnostic = Readonly<{ code: string; path: string; sourceDigest: string }>;
@@ -125,6 +126,16 @@ export function normalizeLegacySnapshots(input: { tenantId: string; migrationJob
   validateTransactionCancellations(entries);
   correlateAdjustments(entries, input.tenantId);
   validateReferences(entries);
+  const assignments = entries.filter((entry) => entry.tab === 'TaskAssignments' && entry.canonical);
+  const completions = entries.filter((entry) => entry.tab === 'TaskCompletions' && entry.canonical)
+    .sort((left, right) => compareCodeUnits(String(left.canonical!.timestamp), String(right.canonical!.timestamp))
+      || (left.source.kind === 'SHEET' && right.source.kind === 'SHEET' ? left.source.rowNumber - right.source.rowNumber : 0));
+  const unsupported = unsupportedOperationalRecords(assignments.map((entry) => entry.canonical!), completions.map((entry) => entry.canonical!));
+  for (const entry of [...assignments, ...completions]) {
+    if (unsupported.has(entry.canonical!)) entry.errors.push('UNSUPPORTED_LEGACY_OPERATIONAL_HISTORY');
+  }
+  validateReferences(entries);
+  quarantineUnsupportedBankAuthority(entries);
   propagateClaimErrors(entries);
 
   const targetsByCollection: Record<string, Target[]> = Object.create(null);
@@ -289,65 +300,6 @@ function stagedTransactionItem(item: Record<string, unknown>, tenantId: string, 
   return record;
 }
 
-const LEGACY_TRANSACTION_ITEM_KEYS = ['productId', 'name', 'price', 'quantity', 'subtotal'] as const;
-const EXTENDED_TRANSACTION_ITEM_KEYS = [
-  ...LEGACY_TRANSACTION_ITEM_KEYS, 'regularUnitPrice', 'regularTotal', 'totalQuantity',
-  'paidQuantity', 'freeQuantity', 'finalTotal', 'totalDiscount', 'adjustments', 'appliedPromotions',
-] as const;
-
-function canonicalTransactionItem(value: unknown, signedLegacy = false): ({ productId: string; name: string; price: number; quantity: number; subtotal: number } & Record<string, unknown>) | null {
-  if (!isPlainRecord(value)) return null;
-  const keys = Object.keys(value);
-  const legacy = exactKeys(keys, LEGACY_TRANSACTION_ITEM_KEYS);
-  const extended = exactKeys(keys, EXTENDED_TRANSACTION_ITEM_KEYS);
-  if (!legacy && !extended) return null;
-  const productId = typeof value.productId === 'string' ? canonicalId(value.productId) : null;
-  const name = typeof value.name === 'string' && value.name.length > 0 && value.name === value.name.trim() ? value.name : null;
-  const price = typeof value.price === 'number' && Number.isSafeInteger(value.price) ? value.price : null;
-  const subtotal = typeof value.subtotal === 'number' && Number.isSafeInteger(value.subtotal) ? value.subtotal : null;
-  if (!productId || !name || price === null || subtotal === null
-    || (!signedLegacy && (price < 0 || subtotal < 0)) || !positiveSafeInteger(value.quantity)
-    || !Number.isSafeInteger(price * value.quantity)) return null;
-  if (legacy) {
-    if (price * value.quantity !== subtotal) return null;
-    return { productId, name, price, quantity: value.quantity, subtotal };
-  }
-  if (signedLegacy) return null;
-  if (!exactExtendedItemChildren(value)) return null;
-  const parsed = parseCheckoutLineSnapshot(value);
-  return parsed ? {
-    productId: parsed.productId, name: parsed.name, price: parsed.price, quantity: parsed.quantity,
-    subtotal: parsed.subtotal, regularUnitPrice: parsed.regularUnitPrice, regularTotal: parsed.regularTotal,
-    totalQuantity: parsed.totalQuantity, paidQuantity: parsed.paidQuantity, freeQuantity: parsed.freeQuantity,
-    finalTotal: parsed.finalTotal, totalDiscount: parsed.totalDiscount,
-    adjustments: parsed.adjustments.map((adjustment) => ({ ...adjustment })),
-    appliedPromotions: parsed.appliedPromotions.map((promotion) => ({ ...promotion, productIds: [...promotion.productIds] })),
-  } : null;
-}
-
-function exactExtendedItemChildren(value: Record<string, unknown>): boolean {
-  if (!Array.isArray(value.adjustments) || !Array.isArray(value.appliedPromotions)) return false;
-  const adjustmentsExact = value.adjustments.every((adjustment) => isPlainRecord(adjustment)
-    && exactKeys(Object.keys(adjustment), adjustment.type === 'N_PLUS_ONE'
-      ? ['promotionId', 'type', 'beforeAmount', 'afterAmount', 'discountAmount', 'freeQuantity']
-      : ['promotionId', 'type', 'beforeAmount', 'afterAmount', 'discountAmount']));
-  const promotionsExact = value.appliedPromotions.every((promotion) => {
-    if (!isPlainRecord(promotion)) return false;
-    const common = ['promotionId', 'name', 'description', 'productIds', 'startsAt', 'endsAt', 'isActive', 'sortOrder', 'createdAt', 'updatedAt', 'schemaVersion', 'type'];
-    const typeKey = promotion.type === 'N_PLUS_ONE' ? ['buyQuantity', 'freeQuantity']
-      : promotion.type === 'PROMOTIONAL_PRICE' ? ['promotionalUnitPrice']
-        : promotion.type === 'PERCENT_DISCOUNT' ? ['percent']
-          : promotion.type === 'FIXED_DISCOUNT' ? ['discountAmount'] : [];
-    return typeKey.length > 0 && exactKeys(Object.keys(promotion), [...common, ...typeKey]);
-  });
-  return adjustmentsExact && promotionsExact;
-}
-
-function exactKeys(actual: readonly string[], expected: readonly string[]): boolean {
-  return actual.length === expected.length && expected.every((key) => actual.includes(key));
-}
-function positiveSafeInteger(value: unknown): value is number { return Number.isSafeInteger(value) && (value as number) > 0; }
-
 function normalizeTask(entry: Entry, cell: (name: string) => string, index: Map<string, number>, row: SheetSnapshotRow, version: number, tenantId: string, target: (table: string, id: string, record: Record<string, unknown>) => void, malformed: () => void) {
   const id = canonicalId(cell('taskId')), title = cell('title'), reward = safeInteger(cell('reward'), { min: 0 }), active = strictBoolean(cell('isActive')), sort = safeInteger(cell('sortOrder'));
   const createdAt = canonicalInstant(cell('createdAt')), updatedAt = canonicalInstant(cell('updatedAt'));
@@ -382,6 +334,7 @@ function normalizeAssignment(entry: Entry, cell: (name: string) => string, tenan
   if (!id || !taskId || !instanceId || !studentId || !starts || (cell('cycleEndsAt') && !ends) || (ends && Date.parse(ends) <= Date.parse(starts)) || !created || rule === null || schema !== 2 || cell('timeZone') !== 'Asia/Seoul' || !['ASSIGNED', 'UNASSIGNED'].includes(status) || !['ADMIN', 'QR', 'LEGACY_SEED', 'CARRY_FORWARD'].includes(source) || !canonicalId(cell('cycleId')) || (cell('previousAssignmentId') && !previousAssignmentId)) { malformed(); return; }
   if (previousAssignmentId === id) { entry.errors.push('SELF_ASSIGNMENT_REFERENCE'); return; }
   entry.canonical = { assignmentId: id, taskId, taskInstanceId: instanceId, cycleId: cell('cycleId'), cycleStartsAt: starts, cycleEndsAt: ends, ruleVersion: rule, timeZone: 'Asia/Seoul', studentId, status, source, previousAssignmentId, createdAt: created, schemaVersion: schema, note: cell('note') };
+  if (source === 'ADMIN' || source === 'QR') entry.errors.push('MISSING_ADMIN_OPERATION_PROVENANCE');
   entry.refs.push({ code: 'BROKEN_TASK_REFERENCE', table: 'tasks', id: instanceId }, { code: 'BROKEN_STUDENT_REFERENCE', table: 'students', id: studentId });
   if (previousAssignmentId) entry.refs.push({ code: 'BROKEN_ASSIGNMENT_REFERENCE', table: 'task_assignments', id: previousAssignmentId });
   target('task_assignments', id, { tenantId, ...entry.canonical });
@@ -417,6 +370,7 @@ function normalizeCompletion(entry: Entry, cell: (name: string) => string, row: 
     const cancellationReset = Boolean(operationId) && reward > 0 && Number.isSafeInteger(before - reward) && after === before - reward;
     if (status !== 'RESET' || (!administratorReset && !cancellationReset)) { malformed(); return; }
   }
+  if (source === 'ADMIN' || source === 'ADMIN_RESET') entry.errors.push('MISSING_ADMIN_OPERATION_PROVENANCE');
   const binding = evidenceValues.every(Boolean) ? { taskId, studentId, cycleStartsAt: starts, evidence: { evidenceProvider: 'PADLET', evidenceBoardId: cell('evidenceBoardId'), evidencePostId: cell('evidencePostId'), evidenceCreatedAt: cell('evidenceCreatedAt'), evidenceAuthorFullName: cell('evidenceAuthorFullName') } } : null;
   if (binding && operationPayloadHash !== `sha256:${sha256(canonicalJson(binding))}`) { rememberInvalidEvidence(); return; }
   entry.canonical = { completionId: id, timestamp, taskId, studentId, studentName: cell('studentName'), reward, balanceBefore: before, balanceAfter: after, status, note: cell('note'), taskInstanceId: instanceId, cycleId: cell('cycleId') || null, cycleStartsAt: starts, cycleEndsAt: ends, ruleVersion: hasSnapshot ? safeInteger(cell('ruleVersion')) : null, timeZone: cell('timeZone') || null, source: source || null, assignmentId: cell('assignmentId') || null, schemaVersion: hasSnapshot ? 2 : 1, operationId: operationId || null, operationPayloadHash: operationPayloadHash || null, ...(binding ? { ...binding.evidence, tupleDigest: sha256(`${binding.evidence.evidenceBoardId}\0${binding.evidence.evidencePostId}`) } : {}) };
@@ -493,40 +447,6 @@ function correlateAdjustments(entries: Entry[], tenantId: string) {
       },
     });
   }
-}
-
-function adjustmentKey(adjustment: Record<string, unknown>): string | null {
-  const { timestamp, studentId, operator, mode, amount } = adjustment;
-  if (typeof timestamp !== 'string' || typeof studentId !== 'string' || typeof operator !== 'string'
-    || !['add', 'subtract', 'set'].includes(String(mode)) || !Number.isSafeInteger(amount)
-    || (mode !== 'set' && (amount as number) < 0)) return null;
-  return canonicalJson([timestamp, studentId, operator, mode, amount]);
-}
-
-function adjustmentTransactionKey(transaction: Record<string, unknown>): string | null {
-  const { timestamp, studentId, operator, status, totalAmount, balanceBefore, balanceAfter } = transaction;
-  if (status !== 'ADMIN_ADJUSTMENT' || typeof timestamp !== 'string' || typeof studentId !== 'string'
-    || typeof operator !== 'string' || !Number.isSafeInteger(totalAmount)
-    || !Number.isSafeInteger(balanceBefore) || !Number.isSafeInteger(balanceAfter)
-    || !Array.isArray(transaction.items) || transaction.items.length !== 1) return null;
-  const item = transaction.items[0] as Record<string, unknown>;
-  const before = balanceBefore as number;
-  const after = balanceAfter as number;
-  const total = totalAmount as number;
-  let mode: 'add' | 'subtract' | 'set';
-  let requested: number;
-  if (item.productId === 'ADMIN-ADD' && item.name === '관리자 지급') {
-    mode = 'add'; requested = after - before;
-    if (!Number.isSafeInteger(requested) || requested < 0 || total !== -requested) return null;
-  } else if (item.productId === 'ADMIN-SUBTRACT' && item.name === '관리자 회수') {
-    mode = 'subtract'; requested = before - after;
-    if (!Number.isSafeInteger(requested) || requested < 0 || total !== requested) return null;
-  } else if (item.productId === 'ADMIN-SET' && item.name === '관리자 잔액 지정') {
-    mode = 'set'; requested = after;
-    if (!Number.isSafeInteger(requested) || !Number.isSafeInteger(before - after) || total !== before - after) return null;
-  } else return null;
-  if (item.price !== total || item.quantity !== 1 || item.subtotal !== total) return null;
-  return canonicalJson([timestamp, studentId, operator, mode, requested]);
 }
 
 function markDuplicates(entries: Entry[]) {
@@ -711,21 +631,25 @@ function markDirectedReferenceCycles(entries: Entry[], tab: string, idField: str
   }
 }
 
-function sameAssignmentCompletionTuple(assignment: Record<string, unknown>, completion: Record<string, unknown>): boolean {
-  return assignment.taskId === completion.taskId
-    && assignment.taskInstanceId === completion.taskInstanceId
-    && assignment.studentId === completion.studentId
-    && assignment.cycleId === completion.cycleId
-    && assignment.cycleStartsAt === completion.cycleStartsAt
-    && assignment.cycleEndsAt === completion.cycleEndsAt
-    && assignment.ruleVersion === completion.ruleVersion
-    && assignment.timeZone === completion.timeZone;
-}
-
 function markBusinessDuplicate(entries: Entry[], keyOf: (entry: Entry) => string, code = 'DUPLICATE_BUSINESS_ID') {
   const groups = new Map<string, Entry[]>();
   for (const entry of entries) { const key = keyOf(entry); const group = groups.get(key) ?? []; group.push(entry); groups.set(key, group); }
   for (const group of groups.values()) if (group.length > 1) group.forEach((entry) => entry.errors.push(code));
+}
+
+// Legacy Sheets/Redis evidence proves a historical binding, not the modern
+// TASK_REWARD command preimage and transaction authority. Keep it intact for
+// reconciliation, but never publish it as an operational completion/operation.
+function quarantineUnsupportedBankAuthority(entries: Entry[]) {
+  const bank = entries.filter((entry) => entry.tab === 'TaskCompletions'
+    && entry.canonical?.source === 'BANK');
+  const operations = new Set(bank.map((entry) => entry.canonical!.operationId).filter(Boolean));
+  const tuples = new Set(bank.map((entry) => entry.canonical!.tupleDigest).filter(Boolean));
+  for (const entry of entries) {
+    const contributor = ['SheetPadletClaim', 'RedisPadletClaim', 'RedisOperationBinding'].includes(entry.tab)
+      && (operations.has(entry.canonical?.operationId) || tuples.has(entry.canonical?.tupleDigest));
+    if (bank.includes(entry) || contributor) entry.errors.push('UNSUPPORTED_LEGACY_BANK_AUTHORITY');
+  }
 }
 
 function propagateClaimErrors(entries: Entry[]) {
@@ -791,7 +715,7 @@ function normalizeClaims(input: { tenantId: string; migrationJobId: string; shee
     for (const binding of input.redis.operationBindings) {
       const source = redisPointer(input.redis, binding.sourceProvenance, canonicalJson(binding));
       const id = deterministicId(input.tenantId, input.migrationJobId, 'legacy_operation_bindings', binding.operationId);
-      const entry = derivedEntry(source, 'RedisOperationBinding', binding.operationId, 'legacy_operation_bindings', id, { tenantId: input.tenantId, operationId: binding.operationId, tupleDigest: binding.tupleDigest, ownerDigest: binding.ownerDigest, payloadHash: binding.payloadHash, binding: binding.binding });
+      const entry = derivedEntry(source, 'RedisOperationBinding', binding.operationId, 'legacy_operation_bindings', id, { tenantId: input.tenantId, operationId: binding.operationId, tupleDigest: binding.tupleDigest, ownerDigest: binding.ownerDigest, payloadHash: binding.payloadHash, binding: binding.binding, claimField: binding.claimField, sourceProvenance: binding.sourceProvenance });
       entry.refs.push({ code: 'BROKEN_TASK_REFERENCE', table: 'task_business', id: binding.binding.taskId },
         { code: 'BROKEN_STUDENT_REFERENCE', table: 'students', id: binding.binding.studentId });
       const group = bindingGroups.get(binding.operationId) ?? []; group.push({ binding, entry }); bindingGroups.set(binding.operationId, group);
@@ -867,8 +791,14 @@ function normalizeClaims(input: { tenantId: string; migrationJobId: string; shee
   }
   for (const claim of claims.values()) {
     const provenances = claim.members.map((entry) => entry.source).sort((a, b) => compareCodeUnits(sourceDigest(a), sourceDigest(b)));
-    claim.record.provenances = provenances;
-    for (const member of claim.members) { member.canonical = claim.record; member.targets[0].record = claim.record; entries.push(member); }
+    const agrees = claim.members.every((member) => claimBindingKey(member.canonical!) === claim.bindingKey);
+    if (agrees) claim.record.provenances = provenances;
+    for (const member of claim.members) {
+      // A shared target is valid only for exact agreement. Quarantine must retain
+      // the conflicting contributor's own owner, binding fields and provenance.
+      if (agrees) { member.canonical = claim.record; member.targets[0].record = claim.record; }
+      entries.push(member);
+    }
     collections.add('padlet_evidence_claims');
   }
   return { entries, conflicts, collections };
@@ -879,12 +809,6 @@ function derivedEntry(source: SourcePointer, tab: string, identity: string, tabl
 }
 function redisPointer(redis: RedisClaimSnapshot, provenance: string, value: string): SourcePointer { return { kind: 'REDIS', artifactDigest: redis.digest, provenance, sourceDigest: sha256(value) }; }
 function claimBindingKey(record: Record<string, unknown>) { return canonicalJson({ boardId: record.boardId, postId: record.postId, ownerDigest: record.ownerDigest, operationId: record.operationId, operationPayloadHash: record.operationPayloadHash ?? null, taskId: record.taskId ?? null, studentId: record.studentId ?? null, cycleStartsAt: record.cycleStartsAt ?? null, evidenceCreatedAt: record.evidenceCreatedAt ?? null, evidenceAuthorFullName: record.evidenceAuthorFullName ?? null }); }
-function cancellationOriginalId(operator: string): string | null {
-  for (const prefix of ['cancel-task-pre-reset:', 'cancel-task-unlinked:', 'cancel-task:', 'cancel:']) {
-    if (operator.startsWith(prefix)) return canonicalId(operator.slice(prefix.length));
-  }
-  return null;
-}
 function transactionKind(status: string) { return status === 'COMPLETED' || status === 'CANCELLED' ? 'CHECKOUT' : status === 'TASK_REWARD' ? 'TASK_REWARD' : status === 'ADMIN_ADJUSTMENT' ? 'ADMIN_ADJUSTMENT' : 'LEGACY'; }
 function primaryField(tab: string) { return ({ Students: 'studentId', Products: 'productId', Transactions: 'transactionId', Adjustments: 'adjustmentId', Settings: 'key', Tasks: 'taskId', TaskAssignments: 'assignmentId', TaskCompletions: 'completionId', Promotions: 'promotionId', PromotionProducts: 'promotionProductId' } as Record<string, string>)[tab] ?? ''; }
 function diag(code: string, path: string, digest: string): Diagnostic { return { code, path, sourceDigest: sha256(digest) }; }
@@ -894,5 +818,5 @@ function stableDiagnostics(items: Diagnostic[]) { const unique = new Map(items.m
 function toSourceRecord(entry: Entry): NormalizedSourceRecord {
   const errors = [...new Set(entry.errors)].sort(compareCodeUnits), warningCodes = [...new Set(entry.warnings)].sort(compareCodeUnits);
   const first = entry.targets[0];
-  return { source: entry.source, redactedSourceRecord: entry.redacted, canonicalRecord: errors.length ? null : entry.canonical, mappingStatus: errors.length ? 'QUARANTINED' : 'STAGED', ...(errors.length || !first ? {} : { targetTable: first.table, targetId: first.id }), warningCodes, errorCodes: errors };
+  return { source: entry.source, redactedSourceRecord: entry.redacted, canonicalRecord: errors.length && !errors.some((code) => code === 'UNSUPPORTED_LEGACY_BANK_AUTHORITY' || code === 'UNSUPPORTED_LEGACY_OPERATIONAL_HISTORY') ? null : entry.canonical, mappingStatus: errors.length ? 'QUARANTINED' : 'STAGED', ...(errors.length || !first ? {} : { targetTable: first.table, targetId: first.id }), warningCodes, errorCodes: errors };
 }
