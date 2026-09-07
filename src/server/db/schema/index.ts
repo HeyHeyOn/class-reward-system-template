@@ -1,3 +1,4 @@
+export * from './authorityStorage';
 export * from './catalog';
 export * from './generatorGrants';
 export * from './identity';
