@@ -54,16 +54,16 @@ export type LegacyBridgeResult = Readonly<{
 }>;
 
 export type FinalBridgeChallenge = Readonly<{
-  purpose: 'CLASS_STORE_FINAL_BRIDGE_INTAKE'; challengeId: string; tenantId: string; migrationJobId: string;
-  expectedStatus: 'READY'; expectedStateVersion: string; sourceId: string; externalSourceId: string;
-  sourceFingerprint: string; deploymentId: string; actorUserId: string; actorSubject: string;
+  purpose: 'CLASS_STORE_FINAL_BRIDGE_INTAKE'; bindingVersion: 2; challengeId: string; tenantId: string; migrationJobId: string;
+  expectedStatus: 'READY'; expectedStateVersion: string; sourceId: string; spreadsheetIdDigest: string;
+  jobSemanticFingerprint: string; sourceAcquisitionDigest: string; deploymentId: string; actorUserId: string; actorSubject: string;
   issuedAt: number; expiresAt: number;
 }>;
 
 /** Binding data, not permission or proof that any writer is excluded. */
 export function parseFinalBridgeChallenge(value: unknown): FinalBridgeChallenge {
-  const keys = ['purpose', 'challengeId', 'tenantId', 'migrationJobId', 'expectedStatus', 'expectedStateVersion',
-    'sourceId', 'externalSourceId', 'sourceFingerprint', 'deploymentId', 'actorUserId', 'actorSubject', 'issuedAt', 'expiresAt'];
+  const keys = ['purpose', 'bindingVersion', 'challengeId', 'tenantId', 'migrationJobId', 'expectedStatus', 'expectedStateVersion',
+    'sourceId', 'spreadsheetIdDigest', 'jobSemanticFingerprint', 'sourceAcquisitionDigest', 'deploymentId', 'actorUserId', 'actorSubject', 'issuedAt', 'expiresAt'];
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
   if (!isRecord(value) || ![Object.prototype, null].includes(Object.getPrototypeOf(value))
     || Reflect.ownKeys(value).length !== keys.length || keys.some((key) => {
@@ -73,11 +73,12 @@ export function parseFinalBridgeChallenge(value: unknown): FinalBridgeChallenge 
   for (const key of ['challengeId', 'tenantId', 'migrationJobId', 'actorUserId']) {
     if (typeof value[key] !== 'string' || !uuid.test(value[key])) throw new Error('Final bridge binding invalid.');
   }
-  for (const key of ['sourceId', 'externalSourceId', 'deploymentId', 'actorSubject']) validateIdentity(value[key], 'binding', key === 'actorSubject' ? 255 : 512);
-  if (value.purpose !== 'CLASS_STORE_FINAL_BRIDGE_INTAKE' || value.expectedStatus !== 'READY'
+  for (const key of ['sourceId', 'deploymentId', 'actorSubject']) validateIdentity(value[key], 'binding', key === 'actorSubject' ? 255 : 512);
+  if (value.purpose !== 'CLASS_STORE_FINAL_BRIDGE_INTAKE' || value.bindingVersion !== 2 || value.expectedStatus !== 'READY'
     || typeof value.expectedStateVersion !== 'string' || !/^[1-9][0-9]{0,15}$/.test(value.expectedStateVersion)
     || BigInt(value.expectedStateVersion) > BigInt(Number.MAX_SAFE_INTEGER)
-    || typeof value.sourceFingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(value.sourceFingerprint)
+    || ['jobSemanticFingerprint', 'sourceAcquisitionDigest', 'spreadsheetIdDigest'].some(key =>
+      typeof value[key] !== 'string' || !/^[0-9a-f]{64}$/.test(value[key]))
     || !Number.isSafeInteger(value.issuedAt) || Number(value.issuedAt) < 0
     || !Number.isSafeInteger(value.expiresAt) || Number(value.expiresAt) <= Number(value.issuedAt)
     || Number(value.expiresAt) - Number(value.issuedAt) > 300_000) throw new Error('Final bridge binding invalid.');
@@ -196,7 +197,8 @@ export async function runLegacyMigrationBridge(input: LegacyMigrationBridgeInput
   const capturedAtMs = assertCanonicalInstant(input.capturedAt, 'capture time');
   const finalIntakeBinding = input.finalIntakeBinding === undefined ? undefined : parseFinalBridgeChallenge(input.finalIntakeBinding);
   if (finalIntakeBinding && (input.mode !== 'final-delta' || finalIntakeBinding.deploymentId !== input.deploymentId
-    || finalIntakeBinding.externalSourceId !== input.sheets.spreadsheetId || finalIntakeBinding.issuedAt > capturedAtMs
+    || finalIntakeBinding.spreadsheetIdDigest !== createHash('sha256').update(input.sheets.spreadsheetId, 'utf8').digest('hex')
+    || finalIntakeBinding.issuedAt > capturedAtMs
     || capturedAtMs >= finalIntakeBinding.expiresAt)) throw new Error('Final bridge binding mismatch.');
 
   // Redis credentials, writer control, and readers are resolved only inside this trust boundary.

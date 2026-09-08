@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { sql } from 'drizzle-orm';
 import { createPgliteDatabaseHarness, type PgliteDatabaseHarness } from '@/server/db/testing/pglite';
 import type { FinalBridgeChallenge } from '../legacyMigrationBridge';
+import { sha256 } from './validators';
 
 vi.mock('server-only', () => ({}));
 let h: PgliteDatabaseHarness;
@@ -25,9 +26,9 @@ beforeEach(async () => {
 });
 afterEach(async () => { await h?.close(); });
 const binding = (tenantId = h.tenantOneId): FinalBridgeChallenge => ({
-  purpose: 'CLASS_STORE_FINAL_BRIDGE_INTAKE', challengeId: CHALLENGE, tenantId, migrationJobId: JOB,
-  expectedStatus: 'READY', expectedStateVersion: '1', sourceId: 'sheet', externalSourceId: `sheet-${tenantId}`,
-  sourceFingerprint: HASH, deploymentId: 'legacy-1', actorUserId: USER, actorSubject: 'owner', issuedAt: 1000, expiresAt: 61000,
+  purpose: 'CLASS_STORE_FINAL_BRIDGE_INTAKE', bindingVersion: 2, challengeId: CHALLENGE, tenantId, migrationJobId: JOB,
+  expectedStatus: 'READY', expectedStateVersion: '1', sourceId: 'sheet', spreadsheetIdDigest: sha256(`sheet-${tenantId}`),
+  jobSemanticFingerprint: HASH, sourceAcquisitionDigest: 'b'.repeat(64), deploymentId: 'legacy-1', actorUserId: USER, actorSubject: 'owner', issuedAt: 1000, expiresAt: 61000,
 });
 async function grant() {
   await h.database.exec('GRANT SELECT, INSERT ON migration_bridge_challenges, migration_bridge_consumptions TO app_runtime');
@@ -42,6 +43,20 @@ async function consume(b = binding(), nonceDigest = HASH) {
 }
 
 describe('separate final bridge challenge and global nonce storage', () => {
+  it('preserves retained legacy JSON but refuses to append or consume it as a version-2 challenge', async () => {
+    await grant();
+    const b = binding();
+    const { bindingVersion, jobSemanticFingerprint, sourceAcquisitionDigest, spreadsheetIdDigest, ...common } = b;
+    expect(bindingVersion).toBe(2); expect(sourceAcquisitionDigest).not.toBe(jobSemanticFingerprint); expect(spreadsheetIdDigest).toMatch(/^[0-9a-f]{64}$/);
+    const old = { ...common, externalSourceId: `sheet-${b.tenantId}`, sourceFingerprint: jobSemanticFingerprint };
+    await h.database.query(`INSERT INTO migration_bridge_challenges(tenant_id,challenge_id,job_id,source_id,actor_user_id,binding)
+      VALUES($1,$2,$3,$4,$5,$6::jsonb)`, [b.tenantId,b.challengeId,b.migrationJobId,b.sourceId,b.actorUserId,JSON.stringify(old)]);
+    await expect(append(old as unknown as FinalBridgeChallenge)).rejects.toThrow('Final bridge binding invalid.');
+    await expect(consume(old as unknown as FinalBridgeChallenge)).rejects.toThrow('Final bridge binding invalid.');
+    await expect(consume(b)).rejects.toThrow();
+    expect((await h.database.query('SELECT binding FROM migration_bridge_challenges')).rows).toEqual([{ binding: old }]);
+    expect((await h.database.query('SELECT * FROM migration_bridge_consumptions')).rows).toEqual([]);
+  });
   it('has distinct relations rather than repurposing receipt-FK replay storage', async () => {
     const { rows } = await h.database.query("SELECT to_regclass('migration_bridge_challenges') AS challenges, to_regclass('migration_bridge_consumptions') AS consumptions");
     expect(rows[0]).toEqual({ challenges: 'migration_bridge_challenges', consumptions: 'migration_bridge_consumptions' });

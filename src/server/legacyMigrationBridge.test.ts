@@ -5,7 +5,9 @@ import {
   createRedisNeverConfiguredProof,
   createRedisWriterDisableEvidence,
   runLegacyMigrationBridge,
+  parseFinalBridgeChallenge,
 } from './legacyMigrationBridge';
+import { sha256 } from './migration/validators';
 import { openLegacyBridgeManifest } from './migration/legacyBridgeManifest';
 import type { LegacyRedisSnapshotReader } from './migration/redisClaimSnapshot';
 
@@ -80,11 +82,12 @@ describe('deployment-local legacy migration bridge', () => {
     stubRedis(); stubWriterControl(); stubWriterDisableTrust();
     const finalIntakeBinding = {
       purpose: 'CLASS_STORE_FINAL_BRIDGE_INTAKE' as const,
+      bindingVersion: 2 as const,
       challengeId: '30000000-0000-4000-8000-000000000019',
       tenantId: '20000000-0000-4000-8000-000000000001',
       migrationJobId: '40000000-0000-4000-8000-000000000019',
-      expectedStatus: 'READY' as const, expectedStateVersion: '1', sourceId: 'sheet', externalSourceId: 'sheet-1',
-      sourceFingerprint: 'a'.repeat(64), deploymentId: 'legacy-1',
+      expectedStatus: 'READY' as const, expectedStateVersion: '1', sourceId: 'sheet', spreadsheetIdDigest: sha256('sheet-1'),
+      jobSemanticFingerprint: 'a'.repeat(64), sourceAcquisitionDigest: 'b'.repeat(64), deploymentId: 'legacy-1',
       actorUserId: '20000000-0000-4000-8000-000000000019', actorSubject: 'owner-subject',
       issuedAt: NOW - 1, expiresAt: NOW + 60_000,
     };
@@ -98,9 +101,24 @@ describe('deployment-local legacy migration bridge', () => {
     vi.stubGlobal('fetch', fetch);
     for (const input of [
       { ...baseInput('preflight'), finalIntakeBinding: expected },
-      { ...baseInput('final-delta'), finalIntakeBinding: { ...expected, externalSourceId: 'other-sheet' } },
+      { ...baseInput('final-delta'), finalIntakeBinding: { ...expected, spreadsheetIdDigest: sha256('other-sheet') } },
     ]) await expect(runLegacyMigrationBridge(input)).rejects.toThrow();
     expect(fetch).not.toHaveBeenCalled();
+    expect(parseFinalBridgeChallenge(expected)).toEqual(expected);
+    const { bindingVersion, jobSemanticFingerprint, sourceAcquisitionDigest, spreadsheetIdDigest, ...common } = expected;
+    expect(bindingVersion).toBe(2);
+    const old = { ...common, externalSourceId: 'sheet-1', sourceFingerprint: jobSemanticFingerprint };
+    const bad: unknown[] = [old, { ...expected, ...old }, { ...common, jobSemanticFingerprint, sourceAcquisitionDigest, spreadsheetIdDigest }];
+    for (const key of ['bindingVersion', 'jobSemanticFingerprint', 'sourceAcquisitionDigest', 'spreadsheetIdDigest']) {
+      for (const value of [undefined, null, 1, '2', 'G'.repeat(64), 'a'.repeat(63), 'A'.repeat(64)]) bad.push({ ...expected, [key]: value });
+      bad.push(Object.fromEntries(Object.entries(expected).filter(([name]) => name !== key)));
+      const getter = vi.fn(() => expected[key as keyof typeof expected]);
+      const accessor = { ...expected };
+      Object.defineProperty(accessor, key, { enumerable: true, get: getter });
+      expect(() => parseFinalBridgeChallenge(accessor)).toThrow('Final bridge binding invalid.');
+      expect(getter).not.toHaveBeenCalled();
+    }
+    for (const value of bad) expect(() => parseFinalBridgeChallenge(value)).toThrow('Final bridge binding invalid.');
     const result = await runLegacyMigrationBridge({ ...baseInput('final-delta'), finalIntakeBinding });
     expect(await openLegacyBridgeManifest(result.manifest, {
       encryptionKey: cryptoOptions.encryptionKey, signingPublicKey: signing.publicKey,

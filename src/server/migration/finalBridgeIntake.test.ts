@@ -8,6 +8,7 @@ import { sealLegacyBridgeManifest } from './legacyBridgeManifest';
 import { makeSheets, makeRedis, finalizeSheetsSnapshot, finalizeRedisSnapshot } from './__fixtures__/normalization';
 import type { TenantImportTransactionRunner } from './importer';
 import { createFinalBridgeIntake, readVerifiedFinalBridgeAcquisition } from './finalBridgeIntake';
+import { sha256 } from './validators';
 
 vi.mock('server-only', () => ({}));
 let h: PgliteDatabaseHarness;
@@ -28,14 +29,14 @@ beforeEach(async () => {
     await h.database.query("UPDATE tenants SET lifecycle='IMPORTING' WHERE id=$1", [tenant]);
     await h.database.query("INSERT INTO tenant_memberships(tenant_id,user_id,role) VALUES($1,$2,'OWNER')", [tenant, USER]);
     await h.database.query("INSERT INTO migration_jobs(tenant_id,job_id,status,source_fingerprint) VALUES($1,$2,'READY',$3)", [tenant, JOB, HASH]);
-    await h.database.query("INSERT INTO migration_sources(tenant_id,job_id,source_id,provider,external_source_id,source_fingerprint) VALUES($1,$2,'sheet','GOOGLE_SHEETS',$3,$4)", [tenant, JOB, `sheet-${tenant}`, HASH]);
+    await h.database.query("INSERT INTO migration_sources(tenant_id,job_id,source_id,provider,external_source_id,source_fingerprint) VALUES($1,$2,'sheet','GOOGLE_SHEETS',$3,$4)", [tenant, JOB, sha256(`sheet-${tenant}`), 'b'.repeat(64)]);
   }
   await h.database.exec('GRANT SELECT, INSERT ON migration_bridge_challenges, migration_bridge_consumptions TO app_runtime');
   vi.stubGlobal('fetch', vi.fn(() => { throw new Error('No network allowed'); }));
 });
 afterEach(async () => { vi.unstubAllGlobals(); await h?.close(); });
 function registration(tenantId = h.tenantOneId) {
-  return { tenantId, sourceId: 'sheet', externalSourceId: `sheet-${tenantId}`, deploymentId: 'legacy-1',
+  return { tenantId, sourceId: 'sheet', spreadsheetId: `sheet-${tenantId}`, spreadsheetIdDigest: sha256(`sheet-${tenantId}`), deploymentId: 'legacy-1',
     keyId: 'bridge-1', signingPublicKey: signing.publicKey, encryptionKey,
     writerKeyId: 'writer-1', writerSigningPublicKey: writer.publicKey };
 }
@@ -50,7 +51,7 @@ function payload(b: FinalBridgeChallenge) {
   const capturedAt = new Date(b.issuedAt).toISOString();
   return { manifestType: 'CLASS_STORE_LEGACY_ACQUISITION', deploymentId: b.deploymentId, mode: 'final-delta', capturedAt,
     finalIntakeBinding: b,
-    sheetsSnapshot: finalizeSheetsSnapshot({ ...makeSheets(), spreadsheetId: b.externalSourceId, capturedAt }),
+    sheetsSnapshot: finalizeSheetsSnapshot({ ...makeSheets(), spreadsheetId: registration(b.tenantId).spreadsheetId, capturedAt }),
     redisSnapshot: finalizeRedisSnapshot({ ...makeRedis({ v1Tombstones: [{ tupleDigest: 'e'.repeat(64), ownerDigest: 'f'.repeat(64), sourceProvenance: 'upstash:padlet:evidence-claim:v1' }], orphanedClaimDigests: ['d'.repeat(64)] }), capturedAt }), redisAcquisition: 'CAPTURED',
     redisNeverConfiguredProof: null, writerDisableRequired: true,
     writerDisableEvidence: createRedisWriterDisableEvidence({ deploymentId: b.deploymentId, disabledAt: capturedAt,
@@ -69,6 +70,57 @@ async function state() {
 }
 
 describe('authenticated final bridge acquisition intake, never freeze or activation', () => {
+  it('rejects a correctly rehashed and signed acquisition from a different raw spreadsheet', async () => {
+    const b = await service().issueChallenge(intent()); const good = payload(b);
+    const wrong = { ...good, sheetsSnapshot: finalizeSheetsSnapshot({ ...good.sheetsSnapshot, spreadsheetId: 'different-raw-sheet' }) };
+    await expect(service().accept({ challengeId: b.challengeId, manifest: seal(b, wrong) })).rejects.toThrow('Final bridge intake refused.');
+    expect(await consumed()).toEqual([]);
+    await service().accept({ challengeId: b.challengeId, manifest: seal(b) });
+  });
+  it.each(['tenantId', 'sourceId', 'spreadsheetId', 'spreadsheetIdDigest'])('refuses server registry %s mismatch at issuance and acceptance', async key => {
+    const b = await service().issueChallenge(intent());
+    const registrations = [{ ...registration(), [key]: 'replacement' }];
+    await expect(service({ registrations }).issueChallenge(intent())).rejects.toThrow('Final bridge intake refused.');
+    await expect(service({ registrations }).accept({ challengeId: b.challengeId, manifest: seal(b) })).rejects.toThrow('Final bridge intake refused.');
+    expect(await consumed()).toEqual([]);
+  });
+  it.each(['keyId', 'signingPublicKey', 'encryptionKey', 'writerKeyId', 'writerSigningPublicKey'])('refuses server %s replacement after issuance', async key => {
+    const b = await service().issueChallenge(intent());
+    const replacements = { keyId: 'replacement', signingPublicKey: writer.publicKey, encryptionKey: randomBytes(32),
+      writerKeyId: 'replacement', writerSigningPublicKey: signing.publicKey };
+    const registrations = [{ ...registration(), [key]: replacements[key as keyof typeof replacements] }];
+    await expect(service({ registrations }).accept({ challengeId: b.challengeId, manifest: seal(b) })).rejects.toThrow('Final bridge intake refused.');
+    expect(await consumed()).toEqual([]);
+  });
+  it('rejects swapped independent fingerprint bindings in a valid signed envelope', async () => {
+    const b = await service().issueChallenge(intent());
+    expect(b.jobSemanticFingerprint).not.toBe(b.sourceAcquisitionDigest);
+    const swapped = { ...b, jobSemanticFingerprint: b.sourceAcquisitionDigest, sourceAcquisitionDigest: b.jobSemanticFingerprint };
+    await expect(service().accept({ challengeId: b.challengeId, manifest: seal(b, { ...payload(b), finalIntakeBinding: swapped }) })).rejects.toThrow();
+    expect(await consumed()).toEqual([]);
+  });
+  it('preserves old retained challenges and nonce tombstones while requiring a fresh version-2 challenge', async () => {
+    const b = await service().issueChallenge(intent());
+    const { bindingVersion, jobSemanticFingerprint, sourceAcquisitionDigest, spreadsheetIdDigest, ...common } = b;
+    expect(bindingVersion).toBe(2); expect(sourceAcquisitionDigest).not.toBe(jobSemanticFingerprint); expect(spreadsheetIdDigest).toBe(registration().spreadsheetIdDigest);
+    const old = { ...common, challengeId: '30000000-0000-4000-8000-000000000089', externalSourceId: registration().spreadsheetId, sourceFingerprint: jobSemanticFingerprint };
+    await h.database.query(`INSERT INTO migration_bridge_challenges(tenant_id,challenge_id,job_id,source_id,actor_user_id,binding)
+      VALUES($1,$2,$3,$4,$5,$6::jsonb)`, [old.tenantId,old.challengeId,old.migrationJobId,old.sourceId,old.actorUserId,JSON.stringify(old)]);
+    await h.database.query('INSERT INTO migration_bridge_consumptions(nonce_digest,tenant_id,challenge_id) VALUES($1,$2,$3)', [HASH, old.tenantId, old.challengeId]);
+    const prior = await consumed();
+    await expect(service().accept({ challengeId: old.challengeId, manifest: seal(b, { ...payload(b), finalIntakeBinding: old }) })).rejects.toThrow('Final bridge intake refused.');
+    expect(await consumed()).toEqual(prior);
+    expect((await h.database.query('SELECT binding FROM migration_bridge_challenges WHERE challenge_id=$1', [old.challengeId])).rows).toEqual([{ binding: old }]);
+    await service().accept({ challengeId: b.challengeId, manifest: seal(b) });
+    expect(await consumed()).toHaveLength(2);
+  });
+  it('refuses legacy raw database identity without hashing or rewriting the row', async () => {
+    await h.database.query('UPDATE migration_sources SET external_source_id=$1 WHERE tenant_id=$2', [registration().spreadsheetId, h.tenantOneId]);
+    const before = await state();
+    await expect(service().issueChallenge(intent())).rejects.toThrow('Final bridge intake refused.');
+    expect(await state()).toEqual(before);
+    expect((await h.database.query('SELECT * FROM migration_bridge_challenges')).rows).toEqual([]);
+  });
   it('issues a durable server-bound challenge, verifies real crypto and complete BANK/claim/tombstone acquisition without forward writes', async () => {
     await h.database.exec("UPDATE migration_sources SET grant_expires_at=now()+interval '1 hour'");
     await h.database.query("INSERT INTO operations(tenant_id,operation_id,operation_kind,payload_hash) VALUES($1,'unrelated-claim','MIGRATION_IMPORT',$2)", [h.tenantTwoId, HASH]);
@@ -109,6 +161,7 @@ describe('authenticated final bridge acquisition intake, never freeze or activat
       await expect(service().accept({ challengeId: b.challengeId, manifest: seal(b), ...extra })).rejects.toThrow();
     }
     await expect(service({ registrations: [] }).accept({ challengeId: b.challengeId, manifest: seal(b) })).rejects.toThrow();
+    await expect(service({ registrations: [registration(), registration()] }).accept({ challengeId: b.challengeId, manifest: seal(b) })).rejects.toThrow();
     expect(await consumed()).toEqual([]);
   });
   it('refuses preflight, unbound old finals, digest receipts and every altered canonical challenge field before consumption', async () => {

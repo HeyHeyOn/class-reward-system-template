@@ -38,15 +38,60 @@ CSRF, actor/state/source freshness, expiry checks and commit/rollback boundaries
 are unchanged. Deployment ACL and real separate-connection concurrency proofs
 remain independent integration gates; local PGlite tests are not deployment proof.
 
-## Explicitly unresolved companion boundary
+## Version-2 final bridge companion binding
 
-`finalBridgeIntake.ts` still compares the job semantic fingerprint to the source
-acquisition digest in `lockCurrent`. Its CAPTURED bridge challenge contract also
-has a single fingerprint. This repair does **not** claim that boundary is fixed.
-Moreover, the importer stores `spreadsheetIdDigest` as the source external ID,
-whereas final bridge acceptance compares the actual captured `spreadsheetId` to
-that ID. A companion change must first reproduce the complete authenticated
-READY-to-CAPTURED path and define its registered source identity/bridge wire
-binding consistently. Do not remove its equality comparison alone or silently
-rewrite retained external identities. No bridge, capture, freeze execution or live
-activation was performed here.
+The internal READY-to-CAPTURED companion now requires the unchanged purpose
+`CLASS_STORE_FINAL_BRIDGE_INTAKE` with exact `bindingVersion: 2` JSON. Its three
+lowercase SHA-256 fields have independent meanings:
+
+- `jobSemanticFingerprint`: the locked READY job's semantic-record fingerprint.
+- `sourceAcquisitionDigest`: the locked source's **original** acquisition digest.
+- `spreadsheetIdDigest`: the persisted source external ID, produced by hashing
+  the original raw spreadsheet ID. It is neither of the other two fingerprints.
+
+Server-owned registrations explicitly supply both raw `spreadsheetId` and
+`spreadsheetIdDigest`. Issue and accept require exactly one matching canonical
+tenant/source/digest registration and verify `sha256(raw) === digest`. The bridge
+producer hashes its raw input ID before capture, then embeds the exact challenge
+in its authenticated encrypted payload. Intake verifies the captured raw ID
+against the registered raw ID, not against a digest. A 64-character hash-shaped
+raw ID is still raw. Legacy raw database identities are refused, not inferred,
+automatically hashed, repaired or backfilled. Requests cannot supply this mapping,
+keys, registry entries, deployment trust anchors or bridge URLs.
+
+The new final acquisition may have a different time, revision and artifact digest.
+Its complete schema, row hashes, redaction and provenance still pass the real
+normalizer; its digest is **not** forced equal to the original READY acquisition.
+The original job semantic and acquisition bindings are independently rechecked
+under locks. No importer provenance is rewritten or equalized. Final generation
+preparation still validates the original import separately from its candidate;
+this capability is not wired into that service or a public route.
+
+Old single-fingerprint, missing-version and mixed challenges remain immutable
+archival JSON but are refused by issue/accept/replay parsing. Obtain a fresh
+challenge; never upgrade retained evidence or delete old nonce tombstones. The
+existing 0014 JSON envelope supports this without DDL or ORM changes. Receipt
+storage and migration 0017 are unchanged and are not reused by bridge intake.
+
+Global purpose-framed nonce replay, exact immutable readback, current membership,
+DB-clock expiry after waits/consumption and acknowledged outer COMMIT remain the
+acceptance boundaries. The returned opaque acquisition has
+`exclusion: 'NOT_PROVEN'`: **CAPTURED is not a job transition, writer-exclusion
+proof, freeze consent, executable delta, or activation authority.** Unsupported
+missing/null Redis is not synthesized; BANK quarantine and Settings/credential
+redaction remain blocking for import even when authentic acquisition is inspectable.
+
+`authenticFinalBridge.test.ts` starts with actual Sheets and Redis capture, then
+runs the real normalizer, importer and READY reconciler before issue, real
+`runLegacyMigrationBridge(final-delta)` and accept. Only workbook/HTTP I/O is
+fixture-controlled, including the writer-disable POST and two matching GETs;
+crypto, acquisition, normalization, SQL and tenant transaction handling are real.
+Its raw ID is deliberately hash-shaped, semantic/acquisition hashes differ,
+and the final capture changes time/revision without changing original import
+rows. Every public-schema table except the two bridge replay tables is compared
+before/after acceptance. Independent semantic, acquisition and identity drift
+are covered alongside retained replay, trust replacement and malformed-wire
+regressions. These are local PGlite checks using all production migrations and
+the harness runtime role, not separate-connection PostgreSQL or deployment proof.
+No production capture, live writer disable, deployment, freeze or activation is
+part of this change.

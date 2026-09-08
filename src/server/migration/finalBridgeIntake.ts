@@ -13,7 +13,7 @@ import { deepFreeze } from './sensitiveRedaction';
 import { appendBridgeChallenge, consumeBridgeChallenge } from './bridgeReplay';
 
 export type RegisteredFinalBridgeDeployment = Readonly<{
-  tenantId: string; sourceId: string; externalSourceId: string; deploymentId: string;
+  tenantId: string; sourceId: string; spreadsheetId: string; spreadsheetIdDigest: string; deploymentId: string;
   keyId: string; signingPublicKey: KeyLike; encryptionKey: Uint8Array;
   writerKeyId: string; writerSigningPublicKey: KeyLike;
 }>;
@@ -45,10 +45,12 @@ export function createFinalBridgeIntake(dependencies: Dependencies) {
   const { tenantId, getAuthenticatedSubject, runTransaction } = dependencies;
   // Detach mutable configuration byte buffers at server composition time.
   const registrations = dependencies.registeredDeployments.map((r) => ({ ...r, encryptionKey: Buffer.from(r.encryptionKey) }));
-  const trust = (sourceId: string, externalSourceId: string) => {
-    const matches = registrations.filter((r) => r.tenantId === tenantId && r.sourceId === sourceId && r.externalSourceId === externalSourceId);
+  const trust = (sourceId: string, spreadsheetIdDigest: string) => {
+    const matches = registrations.filter((r) => r.tenantId === tenantId && r.sourceId === sourceId && r.spreadsheetIdDigest === spreadsheetIdDigest);
     if (matches.length !== 1) refused();
     const r = matches[0];
+    text(r.spreadsheetId, 512);
+    if (!/^[0-9a-f]{64}$/.test(spreadsheetIdDigest) || sha256(r.spreadsheetId) !== spreadsheetIdDigest) refused();
     for (const value of [r.deploymentId, r.keyId, r.writerKeyId]) text(value, 128);
     if (r.encryptionKey.byteLength !== 32) refused();
     return r;
@@ -67,11 +69,12 @@ export function createFinalBridgeIntake(dependencies: Dependencies) {
         const subject = await authenticatedSubject();
         return await runTransaction(tenantId, async (tx) => {
           const current = await lockCurrent(tx, tenantId, migrationJobId, expectedStateVersion, sourceId, subject);
-          const registration = trust(sourceId, current.externalSourceId);
+          const registration = trust(sourceId, current.spreadsheetIdDigest);
           const now = await databaseNow(tx);
-          const binding = parseFinalBridgeChallenge({ purpose: 'CLASS_STORE_FINAL_BRIDGE_INTAKE', challengeId: randomUUID(),
+          const binding = parseFinalBridgeChallenge({ purpose: 'CLASS_STORE_FINAL_BRIDGE_INTAKE', bindingVersion: 2, challengeId: randomUUID(),
             tenantId, migrationJobId, expectedStatus: 'READY', expectedStateVersion, sourceId,
-            externalSourceId: current.externalSourceId, sourceFingerprint: current.sourceFingerprint,
+            spreadsheetIdDigest: current.spreadsheetIdDigest, jobSemanticFingerprint: current.jobSemanticFingerprint,
+            sourceAcquisitionDigest: current.sourceAcquisitionDigest,
             deploymentId: registration.deploymentId, actorUserId: current.actorUserId, actorSubject: subject,
             issuedAt: now, expiresAt: now + 60_000 });
           await appendBridgeChallenge(tx, binding);
@@ -96,9 +99,9 @@ export function createFinalBridgeIntake(dependencies: Dependencies) {
           const b = parseFinalBridgeChallenge(rows[0].binding);
           if (b.tenantId !== tenantId || b.challengeId !== challengeId || b.actorSubject !== subject) refused();
           const current = await lockCurrent(tx, tenantId, b.migrationJobId, b.expectedStateVersion, b.sourceId, subject);
-          if (current.actorUserId !== b.actorUserId || current.externalSourceId !== b.externalSourceId
-            || current.sourceFingerprint !== b.sourceFingerprint) refused();
-          const registration = trust(b.sourceId, b.externalSourceId);
+          if (current.actorUserId !== b.actorUserId || current.spreadsheetIdDigest !== b.spreadsheetIdDigest
+            || current.jobSemanticFingerprint !== b.jobSemanticFingerprint || current.sourceAcquisitionDigest !== b.sourceAcquisitionDigest) refused();
+          const registration = trust(b.sourceId, b.spreadsheetIdDigest);
           if (registration.deploymentId !== b.deploymentId || envelope.keyId !== registration.keyId) refused();
           const now = await databaseNow(tx);
           fresh(b, now);
@@ -124,7 +127,10 @@ export function createFinalBridgeIntake(dependencies: Dependencies) {
           // references/provenance and credential redaction. BANK quarantine remains
           // blocking, even though a blocked authentic acquisition can be inspected.
           const normalization = createLegacyNormalizationManifest({ tenantId, migrationJobId: b.migrationJobId, sheets, redis });
-          if (sheets.spreadsheetId !== b.externalSourceId || sheets.capturedAt !== capturedAt || redis.capturedAt !== capturedAt
+          // The binding retains the ORIGINAL READY acquisition. A fresh final
+          // capture legitimately has a different digest/time/revision; its own
+          // provenance is validated above, never equalized to the original.
+          if (sheets.spreadsheetId !== registration.spreadsheetId || sheets.capturedAt !== capturedAt || redis.capturedAt !== capturedAt
             || Object.keys(sheets.tabs).some((name) => name !== 'Settings' && name.trim().toLowerCase() === 'settings')) refused();
           const evidence = verifyWriterDisableEvidence(p.writerDisableEvidence, registration.writerSigningPublicKey,
             registration.writerKeyId, b.deploymentId, envelope.issuedAt);
@@ -156,11 +162,12 @@ async function lockCurrent(tx: TenantTransaction, tenantId: string, jobId: strin
   if (jobs.length !== 1 || jobs[0].status !== 'READY' || jobs[0].version !== stateVersion) refused();
   const { rows: sources } = await tx.execute(sql`SELECT provider,external_source_id,source_fingerprint FROM migration_sources
     WHERE tenant_id=${tenantId} AND job_id=${jobId} AND source_id=${sourceId} FOR SHARE`);
-  if (sources.length !== 1 || sources[0].provider !== 'GOOGLE_SHEETS' || sources[0].source_fingerprint !== jobs[0].source_fingerprint) refused();
+  if (sources.length !== 1 || sources[0].provider !== 'GOOGLE_SHEETS') refused();
   const { rows: actors } = await tx.execute(sql`SELECT u.id FROM tenant_memberships m JOIN users u ON u.id=m.user_id
     WHERE m.tenant_id=${tenantId} AND u.google_subject=${subject} AND m.role IN ('OWNER','ADMIN') FOR SHARE OF m,u`);
   if (actors.length !== 1) refused();
-  return { actorUserId: String(actors[0].id), externalSourceId: String(sources[0].external_source_id), sourceFingerprint: String(sources[0].source_fingerprint) };
+  return { actorUserId: String(actors[0].id), spreadsheetIdDigest: String(sources[0].external_source_id),
+    jobSemanticFingerprint: String(jobs[0].source_fingerprint), sourceAcquisitionDigest: String(sources[0].source_fingerprint) };
 }
 async function databaseNow(tx: TenantTransaction): Promise<number> {
   const { rows } = await tx.execute(sql`SELECT floor(extract(epoch FROM clock_timestamp())*1000)::bigint::text AS ms`);
