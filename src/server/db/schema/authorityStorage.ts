@@ -16,6 +16,7 @@ export const migrationAuthorityReceipts = pgTable('migration_authority_receipts'
   action: text('action').notNull(),
   expectedStatus: text('expected_status').notNull(),
   expectedStateVersion: bigint('expected_state_version', { mode: 'bigint' }).notNull(),
+  // Job semantic binding; acquisition is separately retained for new receipts.
   sourceFingerprint: text('source_fingerprint').notNull(),
   issuedAtMs: bigint('issued_at_ms', { mode: 'bigint' }).notNull(),
   expiresAtMs: bigint('expires_at_ms', { mode: 'bigint' }).notNull(),
@@ -24,6 +25,7 @@ export const migrationAuthorityReceipts = pgTable('migration_authority_receipts'
   finalSheetDigest: text('final_sheet_digest'),
   finalRedisDigest: text('final_redis_digest'),
   finalReportDigest: text('final_report_digest'),
+  sourceAcquisitionDigest: text('source_acquisition_digest'),
 }, (table) => [
   primaryKey({ name: 'migration_authority_receipts_pkey', columns: [table.tenantId, table.receiptId] }),
   foreignKey({ name: 'migration_authority_receipts_source_fk', columns: [table.tenantId, table.jobId, table.sourceId], foreignColumns: [migrationSources.tenantId, migrationSources.jobId, migrationSources.sourceId] }),
@@ -38,6 +40,7 @@ export const migrationAuthorityReceipts = pgTable('migration_authority_receipts'
   check('migration_authority_receipts_time_check', sql`
     ${table.issuedAtMs} BETWEEN 0 AND 9007199254140991
     AND ${table.expiresAtMs}>${table.issuedAtMs} AND ${table.expiresAtMs}<=${table.issuedAtMs}+600000`),
+  check('migration_authority_receipts_acquisition_digest_check', sql`${table.sourceAcquisitionDigest} IS NULL OR ${table.sourceAcquisitionDigest} ~ '^[0-9a-f]{64}$'`),
   check('migration_authority_receipts_digest_check', sql`
     ${table.sourceFingerprint} ~ '^[0-9a-f]{64}$' AND ${table.issuerDigest} ~ '^[0-9a-f]{64}$' AND ${table.contentDigest} ~ '^[0-9a-f]{64}$'`),
   check('migration_authority_receipts_action_check', sql`

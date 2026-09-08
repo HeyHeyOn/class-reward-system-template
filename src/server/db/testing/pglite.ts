@@ -75,6 +75,7 @@ export type PgliteDatabaseHarness = {
   tenantOneId: string;
   tenantTwoId: string;
   withImmutableLedgerTampering<TResult>(callback: () => Promise<TResult>): Promise<TResult>;
+  withMigrationSnapshotTampering<TResult>(callback: () => Promise<TResult>): Promise<TResult>;
   close(): Promise<void>;
 };
 
@@ -136,6 +137,16 @@ export async function createPgliteDatabaseHarness(): Promise<PgliteDatabaseHarne
             ALTER TABLE adjustments ENABLE TRIGGER adjustments_immutable;
             ALTER TABLE inventory_ledger ENABLE TRIGGER inventory_ledger_immutable;
           `);
+        }
+      },
+      // Isolated test-owner corruption only. Never exported by production code;
+      // runtime cannot disable this trigger, and services run after re-enabling it.
+      withMigrationSnapshotTampering: async <TResult>(callback: () => Promise<TResult>) => {
+        await database.exec('ALTER TABLE migration_snapshots DISABLE TRIGGER migration_snapshots_immutable');
+        try {
+          return await callback();
+        } finally {
+          await database.exec('ALTER TABLE migration_snapshots ENABLE TRIGGER migration_snapshots_immutable');
         }
       },
       close: () => database.close(),

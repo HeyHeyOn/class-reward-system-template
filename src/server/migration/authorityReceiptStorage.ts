@@ -6,17 +6,20 @@ import type { TenantTransaction } from '@/server/db/transaction';
 const COLUMNS = ['tenant_id', 'receipt_id', 'job_id', 'source_id', 'provider', 'external_source_id',
   'actor_user_id', 'actor_subject', 'action', 'expected_status', 'expected_state_version', 'source_fingerprint',
   'issued_at_ms', 'expires_at_ms', 'issuer_digest', 'content_digest',
-  'final_sheet_digest', 'final_redis_digest', 'final_report_digest'] as const;
+  'final_sheet_digest', 'final_redis_digest', 'final_report_digest', 'source_acquisition_digest'] as const;
 const KEYS = [...COLUMNS, 'replay_digest'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const DIGEST = /^[0-9a-f]{64}$/;
 type RecordBindings = Record<string, string | null>;
 function parse(input: Record<string, unknown>, tenantId: string): RecordBindings {
-  if (!input || ![Object.prototype, null].includes(Object.getPrototypeOf(input))
-    || Reflect.ownKeys(input).length !== KEYS.length) throw new Error('shape');
+  if (!input || ![Object.prototype, null].includes(Object.getPrototypeOf(input))) throw new Error('shape');
+  // Old archival envelopes retain their original single-fingerprint contract.
+  // Missing acquisition is NOT inferred from the semantic digest for new intake.
+  const keys = Object.hasOwn(input, 'source_acquisition_digest') ? KEYS : KEYS.filter(key => key !== 'source_acquisition_digest');
+  if (Reflect.ownKeys(input).length !== keys.length) throw new Error('shape');
   const descriptors = Object.getOwnPropertyDescriptors(input);
-  const value: RecordBindings = {};
-  for (const key of KEYS) {
+  const value: RecordBindings = { source_acquisition_digest: null };
+  for (const key of keys) {
     const d = descriptors[key];
     if (!d?.enumerable || !('value' in d) || (typeof d.value !== 'string' && d.value !== null)) throw new Error('shape');
     value[key] = d.value;
@@ -30,6 +33,7 @@ function parse(input: Record<string, unknown>, tenantId: string): RecordBindings
   for (const key of ['source_fingerprint', 'issuer_digest', 'content_digest', 'replay_digest']) {
     if (!DIGEST.test(value[key] ?? '')) throw new Error('digest');
   }
+  if (value.source_acquisition_digest !== null && !DIGEST.test(value.source_acquisition_digest ?? '')) throw new Error('digest');
   for (const key of ['expected_state_version', 'issued_at_ms', 'expires_at_ms']) {
     if (!/^(0|[1-9][0-9]{0,15})$/.test(value[key] ?? '') || BigInt(value[key]!) > BigInt(9007199254740991)) throw new Error('number');
   }
@@ -52,7 +56,7 @@ async function exactReadback(tx: TenantTransaction, v: RecordBindings) {
   if (rows.length !== 1 || KEYS.some((key) => rows[0][key] !== v[key])) throw new Error('readback');
   return { storage: 'NON_AUTHORITY' as const, receiptId: v.receipt_id! };
 }
-/** Internal consistency only. No authenticated intake exists: these records are NOT
+/** Internal consistency only. Even when composed by authenticated intake, these records are NOT
  * capabilities, session authentication, consent, source control or permission to act.
  * Never compose directly with a public request or a forward state transition.
  * Replay digests must eventually be derived by separately reviewed trusted intake.
@@ -72,7 +76,8 @@ export function createNonAuthorityReceiptStorage(dependencies: { tenantId: strin
             || jobs[0].source_fingerprint !== v.source_fingerprint) throw new Error('job');
           const { rows: sources } = await tx.execute(sql`SELECT provider,external_source_id,source_fingerprint
             FROM migration_sources WHERE tenant_id=${tenantId} AND job_id=${v.job_id} AND source_id=${v.source_id} FOR SHARE`);
-          if (sources.length !== 1 || ['provider', 'external_source_id', 'source_fingerprint'].some((key) => sources[0][key] !== v[key])) throw new Error('source');
+          if (sources.length !== 1 || ['provider', 'external_source_id'].some((key) => sources[0][key] !== v[key])
+            || sources[0]?.source_fingerprint !== (v.source_acquisition_digest ?? v.source_fingerprint)) throw new Error('source');
           const { rows: actors } = await tx.execute(sql`SELECT u.id FROM users u JOIN tenant_memberships m ON m.user_id=u.id
             WHERE m.tenant_id=${tenantId} AND u.id=${v.actor_user_id} AND u.google_subject=${v.actor_subject}
             AND m.role IN ('OWNER','ADMIN') FOR SHARE OF u,m`);

@@ -143,7 +143,7 @@ describe('cutover abort boundary with every production migration', () => {
 
   it('never rounds the maximum state version and rolls back overflow', async () => {
     await harness.database.query('DELETE FROM migration_source_records');
-    await harness.database.query('DELETE FROM migration_snapshots');
+    await harness.withMigrationSnapshotTampering(() => harness.database.query('DELETE FROM migration_snapshots'));
     await harness.database.query('DELETE FROM migration_sources');
     await harness.database.query('DELETE FROM migration_jobs');
     await harness.database.query(`INSERT INTO migration_jobs (tenant_id,job_id,status,state_version,source_fingerprint)

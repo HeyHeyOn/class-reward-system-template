@@ -177,7 +177,7 @@ describe('untrusted immutable final candidate and delta PLAN through all product
   it.each(['source', 'snapshot', 'version', 'status'])('refuses persisted %s drift and preserves prior generations', async (kind) => {
     const input = await fixture(); await stage(input); const prior = await envelopes();
     if (kind === 'source') await harness.database.exec("UPDATE migration_sources SET external_source_id='different' WHERE provider='GOOGLE_SHEETS'");
-    if (kind === 'snapshot') await harness.database.exec("UPDATE migration_snapshots SET row_count=row_count+1");
+    if (kind === 'snapshot') await harness.withMigrationSnapshotTampering(() => harness.database.exec("UPDATE migration_snapshots SET row_count=row_count+1"));
     if (kind === 'version') input.expectedStateVersion = '01';
     if (kind === 'status') await harness.database.exec("UPDATE migration_jobs SET status='FREEZING',state_version=state_version+1,updated_at=now()");
     await expect(stage(input)).rejects.toThrow('Final generation preparation refused.'); expect(await envelopes()).toEqual(prior);

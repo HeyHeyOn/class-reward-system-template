@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createPgliteDatabaseHarness, type PgliteDatabaseHarness } from '@/server/db/testing/pglite';
 import { createDatabaseTaskCycleQueries } from '@/server/repositories/database/taskCycleQueries';
@@ -15,8 +15,7 @@ const JOB = '20000000-0000-4000-8000-000000000017';
 let harness: PgliteDatabaseHarness;
 beforeEach(async () => {
   harness = await createPgliteDatabaseHarness();
-  for (const name of ['0009_promotion_tombstone_invariant.sql', '0010_task_admin_invariants.sql',
-    '0011_generator_grant_claims.sql', '0012_platform_tenant_discovery.sql']) {
+  for (const name of (await readdir(resolve(process.cwd(), 'src/server/db/migrations'))).filter(name => /^\d{4}_.*\.sql$/.test(name) && name.slice(0, 4) > '0008').sort()) {
     await harness.database.exec(await readFile(resolve(process.cwd(), 'src/server/db/migrations', name), 'utf8'));
   }
 });
@@ -436,7 +435,7 @@ describe('locked persisted preparatory READY, never cutover', () => {
 
   it.each(['missing', 'extra'])('requires exactly one import snapshot: %s', async (kind) => {
     const source = await imported();
-    if (kind === 'missing') await harness.database.query('DELETE FROM migration_snapshots WHERE tenant_id=$1 AND job_id=$2', [harness.tenantOneId, JOB]);
+    if (kind === 'missing') await harness.withMigrationSnapshotTampering(() => harness.database.query('DELETE FROM migration_snapshots WHERE tenant_id=$1 AND job_id=$2', [harness.tenantOneId, JOB]));
     else await harness.database.query(`INSERT INTO migration_snapshots
       (tenant_id,job_id,source_id,snapshot_id,phase,artifact_digest,redacted_manifest,row_count)
       SELECT tenant_id,job_id,source_id,'extra-snapshot',phase,$3,redacted_manifest,row_count
@@ -456,8 +455,8 @@ describe('locked persisted preparatory READY, never cutover', () => {
       : field === 'row_count' ? 'row_count=row_count+1'
       : field === 'snapshot_id' ? "snapshot_id='corrupted-snapshot'"
         : "source_id=(SELECT source_id FROM migration_sources WHERE tenant_id=$1 AND job_id=$2 AND provider='LEGACY_REDIS_BRIDGE')";
-    const changed = await harness.database.query(`UPDATE migration_snapshots SET ${change}
-      WHERE tenant_id=$1 AND job_id=$2 AND phase='PREFLIGHT' RETURNING *`, [harness.tenantOneId, JOB]);
+    const changed = await harness.withMigrationSnapshotTampering(() => harness.database.query(`UPDATE migration_snapshots SET ${change}
+      WHERE tenant_id=$1 AND job_id=$2 AND phase='PREFLIGHT' RETURNING *`, [harness.tenantOneId, JOB]));
     expect(changed.rows).toHaveLength(1);
     if (field === 'source_id') {
       const redis = await harness.database.query('SELECT provider FROM migration_sources WHERE tenant_id=$1 AND job_id=$2 AND source_id=$3',

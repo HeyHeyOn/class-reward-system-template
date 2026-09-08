@@ -1,0 +1,47 @@
+import { expect, it, vi } from 'vitest';
+import { readFile, readdir } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { createPgliteDatabaseHarness } from '@/server/db/testing/pglite';
+import { createNonAuthorityReceiptStorage } from './authorityReceiptStorage';
+import { createFreezingApprovalIntake } from './freezingApprovalIntake';
+vi.mock('server-only', () => ({}));
+it('0017 preserves legacy receipt and challenge evidence exactly without granting old challenges authority',async () => {
+  const h = await createPgliteDatabaseHarness();
+  try {
+    const dir = resolve('src/server/db/migrations');
+    for (const n of (await readdir(dir)).filter(n => /^\d{4}_.*\.sql$/.test(n) && n.slice(0,4) > '0008' && n.slice(0,4) < '0017').sort()) await h.database.exec(await readFile(resolve(dir,n),'utf8'));
+    const tenant = h.tenantOneId;
+    const actor = '20000000-0000-4000-8000-000000000029';
+    const receipt = '30000000-0000-4000-8000-000000000029';
+    const challenge = '40000000-0000-4000-8000-000000000029';
+    const hash = 'a'.repeat(64);
+    await h.database.query("INSERT INTO users(id,google_subject,canonical_email) VALUES($1,'owner','owner@example.invalid')",[actor]);
+    await h.database.query("UPDATE tenants SET lifecycle='IMPORTING' WHERE id=$1",[tenant]);
+    await h.database.query("INSERT INTO tenant_memberships(tenant_id,user_id,role) VALUES($1,$2,'OWNER')",[tenant,actor]);
+    await h.database.query("INSERT INTO migration_jobs(tenant_id,job_id,status,source_fingerprint) VALUES($1,'old-job','READY',$2)",[tenant,hash]);
+    await h.database.query("INSERT INTO migration_sources(tenant_id,job_id,source_id,provider,external_source_id,source_fingerprint) VALUES($1,'old-job','sheet','GOOGLE_SHEETS','old-external',$2)",[tenant,hash]);
+    const old = {tenant_id:tenant,receipt_id:receipt,job_id:'old-job',source_id:'sheet',provider:'GOOGLE_SHEETS',external_source_id:'old-external',actor_user_id:actor,actor_subject:'owner',action:'START_FREEZING_APPROVAL',expected_status:'READY',expected_state_version:'1',source_fingerprint:hash,issued_at_ms:'1',expires_at_ms:'60001',issuer_digest:hash,content_digest:hash,final_sheet_digest:null,final_redis_digest:null,final_report_digest:null};
+    await h.database.query(`INSERT INTO migration_authority_receipts(${Object.keys(old).join(',')}) VALUES(${Object.keys(old).map((_,i) => `$${i+1}`).join(',')})`,Object.values(old));
+    await h.database.query('INSERT INTO migration_authority_replays(replay_digest,tenant_id,receipt_id) VALUES($1,$2,$3)',[hash,tenant,receipt]);
+    await h.database.query("INSERT INTO migration_snapshots(tenant_id,job_id,source_id,snapshot_id,phase,artifact_digest,redacted_manifest,row_count) VALUES($1,'old-job','sheet','preflight','PREFLIGHT',$2,'{}',0)",[tenant,hash]);
+    const now = Date.now();
+    const b = {purpose:'CLASS_STORE_START_FREEZING_APPROVAL_V1',action:'START_FREEZING_APPROVAL',challengeId:challenge,tenantId:tenant,migrationJobId:'old-job',expectedStatus:'READY',expectedStateVersion:'1',sourceId:'sheet',externalSourceId:'old-external',sourceFingerprint:hash,preflightSnapshotId:'preflight',preflightDigest:hash,actorUserId:actor,actorSubject:'owner',issuedAt:now,expiresAt:now+60_000};
+    await h.database.query('INSERT INTO migration_freezing_challenges(tenant_id,challenge_id,job_id,source_id,actor_user_id,binding) VALUES($1,$2,$3,$4,$5,$6)',[tenant,challenge,'old-job','sheet',actor,JSON.stringify(b)]);
+    const before = (await h.database.query("SELECT to_jsonb(r)::text AS evidence FROM migration_authority_receipts r")).rows;
+    const challenges = (await h.database.query('SELECT binding::text FROM migration_freezing_challenges')).rows;
+    await h.database.exec(await readFile(resolve(dir,'0017_receipt_acquisition_binding.sql'),'utf8'));
+    expect((await h.database.query("SELECT (to_jsonb(r)-'source_acquisition_digest')::text AS evidence FROM migration_authority_receipts r")).rows).toEqual(before);
+    expect((await h.database.query('SELECT source_acquisition_digest FROM migration_authority_receipts')).rows).toEqual([{source_acquisition_digest:null}]);
+    expect((await h.database.query('SELECT binding::text FROM migration_freezing_challenges')).rows).toEqual(challenges);
+    await h.database.exec('GRANT SELECT, INSERT ON migration_authority_receipts, migration_authority_replays, migration_freezing_challenges, migration_freezing_consumptions TO app_runtime');
+    const storage = createNonAuthorityReceiptStorage({tenantId:tenant,runTransaction:h.runTenantTransaction});
+    expect((await storage.recover({...old,replay_digest:hash})).storage).toBe('NON_AUTHORITY');
+    await expect(storage.recover({...old,replay_digest:hash,source_acquisition_digest:hash})).rejects.toThrow();
+    const api = createFreezingApprovalIntake({tenantId:tenant,origin:'https://store.example',getAuthenticatedSession:async () => ({subject:'owner',csrfToken:hash}),runTransaction:h.runTenantTransaction});
+    await expect(api.accept(new Request('https://store.example/internal',{method:'POST',headers:{origin:'https://store.example','content-type':'application/json','x-csrf-token':hash},body:JSON.stringify({display:b,confirmation:b.action})}))).rejects.toThrow();
+    expect((await h.database.query('SELECT * FROM migration_freezing_consumptions')).rows).toEqual([]);
+    await expect(h.database.query("UPDATE migration_authority_receipts SET source_acquisition_digest=$1",[hash])).rejects.toThrow();
+    await expect(h.database.query('DELETE FROM migration_authority_receipts')).rejects.toThrow();
+    await expect(h.database.query(`INSERT INTO migration_authority_receipts(${Object.keys(old).join(',')},source_acquisition_digest) VALUES(${Object.keys(old).map((_,i) => `$${i+1}`).join(',')},'invalid')`,Object.values({...old,receipt_id:'50000000-0000-4000-8000-000000000029'}))).rejects.toThrow(/acquisition_digest_check/);
+  } finally { await h.close(); }
+},60_000);

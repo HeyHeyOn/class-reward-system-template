@@ -1712,9 +1712,21 @@ describe('AdminManagePage', () => {
   });
 
   it('saves the selected font family from system settings', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation()!;
+    let settingsGets = 0;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input) === '/api/settings' && init?.method !== 'POST' && ++settingsGets === 2) {
+        // The child form loads settings independently of the parent heading.
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      }
+      return originalFetch(input, init);
+    });
     render(<AdminManagePage />);
 
     expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
+    await waitFor(() => {
+      expect((screen.getByRole('button', { name: '시스템 설정 저장' }) as HTMLButtonElement).disabled).toBe(false);
+    });
     fireEvent.change(screen.getByLabelText('글꼴'), { target: { value: 'school-safe-poster' } });
     fireEvent.click(screen.getByRole('button', { name: '시스템 설정 저장' }));
 

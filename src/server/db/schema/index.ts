@@ -1,5 +1,6 @@
 export * from './authorityStorage';
 export * from './bridgeReplay';
+export * from './freezingApproval';
 export * from './catalog';
 export * from './generatorGrants';
 export * from './identity';

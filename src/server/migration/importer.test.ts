@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createPgliteDatabaseHarness, type PgliteDatabaseHarness } from '@/server/db/testing/pglite';
 import { createLegacyNormalizationManifest } from './manifest';
@@ -93,7 +93,7 @@ async function prepare(tenantId = harness.tenantOneId) {
 
 beforeEach(async () => {
   harness = await createPgliteDatabaseHarness();
-  for (const migration of ['0009_promotion_tombstone_invariant.sql', '0010_task_admin_invariants.sql', '0011_generator_grant_claims.sql', '0012_platform_tenant_discovery.sql']) {
+  for (const migration of (await readdir(resolve(process.cwd(), 'src/server/db/migrations'))).filter(name => /^\d{4}_.*\.sql$/.test(name) && name.slice(0, 4) > '0008').sort()) {
     await harness.database.exec(await readFile(resolve(process.cwd(), 'src/server/db/migrations', migration), 'utf8'));
   }
 });
