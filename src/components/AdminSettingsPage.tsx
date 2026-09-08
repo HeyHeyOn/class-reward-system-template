@@ -36,6 +36,8 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
   const [adminPassword, setAdminPassword] = useState('');
   const [savedAdminPassword, setSavedAdminPassword] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [loadStatus, setLoadStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const adminQrUrl = useQrObjectUrl(savedAdminPassword ? {
     key: 'admin', endpoint: tenantApiPath('/api/qrcode'),
     body: { kind: 'admin', password: savedAdminPassword },
@@ -46,10 +48,12 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
 
     async function loadSettings() {
       const response = await tenantFetch('/api/settings', { cache: 'no-store' });
-      const settings = (await response.json()) as SettingsResponse;
+      const settings = (await response.json()) as SettingsResponse | { error: string };
+      if (!response.ok || 'error' in settings) throw new Error('Settings unavailable');
 
       if (!ignore) {
         setCurrentSettings(settings);
+        setLoadStatus('ready');
         setSpreadsheetIdOrUrl(settings.spreadsheetId ?? '');
         setCurrencyUnit(settings.currencyUnit ?? '원');
         setAppTitle(settings.appTitle ?? '학급 매점');
@@ -61,16 +65,20 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
     }
 
     loadSettings().catch(() => {
-      if (!ignore) setMessage('현재 설정을 불러오지 못했습니다.');
+      if (!ignore) {
+        setLoadStatus('error');
+        setMessage('현재 설정을 불러오지 못했습니다.');
+      }
     });
 
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [loadAttempt]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (loadStatus !== 'ready') return;
     setIsSaving(true);
     setMessage('');
 
@@ -120,6 +128,10 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
           className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg text-slate-950 outline-none transition focus:border-amber-500 focus:bg-white"
         />
       </label>
+      <p className="mt-2 text-sm text-slate-600">
+        개인 Sheets 배포는 Vercel 환경변수에 CLASS_STORE_STORAGE=sheets와 GOOGLE_SHEET_ID를 설정한 뒤 재배포해야 합니다.
+        시트 ID는 관리자 화면에서 영구 변경할 수 없습니다. 기존 시트 ID를 사용하고 새 시트를 다시 생성하지 마세요.
+      </p>
 
       <label className="mt-4 block">
         <span className="text-sm font-bold text-slate-700">학급 화폐 단위</span>
@@ -233,7 +245,7 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
         <p>
           현재 상태:{' '}
           <strong className="text-slate-950">
-            {currentSettings?.spreadsheetId ? '연결 ID 있음' : '미설정'}
+            {loadStatus === 'error' ? '불러오기 실패' : loadStatus === 'loading' ? '불러오는 중' : currentSettings?.spreadsheetId ? '연결 ID 있음' : '미설정'}
           </strong>
         </p>
         <p>설정 출처: {currentSettings?.source ?? '확인 중'}</p>
@@ -250,10 +262,17 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
       </div>
 
       {message ? <p className="mt-4 font-bold text-amber-700">{message}</p> : null}
+      {loadStatus === 'error' ? (
+        <button type="button" className="mt-3 rounded-xl bg-slate-100 px-4 py-2 font-bold" onClick={() => {
+          setLoadStatus('loading');
+          setMessage('');
+          setLoadAttempt((attempt) => attempt + 1);
+        }}>설정 다시 불러오기</button>
+      ) : null}
 
       <button
         type="submit"
-        disabled={isSaving}
+        disabled={isSaving || loadStatus !== 'ready'}
         className="mt-6 w-full rounded-2xl bg-slate-950 py-4 text-xl font-black text-white shadow-lg transition hover:bg-slate-800 disabled:cursor-wait disabled:bg-slate-400"
       >
         {isSaving ? '저장 중...' : '시스템 설정 저장'}

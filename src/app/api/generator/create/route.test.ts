@@ -43,6 +43,9 @@ vi.mock('@/server/repositories/configuredGeneratorGrantClaims', () => ({
   claimGeneratorGrant: mocks.claimGrant,
 }));
 
+vi.mock('server-only', () => ({}));
+
+import { parseStorageSelection } from '@/server/repositories/context';
 import { POST } from './route';
 
 function createRequest() {
@@ -74,6 +77,39 @@ describe('POST /api/generator/create deployment env', () => {
     vi.unstubAllEnvs();
   });
 
+  it('emits explicit legacy storage and the created Sheet ID even on a central generator host', async () => {
+    vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
+    vi.stubEnv('GOOGLE_SHEET_ID', 'unrelated-generator-sheet');
+    const response = await POST(createRequest());
+    const data = await response.json();
+    expect(response.status).toBe(200);
+    expect(data.requiredVercelEnv).toContainEqual({ name: 'CLASS_STORE_STORAGE', value: 'sheets', secret: false });
+    const env = Object.fromEntries(data.requiredVercelEnv.map((item: { name: string; value: string }) => [item.name, item.value]));
+    expect(parseStorageSelection(env)).toEqual({ storage: 'sheets', legacy: true });
+    expect(env.GOOGLE_SHEET_ID).toBe(data.spreadsheetId);
+    expect(env.GOOGLE_SHEET_ID).toBe('sheet-123');
+  });
+
+  it('requests exactly the emitted env names in the deployment template and explains the selector', async () => {
+    const response = await POST(createRequest());
+    const data = await response.json();
+    const url = new URL(data.deploymentGuide.vercelImportUrl);
+    expect(url.searchParams.get('env')?.split(',')).toContain('CLASS_STORE_STORAGE');
+    expect(url.searchParams.get('env')?.split(',')).toEqual(data.requiredVercelEnv.map((item: { name: string }) => item.name));
+    expect(url.searchParams.get('repository-url')).toBe('https://github.com/HeyHeyOn/class-reward-system-template');
+    expect(data.deploymentGuide.checklist.join(' ')).toContain('CLASS_STORE_STORAGE');
+    expect(data.deploymentGuide.checklist.join(' ')).toContain('sheets');
+    expect(data.nextSteps.join(' ')).not.toContain('6개');
+    expect(url.searchParams.get('envDescription')).not.toContain('6개');
+  });
+
+  it('preserves an explicitly configured template branch instead of deploying the working branch', async () => {
+    const template = 'https://github.com/HeyHeyOn/class-reward-system-template/tree/master';
+    vi.stubEnv('NEXT_PUBLIC_CLASS_STORE_TEMPLATE_REPO', template);
+    const data = await (await POST(createRequest())).json();
+    expect(new URL(data.deploymentGuide.vercelImportUrl).searchParams.get('repository-url')).toBe(template);
+  });
+
   it('uses and returns only the consenting user grant, never the central deployment token', async () => {
     const request = createRequest();
 
@@ -97,7 +133,7 @@ describe('POST /api/generator/create deployment env', () => {
     expect(JSON.stringify(data)).not.toContain('central-deployment-refresh-token');
     expect(envByName.ADMIN_PASSWORD.value).toBe('teacher@example.com');
     expect(envByName.AUTH_SECRET.value).toMatch(/^[A-Za-z0-9_-]{32,}$/);
-    expect(data.deploymentGuide.vercelImportUrl).toContain('env=GOOGLE_SHEET_ID%2CGOOGLE_CLIENT_ID%2CGOOGLE_CLIENT_SECRET%2CGOOGLE_REFRESH_TOKEN%2CADMIN_PASSWORD%2CAUTH_SECRET');
+    expect(data.deploymentGuide.vercelImportUrl).toContain('env=CLASS_STORE_STORAGE%2CGOOGLE_SHEET_ID%2CGOOGLE_CLIENT_ID%2CGOOGLE_CLIENT_SECRET%2CGOOGLE_REFRESH_TOKEN%2CADMIN_PASSWORD%2CAUTH_SECRET');
     expect(mocks.clearGrant).toHaveBeenCalledOnce();
     expect(mocks.revokeGrant).not.toHaveBeenCalled();
   });
