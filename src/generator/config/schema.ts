@@ -1,18 +1,56 @@
 import { LATEST_SCHEMA_VERSION, SYSTEM_NAME_KO, SYSTEM_VERSION } from './versions.ts';
 
+export const GENERATED_SHEET_NAMES = [
+  'Students',
+  'Products',
+  'Transactions',
+  'Adjustments',
+  'Settings',
+  'Tasks',
+  'TaskAssignments',
+  'TaskCompletions',
+  'Promotions',
+  'PromotionProducts',
+  'Recovery',
+] as const;
+export type GeneratedSheetName = (typeof GENERATED_SHEET_NAMES)[number];
+
+// Legacy deployed server consumers still include Recovery.
 export type SheetName = 'Students' | 'Products' | 'Transactions' | 'Adjustments' | 'Settings' | 'Tasks' | 'TaskCompletions' | 'Recovery';
 
 export const THEME_COLORS = ['blue', 'pink', 'yellow', 'green', 'purple', 'white', 'black', 'navy'] as const;
 export type ThemeColor = (typeof THEME_COLORS)[number];
 
-export const REQUIRED_SHEETS: Record<SheetName, string[]> = {
-  Students: ['studentId', 'name', 'number', 'balance', 'status'],
+export const REQUIRED_SHEETS: Record<GeneratedSheetName, string[]> = {
+  Students: ['studentId', 'name', 'balance', 'status'],
   Products: ['productId', 'name', 'price', 'stock', 'isActive', 'imageUrl', 'category', 'sortOrder'],
   Transactions: ['transactionId', 'timestamp', 'studentId', 'studentName', 'items', 'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator'],
   Adjustments: ['adjustmentId', 'timestamp', 'studentId', 'amount', 'mode', 'operator'],
   Settings: ['key', 'value'],
-  Tasks: ['taskId', 'title', 'description', 'reward', 'maxCompletionsPerStudent', 'isActive', 'sortOrder', 'createdAt', 'updatedAt'],
-  TaskCompletions: ['completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note'],
+  Tasks: [
+    'taskId', 'title', 'description', 'reward', 'isActive', 'sortOrder', 'createdAt', 'updatedAt', 'allowedStudentIds',
+    'taskInstanceId', 'ruleVersion', 'scheduleEffectiveFrom', 'recurrenceTimeZone', 'recurrenceType',
+    'recurrenceTime', 'recurrenceWeekday', 'recurrenceDayOfMonth', 'resetCompletionOnCycle', 'resetAssignmentOnCycle',
+    'pendingRuleVersion', 'pendingEffectiveFrom', 'pendingTimeZone', 'pendingRecurrenceType', 'pendingRecurrenceTime',
+    'pendingRecurrenceWeekday', 'pendingRecurrenceDayOfMonth', 'pendingResetCompletionOnCycle', 'pendingResetAssignmentOnCycle',
+    'availableFrom', 'dueAt', 'prerequisiteTaskId', 'recurrenceWeekdays', 'pendingRecurrenceWeekdays',
+  ],
+  TaskAssignments: [
+    'assignmentId', 'taskId', 'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion',
+    'timeZone', 'studentId', 'status', 'source', 'previousAssignmentId', 'createdAt', 'schemaVersion', 'note',
+  ],
+  TaskCompletions: [
+    'completionId', 'timestamp', 'taskId', 'studentId', 'studentName', 'reward', 'balanceBefore', 'balanceAfter', 'status', 'note',
+    'taskInstanceId', 'cycleId', 'cycleStartsAt', 'cycleEndsAt', 'ruleVersion', 'timeZone', 'source', 'assignmentId', 'schemaVersion',
+    'operationId', 'operationPayloadHash',
+  ],
+  Promotions: [
+    'promotionId', 'name', 'description', 'type', 'value', 'buyQuantity', 'freeQuantity',
+    'startsAt', 'endsAt', 'isActive', 'sortOrder', 'createdAt', 'updatedAt', 'schemaVersion',
+  ],
+  PromotionProducts: [
+    'promotionProductId', 'promotionId', 'productId', 'createdAt', 'schemaVersion',
+  ],
   Recovery: ['key', 'value'],
 };
 
@@ -23,5 +61,7 @@ export const DEFAULT_SETTINGS: Array<{ key: string; value: string }> = [
   { key: 'appTitle', value: '학급 매점' },
   { key: 'bankTitle', value: '학급 은행' },
   { key: 'currencyUnit', value: '원' },
+  { key: 'classTimeZone', value: 'Asia/Seoul' },
   { key: 'themeColor', value: 'blue' },
+  { key: 'qrManualInputEnabled', value: 'FALSE' },
 ];

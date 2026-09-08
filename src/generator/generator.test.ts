@@ -27,10 +27,13 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
       'Adjustments',
       'Settings',
       'Tasks',
-      'TaskCompletions',
-      'Recovery',
+            'TaskAssignments',
+            'TaskCompletions',
+            'Promotions',
+            'PromotionProducts',
+            'Recovery',
     ]);
-    expect(REQUIRED_SHEETS.Students).toEqual(['studentId', 'name', 'number', 'balance', 'status']);
+    expect(REQUIRED_SHEETS.Students).toEqual(['studentId', 'name', 'balance', 'status']);
     expect(REQUIRED_SHEETS.Transactions).toEqual(['transactionId', 'timestamp', 'studentId', 'studentName', 'items', 'totalAmount', 'balanceBefore', 'balanceAfter', 'status', 'operator']);
     expect(JSON.stringify({ REQUIRED_SHEETS, DEFAULT_SETTINGS })).not.toMatch(/import|csv|NEIS|나이스|자동 불러오기/iu);
   });
@@ -98,7 +101,7 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
       'check-settings-version',
       'check-production-routes',
     ]);
-    expect(renderCliResult({ command: 'doctor', dryRun: true })).toContain('현재 인스턴스 상태 점검');
+    expect(renderCliResult({ command: 'doctor', dryRun: true, args: [] })).toContain('현재 인스턴스 상태 점검');
   });
 
   it('parses Phase 2 create options into a safe instance configuration without exposing secrets', () => {
@@ -152,15 +155,15 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
       ]),
     );
 
-    expect(rendered).toContain('0.4.0-phase3');
+    expect(rendered).toContain('0.4.1');
     expect(rendered).toContain('인스턴스 설정');
     expect(rendered).toContain('className: 4학년 1반');
     expect(rendered).toContain('appTitle: 별빛 매점');
     expect(rendered).toContain('bankTitle: 별빛 은행');
     expect(rendered).toContain('currencyUnit: 별');
     expect(rendered).toContain('themeColor: purple');
-    expect(rendered).toContain('Students: studentId, name, number, balance, status');
-    expect(rendered).toContain('Tasks: taskId, title, description, reward, maxCompletionsPerStudent, isActive, sortOrder');
+    expect(rendered).toContain('Students: studentId, name, balance, status');
+    expect(rendered).toContain('Tasks: taskId, title, description, reward, isActive, sortOrder');
     expect(rendered).toContain('Vercel 환경변수: GOOGLE_SHEET_ID, ADMIN_PASSWORD, AUTH_SECRET');
     expect(rendered).not.toContain('비밀번호');
   });
@@ -210,7 +213,7 @@ describe('학급 보상 시스템 생성기 Phase 1', () => {
       ]),
     );
 
-    expect(rendered).toContain('0.4.0-phase3');
+    expect(rendered).toContain('0.4.1');
     expect(rendered).toContain('읽기 전용 production doctor');
     expect(rendered).toContain('baseUrl: https://class-store-six.vercel.app');
     expect(rendered).toContain('vercelProject: class-store');

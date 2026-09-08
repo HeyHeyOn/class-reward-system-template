@@ -1,5 +1,7 @@
 # Google Sheets 템플릿 만들기
 
+> 아래는 구형 수동 구성 기록입니다. 최신 생성기의 11개 탭/schema 4 계약은 [Google Sheets 템플릿](google-sheets-template.md)의 최신 템플릿 계약과 `src/generator/config/schema.ts`를 확인하세요. 기존 시트를 이 문서로 재생성하지 마세요.
+
 스프레드시트 하나를 만들고 아래 시트를 생성합니다.
 
 ## 1. Students

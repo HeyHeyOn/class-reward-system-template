@@ -41,7 +41,7 @@ export function buildSpreadsheetValueRanges(options: ClassRewardInstanceOptions,
     ...(recovery
       ? [
           {
-            range: 'Recovery!A1:B8',
+            range: `Recovery!A1:B${recoveryRows.length}`,
             values: recoveryRows,
           },
         ]
@@ -60,7 +60,9 @@ export async function createClassRewardSpreadsheet(optionsInput: Partial<ClassRe
   const created = await sheets.spreadsheets.create({
     requestBody: {
       properties: { title },
-      sheets: sheetNames.map((sheetName) => ({ properties: { title: sheetName } })),
+      sheets: Object.entries(REQUIRED_SHEETS).map(([sheetName, columns]) => ({
+        properties: { title: sheetName, gridProperties: { columnCount: Math.max(26, columns.length) } },
+      })),
     },
   });
 
@@ -98,6 +100,7 @@ function withRecoverySettings(settings: Array<{ key: string; value: string }>, r
 
 function buildRecoveryRows(recovery: RecoveryMetadata) {
   return [
+    [...REQUIRED_SHEETS.Recovery],
     ['학급 보상 시스템 복구 코드', ''],
     ['안내', '관리자 비밀번호를 잊었을 때 아래 recoveryCode 값을 입력하세요.'],
     ['주의', '이 탭은 관리자 전용입니다. 학생 또는 외부인에게 공유하지 마세요.'],

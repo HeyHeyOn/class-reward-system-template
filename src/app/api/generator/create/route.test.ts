@@ -45,6 +45,7 @@ describe('POST /api/generator/create deployment env', () => {
 
     expect(response.status).toBe(200);
     expect(envByName.GOOGLE_SHEET_ID.value).toBe('sheet-123');
+    expect(envByName.CLASS_STORE_STORAGE).toEqual({ name: 'CLASS_STORE_STORAGE', value: 'sheets', secret: false });
     expect(envByName.GOOGLE_CLIENT_ID.value).toBe('client-id-123.apps.googleusercontent.com');
     expect(envByName.GOOGLE_CLIENT_SECRET.value).toBe('client-secret-123');
     expect(envByName.GOOGLE_REFRESH_TOKEN.value).toBe('refresh-token-123');
@@ -52,7 +53,14 @@ describe('POST /api/generator/create deployment env', () => {
     expect(envByName.ADMIN_PASSWORD.secret).toBe(true);
     expect(envByName.AUTH_SECRET.value).toMatch(/^[A-Za-z0-9_-]{32,}$/);
     expect(envByName.AUTH_SECRET.secret).toBe(true);
-    expect(data.deploymentGuide.vercelImportUrl).toContain('env=GOOGLE_SHEET_ID%2CGOOGLE_CLIENT_ID%2CGOOGLE_CLIENT_SECRET%2CGOOGLE_REFRESH_TOKEN%2CADMIN_PASSWORD%2CAUTH_SECRET');
+    const cloneUrl = new URL(data.deploymentGuide.vercelImportUrl);
+    expect(cloneUrl.searchParams.get('env')?.split(',')).toEqual(data.requiredVercelEnv.map((env: { name: string }) => env.name));
+    expect(data.nextSteps.join(' ')).toContain(`환경변수 ${data.requiredVercelEnv.length}개`);
+    expect(cloneUrl.searchParams.get('envDescription')).toContain(`${data.requiredVercelEnv.length}개`);
+    for (const env of data.requiredVercelEnv.filter((env: { secret: boolean }) => env.secret)) {
+      expect(decodeURIComponent(cloneUrl.toString())).not.toContain(env.value);
+    }
+    expect(data.deploymentGuide.checklist.join(' ')).toContain('CLASS_STORE_STORAGE=sheets');
     expect(data.deploymentGuide.checklist).toContain('GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN도 함께 입력해야 운영 앱이 시트를 읽고 쓸 수 있습니다.');
   });
 });

@@ -15,7 +15,7 @@ describe('spreadsheet recovery metadata', () => {
       { ownerEmail: 'teacher@example.com', recoveryCode: 'ABCD-1234-EFGH-5678' },
     );
 
-    const recoveryRange = ranges.find((range) => range.range === 'Recovery!A1:B8');
+    const recoveryRange = ranges.find((range) => range.range === 'Recovery!A1:B9');
     expect(recoveryRange?.values.flat()).toEqual(expect.arrayContaining(['recoveryCode', 'ABCD-1234-EFGH-5678', 'teacher@example.com']));
 
     const settingsRange = ranges.find((range) => range.range.startsWith('Settings!A2:B'));

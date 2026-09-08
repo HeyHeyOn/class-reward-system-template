@@ -1,8 +1,9 @@
+import { readFileSync } from 'node:fs';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AdminGeneratorPage } from './AdminGeneratorPage';
 
-function stubGeneratorFetch(options?: { authenticated?: boolean; createResponse?: Record<string, unknown> }) {
+function stubGeneratorFetch(options?: { authenticated?: boolean; envCount?: number; createResponse?: Record<string, unknown> }) {
   const authenticated = options?.authenticated ?? true;
   const fetchSpy = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -31,7 +32,8 @@ function stubGeneratorFetch(options?: { authenticated?: boolean; createResponse?
             { name: 'GOOGLE_REFRESH_TOKEN', value: 'refresh-token-123', secret: true },
             { name: 'ADMIN_PASSWORD', value: 'teacher@example.com', secret: true },
             { name: 'AUTH_SECRET', value: 'random-auth-secret', secret: true },
-          ],
+            { name: 'CLASS_STORE_STORAGE', value: 'sheets', secret: false },
+          ].slice(0, options?.envCount ?? 7),
           nextSteps: ['학생과 상품을 입력합니다.'],
           deploymentGuide: {
             ownership: '선생님 개인 Google 계정 + 선생님 개인 Vercel 프로젝트',
@@ -110,7 +112,29 @@ describe('AdminGeneratorPage', () => {
     expect(screen.getByText(/5단계: Run workflow를 눌러 업데이트 워크플로우를 시작하세요/)).toBeTruthy();
     expect(screen.getByText(/6단계: 실행 완료 후 2~3분 정도 기다리세요/)).toBeTruthy();
     expect(screen.getByText(/기존 Google Sheet와 Vercel 환경변수는 그대로/)).toBeTruthy();
+    const guide = screen.getByRole('heading', { name: '시스템 업데이트하기' }).closest('section')!;
+    expect(guide.textContent).toContain('CLASS_STORE_STORAGE=sheets');
+    expect(guide.textContent).toContain('GOOGLE_SHEET_ID');
+    expect(guide.textContent).toContain('GOOGLE_CLIENT_SECRET');
+    expect(guide.textContent).toContain('GOOGLE_REFRESH_TOKEN');
+    expect(guide.textContent).toContain('ADMIN_PASSWORD');
+    expect(guide.textContent).toContain('AUTH_SECRET');
+    const steps = Array.from(guide.querySelectorAll('ol > li'));
+    expect(steps[0].textContent).toMatch(/기존 Google Sheets.*확인/);
+    expect(steps[0].textContent).toMatch(/없으면.*CLASS_STORE_STORAGE=sheets/);
+    expect(steps[0].textContent).toContain('코드 업데이트');
+    expect(steps[0].textContent).toMatch(/실제 배포 대상 환경.*Production.*선택/);
+    expect(guide.textContent).toContain('새 시스템 생성 버튼을 다시 누르지 않습니다');
+    expect(fetch).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: '처음 선택으로 돌아가기' })).toBeTruthy();
+  });
+
+  it('documents the actual deployment environment before updating existing Sheets apps', () => {
+    const doc = readFileSync('docs/vercel-deploy-guide.md', 'utf8');
+    const preflight = doc.split('## 기존 Sheets 앱을 최신 템플릿으로 업데이트하기 전')[1].split('## 필수 환경변수')[0];
+    expect(preflight).toMatch(/실제 배포 대상 환경.*Production.*선택/);
+    expect(preflight).toContain('CLASS_STORE_STORAGE=sheets');
+    expect(preflight.indexOf('Production')).toBeLessThan(preflight.indexOf('그 뒤 최신 템플릿 코드'));
   });
 
   it('requires acknowledging the detailed notice before the Google login step', async () => {
@@ -159,8 +183,18 @@ describe('AdminGeneratorPage', () => {
     expect(screen.getByText(/Students/)).toBeTruthy();
   });
 
-  it('creates the spreadsheet and renders the final Vercel clone/deploy guide', async () => {
-    const fetchSpy = stubGeneratorFetch({ authenticated: true });
+  it('renders one returned environment value without assuming the standard count', async () => {
+    stubGeneratorFetch({ authenticated: true, envCount: 1 });
+    render(<AdminGeneratorPage />);
+    await goThroughAuthenticatedCreateSteps();
+    fireEvent.click(screen.getByRole('button', { name: '주요 환경변수 만들고 배포 안내 보기' }));
+    expect(await screen.findByText('Vercel에 붙여넣을 값 (1개)')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'GOOGLE_SHEET_ID 복사' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'GOOGLE_CLIENT_SECRET 복사' })).toBeNull();
+  });
+
+  it.each([6, 7])('creates the spreadsheet and renders the final Vercel clone/deploy guide with %i returned env values', async (envCount) => {
+    const fetchSpy = stubGeneratorFetch({ authenticated: true, envCount });
 
     render(<AdminGeneratorPage />);
     await goThroughAuthenticatedCreateSteps();
@@ -181,6 +215,7 @@ describe('AdminGeneratorPage', () => {
     expect(screen.getByText(/보통 2~3분 정도 걸립니다/)).toBeTruthy();
     expect(screen.getByText(/Vercel이 보여주는 접속 주소를 복사합니다/)).toBeTruthy();
     expect(screen.getByText(/초기 비밀번호는 사용한 Google 계정 메일 주소입니다/)).toBeTruthy();
+    expect(screen.getByText(`Vercel에 붙여넣을 값 (${envCount}개)`)).toBeTruthy();
     expect(screen.getByText('GOOGLE_CLIENT_ID')).toBeTruthy();
     expect(screen.getByText('GOOGLE_CLIENT_SECRET (비밀값)')).toBeTruthy();
     expect(screen.getByText('GOOGLE_REFRESH_TOKEN (비밀값)')).toBeTruthy();

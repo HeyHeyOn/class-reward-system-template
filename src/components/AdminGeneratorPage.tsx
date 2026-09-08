@@ -294,13 +294,13 @@ function UpdateGuide({ onBack }: { onBack: () => void }) {
       <p className="text-xs font-black tracking-[0.22em] text-sky-600">UPDATE GUIDE</p>
       <h2 className="mt-1 text-2xl font-black">시스템 업데이트하기</h2>
       <p className="mt-2 text-sm font-bold text-slate-500">
-        기존 시스템 업데이트는 Google 로그인이 필요하지 않습니다. 기존 Google Sheet와 Vercel 환경변수는 그대로 두고, GitHub 저장소의 코드를 최신 템플릿으로 갱신합니다.
+        기존 시스템 업데이트는 Google 로그인이 필요하지 않습니다. 기존 Google Sheet와 Vercel 환경변수는 그대로 보존하되, 아래 저장소 설정 확인을 마친 뒤 GitHub 저장소의 코드를 최신 템플릿으로 갱신합니다.
       </p>
       <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-900">
         <p className="font-black">업데이트 전에 안심해도 되는 점</p>
         <ul className="mt-2 list-disc space-y-1 pl-5">
           <li>학생 명단, 재고, 거래 내역은 Google Sheets에 남아 있습니다.</li>
-          <li>환경변수를 다시 만들 필요는 없습니다. 기존 Vercel 프로젝트의 값을 그대로 사용합니다.</li>
+          <li>기존 GOOGLE_SHEET_ID, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN, ADMIN_PASSWORD, AUTH_SECRET 값은 그대로 보존합니다. 누락된 저장소 선택자만 아래 안내에 따라 추가합니다.</li>
           <li>새 시스템 생성 버튼을 다시 누르지 않습니다. 그러면 새 시트가 생겨 기존 데이터와 분리됩니다.</li>
         </ul>
       </div>
@@ -313,6 +313,9 @@ function UpdateGuide({ onBack }: { onBack: () => void }) {
         GitHub 열기
       </a>
       <ol className="mt-5 space-y-3 text-sm font-bold text-slate-700">
+        <DeploymentStep title="사전 확인: 기존 Google Sheets 저장소 설정">
+          기존 Google Sheets 앱인지 먼저 확인합니다. Vercel 프로젝트의 Settings → Environment Variables에서 실제 배포 대상 환경(운영 앱은 Production)을 선택한 뒤 CLASS_STORE_STORAGE가 없으면 CLASS_STORE_STORAGE=sheets를 추가하고 저장하세요. 기존 값이 다른 저장소를 가리키면 임의로 덮어쓰지 말고 관리자에게 확인하세요. 코드 업데이트 및 재배포 전에 이 확인을 완료합니다. GOOGLE_SHEET_ID는 기존 시트 ID 그대로 유지하며 새 시트를 만들지 않습니다.
+        </DeploymentStep>
         <DeploymentStep title="1단계: GitHub에 로그인하세요.">
           학급 보상 시스템을 만들 때 사용한 GitHub 계정으로 로그인합니다.
         </DeploymentStep>
@@ -546,7 +549,7 @@ function CreateResultPanel({ result, onNext }: { result: GeneratorCreateResult; 
           </div>
 
           <div className="mt-4 rounded-2xl bg-white p-4">
-            <p className="font-black text-slate-950">Vercel에 붙여넣을 값</p>
+            <p className="font-black text-slate-950">Vercel에 붙여넣을 값 ({result.requiredVercelEnv.length}개)</p>
             <p className="mt-1 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-black text-red-700">
               비밀값은 다른 사람에게 공유하지 말고 Vercel 환경변수 칸에만 붙여넣으세요. 화면 캡처를 공유할 때는 GOOGLE_CLIENT_SECRET과 GOOGLE_REFRESH_TOKEN을 가려야 합니다.
             </p>

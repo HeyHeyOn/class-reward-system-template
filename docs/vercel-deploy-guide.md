@@ -10,6 +10,15 @@
 
 서버를 직접 켜둘 필요가 없습니다.
 
+## 기존 Sheets 앱을 최신 템플릿으로 업데이트하기 전
+
+기존 앱이 Google Sheets를 사용하는지 먼저 확인하세요. 코드 업데이트/재배포 **전에**
+Vercel Settings → Environment Variables에서 실제 배포 대상 환경(운영 앱은 Production)을 선택한 뒤 `CLASS_STORE_STORAGE`를 확인하고,
+없으면 `CLASS_STORE_STORAGE=sheets`를 추가해 저장하세요. 다른 저장소 값이 이미 있으면 임의로 덮어쓰지 마세요.
+기존 `GOOGLE_SHEET_ID`, Google 인증값(`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` 또는 서비스 계정 인증값),
+`ADMIN_PASSWORD`, `AUTH_SECRET`은 그대로 보존합니다. 새 시스템 생성 버튼을 다시 누르거나 새 시트를 만들지 않습니다.
+그 뒤 최신 템플릿 코드를 같은 Vercel 프로젝트에 업데이트/재배포하고 기존 데이터가 보이는지 확인하세요.
+
 ## 필수 환경변수
 
 Vercel Project Settings → Environment Variables에 아래 값을 등록합니다.
@@ -20,6 +29,7 @@ Vercel Project Settings → Environment Variables에 아래 값을 등록합니�
 
 ```text
 GOOGLE_SHEET_ID=스프레드시트 ID
+CLASS_STORE_STORAGE=sheets
 GOOGLE_CLIENT_ID=Google OAuth 클라이언트 ID
 GOOGLE_CLIENT_SECRET=Google OAuth 클라이언트 보안 비밀
 GOOGLE_REFRESH_TOKEN=선생님 계정으로 발급받은 refresh token
@@ -47,6 +57,7 @@ Google refresh token의 계정은 해당 스프레드시트에 편집 권한이 
 
 ```text
 GOOGLE_SHEET_ID=스프레드시트 ID
+CLASS_STORE_STORAGE=sheets
 GOOGLE_SERVICE_ACCOUNT_EMAIL=서비스계정 이메일
 GOOGLE_PRIVATE_KEY=서비스계정 private key
 ADMIN_PASSWORD=관리자 페이지 비밀번호
