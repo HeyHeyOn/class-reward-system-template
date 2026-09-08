@@ -18,9 +18,23 @@ vi.mock('@/server/googleOAuth', () => ({
   })),
 }));
 
+vi.mock('server-only', () => ({}));
+
+import { parseStorageSelection } from '@/server/repositories/context';
 import { POST } from './route';
 
 describe('POST /api/generator/create deployment env', () => {
+  it('emits configuration accepted by the real strict storage selector', async () => {
+    const response = await POST(new Request('https://generator.example/api/generator/create', {
+      method: 'POST', body: JSON.stringify({ selfServiceAcknowledged: true }),
+    }));
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    const env = Object.fromEntries(data.requiredVercelEnv.map((item: { name: string; value: string }) => [item.name, item.value]));
+    expect(env.GOOGLE_SHEET_ID).toBe('sheet-123');
+    expect(parseStorageSelection(env)).toEqual({ storage: 'sheets', legacy: true });
+  });
+
   beforeEach(() => {
     process.env.GOOGLE_CLIENT_ID = 'client-id-123.apps.googleusercontent.com';
     process.env.GOOGLE_CLIENT_SECRET = 'client-secret-123';
@@ -52,7 +66,14 @@ describe('POST /api/generator/create deployment env', () => {
     expect(envByName.ADMIN_PASSWORD.secret).toBe(true);
     expect(envByName.AUTH_SECRET.value).toMatch(/^[A-Za-z0-9_-]{32,}$/);
     expect(envByName.AUTH_SECRET.secret).toBe(true);
-    expect(data.deploymentGuide.vercelImportUrl).toContain('env=GOOGLE_SHEET_ID%2CGOOGLE_CLIENT_ID%2CGOOGLE_CLIENT_SECRET%2CGOOGLE_REFRESH_TOKEN%2CADMIN_PASSWORD%2CAUTH_SECRET');
+    expect(envByName.CLASS_STORE_STORAGE).toEqual({ name: 'CLASS_STORE_STORAGE', value: 'sheets', secret: false });
+    expect(data.requiredVercelEnv).toHaveLength(7);
+    const importUrl = new URL(data.deploymentGuide.vercelImportUrl);
+    expect(importUrl.searchParams.get('env')?.split(',')).toEqual(data.requiredVercelEnv.map((item: { name: string }) => item.name));
+    expect(importUrl.searchParams.get('env')?.split(',')).toContain('CLASS_STORE_STORAGE');
+    expect(importUrl.searchParams.get('envDescription')).toContain('7개');
+    expect(data.nextSteps).toContain('운영 Vercel 프로젝트에 아래 환경변수 7개를 모두 입력합니다.');
+    expect(data.deploymentGuide.checklist).toContain('CLASS_STORE_STORAGE에 sheets 값을 입력합니다.');
     expect(data.deploymentGuide.checklist).toContain('GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN도 함께 입력해야 운영 앱이 시트를 읽고 쓸 수 있습니다.');
   });
 });

@@ -25,6 +25,7 @@ function stubGeneratorFetch(options?: { authenticated?: boolean; createResponse?
           initializedSheets: ['Students', 'Products'],
           authMode: 'google-login',
           requiredVercelEnv: [
+            { name: 'CLASS_STORE_STORAGE', value: 'sheets', secret: false },
             { name: 'GOOGLE_SHEET_ID', value: 'sheet-123', secret: false },
             { name: 'GOOGLE_CLIENT_ID', value: 'client-id-123.apps.googleusercontent.com', secret: false },
             { name: 'GOOGLE_CLIENT_SECRET', value: 'client-secret-123', secret: true },
@@ -181,6 +182,14 @@ describe('AdminGeneratorPage', () => {
     expect(screen.getByText(/보통 2~3분 정도 걸립니다/)).toBeTruthy();
     expect(screen.getByText(/Vercel이 보여주는 접속 주소를 복사합니다/)).toBeTruthy();
     expect(screen.getByText(/초기 비밀번호는 사용한 Google 계정 메일 주소입니다/)).toBeTruthy();
+    expect(screen.getByText('Vercel에 붙여넣을 값 (7개)')).toBeTruthy();
+    expect(screen.getByText('CLASS_STORE_STORAGE')).toBeTruthy();
+    expect(screen.getByText('sheets')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'CLASS_STORE_STORAGE 값 보기' })).toBeNull();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    fireEvent.click(screen.getByRole('button', { name: 'CLASS_STORE_STORAGE 복사' }));
+    expect(writeText).toHaveBeenCalledWith('sheets');
     expect(screen.getByText('GOOGLE_CLIENT_ID')).toBeTruthy();
     expect(screen.getByText('GOOGLE_CLIENT_SECRET (비밀값)')).toBeTruthy();
     expect(screen.getByText('GOOGLE_REFRESH_TOKEN (비밀값)')).toBeTruthy();

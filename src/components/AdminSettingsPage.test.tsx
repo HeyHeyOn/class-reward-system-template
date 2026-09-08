@@ -15,6 +15,25 @@ describe('AdminSettingsPage Seoul-only policy', () => {
   });
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
+  it.each([
+    [503, { error: '설정을 일시적으로 불러오지 못했습니다.', code: 'SETTINGS_UNAVAILABLE' }],
+    [503, {}],
+    [200, { error: '설정을 일시적으로 불러오지 못했습니다.' }],
+  ])('shows a load error without overwriting entered values for status %s and %j', async (status, body) => {
+    let finish!: (value: Response) => void;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((resolve) => { finish = resolve; })));
+    render(<AdminSettingsPage />);
+    fireEvent.change(screen.getByLabelText('Google Sheets 주소 또는 시트 ID'), { target: { value: 'sheet-123' } });
+    fireEvent.change(screen.getByLabelText('학급 화폐 단위'), { target: { value: '별' } });
+    fireEvent.change(screen.getByLabelText('매점 제목'), { target: { value: '우리 매점' } });
+    finish(response(body, status));
+
+    expect(await screen.findByText('현재 설정을 불러오지 못했습니다.')).toBeTruthy();
+    expect(screen.getByLabelText('Google Sheets 주소 또는 시트 ID')).toHaveProperty('value', 'sheet-123');
+    expect(screen.getByLabelText('학급 화폐 단위')).toHaveProperty('value', '별');
+    expect(screen.getByLabelText('매점 제목')).toHaveProperty('value', '우리 매점');
+  });
+
   it('does not expose a configurable classroom timezone or PATCH path', async () => {
     render(<AdminSettingsPage />);
     await screen.findByDisplayValue('sheet');

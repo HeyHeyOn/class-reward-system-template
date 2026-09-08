@@ -16,6 +16,8 @@ Vercel Project Settings → Environment Variables에 아래 값을 등록합니�
 
 ### OAuth refresh token 방식 권장
 
+웹 생성기가 제공하는 환경변수 7개를 모두 등록합니다. `CLASS_STORE_STORAGE`는 비밀값이 아니며, 값은 정확히 `sheets`여야 합니다. 기존 생성기로 배포한 앱에 이 값이 빠져 있다면 Vercel에 추가한 뒤 재배포하세요. 관리자 화면에 시트 ID를 다시 붙여넣는 것으로 저장소 선택 환경변수를 대신할 수는 없습니다.
+
 서비스 계정을 만들지 않고, 최초 1회 승인받은 선생님 Google 계정 권한으로 Sheets를 수정하려면 아래 값을 사용합니다. 이 방식에서는 학생 키오스크와 암호 관리자 화면 모두 Google 로그인 없이 동작하고, Vercel 서버가 `GOOGLE_REFRESH_TOKEN`으로 Sheets API에 접근합니다.
 
 ```text

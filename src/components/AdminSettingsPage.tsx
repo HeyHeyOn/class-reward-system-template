@@ -40,7 +40,10 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
 
     async function loadSettings() {
       const response = await fetch('/api/settings', { cache: 'no-store' });
-      const settings = (await response.json()) as SettingsResponse;
+      const settings = (await response.json()) as SettingsResponse | { error: string };
+      if (!response.ok || 'error' in settings) {
+        throw new Error('현재 설정을 불러오지 못했습니다.');
+      }
 
       if (!ignore) {
         setCurrentSettings(settings);

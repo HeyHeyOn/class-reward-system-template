@@ -546,7 +546,7 @@ function CreateResultPanel({ result, onNext }: { result: GeneratorCreateResult; 
           </div>
 
           <div className="mt-4 rounded-2xl bg-white p-4">
-            <p className="font-black text-slate-950">Vercel에 붙여넣을 값</p>
+            <p className="font-black text-slate-950">Vercel에 붙여넣을 값 ({result.requiredVercelEnv.length}개)</p>
             <p className="mt-1 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-black text-red-700">
               비밀값은 다른 사람에게 공유하지 말고 Vercel 환경변수 칸에만 붙여넣으세요. 화면 캡처를 공유할 때는 GOOGLE_CLIENT_SECRET과 GOOGLE_REFRESH_TOKEN을 가려야 합니다.
             </p>
