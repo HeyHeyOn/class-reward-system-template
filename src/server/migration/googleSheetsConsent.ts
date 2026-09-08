@@ -1,5 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { types as nodeUtilTypes } from 'node:util';
+import { Readable } from 'node:stream';
+import type { GaxiosOptions } from 'gaxios';
 import { google } from 'googleapis';
 import type { Credentials } from 'google-auth-library';
 import type { NextResponse } from 'next/server';
@@ -13,6 +15,122 @@ export const MIGRATION_GOOGLE_SCOPES = [
   // Drive owner (or explicitly supported Shared Drive control) role before binding.
   'https://www.googleapis.com/auth/drive.file',
 ] as const;
+
+// Identity scopes are isolated to fresh action-bound consent; preflight keeps its
+// historical readonly Sheets + selected-file scope contract.
+export const FREEZING_GOOGLE_SCOPES = [...MIGRATION_GOOGLE_SCOPES, 'openid', 'email'] as const;
+export const MIGRATION_CALLBACK_PATH = '/api/migrations/google-sheets/callback';
+
+export function createFreezingConsentUrl(origin: string, state: string, nonce: string, env: GoogleAuthEnv = process.env): string {
+  return createMigrationOAuthClient(origin, env).generateAuthUrl({
+    access_type: 'online', prompt: 'consent', include_granted_scopes: false,
+    scope: [...FREEZING_GOOGLE_SCOPES], state, nonce,
+  });
+}
+
+export type FreezingOAuthDependencies = Readonly<{
+  env?: GoogleAuthEnv;
+  // Internal server/test transport seam, never populated from a Request.
+  createClient?: (origin: string, env: GoogleAuthEnv) => InstanceType<typeof google.auth.OAuth2>;
+}>;
+
+/** A directly exchanged access token must be paired with the verified ID token.
+ * Own cleanup immediately after exchange, including identity/transport failures.
+ * No provider errors (which can carry token request config) escape this boundary.
+ */
+export async function withVerifiedFreezingAuthorization<T>(
+  origin: string, code: string,
+  expected: Readonly<{subject: string; email: string; nonce: string}>,
+  capture: (authorization: EphemeralMigrationAuthorization) => Promise<T>,
+  dependencies: FreezingOAuthDependencies = {},
+): Promise<T> {
+  const binding = {...expected};
+  const env = {...(dependencies.env ?? process.env)};
+  let client: InstanceType<typeof google.auth.OAuth2> | undefined;
+  let revocationToken: string | undefined;
+  try {
+    // Validate the configured isolated client/origin even when a local transport is used.
+    client = createMigrationOAuthClient(origin, env);
+    if (dependencies.createClient) client = dependencies.createClient(origin, env);
+    // The SDK otherwise enables retries for code exchange. An uncertain exchange
+    // must require a new ceremony, never an automatic second exchange.
+    const transport = client.transporter.request.bind(client.transporter);
+    client.transporter.request = (async (options:GaxiosOptions={}) => {
+      const bounded = {...options,retry:false,retryConfig:{retry:0,noResponseRetries:0},maxRedirects:0,timeout:10_000,validateStatus:()=>true};
+      // Workbook responses are bounded by the reader. All SDK JSON endpoints
+      // must be streamed here: Gaxios otherwise buffers JSON and error bodies.
+      if(options.responseType==='stream')return transport(bounded);
+      const controller=new AbortController();let stream:Readable|undefined;
+      let timer:ReturnType<typeof setTimeout>|undefined;
+      try {
+        const timeout=new Promise<never>((_,reject)=>{timer=setTimeout(()=>{controller.abort();stream?.destroy();reject(Error());},10_000);});
+        const read=async()=>{
+          const response=await transport({...bounded,responseType:'stream',signal:controller.signal});
+          if(!(response.data instanceof Readable))throw Error();
+          stream=response.data;
+          if(controller.signal.aborted){stream.destroy();throw Error();}
+          if(response.status!==200)throw Error();
+          // node-fetch decodes these codings but retains the wire Content-Length.
+          // Keep a conservative declared wire cap and independently cap decoded bytes.
+          const encoding=response.headers.get('content-encoding') ?? 'identity';
+          if(!['identity','gzip','deflate','br'].includes(encoding))throw Error();
+          const length=response.headers.get('content-length');
+          if(length!==null && (!/^(0|[1-9][0-9]*)$/.test(length)||BigInt(length)>BigInt(128_000)))throw Error();
+          let bytes=0;const chunks:Buffer[]=[];
+          for await(const chunk of stream){
+            if(!(typeof chunk==='string'||chunk instanceof Uint8Array))throw Error();
+            const buffer=Buffer.from(chunk);bytes+=buffer.byteLength;if(bytes>128_000)throw Error();chunks.push(buffer);
+          }
+          if(encoding==='identity'&&length!==null&&BigInt(length)!==BigInt(bytes))throw Error();
+          // Revocation may legitimately return an empty successful body.
+          response.data=bytes?JSON.parse(Buffer.concat(chunks).toString('utf8')):{};
+          return response;
+        };
+        return await Promise.race([read(),timeout]);
+      } finally {if(timer)clearTimeout(timer);controller.abort();stream?.destroy();}
+    }) as typeof client.transporter.request;
+    client.eagerRefreshThresholdMillis = 0;
+    const {tokens} = await client.getToken(code);
+    revocationToken = tokens.refresh_token?.trim() || tokens.access_token?.trim() || undefined;
+    // Never make an unexpected refresh grant available to the acquisition client.
+    client.setCredentials({access_token:tokens.access_token,expiry_date:tokens.expiry_date});
+    if (!tokens.access_token || !tokens.id_token || !tokens.expiry_date || tokens.expiry_date <= Date.now()) throw Error();
+    const ticket = await client.verifyIdToken({idToken:tokens.id_token,audience:env.MIGRATION_GOOGLE_CLIENT_ID!.trim()});
+    const claims = ticket.getPayload() as (ReturnType<typeof ticket.getPayload> & {nonce?:string;at_hash?:string;azp?:string});
+    const clientId = env.MIGRATION_GOOGLE_CLIENT_ID!.trim();
+    if (!claims || !['accounts.google.com','https://accounts.google.com'].includes(claims.iss)
+      || claims.aud !== clientId || (claims.azp !== undefined && claims.azp !== clientId)
+      || claims.sub !== binding.subject || canonicalEmail(claims.email) !== canonicalEmail(binding.email) || claims.email_verified !== true
+      || claims.nonce !== binding.nonce || !Number.isSafeInteger(claims.exp) || claims.exp * 1000 <= Date.now()
+      || !Number.isSafeInteger(claims.iat) || claims.iat * 1000 > Date.now()
+      || claims.at_hash !== createHash('sha256').update(tokens.access_token).digest().subarray(0,16).toString('base64url')) throw Error();
+    const info = await client.getTokenInfo(tokens.access_token);
+    const scopes = new Set(info.scopes);
+    if (info.aud !== clientId || info.sub !== binding.subject || (info.azp !== undefined && info.azp !== clientId)
+      || !Number.isSafeInteger(info.expiry_date) || info.expiry_date <= Date.now()
+      || !scopes.has('openid') || !(scopes.has('email') || scopes.has('https://www.googleapis.com/auth/userinfo.email'))
+      || MIGRATION_GOOGLE_SCOPES.some(scope => !scopes.has(scope))) throw Error();
+    const expiresAt = Math.min(tokens.expiry_date,info.expiry_date,claims.exp*1000);
+    const result = await capture({auth:client,expiresAt});
+    if (Date.now() >= expiresAt) throw Error();
+    return result;
+  } catch {
+    throw new Error('Freezing OAuth refused.');
+  } finally {
+    try {
+      if (client && revocationToken) await client.revokeToken(revocationToken);
+    } catch {
+      throw new Error('Freezing OAuth refused.');
+    } finally {
+      if (client) client.setCredentials({});
+    }
+  }
+}
+
+function canonicalEmail(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim() || value.length>320 || /[\u0000-\u001f\u007f]/.test(value)) throw Error('Freezing OAuth refused.');
+  return value.trim().toLowerCase();
+}
 
 const COOKIE_VERSION = 'migration-v1';
 const COOKIE_PATH = '/api/migrations/google-sheets';
@@ -65,7 +183,13 @@ type EphemeralOAuthClient = {
     url: string;
     method?: string;
     params?: Readonly<Record<string, unknown>>;
-  }) => PromiseLike<{ data: unknown }>;
+    responseType?: 'stream';
+    timeout?: number;
+    retry?: boolean;
+    maxRedirects?: number;
+    validateStatus?: (status:number)=>boolean;
+    signal?: AbortSignal;
+  }) => PromiseLike<{ data: unknown; status?: number; headers?: {get(name:string):string|null} }>;
 };
 
 export type EphemeralMigrationAuthorization = {
