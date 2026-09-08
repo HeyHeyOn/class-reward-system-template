@@ -103,8 +103,8 @@ export async function openLegacyBridgeManifest<T = unknown>(rawEnvelope: unknown
 
   const now = (options.now ?? Date.now)();
   if (!Number.isSafeInteger(now) || now < 0) throw new Error('Legacy bridge manifest time is invalid.');
-  if (now > envelope.expiresAt) throw new Error('Legacy bridge manifest is expired.');
-  if (now < envelope.issuedAt - 30_000) throw new Error('Legacy bridge manifest is not yet valid.');
+  if (now >= envelope.expiresAt) throw new Error('Legacy bridge manifest is expired.');
+  if (now < envelope.issuedAt) throw new Error('Legacy bridge manifest is not yet valid.');
 
   let payload: unknown;
   try {

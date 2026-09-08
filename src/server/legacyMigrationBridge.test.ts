@@ -76,6 +76,38 @@ describe('deployment-local legacy migration bridge', () => {
     headers: { 'content-type': 'application/json' },
   });
 
+  it('seals a detached final-intake challenge binding and refuses preflight or wrong-source bindings before capture', async () => {
+    stubRedis(); stubWriterControl(); stubWriterDisableTrust();
+    const finalIntakeBinding = {
+      purpose: 'CLASS_STORE_FINAL_BRIDGE_INTAKE' as const,
+      challengeId: '30000000-0000-4000-8000-000000000019',
+      tenantId: '20000000-0000-4000-8000-000000000001',
+      migrationJobId: '40000000-0000-4000-8000-000000000019',
+      expectedStatus: 'READY' as const, expectedStateVersion: '1', sourceId: 'sheet', externalSourceId: 'sheet-1',
+      sourceFingerprint: 'a'.repeat(64), deploymentId: 'legacy-1',
+      actorUserId: '20000000-0000-4000-8000-000000000019', actorSubject: 'owner-subject',
+      issuedAt: NOW - 1, expiresAt: NOW + 60_000,
+    };
+    const expected = structuredClone(finalIntakeBinding);
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      finalIntakeBinding.sourceId = 'mutated-after-await';
+      if (url.includes('legacy-redis-writer')) return jsonResponse(controlState());
+      const command = JSON.parse(String(init?.body));
+      return jsonResponse({ result: command[0] === 'HSCAN' ? ['0', []] : ['0', []] });
+    });
+    vi.stubGlobal('fetch', fetch);
+    for (const input of [
+      { ...baseInput('preflight'), finalIntakeBinding: expected },
+      { ...baseInput('final-delta'), finalIntakeBinding: { ...expected, externalSourceId: 'other-sheet' } },
+    ]) await expect(runLegacyMigrationBridge(input)).rejects.toThrow();
+    expect(fetch).not.toHaveBeenCalled();
+    const result = await runLegacyMigrationBridge({ ...baseInput('final-delta'), finalIntakeBinding });
+    expect(await openLegacyBridgeManifest(result.manifest, {
+      encryptionKey: cryptoOptions.encryptionKey, signingPublicKey: signing.publicKey,
+      nonceConsumer: { consumeOnce: async () => true }, now: () => NOW + 1,
+    })).toMatchObject({ finalIntakeBinding: expected, mode: 'final-delta' });
+  });
+
   it('rejects caller-injected Redis readers, verification keys, and disable callbacks', async () => {
     expectTypeOf<Parameters<typeof runLegacyMigrationBridge>[0]>().not.toHaveProperty('redisReader');
     expectTypeOf<Parameters<typeof runLegacyMigrationBridge>[0]>().not.toHaveProperty('redisNeverConfigured');

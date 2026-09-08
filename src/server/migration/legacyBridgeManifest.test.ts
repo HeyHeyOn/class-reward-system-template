@@ -113,6 +113,17 @@ describe('bounded signed and encrypted one-time legacy bridge manifests', () => 
     }
   });
 
+  it.each([['expiry', NOW + 60_000], ['future', NOW - 1]] as const)('rejects the exact %s boundary before consumption', async (_label, now) => {
+    const envelope = sealLegacyBridgeManifest(payload, {
+      keyId: 'bridge-key-1', encryptionKey, signingPrivateKey: keys.privateKey, now: () => NOW,
+    });
+    const consumeOnce = vi.fn(async () => true);
+    await expect(openLegacyBridgeManifest(envelope, {
+      encryptionKey, signingPublicKey: keys.publicKey, nonceConsumer: { consumeOnce }, now: () => now,
+    })).rejects.toThrow(/expired|not yet valid/);
+    expect(consumeOnce).not.toHaveBeenCalled();
+  });
+
   it('rejects timestamp addition overflow while sealing', () => {
     expect(() => sealLegacyBridgeManifest(payload, {
       keyId: 'bridge-key-1', encryptionKey, signingPrivateKey: keys.privateKey,

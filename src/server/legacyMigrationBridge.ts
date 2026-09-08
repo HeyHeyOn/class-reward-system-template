@@ -12,7 +12,7 @@ const REDIS_SOURCE = 'UPSTASH_REDIS_REST' as const;
 const ATTESTATION_WINDOW_MS = 5 * 60_000;
 const NEVER_CONFIGURED_PURPOSE = Buffer.from('class-store:redis-never-configured-proof:v1\0', 'utf8');
 const WRITER_DISABLED_PURPOSE = Buffer.from('class-store:redis-writer-disabled-evidence:v1\0', 'utf8');
-const PUBLIC_INPUT_KEYS = ['deploymentId', 'mode', 'capturedAt', 'sheets', 'redisNeverConfiguredProof', 'crypto'] as const;
+const PUBLIC_INPUT_KEYS = ['deploymentId', 'mode', 'capturedAt', 'sheets', 'redisNeverConfiguredProof', 'crypto', 'finalIntakeBinding'] as const;
 const WRITER_CONTROL_RESPONSE_BYTES = 8_192;
 const WRITER_CONTROL_TIMEOUT_MS = 5_000;
 const UPSTASH_RESPONSE_BYTES = 1_048_576;
@@ -53,6 +53,37 @@ export type LegacyBridgeResult = Readonly<{
   writerDisableEvidence: RedisWriterDisableEvidence | null;
 }>;
 
+export type FinalBridgeChallenge = Readonly<{
+  purpose: 'CLASS_STORE_FINAL_BRIDGE_INTAKE'; challengeId: string; tenantId: string; migrationJobId: string;
+  expectedStatus: 'READY'; expectedStateVersion: string; sourceId: string; externalSourceId: string;
+  sourceFingerprint: string; deploymentId: string; actorUserId: string; actorSubject: string;
+  issuedAt: number; expiresAt: number;
+}>;
+
+/** Binding data, not permission or proof that any writer is excluded. */
+export function parseFinalBridgeChallenge(value: unknown): FinalBridgeChallenge {
+  const keys = ['purpose', 'challengeId', 'tenantId', 'migrationJobId', 'expectedStatus', 'expectedStateVersion',
+    'sourceId', 'externalSourceId', 'sourceFingerprint', 'deploymentId', 'actorUserId', 'actorSubject', 'issuedAt', 'expiresAt'];
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  if (!isRecord(value) || ![Object.prototype, null].includes(Object.getPrototypeOf(value))
+    || Reflect.ownKeys(value).length !== keys.length || keys.some((key) => {
+      const d = Object.getOwnPropertyDescriptor(value, key);
+      return !d?.enumerable || !('value' in d);
+    })) throw new Error('Final bridge binding invalid.');
+  for (const key of ['challengeId', 'tenantId', 'migrationJobId', 'actorUserId']) {
+    if (typeof value[key] !== 'string' || !uuid.test(value[key])) throw new Error('Final bridge binding invalid.');
+  }
+  for (const key of ['sourceId', 'externalSourceId', 'deploymentId', 'actorSubject']) validateIdentity(value[key], 'binding', key === 'actorSubject' ? 255 : 512);
+  if (value.purpose !== 'CLASS_STORE_FINAL_BRIDGE_INTAKE' || value.expectedStatus !== 'READY'
+    || typeof value.expectedStateVersion !== 'string' || !/^[1-9][0-9]{0,15}$/.test(value.expectedStateVersion)
+    || BigInt(value.expectedStateVersion) > BigInt(Number.MAX_SAFE_INTEGER)
+    || typeof value.sourceFingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(value.sourceFingerprint)
+    || !Number.isSafeInteger(value.issuedAt) || Number(value.issuedAt) < 0
+    || !Number.isSafeInteger(value.expiresAt) || Number(value.expiresAt) <= Number(value.issuedAt)
+    || Number(value.expiresAt) - Number(value.issuedAt) > 300_000) throw new Error('Final bridge binding invalid.');
+  return deepFreeze({ ...value } as FinalBridgeChallenge);
+}
+
 export type LegacyMigrationBridgeInput = Readonly<{
   deploymentId: string;
   mode: LegacyBridgeMode;
@@ -61,6 +92,7 @@ export type LegacyMigrationBridgeInput = Readonly<{
   /** A deployment-bound artifact only; its trust anchor is never accepted from the caller. */
   redisNeverConfiguredProof?: RedisNeverConfiguredProof;
   crypto: Omit<SealManifestOptions, 'now'>;
+  finalIntakeBinding?: FinalBridgeChallenge;
 }>;
 
 export function createRedisNeverConfiguredProof(options: Readonly<{
@@ -162,6 +194,10 @@ export async function runLegacyMigrationBridge(input: LegacyMigrationBridgeInput
   assertPublicBridgeInput(input);
   validateIdentity(input.deploymentId, 'deployment identity');
   const capturedAtMs = assertCanonicalInstant(input.capturedAt, 'capture time');
+  const finalIntakeBinding = input.finalIntakeBinding === undefined ? undefined : parseFinalBridgeChallenge(input.finalIntakeBinding);
+  if (finalIntakeBinding && (input.mode !== 'final-delta' || finalIntakeBinding.deploymentId !== input.deploymentId
+    || finalIntakeBinding.externalSourceId !== input.sheets.spreadsheetId || finalIntakeBinding.issuedAt > capturedAtMs
+    || capturedAtMs >= finalIntakeBinding.expiresAt)) throw new Error('Final bridge binding mismatch.');
 
   // Redis credentials, writer control, and readers are resolved only inside this trust boundary.
   const redisConfigured = deploymentLocalRedisIsConfigured();
@@ -228,6 +264,7 @@ export async function runLegacyMigrationBridge(input: LegacyMigrationBridgeInput
 
   const payload: Readonly<{
     manifestType: 'CLASS_STORE_LEGACY_ACQUISITION';
+    finalIntakeBinding?: FinalBridgeChallenge;
     deploymentId: string;
     mode: LegacyBridgeMode;
     capturedAt: string;
@@ -239,6 +276,7 @@ export async function runLegacyMigrationBridge(input: LegacyMigrationBridgeInput
     writerDisableEvidence: RedisWriterDisableEvidence | null;
   }> = {
     manifestType: 'CLASS_STORE_LEGACY_ACQUISITION',
+    ...(finalIntakeBinding ? { finalIntakeBinding } : {}),
     deploymentId: input.deploymentId,
     mode: input.mode,
     capturedAt: input.capturedAt,
@@ -553,7 +591,7 @@ function verifyNeverConfiguredProof(
   verifyAttestation(value, NEVER_CONFIGURED_PURPOSE, publicKey, 'Redis never-configured proof');
 }
 
-function verifyWriterDisableEvidence(
+export function verifyWriterDisableEvidence(
   value: unknown, publicKey: KeyLike, expectedKeyId: string, deploymentId: string, capturedAtMs: number,
 ): RedisWriterDisableEvidence {
   if (!isRecord(value) || !hasExactKeys(value,
