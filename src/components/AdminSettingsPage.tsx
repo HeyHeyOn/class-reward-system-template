@@ -34,6 +34,8 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
   const [adminPassword, setAdminPassword] = useState('');
   const [savedAdminPassword, setSavedAdminPassword] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   useEffect(() => {
     let ignore = false;
@@ -46,6 +48,7 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
       }
 
       if (!ignore) {
+        setIsLoading(false);
         setCurrentSettings(settings);
         setSpreadsheetIdOrUrl(settings.spreadsheetId ?? '');
         setCurrencyUnit(settings.currencyUnit ?? '원');
@@ -58,16 +61,20 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
     }
 
     loadSettings().catch(() => {
-      if (!ignore) setMessage('현재 설정을 불러오지 못했습니다.');
+      if (!ignore) {
+        setIsLoading(false);
+        setMessage('현재 설정을 불러오지 못했습니다.');
+      }
     });
 
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [loadAttempt]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isLoading || !currentSettings || isSaving) return;
     setIsSaving(true);
     setMessage('');
 
@@ -108,6 +115,7 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
   return (
     <div className="rounded-[2rem] bg-white p-6 shadow-sm ring-1 ring-black/5">
       <form onSubmit={handleSubmit}>
+      <fieldset disabled={isLoading || !currentSettings}>
       <label className="block">
         <span className="text-sm font-bold text-slate-700">Google Sheets 주소 또는 시트 ID</span>
         <input
@@ -211,6 +219,8 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
         <p className="mt-2 text-xs font-bold text-slate-500">암호는 해시로 Settings 시트에 저장됩니다. QR은 저장 직후 이 화면에서만 표시됩니다.</p>
       </label>
 
+      </fieldset>
+
       {savedAdminPassword ? (
         <div className="mt-4 rounded-2xl bg-sky-50 p-4 text-center">
           <p className="text-sm font-black text-sky-900">관리자 QR 로그인 코드</p>
@@ -241,10 +251,24 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
       </div>
 
       {message ? <p className="mt-4 font-bold text-amber-700">{message}</p> : null}
+      {isLoading ? <p role="status" className="mt-4 font-bold text-slate-600">현재 설정을 불러오는 중입니다.</p> : null}
+      {!isLoading && !currentSettings ? (
+        <button
+          type="button"
+          onClick={() => {
+            setIsLoading(true);
+            setMessage('');
+            setLoadAttempt((attempt) => attempt + 1);
+          }}
+          className="mt-4 rounded-2xl bg-slate-100 px-4 py-3 font-bold text-slate-900"
+        >
+          설정 다시 불러오기
+        </button>
+      ) : null}
 
       <button
         type="submit"
-        disabled={isSaving}
+        disabled={isLoading || !currentSettings || isSaving}
         className="mt-6 w-full rounded-2xl bg-slate-950 py-4 text-xl font-black text-white shadow-lg transition hover:bg-slate-800 disabled:cursor-wait disabled:bg-slate-400"
       >
         {isSaving ? '저장 중...' : '시스템 설정 저장'}

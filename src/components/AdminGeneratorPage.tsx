@@ -294,13 +294,14 @@ function UpdateGuide({ onBack }: { onBack: () => void }) {
       <p className="text-xs font-black tracking-[0.22em] text-sky-600">UPDATE GUIDE</p>
       <h2 className="mt-1 text-2xl font-black">시스템 업데이트하기</h2>
       <p className="mt-2 text-sm font-bold text-slate-500">
-        기존 시스템 업데이트는 Google 로그인이 필요하지 않습니다. 기존 Google Sheet와 Vercel 환경변수는 그대로 두고, GitHub 저장소의 코드를 최신 템플릿으로 갱신합니다.
+        기존 시스템 업데이트는 Google 로그인이 필요하지 않습니다. 아래 저장소 환경변수 확인을 먼저 마친 뒤, GitHub 저장소의 코드를 최신 템플릿으로 갱신합니다.
       </p>
       <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-900">
-        <p className="font-black">업데이트 전에 안심해도 되는 점</p>
+        <p className="font-black">업데이트 전에 반드시 확인할 점</p>
         <ul className="mt-2 list-disc space-y-1 pl-5">
           <li>학생 명단, 재고, 거래 내역은 Google Sheets에 남아 있습니다.</li>
-          <li>환경변수를 다시 만들 필요는 없습니다. 기존 Vercel 프로젝트의 값을 그대로 사용합니다.</li>
+          <li>기존 GOOGLE_SHEET_ID와 비밀값은 유지합니다. Google 인증정보, AUTH_SECRET, ADMIN_PASSWORD를 새로 발급하거나 다른 값으로 교체하지 마세요.</li>
+          <li>기존 Google Sheets 앱은 업데이트 및 재배포 전에 Vercel Project Settings → Environment Variables에서 CLASS_STORE_STORAGE를 확인하세요. CLASS_STORE_STORAGE가 없으면 sheets로 추가하고, 이미 있다면 값이 정확히 sheets인지 확인하세요. 실제 배포 대상 환경(Production 등)에 적용되어야 합니다.</li>
           <li>새 시스템 생성 버튼을 다시 누르지 않습니다. 그러면 새 시트가 생겨 기존 데이터와 분리됩니다.</li>
         </ul>
       </div>

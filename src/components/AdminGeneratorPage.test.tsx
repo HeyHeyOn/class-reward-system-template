@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AdminGeneratorPage } from './AdminGeneratorPage';
@@ -77,6 +78,18 @@ describe('AdminGeneratorPage', () => {
     vi.unstubAllGlobals();
   });
 
+  it('documents the legacy Sheets update preflight without replacing existing credentials or sheets', () => {
+    const guide = readFileSync('docs/vercel-deploy-guide.md', 'utf8');
+    const update = guide.split('## 기존 Sheets 앱 업데이트')[1]?.split('\n## ')[0];
+    expect(update).toBeDefined();
+    expect(update).toContain('기존 `GOOGLE_SHEET_ID`와 비밀값은 유지');
+    expect(update).toContain('업데이트 및 재배포 전에');
+    expect(update).toContain('Environment Variables');
+    expect(update).toContain('`CLASS_STORE_STORAGE`가 없으면');
+    expect(update).toContain('`sheets`');
+    expect(update).toContain('새 시트를 만들지 않습니다');
+  });
+
   it('starts with the system explanation and create-or-update choice before Google login', async () => {
     stubGeneratorFetch({ authenticated: false });
 
@@ -110,7 +123,16 @@ describe('AdminGeneratorPage', () => {
     expect(screen.getByText(/4단계: Update from template 워크플로우를 선택하세요/)).toBeTruthy();
     expect(screen.getByText(/5단계: Run workflow를 눌러 업데이트 워크플로우를 시작하세요/)).toBeTruthy();
     expect(screen.getByText(/6단계: 실행 완료 후 2~3분 정도 기다리세요/)).toBeTruthy();
-    expect(screen.getByText(/기존 Google Sheet와 Vercel 환경변수는 그대로/)).toBeTruthy();
+    expect(screen.queryByText(/기존 Google Sheet와 Vercel 환경변수는 그대로/)).toBeNull();
+    expect(screen.queryByText(/기존 Vercel 프로젝트의 값을 그대로 사용합니다/)).toBeNull();
+    expect(screen.getByText(/기존 GOOGLE_SHEET_ID와 비밀값은 유지/)).toBeTruthy();
+    const storageCheck = screen.getByText(/CLASS_STORE_STORAGE가 없으면/);
+    expect(storageCheck.textContent).toContain('sheets');
+    expect(storageCheck.textContent).toContain('업데이트 및 재배포 전에');
+    expect(storageCheck.textContent).toContain('Environment Variables');
+    expect(storageCheck.compareDocumentPosition(screen.getByText(/1단계: GitHub에 로그인하세요/)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText(/새 시스템 생성 버튼을 다시 누르지 않습니다/)).toBeTruthy();
+    expect(fetch).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: '처음 선택으로 돌아가기' })).toBeTruthy();
   });
 

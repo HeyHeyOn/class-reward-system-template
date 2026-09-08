@@ -100,6 +100,17 @@ ADMIN_PASSWORD=관리자 페이지 비밀번호
 /admin/transactions
 ```
 
+## 기존 Sheets 앱 업데이트
+
+기존 Google Sheets 기반 앱은 새 시스템 생성 없이 기존 Vercel 프로젝트와 GitHub 저장소를 업데이트합니다. 다음 확인은 업데이트 및 재배포 전에 완료하세요.
+
+1. 기존 `GOOGLE_SHEET_ID`와 비밀값은 유지합니다. Google 인증정보(`GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` 또는 서비스 계정 키), `AUTH_SECRET`, `ADMIN_PASSWORD`를 새로 발급하거나 교체하지 마세요. 새 시트를 만들지 않습니다.
+2. Vercel Project Settings → Environment Variables에서 실제 배포 대상 환경(Production 등)의 `CLASS_STORE_STORAGE`를 확인합니다. `CLASS_STORE_STORAGE`가 없으면 값이 정확히 `sheets`인 환경변수를 추가합니다. 이미 있다면 `sheets`인지 확인합니다. 이 안내는 기존 Sheets 앱용이며 다른 저장소를 사용하는 앱의 값을 바꾸라는 뜻이 아닙니다.
+3. 확인과 저장을 마친 뒤 GitHub Actions의 `Update from template` → `Run workflow`를 실행합니다. 업데이트된 코드로 Vercel 배포가 완료되었는지 확인하고, 자동 배포가 없다면 재배포합니다. 환경변수 변경은 새 배포에 적용됩니다.
+4. 기존 앱의 관리자 설정과 학생·상품 목록이 기존 시트에서 정상적으로 불러와지는지 확인합니다. 설정 읽기에 실패하면 기본값을 저장하거나 새 시스템을 생성하지 말고 환경변수와 배포 로그를 확인하세요.
+
+기존 환경변수를 모두 그대로 두는 것만으로는 충분하지 않습니다. 누락된 저장소 선택을 먼저 보완해야 하며, 관리자 화면에 시트 ID를 다시 입력하는 것으로 대신할 수 없습니다.
+
 ## 운영상 중요 변경점
 
 Vercel에서는 로컬 파일 저장이 영구 보장되지 않습니다. 따라서 앱 설정은 `data/settings.json`이 아니라 Google Sheets의 `Settings` 시트를 사용합니다.
