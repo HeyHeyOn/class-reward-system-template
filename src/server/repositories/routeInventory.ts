@@ -18,6 +18,9 @@ const platform = (
 ): TenantRouteInventoryEntry => ({ route, method, scope: 'platform', effect });
 
 export const TENANT_ROUTE_INVENTORY: readonly TenantRouteInventoryEntry[] = [
+  tenantMutation('/migrations/[jobId]/freezing/consent/challenge', 'POST'),
+  tenantMutation('/migrations/[jobId]/freezing/consent', 'POST'),
+  platform('/migrations/google-sheets/callback', 'GET', 'mutation'),
   tenantMutation('/admin/login', 'POST'),
   platform('/admin/logout', 'POST', 'mutation'),
   tenantRead('/bank/balance'),

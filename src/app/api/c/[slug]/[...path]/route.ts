@@ -12,6 +12,10 @@ function route(method: Method, pattern: string, access: TenantApiAccessResolver,
 }
 
 const ROUTES: readonly TenantApiRoute[] = [
+  // These handlers independently require real Google identity + current DB membership;
+  // the generic admin compatibility fallback is deliberately not their authority.
+  route('POST', 'migrations/[jobId]/freezing/consent/challenge', 'public', async (r, c) => (await import('@/app/api/migrations/[jobId]/freezing/consent/challenge/route')).POST(r, c as never)),
+  route('POST', 'migrations/[jobId]/freezing/consent', 'public', async (r, c) => (await import('@/app/api/migrations/[jobId]/freezing/consent/route')).POST(r, c as never)),
   route('POST', 'admin/login', 'public', async (r) => (await import('@/app/api/admin/login/route')).POST(r)),
   route('GET', 'bank/balance', 'public', async (r) => (await import('@/app/api/bank/balance/route')).GET(r)),
   route('GET', 'bank/student', 'public', async (r) => (await import('@/app/api/bank/student/route')).GET(r)),
@@ -63,7 +67,40 @@ type RouteContext = { params: Promise<{ slug: string; path: string[] }> };
 
 async function handle(request: Request, context: RouteContext) {
   const { slug, path } = await context.params;
-  return dispatch(request, { slug, path });
+  const consent = path[0] === 'migrations' && path[2] === 'freezing' && path[3] === 'consent'
+    && (path.length === 4 || (path.length === 5 && path[4] === 'challenge'));
+  if (!consent) return dispatch(request, { slug, path });
+  // Directory/method failures occur before the target handler; they must not
+  // expose tenant existence or cache the challenge/CSRF endpoint's refusals.
+  try {
+    // Bound these exact consent POSTs before the legacy dispatcher materializes
+    // their bodies (and before directory/service SQL). Content-Length is untrusted.
+    const bounded = request.method === 'POST' ? await boundedConsentRequest(request) : request;
+    const response = await dispatch(bounded, { slug, path });
+    if (response.ok) return response;
+  } catch { /* Generic, credential-free refusal without logging request URLs. */ }
+  return Response.json({ error: 'Freezing consent refused.' }, { status: 403,
+    headers: { 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' } });
+}
+
+async function boundedConsentRequest(request: Request): Promise<Request> {
+  const reader = request.body?.getReader();
+  if (!reader) throw Error('Freezing consent refused.');
+  const bytes = new Uint8Array(4096);
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value.byteLength > bytes.byteLength - size) throw Error('Freezing consent refused.');
+      bytes.set(value, size);
+      size += value.byteLength;
+    }
+    return new Request(request, { body: bytes.slice(0, size) });
+  } finally {
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
 }
 
 export const GET = handle;

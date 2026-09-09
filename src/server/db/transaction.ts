@@ -122,6 +122,7 @@ export function createTenantTransactionRunner(
       let began = false;
       let operationFailed = false;
       let committed = false;
+      let commitAttempted = false;
       let discardConnection = false;
       try {
         await connection.query(isolationLevel === 'READ COMMITTED'
@@ -133,12 +134,16 @@ export function createTenantTransactionRunner(
           [tenantId],
         );
         const result = await callback(createDatabase(connection));
+        commitAttempted = true;
         await connection.query('COMMIT');
         began = false;
         committed = true;
         return result;
       } catch (error) {
         operationFailed = true;
+        // A rollback ACK cannot establish the state of a lost COMMIT response.
+        // Never return that potentially contaminated connection to the pool.
+        if (commitAttempted) discardConnection = true;
         if (began) {
           try {
             await connection.query('ROLLBACK');

@@ -268,5 +268,20 @@
     "method": "PATCH",
     "route": "/settings",
     "effect": "unsupported"
+  },
+  {
+    "method": "POST",
+    "route": "/migrations/[jobId]/freezing/consent/challenge",
+    "effect": "tenant-consent-challenge"
+  },
+  {
+    "method": "POST",
+    "route": "/migrations/[jobId]/freezing/consent",
+    "effect": "tenant-consent-confirmation"
+  },
+  {
+    "method": "GET",
+    "route": "/migrations/google-sheets/callback",
+    "effect": "tenant-consent-oauth-capture"
   }
 ]

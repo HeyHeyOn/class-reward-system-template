@@ -47,8 +47,8 @@ type Dependencies = Readonly<{
  * tenantId MUST come from the canonical dispatcher/directory, never request data.
  * issueChallenge is identity-only display/CSRF issuance, not approval. Its token
  * must be delivered only by a same-origin no-store endpoint. begin verifies the
- * actual synchronizer POST. Callback routing/purpose-cookie integration remains
- * a separate handler task; the service independently binds exact login + state.
+ * actual synchronizer POST. freezingConsentHandlers rebinds the encrypted routing
+ * hint through the canonical directory; this service binds exact login + state.
  * The runner must resolve ONLY after acknowledged COMMIT and discard uncertain
  * connections. No OAuth/capture call occurs inside any transaction callback.
  */
@@ -170,8 +170,9 @@ export function createFreezingConsentIntake(dependencies: Dependencies) {
         const request = detachRequest(rawRequest);
         const url = new URL(request.url);
         if (request.method !== 'GET' || `${url.origin}${url.pathname}` !== callback || url.hash
-          || [...url.searchParams.keys()].sort().join(',') !== 'code,state') refused();
-        const code = url.searchParams.get('code'); text(code, 4096);
+          || !['code,state', 'error,state'].includes([...url.searchParams.keys()].sort().join(','))) refused();
+        const denied = url.searchParams.has('error');
+        const code = url.searchParams.get(denied ? 'error' : 'code'); text(code, 4096);
         const state = url.searchParams.get('state'); text(state, 101);
         if (!/^[0-9a-f-]{36}\.[0-9a-f]{64}$/.test(state)) refused();
         const id = uuid(state.slice(0, 36));
@@ -191,6 +192,8 @@ export function createFreezingConsentIntake(dependencies: Dependencies) {
           fresh(binding, session, request, await databaseNow(tx));
           return binding;
         });
+        // A provider denial burns the same durable attempt without exchanging a code.
+        if (denied) refused();
         const sheets = await withVerifiedFreezingAuthorization(origin, code,
           { subject: session.subject, email: session.email, nonce: b.nonce }, authorization =>
             captureSheetsSnapshot({ spreadsheetId: b.spreadsheetId, capturedAt: new Date().toISOString(),

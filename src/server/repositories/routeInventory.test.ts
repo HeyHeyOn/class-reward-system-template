@@ -65,17 +65,17 @@ describe('tenant route inventory', () => {
       .map(({ route, method }) => ({ route, method }))
       .sort(compareRouteMethod);
     expect(inventory).toEqual(discovered);
-    expect(new Set(inventory.map(({ route, method }) => `${method} ${route}`)).size).toBe(54);
+    expect(new Set(inventory.map(({ route, method }) => `${method} ${route}`)).size).toBe(57);
   });
 
   it('preserves the reviewed Task 10 authority boundary counts', () => {
-    expect(TENANT_ROUTE_INVENTORY).toHaveLength(54);
+    expect(TENANT_ROUTE_INVENTORY).toHaveLength(57);
     expect(TENANT_ROUTE_INVENTORY.filter((entry) => entry.scope === 'tenant-data' && entry.effect === 'read')).toHaveLength(16);
-    expect(TENANT_ROUTE_INVENTORY.filter((entry) => entry.scope === 'tenant-data' && entry.effect === 'mutation')).toHaveLength(28);
+    expect(TENANT_ROUTE_INVENTORY.filter((entry) => entry.scope === 'tenant-data' && entry.effect === 'mutation')).toHaveLength(30);
     expect(TENANT_ROUTE_INVENTORY.filter((entry) => entry.scope === 'unsupported')).toEqual([
       { route: '/qrcode', method: 'GET', scope: 'unsupported', effect: 'none' },
       { route: '/settings', method: 'PATCH', scope: 'unsupported', effect: 'none' },
     ]);
-    expect(TENANT_ROUTE_INVENTORY.filter((entry) => entry.scope === 'platform')).toHaveLength(8);
+    expect(TENANT_ROUTE_INVENTORY.filter((entry) => entry.scope === 'platform')).toHaveLength(9);
   });
 });
