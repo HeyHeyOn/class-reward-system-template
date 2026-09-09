@@ -8,7 +8,7 @@ import { sealLegacyBridgeManifest } from './legacyBridgeManifest';
 import { makeSheets, makeRedis, finalizeSheetsSnapshot, finalizeRedisSnapshot } from './__fixtures__/normalization';
 import type { TenantImportTransactionRunner } from './importer';
 import { createFinalBridgeIntake, readVerifiedFinalBridgeAcquisition } from './finalBridgeIntake';
-import { sha256 } from './validators';
+import { sha256, canonicalJson } from './validators';
 
 vi.mock('server-only', () => ({}));
 let h: PgliteDatabaseHarness;
@@ -288,4 +288,13 @@ describe('authenticated final bridge acquisition intake, never freeze or activat
     expect(await consumed()).toHaveLength(1);
     await expect(service().accept(input)).rejects.toThrow();
   });
+});
+
+it('retains exact authenticated private challenge/envelope/nonce/writer metadata only after acceptance', async () => {
+ const b=await service().issueChallenge(intent());const envelope=seal(b);
+ const handle=await service().accept({challengeId:b.challengeId,manifest:envelope});
+ const data=readVerifiedFinalBridgeAcquisition(handle);
+ expect(data).toMatchObject({challenge:b,envelopeDigest:sha256(canonicalJson(envelope)),envelopeIssuedAt:envelope.issuedAt,envelopeExpiresAt:envelope.expiresAt,
+  nonceDigest:sha256(JSON.stringify(['CLASS_STORE_FINAL_BRIDGE_NONCE_V1',envelope.nonce]))});
+ expect(data).toHaveProperty('writerEvidenceDigest');expect(JSON.stringify(handle)).toBe('{}');
 });

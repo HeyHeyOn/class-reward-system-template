@@ -86,12 +86,12 @@ export function createFreezingConsentIntake(dependencies: Dependencies) {
       || b.issuedAt > now || b.expiresAt <= now) refused();
     revalidateFreezingConsentSession(session, request, origin, now, env);
   }
-  async function current(tx: TenantTransaction, jobId: string, version: string, sourceId: string, session: FreezingConsentSession) {
+  async function current(tx: TenantTransaction, jobId: string, version: string, sourceId: string, session: FreezingConsentSession, observedState: 'READY' | 'FREEZING' = 'READY') {
     const tenants = (await tx.execute(sql`SELECT lifecycle FROM tenants WHERE id=${tenantId} FOR UPDATE`)).rows;
     if (tenants.length !== 1 || tenants[0].lifecycle !== 'IMPORTING') refused();
     const jobs = (await tx.execute(sql`SELECT status,state_version::text AS version,source_fingerprint FROM migration_jobs
       WHERE tenant_id=${tenantId} AND job_id=${jobId} FOR UPDATE`)).rows;
-    if (jobs.length !== 1 || jobs[0].status !== 'READY' || jobs[0].version !== version) refused();
+    if (jobs.length !== 1 || jobs[0].status !== observedState || jobs[0].version !== (observedState === 'READY' ? version : String(BigInt(version) + BigInt(1)))) refused();
     // FOR UPDATE also serializes FK snapshot inserts. READ COMMITTED below is
     // mandatory so the exact-one predicate is refreshed after a preceding wait.
     const sources = (await tx.execute(sql`SELECT provider,external_source_id,source_fingerprint FROM migration_sources
@@ -109,9 +109,9 @@ export function createFreezingConsentIntake(dependencies: Dependencies) {
     for (const value of [result.externalSourceId, result.jobSemanticFingerprint, result.sourceAcquisitionDigest, result.preflightDigest]) if (!DIGEST.test(value)) refused();
     return { ...result, spreadsheetId: registration(sourceId, result.externalSourceId) };
   }
-  async function check(tx: TenantTransaction, b: Binding, session: FreezingConsentSession, request: Request) {
+  async function check(tx: TenantTransaction, b: Binding, session: FreezingConsentSession, request: Request, observedState: 'READY' | 'FREEZING' = 'READY') {
     fresh(b, session, request, await databaseNow(tx));
-    const rows = await current(tx, b.migrationJobId, b.expectedStateVersion, b.sourceId, session);
+    const rows = await current(tx, b.migrationJobId, b.expectedStateVersion, b.sourceId, session, observedState);
     for (const key of Object.keys(rows) as (keyof typeof rows)[]) if (b[key] !== rows[key]) refused();
     fresh(b, session, request, await databaseNow(tx));
   }
@@ -124,7 +124,7 @@ export function createFreezingConsentIntake(dependencies: Dependencies) {
   return {
     /** Revalidation only: genuine start capability is checked before any SQL.
      * Caller owns a short READ COMMITTED transaction; no handle is minted here. */
-    async revalidateStart(tx: TenantTransaction, rawRequest: Request, handle: VerifiedFreezingConsent) {
+    async revalidateStart(tx: TenantTransaction, rawRequest: Request, handle: VerifiedFreezingConsent, observedState: 'READY' | 'FREEZING' = 'READY') {
       const live = readVerifiedStartFreezingConsent(handle);
       const request = detachRequest(rawRequest);
       const session = readFreezingConsentSession(request, origin, env);
@@ -132,7 +132,7 @@ export function createFreezingConsentIntake(dependencies: Dependencies) {
       equal(live.intent, makeStartFreezingIntent(live.binding, startRegistration));
       await isolation(tx);
       equal(await challenge(tx, live.binding.challengeId), live.binding);
-      await check(tx, live.binding, session, request);
+      await check(tx, live.binding, session, request, observedState);
       await readStartFreezingConfirmation(tx, live.intent, live.stateDigest);
       equal(await load(tx, 'captures', tenantId, live.binding.challengeId), live.consent);
       fresh(live.binding, session, request, await databaseNow(tx));

@@ -8,6 +8,7 @@ import { readFreezingConsentSession } from './freezingConsentSession';
 import { MIGRATION_CALLBACK_PATH } from './googleSheetsConsent';
 import { canonicalJson, sha256 } from './validators';
 import { detachStartFreezingRegistration, type StartFreezingDispatchOutcome } from './startFreezingCeremony';
+import type { StartedFreezing } from './startFreezing';
 
 export const FREEZING_ROUTING_COOKIE = '__Secure-class_store_freezing_route';
 const PURPOSE = 'CLASS_STORE_FREEZING_ROUTING_V1';
@@ -16,7 +17,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const HASH = /^[0-9a-f]{64}$/;
 type Context = { params: Promise<Record<string, string>> };
 type Dependencies = Omit<Parameters<typeof createFreezingConsentIntake>[0], 'tenantId'> & { directory: TenantDirectory;
-  continueStart?: (request: Request, handle: VerifiedFreezingConsent, intake: ReturnType<typeof createFreezingConsentIntake>) => Promise<StartFreezingDispatchOutcome>;
+  continueStart?: (request: Request, handle: VerifiedFreezingConsent, intake: ReturnType<typeof createFreezingConsentIntake>) => Promise<StartFreezingDispatchOutcome | StartedFreezing>;
 };
 type Hint = {
   purpose: typeof PURPOSE | typeof START_PURPOSE; intentDigest?: string; slug: string; tenantId: string; migrationJobId: string;
@@ -169,7 +170,20 @@ export function createFreezingConsentHandlers(dependencies: Dependencies) {
           if (sha256(canonicalJson(live.intent)) !== hint.intentDigest) refused();
           // Await in this invocation. Never a detached task, serialized handle,
           // receipt recovery, or consent-only promotion after CAPTURED.
-          const result = await continueStart(callbackRequest, handle, intake);
+          let result: StartFreezingDispatchOutcome | StartedFreezing;
+          try { result = await continueStart(callbackRequest, handle, intake); }
+          catch {
+            // The producer may already have disabled its writer, and a lost
+            // local COMMIT ACK may even mean STARTED is durable. Never label
+            // this consent denial/not-performed or expose a retry capability.
+            return response({ ceremonyId: hint.challengeId, status: 'UNKNOWN', externalEffect: 'UNKNOWN',
+              automaticRetry: false, automaticEnable: false }, 202, undefined, true);
+          }
+          if (result.status === 'STARTED') {
+            if (result.ceremonyId !== hint.challengeId || result.migrationJobId !== hint.migrationJobId || result.exclusion !== 'NOT_PROVEN') refused();
+            return response({ ceremonyId: hint.challengeId, status: 'STARTED', exclusion: 'NOT_PROVEN',
+              automaticRetry: false, automaticEnable: false }, 200, undefined, true);
+          }
           return response({ ceremonyId: hint.challengeId,
             status: result.status === 'UNKNOWN' ? 'UNKNOWN' : 'BRIDGE_RESPONDED_START_NOT_COMMITTED',
             externalEffect: result.externalEffect, automaticRetry: false, automaticEnable: false }, 202, undefined, true);

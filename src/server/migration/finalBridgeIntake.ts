@@ -24,7 +24,9 @@ type Dependencies = Readonly<{
 declare const acquisitionBrand: unique symbol;
 export type VerifiedFinalBridgeAcquisition = Readonly<{ [acquisitionBrand]: true }>;
 type AcquisitionData = Readonly<{ sheets: SheetsSnapshot; redis: RedisClaimSnapshot;
-  normalization: LegacyNormalizationManifest; exclusion: 'NOT_PROVEN' }>;
+  normalization: LegacyNormalizationManifest; exclusion: 'NOT_PROVEN';
+  challenge: FinalBridgeChallenge; envelopeDigest: string; nonceDigest: string;
+  envelopeIssuedAt: number; envelopeExpiresAt: number; writerEvidenceDigest: string }>;
 const acquisitions = new WeakMap<VerifiedFinalBridgeAcquisition, AcquisitionData>();
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 export function readVerifiedFinalBridgeAcquisition(value: VerifiedFinalBridgeAcquisition): AcquisitionData {
@@ -143,7 +145,11 @@ export function createFinalBridgeIntake(dependencies: Dependencies) {
           const consumedAt = await databaseNow(tx);
           fresh(b, consumedAt);
           if (consumedAt >= envelope.expiresAt || consumedAt < envelope.issuedAt) refused();
-          return deepFreeze({ sheets, redis, normalization, exclusion: 'NOT_PROVEN' });
+          return deepFreeze({ sheets, redis, normalization, exclusion: 'NOT_PROVEN', challenge: b,
+            envelopeDigest: sha256(canonicalJson(envelope)),
+            nonceDigest: sha256(canonicalJson(['CLASS_STORE_FINAL_BRIDGE_NONCE_V1', envelope.nonce])),
+            envelopeIssuedAt: envelope.issuedAt, envelopeExpiresAt: envelope.expiresAt,
+            writerEvidenceDigest: sha256(canonicalJson(evidence)) });
         });
         // Mint only after a successful COMMIT response. No recovery method can
         // re-mint this handle if commit succeeded but its acknowledgement was lost.

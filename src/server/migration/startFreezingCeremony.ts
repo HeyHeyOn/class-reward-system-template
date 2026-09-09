@@ -114,6 +114,13 @@ export type StartFreezingDispatchOutcome = Readonly<{
   status: 'BRIDGE_RESPONDED'; response: unknown; bridgeChallenge: FinalBridgeChallenge;
   requestDigest: string; externalEffect: 'UNVERIFIED'; automaticRetry: false; automaticEnable: false;
 }>;
+const liveDispatches = new WeakMap<object, Readonly<{ consent: VerifiedFreezingConsent; challenge: FinalBridgeChallenge; requestDigest: string }>>();
+/** Authentic same-invocation dispatch only; never reconstruct from archival SQL. */
+export function readLiveStartDispatch(value: StartFreezingDispatchOutcome, consent: VerifiedFreezingConsent) {
+  const live = liveDispatches.get(value);
+  if (!live || live.consent !== consent) refused();
+  return live;
+}
 /** Same callback continuation only. This checkpoint reserves and sends; it does
  * NOT authenticate a response, consume a bridge capability or commit FREEZING.
  * A caller must not serialize response as authority or retry after uncertainty. */
@@ -187,8 +194,10 @@ export async function dispatchStartFreezing(input: Readonly<{
       await intake.revalidateStart(tx, request, consent);
       await freshBridge(tx);
     });
-    return Object.freeze({ status: 'BRIDGE_RESPONDED', response, bridgeChallenge: bridge, requestDigest,
-      externalEffect: 'UNVERIFIED', automaticRetry: false, automaticEnable: false });
+    const outcome = Object.freeze({ status: 'BRIDGE_RESPONDED' as const, response, bridgeChallenge: bridge, requestDigest,
+      externalEffect: 'UNVERIFIED' as const, automaticRetry: false as const, automaticEnable: false as const });
+    liveDispatches.set(outcome, Object.freeze({ consent, challenge: bridge, requestDigest }));
+    return outcome;
   } catch {
     // It may already have disabled its writer. Never report NOT_PERFORMED, retry,
     // enable, leak upstream details or roll back the acknowledged reservation.
