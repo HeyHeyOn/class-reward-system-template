@@ -1,6 +1,11 @@
 [
   {
     "method": "POST",
+    "route": "/internal/migrations/final-bridge",
+    "effect": "companion-authenticated-disable-capture"
+  },
+  {
+    "method": "POST",
     "route": "/checkout",
     "effect": "sheets-write"
   },

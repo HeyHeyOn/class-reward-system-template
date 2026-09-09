@@ -2,7 +2,7 @@
 
 ## Status and stop line
 
-This slice implements explicit pending intent, purpose-separated authenticated callback continuation, and an acknowledged one-dispatch reservation. **It does not commit READY → FREEZING.** Production start routes, production start factory configuration, the registered producer's durable replay adapter, authentic response consumption and the final atomic start consumer remain integration gates. The ordinary production consent factory remains consent-only; there is no enabled production writer-disable route in this slice.
+This slice implements explicit pending intent, purpose-separated authenticated callback continuation, and an acknowledged one-dispatch reservation. **It does not commit READY → FREEZING.** Production start routes, production start factory configuration, authentic response consumption and the final atomic start consumer remain integration gates. The [durable companion producer](migration-bridge-producer.md) now supplies the fixed authenticated route, deployment-local credential factory and replay SQL adapter, but no live registration or invocation is enabled by this code change. The ordinary production consent factory remains consent-only; there is no enabled production writer-disable call in this checkpoint.
 
 A local synthetic transport response is not a verified bridge acquisition. `BRIDGE_RESPONDED_START_NOT_COMMITTED` is deliberately not `FREEZING`, `STARTED`, `FINAL_FROZEN`, or writer-exclusion evidence. Existing job/tenant/acquisition/global claim state is not changed by dispatch. Maintained writer exclusion remains `NOT_PROVEN`.
 

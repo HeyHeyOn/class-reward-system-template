@@ -1,5 +1,6 @@
 export * from './authorityStorage';
 export * from './bridgeReplay';
+export * from './bridgeProducer';
 export * from './freezingApproval';
 export * from './freezingConsent';
 export * from './startFreezing';

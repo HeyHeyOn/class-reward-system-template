@@ -53,6 +53,15 @@ async function exportedMethodBody(route: string, method: string): Promise<string
   return declaration.body.getText(source);
 }
 
+it('keeps companion disable outside tenant authority and on the concrete production authentication root', async () => {
+  expect(TENANT_ROUTE_INVENTORY.find(e => e.route === '/internal/migrations/final-bridge')).toEqual({
+    route: '/internal/migrations/final-bridge', method: 'POST', scope: 'platform', effect: 'mutation',
+  });
+  const body = await exportedMethodBody('internal/migrations/final-bridge', 'POST');
+  expect(body).toContain('getProductionBridgeProducer()');
+  expect(body).not.toMatch(/createConfiguredSheets|request\.(json|arrayBuffer|text)/);
+});
+
 describe('tenant read route PostgreSQL authority', () => {
   it('covers every and only tenant-data read handler in the route inventory', () => {
     const inventory = TENANT_ROUTE_INVENTORY
