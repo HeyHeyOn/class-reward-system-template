@@ -3,19 +3,23 @@ import { createCipheriv, createDecipheriv, createHmac, randomBytes } from 'node:
 import { sql } from 'drizzle-orm';
 import { getTrustedTenantRequestContext } from '@/server/trustedTenantRequestContext';
 import { resolveTenantContext, type TenantDirectory } from '@/server/tenantContext';
-import { createFreezingConsentIntake, readVerifiedFreezingConsent } from './freezingConsentIntake';
+import { createFreezingConsentIntake, readVerifiedFreezingConsent, readVerifiedStartFreezingConsent, type VerifiedFreezingConsent } from './freezingConsentIntake';
 import { readFreezingConsentSession } from './freezingConsentSession';
 import { MIGRATION_CALLBACK_PATH } from './googleSheetsConsent';
-import { sha256 } from './validators';
+import { canonicalJson, sha256 } from './validators';
+import { detachStartFreezingRegistration, type StartFreezingDispatchOutcome } from './startFreezingCeremony';
 
 export const FREEZING_ROUTING_COOKIE = '__Secure-class_store_freezing_route';
 const PURPOSE = 'CLASS_STORE_FREEZING_ROUTING_V1';
+const START_PURPOSE = 'CLASS_STORE_START_FREEZING_ROUTING_V1';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const HASH = /^[0-9a-f]{64}$/;
 type Context = { params: Promise<Record<string, string>> };
-type Dependencies = Omit<Parameters<typeof createFreezingConsentIntake>[0], 'tenantId'> & { directory: TenantDirectory };
+type Dependencies = Omit<Parameters<typeof createFreezingConsentIntake>[0], 'tenantId'> & { directory: TenantDirectory;
+  continueStart?: (request: Request, handle: VerifiedFreezingConsent, intake: ReturnType<typeof createFreezingConsentIntake>) => Promise<StartFreezingDispatchOutcome>;
+};
 type Hint = {
-  purpose: typeof PURPOSE; slug: string; tenantId: string; migrationJobId: string;
+  purpose: typeof PURPOSE | typeof START_PURPOSE; intentDigest?: string; slug: string; tenantId: string; migrationJobId: string;
   challengeId: string; sessionBinding: string; expiresAt: number; stateDigest: string | null;
 };
 
@@ -27,17 +31,21 @@ type Hint = {
 export function createFreezingConsentHandlers(dependencies: Dependencies) {
   const env = Object.freeze({ ...(dependencies.env ?? process.env) });
   const origin = dependencies.origin;
+  const startRegistration = dependencies.startRegistration ? detachStartFreezingRegistration(dependencies.startRegistration) : undefined;
+  const continueStart = dependencies.continueStart;
+  if (Boolean(startRegistration) !== Boolean(continueStart)) refused();
+  const purpose = startRegistration ? START_PURPOSE : PURPOSE;
   const registrations = dependencies.registeredSheets.map(row => Object.freeze({ ...row }));
-  const service = (tenantId: string) => createFreezingConsentIntake({ ...dependencies, env, registeredSheets: registrations, tenantId });
+  const service = (tenantId: string) => createFreezingConsentIntake({ ...dependencies, env, registeredSheets: registrations, tenantId, startRegistration });
   function key() {
     const secret = env.AUTH_SECRET;
     if (!secret || secret.length < 32 || secret.length > 1024 || secret.trim() !== secret) refused();
-    return createHmac('sha256', secret).update(JSON.stringify([PURPOSE, origin])).digest();
+    return createHmac('sha256', secret).update(JSON.stringify([purpose, origin])).digest();
   }
   function seal(hint: Hint) {
     const iv = randomBytes(12);
     const cipher = createCipheriv('aes-256-gcm', key(), iv);
-    cipher.setAAD(Buffer.from(PURPOSE));
+    cipher.setAAD(Buffer.from(purpose));
     const ciphertext = Buffer.concat([cipher.update(JSON.stringify(hint), 'utf8'), cipher.final()]);
     return Buffer.concat([iv, cipher.getAuthTag(), ciphertext]).toString('base64url');
   }
@@ -49,11 +57,13 @@ export function createFreezingConsentHandlers(dependencies: Dependencies) {
     const bytes = Buffer.from(encoded, 'base64url');
     if (bytes.toString('base64url') !== encoded) refused();
     const decipher = createDecipheriv('aes-256-gcm', key(), bytes.subarray(0, 12));
-    decipher.setAAD(Buffer.from(PURPOSE));
+    decipher.setAAD(Buffer.from(purpose));
     decipher.setAuthTag(bytes.subarray(12, 28));
     const hint = JSON.parse(Buffer.concat([decipher.update(bytes.subarray(28)), decipher.final()]).toString('utf8')) as Hint;
-    if (!hint || Object.keys(hint).sort().join(',') !== 'challengeId,expiresAt,migrationJobId,purpose,sessionBinding,slug,stateDigest,tenantId'
-      || hint.purpose !== PURPOSE || !UUID.test(hint.tenantId) || !UUID.test(hint.challengeId)
+    if (!hint || Object.keys(hint).sort().join(',') !== (startRegistration
+      ? 'challengeId,expiresAt,intentDigest,migrationJobId,purpose,sessionBinding,slug,stateDigest,tenantId'
+      : 'challengeId,expiresAt,migrationJobId,purpose,sessionBinding,slug,stateDigest,tenantId')
+      || hint.purpose !== purpose || (startRegistration && (typeof hint.intentDigest !== 'string' || !HASH.test(hint.intentDigest))) || !UUID.test(hint.tenantId) || !UUID.test(hint.challengeId)
       || typeof hint.slug !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(hint.slug) || hint.slug.length > 63
       || typeof hint.migrationJobId !== 'string' || !hint.migrationJobId || hint.migrationJobId.length > 1024
       || !HASH.test(hint.sessionBinding) || (hint.stateDigest !== null && !HASH.test(hint.stateDigest))
@@ -91,6 +101,11 @@ export function createFreezingConsentHandlers(dependencies: Dependencies) {
       if (rows.length !== 1 || !b || b.tenantId !== hint.tenantId || b.challengeId !== hint.challengeId
         || b.migrationJobId !== hint.migrationJobId || b.sessionBinding !== hint.sessionBinding
         || b.expiresAt !== hint.expiresAt) refused();
+      if (startRegistration) {
+        const intents = (await tx.execute(sql`SELECT binding FROM migration_start_intents
+          WHERE tenant_id=${hint.tenantId} AND ceremony_id=${hint.challengeId}`)).rows;
+        if (intents.length !== 1 || sha256(canonicalJson(intents[0].binding)) !== hint.intentDigest) refused();
+      }
     });
     // Do not let a directory or DB wait outlive the current login/cookie.
     if (hint.expiresAt <= Date.now() || readFreezingConsentSession(request, origin, env).sessionBinding !== hint.sessionBinding) refused();
@@ -104,7 +119,8 @@ export function createFreezingConsentHandlers(dependencies: Dependencies) {
         const { jobId } = await context.params;
         const input = await body(request, ['expectedStateVersion', 'sourceId']);
         const issued = await service(tenant.id).issueChallenge(request, { ...input, migrationJobId: jobId });
-        return response(issued, 200, { purpose: PURPOSE, slug: tenant.slug, tenantId: tenant.id, migrationJobId: jobId,
+        const { startIntentDigest, ...display } = issued;
+        return response(display, 200, { purpose, ...(startRegistration ? { intentDigest: startIntentDigest } : {}), slug: tenant.slug, tenantId: tenant.id, migrationJobId: jobId,
           challengeId: issued.challengeId, sessionBinding: session.sessionBinding, expiresAt: issued.expiresAt, stateDigest: null });
       } catch { return deny(); }
     },
@@ -114,7 +130,7 @@ export function createFreezingConsentHandlers(dependencies: Dependencies) {
         sameOriginPost(request);
         const hint = open(request);
         const { jobId } = await context.params;
-        const input = await body(request, ['challengeId']);
+        const input = await body(request, startRegistration ? ['challengeId', 'display'] : ['challengeId']);
         if (hint.tenantId !== tenant.id || hint.slug !== tenant.slug || hint.migrationJobId !== jobId
           || hint.challengeId !== input.challengeId || hint.stateDigest !== null) refused();
         await rebind(request, hint);
@@ -145,7 +161,19 @@ export function createFreezingConsentHandlers(dependencies: Dependencies) {
         const normalized = new URL(`${origin}${MIGRATION_CALLBACK_PATH}`);
         normalized.searchParams.set('state', state);
         normalized.searchParams.set(denied ? 'error' : 'code', code);
-        const handle = await service(hint.tenantId).complete(new Request(normalized, { headers: new Headers(request.headers) }));
+        const callbackRequest = new Request(normalized, { headers: new Headers(request.headers) });
+        const intake = service(hint.tenantId);
+        const handle = await intake.complete(callbackRequest);
+        if (startRegistration && continueStart) {
+          const live = readVerifiedStartFreezingConsent(handle);
+          if (sha256(canonicalJson(live.intent)) !== hint.intentDigest) refused();
+          // Await in this invocation. Never a detached task, serialized handle,
+          // receipt recovery, or consent-only promotion after CAPTURED.
+          const result = await continueStart(callbackRequest, handle, intake);
+          return response({ ceremonyId: hint.challengeId,
+            status: result.status === 'UNKNOWN' ? 'UNKNOWN' : 'BRIDGE_RESPONDED_START_NOT_COMMITTED',
+            externalEffect: result.externalEffect, automaticRetry: false, automaticEnable: false }, 202, undefined, true);
+        }
         const receipt = readVerifiedFreezingConsent(handle);
         // Never serialize the private handle, acquisition, provider data or receipt.
         return response({ challengeId: receipt.challengeId, status: 'CAPTURED', scope: receipt.scope }, 200, undefined, true);

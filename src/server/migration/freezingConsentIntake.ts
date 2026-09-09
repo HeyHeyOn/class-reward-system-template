@@ -10,6 +10,7 @@ import { createGoogleWorkbookSnapshotReader } from './googleWorkbookSnapshotRead
 import { createLegacyNormalizationManifest } from './manifest';
 import { canonicalJson, sha256 } from './validators';
 import { deepFreeze } from './sensitiveRedaction';
+import { appendStartFreezingIntent, confirmStartFreezingIntent, detachStartFreezingDisplay, detachStartFreezingRegistration, makeStartFreezingIntent, readStartFreezingConfirmation, type StartFreezingIntent, type StartFreezingRegistration } from './startFreezingCeremony';
 
 const PURPOSE = 'CLASS_STORE_FREEZING_CONSENT_V1';
 const SCOPE = 'CONSENT_AND_SHEET_CAPTURE_ONLY';
@@ -17,13 +18,14 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const DIGEST = /^[0-9a-f]{64}$/;
 const LIFETIME = 300_000;
 type Environment = Readonly<Record<string, string | undefined>>;
-type Binding = Readonly<{
+export type FreezingConsentBinding = Readonly<{
   purpose: typeof PURPOSE; tenantId: string; challengeId: string; migrationJobId: string;
   sourceId: string; expectedStateVersion: string; actorUserId: string; actorSubject: string; actorEmail: string;
   sessionBinding: string; csrfDigest: string; spreadsheetId: string; externalSourceId: string;
   jobSemanticFingerprint: string; sourceAcquisitionDigest: string; preflightSnapshotId: string; preflightDigest: string;
   clientId: string; callback: string; nonce: string; issuedAt: number; expiresAt: number;
 }>;
+type Binding = FreezingConsentBinding;
 type Receipt = Readonly<{
   purpose: typeof PURPOSE; scope: typeof SCOPE; tenantId: string; challengeId: string;
   migrationJobId: string; sourceId: string; challengeDigest: string; captureDigest: string;
@@ -32,6 +34,13 @@ type Receipt = Readonly<{
 declare const consentBrand: unique symbol;
 export type VerifiedFreezingConsent = Readonly<{ [consentBrand]: true }>;
 const verified = new WeakMap<VerifiedFreezingConsent, Receipt>();
+const verifiedStart = new WeakMap<VerifiedFreezingConsent, Readonly<{ intent: StartFreezingIntent; consent: Receipt; binding: Binding; stateDigest: string }>>();
+/** Live callback metadata only. No setter, JSON or archival reconstruction. */
+export function readVerifiedStartFreezingConsent(handle: VerifiedFreezingConsent) {
+  const result = verifiedStart.get(handle);
+  if (!result) refused();
+  return result;
+}
 /** No reconstruction from database rows or JSON. This is NOT start/freeze authority. */
 export function readVerifiedFreezingConsent(handle: VerifiedFreezingConsent): Receipt {
   const result = verified.get(handle);
@@ -42,6 +51,7 @@ type Dependencies = Readonly<{
   tenantId: string; origin: string; env?: Environment; runTransaction: TenantImportTransactionRunner;
   registeredSheets: readonly Readonly<{ tenantId: string; sourceId: string; spreadsheetId: string }>[];
   oauth?: Pick<FreezingOAuthDependencies, 'createClient'>;
+  startRegistration?: StartFreezingRegistration;
 }>;
 /** Internal request-local composition, not a route or global tenant resolver.
  * tenantId MUST come from the canonical dispatcher/directory, never request data.
@@ -56,6 +66,7 @@ export function createFreezingConsentIntake(dependencies: Dependencies) {
   const { tenantId, origin, runTransaction } = dependencies;
   const env = Object.freeze({ ...(dependencies.env ?? process.env) });
   const oauth = { ...dependencies.oauth, env };
+  const startRegistration = dependencies.startRegistration ? detachStartFreezingRegistration(dependencies.startRegistration) : undefined;
   const registrations = dependencies.registeredSheets.map(row => Object.freeze({ ...row }));
   if (!UUID.test(tenantId) || !origin.startsWith('https://') || new URL(origin).origin !== origin) refused();
   const clientId = env.MIGRATION_GOOGLE_CLIENT_ID?.trim();
@@ -111,6 +122,22 @@ export function createFreezingConsentIntake(dependencies: Dependencies) {
     return b;
   }
   return {
+    /** Revalidation only: genuine start capability is checked before any SQL.
+     * Caller owns a short READ COMMITTED transaction; no handle is minted here. */
+    async revalidateStart(tx: TenantTransaction, rawRequest: Request, handle: VerifiedFreezingConsent) {
+      const live = readVerifiedStartFreezingConsent(handle);
+      const request = detachRequest(rawRequest);
+      const session = readFreezingConsentSession(request, origin, env);
+      if (!startRegistration) refused();
+      equal(live.intent, makeStartFreezingIntent(live.binding, startRegistration));
+      await isolation(tx);
+      equal(await challenge(tx, live.binding.challengeId), live.binding);
+      await check(tx, live.binding, session, request);
+      await readStartFreezingConfirmation(tx, live.intent, live.stateDigest);
+      equal(await load(tx, 'captures', tenantId, live.binding.challengeId), live.consent);
+      fresh(live.binding, session, request, await databaseNow(tx));
+      return live;
+    },
     async issueChallenge(rawRequest: Request, raw: unknown) {
       try {
         const input = exact(raw, ['migrationJobId', 'expectedStateVersion', 'sourceId']);
@@ -131,6 +158,7 @@ export function createFreezingConsentIntake(dependencies: Dependencies) {
           await tx.execute(sql`INSERT INTO migration_consent_challenges(tenant_id,challenge_id,job_id,source_id,actor_user_id,binding)
             VALUES(${tenantId},${binding.challengeId},${migrationJobId},${sourceId},${binding.actorUserId},${JSON.stringify(binding)}::jsonb)`);
           equal(await challenge(tx, binding.challengeId), binding);
+          if (startRegistration) await appendStartFreezingIntent(tx, makeStartFreezingIntent(binding, startRegistration));
           fresh(binding, session, request, await databaseNow(tx));
           return binding;
         });
@@ -139,12 +167,15 @@ export function createFreezingConsentIntake(dependencies: Dependencies) {
         return Object.freeze({ challengeId: b.challengeId, csrfToken: csrf.token, tenantId, migrationJobId,
           sourceId, spreadsheetId: b.spreadsheetId, expectedStateVersion, jobSemanticFingerprint: b.jobSemanticFingerprint,
           sourceAcquisitionDigest: b.sourceAcquisitionDigest, preflightSnapshotId: b.preflightSnapshotId,
-          preflightDigest: b.preflightDigest, expiresAt: b.expiresAt });
+          preflightDigest: b.preflightDigest, expiresAt: b.expiresAt,
+          ...(startRegistration ? { startDisplay: makeStartFreezingIntent(b, startRegistration).display,
+            startIntentDigest: sha256(canonicalJson(makeStartFreezingIntent(b, startRegistration))) } : {}) });
       } catch { return refused(); }
     },
     async begin(rawRequest: Request, raw: unknown): Promise<string> {
       try {
-        const input = exact(raw, ['challengeId']);
+        const input = exact(raw, startRegistration ? ['challengeId', 'display'] : ['challengeId']);
+        const display = startRegistration ? detachStartFreezingDisplay(input.display) : undefined;
         const id = uuid(input.challengeId);
         const request = detachRequest(rawRequest);
         const session = readFreezingConsentSession(request, origin, env);
@@ -160,6 +191,7 @@ export function createFreezingConsentIntake(dependencies: Dependencies) {
           await tx.execute(sql`INSERT INTO migration_consent_confirmations(tenant_id,challenge_id,binding)
             VALUES(${tenantId},${id},${JSON.stringify(binding)}::jsonb)`);
           equal(await load(tx, 'confirmations', tenantId, id), binding);
+          if (startRegistration && display) await confirmStartFreezingIntent(tx, makeStartFreezingIntent(b, startRegistration), display, sha256(state));
           fresh(b, session, request, await databaseNow(tx));
           return url;
         });
@@ -186,6 +218,7 @@ export function createFreezingConsentIntake(dependencies: Dependencies) {
           const confirmation = { purpose: PURPOSE, tenantId, challengeId: id,
             challengeDigest: sha256(canonicalJson(binding)), stateDigest: sha256(state) };
           equal(await load(tx, 'confirmations', tenantId, id), confirmation);
+          if (startRegistration) await readStartFreezingConfirmation(tx, makeStartFreezingIntent(binding, startRegistration), sha256(state));
           await tx.execute(sql`INSERT INTO migration_consent_attempts(tenant_id,challenge_id,binding)
             VALUES(${tenantId},${id},${JSON.stringify(confirmation)}::jsonb)`);
           equal(await load(tx, 'attempts', tenantId, id), confirmation);
@@ -217,6 +250,7 @@ export function createFreezingConsentIntake(dependencies: Dependencies) {
             challengeDigest: receipt.challengeDigest, stateDigest: sha256(state) };
           equal(await load(tx, 'confirmations', tenantId, id), confirmation);
           equal(await load(tx, 'attempts', tenantId, id), confirmation);
+          if (startRegistration) await readStartFreezingConfirmation(tx, makeStartFreezingIntent(b, startRegistration), sha256(state));
           await tx.execute(sql`INSERT INTO migration_consent_captures(tenant_id,challenge_id,binding,capture)
             VALUES(${tenantId},${id},${JSON.stringify(receipt)}::jsonb,${captureBytes}::jsonb)`);
           equal(await load(tx, 'captures', tenantId, id), receipt);
@@ -229,6 +263,7 @@ export function createFreezingConsentIntake(dependencies: Dependencies) {
         // capture/receipt readback intentionally has no capability recovery API.
         const handle = Object.freeze({}) as VerifiedFreezingConsent;
         verified.set(handle, receipt);
+        if (startRegistration) verifiedStart.set(handle, deepFreeze({ intent: makeStartFreezingIntent(b, startRegistration), consent: receipt, binding: b, stateDigest: sha256(state) }));
         return handle;
       } catch { return refused(); }
     },
