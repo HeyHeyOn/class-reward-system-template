@@ -1,4 +1,8 @@
 [
+  { "method": "GET", "route": "/migrations/[jobId]/freezing/reacquisition/bootstrap", "effect": "migration-reacquisition-bootstrap-cookie" },
+  { "method": "GET", "route": "/migrations/[jobId]/freezing/reacquisition/[attemptId]", "effect": "migration-reacquisition-archival-read" },
+  { "method": "POST", "route": "/migrations/[jobId]/freezing/reacquisition/challenge", "effect": "migration-reacquisition-challenge" },
+  { "method": "POST", "route": "/migrations/[jobId]/freezing/reacquisition", "effect": "migration-reacquisition-confirmation" },
   { "method": "POST", "route": "/internal/migrations/freezing-reacquisition", "effect": "companion-authenticated-read-candidate" },
   { "method": "GET", "route": "/migrations/[jobId]/freezing/start/challenge", "effect": "migration-start-challenge" },
   { "method": "POST", "route": "/migrations/[jobId]/freezing/start", "effect": "migration-start-confirmation" },

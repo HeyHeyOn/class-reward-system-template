@@ -23,6 +23,8 @@ export type TenantApiRoute = Readonly<{
   pattern: string;
   access: TenantApiAccessResolver;
   handler: TenantApiHandler;
+  /** Exact canonical URL authentication; never materialize/rewrite this ingress. */
+  preserveCanonicalRequest?: boolean;
 }>;
 
 export function createTenantApiDispatcher(
@@ -46,7 +48,8 @@ export function createTenantApiDispatcher(
       const context = access === 'admin'
         ? resolved
         : { ...resolved, session: undefined, membership: undefined };
-      const legacyRequest = await rewriteScopedRequest(request, routeContext.slug as string, routeContext.path);
+      const legacyRequest = route.route.preserveCanonicalRequest ? request
+        : await rewriteScopedRequest(request, routeContext.slug as string, routeContext.path);
       return await runWithTrustedTenantRequestContext(context, () =>
         route.route.handler(legacyRequest, { params: Promise.resolve(route.params) }));
     } catch (error) {

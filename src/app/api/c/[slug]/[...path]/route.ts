@@ -1,5 +1,6 @@
 import { createTenantApiDispatcher, type TenantApiAccessResolver, type TenantApiRoute } from '@/server/tenantApiDispatcher';
 import { getProductionTenantAccessDependencies } from '@/server/tenantAccess';
+import { readBridgeBytes } from '@/server/migration/registeredBridgeProducer';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +13,10 @@ function route(method: Method, pattern: string, access: TenantApiAccessResolver,
 }
 
 const ROUTES: readonly TenantApiRoute[] = [
+  { ...route('GET', 'migrations/[jobId]/freezing/reacquisition/bootstrap', 'public', async (r, c) => (await import('@/app/api/migrations/[jobId]/freezing/reacquisition/bootstrap/route')).GET(r, c)), preserveCanonicalRequest: true },
+  { ...route('POST', 'migrations/[jobId]/freezing/reacquisition/challenge', 'public', async (r, c) => (await import('@/app/api/migrations/[jobId]/freezing/reacquisition/challenge/route')).POST(r, c)), preserveCanonicalRequest: true },
+  { ...route('POST', 'migrations/[jobId]/freezing/reacquisition', 'public', async (r, c) => (await import('@/app/api/migrations/[jobId]/freezing/reacquisition/route')).POST(r, c)), preserveCanonicalRequest: true },
+  { ...route('GET', 'migrations/[jobId]/freezing/reacquisition/[attemptId]', 'public', async (r, c) => (await import('@/app/api/migrations/[jobId]/freezing/reacquisition/[attemptId]/route')).GET(r, c)), preserveCanonicalRequest: true },
   route('GET', 'migrations/[jobId]/freezing/start/challenge', 'public', async (r, c) => (await import('@/app/api/migrations/[jobId]/freezing/start/challenge/route')).GET(r, c)),
   route('POST', 'migrations/[jobId]/freezing/start', 'public', async (r, c) => (await import('@/app/api/migrations/[jobId]/freezing/start/route')).POST(r, c)),
   route('GET', 'migrations/[jobId]/freezing/start/[attemptId]', 'public', async (r, c) => (await import('@/app/api/migrations/[jobId]/freezing/start/[attemptId]/route')).GET(r, c)),
@@ -74,18 +79,36 @@ async function handle(request: Request, context: RouteContext) {
     && (path.length === 4 || (path.length === 5 && path[4] === 'challenge'));
   const start = path[0] === 'migrations' && path[2] === 'freezing' && path[3] === 'start'
     && (path.length === 4 || path.length === 5);
-  if (!consent && !start) return dispatch(request, { slug, path });
+  const reacquisition = path[0] === 'migrations' && path[2] === 'freezing' && path[3] === 'reacquisition';
+  if (!consent && !start && !reacquisition) return dispatch(request, { slug, path });
   // Directory/method failures occur before the target handler; they must not
   // expose tenant existence or cache the challenge/CSRF endpoint's refusals.
   try {
     // Bound these exact consent POSTs before the legacy dispatcher materializes
     // their bodies (and before directory/service SQL). Content-Length is untrusted.
-    const bounded = request.method === 'POST' ? await boundedConsentRequest(request) : request;
+    const bounded = request.method !== 'POST' ? request : reacquisition
+      ? await boundedReacquisitionRequest(request) : await boundedConsentRequest(request);
     const response = await dispatch(bounded, { slug, path });
     if (response.ok) return response;
   } catch { /* Generic, credential-free refusal without logging request URLs. */ }
   return Response.json({ error: 'Freezing consent refused.' }, { status: 403,
     headers: { 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' } });
+}
+
+async function boundedReacquisitionRequest(request: Request): Promise<Request> {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  const timer = setTimeout(abort, 5000);
+  request.signal.addEventListener('abort', abort, { once: true });
+  if (request.signal.aborted) abort();
+  try {
+    // Fixed byte cap before directory SQL, authentication, or JSON. Preserve the
+    // canonical URL and metadata; Content-Length never expands this budget.
+    const body = await readBridgeBytes(request.body, 8192, controller.signal);
+    return new Request(request, { body });
+  } finally {
+    clearTimeout(timer); controller.abort(); request.signal.removeEventListener('abort', abort);
+  }
 }
 
 async function boundedConsentRequest(request: Request): Promise<Request> {

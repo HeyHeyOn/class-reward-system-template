@@ -18,6 +18,10 @@ const platform = (
 ): TenantRouteInventoryEntry => ({ route, method, scope: 'platform', effect });
 
 export const TENANT_ROUTE_INVENTORY: readonly TenantRouteInventoryEntry[] = [
+  tenantRead('/migrations/[jobId]/freezing/reacquisition/bootstrap'),
+  tenantRead('/migrations/[jobId]/freezing/reacquisition/[attemptId]'),
+  tenantMutation('/migrations/[jobId]/freezing/reacquisition/challenge', 'POST'),
+  tenantMutation('/migrations/[jobId]/freezing/reacquisition', 'POST'),
   platform('/internal/migrations/final-bridge', 'POST', 'mutation'),
   platform('/internal/migrations/freezing-reacquisition', 'POST', 'mutation'),
   tenantMutation('/migrations/[jobId]/freezing/consent/challenge', 'POST'),

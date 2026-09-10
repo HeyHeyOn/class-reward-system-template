@@ -31,10 +31,9 @@ const response = (status: number, body: unknown, cookie?: string) => Response.js
 });
 const unknown = () => response(202, { status: 'UNKNOWN', externalEffect: 'UNKNOWN', automaticRetry: false, automaticEnable: false });
 
-/** Internal, canonical-tenant-bound HTTP composition. Only low-level SQL and
- * server configuration are injected. No route export or production env factory
- * is installed by this slice; callers must never derive these dependencies from
- * request fields. All successful results are permanently diagnostic facts. */
+/** Canonical-tenant-bound HTTP composition. Only low-level SQL and server
+ * configuration are injected by freezingReacquisitionCentralProduction; callers
+ * must never derive dependencies from HTTP. All results are diagnostic facts. */
 export function createFreezingReacquisitionIntake(dependencies: Dependencies) {
   const { tenantId, migrationJobId, origin, canonicalPath, runTransaction, requestPrivateKey, manifestKeyId } = dependencies;
   const env = Object.freeze({ ...(dependencies.env ?? process.env) });
@@ -273,7 +272,65 @@ export function createFreezingReacquisitionIntake(dependencies: Dependencies) {
         return response(200,{...candidate,status:'AUTHENTIC_FREEZING_ACQUISITION',automaticRetry:false,automaticEnable:false});
       } catch { return reservationAttempted ? unknown() : response(403,{status:'REFUSED'}); }
     },
-    async status(request: Request): Promise<Response> {
+    status: createFreezingReacquisitionStatus(dependencies),
+  });
+}
+
+/** Authenticated archival facts only. Deliberately independent of dispatch,
+ * producer, encryption and Google resource credentials or current registration.
+ * Stored consistency checks do not restore expired confirmation authority. */
+export function createFreezingReacquisitionStatus(dependencies: Pick<Dependencies,
+  'tenantId' | 'migrationJobId' | 'origin' | 'canonicalPath' | 'runTransaction' | 'env'>) {
+  const { tenantId, migrationJobId, origin, canonicalPath, runTransaction } = dependencies;
+  const env = Object.freeze({ ...(dependencies.env ?? process.env) });
+  if (!UUID.test(tenantId) || !UUID.test(migrationJobId) || !origin.startsWith('https://') || new URL(origin).origin !== origin
+    || !/^\/api\/c\/[a-z0-9-]+\/migrations\/[0-9a-f-]{36}\/freezing\/reacquisition$/.test(canonicalPath)
+    || canonicalPath.split('/')[5] !== migrationJobId) refused();
+  // Refuse re-entry even if an accidentally retrying runner is supplied.
+  async function transaction<T>(fn: (tx: TenantTransaction) => Promise<T>): Promise<T> {
+    let entered = false;
+    return runTransaction(tenantId, async tx => {
+      if (entered) refused(); entered = true;
+      const rows = (await tx.execute(sql`SHOW transaction_isolation`)).rows;
+      if (rows.length !== 1 || rows[0].transaction_isolation !== 'read committed') refused();
+      return fn(tx);
+    });
+  }
+  function authenticate(request: Request, method: string, suffix: string): FreezingConsentSession {
+    if (request.method !== method || request.url !== origin + canonicalPath + suffix || request.signal.aborted
+      || request.headers.has('content-encoding') || request.headers.get('sec-fetch-site') !== 'same-origin'
+      || ![null, origin].includes(request.headers.get('origin'))) refused();
+    return readFreezingConsentSession(request, origin, env);
+  }
+  async function clock(tx: TenantTransaction) {
+    const rows = (await tx.execute(sql`SELECT floor(extract(epoch FROM clock_timestamp())*1000)::bigint::text AS ms`)).rows;
+    const now = Number(rows[0]?.ms); if (rows.length !== 1 || !Number.isSafeInteger(now) || now < 0) refused(); return now;
+  }
+  function fresh(session: FreezingConsentSession, request: Request, now: number, b?: {issuedAt:number; expiresAt:number}) {
+    revalidateFreezingConsentSession(session, request, origin, now, env);
+    if (request.signal.aborted || (b && (b.issuedAt > now || now >= b.expiresAt))) refused();
+  }
+  async function member(tx: TenantTransaction, session: FreezingConsentSession) {
+    const rows = (await tx.execute(sql`SELECT u.id,u.canonical_email FROM users u JOIN tenant_memberships m ON m.user_id=u.id
+      WHERE m.tenant_id=${tenantId} AND u.google_subject=${session.subject} AND m.role IN ('OWNER','ADMIN') FOR SHARE OF u,m`)).rows;
+    if (rows.length !== 1 || rows[0].canonical_email !== session.email) refused(); return String(rows[0].id);
+  }
+  async function load(tx: TenantTransaction, id: string): Promise<Intent> {
+    if (!UUID.test(id)) refused();
+    const rows = (await tx.execute(sql`SELECT binding FROM migration_reacquisition_challenges WHERE tenant_id=${tenantId} AND challenge_id=${id}`)).rows;
+    if (rows.length !== 1) refused();
+    const v = exact(rows[0].binding, ['challenge','display','csrfDigest','intentDigest']); const b = parseChallenge(v.challenge);
+    if (b.tenantId !== tenantId || b.migrationJobId !== migrationJobId || b.challengeId !== id || typeof v.csrfDigest !== 'string' || !DIGEST.test(v.csrfDigest)) refused();
+    const raw = exact(v.display, [...Object.keys(b), 'action','spreadsheetId','authority','exclusion','finalImportEligible','automaticRetry','automaticEnable']);
+    if (typeof raw.spreadsheetId !== 'string' || !/^[A-Za-z0-9_-]{1,512}$/.test(raw.spreadsheetId)
+      || sha256(raw.spreadsheetId) !== b.spreadsheetIdDigest) refused();
+    const display: Display = { ...b, spreadsheetId: raw.spreadsheetId, action: ACTION, authority: 'NONAUTHORITY',
+      exclusion: 'NOT_PROVEN', finalImportEligible: false, automaticRetry: false, automaticEnable: false };
+    equal(v.display, display);
+    if (v.intentDigest !== sha256(canonicalJson([PURPOSE, b, display]))) refused();
+    return deepFreeze({ challenge: b, display, csrfDigest: v.csrfDigest, intentDigest: String(v.intentDigest) });
+  }
+  return async (request: Request): Promise<Response> => {
       try {
         const id=new URL(request.url).pathname.split('/').at(-1)!; if (!UUID.test(id)) refused();
         const session=authenticate(request,'GET',`/${id}`); const digest=request.headers.get('x-reacquisition-intent-digest');
@@ -294,6 +351,5 @@ export function createFreezingReacquisitionIntake(dependencies: Dependencies) {
         });
         fresh(session,request,Date.now()); return response(200,fact);
       } catch { return response(403,{status:'REFUSED'}); }
-    },
-  });
+    };
 }
