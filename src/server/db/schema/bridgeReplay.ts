@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { check, foreignKey, jsonb, pgTable, primaryKey, text, unique, uuid } from 'drizzle-orm/pg-core';
 import { users } from './identity';
 import { migrationSources } from './migrations';
+import { migrationReacquisitionDispatches } from './freezingReacquisition';
 
 // Acquisition-only storage. Forced RLS and immutable triggers live in 0014.
 export const migrationBridgeChallenges = pgTable('migration_bridge_challenges', {
@@ -27,11 +28,16 @@ export const migrationBridgeChallenges = pgTable('migration_bridge_challenges', 
 export const migrationBridgeConsumptions = pgTable('migration_bridge_consumptions', {
   nonceDigest: text('nonce_digest').notNull(),
   tenantId: uuid('tenant_id').notNull(),
-  challengeId: uuid('challenge_id').notNull(),
+  challengeId: uuid('challenge_id'),
+  freezingChallengeId: uuid('freezing_challenge_id'),
 }, (t) => [
   primaryKey({ name: 'migration_bridge_consumptions_pkey', columns: [t.nonceDigest] }),
   unique('migration_bridge_consumptions_challenge_unique').on(t.tenantId, t.challengeId),
   foreignKey({ name: 'migration_bridge_consumptions_challenge_fk', columns: [t.tenantId, t.challengeId],
     foreignColumns: [migrationBridgeChallenges.tenantId, migrationBridgeChallenges.challengeId] }),
   check('migration_bridge_consumptions_digest_check', sql`${t.nonceDigest} ~ '^[0-9a-f]{64}$'`),
+  unique('migration_bridge_consumptions_freezing_unique').on(t.tenantId,t.freezingChallengeId),
+  unique('migration_bridge_consumptions_freezing_binding_unique').on(t.nonceDigest,t.tenantId,t.freezingChallengeId),
+  foreignKey({name:'migration_bridge_consumptions_freezing_fk',columns:[t.tenantId,t.freezingChallengeId],foreignColumns:[migrationReacquisitionDispatches.tenantId,migrationReacquisitionDispatches.challengeId]}),
+  check('migration_bridge_consumptions_phase_check',sql`(${t.challengeId} IS NOT NULL AND ${t.freezingChallengeId} IS NULL) OR (${t.challengeId} IS NULL AND ${t.freezingChallengeId} IS NOT NULL)`),
 ]);

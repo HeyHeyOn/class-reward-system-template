@@ -3,6 +3,7 @@ export * from './bridgeReplay';
 export * from './bridgeProducer';
 export * from './freezingApproval';
 export * from './freezingConsent';
+export * from './freezingReacquisition';
 export * from './startFreezing';
 export * from './catalog';
 export * from './generatorGrants';

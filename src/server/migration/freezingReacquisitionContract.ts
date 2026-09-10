@@ -32,7 +32,7 @@ const KEYS = ['purpose', 'bindingVersion', 'expectedStatus', 'challengeId', 'ten
 export function parseFreezingReacquisitionChallenge(raw: unknown): FreezingReacquisitionChallenge {
   const value = exactFreezingData(raw, KEYS);
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-  for (const key of ['challengeId', 'tenantId', 'migrationJobId', 'actorUserId', 'startCeremonyId', 'preflightSnapshotId']) {
+  for (const key of ['challengeId', 'tenantId', 'migrationJobId', 'actorUserId', 'startCeremonyId']) {
     if (typeof value[key] !== 'string' || !uuid.test(value[key])) refuseFreezingReacquisition();
   }
   for (const key of ['spreadsheetIdDigest', 'jobSemanticFingerprint', 'sourceAcquisitionDigest', 'sessionBinding',
@@ -43,7 +43,8 @@ export function parseFreezingReacquisitionChallenge(raw: unknown): FreezingReacq
     if (typeof value[key] !== 'string' || !/^[1-9][0-9]{0,15}$/.test(value[key])
       || BigInt(value[key]) > BigInt(Number.MAX_SAFE_INTEGER)) refuseFreezingReacquisition();
   }
-  for (const key of ['sourceId', 'deploymentId', 'actorSubject']) {
+  // SQL importer uses import:<manifestDigest>, not a UUID. Preserve it literally.
+  for (const key of ['sourceId', 'deploymentId', 'actorSubject', 'preflightSnapshotId']) {
     const text = value[key];
     if (typeof text !== 'string' || !text || text.trim() !== text || text.length > (key === 'actorSubject' ? 255 : 512)
       || /[\x00-\x1f\x7f]/.test(text)) refuseFreezingReacquisition();
