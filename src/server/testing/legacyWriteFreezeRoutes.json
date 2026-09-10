@@ -1,4 +1,5 @@
 [
+  { "method": "POST", "route": "/internal/migrations/freezing-reacquisition", "effect": "companion-authenticated-read-candidate" },
   { "method": "GET", "route": "/migrations/[jobId]/freezing/start/challenge", "effect": "migration-start-challenge" },
   { "method": "POST", "route": "/migrations/[jobId]/freezing/start", "effect": "migration-start-confirmation" },
   { "method": "GET", "route": "/migrations/[jobId]/freezing/start/[attemptId]", "effect": "migration-start-archival-read" },

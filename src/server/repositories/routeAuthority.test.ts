@@ -65,6 +65,15 @@ it('keeps companion disable outside tenant authority and on the concrete product
   expect(body).not.toMatch(/createConfiguredSheets|request\.(json|arrayBuffer|text)/);
 });
 
+it('classifies signed read-candidate ingress as companion replay mutation, never current central membership authority', async () => {
+  expect(TENANT_ROUTE_INVENTORY.find(e => e.route === '/internal/migrations/freezing-reacquisition')).toEqual({
+    route: '/internal/migrations/freezing-reacquisition', method: 'POST', scope: 'platform', effect: 'mutation',
+  });
+  const body = await exportedMethodBody('internal/migrations/freezing-reacquisition', 'POST');
+  expect(body).toContain('getProductionFreezingReacquisitionProducer()');
+  expect(body).not.toMatch(/createConfiguredSheets|request\.(json|arrayBuffer|text)/);
+});
+
 describe('tenant read route PostgreSQL authority', () => {
   it('covers every and only tenant-data read handler in the route inventory', () => {
     const inventory = TENANT_ROUTE_INVENTORY

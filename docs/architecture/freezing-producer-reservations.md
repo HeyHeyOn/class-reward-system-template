@@ -82,12 +82,14 @@ This does **not** prove independent-connection PostgreSQL unique-index waits,
 rollback/commit races, production login provisioning or migration lock behavior.
 Those real PostgreSQL probes remain a required pre-deployment gate.
 
-The fixed `/api/internal/migrations/freezing-reacquisition` route and deployment
-credential/registration production composition root are **deferred**, not stubbed.
-A future root must select server-owned keys, dedicated deployment-local SQL and
-actual deployment-local read credentials, require a separately explicit
-`READ_REGISTERED_SOURCE_AND_RECORD_CANDIDATE` registration, fail closed when
-missing, and never inherit the old disable/start scope or browser credentials.
+The fixed `/api/internal/migrations/freezing-reacquisition` POST and
+`freezingReacquisitionProduction.ts` now compose this adapter with the actual
+registered producer and deployment refresh-credential reader. Configuration and
+synthetic SQL/SDK/HTTP verification are documented in
+[migration-freezing-reacquisition.md](./migration-freezing-reacquisition.md).
+The separately explicit `READ_REGISTERED_SOURCE_AND_RECORD_CANDIDATE`
+registration fails closed when missing and never inherits the old disable/start
+scope or browser credentials. No live registration or role provisioning is done.
 
 Central bootstrap/current-member/CSRF challenge intake, immutable candidate
 storage, canonical tenant routes and UI remain outside this slice. Every candidate

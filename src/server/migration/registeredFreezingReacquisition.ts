@@ -177,7 +177,8 @@ export function createRegisteredFreezingReacquisition(dependencies: Readonly<{
     try {
       if (request.signal.aborted || request.method !== 'POST' || request.url !== r.endpoint
         || request.headers.get('content-type') !== 'application/json' || request.headers.has('authorization')
-        || request.headers.has('cookie') || request.headers.has('content-encoding')) refused();
+        || request.headers.has('cookie') || request.headers.has('origin') || request.headers.has('referer')
+        || request.headers.has('content-encoding')) refused();
       const encoded = request.headers.get('x-class-store-freezing-reacquisition');
       if (!encoded || encoded.length > 8192 || !/^[A-Za-z0-9_-]+$/.test(encoded)) refused();
       const auth = exact(JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')), AUTH_KEYS) as Auth;

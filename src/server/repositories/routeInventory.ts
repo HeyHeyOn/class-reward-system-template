@@ -19,6 +19,7 @@ const platform = (
 
 export const TENANT_ROUTE_INVENTORY: readonly TenantRouteInventoryEntry[] = [
   platform('/internal/migrations/final-bridge', 'POST', 'mutation'),
+  platform('/internal/migrations/freezing-reacquisition', 'POST', 'mutation'),
   tenantMutation('/migrations/[jobId]/freezing/consent/challenge', 'POST'),
   tenantMutation('/migrations/[jobId]/freezing/consent', 'POST'),
   { route: '/migrations/[jobId]/freezing/start/challenge', method: 'GET', scope: 'tenant-data', effect: 'mutation' },
