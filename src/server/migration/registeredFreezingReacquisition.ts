@@ -27,10 +27,11 @@ export type FreezingReacquisitionReservation = Readonly<{
   startCeremonyId: string; executionDigest: string; nonceDigest: string; requestDigest: string;
   issuedAt: number; expiresAt: number;
 }>;
-/** REQUIRED production seam, not wired here: atomic global nonce AND challenge
- * uniqueness across old/new phases, immutable INSERT, exact readback and COMMIT
- * ACK. Uncertain ACK is terminal; never retry/recover a success from an old row.
- * This new shape must NOT be sent to the old-purpose SQL reservation adapter. */
+/** Durable implementation: createFreezingProducerReservations (0022 shared
+ * global old/new replay ledger). Immutable INSERT, exact readback and COMMIT ACK.
+ * Uncertain ACK is terminal; never retry/recover success from an old row.
+ * This new shape must NOT be sent to the old-purpose SQL reservation adapter.
+ * Deployment credential/registration composition root is a separate gate. */
 export interface FreezingReacquisitionReservations {
   reserveAndCommit(row: FreezingReacquisitionReservation): Promise<FreezingReacquisitionReservation>;
 }
