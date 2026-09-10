@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import { MigrationFreezingPage } from '@/components/MigrationFreezingPage';
 import { notFound, redirect } from 'next/navigation';
 import { AdminLoginPage } from '@/components/AdminLoginPage';
 import { AdminManagePage } from '@/components/AdminManagePage';
@@ -15,7 +16,7 @@ export default async function TenantAdminSubroute({
   const { slug, path = [] } = await params;
   if (path.length !== 1) notFound();
 
-  if (path[0] !== 'login') await requireTenantAdminPage(slug);
+  const access = path[0] !== 'login' ? await requireTenantAdminPage(slug) : null;
 
   switch (path[0]) {
     case 'login':
@@ -24,8 +25,11 @@ export default async function TenantAdminSubroute({
           <AdminLoginPage googleLoginEnabled tenantScoped />
         </Suspense>
       );
+    case 'migrations':
+      if (!access?.membership || !access.session || access.needsRedirect || access.tenant.slug !== slug) notFound();
+      return <MigrationFreezingPage slug={access.tenant.slug} tenantId={access.tenant.id} sessionKey={String(access.session.issuedAt)} />;
     case 'manage':
-      return <AdminManagePage />;
+      return <AdminManagePage migrationsHref={access?.membership ? `/c/${access.tenant.slug}/admin/migrations` : undefined} />;
     case 'settings':
       redirect(`/c/${slug}/admin`);
     case 'student-qrs':

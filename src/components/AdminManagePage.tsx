@@ -586,7 +586,7 @@ const tabs: Array<{ id: AdminTab; label: string }> = [
   { id: 'currency', label: '화폐 지급/회수' },
 ];
 
-export function AdminManagePage() {
+export function AdminManagePage({ migrationsHref }: { migrationsHref?: string } = {}) {
   const [activeTab, setActiveTab] = useState<AdminTab>('settings');
   const adminTabRefs = useRef<Partial<Record<AdminTab, HTMLButtonElement | null>>>({});
   const [storeTab, setStoreTab] = useState<StoreTab>('inventory');
@@ -2236,6 +2236,7 @@ export function AdminManagePage() {
           })}
           <AdminNavLink href={tenantPagePath('/')} title="매점 바로가기" className={theme.idleTab} />
           <AdminNavLink href={tenantPagePath('/bank')} title="은행 바로가기" className={theme.idleTab} />
+          {migrationsHref && <AdminNavLink href={migrationsHref} title="마이그레이션" className={theme.idleTab} />}
         </nav>
 
         {activeTab === 'settings' ? (

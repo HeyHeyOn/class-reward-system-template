@@ -7,6 +7,6 @@ export default async function TenantAdminPage({
   params,
 }: Readonly<{ params: Promise<{ slug: string }> }>) {
   const { slug } = await params;
-  await requireTenantAdminPage(slug);
-  return <AdminManagePage />;
+  const access = await requireTenantAdminPage(slug);
+  return <AdminManagePage migrationsHref={access.membership ? `/c/${access.tenant.slug}/admin/migrations` : undefined} />;
 }
