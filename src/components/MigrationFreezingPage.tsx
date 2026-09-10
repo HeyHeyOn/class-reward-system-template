@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { MigrationReacquisition } from './MigrationReacquisition';
 import type { StartFreezingDisplay } from '@/server/migration/startFreezingCeremony';
 
 export type MigrationFreezingProps = { slug: string; tenantId: string; sessionKey: string };
@@ -176,5 +177,6 @@ function FreezingForm({ slug, tenantId }: MigrationFreezingProps) {
       <button className={button} disabled={busy} onClick={() => void request('status')}>보관 상태 조회</button>
       {status && <pre aria-label="보관 상태" className="whitespace-pre-wrap break-all">{status}</pre>}
     </section>}
+    <MigrationReacquisition key={jobId} slug={slug} tenantId={tenantId} jobId={jobId} />
   </main>;
 }

@@ -20,6 +20,24 @@ it('surfaces migrations through canonical gated catch-all', async () => {
   const element = await Page({ params: Promise.resolve({ slug: 'alpha', path: ['migrations'] }) });
   expect(renderToStaticMarkup(element)).toContain('마이그레이션 FREEZING'); expect(gate).toHaveBeenCalledWith('alpha');
 });
+it.each(['MEMBER', 'STUDENT', undefined])('refuses membership without current OWNER/ADMIN role: %s', async role => {
+  gate.mockResolvedValue({ tenant, session: { issuedAt: 1 }, membership: { role } });
+  await expect(Page({ params: Promise.resolve({ slug: 'alpha', path: ['migrations'] }) })).rejects.toThrow('not-found');
+});
+it('surfaces the separate diagnostic UI for current OWNER', async () => {
+  gate.mockResolvedValue({ tenant, session: { issuedAt: 1 }, membership: { role: 'OWNER' } });
+  expect(renderToStaticMarkup(await Page({ params: Promise.resolve({ slug: 'alpha', path: ['migrations'] }) }))).toContain('진단 준비');
+});
+it('keys transient controls by original subject/email as well as issuedAt', async () => {
+  gate.mockResolvedValue({ tenant, session: { subject: 'actor-a', email: 'a@example.test', issuedAt: 1 }, membership: { role: 'OWNER' } });
+  const first = await Page({ params: Promise.resolve({ slug: 'alpha', path: ['migrations'] }) });
+  gate.mockResolvedValue({ tenant, session: { subject: 'actor-b', email: 'a@example.test', issuedAt: 1 }, membership: { role: 'OWNER' } });
+  const second = await Page({ params: Promise.resolve({ slug: 'alpha', path: ['migrations'] }) });
+  gate.mockResolvedValue({ tenant, session: { subject: 'actor-a', email: 'b@example.test', issuedAt: 1 }, membership: { role: 'OWNER' } });
+  const third = await Page({ params: Promise.resolve({ slug: 'alpha', path: ['migrations'] }) });
+  expect(first.props.sessionKey).not.toBe(second.props.sessionKey);
+  expect(first.props.sessionKey).not.toBe(third.props.sessionKey);
+});
 it('does not expose migration controls to nonmembers', async () => {
   gate.mockRejectedValue(Error('not-found')); await expect(Page({ params: Promise.resolve({ slug: 'alpha', path: ['migrations'] }) })).rejects.toThrow('not-found');
 });

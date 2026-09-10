@@ -26,8 +26,8 @@ export default async function TenantAdminSubroute({
         </Suspense>
       );
     case 'migrations':
-      if (!access?.membership || !access.session || access.needsRedirect || access.tenant.slug !== slug) notFound();
-      return <MigrationFreezingPage slug={access.tenant.slug} tenantId={access.tenant.id} sessionKey={String(access.session.issuedAt)} />;
+      if (!access?.membership || !['OWNER', 'ADMIN'].includes(access.membership.role) || !access.session || access.needsRedirect || access.tenant.slug !== slug) notFound();
+      return <MigrationFreezingPage slug={access.tenant.slug} tenantId={access.tenant.id} sessionKey={JSON.stringify([access.session.subject, access.session.email, access.session.issuedAt])} />;
     case 'manage':
       return <AdminManagePage migrationsHref={access?.membership ? `/c/${access.tenant.slug}/admin/migrations` : undefined} />;
     case 'settings':
