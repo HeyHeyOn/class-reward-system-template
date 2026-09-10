@@ -409,6 +409,12 @@ function deploymentTrustAnchor(
   return { keyId, publicKey, ...(privateKeyRequired ? { privateKey: privateKey! } : {}) };
 }
 
+/** Read-only server composition seam. Configuration and bounded GET parsing stay
+ * deployment-local; callers cannot supply a control endpoint or a disable action. */
+export function readDeploymentLocalWriterStatus(deploymentId: string): Promise<WriterControlState> {
+  return deploymentLocalWriterControl().readStatus(deploymentId);
+}
+
 function deploymentLocalWriterControl(): DeploymentLocalWriterControl {
   const urlValue = process.env.LEGACY_REDIS_WRITER_CONTROL_URL;
   const token = process.env.LEGACY_REDIS_WRITER_CONTROL_TOKEN;
