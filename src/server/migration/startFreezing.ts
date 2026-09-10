@@ -170,6 +170,7 @@ export async function readStartFreezingStatus(input: Readonly<{
     if (b.purpose !== 'CLASS_STORE_START_EXECUTION_V1' || b.status !== 'STARTED' || b.exclusion !== 'NOT_PROVEN'
       || b.tenantId !== tenantId || b.migrationJobId !== migrationJobId || b.ceremonyId !== ceremonyId || b.intentDigest !== intentDigest
       || b.actorUserId !== members[0].id || b.actorSubject !== session.subject || b.actorEmail !== session.email
+      || b.sessionBinding !== session.sessionBinding
       || b.acquisitionDigest !== sha256(canonicalJson(rows[0].redacted_details))) refused();
     return Object.freeze({ scope: 'ARCHIVAL_ONLY' as const, status: 'STARTED' as const, jobStatus: String(rows[0].job_status),
       ceremonyId, migrationJobId, executionDigest: sha256(canonicalJson(b)), exclusion: 'NOT_PROVEN' as const });

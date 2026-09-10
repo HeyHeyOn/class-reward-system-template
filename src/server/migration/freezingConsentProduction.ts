@@ -7,6 +7,10 @@ import { createFreezingConsentHandlers } from './freezingConsentHandlers';
 /** Explicit server configuration only. No deployment-global Sheet, token or
  * request-selected origin fallback. Configuration is detached per request. */
 export function getProductionFreezingConsentHandlers() {
+  return createFreezingConsentHandlers(getProductionFreezingConsentDependencies());
+}
+
+export function getProductionFreezingConsentDependencies() {
   try {
     const env = Object.freeze({ ...process.env });
     const origin = env.MIGRATION_GOOGLE_OAUTH_ORIGIN;
@@ -29,7 +33,7 @@ export function getProductionFreezingConsentHandlers() {
     const runTransaction = createTenantTransactionRunner({
       get pool() { return getDatabaseClient().pool; },
     }, { maxAttempts: 1, isolationLevel: 'READ COMMITTED' });
-    return createFreezingConsentHandlers({ origin, env, registeredSheets, runTransaction,
-      directory: getProductionTenantAccessDependencies() });
+    return { origin, env, registeredSheets, runTransaction,
+      directory: getProductionTenantAccessDependencies() };
   } catch { throw Error('Freezing consent configuration refused.'); }
 }

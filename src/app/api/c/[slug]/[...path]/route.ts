@@ -12,6 +12,9 @@ function route(method: Method, pattern: string, access: TenantApiAccessResolver,
 }
 
 const ROUTES: readonly TenantApiRoute[] = [
+  route('GET', 'migrations/[jobId]/freezing/start/challenge', 'public', async (r, c) => (await import('@/app/api/migrations/[jobId]/freezing/start/challenge/route')).GET(r, c)),
+  route('POST', 'migrations/[jobId]/freezing/start', 'public', async (r, c) => (await import('@/app/api/migrations/[jobId]/freezing/start/route')).POST(r, c)),
+  route('GET', 'migrations/[jobId]/freezing/start/[attemptId]', 'public', async (r, c) => (await import('@/app/api/migrations/[jobId]/freezing/start/[attemptId]/route')).GET(r, c)),
   // These handlers independently require real Google identity + current DB membership;
   // the generic admin compatibility fallback is deliberately not their authority.
   route('POST', 'migrations/[jobId]/freezing/consent/challenge', 'public', async (r, c) => (await import('@/app/api/migrations/[jobId]/freezing/consent/challenge/route')).POST(r, c as never)),
@@ -69,7 +72,9 @@ async function handle(request: Request, context: RouteContext) {
   const { slug, path } = await context.params;
   const consent = path[0] === 'migrations' && path[2] === 'freezing' && path[3] === 'consent'
     && (path.length === 4 || (path.length === 5 && path[4] === 'challenge'));
-  if (!consent) return dispatch(request, { slug, path });
+  const start = path[0] === 'migrations' && path[2] === 'freezing' && path[3] === 'start'
+    && (path.length === 4 || path.length === 5);
+  if (!consent && !start) return dispatch(request, { slug, path });
   // Directory/method failures occur before the target handler; they must not
   // expose tenant existence or cache the challenge/CSRF endpoint's refusals.
   try {

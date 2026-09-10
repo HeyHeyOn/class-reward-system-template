@@ -112,16 +112,31 @@ export function createFreezingConsentHandlers(dependencies: Dependencies) {
     if (hint.expiresAt <= Date.now() || readFreezingConsentSession(request, origin, env).sessionBinding !== hint.sessionBinding) refused();
   }
   return {
+    // Authentication-only selection, no database/provider effects. The callback
+    // still rebinds directory, immutable challenge, purpose and current membership.
+    readRoutingHint: open,
     async challenge(request: Request, context: Context): Promise<Response> {
       try {
         const tenant = getTrustedTenantRequestContext().tenant;
-        sameOriginPost(request);
+        if (startRegistration && request.method === 'GET') {
+          const url = new URL(request.url);
+          if (request.method !== 'GET' || url.origin !== origin || /[?#]/.test(request.url)
+            || ![null, 'same-origin'].includes(request.headers.get('sec-fetch-site'))
+            || (request.headers.has('origin') && request.headers.get('origin') !== origin)) refused();
+        } else sameOriginPost(request);
         const session = readFreezingConsentSession(request, origin, env);
         const { jobId } = await context.params;
-        const input = await body(request, ['expectedStateVersion', 'sourceId']);
+        const input = startRegistration && request.method === 'GET' ? await dependencies.runTransaction(tenant.id, async tx => {
+          if (startRegistration.tenantId !== tenant.id) refused();
+          const rows = (await tx.execute(sql`SELECT j.state_version::text AS "expectedStateVersion",s.source_id AS "sourceId"
+            FROM migration_jobs j JOIN migration_sources s USING(tenant_id,job_id)
+            WHERE j.tenant_id=${tenant.id} AND j.job_id=${jobId} AND s.provider='GOOGLE_SHEETS'`)).rows;
+          if (rows.length !== 1 || rows[0].sourceId !== startRegistration.sourceId) refused();
+          return rows[0];
+        }) : await body(request, ['expectedStateVersion', 'sourceId']);
         const issued = await service(tenant.id).issueChallenge(request, { ...input, migrationJobId: jobId });
         const { startIntentDigest, ...display } = issued;
-        return response(display, 200, { purpose, ...(startRegistration ? { intentDigest: startIntentDigest } : {}), slug: tenant.slug, tenantId: tenant.id, migrationJobId: jobId,
+        return response({ ...display, ...(startRegistration ? { startIntentDigest } : {}) }, 200, { purpose, ...(startRegistration ? { intentDigest: startIntentDigest } : {}), slug: tenant.slug, tenantId: tenant.id, migrationJobId: jobId,
           challengeId: issued.challengeId, sessionBinding: session.sessionBinding, expiresAt: issued.expiresAt, stateDigest: null });
       } catch { return deny(); }
     },

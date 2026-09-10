@@ -6,6 +6,7 @@ import { TENANT_ROUTE_INVENTORY } from './routeInventory';
 
 const ROOT = process.cwd();
 const READ_AUTHORITY = [
+  ['migrations/[jobId]/freezing/start/[attemptId]', 'GET', 'getProductionStartFreezingStatus'],
   ['bank/balance', 'GET', 'createConfiguredBankReader'],
   ['bank/student', 'GET', 'createConfiguredBankReader'],
   ['bank/tasks', 'GET', 'createConfiguredTaskReader'],
@@ -24,6 +25,8 @@ const READ_AUTHORITY = [
   ['transactions', 'GET', 'createConfiguredTransactionReader'],
 ] as const;
 const CONFIGURED_MUTATION_AUTHORITY = [
+  ['migrations/[jobId]/freezing/start/challenge', 'GET', 'getProductionStartFreezingHandlers'],
+  ['migrations/[jobId]/freezing/start', 'POST', 'getProductionStartFreezingHandlers'],
   ['migrations/[jobId]/freezing/consent/challenge', 'POST', 'getProductionFreezingConsentHandlers'],
   ['migrations/[jobId]/freezing/consent', 'POST', 'getProductionFreezingConsentHandlers'],
   ['admin/login', 'POST', 'getProductionTenantLegacyAdminAuth'],
@@ -70,7 +73,7 @@ describe('tenant read route PostgreSQL authority', () => {
       .sort((left, right) => `${left[0]}:${left[1]}`.localeCompare(`${right[0]}:${right[1]}`));
     const authority = READ_AUTHORITY.map(([route, method]) => [route, method] as string[])
       .sort((left, right) => `${left[0]}:${left[1]}`.localeCompare(`${right[0]}:${right[1]}`));
-    expect(inventory).toHaveLength(16);
+    expect(inventory).toHaveLength(17);
     expect(authority).toEqual(inventory);
   });
 
@@ -101,7 +104,7 @@ describe('tenant mutation route PostgreSQL authority', () => {
       && entry.effect === 'mutation'
       && !configured.has(`${entry.method} ${entry.route}`));
 
-    expect(CONFIGURED_MUTATION_AUTHORITY).toHaveLength(15);
+    expect(CONFIGURED_MUTATION_AUTHORITY).toHaveLength(17);
     expect(sheetsMutations).toHaveLength(15);
     for (const entry of sheetsMutations) {
       const body = await exportedMethodBody(entry.route.replace(/^\//, ''), entry.method);
