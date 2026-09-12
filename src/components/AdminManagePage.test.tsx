@@ -1909,6 +1909,9 @@ describe('AdminManagePage', () => {
     render(<AdminManagePage />);
 
     await screen.findByText('관리자 목록도 이 설정을 사용합니다: 학생 2명 · 상품 2개');
+    await waitFor(() => {
+      expect((screen.getByRole('button', { name: '시스템 설정 저장' }) as HTMLButtonElement).disabled).toBe(false);
+    });
     fireEvent.change(screen.getByLabelText('Google Sheets 주소 또는 시트 ID'), { target: { value: 'sheet-new' } });
     fireEvent.change(screen.getByLabelText('매점 제목'), { target: { value: '햇살반 매점' } });
     fireEvent.change(screen.getByLabelText('은행 제목'), { target: { value: '햇살반 은행' } });
