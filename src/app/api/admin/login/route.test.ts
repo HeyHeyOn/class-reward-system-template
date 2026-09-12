@@ -3,6 +3,7 @@ import { createConfiguredSheetsReader } from '@/server/googleSheets';
 import { runWithTrustedTenantRequestContext } from '@/server/trustedTenantRequestContext';
 import { getProductionTenantLegacyAdminAuth } from '@/server/tenantLegacyAdminAuth';
 import { POST } from './route';
+import * as route from './route';
 
 vi.mock('@/server/googleSheets', () => ({ createConfiguredSheetsReader: vi.fn() }));
 vi.mock('@/server/tenantLegacyAdminAuth', () => ({ getProductionTenantLegacyAdminAuth: vi.fn() }));
@@ -28,6 +29,10 @@ describe('/api/admin/login', () => {
     else process.env.ADMIN_PASSWORD = originalAdminPassword;
     if (originalStorage === undefined) delete process.env.CLASS_STORE_STORAGE;
     else process.env.CLASS_STORE_STORAGE = originalStorage;
+  });
+
+  it('exports only the POST route handler', () => {
+    expect(Object.keys(route)).toEqual(['POST']);
   });
 
   it.each([

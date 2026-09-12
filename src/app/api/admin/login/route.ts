@@ -4,7 +4,7 @@ import { createConfiguredSheetsReader } from '@/server/googleSheets';
 import { getOptionalTrustedTenantRequestContext } from '@/server/trustedTenantRequestContext';
 import { getProductionTenantLegacyAdminAuth } from '@/server/tenantLegacyAdminAuth';
 
-export const TENANT_ADMIN_SESSION_COOKIE = 'class_store_tenant_admin';
+const TENANT_ADMIN_SESSION_COOKIE = 'class_store_tenant_admin';
 
 export async function POST(request: Request) {
   if (process.env.CLASS_STORE_STORAGE === 'postgresql') {
