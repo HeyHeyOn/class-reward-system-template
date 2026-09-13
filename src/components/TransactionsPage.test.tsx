@@ -119,9 +119,17 @@ describe('TransactionsPage', () => {
   });
 
   it('uses transaction wording, signed student-perspective amounts, filter tabs, and income/expense/cancel colors', async () => {
+    const readinessGate = deferredResponse(transactions);
+    const originalFetch = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation((input, init) => {
+      if (String(input) === '/api/transactions' && !init?.method) return readinessGate.response;
+      return originalFetch(input, init);
+    });
     const { container } = render(<TransactionsPage />);
 
     expect(await screen.findByRole('heading', { name: '거래 내역 확인' })).toBeTruthy();
+    queueMicrotask(readinessGate.resolve);
+    await screen.findByRole('heading', { name: '거래 내역 (4)' });
     expect(screen.getByRole('heading', { name: '거래 내역 (4)' })).toBeTruthy();
     expect(screen.queryByText('거래 건수')).toBeNull();
     expect(screen.queryByText('순 지출')).toBeNull();
@@ -139,7 +147,9 @@ describe('TransactionsPage', () => {
     expect(screen.getByTestId('transaction-amount-T003').className).not.toContain('line-through');
     expect(screen.getByTestId('transaction-cancelled-label-T003').className).toContain('rounded-xl');
     expect(screen.getByTestId('transaction-cancelled-label-T003').className).toContain('text-xs');
-    expect(screen.getByText(/취소 일시:/).textContent).toContain('2026. 5. 21. 11시 30분 0초');
+    const cancelledAt = new Date(transactions[2].cancelledAt!);
+    const expectedCancellationTimestamp = `${cancelledAt.getFullYear()}. ${cancelledAt.getMonth() + 1}. ${cancelledAt.getDate()}. ${cancelledAt.getHours()}시 ${cancelledAt.getMinutes()}분 ${cancelledAt.getSeconds()}초`;
+    expect(screen.getByText(/취소 일시:/).textContent).toContain(expectedCancellationTimestamp);
     expect(screen.getAllByText('+500별').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'T001 거래 취소' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'T002 거래 취소' })).toBeTruthy();
