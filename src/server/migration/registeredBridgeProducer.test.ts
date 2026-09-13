@@ -123,7 +123,7 @@ it.each([
   { audience: 'other' }, { path: '/other' }, { purpose: 'CLASS_STORE_LEGACY_MANIFEST' },
   { registrationDigest: 'd'.repeat(64) }, { registrationVersion: '2' }, { ceremonyId: randomUUID() },
   { bridgeChallengeId: randomUUID() }, { issuedAt: Date.now() + 120_000 }, { expiresAt: Date.now() - 1 },
-])('rejects valid request-key signature with incorrect binding %j', async change => {
+])('rejects valid request-key signature with incorrect binding case %#', async change => {
   const f = fixture(); expect((await f.create()(resigned(change))).status).toBe(403); expect(f.events).toEqual([]);
 });
 it('globally rejects one request nonce used across different challenges and instances', async () => {
