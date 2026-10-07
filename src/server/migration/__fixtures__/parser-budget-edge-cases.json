@@ -1,0 +1,6642 @@
+{
+  "promotions": [
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "N_PLUS_ONE",
+      "buyQuantity": 2,
+      "freeQuantity": 1
+    },
+    {
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "N_PLUS_ONE",
+      "buyQuantity": 2,
+      "freeQuantity": 1
+    },
+    {
+      "promotionId": "promo",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "N_PLUS_ONE",
+      "buyQuantity": 2,
+      "freeQuantity": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "N_PLUS_ONE",
+      "buyQuantity": 2,
+      "freeQuantity": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "N_PLUS_ONE",
+      "buyQuantity": 2,
+      "freeQuantity": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "N_PLUS_ONE",
+      "buyQuantity": 2,
+      "freeQuantity": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "N_PLUS_ONE",
+      "buyQuantity": 2,
+      "freeQuantity": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "N_PLUS_ONE",
+      "buyQuantity": 2,
+      "freeQuantity": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "N_PLUS_ONE",
+      "buyQuantity": 2,
+      "freeQuantity": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "N_PLUS_ONE",
+      "buyQuantity": 2,
+      "freeQuantity": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "N_PLUS_ONE",
+      "buyQuantity": 2,
+      "freeQuantity": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "type": "N_PLUS_ONE",
+      "buyQuantity": 2,
+      "freeQuantity": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "buyQuantity": 2,
+      "freeQuantity": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "N_PLUS_ONE",
+      "freeQuantity": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "N_PLUS_ONE",
+      "buyQuantity": 2
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "escaped\n\t\"\\\ud55c\ud83d\ude00\ud800",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "N_PLUS_ONE",
+      "buyQuantity": 2,
+      "freeQuantity": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "\ud55c",
+        "\ud83d\ude00",
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "N_PLUS_ONE",
+      "buyQuantity": 2,
+      "freeQuantity": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": -0.0,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "N_PLUS_ONE",
+      "buyQuantity": 2,
+      "freeQuantity": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "N_PLUS_ONE",
+      "buyQuantity": 2,
+      "freeQuantity": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        " P001 "
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "N_PLUS_ONE",
+      "buyQuantity": 2,
+      "freeQuantity": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-02-30T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "N_PLUS_ONE",
+      "buyQuantity": 2,
+      "freeQuantity": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "N_PLUS_ONE",
+      "buyQuantity": 2,
+      "freeQuantity": 1,
+      "percent": 0
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        null
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "N_PLUS_ONE",
+      "buyQuantity": 2,
+      "freeQuantity": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": "P001",
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "N_PLUS_ONE",
+      "buyQuantity": 2,
+      "freeQuantity": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PROMOTIONAL_PRICE",
+      "promotionalUnitPrice": 5
+    },
+    {
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PROMOTIONAL_PRICE",
+      "promotionalUnitPrice": 5
+    },
+    {
+      "promotionId": "promo",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PROMOTIONAL_PRICE",
+      "promotionalUnitPrice": 5
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PROMOTIONAL_PRICE",
+      "promotionalUnitPrice": 5
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PROMOTIONAL_PRICE",
+      "promotionalUnitPrice": 5
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PROMOTIONAL_PRICE",
+      "promotionalUnitPrice": 5
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PROMOTIONAL_PRICE",
+      "promotionalUnitPrice": 5
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PROMOTIONAL_PRICE",
+      "promotionalUnitPrice": 5
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PROMOTIONAL_PRICE",
+      "promotionalUnitPrice": 5
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PROMOTIONAL_PRICE",
+      "promotionalUnitPrice": 5
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PROMOTIONAL_PRICE",
+      "promotionalUnitPrice": 5
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "type": "PROMOTIONAL_PRICE",
+      "promotionalUnitPrice": 5
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "promotionalUnitPrice": 5
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PROMOTIONAL_PRICE"
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "escaped\n\t\"\\\ud55c\ud83d\ude00\ud800",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PROMOTIONAL_PRICE",
+      "promotionalUnitPrice": 5
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "\ud55c",
+        "\ud83d\ude00",
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PROMOTIONAL_PRICE",
+      "promotionalUnitPrice": 5
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": -0.0,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PROMOTIONAL_PRICE",
+      "promotionalUnitPrice": 5
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PROMOTIONAL_PRICE",
+      "promotionalUnitPrice": 5
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        " P001 "
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PROMOTIONAL_PRICE",
+      "promotionalUnitPrice": 5
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-02-30T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PROMOTIONAL_PRICE",
+      "promotionalUnitPrice": 5
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PROMOTIONAL_PRICE",
+      "promotionalUnitPrice": 5,
+      "percent": 0
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        null
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PROMOTIONAL_PRICE",
+      "promotionalUnitPrice": 5
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": "P001",
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PROMOTIONAL_PRICE",
+      "promotionalUnitPrice": 5
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PERCENT_DISCOUNT",
+      "percent": 10
+    },
+    {
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PERCENT_DISCOUNT",
+      "percent": 10
+    },
+    {
+      "promotionId": "promo",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PERCENT_DISCOUNT",
+      "percent": 10
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PERCENT_DISCOUNT",
+      "percent": 10
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PERCENT_DISCOUNT",
+      "percent": 10
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PERCENT_DISCOUNT",
+      "percent": 10
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PERCENT_DISCOUNT",
+      "percent": 10
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PERCENT_DISCOUNT",
+      "percent": 10
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PERCENT_DISCOUNT",
+      "percent": 10
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PERCENT_DISCOUNT",
+      "percent": 10
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PERCENT_DISCOUNT",
+      "percent": 10
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "type": "PERCENT_DISCOUNT",
+      "percent": 10
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "percent": 10
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PERCENT_DISCOUNT"
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "escaped\n\t\"\\\ud55c\ud83d\ude00\ud800",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PERCENT_DISCOUNT",
+      "percent": 10
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "\ud55c",
+        "\ud83d\ude00",
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PERCENT_DISCOUNT",
+      "percent": 10
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": -0.0,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PERCENT_DISCOUNT",
+      "percent": 10
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PERCENT_DISCOUNT",
+      "percent": 10
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        " P001 "
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PERCENT_DISCOUNT",
+      "percent": 10
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-02-30T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PERCENT_DISCOUNT",
+      "percent": 10
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PERCENT_DISCOUNT",
+      "percent": 0
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        null
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PERCENT_DISCOUNT",
+      "percent": 10
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": "P001",
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "PERCENT_DISCOUNT",
+      "percent": 10
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "FIXED_DISCOUNT",
+      "discountAmount": 1
+    },
+    {
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "FIXED_DISCOUNT",
+      "discountAmount": 1
+    },
+    {
+      "promotionId": "promo",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "FIXED_DISCOUNT",
+      "discountAmount": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "FIXED_DISCOUNT",
+      "discountAmount": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "FIXED_DISCOUNT",
+      "discountAmount": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "FIXED_DISCOUNT",
+      "discountAmount": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "FIXED_DISCOUNT",
+      "discountAmount": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "FIXED_DISCOUNT",
+      "discountAmount": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "FIXED_DISCOUNT",
+      "discountAmount": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "FIXED_DISCOUNT",
+      "discountAmount": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "FIXED_DISCOUNT",
+      "discountAmount": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "type": "FIXED_DISCOUNT",
+      "discountAmount": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "discountAmount": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "FIXED_DISCOUNT"
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "escaped\n\t\"\\\ud55c\ud83d\ude00\ud800",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "FIXED_DISCOUNT",
+      "discountAmount": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "\ud55c",
+        "\ud83d\ude00",
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "FIXED_DISCOUNT",
+      "discountAmount": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": -0.0,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "FIXED_DISCOUNT",
+      "discountAmount": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "FIXED_DISCOUNT",
+      "discountAmount": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        " P001 "
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "FIXED_DISCOUNT",
+      "discountAmount": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-02-30T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "FIXED_DISCOUNT",
+      "discountAmount": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        "P001"
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "FIXED_DISCOUNT",
+      "discountAmount": 1,
+      "percent": 0
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": [
+        null
+      ],
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "FIXED_DISCOUNT",
+      "discountAmount": 1
+    },
+    {
+      "promotionId": "promo",
+      "name": "Sale",
+      "description": "",
+      "productIds": "P001",
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-09-01T00:00:00.000Z",
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-01T00:00:00.000Z",
+      "schemaVersion": 3,
+      "type": "FIXED_DISCOUNT",
+      "discountAmount": 1
+    }
+  ],
+  "items": [
+    {
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 10,
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 10,
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 10,
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 10,
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 10,
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 10,
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 10,
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 10,
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 10,
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 10,
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 10,
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 10,
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 10,
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 3,
+      "subtotal": 20,
+      "regularUnitPrice": 10,
+      "regularTotal": 30,
+      "totalQuantity": 3,
+      "paidQuantity": 2,
+      "freeQuantity": 1,
+      "finalTotal": 20,
+      "totalDiscount": 10,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "N_PLUS_ONE",
+          "beforeAmount": 30,
+          "afterAmount": 20,
+          "discountAmount": 10,
+          "freeQuantity": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "N_PLUS_ONE",
+          "buyQuantity": 2,
+          "freeQuantity": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 3,
+      "subtotal": 20,
+      "regularUnitPrice": 10,
+      "regularTotal": 30,
+      "totalQuantity": 3,
+      "paidQuantity": 2,
+      "freeQuantity": 1,
+      "finalTotal": 20,
+      "totalDiscount": 10,
+      "adjustments": [
+        {
+          "type": "N_PLUS_ONE",
+          "beforeAmount": 30,
+          "afterAmount": 20,
+          "discountAmount": 10,
+          "freeQuantity": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "N_PLUS_ONE",
+          "buyQuantity": 2,
+          "freeQuantity": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 3,
+      "subtotal": 20,
+      "regularUnitPrice": 10,
+      "regularTotal": 30,
+      "totalQuantity": 3,
+      "paidQuantity": 2,
+      "freeQuantity": 1,
+      "finalTotal": 20,
+      "totalDiscount": 10,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "beforeAmount": 30,
+          "afterAmount": 20,
+          "discountAmount": 10,
+          "freeQuantity": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "N_PLUS_ONE",
+          "buyQuantity": 2,
+          "freeQuantity": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 3,
+      "subtotal": 20,
+      "regularUnitPrice": 10,
+      "regularTotal": 30,
+      "totalQuantity": 3,
+      "paidQuantity": 2,
+      "freeQuantity": 1,
+      "finalTotal": 20,
+      "totalDiscount": 10,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "N_PLUS_ONE",
+          "afterAmount": 20,
+          "discountAmount": 10,
+          "freeQuantity": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "N_PLUS_ONE",
+          "buyQuantity": 2,
+          "freeQuantity": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 3,
+      "subtotal": 20,
+      "regularUnitPrice": 10,
+      "regularTotal": 30,
+      "totalQuantity": 3,
+      "paidQuantity": 2,
+      "freeQuantity": 1,
+      "finalTotal": 20,
+      "totalDiscount": 10,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "N_PLUS_ONE",
+          "beforeAmount": 30,
+          "discountAmount": 10,
+          "freeQuantity": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "N_PLUS_ONE",
+          "buyQuantity": 2,
+          "freeQuantity": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 3,
+      "subtotal": 20,
+      "regularUnitPrice": 10,
+      "regularTotal": 30,
+      "totalQuantity": 3,
+      "paidQuantity": 2,
+      "freeQuantity": 1,
+      "finalTotal": 20,
+      "totalDiscount": 10,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "N_PLUS_ONE",
+          "beforeAmount": 30,
+          "afterAmount": 20,
+          "freeQuantity": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "N_PLUS_ONE",
+          "buyQuantity": 2,
+          "freeQuantity": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 3,
+      "subtotal": 20,
+      "regularUnitPrice": 10,
+      "regularTotal": 30,
+      "totalQuantity": 3,
+      "paidQuantity": 2,
+      "freeQuantity": 1,
+      "finalTotal": 20,
+      "totalDiscount": 10,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "N_PLUS_ONE",
+          "beforeAmount": 30,
+          "afterAmount": 20,
+          "discountAmount": 10
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "N_PLUS_ONE",
+          "buyQuantity": 2,
+          "freeQuantity": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 5,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 5,
+      "totalDiscount": 5,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "PROMOTIONAL_PRICE",
+          "beforeAmount": 10,
+          "afterAmount": 5,
+          "discountAmount": 5
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "PROMOTIONAL_PRICE",
+          "promotionalUnitPrice": 5
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 5,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 5,
+      "totalDiscount": 5,
+      "adjustments": [
+        {
+          "type": "PROMOTIONAL_PRICE",
+          "beforeAmount": 10,
+          "afterAmount": 5,
+          "discountAmount": 5
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "PROMOTIONAL_PRICE",
+          "promotionalUnitPrice": 5
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 5,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 5,
+      "totalDiscount": 5,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "beforeAmount": 10,
+          "afterAmount": 5,
+          "discountAmount": 5
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "PROMOTIONAL_PRICE",
+          "promotionalUnitPrice": 5
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 5,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 5,
+      "totalDiscount": 5,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "PROMOTIONAL_PRICE",
+          "afterAmount": 5,
+          "discountAmount": 5
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "PROMOTIONAL_PRICE",
+          "promotionalUnitPrice": 5
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 5,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 5,
+      "totalDiscount": 5,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "PROMOTIONAL_PRICE",
+          "beforeAmount": 10,
+          "discountAmount": 5
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "PROMOTIONAL_PRICE",
+          "promotionalUnitPrice": 5
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 5,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 5,
+      "totalDiscount": 5,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "PROMOTIONAL_PRICE",
+          "beforeAmount": 10,
+          "afterAmount": 5
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "PROMOTIONAL_PRICE",
+          "promotionalUnitPrice": 5
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "PERCENT_DISCOUNT",
+          "beforeAmount": 10,
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "PERCENT_DISCOUNT",
+          "percent": 10
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "type": "PERCENT_DISCOUNT",
+          "beforeAmount": 10,
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "PERCENT_DISCOUNT",
+          "percent": 10
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "beforeAmount": 10,
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "PERCENT_DISCOUNT",
+          "percent": 10
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "PERCENT_DISCOUNT",
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "PERCENT_DISCOUNT",
+          "percent": 10
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "PERCENT_DISCOUNT",
+          "beforeAmount": 10,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "PERCENT_DISCOUNT",
+          "percent": 10
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "PERCENT_DISCOUNT",
+          "beforeAmount": 10,
+          "afterAmount": 9
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "PERCENT_DISCOUNT",
+          "percent": 10
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 10,
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 10,
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "beforeAmount": 10,
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "FIXED_DISCOUNT",
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 10,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 10,
+          "afterAmount": 9
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "escaped\n\"\\\ud55c\ud83d\ude00\ud800",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 10,
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": " trailing ",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 10,
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": -1,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 10,
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 0,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 10,
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9007199254740992,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 10,
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        null
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "promo",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        }
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 9,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 9,
+      "totalDiscount": 1,
+      "adjustments": [
+        {
+          "promotionId": "promo",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 10,
+          "afterAmount": 9,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        null
+      ]
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 10,
+      "quantity": 1,
+      "subtotal": 10,
+      "regularUnitPrice": 10,
+      "regularTotal": 10,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 10,
+      "totalDiscount": 0,
+      "adjustments": [],
+      "appliedPromotions": []
+    },
+    {
+      "productId": "P001",
+      "name": "Product",
+      "price": 100,
+      "quantity": 1,
+      "subtotal": 20,
+      "regularUnitPrice": 100,
+      "regularTotal": 100,
+      "totalQuantity": 1,
+      "paidQuantity": 1,
+      "freeQuantity": 0,
+      "finalTotal": 20,
+      "totalDiscount": 80,
+      "adjustments": [
+        {
+          "promotionId": "p0",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 100,
+          "afterAmount": 99,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p1",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 99,
+          "afterAmount": 98,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p2",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 98,
+          "afterAmount": 97,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p3",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 97,
+          "afterAmount": 96,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p4",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 96,
+          "afterAmount": 95,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p5",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 95,
+          "afterAmount": 94,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p6",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 94,
+          "afterAmount": 93,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p7",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 93,
+          "afterAmount": 92,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p8",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 92,
+          "afterAmount": 91,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p9",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 91,
+          "afterAmount": 90,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p10",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 90,
+          "afterAmount": 89,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p11",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 89,
+          "afterAmount": 88,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p12",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 88,
+          "afterAmount": 87,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p13",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 87,
+          "afterAmount": 86,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p14",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 86,
+          "afterAmount": 85,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p15",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 85,
+          "afterAmount": 84,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p16",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 84,
+          "afterAmount": 83,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p17",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 83,
+          "afterAmount": 82,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p18",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 82,
+          "afterAmount": 81,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p19",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 81,
+          "afterAmount": 80,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p20",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 80,
+          "afterAmount": 79,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p21",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 79,
+          "afterAmount": 78,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p22",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 78,
+          "afterAmount": 77,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p23",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 77,
+          "afterAmount": 76,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p24",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 76,
+          "afterAmount": 75,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p25",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 75,
+          "afterAmount": 74,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p26",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 74,
+          "afterAmount": 73,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p27",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 73,
+          "afterAmount": 72,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p28",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 72,
+          "afterAmount": 71,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p29",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 71,
+          "afterAmount": 70,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p30",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 70,
+          "afterAmount": 69,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p31",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 69,
+          "afterAmount": 68,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p32",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 68,
+          "afterAmount": 67,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p33",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 67,
+          "afterAmount": 66,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p34",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 66,
+          "afterAmount": 65,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p35",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 65,
+          "afterAmount": 64,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p36",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 64,
+          "afterAmount": 63,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p37",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 63,
+          "afterAmount": 62,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p38",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 62,
+          "afterAmount": 61,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p39",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 61,
+          "afterAmount": 60,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p40",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 60,
+          "afterAmount": 59,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p41",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 59,
+          "afterAmount": 58,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p42",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 58,
+          "afterAmount": 57,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p43",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 57,
+          "afterAmount": 56,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p44",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 56,
+          "afterAmount": 55,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p45",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 55,
+          "afterAmount": 54,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p46",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 54,
+          "afterAmount": 53,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p47",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 53,
+          "afterAmount": 52,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p48",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 52,
+          "afterAmount": 51,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p49",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 51,
+          "afterAmount": 50,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p50",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 50,
+          "afterAmount": 49,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p51",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 49,
+          "afterAmount": 48,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p52",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 48,
+          "afterAmount": 47,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p53",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 47,
+          "afterAmount": 46,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p54",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 46,
+          "afterAmount": 45,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p55",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 45,
+          "afterAmount": 44,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p56",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 44,
+          "afterAmount": 43,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p57",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 43,
+          "afterAmount": 42,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p58",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 42,
+          "afterAmount": 41,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p59",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 41,
+          "afterAmount": 40,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p60",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 40,
+          "afterAmount": 39,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p61",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 39,
+          "afterAmount": 38,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p62",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 38,
+          "afterAmount": 37,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p63",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 37,
+          "afterAmount": 36,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p64",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 36,
+          "afterAmount": 35,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p65",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 35,
+          "afterAmount": 34,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p66",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 34,
+          "afterAmount": 33,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p67",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 33,
+          "afterAmount": 32,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p68",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 32,
+          "afterAmount": 31,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p69",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 31,
+          "afterAmount": 30,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p70",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 30,
+          "afterAmount": 29,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p71",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 29,
+          "afterAmount": 28,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p72",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 28,
+          "afterAmount": 27,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p73",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 27,
+          "afterAmount": 26,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p74",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 26,
+          "afterAmount": 25,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p75",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 25,
+          "afterAmount": 24,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p76",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 24,
+          "afterAmount": 23,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p77",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 23,
+          "afterAmount": 22,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p78",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 22,
+          "afterAmount": 21,
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p79",
+          "type": "FIXED_DISCOUNT",
+          "beforeAmount": 21,
+          "afterAmount": 20,
+          "discountAmount": 1
+        }
+      ],
+      "appliedPromotions": [
+        {
+          "promotionId": "p0",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p1",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p2",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p3",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p4",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p5",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p6",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p7",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p8",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p9",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p10",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p11",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p12",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p13",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p14",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p15",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p16",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p17",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p18",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p19",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p20",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p21",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p22",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p23",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p24",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p25",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p26",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p27",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p28",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p29",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p30",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p31",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p32",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p33",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p34",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p35",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p36",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p37",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p38",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p39",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p40",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p41",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p42",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p43",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p44",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p45",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p46",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p47",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p48",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p49",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p50",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p51",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p52",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p53",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p54",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p55",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p56",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p57",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p58",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p59",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p60",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p61",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p62",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p63",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p64",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p65",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p66",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p67",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p68",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p69",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p70",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p71",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p72",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p73",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p74",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p75",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p76",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p77",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p78",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        },
+        {
+          "promotionId": "p79",
+          "name": "Sale",
+          "description": "",
+          "productIds": [
+            "other0",
+            "other1",
+            "other2",
+            "other3",
+            "other4",
+            "other5",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "other13",
+            "other14",
+            "other15",
+            "P001"
+          ],
+          "startsAt": "2026-08-01T00:00:00.000Z",
+          "endsAt": "2026-09-01T00:00:00.000Z",
+          "isActive": true,
+          "sortOrder": 1,
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-01T00:00:00.000Z",
+          "schemaVersion": 3,
+          "type": "FIXED_DISCOUNT",
+          "discountAmount": 1
+        }
+      ]
+    }
+  ]
+}

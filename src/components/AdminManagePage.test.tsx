@@ -5,6 +5,21 @@ import {
   getProductExpectedVersion,
   parseProductAdminEnvelope,
 } from './AdminManagePage';
+import { THEME_PALETTES } from './uiTheme';
+import {
+  confirmDialog,
+  findNotice,
+  findTaskRow,
+  openAdminMenu,
+  openNewProductEditor,
+  openNewStudentEditor,
+  openNewTaskEditor,
+  openProductEditor,
+  openStudentEditor,
+  openTaskEditor,
+  selectionBar,
+  taskEditorPanel,
+} from './testing/adminUi';
 
 const students = [
   { studentId: 'S001', name: '김민준', balance: 3200, status: 'ACTIVE' },
@@ -50,6 +65,27 @@ function jsonResponse(payload: unknown, init?: ResponseInit) {
     status: init?.status ?? 200,
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+/** Opens the 과제 tab and waits for the seeded task rows. */
+async function renderTasks(title = '책 읽기') {
+  render(<AdminManagePage />);
+  await openAdminMenu('과제');
+  await findTaskRow(title);
+}
+
+function fetchCalls(url: string, method?: string) {
+  return vi.mocked(fetch).mock.calls.filter(([input, init]) => String(input) === url
+    && (method === undefined || (init?.method ?? 'GET') === method));
+}
+
+function lastBody(url: string, method: string) {
+  const calls = fetchCalls(url, method);
+  return JSON.parse(String(calls.at(-1)?.[1]?.body ?? 'null'));
+}
+
+function noticeTexts() {
+  return [...screen.queryAllByRole('status'), ...screen.queryAllByRole('alert')].map((node) => node.textContent ?? '');
 }
 
 function deferredResponse(payload: unknown, init?: ResponseInit) {
@@ -309,17 +345,19 @@ describe('AdminManagePage', () => {
         }
         if (url === '/api/tasks/T001' && init?.method === 'DELETE') return jsonResponse({ taskId: 'T001' });
         if (url === '/api/students/batch' && init?.method === 'PATCH') {
+          const body = JSON.parse(String(init.body)) as { students: Array<{ studentId: string }> };
           return jsonResponse([
             { ...students[0], name: '김민준 수정', balance: 4000 },
             students[1],
-          ]);
+          ].filter((student) => body.students.some((entry) => entry.studentId === student.studentId)));
         }
         if (url === '/api/students/batch' && init?.method === 'DELETE') return jsonResponse({ studentIds: ['S001', 'S002'] });
         if (url === '/api/products/batch' && init?.method === 'PATCH') {
+          const body = JSON.parse(String(init.body)) as { products: Array<{ productId: string }> };
           return jsonResponse([
             { ...products[0], name: '연필 세트', price: 900, imageUrl: 'https://example.com/new-pencil.png' },
             products[1],
-          ]);
+          ].filter((product) => body.products.some((entry) => entry.productId === product.productId)));
         }
         if (url === '/api/products/batch' && init?.method === 'DELETE') return jsonResponse({ productIds: ['P001', 'P002'] });
         if (url === '/api/students/S001' && init?.method === 'PATCH') {
@@ -357,6 +395,7 @@ describe('AdminManagePage', () => {
     vi.restoreAllMocks();
   });
 
+
   it('opens promotions only from the store subtab and does not fetch them eagerly', async () => {
     render(<AdminManagePage />);
 
@@ -364,7 +403,7 @@ describe('AdminManagePage', () => {
     expect(screen.queryByRole('tab', { name: '행사 관리' })).toBeNull();
     expect(fetch).not.toHaveBeenCalledWith('/api/promotions', { cache: 'no-store' });
 
-    fireEvent.click(screen.getByRole('tab', { name: '매점 관리' }));
+    await openAdminMenu('매점');
     const storeTabs = screen.getByRole('tablist', { name: '매점 관리 메뉴' });
     expect(within(storeTabs).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['상품·재고', '행사 관리']);
     expect(within(storeTabs).getByRole('tab', { name: '상품·재고' }).getAttribute('aria-selected')).toBe('true');
@@ -374,7 +413,7 @@ describe('AdminManagePage', () => {
     expect(initialPromotionsPanel?.hidden).toBe(true);
     expect(initialPromotionsPanel?.getAttribute('aria-labelledby')).toBe(promotionsTab.id);
     expect(initialPromotionsPanel?.textContent).toBe('');
-    expect(screen.getByRole('heading', { name: '새 상품 추가' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '상품 추가' })).toBeTruthy();
     expect(fetch).not.toHaveBeenCalledWith('/api/promotions', { cache: 'no-store' });
 
     fireEvent.click(promotionsTab);
@@ -388,7 +427,7 @@ describe('AdminManagePage', () => {
 
   it('links store tabs to panels and supports wrapped roving keyboard navigation without refetching promotions', async () => {
     render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '매점 관리' }));
+    await openAdminMenu('매점');
 
     const storeTabs = screen.getByRole('tablist', { name: '매점 관리 메뉴' });
     const inventoryTab = within(storeTabs).getByRole('tab', { name: '상품·재고' });
@@ -426,7 +465,9 @@ describe('AdminManagePage', () => {
     await screen.findByRole('heading', { name: '학급 보상 시스템' });
     const tablist = screen.getByRole('tablist', { name: '관리자 메뉴' });
     const primaryTabs = within(tablist).getAllByRole('tab');
-    const tabKeys = ['settings', 'students', 'products', 'tasks', 'transactions', 'currency'];
+    const tabKeys = ['home', 'students', 'products', 'tasks', 'currency', 'transactions', 'settings'];
+    expect(primaryTabs.map((tab) => tab.textContent)).toEqual(['홈', '학생', '매점', '과제', '지급·회수', '거래 내역', '설정']);
+    const last = primaryTabs.length - 1;
     primaryTabs.forEach((tab, index) => {
       expect(tab.id).toBe(`admin-tab-${tabKeys[index]}`);
       expect(tab.getAttribute('aria-controls')).toBe(`admin-panel-${tabKeys[index]}`);
@@ -438,18 +479,18 @@ describe('AdminManagePage', () => {
     });
     primaryTabs[0].focus();
     fireEvent.keyDown(primaryTabs[0], { key: 'ArrowLeft' });
-    expect(document.activeElement).toBe(primaryTabs[5]);
-    expect(primaryTabs[5].getAttribute('aria-selected')).toBe('true');
-    fireEvent.keyDown(primaryTabs[5], { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(primaryTabs[last]);
+    expect(primaryTabs[last].getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(primaryTabs[last], { key: 'ArrowRight' });
     expect(document.activeElement).toBe(primaryTabs[0]);
     fireEvent.keyDown(primaryTabs[0], { key: 'End' });
-    expect(document.activeElement).toBe(primaryTabs[5]);
-    fireEvent.keyDown(primaryTabs[5], { key: 'Home' });
+    expect(document.activeElement).toBe(primaryTabs[last]);
+    fireEvent.keyDown(primaryTabs[last], { key: 'Home' });
     expect(document.activeElement).toBe(primaryTabs[0]);
     expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input) === '/api/promotions')).toBe(false);
   });
 
-  it('makes the admin background inert for history, closes on Escape, and restores the exact opener', async () => {
+  it('makes the task panel inert for history, closes on Escape, and restores the exact opener', async () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/students') return jsonResponse(students);
@@ -460,20 +501,22 @@ describe('AdminManagePage', () => {
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
     render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    const opener = screen.getByRole('button', { name: 'T001 기록 보기' });
+    await openAdminMenu('과제');
+    const panel = await openTaskEditor('책 읽기');
+    const background = screen.getByTestId('admin-background');
+    expect(background.hasAttribute('inert')).toBe(true);
+    const opener = within(panel).getByRole('button', { name: 'T001 기록 보기' });
     opener.focus();
     fireEvent.click(opener);
-    const background = screen.getByTestId('admin-background');
     const dialog = screen.getByRole('dialog', { name: '과제 기록' });
     const close = within(dialog).getByRole('button', { name: '닫기' });
-    expect(background.hasAttribute('inert')).toBe(true);
-    expect(background.getAttribute('aria-hidden')).toBe('true');
+    expect(panel.hasAttribute('inert')).toBe(true);
+    expect(panel.getAttribute('aria-hidden')).toBe('true');
     expect(dialog.closest('[inert]')).toBeNull();
     expect(document.activeElement).toBe(close);
     fireEvent.keyDown(close, { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: '과제 기록' })).toBeNull();
-    expect(background.hasAttribute('inert')).toBe(false);
+    expect(taskEditorPanel('책 읽기').hasAttribute('inert')).toBe(false);
     expect(document.activeElement).toBe(opener);
   });
 
@@ -482,38 +525,44 @@ describe('AdminManagePage', () => {
     const baseFetch = vi.mocked(fetch);
     const fallback = baseFetch.getMockImplementation()!;
     baseFetch.mockImplementation(async (input, init) => String(input) === '/api/tasks/T001' && init?.method === 'DELETE' ? deletion.response : fallback(input, init));
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    const opener = screen.getByRole('button', { name: 'T001 과제 삭제' });
+    await renderTasks();
+    const panel = await openTaskEditor('책 읽기');
+    const opener = within(panel).getByRole('button', { name: 'T001 과제 삭제' });
     opener.focus();
     fireEvent.click(opener);
     const dialog = screen.getByRole('dialog', { name: '책 읽기 과제 삭제 확인' });
     expect(within(dialog).getByText(/책 읽기/)).toBeTruthy();
     expect(screen.getByTestId('admin-background').hasAttribute('inert')).toBe(true);
-    expect(baseFetch.mock.calls.some(([url, init]) => String(url) === '/api/tasks/T001' && init?.method === 'DELETE')).toBe(false);
+    expect(panel.hasAttribute('inert')).toBe(true);
+    expect(fetchCalls('/api/tasks/T001', 'DELETE')).toHaveLength(0);
     expect(confirm).not.toHaveBeenCalled();
     const confirmDelete = within(dialog).getByRole('button', { name: '과제 삭제 확인' });
     expect(document.activeElement).toBe(confirmDelete);
     fireEvent.click(confirmDelete);
     fireEvent.click(confirmDelete);
     expect(confirmDelete).toHaveProperty('disabled', true);
-    expect(baseFetch.mock.calls.filter(([url, init]) => String(url) === '/api/tasks/T001' && init?.method === 'DELETE')).toHaveLength(1);
+    expect(fetchCalls('/api/tasks/T001', 'DELETE')).toHaveLength(1);
     deletion.resolve();
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '책 읽기 과제 삭제 확인' })).toBeNull());
-    expect(screen.queryByLabelText('T001 과제명')).toBeNull();
+    await findNotice('T001 과제 삭제 완료');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '책 읽기 과제 편집' })).toBeNull());
+    expect(screen.queryByRole('button', { name: '책 읽기 과제 편집' })).toBeNull();
+    expect(screen.getByRole('button', { name: '수학 학습지 과제 편집' })).toBeTruthy();
   });
 
   it('cancels task deletion by button or Escape without a request and restores focus', async () => {
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    const opener = screen.getByRole('button', { name: 'T001 과제 삭제' });
+    await renderTasks();
+    const panel = await openTaskEditor('책 읽기');
+    const opener = within(panel).getByRole('button', { name: 'T001 과제 삭제' });
     fireEvent.click(opener);
     fireEvent.click(screen.getByRole('button', { name: '과제 삭제 취소' }));
-    expect(document.activeElement).toBe(opener);
+    await waitFor(() => expect(document.activeElement).toBe(opener));
     fireEvent.click(opener);
     fireEvent.keyDown(screen.getByRole('dialog', { name: '책 읽기 과제 삭제 확인' }), { key: 'Escape' });
-    expect(document.activeElement).toBe(opener);
-    expect(vi.mocked(fetch).mock.calls.some(([url, init]) => String(url) === '/api/tasks/T001' && init?.method === 'DELETE')).toBe(false);
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+    expect(screen.queryByRole('dialog', { name: '책 읽기 과제 삭제 확인' })).toBeNull();
+    expect(taskEditorPanel('책 읽기')).toBeTruthy();
+    expect(fetchCalls('/api/tasks/T001', 'DELETE')).toHaveLength(0);
   });
 
   it('keeps a failed task deletion confirmation open and retryable', async () => {
@@ -522,18 +571,67 @@ describe('AdminManagePage', () => {
     baseFetch.mockImplementation(async (input, init) => String(input) === '/api/tasks/T001' && init?.method === 'DELETE'
       ? jsonResponse({ error: '삭제 서버 오류' }, { status: 500 })
       : fallback(input, init));
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 삭제' }));
+    await renderTasks();
+    const panel = await openTaskEditor('책 읽기');
+    fireEvent.click(within(panel).getByRole('button', { name: 'T001 과제 삭제' }));
     fireEvent.click(screen.getByRole('button', { name: '과제 삭제 확인' }));
 
     const dialog = await screen.findByRole('dialog', { name: '책 읽기 과제 삭제 확인' });
-    expect(within(dialog).getByRole('alert').textContent).toContain('삭제 서버 오류');
-    expect(within(dialog).getByRole('button', { name: '과제 삭제 확인' })).toHaveProperty('disabled', false);
-    expect(screen.getByLabelText('T001 과제명')).toBeTruthy();
+    await waitFor(() => {
+      expect(within(dialog).getByText(/삭제 응답을 확인하지 못했습니다\./)).toBeTruthy();
+      expect(dialog.textContent).not.toContain('삭제 서버 오류');
+      expect(within(dialog).getByRole('button', { name: '과제 삭제 확인' })).toHaveProperty('disabled', false);
+    });
+    expect((await findNotice('삭제 응답을 확인하지 못했습니다.')).textContent).not.toContain('삭제 서버 오류');
+    expect(screen.getByRole('button', { name: '책 읽기 과제 편집', hidden: true })).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: '과제 삭제 확인' }));
+    await waitFor(() => expect(fetchCalls('/api/tasks/T001', 'DELETE')).toHaveLength(2));
   });
 
-  it.each(['black', 'navy'] as const)('uses semantic muted and hover colors on remaining %s admin surfaces', async (themeColor) => {
+  it('keeps the product draft when switching store subtabs', async () => {
+    render(<AdminManagePage />);
+    await openAdminMenu('매점');
+    const editor = await openNewProductEditor();
+    fireEvent.change(within(editor).getByLabelText('새 상품명'), { target: { value: '작성 중인 상품' } });
+    fireEvent.keyDown(editor, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: '상품 추가' })).toBeNull();
+
+    const storeTabs = screen.getByRole('tablist', { name: '매점 관리 메뉴' });
+    fireEvent.click(within(storeTabs).getByRole('tab', { name: '행사 관리' }));
+    await screen.findByRole('tabpanel', { name: '행사 관리' });
+    fireEvent.change(screen.getByLabelText('행사명'), { target: { value: '작성 중인 행사' } });
+    fireEvent.click(within(storeTabs).getByRole('tab', { name: '상품·재고' }));
+
+    fireEvent.click(screen.getByRole('button', { name: '상품 추가' }));
+    // An unsent new-product draft survives closing and reopening the panel.
+    expect(within(await screen.findByRole('dialog', { name: '상품 추가' })).getByLabelText('새 상품명')).toHaveProperty('value', '작성 중인 상품');
+    fireEvent.keyDown(screen.getByRole('dialog', { name: '상품 추가' }), { key: 'Escape' });
+    fireEvent.click(within(storeTabs).getByRole('tab', { name: '행사 관리' }));
+    expect(screen.getByLabelText('행사명')).toHaveProperty('value', '작성 중인 행사');
+    expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/promotions')).toHaveLength(1);
+  });
+
+  it('lists each task as a read-only row with a selection checkbox and a single editor button', async () => {
+    await renderTasks();
+
+    const row = screen.getAllByTestId('task-row')[0];
+    expect(within(row).queryAllByRole('textbox')).toHaveLength(0);
+    expect(within(row).queryAllByRole('spinbutton')).toHaveLength(0);
+    expect(within(row).getAllByRole('checkbox').map((box) => box.getAttribute('aria-label'))).toEqual(['T001 선택']);
+    expect(within(row).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual(['책 읽기 과제 편집']);
+    expect(within(row).getByText('책 읽기')).toBeTruthy();
+
+    const panel = await openTaskEditor('책 읽기');
+    expect(within(within(panel).getByRole('tablist', { name: '과제 편집 메뉴' })).getAllByRole('tab').map((tab) => tab.textContent))
+      .toEqual(['기본 정보', '반복', '학생 현황']);
+    expect(within(panel).getByRole('button', { name: 'T001 기록 보기' })).toBeTruthy();
+    expect(within(panel).getByRole('button', { name: 'T001 과제 삭제' })).toBeTruthy();
+    expect(within(panel).getByLabelText('T001 과제명')).toHaveProperty('value', '책 읽기');
+  });
+
+  it.each([
+    ...(['white', 'black', 'navy'] as const).map((name) => [name, THEME_PALETTES[name].shell, THEME_PALETTES[name].surface, THEME_PALETTES[name].border] as const),
+  ] as const)('applies semantic %s theme variables to admin-owned surfaces and controls', async (themeColor, shellColor, surfaceColor, borderColor) => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/students') return jsonResponse(students);
@@ -544,91 +642,28 @@ describe('AdminManagePage', () => {
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
     render(<AdminManagePage />);
-    expect((await screen.findByText('학생')).className).toContain('text-[var(--theme-muted-text)]');
-    fireEvent.click(screen.getByRole('tab', { name: '학생 관리' }));
-    expect(screen.getByText('회수 후 음수 잔액 가능').className).toContain('text-[var(--theme-muted-text)]');
-    fireEvent.click(screen.getByRole('tab', { name: '화폐 지급/회수' }));
-    expect(screen.getByText(/QR코드를 인식하여/).closest('ul')?.className).toContain('text-[var(--theme-muted-text)]');
-    fireEvent.click(screen.getByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
-    const row = await screen.findByTestId('task-assignment-row-S001');
-    expect(row.className).toContain('hover:bg-[var(--theme-hover)]');
-    expect(row.className).toContain('hover:text-[var(--theme-hover-text)]');
-    expect(screen.getByRole('status', { name: '과제 부여 상태 불러오는 중' }).className).not.toMatch(/bg-white|text-slate-600/);
-  });
-
-  it('keeps the product draft when switching store subtabs', async () => {
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '매점 관리' }));
-    fireEvent.change(screen.getByLabelText('새 상품명'), { target: { value: '작성 중인 상품' } });
-
-    const storeTabs = screen.getByRole('tablist', { name: '매점 관리 메뉴' });
-    fireEvent.click(within(storeTabs).getByRole('tab', { name: '행사 관리' }));
-    await screen.findByRole('tabpanel', { name: '행사 관리' });
-    fireEvent.change(screen.getByLabelText('행사명'), { target: { value: '작성 중인 행사' } });
-    fireEvent.click(within(storeTabs).getByRole('tab', { name: '상품·재고' }));
-
-    expect(screen.getByLabelText('새 상품명')).toHaveProperty('value', '작성 중인 상품');
-    fireEvent.click(within(storeTabs).getByRole('tab', { name: '행사 관리' }));
-    expect(screen.getByLabelText('행사명')).toHaveProperty('value', '작성 중인 행사');
-    expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/promotions')).toHaveLength(1);
-  });
-
-  it('places each task row action in a right-side group in the required keyboard order', async () => {
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-
-    const row = screen.getAllByTestId('task-row')[0];
-    const nameField = within(row).getByLabelText('T001 과제명');
-    const actions = within(row).getByTestId('task-row-actions');
-    const buttons = within(actions).getAllByRole('button');
-    expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual([
-      'T001 기한 설정',
-      'T001 기록 보기',
-      'T001 과제 부여',
-      'T001 과제 삭제',
-    ]);
-    expect(nameField.parentElement?.contains(actions)).toBe(false);
-    expect(actions.compareDocumentPosition(nameField) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
-    for (const button of buttons) {
-      expect(button.className).toContain('focus-visible:ring-[var(--theme-focus-ring)]');
-      expect(button.className).toContain('focus-visible:ring-offset-[var(--theme-surface)]');
-      expect(button.className).toContain('border');
-    }
-    expect(buttons[3].className).toContain('rose');
-  });
-
-  it.each([
-    ['white', '#FCFCFC', '#FFFFFF', '#8A8A8A'],
-    ['black', '#1F1F1F', '#2B2B2B', '#818181'],
-    ['navy', '#111A2E', '#1B2945', '#7184A6'],
-  ] as const)('applies semantic %s theme variables to admin-owned surfaces and controls', async (themeColor, shellColor, surfaceColor, borderColor) => {
-    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url === '/api/students') return jsonResponse(students);
-      if (url === '/api/products?includeInactive=1') return jsonResponse(adminProductEnvelope());
-      if (url === '/api/tasks?includeInactive=1') return jsonResponse(tasks);
-      if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', themeColor });
-      return jsonResponse({ error: 'not found' }, { status: 404 });
-    });
-    render(<AdminManagePage />);
     const shell = await screen.findByTestId('admin-shell');
     expect(shell.className).toContain('bg-[var(--theme-shell)]');
     expect(shell.className).toContain('text-[var(--theme-text)]');
     expect(shell.style.getPropertyValue('--theme-shell')).toBe(shellColor);
     expect(shell.style.getPropertyValue('--theme-surface')).toBe(surfaceColor);
     expect(shell.style.getPropertyValue('--theme-border')).toBe(borderColor);
-    expect(screen.getByTestId('admin-header').className).toContain('bg-[var(--theme-surface)]');
-    expect(screen.getByTestId('admin-tabs').className).toContain('border-[var(--theme-border)]');
 
-    fireEvent.click(screen.getByRole('tab', { name: '학생 관리' }));
-    const section = screen.getByRole('heading', { name: '새 학생 추가' }).closest('section');
-    const input = screen.getByLabelText('새 학생 이름');
-    expect(section?.className).toContain('bg-[var(--theme-surface)]');
+    await openAdminMenu('학생');
+    const editor = await openNewStudentEditor();
+    const input = within(editor).getByLabelText('새 학생 이름');
+    expect(editor.className).toContain('bg-[var(--theme-surface)]');
+    expect(editor.className).toContain('text-[var(--theme-text)]');
     expect(input.className).toContain('bg-[var(--theme-input)]');
     expect(input.className).toContain('text-[var(--theme-text)]');
-    expect(input.className).toContain('focus:ring-[var(--theme-focus-ring)]');
-    expect(`${section?.className} ${input.className}`).not.toMatch(/bg-white|text-slate-(?:950|700)/);
+    expect(`${editor.className} ${input.className}`).not.toMatch(/bg-white|text-slate-(?:950|700)/);
+    fireEvent.keyDown(editor, { key: 'Escape' });
+
+    await openAdminMenu('과제');
+    const panel = await openTaskEditor('책 읽기', '학생 현황');
+    const loading = await within(panel).findByRole('status', { name: '과제 부여 상태 불러오는 중' });
+    expect(loading.className).toContain('var(--theme-surface)');
+    expect(loading.className).not.toMatch(/bg-white|text-slate-/);
   });
 
   it.each(['white', 'black', 'navy'] as const)('passes the normalized %s theme into task history dialogs', async (themeColor) => {
@@ -642,18 +677,19 @@ describe('AdminManagePage', () => {
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
     render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 기록 보기' }));
+    await openAdminMenu('과제');
+    const panel = await openTaskEditor('책 읽기');
+    fireEvent.click(within(panel).getByRole('button', { name: 'T001 기록 보기' }));
 
     const dialog = screen.getByRole('dialog', { name: '과제 기록' });
-    expect(dialog.style.getPropertyValue('--theme-shell')).toBe(themeColor === 'white' ? '#FCFCFC' : themeColor === 'black' ? '#1F1F1F' : '#111A2E');
+    expect(dialog.style.getPropertyValue('--theme-shell')).toBe(THEME_PALETTES[themeColor].shell);
     expect(dialog.className).toContain('border-[var(--theme-border)]');
     expect(dialog.className).toContain('bg-[var(--theme-surface)]');
     expect(dialog.className).toContain('text-[var(--theme-text)]');
     expect(dialog.innerHTML).not.toMatch(/bg-white|bg-slate-|text-slate-|border-slate-/);
   });
 
-  it.each(['white', 'black', 'navy'] as const)('uses semantic %s dialog, currency input, and loading/result surfaces', async (themeColor) => {
+  it.each(['white', 'black', 'navy'] as const)('uses semantic %s panel, currency input, and loading/result surfaces', async (themeColor) => {
     const currencyRequest = deferredResponse([{ studentId: 'S001', balance: 3900 }]);
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -669,27 +705,17 @@ describe('AdminManagePage', () => {
     render(<AdminManagePage />);
     await screen.findByTestId('admin-shell');
 
-    fireEvent.click(screen.getByRole('tab', { name: '매점 관리' }));
-    fireEvent.click(screen.getByRole('button', { name: 'P001 이미지 주소 편집' }));
-    const imageDialog = screen.getByRole('dialog', { name: '상품 이미지 등록' });
-    expect(imageDialog.className).toContain('bg-[var(--theme-surface)]');
-    expect(imageDialog.className).toContain('border-[var(--theme-border)]');
-    expect(imageDialog.className).toContain('text-[var(--theme-text)]');
-    expect(screen.getByLabelText('이미지 주소 전체 입력').className).toContain('bg-[var(--theme-input)]');
-    expect(imageDialog.className).not.toContain('bg-white');
-    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+    await openAdminMenu('매점');
+    const productPanel = await openProductEditor('P001', '연필');
+    expect(productPanel.className).toContain('bg-[var(--theme-surface)]');
+    expect(productPanel.className).toContain('text-[var(--theme-text)]');
+    expect(within(productPanel).getByLabelText('P001 이미지 주소').className).toContain('bg-[var(--theme-input)]');
+    expect(productPanel.className).not.toContain('bg-white');
+    fireEvent.click(within(productPanel).getByRole('button', { name: '취소' }));
 
-    fireEvent.click(screen.getByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 상세 설정 편집' }));
-    const taskDialog = screen.getByRole('dialog', { name: '과제 상세 설정 편집' });
-    expect(taskDialog.className).toContain('bg-[var(--theme-surface)]');
-    expect(screen.getByLabelText('과제 상세 설정 전체 입력').className).toContain('focus:ring-[var(--theme-focus-ring)]');
-    fireEvent.click(screen.getByRole('button', { name: '취소' }));
-
-    fireEvent.click(screen.getByRole('tab', { name: '화폐 지급/회수' }));
+    await openAdminMenu('지급·회수');
     const amountInput = screen.getByLabelText('지급/회수 금액');
     expect(amountInput.className).toContain('bg-[var(--theme-input)]');
-    expect(amountInput.className).toContain('border-[var(--theme-border)]');
     expect(amountInput.className).toContain('text-[var(--theme-text)]');
     fireEvent.change(amountInput, { target: { value: '700' } });
     fireEvent.click(screen.getByRole('button', { name: 'QR 인식 시작' }));
@@ -701,121 +727,129 @@ describe('AdminManagePage', () => {
 
     const loadingDialog = await screen.findByRole('dialog', { name: '화폐 지급 처리 중' });
     expect(loadingDialog.className).toContain('bg-[var(--theme-surface)]');
-    expect(loadingDialog.className).toContain('border-[var(--theme-border)]');
     await act(async () => currencyRequest.resolve());
     const resultDialog = await screen.findByRole('dialog', { name: '화폐 지급 성공' });
     expect(resultDialog.className).toContain('bg-[var(--theme-surface)]');
-    expect(within(resultDialog).getByRole('heading').className).toContain('bg-emerald-700');
     expect(resultDialog.className).not.toContain('bg-white');
-    expect(within(resultDialog).getByText('S001 학생에게 700 지급 완료').className).toContain('bg-[var(--theme-surface-raised)]');
+    expect(within(resultDialog).getByText('S001 학생에게 700 지급 완료')).toBeTruthy();
   });
-
 
   it('removes student number fields and prints QR cards with ID only', async () => {
     render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '학생 관리' }));
+    await openAdminMenu('학생');
+    await screen.findAllByTestId('student-row');
 
-    expect(screen.queryByLabelText('새 학생 번호')).toBeNull();
-    expect(screen.queryByText('번호')).toBeNull();
-    expect(screen.queryByLabelText('S001 번호')).toBeNull();
+    const editor = await openNewStudentEditor();
+    expect(within(editor).queryByLabelText('새 학생 번호')).toBeNull();
+    fireEvent.keyDown(editor, { key: 'Escape' });
+    const studentEditor = await openStudentEditor('S001', '김민준');
+    expect(within(studentEditor).queryByLabelText('S001 번호')).toBeNull();
+    fireEvent.keyDown(studentEditor, { key: 'Escape' });
 
     fireEvent.click(screen.getByLabelText('S001 선택'));
-    fireEvent.click(screen.getByRole('button', { name: '선택 학생 QR 발급' }));
+    fireEvent.click(within(selectionBar()).getByRole('button', { name: 'QR 카드 발급' }));
 
-    expect(screen.getByRole('dialog', { name: '선택 학생 QR 발급' })).toBeTruthy();
-    expect(screen.getAllByText('S001').length).toBeGreaterThan(0);
+    const dialog = screen.getByRole('dialog', { name: '선택 학생 QR 발급' });
+    expect(within(dialog).getAllByText('S001').length).toBeGreaterThan(0);
     expect(screen.queryByText(/1번/)).toBeNull();
   });
 
+  /** Opens the 학생 현황 tab of a task panel and waits for the assignment status GET. */
+  async function openAssignmentPanel(title = '책 읽기') {
+    const panel = await openTaskEditor(title, '학생 현황');
+    await within(panel).findByTestId('task-assignment-row-S001');
+    await waitFor(() => expect(within(panel).queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
+    return panel;
+  }
+
+  /** Bulk 부여/부여 취소/완료/미완료 buttons shown while assignment rows are selected (not the filter toggles). */
+  function bulkAssignmentButton(container: HTMLElement, name: string) {
+    return within(container).getAllByRole('button', { name }).find((button) => !button.hasAttribute('aria-pressed'))!;
+  }
+
   it('assigns tasks to selected student IDs and immediately saves existing task assignments', async () => {
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    await renderTasks();
 
-    fireEvent.click(screen.getByRole('button', { name: '새 과제 과제 부여' }));
-    expect(screen.getByText('선택된 학생만 이 과제를 완료할 수 있습니다. 아무 학생도 선택하지 않으면 아무도 완료할 수 없습니다.')).toBeTruthy();
-    expect(screen.getByLabelText('전체 학생 행 선택')).toBeTruthy();
-    expect(screen.getByLabelText('S001 김민준 행 선택')).toBeTruthy();
-    fireEvent.click(screen.getByLabelText('S001 김민준 행 선택'));
-    fireEvent.change(screen.getByLabelText('선택 학생 부여 상태 일괄 변경'), { target: { value: 'assigned' } });
-    fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
-
-    fireEvent.change(screen.getByLabelText('새 과제명'), { target: { value: '영어 단어' } });
-    fireEvent.change(screen.getByLabelText('새 과제 설명'), { target: { value: '5개 외우기' } });
-    fireEvent.change(screen.getByLabelText('새 과제 보상'), { target: { value: '10' } });
-    fireEvent.click(screen.getByRole('button', { name: '새 과제 추가' }));
+    const editor = await openNewTaskEditor();
+    fireEvent.click(within(editor).getByRole('tab', { name: /^대상 학생/ }));
+    expect(within(editor).getByText(/고른 학생만 은행에서 이 과제를 보고 완료할 수 있습니다/)).toBeTruthy();
+    expect(within(editor).getByLabelText('전체 학생 행 선택')).toBeTruthy();
+    fireEvent.click(within(editor).getByLabelText('S001 김민준 부여 상태'));
+    fireEvent.click(within(editor).getByRole('tab', { name: /^기본 정보/ }));
+    fireEvent.change(within(editor).getByLabelText('새 과제명'), { target: { value: '영어 단어' } });
+    fireEvent.change(within(editor).getByLabelText('새 과제 설명'), { target: { value: '5개 외우기' } });
+    fireEvent.change(within(editor).getByLabelText('새 과제 보상'), { target: { value: '10' } });
+    fireEvent.click(within(editor).getByRole('button', { name: '과제 만들기' }));
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks', expect.objectContaining({
       method: 'POST',
       body: expect.stringContaining('"allowedStudentIds":["S001"]'),
     })));
+    await findNotice('T003 과제 추가 완료');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '새 과제' })).toBeNull());
 
-    fireEvent.change(screen.getByLabelText('T002 과제명'), { target: { value: '수학 학습지 초안' } });
-    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
-    expect(screen.getByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeTruthy();
-    expect(await screen.findByText('완료 여부')).toBeTruthy();
-    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
-    expect((screen.getByLabelText('S001 김민준 행 선택') as HTMLInputElement).checked).toBe(false);
-    const s001Assignment = screen.getByRole('button', { name: 'S001 김민준 부여 상태' });
+    fireEvent.click(await findTaskRow('책 읽기'));
+    const panel = await screen.findByRole('dialog', { name: '책 읽기 과제 편집' });
+    fireEvent.click(within(panel).getByRole('tab', { name: /^학생 현황/ }));
+    await within(panel).findByTestId('task-assignment-row-S001');
+    await waitFor(() => expect(within(panel).queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
+    expect((within(panel).getByLabelText('S001 김민준 행 선택') as HTMLInputElement).checked).toBe(false);
+    const s001Assignment = within(panel).getByRole('button', { name: 'S001 김민준 부여 상태' });
     expect(s001Assignment.textContent).toContain('부여');
-    expect(s001Assignment.className).toContain('bg-green');
-    const s001Row = screen.getByTestId('task-assignment-row-S001');
-    expect(s001Row.textContent).toContain('부여 QR');
-    expect(s001Row.innerHTML.indexOf('aria-label=\"S001 김민준 행 선택\"')).toBeLessThan(s001Row.innerHTML.indexOf('김민준'));
-    const s001Completion = screen.getByRole('button', { name: 'S001 김민준 완료 상태' });
-    expect(s001Completion.tagName).toBe('BUTTON');
-    expect(s001Completion.textContent).toContain('완료');
-    expect(s001Completion.className).toContain('bg-blue');
+    expect(s001Assignment.getAttribute('aria-pressed')).toBe('true');
+    const s001Row = within(panel).getByTestId('task-assignment-row-S001');
+    // Assignment/completion origins are bookkeeping, not shown to the teacher.
+    expect(s001Row.textContent).not.toContain('부여 QR');
+    expect(s001Row.innerHTML.indexOf('aria-label="S001 김민준 행 선택"')).toBeLessThan(s001Row.innerHTML.indexOf('김민준</span>'));
+    const s001Completion = within(panel).getByRole('button', { name: 'S001 김민준 완료 상태' });
+    expect(s001Completion.textContent).toBe('완료');
+    expect(s001Completion.getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(s001Assignment);
-    expect(screen.getByRole('button', { name: 'S001 김민준 부여 상태' }).textContent).toContain('미부여');
-    expect(screen.getByRole('button', { name: 'S001 김민준 완료 상태' }).textContent).toContain('완료');
-    fireEvent.click(screen.getByRole('button', { name: 'S001 김민준 부여 상태' }));
-    expect((screen.getByLabelText('S002 이서연 행 선택') as HTMLInputElement).checked).toBe(false);
-    const s002Row = screen.getByTestId('task-assignment-row-S002');
-    expect(s002Row.innerHTML.indexOf('aria-label=\"S002 이서연 행 선택\"')).toBeLessThan(s002Row.innerHTML.indexOf('이서연'));
-    const s002Completion = screen.getByRole('button', { name: 'S002 이서연 완료 상태' });
-    expect(s002Completion.tagName).toBe('BUTTON');
-    expect(s002Completion.textContent).toContain('미완료');
-    expect(s002Completion.className).toContain('bg-slate');
-    fireEvent.click(screen.getByLabelText('S002 이서연 행 선택'));
-    fireEvent.change(screen.getByLabelText('선택 학생 부여 상태 일괄 변경'), { target: { value: 'assigned' } });
-    fireEvent.click(screen.getByLabelText('S001 김민준 행 선택'));
-    fireEvent.change(screen.getByLabelText('선택 학생 완료 여부 일괄 변경'), { target: { value: 'completed' } });
-    expect(screen.getByRole('button', { name: 'S002 이서연 완료 상태' }).textContent).toContain('완료');
-    fireEvent.click(screen.getByRole('button', { name: 'S001 김민준 부여 상태' }));
-    fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
+    expect(within(panel).getByRole('button', { name: 'S001 김민준 부여 상태' }).textContent).toBe('미부여');
+    expect(within(panel).getByRole('button', { name: 'S001 김민준 완료 상태' }).textContent).toBe('완료');
+    expect(within(panel).getByRole('tab', { name: /^학생 현황/ }).querySelector('[aria-label="저장 안 됨"]')).toBeTruthy();
+    fireEvent.click(within(panel).getByRole('button', { name: 'S001 김민준 부여 상태' }));
+    expect((within(panel).getByLabelText('S002 이서연 행 선택') as HTMLInputElement).checked).toBe(false);
+    const s002Completion = within(panel).getByRole('button', { name: 'S002 이서연 완료 상태' });
+    expect(s002Completion.textContent).toBe('미완료');
+    expect(s002Completion.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(within(panel).getByLabelText('S002 이서연 행 선택'));
+    fireEvent.click(bulkAssignmentButton(panel, '부여'));
+    fireEvent.click(within(panel).getByLabelText('S001 김민준 행 선택'));
+    fireEvent.click(bulkAssignmentButton(panel, '완료'));
+    expect(within(panel).getByRole('button', { name: 'S002 이서연 완료 상태' }).textContent).toBe('완료');
+    fireEvent.click(within(panel).getByRole('button', { name: 'S001 김민준 부여 상태' }));
+    fireEvent.click(within(panel).getByRole('button', { name: '저장' }));
 
-    await waitFor(() => expect((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.filter(([url, init]) => String(url) === '/api/tasks/assignments/batch' && init?.method === 'POST')).toHaveLength(1));
-    const assignmentBatchCall = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
-      .find(([url, init]) => String(url) === '/api/tasks/assignments/batch' && init?.method === 'POST')!;
-    expect(JSON.parse(String((assignmentBatchCall[1] as RequestInit).body))).toEqual({ targets: [{
+    await waitFor(() => expect(fetchCalls('/api/tasks/assignments/batch', 'POST')).toHaveLength(1));
+    expect(lastBody('/api/tasks/assignments/batch', 'POST')).toEqual({ targets: [{
       taskId: 'T001',
       operations: [
         { studentId: 'S001', assigned: false, source: 'ADMIN' },
         { studentId: 'S002', assigned: true, completed: true, source: 'ADMIN' },
       ],
     }] });
-    expect((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.some(([url, init]) => String(url) === '/api/tasks/T001/assignments' && init?.method === 'PATCH')).toBe(false);
-    expect(alert).toHaveBeenCalledWith('과제 부여 저장 완료');
-    expect(screen.getByLabelText('T002 과제명')).toHaveProperty('value', '수학 학습지 초안');
+    expect(fetchCalls('/api/tasks/T001/assignments', 'PATCH')).toHaveLength(0);
+    await findNotice('과제 부여 저장 완료');
 
-    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
-    expect(await screen.findByText('완료 여부')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }).textContent).toContain('부여');
-    const reopenedS002Completion = screen.getByRole('button', { name: 'S002 이서연 완료 상태' });
-    expect(reopenedS002Completion.textContent).toContain('완료');
-    expect(reopenedS002Completion.className).toContain('bg-blue');
-    fireEvent.click(screen.getByRole('button', { name: '완료 기록 초기화' }));
-    fireEvent.click(screen.getByRole('button', { name: '완료 기록 초기화 확인' }));
-    await waitFor(() => expect(alert).toHaveBeenCalledWith('완료 기록 3건 초기화 완료'));
-    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
-    expect(screen.getByRole('button', { name: 'S001 김민준 부여 상태' }).textContent).toContain('미부여');
-    expect(screen.getByRole('button', { name: 'S001 김민준 완료 상태' }).textContent).toContain('미완료');
-    expect(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }).textContent).toContain('부여');
-    expect(screen.getByRole('button', { name: 'S002 이서연 완료 상태' }).textContent).toContain('미완료');
-    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+    // The panel reloads the saved status once the assignment list changed.
+    await waitFor(() => expect(within(taskEditorPanel('책 읽기')).getByRole('button', { name: 'S002 이서연 부여 상태' }).textContent).toBe('부여'));
+    const reopened = taskEditorPanel('책 읽기');
+    expect(within(reopened).getByRole('button', { name: 'S002 이서연 완료 상태' }).textContent).toBe('완료');
+    expect(within(reopened).getByRole('button', { name: 'S001 김민준 부여 상태' }).textContent).toBe('미부여');
+    fireEvent.click(within(reopened).getByRole('button', { name: '완료 기록 초기화' }));
+    fireEvent.click(await screen.findByRole('button', { name: '완료 기록 초기화 확인' }));
+    await findNotice('완료 기록 3건 초기화 완료');
+    await waitFor(() => expect(within(taskEditorPanel('책 읽기')).getByRole('button', { name: 'S002 이서연 완료 상태' }).textContent).toBe('미완료'));
+    const afterReset = taskEditorPanel('책 읽기');
+    expect(within(afterReset).getByRole('button', { name: 'S001 김민준 부여 상태' }).textContent).toBe('미부여');
+    expect(within(afterReset).getByRole('button', { name: 'S001 김민준 완료 상태' }).textContent).toBe('미완료');
+    expect(within(afterReset).getByRole('button', { name: 'S002 이서연 부여 상태' }).textContent).toBe('부여');
+    fireEvent.click(within(afterReset).getByRole('button', { name: '닫기' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '책 읽기 과제 편집' })).toBeNull());
 
-    fireEvent.click(screen.getByRole('button', { name: 'QR 과제 부여' }));
-    expect(screen.getByRole('button', { name: '책 읽기 과제 선택' }).textContent).toContain('부여 학생 1명');
+    fireEvent.click(screen.getByRole('button', { name: 'QR로 부여' }));
+    expect(screen.getByRole('button', { name: '책 읽기 과제 선택' }).textContent).toContain('부여 1명');
     fireEvent.click(screen.getByRole('button', { name: '책 읽기 과제 선택' }));
     fireEvent.change(screen.getByLabelText('과제 부여 학생 QR 직접 입력'), { target: { value: 'S002' } });
     fireEvent.click(screen.getByRole('button', { name: '직접 입력 적용' }));
@@ -839,17 +873,17 @@ describe('AdminManagePage', () => {
       return fallback(input, init);
     });
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
-    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
-    fireEvent.click(screen.getByRole('button', { name: '완료 기록 초기화' }));
-    fireEvent.click(screen.getByRole('button', { name: '완료 기록 초기화 확인' }));
+    await renderTasks();
+    const panel = await openAssignmentPanel();
+    fireEvent.click(within(panel).getByRole('button', { name: '완료 기록 초기화' }));
+    fireEvent.click(await screen.findByRole('button', { name: '완료 기록 초기화 확인' }));
 
     const dialog = await screen.findByRole('dialog', { name: '완료 기록 초기화 확인' });
-    await waitFor(() => expect(within(dialog).getByRole('alert').textContent).toContain('temporary reset failure'));
+    await waitFor(() => expect(within(dialog).getByText('temporary reset failure')).toBeTruthy());
+    await findNotice('temporary reset failure');
     fireEvent.click(within(dialog).getByRole('button', { name: '완료 기록 초기화 확인' }));
     await waitFor(() => expect(resetBodies).toHaveLength(2));
+    await findNotice('완료 기록 1건 초기화 완료');
 
     expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
     expect(resetBodies).toEqual([
@@ -859,42 +893,42 @@ describe('AdminManagePage', () => {
   });
 
   it('does not send assignment commands when the loaded desired state is unchanged', async () => {
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
-    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
+    await renderTasks();
+    const panel = await openAssignmentPanel();
 
-    fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
+    fireEvent.click(within(panel).getByRole('button', { name: '저장' }));
 
-    await waitFor(() => expect(alert).toHaveBeenCalledWith('과제 부여 저장 완료'));
-    expect((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.some(([url, init]) => String(url) === '/api/tasks/T001/assignments' && init?.method === 'PATCH')).toBe(false);
-    expect((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.some(([url, init]) => String(url) === '/api/tasks/assignments/batch' && init?.method === 'POST')).toBe(false);
+    await findNotice('과제 부여 저장 완료');
+    expect(fetchCalls('/api/tasks/T001/assignments', 'PATCH')).toHaveLength(0);
+    expect(fetchCalls('/api/tasks/assignments/batch', 'POST')).toHaveLength(0);
   });
 
   it('accepts a successful batch response that omits optional fields without reconciling', async () => {
-    const baseFetch = fetch as unknown as ReturnType<typeof vi.fn>;
-    const defaultFetch = baseFetch.getMockImplementation() as (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+    const baseFetch = vi.mocked(fetch);
+    const defaultFetch = baseFetch.getMockImplementation()!;
     let assignmentGetCount = 0;
+    const getsAtSave: number[] = [];
     baseFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/tasks/assignments/batch' && init?.method === 'POST') {
+        getsAtSave.push(assignmentGetCount);
         return jsonResponse({ appliedCount: 2, failures: [] });
       }
       if (url === '/api/tasks/T001/assignments') assignmentGetCount += 1;
       return defaultFetch(input, init);
     });
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
-    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
-    fireEvent.click(screen.getByRole('button', { name: 'S001 김민준 부여 상태' }));
-    fireEvent.click(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }));
-    fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
+    await renderTasks();
+    const panel = await openAssignmentPanel();
+    fireEvent.click(within(panel).getByRole('button', { name: 'S001 김민준 부여 상태' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'S002 이서연 부여 상태' }));
+    fireEvent.click(within(panel).getByRole('button', { name: '저장' }));
 
-    await waitFor(() => expect(alert).toHaveBeenCalledWith('과제 부여 저장 완료'));
-    expect(screen.queryByRole('dialog', { name: '과제 부여' })).toBeNull();
-    expect(assignmentGetCount).toBe(1);
+    await findNotice('과제 부여 저장 완료');
+    expect(getsAtSave).toEqual([1]);
+    expect(noticeTexts().join(' ')).not.toContain('일부 저장 실패');
+    // No reconciliation read: the only later GET is the panel reloading the saved list.
+    await waitFor(() => expect(assignmentGetCount).toBe(2));
   });
 
   it.each([
@@ -924,8 +958,8 @@ describe('AdminManagePage', () => {
     ['duplicate warning', { appliedCount: 1, failures: [], warnings: [{ taskId: 'T001', code: 'LEGACY_MIRROR_UPDATE_FAILED' }, { taskId: 'T001', code: 'LEGACY_MIRROR_UPDATE_FAILED' }] }],
     ['warning with extra fields', { appliedCount: 1, failures: [], warnings: [{ taskId: 'T001', code: 'LEGACY_MIRROR_UPDATE_FAILED', detail: 'private' }] }],
   ])('rejects a malformed successful batch response: %s', async (_caseName, payload) => {
-    const baseFetch = fetch as unknown as ReturnType<typeof vi.fn>;
-    const defaultFetch = baseFetch.getMockImplementation() as (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+    const baseFetch = vi.mocked(fetch);
+    const defaultFetch = baseFetch.getMockImplementation()!;
     let assignmentGetCount = 0;
     baseFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -934,33 +968,31 @@ describe('AdminManagePage', () => {
       return defaultFetch(input, init);
     });
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
-    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
-    fireEvent.click(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }));
-    fireEvent.click(screen.getByRole('button', { name: 'S002 이서연 완료 상태' }));
-    fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
+    await renderTasks();
+    const panel = await openAssignmentPanel();
+    fireEvent.click(within(panel).getByRole('button', { name: 'S002 이서연 부여 상태' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'S002 이서연 완료 상태' }));
+    fireEvent.click(within(panel).getByRole('button', { name: '저장' }));
 
-    await waitFor(() => expect(alert).toHaveBeenCalledWith('과제 부여 저장 결과를 확인하지 못했습니다.'));
+    await findNotice('과제 부여 저장 결과를 확인하지 못했습니다.');
+    expect(noticeTexts().join(' ')).not.toContain('private');
     expect(assignmentGetCount).toBe(1);
-    expect(screen.getByRole('dialog', { name: '과제 부여' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }).textContent).toContain('부여');
-    expect(screen.getByRole('button', { name: 'S002 이서연 완료 상태' }).textContent).toContain('완료');
+    const current = taskEditorPanel('책 읽기');
+    expect(within(current).getByRole('button', { name: 'S002 이서연 부여 상태' }).textContent).toBe('부여');
+    expect(within(current).getByRole('button', { name: 'S002 이서연 완료 상태' }).textContent).toBe('완료');
 
-    fireEvent.click(screen.getByRole('button', { name: '취소' }));
-    fireEvent.click(screen.getByRole('button', { name: 'QR 과제 부여' }));
-    expect(screen.getByRole('button', { name: '책 읽기 과제 선택' }).textContent).toContain('부여 학생 1명');
+    fireEvent.click(within(current).getByRole('button', { name: '닫기' }));
+    await confirmDialog('저장하지 않고 닫기');
+    fireEvent.click(await screen.findByRole('button', { name: 'QR로 부여' }));
+    expect(screen.getByRole('button', { name: '책 읽기 과제 선택' }).textContent).toContain('부여 1명');
   });
 
   it('sends explicit unassignment with a standalone completion intent for an unassigned student', async () => {
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
-    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
+    await renderTasks();
+    const panel = await openAssignmentPanel();
 
-    fireEvent.click(screen.getByRole('button', { name: 'S002 이서연 완료 상태' }));
-    fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'S002 이서연 완료 상태' }));
+    fireEvent.click(within(panel).getByRole('button', { name: '저장' }));
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/assignments/batch', expect.objectContaining({
       method: 'POST',
@@ -972,8 +1004,8 @@ describe('AdminManagePage', () => {
   });
 
   it('reconciles a failed complete-then-unassign command and retries the explicit paired intent', async () => {
-    const baseFetch = fetch as unknown as ReturnType<typeof vi.fn>;
-    const defaultFetch = baseFetch.getMockImplementation() as (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+    const baseFetch = vi.mocked(fetch);
+    const defaultFetch = baseFetch.getMockImplementation()!;
     let assignmentStatus = [
       { studentId: 'S001', name: '김민준', assigned: true, completed: true },
       { studentId: 'S002', name: '이서연', assigned: true, completed: false },
@@ -1001,35 +1033,33 @@ describe('AdminManagePage', () => {
       return defaultFetch(input, init);
     });
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
-    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
-    fireEvent.click(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }));
-    fireEvent.click(screen.getByRole('button', { name: 'S002 이서연 완료 상태' }));
-    fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
+    await renderTasks();
+    const panel = await openAssignmentPanel();
+    fireEvent.click(within(panel).getByRole('button', { name: 'S002 이서연 부여 상태' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'S002 이서연 완료 상태' }));
+    fireEvent.click(within(panel).getByRole('button', { name: '저장' }));
 
-    await waitFor(() => expect(alert).toHaveBeenCalledWith(expect.stringContaining('과제 부여 일부 저장 실패')));
-    expect(alert).not.toHaveBeenCalledWith(expect.stringContaining('provider stack detail'));
+    expect((await findNotice('과제 부여 일부 저장 실패')).textContent).toContain('책 읽기 (T001) · 이서연 (S002): 작업 실패');
+    expect(noticeTexts().join(' ')).not.toContain('provider stack detail');
     expect(assignmentGetCount).toBe(2);
-    expect(screen.getByRole('dialog', { name: '과제 부여' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }).textContent).toContain('미부여');
-    expect(screen.getByRole('button', { name: 'S002 이서연 완료 상태' }).textContent).toContain('완료');
-    expect(alert).not.toHaveBeenCalledWith('과제 부여 저장 완료');
+    const current = taskEditorPanel('책 읽기');
+    expect(within(current).getByRole('button', { name: 'S002 이서연 부여 상태' }).textContent).toBe('미부여');
+    expect(within(current).getByRole('button', { name: 'S002 이서연 완료 상태' }).textContent).toBe('완료');
+    expect(noticeTexts()).not.toContain('과제 부여 저장 완료');
 
-    fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
+    fireEvent.click(within(current).getByRole('button', { name: '저장' }));
     await waitFor(() => expect(batchBodies).toHaveLength(2));
     expect(batchBodies).toEqual([
       { targets: [{ taskId: 'T001', operations: [{ studentId: 'S002', assigned: false, completed: true, source: 'ADMIN' }] }] },
       { targets: [{ taskId: 'T001', operations: [{ studentId: 'S002', assigned: false, completed: true, source: 'ADMIN' }] }] },
     ]);
-    expect(baseFetch.mock.calls.some(([url, init]) => String(url) === '/api/tasks/T001/assignments' && init?.method === 'PATCH')).toBe(false);
-    await waitFor(() => expect(alert).toHaveBeenCalledWith('과제 부여 저장 완료'));
+    expect(fetchCalls('/api/tasks/T001/assignments', 'PATCH')).toHaveLength(0);
+    await findNotice('과제 부여 저장 완료');
   });
 
-  it('keeps the reconciled assignment cache when a failed edit is cancelled', async () => {
-    const baseFetch = fetch as unknown as ReturnType<typeof vi.fn>;
-    const defaultFetch = baseFetch.getMockImplementation() as (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+  it('keeps the reconciled assignment cache when a failed edit is discarded', async () => {
+    const baseFetch = vi.mocked(fetch);
+    const defaultFetch = baseFetch.getMockImplementation()!;
     let assignmentStatus = [
       { studentId: 'S001', name: '김민준', assigned: true, completed: true },
       { studentId: 'S002', name: '이서연', assigned: false, completed: false },
@@ -1044,24 +1074,22 @@ describe('AdminManagePage', () => {
       return defaultFetch(input, init);
     });
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
-    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
-    fireEvent.click(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }));
-    fireEvent.click(screen.getByRole('button', { name: 'S002 이서연 완료 상태' }));
-    fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
-    await waitFor(() => expect(alert).toHaveBeenCalledWith(expect.stringContaining('과제 부여 일부 저장 실패')));
-    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+    await renderTasks();
+    const panel = await openAssignmentPanel();
+    fireEvent.click(within(panel).getByRole('button', { name: 'S002 이서연 부여 상태' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'S002 이서연 완료 상태' }));
+    fireEvent.click(within(panel).getByRole('button', { name: '저장' }));
+    await findNotice('과제 부여 일부 저장 실패');
+    fireEvent.click(within(taskEditorPanel('책 읽기')).getByRole('button', { name: '닫기' }));
+    await confirmDialog('저장하지 않고 닫기');
 
-    fireEvent.click(screen.getByRole('button', { name: 'QR 과제 부여' }));
-    expect(screen.getByRole('button', { name: '책 읽기 과제 선택' }).textContent).toContain('부여 학생 2명');
+    fireEvent.click(await screen.findByRole('button', { name: 'QR로 부여' }));
+    expect(screen.getByRole('button', { name: '책 읽기 과제 선택' }).textContent).toContain('부여 2명');
     fireEvent.click(screen.getByRole('button', { name: '책 읽기 과제 선택' }));
     fireEvent.change(screen.getByLabelText('과제 부여 학생 QR 직접 입력'), { target: { value: 'S002' } });
     fireEvent.click(screen.getByRole('button', { name: '직접 입력 적용' }));
     expect(await screen.findByText('이미 이 과제가 부여된 학생입니다.')).toBeTruthy();
   });
-
 
   it('assigns a selected task to a scanned student QR, saves it immediately, and shows saving progress', async () => {
     const signedQr = 'csq1.current.c2lnbmVkLXN0dWRlbnQ.signature';
@@ -1072,7 +1100,7 @@ describe('AdminManagePage', () => {
         { studentId: 'S002', assigned: true, completed: false },
       ],
     });
-    const baseFetch = fetch as unknown as ReturnType<typeof vi.fn>;
+    const baseFetch = vi.mocked(fetch);
     baseFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/students') return jsonResponse(students);
@@ -1082,24 +1110,28 @@ describe('AdminManagePage', () => {
       if (url === '/api/transactions') return jsonResponse(transactions);
       if (url === `/api/bank/student?studentId=${encodeURIComponent(signedQr)}`) return jsonResponse({ studentId: 'S002', name: '이서연', balance: 1500 });
       if (url === '/api/tasks/T002/assignments' && init?.method === 'PATCH') return qrTaskSave.response;
+      if (url === '/api/tasks/T002/assignments') return jsonResponse({ taskId: 'T002', students: [
+        { studentId: 'S001', assigned: false, completed: false },
+        { studentId: 'S002', assigned: true, completed: false },
+      ] });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    await renderTasks();
 
-    fireEvent.click(screen.getByRole('button', { name: 'QR 과제 부여' }));
-    expect(screen.getByRole('dialog', { name: 'QR 과제 부여' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'QR로 부여' }));
+    expect(screen.getByRole('dialog', { name: 'QR로 과제 부여' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '책 읽기 과제 선택' })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '수학 학습지 과제 선택' }));
-    expect(screen.getByRole('dialog', { name: '수학 학습지 QR 과제 부여' })).toBeTruthy();
-    expect(screen.getByText('수학 학습지')).toBeTruthy();
+    const scanDialog = screen.getByRole('dialog', { name: '수학 학습지 QR 과제 부여' });
+    expect(within(scanDialog).getByText('수학 학습지')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('과제 부여 학생 QR 직접 입력'), { target: { value: signedQr } });
     fireEvent.click(screen.getByRole('button', { name: '직접 입력 적용' }));
 
-    expect(await screen.findByRole('dialog', { name: 'QR 인식 중' })).toBeTruthy();
-    expect(screen.getByText('QR을 인식했습니다. 과제를 부여하는 중입니다.')).toBeTruthy();
+    // The lookup overlay can close before the next assertion on a loaded machine; check the found element itself.
+    const recognizing = await screen.findByRole('dialog', { name: 'QR 인식 중' });
+    expect(within(recognizing).getByText('QR을 인식했습니다. 과제를 부여하는 중입니다.')).toBeTruthy();
     expect(await screen.findByRole('dialog', { name: '변경 사항 저장 중' })).toBeTruthy();
     expect(screen.getByText('변경 사항을 저장하는 중입니다.')).toBeTruthy();
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/T002/assignments', expect.objectContaining({
@@ -1107,23 +1139,23 @@ describe('AdminManagePage', () => {
       body: JSON.stringify({ studentId: 'S002', assigned: true, source: 'QR' }),
     })));
     expect(fetch).toHaveBeenCalledWith(`/api/bank/student?studentId=${encodeURIComponent(signedQr)}`, { cache: 'no-store' });
-    expect(baseFetch.mock.calls.some(([url, init]) => String(url) === '/api/tasks/batch' && init?.method === 'PATCH')).toBe(false);
+    expect(fetchCalls('/api/tasks/batch', 'PATCH')).toHaveLength(0);
     qrTaskSave.resolve();
 
     expect(await screen.findByRole('dialog', { name: 'QR 과제 부여 성공' })).toBeTruthy();
     expect(screen.getByText('과제가 부여되었습니다.')).toBeTruthy();
     expect(screen.getByRole('button', { name: '다시 찍기' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '닫기' }));
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'QR 과제 부여 성공' }), { key: 'Escape' });
+    fireEvent.keyDown(await screen.findByRole('dialog', { name: 'QR로 과제 부여' }), { key: 'Escape' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'T002 과제 부여' }));
-    expect(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }).textContent).toContain('부여');
+    const panel = await openAssignmentPanel('수학 학습지');
+    expect(within(panel).getByRole('button', { name: 'S002 이서연 부여 상태' }).textContent).toBe('부여');
   });
 
   it('shows a specific failure when QR task assignment scans a duplicate or invalid QR', async () => {
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    await renderTasks();
 
-    fireEvent.click(screen.getByRole('button', { name: 'QR 과제 부여' }));
+    fireEvent.click(screen.getByRole('button', { name: 'QR로 부여' }));
     fireEvent.click(screen.getByRole('button', { name: '책 읽기 과제 선택' }));
     fireEvent.change(screen.getByLabelText('과제 부여 학생 QR 직접 입력'), { target: { value: 'S001' } });
     fireEvent.click(screen.getByRole('button', { name: '직접 입력 적용' }));
@@ -1141,11 +1173,11 @@ describe('AdminManagePage', () => {
     expect(screen.getByText('잘못된 QR입니다.')).toBeTruthy();
   });
 
-  it('shows loading popups while saving student, product, and task changes', async () => {
-    const studentSave = deferredResponse([{ ...students[0], name: '김민준 수정', balance: 3200 }, students[1]]);
-    const productSave = deferredResponse([{ ...products[0], name: '연필 세트' }, products[1]]);
-    const taskSave = deferredResponse([{ ...tasks[0], title: '책 읽기 수정' }, tasks[1]]);
-    const baseFetch = fetch as unknown as ReturnType<typeof vi.fn>;
+  it('shows loading popups while saving student, product, and task panel changes', async () => {
+    const studentSave = deferredResponse([{ ...students[0], name: '김민준 수정', balance: 3200 }]);
+    const productSave = deferredResponse([{ ...products[0], name: '연필 세트' }]);
+    const taskSave = deferredResponse([{ ...tasks[0], title: '책 읽기 수정' }]);
+    const baseFetch = vi.mocked(fetch);
     baseFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/students') return jsonResponse(students);
@@ -1160,25 +1192,34 @@ describe('AdminManagePage', () => {
     });
 
     render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '학생 관리' }));
-    fireEvent.click(screen.getByLabelText('S001 선택'));
-    fireEvent.click(screen.getByRole('button', { name: '선택 저장' }));
+    await openAdminMenu('학생');
+    const studentPanel = await openStudentEditor('S001', '김민준');
+    fireEvent.change(within(studentPanel).getByLabelText('S001 이름'), { target: { value: '김민준 수정' } });
+    fireEvent.click(within(studentPanel).getByRole('button', { name: '저장' }));
     expect(await screen.findByRole('dialog', { name: '변경 사항 저장 중' })).toBeTruthy();
     expect(screen.getByText('변경 사항을 저장하는 중입니다.')).toBeTruthy();
     studentSave.resolve();
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '변경 사항 저장 중' })).toBeNull());
+    await findNotice('학생 1명 저장 완료');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'S001 학생 편집' })).toBeNull());
 
-    fireEvent.click(screen.getByRole('tab', { name: '매점 관리' }));
-    fireEvent.click(screen.getByRole('button', { name: '전체 저장' }));
+    await openAdminMenu('매점');
+    const productPanel = await openProductEditor('P001', '연필');
+    fireEvent.change(within(productPanel).getByLabelText('P001 상품명'), { target: { value: '연필 세트' } });
+    fireEvent.click(within(productPanel).getByRole('button', { name: '저장' }));
     expect(await screen.findByRole('dialog', { name: '변경 사항 저장 중' })).toBeTruthy();
     productSave.resolve();
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '변경 사항 저장 중' })).toBeNull());
+    await findNotice('상품 1개 저장 완료');
 
-    fireEvent.click(screen.getByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: '전체 저장' }));
+    await openAdminMenu('과제');
+    const taskPanel = await openTaskEditor('책 읽기');
+    fireEvent.change(within(taskPanel).getByLabelText('T001 과제명'), { target: { value: '책 읽기 수정' } });
+    fireEvent.click(within(taskPanel).getByRole('button', { name: '저장' }));
     expect(await screen.findByRole('dialog', { name: '변경 사항 저장 중' })).toBeTruthy();
     taskSave.resolve();
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '변경 사항 저장 중' })).toBeNull());
+    await findNotice('과제 1개 저장 완료');
   });
 
   it('refreshes student, product, and task lists with a loading popup from section headers', async () => {
@@ -1191,7 +1232,7 @@ describe('AdminManagePage', () => {
     const studentRefresh = deferredResponse(refreshedStudents);
     const productRefresh = deferredResponse(adminProductEnvelope(refreshedProducts, [21, 22]));
     const taskRefresh = deferredResponse(refreshedTasks);
-    const baseFetch = fetch as unknown as ReturnType<typeof vi.fn>;
+    const baseFetch = vi.mocked(fetch);
     baseFetch.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/students') {
@@ -1212,27 +1253,26 @@ describe('AdminManagePage', () => {
     });
 
     render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '학생 관리' }));
+    await openAdminMenu('학생');
     fireEvent.click(screen.getByRole('button', { name: '학생 명단 새로고침' }));
     expect(await screen.findByRole('dialog', { name: '새로고침 중' })).toBeTruthy();
-    expect(screen.getByText('새로고침하는 중입니다.')).toBeTruthy();
+    expect(screen.getByText('최신 목록을 불러오는 중입니다.')).toBeTruthy();
     studentRefresh.resolve();
-    await screen.findByDisplayValue('김민준 새로고침');
+    await screen.findByRole('button', { name: 'S001 김민준 새로고침 편집' });
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '새로고침 중' })).toBeNull());
 
-    fireEvent.click(screen.getByRole('tab', { name: '매점 관리' }));
+    await openAdminMenu('매점');
     fireEvent.click(screen.getByRole('button', { name: '상품 · 재고 관리 새로고침' }));
     expect(await screen.findByRole('dialog', { name: '새로고침 중' })).toBeTruthy();
-    expect(screen.getByText('새로고침하는 중입니다.')).toBeTruthy();
     productRefresh.resolve();
-    await screen.findByDisplayValue('연필 리필');
+    await screen.findByRole('button', { name: 'P001 연필 리필 편집' });
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '새로고침 중' })).toBeNull());
 
-    fireEvent.click(screen.getByRole('tab', { name: '과제 설정' }));
+    await openAdminMenu('과제');
     fireEvent.click(screen.getByRole('button', { name: '과제 설정 새로고침' }));
     expect(await screen.findByRole('dialog', { name: '새로고침 중' })).toBeTruthy();
     taskRefresh.resolve();
-    await screen.findByDisplayValue('책 읽기 새로고침');
+    await findTaskRow('책 읽기 새로고침');
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '새로고침 중' })).toBeNull());
   });
 
@@ -1250,10 +1290,11 @@ describe('AdminManagePage', () => {
     });
 
     render(<AdminManagePage />);
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '시트 정보 불러오는 중' })).toBeNull());
-    fireEvent.click(screen.getByRole('tab', { name: '매점 관리' }));
-    expect(screen.queryByLabelText('P001 상품명')).toBeNull();
-    expect(screen.queryByLabelText('P002 상품명')).toBeNull();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '학급 정보 불러오는 중' })).toBeNull());
+    await openAdminMenu('매점');
+    expect(screen.queryByRole('button', { name: 'P001 연필 편집' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'P002 지우개 편집' })).toBeNull();
+    expect(screen.queryAllByTestId('product-row')).toHaveLength(0);
   });
 
   it('retains the previously validated product pair after a malformed refresh', async () => {
@@ -1279,51 +1320,57 @@ describe('AdminManagePage', () => {
     });
 
     render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '매점 관리' }));
-    expect(await screen.findByDisplayValue('연필')).toBeTruthy();
+    await openAdminMenu('매점');
+    expect(await screen.findByRole('button', { name: 'P001 연필 편집' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '상품 · 재고 관리 새로고침' }));
 
-    await waitFor(() => expect(alert).toHaveBeenCalled());
-    expect(screen.getByDisplayValue('연필')).toBeTruthy();
-    expect(screen.queryByDisplayValue('절대 반영되면 안 됨')).toBeNull();
+    await waitFor(() => expect(screen.queryAllByRole('alert').length).toBeGreaterThan(0));
+    expect(screen.getByRole('button', { name: 'P001 연필 편집' })).toBeTruthy();
+    expect(screen.queryByText('절대 반영되면 안 됨')).toBeNull();
   });
 
   describe('Gate C2 single product deletion', () => {
     const deleteCalls = () => vi.mocked(fetch).mock.calls.filter(([url, init]) => String(url).startsWith('/api/products/') && init?.method === 'DELETE');
 
-    async function openProductDelete(productId = 'P001') {
-      fireEvent.click(await screen.findByRole('tab', { name: '매점 관리' }));
-      const opener = await screen.findByRole('button', { name: `${productId} 상품 삭제` });
+    async function openProductDelete(productId = 'P001', name = '연필') {
+      await openAdminMenu('매점');
+      const panel = await openProductEditor(productId, name);
+      const opener = within(panel).getByRole('button', { name: `${productId} 상품 삭제` });
       opener.focus();
       fireEvent.click(opener);
-      return { opener, dialog: screen.getByRole('dialog', { name: /상품 삭제 확인/ }) };
+      return { panel, opener, dialog: screen.getByRole('dialog', { name: /상품 삭제 확인/ }) };
     }
 
     it('opens without deleting and cancel or Escape clears the attempt and restores the opener', async () => {
       render(<AdminManagePage />);
-      const { opener, dialog } = await openProductDelete();
+      const { opener, dialog, panel } = await openProductDelete();
       expect(within(dialog).getByText(/연필/)).toBeTruthy();
+      expect(panel.hasAttribute('inert')).toBe(true);
       expect(deleteCalls()).toHaveLength(0);
       expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: '상품 삭제 확인' }));
       fireEvent.click(within(dialog).getByRole('button', { name: '상품 삭제 취소' }));
-      expect(document.activeElement).toBe(opener);
+      await waitFor(() => expect(document.activeElement).toBe(opener));
       fireEvent.click(opener);
       fireEvent.keyDown(screen.getByRole('dialog', { name: /상품 삭제 확인/ }), { key: 'Escape' });
       expect(screen.queryByRole('dialog', { name: /상품 삭제 확인/ })).toBeNull();
-      expect(document.activeElement).toBe(opener);
+      await waitFor(() => expect(document.activeElement).toBe(opener));
+      expect(screen.getByRole('dialog', { name: 'P001 상품 편집' })).toBeTruthy();
       expect(deleteCalls()).toHaveLength(0);
     });
 
     it('blocks a locally created product with no loaded precondition before UUID generation or fetch', async () => {
       render(<AdminManagePage />);
-      fireEvent.click(await screen.findByRole('tab', { name: '매점 관리' }));
-      fireEvent.change(screen.getByLabelText('새 상품명'), { target: { value: '새 상품' } });
-      fireEvent.click(screen.getByRole('button', { name: '새 상품 추가' }));
-      await screen.findByLabelText('P003 상품명');
+      await openAdminMenu('매점');
+      const editor = await openNewProductEditor();
+      fireEvent.change(within(editor).getByLabelText('새 상품명'), { target: { value: '새 상품' } });
+      fireEvent.click(within(editor).getByRole('button', { name: '새 상품 추가' }));
+      await findNotice('P003 추가 완료');
       vi.mocked(crypto.randomUUID).mockClear();
-      fireEvent.click(screen.getByRole('button', { name: 'P003 상품 삭제' }));
+      const panel = await openProductEditor('P003', '간식쿠폰');
+      fireEvent.click(within(panel).getByRole('button', { name: 'P003 상품 삭제' }));
       fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
-      expect((await screen.findByRole('alert')).textContent).toMatch(/새로고침/);
+      const dialog = screen.getByRole('dialog', { name: /상품 삭제 확인/ });
+      expect((await within(dialog).findByText(/새로고침/)).textContent).toContain('상품 삭제 전 목록을 새로고침해 주세요.');
       expect(crypto.randomUUID).not.toHaveBeenCalled();
       expect(deleteCalls()).toHaveLength(0);
     });
@@ -1345,7 +1392,8 @@ describe('AdminManagePage', () => {
       fireEvent.click(confirmDelete);
       expect(confirmDelete).toHaveProperty('disabled', true);
       fireEvent.keyDown(dialog, { key: 'Escape' });
-      expect(screen.getByRole('dialog', { name: /상품 삭제 확인/ })).toBeTruthy();
+      expect(dialog.isConnected).toBe(true);
+      expect(dialog.getAttribute('aria-label')).toBe('연필 상품 삭제 확인');
       expect(deleteCalls()).toEqual([['/api/products/P%2F001', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
@@ -1353,7 +1401,9 @@ describe('AdminManagePage', () => {
       }]]);
       expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
       pending.resolve();
-      await waitFor(() => expect(screen.queryByLabelText('P/001 상품명')).toBeNull());
+      await findNotice('P/001 삭제 완료');
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'P/001 상품 편집' })).toBeNull());
+      expect(screen.queryByRole('button', { name: 'P/001 연필 편집' })).toBeNull();
     });
 
     it('keeps keyboard focus and the active attempt isolated while deletion is pending', async () => {
@@ -1365,28 +1415,29 @@ describe('AdminManagePage', () => {
       });
       vi.mocked(crypto.randomUUID).mockReturnValue('10000000-0000-4000-8000-000000000001');
       render(<AdminManagePage />);
-      const { dialog } = await openProductDelete();
+      const { dialog, opener } = await openProductDelete();
       fireEvent.click(within(dialog).getByRole('button', { name: '상품 삭제 확인' }));
-      expect(fireEvent.keyDown(dialog, { key: 'Tab' })).toBe(false);
-      const backgroundDelete = document.querySelector<HTMLButtonElement>('[aria-label="P002 상품 삭제"]');
-      expect(backgroundDelete).toBeTruthy();
-      fireEvent.click(backgroundDelete!);
+      expect(within(dialog).getByRole('button', { name: '상품 삭제 확인', hidden: true })).toHaveProperty('disabled', true);
+      // The obscured panel's delete button cannot start a second attempt while one is pending.
+      fireEvent.click(opener);
+      expect(document.querySelectorAll('[role="dialog"][aria-label$="상품 삭제 확인"]')).toHaveLength(1);
+      expect(dialog.isConnected).toBe(true);
       expect(within(dialog).getByText(/연필/)).toBeTruthy();
       expect(within(dialog).queryByText(/지우개/)).toBeNull();
       expect(deleteCalls()).toHaveLength(1);
       expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
 
       pending.resolve();
-      await waitFor(() => expect(screen.queryByLabelText('P001 상품명')).toBeNull());
-      expect(screen.getByLabelText('P002 상품명')).toBeTruthy();
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'P001 연필 편집', hidden: true })).toBeNull());
+      expect(await screen.findByRole('button', { name: 'P002 지우개 편집' })).toBeTruthy();
     });
 
     it('rejects a noncanonical UUID without normalizing or fetching', async () => {
       vi.mocked(crypto.randomUUID).mockReturnValue('A0000000-0000-4000-8000-00000000000B');
       render(<AdminManagePage />);
-      await openProductDelete();
-      fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
-      expect((await screen.findByRole('alert')).textContent).toMatch(/삭제 요청을 만들지 못했습니다/);
+      const { dialog } = await openProductDelete();
+      fireEvent.click(within(dialog).getByRole('button', { name: '상품 삭제 확인' }));
+      expect(await within(dialog).findByText(/삭제 요청을 만들지 못했습니다/)).toBeTruthy();
       expect(deleteCalls()).toHaveLength(0);
       expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
     });
@@ -1408,29 +1459,29 @@ describe('AdminManagePage', () => {
       ['wrong productId', async () => ({ ok: true, json: async () => ({ productId: 'P002' }) } as Response)],
     ];
 
-    it.each(ambiguousCases)('retains the exact attempt and every draft after ambiguous %s', async (_label, failure) => {
+    it.each(ambiguousCases)('retains the exact attempt, the panel draft, and selection after ambiguous %s', async (_label, failure) => {
       const fallback = vi.mocked(fetch).getMockImplementation()!;
       vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/products/P001' && init?.method === 'DELETE' ? failure() : fallback(input, init));
       render(<AdminManagePage />);
-      fireEvent.click(await screen.findByRole('tab', { name: '매점 관리' }));
-      fireEvent.change(screen.getByLabelText('P002 상품명'), { target: { value: '지우개 초안' } });
-      fireEvent.change(screen.getByLabelText('새 상품명'), { target: { value: '새 상품 초안' } });
-      fireEvent.click(screen.getByLabelText('P001 선택'));
+      await openAdminMenu('매점');
+      fireEvent.click(await screen.findByLabelText('P001 선택'));
       fireEvent.click(screen.getByLabelText('P002 선택'));
-      fireEvent.click(screen.getByRole('button', { name: 'P001 상품 삭제' }));
+      const panel = await openProductEditor('P001', '연필');
+      fireEvent.change(within(panel).getByLabelText('P001 가격'), { target: { value: '350' } });
+      fireEvent.click(within(panel).getByRole('button', { name: 'P001 상품 삭제' }));
       fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
       const dialog = await screen.findByRole('dialog', { name: /상품 삭제 확인/ });
-      await within(dialog).findByRole('alert');
+      const error = await within(dialog).findByText(/상품 삭제 결과를 확인하지 못했습니다/);
       fireEvent.click(within(dialog).getByRole('button', { name: '상품 삭제 확인' }));
       await waitFor(() => expect(deleteCalls()).toHaveLength(2));
       expect(deleteCalls()[0][1]).toEqual(deleteCalls()[1][1]);
       expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
-      expect(screen.getByLabelText('P001 상품명')).toBeTruthy();
-      expect(screen.getByLabelText('P002 상품명')).toHaveProperty('value', '지우개 초안');
-      expect(screen.getByLabelText('새 상품명')).toHaveProperty('value', '새 상품 초안');
+      expect(screen.getByRole('button', { name: 'P001 연필 편집', hidden: true })).toBeTruthy();
+      expect(within(panel).getByLabelText('P001 가격')).toHaveProperty('value', '350');
       expect(screen.getByLabelText('P001 선택')).toHaveProperty('checked', true);
       expect(screen.getByLabelText('P002 선택')).toHaveProperty('checked', true);
-      expect(within(dialog).getByRole('alert').textContent).not.toContain('private');
+      expect(error.textContent).not.toContain('private');
+      expect(noticeTexts().join(' ')).not.toContain('private');
     });
 
     it('does not invoke an accessor and mints a new UUID after Escape dismisses a failed attempt', async () => {
@@ -1444,10 +1495,10 @@ describe('AdminManagePage', () => {
       const { opener } = await openProductDelete();
       fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
       const failedDialog = await screen.findByRole('dialog', { name: /상품 삭제 확인/ });
-      await within(failedDialog).findByRole('alert');
+      await within(failedDialog).findByText(/상품 삭제 결과를 확인하지 못했습니다/);
       fireEvent.keyDown(failedDialog, { key: 'Escape' });
       expect(screen.queryByRole('dialog', { name: /상품 삭제 확인/ })).toBeNull();
-      expect(document.activeElement).toBe(opener);
+      await waitFor(() => expect(document.activeElement).toBe(opener));
       fireEvent.click(opener);
       fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
       await waitFor(() => expect(deleteCalls()).toHaveLength(2));
@@ -1474,14 +1525,14 @@ describe('AdminManagePage', () => {
         return fallback(input, init);
       });
       render(<AdminManagePage />);
-      await openProductDelete();
-      fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
-      await screen.findByRole('alert');
+      const { dialog } = await openProductDelete();
+      fireEvent.click(within(dialog).getByRole('button', { name: '상품 삭제 확인' }));
+      await within(dialog).findByText(/상품 삭제 결과를 확인하지 못했습니다/);
       fireEvent.click(screen.getByRole('button', { name: '상품 · 재고 관리 새로고침', hidden: true }));
       await screen.findByDisplayValue('서버 연필');
       expect(screen.getByRole('dialog', { name: /상품 삭제 확인/ })).toBeTruthy();
       fireEvent.click(screen.getByRole('button', { name: '상품 · 재고 관리 새로고침', hidden: true }));
-      await waitFor(() => expect(alert).toHaveBeenCalled());
+      await waitFor(() => expect(screen.queryAllByRole('alert').length).toBeGreaterThan(0));
       expect(screen.getByRole('dialog', { name: /상품 삭제 확인/ })).toBeTruthy();
       fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
       await waitFor(() => expect(deleteCalls()).toHaveLength(2));
@@ -1490,7 +1541,7 @@ describe('AdminManagePage', () => {
       await waitFor(() => expect(screen.queryByRole('dialog', { name: /상품 삭제 확인/ })).toBeNull());
     });
 
-    it('clears the retained attempt and dialog when a valid refresh removes the target', async () => {
+    it('clears the retained attempt, dialog, and panel when a valid refresh removes the target', async () => {
       let productGet = 0;
       const fallback = vi.mocked(fetch).getMockImplementation()!;
       vi.mocked(fetch).mockImplementation(async (input, init) => {
@@ -1504,12 +1555,13 @@ describe('AdminManagePage', () => {
         return fallback(input, init);
       });
       render(<AdminManagePage />);
-      await openProductDelete();
-      fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
-      await screen.findByRole('alert');
+      const { dialog } = await openProductDelete();
+      fireEvent.click(within(dialog).getByRole('button', { name: '상품 삭제 확인' }));
+      await within(dialog).findByText(/상품 삭제 결과를 확인하지 못했습니다/);
       fireEvent.click(screen.getByRole('button', { name: '상품 · 재고 관리 새로고침', hidden: true }));
       await waitFor(() => expect(screen.queryByRole('dialog', { name: /상품 삭제 확인/ })).toBeNull());
-      expect(screen.queryByLabelText('P001 상품명')).toBeNull();
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'P001 상품 편집' })).toBeNull());
+      expect(screen.queryByRole('button', { name: 'P001 연필 편집' })).toBeNull();
       expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
     });
 
@@ -1534,6 +1586,7 @@ describe('AdminManagePage', () => {
       oldDelete.resolve();
       await act(async () => undefined);
       expect(screen.getByLabelText('P001 상품명')).toHaveProperty('value', '새 버전 연필');
+      expect(screen.getByRole('button', { name: 'P001 새 버전 연필 편집', hidden: true })).toBeTruthy();
     });
 
     it('does not let an older settings reload resurrect a product deleted after that reload started', async () => {
@@ -1552,20 +1605,20 @@ describe('AdminManagePage', () => {
       });
       vi.mocked(crypto.randomUUID).mockReturnValue('10000000-0000-4000-8000-000000000001');
       render(<AdminManagePage />);
-      await screen.findByText('관리자 목록도 이 설정을 사용합니다: 학생 2명 · 상품 2개');
+      await openAdminMenu('설정');
+      await screen.findByText('학생 2명 · 상품 2개 연결됨');
       fireEvent.change(screen.getByLabelText('Google Sheets 주소 또는 시트 ID'), { target: { value: 'sheet-new' } });
-      fireEvent.click(screen.getByRole('button', { name: '시스템 설정 저장' }));
+      fireEvent.click(screen.getByRole('button', { name: '설정 저장' }));
       await waitFor(() => expect(productGets).toBe(2));
 
-      fireEvent.click(screen.getByRole('tab', { name: '매점 관리' }));
-      fireEvent.click(await screen.findByRole('button', { name: 'P001 상품 삭제' }));
-      fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
-      await waitFor(() => expect(screen.queryByLabelText('P001 상품명')).toBeNull());
+      const { dialog } = await openProductDelete();
+      fireEvent.click(within(dialog).getByRole('button', { name: '상품 삭제 확인' }));
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'P001 연필 편집', hidden: true })).toBeNull());
 
       staleLoad.resolve();
       await act(async () => undefined);
-      expect(screen.queryByLabelText('P001 상품명')).toBeNull();
-      expect(screen.getByLabelText('P002 상품명')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'P001 연필 편집', hidden: true })).toBeNull();
+      expect(screen.getByRole('button', { name: 'P002 지우개 편집', hidden: true })).toBeTruthy();
     });
 
     it('applies unrelated settings from a stale manual product refresh without restoring deleted products', async () => {
@@ -1591,95 +1644,82 @@ describe('AdminManagePage', () => {
       });
       vi.mocked(crypto.randomUUID).mockReturnValue('10000000-0000-4000-8000-000000000001');
       const { container } = render(<AdminManagePage />);
-      fireEvent.click(await screen.findByRole('tab', { name: '매점 관리' }));
+      await openAdminMenu('매점');
+      await screen.findByRole('button', { name: 'P001 연필 편집' });
       fireEvent.click(screen.getByRole('button', { name: '상품 · 재고 관리 새로고침' }));
       await waitFor(() => expect(productGets).toBe(2));
 
-      fireEvent.click(screen.getByRole('button', { name: 'P001 상품 삭제' }));
-      fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
-      await waitFor(() => expect(screen.queryByLabelText('P001 상품명')).toBeNull());
+      // The refresh overlay is still pending; the deletion runs from the panel behind it.
+      fireEvent.click(screen.getByRole('button', { name: 'P001 연필 편집', hidden: true }));
+      fireEvent.click(await screen.findByRole('button', { name: 'P001 상품 삭제', hidden: true }));
+      fireEvent.click(await screen.findByRole('button', { name: '상품 삭제 확인', hidden: true }));
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'P001 연필 편집', hidden: true })).toBeNull());
       staleProducts.resolve();
-      await waitFor(() => expect((container.querySelector('[data-testid="admin-shell"]') as HTMLElement).style.getPropertyValue('--theme-shell')).toBe('#F7EDFC'));
-      expect(screen.queryByLabelText('P001 상품명')).toBeNull();
+      await waitFor(() => expect((container.querySelector('[data-testid="admin-shell"]') as HTMLElement).style.getPropertyValue('--theme-shell')).toBe(THEME_PALETTES.purple.shell));
+      expect(screen.queryByRole('button', { name: 'P001 연필 편집', hidden: true })).toBeNull();
     });
 
-    it('removes only the confirmed target and preserves unrelated drafts, selection, and preconditions', async () => {
+    it('removes only the confirmed target and preserves unrelated selection and preconditions', async () => {
       vi.mocked(crypto.randomUUID).mockReturnValueOnce('10000000-0000-4000-8000-000000000001').mockReturnValueOnce('20000000-0000-4000-8000-000000000002');
       render(<AdminManagePage />);
-      fireEvent.click(await screen.findByRole('tab', { name: '매점 관리' }));
-      fireEvent.change(screen.getByLabelText('P002 상품명'), { target: { value: '지우개 초안' } });
-      fireEvent.change(screen.getByLabelText('새 상품명'), { target: { value: '새 상품 초안' } });
-      fireEvent.click(screen.getByLabelText('P001 선택'));
+      await openAdminMenu('매점');
+      fireEvent.click(await screen.findByLabelText('P001 선택'));
       fireEvent.click(screen.getByLabelText('P002 선택'));
-      fireEvent.click(screen.getByRole('button', { name: 'P001 상품 삭제' }));
-      fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
-      await waitFor(() => expect(screen.queryByLabelText('P001 상품명')).toBeNull());
-      expect(alert).toHaveBeenCalledWith('P001 삭제 완료');
-      expect(screen.getByLabelText('P002 상품명')).toHaveProperty('value', '지우개 초안');
-      expect(screen.getByLabelText('새 상품명')).toHaveProperty('value', '새 상품 초안');
+      const { dialog } = await openProductDelete();
+      fireEvent.click(within(dialog).getByRole('button', { name: '상품 삭제 확인' }));
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'P001 연필 편집', hidden: true })).toBeNull());
+      await findNotice('P001 삭제 완료');
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'P001 상품 편집' })).toBeNull());
       expect(screen.getByLabelText('P002 선택')).toHaveProperty('checked', true);
-      fireEvent.click(screen.getByRole('button', { name: 'P002 상품 삭제' }));
+      expect(within(selectionBar()).getByText('1개 선택됨')).toBeTruthy();
+      const second = await openProductEditor('P002', '지우개');
+      fireEvent.click(within(second).getByRole('button', { name: 'P002 상품 삭제' }));
       fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
       await waitFor(() => expect(deleteCalls()).toHaveLength(2));
       expect(deleteCalls()[1][1]?.body).toBe(JSON.stringify({ operationId: '20000000-0000-4000-8000-000000000002', expectedProductVersion: 12 }));
     });
   });
 
-  it('renders unified admin tabs with kiosk-style design language', async () => {
+  it('renders the sidebar menu, shortcuts, and settings with the redesigned design language', async () => {
     const { container } = render(<AdminManagePage />);
 
     expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
     expect(screen.queryByText('Class Reward System')).toBeNull();
-    expect(screen.queryByText('태블릿과 스마트폰에서 빠르게 학생 잔액과 상품 재고를 관리합니다.')).toBeNull();
     const logo = screen.getByRole('img', { name: '학급 보상 시스템 로고' });
-    expect(logo).toBeTruthy();
     expect(logo.className).toContain('bg-[var(--theme-accent-text)]');
     expect(logo.className).toContain("[mask-image:url('/class-reward-system-icon.png')]");
     expect(logo.className).not.toContain('bg-white');
-    expect(logo.parentElement?.className).not.toMatch(/bg-|shadow|rounded/);
-    const adminTabs = screen.getByTestId('admin-tabs');
-    const expectedMenuOrder = ['시스템 설정', '학생 관리', '매점 관리', '과제 설정', '거래 내역 확인', '화폐 지급/회수', '매점 바로가기', '은행 바로가기'];
-    let previousIndex = -1;
-    for (const menu of expectedMenuOrder) {
-      const currentIndex = adminTabs.textContent?.indexOf(menu) ?? -1;
-      expect(currentIndex).toBeGreaterThan(previousIndex);
-      previousIndex = currentIndex;
-    }
-    expect(screen.getByRole('tab', { name: '시스템 설정' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: '학생 관리' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: '매점 관리' })).toBeTruthy();
-    expect(await screen.findByText('관리자 목록도 이 설정을 사용합니다: 학생 2명 · 상품 2개')).toBeTruthy();
-    expect(screen.queryByRole('link', { name: /학생 QR 출력/ })).toBeNull();
-    expect(screen.getByRole('tab', { name: '거래 내역 확인' })).toBeTruthy();
-    expect(screen.queryByRole('link', { name: /거래 내역 확인/ })).toBeNull();
+    const adminTabs = screen.getByRole('tablist', { name: '관리자 메뉴' });
+    expect(adminTabs).toBe(screen.getByTestId('admin-tabs'));
+    expect(within(adminTabs).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['홈', '학생', '매점', '과제', '지급·회수', '거래 내역', '설정']);
+    expect(screen.getByRole('tab', { name: '홈' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('tabpanel', { name: '홈' })).toBeTruthy();
     expect(screen.queryByRole('link', { name: /시스템 생성기/ })).toBeNull();
-    const storeLink = screen.getByRole('link', { name: /매점 바로가기/ });
-    const bankLink = screen.getByRole('link', { name: /은행 바로가기/ });
-    expect(storeLink.getAttribute('href')).toBe('/');
-    expect(storeLink.getAttribute('target')).toBe('_blank');
-    expect(storeLink.getAttribute('rel')).toContain('noopener');
-    expect(storeLink.textContent).toContain('↗');
-    expect(bankLink.getAttribute('href')).toBe('/bank');
-    expect(bankLink.getAttribute('target')).toBe('_blank');
-    expect(bankLink.getAttribute('rel')).toContain('noopener');
-    expect(bankLink.textContent).toContain('↗');
-    expect(screen.getByRole('tab', { name: '과제 설정' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: '화폐 지급/회수' })).toBeTruthy();
-    expect(screen.queryByRole('heading', { name: '사용 전 확인' })).toBeNull();
+    for (const [name, href] of [['매점 열기 새 탭 열림', '/'], ['은행 열기 새 탭 열림', '/bank']] as const) {
+      const links = screen.getAllByRole('link', { name });
+      expect(links.length).toBeGreaterThan(0);
+      for (const link of links) {
+        expect(link.getAttribute('href')).toBe(href);
+        expect(link.getAttribute('target')).toBe('_blank');
+        expect(link.getAttribute('rel')).toContain('noopener');
+      }
+    }
+    expect(screen.getByRole('link', { name: '학생 QR 인쇄 새 탭 열림' }).getAttribute('href')).toBe('/admin/student-qrs');
+    const shell = container.querySelector('[data-testid="admin-shell"]') as HTMLElement;
+    expect(shell.className).toContain('bg-[var(--theme-shell)]');
+    expect(shell.style.getPropertyValue('--theme-shell')).toBe(THEME_PALETTES.blue.shell);
+    expect(shell.getAttribute('style')).toContain('SchoolSafeBoardMarker');
+
+    await openAdminMenu('설정');
+    expect(await screen.findByText('학생 2명 · 상품 2개 연결됨')).toBeTruthy();
     expect(await screen.findByDisplayValue('별')).toBeTruthy();
     expect(screen.getByDisplayValue('학급 매점')).toBeTruthy();
     expect(screen.getByDisplayValue('학급 은행')).toBeTruthy();
-    expect(screen.getByLabelText('테마 색상')).toBeTruthy();
+    expect(screen.getByRole('radiogroup', { name: '테마 색상' })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: '하늘' })).toHaveProperty('checked', true);
     expect(screen.getByLabelText('글꼴')).toBeTruthy();
     expect(screen.getByDisplayValue('학교안심 보드마카')).toBeTruthy();
-    expect(container.querySelector('[data-testid="admin-shell"]')?.className).toContain('bg-[var(--theme-shell)]');
-    expect((container.querySelector('[data-testid="admin-shell"]') as HTMLElement).style.getPropertyValue('--theme-shell')).toBe('#EDF5FA');
-    expect(container.querySelector('[data-testid="admin-shell"]')?.getAttribute('style')).toContain('SchoolSafeBoardMarker');
-    expect(container.querySelector('[data-testid="admin-tabs"]')?.className).toContain('rounded-[1.5rem]');
-    expect(screen.queryByText('Google Sheets 연결')).toBeNull();
-    expect(screen.queryByText('잔액과 상태 관리')).toBeNull();
-    expect(screen.queryByText('스프레드시트 연결')).toBeNull();
-    expect(screen.queryByText('GOOGLE SHEETS')).toBeNull();
+    expect(screen.getByRole('button', { name: '설정 저장' })).toHaveProperty('disabled', true);
   });
 
   it('uses the updated admin transaction, currency, and product image helper wording', async () => {
@@ -1687,28 +1727,22 @@ describe('AdminManagePage', () => {
 
     expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('tab', { name: '거래 내역 확인' }));
-    expect(await screen.findByRole('heading', { name: '거래 내역 (1)' })).toBeTruthy();
+    await openAdminMenu('거래 내역');
+    expect(await screen.findByTestId('transaction-row-TX001')).toBeTruthy();
+    expect(screen.getByText('1건')).toBeTruthy();
     expect(screen.queryByRole('heading', { name: '최근 거래 (1)' })).toBeNull();
 
-    fireEvent.click(screen.getByRole('tab', { name: '화폐 지급/회수' }));
-    expect(screen.queryByText('회수 금액이 현재 잔액보다 커도 관리자 화면에서는 음수 잔액으로 기록됩니다.')).toBeNull();
-    expect(screen.getByText(/QR코드를 인식하여 화폐를 지급하거나 회수할 수 있습니다\./)).toBeTruthy();
-    expect(screen.getByText(/회수하는 금액이 잔액보다 큰 경우/)).toBeTruthy();
+    await openAdminMenu('지급·회수');
+    expect(screen.getByText('학생 QR을 찍을 때마다 같은 금액이 한 번씩 처리됩니다.')).toBeTruthy();
+    expect(screen.getByText(/회수할 금액이 잔액보다 크면 잔액이 음수가 됩니다/)).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('tab', { name: '매점 관리' }));
-    fireEvent.click(screen.getByRole('button', { name: 'P001 이미지 주소 편집' }));
-    expect(screen.getByRole('dialog', { name: '상품 이미지 등록' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: '상품 이미지 등록' })).toBeTruthy();
-    expect(screen.getByText('※ 상품 이미지 등록하는 방법')).toBeTruthy();
-    expect(screen.getByText('① 구글 이미지 검색 등으로 원하는 상품 이미지를 찾습니다.')).toBeTruthy();
-    expect(screen.getByText("② 원하는 이미지를 마우스로 우클릭(모바일에서는 꾹 누르기)하고 '이미지 주소 복사'를 선택합니다.")).toBeTruthy();
-    expect(screen.getByText("③ 복사한 이미지 주소를 아래 창에 붙여넣고 '상품 이미지 적용' 버튼을 누릅니다.")).toBeTruthy();
-    expect(screen.getByText("④ '전체 저장'을 눌러 상품 이미지를 저장 및 적용합니다.")).toBeTruthy();
-    expect(screen.getByRole('button', { name: '상품 이미지 적용' })).toBeTruthy();
-    expect(screen.queryByText('이미지 주소 편집')).toBeNull();
-    expect(screen.queryByText('긴 이미지 URL은 여기에서 편하게 붙여넣고 수정합니다.')).toBeNull();
-    expect(screen.queryByRole('button', { name: '이미지 주소 적용' })).toBeNull();
+    await openAdminMenu('매점');
+    const panel = await openProductEditor('P001', '연필');
+    expect(within(panel).getByLabelText('P001 이미지 주소')).toHaveProperty('value', 'https://example.com/pencil.png');
+    expect(within(panel).getByText("인터넷 이미지에서 마우스 오른쪽 버튼 → '이미지 주소 복사' 후 붙여 넣으세요.")).toBeTruthy();
+    expect(within(panel).getByRole('img', { name: '상품 이미지 미리보기' }).getAttribute('src')).toBe('https://example.com/pencil.png');
+    expect(screen.queryByRole('dialog', { name: '상품 이미지 등록' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'P001 이미지 주소 편집' })).toBeNull();
   });
 
   it('saves the selected font family from system settings', async () => {
@@ -1724,11 +1758,12 @@ describe('AdminManagePage', () => {
     render(<AdminManagePage />);
 
     expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
-    await waitFor(() => {
-      expect((screen.getByRole('button', { name: '시스템 설정 저장' }) as HTMLButtonElement).disabled).toBe(false);
-    });
+    await openAdminMenu('설정');
+    await screen.findByText('학생 2명 · 상품 2개 연결됨');
+    expect(screen.getByRole('button', { name: '설정 저장' })).toHaveProperty('disabled', true);
     fireEvent.change(screen.getByLabelText('글꼴'), { target: { value: 'school-safe-poster' } });
-    fireEvent.click(screen.getByRole('button', { name: '시스템 설정 저장' }));
+    expect(screen.getByRole('button', { name: '설정 저장' })).toHaveProperty('disabled', false);
+    fireEvent.click(screen.getByRole('button', { name: '설정 저장' }));
 
     await waitFor(() => {
       const settingsPost = vi.mocked(fetch).mock.calls.find(([input, init]) => String(input) === '/api/settings' && init?.method === 'POST');
@@ -1737,7 +1772,7 @@ describe('AdminManagePage', () => {
     });
   });
 
-  it('uses a softer balanced green admin theme and a darker black admin shell when selected', async () => {
+  it('uses the green and black admin palettes through theme variables', async () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/students') return jsonResponse(students);
@@ -1750,7 +1785,7 @@ describe('AdminManagePage', () => {
     const { container, unmount } = render(<AdminManagePage />);
 
     expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
-    expect((container.querySelector('[data-testid="admin-shell"]') as HTMLElement).style.getPropertyValue('--theme-shell')).toBe('#DCF5C9');
+    expect((container.querySelector('[data-testid="admin-shell"]') as HTMLElement).style.getPropertyValue('--theme-shell')).toBe(THEME_PALETTES.green.shell);
     expect(container.querySelector('[data-testid="admin-shell"]')?.className).not.toContain('bg-green-50');
     unmount();
 
@@ -1766,18 +1801,15 @@ describe('AdminManagePage', () => {
     const secondRender = render(<AdminManagePage />);
 
     expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
-    expect((secondRender.container.querySelector('[data-testid="admin-shell"]') as HTMLElement).style.getPropertyValue('--theme-shell')).toBe('#1F1F1F');
-    expect(secondRender.container.querySelector('[data-testid="admin-shell"]')?.className).not.toContain('bg-slate-100');
-    expect(screen.getByRole('heading', { name: '학급 보상 시스템' }).className).toContain('text-[var(--theme-text)]');
-    expect(screen.queryByRole('heading', { name: '사용 전 확인' })).toBeNull();
-    expect(screen.getByLabelText('매점 제목').className).toContain('bg-slate-50');
-    expect(screen.getByLabelText('매점 제목').className).toContain('text-slate-950');
-    fireEvent.click(screen.getByRole('tab', { name: '학생 관리' }));
-    expect(await screen.findByLabelText('S001 이름')).toBeTruthy();
-    expect(screen.getByRole('heading', { name: '새 학생 추가' }).className).toContain('text-[var(--theme-text)]');
-    expect(screen.getByRole('heading', { name: '학생 명단' }).className).toContain('text-[var(--theme-text)]');
-    expect(screen.getByLabelText('S001 이름').className).toContain('bg-[var(--theme-input)]');
-    expect(screen.getByLabelText('S001 이름').className).toContain('text-[var(--theme-text)]');
+    const shell = secondRender.container.querySelector('[data-testid="admin-shell"]') as HTMLElement;
+    expect(shell.style.getPropertyValue('--theme-shell')).toBe(THEME_PALETTES.black.shell);
+    expect(shell.className).toContain('text-[var(--theme-text)]');
+    expect(shell.className).not.toContain('bg-slate-100');
+    await openAdminMenu('학생');
+    const panel = await openStudentEditor('S001', '김민준');
+    expect(within(panel).getByLabelText('S001 이름').className).toContain('bg-[var(--theme-input)]');
+    expect(within(panel).getByLabelText('S001 이름').className).toContain('text-[var(--theme-text)]');
+    expect(within(panel).getByLabelText('S001 이름').className).not.toMatch(/bg-slate-50|text-slate-950/);
   });
 
   it('uses a blue-leaning low-saturation navy admin palette', async () => {
@@ -1793,12 +1825,11 @@ describe('AdminManagePage', () => {
     const { container } = render(<AdminManagePage />);
 
     expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
-    expect((container.querySelector('[data-testid="admin-shell"]') as HTMLElement).style.getPropertyValue('--theme-shell')).toBe('#111A2E');
-    expect(screen.getByRole('tab', { name: '시스템 설정' }).className).toContain('bg-[var(--theme-accent-solid)]');
+    expect((container.querySelector('[data-testid="admin-shell"]') as HTMLElement).style.getPropertyValue('--theme-shell')).toBe(THEME_PALETTES.navy.shell);
+    expect(screen.getByRole('tab', { name: '홈' }).className).toContain('bg-[var(--theme-accent-solid)]');
     expect(screen.getByRole('img', { name: '학급 보상 시스템 로고' }).className).toContain('bg-[var(--theme-accent-text)]');
     expect(container.querySelector('[data-testid="admin-shell"]')?.className).not.toContain('bg-[#8F97CF]');
   });
-
 
   it('keeps the one-time admin QR visible while linked sheet data reloads after password save', async () => {
     const reloadGate = deferredResponse(students);
@@ -1820,11 +1851,13 @@ describe('AdminManagePage', () => {
 
     render(<AdminManagePage />);
     await screen.findByRole('heading', { name: '학급 보상 시스템' });
+    await openAdminMenu('설정');
+    await screen.findByText('학생 2명 · 상품 2개 연결됨');
     fireEvent.change(screen.getByLabelText('관리자 암호 설정'), { target: { value: 'new-admin-pass' } });
-    fireEvent.click(screen.getByRole('button', { name: '시스템 설정 저장' }));
+    fireEvent.click(screen.getByRole('button', { name: '설정 저장' }));
 
     expect(await screen.findByText('관리자 QR 로그인 코드')).toBeTruthy();
-    expect(screen.queryByRole('dialog', { name: '시트 정보 불러오는 중' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: '학급 정보 불러오는 중' })).toBeNull();
     await waitFor(() => expect(screen.getByRole('img', { name: '관리자 로그인 QR' }).getAttribute('src')).toBe('blob:manage-qr-1'));
     expect(fetch).toHaveBeenCalledWith('/api/qrcode', expect.objectContaining({
       method: 'POST', body: JSON.stringify({ kind: 'admin', password: 'new-admin-pass' }),
@@ -1833,6 +1866,7 @@ describe('AdminManagePage', () => {
 
     reloadGate.resolve();
     await waitFor(() => expect(screen.getByText(/시스템 설정을 저장/)).toBeTruthy());
+    expect(screen.getByText('관리자 QR 로그인 코드')).toBeTruthy();
   });
 
   it('shows a full screen loading dialog until admin sheet data and theme are loaded', async () => {
@@ -1848,74 +1882,74 @@ describe('AdminManagePage', () => {
 
     const { container } = render(<AdminManagePage />);
 
-    expect(screen.getByRole('dialog', { name: '시트 정보 불러오는 중' })).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: '학급 정보 불러오는 중' })).toBeTruthy();
     expect(screen.queryByRole('heading', { name: '학급 보상 시스템' })).toBeNull();
 
     studentGate.resolve();
     expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
-    expect((container.querySelector('[data-testid="admin-shell"]') as HTMLElement).style.getPropertyValue('--theme-shell')).toBe('#FCFCFC');
+    expect((container.querySelector('[data-testid="admin-shell"]') as HTMLElement).style.getPropertyValue('--theme-shell')).toBe(THEME_PALETTES.white.shell);
   });
 
   it('lazy-mounts payment history in its existing ARIA shell and preserves it after first opening', async () => {
     render(<AdminManagePage />);
 
-    const transactionsTab = await screen.findByRole('tab', { name: '거래 내역 확인' });
+    const transactionsTab = await screen.findByRole('tab', { name: '거래 내역' });
     const transactionsPanel = document.getElementById('admin-panel-transactions');
-    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/settings')).toHaveLength(2));
+    await waitFor(() => expect(fetchCalls('/api/settings')).toHaveLength(1));
     expect(transactionsTab.getAttribute('aria-controls')).toBe('admin-panel-transactions');
     expect(transactionsPanel).toBeTruthy();
     expect(transactionsPanel?.hidden).toBe(true);
     expect(transactionsPanel?.getAttribute('aria-labelledby')).toBe(transactionsTab.id);
     expect(transactionsPanel?.textContent).toBe('');
-    expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/transactions')).toHaveLength(0);
+    expect(fetchCalls('/api/transactions')).toHaveLength(0);
 
     fireEvent.click(transactionsTab);
 
-    expect(await screen.findByRole('heading', { name: '거래 내역 (1)' })).toBeTruthy();
-    expect(screen.getByText('김민준')).toBeTruthy();
-    expect(screen.getByText('연필 × 2')).toBeTruthy();
-    expect(screen.getAllByText('-600별').length).toBeGreaterThan(0);
-    expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/transactions')).toHaveLength(1);
-    expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/settings')).toHaveLength(3);
+    const row = await screen.findByTestId('transaction-row-TX001');
+    expect(within(row).getByText('김민준')).toBeTruthy();
+    expect(within(row).getByText(/연필 ×2/)).toBeTruthy();
+    expect(within(row).getByText('-600별')).toBeTruthy();
+    expect(fetchCalls('/api/transactions')).toHaveLength(1);
+    expect(fetchCalls('/api/settings')).toHaveLength(2);
 
-    fireEvent.click(screen.getByRole('button', { name: '수입' }));
-    expect(screen.getByRole('heading', { name: '거래 내역 (0)' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('tab', { name: '과제 설정' }));
+    fireEvent.click(within(screen.getByRole('group', { name: '거래 필터' })).getByRole('button', { name: '수입' }));
+    expect(screen.queryByTestId('transaction-row-TX001')).toBeNull();
+    expect(screen.getByText('표시 0건')).toBeTruthy();
+    await openAdminMenu('과제');
     expect(transactionsPanel?.hidden).toBe(true);
     fireEvent.click(transactionsTab);
 
-    expect(screen.getByRole('heading', { name: '거래 내역 (0)' })).toBeTruthy();
-    expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/transactions')).toHaveLength(1);
-    expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/settings')).toHaveLength(3);
+    expect(screen.getByText('표시 0건')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '수입' }).getAttribute('aria-pressed')).toBe('true');
+    expect(fetchCalls('/api/transactions')).toHaveLength(1);
+    expect(fetchCalls('/api/settings')).toHaveLength(2);
   });
 
   it('mounts payment history once when the primary tab is selected with the keyboard', async () => {
     render(<AdminManagePage />);
 
-    const tasksTab = await screen.findByRole('tab', { name: '과제 설정' });
-    tasksTab.focus();
-    fireEvent.keyDown(tasksTab, { key: 'ArrowRight' });
+    const currencyTab = await screen.findByRole('tab', { name: '지급·회수' });
+    currencyTab.focus();
+    fireEvent.keyDown(currencyTab, { key: 'ArrowRight' });
 
-    const transactionsTab = screen.getByRole('tab', { name: '거래 내역 확인' });
+    const transactionsTab = screen.getByRole('tab', { name: '거래 내역' });
     expect(document.activeElement).toBe(transactionsTab);
     expect(transactionsTab.getAttribute('aria-selected')).toBe('true');
-    expect(await screen.findByRole('heading', { name: '거래 내역 (1)' })).toBeTruthy();
+    expect(await screen.findByTestId('transaction-row-TX001')).toBeTruthy();
     fireEvent.keyDown(transactionsTab, { key: 'ArrowLeft' });
-    fireEvent.keyDown(tasksTab, { key: 'ArrowRight' });
-    expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/transactions')).toHaveLength(1);
+    fireEvent.keyDown(screen.getByRole('tab', { name: '지급·회수' }), { key: 'ArrowRight' });
+    expect(fetchCalls('/api/transactions')).toHaveLength(1);
   });
 
   it('reloads admin lists from the shared sheet after saving sheet settings', async () => {
     render(<AdminManagePage />);
 
-    await screen.findByText('관리자 목록도 이 설정을 사용합니다: 학생 2명 · 상품 2개');
-    await waitFor(() => {
-      expect((screen.getByRole('button', { name: '시스템 설정 저장' }) as HTMLButtonElement).disabled).toBe(false);
-    });
+    await openAdminMenu('설정');
+    await screen.findByText('학생 2명 · 상품 2개 연결됨');
     fireEvent.change(screen.getByLabelText('Google Sheets 주소 또는 시트 ID'), { target: { value: 'sheet-new' } });
     fireEvent.change(screen.getByLabelText('매점 제목'), { target: { value: '햇살반 매점' } });
     fireEvent.change(screen.getByLabelText('은행 제목'), { target: { value: '햇살반 은행' } });
-    fireEvent.click(screen.getByRole('button', { name: '시스템 설정 저장' }));
+    fireEvent.click(screen.getByRole('button', { name: '설정 저장' }));
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith('/api/settings', {
@@ -1930,58 +1964,58 @@ describe('AdminManagePage', () => {
     expect(await screen.findByText('시스템 설정을 저장했고, 관리자 목록도 같은 시트에서 다시 불러왔습니다.')).toBeTruthy();
   });
 
-  it('uses top bulk save buttons and column headers instead of per-row save buttons', async () => {
+  it('edits one student and one product in their panels and saves exactly that row', async () => {
     render(<AdminManagePage />);
 
-    fireEvent.click(await screen.findByRole('tab', { name: '학생 관리' }));
-    expect(await screen.findByDisplayValue('김민준')).toBeTruthy();
+    await openAdminMenu('학생');
+    expect(await screen.findByRole('button', { name: 'S001 김민준 편집' })).toBeTruthy();
     expect(screen.getByTestId('student-header-row').textContent).toContain('이름');
     expect(screen.getByTestId('student-header-row').textContent).toContain('잔액');
     expect(screen.queryByRole('button', { name: 'S001 학생 저장' })).toBeNull();
-    expect(screen.queryByRole('link', { name: /QR 출력/ })).toBeNull();
-    expect(screen.getByRole('button', { name: '선택 학생 QR 발급' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '선택 저장' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '전체 저장' })).toBeNull();
+    expect(screen.queryByLabelText('S001 이름')).toBeNull();
 
     fireEvent.click(screen.getByLabelText('S001 선택'));
-    fireEvent.click(screen.getByRole('button', { name: '선택 학생 QR 발급' }));
+    fireEvent.click(within(selectionBar()).getByRole('button', { name: 'QR 카드 발급' }));
     const qrDialog = await screen.findByRole('dialog', { name: '선택 학생 QR 발급' });
-    expect(qrDialog).toBeTruthy();
     expect(document.body.classList.contains('qr-selection-printing')).toBe(true);
     const printDocument = document.querySelector('[data-qr-print-document]');
     expect(printDocument).toBeTruthy();
     expect(printDocument?.querySelector('[data-qr-print-grid]')).toBeTruthy();
     await waitFor(() => expect(screen.getAllByAltText('김민준 QR 코드')[0].getAttribute('src')).toBe('blob:manage-qr-1'));
     expect(screen.queryByAltText('이서연 QR 코드')).toBeNull();
-    const qrCalls = vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/qrcode');
+    const qrCalls = fetchCalls('/api/qrcode');
     expect(qrCalls).toHaveLength(1);
     expect(qrCalls[0]?.[1]).toEqual({
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ kind: 'student', studentId: 'S001' }), signal: expect.any(AbortSignal),
     });
     expect(screen.getAllByAltText('김민준 QR 코드').every((image) => !String(image.getAttribute('src')).includes('S001'))).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: '닫기' }));
+    fireEvent.click(within(qrDialog).getAllByRole('button', { name: '닫기' }).at(-1)!);
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:manage-qr-1');
     expect(document.body.classList.contains('qr-selection-printing')).toBe(false);
 
-    fireEvent.change(screen.getByLabelText('S001 이름'), { target: { value: '김민준 수정' } });
-    fireEvent.change(screen.getByLabelText('S001 잔액'), { target: { value: '4000' } });
-    fireEvent.click(screen.getByRole('button', { name: '선택 저장' }));
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('선택 학생 1명 저장 완료'));
+    const studentPanel = await openStudentEditor('S001', '김민준');
+    expect(within(studentPanel).getByRole('button', { name: '저장' })).toHaveProperty('disabled', true);
+    fireEvent.change(within(studentPanel).getByLabelText('S001 이름'), { target: { value: '김민준 수정' } });
+    fireEvent.change(within(studentPanel).getByLabelText('S001 잔액'), { target: { value: '4000' } });
+    fireEvent.click(within(studentPanel).getByRole('button', { name: '저장' }));
+    await findNotice('학생 1명 저장 완료');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'S001 학생 편집' })).toBeNull());
+    expect(screen.getByRole('button', { name: 'S001 김민준 수정 편집' })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('tab', { name: '매점 관리' }));
-    expect(await screen.findByDisplayValue('연필')).toBeTruthy();
-    expect(screen.getByTestId('product-header-row').textContent).toContain('상품명');
+    await openAdminMenu('매점');
+    expect(await screen.findByRole('button', { name: 'P001 연필 편집' })).toBeTruthy();
+    expect(screen.getByTestId('product-header-row').textContent).toContain('상품');
+    expect(screen.getByTestId('product-header-row').textContent).toContain('가격');
     expect(screen.getByTestId('product-header-row').textContent).not.toContain('ID');
-    expect(screen.getByTestId('product-header-row').textContent).toContain('이미지');
     expect(screen.queryByRole('button', { name: 'P001 상품 저장' })).toBeNull();
-    fireEvent.change(screen.getByLabelText('P001 상품명'), { target: { value: '연필 세트' } });
-    fireEvent.change(screen.getByLabelText('P001 가격'), { target: { value: '900' } });
-    expect(screen.getByRole('button', { name: '선택 저장' })).toHaveProperty('disabled', true);
-    fireEvent.click(screen.getByLabelText('P001 선택'));
-    fireEvent.click(screen.getByRole('button', { name: 'P001 이미지 주소 편집' }));
-    expect(await screen.findByRole('dialog', { name: '상품 이미지 등록' })).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('이미지 주소 전체 입력'), { target: { value: 'https://example.com/new-pencil.png' } });
-    fireEvent.click(screen.getByRole('button', { name: '상품 이미지 적용' }));
-    fireEvent.click(screen.getByRole('button', { name: '선택 저장' }));
+    const productPanel = await openProductEditor('P001', '연필');
+    fireEvent.change(within(productPanel).getByLabelText('P001 상품명'), { target: { value: '연필 세트' } });
+    fireEvent.change(within(productPanel).getByLabelText('P001 가격'), { target: { value: '900' } });
+    fireEvent.change(within(productPanel).getByLabelText('P001 이미지 주소'), { target: { value: 'https://example.com/new-pencil.png' } });
+    fireEvent.click(within(productPanel).getByRole('button', { name: '저장' }));
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith('/api/students/batch', {
@@ -1991,64 +2025,66 @@ describe('AdminManagePage', () => {
           operationId: '50000000-0000-4000-8000-000000000001',
           students: [
             { studentId: 'S001', name: '김민준 수정', balance: 4000, status: 'ACTIVE' },
-            ],
+          ],
         }),
       });
       expect(fetch).toHaveBeenCalledWith('/api/products/batch', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          operationId: '50000000-0000-4000-8000-000000000001',
           products: [
-            { productId: 'P001', name: '연필 세트', price: 900, stock: 19, isActive: true, imageUrl: 'https://example.com/new-pencil.png', category: '문구', sortOrder: 1 },
-            ],
+            { productId: 'P001', name: '연필 세트', price: 900, isActive: true, imageUrl: 'https://example.com/new-pencil.png', category: '문구', sortOrder: 1 },
+          ],
         }),
       });
     });
     expect(fetch).not.toHaveBeenCalledWith('/api/students/S001', expect.objectContaining({ method: 'PATCH' }));
     expect(fetch).not.toHaveBeenCalledWith('/api/products/P001', expect.objectContaining({ method: 'PATCH' }));
 
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('선택 상품 1개 저장 완료'));
+    await findNotice('상품 1개 저장 완료');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'P001 상품 편집' })).toBeNull());
+    expect(screen.getByRole('button', { name: 'P001 연필 세트 편집' })).toBeTruthy();
   });
 
-  it('uses semantic dividers for student, product, and task rows while retaining strong list borders', async () => {
+  it('renders student, product, and task lists as labelled tables with header rows', async () => {
     render(<AdminManagePage />);
 
-    fireEvent.click(await screen.findByRole('tab', { name: '학생 관리' }));
-    const studentList = await screen.findByTestId('student-list');
-    expect(studentList.className).toContain('divide-[var(--theme-divider)]');
-    expect(studentList.className).toContain('border-[var(--theme-border)]');
+    await openAdminMenu('학생');
+    const studentList = await screen.findByRole('table', { name: '학생 명단' });
+    expect(studentList).toBe(screen.getByTestId('student-list'));
+    expect(within(studentList).getAllByRole('columnheader').map((cell) => cell.textContent?.trim()).filter(Boolean)).toEqual(['번호', '이름', '잔액', '상태']);
+    expect(within(studentList).getAllByTestId('student-row')).toHaveLength(2);
+    expect(within(studentList).getByLabelText('전체 학생 선택')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('tab', { name: '매점 관리' }));
-    const productList = await screen.findByTestId('product-list');
-    expect(productList.className).toContain('divide-[var(--theme-divider)]');
-    expect(productList.className).toContain('border-[var(--theme-border)]');
+    await openAdminMenu('매점');
+    const productList = await screen.findByRole('table', { name: '상품 목록' });
+    expect(productList).toBe(screen.getByTestId('product-list'));
+    expect(within(productList).getAllByRole('columnheader').map((cell) => cell.textContent?.trim()).filter(Boolean)).toEqual(['상품', '가격', '재고', '상태']);
+    expect(within(productList).getAllByTestId('product-row')).toHaveLength(2);
 
-    fireEvent.click(screen.getByRole('tab', { name: '과제 설정' }));
-    const taskScroll = await screen.findByTestId('task-list-scroll');
-    expect(taskScroll.className).toContain('border-[var(--theme-border)]');
-    expect(screen.getAllByTestId('task-row')[0].parentElement?.className).toContain('divide-[var(--theme-divider)]');
-    expect(screen.getAllByTestId('task-row')[0].parentElement?.className).not.toContain('divide-slate-100');
+    await openAdminMenu('과제');
+    const taskList = await screen.findByRole('table', { name: '과제 목록' });
+    expect(taskList).toBe(screen.getByTestId('task-list-scroll'));
+    expect(within(taskList).getAllByRole('columnheader').map((cell) => cell.textContent?.trim()).filter(Boolean)).toEqual(['과제', '보상', '이번 회차 완료', '상태']);
+    expect(within(taskList).getAllByTestId('task-row')).toHaveLength(2);
+    for (const list of [studentList, productList, taskList]) expect(list.className).toContain('divide-[var(--crs-line)]');
   });
 
-  it('supports dense selectable rows with bulk student balance editing and deletion', async () => {
-    const { container } = render(<AdminManagePage />);
+  it('supports selectable rows with bulk student balance editing and deletion', async () => {
+    render(<AdminManagePage />);
 
-    fireEvent.click(await screen.findByRole('tab', { name: '학생 관리' }));
-    expect(await screen.findByDisplayValue('김민준')).toBeTruthy();
-    expect(container.querySelector('[data-testid="student-list"]')?.className).toContain('divide-y');
-    expect(container.querySelector('[data-testid="student-list"]')?.className).toContain('divide-[var(--theme-divider)]');
-    expect(container.querySelector('[data-testid="student-list"]')?.className).toContain('border-[var(--theme-border)]');
-    const studentRow = container.querySelector('[data-testid="student-row"]');
-    expect(studentRow?.className).toContain('grid-cols-[24px_56px_minmax(4rem,1fr)_78px_52px_42px]');
-    expect(studentRow?.className).toContain('items-center');
-    expect(studentRow?.className).toContain('py-1');
-    expect(studentRow?.className).not.toContain('md:grid-cols');
-    expect(container.querySelector('[data-testid="student-name-field"]')?.className).toContain('sr-only');
+    await openAdminMenu('학생');
+    expect(await screen.findByRole('button', { name: 'S001 김민준 편집' })).toBeTruthy();
+    expect(screen.queryByRole('toolbar', { name: '선택 항목 작업' })).toBeNull();
 
     fireEvent.click(screen.getByLabelText('전체 학생 선택'));
-    fireEvent.change(screen.getByLabelText('선택 학생 금액'), { target: { value: '5000' } });
-    fireEvent.change(screen.getByLabelText('선택 학생 작업'), { target: { value: 'set' } });
-    fireEvent.click(screen.getByRole('button', { name: '화폐 수정' }));
+    expect(within(selectionBar()).getByText('2명 선택됨')).toBeTruthy();
+    fireEvent.click(within(selectionBar()).getByRole('button', { name: '잔액 변경' }));
+    const balanceDialog = await screen.findByRole('dialog', { name: '잔액 한꺼번에 바꾸기' });
+    fireEvent.change(within(balanceDialog).getByLabelText('선택 학생 금액'), { target: { value: '5000' } });
+    fireEvent.click(within(within(balanceDialog).getByRole('group', { name: '선택 학생 작업' })).getByRole('button', { name: '이 금액으로 맞추기' }));
+    fireEvent.click(within(balanceDialog).getByRole('button', { name: '2명에게 적용' }));
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith('/api/students/bulk', {
@@ -2057,9 +2093,11 @@ describe('AdminManagePage', () => {
         body: JSON.stringify({ studentIds: ['S001', 'S002'], mode: 'set', amount: 5000, operationId: '50000000-0000-4000-8000-000000000001' }),
       });
     });
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('선택 학생 2명 수정 완료'));
+    await findNotice('선택 학생 2명 수정 완료');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '잔액 한꺼번에 바꾸기' })).toBeNull());
 
-    fireEvent.click(screen.getByRole('button', { name: '삭제' }));
+    fireEvent.click(within(selectionBar()).getByRole('button', { name: '삭제' }));
+    await confirmDialog('삭제');
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith('/api/students/batch', {
         method: 'DELETE',
@@ -2067,28 +2105,14 @@ describe('AdminManagePage', () => {
         body: JSON.stringify({ studentIds: ['S001', 'S002'] }),
       });
     });
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('선택 학생 2명 삭제 완료'));
-    expect(window.alert).not.toHaveBeenCalledWith('S001 삭제 완료');
-    expect(window.alert).not.toHaveBeenCalledWith('S002 삭제 완료');
+    await findNotice('선택 학생 2명 삭제 완료');
+    expect(noticeTexts().some((text) => /S00[12] 삭제 완료/.test(text))).toBe(false);
 
-    fireEvent.click(screen.getByRole('tab', { name: '매점 관리' }));
-    expect(await screen.findByDisplayValue('연필')).toBeTruthy();
-    expect(container.querySelector('[data-testid="product-list"]')?.className).toContain('divide-y');
-    expect(container.querySelector('[data-testid="product-list"]')?.className).toContain('divide-[var(--theme-divider)]');
-    expect(container.querySelector('[data-testid="product-list"]')?.className).toContain('border-[var(--theme-border)]');
-    const productRow = container.querySelector('[data-testid="product-row"]');
-    expect(productRow?.className).toContain('grid-cols-[24px_minmax(3rem,1fr)_56px_48px_36px_minmax(3rem,0.8fr)_40px_30px_34px]');
-    expect(productRow?.className).toContain('items-center');
-    expect(productRow?.className).toContain('py-1');
-    expect(productRow?.className).not.toContain('md:grid-cols');
-    expect(container.querySelector('[data-testid="product-name-field"]')?.className).toContain('sr-only');
-    const imageButton = screen.getByRole('button', { name: 'P001 이미지 주소 편집' });
-    expect(imageButton.className).toContain('truncate');
-    fireEvent.click(imageButton);
-    expect(await screen.findByRole('dialog', { name: '상품 이미지 등록' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+    await openAdminMenu('매점');
+    expect(await screen.findByRole('button', { name: 'P001 연필 편집' })).toBeTruthy();
     fireEvent.click(screen.getByLabelText('전체 상품 선택'));
-    fireEvent.click(screen.getByRole('button', { name: '삭제' }));
+    fireEvent.click(within(selectionBar()).getByRole('button', { name: '삭제' }));
+    await confirmDialog('삭제');
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith('/api/products/batch', {
         method: 'DELETE',
@@ -2096,44 +2120,27 @@ describe('AdminManagePage', () => {
         body: JSON.stringify({ productIds: ['P001', 'P002'] }),
       });
     });
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('선택 상품 2개 삭제 완료'));
-    expect(window.alert).not.toHaveBeenCalledWith('P001 삭제 완료');
-    expect(window.alert).not.toHaveBeenCalledWith('P002 삭제 완료');
+    await findNotice('선택 상품 2개 삭제 완료');
+    expect(noticeTexts().some((text) => /P00[12] 삭제 완료/.test(text))).toBe(false);
   });
 
-
-
-  it('manages bank tasks with selectable rows, bulk save/delete, completion reset, and description popup', async () => {
-    const { container } = render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    expect(await screen.findByDisplayValue('책 읽기')).toBeTruthy();
-    expect(screen.getByTestId('task-header-row').textContent).toContain('선택');
+  it('manages bank tasks with a single-row panel save, bulk delete, and new-task creation', async () => {
+    await renderTasks();
     expect(screen.getByTestId('task-header-row').textContent).not.toContain('ID');
-    expect(screen.getByTestId('task-header-row').textContent).toContain('상세');
-    expect(screen.getByTestId('task-header-row').textContent).not.toContain('저장');
     expect(screen.queryByRole('button', { name: 'T001 과제 저장' })).toBeNull();
-    expect(screen.getByTestId('task-panel').className).toContain('min-w-0');
-    expect(screen.getByTestId('new-task-card').className).toContain('min-w-0');
-    expect(screen.getByTestId('task-list-card').className).toContain('min-w-0');
-    expect(screen.getByTestId('task-list-scroll').className).toContain('overflow-x-auto');
-    expect(screen.getByTestId('task-list-scroll').className).toContain('border-[var(--theme-border)]');
-    expect(screen.getAllByTestId('task-row')[0].parentElement?.className).toContain('divide-[var(--theme-divider)]');
-    expect(screen.getAllByTestId('task-row')[0].parentElement?.className).not.toContain('divide-slate-100');
-    expect(screen.getByTestId('task-bulk-actions').className).toContain('flex-wrap');
-    const taskRow = container.querySelector('[data-testid="task-row"]');
-    expect(taskRow?.className).toContain('grid-cols-[24px_minmax(5rem,1fr)_64px_48px_38px_minmax(3rem,0.7fr)_minmax(180px,auto)]');
-    expect(taskRow?.className).toContain('items-center');
-    expect(screen.queryByLabelText('T001 설명')).toBeNull();
+    expect(screen.queryByRole('button', { name: '선택 저장' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'T001 상세 설정 편집' })).toBeNull();
+    expect(screen.getByTestId('task-panel').className).toContain('space-y-5');
+    expect(screen.getByTestId('task-list-card')).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText('T001 과제명'), { target: { value: '책 읽기 수정' } });
-    fireEvent.change(screen.getByLabelText('T001 보상'), { target: { value: '7' } });
-    fireEvent.click(screen.getByRole('button', { name: 'T001 상세 설정 편집' }));
-    expect(await screen.findByRole('dialog', { name: '과제 상세 설정 편집' })).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('과제 상세 설정 전체 입력'), { target: { value: '책 20분 읽기' } });
-    fireEvent.click(screen.getByRole('button', { name: '상세 설정 적용' }));
-    expect(screen.getByRole('button', { name: '선택 저장' })).toHaveProperty('disabled', true);
-    fireEvent.click(screen.getByLabelText('T001 선택'));
-    fireEvent.click(screen.getByRole('button', { name: '선택 저장' }));
+    const panel = await openTaskEditor('책 읽기');
+    expect(within(panel).getByRole('button', { name: '저장' })).toHaveProperty('disabled', true);
+    expect(within(panel).getByRole('button', { name: '되돌리기' })).toHaveProperty('disabled', true);
+    fireEvent.change(within(panel).getByLabelText('T001 과제명'), { target: { value: '책 읽기 수정' } });
+    fireEvent.change(within(panel).getByLabelText('T001 보상'), { target: { value: '7' } });
+    fireEvent.change(within(panel).getByLabelText('T001 과제 설명'), { target: { value: '책 20분 읽기' } });
+    expect(within(panel).getByRole('tab', { name: /^기본 정보/ }).querySelector('[aria-label="저장 안 됨"]')).toBeTruthy();
+    fireEvent.click(within(panel).getByRole('button', { name: '저장' }));
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/batch', {
       method: 'PATCH',
@@ -2141,29 +2148,36 @@ describe('AdminManagePage', () => {
       body: JSON.stringify({
         tasks: [
           { taskId: 'T001', title: '책 읽기 수정', description: '책 20분 읽기', reward: 7, isActive: true, sortOrder: 1, allowedStudentIds: ['S001'], availableFrom: null, dueAt: null, prerequisiteTaskId: null },
-          ],
+        ],
       }),
     }));
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('선택 과제 1개 저장 완료'));
+    await findNotice('과제 1개 저장 완료');
     expect(fetch).not.toHaveBeenCalledWith('/api/tasks/T001', expect.objectContaining({ method: 'PATCH' }));
+    await waitFor(() => expect(within(taskEditorPanel('책 읽기 수정')).getByRole('button', { name: '저장' })).toHaveProperty('disabled', true));
+    fireEvent.click(within(taskEditorPanel('책 읽기 수정')).getByRole('button', { name: '닫기' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '책 읽기 수정 과제 편집' })).toBeNull());
 
     fireEvent.click(screen.getByLabelText('전체 과제 선택'));
-    expect(screen.queryByRole('button', { name: '초기화' })).toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: '삭제' }));
+    expect(within(selectionBar()).queryByRole('button', { name: '초기화' })).toBeNull();
+    fireEvent.click(within(selectionBar()).getByRole('button', { name: '삭제' }));
+    await confirmDialog('삭제');
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/batch', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ taskIds: ['T001', 'T002'] }),
     }));
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('선택 과제 2개 삭제 완료'));
+    await findNotice('선택 과제 2개 삭제 완료');
+    expect(await screen.findByText('첫 과제를 만들어 보세요')).toBeTruthy();
 
-        fireEvent.change(screen.getByLabelText('새 과제명'), { target: { value: '영어 단어' } });
-    fireEvent.change(screen.getByLabelText('새 과제 설명'), { target: { value: '5개 외우기' } });
-    fireEvent.change(screen.getByLabelText('새 과제 보상'), { target: { value: '10' } });
-    fireEvent.click(screen.getByRole('button', { name: '새 과제 추가' }));
+    fireEvent.click(screen.getAllByRole('button', { name: '새 과제' })[0]);
+    const editor = await screen.findByRole('dialog', { name: '새 과제' });
+    fireEvent.change(within(editor).getByLabelText('새 과제명'), { target: { value: '영어 단어' } });
+    fireEvent.change(within(editor).getByLabelText('새 과제 설명'), { target: { value: '5개 외우기' } });
+    fireEvent.change(within(editor).getByLabelText('새 과제 보상'), { target: { value: '10' } });
+    fireEvent.click(within(editor).getByRole('button', { name: '과제 만들기' }));
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks', expect.objectContaining({ method: 'POST' })));
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('T001 과제 추가 완료'));
+    await findNotice('T001 과제 추가 완료');
+    expect(await findTaskRow('영어 단어')).toBeTruthy();
   });
 
   it('suppresses duplicate task creation and reuses a canonical unchanged attempt through malformed 2xx', async () => {
@@ -2180,39 +2194,39 @@ describe('AdminManagePage', () => {
         ? responses.shift()!
         : fallback(input, init));
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.change(screen.getByLabelText('새 과제명'), { target: { value: ' 영어 단어 ' } });
-    fireEvent.change(screen.getByLabelText('새 과제 설명'), { target: { value: '5개 외우기' } });
-    fireEvent.change(screen.getByLabelText('새 과제 보상'), { target: { value: '10' } });
-    const create = screen.getByRole('button', { name: '새 과제 추가' });
+    await renderTasks();
+    const editor = await openNewTaskEditor();
+    fireEvent.change(within(editor).getByLabelText('새 과제명'), { target: { value: ' 영어 단어 ' } });
+    fireEvent.change(within(editor).getByLabelText('새 과제 설명'), { target: { value: '5개 외우기' } });
+    fireEvent.change(within(editor).getByLabelText('새 과제 보상'), { target: { value: '10' } });
+    const create = within(editor).getByRole('button', { name: '과제 만들기' });
 
     fireEvent.click(create);
     fireEvent.click(create);
-    expect(vi.mocked(fetch).mock.calls.filter(([url, init]) =>
-      String(url) === '/api/tasks' && init?.method === 'POST')).toHaveLength(1);
+    expect(fetchCalls('/api/tasks', 'POST')).toHaveLength(1);
 
     first.resolve();
-    await waitFor(() => expect(alert).toHaveBeenCalledWith('temporary task failure'));
-    fireEvent.change(screen.getByLabelText('새 과제명'), { target: { value: '영어 단어' } });
+    await findNotice('temporary task failure');
+    expect(screen.getByRole('dialog', { name: '새 과제' })).toBe(editor);
+    fireEvent.change(within(editor).getByLabelText('새 과제명'), { target: { value: '영어 단어' } });
     fireEvent.click(create);
     malformed.resolve();
-    await waitFor(() => expect(alert).toHaveBeenCalledWith('과제를 추가하지 못했습니다.'));
-    expect(screen.queryByLabelText('T003 과제명')).toBeNull();
+    await findNotice('과제를 추가하지 못했습니다.');
+    expect(screen.queryByRole('button', { name: '영어 단어 과제 편집', hidden: true })).toBeNull();
     fireEvent.click(create);
     valid.resolve();
-    await screen.findByLabelText('T003 과제명');
+    await findNotice('T003 과제 추가 완료');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '새 과제' })).toBeNull());
+    expect(await findTaskRow('영어 단어')).toBeTruthy();
 
-    const bodies = vi.mocked(fetch).mock.calls
-      .filter(([url, init]) => String(url) === '/api/tasks' && init?.method === 'POST')
-      .map(([, init]) => JSON.parse(String(init?.body)));
-    expect(bodies.map((body) => body.operationId)).toEqual([
+    expect(fetchCalls('/api/tasks', 'POST').map(([, init]) => JSON.parse(String(init?.body)).operationId)).toEqual([
       '50000000-0000-4000-8000-000000000051',
       '50000000-0000-4000-8000-000000000051',
       '50000000-0000-4000-8000-000000000051',
     ]);
     expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
-    expect(screen.getByLabelText('새 과제명')).toHaveProperty('value', '');
+    const reopened = await openNewTaskEditor();
+    expect(within(reopened).getByLabelText('새 과제명')).toHaveProperty('value', '');
   });
 
   it('preserves a newer in-flight task draft and allocates a new operation ID', async () => {
@@ -2228,25 +2242,25 @@ describe('AdminManagePage', () => {
         ? responses.shift()!
         : fallback(input, init));
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.change(screen.getByLabelText('새 과제명'), { target: { value: '첫 과제' } });
-    fireEvent.change(screen.getByLabelText('새 과제 보상'), { target: { value: '1' } });
-    fireEvent.click(screen.getByRole('button', { name: '새 과제 추가' }));
-    fireEvent.change(screen.getByLabelText('새 과제명'), { target: { value: '새 초안' } });
-    fireEvent.change(screen.getByLabelText('새 과제 보상'), { target: { value: '2' } });
+    await renderTasks();
+    const editor = await openNewTaskEditor();
+    fireEvent.change(within(editor).getByLabelText('새 과제명'), { target: { value: '첫 과제' } });
+    fireEvent.change(within(editor).getByLabelText('새 과제 보상'), { target: { value: '1' } });
+    fireEvent.click(within(editor).getByRole('button', { name: '과제 만들기' }));
+    fireEvent.change(within(editor).getByLabelText('새 과제명'), { target: { value: '새 초안' } });
+    fireEvent.change(within(editor).getByLabelText('새 과제 보상'), { target: { value: '2' } });
 
     first.resolve();
-    await screen.findByLabelText('T003 과제명');
-    expect(screen.getByLabelText('새 과제명')).toHaveProperty('value', '새 초안');
-    fireEvent.click(screen.getByRole('button', { name: '새 과제 추가' }));
+    await findNotice('T003 과제 추가 완료');
+    await findTaskRow('첫 과제');
+    const reopened = await openNewTaskEditor();
+    expect(within(reopened).getByLabelText('새 과제명')).toHaveProperty('value', '새 초안');
+    expect(within(reopened).getByLabelText('새 과제 보상')).toHaveProperty('value', '2');
+    fireEvent.click(within(reopened).getByRole('button', { name: '과제 만들기' }));
     second.resolve();
-    await screen.findByLabelText('T004 과제명');
+    await findTaskRow('새 초안');
 
-    const bodies = vi.mocked(fetch).mock.calls
-      .filter(([url, init]) => String(url) === '/api/tasks' && init?.method === 'POST')
-      .map(([, init]) => JSON.parse(String(init?.body)));
-    expect(bodies.map((body) => body.operationId)).toEqual([
+    expect(fetchCalls('/api/tasks', 'POST').map(([, init]) => JSON.parse(String(init?.body)).operationId)).toEqual([
       '50000000-0000-4000-8000-000000000061',
       '50000000-0000-4000-8000-000000000062',
     ]);
@@ -2267,41 +2281,46 @@ describe('AdminManagePage', () => {
       return fallback(input, init);
     });
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: '새 과제 과제 부여' }));
-    fireEvent.click(screen.getByLabelText('전체 학생 행 선택'));
-    fireEvent.change(screen.getByLabelText('선택 학생 부여 상태 일괄 변경'), { target: { value: 'assigned' } });
-    fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
-    fireEvent.change(screen.getByLabelText('새 과제명'), { target: { value: '순서 과제' } });
-    fireEvent.click(screen.getByRole('button', { name: '새 과제 기한 설정' }));
-    fireEvent.change(screen.getByLabelText('반복 주기'), { target: { value: 'WEEKLY' } });
-    fireEvent.click(screen.getByRole('button', { name: '금요일' }));
-    fireEvent.click(screen.getByRole('button', { name: '기한 설정 적용' }));
-    fireEvent.click(screen.getByRole('button', { name: '새 과제 추가' }));
+    await renderTasks();
+    const editor = await openNewTaskEditor();
+    fireEvent.click(within(editor).getByRole('tab', { name: /^대상 학생/ }));
+    fireEvent.click(within(editor).getByLabelText('전체 학생 행 선택'));
+    fireEvent.click(within(editor).getByRole('tab', { name: /^기본 정보/ }));
+    fireEvent.change(within(editor).getByLabelText('새 과제명'), { target: { value: '순서 과제' } });
+    fireEvent.click(within(editor).getByRole('tab', { name: /^반복/ }));
+    fireEvent.click(within(within(editor).getByRole('group', { name: '반복 주기' })).getByRole('button', { name: '매주' }));
+    fireEvent.click(within(editor).getByRole('button', { name: '금요일' }));
+    fireEvent.click(within(editor).getByRole('button', { name: '과제 만들기' }));
 
-    await waitFor(() => expect(alert).toHaveBeenCalledWith('과제를 추가하지 못했습니다.'));
-    expect(screen.queryByLabelText('T003 과제명')).toBeNull();
+    await waitFor(() => expect(fetchCalls('/api/tasks', 'POST')).toHaveLength(1));
+    const body = lastBody('/api/tasks', 'POST');
+    expect(body.allowedStudentIds).toEqual(['S001', 'S002']);
+    expect(body.schedule.recurrence).toMatchObject({ type: 'WEEKLY', weekdays: [1, 5] });
+    await findNotice('과제를 추가하지 못했습니다.');
+    expect(screen.queryByRole('button', { name: '순서 과제 과제 편집', hidden: true })).toBeNull();
   });
 
   it('creates new student and product rows through POST APIs', async () => {
     render(<AdminManagePage />);
 
-    fireEvent.click(await screen.findByRole('tab', { name: '학생 관리' }));
-    await screen.findByDisplayValue('김민준');
+    await openAdminMenu('학생');
+    const studentEditor = await openNewStudentEditor();
+    fireEvent.change(within(studentEditor).getByLabelText('새 학생 ID'), { target: { value: 'S003' } });
+    fireEvent.change(within(studentEditor).getByLabelText('새 학생 이름'), { target: { value: '박도윤' } });
+    fireEvent.click(within(studentEditor).getByRole('button', { name: '새 학생 추가' }));
+    await findNotice('S003 추가 완료');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '학생 추가' })).toBeNull());
+    expect(screen.getByRole('button', { name: 'S003 박도윤 편집' })).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText('새 학생 ID'), { target: { value: 'S003' } });
-    fireEvent.change(screen.getByLabelText('새 학생 이름'), { target: { value: '박도윤' } });
-    fireEvent.click(screen.getByRole('button', { name: '새 학생 추가' }));
-
-    fireEvent.click(screen.getByRole('tab', { name: '매점 관리' }));
-        fireEvent.change(screen.getByLabelText('새 상품명'), { target: { value: '간식쿠폰' } });
-    fireEvent.change(screen.getByLabelText('새 상품 가격'), { target: { value: '1000' } });
-    fireEvent.change(screen.getByLabelText('새 상품 재고'), { target: { value: '5' } });
-    fireEvent.change(screen.getByLabelText('새 상품 카테고리'), { target: { value: '쿠폰' } });
-    fireEvent.change(screen.getByLabelText('새 상품 이미지 주소'), { target: { value: 'https://example.com/snack.png' } });
-    fireEvent.change(screen.getByLabelText('새 상품 정렬'), { target: { value: '3' } });
-    fireEvent.click(screen.getByRole('button', { name: '새 상품 추가' }));
+    await openAdminMenu('매점');
+    const productEditor = await openNewProductEditor();
+    fireEvent.change(within(productEditor).getByLabelText('새 상품명'), { target: { value: '간식쿠폰' } });
+    fireEvent.change(within(productEditor).getByLabelText('새 상품 가격'), { target: { value: '1000' } });
+    fireEvent.change(within(productEditor).getByLabelText('새 상품 재고'), { target: { value: '5' } });
+    fireEvent.change(within(productEditor).getByLabelText('새 상품 카테고리'), { target: { value: '쿠폰' } });
+    fireEvent.change(within(productEditor).getByLabelText('새 상품 이미지 주소'), { target: { value: 'https://example.com/snack.png' } });
+    fireEvent.change(within(productEditor).getByLabelText('새 상품 정렬'), { target: { value: '3' } });
+    fireEvent.click(within(productEditor).getByRole('button', { name: '새 상품 추가' }));
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith('/api/students', {
@@ -2316,8 +2335,8 @@ describe('AdminManagePage', () => {
       });
     });
 
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('S003 추가 완료'));
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('P003 추가 완료'));
+    await findNotice('P003 추가 완료');
+    expect(await screen.findByRole('button', { name: 'P003 간식쿠폰 편집' })).toBeTruthy();
   });
 
   it('suppresses synchronous duplicate student creation and reuses an unchanged attempt through failure and malformed 2xx', async () => {
@@ -2335,46 +2354,45 @@ describe('AdminManagePage', () => {
         : fallback(input, init));
 
     render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '학생 관리' }));
-    fireEvent.change(screen.getByLabelText('새 학생 ID'), { target: { value: ' S003 ' } });
-    fireEvent.change(screen.getByLabelText('새 학생 이름'), { target: { value: '박도윤' } });
-    const create = screen.getByRole('button', { name: '새 학생 추가' });
+    await openAdminMenu('학생');
+    const editor = await openNewStudentEditor();
+    fireEvent.change(within(editor).getByLabelText('새 학생 ID'), { target: { value: ' S003 ' } });
+    fireEvent.change(within(editor).getByLabelText('새 학생 이름'), { target: { value: '박도윤' } });
+    const create = within(editor).getByRole('button', { name: '새 학생 추가' });
 
     fireEvent.click(create);
     fireEvent.click(create);
-    expect(vi.mocked(fetch).mock.calls.filter(([url, init]) =>
-      String(url) === '/api/students' && init?.method === 'POST')).toHaveLength(1);
+    expect(fetchCalls('/api/students', 'POST')).toHaveLength(1);
     expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
 
     first.resolve();
-    await waitFor(() => expect(alert).toHaveBeenCalledWith('temporary student failure'));
-    fireEvent.change(screen.getByLabelText('새 학생 ID'), { target: { value: 'S003' } });
+    await findNotice('temporary student failure');
+    fireEvent.change(within(editor).getByLabelText('새 학생 ID'), { target: { value: 'S003' } });
     fireEvent.click(create);
     malformed.resolve();
-    await waitFor(() => expect(alert).toHaveBeenCalledWith('학생을 추가하지 못했습니다.'));
-    expect(screen.getByLabelText('새 학생 ID')).toHaveProperty('value', 'S003');
-    expect(screen.queryByLabelText('S003 이름')).toBeNull();
+    await findNotice('학생을 추가하지 못했습니다.');
+    expect(within(editor).getByLabelText('새 학생 ID')).toHaveProperty('value', 'S003');
+    expect(screen.queryByRole('button', { name: 'S003 박도윤 편집', hidden: true })).toBeNull();
 
     fireEvent.click(create);
     valid.resolve();
-    await screen.findByLabelText('S003 이름');
-    expect(alert).toHaveBeenCalledWith('S003 추가 완료');
+    await findNotice('S003 추가 완료');
+    expect(await screen.findByRole('button', { name: 'S003 박도윤 편집' })).toBeTruthy();
     expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
 
-    const bodies = vi.mocked(fetch).mock.calls
-      .filter(([url, init]) => String(url) === '/api/students' && init?.method === 'POST')
-      .map(([, init]) => JSON.parse(String(init?.body)));
+    const bodies = fetchCalls('/api/students', 'POST').map(([, init]) => JSON.parse(String(init?.body)));
     expect(bodies).toHaveLength(3);
     expect(bodies.map((body) => body.operationId)).toEqual([
       '50000000-0000-4000-8000-000000000031',
       '50000000-0000-4000-8000-000000000031',
       '50000000-0000-4000-8000-000000000031',
     ]);
-    expect(screen.getByLabelText('새 학생 ID')).toHaveProperty('value', '');
-    expect(screen.getByLabelText('새 학생 이름')).toHaveProperty('value', '');
+    const reopened = await openNewStudentEditor();
+    expect(within(reopened).getByLabelText('새 학생 ID')).toHaveProperty('value', '');
+    expect(within(reopened).getByLabelText('새 학생 이름')).toHaveProperty('value', '');
   });
 
-  it('preserves newer in-flight student draft edits and gives the changed draft a new operation ID', async () => {
+  it('gives a changed student draft a new operation ID after an earlier creation succeeds', async () => {
     vi.mocked(crypto.randomUUID)
       .mockReturnValueOnce('50000000-0000-4000-8000-000000000041')
       .mockReturnValueOnce('50000000-0000-4000-8000-000000000042');
@@ -2388,30 +2406,28 @@ describe('AdminManagePage', () => {
         : fallback(input, init));
 
     render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '학생 관리' }));
-    fireEvent.change(screen.getByLabelText('새 학생 ID'), { target: { value: 'S003' } });
-    fireEvent.change(screen.getByLabelText('새 학생 이름'), { target: { value: '박도윤' } });
-    fireEvent.click(screen.getByRole('button', { name: '새 학생 추가' }));
-    fireEvent.change(screen.getByLabelText('새 학생 ID'), { target: { value: 'S004' } });
-    fireEvent.change(screen.getByLabelText('새 학생 이름'), { target: { value: '새 초안' } });
-    fireEvent.change(screen.getByLabelText('새 학생 잔액'), { target: { value: '-10' } });
-
+    await openAdminMenu('학생');
+    const editor = await openNewStudentEditor();
+    fireEvent.change(within(editor).getByLabelText('새 학생 ID'), { target: { value: 'S003' } });
+    fireEvent.change(within(editor).getByLabelText('새 학생 이름'), { target: { value: '박도윤' } });
+    fireEvent.click(within(editor).getByRole('button', { name: '새 학생 추가' }));
     first.resolve();
-    await screen.findByLabelText('S003 이름');
-    expect(screen.getByLabelText('새 학생 ID')).toHaveProperty('value', 'S004');
-    expect(screen.getByLabelText('새 학생 이름')).toHaveProperty('value', '새 초안');
-    expect(screen.getByLabelText('새 학생 잔액')).toHaveProperty('value', '-10');
+    await findNotice('S003 추가 완료');
+    expect(await screen.findByRole('button', { name: 'S003 박도윤 편집' })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: '새 학생 추가' }));
+    const next = await openNewStudentEditor();
+    fireEvent.change(within(next).getByLabelText('새 학생 ID'), { target: { value: 'S004' } });
+    fireEvent.change(within(next).getByLabelText('새 학생 이름'), { target: { value: '새 초안' } });
+    fireEvent.change(within(next).getByLabelText('새 학생 잔액'), { target: { value: '-10' } });
+    fireEvent.click(within(next).getByRole('button', { name: '새 학생 추가' }));
     second.resolve();
-    await screen.findByLabelText('S004 이름');
-    const bodies = vi.mocked(fetch).mock.calls
-      .filter(([url, init]) => String(url) === '/api/students' && init?.method === 'POST')
-      .map(([, init]) => JSON.parse(String(init?.body)));
+    expect(await screen.findByRole('button', { name: 'S004 새 초안 편집' })).toBeTruthy();
+    const bodies = fetchCalls('/api/students', 'POST').map(([, init]) => JSON.parse(String(init?.body)));
     expect(bodies.map((body) => body.operationId)).toEqual([
       '50000000-0000-4000-8000-000000000041',
       '50000000-0000-4000-8000-000000000042',
     ]);
+    expect(bodies[1]).toMatchObject({ studentId: 'S004', name: '새 초안', balance: -10 });
   });
 
   it('suppresses synchronous duplicate product creation and reuses a failed unchanged attempt ID', async () => {
@@ -2421,7 +2437,7 @@ describe('AdminManagePage', () => {
     const first = deferredResponse({ error: 'temporary failure' }, { status: 400 });
     const second = deferredResponse({
       productId: 'P003', name: '간식쿠폰', price: 1000, stock: 5,
-      isActive: true, imageUrl: '', category: '', sortOrder: 1,
+      isActive: true, imageUrl: '', category: '', sortOrder: 3,
     });
     const responses = [first.response, second.response];
     const fallback = vi.mocked(fetch).getMockImplementation()!;
@@ -2431,39 +2447,39 @@ describe('AdminManagePage', () => {
         : fallback(input, init));
 
     render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '매점 관리' }));
-    fireEvent.change(screen.getByLabelText('새 상품명'), { target: { value: '간식쿠폰' } });
-    fireEvent.change(screen.getByLabelText('새 상품 가격'), { target: { value: '1000' } });
-    fireEvent.change(screen.getByLabelText('새 상품 재고'), { target: { value: '5' } });
-    const create = screen.getByRole('button', { name: '새 상품 추가' });
+    await openAdminMenu('매점');
+    const editor = await openNewProductEditor();
+    fireEvent.change(within(editor).getByLabelText('새 상품명'), { target: { value: '간식쿠폰' } });
+    fireEvent.change(within(editor).getByLabelText('새 상품 가격'), { target: { value: '1000' } });
+    fireEvent.change(within(editor).getByLabelText('새 상품 재고'), { target: { value: '5' } });
+    const create = within(editor).getByRole('button', { name: '새 상품 추가' });
 
     fireEvent.click(create);
     fireEvent.click(create);
-    expect(vi.mocked(fetch).mock.calls.filter(([url, init]) =>
-      String(url) === '/api/products' && init?.method === 'POST')).toHaveLength(1);
+    expect(fetchCalls('/api/products', 'POST')).toHaveLength(1);
     expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
 
     first.resolve();
-    await waitFor(() => expect(alert).toHaveBeenCalledWith('temporary failure'));
+    await findNotice('temporary failure');
     fireEvent.click(create);
     expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
     second.resolve();
-    await waitFor(() => expect(alert).toHaveBeenCalledWith('P003 추가 완료'));
+    await findNotice('P003 추가 완료');
 
-    const bodies = vi.mocked(fetch).mock.calls
-      .filter(([url, init]) => String(url) === '/api/products' && init?.method === 'POST')
-      .map(([, init]) => JSON.parse(String(init?.body)));
+    const bodies = fetchCalls('/api/products', 'POST').map(([, init]) => JSON.parse(String(init?.body)));
     expect(bodies).toHaveLength(2);
     expect(bodies[1].operationId).toBe(bodies[0].operationId);
-    expect(screen.getByLabelText('새 상품명')).toHaveProperty('value', '');
-    expect(screen.getByLabelText('새 상품 가격')).toHaveProperty('value', '0');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '상품 추가' })).toBeNull());
+    const reopened = await openNewProductEditor();
+    expect(within(reopened).getByLabelText('새 상품명')).toHaveProperty('value', '');
+    expect(within(reopened).getByLabelText('새 상품 가격')).toHaveProperty('value', '0');
   });
 
   it('retains the product attempt and draft after a malformed 2xx response', async () => {
     vi.mocked(crypto.randomUUID).mockReturnValue('50000000-0000-4000-8000-000000000025');
     const created = {
       productId: 'P003', name: '간식쿠폰', price: 1000, stock: 5,
-      isActive: true, imageUrl: '', category: '', sortOrder: 1,
+      isActive: true, imageUrl: '', category: '', sortOrder: 3,
     };
     const responses = [jsonResponse({}), jsonResponse(created)];
     const fallback = vi.mocked(fetch).getMockImplementation()!;
@@ -2473,53 +2489,26 @@ describe('AdminManagePage', () => {
         : fallback(input, init));
 
     render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '매점 관리' }));
-    const name = screen.getByLabelText('새 상품명');
-    const create = screen.getByRole('button', { name: '새 상품 추가' });
+    await openAdminMenu('매점');
+    const editor = await openNewProductEditor();
+    const name = within(editor).getByLabelText('새 상품명');
+    const create = within(editor).getByRole('button', { name: '새 상품 추가' });
     fireEvent.change(name, { target: { value: '간식쿠폰' } });
-    fireEvent.change(screen.getByLabelText('새 상품 가격'), { target: { value: '1000' } });
-    fireEvent.change(screen.getByLabelText('새 상품 재고'), { target: { value: '5' } });
+    fireEvent.change(within(editor).getByLabelText('새 상품 가격'), { target: { value: '1000' } });
+    fireEvent.change(within(editor).getByLabelText('새 상품 재고'), { target: { value: '5' } });
 
     fireEvent.click(create);
-    await waitFor(() => expect(alert).toHaveBeenCalledWith('상품을 추가하지 못했습니다.'));
+    await findNotice('상품을 추가하지 못했습니다.');
     expect(name).toHaveProperty('value', '간식쿠폰');
+    expect(screen.getByRole('dialog', { name: '상품 추가' })).toBe(editor);
 
     fireEvent.click(create);
-    await waitFor(() => expect(alert).toHaveBeenCalledWith('P003 추가 완료'));
-    const bodies = vi.mocked(fetch).mock.calls
-      .filter(([url, init]) => String(url) === '/api/products' && init?.method === 'POST')
-      .map(([, init]) => JSON.parse(String(init?.body)));
+    await findNotice('P003 추가 완료');
+    const bodies = fetchCalls('/api/products', 'POST').map(([, init]) => JSON.parse(String(init?.body)));
     expect(bodies).toHaveLength(2);
     expect(bodies[1].operationId).toBe(bodies[0].operationId);
     expect(crypto.randomUUID).toHaveBeenCalledOnce();
-    expect(name).toHaveProperty('value', '');
-  });
-
-  it('preserves a newer product draft when an earlier creation succeeds', async () => {
-    const created = {
-      productId: 'P003', name: '상품 A', price: 1000, stock: 5,
-      isActive: true, imageUrl: '', category: '', sortOrder: 1,
-    };
-    const request = deferredResponse(created);
-    const fallback = vi.mocked(fetch).getMockImplementation()!;
-    vi.mocked(fetch).mockImplementation(async (input, init) =>
-      String(input) === '/api/products' && init?.method === 'POST'
-        ? request.response
-        : fallback(input, init));
-
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '매점 관리' }));
-    const name = screen.getByLabelText('새 상품명');
-    fireEvent.change(name, { target: { value: '상품 A' } });
-    fireEvent.change(screen.getByLabelText('새 상품 가격'), { target: { value: '1000' } });
-    fireEvent.change(screen.getByLabelText('새 상품 재고'), { target: { value: '5' } });
-    fireEvent.click(screen.getByRole('button', { name: '새 상품 추가' }));
-
-    fireEvent.change(name, { target: { value: '상품 B' } });
-    request.resolve();
-    await waitFor(() => expect(alert).toHaveBeenCalledWith('P003 추가 완료'));
-
-    expect(name).toHaveProperty('value', '상품 B');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '상품 추가' })).toBeNull());
   });
 
   it('allocates a new product creation operation ID when a failed draft changes', async () => {
@@ -2533,26 +2522,39 @@ describe('AdminManagePage', () => {
         : fallback(input, init));
 
     render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '매점 관리' }));
-    const name = screen.getByLabelText('새 상품명');
-    const create = screen.getByRole('button', { name: '새 상품 추가' });
+    await openAdminMenu('매점');
+    const editor = await openNewProductEditor();
+    const name = within(editor).getByLabelText('새 상품명');
+    const create = within(editor).getByRole('button', { name: '새 상품 추가' });
     fireEvent.change(name, { target: { value: '간식쿠폰' } });
     fireEvent.click(create);
-    await waitFor(() => expect(alert).toHaveBeenCalledWith('temporary failure'));
+    await findNotice('temporary failure');
 
     fireEvent.change(name, { target: { value: '다른쿠폰' } });
     fireEvent.click(create);
-    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([url, init]) =>
-      String(url) === '/api/products' && init?.method === 'POST')).toHaveLength(2));
+    await waitFor(() => expect(fetchCalls('/api/products', 'POST')).toHaveLength(2));
 
-    const bodies = vi.mocked(fetch).mock.calls
-      .filter(([url, init]) => String(url) === '/api/products' && init?.method === 'POST')
-      .map(([, init]) => JSON.parse(String(init?.body)));
+    const bodies = fetchCalls('/api/products', 'POST').map(([, init]) => JSON.parse(String(init?.body)));
     expect(bodies.map((body) => body.operationId)).toEqual([
       '50000000-0000-4000-8000-000000000031',
       '50000000-0000-4000-8000-000000000032',
     ]);
   });
+
+  async function startCurrencyScan(mode: '지급' | '회수', amount: string) {
+    await openAdminMenu('지급·회수');
+    fireEvent.click(within(screen.getByRole('group', { name: '지급 또는 회수' })).getByRole('button', { name: mode }));
+    fireEvent.change(screen.getByLabelText('지급/회수 금액'), { target: { value: amount } });
+    fireEvent.click(screen.getByRole('button', { name: 'QR 인식 시작' }));
+    return screen.findByRole('dialog', { name: '학생 QR 인식' });
+  }
+
+  async function openBulkBalance(studentIds: string[]) {
+    await openAdminMenu('학생');
+    for (const id of studentIds) fireEvent.click(await screen.findByLabelText(`${id} 선택`));
+    fireEvent.click(within(selectionBar()).getByRole('button', { name: '잔액 변경' }));
+    return screen.findByRole('dialog', { name: '잔액 한꺼번에 바꾸기' });
+  }
 
   it('shows a loading popup after recognizing a currency QR before the result popup', async () => {
     const currencyRequest = deferredResponse([{ studentId: 'S001', balance: 3900 }]);
@@ -2569,12 +2571,9 @@ describe('AdminManagePage', () => {
 
     render(<AdminManagePage />);
 
-    fireEvent.click(await screen.findByRole('tab', { name: '화폐 지급/회수' }));
-    fireEvent.click(screen.getByRole('button', { name: '지급' }));
-    fireEvent.change(screen.getByLabelText('지급/회수 금액'), { target: { value: '700' } });
-    fireEvent.click(screen.getByRole('button', { name: 'QR 인식 시작' }));
-    fireEvent.change(await screen.findByLabelText('학생 QR 직접 입력'), { target: { value: 'S001' } });
-    fireEvent.click(screen.getByRole('button', { name: '직접 입력 적용' }));
+    const scanner = await startCurrencyScan('지급', '700');
+    fireEvent.change(within(scanner).getByLabelText('학생 QR 직접 입력'), { target: { value: 'S001' } });
+    fireEvent.click(within(scanner).getByRole('button', { name: '직접 입력 적용' }));
 
     expect(await screen.findByRole('dialog', { name: '화폐 지급 처리 중' })).toBeTruthy();
     expect(document.body.textContent).toContain('QR을 인식했습니다. 화폐를 지급하는 중입니다.');
@@ -2582,18 +2581,17 @@ describe('AdminManagePage', () => {
     expect(await screen.findByRole('dialog', { name: '화폐 지급 성공' })).toBeTruthy();
   });
 
-  it('adjusts one scanned student from the currency grant/collect tab with retryable result popups', async () => {
+  it('adjusts one scanned student from the currency grant/collect tab with result popups', async () => {
     const signedQr = 'csq1.current.c2lnbmVkLXN0dWRlbnQ.signature';
     render(<AdminManagePage />);
 
-    fireEvent.click(await screen.findByRole('tab', { name: '화폐 지급/회수' }));
-    expect(screen.getByRole('heading', { name: '화폐 지급/회수' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '지급' }));
-    fireEvent.change(screen.getByLabelText('지급/회수 금액'), { target: { value: '700' } });
-    fireEvent.click(screen.getByRole('button', { name: 'QR 인식 시작' }));
-    expect(await screen.findByRole('dialog', { name: '학생 QR 인식' })).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('학생 QR 직접 입력'), { target: { value: signedQr } });
-    fireEvent.click(screen.getByRole('button', { name: '직접 입력 적용' }));
+    await openAdminMenu('지급·회수');
+    expect(screen.getByRole('heading', { name: '화폐 지급·회수' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'QR 인식 시작' })).toHaveProperty('disabled', true);
+    const scanner = await startCurrencyScan('지급', '700');
+    expect(within(screen.getByRole('group', { name: '지급 또는 회수', hidden: true })).getByRole('button', { name: '지급', hidden: true }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.change(within(scanner).getByLabelText('학생 QR 직접 입력'), { target: { value: signedQr } });
+    fireEvent.click(within(scanner).getByRole('button', { name: '직접 입력 적용' }));
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith(`/api/bank/student?studentId=${encodeURIComponent(signedQr)}`, { cache: 'no-store' });
@@ -2603,10 +2601,12 @@ describe('AdminManagePage', () => {
         body: JSON.stringify({ studentIds: ['S001'], mode: 'add', amount: 700, operationId: '50000000-0000-4000-8000-000000000001' }),
       });
     });
-    expect(await screen.findByRole('dialog', { name: '화폐 지급 성공' })).toBeTruthy();
-    expect(screen.getByText('S001 학생에게 700 지급 완료')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '다시 시도' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '닫기' })).toBeTruthy();
+    const result = await screen.findByRole('dialog', { name: '화폐 지급 성공' });
+    expect(within(result).getByText('S001 학생에게 700 지급 완료')).toBeTruthy();
+    expect(within(result).getAllByRole('button', { name: '닫기' }).length).toBeGreaterThan(0);
+    fireEvent.click(within(result).getByRole('button', { name: '다음 학생' }));
+    expect(await screen.findByRole('dialog', { name: '학생 QR 인식' })).toBeTruthy();
+    expect(screen.getByLabelText('학생 QR 직접 입력')).toHaveProperty('value', '');
   });
 
   it('guards same-tick bulk duplicates and reuses a failed semantic attempt operation ID', async () => {
@@ -2621,26 +2621,28 @@ describe('AdminManagePage', () => {
     const uuid = vi.mocked(crypto.randomUUID);
 
     render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '학생 관리' }));
-    fireEvent.click(screen.getByLabelText('S001 선택'));
-    fireEvent.change(screen.getByRole('combobox', { name: '선택 학생 작업' }), { target: { value: 'add' } });
-    fireEvent.change(screen.getByLabelText('선택 학생 금액'), { target: { value: '10' } });
-    const apply = screen.getByRole('button', { name: '화폐 수정' });
+    const dialog = await openBulkBalance(['S001']);
+    fireEvent.click(within(within(dialog).getByRole('group', { name: '선택 학생 작업' })).getByRole('button', { name: '더하기' }));
+    fireEvent.change(within(dialog).getByLabelText('선택 학생 금액'), { target: { value: '10' } });
+    const apply = within(dialog).getByRole('button', { name: '1명에게 적용' });
     fireEvent.click(apply);
     fireEvent.click(apply);
-    expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === '/api/students/bulk')).toHaveLength(1);
+    expect(fetchCalls('/api/students/bulk')).toHaveLength(1);
     expect(uuid).toHaveBeenCalledTimes(1);
 
     first.resolve();
-    await waitFor(() => expect(alert).toHaveBeenCalledWith('temporary failure'));
-    fireEvent.click(apply);
+    await findNotice('temporary failure');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '잔액 한꺼번에 바꾸기' })).toBeNull());
+    fireEvent.click(within(selectionBar()).getByRole('button', { name: '잔액 변경' }));
+    const retryDialog = await screen.findByRole('dialog', { name: '잔액 한꺼번에 바꾸기' });
+    expect(within(retryDialog).getByLabelText('선택 학생 금액')).toHaveProperty('value', '10');
+    fireEvent.click(within(retryDialog).getByRole('button', { name: '1명에게 적용' }));
     expect(uuid).toHaveBeenCalledTimes(1);
     second.resolve();
-    await waitFor(() => expect(alert).toHaveBeenCalledWith('선택 학생 1명 수정 완료'));
-    const bodies = vi.mocked(fetch).mock.calls
-      .filter(([url]) => String(url) === '/api/students/bulk')
-      .map(([, init]) => JSON.parse(String(init?.body)));
+    await findNotice('선택 학생 1명 수정 완료');
+    const bodies = fetchCalls('/api/students/bulk').map(([, init]) => JSON.parse(String(init?.body)));
     expect(bodies).toHaveLength(2);
+    expect(bodies[0]).toMatchObject({ studentIds: ['S001'], mode: 'add', amount: 10 });
     expect(bodies[1].operationId).toBe(bodies[0].operationId);
   });
 
@@ -2654,18 +2656,17 @@ describe('AdminManagePage', () => {
         ? jsonResponse({ error: 'temporary failure' }, { status: 400 })
         : fallback(input, init));
     render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '학생 관리' }));
-    fireEvent.click(screen.getByLabelText('S001 선택'));
-    const amount = screen.getByLabelText('선택 학생 금액');
-    const apply = screen.getByRole('button', { name: '화폐 수정' });
-    fireEvent.change(amount, { target: { value: '10' } });
-    fireEvent.click(apply);
-    await waitFor(() => expect(alert).toHaveBeenCalledWith('temporary failure'));
-    fireEvent.change(amount, { target: { value: '11' } });
-    fireEvent.click(apply);
-    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === '/api/students/bulk')).toHaveLength(2));
-    const ids = vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === '/api/students/bulk')
-      .map(([, init]) => JSON.parse(String(init?.body)).operationId);
+    const dialog = await openBulkBalance(['S001']);
+    fireEvent.change(within(dialog).getByLabelText('선택 학생 금액'), { target: { value: '10' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '1명에게 적용' }));
+    await findNotice('temporary failure');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '잔액 한꺼번에 바꾸기' })).toBeNull());
+    fireEvent.click(within(selectionBar()).getByRole('button', { name: '잔액 변경' }));
+    const again = await screen.findByRole('dialog', { name: '잔액 한꺼번에 바꾸기' });
+    fireEvent.change(within(again).getByLabelText('선택 학생 금액'), { target: { value: '11' } });
+    fireEvent.click(within(again).getByRole('button', { name: '1명에게 적용' }));
+    await waitFor(() => expect(fetchCalls('/api/students/bulk')).toHaveLength(2));
+    const ids = fetchCalls('/api/students/bulk').map(([, init]) => JSON.parse(String(init?.body)).operationId);
     expect(ids).toEqual(['50000000-0000-4000-8000-000000000011', '50000000-0000-4000-8000-000000000012']);
   });
 
@@ -2682,17 +2683,14 @@ describe('AdminManagePage', () => {
       return fallback(input, init);
     });
     render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '화폐 지급/회수' }));
-    fireEvent.change(screen.getByLabelText('지급/회수 금액'), { target: { value: '700' } });
-    fireEvent.click(screen.getByRole('button', { name: 'QR 인식 시작' }));
-    fireEvent.change(await screen.findByLabelText('학생 QR 직접 입력'), { target: { value: ' S001 ' } });
-    fireEvent.click(screen.getByRole('button', { name: '직접 입력 적용' }));
-    expect(await screen.findByRole('dialog', { name: '화폐 지급 실패' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '다시 시도' }));
+    const scanner = await startCurrencyScan('지급', '700');
+    fireEvent.change(within(scanner).getByLabelText('학생 QR 직접 입력'), { target: { value: ' S001 ' } });
+    fireEvent.click(within(scanner).getByRole('button', { name: '직접 입력 적용' }));
+    const failed = await screen.findByRole('dialog', { name: '화폐 지급 실패' });
+    fireEvent.click(within(failed).getByRole('button', { name: '다시 시도' }));
     expect(await screen.findByRole('dialog', { name: '화폐 지급 성공' })).toBeTruthy();
     expect(screen.queryByRole('dialog', { name: '학생 QR 인식' })).toBeNull();
-    const bodies = vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === '/api/students/bulk')
-      .map(([, init]) => JSON.parse(String(init?.body)));
+    const bodies = fetchCalls('/api/students/bulk').map(([, init]) => JSON.parse(String(init?.body)));
     expect(bodies).toHaveLength(2);
     expect(bodies[0]).toEqual({ studentIds: ['S001'], mode: 'add', amount: 700, operationId: '50000000-0000-4000-8000-000000000001' });
     expect(bodies[1]).toEqual(bodies[0]);
@@ -2713,20 +2711,39 @@ describe('AdminManagePage', () => {
 
     render(<AdminManagePage />);
 
-    fireEvent.click(await screen.findByRole('tab', { name: '화폐 지급/회수' }));
-    fireEvent.click(screen.getByRole('button', { name: '회수' }));
-    fireEvent.change(screen.getByLabelText('지급/회수 금액'), { target: { value: '9999' } });
-    fireEvent.click(screen.getByRole('button', { name: 'QR 인식 시작' }));
-    fireEvent.change(await screen.findByLabelText('학생 QR 직접 입력'), { target: { value: 'S002' } });
-    fireEvent.click(screen.getByRole('button', { name: '직접 입력 적용' }));
+    const scanner = await startCurrencyScan('회수', '9999');
+    fireEvent.change(within(scanner).getByLabelText('학생 QR 직접 입력'), { target: { value: 'S002' } });
+    fireEvent.click(within(scanner).getByRole('button', { name: '직접 입력 적용' }));
 
-    expect(await screen.findByRole('dialog', { name: '화폐 회수 실패' })).toBeTruthy();
-    expect(screen.getByText('잔액은 0보다 작아질 수 없습니다.')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '다시 시도' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '취소' })).toBeTruthy();
+    const result = await screen.findByRole('dialog', { name: '화폐 회수 실패' });
+    expect(within(result).getByText('잔액은 0보다 작아질 수 없습니다.')).toBeTruthy();
+    expect(within(result).getByRole('button', { name: '다시 시도' })).toBeTruthy();
+    expect(within(result).getByRole('button', { name: '취소' })).toBeTruthy();
   });
 
-  it('edits recurring schedules with strict bulk payloads and shows current-cycle origins', async () => {
+  /** Value shown next to a TaskScheduleProjection label (현재 일정 / 현재 회차 / 다음 회차 시작 / 새 회차 처리). */
+  function projectionValue(container: HTMLElement, label: string) {
+    const term = within(container).getAllByText(label).find((node) => node.tagName === 'DT');
+    return term?.nextElementSibling?.textContent ?? null;
+  }
+
+  function recurrenceType(container: HTMLElement, label: '반복 없음' | '매일' | '매주' | '매월') {
+    return within(within(container).getByRole('group', { name: '반복 주기' })).getByRole('button', { name: label });
+  }
+
+  async function openBulkRecurrence() {
+    fireEvent.click(screen.getByLabelText('전체 과제 선택'));
+    fireEvent.click(within(selectionBar()).getByRole('button', { name: '선택 과제 반복 설정' }));
+    return screen.findByRole('dialog', { name: '과제 기한 설정' });
+  }
+
+  async function openBulkAssignment() {
+    fireEvent.click(screen.getByLabelText('전체 과제 선택'));
+    fireEvent.click(within(selectionBar()).getByRole('button', { name: '선택 과제 학생 부여' }));
+    return screen.findByRole('dialog', { name: '과제 부여' });
+  }
+
+  it('edits recurring schedules with strict payloads from the 반복 tab and shows current-cycle origins', async () => {
     const recurringTasks = [{
       ...tasks[0], taskInstanceId: 'instance-1',
       schedule: { ruleVersion: 2, effectiveFrom: '2026-08-25T00:00:00.000Z', timeZone: 'Asia/Seoul', recurrence: { type: 'WEEKLY', weekdays: [2], time: '09:00' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: false },
@@ -2749,13 +2766,6 @@ describe('AdminManagePage', () => {
         scheduleSaved = true;
         return jsonResponse(savedTask);
       }
-      if (url === '/api/tasks/T001/assignments' && init?.method === 'PATCH') return jsonResponse({
-        taskId: 'T001', cycleId: 'cycle-2', startsAt: '2026-09-01T00:00:00.000Z', endsAt: null, transition: 'NATURAL_BOUNDARY',
-        students: [
-          { studentId: 'S001', name: '김민준', assigned: true, completed: true, assignmentOrigin: 'EVENT', completionOrigin: 'CARRY' },
-          { studentId: 'S002', name: '이서연', assigned: true, completed: false, assignmentOrigin: 'EVENT', completionOrigin: 'DEFAULT' },
-        ],
-      });
       if (url === '/api/tasks/T001/assignments') return jsonResponse({
         taskId: 'T001', cycleId: 'cycle-2', startsAt: '2026-09-01T00:00:00.000Z', endsAt: null, transition: 'NATURAL_BOUNDARY',
         students: [
@@ -2765,28 +2775,31 @@ describe('AdminManagePage', () => {
       });
       return fallback(input, init);
     });
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    const initialRow = (await screen.findAllByTestId('task-row'))[0];
-    expect(within(initialRow).queryByText(/현재 회차:|S001 부여/)).toBeNull();
+    await renderTasks();
+    const initialRow = screen.getAllByTestId('task-row')[0];
+    expect(within(initialRow).queryByText(/현재 회차|S001 부여/)).toBeNull();
+    expect(within(initialRow).getByText('매주 화 09:00')).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText('T001 과제명'), { target: { value: '저장 안 한 제목' } });
-    fireEvent.change(screen.getByLabelText('T001 보상'), { target: { value: '77' } });
-    fireEvent.click(screen.getByRole('button', { name: 'T001 기한 설정' }));
-    fireEvent.change(screen.getByLabelText('시작 시각'), { target: { value: '2030-01-01T10:00' } });
-    fireEvent.change(screen.getByLabelText('기한'), { target: { value: '2030-01-02T12:30' } });
-    fireEvent.change(screen.getByLabelText('선행 과제'), { target: { value: 'T002' } });
-    fireEvent.change(screen.getByLabelText('반복 주기'), { target: { value: 'MONTHLY' } });
-    fireEvent.change(screen.getByLabelText('반복 시간'), { target: { value: '17:45' } });
-    fireEvent.change(screen.getByLabelText('반복 날짜'), { target: { value: '31' } });
-    fireEvent.click(screen.getByLabelText('회차마다 부여 초기화'));
-    fireEvent.click(screen.getByRole('button', { name: '기한 설정 저장' }));
+    const panel = await openTaskEditor('책 읽기');
+    fireEvent.change(within(panel).getByLabelText('T001 과제명'), { target: { value: '저장 안 한 제목' } });
+    fireEvent.change(within(panel).getByLabelText('T001 보상'), { target: { value: '77' } });
+    fireEvent.change(within(panel).getByLabelText('시작 시각'), { target: { value: '2030-01-01T10:00' } });
+    fireEvent.change(within(panel).getByLabelText('기한'), { target: { value: '2030-01-02T12:30' } });
+    fireEvent.change(within(panel).getByLabelText('선행 과제'), { target: { value: 'T002' } });
 
-    await waitFor(() => {
-      expect(baseFetch).toHaveBeenCalledWith('/api/tasks/T001', expect.objectContaining({ method: 'PATCH' }));
-    });
-    const singlePatchCall = baseFetch.mock.calls.find(([url, init]) => String(url) === '/api/tasks/T001' && init?.method === 'PATCH');
-    const body = JSON.parse(String(singlePatchCall![1]?.body));
+    const editing = taskEditorPanel('저장 안 한 제목');
+    fireEvent.click(within(editing).getByRole('tab', { name: /^반복/ }));
+    await within(editing).findByRole('group', { name: '반복 주기' });
+    expect(recurrenceType(editing, '매주').getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(recurrenceType(editing, '매월'));
+    fireEvent.change(within(editing).getByLabelText('반복 시간'), { target: { value: '17:45' } });
+    fireEvent.change(within(editing).getByLabelText('반복 날짜'), { target: { value: '31' } });
+    fireEvent.click(within(editing).getByRole('switch', { name: '회차마다 부여 초기화' }));
+    expect(within(editing).getByRole('tab', { name: /^반복/ }).querySelector('[aria-label="저장 안 됨"]')).toBeTruthy();
+    fireEvent.click(within(editing).getByRole('button', { name: '반복 설정 저장' }));
+
+    await waitFor(() => expect(fetchCalls('/api/tasks/T001', 'PATCH')).toHaveLength(1));
+    const body = lastBody('/api/tasks/T001', 'PATCH');
     expect(body).toEqual({
       schedule: { recurrence: { type: 'MONTHLY', time: '17:45', dayOfMonth: 31 }, timeZone: 'Asia/Seoul', resetCompletionOnCycle: true, resetAssignmentOnCycle: true },
       availableFrom: '2030-01-01T01:00:00.000Z',
@@ -2795,34 +2808,38 @@ describe('AdminManagePage', () => {
     });
     expect(body.schedule).not.toHaveProperty('ruleVersion');
     expect(body.schedule).not.toHaveProperty('effectiveFrom');
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '과제 기한 설정' })).toBeNull());
-    expect(screen.getByLabelText('T001 과제명')).toHaveProperty('value', '저장 안 한 제목');
-    expect(screen.getByLabelText('T001 보상')).toHaveProperty('value', '77');
+    await waitFor(() => expect(projectionValue(taskEditorPanel('저장 안 한 제목'), '현재 일정')).toBe('매월 31일 17:45'));
+    expect(screen.queryByRole('dialog', { name: '과제 기한 설정' })).toBeNull();
 
-    fireEvent.click(screen.getByLabelText('T001 선택'));
-    fireEvent.click(screen.getByRole('button', { name: '선택 저장' }));
-    await waitFor(() => {
-      const call = baseFetch.mock.calls.find(([url, init]) => String(url) === '/api/tasks/batch' && init?.method === 'PATCH');
-      const body = JSON.parse(String(call?.[1]?.body));
-      expect(body.tasks[0]).not.toHaveProperty('schedule');
-      expect(body.tasks[0]).toMatchObject({
-        title: '저장 안 한 제목', reward: 77,
-        availableFrom: '2030-01-01T01:00:00.000Z',
-        dueAt: '2030-01-02T03:30:00.000Z',
-        prerequisiteTaskId: 'T002',
-      });
+    fireEvent.click(within(taskEditorPanel('저장 안 한 제목')).getByRole('tab', { name: /^기본 정보/ }));
+    const basic = taskEditorPanel('저장 안 한 제목');
+    expect(within(basic).getByLabelText('T001 과제명')).toHaveProperty('value', '저장 안 한 제목');
+    expect(within(basic).getByLabelText('T001 보상')).toHaveProperty('value', '77');
+    fireEvent.click(within(basic).getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(fetchCalls('/api/tasks/batch', 'PATCH')).toHaveLength(1));
+    const definition = lastBody('/api/tasks/batch', 'PATCH');
+    expect(definition.tasks).toHaveLength(1);
+    expect(definition.tasks[0]).not.toHaveProperty('schedule');
+    expect(definition.tasks[0]).toMatchObject({
+      taskId: 'T001', title: '저장 안 한 제목', reward: 77,
+      availableFrom: '2030-01-01T01:00:00.000Z',
+      dueAt: '2030-01-02T03:30:00.000Z',
+      prerequisiteTaskId: 'T002',
     });
+    await findNotice('과제 1개 저장 완료');
 
-    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
-    expect(await screen.findByText(/현재 회차 부여·완료 상태/)).toBeTruthy();
-    expect(await screen.findByText('부여 기본값 · 완료 이월')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }));
-    fireEvent.click(screen.getByRole('button', { name: '과제 부여 저장' }));
-    await waitFor(() => expect(alert).toHaveBeenCalledWith('과제 부여 저장 완료'));
-    expect(within(screen.getAllByTestId('task-row')[0]).queryByText(/S001 부여/)).toBeNull();
+    const saved = await screen.findByRole('dialog', { name: /과제 편집$/ });
+    fireEvent.click(within(saved).getByRole('tab', { name: /^학생 현황/ }));
+    const row = await within(saved).findByTestId('task-assignment-row-S001');
+    await waitFor(() => expect(row.textContent).toContain('김민준'));
+    expect(row.textContent).not.toMatch(/기본값|이월/);
+    expect(within(saved).getByText(/이번 회차/)).toBeTruthy();
+    fireEvent.click(within(saved).getByRole('button', { name: 'S002 이서연 부여 상태' }));
+    fireEvent.click(within(saved).getByRole('button', { name: '저장' }));
+    await findNotice('과제 부여 저장 완료');
   });
 
-  it('preserves another task row draft while reconciling a saved schedule projection', async () => {
+  it('preserves unsaved definition edits while reconciling a saved schedule projection', async () => {
     const scheduledTask = {
       ...tasks[0],
       taskInstanceId: 'instance-1',
@@ -2842,29 +2859,29 @@ describe('AdminManagePage', () => {
       const url = String(input);
       if (url === '/api/tasks?includeInactive=1') {
         taskGetCount += 1;
-        return jsonResponse(taskGetCount === 1 ? serverRows : [refreshedTask, tasks[1]]);
+        return jsonResponse(taskGetCount === 1 ? serverRows : [refreshedTask, { ...tasks[1], title: '서버 수학' }]);
       }
       if (url === '/api/tasks/T001' && init?.method === 'PATCH') return jsonResponse(scheduledTask);
       return fallback(input, init);
     });
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.change(screen.getByLabelText('T002 과제명'), { target: { value: '저장 안 한 제목' } });
-    fireEvent.change(screen.getByLabelText('T002 보상'), { target: { value: '77' } });
-    fireEvent.click(screen.getByRole('button', { name: 'T001 기한 설정' }));
-    fireEvent.change(screen.getByLabelText('반복 시간'), { target: { value: '10:30' } });
-    fireEvent.click(screen.getByRole('button', { name: '기한 설정 저장' }));
+    await renderTasks();
+    const panel = await openTaskEditor('책 읽기');
+    fireEvent.change(within(panel).getByLabelText('T001 과제 설명'), { target: { value: '저장 안 한 설명' } });
+    fireEvent.change(within(panel).getByLabelText('T001 보상'), { target: { value: '77' } });
+    fireEvent.click(within(panel).getByRole('tab', { name: /^반복/ }));
+    fireEvent.change(await within(panel).findByLabelText('반복 시간'), { target: { value: '10:30' } });
+    fireEvent.click(within(panel).getByRole('button', { name: '반복 설정 저장' }));
 
     await waitFor(() => expect(taskGetCount).toBe(2));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 기한 설정' }));
-    expect(await screen.findByText(/현재 일정: 매일 10:30/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '취소' }));
-    expect(screen.getByLabelText('T002 과제명')).toHaveProperty('value', '저장 안 한 제목');
-    expect(screen.getByLabelText('T002 보상')).toHaveProperty('value', '77');
+    await waitFor(() => expect(projectionValue(taskEditorPanel('책 읽기'), '현재 일정')).toBe('매일 10:30'));
+    fireEvent.click(within(taskEditorPanel('책 읽기')).getByRole('tab', { name: /^기본 정보/ }));
+    expect(within(taskEditorPanel('책 읽기')).getByLabelText('T001 과제 설명')).toHaveProperty('value', '저장 안 한 설명');
+    expect(within(taskEditorPanel('책 읽기')).getByLabelText('T001 보상')).toHaveProperty('value', '77');
+    expect(screen.getByRole('button', { name: '수학 학습지 과제 편집', hidden: true })).toBeTruthy();
   });
 
-  it('preserves another task row draft while reconciling only reset task projections', async () => {
+  it('preserves unsaved definition edits while reconciling only reset task projections', async () => {
     const staleTask = {
       ...tasks[0],
       currentCycle: { cycleId: 'cycle-1', startsAt: '2026-08-25T00:00:00.000Z', endsAt: null, transition: 'PERMANENT', assignedStudentIds: ['S001'], completedStudentIds: ['S001'], students: [] },
@@ -2877,28 +2894,31 @@ describe('AdminManagePage', () => {
       const url = String(input);
       if (url === '/api/tasks?includeInactive=1') {
         taskGetCount += 1;
-        return jsonResponse(taskGetCount === 1 ? [staleTask, tasks[1]] : [resetTask, tasks[1]]);
+        return jsonResponse(taskGetCount === 1 ? [staleTask, tasks[1]] : [resetTask, { ...tasks[1], title: '서버 수학' }]);
       }
       if (url === '/api/tasks/completions/reset' && init?.method === 'POST') return jsonResponse({ taskIds: ['T001'], deletedCount: 1 });
       return fallback(input, init);
     });
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.change(screen.getByLabelText('T002 과제명'), { target: { value: '초기화와 무관한 제목' } });
-    fireEvent.change(screen.getByLabelText('T002 보상'), { target: { value: '88' } });
-    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
-    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
-    fireEvent.click(screen.getByRole('button', { name: '완료 기록 초기화' }));
-    fireEvent.click(screen.getByRole('button', { name: '완료 기록 초기화 확인' }));
+    await renderTasks();
+    const panel = await openTaskEditor('책 읽기');
+    fireEvent.change(within(panel).getByLabelText('T001 과제 설명'), { target: { value: '초기화와 무관한 설명' } });
+    fireEvent.change(within(panel).getByLabelText('T001 보상'), { target: { value: '88' } });
+    fireEvent.click(within(panel).getByRole('tab', { name: /^학생 현황/ }));
+    await within(panel).findByTestId('task-assignment-row-S001');
+    await waitFor(() => expect(within(panel).queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
+    fireEvent.click(within(panel).getByRole('button', { name: '완료 기록 초기화' }));
+    fireEvent.click(await screen.findByRole('button', { name: '완료 기록 초기화 확인' }));
 
     await waitFor(() => expect(taskGetCount).toBe(2));
-    fireEvent.click(screen.getByRole('button', { name: '취소' }));
-    expect(screen.getByLabelText('T002 과제명')).toHaveProperty('value', '초기화와 무관한 제목');
-    expect(screen.getByLabelText('T002 보상')).toHaveProperty('value', '88');
+    await findNotice('완료 기록 1건 초기화 완료');
+    fireEvent.click(within(taskEditorPanel('책 읽기')).getByRole('tab', { name: /^기본 정보/ }));
+    expect(within(taskEditorPanel('책 읽기')).getByLabelText('T001 과제 설명')).toHaveProperty('value', '초기화와 무관한 설명');
+    expect(within(taskEditorPanel('책 읽기')).getByLabelText('T001 보상')).toHaveProperty('value', '88');
+    expect(screen.getByRole('button', { name: '수학 학습지 과제 편집', hidden: true })).toBeTruthy();
   });
 
-  it('shows an effective pending schedule in the recurrence modal without a timezone control', async () => {
+  it('shows an effective pending schedule in the list and recurrence tab without a timezone control', async () => {
     const currentSchedule = { ruleVersion: 1, effectiveFrom: '2000-01-01T00:00:00.000Z', timeZone: 'Asia/Seoul', recurrence: { type: 'DAILY', time: '09:00' }, resetCompletionOnCycle: false, resetAssignmentOnCycle: false } as const;
     const pendingSchedule = { ruleVersion: 2, effectiveFrom: '2001-01-01T00:00:00.000Z', timeZone: 'Europe/Paris', recurrence: { type: 'WEEKLY', weekdays: [5], time: '16:30' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: true } as const;
     const baseFetch = vi.mocked(fetch);
@@ -2908,20 +2928,32 @@ describe('AdminManagePage', () => {
       return fallback(input, init);
     });
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    const row = await screen.findByTestId('task-row');
-    expect(within(row).getByRole('button', { name: 'T001 기한 설정' }).textContent).toBe('기한');
-    expect(within(row).queryByText('매주 금 16:30')).toBeNull();
-    fireEvent.click(within(row).getByRole('button', { name: 'T001 기한 설정' }));
-    expect(screen.getByText(/현재 일정: 매주 금 16:30/)).toBeTruthy();
-    expect(screen.getByLabelText('반복 주기')).toHaveProperty('value', 'WEEKLY');
-    expect(screen.getByLabelText('반복 시간')).toHaveProperty('value', '16:30');
-    expect(screen.getByRole('button', { name: '금요일' }).getAttribute('aria-pressed')).toBe('true');
-    expect(screen.queryByLabelText('과제 시간대')).toBeNull();
+    await renderTasks();
+    const row = screen.getByTestId('task-row');
+    expect(within(row).getByText('매주 금 16:30')).toBeTruthy();
+    expect(within(row).queryByText('매일 09:00')).toBeNull();
+    const panel = await openTaskEditor('책 읽기', '반복');
+    await within(panel).findByRole('group', { name: '반복 주기' });
+    expect(projectionValue(panel, '현재 일정')).toBe('매주 금 16:30');
+    expect(projectionValue(panel, '새 회차 처리')).toBe('완료 지움 · 부여 지움');
+    expect(recurrenceType(panel, '매주').getAttribute('aria-pressed')).toBe('true');
+    expect(within(panel).getByLabelText('반복 시간')).toHaveProperty('value', '16:30');
+    expect(within(panel).getByRole('button', { name: '금요일' }).getAttribute('aria-pressed')).toBe('true');
+    expect(within(panel).queryByLabelText('과제 시간대')).toBeNull();
   });
 
-  it('refreshes a newly created task projection without replacing other unsaved task drafts', async () => {
+  /** Creates 영어 단어 with a daily 14:00 recurrence from the new-task panel. */
+  async function createDailyTask(extra: (editor: HTMLElement) => void = () => undefined) {
+    const editor = await openNewTaskEditor();
+    fireEvent.change(within(editor).getByLabelText('새 과제명'), { target: { value: '영어 단어' } });
+    extra(editor);
+    fireEvent.click(within(editor).getByRole('tab', { name: /^반복/ }));
+    fireEvent.click(recurrenceType(editor, '매일'));
+    fireEvent.change(within(editor).getByLabelText('반복 시간'), { target: { value: '14:00' } });
+    fireEvent.click(within(editor).getByRole('button', { name: '과제 만들기' }));
+  }
+
+  it('refreshes a newly created task projection without replacing the other task rows', async () => {
     const created = { taskId: 'T003', title: '영어 단어', description: '5개 외우기', reward: 10, isActive: true, sortOrder: 3, allowedStudentIds: [], createdAt: '2000-01-01T00:00:00.000Z', taskInstanceId: 'I-T003', schedule: { ruleVersion: 1, effectiveFrom: '2000-01-01T00:00:00.000Z', timeZone: 'Asia/Seoul', recurrence: { type: 'DAILY', time: '14:00' }, resetCompletionOnCycle: false, resetAssignmentOnCycle: false }, pendingSchedule: null } as const;
     const projected = { ...created, title: '영어 단어 (서버)', currentCycle: { cycleId: 'new-cycle', startsAt: '2026-08-25T05:00:00.000Z', endsAt: '2026-08-26T05:00:00.000Z', transition: 'NATURAL_BOUNDARY', assignedStudentIds: ['S001'], completedStudentIds: [], students: [{ studentId: 'S001', assigned: true, completed: false, assignmentOrigin: 'DEFAULT', completionOrigin: 'DEFAULT' }] } } as const;
     const baseFetch = vi.mocked(fetch);
@@ -2937,25 +2969,19 @@ describe('AdminManagePage', () => {
       return fallback(input, init);
     });
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.change(screen.getByLabelText('T002 과제명'), { target: { value: '저장 안 한 수학 제목' } });
-    fireEvent.change(screen.getByLabelText('T002 보상'), { target: { value: '91' } });
-    fireEvent.change(screen.getByLabelText('새 과제명'), { target: { value: '영어 단어' } });
-    fireEvent.change(screen.getByLabelText('새 과제 설명'), { target: { value: '5개 외우기' } });
-    fireEvent.change(screen.getByLabelText('새 과제 보상'), { target: { value: '10' } });
-    fireEvent.change(screen.getByLabelText('새 과제 정렬'), { target: { value: '3' } });
-    fireEvent.click(screen.getByRole('button', { name: '새 과제 기한 설정' }));
-    fireEvent.change(screen.getByLabelText('반복 주기'), { target: { value: 'DAILY' } });
-    fireEvent.change(screen.getByLabelText('반복 시간'), { target: { value: '14:00' } });
-    fireEvent.click(screen.getByRole('button', { name: '기한 설정 적용' }));
-    fireEvent.click(screen.getByRole('button', { name: '새 과제 추가' }));
+    await renderTasks();
+    await createDailyTask((editor) => {
+      fireEvent.change(within(editor).getByLabelText('새 과제 설명'), { target: { value: '5개 외우기' } });
+      fireEvent.change(within(editor).getByLabelText('새 과제 보상'), { target: { value: '10' } });
+      fireEvent.change(within(editor).getByLabelText('새 과제 정렬'), { target: { value: '3' } });
+    });
 
     await waitFor(() => expect(taskGetCount).toBe(2));
-    expect(screen.queryByText(/S001 부여/)).toBeNull();
-    expect(screen.getByLabelText('T003 과제명')).toHaveProperty('value', '영어 단어 (서버)');
-    expect(screen.getByLabelText('T002 과제명')).toHaveProperty('value', '저장 안 한 수학 제목');
-    expect(screen.getByLabelText('T002 보상')).toHaveProperty('value', '91');
+    expect(lastBody('/api/tasks', 'POST').schedule).toMatchObject({ recurrence: { type: 'DAILY', time: '14:00' } });
+    expect(await findTaskRow('영어 단어 (서버)')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '책 읽기 과제 편집' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '수학 학습지 과제 편집' })).toBeTruthy();
+    expect(screen.getAllByTestId('task-row')).toHaveLength(3);
   });
 
   it('keeps a successfully created recurring task and reports a projection refresh failure separately', async () => {
@@ -2973,18 +2999,12 @@ describe('AdminManagePage', () => {
       return fallback(input, init);
     });
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.change(screen.getByLabelText('새 과제명'), { target: { value: '영어 단어' } });
-    fireEvent.click(screen.getByRole('button', { name: '새 과제 기한 설정' }));
-    fireEvent.change(screen.getByLabelText('반복 주기'), { target: { value: 'DAILY' } });
-    fireEvent.change(screen.getByLabelText('반복 시간'), { target: { value: '14:00' } });
-    fireEvent.click(screen.getByRole('button', { name: '기한 설정 적용' }));
-    fireEvent.click(screen.getByRole('button', { name: '새 과제 추가' }));
+    await renderTasks();
+    await createDailyTask();
 
-    await waitFor(() => expect(alert).toHaveBeenCalledWith('T003 과제 추가 완료'));
-    await waitFor(() => expect(alert).toHaveBeenCalledWith(expect.stringContaining('과제는 추가되었지만 회차 정보를 새로고침하지 못했습니다: projection unavailable')));
-    expect(screen.getByLabelText('T003 과제명')).toHaveProperty('value', '영어 단어');
+    await findNotice('T003 과제 추가 완료');
+    await findNotice('과제는 추가되었지만 회차 정보를 새로고침하지 못했습니다: projection unavailable');
+    expect(await findTaskRow('영어 단어')).toBeTruthy();
   });
 
   it('keeps the validated committed task when recurring refresh contains a malformed matching row', async () => {
@@ -3002,19 +3022,13 @@ describe('AdminManagePage', () => {
       return fallback(input, init);
     });
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.change(screen.getByLabelText('새 과제명'), { target: { value: '영어 단어' } });
-    fireEvent.click(screen.getByRole('button', { name: '새 과제 기한 설정' }));
-    fireEvent.change(screen.getByLabelText('반복 주기'), { target: { value: 'DAILY' } });
-    fireEvent.change(screen.getByLabelText('반복 시간'), { target: { value: '14:00' } });
-    fireEvent.click(screen.getByRole('button', { name: '기한 설정 적용' }));
-    fireEvent.click(screen.getByRole('button', { name: '새 과제 추가' }));
+    await renderTasks();
+    await createDailyTask();
 
     await waitFor(() => expect(taskGetCount).toBe(2));
-    expect(screen.getByLabelText('T003 과제명')).toHaveProperty('value', '영어 단어');
-    expect(alert).toHaveBeenCalledWith(expect.stringContaining('과제는 추가되었지만 회차 정보를 새로고침하지 못했습니다'));
-    expect(baseFetch.mock.calls.filter(([url, init]) => String(url) === '/api/tasks' && init?.method === 'POST')).toHaveLength(1);
+    expect(await findTaskRow('영어 단어')).toBeTruthy();
+    await findNotice('과제는 추가되었지만 회차 정보를 새로고침하지 못했습니다');
+    expect(fetchCalls('/api/tasks', 'POST')).toHaveLength(1);
   });
 
   it.each([
@@ -3044,141 +3058,36 @@ describe('AdminManagePage', () => {
       return fallback(input, init);
     });
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.change(screen.getByLabelText('새 과제명'), { target: { value: '영어 단어' } });
-    fireEvent.click(screen.getByRole('button', { name: '새 과제 기한 설정' }));
-    fireEvent.change(screen.getByLabelText('반복 주기'), { target: { value: 'DAILY' } });
-    fireEvent.change(screen.getByLabelText('반복 시간'), { target: { value: '14:00' } });
-    fireEvent.click(screen.getByRole('button', { name: '기한 설정 적용' }));
-    fireEvent.click(screen.getByRole('button', { name: '새 과제 추가' }));
+    await renderTasks();
+    await createDailyTask();
 
     await waitFor(() => expect(taskGetCount).toBe(2));
-    expect(screen.getByLabelText('T003 과제명')).toHaveProperty('value', '영어 단어');
-    expect(alert).toHaveBeenCalledWith(expect.stringContaining('과제는 추가되었지만 회차 정보를 새로고침하지 못했습니다'));
-    expect(baseFetch.mock.calls.filter(([url, init]) => String(url) === '/api/tasks' && init?.method === 'POST')).toHaveLength(1);
+    expect(await findTaskRow('영어 단어')).toBeTruthy();
+    await findNotice('과제는 추가되었지만 회차 정보를 새로고침하지 못했습니다');
+    expect(fetchCalls('/api/tasks', 'POST')).toHaveLength(1);
   });
 
-  it('reopens the new-task schedule editor with the applied recurrence draft', async () => {
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: '새 과제 기한 설정' }));
-    fireEvent.change(screen.getByLabelText('반복 주기'), { target: { value: 'DAILY' } });
-    fireEvent.change(screen.getByLabelText('반복 시간'), { target: { value: '14:25' } });
-    fireEvent.click(screen.getByRole('button', { name: '기한 설정 적용' }));
+  it('keeps the applied recurrence draft of a new task across tabs and reopening', async () => {
+    await renderTasks();
+    const editor = await openNewTaskEditor();
+    fireEvent.click(within(editor).getByRole('tab', { name: /^반복/ }));
+    fireEvent.click(recurrenceType(editor, '매일'));
+    fireEvent.change(within(editor).getByLabelText('반복 시간'), { target: { value: '14:25' } });
+    fireEvent.click(within(editor).getByRole('tab', { name: /^기본 정보/ }));
+    fireEvent.click(within(editor).getByRole('tab', { name: /^반복/ }));
+    expect(recurrenceType(editor, '매일').getAttribute('aria-pressed')).toBe('true');
+    expect(within(editor).getByLabelText('반복 시간')).toHaveProperty('value', '14:25');
 
-    expect(screen.getByRole('button', { name: '새 과제 기한 설정' }).textContent).toBe('기한 설정');
-    fireEvent.click(screen.getByRole('button', { name: '새 과제 기한 설정' }));
-    expect(screen.getByLabelText('반복 주기')).toHaveProperty('value', 'DAILY');
-    expect(screen.getByLabelText('반복 시간')).toHaveProperty('value', '14:25');
+    fireEvent.keyDown(editor, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '새 과제' })).toBeNull());
+    const reopened = await openNewTaskEditor();
+    fireEvent.click(within(reopened).getByRole('tab', { name: /^반복/ }));
+    expect(recurrenceType(reopened, '매일').getAttribute('aria-pressed')).toBe('true');
+    expect(within(reopened).getByLabelText('반복 시간')).toHaveProperty('value', '14:25');
+    expect(within(reopened).getByText('미리보기: 매일 14:25')).toBeTruthy();
   });
 
-  it('keeps a newly opened schedule editor when an earlier schedule save finishes', async () => {
-    const firstSave = deferredResponse(tasks[0]);
-    const baseFetch = vi.mocked(fetch);
-    const fallback = baseFetch.getMockImplementation()!;
-    baseFetch.mockImplementation(async (input, init) => {
-      const url = String(input);
-      if (url === '/api/tasks/T001' && init?.method === 'PATCH') return firstSave.response;
-      return fallback(input, init);
-    });
-
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 기한 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: '기한 설정 저장' }));
-    await waitFor(() => expect(baseFetch).toHaveBeenCalledWith('/api/tasks/T001', expect.objectContaining({ method: 'PATCH' })));
-
-    expect(screen.getByRole('button', { name: '취소', hidden: true })).toHaveProperty('disabled', true);
-    fireEvent.click(screen.getByRole('button', { name: 'T002 기한 설정', hidden: true }));
-    expect(screen.getByRole('dialog', { name: '과제 기한 설정' })).toBeTruthy();
-
-    firstSave.resolve();
-    await waitFor(() => expect(baseFetch.mock.calls.filter(([url]) => String(url) === '/api/tasks?includeInactive=1')).toHaveLength(2));
-    expect(screen.getByRole('dialog', { name: '과제 기한 설정' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '기한 설정 저장' })).toBeTruthy();
-  });
-
-  it('keeps the newer projection when consecutive schedule saves for the same task finish out of order', async () => {
-    const initialTask = {
-      ...tasks[0],
-      schedule: { ruleVersion: 1, effectiveFrom: '2026-08-25T00:00:00.000Z', timeZone: 'Asia/Seoul', recurrence: { type: 'DAILY', time: '09:00' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: false },
-      currentCycle: { cycleId: 'initial-cycle', startsAt: '2026-08-25T00:00:00.000Z', endsAt: '2026-08-26T00:00:00.000Z', transition: 'NATURAL_BOUNDARY', assignedStudentIds: ['S001'], completedStudentIds: [], students: [{ studentId: 'S001', assigned: true, completed: false, assignmentOrigin: 'DEFAULT', completionOrigin: 'DEFAULT' }] },
-    } as const;
-    const firstProjectionTask = {
-      ...initialTask,
-      schedule: { ...initialTask.schedule, ruleVersion: 2, recurrence: { type: 'DAILY', time: '10:00' } },
-      currentCycle: { ...initialTask.currentCycle, cycleId: 'first-cycle' },
-    } as const;
-    const secondProjectionTask = {
-      ...initialTask,
-      schedule: { ...initialTask.schedule, ruleVersion: 3, recurrence: { type: 'DAILY', time: '11:00' } },
-      currentCycle: { ...initialTask.currentCycle, cycleId: 'second-cycle', assignedStudentIds: [], students: [{ studentId: 'S001', assigned: false, completed: false, assignmentOrigin: 'EVENT', completionOrigin: 'DEFAULT' }] },
-    } as const;
-    const firstPatch = deferredResponse(initialTask);
-    const secondPatch = deferredResponse(initialTask);
-    const firstProjection = deferredResponse([firstProjectionTask]);
-    const secondProjection = deferredResponse([secondProjectionTask]);
-    const baseFetch = vi.mocked(fetch);
-    const fallback = baseFetch.getMockImplementation()!;
-    let patchCount = 0;
-    let taskGetCount = 0;
-    baseFetch.mockImplementation(async (input, init) => {
-      const url = String(input);
-      if (url === '/api/tasks/T001' && init?.method === 'PATCH') {
-        patchCount += 1;
-        return patchCount === 1 ? firstPatch.response : secondPatch.response;
-      }
-      if (url === '/api/tasks?includeInactive=1') {
-        taskGetCount += 1;
-        if (taskGetCount === 1) return jsonResponse([initialTask]);
-        return taskGetCount === 2 ? firstProjection.response : secondProjection.response;
-      }
-      return fallback(input, init);
-    });
-
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 기한 설정' }));
-    fireEvent.change(screen.getByLabelText('반복 시간'), { target: { value: '10:00' } });
-    fireEvent.click(screen.getByRole('button', { name: '기한 설정 저장' }));
-    await waitFor(() => expect(patchCount).toBe(1));
-
-    expect(screen.getByRole('button', { name: '취소', hidden: true })).toHaveProperty('disabled', true);
-    fireEvent.click(screen.getByRole('button', { name: 'T001 기한 설정', hidden: true }));
-    fireEvent.change(screen.getByLabelText('반복 시간'), { target: { value: '11:00' } });
-    fireEvent.click(screen.getByRole('button', { name: '기한 설정 저장' }));
-    await waitFor(() => expect(patchCount).toBe(2));
-
-    await act(async () => {
-      firstPatch.resolve();
-      await firstPatch.response;
-    });
-    await waitFor(() => expect(taskGetCount).toBe(2));
-    await act(async () => {
-      secondPatch.resolve();
-      await secondPatch.response;
-    });
-    await waitFor(() => expect(taskGetCount).toBe(3));
-
-    await act(async () => {
-      secondProjection.resolve();
-      await secondProjection.response;
-    });
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '과제 기한 설정' })).toBeNull());
-    fireEvent.click(screen.getByRole('button', { name: 'T001 기한 설정' }));
-    expect(screen.getByText(/현재 일정: 매일 11:00/)).toBeTruthy();
-
-    await act(async () => {
-      firstProjection.resolve();
-      await firstProjection.response;
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-    expect(screen.getByText(/현재 일정: 매일 11:00/)).toBeTruthy();
-    expect(screen.queryByText(/현재 일정: 매일 10:00/)).toBeNull();
-  });
-
-  it('ignores an older assignment status response after the same task is closed and reopened', async () => {
+  it('ignores an older assignment status response after the same task panel is closed and reopened', async () => {
     const first = deferredResponse({
       taskId: 'T001',
       students: [
@@ -3204,31 +3113,32 @@ describe('AdminManagePage', () => {
       return fallback(input, init);
     });
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
-    fireEvent.click(screen.getByRole('button', { name: '취소' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
-    expect(assignmentGetCount).toBe(2);
+    await renderTasks();
+    const panel = await openTaskEditor('책 읽기', '학생 현황');
+    await within(panel).findByRole('status', { name: '과제 부여 상태 불러오는 중' });
+    fireEvent.click(within(panel).getByRole('button', { name: '닫기' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '책 읽기 과제 편집' })).toBeNull());
+    const reopened = await openTaskEditor('책 읽기', '학생 현황');
+    await waitFor(() => expect(assignmentGetCount).toBe(2));
 
     await act(async () => {
       second.resolve();
       await second.response;
     });
-    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
-    expect(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }).textContent).toContain('부여');
-    expect(screen.getByRole('button', { name: 'S002 이서연 완료 상태' }).textContent).toContain('완료');
+    await waitFor(() => expect(within(reopened).queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
+    expect(within(reopened).getByRole('button', { name: 'S002 이서연 부여 상태' }).textContent).toBe('부여');
+    expect(within(reopened).getByRole('button', { name: 'S002 이서연 완료 상태' }).textContent).toBe('완료');
 
     await act(async () => {
       first.resolve();
       await first.response;
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    expect(screen.getByRole('button', { name: 'S002 이서연 부여 상태' }).textContent).toContain('부여');
-    expect(screen.getByRole('button', { name: 'S002 이서연 완료 상태' }).textContent).toContain('완료');
+    expect(within(reopened).getByRole('button', { name: 'S002 이서연 부여 상태' }).textContent).toBe('부여');
+    expect(within(reopened).getByRole('button', { name: 'S002 이서연 완료 상태' }).textContent).toBe('완료');
   });
 
-  it('does not show an assignment modal or alert for an error from a closed request', async () => {
+  it('does not show an assignment editor or notice for an error from a closed request', async () => {
     const staleError = deferredResponse({ error: '뒤늦은 부여 조회 오류' }, { status: 500 });
     const baseFetch = vi.mocked(fetch);
     const fallback = baseFetch.getMockImplementation()!;
@@ -3236,18 +3146,19 @@ describe('AdminManagePage', () => {
       String(input) === '/api/tasks/T001/assignments' && !init?.method ? staleError.response : fallback(input, init)
     ));
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
-    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+    await renderTasks();
+    const panel = await openTaskEditor('책 읽기', '학생 현황');
+    await within(panel).findByRole('status', { name: '과제 부여 상태 불러오는 중' });
+    fireEvent.click(within(panel).getByRole('button', { name: '닫기' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '책 읽기 과제 편집' })).toBeNull());
 
     await act(async () => {
       staleError.resolve();
       await staleError.response;
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    expect(screen.queryByRole('dialog', { name: '과제 부여' })).toBeNull();
-    expect(alert).not.toHaveBeenCalledWith('뒤늦은 부여 조회 오류');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(noticeTexts().join(' ')).not.toContain('뒤늦은 부여 조회 오류');
   });
 
   it('ignores a closed history request and displays a later history error', async () => {
@@ -3262,18 +3173,23 @@ describe('AdminManagePage', () => {
       if (url === '/api/tasks/T002/history') return jsonResponse({ error: '기록 서버 오류' }, { status: 500 });
       return fallback(input, init);
     });
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 기록 보기' }));
-    expect(screen.getByRole('status', { name: '과제 기록 불러오는 중' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '닫기' }));
+    await renderTasks();
+    const panel = await openTaskEditor('책 읽기');
+    fireEvent.click(within(panel).getByRole('button', { name: 'T001 기록 보기' }));
+    const history = screen.getByRole('dialog', { name: '과제 기록' });
+    expect(within(history).getByRole('status', { name: '과제 기록 불러오는 중' })).toBeTruthy();
+    fireEvent.click(within(history).getByRole('button', { name: '닫기' }));
     first.resolve();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(screen.queryByRole('dialog', { name: '과제 기록' })).toBeNull();
+    fireEvent.keyDown(taskEditorPanel('책 읽기'), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '책 읽기 과제 편집' })).toBeNull());
 
-    fireEvent.click(screen.getByRole('button', { name: 'T002 기록 보기' }));
-    const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toContain('기록 서버 오류');
+    const second = await openTaskEditor('수학 학습지');
+    fireEvent.click(within(second).getByRole('button', { name: 'T002 기록 보기' }));
+    const errorDialog = screen.getByRole('dialog', { name: '과제 기록' });
+    expect((await within(errorDialog).findByRole('alert')).textContent).toContain('기록 서버 오류');
+    expect(errorDialog.textContent).toContain('수학 학습지 (T002)');
   });
 
   it('reconciles a schedule PATCH only from a fresh task-list cycle projection', async () => {
@@ -3300,18 +3216,19 @@ describe('AdminManagePage', () => {
       return fallback(input, init);
     });
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 기한 설정' }));
-    fireEvent.change(screen.getByLabelText('반복 주기'), { target: { value: 'MONTHLY' } });
-    fireEvent.change(screen.getByLabelText('반복 시간'), { target: { value: '17:45' } });
-    fireEvent.change(screen.getByLabelText('반복 날짜'), { target: { value: '31' } });
-    expect(screen.getByText('29/30/31일이 없는 달은 해당 월 말일로 당겨집니다.')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '기한 설정 저장' }));
+    await renderTasks();
+    const panel = await openTaskEditor('책 읽기', '반복');
+    await within(panel).findByRole('group', { name: '반복 주기' });
+    expect(projectionValue(panel, '현재 일정')).toBe('매주 화 09:00');
+    fireEvent.click(recurrenceType(panel, '매월'));
+    fireEvent.change(within(panel).getByLabelText('반복 시간'), { target: { value: '17:45' } });
+    fireEvent.change(within(panel).getByLabelText('반복 날짜'), { target: { value: '31' } });
+    expect(within(panel).getByText('29~31일이 없는 달은 그 달 마지막 날로 바뀝니다.')).toBeTruthy();
+    fireEvent.click(within(panel).getByRole('button', { name: '반복 설정 저장' }));
 
     await waitFor(() => expect(taskGetCount).toBe(2));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 기한 설정' }));
-    expect(await screen.findByText(/현재 일정: 매월 31일 17:45/)).toBeTruthy();
+    await waitFor(() => expect(projectionValue(taskEditorPanel('책 읽기'), '현재 일정')).toBe('매월 31일 17:45'));
+    expect(projectionValue(taskEditorPanel('책 읽기'), '현재 회차')).not.toContain('2026. 8. 25.');
   });
 
   it('confirms resets with both reward warnings and replaces stale completion projection', async () => {
@@ -3333,22 +3250,22 @@ describe('AdminManagePage', () => {
       return fallback(input, init);
     });
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
-    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
-    fireEvent.click(screen.getByRole('button', { name: '완료 기록 초기화' }));
+    await renderTasks();
+    expect(screen.getByTestId('task-row').textContent).toContain('1 / 1명');
+    const panel = await openAssignmentPanel();
+    fireEvent.click(within(panel).getByRole('button', { name: '완료 기록 초기화' }));
     const confirmation = screen.getByRole('dialog', { name: '완료 기록 초기화 확인' });
-    expect(within(confirmation).getByText(/과거 지급 보상은 회수되지 않습니다/)).toBeTruthy();
-    expect(within(confirmation).getByText(/같은 회차에서 은행으로 다시 완료하면 재보상될 수 있습니다/)).toBeTruthy();
-    expect(baseFetch.mock.calls.some(([url, init]) => String(url) === '/api/tasks/completions/reset' && init?.method === 'POST')).toBe(false);
+    expect(within(confirmation).getByText(/이미 지급한 보상은 회수되지 않습니다/)).toBeTruthy();
+    expect(within(confirmation).getByText(/같은 회차에서 학생이 은행에서 다시 완료하면 보상을 또 받을 수 있습니다/)).toBeTruthy();
+    expect(fetchCalls('/api/tasks/completions/reset', 'POST')).toHaveLength(0);
     fireEvent.click(within(confirmation).getByRole('button', { name: '완료 기록 초기화 확인' }));
     expect(confirm).not.toHaveBeenCalled();
     await waitFor(() => expect(taskGetCount).toBe(2));
-    expect(screen.queryByText(/S001 부여/)).toBeNull();
+    await findNotice('완료 기록 1건 초기화 완료');
+    expect(screen.getByTestId('task-row').textContent).toContain('0 / 1명');
   });
 
-  it('keeps task rows compact and moves themed schedule details into the recurrence modal', async () => {
+  it('summarizes recurrence in compact task rows and shows themed schedule details in the 반복 tab', async () => {
     const recurringTask = {
       ...tasks[0],
       schedule: { ruleVersion: 2, effectiveFrom: '2026-08-25T00:00:00.000Z', timeZone: 'Europe/Paris', recurrence: { type: 'WEEKLY', weekdays: [2], time: '09:00' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: false },
@@ -3362,23 +3279,22 @@ describe('AdminManagePage', () => {
       return fallback(input, init);
     });
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    const row = (await screen.findByTestId('task-row'));
-    expect(within(row).getByRole('button', { name: 'T001 기한 설정' }).textContent).toBe('기한');
-    expect(within(row).getByRole('button', { name: 'T001 기록 보기' }).textContent).toBe('기록');
-    expect(within(row).queryByText(/현재 일정:|현재 회차:|다음 자연 경계:|S001 부여/)).toBeNull();
-    expect(screen.getByRole('button', { name: '새 과제 기한 설정' }).textContent).toBe('기한 설정');
+    await renderTasks();
+    const row = screen.getByTestId('task-row');
+    expect(within(row).getByText('매주 화 09:00')).toBeTruthy();
+    expect(within(row).getByText('1명 부여')).toBeTruthy();
+    expect(row.textContent).toContain('0 / 1명');
+    expect(within(row).queryByText(/현재 일정|현재 회차|다음 회차 시작/)).toBeNull();
 
-    fireEvent.click(within(row).getByRole('button', { name: 'T001 기한 설정' }));
-    const dialog = screen.getByRole('dialog', { name: '과제 기한 설정' });
-    expect(within(dialog).getByText(/현재 일정: 매주 화 09:00/)).toBeTruthy();
-    expect(within(dialog).getByText(/현재 회차:/)).toBeTruthy();
-    expect(within(dialog).getByText(/다음 자연 경계:/)).toBeTruthy();
-    expect(within(dialog).getByText(/초기화 대상: 완료 상태 초기화/)).toBeTruthy();
-    expect(within(dialog).queryByLabelText('과제 시간대')).toBeNull();
-    expect(dialog.innerHTML).not.toContain('violet-');
-    expect(dialog.innerHTML).toContain('bg-[var(--theme-surface-raised)]');
+    const panel = await openTaskEditor('책 읽기', '반복');
+    await within(panel).findByRole('group', { name: '반복 주기' });
+    expect(projectionValue(panel, '현재 일정')).toBe('매주 화 09:00');
+    expect(projectionValue(panel, '현재 회차')).toContain('~');
+    expect(projectionValue(panel, '다음 회차 시작')).not.toBe('없음 (상시 과제)');
+    expect(projectionValue(panel, '새 회차 처리')).toBe('완료 지움 · 부여 유지');
+    expect(within(panel).queryByLabelText('과제 시간대')).toBeNull();
+    expect(panel.innerHTML).not.toContain('violet-');
+    expect(panel.innerHTML).toContain('var(--crs-line)');
   });
 
   it('disables assignment save while status GET is pending and explains admin completion reward behavior', async () => {
@@ -3387,13 +3303,13 @@ describe('AdminManagePage', () => {
     const fallback = baseFetch.getMockImplementation()!;
     baseFetch.mockImplementation(async (input, init) => String(input) === '/api/tasks/T001/assignments' && !init?.method ? pending.response : fallback(input, init));
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
-    expect(screen.getByRole('button', { name: '과제 부여 저장' })).toHaveProperty('disabled', true);
-    expect(screen.getByText('관리자 완료는 보상 없이 표시됩니다.')).toBeTruthy();
+    await renderTasks();
+    const panel = await openTaskEditor('책 읽기', '학생 현황');
+    await within(panel).findByRole('status', { name: '과제 부여 상태 불러오는 중' });
+    expect(within(panel).getByRole('button', { name: '저장' })).toHaveProperty('disabled', true);
+    expect(within(panel).getByText(/여기서 완료로 표시하면 보상은 지급되지 않습니다/)).toBeTruthy();
     pending.resolve();
-    await waitFor(() => expect(screen.getByRole('button', { name: '과제 부여 저장' })).toHaveProperty('disabled', false));
+    await waitFor(() => expect(within(panel).getByRole('button', { name: '저장' })).toHaveProperty('disabled', false));
   });
 
   it('opens bulk recurrence blank, names the snapshotted targets, and sends one batch request', async () => {
@@ -3402,53 +3318,56 @@ describe('AdminManagePage', () => {
     baseFetch.mockImplementation(async (input, init) => String(input) === '/api/tasks/schedules/batch' && init?.method === 'POST'
       ? jsonResponse({ updatedTaskIds: ['T001', 'T002'] })
       : fallback(input, init));
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByLabelText('전체 과제 선택'));
-    fireEvent.click(screen.getByRole('button', { name: '선택 과제 기한' }));
+    await renderTasks();
+    const dialog = await openBulkRecurrence();
 
-    const dialog = screen.getByRole('dialog', { name: '과제 기한 설정' });
-    expect(within(dialog).getByText('대상: 책 읽기, 수학 학습지').getAttribute('title')).toBe('책 읽기, 수학 학습지');
-    expect(within(dialog).getByText(/선택한 모든 과제에 같은 반복 설정/)).toBeTruthy();
-    expect(within(dialog).getByLabelText('반복 주기')).toHaveProperty('value', '');
+    expect(within(dialog).getByText('대상: 책 읽기, 수학 학습지')).toBeTruthy();
+    expect(within(dialog).getByText(/선택한 모든 과제에 같은 반복 규칙을 적용합니다/)).toBeTruthy();
+    for (const type of ['반복 없음', '매일', '매주', '매월'] as const) expect(recurrenceType(dialog, type).getAttribute('aria-pressed')).toBe('false');
     expect(within(dialog).queryByLabelText('반복 시간')).toBeNull();
-    expect(within(dialog).queryByLabelText('반복 요일')).toBeNull();
+    expect(within(dialog).queryByRole('group', { name: '반복 요일' })).toBeNull();
     expect(within(dialog).queryByLabelText('반복 날짜')).toBeNull();
-    expect(within(dialog).getByRole('button', { name: '기한 설정 저장' })).toHaveProperty('disabled', true);
-    expect(baseFetch.mock.calls.some(([url]) => String(url).includes('/assignments'))).toBe(false);
+    expect(within(dialog).getByRole('button', { name: '반복 설정 저장' })).toHaveProperty('disabled', true);
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/assignments'))).toBe(false);
 
-    fireEvent.change(within(dialog).getByLabelText('반복 주기'), { target: { value: 'DAILY' } });
+    fireEvent.click(recurrenceType(dialog, '매일'));
     fireEvent.change(within(dialog).getByLabelText('반복 시간'), { target: { value: '10:30' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: '기한 설정 저장' }));
-    await waitFor(() => expect(baseFetch.mock.calls.filter(([url, init]) => String(url) === '/api/tasks/schedules/batch' && init?.method === 'POST')).toHaveLength(1));
-    const call = baseFetch.mock.calls.find(([url]) => String(url) === '/api/tasks/schedules/batch')!;
-    expect(JSON.parse(String(call[1]?.body))).toEqual({
+    fireEvent.click(within(dialog).getByRole('button', { name: '반복 설정 저장' }));
+    await waitFor(() => expect(fetchCalls('/api/tasks/schedules/batch', 'POST')).toHaveLength(1));
+    expect(lastBody('/api/tasks/schedules/batch', 'POST')).toEqual({
       taskIds: ['T001', 'T002'],
       schedule: { recurrence: { type: 'DAILY', time: '10:30' }, timeZone: 'Asia/Seoul', resetCompletionOnCycle: false, resetAssignmentOnCycle: false },
     });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '과제 기한 설정' })).toBeNull());
   });
 
-  it('requires an explicit weekday or month day for bulk recurrence', async () => {
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByLabelText('전체 과제 선택'));
-    fireEvent.click(screen.getByRole('button', { name: '선택 과제 기한' }));
-    const dialog = screen.getByRole('dialog', { name: '과제 기한 설정' });
-    const save = within(dialog).getByRole('button', { name: '기한 설정 저장' });
-
-    fireEvent.change(within(dialog).getByLabelText('반복 주기'), { target: { value: 'WEEKLY' } });
-    expect(within(dialog).getByRole('button', { name: '수요일' }).getAttribute('aria-pressed')).toBe('false');
+  it('requires an explicit valid rule before bulk recurrence can be saved', async () => {
+    await renderTasks();
+    const dialog = await openBulkRecurrence();
+    const save = within(dialog).getByRole('button', { name: '반복 설정 저장' });
     expect(save).toHaveProperty('disabled', true);
-    fireEvent.change(within(dialog).getByLabelText('반복 시간'), { target: { value: '09:30' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: '수요일' }));
-    expect(within(dialog).getByRole('button', { name: '수요일' }).getAttribute('aria-pressed')).toBe('true');
-    expect(save).toHaveProperty('disabled', false);
 
-    fireEvent.change(within(dialog).getByLabelText('반복 주기'), { target: { value: 'MONTHLY' } });
-    expect(within(dialog).getByLabelText('반복 날짜')).toHaveProperty('value', '');
+    fireEvent.click(recurrenceType(dialog, '매주'));
+    const weekdays = within(dialog).getByRole('group', { name: '반복 요일' });
+    expect(within(weekdays).getByRole('button', { name: '월요일' }).getAttribute('aria-pressed')).toBe('true');
+    expect(within(dialog).getByLabelText('반복 시간')).toHaveProperty('value', '09:00');
+    expect(save).toHaveProperty('disabled', false);
+    // The last selected weekday cannot be removed, so a weekly rule always names a day.
+    fireEvent.click(within(weekdays).getByRole('button', { name: '월요일' }));
+    expect(within(weekdays).getByRole('button', { name: '월요일' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(within(weekdays).getByRole('button', { name: '수요일' }));
+    fireEvent.click(within(weekdays).getByRole('button', { name: '월요일' }));
+    expect(within(weekdays).getByRole('button', { name: '월요일' }).getAttribute('aria-pressed')).toBe('false');
+    expect(within(weekdays).getByRole('button', { name: '수요일' }).getAttribute('aria-pressed')).toBe('true');
+
+    fireEvent.click(recurrenceType(dialog, '매월'));
+    expect(within(dialog).getByLabelText('반복 날짜')).toHaveProperty('value', '1');
+    fireEvent.change(within(dialog).getByLabelText('반복 날짜'), { target: { value: '' } });
     expect(save).toHaveProperty('disabled', true);
     fireEvent.change(within(dialog).getByLabelText('반복 날짜'), { target: { value: '15' } });
     expect(save).toHaveProperty('disabled', false);
+    fireEvent.change(within(dialog).getByLabelText('반복 시간'), { target: { value: '' } });
+    expect(save).toHaveProperty('disabled', true);
   });
 
   it('sends grouped ADMIN operations and retries only exact sparse failed pairs', async () => {
@@ -3470,25 +3389,22 @@ describe('AdminManagePage', () => {
       }
       return fallback(input, init);
     });
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByLabelText('전체 과제 선택'));
-    fireEvent.click(screen.getByRole('button', { name: '선택 과제 과제 부여' }));
+    await renderTasks();
+    const dialog = await openBulkAssignment();
 
-    const dialog = screen.getByRole('dialog', { name: '과제 부여' });
     expect(within(dialog).getByText('대상: 책 읽기, 수학 학습지')).toBeTruthy();
-    expect(within(dialog).getByText(/선택한 모든 과제에 같은 과제 부여 변경/)).toBeTruthy();
-    expect(within(dialog).getByText(/기존 설정은 불러오지 않으며, 명시한 항목만 변경/)).toBeTruthy();
+    expect(within(dialog).getByText(/선택한 모든 과제에 같은 변경을 적용합니다/)).toBeTruthy();
+    expect(within(dialog).getByText(/고르지 않은 학생은 그대로 둡니다/)).toBeTruthy();
     expect(within(dialog).getByLabelText('S001 김민준 부여 작업')).toHaveProperty('value', '');
-    expect(within(dialog).getByRole('button', { name: '과제 부여 저장' })).toHaveProperty('disabled', true);
-    expect(baseFetch.mock.calls.some(([url]) => /\/api\/tasks\/T00\d\/assignments/.test(String(url)))).toBe(false);
+    expect(within(dialog).getAllByRole('option', { name: '부여 그대로', hidden: true })).toHaveLength(2);
+    expect(within(dialog).getByRole('button', { name: '저장' })).toHaveProperty('disabled', true);
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => /\/api\/tasks\/T00\d\/assignments/.test(String(url)))).toBe(false);
 
     fireEvent.change(within(dialog).getByLabelText('S001 김민준 부여 작업'), { target: { value: 'assigned' } });
     fireEvent.change(within(dialog).getByLabelText('S002 이서연 완료 작업'), { target: { value: 'completed' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: '과제 부여 저장' }));
-    await waitFor(() => expect(alert).toHaveBeenCalledWith(expect.stringMatching(/중단.*책 읽기.*김민준.*수학 학습지.*이서연.*호환/)));
-    const firstCall = baseFetch.mock.calls.find(([url]) => String(url) === '/api/tasks/assignments/batch')!;
-    expect(JSON.parse(String(firstCall[1]?.body))).toEqual({ targets: [
+    fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
+    await findNotice(/중단.*책 읽기.*김민준.*수학 학습지.*이서연.*호환/);
+    expect(JSON.parse(String(fetchCalls('/api/tasks/assignments/batch', 'POST')[0][1]?.body))).toEqual({ targets: [
       { taskId: 'T001', operations: [
         { studentId: 'S001', assigned: true, source: 'ADMIN' },
         { studentId: 'S002', completed: true, source: 'ADMIN' },
@@ -3499,81 +3415,55 @@ describe('AdminManagePage', () => {
       ] },
     ] });
 
-    fireEvent.click(within(dialog).getByRole('button', { name: '과제 부여 저장' }));
-    await waitFor(() => expect(baseFetch.mock.calls.filter(([url]) => String(url) === '/api/tasks/assignments/batch')).toHaveLength(2));
-    const retryCall = baseFetch.mock.calls.filter(([url]) => String(url) === '/api/tasks/assignments/batch')[1];
-    expect(JSON.parse(String(retryCall[1]?.body))).toEqual({ targets: [
+    fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(fetchCalls('/api/tasks/assignments/batch', 'POST')).toHaveLength(2));
+    expect(lastBody('/api/tasks/assignments/batch', 'POST')).toEqual({ targets: [
       { taskId: 'T001', operations: [{ studentId: 'S001', assigned: true, source: 'ADMIN' }] },
       { taskId: 'T002', operations: [{ studentId: 'S002', completed: true, source: 'ADMIN' }] },
     ] });
+    await findNotice('과제 부여 저장 완료');
   });
 
   it('applies selected-student bulk controls to explicit row operations and save state', async () => {
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByLabelText('전체 과제 선택'));
-    fireEvent.click(screen.getByRole('button', { name: '선택 과제 과제 부여' }));
-    const dialog = screen.getByRole('dialog', { name: '과제 부여' });
-    const save = within(dialog).getByRole('button', { name: '과제 부여 저장' });
+    await renderTasks();
+    const dialog = await openBulkAssignment();
+    const save = within(dialog).getByRole('button', { name: '저장' });
     fireEvent.click(within(dialog).getByLabelText('S001 김민준 행 선택'));
     fireEvent.click(within(dialog).getByLabelText('S002 이서연 행 선택'));
+    expect(within(dialog).getByText('2명 선택')).toBeTruthy();
 
-    fireEvent.change(within(dialog).getByLabelText('선택 학생 부여 상태 일괄 변경'), { target: { value: 'unassigned' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '부여 취소' }));
     expect(within(dialog).getByLabelText('S001 김민준 부여 작업')).toHaveProperty('value', 'unassigned');
     expect(within(dialog).getByLabelText('S002 이서연 부여 작업')).toHaveProperty('value', 'unassigned');
     expect(save).toHaveProperty('disabled', false);
-    fireEvent.change(within(dialog).getByLabelText('선택 학생 완료 여부 일괄 변경'), { target: { value: 'completed' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '완료' }));
     expect(within(dialog).getByLabelText('S001 김민준 완료 작업')).toHaveProperty('value', 'completed');
     expect(within(dialog).getByLabelText('S002 이서연 완료 작업')).toHaveProperty('value', 'completed');
   });
 
-  it('keeps a newer recurrence dialog open when an older save completes', async () => {
-    const pending = deferredResponse({ updatedTaskIds: ['T001', 'T002'] });
-    const baseFetch = vi.mocked(fetch);
-    const fallback = baseFetch.getMockImplementation()!;
-    baseFetch.mockImplementation(async (input, init) => String(input) === '/api/tasks/schedules/batch' && init?.method === 'POST' ? pending.response : fallback(input, init));
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByLabelText('전체 과제 선택'));
-    fireEvent.click(screen.getByRole('button', { name: '선택 과제 기한' }));
-    let dialog = screen.getByRole('dialog', { name: '과제 기한 설정' });
-    fireEvent.change(within(dialog).getByLabelText('반복 주기'), { target: { value: 'DAILY' } });
-    fireEvent.change(within(dialog).getByLabelText('반복 시간'), { target: { value: '09:30' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: '기한 설정 저장' }));
-    expect(within(dialog).getByRole('button', { name: '취소', hidden: true })).toHaveProperty('disabled', true);
-    fireEvent.keyDown(dialog, { key: 'Escape' });
-    expect(screen.getByRole('dialog', { name: '기한 설정 저장 중' })).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: 'T002 기한 설정', hidden: true }));
-    dialog = screen.getByRole('dialog', { name: '과제 기한 설정' });
-    expect(within(dialog).getByText('대상: 수학 학습지')).toBeTruthy();
-    pending.resolve();
-    await waitFor(() => expect(within(screen.getByRole('dialog', { name: '과제 기한 설정' })).getByText('대상: 수학 학습지')).toBeTruthy());
-  });
-
-  it('makes assignment inert under reset confirmation, traps focus, and restores the reset opener on cancel', async () => {
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
-    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
-    const assignment = screen.getByRole('dialog', { name: '과제 부여' });
-    const resetOpener = within(assignment).getByRole('button', { name: '완료 기록 초기화' });
+  it('makes the panel inert under reset confirmation, traps focus, and restores the reset opener on cancel', async () => {
+    await renderTasks();
+    const panel = await openAssignmentPanel();
+    const resetOpener = within(panel).getByRole('button', { name: '완료 기록 초기화' });
+    resetOpener.focus();
     fireEvent.click(resetOpener);
 
     const confirmation = screen.getByRole('dialog', { name: '완료 기록 초기화 확인' });
-    expect(assignment.getAttribute('aria-hidden')).toBe('true');
-    expect(assignment.hasAttribute('inert')).toBe(true);
+    expect(panel.getAttribute('aria-hidden')).toBe('true');
+    expect(panel.hasAttribute('inert')).toBe(true);
     const confirm = within(confirmation).getByRole('button', { name: '완료 기록 초기화 확인' });
+    const close = within(confirmation).getByRole('button', { name: '닫기' });
     const cancel = within(confirmation).getByRole('button', { name: '취소' });
     expect(document.activeElement).toBe(confirm);
-    fireEvent.keyDown(confirmation, { key: 'Tab', shiftKey: true });
-    expect(document.activeElement).toBe(cancel);
     fireEvent.keyDown(confirmation, { key: 'Tab' });
+    expect(document.activeElement).toBe(close);
+    fireEvent.keyDown(confirmation, { key: 'Tab', shiftKey: true });
     expect(document.activeElement).toBe(confirm);
     fireEvent.click(cancel);
     expect(screen.queryByRole('dialog', { name: '완료 기록 초기화 확인' })).toBeNull();
-    expect(assignment.hasAttribute('aria-hidden')).toBe(false);
+    expect(panel.hasAttribute('aria-hidden')).toBe(false);
     await waitFor(() => expect(document.activeElement).toBe(resetOpener));
+    expect(fetchCalls('/api/tasks/completions/reset', 'POST')).toHaveLength(0);
   });
 
   it('exposes only a focus-trapped loading modal while assignment save is pending and restores focus on failure', async () => {
@@ -3584,15 +3474,12 @@ describe('AdminManagePage', () => {
       ? pending.response
       : fallback(input, init));
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByLabelText('전체 과제 선택'));
-    fireEvent.click(screen.getByRole('button', { name: '선택 과제 과제 부여' }));
-    const assignment = screen.getByRole('dialog', { name: '과제 부여' });
+    await renderTasks();
+    const assignment = await openBulkAssignment();
     fireEvent.change(within(assignment).getByLabelText('S001 김민준 부여 작업'), { target: { value: 'assigned' } });
-    const save = within(assignment).getByRole('button', { name: '과제 부여 저장' });
+    const save = within(assignment).getByRole('button', { name: '저장' });
     save.focus();
-    fireEvent.keyDown(save, { key: 'Enter' });
+    fireEvent.click(save);
     fireEvent.click(save);
 
     const loading = await screen.findByRole('dialog', { name: '변경 사항 저장 중' });
@@ -3604,11 +3491,13 @@ describe('AdminManagePage', () => {
     expect(document.activeElement).toBe(loading);
     fireEvent.keyDown(loading, { key: 'Escape' });
     expect(screen.getByRole('dialog', { name: '변경 사항 저장 중' })).toBe(loading);
+    expect(fetchCalls('/api/tasks/assignments/batch', 'POST')).toHaveLength(1);
 
     pending.resolve();
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '변경 사항 저장 중' })).toBeNull());
+    await findNotice('저장 실패');
     expect(screen.getByRole('dialog', { name: '과제 부여' })).toBe(assignment);
-    expect(document.activeElement).toBe(save);
+    await waitFor(() => expect(document.activeElement).toBe(save));
   });
 
   it('locks every recurrence control behind the only accessible loading modal while schedule save is pending', async () => {
@@ -3619,31 +3508,36 @@ describe('AdminManagePage', () => {
       ? pending.response
       : fallback(input, init));
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByLabelText('전체 과제 선택'));
-    fireEvent.click(screen.getByRole('button', { name: '선택 과제 기한' }));
-    const recurrence = screen.getByRole('dialog', { name: '과제 기한 설정' });
-    fireEvent.change(within(recurrence).getByLabelText('반복 주기'), { target: { value: 'DAILY' } });
+    await renderTasks();
+    const recurrence = await openBulkRecurrence();
+    fireEvent.click(recurrenceType(recurrence, '매일'));
     fireEvent.change(within(recurrence).getByLabelText('반복 시간'), { target: { value: '09:30' } });
-    const save = within(recurrence).getByRole('button', { name: '기한 설정 저장' });
+    const save = within(recurrence).getByRole('button', { name: '반복 설정 저장' });
     save.focus();
     fireEvent.click(save);
 
-    const loading = await screen.findByRole('dialog', { name: '기한 설정 저장 중' });
+    const loading = await screen.findByRole('dialog', { name: '반복 설정 저장 중' });
     expect(screen.getAllByRole('dialog')).toEqual([loading]);
     expect(recurrence.getAttribute('aria-hidden')).toBe('true');
     expect(recurrence.hasAttribute('inert')).toBe(true);
     expect(document.activeElement).toBe(loading);
-    for (const control of within(recurrence).getAllByRole('combobox', { hidden: true }).concat(within(recurrence).getAllByRole('checkbox', { hidden: true }))) {
-      expect(control.closest('[inert]')).toBe(recurrence);
-    }
+    const controls = [
+      ...within(recurrence).getAllByRole('button', { hidden: true }),
+      ...within(recurrence).getAllByRole('switch', { hidden: true }),
+      within(recurrence).getByLabelText('반복 시간'),
+      within(recurrence).getByLabelText('시작 시각'),
+      within(recurrence).getByLabelText('기한'),
+    ];
+    for (const control of controls) expect(control.closest('[inert]')).toBe(recurrence);
+    fireEvent.keyDown(recurrence, { key: 'Escape' });
     fireEvent.keyDown(loading, { key: 'Tab', shiftKey: true });
     expect(document.activeElement).toBe(loading);
 
     pending.resolve();
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '기한 설정 저장 중' })).toBeNull());
-    expect(document.activeElement).toBe(save);
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '반복 설정 저장 중' })).toBeNull());
+    await findNotice('일정 저장 실패');
+    expect(screen.getByRole('dialog', { name: '과제 기한 설정' })).toBe(recurrence);
+    await waitFor(() => expect(document.activeElement).toBe(save));
   });
 
   it('uses real batch failure codes, names failed task/student pairs, and reports mirror warnings without plain success', async () => {
@@ -3660,21 +3554,17 @@ describe('AdminManagePage', () => {
       return fallback(input, init);
     });
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByLabelText('전체 과제 선택'));
-    fireEvent.click(screen.getByRole('button', { name: '선택 과제 과제 부여' }));
-    const assignment = screen.getByRole('dialog', { name: '과제 부여' });
+    await renderTasks();
+    const assignment = await openBulkAssignment();
     fireEvent.change(within(assignment).getByLabelText('S001 김민준 부여 작업'), { target: { value: 'assigned' } });
-    fireEvent.click(within(assignment).getByRole('button', { name: '과제 부여 저장' }));
-    await waitFor(() => expect(alert).toHaveBeenCalledWith(expect.stringMatching(/수학 학습지.*김민준.*작업 실패/)));
+    fireEvent.click(within(assignment).getByRole('button', { name: '저장' }));
+    await findNotice(/수학 학습지.*김민준.*작업 실패/);
 
-    fireEvent.click(within(assignment).getByRole('button', { name: '과제 부여 저장' }));
-    await waitFor(() => expect(baseFetch.mock.calls.filter(([url]) => String(url) === '/api/tasks/assignments/batch')).toHaveLength(2));
-    const retryBody = JSON.parse(String(baseFetch.mock.calls.filter(([url]) => String(url) === '/api/tasks/assignments/batch')[1][1]?.body));
-    expect(retryBody).toEqual({ targets: [{ taskId: 'T002', operations: [{ studentId: 'S001', assigned: true, source: 'ADMIN' }] }] });
-    await waitFor(() => expect(alert).toHaveBeenCalledWith(expect.stringMatching(/저장은 완료.*기존 호환 목록.*수학 학습지.*새로고침/)));
-    expect(alert).not.toHaveBeenCalledWith('과제 부여 저장 완료');
+    fireEvent.click(within(assignment).getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(fetchCalls('/api/tasks/assignments/batch', 'POST')).toHaveLength(2));
+    expect(lastBody('/api/tasks/assignments/batch', 'POST')).toEqual({ targets: [{ taskId: 'T002', operations: [{ studentId: 'S001', assigned: true, source: 'ADMIN' }] }] });
+    await findNotice(/저장은 완료.*기존 호환 목록.*수학 학습지.*새로고침/);
+    expect(noticeTexts()).not.toContain('과제 부여 저장 완료');
   });
 
   it('closes a committed assignment draft and reports refresh-only recovery without reposting', async () => {
@@ -3690,17 +3580,14 @@ describe('AdminManagePage', () => {
       return fallback(input, init);
     });
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByLabelText('전체 과제 선택'));
-    fireEvent.click(screen.getByRole('button', { name: '선택 과제 과제 부여' }));
-    const assignment = screen.getByRole('dialog', { name: '과제 부여' });
+    await renderTasks();
+    const assignment = await openBulkAssignment();
     fireEvent.change(within(assignment).getByLabelText('S001 김민준 부여 작업'), { target: { value: 'assigned' } });
-    fireEvent.click(within(assignment).getByRole('button', { name: '과제 부여 저장' }));
+    fireEvent.click(within(assignment).getByRole('button', { name: '저장' }));
 
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '과제 부여' })).toBeNull());
-    expect(alert).toHaveBeenCalledWith(expect.stringMatching(/과제 부여 저장은 완료됐지만.*목록 새로고침 실패.*새로고침/));
-    expect(baseFetch.mock.calls.filter(([url]) => String(url) === '/api/tasks/assignments/batch')).toHaveLength(1);
+    await findNotice(/과제 부여 저장은 완료됐지만.*목록 새로고침 실패.*새로고침/);
+    expect(fetchCalls('/api/tasks/assignments/batch', 'POST')).toHaveLength(1);
   });
 
   it('does not re-enable reset after its POST succeeds when projection refresh fails', async () => {
@@ -3716,47 +3603,24 @@ describe('AdminManagePage', () => {
       return fallback(input, init);
     });
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
-    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
-    fireEvent.click(screen.getByRole('button', { name: '완료 기록 초기화' }));
+    await renderTasks();
+    const panel = await openAssignmentPanel();
+    fireEvent.click(within(panel).getByRole('button', { name: '완료 기록 초기화' }));
     const confirmation = screen.getByRole('dialog', { name: '완료 기록 초기화 확인' });
     fireEvent.click(within(confirmation).getByRole('button', { name: '완료 기록 초기화 확인' }));
 
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '완료 기록 초기화 확인' })).toBeNull());
-    expect(screen.queryByRole('dialog', { name: '과제 부여' })).toBeNull();
-    expect(alert).toHaveBeenCalledWith(expect.stringMatching(/초기화는 완료됐지만 목록 새로고침 실패.*새로고침/));
-    expect(baseFetch.mock.calls.filter(([url, init]) => String(url) === '/api/tasks/completions/reset' && init?.method === 'POST')).toHaveLength(1);
+    await findNotice(/초기화는 완료됐지만 목록 새로고침 실패.*새로고침/);
+    // The pre-reset assignment editor is discarded: the panel either waits for 다시 불러오기 or shows a freshly read status.
+    await waitFor(() => {
+      const panelNow = taskEditorPanel('책 읽기');
+      const reloaded = fetchCalls('/api/tasks/T001/assignments').length >= 2;
+      expect(reloaded || within(panelNow).queryByTestId('task-assignment-row-S001') === null).toBe(true);
+    });
+    expect(fetchCalls('/api/tasks/completions/reset', 'POST')).toHaveLength(1);
   });
 
-  it('keeps a newer assignment session usable when an older save completes', async () => {
-    const pending = deferredResponse({ appliedCount: 2, failures: [] });
-    const baseFetch = vi.mocked(fetch);
-    const fallback = baseFetch.getMockImplementation()!;
-    baseFetch.mockImplementation(async (input, init) => String(input) === '/api/tasks/assignments/batch' && init?.method === 'POST'
-      ? pending.response
-      : fallback(input, init));
-
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByLabelText('전체 과제 선택'));
-    fireEvent.click(screen.getByRole('button', { name: '선택 과제 과제 부여' }));
-    let assignment = screen.getByRole('dialog', { name: '과제 부여' });
-    fireEvent.change(within(assignment).getByLabelText('S001 김민준 부여 작업'), { target: { value: 'assigned' } });
-    fireEvent.click(within(assignment).getByRole('button', { name: '과제 부여 저장' }));
-    await screen.findByRole('dialog', { name: '변경 사항 저장 중' });
-
-    fireEvent.click(screen.getByRole('button', { name: 'T002 과제 부여', hidden: true }));
-    assignment = screen.getByRole('dialog', { name: '과제 부여' });
-    expect(within(assignment).getByText('대상: 수학 학습지')).toBeTruthy();
-    expect(within(assignment).getByRole('button', { name: '과제 부여 저장' })).toHaveProperty('disabled', true);
-
-    pending.resolve();
-    await waitFor(() => expect(within(screen.getByRole('dialog', { name: '과제 부여' })).getByText('대상: 수학 학습지')).toBeTruthy());
-  });
-
-  it('relocates reset into assignment, confirms in-app, locks mutation, and refreshes tasks once', async () => {
+  it('keeps reset inside the assignment tab, confirms in-app, locks mutation, and refreshes tasks once', async () => {
     const reset = deferredResponse({ taskIds: ['T001'], deletedCount: 1 });
     const baseFetch = vi.mocked(fetch);
     const fallback = baseFetch.getMockImplementation()!;
@@ -3769,85 +3633,54 @@ describe('AdminManagePage', () => {
       if (String(input) === '/api/tasks/completions/reset' && init?.method === 'POST') return reset.response;
       return fallback(input, init);
     });
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
+    await renderTasks();
     expect(screen.queryByRole('button', { name: 'T001 완료 기록 초기화' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'T001 과제 부여' }));
-    await waitFor(() => expect(screen.queryByRole('status', { name: '과제 부여 상태 불러오는 중' })).toBeNull());
-    fireEvent.click(screen.getByRole('button', { name: '완료 기록 초기화' }));
+    expect(screen.queryByRole('button', { name: '완료 기록 초기화' })).toBeNull();
+    const panel = await openAssignmentPanel();
+    const opener = within(panel).getByRole('button', { name: '완료 기록 초기화' });
+    fireEvent.click(opener);
     const confirmation = screen.getByRole('dialog', { name: '완료 기록 초기화 확인' });
-    expect(within(confirmation).getByText(/과거 지급 보상은 회수되지 않/)).toBeTruthy();
-    expect(within(confirmation).getByText(/다시 완료하면 재보상/)).toBeTruthy();
-    expect(baseFetch.mock.calls.filter(([url]) => String(url) === '/api/tasks/completions/reset')).toHaveLength(0);
+    expect(within(confirmation).getByText(/이미 지급한 보상은 회수되지 않습니다/)).toBeTruthy();
+    expect(within(confirmation).getByText(/다시 완료하면 보상을 또 받을 수 있습니다/)).toBeTruthy();
+    expect(fetchCalls('/api/tasks/completions/reset')).toHaveLength(0);
     const confirmReset = within(confirmation).getByRole('button', { name: '완료 기록 초기화 확인' });
     fireEvent.click(confirmReset);
     fireEvent.click(confirmReset);
     expect(confirmReset).toHaveProperty('disabled', true);
-    expect(baseFetch.mock.calls.filter(([url]) => String(url) === '/api/tasks/completions/reset')).toHaveLength(1);
+    expect(fetchCalls('/api/tasks/completions/reset')).toHaveLength(1);
     fireEvent.keyDown(confirmation, { key: 'Escape' });
     expect(screen.getByRole('dialog', { name: '완료 기록 초기화 중' })).toBeTruthy();
+    expect(confirmation.isConnected).toBe(true);
     reset.resolve();
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '완료 기록 초기화 확인' })).toBeNull());
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: '완료 기록 초기화' })));
+    await findNotice('완료 기록 1건 초기화 완료');
+    await waitFor(() => expect(document.activeElement).toBe(opener));
     expect(taskGets).toBe(2);
   });
 
-  it('keeps the task deadline dialog within the mobile viewport and makes time controls shrink safely', async () => {
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: 'T001 기한 설정' }));
+  it('renders the task panel as a full-height sheet whose body scrolls and whose date controls shrink safely', async () => {
+    await renderTasks();
+    const panel = await openTaskEditor('책 읽기');
+    expect(panel.className).toContain('h-full');
+    expect(panel.className).toContain('w-full');
+    expect(panel.className).toContain('max-w-[560px]');
+    const body = within(panel).getByLabelText('T001 과제명').closest('.overflow-y-auto');
+    expect(body?.className).toContain('overscroll-contain');
+    expect(body?.className).toContain('min-h-0');
 
-    const dialog = screen.getByRole('dialog', { name: '과제 기한 설정' });
-    expect(dialog.className).toContain('max-h-[calc(100dvh-2rem)]');
-    expect(dialog.className).toContain('overflow-y-auto');
-    expect(dialog.className).toContain('overflow-x-hidden');
-    expect(dialog.className).toContain('overscroll-contain');
-    expect(dialog.className).toContain('max-w-full');
-    expect(dialog.className).toContain('min-w-0');
-
-    for (const input of [within(dialog).getByLabelText('시작 시각'), within(dialog).getByLabelText('기한')]) {
-      expect(input.parentElement?.className).toContain('min-w-0');
-      expect(input.parentElement?.className).toContain('max-w-full');
-      expect(input.className).toContain('min-w-0');
-      expect(input.className.split(/\s+/)).toContain('w-full');
-      expect(input.className).toContain('max-w-full');
-      expect(input.className).toContain('text-base');
+    for (const input of [within(panel).getByLabelText('시작 시각'), within(panel).getByLabelText('기한')]) {
+      expect(input).toHaveProperty('type', 'datetime-local');
+      expect(input.className.split(/\s+/)).toEqual(expect.arrayContaining(['block', 'w-full', 'min-w-0']));
     }
-
-    fireEvent.change(within(dialog).getByLabelText('반복 주기'), { target: { value: 'DAILY' } });
-    const recurrenceTime = within(dialog).getByLabelText('반복 시간');
-    const recurrenceShell = recurrenceTime.closest('[data-testid="task-recurrence-mobile-fields"]');
-    expect(recurrenceShell).toBeTruthy();
-    expect(recurrenceShell?.className).toContain('min-w-0');
-    expect(recurrenceShell?.className).toContain('max-w-full');
-    expect(recurrenceShell?.className).toContain('[&_input]:min-w-0');
-    expect(recurrenceShell?.className).toContain('[&_input]:max-w-full');
-    expect(recurrenceShell?.className).toContain('[&_input]:text-base');
+    fireEvent.click(within(panel).getByRole('tab', { name: /^반복/ }));
+    await within(panel).findByRole('group', { name: '반복 주기' });
+    fireEvent.click(recurrenceType(panel, '매일'));
+    const recurrenceTime = within(panel).getByLabelText('반복 시간');
+    expect(recurrenceTime.className.split(/\s+/)).toEqual(expect.arrayContaining(['block', 'w-full', 'min-w-0']));
+    expect(within(panel).getByRole('group', { name: '반복 주기' }).className).toContain('max-w-full');
   });
 
-  it('places each availability badge to the left of its title input on the same row', async () => {
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-
-    const row = (await screen.findAllByTestId('task-row'))[0];
-    const badge = within(row).getByText('진행 중');
-    const titleInput = within(row).getByLabelText('T001 과제명');
-    const titleRow = badge.parentElement;
-    const inputWrapper = titleInput.closest('[data-testid="task-title-input-wrapper"]');
-
-    expect(titleRow?.className).toContain('flex');
-    expect(titleRow?.className).toContain('items-center');
-    expect(titleRow?.className).toContain('min-w-0');
-    expect(badge.className).toContain('shrink-0');
-    expect(badge.className).toContain('whitespace-nowrap');
-    expect(inputWrapper).toBeTruthy();
-    expect(inputWrapper?.className).toContain('min-w-0');
-    expect(inputWrapper?.className).toContain('flex-1');
-    expect(badge.compareDocumentPosition(titleInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(row.className).toContain('grid-cols-[24px_minmax(5rem,1fr)_64px_48px_38px_minmax(3rem,0.7fr)_minmax(180px,auto)]');
-  });
-
-  it('edits availability, prerequisite, recurrence and shows clear admin status badges', async () => {
+  it('edits availability and prerequisite in 기본 정보 and shows clear admin status badges', async () => {
     const datedTasks = [
       { ...tasks[0], availableFrom: '2000-01-01T00:00:00Z', dueAt: '2999-01-01T00:00:00Z' },
       { ...tasks[1], availableFrom: '2999-01-01T00:00:00Z' },
@@ -3858,63 +3691,67 @@ describe('AdminManagePage', () => {
     const fallback = baseFetch.getMockImplementation()!;
     baseFetch.mockImplementation(async (input, init) => {
       if (String(input) === '/api/tasks?includeInactive=1') return jsonResponse(datedTasks);
-      if (String(input) === '/api/tasks/T001' && init?.method === 'PATCH') return jsonResponse(datedTasks[0]);
+      if (String(input) === '/api/tasks/batch' && init?.method === 'PATCH') return jsonResponse([datedTasks[0]]);
       return fallback(input, init);
     });
 
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    expect(screen.getByText('진행 중')).toBeTruthy();
-    expect(screen.getByText('시작 전')).toBeTruthy();
-    expect(screen.getByText('기한 만료')).toBeTruthy();
-    expect(screen.getByText('수동 비활성')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '새 과제 기한 설정' })).toBeTruthy();
+    await renderTasks();
+    const rows = screen.getAllByTestId('task-row');
+    const statusOf = (title: string) => rows.find((row) => within(row).queryByText(title))!;
+    expect(within(statusOf('책 읽기')).getAllByText('진행 중').length).toBeGreaterThan(0);
+    expect(within(statusOf('수학 학습지')).getAllByText('시작 전').length).toBeGreaterThan(0);
+    expect(within(statusOf('만료 과제')).getAllByText('마감됨').length).toBeGreaterThan(0);
+    expect(within(statusOf('비활성 과제')).getAllByText('숨김').length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByRole('button', { name: 'T001 기한 설정' }));
-    const dialog = screen.getByRole('dialog', { name: '과제 기한 설정' });
-    expect(within(dialog).getByRole('heading', { name: '기한 설정' })).toBeTruthy();
-    expect(within(dialog).getByLabelText('시작 시각')).toHaveProperty('type', 'datetime-local');
-    expect(within(dialog).getByLabelText('기한')).toHaveProperty('type', 'datetime-local');
-    expect(within(dialog).getByLabelText('선행 과제')).toBeTruthy();
-    expect(within(within(dialog).getByLabelText('선행 과제')).queryByRole('option', { name: '비활성 과제' })).toBeNull();
-    fireEvent.change(within(dialog).getByLabelText('시작 시각'), { target: { value: '' } });
-    fireEvent.change(within(dialog).getByLabelText('기한'), { target: { value: '2030-01-02T12:30' } });
-    fireEvent.change(within(dialog).getByLabelText('선행 과제'), { target: { value: 'T002' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: '기한 설정 저장' }));
+    const panel = await openTaskEditor('책 읽기');
+    expect(within(panel).getByLabelText('시작 시각')).toHaveProperty('type', 'datetime-local');
+    expect(within(panel).getByLabelText('기한')).toHaveProperty('type', 'datetime-local');
+    const prerequisite = within(panel).getByLabelText('선행 과제');
+    expect(within(prerequisite).queryByRole('option', { name: '비활성 과제' })).toBeNull();
+    expect(within(prerequisite).queryByRole('option', { name: '책 읽기' })).toBeNull();
+    fireEvent.click(within(panel).getByRole('button', { name: '시작 시각 지우기' }));
+    expect(within(panel).getByLabelText('시작 시각')).toHaveProperty('value', '');
+    fireEvent.change(within(panel).getByLabelText('기한'), { target: { value: '2030-01-02T12:30' } });
+    fireEvent.change(prerequisite, { target: { value: 'T002' } });
+    fireEvent.click(within(panel).getByRole('button', { name: '저장' }));
 
-    await waitFor(() => expect(baseFetch).toHaveBeenCalledWith('/api/tasks/T001', expect.objectContaining({ method: 'PATCH' })));
-    const call = baseFetch.mock.calls.find(([url, init]) => String(url) === '/api/tasks/T001' && init?.method === 'PATCH')!;
-    expect(JSON.parse(String(call[1]?.body))).toMatchObject({ availableFrom: null, dueAt: '2030-01-02T03:30:00.000Z', prerequisiteTaskId: 'T002' });
+    await waitFor(() => expect(fetchCalls('/api/tasks/batch', 'PATCH')).toHaveLength(1));
+    expect(lastBody('/api/tasks/batch', 'PATCH').tasks).toEqual([
+      expect.objectContaining({ taskId: 'T001', availableFrom: null, dueAt: '2030-01-02T03:30:00.000Z', prerequisiteTaskId: 'T002' }),
+    ]);
+    expect(fetchCalls('/api/tasks/T001', 'PATCH')).toHaveLength(0);
   });
 
-  it('uses multi-select weekday buttons in the bulk deadline dialog and excludes prerequisite', async () => {
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByLabelText('전체 과제 선택'));
-    fireEvent.click(screen.getByRole('button', { name: '선택 과제 기한' }));
-    const dialog = screen.getByRole('dialog', { name: '과제 기한 설정' });
+  it('uses multi-select weekday buttons in the bulk recurrence dialog and excludes prerequisite', async () => {
+    await renderTasks();
+    const dialog = await openBulkRecurrence();
     expect(within(dialog).queryByLabelText('선행 과제')).toBeNull();
-    expect(within(dialog).getByText(/선행 과제는 개별 과제/)).toBeTruthy();
-    fireEvent.change(within(dialog).getByLabelText('반복 주기'), { target: { value: 'WEEKLY' } });
+    expect(within(dialog).getByLabelText('시작 시각')).toBeTruthy();
+    expect(within(dialog).getByLabelText('기한')).toBeTruthy();
+    fireEvent.click(recurrenceType(dialog, '매주'));
     const weekdays = within(dialog).getByRole('group', { name: '반복 요일' });
     fireEvent.click(within(weekdays).getByRole('button', { name: '목요일' }));
     expect(within(weekdays).getByRole('button', { name: '월요일' }).getAttribute('aria-pressed')).toBe('true');
     expect(within(weekdays).getByRole('button', { name: '목요일' }).getAttribute('aria-pressed')).toBe('true');
+    expect(within(dialog).getByText('미리보기: 매주 월, 목 09:00')).toBeTruthy();
   });
 
-  it('does not copy a new-task deadline draft into an existing task editor', async () => {
-    render(<AdminManagePage />);
-    fireEvent.click(await screen.findByRole('tab', { name: '과제 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: '새 과제 기한 설정' }));
-    fireEvent.change(screen.getByLabelText('시작 시각'), { target: { value: '2030-01-01T10:00' } });
-    fireEvent.change(screen.getByLabelText('기한'), { target: { value: '2030-01-02T12:30' } });
-    fireEvent.change(screen.getByLabelText('선행 과제'), { target: { value: 'T002' } });
-    fireEvent.click(screen.getByRole('button', { name: '기한 설정 적용' }));
+  it('does not copy a new-task availability draft into an existing task editor', async () => {
+    await renderTasks();
+    const editor = await openNewTaskEditor();
+    fireEvent.change(within(editor).getByLabelText('시작 시각'), { target: { value: '2030-01-01T10:00' } });
+    fireEvent.change(within(editor).getByLabelText('기한'), { target: { value: '2030-01-02T12:30' } });
+    fireEvent.change(within(editor).getByLabelText('선행 과제'), { target: { value: 'T002' } });
+    fireEvent.keyDown(editor, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '새 과제' })).toBeNull());
 
-    fireEvent.click(screen.getByRole('button', { name: 'T001 기한 설정' }));
-    expect(screen.getByLabelText('시작 시각')).toHaveProperty('value', '');
-    expect(screen.getByLabelText('기한')).toHaveProperty('value', '');
-    expect(screen.getByLabelText('선행 과제')).toHaveProperty('value', '');
+    const panel = await openTaskEditor('책 읽기');
+    expect(within(panel).getByLabelText('시작 시각')).toHaveProperty('value', '');
+    expect(within(panel).getByLabelText('기한')).toHaveProperty('value', '');
+    expect(within(panel).getByLabelText('선행 과제')).toHaveProperty('value', '');
+    fireEvent.click(within(panel).getByRole('tab', { name: /^반복/ }));
+    expect(await within(panel).findByRole('group', { name: '반복 주기' })).toBeTruthy();
+    expect(recurrenceType(panel, '반복 없음').getAttribute('aria-pressed')).toBe('true');
   });
 
   it('disables selected-student printing while QR generation is pending or failed and retries on reopen', async () => {
@@ -3931,19 +3768,21 @@ describe('AdminManagePage', () => {
     });
     render(<AdminManagePage />);
 
-    fireEvent.click(await screen.findByRole('tab', { name: '학생 관리' }));
+    await openAdminMenu('학생');
     fireEvent.click(await screen.findByLabelText('S001 선택'));
-    fireEvent.click(screen.getByRole('button', { name: '선택 학생 QR 발급' }));
-    const printButton = await screen.findByRole('button', { name: '인쇄' });
+    fireEvent.click(within(selectionBar()).getByRole('button', { name: 'QR 카드 발급' }));
+    const dialog = await screen.findByRole('dialog', { name: '선택 학생 QR 발급' });
+    const printButton = within(dialog).getByRole('button', { name: '인쇄' });
     expect(printButton).toHaveProperty('disabled', true);
 
     resolveFirstQr(jsonResponse({ error: 'not an svg' }));
     expect(await screen.findAllByText('QR 생성 실패')).toHaveLength(2);
     expect(printButton).toHaveProperty('disabled', true);
 
-    fireEvent.click(screen.getByRole('button', { name: '닫기' }));
-    fireEvent.click(screen.getByRole('button', { name: '선택 학생 QR 발급' }));
-    const retriedPrintButton = await screen.findByRole('button', { name: '인쇄' });
+    fireEvent.click(within(dialog).getAllByRole('button', { name: '닫기' }).at(-1)!);
+    fireEvent.click(within(selectionBar()).getByRole('button', { name: 'QR 카드 발급' }));
+    const retried = await screen.findByRole('dialog', { name: '선택 학생 QR 발급' });
+    const retriedPrintButton = within(retried).getByRole('button', { name: '인쇄' });
     await waitFor(() => expect(retriedPrintButton).toHaveProperty('disabled', false));
     expect(qrAttempt).toBe(2);
   });

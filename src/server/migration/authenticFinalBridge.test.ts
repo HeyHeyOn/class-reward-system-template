@@ -36,7 +36,7 @@ const reader: WorkbookSnapshotReader = {
   },
 };
 beforeEach(async () => {
-  h = await createPgliteDatabaseHarness();
+  h = await createPgliteDatabaseHarness({ migrationSet: 'base' });
   const dir = resolve('src/server/db/migrations');
   for (const n of (await readdir(dir)).filter(n => /^\d{4}_.*\.sql$/.test(n) && n.slice(0, 4) > '0008').sort()) await h.database.exec(await readFile(resolve(dir, n), 'utf8'));
   await h.database.query("INSERT INTO users(id,google_subject,canonical_email) VALUES($1,'owner','owner@example.invalid')", [USER]);

@@ -1,0 +1,2646 @@
+{
+  "head": "448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8",
+  "cases": [
+    {
+      "name": "default-v1",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Tasks": {
+              "headers": [
+                "taskId",
+                "title",
+                "description",
+                "reward",
+                "isActive",
+                "sortOrder",
+                "createdAt",
+                "updatedAt",
+                "allowedStudentIds"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "T1",
+                    "Homework",
+                    "Read",
+                    "10",
+                    "TRUE",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "2026-09-01T00:00:00.000Z",
+                    "S1"
+                  ],
+                  "hash": "ae147fb220e01570f2134b7b141706521cb624a6a1914309d1b1c4e4c612d1db"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}],\"task_allowed_students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"taskInstanceId\":\"legacy:T1:2026-08-31T00:00:00.000Z\",\"studentId\":\"S1\"}],\"tasks\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"taskId\":\"T1\",\"taskInstanceId\":\"legacy:T1:2026-08-31T00:00:00.000Z\",\"title\":\"Homework\",\"description\":\"Read\",\"reward\":10,\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"updatedAt\":\"2026-09-01T00:00:00.000Z\",\"allowedStudentIds\":[\"S1\"],\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-08-31T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"availableFrom\":null,\"dueAt\":null,\"prerequisiteTaskId\":null,\"schemaVersion\":1}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Tasks\",\"rowNumber\":2,\"rowHash\":\"ae147fb220e01570f2134b7b141706521cb624a6a1914309d1b1c4e4c612d1db\"},\"redactedSourceRecord\":{\"identityDigest\":\"1f93603db53bfad5c92390f735d0cbb8617b4ab8214ae91c5664a3d1e9b009c8\",\"recognizedFieldCount\":9,\"omittedFieldCount\":0},\"canonicalRecord\":{\"taskId\":\"T1\",\"taskInstanceId\":\"legacy:T1:2026-08-31T00:00:00.000Z\",\"title\":\"Homework\",\"description\":\"Read\",\"reward\":10,\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"updatedAt\":\"2026-09-01T00:00:00.000Z\",\"allowedStudentIds\":[\"S1\"],\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-08-31T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"availableFrom\":null,\"dueAt\":null,\"prerequisiteTaskId\":null,\"schemaVersion\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"tasks\",\"targetId\":\"legacy:T1:2026-08-31T00:00:00.000Z\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"ae147fb220e01570f2134b7b141706521cb624a6a1914309d1b1c4e4c612d1db\",\"targetTable\":\"task_allowed_students\",\"targetId\":\"e8d01ee8-c1a8-55fb-a9b9-d80f242330b9\",\"status\":\"STAGED\"},{\"sourceDigest\":\"ae147fb220e01570f2134b7b141706521cb624a6a1914309d1b1c4e4c612d1db\",\"targetTable\":\"tasks\",\"targetId\":\"legacy:T1:2026-08-31T00:00:00.000Z\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}",
+        "counts": {
+          "tasks": 1,
+          "task_allowed_students": 1
+        }
+      }
+    },
+    {
+      "name": "current-none",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 3,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Tasks": {
+              "headers": [
+                "taskId",
+                "title",
+                "description",
+                "reward",
+                "isActive",
+                "sortOrder",
+                "createdAt",
+                "updatedAt",
+                "allowedStudentIds",
+                "taskInstanceId",
+                "ruleVersion",
+                "scheduleEffectiveFrom",
+                "recurrenceTimeZone",
+                "recurrenceType",
+                "recurrenceTime",
+                "recurrenceWeekday",
+                "recurrenceDayOfMonth",
+                "resetCompletionOnCycle",
+                "resetAssignmentOnCycle",
+                "pendingRuleVersion",
+                "pendingEffectiveFrom",
+                "pendingTimeZone",
+                "pendingRecurrenceType",
+                "pendingRecurrenceTime",
+                "pendingRecurrenceWeekday",
+                "pendingRecurrenceDayOfMonth",
+                "pendingResetCompletionOnCycle",
+                "pendingResetAssignmentOnCycle",
+                "availableFrom",
+                "dueAt",
+                "prerequisiteTaskId",
+                "recurrenceWeekdays",
+                "pendingRecurrenceWeekdays"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "T1",
+                    "Homework",
+                    "Read",
+                    "10",
+                    "TRUE",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "2026-09-01T00:00:00.000Z",
+                    "S1",
+                    "TI1",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "Asia/Seoul",
+                    "NONE",
+                    "",
+                    "",
+                    "",
+                    "FALSE",
+                    "FALSE",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    ""
+                  ],
+                  "hash": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}],\"task_allowed_students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"taskInstanceId\":\"TI1\",\"studentId\":\"S1\"}],\"tasks\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"taskId\":\"T1\",\"taskInstanceId\":\"TI1\",\"title\":\"Homework\",\"description\":\"Read\",\"reward\":10,\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"updatedAt\":\"2026-09-01T00:00:00.000Z\",\"allowedStudentIds\":[\"S1\"],\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-08-31T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"availableFrom\":null,\"dueAt\":null,\"prerequisiteTaskId\":null,\"schemaVersion\":3}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Tasks\",\"rowNumber\":2,\"rowHash\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\"},\"redactedSourceRecord\":{\"identityDigest\":\"1f93603db53bfad5c92390f735d0cbb8617b4ab8214ae91c5664a3d1e9b009c8\",\"recognizedFieldCount\":33,\"omittedFieldCount\":0},\"canonicalRecord\":{\"taskId\":\"T1\",\"taskInstanceId\":\"TI1\",\"title\":\"Homework\",\"description\":\"Read\",\"reward\":10,\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"updatedAt\":\"2026-09-01T00:00:00.000Z\",\"allowedStudentIds\":[\"S1\"],\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-08-31T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"availableFrom\":null,\"dueAt\":null,\"prerequisiteTaskId\":null,\"schemaVersion\":3},\"mappingStatus\":\"STAGED\",\"targetTable\":\"tasks\",\"targetId\":\"TI1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\",\"targetTable\":\"task_allowed_students\",\"targetId\":\"defaf770-fff7-5644-a76c-e09a49350018\",\"status\":\"STAGED\"},{\"sourceDigest\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\",\"targetTable\":\"tasks\",\"targetId\":\"TI1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"}]}",
+        "counts": {
+          "tasks": 1,
+          "task_allowed_students": 1
+        }
+      }
+    },
+    {
+      "name": "current-DAILY",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 3,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Tasks": {
+              "headers": [
+                "taskId",
+                "title",
+                "description",
+                "reward",
+                "isActive",
+                "sortOrder",
+                "createdAt",
+                "updatedAt",
+                "allowedStudentIds",
+                "taskInstanceId",
+                "ruleVersion",
+                "scheduleEffectiveFrom",
+                "recurrenceTimeZone",
+                "recurrenceType",
+                "recurrenceTime",
+                "recurrenceWeekday",
+                "recurrenceDayOfMonth",
+                "resetCompletionOnCycle",
+                "resetAssignmentOnCycle",
+                "pendingRuleVersion",
+                "pendingEffectiveFrom",
+                "pendingTimeZone",
+                "pendingRecurrenceType",
+                "pendingRecurrenceTime",
+                "pendingRecurrenceWeekday",
+                "pendingRecurrenceDayOfMonth",
+                "pendingResetCompletionOnCycle",
+                "pendingResetAssignmentOnCycle",
+                "availableFrom",
+                "dueAt",
+                "prerequisiteTaskId",
+                "recurrenceWeekdays",
+                "pendingRecurrenceWeekdays"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "T1",
+                    "Homework",
+                    "Read",
+                    "10",
+                    "TRUE",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "2026-09-01T00:00:00.000Z",
+                    "S1",
+                    "TI1",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "Asia/Seoul",
+                    "DAILY",
+                    "09:30",
+                    "",
+                    "",
+                    "FALSE",
+                    "FALSE",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    ""
+                  ],
+                  "hash": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}],\"task_allowed_students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"taskInstanceId\":\"TI1\",\"studentId\":\"S1\"}],\"tasks\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"taskId\":\"T1\",\"taskInstanceId\":\"TI1\",\"title\":\"Homework\",\"description\":\"Read\",\"reward\":10,\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"updatedAt\":\"2026-09-01T00:00:00.000Z\",\"allowedStudentIds\":[\"S1\"],\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-08-31T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"DAILY\",\"time\":\"09:30\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"availableFrom\":null,\"dueAt\":null,\"prerequisiteTaskId\":null,\"schemaVersion\":3}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Tasks\",\"rowNumber\":2,\"rowHash\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\"},\"redactedSourceRecord\":{\"identityDigest\":\"1f93603db53bfad5c92390f735d0cbb8617b4ab8214ae91c5664a3d1e9b009c8\",\"recognizedFieldCount\":33,\"omittedFieldCount\":0},\"canonicalRecord\":{\"taskId\":\"T1\",\"taskInstanceId\":\"TI1\",\"title\":\"Homework\",\"description\":\"Read\",\"reward\":10,\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"updatedAt\":\"2026-09-01T00:00:00.000Z\",\"allowedStudentIds\":[\"S1\"],\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-08-31T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"DAILY\",\"time\":\"09:30\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"availableFrom\":null,\"dueAt\":null,\"prerequisiteTaskId\":null,\"schemaVersion\":3},\"mappingStatus\":\"STAGED\",\"targetTable\":\"tasks\",\"targetId\":\"TI1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\",\"targetTable\":\"task_allowed_students\",\"targetId\":\"defaf770-fff7-5644-a76c-e09a49350018\",\"status\":\"STAGED\"},{\"sourceDigest\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\",\"targetTable\":\"tasks\",\"targetId\":\"TI1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"}]}",
+        "counts": {
+          "tasks": 1,
+          "task_allowed_students": 1
+        }
+      }
+    },
+    {
+      "name": "current-WEEKLY",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 3,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Tasks": {
+              "headers": [
+                "taskId",
+                "title",
+                "description",
+                "reward",
+                "isActive",
+                "sortOrder",
+                "createdAt",
+                "updatedAt",
+                "allowedStudentIds",
+                "taskInstanceId",
+                "ruleVersion",
+                "scheduleEffectiveFrom",
+                "recurrenceTimeZone",
+                "recurrenceType",
+                "recurrenceTime",
+                "recurrenceWeekday",
+                "recurrenceDayOfMonth",
+                "resetCompletionOnCycle",
+                "resetAssignmentOnCycle",
+                "pendingRuleVersion",
+                "pendingEffectiveFrom",
+                "pendingTimeZone",
+                "pendingRecurrenceType",
+                "pendingRecurrenceTime",
+                "pendingRecurrenceWeekday",
+                "pendingRecurrenceDayOfMonth",
+                "pendingResetCompletionOnCycle",
+                "pendingResetAssignmentOnCycle",
+                "availableFrom",
+                "dueAt",
+                "prerequisiteTaskId",
+                "recurrenceWeekdays",
+                "pendingRecurrenceWeekdays"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "T1",
+                    "Homework",
+                    "Read",
+                    "10",
+                    "TRUE",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "2026-09-01T00:00:00.000Z",
+                    "S1",
+                    "TI1",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "Asia/Seoul",
+                    "WEEKLY",
+                    "09:30",
+                    "",
+                    "",
+                    "FALSE",
+                    "FALSE",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "5,1",
+                    ""
+                  ],
+                  "hash": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}],\"task_allowed_students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"taskInstanceId\":\"TI1\",\"studentId\":\"S1\"}],\"tasks\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"taskId\":\"T1\",\"taskInstanceId\":\"TI1\",\"title\":\"Homework\",\"description\":\"Read\",\"reward\":10,\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"updatedAt\":\"2026-09-01T00:00:00.000Z\",\"allowedStudentIds\":[\"S1\"],\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-08-31T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"WEEKLY\",\"time\":\"09:30\",\"weekdays\":[1,5]},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"availableFrom\":null,\"dueAt\":null,\"prerequisiteTaskId\":null,\"schemaVersion\":3}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Tasks\",\"rowNumber\":2,\"rowHash\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\"},\"redactedSourceRecord\":{\"identityDigest\":\"1f93603db53bfad5c92390f735d0cbb8617b4ab8214ae91c5664a3d1e9b009c8\",\"recognizedFieldCount\":33,\"omittedFieldCount\":0},\"canonicalRecord\":{\"taskId\":\"T1\",\"taskInstanceId\":\"TI1\",\"title\":\"Homework\",\"description\":\"Read\",\"reward\":10,\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"updatedAt\":\"2026-09-01T00:00:00.000Z\",\"allowedStudentIds\":[\"S1\"],\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-08-31T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"WEEKLY\",\"time\":\"09:30\",\"weekdays\":[1,5]},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"availableFrom\":null,\"dueAt\":null,\"prerequisiteTaskId\":null,\"schemaVersion\":3},\"mappingStatus\":\"STAGED\",\"targetTable\":\"tasks\",\"targetId\":\"TI1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\",\"targetTable\":\"task_allowed_students\",\"targetId\":\"defaf770-fff7-5644-a76c-e09a49350018\",\"status\":\"STAGED\"},{\"sourceDigest\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\",\"targetTable\":\"tasks\",\"targetId\":\"TI1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"}]}",
+        "counts": {
+          "tasks": 1,
+          "task_allowed_students": 1
+        }
+      }
+    },
+    {
+      "name": "current-MONTHLY",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 3,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Tasks": {
+              "headers": [
+                "taskId",
+                "title",
+                "description",
+                "reward",
+                "isActive",
+                "sortOrder",
+                "createdAt",
+                "updatedAt",
+                "allowedStudentIds",
+                "taskInstanceId",
+                "ruleVersion",
+                "scheduleEffectiveFrom",
+                "recurrenceTimeZone",
+                "recurrenceType",
+                "recurrenceTime",
+                "recurrenceWeekday",
+                "recurrenceDayOfMonth",
+                "resetCompletionOnCycle",
+                "resetAssignmentOnCycle",
+                "pendingRuleVersion",
+                "pendingEffectiveFrom",
+                "pendingTimeZone",
+                "pendingRecurrenceType",
+                "pendingRecurrenceTime",
+                "pendingRecurrenceWeekday",
+                "pendingRecurrenceDayOfMonth",
+                "pendingResetCompletionOnCycle",
+                "pendingResetAssignmentOnCycle",
+                "availableFrom",
+                "dueAt",
+                "prerequisiteTaskId",
+                "recurrenceWeekdays",
+                "pendingRecurrenceWeekdays"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "T1",
+                    "Homework",
+                    "Read",
+                    "10",
+                    "TRUE",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "2026-09-01T00:00:00.000Z",
+                    "S1",
+                    "TI1",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "Asia/Seoul",
+                    "MONTHLY",
+                    "09:30",
+                    "",
+                    "31",
+                    "FALSE",
+                    "FALSE",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    ""
+                  ],
+                  "hash": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}],\"task_allowed_students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"taskInstanceId\":\"TI1\",\"studentId\":\"S1\"}],\"tasks\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"taskId\":\"T1\",\"taskInstanceId\":\"TI1\",\"title\":\"Homework\",\"description\":\"Read\",\"reward\":10,\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"updatedAt\":\"2026-09-01T00:00:00.000Z\",\"allowedStudentIds\":[\"S1\"],\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-08-31T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"MONTHLY\",\"time\":\"09:30\",\"dayOfMonth\":31},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"availableFrom\":null,\"dueAt\":null,\"prerequisiteTaskId\":null,\"schemaVersion\":3}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Tasks\",\"rowNumber\":2,\"rowHash\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\"},\"redactedSourceRecord\":{\"identityDigest\":\"1f93603db53bfad5c92390f735d0cbb8617b4ab8214ae91c5664a3d1e9b009c8\",\"recognizedFieldCount\":33,\"omittedFieldCount\":0},\"canonicalRecord\":{\"taskId\":\"T1\",\"taskInstanceId\":\"TI1\",\"title\":\"Homework\",\"description\":\"Read\",\"reward\":10,\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"updatedAt\":\"2026-09-01T00:00:00.000Z\",\"allowedStudentIds\":[\"S1\"],\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-08-31T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"MONTHLY\",\"time\":\"09:30\",\"dayOfMonth\":31},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"availableFrom\":null,\"dueAt\":null,\"prerequisiteTaskId\":null,\"schemaVersion\":3},\"mappingStatus\":\"STAGED\",\"targetTable\":\"tasks\",\"targetId\":\"TI1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\",\"targetTable\":\"task_allowed_students\",\"targetId\":\"defaf770-fff7-5644-a76c-e09a49350018\",\"status\":\"STAGED\"},{\"sourceDigest\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\",\"targetTable\":\"tasks\",\"targetId\":\"TI1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"}]}",
+        "counts": {
+          "tasks": 1,
+          "task_allowed_students": 1
+        }
+      }
+    },
+    {
+      "name": "pending-month-end",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 3,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Tasks": {
+              "headers": [
+                "taskId",
+                "title",
+                "description",
+                "reward",
+                "isActive",
+                "sortOrder",
+                "createdAt",
+                "updatedAt",
+                "allowedStudentIds",
+                "taskInstanceId",
+                "ruleVersion",
+                "scheduleEffectiveFrom",
+                "recurrenceTimeZone",
+                "recurrenceType",
+                "recurrenceTime",
+                "recurrenceWeekday",
+                "recurrenceDayOfMonth",
+                "resetCompletionOnCycle",
+                "resetAssignmentOnCycle",
+                "pendingRuleVersion",
+                "pendingEffectiveFrom",
+                "pendingTimeZone",
+                "pendingRecurrenceType",
+                "pendingRecurrenceTime",
+                "pendingRecurrenceWeekday",
+                "pendingRecurrenceDayOfMonth",
+                "pendingResetCompletionOnCycle",
+                "pendingResetAssignmentOnCycle",
+                "availableFrom",
+                "dueAt",
+                "prerequisiteTaskId",
+                "recurrenceWeekdays",
+                "pendingRecurrenceWeekdays"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "T1",
+                    "Homework",
+                    "Read",
+                    "10",
+                    "TRUE",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "2026-09-01T00:00:00.000Z",
+                    "S1",
+                    "TI1",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "Asia/Seoul",
+                    "NONE",
+                    "",
+                    "",
+                    "",
+                    "FALSE",
+                    "FALSE",
+                    "2",
+                    "2026-09-30T00:00:00.000Z",
+                    "America/New_York",
+                    "MONTHLY",
+                    "09:30",
+                    "",
+                    "31",
+                    "TRUE",
+                    "FALSE",
+                    "",
+                    "",
+                    "",
+                    "",
+                    ""
+                  ],
+                  "hash": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}],\"task_allowed_students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"taskInstanceId\":\"TI1\",\"studentId\":\"S1\"}],\"tasks\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"taskId\":\"T1\",\"taskInstanceId\":\"TI1\",\"title\":\"Homework\",\"description\":\"Read\",\"reward\":10,\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"updatedAt\":\"2026-09-01T00:00:00.000Z\",\"allowedStudentIds\":[\"S1\"],\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-08-31T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":{\"ruleVersion\":2,\"effectiveFrom\":\"2026-09-30T00:00:00.000Z\",\"timeZone\":\"America/New_York\",\"recurrence\":{\"type\":\"MONTHLY\",\"time\":\"09:30\",\"dayOfMonth\":31},\"resetCompletionOnCycle\":true,\"resetAssignmentOnCycle\":false},\"availableFrom\":null,\"dueAt\":null,\"prerequisiteTaskId\":null,\"schemaVersion\":3}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Tasks\",\"rowNumber\":2,\"rowHash\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\"},\"redactedSourceRecord\":{\"identityDigest\":\"1f93603db53bfad5c92390f735d0cbb8617b4ab8214ae91c5664a3d1e9b009c8\",\"recognizedFieldCount\":33,\"omittedFieldCount\":0},\"canonicalRecord\":{\"taskId\":\"T1\",\"taskInstanceId\":\"TI1\",\"title\":\"Homework\",\"description\":\"Read\",\"reward\":10,\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"updatedAt\":\"2026-09-01T00:00:00.000Z\",\"allowedStudentIds\":[\"S1\"],\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-08-31T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":{\"ruleVersion\":2,\"effectiveFrom\":\"2026-09-30T00:00:00.000Z\",\"timeZone\":\"America/New_York\",\"recurrence\":{\"type\":\"MONTHLY\",\"time\":\"09:30\",\"dayOfMonth\":31},\"resetCompletionOnCycle\":true,\"resetAssignmentOnCycle\":false},\"availableFrom\":null,\"dueAt\":null,\"prerequisiteTaskId\":null,\"schemaVersion\":3},\"mappingStatus\":\"STAGED\",\"targetTable\":\"tasks\",\"targetId\":\"TI1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\",\"targetTable\":\"task_allowed_students\",\"targetId\":\"defaf770-fff7-5644-a76c-e09a49350018\",\"status\":\"STAGED\"},{\"sourceDigest\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\",\"targetTable\":\"tasks\",\"targetId\":\"TI1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"}]}",
+        "counts": {
+          "tasks": 1,
+          "task_allowed_students": 1
+        }
+      }
+    },
+    {
+      "name": "invalid-current",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 3,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Tasks": {
+              "headers": [
+                "taskId",
+                "title",
+                "description",
+                "reward",
+                "isActive",
+                "sortOrder",
+                "createdAt",
+                "updatedAt",
+                "allowedStudentIds",
+                "taskInstanceId",
+                "ruleVersion",
+                "scheduleEffectiveFrom",
+                "recurrenceTimeZone",
+                "recurrenceType",
+                "recurrenceTime",
+                "recurrenceWeekday",
+                "recurrenceDayOfMonth",
+                "resetCompletionOnCycle",
+                "resetAssignmentOnCycle",
+                "pendingRuleVersion",
+                "pendingEffectiveFrom",
+                "pendingTimeZone",
+                "pendingRecurrenceType",
+                "pendingRecurrenceTime",
+                "pendingRecurrenceWeekday",
+                "pendingRecurrenceDayOfMonth",
+                "pendingResetCompletionOnCycle",
+                "pendingResetAssignmentOnCycle",
+                "availableFrom",
+                "dueAt",
+                "prerequisiteTaskId",
+                "recurrenceWeekdays",
+                "pendingRecurrenceWeekdays"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "T1",
+                    "Homework",
+                    "Read",
+                    "10",
+                    "TRUE",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "2026-09-01T00:00:00.000Z",
+                    "S1",
+                    "TI1",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "Asia/Seoul",
+                    "BAD",
+                    "",
+                    "",
+                    "",
+                    "FALSE",
+                    "FALSE",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    ""
+                  ],
+                  "hash": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}],\"task_allowed_students\":[],\"tasks\":[]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Tasks\",\"rowNumber\":2,\"rowHash\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\"},\"redactedSourceRecord\":{\"identityDigest\":\"1f93603db53bfad5c92390f735d0cbb8617b4ab8214ae91c5664a3d1e9b009c8\",\"recognizedFieldCount\":33,\"omittedFieldCount\":0},\"canonicalRecord\":null,\"mappingStatus\":\"QUARANTINED\",\"warningCodes\":[],\"errorCodes\":[\"MALFORMED_REQUIRED_RECORD\"]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"},{\"code\":\"MALFORMED_REQUIRED_RECORD\",\"path\":\"Tasks[000000002]\",\"sourceDigest\":\"754327ee561f6c1f9d2b444e5cbc6ffdfc70503cc2c2711e3f9372d2bfec55ca\"}]}",
+        "counts": {
+          "tasks": 0,
+          "task_allowed_students": 0
+        }
+      }
+    },
+    {
+      "name": "invalid-pending",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 3,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Tasks": {
+              "headers": [
+                "taskId",
+                "title",
+                "description",
+                "reward",
+                "isActive",
+                "sortOrder",
+                "createdAt",
+                "updatedAt",
+                "allowedStudentIds",
+                "taskInstanceId",
+                "ruleVersion",
+                "scheduleEffectiveFrom",
+                "recurrenceTimeZone",
+                "recurrenceType",
+                "recurrenceTime",
+                "recurrenceWeekday",
+                "recurrenceDayOfMonth",
+                "resetCompletionOnCycle",
+                "resetAssignmentOnCycle",
+                "pendingRuleVersion",
+                "pendingEffectiveFrom",
+                "pendingTimeZone",
+                "pendingRecurrenceType",
+                "pendingRecurrenceTime",
+                "pendingRecurrenceWeekday",
+                "pendingRecurrenceDayOfMonth",
+                "pendingResetCompletionOnCycle",
+                "pendingResetAssignmentOnCycle",
+                "availableFrom",
+                "dueAt",
+                "prerequisiteTaskId",
+                "recurrenceWeekdays",
+                "pendingRecurrenceWeekdays"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "T1",
+                    "Homework",
+                    "Read",
+                    "10",
+                    "TRUE",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "2026-09-01T00:00:00.000Z",
+                    "S1",
+                    "TI1",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "Asia/Seoul",
+                    "NONE",
+                    "",
+                    "",
+                    "",
+                    "FALSE",
+                    "FALSE",
+                    "",
+                    "",
+                    "",
+                    "BAD",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    ""
+                  ],
+                  "hash": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}],\"task_allowed_students\":[],\"tasks\":[]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Tasks\",\"rowNumber\":2,\"rowHash\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\"},\"redactedSourceRecord\":{\"identityDigest\":\"1f93603db53bfad5c92390f735d0cbb8617b4ab8214ae91c5664a3d1e9b009c8\",\"recognizedFieldCount\":33,\"omittedFieldCount\":0},\"canonicalRecord\":null,\"mappingStatus\":\"QUARANTINED\",\"warningCodes\":[],\"errorCodes\":[\"MALFORMED_REQUIRED_RECORD\"]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"},{\"code\":\"MALFORMED_REQUIRED_RECORD\",\"path\":\"Tasks[000000002]\",\"sourceDigest\":\"754327ee561f6c1f9d2b444e5cbc6ffdfc70503cc2c2711e3f9372d2bfec55ca\"}]}",
+        "counts": {
+          "tasks": 0,
+          "task_allowed_students": 0
+        }
+      }
+    },
+    {
+      "name": "invalid-timezone",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 3,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Tasks": {
+              "headers": [
+                "taskId",
+                "title",
+                "description",
+                "reward",
+                "isActive",
+                "sortOrder",
+                "createdAt",
+                "updatedAt",
+                "allowedStudentIds",
+                "taskInstanceId",
+                "ruleVersion",
+                "scheduleEffectiveFrom",
+                "recurrenceTimeZone",
+                "recurrenceType",
+                "recurrenceTime",
+                "recurrenceWeekday",
+                "recurrenceDayOfMonth",
+                "resetCompletionOnCycle",
+                "resetAssignmentOnCycle",
+                "pendingRuleVersion",
+                "pendingEffectiveFrom",
+                "pendingTimeZone",
+                "pendingRecurrenceType",
+                "pendingRecurrenceTime",
+                "pendingRecurrenceWeekday",
+                "pendingRecurrenceDayOfMonth",
+                "pendingResetCompletionOnCycle",
+                "pendingResetAssignmentOnCycle",
+                "availableFrom",
+                "dueAt",
+                "prerequisiteTaskId",
+                "recurrenceWeekdays",
+                "pendingRecurrenceWeekdays"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "T1",
+                    "Homework",
+                    "Read",
+                    "10",
+                    "TRUE",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "2026-09-01T00:00:00.000Z",
+                    "S1",
+                    "TI1",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "BAD",
+                    "NONE",
+                    "",
+                    "",
+                    "",
+                    "FALSE",
+                    "FALSE",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    ""
+                  ],
+                  "hash": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}],\"task_allowed_students\":[],\"tasks\":[]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Tasks\",\"rowNumber\":2,\"rowHash\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\"},\"redactedSourceRecord\":{\"identityDigest\":\"1f93603db53bfad5c92390f735d0cbb8617b4ab8214ae91c5664a3d1e9b009c8\",\"recognizedFieldCount\":33,\"omittedFieldCount\":0},\"canonicalRecord\":null,\"mappingStatus\":\"QUARANTINED\",\"warningCodes\":[],\"errorCodes\":[\"MALFORMED_REQUIRED_RECORD\"]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"},{\"code\":\"MALFORMED_REQUIRED_RECORD\",\"path\":\"Tasks[000000002]\",\"sourceDigest\":\"754327ee561f6c1f9d2b444e5cbc6ffdfc70503cc2c2711e3f9372d2bfec55ca\"}]}",
+        "counts": {
+          "tasks": 0,
+          "task_allowed_students": 0
+        }
+      }
+    },
+    {
+      "name": "duplicate-allowed",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 3,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Tasks": {
+              "headers": [
+                "taskId",
+                "title",
+                "description",
+                "reward",
+                "isActive",
+                "sortOrder",
+                "createdAt",
+                "updatedAt",
+                "allowedStudentIds",
+                "taskInstanceId",
+                "ruleVersion",
+                "scheduleEffectiveFrom",
+                "recurrenceTimeZone",
+                "recurrenceType",
+                "recurrenceTime",
+                "recurrenceWeekday",
+                "recurrenceDayOfMonth",
+                "resetCompletionOnCycle",
+                "resetAssignmentOnCycle",
+                "pendingRuleVersion",
+                "pendingEffectiveFrom",
+                "pendingTimeZone",
+                "pendingRecurrenceType",
+                "pendingRecurrenceTime",
+                "pendingRecurrenceWeekday",
+                "pendingRecurrenceDayOfMonth",
+                "pendingResetCompletionOnCycle",
+                "pendingResetAssignmentOnCycle",
+                "availableFrom",
+                "dueAt",
+                "prerequisiteTaskId",
+                "recurrenceWeekdays",
+                "pendingRecurrenceWeekdays"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "T1",
+                    "Homework",
+                    "Read",
+                    "10",
+                    "TRUE",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "2026-09-01T00:00:00.000Z",
+                    "S1,S1",
+                    "TI1",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "Asia/Seoul",
+                    "NONE",
+                    "",
+                    "",
+                    "",
+                    "FALSE",
+                    "FALSE",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    ""
+                  ],
+                  "hash": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}],\"task_allowed_students\":[],\"tasks\":[]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Tasks\",\"rowNumber\":2,\"rowHash\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\"},\"redactedSourceRecord\":{\"identityDigest\":\"1f93603db53bfad5c92390f735d0cbb8617b4ab8214ae91c5664a3d1e9b009c8\",\"recognizedFieldCount\":33,\"omittedFieldCount\":0},\"canonicalRecord\":null,\"mappingStatus\":\"QUARANTINED\",\"warningCodes\":[],\"errorCodes\":[\"DUPLICATE_ALLOWED_STUDENT_ID\"]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"DUPLICATE_ALLOWED_STUDENT_ID\",\"path\":\"Tasks[000000002]\",\"sourceDigest\":\"754327ee561f6c1f9d2b444e5cbc6ffdfc70503cc2c2711e3f9372d2bfec55ca\"},{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"}]}",
+        "counts": {
+          "tasks": 0,
+          "task_allowed_students": 0
+        }
+      }
+    },
+    {
+      "name": "missing-allowed",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 3,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Tasks": {
+              "headers": [
+                "taskId",
+                "title",
+                "description",
+                "reward",
+                "isActive",
+                "sortOrder",
+                "createdAt",
+                "updatedAt",
+                "allowedStudentIds",
+                "taskInstanceId",
+                "ruleVersion",
+                "scheduleEffectiveFrom",
+                "recurrenceTimeZone",
+                "recurrenceType",
+                "recurrenceTime",
+                "recurrenceWeekday",
+                "recurrenceDayOfMonth",
+                "resetCompletionOnCycle",
+                "resetAssignmentOnCycle",
+                "pendingRuleVersion",
+                "pendingEffectiveFrom",
+                "pendingTimeZone",
+                "pendingRecurrenceType",
+                "pendingRecurrenceTime",
+                "pendingRecurrenceWeekday",
+                "pendingRecurrenceDayOfMonth",
+                "pendingResetCompletionOnCycle",
+                "pendingResetAssignmentOnCycle",
+                "availableFrom",
+                "dueAt",
+                "prerequisiteTaskId",
+                "recurrenceWeekdays",
+                "pendingRecurrenceWeekdays"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "T1",
+                    "Homework",
+                    "Read",
+                    "10",
+                    "TRUE",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "2026-09-01T00:00:00.000Z",
+                    "MISSING",
+                    "TI1",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "Asia/Seoul",
+                    "NONE",
+                    "",
+                    "",
+                    "",
+                    "FALSE",
+                    "FALSE",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    ""
+                  ],
+                  "hash": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}],\"task_allowed_students\":[],\"tasks\":[]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Tasks\",\"rowNumber\":2,\"rowHash\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\"},\"redactedSourceRecord\":{\"identityDigest\":\"1f93603db53bfad5c92390f735d0cbb8617b4ab8214ae91c5664a3d1e9b009c8\",\"recognizedFieldCount\":33,\"omittedFieldCount\":0},\"canonicalRecord\":null,\"mappingStatus\":\"QUARANTINED\",\"warningCodes\":[],\"errorCodes\":[\"BROKEN_ALLOWED_STUDENT_REFERENCE\"]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"BROKEN_ALLOWED_STUDENT_REFERENCE\",\"path\":\"Tasks[000000002]\",\"sourceDigest\":\"754327ee561f6c1f9d2b444e5cbc6ffdfc70503cc2c2711e3f9372d2bfec55ca\"},{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"}]}",
+        "counts": {
+          "tasks": 0,
+          "task_allowed_students": 0
+        }
+      }
+    },
+    {
+      "name": "empty-allowed",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 3,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Tasks": {
+              "headers": [
+                "taskId",
+                "title",
+                "description",
+                "reward",
+                "isActive",
+                "sortOrder",
+                "createdAt",
+                "updatedAt",
+                "allowedStudentIds",
+                "taskInstanceId",
+                "ruleVersion",
+                "scheduleEffectiveFrom",
+                "recurrenceTimeZone",
+                "recurrenceType",
+                "recurrenceTime",
+                "recurrenceWeekday",
+                "recurrenceDayOfMonth",
+                "resetCompletionOnCycle",
+                "resetAssignmentOnCycle",
+                "pendingRuleVersion",
+                "pendingEffectiveFrom",
+                "pendingTimeZone",
+                "pendingRecurrenceType",
+                "pendingRecurrenceTime",
+                "pendingRecurrenceWeekday",
+                "pendingRecurrenceDayOfMonth",
+                "pendingResetCompletionOnCycle",
+                "pendingResetAssignmentOnCycle",
+                "availableFrom",
+                "dueAt",
+                "prerequisiteTaskId",
+                "recurrenceWeekdays",
+                "pendingRecurrenceWeekdays"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "T1",
+                    "Homework",
+                    "Read",
+                    "10",
+                    "TRUE",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "2026-09-01T00:00:00.000Z",
+                    "",
+                    "TI1",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "Asia/Seoul",
+                    "NONE",
+                    "",
+                    "",
+                    "",
+                    "FALSE",
+                    "FALSE",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    ""
+                  ],
+                  "hash": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}],\"task_allowed_students\":[],\"tasks\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"taskId\":\"T1\",\"taskInstanceId\":\"TI1\",\"title\":\"Homework\",\"description\":\"Read\",\"reward\":10,\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"updatedAt\":\"2026-09-01T00:00:00.000Z\",\"allowedStudentIds\":[],\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-08-31T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"availableFrom\":null,\"dueAt\":null,\"prerequisiteTaskId\":null,\"schemaVersion\":3}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Tasks\",\"rowNumber\":2,\"rowHash\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\"},\"redactedSourceRecord\":{\"identityDigest\":\"1f93603db53bfad5c92390f735d0cbb8617b4ab8214ae91c5664a3d1e9b009c8\",\"recognizedFieldCount\":33,\"omittedFieldCount\":0},\"canonicalRecord\":{\"taskId\":\"T1\",\"taskInstanceId\":\"TI1\",\"title\":\"Homework\",\"description\":\"Read\",\"reward\":10,\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"updatedAt\":\"2026-09-01T00:00:00.000Z\",\"allowedStudentIds\":[],\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-08-31T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"availableFrom\":null,\"dueAt\":null,\"prerequisiteTaskId\":null,\"schemaVersion\":3},\"mappingStatus\":\"STAGED\",\"targetTable\":\"tasks\",\"targetId\":\"TI1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\",\"targetTable\":\"tasks\",\"targetId\":\"TI1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"}]}",
+        "counts": {
+          "tasks": 1,
+          "task_allowed_students": 0
+        }
+      }
+    },
+    {
+      "name": "self-prerequisite",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 3,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Tasks": {
+              "headers": [
+                "taskId",
+                "title",
+                "description",
+                "reward",
+                "isActive",
+                "sortOrder",
+                "createdAt",
+                "updatedAt",
+                "allowedStudentIds",
+                "taskInstanceId",
+                "ruleVersion",
+                "scheduleEffectiveFrom",
+                "recurrenceTimeZone",
+                "recurrenceType",
+                "recurrenceTime",
+                "recurrenceWeekday",
+                "recurrenceDayOfMonth",
+                "resetCompletionOnCycle",
+                "resetAssignmentOnCycle",
+                "pendingRuleVersion",
+                "pendingEffectiveFrom",
+                "pendingTimeZone",
+                "pendingRecurrenceType",
+                "pendingRecurrenceTime",
+                "pendingRecurrenceWeekday",
+                "pendingRecurrenceDayOfMonth",
+                "pendingResetCompletionOnCycle",
+                "pendingResetAssignmentOnCycle",
+                "availableFrom",
+                "dueAt",
+                "prerequisiteTaskId",
+                "recurrenceWeekdays",
+                "pendingRecurrenceWeekdays"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "T1",
+                    "Homework",
+                    "Read",
+                    "10",
+                    "TRUE",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "2026-09-01T00:00:00.000Z",
+                    "S1",
+                    "TI1",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "Asia/Seoul",
+                    "NONE",
+                    "",
+                    "",
+                    "",
+                    "FALSE",
+                    "FALSE",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "T1",
+                    "",
+                    ""
+                  ],
+                  "hash": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}],\"task_allowed_students\":[],\"tasks\":[]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Tasks\",\"rowNumber\":2,\"rowHash\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\"},\"redactedSourceRecord\":{\"identityDigest\":\"1f93603db53bfad5c92390f735d0cbb8617b4ab8214ae91c5664a3d1e9b009c8\",\"recognizedFieldCount\":33,\"omittedFieldCount\":0},\"canonicalRecord\":null,\"mappingStatus\":\"QUARANTINED\",\"warningCodes\":[],\"errorCodes\":[\"SELF_TASK_REFERENCE\"]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"},{\"code\":\"SELF_TASK_REFERENCE\",\"path\":\"Tasks[000000002]\",\"sourceDigest\":\"754327ee561f6c1f9d2b444e5cbc6ffdfc70503cc2c2711e3f9372d2bfec55ca\"}]}",
+        "counts": {
+          "tasks": 0,
+          "task_allowed_students": 0
+        }
+      }
+    },
+    {
+      "name": "invalid-instance",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 3,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Tasks": {
+              "headers": [
+                "taskId",
+                "title",
+                "description",
+                "reward",
+                "isActive",
+                "sortOrder",
+                "createdAt",
+                "updatedAt",
+                "allowedStudentIds",
+                "taskInstanceId",
+                "ruleVersion",
+                "scheduleEffectiveFrom",
+                "recurrenceTimeZone",
+                "recurrenceType",
+                "recurrenceTime",
+                "recurrenceWeekday",
+                "recurrenceDayOfMonth",
+                "resetCompletionOnCycle",
+                "resetAssignmentOnCycle",
+                "pendingRuleVersion",
+                "pendingEffectiveFrom",
+                "pendingTimeZone",
+                "pendingRecurrenceType",
+                "pendingRecurrenceTime",
+                "pendingRecurrenceWeekday",
+                "pendingRecurrenceDayOfMonth",
+                "pendingResetCompletionOnCycle",
+                "pendingResetAssignmentOnCycle",
+                "availableFrom",
+                "dueAt",
+                "prerequisiteTaskId",
+                "recurrenceWeekdays",
+                "pendingRecurrenceWeekdays"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "T1",
+                    "Homework",
+                    "Read",
+                    "10",
+                    "TRUE",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "2026-09-01T00:00:00.000Z",
+                    "S1",
+                    "bad id",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "Asia/Seoul",
+                    "NONE",
+                    "",
+                    "",
+                    "",
+                    "FALSE",
+                    "FALSE",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    ""
+                  ],
+                  "hash": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}],\"task_allowed_students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"taskInstanceId\":\"bad id\",\"studentId\":\"S1\"}],\"tasks\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"taskId\":\"T1\",\"taskInstanceId\":\"bad id\",\"title\":\"Homework\",\"description\":\"Read\",\"reward\":10,\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"updatedAt\":\"2026-09-01T00:00:00.000Z\",\"allowedStudentIds\":[\"S1\"],\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-08-31T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"availableFrom\":null,\"dueAt\":null,\"prerequisiteTaskId\":null,\"schemaVersion\":3}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Tasks\",\"rowNumber\":2,\"rowHash\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\"},\"redactedSourceRecord\":{\"identityDigest\":\"1f93603db53bfad5c92390f735d0cbb8617b4ab8214ae91c5664a3d1e9b009c8\",\"recognizedFieldCount\":33,\"omittedFieldCount\":0},\"canonicalRecord\":{\"taskId\":\"T1\",\"taskInstanceId\":\"bad id\",\"title\":\"Homework\",\"description\":\"Read\",\"reward\":10,\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"updatedAt\":\"2026-09-01T00:00:00.000Z\",\"allowedStudentIds\":[\"S1\"],\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-08-31T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"availableFrom\":null,\"dueAt\":null,\"prerequisiteTaskId\":null,\"schemaVersion\":3},\"mappingStatus\":\"STAGED\",\"targetTable\":\"tasks\",\"targetId\":\"bad id\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\",\"targetTable\":\"task_allowed_students\",\"targetId\":\"e8cd644c-8c89-589b-a227-5b8a316e369a\",\"status\":\"STAGED\"},{\"sourceDigest\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\",\"targetTable\":\"tasks\",\"targetId\":\"bad id\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"}]}",
+        "counts": {
+          "tasks": 1,
+          "task_allowed_students": 1
+        }
+      }
+    },
+    {
+      "name": "invalid-dates",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 3,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Tasks": {
+              "headers": [
+                "taskId",
+                "title",
+                "description",
+                "reward",
+                "isActive",
+                "sortOrder",
+                "createdAt",
+                "updatedAt",
+                "allowedStudentIds",
+                "taskInstanceId",
+                "ruleVersion",
+                "scheduleEffectiveFrom",
+                "recurrenceTimeZone",
+                "recurrenceType",
+                "recurrenceTime",
+                "recurrenceWeekday",
+                "recurrenceDayOfMonth",
+                "resetCompletionOnCycle",
+                "resetAssignmentOnCycle",
+                "pendingRuleVersion",
+                "pendingEffectiveFrom",
+                "pendingTimeZone",
+                "pendingRecurrenceType",
+                "pendingRecurrenceTime",
+                "pendingRecurrenceWeekday",
+                "pendingRecurrenceDayOfMonth",
+                "pendingResetCompletionOnCycle",
+                "pendingResetAssignmentOnCycle",
+                "availableFrom",
+                "dueAt",
+                "prerequisiteTaskId",
+                "recurrenceWeekdays",
+                "pendingRecurrenceWeekdays"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "T1",
+                    "Homework",
+                    "Read",
+                    "10",
+                    "TRUE",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "2026-09-01T00:00:00.000Z",
+                    "S1",
+                    "TI1",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "Asia/Seoul",
+                    "NONE",
+                    "",
+                    "",
+                    "",
+                    "FALSE",
+                    "FALSE",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "bad",
+                    "",
+                    "",
+                    ""
+                  ],
+                  "hash": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}],\"task_allowed_students\":[],\"tasks\":[]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Tasks\",\"rowNumber\":2,\"rowHash\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\"},\"redactedSourceRecord\":{\"identityDigest\":\"1f93603db53bfad5c92390f735d0cbb8617b4ab8214ae91c5664a3d1e9b009c8\",\"recognizedFieldCount\":33,\"omittedFieldCount\":0},\"canonicalRecord\":null,\"mappingStatus\":\"QUARANTINED\",\"warningCodes\":[],\"errorCodes\":[\"MALFORMED_REQUIRED_RECORD\"]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"},{\"code\":\"MALFORMED_REQUIRED_RECORD\",\"path\":\"Tasks[000000002]\",\"sourceDigest\":\"754327ee561f6c1f9d2b444e5cbc6ffdfc70503cc2c2711e3f9372d2bfec55ca\"}]}",
+        "counts": {
+          "tasks": 0,
+          "task_allowed_students": 0
+        }
+      }
+    },
+    {
+      "name": "invalid-weekdays",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 3,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Tasks": {
+              "headers": [
+                "taskId",
+                "title",
+                "description",
+                "reward",
+                "isActive",
+                "sortOrder",
+                "createdAt",
+                "updatedAt",
+                "allowedStudentIds",
+                "taskInstanceId",
+                "ruleVersion",
+                "scheduleEffectiveFrom",
+                "recurrenceTimeZone",
+                "recurrenceType",
+                "recurrenceTime",
+                "recurrenceWeekday",
+                "recurrenceDayOfMonth",
+                "resetCompletionOnCycle",
+                "resetAssignmentOnCycle",
+                "pendingRuleVersion",
+                "pendingEffectiveFrom",
+                "pendingTimeZone",
+                "pendingRecurrenceType",
+                "pendingRecurrenceTime",
+                "pendingRecurrenceWeekday",
+                "pendingRecurrenceDayOfMonth",
+                "pendingResetCompletionOnCycle",
+                "pendingResetAssignmentOnCycle",
+                "availableFrom",
+                "dueAt",
+                "prerequisiteTaskId",
+                "recurrenceWeekdays",
+                "pendingRecurrenceWeekdays"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "T1",
+                    "Homework",
+                    "Read",
+                    "10",
+                    "TRUE",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "2026-09-01T00:00:00.000Z",
+                    "S1",
+                    "TI1",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "Asia/Seoul",
+                    "WEEKLY",
+                    "",
+                    "",
+                    "",
+                    "FALSE",
+                    "FALSE",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "1,1",
+                    ""
+                  ],
+                  "hash": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}],\"task_allowed_students\":[],\"tasks\":[]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Tasks\",\"rowNumber\":2,\"rowHash\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\"},\"redactedSourceRecord\":{\"identityDigest\":\"1f93603db53bfad5c92390f735d0cbb8617b4ab8214ae91c5664a3d1e9b009c8\",\"recognizedFieldCount\":33,\"omittedFieldCount\":0},\"canonicalRecord\":null,\"mappingStatus\":\"QUARANTINED\",\"warningCodes\":[],\"errorCodes\":[\"MALFORMED_REQUIRED_RECORD\"]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"},{\"code\":\"MALFORMED_REQUIRED_RECORD\",\"path\":\"Tasks[000000002]\",\"sourceDigest\":\"754327ee561f6c1f9d2b444e5cbc6ffdfc70503cc2c2711e3f9372d2bfec55ca\"}]}",
+        "counts": {
+          "tasks": 0,
+          "task_allowed_students": 0
+        }
+      }
+    },
+    {
+      "name": "allowed-sorted",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 3,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                },
+                {
+                  "rowNumber": 3,
+                  "cells": [
+                    "S2",
+                    "Bob",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "student-2"
+                }
+              ]
+            },
+            "Tasks": {
+              "headers": [
+                "taskId",
+                "title",
+                "description",
+                "reward",
+                "isActive",
+                "sortOrder",
+                "createdAt",
+                "updatedAt",
+                "allowedStudentIds",
+                "taskInstanceId",
+                "ruleVersion",
+                "scheduleEffectiveFrom",
+                "recurrenceTimeZone",
+                "recurrenceType",
+                "recurrenceTime",
+                "recurrenceWeekday",
+                "recurrenceDayOfMonth",
+                "resetCompletionOnCycle",
+                "resetAssignmentOnCycle",
+                "pendingRuleVersion",
+                "pendingEffectiveFrom",
+                "pendingTimeZone",
+                "pendingRecurrenceType",
+                "pendingRecurrenceTime",
+                "pendingRecurrenceWeekday",
+                "pendingRecurrenceDayOfMonth",
+                "pendingResetCompletionOnCycle",
+                "pendingResetAssignmentOnCycle",
+                "availableFrom",
+                "dueAt",
+                "prerequisiteTaskId",
+                "recurrenceWeekdays",
+                "pendingRecurrenceWeekdays"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "T1",
+                    "Homework",
+                    "Read",
+                    "10",
+                    "TRUE",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "2026-09-01T00:00:00.000Z",
+                    "S2; S1\n",
+                    "TI1",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "Asia/Seoul",
+                    "NONE",
+                    "",
+                    "",
+                    "",
+                    "FALSE",
+                    "FALSE",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    ""
+                  ],
+                  "hash": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100},{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S2\",\"balance\":100}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"},{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S2\",\"name\":\"Bob\",\"status\":\"ACTIVE\"}],\"task_allowed_students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"taskInstanceId\":\"TI1\",\"studentId\":\"S2\"},{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"taskInstanceId\":\"TI1\",\"studentId\":\"S1\"}],\"tasks\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"taskId\":\"T1\",\"taskInstanceId\":\"TI1\",\"title\":\"Homework\",\"description\":\"Read\",\"reward\":10,\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"updatedAt\":\"2026-09-01T00:00:00.000Z\",\"allowedStudentIds\":[\"S1\",\"S2\"],\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-08-31T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"availableFrom\":null,\"dueAt\":null,\"prerequisiteTaskId\":null,\"schemaVersion\":3}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Students\",\"rowNumber\":3,\"rowHash\":\"student-2\"},\"redactedSourceRecord\":{\"identityDigest\":\"adfa2b24c2d924fe6383d8804be55afb98ea3eb0e14c3470ac3a0f651b9a422e\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S2\",\"name\":\"Bob\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S2\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Tasks\",\"rowNumber\":2,\"rowHash\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\"},\"redactedSourceRecord\":{\"identityDigest\":\"1f93603db53bfad5c92390f735d0cbb8617b4ab8214ae91c5664a3d1e9b009c8\",\"recognizedFieldCount\":33,\"omittedFieldCount\":0},\"canonicalRecord\":{\"taskId\":\"T1\",\"taskInstanceId\":\"TI1\",\"title\":\"Homework\",\"description\":\"Read\",\"reward\":10,\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"updatedAt\":\"2026-09-01T00:00:00.000Z\",\"allowedStudentIds\":[\"S1\",\"S2\"],\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-08-31T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"availableFrom\":null,\"dueAt\":null,\"prerequisiteTaskId\":null,\"schemaVersion\":3},\"mappingStatus\":\"STAGED\",\"targetTable\":\"tasks\",\"targetId\":\"TI1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"student-2\",\"targetTable\":\"accounts\",\"targetId\":\"S2\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"student-2\",\"targetTable\":\"students\",\"targetId\":\"S2\",\"status\":\"STAGED\"},{\"sourceDigest\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\",\"targetTable\":\"task_allowed_students\",\"targetId\":\"70f3d329-2b9e-5d22-a451-b5d22c1eccf8\",\"status\":\"STAGED\"},{\"sourceDigest\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\",\"targetTable\":\"task_allowed_students\",\"targetId\":\"defaf770-fff7-5644-a76c-e09a49350018\",\"status\":\"STAGED\"},{\"sourceDigest\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\",\"targetTable\":\"tasks\",\"targetId\":\"TI1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"}]}",
+        "counts": {
+          "tasks": 1,
+          "task_allowed_students": 2
+        }
+      }
+    },
+    {
+      "name": "prerequisite",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 3,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Tasks": {
+              "headers": [
+                "taskId",
+                "title",
+                "description",
+                "reward",
+                "isActive",
+                "sortOrder",
+                "createdAt",
+                "updatedAt",
+                "allowedStudentIds",
+                "taskInstanceId",
+                "ruleVersion",
+                "scheduleEffectiveFrom",
+                "recurrenceTimeZone",
+                "recurrenceType",
+                "recurrenceTime",
+                "recurrenceWeekday",
+                "recurrenceDayOfMonth",
+                "resetCompletionOnCycle",
+                "resetAssignmentOnCycle",
+                "pendingRuleVersion",
+                "pendingEffectiveFrom",
+                "pendingTimeZone",
+                "pendingRecurrenceType",
+                "pendingRecurrenceTime",
+                "pendingRecurrenceWeekday",
+                "pendingRecurrenceDayOfMonth",
+                "pendingResetCompletionOnCycle",
+                "pendingResetAssignmentOnCycle",
+                "availableFrom",
+                "dueAt",
+                "prerequisiteTaskId",
+                "recurrenceWeekdays",
+                "pendingRecurrenceWeekdays"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "T1",
+                    "Homework",
+                    "Read",
+                    "10",
+                    "TRUE",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "2026-09-01T00:00:00.000Z",
+                    "S1",
+                    "TI1",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "Asia/Seoul",
+                    "NONE",
+                    "",
+                    "",
+                    "",
+                    "FALSE",
+                    "FALSE",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "T2",
+                    "",
+                    ""
+                  ],
+                  "hash": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33"
+                },
+                {
+                  "rowNumber": 3,
+                  "cells": [
+                    "T2",
+                    "Homework",
+                    "Read",
+                    "10",
+                    "TRUE",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "2026-09-01T00:00:00.000Z",
+                    "S1",
+                    "TI2",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "Asia/Seoul",
+                    "NONE",
+                    "",
+                    "",
+                    "",
+                    "FALSE",
+                    "FALSE",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    ""
+                  ],
+                  "hash": "task-2"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}],\"task_allowed_students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"taskInstanceId\":\"TI2\",\"studentId\":\"S1\"},{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"taskInstanceId\":\"TI1\",\"studentId\":\"S1\"}],\"tasks\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"taskId\":\"T1\",\"taskInstanceId\":\"TI1\",\"title\":\"Homework\",\"description\":\"Read\",\"reward\":10,\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"updatedAt\":\"2026-09-01T00:00:00.000Z\",\"allowedStudentIds\":[\"S1\"],\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-08-31T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"availableFrom\":null,\"dueAt\":null,\"prerequisiteTaskId\":\"T2\",\"schemaVersion\":3,\"prerequisiteTaskInstanceId\":\"TI2\"},{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"taskId\":\"T2\",\"taskInstanceId\":\"TI2\",\"title\":\"Homework\",\"description\":\"Read\",\"reward\":10,\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"updatedAt\":\"2026-09-01T00:00:00.000Z\",\"allowedStudentIds\":[\"S1\"],\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-08-31T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"availableFrom\":null,\"dueAt\":null,\"prerequisiteTaskId\":null,\"schemaVersion\":3}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Tasks\",\"rowNumber\":2,\"rowHash\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\"},\"redactedSourceRecord\":{\"identityDigest\":\"1f93603db53bfad5c92390f735d0cbb8617b4ab8214ae91c5664a3d1e9b009c8\",\"recognizedFieldCount\":33,\"omittedFieldCount\":0},\"canonicalRecord\":{\"taskId\":\"T1\",\"taskInstanceId\":\"TI1\",\"title\":\"Homework\",\"description\":\"Read\",\"reward\":10,\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"updatedAt\":\"2026-09-01T00:00:00.000Z\",\"allowedStudentIds\":[\"S1\"],\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-08-31T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"availableFrom\":null,\"dueAt\":null,\"prerequisiteTaskId\":\"T2\",\"schemaVersion\":3,\"prerequisiteTaskInstanceId\":\"TI2\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"tasks\",\"targetId\":\"TI1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Tasks\",\"rowNumber\":3,\"rowHash\":\"task-2\"},\"redactedSourceRecord\":{\"identityDigest\":\"0f617ba98e6a0f426517e51aff86858da592399abcde80b1b5995a6d0b71a055\",\"recognizedFieldCount\":33,\"omittedFieldCount\":0},\"canonicalRecord\":{\"taskId\":\"T2\",\"taskInstanceId\":\"TI2\",\"title\":\"Homework\",\"description\":\"Read\",\"reward\":10,\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"updatedAt\":\"2026-09-01T00:00:00.000Z\",\"allowedStudentIds\":[\"S1\"],\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-08-31T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"availableFrom\":null,\"dueAt\":null,\"prerequisiteTaskId\":null,\"schemaVersion\":3},\"mappingStatus\":\"STAGED\",\"targetTable\":\"tasks\",\"targetId\":\"TI2\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"task-2\",\"targetTable\":\"task_allowed_students\",\"targetId\":\"caeec0b1-3827-5508-afd1-ac1e66c569b7\",\"status\":\"STAGED\"},{\"sourceDigest\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\",\"targetTable\":\"task_allowed_students\",\"targetId\":\"defaf770-fff7-5644-a76c-e09a49350018\",\"status\":\"STAGED\"},{\"sourceDigest\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\",\"targetTable\":\"tasks\",\"targetId\":\"TI1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"task-2\",\"targetTable\":\"tasks\",\"targetId\":\"TI2\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"}]}",
+        "counts": {
+          "tasks": 2,
+          "task_allowed_students": 2
+        }
+      }
+    },
+    {
+      "name": "fallback-long-instance",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 3,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Tasks": {
+              "headers": [
+                "taskId",
+                "title",
+                "description",
+                "reward",
+                "isActive",
+                "sortOrder",
+                "createdAt",
+                "updatedAt",
+                "allowedStudentIds",
+                "taskInstanceId",
+                "ruleVersion",
+                "scheduleEffectiveFrom",
+                "recurrenceTimeZone",
+                "recurrenceType",
+                "recurrenceTime",
+                "recurrenceWeekday",
+                "recurrenceDayOfMonth",
+                "resetCompletionOnCycle",
+                "resetAssignmentOnCycle",
+                "pendingRuleVersion",
+                "pendingEffectiveFrom",
+                "pendingTimeZone",
+                "pendingRecurrenceType",
+                "pendingRecurrenceTime",
+                "pendingRecurrenceWeekday",
+                "pendingRecurrenceDayOfMonth",
+                "pendingResetCompletionOnCycle",
+                "pendingResetAssignmentOnCycle",
+                "availableFrom",
+                "dueAt",
+                "prerequisiteTaskId",
+                "recurrenceWeekdays",
+                "pendingRecurrenceWeekdays"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "T1",
+                    "Homework",
+                    "Read",
+                    "10",
+                    "TRUE",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "2026-09-01T00:00:00.000Z",
+                    "S1",
+                    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "Asia/Seoul",
+                    "NONE",
+                    "",
+                    "",
+                    "",
+                    "FALSE",
+                    "FALSE",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    ""
+                  ],
+                  "hash": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}],\"task_allowed_students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"taskInstanceId\":\"legacy:T1:2026-08-31T00:00:00.000Z\",\"studentId\":\"S1\"}],\"tasks\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"taskId\":\"T1\",\"taskInstanceId\":\"legacy:T1:2026-08-31T00:00:00.000Z\",\"title\":\"Homework\",\"description\":\"Read\",\"reward\":10,\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"updatedAt\":\"2026-09-01T00:00:00.000Z\",\"allowedStudentIds\":[\"S1\"],\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-08-31T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"availableFrom\":null,\"dueAt\":null,\"prerequisiteTaskId\":null,\"schemaVersion\":3}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Tasks\",\"rowNumber\":2,\"rowHash\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\"},\"redactedSourceRecord\":{\"identityDigest\":\"1f93603db53bfad5c92390f735d0cbb8617b4ab8214ae91c5664a3d1e9b009c8\",\"recognizedFieldCount\":33,\"omittedFieldCount\":0},\"canonicalRecord\":{\"taskId\":\"T1\",\"taskInstanceId\":\"legacy:T1:2026-08-31T00:00:00.000Z\",\"title\":\"Homework\",\"description\":\"Read\",\"reward\":10,\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"updatedAt\":\"2026-09-01T00:00:00.000Z\",\"allowedStudentIds\":[\"S1\"],\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-08-31T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"availableFrom\":null,\"dueAt\":null,\"prerequisiteTaskId\":null,\"schemaVersion\":3},\"mappingStatus\":\"STAGED\",\"targetTable\":\"tasks\",\"targetId\":\"legacy:T1:2026-08-31T00:00:00.000Z\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\",\"targetTable\":\"task_allowed_students\",\"targetId\":\"e8d01ee8-c1a8-55fb-a9b9-d80f242330b9\",\"status\":\"STAGED\"},{\"sourceDigest\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\",\"targetTable\":\"tasks\",\"targetId\":\"legacy:T1:2026-08-31T00:00:00.000Z\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"}]}",
+        "counts": {
+          "tasks": 1,
+          "task_allowed_students": 1
+        }
+      }
+    },
+    {
+      "name": "fallback-unicode-task",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 3,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Tasks": {
+              "headers": [
+                "taskId",
+                "title",
+                "description",
+                "reward",
+                "isActive",
+                "sortOrder",
+                "createdAt",
+                "updatedAt",
+                "allowedStudentIds",
+                "taskInstanceId",
+                "ruleVersion",
+                "scheduleEffectiveFrom",
+                "recurrenceTimeZone",
+                "recurrenceType",
+                "recurrenceTime",
+                "recurrenceWeekday",
+                "recurrenceDayOfMonth",
+                "resetCompletionOnCycle",
+                "resetAssignmentOnCycle",
+                "pendingRuleVersion",
+                "pendingEffectiveFrom",
+                "pendingTimeZone",
+                "pendingRecurrenceType",
+                "pendingRecurrenceTime",
+                "pendingRecurrenceWeekday",
+                "pendingRecurrenceDayOfMonth",
+                "pendingResetCompletionOnCycle",
+                "pendingResetAssignmentOnCycle",
+                "availableFrom",
+                "dueAt",
+                "prerequisiteTaskId",
+                "recurrenceWeekdays",
+                "pendingRecurrenceWeekdays"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "과제🚀",
+                    "Homework",
+                    "Read",
+                    "10",
+                    "TRUE",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "2026-09-01T00:00:00.000Z",
+                    "S1",
+                    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+                    "1",
+                    "2026-08-31T00:00:00.000Z",
+                    "Asia/Seoul",
+                    "NONE",
+                    "",
+                    "",
+                    "",
+                    "FALSE",
+                    "FALSE",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    ""
+                  ],
+                  "hash": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}],\"task_allowed_students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"taskInstanceId\":\"legacy:과제🚀:2026-08-31T00:00:00.000Z\",\"studentId\":\"S1\"}],\"tasks\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"taskId\":\"과제🚀\",\"taskInstanceId\":\"legacy:과제🚀:2026-08-31T00:00:00.000Z\",\"title\":\"Homework\",\"description\":\"Read\",\"reward\":10,\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"updatedAt\":\"2026-09-01T00:00:00.000Z\",\"allowedStudentIds\":[\"S1\"],\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-08-31T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"availableFrom\":null,\"dueAt\":null,\"prerequisiteTaskId\":null,\"schemaVersion\":3}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"Tasks\",\"rowNumber\":2,\"rowHash\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\"},\"redactedSourceRecord\":{\"identityDigest\":\"fb5876a0faea7b84de13cfd110e479b613fa3dfc2ea68954039f9925b1a12bae\",\"recognizedFieldCount\":33,\"omittedFieldCount\":0},\"canonicalRecord\":{\"taskId\":\"과제🚀\",\"taskInstanceId\":\"legacy:과제🚀:2026-08-31T00:00:00.000Z\",\"title\":\"Homework\",\"description\":\"Read\",\"reward\":10,\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-08-31T00:00:00.000Z\",\"updatedAt\":\"2026-09-01T00:00:00.000Z\",\"allowedStudentIds\":[\"S1\"],\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-08-31T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"availableFrom\":null,\"dueAt\":null,\"prerequisiteTaskId\":null,\"schemaVersion\":3},\"mappingStatus\":\"STAGED\",\"targetTable\":\"tasks\",\"targetId\":\"legacy:과제🚀:2026-08-31T00:00:00.000Z\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\",\"targetTable\":\"task_allowed_students\",\"targetId\":\"7a6761a0-ad91-598e-a55d-2707f4069e70\",\"status\":\"STAGED\"},{\"sourceDigest\":\"4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33\",\"targetTable\":\"tasks\",\"targetId\":\"legacy:과제🚀:2026-08-31T00:00:00.000Z\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"ecac69465feb982140f3d145170459ec4e66fdc1cdf562be2924a18189d18a85\"}]}",
+        "counts": {
+          "tasks": 1,
+          "task_allowed_students": 1
+        }
+      }
+    }
+  ]
+}

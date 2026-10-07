@@ -3,6 +3,7 @@ import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/ap
 import { createConfiguredSheetsStore } from '@/server/googleSheets';
 import { updateTaskSchedulesBatch } from '@/server/sheetsRepository';
 import { parseOptionalTaskScheduleEdit } from '../../taskScheduleEdit';
+import { legacyTaskWriterRefusal } from '@/server/legacyTaskWriters';
 
 const MAX_BATCH_TASKS = 20;
 const ROOT_KEYS = new Set(['taskIds', 'schedule', 'availableFrom', 'dueAt']);
@@ -13,6 +14,8 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
   const frozen = legacyWriteFreezeResponse();
   if (frozen) return frozen;
+  const unsupported = legacyTaskWriterRefusal();
+  if (unsupported) return unsupported;
 
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 

@@ -1,0 +1,162 @@
+{
+  "originalPin": "448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8",
+  "provenance": "Byte-exact git show 448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8:<logical path>; independently matched historical oracle-manifest.json and portability audit. Runtime requires no Git objects or network. Original notices retained verbatim.",
+  "modules": [
+    {
+      "path": "src/domain/taskAvailability.ts",
+      "payload": "src/domain/taskAvailability.ts.txt",
+      "sha256": "6a112d9d0bd09e3f66f2b31267673409906b72c5e464062d1986beb3895a811f",
+      "bytes": 1606
+    },
+    {
+      "path": "src/domain/taskCompletionPolicy.ts",
+      "payload": "src/domain/taskCompletionPolicy.ts.txt",
+      "sha256": "7ebe988fbb764b69b89a2998b706df873a51afb059bce923d1c2e8122cc0d098",
+      "bytes": 2453
+    },
+    {
+      "path": "src/domain/taskCycleHistory.ts",
+      "payload": "src/domain/taskCycleHistory.ts.txt",
+      "sha256": "fbf12541479db6f5930d2a500d36a50861706c4ee166b0e530302bff2ef907c4",
+      "bytes": 3124
+    },
+    {
+      "path": "src/domain/taskCycleState.ts",
+      "payload": "src/domain/taskCycleState.ts.txt",
+      "sha256": "e32e0e46cb03f2208a9f4acd7cb6faaee8b33f9b8e5b72e4b20b652cae4fcb6e",
+      "bytes": 9624
+    },
+    {
+      "path": "src/domain/taskPrerequisite.ts",
+      "payload": "src/domain/taskPrerequisite.ts.txt",
+      "sha256": "b627c5324c9726a26127bdf8f2bd63d8202720f189683ed85b6b3e8f3053bf7d",
+      "bytes": 1311
+    },
+    {
+      "path": "src/domain/taskRecurrence.ts",
+      "payload": "src/domain/taskRecurrence.ts.txt",
+      "sha256": "05da4ed0420aa022f2a07a26970cb66c3a3075d73d7debcde27069a13d957d4e",
+      "bytes": 7577
+    },
+    {
+      "path": "src/domain/taskSchedule.ts",
+      "payload": "src/domain/taskSchedule.ts.txt",
+      "sha256": "6163e22753dd12c9594afba89e518c9954c8058e5311e67c60d527dce11bde86",
+      "bytes": 13453
+    },
+    {
+      "path": "src/domain/timeZone.ts",
+      "payload": "src/domain/timeZone.ts.txt",
+      "sha256": "0989c305ff17e78d7902f66c9a41000c77040152aa9c9ea811fb31397ec23f82",
+      "bytes": 622
+    },
+    {
+      "path": "src/lib/checkoutSnapshotClient.ts",
+      "payload": "src/lib/checkoutSnapshotClient.ts.txt",
+      "sha256": "5cbad593c0f2b0f814f0084c15efdea40b443920374eeef85c67113a97561d4b",
+      "bytes": 6876
+    },
+    {
+      "path": "src/lib/promotionClient.ts",
+      "payload": "src/lib/promotionClient.ts.txt",
+      "sha256": "0561d6787a2b9ac167feddd4cd92049ba4145dfd84747109bd618f6a3ed9fcbf",
+      "bytes": 4566
+    },
+    {
+      "path": "src/server/migration/normalize.ts",
+      "payload": "src/server/migration/normalize.ts.txt",
+      "sha256": "2e589280a870204623ba6a86e2008cbc1bdb50654582ce3cd82bf36b4a44cdbd",
+      "bytes": 61266
+    },
+    {
+      "path": "src/server/migration/operationalProjection.ts",
+      "payload": "src/server/migration/operationalProjection.ts.txt",
+      "sha256": "aa067e476dbbc95e34cc2fa9a8183b76ca5bc3b40d48724902e7e50a8d0617dd",
+      "bytes": 4512
+    },
+    {
+      "path": "src/server/migration/semanticValidators.ts",
+      "payload": "src/server/migration/semanticValidators.ts.txt",
+      "sha256": "401da3d293237c30da345a29f86acf0535c4d5e8082b8b5c9a83e08eb0ecf13f",
+      "bytes": 7325
+    },
+    {
+      "path": "src/server/migration/sensitiveRedaction.ts",
+      "payload": "src/server/migration/sensitiveRedaction.ts.txt",
+      "sha256": "380f4c4501eb781c9b1d65b8fed26026f9cfe27184fdafe25a33484110988f40",
+      "bytes": 7280
+    },
+    {
+      "path": "src/server/migration/sheetsSnapshot.ts",
+      "payload": "src/server/migration/sheetsSnapshot.ts.txt",
+      "sha256": "b2f19c2ab6093fc9d69630cefe0c658974cd13404a122c734996e0c68e5a536c",
+      "bytes": 7117
+    },
+    {
+      "path": "src/server/migration/validators.ts",
+      "payload": "src/server/migration/validators.ts.txt",
+      "sha256": "1830f83155745760e39fefbd8595da4149dd3e3882bf2193a26648c2b39dac07",
+      "bytes": 21167
+    },
+    {
+      "path": "src/server/operationTelemetry.ts",
+      "payload": "src/server/operationTelemetry.ts.txt",
+      "sha256": "08758b45b680f96207812df74f56975af21cc7f4b1c19e2ff60816ef1ed17c4c",
+      "bytes": 925
+    },
+    {
+      "path": "src/server/repositories/sheets/recurringSchemaMigrator.ts",
+      "payload": "src/server/repositories/sheets/recurringSchemaMigrator.ts.txt",
+      "sha256": "19cc07533b8466427a73fb090e7c3e7c4ecfddf798606018a02c76b3b38a7c4b",
+      "bytes": 8277
+    },
+    {
+      "path": "src/server/repositories/sheets/taskAssignmentCommands.ts",
+      "payload": "src/server/repositories/sheets/taskAssignmentCommands.ts.txt",
+      "sha256": "2354e64acf9c893f68815efa3d1c15affdc47b1af46330e123e6c0801bba073b",
+      "bytes": 36137
+    },
+    {
+      "path": "src/server/repositories/sheets/taskCommandQueue.ts",
+      "payload": "src/server/repositories/sheets/taskCommandQueue.ts.txt",
+      "sha256": "593ce70f4931468752ac0aaa328dda963a554ffcc8b50b1b03975b59c0b6cbed",
+      "bytes": 1344
+    },
+    {
+      "path": "src/server/repositories/sheets/taskCompletionCommands.ts",
+      "payload": "src/server/repositories/sheets/taskCompletionCommands.ts.txt",
+      "sha256": "41c422bf4773485acff2a8dda68661bfcbb529c046f5080bd413cbe8caf96236",
+      "bytes": 27730
+    },
+    {
+      "path": "src/server/repositories/sheets/taskCycleQueries.ts",
+      "payload": "src/server/repositories/sheets/taskCycleQueries.ts.txt",
+      "sha256": "6fa090c94e34403369bb7256699d3edc53ec0fc01cedbc8a17b9668d5095cc61",
+      "bytes": 3580
+    },
+    {
+      "path": "src/server/repositories/sheets/taskScheduleCommands.ts",
+      "payload": "src/server/repositories/sheets/taskScheduleCommands.ts.txt",
+      "sha256": "6cbd47e5bccb4526eba38b572adb87bf6956312725d5428a614d4ac25800e61f",
+      "bytes": 14568
+    },
+    {
+      "path": "src/server/sheetsRepository.ts",
+      "payload": "src/server/sheetsRepository.ts.txt",
+      "sha256": "6fe56623500264d2129dc363473020cbf101f8972dc3044185a2bfaefca6d384",
+      "bytes": 151856
+    },
+    {
+      "path": "src/server/sheetsRows.ts",
+      "payload": "src/server/sheetsRows.ts.txt",
+      "sha256": "e486799b4358737edd8338347fb0d932554fc37c732a88b4016851571a5a214d",
+      "bytes": 36379
+    },
+    {
+      "path": "src/server/storage/tabularStore.ts",
+      "payload": "src/server/storage/tabularStore.ts.txt",
+      "sha256": "70352fb9dc01b945196b9d94d67008090124847b46b6d3a1e9eadae86abc207d",
+      "bytes": 5847
+    }
+  ]
+}

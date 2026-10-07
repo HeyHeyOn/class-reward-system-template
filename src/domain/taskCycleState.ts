@@ -2,6 +2,7 @@ import { Temporal } from '@js-temporal/polyfill';
 import { isCompletionForTaskInstance } from './taskCompletionPolicy';
 import { getTaskCycle, type TaskCycle } from './taskRecurrence';
 import { resolveTaskSchedule } from './taskSchedule';
+import { isPendingAssignmentNote, taskStage, type TaskStage } from './taskStage';
 import type { ClassTask, TaskAssignment, TaskCompletion, TaskSchedule } from './types';
 
 export type TaskCycleTransition =
@@ -12,7 +13,10 @@ export type TaskCycleTransition =
 
 export type TaskCycleStudentState = {
   assigned: boolean;
+  /** Assigned and completable (완료 가능); assigned without it is 미완료. */
+  ready: boolean;
   completed: boolean;
+  stage: TaskStage;
   assignmentOrigin: 'EVENT' | 'CARRY' | 'LEGACY' | 'DEFAULT';
   completionOrigin: 'EVENT' | 'CARRY' | 'LEGACY' | 'DEFAULT';
   assignmentEvent?: TaskAssignment;
@@ -26,6 +30,10 @@ export type TaskCycleState = {
   transition: TaskCycleTransition;
   students: Record<string, TaskCycleStudentState>;
   assignedStudentIds: string[];
+  /** Assigned and not yet completable (미완료). */
+  pendingStudentIds: string[];
+  /** Assigned and completable (완료 가능). */
+  readyStudentIds: string[];
   completedStudentIds: string[];
 };
 
@@ -87,6 +95,11 @@ export function projectTaskCycleState({
   const legacyCompletions = legacyCompletionByStudent(completions.filter((event) =>
     !event.taskInstanceId && isCompletionForTaskInstance(event, task)));
 
+  // The first cycle after a rule change carries the state that was live at the change: events of
+  // the cycle running then (or of an open-ended permanent cycle). Older events reached that cycle
+  // through natural boundaries, so they carry only when that dimension is not reset per cycle.
+  const liveAtChange = (event: { cycleEndsAt?: string | null } | undefined) => event !== undefined
+    && (!event.cycleEndsAt || !isBefore(event.cycleEndsAt, cycle.startsAt));
   const allowedStudentIds = new Set(task.allowedStudentIds);
   const assignmentStudentsWithEvents = new Set(instanceAssignments.map((event) => event.studentId));
   const studentIds = new Set<string>(task.allowedStudentIds);
@@ -107,15 +120,16 @@ export function projectTaskCycleState({
       legacyAssigned: !assignmentStudentsWithEvents.has(studentId)
         && allowedStudentIds.has(studentId)
         && (transition !== 'NATURAL_BOUNDARY' || !schedule.resetAssignmentOnCycle),
-      carry: forceCarry || transition === 'PERMANENT' || !schedule.resetAssignmentOnCycle,
+      carry: (forceCarry && liveAtChange(priorAssignment)) || transition === 'PERMANENT' || !schedule.resetAssignmentOnCycle,
     });
     const completion = projectCompletion({
       current: currentCompletion,
       prior: priorCompletion,
       priorIsLegacy: !priorCompletions.has(studentId) && legacyCompletions.has(studentId),
-      carry: forceCarry || transition === 'PERMANENT' || !schedule.resetCompletionOnCycle,
+      carry: (forceCarry && liveAtChange(priorCompletions.get(studentId))) || transition === 'PERMANENT' || !schedule.resetCompletionOnCycle,
     });
-    students[studentId] = { ...assignment, ...completion };
+    students[studentId] = { ...assignment, ...completion,
+      stage: taskStage({ assigned: assignment.assigned, ready: assignment.ready, completed: completion.completed }) };
   }
 
   return {
@@ -125,6 +139,8 @@ export function projectTaskCycleState({
     transition,
     students,
     assignedStudentIds: Array.from(studentIds).filter((id) => students[id].assigned),
+    pendingStudentIds: Array.from(studentIds).filter((id) => students[id].stage === 'PENDING'),
+    readyStudentIds: Array.from(studentIds).filter((id) => students[id].stage === 'READY'),
     completedStudentIds: Array.from(studentIds).filter((id) => students[id].completed),
   };
 }
@@ -145,15 +161,13 @@ function projectAssignment({ current, prior, legacyAssigned, carry }: {
   prior?: TaskAssignment;
   legacyAssigned: boolean;
   carry: boolean;
-}): Pick<TaskCycleStudentState, 'assigned' | 'assignmentOrigin' | 'assignmentEvent'> {
-  if (current) return {
-    assigned: current.status === 'ASSIGNED', assignmentOrigin: 'EVENT', assignmentEvent: current,
-  };
-  if (carry && prior) return {
-    assigned: prior.status === 'ASSIGNED', assignmentOrigin: 'CARRY', assignmentEvent: prior,
-  };
-  if (legacyAssigned) return { assigned: true, assignmentOrigin: 'LEGACY' };
-  return { assigned: false, assignmentOrigin: 'DEFAULT' };
+}): Pick<TaskCycleStudentState, 'assigned' | 'ready' | 'assignmentOrigin' | 'assignmentEvent'> {
+  const fromEvent = (event: TaskAssignment) => ({ assigned: event.status === 'ASSIGNED',
+    ready: event.status === 'ASSIGNED' && !isPendingAssignmentNote(event.note) });
+  if (current) return { ...fromEvent(current), assignmentOrigin: 'EVENT', assignmentEvent: current };
+  if (carry && prior) return { ...fromEvent(prior), assignmentOrigin: 'CARRY', assignmentEvent: prior };
+  if (legacyAssigned) return { assigned: true, ready: true, assignmentOrigin: 'LEGACY' };
+  return { assigned: false, ready: false, assignmentOrigin: 'DEFAULT' };
 }
 
 function projectCompletion({ current, prior, priorIsLegacy, carry }: {
@@ -247,6 +261,14 @@ function nearestPriorCycleByStudent<T extends {
     return Array.from(nearestByStudent.values()).flatMap(({ events: nearest }) => nearest);
   } catch {
     return [];
+  }
+}
+
+function isBefore(left: string, right: string): boolean {
+  try {
+    return Temporal.Instant.compare(Temporal.Instant.from(left), Temporal.Instant.from(right)) < 0;
+  } catch {
+    return false;
   }
 }
 

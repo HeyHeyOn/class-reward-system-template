@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildTaskHistoryDetailDto, buildTaskHistoryListDto } from './taskHistoryDtos';
+import { buildTaskHistoryDetailDto, buildTaskHistoryListDto, buildTaskHistoryStudents } from './taskHistoryDtos';
 import type { TaskCycleHistoryEvent } from '@/server/repositories/sheets/taskCycleQueries';
 
 const events: TaskCycleHistoryEvent[] = [
@@ -21,11 +21,11 @@ const currentCycleState = {
   cycle: { cycleId: 'current-cycle', startsAt: '2026-02-01T00:00:00Z', endsAt: null, nextResetAt: null },
   students: {
     S1: {
-      assigned: true, completed: false, assignmentOrigin: 'EVENT' as const, completionOrigin: 'DEFAULT' as const,
+      assigned: true, ready: true, completed: false, stage: 'READY' as const, assignmentOrigin: 'EVENT' as const, completionOrigin: 'DEFAULT' as const,
       assignmentEvent: { assignmentId: 'current-assignment' } as never,
     },
   },
-  assignedStudentIds: ['S1'], completedStudentIds: [],
+  assignedStudentIds: ['S1'], pendingStudentIds: [], readyStudentIds: ['S1'], completedStudentIds: [],
 };
 
 describe('task history DTOs', () => {
@@ -40,8 +40,8 @@ describe('task history DTOs', () => {
         taskInstanceId: 'current-instance',
         currentCycleStatus: {
           cycleId: 'current-cycle', startsAt: '2026-02-01T00:00:00Z', endsAt: null,
-          transition: 'PERMANENT', assignedStudentIds: ['S1'], completedStudentIds: [],
-          students: [{ studentId: 'S1', assigned: true, completed: false, assignmentOrigin: 'EVENT', completionOrigin: 'DEFAULT' }],
+          transition: 'PERMANENT', assignedStudentIds: ['S1'], pendingStudentIds: [], readyStudentIds: ['S1'], completedStudentIds: [],
+          students: [{ studentId: 'S1', assigned: true, ready: true, completed: false, stage: 'READY', assignmentOrigin: 'EVENT', completionOrigin: 'DEFAULT' }],
         },
       },
       cumulativeHistory: {
@@ -108,5 +108,35 @@ describe('task history DTOs', () => {
       eventCount: 1,
       lifecycles: [{ taskInstanceId: 'old-instance', isCurrentLifecycle: false, eventCount: 1 }],
     });
+  });
+
+  it('names history students from current rows, then completion snapshots, and copies them into detail', () => {
+    const completion = events[0] as Extract<TaskCycleHistoryEvent, { eventType: 'COMPLETION' }>;
+    const history: TaskCycleHistoryEvent[] = [
+      ...events,
+      { ...completion, eventId: 'later', occurredAt: '2026-03-01T00:00:00Z', studentName: 'Renamed Snapshot' },
+      { ...completion, eventId: 'gone', studentId: 'S2', studentName: ' Gone Student ' },
+      { ...events[1], eventId: 'unknown', studentId: 'S10' },
+    ];
+    const students = buildTaskHistoryStudents(history, [
+      { studentId: 'S1', name: 'Current Name', deleted: false },
+      { studentId: 'S3', name: 'Unrelated', deleted: false },
+    ]);
+    expect(students).toEqual([
+      { studentId: 'S1', name: 'Current Name', deleted: false },
+      { studentId: 'S2', name: 'Gone Student', deleted: true },
+    ]);
+    expect(buildTaskHistoryStudents(history, [])).toEqual([
+      { studentId: 'S1', name: 'Renamed Snapshot', deleted: true },
+      { studentId: 'S2', name: 'Gone Student', deleted: true },
+    ]);
+
+    const dto = buildTaskHistoryDetailDto({
+      taskId: 'T1', currentTaskDefinitionExists: true, currentTaskInstanceId: 'current-instance',
+      currentCycleState: null, events: history, students,
+    });
+    expect(dto.students).toEqual(students);
+    expect(dto.students).not.toBe(students);
+    expect(dto.students?.[0]).not.toBe(students[0]);
   });
 });

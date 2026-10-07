@@ -13,7 +13,7 @@ const JOB = '40000000-0000-4000-8000-000000000019';
 const CHALLENGE = '30000000-0000-4000-8000-000000000019';
 const HASH = 'a'.repeat(64);
 beforeEach(async () => {
-  h = await createPgliteDatabaseHarness();
+  h = await createPgliteDatabaseHarness({ migrationSet: 'base' });
   const dir = resolve(process.cwd(), 'src/server/db/migrations');
   for (const name of (await readdir(dir)).filter((n) => /^\d{4}_.*\.sql$/.test(n) && n.slice(0, 4) > '0008').sort()) {
     await h.database.exec(await readFile(resolve(dir, name), 'utf8'));

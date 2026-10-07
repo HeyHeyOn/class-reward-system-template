@@ -117,7 +117,7 @@ describe('database settings queries', () => {
   });
 
   it('rejects an unsupported tenant settings schema version even with no supported keys', async () => {
-    await seedSettings(harness.tenantOneId, { ignoredFutureSetting: 'value' }, 2);
+    await seedSettings(harness.tenantOneId, { ignoredFutureSetting: 'value' }, 5);
 
     await expect(queries().getAppSettings()).rejects.toThrow(/schema version/i);
   });

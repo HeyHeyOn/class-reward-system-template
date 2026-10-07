@@ -217,6 +217,25 @@ function isExactObject<T extends string>(value: unknown, keys: readonly T[]): va
   return actual.length === keys.length && actual.every((key) => keys.includes(key as T));
 }
 
+function readProductionTimestamp(value: unknown): Date | null {
+  if (value instanceof Date) {
+    return Object.getPrototypeOf(value) === Date.prototype && Reflect.ownKeys(value).length === 0
+      && Number.isFinite(Date.prototype.getTime.call(value)) ? value : null;
+  }
+  if (typeof value !== 'string') return null;
+  // Raw Drizzle execute keeps PostgreSQL timestamptz text. Require an explicit
+  // zone and validate the calendar before Date can normalize invalid days.
+  const match = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.(\d{1,6}))?(Z|([+-])(\d{2})(?::?(\d{2}))?)$/.exec(value);
+  if (!match || match[0] !== value) return null;
+  const milliseconds = (match[3] ?? '').padEnd(3, '0').slice(0, 3);
+  const local = `${match[1]}T${match[2]}.${milliseconds}Z`;
+  const calendar = new Date(local);
+  if (!Number.isFinite(calendar.getTime()) || calendar.toISOString() !== local) return null;
+  const zone = match[4] === 'Z' ? 'Z' : `${match[5]}${match[6]}:${match[7] ?? '00'}`;
+  const date = new Date(`${local.slice(0, -1)}${zone}`);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
 async function readProductionCredential(tenantId: string): Promise<TenantLegacyAdminCredential | null> {
   return withTenantSnapshot(tenantId, async (transaction) => {
     const result = await transaction.execute(sql`
@@ -235,6 +254,8 @@ async function readProductionCredential(tenantId: string): Promise<TenantLegacyA
     if (!row || typeof row.tenant_id !== 'string' || typeof row.lifecycle !== 'string'
       || typeof row.credential_version !== 'number' || typeof row.secret_version !== 'number'
       || typeof row.secret_hash !== 'string' || typeof row.hash_algorithm !== 'string') return null;
+    const revokedAt = row.revoked_at === null ? null : readProductionTimestamp(row.revoked_at);
+    if (row.revoked_at !== null && revokedAt === null) return null;
     return {
       tenantId: row.tenant_id,
       lifecycle: row.lifecycle as TenantLifecycle,
@@ -242,7 +263,7 @@ async function readProductionCredential(tenantId: string): Promise<TenantLegacyA
       secretVersion: row.secret_version,
       secretHash: row.secret_hash,
       hashAlgorithm: row.hash_algorithm,
-      revokedAt: row.revoked_at instanceof Date ? row.revoked_at : null,
+      revokedAt,
     };
   });
 }
@@ -291,15 +312,17 @@ async function readProductionSession(tenantId: string, token: string): Promise<T
     `);
     const row = (result.rows as Record<string, unknown>[])[0];
     if (!row || typeof row.tenant_id !== 'string'
-      || typeof row.credential_version !== 'number' || typeof row.session_version !== 'number'
-      || !(row.expires_at instanceof Date)) return null;
+      || typeof row.credential_version !== 'number' || typeof row.session_version !== 'number') return null;
+    const expiresAt = readProductionTimestamp(row.expires_at);
+    const revokedAt = row.revoked_at === null ? null : readProductionTimestamp(row.revoked_at);
+    if (expiresAt === null || (row.revoked_at !== null && revokedAt === null)) return null;
     return {
       tenantId: row.tenant_id,
       credentialVersion: row.credential_version,
       sessionVersion: row.session_version,
       tokenSessionVersion: parsed.sessionVersion,
-      expiresAt: row.expires_at,
-      revokedAt: row.revoked_at instanceof Date ? row.revoked_at : null,
+      expiresAt,
+      revokedAt,
     };
   });
 }

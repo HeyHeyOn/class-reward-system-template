@@ -5,6 +5,7 @@ import { deleteTask, updateTaskDetails, updateTaskSchedule, updateTaskScheduleSe
 import { createConfiguredTaskReader } from '@/server/repositories/configuredTasks';
 import { parseOptionalTaskScheduleEdit } from '../taskScheduleEdit';
 import { parseStrictTaskFields } from '../taskPayload';
+import { legacyTaskWriterRefusal } from '@/server/legacyTaskWriters';
 
 type RouteContext = { params: Promise<{ taskId: string }> };
 
@@ -43,6 +44,8 @@ export async function GET(request: Request, context: RouteContext) {
 export async function PATCH(request: Request, context: RouteContext) {
   const frozen = legacyWriteFreezeResponse();
   if (frozen) return frozen;
+  const unsupported = legacyTaskWriterRefusal();
+  if (unsupported) return unsupported;
 
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
@@ -100,6 +103,8 @@ export async function PATCH(request: Request, context: RouteContext) {
 export async function DELETE(_request: Request, context: RouteContext) {
   const frozen = legacyWriteFreezeResponse();
   if (frozen) return frozen;
+  const unsupported = legacyTaskWriterRefusal();
+  if (unsupported) return unsupported;
 
   if (!isAuthorizedAdminRequest(_request)) return unauthorizedAdminResponse();
 

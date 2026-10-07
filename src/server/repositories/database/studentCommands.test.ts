@@ -8,6 +8,7 @@ import {
   createStudentAdminPayloadHash,
   createStudentAdminResultHash,
   createStudentAdminTransactionId,
+  StudentAdminConflictError,
   type DatabaseStudentCommandDependencies,
 } from './studentCommands';
 import {
@@ -758,6 +759,20 @@ describe('PostgreSQL student administration commands', () => {
     expect(first.students[0].name).toBe(' 삭제 대상 ');
   });
 
+  it('refuses a stale deletion as a conflict and a deleted or existing number for a new student, in Korean', async () => {
+    await seedStudent({ studentId: 'S001', name: '삭제 대상', balance: 100 });
+    await expect(commands().deactivate({ operationId: 'student-deactivate-stale-op', studentId: 'S001', expectedStudentVersion: 7 }))
+      .rejects.toBeInstanceOf(StudentAdminConflictError);
+    await expect(commands().create(createInput({ operationId: 'student-create-taken-op', studentId: 'S001' })))
+      .rejects.toMatchObject({ code: 'STUDENT_ID_IN_USE', message: '이미 있는 학생 번호예요. 다른 번호를 적어 주세요.' });
+
+    await commands().deactivate({ operationId: 'student-deactivate-retire-op', studentId: 'S001', expectedStudentVersion: 1 });
+    await expect(commands().create(createInput({ operationId: 'student-create-retired-op', studentId: 'S001' })))
+      .rejects.toMatchObject({ code: 'STUDENT_ID_RETIRED', message: '삭제한 학생이 쓰던 번호라 다시 쓸 수 없어요. 다른 번호를 적어 주세요.' });
+    // Nothing of the refused requests was written.
+    expect((await harness.database.query(`SELECT count(*)::int AS n FROM operations WHERE operation_id LIKE 'student-create-%'`)).rows[0]).toEqual({ n: 0 });
+  });
+
   it('rejects a second deactivation under a different operation ID', async () => {
     await seedStudent({ studentId: 'S001', name: '삭제 대상', balance: 100 });
     await commands().deactivate({
@@ -770,7 +785,7 @@ describe('PostgreSQL student administration commands', () => {
       operationId: 'student-deactivate-second-op',
       studentId: 'S001',
       expectedStudentVersion: 2,
-    })).rejects.toThrow(/student integrity/i);
+    })).rejects.toMatchObject({ name: 'StudentAdminRefusalError', code: 'STUDENT_NOT_FOUND' });
 
     const state = await snapshot();
     expect(state.students).toEqual([expect.objectContaining({ version: '2', deleted_at: NOW })]);

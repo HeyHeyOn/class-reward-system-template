@@ -67,9 +67,11 @@ export function QrScanner({ onScan }: QrScannerProps) {
   }, []);
 
   return (
-    <div className="w-full max-w-xl rounded-[1.5rem] bg-white p-3 text-slate-950 shadow-2xl sm:rounded-[2rem] sm:p-4">
-      <div id={scannerId} className="overflow-hidden rounded-[1.5rem]" />
-      <p className="mt-3 text-sm font-bold text-slate-600">{status}</p>
+    <div className="w-full max-w-xl rounded-[18px] bg-white p-3 text-slate-900">
+      <div id={scannerId} className="overflow-hidden rounded-[14px]" />
+      <p role="status" className="mt-2.5 flex items-center justify-center gap-1.5 text-center text-[13px] font-semibold text-slate-500">
+        <span aria-hidden="true" className="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-emerald-500" />{status}
+      </p>
     </div>
   );
 }

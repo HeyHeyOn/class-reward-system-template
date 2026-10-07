@@ -54,6 +54,8 @@ export async function reconcileLegacyImport(input: LegacyMigrationImportInput & 
             currentCycle: { ...row.currentCycle,
               assignedStudentIds: [...row.currentCycle.assignedStudentIds].sort(),
               completedStudentIds: [...row.currentCycle.completedStudentIds].sort(),
+              ...(row.currentCycle.pendingStudentIds ? { pendingStudentIds: [...row.currentCycle.pendingStudentIds].sort() } : {}),
+              ...(row.currentCycle.readyStudentIds ? { readyStudentIds: [...row.currentCycle.readyStudentIds].sort() } : {}),
               students: [...row.currentCycle.students].sort((a, b) => a.studentId < b.studentId ? -1 : a.studentId > b.studentId ? 1 : 0),
             },
           } : null;

@@ -1,0 +1,7003 @@
+[
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [],
+      "row": []
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        "",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        null,
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        0,
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"0\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:0:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        true,
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"true\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:true:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        [
+          "x",
+          null,
+          [
+            "y",
+            "z"
+          ]
+        ],
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"x,,y,z\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:x,,y,z:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        {
+          "x": 1
+        },
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"[object Object]\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:[object Object]:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        {
+          "toString": 0
+        },
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "Cannot convert object to primitive value"
+      }
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        "",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        null,
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        0,
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"0\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        true,
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"true\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        [
+          "x",
+          null,
+          [
+            "y",
+            "z"
+          ]
+        ],
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"x,,y,z\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        {
+          "x": 1
+        },
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"[object Object]\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        {
+          "toString": 0
+        },
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "Cannot convert object to primitive value"
+      }
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        null,
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        0,
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":0,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        true,
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        [
+          "x",
+          null,
+          [
+            "y",
+            "z"
+          ]
+        ],
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        {
+          "x": 1
+        },
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        {
+          "toString": 0
+        },
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "Cannot convert object to primitive value"
+      }
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        null,
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        0,
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        true,
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        [
+          "x",
+          null,
+          [
+            "y",
+            "z"
+          ]
+        ],
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        {
+          "x": 1
+        },
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        {
+          "toString": 0
+        },
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "Cannot convert object to primitive value"
+      }
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        "",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        null,
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        0,
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"0\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        true,
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"true\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        [
+          "x",
+          null,
+          [
+            "y",
+            "z"
+          ]
+        ],
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"x,,y,z\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        {
+          "x": 1
+        },
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"[object Object]\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        {
+          "toString": 0
+        },
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "Cannot convert object to primitive value"
+      }
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":false,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        null,
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":false,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        0,
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":false,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        true,
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        [
+          "x",
+          null,
+          [
+            "y",
+            "z"
+          ]
+        ],
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":false,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        {
+          "x": 1
+        },
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":false,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        {
+          "toString": 0
+        },
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "Cannot convert object to primitive value"
+      }
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        "",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        null,
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        0,
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"0\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        true,
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"true\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        [
+          "x",
+          null,
+          [
+            "y",
+            "z"
+          ]
+        ],
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"x\",\"y\",\"z\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        {
+          "x": 1
+        },
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"[object Object]\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        {
+          "toString": 0
+        },
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "Cannot convert object to primitive value"
+      }
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        ""
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:1970-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"1970-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        null
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:1970-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"1970-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        0
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:1970-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"1970-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"0\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        true
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:1970-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"1970-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"true\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        [
+          "x",
+          null,
+          [
+            "y",
+            "z"
+          ]
+        ]
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:1970-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"1970-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"x,,y,z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        {
+          "x": 1
+        }
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:1970-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"1970-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"[object Object]\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        {
+          "toString": 0
+        }
+      ]
+    },
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "Cannot convert object to primitive value"
+      }
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ],
+      "zone": "UTC"
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"UTC\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ],
+      "zone": "bad"
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ],
+      "zone": null
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ],
+      "zone": 12
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ],
+      "zone": [
+        "Asia/Seoul"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt",
+        "ruleVersion",
+        "scheduleEffectiveFrom",
+        "recurrenceTimeZone",
+        "recurrenceType",
+        "recurrenceTime",
+        "recurrenceWeekdays",
+        "resetCompletionOnCycle",
+        "resetAssignmentOnCycle",
+        "pendingRuleVersion",
+        "pendingEffectiveFrom",
+        "pendingTimeZone",
+        "pendingRecurrenceType",
+        "pendingRecurrenceTime",
+        "pendingRecurrenceWeekdays",
+        "pendingResetCompletionOnCycle",
+        "pendingResetAssignmentOnCycle"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z",
+        "1",
+        "2026-01-01T00:00:00Z",
+        "Asia/Seoul",
+        "WEEKLY",
+        "09:00",
+        "7,1,3",
+        "TRUE",
+        "FALSE",
+        "2",
+        "2027-01-01T00:00:00Z",
+        "UTC",
+        "WEEKLY",
+        "23:59",
+        "6,2",
+        "false",
+        "1"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"WEEKLY\",\"time\":\"09:00\",\"weekdays\":[1,3,7]},\"resetCompletionOnCycle\":true,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":{\"ruleVersion\":2,\"effectiveFrom\":\"2027-01-01T00:00:00.000Z\",\"timeZone\":\"UTC\",\"recurrence\":{\"type\":\"WEEKLY\",\"time\":\"23:59\",\"weekdays\":[2,6]},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":true},\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt",
+        "ruleVersion",
+        "scheduleEffectiveFrom",
+        "recurrenceTimeZone",
+        "recurrenceType",
+        "recurrenceTime",
+        "recurrenceWeekdays",
+        "resetCompletionOnCycle",
+        "resetAssignmentOnCycle",
+        "pendingRuleVersion",
+        "pendingEffectiveFrom",
+        "pendingTimeZone",
+        "pendingRecurrenceType",
+        "pendingRecurrenceTime",
+        "pendingRecurrenceWeekdays",
+        "pendingResetCompletionOnCycle",
+        "pendingResetAssignmentOnCycle"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z",
+        "1",
+        "2026-01-01T00:00:00Z",
+        "Asia/Seoul",
+        "WEEKLY",
+        "09:00",
+        "1,1",
+        "TRUE",
+        "FALSE",
+        "2",
+        "2027-01-01T00:00:00Z",
+        "UTC",
+        "WEEKLY",
+        "23:59",
+        "6,2",
+        "false",
+        "1"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":{\"ruleVersion\":2,\"effectiveFrom\":\"2027-01-01T00:00:00.000Z\",\"timeZone\":\"UTC\",\"recurrence\":{\"type\":\"WEEKLY\",\"time\":\"23:59\",\"weekdays\":[2,6]},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":true},\"scheduleReadWarnings\":[\"INVALID_CURRENT_SCHEDULE\"],\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt",
+        "ruleVersion",
+        "scheduleEffectiveFrom",
+        "recurrenceTimeZone",
+        "recurrenceType",
+        "recurrenceTime",
+        "recurrenceWeekdays",
+        "resetCompletionOnCycle",
+        "resetAssignmentOnCycle",
+        "pendingRuleVersion",
+        "pendingEffectiveFrom",
+        "pendingTimeZone",
+        "pendingRecurrenceType",
+        "pendingRecurrenceTime",
+        "pendingRecurrenceWeekdays",
+        "pendingResetCompletionOnCycle",
+        "pendingResetAssignmentOnCycle"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z",
+        "1",
+        "2026-01-01T00:00:00Z",
+        "Asia/Seoul",
+        "WEEKLY",
+        "09:00",
+        "1;2",
+        "TRUE",
+        "FALSE",
+        "2",
+        "2027-01-01T00:00:00Z",
+        "UTC",
+        "WEEKLY",
+        "23:59",
+        "6,2",
+        "false",
+        "1"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":{\"ruleVersion\":2,\"effectiveFrom\":\"2027-01-01T00:00:00.000Z\",\"timeZone\":\"UTC\",\"recurrence\":{\"type\":\"WEEKLY\",\"time\":\"23:59\",\"weekdays\":[2,6]},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":true},\"scheduleReadWarnings\":[\"INVALID_CURRENT_SCHEDULE\"],\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt",
+        "ruleVersion",
+        "scheduleEffectiveFrom",
+        "recurrenceTimeZone",
+        "recurrenceType",
+        "recurrenceTime",
+        "recurrenceWeekdays",
+        "resetCompletionOnCycle",
+        "resetAssignmentOnCycle",
+        "pendingRuleVersion",
+        "pendingEffectiveFrom",
+        "pendingTimeZone",
+        "pendingRecurrenceType",
+        "pendingRecurrenceTime",
+        "pendingRecurrenceWeekdays",
+        "pendingResetCompletionOnCycle",
+        "pendingResetAssignmentOnCycle"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z",
+        "1",
+        "2026-01-01T00:00:00Z",
+        "Asia/Seoul",
+        "WEEKLY",
+        "09:00",
+        "1|2",
+        "TRUE",
+        "FALSE",
+        "2",
+        "2027-01-01T00:00:00Z",
+        "UTC",
+        "WEEKLY",
+        "23:59",
+        "6,2",
+        "false",
+        "1"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":{\"ruleVersion\":2,\"effectiveFrom\":\"2027-01-01T00:00:00.000Z\",\"timeZone\":\"UTC\",\"recurrence\":{\"type\":\"WEEKLY\",\"time\":\"23:59\",\"weekdays\":[2,6]},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":true},\"scheduleReadWarnings\":[\"INVALID_CURRENT_SCHEDULE\"],\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt",
+        "ruleVersion",
+        "scheduleEffectiveFrom",
+        "recurrenceTimeZone",
+        "recurrenceType",
+        "recurrenceTime",
+        "recurrenceWeekdays",
+        "resetCompletionOnCycle",
+        "resetAssignmentOnCycle",
+        "pendingRuleVersion",
+        "pendingEffectiveFrom",
+        "pendingTimeZone",
+        "pendingRecurrenceType",
+        "pendingRecurrenceTime",
+        "pendingRecurrenceWeekdays",
+        "pendingResetCompletionOnCycle",
+        "pendingResetAssignmentOnCycle"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z",
+        "1",
+        "2026-01-01T00:00:00Z",
+        "Asia/Seoul",
+        "WEEKLY",
+        "09:00",
+        "1, ,2",
+        "TRUE",
+        "FALSE",
+        "2",
+        "2027-01-01T00:00:00Z",
+        "UTC",
+        "WEEKLY",
+        "23:59",
+        "6,2",
+        "false",
+        "1"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":{\"ruleVersion\":2,\"effectiveFrom\":\"2027-01-01T00:00:00.000Z\",\"timeZone\":\"UTC\",\"recurrence\":{\"type\":\"WEEKLY\",\"time\":\"23:59\",\"weekdays\":[2,6]},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":true},\"scheduleReadWarnings\":[\"INVALID_CURRENT_SCHEDULE\"],\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt",
+        "ruleVersion",
+        "scheduleEffectiveFrom",
+        "recurrenceTimeZone",
+        "recurrenceType",
+        "recurrenceTime",
+        "recurrenceWeekdays",
+        "resetCompletionOnCycle",
+        "resetAssignmentOnCycle",
+        "pendingRuleVersion",
+        "pendingEffectiveFrom",
+        "pendingTimeZone",
+        "pendingRecurrenceType",
+        "pendingRecurrenceTime",
+        "pendingRecurrenceWeekdays",
+        "pendingResetCompletionOnCycle",
+        "pendingResetAssignmentOnCycle"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z",
+        "1",
+        "2026-01-01T00:00:00Z",
+        "Asia/Seoul",
+        "WEEKLY",
+        "09:00",
+        "0x1,2e0",
+        "TRUE",
+        "FALSE",
+        "2",
+        "2027-01-01T00:00:00Z",
+        "UTC",
+        "WEEKLY",
+        "23:59",
+        "6,2",
+        "false",
+        "1"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"WEEKLY\",\"time\":\"09:00\",\"weekdays\":[1,2]},\"resetCompletionOnCycle\":true,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":{\"ruleVersion\":2,\"effectiveFrom\":\"2027-01-01T00:00:00.000Z\",\"timeZone\":\"UTC\",\"recurrence\":{\"type\":\"WEEKLY\",\"time\":\"23:59\",\"weekdays\":[2,6]},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":true},\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt",
+        "ruleVersion",
+        "scheduleEffectiveFrom",
+        "recurrenceTimeZone",
+        "recurrenceType",
+        "recurrenceTime",
+        "recurrenceWeekdays",
+        "resetCompletionOnCycle",
+        "resetAssignmentOnCycle",
+        "pendingRuleVersion",
+        "pendingEffectiveFrom",
+        "pendingTimeZone",
+        "pendingRecurrenceType",
+        "pendingRecurrenceTime",
+        "pendingRecurrenceWeekdays",
+        "pendingResetCompletionOnCycle",
+        "pendingResetAssignmentOnCycle",
+        "availableFrom",
+        "dueAt",
+        "prerequisiteTaskId"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "1,200",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z",
+        "1",
+        "2026-01-01T00:00:00Z",
+        "Asia/Seoul",
+        "WEEKLY",
+        "09:00",
+        "7,1,3",
+        "TRUE",
+        "FALSE",
+        "2",
+        "2027-01-01T00:00:00Z",
+        "UTC",
+        "WEEKLY",
+        "23:59",
+        "1,1",
+        "false",
+        "1",
+        " from ",
+        " due ",
+        " pre "
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":1200,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"availableFrom\":\"from\",\"dueAt\":\"due\",\"prerequisiteTaskId\":\"pre\",\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2026-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"WEEKLY\",\"time\":\"09:00\",\"weekdays\":[1,3,7]},\"resetCompletionOnCycle\":true,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"scheduleReadWarnings\":[\"INVALID_PENDING_SCHEDULE\"],\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        " title "
+      ],
+      "row": [
+        "t",
+        "title",
+        "1",
+        "duplicate"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"p\",\"name\":\"name\",\"description\":\"d\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"N_PLUS_ONE\",\"buyQuantity\":2,\"freeQuantity\":1}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "PROMOTIONAL_PRICE",
+        "10",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"p\",\"name\":\"name\",\"description\":\"d\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"PROMOTIONAL_PRICE\",\"promotionalUnitPrice\":10}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "PROMOTIONAL_PRICE",
+        "1,000",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "PROMOTIONAL_PRICE",
+        "0",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"p\",\"name\":\"name\",\"description\":\"d\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"PROMOTIONAL_PRICE\",\"promotionalUnitPrice\":0}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "PROMOTIONAL_PRICE",
+        "100.1",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "PROMOTIONAL_PRICE",
+        "0x10",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"p\",\"name\":\"name\",\"description\":\"d\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"PROMOTIONAL_PRICE\",\"promotionalUnitPrice\":16}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "PROMOTIONAL_PRICE",
+        "Infinity",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "PROMOTIONAL_PRICE",
+        "1e2",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"p\",\"name\":\"name\",\"description\":\"d\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"PROMOTIONAL_PRICE\",\"promotionalUnitPrice\":100}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "PERCENT_DISCOUNT",
+        "10",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"p\",\"name\":\"name\",\"description\":\"d\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"PERCENT_DISCOUNT\",\"percent\":10}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "PERCENT_DISCOUNT",
+        "1,000",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "PERCENT_DISCOUNT",
+        "0",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "PERCENT_DISCOUNT",
+        "100.1",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "PERCENT_DISCOUNT",
+        "0x10",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"p\",\"name\":\"name\",\"description\":\"d\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"PERCENT_DISCOUNT\",\"percent\":16}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "PERCENT_DISCOUNT",
+        "Infinity",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "PERCENT_DISCOUNT",
+        "1e2",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"p\",\"name\":\"name\",\"description\":\"d\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"PERCENT_DISCOUNT\",\"percent\":100}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "FIXED_DISCOUNT",
+        "10",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"p\",\"name\":\"name\",\"description\":\"d\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"FIXED_DISCOUNT\",\"discountAmount\":10}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "FIXED_DISCOUNT",
+        "1,000",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "FIXED_DISCOUNT",
+        "0",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "FIXED_DISCOUNT",
+        "100.1",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "FIXED_DISCOUNT",
+        "0x10",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"p\",\"name\":\"name\",\"description\":\"d\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"FIXED_DISCOUNT\",\"discountAmount\":16}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "FIXED_DISCOUNT",
+        "Infinity",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "FIXED_DISCOUNT",
+        "1e2",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"p\",\"name\":\"name\",\"description\":\"d\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"FIXED_DISCOUNT\",\"discountAmount\":100}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "invalid",
+        "10",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "invalid",
+        "1,000",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "invalid",
+        "0",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "invalid",
+        "100.1",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "invalid",
+        "0x10",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "invalid",
+        "Infinity",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "invalid",
+        "1e2",
+        "",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        null,
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        0,
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"0\",\"name\":\"name\",\"description\":\"d\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"N_PLUS_ONE\",\"buyQuantity\":2,\"freeQuantity\":1}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        [
+          "1"
+        ],
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"1\",\"name\":\"name\",\"description\":\"d\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"N_PLUS_ONE\",\"buyQuantity\":2,\"freeQuantity\":1}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        {
+          "x": 1
+        },
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"[object Object]\",\"name\":\"name\",\"description\":\"d\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"N_PLUS_ONE\",\"buyQuantity\":2,\"freeQuantity\":1}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        null,
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        0,
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"p\",\"name\":\"0\",\"description\":\"d\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"N_PLUS_ONE\",\"buyQuantity\":2,\"freeQuantity\":1}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        [
+          "1"
+        ],
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"p\",\"name\":\"1\",\"description\":\"d\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"N_PLUS_ONE\",\"buyQuantity\":2,\"freeQuantity\":1}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        {
+          "x": 1
+        },
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"p\",\"name\":\"[object Object]\",\"description\":\"d\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"N_PLUS_ONE\",\"buyQuantity\":2,\"freeQuantity\":1}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"p\",\"name\":\"name\",\"description\":\"\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"N_PLUS_ONE\",\"buyQuantity\":2,\"freeQuantity\":1}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        null,
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"p\",\"name\":\"name\",\"description\":\"\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"N_PLUS_ONE\",\"buyQuantity\":2,\"freeQuantity\":1}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        0,
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"p\",\"name\":\"name\",\"description\":\"0\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"N_PLUS_ONE\",\"buyQuantity\":2,\"freeQuantity\":1}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        [
+          "1"
+        ],
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"p\",\"name\":\"name\",\"description\":\"1\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"N_PLUS_ONE\",\"buyQuantity\":2,\"freeQuantity\":1}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        {
+          "x": 1
+        },
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"p\",\"name\":\"name\",\"description\":\"[object Object]\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"N_PLUS_ONE\",\"buyQuantity\":2,\"freeQuantity\":1}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        null,
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        0,
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        [
+          "1"
+        ],
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        {
+          "x": 1
+        },
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"p\",\"name\":\"name\",\"description\":\"d\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"N_PLUS_ONE\",\"buyQuantity\":2,\"freeQuantity\":1}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        null,
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"p\",\"name\":\"name\",\"description\":\"d\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"N_PLUS_ONE\",\"buyQuantity\":2,\"freeQuantity\":1}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        0,
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        [
+          "1"
+        ],
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        {
+          "x": 1
+        },
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        null,
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        0,
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        [
+          "1"
+        ],
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"p\",\"name\":\"name\",\"description\":\"d\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"N_PLUS_ONE\",\"buyQuantity\":1,\"freeQuantity\":1}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        {
+          "x": 1
+        },
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        null,
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        0,
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        [
+          "1"
+        ],
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"p\",\"name\":\"name\",\"description\":\"d\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"N_PLUS_ONE\",\"buyQuantity\":2,\"freeQuantity\":1}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        {
+          "x": 1
+        },
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        null,
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        0,
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        [
+          "1"
+        ],
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        {
+          "x": 1
+        },
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        null,
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        0,
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        [
+          "1"
+        ],
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        {
+          "x": 1
+        },
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        null,
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        0,
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        [
+          "1"
+        ],
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        {
+          "x": 1
+        },
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        null,
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        0,
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"p\",\"name\":\"name\",\"description\":\"d\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":0,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"N_PLUS_ONE\",\"buyQuantity\":2,\"freeQuantity\":1}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        [
+          "1"
+        ],
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "{\"promotionId\":\"p\",\"name\":\"name\",\"description\":\"d\",\"productIds\":[],\"startsAt\":\"2026-01-01T00:00:00.000Z\",\"endsAt\":\"2027-01-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2025-01-01T00:00:00.000Z\",\"updatedAt\":\"2025-01-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"N_PLUS_ONE\",\"buyQuantity\":2,\"freeQuantity\":1}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        {
+          "x": 1
+        },
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "",
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        null,
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        0,
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        [
+          "1"
+        ],
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        {
+          "x": 1
+        },
+        "2025-01-01T00:00:00.000Z",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "",
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        null,
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        0,
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        [
+          "1"
+        ],
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        {
+          "x": 1
+        },
+        "3"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        ""
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        null
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        0
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        [
+          "1"
+        ]
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [
+        "promotionId",
+        "name",
+        "description",
+        "type",
+        "value",
+        "buyQuantity",
+        "freeQuantity",
+        "startsAt",
+        "endsAt",
+        "isActive",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+        "schemaVersion"
+      ],
+      "row": [
+        "p",
+        "name",
+        "d",
+        "N_PLUS_ONE",
+        "",
+        "2",
+        "1",
+        "2026-01-01T00:00:00.000Z",
+        "2027-01-01T00:00:00.000Z",
+        "TRUE",
+        "0",
+        "2025-01-01T00:00:00.000Z",
+        "2025-01-01T00:00:00.000Z",
+        {
+          "x": 1
+        }
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "header",
+    "input": {
+      "headers": []
+    },
+    "outcome": {
+      "json": "[]"
+    }
+  },
+  {
+    "kind": "required",
+    "input": {
+      "headers": [],
+      "required": [
+        "a",
+        "b",
+        "a",
+        ""
+      ]
+    },
+    "outcome": {
+      "json": "{\"ok\":false,\"missingColumns\":[\"a\",\"b\",\"a\",\"\"]}"
+    }
+  },
+  {
+    "kind": "header",
+    "input": {
+      "headers": [
+        "a",
+        " a ",
+        "b"
+      ]
+    },
+    "outcome": {
+      "json": "[[\"a\",-1],[\"b\",2]]"
+    }
+  },
+  {
+    "kind": "required",
+    "input": {
+      "headers": [
+        "a",
+        " a ",
+        "b"
+      ],
+      "required": [
+        "a",
+        "b",
+        "a",
+        ""
+      ]
+    },
+    "outcome": {
+      "json": "{\"ok\":false,\"missingColumns\":[\"a\",\"a\",\"\"]}"
+    }
+  },
+  {
+    "kind": "header",
+    "input": {
+      "headers": [
+        "  한😀  ",
+        ""
+      ]
+    },
+    "outcome": {
+      "json": "[[\"한😀\",0],[\"\",1]]"
+    }
+  },
+  {
+    "kind": "required",
+    "input": {
+      "headers": [
+        "  한😀  ",
+        ""
+      ],
+      "required": [
+        "a",
+        "b",
+        "a",
+        ""
+      ]
+    },
+    "outcome": {
+      "json": "{\"ok\":false,\"missingColumns\":[\"a\",\"b\",\"a\"]}"
+    }
+  },
+  {
+    "kind": "header",
+    "input": {
+      "headers": [
+        null
+      ]
+    },
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "Cannot read properties of null (reading 'trim')"
+      }
+    }
+  },
+  {
+    "kind": "required",
+    "input": {
+      "headers": [
+        null
+      ],
+      "required": [
+        "a",
+        "b",
+        "a",
+        ""
+      ]
+    },
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "Cannot read properties of null (reading 'trim')"
+      }
+    }
+  },
+  {
+    "kind": "header",
+    "input": {
+      "headers": [
+        1
+      ]
+    },
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "header.trim is not a function"
+      }
+    }
+  },
+  {
+    "kind": "required",
+    "input": {
+      "headers": [
+        1
+      ],
+      "required": [
+        "a",
+        "b",
+        "a",
+        ""
+      ]
+    },
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "header.trim is not a function"
+      }
+    }
+  },
+  {
+    "kind": "header",
+    "input": {
+      "headers": [
+        "toString",
+        "constructor",
+        "__proto__"
+      ]
+    },
+    "outcome": {
+      "json": "[[\"toString\",0],[\"constructor\",1],[\"__proto__\",2]]"
+    }
+  },
+  {
+    "kind": "required",
+    "input": {
+      "headers": [
+        "toString",
+        "constructor",
+        "__proto__"
+      ],
+      "required": [
+        "a",
+        "b",
+        "a",
+        ""
+      ]
+    },
+    "outcome": {
+      "json": "{\"ok\":false,\"missingColumns\":[\"a\",\"b\",\"a\",\"\"]}"
+    }
+  },
+  {
+    "kind": "header",
+    "input": {
+      "headers": null
+    },
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "Cannot read properties of null (reading 'forEach')"
+      }
+    }
+  },
+  {
+    "kind": "header",
+    "input": {
+      "headers": 1
+    },
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "headers.forEach is not a function"
+      }
+    }
+  },
+  {
+    "kind": "header",
+    "input": {
+      "headers": "abc"
+    },
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "headers.forEach is not a function"
+      }
+    }
+  },
+  {
+    "kind": "header",
+    "input": {
+      "headers": {}
+    },
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "headers.forEach is not a function"
+      }
+    }
+  },
+  {
+    "kind": "header",
+    "input": {
+      "headers": []
+    },
+    "outcome": {
+      "json": "[]"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward"
+      ],
+      "row": null
+    },
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "Cannot read properties of null (reading '0')"
+      }
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [],
+      "row": null
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward"
+      ],
+      "row": 1
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [],
+      "row": 1
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward"
+      ],
+      "row": "abc"
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [],
+      "row": "abc"
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward"
+      ],
+      "row": "ab1"
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"a\",\"title\":\"b\",\"description\":\"\",\"reward\":1,\"isActive\":false,\"sortOrder\":0,\"allowedStudentIds\":[],\"taskInstanceId\":\"legacy:a:1970-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"1970-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null}"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [],
+      "row": "ab1"
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward"
+      ],
+      "row": {}
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [],
+      "row": {}
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward"
+      ],
+      "row": []
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "promotion",
+    "input": {
+      "headers": [],
+      "row": []
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "required",
+    "input": {
+      "headers": [
+        "a"
+      ],
+      "required": null
+    },
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "Cannot read properties of null (reading 'filter')"
+      }
+    }
+  },
+  {
+    "kind": "required",
+    "input": {
+      "headers": [
+        "a"
+      ],
+      "required": 1
+    },
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "requiredColumns.filter is not a function"
+      }
+    }
+  },
+  {
+    "kind": "required",
+    "input": {
+      "headers": [
+        "a"
+      ],
+      "required": "abc"
+    },
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "requiredColumns.filter is not a function"
+      }
+    }
+  },
+  {
+    "kind": "required",
+    "input": {
+      "headers": [
+        "a"
+      ],
+      "required": {}
+    },
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "requiredColumns.filter is not a function"
+      }
+    }
+  },
+  {
+    "kind": "required",
+    "input": {
+      "headers": [
+        "a"
+      ],
+      "required": []
+    },
+    "outcome": {
+      "json": "{\"ok\":true}"
+    }
+  },
+  {
+    "kind": "required",
+    "input": {
+      "headers": [
+        "a"
+      ],
+      "required": [
+        null,
+        1,
+        {}
+      ]
+    },
+    "outcome": {
+      "json": "{\"ok\":false,\"missingColumns\":[null,1,{}]}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        ",",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":0,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        ",,",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":0,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "  ",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "-0",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":0,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "0b10",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":2,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "0x10",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "{\"taskId\":\"t\",\"title\":\"title\",\"description\":\"desc\",\"reward\":16,\"isActive\":true,\"sortOrder\":0,\"allowedStudentIds\":[\"1\",\"2\",\"3||4\"],\"taskInstanceId\":\"legacy:t:2020-01-01T00:00:00.000Z\",\"schedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"2020-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+    }
+  },
+  {
+    "kind": "task",
+    "input": {
+      "headers": [
+        "taskId",
+        "title",
+        "reward",
+        "sortOrder",
+        "description",
+        "isActive",
+        "allowedStudentIds",
+        "createdAt"
+      ],
+      "row": [
+        " t ",
+        " title ",
+        "Infinity",
+        "bad",
+        " desc ",
+        "TRUE",
+        " 1,2;1\n3||4 ",
+        "2020-01-01T00:00:00Z"
+      ]
+    },
+    "outcome": {
+      "json": "null"
+    }
+  }
+]

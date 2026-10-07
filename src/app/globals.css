@@ -106,3 +106,61 @@ button {
     padding: 0 !important;
   }
 }
+
+/* CRS design tokens layered on the per-class theme palette (uiTheme.ts).
+   Status tones mix a fixed hue into the current surface/text so every theme,
+   including the dark black/navy palettes, keeps readable contrast. */
+:root {
+  --crs-radius-sm: 10px;
+  --crs-radius: 14px;
+  --crs-radius-lg: 20px;
+  --crs-shadow-sm: 0 1px 2px rgb(15 23 42 / 0.04), 0 1px 1px rgb(15 23 42 / 0.03);
+  --crs-shadow: 0 1px 3px rgb(15 23 42 / 0.05), 0 6px 16px -8px rgb(15 23 42 / 0.08);
+  --crs-shadow-lg: 0 24px 48px -16px rgb(15 23 42 / 0.25), 0 2px 8px rgb(15 23 42 / 0.06);
+}
+:where([style*="--theme-surface"]) {
+  --crs-success-bg: color-mix(in srgb, #16a34a 13%, var(--theme-surface));
+  --crs-success-text: color-mix(in srgb, #15803d 78%, var(--theme-text));
+  --crs-warning-bg: color-mix(in srgb, #f59e0b 16%, var(--theme-surface));
+  --crs-warning-text: color-mix(in srgb, #a16207 80%, var(--theme-text));
+  --crs-danger-bg: color-mix(in srgb, #e11d48 12%, var(--theme-surface));
+  --crs-danger-text: color-mix(in srgb, #be123c 82%, var(--theme-text));
+  --crs-danger-solid: #e11d48;
+  --crs-info-bg: color-mix(in srgb, #0284c7 12%, var(--theme-surface));
+  --crs-info-text: color-mix(in srgb, #0369a1 80%, var(--theme-text));
+  --crs-subtle: color-mix(in srgb, var(--theme-text) 4%, var(--theme-surface));
+  --crs-subtle-hover: color-mix(in srgb, var(--theme-text) 7%, var(--theme-surface));
+  --crs-line: color-mix(in srgb, var(--theme-text) 11%, var(--theme-surface));
+  --crs-line-strong: color-mix(in srgb, var(--theme-text) 20%, var(--theme-surface));
+}
+
+@keyframes crs-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes crs-sheet-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes crs-pop-in { from { transform: translateY(6px) scale(.985); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes crs-rise-in { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; }
+}
+
+/* html5-qrcode renders its own controls; align them with the CRS controls. */
+#class-store-qr-reader { border: 0 !important; }
+#class-store-qr-reader img[alt="Info icon"] { display: none !important; }
+#class-store-qr-reader__dashboard_section { padding: 10px 0 0 !important; }
+#class-store-qr-reader__dashboard_section_csr span,
+#class-store-qr-reader__dashboard_section_swaplink { font-size: 13px; color: var(--theme-muted-text, #60666f); }
+#class-store-qr-reader button {
+  margin: 4px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--theme-accent-solid, #2b6de8);
+  color: var(--theme-accent-on-solid, #ffffff);
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 700;
+}
+#class-store-qr-reader select {
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 13px;
+}

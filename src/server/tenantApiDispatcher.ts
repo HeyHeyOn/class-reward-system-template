@@ -61,23 +61,37 @@ export function createTenantApiDispatcher(
   };
 }
 
+/**
+ * The most specific route wins, whatever the list order: a literal segment beats a parameter
+ * (`students/batch` before `students/[studentId]`), earlier segments first.
+ */
 function findRoute(routes: readonly TenantApiRoute[], method: string, path: string[]) {
+  let best: { route: TenantApiRoute; params: Record<string, string>; literals: boolean[] } | undefined;
   for (const route of routes) {
     if (route.method !== method) continue;
     const pattern = route.pattern.split('/').filter(Boolean);
     if (pattern.length !== path.length) continue;
     const params: Record<string, string> = {};
+    const literals: boolean[] = [];
     let matches = true;
     for (let index = 0; index < pattern.length; index += 1) {
       const expected = pattern[index];
       const actual = path[index];
       const parameter = /^\[([A-Za-z][A-Za-z0-9]*)\]$/.exec(expected);
+      literals.push(!parameter);
       if (parameter) params[parameter[1]] = actual;
       else if (expected !== actual) matches = false;
     }
-    if (matches) return { route, params };
+    if (matches && (!best || moreSpecific(literals, best.literals))) best = { route, params, literals };
   }
-  return undefined;
+  return best && { route: best.route, params: best.params };
+}
+
+function moreSpecific(candidate: readonly boolean[], current: readonly boolean[]): boolean {
+  for (let index = 0; index < candidate.length; index += 1) {
+    if (candidate[index] !== current[index]) return candidate[index];
+  }
+  return false;
 }
 
 async function rewriteScopedRequest(request: Request, slug: string, path: string[]): Promise<Request> {

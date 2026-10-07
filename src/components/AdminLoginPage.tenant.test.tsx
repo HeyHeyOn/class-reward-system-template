@@ -11,7 +11,7 @@ describe('AdminLoginPage tenant mode', () => {
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
   it('keeps Google membership login and offers the imported compatibility paths', () => {
-    render(<AdminLoginPage tenantScoped />);
+    render(<AdminLoginPage tenantSlug="alpha-class" />);
 
     expect(screen.getByRole('link', { name: 'Google 계정으로 로그인' })).toBeTruthy();
     expect(screen.getByLabelText('QR 로그인 값')).toBeTruthy();
@@ -24,7 +24,7 @@ describe('AdminLoginPage tenant mode', () => {
       async () => Response.json({ ok: true }),
     );
     vi.stubGlobal('fetch', fetchMock);
-    render(<AdminLoginPage tenantScoped />);
+    render(<AdminLoginPage tenantSlug="alpha-class" />);
     const credential = 'class-store-admin:secret-value';
     fireEvent.change(screen.getByLabelText('QR 로그인 값'), { target: { value: credential } });
     fireEvent.click(screen.getByRole('button', { name: '적용' }));

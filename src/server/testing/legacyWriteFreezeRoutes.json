@@ -1,4 +1,11 @@
 [
+  { "method": "GET", "route": "/migrations/status/[slug]", "effect": "tenant-membership-status-read" },
+  { "method": "GET", "route": "/migrations/status/[slug]/preflight", "effect": "tenant-membership-historical-report-read" },
+  { "method": "HEAD", "route": "/migrations/status/[slug]/preflight", "effect": "tenant-membership-historical-report-read" },
+  { "method": "GET", "route": "/migrations/status/[slug]/preflight/download", "effect": "tenant-membership-historical-report-read" },
+  { "method": "HEAD", "route": "/migrations/status/[slug]/preflight/download", "effect": "tenant-membership-historical-report-read" },
+  { "method": "GET", "route": "/exports/[slug]/historical-local-generation-metadata.csv", "effect": "tenant-membership-historical-metadata-read" },
+  { "method": "HEAD", "route": "/exports/[slug]/historical-local-generation-metadata.csv", "effect": "tenant-membership-historical-metadata-read" },
   { "method": "GET", "route": "/migrations/[jobId]/freezing/reacquisition/bootstrap", "effect": "migration-reacquisition-bootstrap-cookie" },
   { "method": "GET", "route": "/migrations/[jobId]/freezing/reacquisition/[attemptId]", "effect": "migration-reacquisition-archival-read" },
   { "method": "POST", "route": "/migrations/[jobId]/freezing/reacquisition/challenge", "effect": "migration-reacquisition-challenge" },
@@ -7,294 +14,91 @@
   { "method": "GET", "route": "/migrations/[jobId]/freezing/start/challenge", "effect": "migration-start-challenge" },
   { "method": "POST", "route": "/migrations/[jobId]/freezing/start", "effect": "migration-start-confirmation" },
   { "method": "GET", "route": "/migrations/[jobId]/freezing/start/[attemptId]", "effect": "migration-start-archival-read" },
-  {
-    "method": "POST",
-    "route": "/internal/migrations/final-bridge",
-    "effect": "companion-authenticated-disable-capture"
-  },
-  {
-    "method": "POST",
-    "route": "/checkout",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "POST",
-    "route": "/products",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "PATCH",
-    "route": "/products/[productId]",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "DELETE",
-    "route": "/products/[productId]",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "PATCH",
-    "route": "/products/batch",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "DELETE",
-    "route": "/products/batch",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "POST",
-    "route": "/promotions",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "PATCH",
-    "route": "/promotions/[promotionId]",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "DELETE",
-    "route": "/promotions/[promotionId]",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "POST",
-    "route": "/settings",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "POST",
-    "route": "/students",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "PATCH",
-    "route": "/students/[studentId]",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "DELETE",
-    "route": "/students/[studentId]",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "PATCH",
-    "route": "/students/batch",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "DELETE",
-    "route": "/students/batch",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "PATCH",
-    "route": "/students/bulk",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "POST",
-    "route": "/tasks",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "PATCH",
-    "route": "/tasks/[taskId]",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "DELETE",
-    "route": "/tasks/[taskId]",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "PATCH",
-    "route": "/tasks/[taskId]/assignments",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "POST",
-    "route": "/tasks/[taskId]/complete",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "POST",
-    "route": "/tasks/assignments/batch",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "PATCH",
-    "route": "/tasks/batch",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "DELETE",
-    "route": "/tasks/batch",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "POST",
-    "route": "/tasks/completions/reset",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "POST",
-    "route": "/tasks/schedules/batch",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "POST",
-    "route": "/transactions/[transactionId]/cancel",
-    "effect": "sheets-write"
-  },
-  {
-    "method": "POST",
-    "route": "/generator/create",
-    "effect": "generator-write"
-  },
-  {
-    "method": "GET",
-    "route": "/bank/balance",
-    "effect": "read"
-  },
-  {
-    "method": "GET",
-    "route": "/bank/student",
-    "effect": "read"
-  },
-  {
-    "method": "GET",
-    "route": "/bank/tasks",
-    "effect": "read"
-  },
-  {
-    "method": "POST",
-    "route": "/checkout/preview",
-    "effect": "read"
-  },
-  {
-    "method": "GET",
-    "route": "/products",
-    "effect": "read"
-  },
-  {
-    "method": "GET",
-    "route": "/promotions",
-    "effect": "read"
-  },
-  {
-    "method": "GET",
-    "route": "/promotions/active",
-    "effect": "read"
-  },
-  {
-    "method": "GET",
-    "route": "/settings",
-    "effect": "read"
-  },
-  {
-    "method": "GET",
-    "route": "/students",
-    "effect": "read"
-  },
-  {
-    "method": "GET",
-    "route": "/students/[studentId]",
-    "effect": "read"
-  },
-  {
-    "method": "GET",
-    "route": "/tasks",
-    "effect": "read"
-  },
-  {
-    "method": "GET",
-    "route": "/tasks/[taskId]",
-    "effect": "read"
-  },
-  {
-    "method": "GET",
-    "route": "/tasks/[taskId]/assignments",
-    "effect": "read"
-  },
-  {
-    "method": "GET",
-    "route": "/tasks/[taskId]/history",
-    "effect": "read"
-  },
-  {
-    "method": "GET",
-    "route": "/transactions",
-    "effect": "read"
-  },
-  {
-    "method": "GET",
-    "route": "/generator/grant",
-    "effect": "read"
-  },
-  {
-    "method": "GET",
-    "route": "/google/session",
-    "effect": "read"
-  },
-  {
-    "method": "POST",
-    "route": "/qrcode",
-    "effect": "qr-read"
-  },
-  {
-    "method": "POST",
-    "route": "/qrcode/link",
-    "effect": "qr-read"
-  },
-  {
-    "method": "POST",
-    "route": "/admin/login",
-    "effect": "auth-cookie"
-  },
-  {
-    "method": "POST",
-    "route": "/admin/logout",
-    "effect": "auth-cookie"
-  },
-  {
-    "method": "GET",
-    "route": "/google/login",
-    "effect": "auth-cookie"
-  },
-  {
-    "method": "POST",
-    "route": "/google/logout",
-    "effect": "auth-cookie"
-  },
-  {
-    "method": "GET",
-    "route": "/google/callback",
-    "effect": "oauth-exchange"
-  },
-  {
-    "method": "GET",
-    "route": "/qrcode",
-    "effect": "unsupported"
-  },
-  {
-    "method": "PATCH",
-    "route": "/settings",
-    "effect": "unsupported"
-  },
-  {
-    "method": "POST",
-    "route": "/migrations/[jobId]/freezing/consent/challenge",
-    "effect": "tenant-consent-challenge"
-  },
-  {
-    "method": "POST",
-    "route": "/migrations/[jobId]/freezing/consent",
-    "effect": "tenant-consent-confirmation"
-  },
-  {
-    "method": "GET",
-    "route": "/migrations/google-sheets/callback",
-    "effect": "tenant-consent-oauth-capture"
-  }
+  { "method": "POST", "route": "/internal/migrations/final-bridge", "effect": "companion-authenticated-disable-capture" },
+  { "method": "POST", "route": "/checkout", "effect": "sheets-write" },
+  { "method": "POST", "route": "/products", "effect": "sheets-write" },
+  { "method": "PATCH", "route": "/products/[productId]", "effect": "sheets-write" },
+  { "method": "DELETE", "route": "/products/[productId]", "effect": "sheets-write" },
+  { "method": "PATCH", "route": "/products/batch", "effect": "sheets-write" },
+  { "method": "DELETE", "route": "/products/batch", "effect": "sheets-write" },
+  { "method": "POST", "route": "/promotions", "effect": "sheets-write" },
+  { "method": "PATCH", "route": "/promotions/[promotionId]", "effect": "sheets-write" },
+  { "method": "DELETE", "route": "/promotions/[promotionId]", "effect": "sheets-write" },
+  { "method": "POST", "route": "/settings", "effect": "sheets-write" },
+  { "method": "POST", "route": "/students", "effect": "sheets-write" },
+  { "method": "PATCH", "route": "/students/[studentId]", "effect": "sheets-write" },
+  { "method": "DELETE", "route": "/students/[studentId]", "effect": "sheets-write" },
+  { "method": "PATCH", "route": "/students/batch", "effect": "sheets-write" },
+  { "method": "DELETE", "route": "/students/batch", "effect": "sheets-write" },
+  { "method": "PATCH", "route": "/students/bulk", "effect": "sheets-write" },
+  { "method": "POST", "route": "/tasks", "effect": "sheets-write" },
+  { "method": "PATCH", "route": "/tasks/[taskId]", "effect": "sheets-write" },
+  { "method": "DELETE", "route": "/tasks/[taskId]", "effect": "sheets-write" },
+  { "method": "PATCH", "route": "/tasks/[taskId]/assignments", "effect": "sheets-write" },
+  { "method": "POST", "route": "/tasks/[taskId]/complete", "effect": "sheets-write" },
+  { "method": "POST", "route": "/tasks/assignments/batch", "effect": "sheets-write" },
+  { "method": "PATCH", "route": "/tasks/batch", "effect": "sheets-write" },
+  { "method": "DELETE", "route": "/tasks/batch", "effect": "sheets-write" },
+  { "method": "POST", "route": "/tasks/completions/reset", "effect": "sheets-write" },
+  { "method": "POST", "route": "/tasks/schedules/batch", "effect": "sheets-write" },
+  { "method": "POST", "route": "/transactions/[transactionId]/cancel", "effect": "sheets-write" },
+  { "method": "POST", "route": "/generator/create", "effect": "generator-write" },
+  { "method": "GET", "route": "/bank/balance", "effect": "read" },
+  { "method": "GET", "route": "/bank/student", "effect": "read" },
+  { "method": "GET", "route": "/bank/tasks", "effect": "read" },
+  { "method": "GET", "route": "/bank/session", "effect": "student-session-read" },
+  { "method": "POST", "route": "/bank/session", "effect": "auth-cookie" },
+  { "method": "DELETE", "route": "/bank/session", "effect": "auth-cookie" },
+  { "method": "GET", "route": "/bank/me/transactions", "effect": "student-session-read" },
+  { "method": "GET", "route": "/bank/me/tasks", "effect": "student-session-read" },
+  { "method": "POST", "route": "/bank/me/tasks/[taskId]/complete", "effect": "sheets-write" },
+  { "method": "POST", "route": "/checkout/preview", "effect": "read" },
+  { "method": "GET", "route": "/products", "effect": "read" },
+  { "method": "GET", "route": "/promotions", "effect": "read" },
+  { "method": "GET", "route": "/promotions/active", "effect": "read" },
+  { "method": "GET", "route": "/settings", "effect": "read" },
+  { "method": "GET", "route": "/students", "effect": "read" },
+  { "method": "GET", "route": "/students/[studentId]", "effect": "read" },
+  { "method": "GET", "route": "/tasks", "effect": "read" },
+  { "method": "GET", "route": "/tasks/[taskId]", "effect": "read" },
+  { "method": "GET", "route": "/tasks/[taskId]/assignments", "effect": "read" },
+  { "method": "GET", "route": "/tasks/[taskId]/history", "effect": "read" },
+  { "method": "GET", "route": "/transactions", "effect": "read" },
+  { "method": "GET", "route": "/generator/grant", "effect": "read" },
+  { "method": "GET", "route": "/google/session", "effect": "read" },
+  { "method": "POST", "route": "/qrcode", "effect": "qr-read" },
+  { "method": "POST", "route": "/qrcode/link", "effect": "qr-read" },
+  { "method": "POST", "route": "/admin/login", "effect": "auth-cookie" },
+  { "method": "POST", "route": "/admin/logout", "effect": "auth-cookie" },
+  { "method": "GET", "route": "/google/login", "effect": "auth-cookie" },
+  { "method": "POST", "route": "/google/logout", "effect": "auth-cookie" },
+  { "method": "GET", "route": "/google/callback", "effect": "oauth-exchange" },
+  { "method": "GET", "route": "/qrcode", "effect": "unsupported" },
+  { "method": "PATCH", "route": "/settings", "effect": "unsupported" },
+  { "method": "POST", "route": "/migrations/[jobId]/freezing/consent/challenge", "effect": "tenant-consent-challenge" },
+  { "method": "POST", "route": "/migrations/[jobId]/freezing/consent", "effect": "tenant-consent-confirmation" },
+  { "method": "GET", "route": "/migrations/google-sheets/callback", "effect": "tenant-consent-oauth-capture" },
+  { "method": "POST", "route": "/bank/balance", "effect": "read" },
+  { "method": "POST", "route": "/classes", "effect": "postgres-platform-mutation" },
+  { "method": "POST", "route": "/classes/[slug]/start", "effect": "postgres-platform-mutation" },
+  { "method": "POST", "route": "/classes/[slug]/manage", "effect": "postgres-platform-mutation" },
+  { "method": "POST", "route": "/tasks/admin-completion", "effect": "postgres-write" },
+  { "method": "POST", "route": "/tasks/qr-assignment", "effect": "postgres-write" },
+  { "method": "POST", "route": "/migrations/xlsx/preview", "effect": "tenant-xlsx-preview-read" },
+  { "method": "POST", "route": "/migrations/xlsx/commit", "effect": "postgres-write" },
+  { "method": "GET", "route": "/students/import/template", "effect": "admin-static-template-read" },
+  { "method": "POST", "route": "/students/import/preview", "effect": "tenant-xlsx-preview-read" },
+  { "method": "POST", "route": "/students/import/commit", "effect": "postgres-write" },
+  { "method": "GET", "route": "/products/import/template", "effect": "admin-static-template-read" },
+  { "method": "POST", "route": "/products/import/preview", "effect": "tenant-xlsx-preview-read" },
+  { "method": "POST", "route": "/products/import/commit", "effect": "postgres-write" },
+  { "method": "GET", "route": "/task-ledger", "effect": "postgres-read" },
+  { "method": "POST", "route": "/task-ledger/tasks", "effect": "postgres-write" },
+  { "method": "POST", "route": "/task-ledger/tasks/delete", "effect": "postgres-write" },
+  { "method": "PATCH", "route": "/task-ledger/tasks/[taskId]", "effect": "postgres-write" },
+  { "method": "GET", "route": "/task-ledger/tasks/[taskId]/history", "effect": "postgres-read" },
+  { "method": "POST", "route": "/task-ledger/stages", "effect": "postgres-write" },
+  { "method": "POST", "route": "/task-ledger/reset", "effect": "postgres-write" },
+  { "method": "POST", "route": "/task-ledger/repeat", "effect": "postgres-write" },
+  { "method": "POST", "route": "/task-ledger/qr", "effect": "postgres-write" }
 ]

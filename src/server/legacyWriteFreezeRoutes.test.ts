@@ -94,17 +94,143 @@ describe('route inventory export discovery', () => {
 });
 
 describe('exhaustive legacy side-effect inventory', () => {
+  it.each(['/classes', '/classes/[slug]/start'])('%s remains a platform mutation requiring Google authentication under legacy freeze', async route => {
+    expect(inventory.find(entry => entry.route === route)?.effect).toBe('postgres-platform-mutation');
+    expect(TENANT_ROUTE_INVENTORY.find(entry => entry.route === route)).toEqual({
+      route, method: 'POST', scope: 'platform', effect: 'mutation',
+    });
+    expect(writers.some(entry => entry.route === route)).toBe(false);
+    const run = await handler(route, 'POST');
+    const request = new Request(`https://legacy.example/api${route}`, { method: 'POST', body: '{}' });
+    const readBody = vi.spyOn(request, 'json');
+    const response = await run(request, { params: Promise.resolve({ slug: 'alpha' }) });
+    expect(response.status).toBe(401);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('set-cookie')).toBeNull();
+    expect(readBody).not.toHaveBeenCalled();
+    expect(external.sheets).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('classifies the QR balance POST as a read and preserves input validation during legacy freeze', async () => {
+    expect(inventory.find(entry => entry.route === '/bank/balance' && entry.method === 'POST')?.effect).toBe('read');
+    const run = await handler('/bank/balance', 'POST');
+    const response = await run(new Request('https://legacy.example/api/bank/balance', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    }), { params: Promise.resolve({}) });
+    expect(response.status).toBe(400);
+    expect((await response.json()).code).not.toBe('MIGRATION_READ_ONLY');
+    expect(external.sheets).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('covers every concrete export, including auth GETs and POST reads, exactly once', () => {
     const discovered = Object.keys(routes).filter(path => !path.includes('/c/[slug]/[...path]/'))
       .flatMap(path => exportedMethods(readFileSync(resolve('src/server', path), 'utf8'))
         .map(method => `${method} ${path.replace('../app/api', '').replace('/route.ts', '')}`)).sort();
     expect(inventory.map(e => `${e.method} ${e.route}`).sort()).toEqual(discovered);
-    expect(new Set(discovered).size).toBe(66);
+    expect(discovered).toHaveLength(102);
+    expect(new Set(discovered).size).toBe(discovered.length);
     expect(inventory.find(e => e.route === '/internal/migrations/freezing-reacquisition')?.effect).toBe('companion-authenticated-read-candidate');
     expect(TENANT_ROUTE_INVENTORY.map(e => `${e.method} ${e.route}`).sort()).toEqual(discovered);
-    expect(writers).toHaveLength(28);
+    expect(writers).toHaveLength(41);
+    expect(writers.filter(entry => entry.effect !== 'postgres-write')).toHaveLength(29);
     expect(inventory.find(e => e.route === '/google/callback')?.effect).toBe('oauth-exchange');
     expect(inventory.find(e => e.route === '/admin/login')?.effect).toBe('auth-cookie');
+  });
+
+  it('classifies membership-gated migration status as a direct read, not a writer or scoped data route', () => {
+    const route = '/migrations/status/[slug]';
+    expect(inventory.filter(entry => entry.route === route)).toEqual([
+      { method: 'GET', route, effect: 'tenant-membership-status-read' },
+    ]);
+    expect(TENANT_ROUTE_INVENTORY.filter(entry => entry.route === route)).toEqual([
+      { method: 'GET', route, scope: 'tenant-status', effect: 'read' },
+    ]);
+    expect(writers.some(entry => entry.route === route)).toBe(false);
+    const dispatcher = readFileSync('src/app/api/c/[slug]/[...path]/route.ts', 'utf8');
+    const scopedRoutes = Array.from(dispatcher.matchAll(/route\('[^']+',\s*'([^']+)'/g), match => `/${match[1]}`);
+    expect(scopedRoutes).not.toContain(route);
+  });
+
+  it('keeps migration status authentication mandatory under legacy freeze without treating it as a write', async () => {
+    const run = await handler('/migrations/status/[slug]', 'GET');
+    const response = await run(new Request('https://legacy.example/api/migrations/status/alpha'), {
+      params: Promise.resolve({ slug: 'alpha' }),
+    });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: 'AUTHENTICATION_REQUIRED' });
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect(response.headers.get('set-cookie')).toBeNull();
+    expect(external.sheets).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('classifies only download GET/HEAD as historical membership reads outside the scoped dispatcher', () => {
+    const route = '/migrations/status/[slug]/preflight/download';
+    expect(inventory.filter(entry => entry.route === route)).toEqual([
+      { method: 'GET', route, effect: 'tenant-membership-historical-report-read' },
+      { method: 'HEAD', route, effect: 'tenant-membership-historical-report-read' },
+    ]);
+    expect(TENANT_ROUTE_INVENTORY.filter(entry => entry.route === route)).toEqual([
+      { method: 'GET', route, scope: 'tenant-status', effect: 'read' },
+      { method: 'HEAD', route, scope: 'tenant-status', effect: 'read' },
+    ]);
+    expect(writers.some(entry => entry.route === route)).toBe(false);
+    const dispatcher = readFileSync('src/app/api/c/[slug]/[...path]/route.ts', 'utf8');
+    const scopedRoutes = Array.from(dispatcher.matchAll(/route\('[^']+',\s*'([^']+)'/g), match => `/${match[1]}`);
+    expect(scopedRoutes).not.toContain(route);
+  });
+
+  it.each(['GET', 'HEAD'])('requires download %s authentication under synthetic legacy freeze, without Sheets/fetch', async method => {
+    const run = await handler('/migrations/status/[slug]/preflight/download', method);
+    const response = await run(new Request(`https://legacy.example/api/migrations/status/alpha/preflight/download?jobId=fixture&reportId=reconciliation:${'a'.repeat(64)}`, { method }), {
+      params: Promise.resolve({ slug: 'alpha' }),
+    });
+    expect(response.status).toBe(401);
+    expect(await response.text()).toBe(method === 'HEAD' ? '' : JSON.stringify({ error: 'AUTHENTICATION_REQUIRED' }));
+    expect(Object.fromEntries(response.headers)).toEqual({
+      'cache-control': 'private, no-store', 'content-type': 'application/json; charset=utf-8',
+      'referrer-policy': 'no-referrer', vary: 'Cookie', 'x-content-type-options': 'nosniff',
+    });
+    if (method === 'HEAD') expect(response.body).toBeNull();
+    expect(external.sheets).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  // Membership-gated NONAUTHORITY metadata, not configured current data authority.
+  it('classifies only historical metadata CSV GET/HEAD as direct membership reads', () => {
+    const route = '/exports/[slug]/historical-local-generation-metadata.csv';
+    expect(inventory.filter(entry => entry.route === route)).toEqual([
+      { method: 'GET', route, effect: 'tenant-membership-historical-metadata-read' },
+      { method: 'HEAD', route, effect: 'tenant-membership-historical-metadata-read' },
+    ]);
+    expect(TENANT_ROUTE_INVENTORY.filter(entry => entry.route === route)).toEqual([
+      { method: 'GET', route, scope: 'tenant-status', effect: 'read' },
+      { method: 'HEAD', route, scope: 'tenant-status', effect: 'read' },
+    ]);
+    expect(writers.some(entry => entry.route === route)).toBe(false);
+    const dispatcher = readFileSync('src/app/api/c/[slug]/[...path]/route.ts', 'utf8');
+    const scopedRoutes = Array.from(dispatcher.matchAll(/route\('[^']+',\s*'([^']+)'/g), match => `/${match[1]}`);
+    expect(scopedRoutes).not.toContain(route);
+  });
+
+  it.each(['GET', 'HEAD'])('requires historical metadata CSV %s authentication under synthetic legacy freeze, without Sheets/fetch', async method => {
+    const run = await handler('/exports/[slug]/historical-local-generation-metadata.csv', method);
+    // Exact ordered literal selector; malformed transport must not mask the auth boundary.
+    const url = `https://legacy.example/api/exports/alpha/historical-local-generation-metadata.csv?jobId=fixture&generationId=preparation%3Acandidate%3A${'a'.repeat(64)}`;
+    const response = await run(new Request(url, {
+      method, headers: { 'x-tenant-id': 'spoofed', 'x-role': 'OWNER' },
+    }), { params: Promise.resolve({ slug: 'alpha' }) });
+    expect(response.status).toBe(401);
+    expect(await response.text()).toBe(method === 'HEAD' ? '' : 'HISTORICAL_LOCAL_GENERATION_UNAUTHENTICATED\n');
+    expect(Object.fromEntries(response.headers)).toEqual({
+      'cache-control': 'private, no-store', 'content-type': 'text/plain; charset=utf-8',
+      'referrer-policy': 'no-referrer', vary: 'Cookie', 'x-content-type-options': 'nosniff',
+    });
+    if (method === 'HEAD') expect(response.body).toBeNull();
+    expect(external.sheets).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it.each(writers)('$method $route has the refusal as its first composition-root operation', ({ route, method, effect }) => {

@@ -45,6 +45,22 @@ describe('tenant API dispatcher', () => {
     expect(await response.json()).toMatchObject({ tenantId: ALPHA_ID, pathname: '/api/echo' });
   });
 
+  it('routes a literal path to its own handler even when a parameter route is listed first', async () => {
+    const single = vi.fn(async () => Response.json({ handler: 'single' }));
+    const batch = vi.fn(async () => Response.json({ handler: 'batch' }));
+    const dispatch = createTenantApiDispatcher(dependencies(), [
+      { method: 'DELETE', pattern: 'students/[studentId]', access: 'public', handler: single },
+      { method: 'DELETE', pattern: 'students/batch', access: 'public', handler: batch },
+    ]);
+    const send = (path: string[]) => dispatch(new Request(`https://example.test/api/c/alpha-class/${path.join('/')}`, { method: 'DELETE' }),
+      { slug: 'alpha-class', path });
+
+    expect(await (await send(['students', 'batch'])).json()).toEqual({ handler: 'batch' });
+    expect(await (await send(['students', 'S01'])).json()).toEqual({ handler: 'single' });
+    expect(batch).toHaveBeenCalledTimes(1);
+    expect(single).toHaveBeenCalledTimes(1);
+  });
+
   it('denies a nonmember before invoking an admin handler', async () => {
     const handler = vi.fn(async () => Response.json({ ok: true }));
     const deps = dependencies(ALPHA_ID);

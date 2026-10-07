@@ -7,6 +7,13 @@ import { appendOperationAudit, assertOperationAudit } from './operationAudit';
 
 export type ProductAdminAction = 'CREATE' | 'UPDATE' | 'DEACTIVATE';
 
+export class ProductAdminConflictError extends Error {
+  constructor(readonly code: 'STALE_VERSION' | 'OPERATION_CONFLICT') {
+    super(code === 'STALE_VERSION' ? 'Product version is stale.' : 'Product administration operation conflict.');
+    this.name = 'ProductAdminConflictError';
+  }
+}
+
 type RunTenantTransaction = <TResult>(
   tenantId: string,
   callback: (transaction: TenantTransaction) => Promise<TResult>,
@@ -60,6 +67,38 @@ export type DeactivateProductsAdminBatchInput = Readonly<{
   operationId: string;
   products: ReadonlyArray<Omit<DeactivateProductAdminInput, 'operationId'>>;
 }>;
+
+export class ProductBatchDeletionInputError extends Error {
+  constructor() {
+    super('올바른 상품 삭제 요청이 아닙니다. 새로고침해 주세요.');
+    this.name = 'ProductBatchDeletionInputError';
+  }
+}
+
+export class ProductBatchDeletionError extends Error {
+  constructor(readonly code: 'PRODUCT_NOT_FOUND' | 'PRODUCT_DELETED') {
+    super('상품 목록이 변경되었습니다. 새로고침해 주세요.');
+    this.name = 'ProductBatchDeletionError';
+  }
+}
+
+export function validateProductBatchDeletionInput(input: unknown): asserts input is DeactivateProductsAdminBatchInput {
+  if (!isExactRecord(input, ['operationId', 'products'])
+    || typeof input.operationId !== 'string'
+    || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(input.operationId)
+    || !Array.isArray(input.products) || input.products.length === 0
+    || input.products.length > MAX_PRODUCT_ADMIN_BATCH_SIZE) throw new ProductBatchDeletionInputError();
+  const ids = new Set<string>();
+  for (const product of input.products) {
+    if (!isExactRecord(product, ['productId', 'expectedProductVersion'])
+      || typeof product.productId !== 'string' || !product.productId
+      || product.productId.trim() !== product.productId || product.productId.includes('\0')
+      || ids.has(product.productId) || !Number.isSafeInteger(product.expectedProductVersion)
+      || Number(product.expectedProductVersion) < 1
+      || Number(product.expectedProductVersion) >= Number.MAX_SAFE_INTEGER) throw new ProductBatchDeletionInputError();
+    ids.add(product.productId);
+  }
+}
 
 type CanonicalCreateProductAdminInput = Readonly<{
   operationId: string;
@@ -472,7 +511,7 @@ export function createDatabaseCatalogCommands(dependencies: DatabaseCatalogComma
           if (!row) throw new Error('Product batch lock integrity check failed.');
           if (row.deleted_at !== null) throw new Error('Product is tombstoned.');
           const versionBefore = positiveSafeInteger(dbSafeInteger(row.version), 'stored product version');
-          if (versionBefore !== product.expectedProductVersion) throw new Error('Product version is stale.');
+          if (versionBefore !== product.expectedProductVersion) throw new ProductAdminConflictError('STALE_VERSION');
           return {
             input: product,
             stockBefore: nonnegativeSafeInteger(dbSafeInteger(row.stock), 'stored product stock'),
@@ -493,7 +532,7 @@ export function createDatabaseCatalogCommands(dependencies: DatabaseCatalogComma
               AND deleted_at IS NULL AND version=${product.expectedProductVersion}
             RETURNING product_id
           `);
-          if (updated.rows.length !== 1) throw new Error('Product version is stale.');
+          if (updated.rows.length !== 1) throw new ProductAdminConflictError('STALE_VERSION');
           const stockDelta = product.stock - plan.stockBefore;
           const inventoryEventId = stockDelta === 0
             ? null
@@ -587,7 +626,7 @@ export function createDatabaseCatalogCommands(dependencies: DatabaseCatalogComma
           ORDER BY product_id
           FOR UPDATE
         `);
-        if (locked.rows.length !== input.products.length) throw new Error('Product not found.');
+        if (locked.rows.length !== input.products.length) throw new ProductBatchDeletionError('PRODUCT_NOT_FOUND');
         const lockedById = new Map<string, Record<string, unknown>>();
         for (const lockedRow of locked.rows as Record<string, unknown>[]) {
           if (typeof lockedRow.product_id !== 'string' || lockedById.has(lockedRow.product_id)) {
@@ -598,9 +637,9 @@ export function createDatabaseCatalogCommands(dependencies: DatabaseCatalogComma
         const plans = input.products.map((product) => {
           const row = lockedById.get(product.productId);
           if (!row) throw new Error('Product batch lock integrity check failed.');
-          if (row.deleted_at !== null) throw new Error('Product is already tombstoned.');
+          if (row.deleted_at !== null) throw new ProductBatchDeletionError('PRODUCT_DELETED');
           const versionBefore = positiveSafeInteger(dbSafeInteger(row.version), 'stored product version');
-          if (versionBefore !== product.expectedProductVersion) throw new Error('Product version is stale.');
+          if (versionBefore !== product.expectedProductVersion) throw new ProductAdminConflictError('STALE_VERSION');
           if (typeof row.is_active !== 'boolean') {
             throw new Error('Product administration stored active flag integrity check failed.');
           }
@@ -625,7 +664,7 @@ export function createDatabaseCatalogCommands(dependencies: DatabaseCatalogComma
               AND deleted_at IS NULL AND version=${plan.input.expectedProductVersion}
             RETURNING product_id
           `);
-          if (tombstone.rows.length !== 1) throw new Error('Product version is stale.');
+          if (tombstone.rows.length !== 1) throw new ProductAdminConflictError('STALE_VERSION');
           products.push({
             productId: plan.input.productId,
             name: plan.name,
@@ -836,7 +875,7 @@ async function resolveExistingUpdateBatch(
   input: ReturnType<typeof canonicalizeUpdateBatch>,
 ): Promise<ProductAdminSuccess> {
   if (operation.operation_kind !== 'PRODUCT_ADMIN' || operation.payload_hash !== payloadHash) {
-    throw new Error('Product administration operation conflict.');
+    throw new ProductAdminConflictError('OPERATION_CONFLICT');
   }
   if (operation.status !== 'SUCCEEDED' || !operation.result_snapshot) {
     throw new Error('Product administration operation is not replayable.');
@@ -934,7 +973,7 @@ async function resolveExistingDeactivateBatch(
   input: ReturnType<typeof canonicalizeDeactivateBatch>,
 ): Promise<ProductAdminSuccess> {
   if (operation.operation_kind !== 'PRODUCT_ADMIN' || operation.payload_hash !== payloadHash) {
-    throw new Error('Product administration operation conflict.');
+    throw new ProductAdminConflictError('OPERATION_CONFLICT');
   }
   if (operation.status !== 'SUCCEEDED' || !operation.result_snapshot) {
     throw new Error('Product administration operation is not replayable.');

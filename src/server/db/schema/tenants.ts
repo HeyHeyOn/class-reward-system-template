@@ -33,6 +33,9 @@ export const tenants = pgTable('tenants', {
   lifecycle: text('lifecycle').$type<(typeof tenantLifecycles)[number]>().default('DRAFT').notNull(),
   timezone: text('timezone').default('Asia/Seoul').notNull(),
   credentialVersion: integer('credential_version').default(1).notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  deletedLifecycle: text('deleted_lifecycle').$type<'DRAFT' | 'ACTIVE'>(),
+  managementVersion: bigint('management_version', { mode: 'bigint' }).default(sql`1`).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
@@ -42,6 +45,8 @@ export const tenants = pgTable('tenants', {
   check('tenants_lifecycle_check', sql`${table.lifecycle} IN (${sql.join(tenantLifecycles.map((value) => sql`${value}`), sql`, `)})`),
   check('tenants_timezone_check', sql`${table.timezone} = 'Asia/Seoul'`),
   check('tenants_credential_version_check', sql`${table.credentialVersion} >= 1`),
+  check('tenants_management_version_check', sql`${table.managementVersion} BETWEEN 1 AND 9007199254740991`),
+  check('tenants_deleted_state_check', sql`(${table.deletedAt} IS NULL AND ${table.deletedLifecycle} IS NULL) OR (${table.deletedAt} IS NOT NULL AND ${table.deletedLifecycle} IS NOT NULL AND ${table.deletedLifecycle} IN ('DRAFT','ACTIVE') AND ${table.lifecycle}='SUSPENDED')`),
 ]);
 
 export const tenantMemberships = pgTable('tenant_memberships', {

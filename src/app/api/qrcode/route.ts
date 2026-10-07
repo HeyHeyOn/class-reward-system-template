@@ -60,6 +60,8 @@ export async function POST(request: Request) {
       return Response.json({ error: GENERATION_ERROR }, { status: 400 });
     }
     if (error instanceof StudentQrConfigurationError) {
+      // The problem code names the failed check only; it never contains key material.
+      console.error('[student-qr] signing configuration invalid', error.problem ?? 'UNKNOWN');
       return Response.json({ error: 'QR 코드 설정을 확인해 주세요.' }, { status: 503 });
     }
     return Response.json({ error: GENERATION_ERROR }, { status: 500 });

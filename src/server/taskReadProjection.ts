@@ -2,12 +2,15 @@ import { isTaskAvailable } from '@/domain/taskAvailability';
 import { resolveTaskSchedule } from '@/domain/taskSchedule';
 import { buildTaskCurrentCycleStatusDto, type TaskCurrentCycleStatusDto } from '@/domain/taskHistoryDtos';
 import type { TaskCycleState } from '@/domain/taskCycleState';
+import type { TaskStage } from '@/domain/taskStage';
 import type { ClassTask, TaskRecurrence } from '@/domain/types';
 
 export type TaskStudentCurrentCycleDto = Readonly<{
   studentId: string;
   assigned: boolean;
+  ready: boolean;
   completed: boolean;
+  stage: TaskStage;
   assignmentOrigin: 'EVENT' | 'CARRY' | 'LEGACY' | 'DEFAULT';
   completionOrigin: 'EVENT' | 'CARRY' | 'LEGACY' | 'DEFAULT';
 }>;
@@ -29,7 +32,9 @@ export function buildTaskCycleProjection(
     ...(studentId ? { studentStatus: {
       studentId,
       assigned: student?.assigned ?? false,
+      ready: student?.ready ?? false,
       completed: student?.completed ?? false,
+      stage: student?.stage ?? 'UNASSIGNED',
       assignmentOrigin: student?.assignmentOrigin ?? 'DEFAULT',
       completionOrigin: student?.completionOrigin ?? 'DEFAULT',
     } } : {}),

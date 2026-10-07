@@ -1,7 +1,9 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
-import { FONT_FAMILY_OPTIONS, normalizeFontFamily, type FontFamily } from '@/lib/fontSettings';
+import { FormEvent, useEffect, useRef, useState } from 'react';
+import { FONT_FAMILY_OPTIONS, getFontFamilyCss, normalizeFontFamily, type FontFamily } from '@/lib/fontSettings';
+import { THEME_PALETTES, type ThemeColor } from './uiTheme';
+import { Button, Card, CardHeader, Field, Icon, Input, Select, Switch, cx } from './ui';
 import { useQrObjectUrl } from '@/lib/qrCodeClient';
 import { tenantApiPath, tenantFetch } from '@/lib/tenantApiPath';
 
@@ -13,7 +15,8 @@ type SettingsResponse = {
   themeColor: string;
   fontFamily: FontFamily;
   qrManualInputEnabled: boolean;
-  source: 'runtime' | 'env' | 'unset';
+  source: 'runtime' | 'sheet' | 'env' | 'unset' | 'database';
+  settingsVersion?: number;
   adminPasswordConfigured?: boolean;
 };
 
@@ -38,6 +41,11 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
   const [isSaving, setIsSaving] = useState(false);
   const [loadStatus, setLoadStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [loadAttempt, setLoadAttempt] = useState(0);
+  const isDatabase = currentSettings?.source === 'database';
+  const saveAttempt = useRef<string | null>(null);
+  const saveInFlight = useRef(false);
+  const [uncertain, setUncertain] = useState(false);
+  const [needsReload, setNeedsReload] = useState(false);
   const adminQrUrl = useQrObjectUrl(savedAdminPassword ? {
     key: 'admin', endpoint: tenantApiPath('/api/qrcode'),
     body: { kind: 'admin', password: savedAdminPassword },
@@ -54,6 +62,9 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
       if (!ignore) {
         setCurrentSettings(settings);
         setLoadStatus('ready');
+        setNeedsReload(false);
+        setUncertain(false);
+        saveAttempt.current = null;
         setSpreadsheetIdOrUrl(settings.spreadsheetId ?? '');
         setCurrencyUnit(settings.currencyUnit ?? '원');
         setAppTitle(settings.appTitle ?? '학급 매점');
@@ -78,7 +89,15 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (loadStatus !== 'ready') return;
+    if (loadStatus !== 'ready' || saveInFlight.current || needsReload) return;
+    if (isDatabase && !saveAttempt.current) {
+      if (!Number.isSafeInteger(currentSettings.settingsVersion)) {
+        setNeedsReload(true); setMessage('설정을 다시 불러온 뒤 저장해 주세요.'); return;
+      }
+      saveAttempt.current = JSON.stringify({ operationId: crypto.randomUUID(), expectedSettingsVersion: currentSettings.settingsVersion,
+        currencyUnit, appTitle, bankTitle, themeColor, fontFamily, qrManualInputEnabled });
+    }
+    saveInFlight.current = true;
     setIsSaving(true);
     setMessage('');
 
@@ -86,15 +105,26 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
       const response = await tenantFetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ spreadsheetIdOrUrl, currencyUnit, appTitle, bankTitle, themeColor, fontFamily, qrManualInputEnabled, adminPassword: adminPassword.trim() || undefined }),
+        body: isDatabase ? saveAttempt.current! : JSON.stringify({ spreadsheetIdOrUrl, currencyUnit, appTitle, bankTitle, themeColor, fontFamily, qrManualInputEnabled, adminPassword: adminPassword.trim() || undefined }),
       });
       const payload = (await response.json()) as SettingsResponse | { error: string };
 
       if (!response.ok || 'error' in payload) {
+        if (isDatabase) {
+          const definite = response.status >= 400 && response.status < 500;
+          setUncertain(!definite);
+          if (definite) saveAttempt.current = null;
+          if (response.status === 409) setNeedsReload(true);
+        }
         setMessage('error' in payload ? payload.error : '설정을 저장하지 못했습니다.');
         return;
       }
 
+      if (isDatabase && (payload.source !== 'database' || !Number.isSafeInteger(payload.settingsVersion))) {
+        throw new Error('저장 결과를 확인하지 못했습니다. 같은 요청으로 다시 확인해 주세요.');
+      }
+      saveAttempt.current = null;
+      setUncertain(false);
       setCurrentSettings(payload);
       setSpreadsheetIdOrUrl(payload.spreadsheetId ?? '');
       setCurrencyUnit(payload.currencyUnit ?? '원');
@@ -107,177 +137,149 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
         setSavedAdminPassword(adminPassword.trim());
         setAdminPassword('');
       }
-      await onSettingsSaved?.();
-      setMessage('시스템 설정을 저장했고, 관리자 목록도 같은 시트에서 다시 불러왔습니다.');
+      try { await onSettingsSaved?.(); }
+      catch { setMessage('설정은 저장했습니다. 관리자 목록은 새로고침해 주세요.'); return; }
+      setMessage(isDatabase ? '학급 설정을 저장했습니다.' : '시스템 설정을 저장했고, 관리자 목록도 같은 시트에서 다시 불러왔습니다.');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '설정을 저장하지 못했습니다.');
+      if (isDatabase) setUncertain(true);
+      setMessage(isDatabase ? '저장 결과를 확인하지 못했습니다. 같은 요청으로 다시 확인해 주세요.'
+        : error instanceof Error ? error.message : '설정을 저장하지 못했습니다.');
     } finally {
+      saveInFlight.current = false;
       setIsSaving(false);
     }
   }
 
+  const unchanged = Boolean(currentSettings) && currencyUnit === (currentSettings?.currencyUnit ?? '원') && appTitle === (currentSettings?.appTitle ?? '학급 매점')
+    && bankTitle === (currentSettings?.bankTitle ?? '학급 은행') && themeColor === (currentSettings?.themeColor ?? 'blue')
+    && fontFamily === normalizeFontFamily(currentSettings?.fontFamily) && qrManualInputEnabled === Boolean(currentSettings?.qrManualInputEnabled)
+    && (isDatabase || (spreadsheetIdOrUrl === (currentSettings?.spreadsheetId ?? '') && !adminPassword.trim()));
+  const fontCss = getFontFamilyCss(fontFamily);
+  const success = /저장했/.test(message) && !/새로고침/.test(message);
+
   return (
-    <div className="rounded-[2rem] bg-white p-6 shadow-sm ring-1 ring-black/5">
-      <form onSubmit={handleSubmit}>
-      <label className="block">
-        <span className="text-sm font-bold text-slate-700">Google Sheets 주소 또는 시트 ID</span>
-        <input
-          value={spreadsheetIdOrUrl}
-          onChange={(event) => setSpreadsheetIdOrUrl(event.target.value)}
-          placeholder="https://docs.google.com/spreadsheets/d/.../edit"
-          className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg text-slate-950 outline-none transition focus:border-amber-500 focus:bg-white"
-        />
-      </label>
-      <p className="mt-2 text-sm text-slate-600">
-        개인 Sheets 배포는 Vercel 환경변수에 CLASS_STORE_STORAGE=sheets와 GOOGLE_SHEET_ID를 설정한 뒤 재배포해야 합니다.
-        시트 ID는 관리자 화면에서 영구 변경할 수 없습니다. 기존 시트 ID를 사용하고 새 시트를 다시 생성하지 마세요.
-      </p>
+    <form method="post" onSubmit={handleSubmit} className="space-y-5">
+      <fieldset disabled={isSaving || loadStatus !== 'ready' || uncertain} className="space-y-5 disabled:opacity-70">
+        {!isDatabase && (
+          <Card>
+            <CardHeader title="Google Sheets 연결" description="이 학급이 사용하는 스프레드시트입니다." />
+            <Field label="Google Sheets 주소 또는 시트 ID" htmlFor="settings-sheet" className="mt-5"
+              hint="개인 Sheets 배포는 Vercel 환경변수에 CLASS_STORE_STORAGE=sheets와 GOOGLE_SHEET_ID를 설정한 뒤 재배포해야 합니다. 시트 ID는 관리자 화면에서 영구 변경할 수 없습니다.">
+              <Input id="settings-sheet" value={spreadsheetIdOrUrl} onChange={(event) => setSpreadsheetIdOrUrl(event.target.value)} placeholder="https://docs.google.com/spreadsheets/d/.../edit" />
+            </Field>
+          </Card>
+        )}
 
-      <label className="mt-4 block">
-        <span className="text-sm font-bold text-slate-700">학급 화폐 단위</span>
-        <input
-          aria-label="학급 화폐 단위"
-          value={currencyUnit}
-          onChange={(event) => setCurrencyUnit(event.target.value)}
-          placeholder="원, 별, 포인트 등"
-          className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg text-slate-950 outline-none transition focus:border-amber-500 focus:bg-white"
-        />
-      </label>
+        <Card>
+          <CardHeader title="이름과 화폐" description="매점과 은행 화면 맨 위에 보이는 이름, 학급에서 쓰는 화폐 단위입니다." />
+          <div className="mt-5 grid gap-5 sm:grid-cols-2">
+            <Field label="매점 이름" htmlFor="settings-app-title">
+              <Input id="settings-app-title" aria-label="매점 제목" value={appTitle} onChange={(event) => setAppTitle(event.target.value)} placeholder="학급 매점" />
+            </Field>
+            <Field label="은행 이름" htmlFor="settings-bank-title">
+              <Input id="settings-bank-title" aria-label="은행 제목" value={bankTitle} onChange={(event) => setBankTitle(event.target.value)} placeholder="학급 은행" />
+            </Field>
+            <Field label="화폐 단위" htmlFor="settings-currency" hint={`예: 1,000${currencyUnit || '원'}`}>
+              <Input id="settings-currency" aria-label="학급 화폐 단위" value={currencyUnit} onChange={(event) => setCurrencyUnit(event.target.value)} placeholder="원, 별, 포인트" />
+            </Field>
+          </div>
+        </Card>
 
-      <label className="mt-4 block">
-        <span className="text-sm font-bold text-slate-700">매점 제목</span>
-        <input
-          aria-label="매점 제목"
-          value={appTitle}
-          onChange={(event) => setAppTitle(event.target.value)}
-          placeholder="학급 매점"
-          className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg text-slate-950 outline-none transition focus:border-amber-500 focus:bg-white"
-        />
-      </label>
+        <Card>
+          <CardHeader title="화면 모양" description="학생이 보는 매점과 은행 화면의 색상과 글꼴입니다." />
+          <fieldset className="mt-5">
+            <legend className="mb-2 text-[13px] font-bold">테마 색상</legend>
+            <div role="radiogroup" aria-label="테마 색상" className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+              {THEME_OPTIONS.map((option) => {
+                const palette = THEME_PALETTES[option.value];
+                const selected = themeColor === option.value;
+                return (
+                  <label key={option.value} className={cx('relative flex cursor-pointer flex-col gap-2.5 rounded-[14px] border p-2.5 transition-colors',
+                    selected ? 'border-[var(--theme-accent-text)] ring-2 ring-[color-mix(in_srgb,var(--theme-accent-text)_25%,transparent)]' : 'border-[var(--crs-line)] hover:border-[var(--crs-line-strong)]')}>
+                    <input type="radio" name="theme-color" value={option.value} checked={selected} onChange={() => setThemeColor(option.value)} aria-label={option.label} className="sr-only" />
+                    <span aria-hidden="true" className="flex h-14 overflow-hidden rounded-[10px] border border-black/5" style={{ background: palette.shell }}>
+                      <span className="m-2 flex flex-1 flex-col justify-between rounded-md p-1.5" style={{ background: palette.surface }}>
+                        <span className="h-1.5 w-8 rounded-full" style={{ background: palette.text, opacity: 0.8 }} />
+                        <span className="h-3 w-full rounded" style={{ background: palette.accentSolid }} />
+                      </span>
+                    </span>
+                    <span className="flex items-center justify-between px-0.5 text-[13px] font-bold">
+                      {option.label}
+                      {selected ? <Icon name="check" size={15} className="text-[var(--theme-accent-text)]" /> : null}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+          <Field label="글꼴" htmlFor="settings-font" className="mt-5">
+            <Select id="settings-font" aria-label="글꼴" value={fontFamily} onChange={(event) => setFontFamily(normalizeFontFamily(event.target.value))}>
+              {FONT_FAMILY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </Select>
+          </Field>
+          <p aria-hidden="true" className="mt-3 rounded-[12px] bg-[var(--crs-subtle)] px-4 py-3 text-lg" style={fontCss ? { fontFamily: fontCss } : undefined}>
+            {appTitle || '학급 매점'} · 연필 100{currencyUnit || '원'}
+          </p>
+        </Card>
 
-      <label className="mt-4 block">
-        <span className="text-sm font-bold text-slate-700">은행 제목</span>
-        <input
-          aria-label="은행 제목"
-          value={bankTitle}
-          onChange={(event) => setBankTitle(event.target.value)}
-          placeholder="학급 은행"
-          className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg text-slate-950 outline-none transition focus:border-amber-500 focus:bg-white"
-        />
-      </label>
+        <Card>
+          <CardHeader title="보안" description="학생이 다른 친구 번호로 결제하지 못하게 막는 설정입니다." />
+          <div className="mt-5 space-y-3">
+            <Switch checked={qrManualInputEnabled} onChange={setQrManualInputEnabled} ariaLabel="QR 값 직접 입력 허용"
+              label="QR 번호 직접 입력 허용" description="끄면 매점 결제와 은행에서 카메라로 QR을 찍어야만 합니다. 다른 학생 번호를 직접 입력하는 것을 막을 수 있습니다." />
+            {!isDatabase && (
+              <Field label="관리자 암호" htmlFor="settings-admin-password" hint="암호는 해시로 Settings 시트에 저장됩니다. QR은 저장 직후 이 화면에서만 표시됩니다.">
+                <Input id="settings-admin-password" aria-label="관리자 암호 설정" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)}
+                  placeholder={currentSettings?.adminPasswordConfigured ? '새 암호를 입력하면 변경됩니다' : '관리자 로그인 암호'} />
+              </Field>
+            )}
+            {!isDatabase && savedAdminPassword ? (
+              <div className="rounded-[var(--crs-radius)] bg-[var(--crs-subtle)] p-4 text-center">
+                <p className="text-sm font-bold">관리자 QR 로그인 코드</p>
+                {adminQrUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img className="mx-auto mt-3 h-44 w-44 rounded-xl bg-white p-2" alt="관리자 로그인 QR" src={adminQrUrl} />
+                ) : adminQrUrl === null ? (
+                  <p className="mt-3 text-sm font-bold text-[var(--crs-danger-text)]">QR 생성 실패</p>
+                ) : (
+                  <p className="mt-3 text-sm text-[var(--theme-muted-text)]">QR 생성 중</p>
+                )}
+                <p className="mt-2 text-xs text-[var(--theme-muted-text)]">로그인 화면의 QR 로그인으로 찍으면 암호가 자동 입력됩니다.</p>
+              </div>
+            ) : null}
+          </div>
+        </Card>
+      </fieldset>
 
-
-      <label className="mt-4 block">
-        <span className="text-sm font-bold text-slate-700">테마 색상</span>
-        <select
-          aria-label="테마 색상"
-          value={themeColor}
-          onChange={(event) => setThemeColor(event.target.value)}
-          className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg font-bold text-slate-950 outline-none transition focus:border-amber-500 focus:bg-white"
-        >
-          <option value="blue">파랑</option>
-          <option value="pink">분홍</option>
-          <option value="yellow">노랑</option>
-          <option value="green">초록</option>
-          <option value="purple">보라</option>
-          <option value="white">흰색</option>
-          <option value="black">검은색</option>
-          <option value="navy">남색</option>
-        </select>
-      </label>
-
-      <label className="mt-4 block">
-        <span className="text-sm font-bold text-slate-700">글꼴</span>
-        <select
-          aria-label="글꼴"
-          value={fontFamily}
-          onChange={(event) => setFontFamily(normalizeFontFamily(event.target.value))}
-          className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg font-bold text-slate-950 outline-none transition focus:border-amber-500 focus:bg-white"
-        >
-          {FONT_FAMILY_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </select>
-      </label>
-
-      <label className="mt-4 flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-        <input
-          aria-label="QR 값 직접 입력 허용"
-          type="checkbox"
-          checked={qrManualInputEnabled}
-          onChange={(event) => setQrManualInputEnabled(event.target.checked)}
-          className="mt-1 h-5 w-5 rounded border-slate-300 accent-slate-950"
-        />
-        <span>
-          <span className="block text-sm font-black text-slate-800">QR 값 직접 입력 허용</span>
-          <span className="mt-1 block text-xs font-bold text-slate-500">꺼두면 매점 결제와 은행/과제 화면에서 카메라 QR 인식만 사용할 수 있어, 다른 학생 번호를 직접 입력하는 악용을 줄일 수 있습니다.</span>
-        </span>
-      </label>
-
-      <label className="mt-4 block">
-        <span className="text-sm font-bold text-slate-700">관리자 암호 설정</span>
-        <input
-          aria-label="관리자 암호 설정"
-          value={adminPassword}
-          onChange={(event) => setAdminPassword(event.target.value)}
-          placeholder={currentSettings?.adminPasswordConfigured ? '새 암호를 입력하면 변경됩니다' : '관리자 로그인 암호'}
-          className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-lg text-slate-950 outline-none transition focus:border-amber-500 focus:bg-white"
-        />
-        <p className="mt-2 text-xs font-bold text-slate-500">암호는 해시로 Settings 시트에 저장됩니다. QR은 저장 직후 이 화면에서만 표시됩니다.</p>
-      </label>
-
-      {savedAdminPassword ? (
-        <div className="mt-4 rounded-2xl bg-sky-50 p-4 text-center">
-          <p className="text-sm font-black text-sky-900">관리자 QR 로그인 코드</p>
-          {adminQrUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img className="mx-auto mt-3 h-48 w-48 rounded-xl bg-white p-2" alt="관리자 로그인 QR" src={adminQrUrl} />
-          ) : adminQrUrl === null ? (
-            <p className="mt-3 text-sm font-bold text-red-700">QR 생성 실패</p>
-          ) : (
-            <p className="mt-3 text-sm font-bold text-slate-500">QR 생성 중</p>
-          )}
-          <p className="mt-2 text-xs font-bold text-slate-500">로그인 화면의 QR 로그인으로 인식하면 암호가 자동 입력됩니다.</p>
-        </div>
-      ) : null}
-
-      <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
-        <p>
-          현재 상태:{' '}
-          <strong className="text-slate-950">
-            {loadStatus === 'error' ? '불러오기 실패' : loadStatus === 'loading' ? '불러오는 중' : currentSettings?.spreadsheetId ? '연결 ID 있음' : '미설정'}
-          </strong>
+      <div className="sticky bottom-4 z-20 flex flex-wrap items-center gap-3 rounded-[18px] border border-[var(--crs-line)] bg-[color-mix(in_srgb,var(--theme-surface)_92%,transparent)] px-4 py-3 shadow-[var(--crs-shadow)] backdrop-blur-md">
+        <p role="status" className={cx('min-w-0 flex-1 text-[13px] font-semibold', message ? (success ? 'text-[var(--crs-success-text)]' : 'text-[var(--crs-warning-text)]') : 'text-[var(--theme-muted-text)]')}>
+          {message || (loadStatus === 'loading' ? '설정을 불러오는 중입니다.' : unchanged ? '모든 변경 사항이 저장되어 있습니다.' : '저장하지 않은 변경 사항이 있습니다.')}
+          {!isDatabase && loadStatus === 'ready' ? <span className="ml-2 font-medium text-[var(--theme-muted-text)]">학생 {linkedStudentCount ?? 0}명 · 상품 {linkedProductCount ?? 0}개 연결됨</span> : null}
         </p>
-        <p>설정 출처: {currentSettings?.source ?? '확인 중'}</p>
-        <p>화폐 단위: {currentSettings?.currencyUnit ?? currencyUnit}</p>
-        <p>매점 제목: {currentSettings?.appTitle ?? appTitle}</p>
-        <p>은행 제목: {currentSettings?.bankTitle ?? bankTitle}</p>
-        <p>테마 색상: {currentSettings?.themeColor ?? themeColor}</p>
-        <p>글꼴: {FONT_FAMILY_OPTIONS.find((option) => option.value === (currentSettings?.fontFamily ?? fontFamily))?.label ?? '기본 글꼴'}</p>
-        <p>QR 직접 입력: {(currentSettings?.qrManualInputEnabled ?? qrManualInputEnabled) ? '허용' : '차단'}</p>
-        <p>관리자 암호: {currentSettings?.adminPasswordConfigured ? '설정됨' : '미설정'}</p>
-        <p className="mt-2 font-bold text-sky-800">
-          관리자 목록도 이 설정을 사용합니다: 학생 {linkedStudentCount ?? 0}명 · 상품 {linkedProductCount ?? 0}개
-        </p>
+        {loadStatus === 'error' || needsReload ? (
+          <Button size="md" icon="refresh" onClick={() => {
+            setLoadStatus('loading');
+            setMessage('');
+            setLoadAttempt((attempt) => attempt + 1);
+          }}>설정 다시 불러오기</Button>
+        ) : null}
+        <Button type="submit" variant="primary" icon="check" loading={isSaving} disabled={isSaving || loadStatus !== 'ready' || needsReload || (unchanged && !uncertain)}>
+          {isSaving ? '저장 중...' : uncertain ? '같은 요청으로 다시 확인' : '설정 저장'}
+        </Button>
       </div>
-
-      {message ? <p className="mt-4 font-bold text-amber-700">{message}</p> : null}
-      {loadStatus === 'error' ? (
-        <button type="button" className="mt-3 rounded-xl bg-slate-100 px-4 py-2 font-bold" onClick={() => {
-          setLoadStatus('loading');
-          setMessage('');
-          setLoadAttempt((attempt) => attempt + 1);
-        }}>설정 다시 불러오기</button>
-      ) : null}
-
-      <button
-        type="submit"
-        disabled={isSaving || loadStatus !== 'ready'}
-        className="mt-6 w-full rounded-2xl bg-slate-950 py-4 text-xl font-black text-white shadow-lg transition hover:bg-slate-800 disabled:cursor-wait disabled:bg-slate-400"
-      >
-        {isSaving ? '저장 중...' : '시스템 설정 저장'}
-      </button>
-      </form>
-    </div>
+    </form>
   );
 }
+
+// Stored values stay as they were; only the names changed: 'white' is the white page with blue
+// accents (파랑), 'blue' the pastel blue (하늘).
+const THEME_OPTIONS: Array<{ value: ThemeColor; label: string }> = [
+  { value: 'white', label: '파랑' },
+  { value: 'blue', label: '하늘' },
+  { value: 'pink', label: '분홍' },
+  { value: 'yellow', label: '노랑' },
+  { value: 'green', label: '초록' },
+  { value: 'purple', label: '보라' },
+  { value: 'navy', label: '남색' },
+  { value: 'black', label: '검은색' },
+];

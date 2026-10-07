@@ -9,6 +9,26 @@ import { appendOperationAudit, assertOperationAudit } from './operationAudit';
 export type StudentAdminAction = 'CREATE' | 'UPDATE' | 'DEACTIVATE';
 export const MAX_STUDENT_ADMIN_BATCH_SIZE = 100;
 
+export class StudentAdminConflictError extends Error {
+  constructor(readonly code: 'STALE_VERSION' | 'OPERATION_CONFLICT' | 'OPERATION_NOT_REPLAYABLE') {
+    super(code === 'STALE_VERSION' ? 'Student administration stale version.'
+      : code === 'OPERATION_CONFLICT' ? 'Student administration operation conflict.'
+        : 'Student administration operation is not replayable.');
+    this.name = 'StudentAdminConflictError';
+  }
+}
+
+/** A plain refusal the teacher can act on; nothing was written. The message is shown as is. */
+export class StudentAdminRefusalError extends Error {
+  constructor(readonly code: 'STUDENT_NOT_FOUND' | 'STUDENT_ID_IN_USE' | 'STUDENT_ID_RETIRED', message: string) {
+    super(message);
+    this.name = 'StudentAdminRefusalError';
+  }
+}
+
+const STUDENT_NOT_FOUND = () => new StudentAdminRefusalError('STUDENT_NOT_FOUND',
+  '이미 삭제했거나 없는 학생이 있어요. 학생 목록을 새로 불러와 주세요.');
+
 type RunTenantTransaction = <TResult>(
   tenantId: string,
   callback: (transaction: TenantTransaction) => Promise<TResult>,
@@ -281,6 +301,16 @@ export function createDatabaseStudentCommands(dependencies: DatabaseStudentComma
           return resolveExisting(tx, dependencies.tenantId, winner, payloadHash, input, 'CREATE');
         }
 
+        // A deleted student keeps its row (and history), so its number cannot be given to someone else.
+        const taken = (await tx.execute(sql`
+          SELECT deleted_at IS NOT NULL AS deleted FROM students
+          WHERE tenant_id=${dependencies.tenantId} AND student_id=${input.studentId}
+        `)).rows[0] as { deleted: boolean } | undefined;
+        if (taken) {
+          throw taken.deleted
+            ? new StudentAdminRefusalError('STUDENT_ID_RETIRED', '삭제한 학생이 쓰던 번호라 다시 쓸 수 없어요. 다른 번호를 적어 주세요.')
+            : new StudentAdminRefusalError('STUDENT_ID_IN_USE', '이미 있는 학생 번호예요. 다른 번호를 적어 주세요.');
+        }
         await tx.execute(sql`
           INSERT INTO students
             (tenant_id, student_id, name, status, version, created_at, updated_at)
@@ -540,7 +570,7 @@ export function createDatabaseStudentCommands(dependencies: DatabaseStudentComma
           const balanceBefore = dbSafeInteger(row.balance);
           if (studentVersionBefore !== student.expectedStudentVersion
             || accountVersionBefore !== student.expectedAccountVersion) {
-            throw new Error('Student administration stale version.');
+            throw new StudentAdminConflictError('STALE_VERSION');
           }
           const studentVersionAfter = positiveSafeInteger(studentVersionBefore + 1, 'student version');
           const accountVersionAfter = positiveSafeInteger(accountVersionBefore + 1, 'account version');
@@ -560,7 +590,7 @@ export function createDatabaseStudentCommands(dependencies: DatabaseStudentComma
             RETURNING student_id
           `);
           if (studentUpdate.rows.length !== 1 || accountUpdate.rows.length !== 1) {
-            throw new Error('Student administration stale version.');
+            throw new StudentAdminConflictError('STALE_VERSION');
           }
           const transactionId = delta === 0
             ? null
@@ -658,7 +688,7 @@ export function createDatabaseStudentCommands(dependencies: DatabaseStudentComma
             AND s.deleted_at IS NULL
           FOR UPDATE OF s, a
         `);
-        if (locked.rows.length !== 1) throw new Error('Student administration student integrity check failed.');
+        if (locked.rows.length !== 1) throw STUDENT_NOT_FOUND();
         const row = locked.rows[0] as {
           name: string;
           student_version: string | number | bigint;
@@ -669,7 +699,7 @@ export function createDatabaseStudentCommands(dependencies: DatabaseStudentComma
         const accountVersion = dbSafeInteger(row.account_version);
         const balance = dbSafeInteger(row.balance);
         if (studentVersionBefore !== input.expectedStudentVersion) {
-          throw new Error('Student administration stale version.');
+          throw new StudentAdminConflictError('STALE_VERSION');
         }
         const studentVersionAfter = positiveSafeInteger(studentVersionBefore + 1, 'student version');
         const updated = await tx.execute(sql`
@@ -679,7 +709,7 @@ export function createDatabaseStudentCommands(dependencies: DatabaseStudentComma
             AND deleted_at IS NULL AND version=${input.expectedStudentVersion}
           RETURNING student_id
         `);
-        if (updated.rows.length !== 1) throw new Error('Student administration stale version.');
+        if (updated.rows.length !== 1) throw new StudentAdminConflictError('STALE_VERSION');
 
         const result: StudentAdminSuccess = {
           ok: true,
@@ -750,9 +780,7 @@ export function createDatabaseStudentCommands(dependencies: DatabaseStudentComma
           ORDER BY s.student_id
           FOR UPDATE OF s, a
         `);
-        if (locked.rows.length !== input.students.length) {
-          throw new Error('Student administration batch integrity check failed.');
-        }
+        if (locked.rows.length !== input.students.length) throw STUDENT_NOT_FOUND();
         const lockedRows = new Map((locked.rows as Array<{
           student_id: string;
           name: string;
@@ -762,10 +790,10 @@ export function createDatabaseStudentCommands(dependencies: DatabaseStudentComma
         }>).map((row) => [row.student_id, row] as const));
         const prepared = input.students.map((student) => {
           const row = lockedRows.get(student.studentId);
-          if (!row) throw new Error('Student administration batch integrity check failed.');
+          if (!row) throw STUDENT_NOT_FOUND();
           const studentVersionBefore = dbSafeInteger(row.student_version);
           if (studentVersionBefore !== student.expectedStudentVersion) {
-            throw new Error('Student administration stale version.');
+            throw new StudentAdminConflictError('STALE_VERSION');
           }
           return {
             student,
@@ -785,7 +813,7 @@ export function createDatabaseStudentCommands(dependencies: DatabaseStudentComma
               AND deleted_at IS NULL AND version=${item.student.expectedStudentVersion}
             RETURNING student_id
           `);
-          if (updated.rows.length !== 1) throw new Error('Student administration stale version.');
+          if (updated.rows.length !== 1) throw new StudentAdminConflictError('STALE_VERSION');
           results.push({
             studentId: item.student.studentId,
             name: item.row.name,
@@ -885,10 +913,10 @@ async function resolveExistingUpdateBatch(
   input: CanonicalUpdateStudentAdminBatchInput,
 ): Promise<StudentAdminSuccess> {
   if (operation.operation_kind !== 'STUDENT_ADMIN' || operation.payload_hash !== payloadHash) {
-    throw new Error('Student administration operation conflict.');
+    throw new StudentAdminConflictError('OPERATION_CONFLICT');
   }
   if (operation.status !== 'SUCCEEDED' || !operation.result_snapshot) {
-    throw new Error('Student administration operation is not replayable.');
+    throw new StudentAdminConflictError('OPERATION_NOT_REPLAYABLE');
   }
   const finishedAt = operationTimestamp(operation.finished_at);
   const result = parseStoredUpdateBatchResult(operation.result_snapshot, input, finishedAt);

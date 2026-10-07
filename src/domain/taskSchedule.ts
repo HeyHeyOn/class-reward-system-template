@@ -1,5 +1,7 @@
 import { Temporal } from '@js-temporal/polyfill';
 import { isValidNamedTimeZone } from './timeZone';
+import { BudgetExceededError, BudgetUnavailableError, equalBudgetValue, splitBudgetString, stableBudgetSort, trimBudgetString, utf8ByteLength, type BudgetContext } from '@/lib/boundedWork';
+import { createBoundedScheduleResult, registeredBoundedKeys } from '@/lib/boundedJson';
 import type { DayOfMonth, IsoWeekday, TaskRecurrence, TaskSchedule, TaskScheduleReadWarning } from './types';
 
 export const DEFAULT_CLASS_TIME_ZONE = 'Asia/Seoul';
@@ -21,24 +23,52 @@ export class TaskScheduleValidationError extends Error {
   }
 }
 
-export function normalizeLegacyTimeZone(value: unknown): string {
-  return isValidNamedTimeZone(value) ? value.trim() : DEFAULT_CLASS_TIME_ZONE;
+export function normalizeLegacyTimeZone(value: unknown, budget?: BudgetContext): string {
+  return isValidNamedTimeZone(value, budget) ? trimBudgetString(value, budget) : DEFAULT_CLASS_TIME_ZONE;
 }
 
-export function validateTaskSchedule(value: unknown): TaskSchedule {
+export function validateTaskSchedule(value: unknown, budget?: BudgetContext): TaskSchedule {
+  if (budget && value && typeof value === 'object') registeredBoundedKeys(value, budget);
+  return validateSchedule(value, budget, false);
+}
+
+/** The only mutable input path is the immediately constructed, closed scheduleFromCells
+ * recipe below. It never registers or exposes a mutable intermediate certificate. */
+function validateSchedule(value: unknown, budget: BudgetContext | undefined, fromCells: boolean): TaskSchedule {
+  // Fixed scalar checks: object branch, integer/range, and both boolean flags.
+  budget?.spend(8);
   if (!value || typeof value !== 'object') throw new TaskScheduleValidationError('schedule must be an object');
   const schedule = value as TaskSchedule;
   if (!Number.isInteger(schedule.ruleVersion) || schedule.ruleVersion < 1) {
     throw new TaskScheduleValidationError('ruleVersion must be a positive integer');
   }
-  const effectiveFrom = canonicalInstant(schedule.effectiveFrom, 'effectiveFrom');
-  if (!isValidNamedTimeZone(schedule.timeZone)) {
+  const effectiveFrom = canonicalInstant(schedule.effectiveFrom, 'effectiveFrom', budget);
+  if (!isValidNamedTimeZone(schedule.timeZone, budget)) {
     throw new TaskScheduleValidationError('timeZone must be a valid named IANA time zone');
   }
   if (typeof schedule.resetCompletionOnCycle !== 'boolean' || typeof schedule.resetAssignmentOnCycle !== 'boolean') {
     throw new TaskScheduleValidationError('reset flags must be boolean');
   }
-  validateRecurrence(schedule.recurrence);
+  validateRecurrence(schedule.recurrence, budget);
+  if (budget) {
+    // External certified inputs are detached with the existing guarded clone;
+    // this preserves arbitrary extras without certifying mutable outputs.
+    // Internal cells have exactly the closed schema, reserved before the spread.
+    if (fromCells) reserveScheduleRecord(budget);
+    const result = fromCells ? { ...schedule } : createBoundedScheduleResult(() => schedule, budget) as TaskSchedule;
+    if (equalBudgetValue(result.recurrence.type, 'WEEKLY', budget)) {
+      if (fromCells) {
+        reserveRecurrenceRecord(budget);
+        result.recurrence = { ...result.recurrence };
+      }
+      const weekly = result.recurrence as Extract<TaskRecurrence, { type: 'WEEKLY' }>;
+      weekly.weekdays = stableBudgetSort(weekly.weekdays, (a, b) => a - b, budget);
+    }
+    result.effectiveFrom = effectiveFrom;
+    result.timeZone = trimBudgetString(schedule.timeZone, budget);
+    budget.check();
+    return result;
+  }
   const recurrence = schedule.recurrence.type === 'WEEKLY'
     ? { ...schedule.recurrence, weekdays: [...schedule.recurrence.weekdays].sort((a, b) => a - b) }
     : schedule.recurrence;
@@ -48,27 +78,37 @@ export function validateTaskSchedule(value: unknown): TaskSchedule {
 export function parseTaskScheduleCells(
   cells: Readonly<Record<string, string | undefined>>,
   legacy: { taskId: string; createdAt?: string; classTimeZone?: string },
+  budget?: BudgetContext,
 ): VersionedTaskSchedule {
-  const normalizedCreatedAt = normalizeLegacyInstant(legacy.createdAt);
+  if (budget) { registeredBoundedKeys(cells, budget); registeredBoundedKeys(legacy, budget); }
+  const normalizedCreatedAt = normalizeLegacyInstant(legacy.createdAt, budget);
+  reserveScheduleRecord(budget);
+  reserveRecurrenceRecord(budget);
   const legacySchedule: TaskSchedule = {
     ruleVersion: 1,
     effectiveFrom: normalizedCreatedAt,
-    timeZone: normalizeLegacyTimeZone(legacy.classTimeZone),
+    timeZone: normalizeLegacyTimeZone(legacy.classTimeZone, budget),
     recurrence: { type: 'NONE' },
     resetCompletionOnCycle: false,
     resetAssignmentOnCycle: false,
   };
-  const taskInstanceId = cells.taskInstanceId?.trim()
-    || `legacy:${legacy.taskId}:${normalizedCreatedAt}`;
+  const taskInstanceId = (budget ? trimCell(cells.taskInstanceId, budget) : cells.taskInstanceId?.trim())
+    || legacyInstanceId(legacy.taskId, normalizedCreatedAt, budget);
 
-  const hasCurrentSchedule = hasPopulatedCell(cells, CURRENT_SCHEDULE_FIELDS)
-    || Boolean(cells.taskInstanceId?.trim());
-  const hasPendingSchedule = hasPopulatedCell(cells, PENDING_SCHEDULE_FIELDS);
-  const parsedCurrent = hasCurrentSchedule ? safeParseSchedule(cells, '') : null;
-  const parsedPending = hasPendingSchedule ? safeParseSchedule(cells, 'pending') : null;
+  const hasCurrentSchedule = hasPopulatedCell(cells, CURRENT_SCHEDULE_FIELDS, budget)
+    || Boolean(trimCell(cells.taskInstanceId, budget));
+  const hasPendingSchedule = hasPopulatedCell(cells, PENDING_SCHEDULE_FIELDS, budget);
+  const parsedCurrent = hasCurrentSchedule ? safeParseSchedule(cells, '', budget) : null;
+  const parsedPending = hasPendingSchedule ? safeParseSchedule(cells, 'pending', budget) : null;
+  // At most two warning scalar occurrences and two slots, before allocation.
+  budget?.reserve({ nodes: 3, slots: 2, structuralBytes: 32 });
   const readWarnings: TaskScheduleReadWarning[] = [];
+  budget?.spend(2);
   if (hasCurrentSchedule && !parsedCurrent) readWarnings.push('INVALID_CURRENT_SCHEDULE');
   if (hasPendingSchedule && !parsedPending) readWarnings.push('INVALID_PENDING_SCHEDULE');
+  // Closed output plus optional one-field spread literal; references share payload.
+  budget?.reserve({ nodes: 3, slots: 5, structuralBytes: 128 });
+  budget?.spend();
   return {
     taskInstanceId,
     currentSchedule: parsedCurrent ?? legacySchedule,
@@ -155,10 +195,12 @@ function recurrencesEqual(left: TaskRecurrence, right: TaskRecurrence): boolean 
 function safeParseSchedule(
   cells: Readonly<Record<string, string | undefined>>,
   prefix: '' | 'pending',
+  budget?: BudgetContext,
 ): TaskSchedule | null {
   try {
-    return validateTaskSchedule(scheduleFromCells(cells, prefix));
-  } catch {
+    return validateSchedule(scheduleFromCells(cells, prefix, budget), budget, true);
+  } catch (error) {
+    rethrowBudget(error, budget);
     return null;
   }
 }
@@ -177,11 +219,27 @@ const PENDING_SCHEDULE_FIELDS = [
 function hasPopulatedCell(
   cells: Readonly<Record<string, string | undefined>>,
   fields: readonly string[],
+  budget?: BudgetContext,
 ): boolean {
-  return fields.some((field) => Boolean(cells[field]?.trim()));
+  if (!budget) return fields.some((field) => Boolean(cells[field]?.trim()));
+  budget.spend();
+  return fields.some((field) => {
+    budget.spend();
+    // Preserve the original native error for malformed non-string cells; no
+    // callable trim can exist in a decoder-certified JSON value.
+    const value = cells[field];
+    if (typeof value === 'string') {
+      budget.reserveString(utf8ByteLength(value, budget));
+      budget.spend(1 + Math.ceil(value.length / 256));
+    }
+    const result = Boolean(cells[field]?.trim()); budget.check(); return result;
+  });
 }
 
-function scheduleFromCells(cells: Readonly<Record<string, string | undefined>>, prefix: '' | 'pending'): TaskSchedule {
+function scheduleFromCells(cells: Readonly<Record<string, string | undefined>>, prefix: '' | 'pending', budget?: BudgetContext): TaskSchedule {
+  // Ten static field-name references, no input-derived names.
+  budget?.reserve({ nodes: 1, slots: 10, structuralBytes: 220 });
+  budget?.spend();
   const names = prefix === 'pending'
     ? {
         ruleVersion: 'pendingRuleVersion', effectiveFrom: 'pendingEffectiveFrom', timeZone: 'pendingTimeZone',
@@ -195,30 +253,33 @@ function scheduleFromCells(cells: Readonly<Record<string, string | undefined>>, 
         recurrenceDayOfMonth: 'recurrenceDayOfMonth', resetCompletion: 'resetCompletionOnCycle',
         resetAssignment: 'resetAssignmentOnCycle',
       };
+  reserveScheduleRecord(budget);
   return {
-    ruleVersion: Number(cells[names.ruleVersion]),
-    effectiveFrom: cells[names.effectiveFrom]?.trim() ?? '',
-    timeZone: cells[names.timeZone]?.trim() ?? '',
-    recurrence: recurrenceFromCells(cells, names),
-    resetCompletionOnCycle: parseStrictBoolean(cells[names.resetCompletion]),
-    resetAssignmentOnCycle: parseStrictBoolean(cells[names.resetAssignment]),
+    ruleVersion: cellNumber(cells[names.ruleVersion], budget),
+    effectiveFrom: trimCell(cells[names.effectiveFrom], budget) ?? '',
+    timeZone: trimCell(cells[names.timeZone], budget) ?? '',
+    recurrence: recurrenceFromCells(cells, names, budget),
+    resetCompletionOnCycle: parseStrictBoolean(cells[names.resetCompletion], budget),
+    resetAssignmentOnCycle: parseStrictBoolean(cells[names.resetAssignment], budget),
   };
 }
 
 function recurrenceFromCells(
   cells: Readonly<Record<string, string | undefined>>,
   names: { recurrenceType: string; recurrenceTime: string; recurrenceWeekday: string; recurrenceWeekdays: string; recurrenceDayOfMonth: string },
+  budget?: BudgetContext,
 ): TaskRecurrence {
-  const type = cells[names.recurrenceType]?.trim();
-  if (type === 'NONE') return { type: 'NONE' };
-  if (type === 'DAILY') return { type, time: cells[names.recurrenceTime]?.trim() ?? '' };
-  if (type === 'WEEKLY') {
-    const multi = cells[names.recurrenceWeekdays]?.trim();
-    const source = multi || cells[names.recurrenceWeekday]?.trim() || '';
-    return { type, time: cells[names.recurrenceTime]?.trim() ?? '', weekdays: source.split(',').filter(Boolean).map(Number).sort((a, b) => a - b) as IsoWeekday[] };
+  const type = trimCell(cells[names.recurrenceType], budget);
+  reserveRecurrenceRecord(budget);
+  if (equalBudgetValue(type, 'NONE', budget)) return { type: 'NONE' };
+  if (equalBudgetValue(type, 'DAILY', budget)) return { type, time: trimCell(cells[names.recurrenceTime], budget) ?? '' };
+  if (equalBudgetValue(type, 'WEEKLY', budget)) {
+    const multi = trimCell(cells[names.recurrenceWeekdays], budget);
+    const source = multi || trimCell(cells[names.recurrenceWeekday], budget) || '';
+    return { type, time: trimCell(cells[names.recurrenceTime], budget) ?? '', weekdays: parseWeekdays(source, budget) };
   }
-  if (type === 'MONTHLY') return {
-    type, time: cells[names.recurrenceTime]?.trim() ?? '', dayOfMonth: Number(cells[names.recurrenceDayOfMonth]) as DayOfMonth,
+  if (equalBudgetValue(type, 'MONTHLY', budget)) return {
+    type, time: trimCell(cells[names.recurrenceTime], budget) ?? '', dayOfMonth: cellNumber(cells[names.recurrenceDayOfMonth], budget) as DayOfMonth,
   };
   return { type: type as 'NONE' };
 }
@@ -244,23 +305,32 @@ function scheduleToCells(schedule: TaskSchedule | null, prefix: '' | 'pending'):
   };
 }
 
-function validateRecurrence(recurrence: TaskRecurrence): void {
+function validateRecurrence(recurrence: TaskRecurrence, budget?: BudgetContext): void {
+  budget?.spend(4);
   if (!recurrence || typeof recurrence !== 'object') throw new TaskScheduleValidationError('recurrence must be an object');
-  if (recurrence.type === 'NONE') return;
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(recurrence.time)) {
+  if (equalBudgetValue(recurrence.type, 'NONE', budget)) return;
+  const raw = recurrence as Exclude<TaskRecurrence, { type: 'NONE' }>;
+  const time = budget ? budgetString(raw.time, budget) : raw.time;
+  budget?.spend(1 + Math.ceil(time.length / 256));
+  const validTime = /^([01]\d|2[0-3]):[0-5]\d$/.test(time);
+  budget?.check();
+  if (!validTime) {
     throw new TaskScheduleValidationError('recurrence time must use valid HH:mm');
   }
-  if (recurrence.type === 'DAILY') return;
-  if (recurrence.type === 'WEEKLY') {
-    if (!Array.isArray(recurrence.weekdays) || recurrence.weekdays.length === 0
-      || recurrence.weekdays.some((weekday) => !Number.isInteger(weekday) || weekday < 1 || weekday > 7)
-      || new Set(recurrence.weekdays).size !== recurrence.weekdays.length) {
+  if (equalBudgetValue(recurrence.type, 'DAILY', budget)) return;
+  if (equalBudgetValue(recurrence.type, 'WEEKLY', budget)) {
+    const weekly = recurrence as Extract<TaskRecurrence, { type: 'WEEKLY' }>;
+    if (!Array.isArray(weekly.weekdays) || weekly.weekdays.length === 0
+      || weekly.weekdays.some((weekday) => { budget?.spend(4); return !Number.isInteger(weekday) || weekday < 1 || weekday > 7; })
+      || !uniqueWeekdays(weekly.weekdays, budget)) {
       throw new TaskScheduleValidationError('weekdays must contain unique values from 1 to 7');
     }
     return;
   }
-  if (recurrence.type === 'MONTHLY') {
-    if (!Number.isInteger(recurrence.dayOfMonth) || recurrence.dayOfMonth < 1 || recurrence.dayOfMonth > 31) {
+  if (equalBudgetValue(recurrence.type, 'MONTHLY', budget)) {
+    budget?.spend(3);
+    const monthly = recurrence as Extract<TaskRecurrence, { type: 'MONTHLY' }>;
+    if (!Number.isInteger(monthly.dayOfMonth) || monthly.dayOfMonth < 1 || monthly.dayOfMonth > 31) {
       throw new TaskScheduleValidationError('dayOfMonth must be from 1 to 31');
     }
     return;
@@ -268,28 +338,152 @@ function validateRecurrence(recurrence: TaskRecurrence): void {
   throw new TaskScheduleValidationError('recurrence type is not supported');
 }
 
-function parseStrictBoolean(value: string | undefined): boolean {
-  if (/^(true|1)$/i.test(value?.trim() ?? '')) return true;
-  if (/^(false|0)$/i.test(value?.trim() ?? '')) return false;
+function parseStrictBoolean(value: string | undefined, budget?: BudgetContext): boolean {
+  const first = trimCell(value, budget) ?? '';
+  budget?.spend(1 + Math.ceil(first.length / 256));
+  const truth = /^(true|1)$/i.test(first); budget?.check();
+  if (truth) return true;
+  const second = trimCell(value, budget) ?? '';
+  budget?.spend(1 + Math.ceil(second.length / 256));
+  const falsity = /^(false|0)$/i.test(second); budget?.check();
+  if (falsity) return false;
   throw new TaskScheduleValidationError('reset flags must be boolean');
 }
 
-function parseInstant(value: unknown, field: string): Temporal.Instant {
+function parseInstant(value: unknown, field: string, budget?: BudgetContext): Temporal.Instant {
   try {
-    return Temporal.Instant.from(String(value ?? ''));
-  } catch {
+    const text = budget ? budgetString(value ?? '', budget) : String(value ?? '');
+    // Opaque logical Temporal result; native internals are not metered.
+    budget?.reserve({ nodes: 1, structuralBytes: 16 });
+    budget?.spend(1 + Math.ceil(text.length / 256));
+    const instant = Temporal.Instant.from(text);
+    budget?.check();
+    return instant;
+  } catch (error) {
+    rethrowBudget(error, budget);
     throw new TaskScheduleValidationError(`${field} must be an ISO instant`);
   }
 }
 
-function canonicalInstant(value: unknown, field: string): string {
-  return parseInstant(value, field).toString({ smallestUnit: 'millisecond' });
+function canonicalInstant(value: unknown, field: string, budget?: BudgetContext): string {
+  const instant = parseInstant(value, field, budget);
+  // The supported Temporal range needs at most a signed six-digit year plus
+  // millisecond ISO suffix. Reserve options BEFORE the argument literal.
+  budget?.reserve({ nodes: 1, slots: 1, structuralBytes: 32 });
+  budget?.reserveString(32);
+  budget?.spend();
+  try {
+    const result = instant.toString({ smallestUnit: 'millisecond' });
+    budget?.check();
+    return result;
+  } catch (error) {
+    rethrowBudget(error, budget);
+    throw error;
+  }
 }
 
-function normalizeLegacyInstant(value: unknown): string {
+function normalizeLegacyInstant(value: unknown, budget?: BudgetContext): string {
   try {
-    return canonicalInstant(value, 'legacy instant');
-  } catch {
+    return canonicalInstant(value, 'legacy instant', budget);
+  } catch (error) {
+    rethrowBudget(error, budget);
     return LEGACY_TASK_INSTANT;
   }
+}
+
+function rethrowBudget(error: unknown, budget?: BudgetContext): void {
+  if (!budget) return;
+  if (error instanceof BudgetExceededError || error instanceof BudgetUnavailableError) throw error;
+  budget.check();
+}
+
+// Closed mutable recipes, private to this parser. No arity/factory registration.
+function reserveScheduleRecord(budget?: BudgetContext): void {
+  budget?.reserve({ nodes: 7, slots: 6, structuralBytes: 160 });
+  budget?.spend(6);
+}
+function reserveRecurrenceRecord(budget?: BudgetContext): void {
+  // Largest three-field variant, including three scalar occurrences.
+  budget?.reserve({ nodes: 4, slots: 3, structuralBytes: 64 });
+  budget?.spend(3);
+}
+function trimCell(value: string | undefined, budget?: BudgetContext): string | undefined {
+  budget?.spend();
+  return value == null ? undefined : trimBudgetString(value, budget);
+}
+function cellNumber(value: string | undefined, budget?: BudgetContext): number {
+  // Certified JSON cannot override valueOf with a function. For object values
+  // its numeric ToPrimitive therefore uses the same native string conversion;
+  // preflight that conversion rather than letting Number join an unchecked array.
+  if (budget && value !== null && typeof value === 'object') value = budgetString(value, budget);
+  budget?.reserve({ nodes: 1, structuralBytes: 4 });
+  budget?.spend(1 + (typeof value === 'string' ? Math.ceil(value.length / 256) : 0));
+  const result = Number(value); budget?.check(); return result;
+}
+function legacyInstanceId(taskId: string, createdAt: string, budget?: BudgetContext): string {
+  if (budget && typeof taskId !== 'string') taskId = budgetString(taskId, budget);
+  if (budget) {
+    budget.reserveString(8 + utf8ByteLength(taskId, budget) + utf8ByteLength(createdAt, budget));
+    budget.spend(1 + Math.ceil(taskId.length / 256) + Math.ceil(createdAt.length / 256));
+  }
+  const result = `legacy:${taskId}:${createdAt}`; budget?.check(); return result;
+}
+function parseWeekdays(source: string, budget?: BudgetContext): IsoWeekday[] {
+  if (!budget) return source.split(',').filter(Boolean).map(Number).sort((a, b) => a - b) as IsoWeekday[];
+  const split = splitBudgetString(source, ',', budget);
+  // Filter before Number: whitespace-only pieces are retained and become zero.
+  budget.reserve({ nodes: 1, slots: split.length, structuralBytes: 16 + 4 * split.length });
+  budget.spend();
+  const filtered = split.filter((value) => { budget.spend(); return Boolean(value); });
+  budget.check();
+  budget.reserve({ nodes: 1 + filtered.length, slots: filtered.length, structuralBytes: 16 + 8 * filtered.length });
+  budget.spend();
+  const numbers = filtered.map((value) => { budget.spend(); return cellNumber(value, budget); });
+  budget.check();
+  return stableBudgetSort(numbers, (a, b) => a - b, budget) as IsoWeekday[];
+}
+function uniqueWeekdays(values: IsoWeekday[], budget?: BudgetContext): boolean {
+  if (!budget) return new Set(values).size === values.length;
+  budget.reserve({ nodes: 1, structuralBytes: 16 }); budget.spend();
+  const seen = new Set<number>();
+  for (let i = 0; i < values.length; i++) {
+    budget.spend(2);
+    if (!seen.has(values[i])) { budget.reserve({ slots: 1, structuralBytes: 4 }); budget.spend(); seen.add(values[i]); }
+  }
+  budget.spend(); return seen.size === values.length;
+}
+
+/** Preflight native String coercion of certified JSON values, including nested
+ * array join. Object conversion cannot run user code: decoder forbids functions,
+ * accessors and custom prototypes. Own nonfunction toString still throws natively.
+ * This does not authorize a new graph or freeze a legacy result. */
+function budgetString(value: unknown, budget: BudgetContext): string {
+  function size(input: unknown, depth: number, arrayElement: boolean): number {
+    budget.checkDepth(depth); budget.spend();
+    if (typeof input === 'string') return utf8ByteLength(input, budget);
+    if (input === null || input === undefined) return arrayElement ? 0 : 9;
+    if (typeof input !== 'object') return 32;
+    const keys = registeredBoundedKeys(input, budget);
+    if (!Array.isArray(input)) return 15;
+    let bytes = Math.max(0, input.length - 1);
+    // Keys are consulted for certified ownership, not used as caller arity.
+    budget.spend(keys.length);
+    for (let i = 0; i < input.length; i++) {
+      budget.spend(); bytes += size(input[i], depth + 1, true);
+      if (bytes > budget.limits.stringBytes) throw new BudgetExceededError();
+    }
+    // Each nested native array join may materialize its own full string and
+    // element-reference scratch, even when the outer String result is identical.
+    bytes = Math.max(15, bytes);
+    budget.reserveString(bytes);
+    budget.reserve({ nodes: 1, slots: input.length, structuralBytes: 16 + 4 * input.length });
+    budget.spend(1 + Math.ceil(bytes / 256));
+    return bytes;
+  }
+  // Bounded recursive dry-run frames and native nested join logical temporaries.
+  budget.reserve({ nodes: 64, slots: 256, structuralBytes: 8192 });
+  const bytes = size(value, 1, false);
+  budget.reserveString(bytes);
+  budget.spend(1 + Math.ceil(bytes / 256));
+  const result = String(value); budget.check(); return result;
 }

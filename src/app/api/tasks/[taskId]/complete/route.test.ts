@@ -20,7 +20,7 @@ vi.mock('@/server/studentQr', async (importOriginal) => ({
 const operationId = '11111111-1111-4111-8111-111111111111';
 const task = {
   taskId: 'T 1', title: '읽기', description: '', reward: 5, sortOrder: 1,
-  studentStatus: { studentId: 'S1', assigned: true, completed: true },
+  studentStatus: { studentId: 'S1', assigned: true, completed: true, ready: true, stage: 'COMPLETED' as const },
 };
 const safeResult = {
   task: { taskId: 'T 1', title: '읽기', reward: 5 },

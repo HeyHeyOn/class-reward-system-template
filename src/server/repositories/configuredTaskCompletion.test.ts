@@ -25,7 +25,7 @@ const INPUT: ConfiguredTaskCompletionInput = {
 
 const projectedTask = (completed = true) => ({
   taskId: 'T001', title: '읽기', description: '책', reward: 100, sortOrder: 1,
-  studentStatus: { studentId: 'S001', assigned: true, completed },
+  studentStatus: { studentId: 'S001', assigned: true, completed, ready: true, stage: completed ? 'COMPLETED' as const : 'READY' as const },
 });
 
 function rawDatabaseResult(overrides: Record<string, unknown> = {}): TaskRewardSuccess {
@@ -241,7 +241,7 @@ describe('configured task completion command root', () => {
   it('fails closed on malformed or crossed Sheets result and projection', async () => {
     for (const result of [
       { task: { taskId: 'OTHER', title: '읽기', reward: 100 }, student: { studentId: 'S001', name: '학생' }, completion: {}, tasks: [projectedTask()], operation: { operationId: OPERATION_ID, state: 'SUCCESS' } },
-      { task: { taskId: 'T001', title: '읽기', reward: 100 }, student: { studentId: 'S001', name: '학생' }, completion: {}, tasks: [{ ...projectedTask(), studentStatus: { studentId: 'OTHER', assigned: true, completed: true } }], operation: { operationId: OPERATION_ID, state: 'SUCCESS' } },
+      { task: { taskId: 'T001', title: '읽기', reward: 100 }, student: { studentId: 'S001', name: '학생' }, completion: {}, tasks: [{ ...projectedTask(), studentStatus: { studentId: 'OTHER', assigned: true, completed: true, ready: true, stage: 'COMPLETED' } }], operation: { operationId: OPERATION_ID, state: 'SUCCESS' } },
     ]) {
       const deps = dependencies({ completeTaskForStudent: vi.fn(async () => result) });
       const { command } = await configured('sheets', deps);
@@ -313,7 +313,7 @@ describe('configured task completion command root', () => {
       recurrence: { type: 'WEEKLY' as const, weekdays: [1, 3], time: '09:30' },
       prerequisiteTaskId: 'T000', prerequisiteTitle: '준비',
       prerequisiteStatus: 'SATISFIED' as const, prerequisiteMessage: '완료됨',
-      studentStatus: { studentId: 'S001', assigned: true, completed: true },
+      studentStatus: { studentId: 'S001', assigned: true, completed: true, ready: true, stage: 'COMPLETED' },
     };
     const deps = dependencies({ buildStudentTaskProjection: vi.fn(() => [source]) });
     const { command } = await configured('postgresql', deps);
@@ -330,7 +330,7 @@ describe('configured task completion command root', () => {
       recurrence: { type: 'WEEKLY', weekdays: [1, 3], time: '09:30' },
       prerequisiteTaskId: 'T000', prerequisiteTitle: '준비',
       prerequisiteStatus: 'SATISFIED', prerequisiteMessage: '완료됨',
-      studentStatus: { studentId: 'S001', assigned: true, completed: true },
+      studentStatus: { studentId: 'S001', assigned: true, completed: true, ready: true, stage: 'COMPLETED' },
     }]);
 
     result.tasks[0].studentStatus.assigned = true;
@@ -362,6 +362,7 @@ describe('configured task completion command root', () => {
     ['monthly string day', { type: 'MONTHLY', dayOfMonth: '1', time: '09:00' }, false],
     ['monthly bad time', { type: 'MONTHLY', dayOfMonth: 1, time: 'noon' }, false],
   ])('strictly validates recurrence: %s', async (_label, recurrence, shouldPass) => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const deps = dependencies({
       buildStudentTaskProjection: vi.fn(() => [{ ...projectedTask(), recurrence }]),
     });
@@ -369,33 +370,46 @@ describe('configured task completion command root', () => {
     const result = command.execute(INPUT);
     if (shouldPass) {
       await expect(result).resolves.toMatchObject({ tasks: [expect.objectContaining({ recurrence })] });
+      expect(errors).not.toHaveBeenCalled();
     } else {
-      await expect(result).rejects.toThrow(/integrity/i);
+      // The reward is committed: the invalid list is withheld (empty), never the outcome.
+      await expect(result).resolves.toMatchObject({ tasks: [], operation: { operationId: OPERATION_ID, state: 'SUCCESS' } });
+      expect(errors).toHaveBeenCalledWith('[task-completion] task list after a committed completion could not be built',
+        'T001', expect.stringMatching(/integrity/i));
     }
+    errors.mockRestore();
   });
 
-  it('rejects a crossed non-target projection even when the completed target is correct', async () => {
+  it('withholds a crossed non-target projection while reporting the committed completion', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const deps = dependencies({
       buildStudentTaskProjection: vi.fn(() => [
         projectedTask(),
         {
           taskId: 'T002', title: '쓰기', description: '글', reward: 50, sortOrder: 2,
-          studentStatus: { studentId: 'S999', assigned: true, completed: false },
+          studentStatus: { studentId: 'S999', assigned: true, completed: false, ready: true, stage: 'READY' },
         },
       ]),
     });
     const { command } = await configured('postgresql', deps);
 
-    await expect(command.execute(INPUT)).rejects.toThrow(/integrity/i);
+    await expect(command.execute(INPUT)).resolves.toMatchObject({ tasks: [], operation: { state: 'SUCCESS' } });
+    expect(errors).toHaveBeenCalledTimes(1);
+    errors.mockRestore();
   });
 
   it('uses one post-commit snapshot projection, requires exactly one completed target, and safely replays after projection failure', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const list = vi.fn()
       .mockRejectedValueOnce(new Error('projection unavailable'))
       .mockResolvedValueOnce([projectedTask()]);
     const deps = dependencies({ createDatabaseTaskCycleQueries: vi.fn(() => ({ listTaskCycleProjections: list })) });
     const { command } = await configured('postgresql', deps);
-    await expect(command.execute(INPUT)).rejects.toThrow('projection unavailable');
+    // A projection failure after the commit still reports the completion; the client re-reads its list.
+    await expect(command.execute(INPUT)).resolves.toMatchObject({ tasks: [], operation: { operationId: OPERATION_ID, state: 'SUCCESS' } });
+    expect(errors).toHaveBeenCalledWith('[task-completion] task list after a committed completion could not be built',
+      'T001', 'projection unavailable');
+    errors.mockRestore();
     await expect(command.execute(INPUT)).resolves.toEqual({
       task: { taskId: 'T001', title: '읽기', reward: 100 },
       student: { studentId: 'S001', name: '학생' }, tasks: [projectedTask()],

@@ -6,6 +6,8 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Student } from '@/domain/types';
 import { useQrObjectUrls } from '@/lib/qrCodeClient';
 import { tenantApiPath, tenantFetch } from '@/lib/tenantApiPath';
+import { themeStyles } from './uiTheme';
+import { buttonClass } from './ui';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -43,7 +45,9 @@ export function StudentQrPrintPage() {
       }
     }
 
-    loadStudents();
+    void Promise.resolve().then(() => {
+      if (isMounted) return loadStudents();
+    });
 
     return () => {
       isMounted = false;
@@ -63,44 +67,33 @@ export function StudentQrPrintPage() {
     && students.every((student) => Boolean(qrUrlFor(student.studentId)));
 
   return (
-    <main className="min-h-screen bg-[#f6f1e8] px-6 py-8 text-slate-950 print:bg-white print:px-0 print:py-0">
+    <main style={themeStyles('white').variables} className="min-h-screen bg-[var(--theme-shell)] px-4 py-6 text-[var(--theme-text)] sm:px-6 lg:py-10 print:bg-white print:px-0 print:py-0">
       <section className="mx-auto max-w-6xl print:max-w-none">
-        <header className="mb-8 flex flex-col gap-4 rounded-3xl bg-white p-6 shadow-sm print:hidden md:flex-row md:items-center md:justify-between">
+        <header className="mb-6 flex flex-col gap-4 print:hidden md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="text-sm font-bold text-amber-700">학급 매점 관리자</p>
-            <h1 className="mt-2 text-3xl font-black tracking-tight">학생 QR 카드 인쇄</h1>
-            <p className="mt-2 text-slate-600">
-              활성 학생 목록을 Google Sheets에서 불러와 학생증/쿠폰처럼 잘라 쓸 수 있는 QR 카드를 만듭니다.
+            <p className="text-[13px] font-semibold text-[var(--theme-muted-text)]">학급 관리자</p>
+            <h1 className="mt-1 text-[28px] font-black tracking-[-0.035em]">학생 QR 카드 인쇄</h1>
+            <p className="mt-1.5 text-sm text-[var(--theme-muted-text)]">
+              활성 학생 목록을 불러와 학생증/쿠폰처럼 잘라 쓸 수 있는 QR 카드를 만듭니다.
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="rounded-full bg-amber-100 px-4 py-2 text-sm font-bold text-amber-900">{studentCountText}</span>
-            <button
-              className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300"
-              disabled={!allQrsReady}
-              onClick={() => window.print()}
-              type="button"
-            >
-              QR 카드 인쇄하기
-            </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-[var(--crs-subtle-hover)] px-3.5 py-1.5 text-[13px] font-bold text-[var(--theme-muted-text)]">{studentCountText}</span>
             {hasQrFailure ? (
-              <button
-                className="rounded-2xl bg-red-100 px-5 py-3 text-sm font-black text-red-800"
-                onClick={() => setQrAttempt((current) => current + 1)}
-                type="button"
-              >
+              <button className={buttonClass({ variant: 'secondary' })} onClick={() => setQrAttempt((current) => current + 1)} type="button">
                 QR 생성 다시 시도
               </button>
             ) : null}
+            <button className={buttonClass({ variant: 'primary' })} disabled={!allQrsReady} onClick={() => window.print()} type="button">
+              QR 카드 인쇄하기
+            </button>
           </div>
         </header>
 
         {message ? (
-          <p
-            className={`mb-6 rounded-2xl p-4 text-sm font-bold print:hidden ${
-              loadState === 'error' ? 'bg-red-100 text-red-800' : 'bg-white text-slate-600'
-            }`}
-          >
+          <p className={`mb-6 rounded-[14px] px-4 py-3 text-[13px] font-semibold print:hidden ${
+            loadState === 'error' ? 'bg-[var(--crs-danger-bg)] text-[var(--crs-danger-text)]' : 'bg-[var(--crs-subtle-hover)] text-[var(--theme-muted-text)]'
+          }`}>
             {message}
           </p>
         ) : null}
@@ -108,10 +101,10 @@ export function StudentQrPrintPage() {
         <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 print:grid-cols-3 print:gap-3">
           {students.map((student) => (
             <article
-              className="break-inside-avoid rounded-3xl border-2 border-slate-200 bg-white p-5 text-center shadow-sm print:rounded-2xl print:border print:p-4 print:shadow-none"
+              className="break-inside-avoid rounded-[20px] border border-[var(--crs-line)] bg-white p-5 text-center text-slate-900 shadow-[var(--crs-shadow-sm)] print:rounded-2xl print:border-slate-300 print:p-4 print:shadow-none"
               key={student.studentId}
             >
-              <div className="mx-auto mb-4 flex h-48 w-48 items-center justify-center rounded-3xl border border-slate-100 bg-white p-3 print:h-40 print:w-40">
+              <div className="mx-auto mb-4 flex h-44 w-44 items-center justify-center rounded-2xl bg-white print:h-40 print:w-40">
                 {qrUrlFor(student.studentId) ? (
                   <img
                     alt={`${student.name} QR 코드`}
@@ -121,14 +114,14 @@ export function StudentQrPrintPage() {
                 ) : qrUrlFor(student.studentId) === null ? (
                   <span className="text-sm font-bold text-red-700">QR 생성 실패</span>
                 ) : (
-                  <span className="text-sm font-bold text-slate-500">QR 생성 중</span>
+                  <span className="text-sm font-semibold text-slate-500">QR 생성 중</span>
                 )}
               </div>
-              <h2 className="text-2xl font-black">{student.name}</h2>
-              <p className="mt-1 text-lg font-bold text-slate-600">
+              <h2 className="text-xl font-black tracking-[-0.02em]">{student.name}</h2>
+              <p className="mt-0.5 text-sm font-semibold text-slate-500">
                 {student.studentId}
               </p>
-              <p className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900 print:bg-white print:p-0 print:text-slate-700">
+              <p className="mt-4 rounded-xl bg-slate-50 px-4 py-2.5 text-xs font-semibold leading-relaxed text-slate-600 print:bg-white print:p-0">
                 학급 은행 및 매점에서<br />
                 이 QR을 스캔해 주세요.
               </p>

@@ -26,7 +26,7 @@ describe('GET /api/google/login', () => {
   });
 
   it('does not start OAuth in self-deployed system apps that already have a Sheets refresh token', async () => {
-    process.env.GOOGLE_REFRESH_TOKEN = 'stored-refresh-token';
+    vi.stubEnv('GOOGLE_REFRESH_TOKEN', 'stored-refresh-token');
 
     const response = await GET(new Request('https://teacher-app.vercel.app/api/google/login'));
     const location = response.headers.get('location') ?? '';
@@ -38,7 +38,7 @@ describe('GET /api/google/login', () => {
   });
 
   it('allows identity-only OAuth for class selection even when the legacy system has a Sheets refresh token', async () => {
-    process.env.GOOGLE_REFRESH_TOKEN = 'stored-refresh-token';
+    vi.stubEnv('GOOGLE_REFRESH_TOKEN', 'stored-refresh-token');
 
     const response = await GET(new Request('https://teacher-app.vercel.app/api/google/login?returnTo=%2Fclasses'));
 
@@ -48,8 +48,8 @@ describe('GET /api/google/login', () => {
   });
 
   it('starts OAuth in the generator web page even when it has a Sheets refresh token for creating spreadsheets', async () => {
-    process.env.GOOGLE_REFRESH_TOKEN = 'generator-refresh-token';
-    process.env.NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT = 'generator';
+    vi.stubEnv('GOOGLE_REFRESH_TOKEN', 'generator-refresh-token');
+    vi.stubEnv('NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT', 'generator');
 
     const response = await GET(new Request('https://class-store-generator.vercel.app/api/google/login'));
     const location = response.headers.get('location') ?? '';
@@ -62,7 +62,7 @@ describe('GET /api/google/login', () => {
   });
 
   it('starts a separate generator consent flow bound to the authenticated identity', async () => {
-    process.env.NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT = 'generator';
+    vi.stubEnv('NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT', 'generator');
 
     const response = await GET(new Request('https://class-store-generator.vercel.app/api/google/login?purpose=generator'));
 
@@ -91,12 +91,38 @@ describe('GET /api/google/login', () => {
   });
 
   it('refuses generator consent without an already authenticated ordinary session', async () => {
-    process.env.NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT = 'generator';
+    vi.stubEnv('NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT', 'generator');
     oauthMocks.getGoogleSessionFromRequest.mockReturnValueOnce(null as never);
 
     const response = await GET(new Request('https://class-store-generator.vercel.app/api/google/login?purpose=generator'));
 
     expect(decodeURIComponent(response.headers.get('location') ?? '')).toContain('먼저 Google');
     expect(oauthMocks.createGeneratorConsentAuthUrl).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('PostgreSQL identity login return paths', () => {
+  afterEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks(); });
+
+  it('binds the original scoped admin page to OAuth state', async () => {
+    vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
+    await GET(new Request('https://teacher-app.vercel.app/api/google/login?returnTo=%2Fc%2Falpha-class%2Fadmin'));
+    expect(oauthMocks.setGoogleStateCookie).toHaveBeenCalledWith(expect.anything(), 'state-123', '/c/alpha-class/admin');
+  });
+
+  it.each(['', '/admin', '//evil.example', 'https://evil.example', '/c/alpha-class/admin?next=evil', '/c/Alpha/admin'])('uses class selection for missing/invalid target %s', async (returnTo) => {
+    vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
+    vi.stubEnv('GOOGLE_REFRESH_TOKEN', 'legacy-token');
+    const response = await GET(new Request(`https://teacher-app.vercel.app/api/google/login?returnTo=${encodeURIComponent(returnTo)}`));
+    expect(response.headers.get('location')).toContain('accounts.google.com');
+    expect(oauthMocks.setGoogleStateCookie).toHaveBeenCalledWith(expect.anything(), 'state-123', '/classes');
+  });
+
+  it('returns initialization errors to the scoped login page', async () => {
+    vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
+    oauthMocks.createGoogleAuthUrl.mockImplementationOnce(() => { throw new Error('OAuth unavailable'); });
+    const response = await GET(new Request('https://teacher-app.vercel.app/api/google/login?returnTo=%2Fc%2Falpha-class%2Fadmin'));
+    expect(new URL(response.headers.get('location')!).pathname).toBe('/c/alpha-class/admin/login');
   });
 });

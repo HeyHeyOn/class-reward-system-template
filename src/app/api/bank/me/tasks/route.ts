@@ -1,0 +1,30 @@
+import { createConfiguredStudentBankReader } from '@/server/repositories/configuredStudentBank';
+import { createConfiguredTaskReader } from '@/server/repositories/configuredTasks';
+import {
+  authenticateStudentBankRequest,
+  confirmStudentBankStudent,
+  studentBankJson,
+  studentBankUnavailable,
+} from '@/server/studentBankSession';
+import { projectStudentBankTasks } from '@/server/studentBankViews';
+import { buildStudentTaskProjection } from '@/server/studentTaskProjection';
+
+export const dynamic = 'force-dynamic';
+
+/** The logged-in student's own tasks from 미완료 upward (never 미부여). */
+export async function GET(request: Request) {
+  const auth = authenticateStudentBankRequest(request);
+  if (!auth.ok) return auth.response;
+  try {
+    const bankReader = await createConfiguredStudentBankReader(request);
+    const checked = await confirmStudentBankStudent(auth, bankReader);
+    if (!checked.ok) return checked.response;
+    const studentId = checked.student.studentId;
+    const now = new Date().toISOString();
+    const taskReader = await createConfiguredTaskReader(request);
+    const cycles = await taskReader.listTaskCycleProjections({ includeInactive: true, studentId, now });
+    return studentBankJson({ tasks: projectStudentBankTasks(buildStudentTaskProjection(cycles, studentId, now), now) });
+  } catch {
+    return studentBankUnavailable();
+  }
+}

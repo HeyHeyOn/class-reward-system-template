@@ -130,6 +130,18 @@ export function createTenantBootstrapper(dependencies: TenantBootstrapDependenci
         ],
       );
 
+      if (proofClaims.verificationMethod) {
+        await transaction.query(
+          `INSERT INTO audit_events (tenant_id, event_id, job_id, actor_user_id, event_type, redacted_details)
+           VALUES ($1, $2, $3, $4, 'MIGRATION_SOURCE_CONTROL_VERIFIED', $5::jsonb)`,
+          [tenantId, `source-control:${sourceId}`, jobId, userId, JSON.stringify({
+            method: proofClaims.verificationMethod, evidenceDigest: proofClaims.evidenceDigest,
+            verifiedAt: proofClaims.verifiedAt,
+            sourceIdentityDigest: createHash('sha256').update(proofClaims.externalSourceId).digest('hex'),
+          })],
+        );
+      }
+
       return {
         tenantId,
         slug: validated.slug,

@@ -1,0 +1,158 @@
+import { classifyTaskAvailability } from '@/domain/taskAvailability';
+import type { TaskRecurrence, Transaction } from '@/domain/types';
+import type { StudentTaskProjectionDto } from '@/server/studentTaskProjection';
+
+/**
+ * Allowlisted shapes the personal bank sends to a logged-in student. Pure functions only, so
+ * both route handlers and the client (type-only) can share them.
+ */
+
+export type StudentBankProfileDto = Readonly<{
+  student: Readonly<{ studentId: string; name: string; balance: number }>;
+  session: Readonly<{ expiresAt: string }>;
+}>;
+
+export type StudentBankTransactionKind =
+  | 'PURCHASE'
+  | 'TASK_REWARD'
+  | 'TEACHER_GRANT'
+  | 'TEACHER_DEDUCT'
+  | 'CANCELLATION'
+  | 'DEPOSIT'
+  | 'WITHDRAWAL';
+
+export type StudentBankTransactionDto = Readonly<{
+  transactionId: string;
+  occurredAt: string;
+  kind: StudentBankTransactionKind;
+  /** Purchased item names for store purchases (or a legacy reward's task title). */
+  detail?: string;
+  /** Signed change of the balance: positive money in, negative money out. */
+  amount: number;
+  balanceAfter: number;
+  /** This transaction was later cancelled (a separate CANCELLATION row reverses it). */
+  cancelled: boolean;
+  cancelledAt?: string;
+}>;
+
+export type StudentBankTaskStage = 'PENDING' | 'READY' | 'COMPLETED';
+
+export type StudentBankTaskDto = Readonly<{
+  taskId: string;
+  title: string;
+  description: string;
+  reward: number;
+  stage: StudentBankTaskStage;
+  /** READY and every extra gate (prerequisite, availability window) is met now. */
+  completable: boolean;
+  /** Why a READY task cannot be completed yet. */
+  blockedReason?: string;
+  dueAt?: string;
+  recurrence?: TaskRecurrence;
+  prerequisiteTitle?: string;
+}>;
+
+export function projectStudentBankTransactions(
+  transactions: readonly Transaction[],
+  studentId: string,
+): StudentBankTransactionDto[] {
+  return transactions
+    .filter((transaction) => transaction.studentId === studentId)
+    .map((transaction) => {
+      const amount = transaction.balanceAfter - transaction.balanceBefore;
+      const kind = transactionKind(transaction, amount);
+      const detail = transactionDetail(transaction, kind);
+      const cancelled = transaction.status === 'CANCELLED';
+      return {
+        transactionId: transaction.transactionId,
+        occurredAt: transaction.timestamp,
+        kind,
+        ...(detail ? { detail } : {}),
+        amount,
+        balanceAfter: transaction.balanceAfter,
+        cancelled,
+        ...(cancelled && transaction.cancelledAt ? { cancelledAt: transaction.cancelledAt } : {}),
+      };
+    });
+}
+
+function transactionKind(transaction: Transaction, amount: number): StudentBankTransactionKind {
+  if (transaction.status === 'CANCEL_REVERSAL') return 'CANCELLATION';
+  if (transaction.status === 'TASK_REWARD' || transaction.operator === 'bank-task-completion') return 'TASK_REWARD';
+  if (transaction.items.length > 0 && amount <= 0) return 'PURCHASE';
+  if (transaction.status === 'ADMIN_ADJUSTMENT' || transaction.operator === 'admin') {
+    return amount >= 0 ? 'TEACHER_GRANT' : 'TEACHER_DEDUCT';
+  }
+  return amount >= 0 ? 'DEPOSIT' : 'WITHDRAWAL';
+}
+
+function transactionDetail(transaction: Transaction, kind: StudentBankTransactionKind): string | undefined {
+  if (kind !== 'PURCHASE' && kind !== 'TASK_REWARD') return undefined;
+  const names = transaction.items
+    .map((item) => {
+      const name = typeof item.name === 'string' ? item.name.trim() : '';
+      if (!name) return '';
+      return Number.isSafeInteger(item.quantity) && item.quantity > 1 ? `${name} ×${item.quantity}` : name;
+    })
+    .filter(Boolean);
+  if (names.length === 0) return undefined;
+  const detail = names.join(', ');
+  return detail.length > 120 ? `${detail.slice(0, 119)}…` : detail;
+}
+
+const STAGE_ORDER: Record<StudentBankTaskStage, number> = { READY: 0, PENDING: 1, COMPLETED: 2 };
+
+/**
+ * The student's own tasks from 미완료 upward. 미부여 (UNASSIGNED) tasks are dropped: the student
+ * must not see them at all. Order: 완료 가능 (completable first) → 미완료 → 완료.
+ */
+export function projectStudentBankTasks(
+  projection: readonly StudentTaskProjectionDto[],
+  now: string,
+): StudentBankTaskDto[] {
+  return projection
+    .flatMap((task) => {
+      const stage = task.studentStatus.stage;
+      if (stage !== 'PENDING' && stage !== 'READY' && stage !== 'COMPLETED') return [];
+      const blockedReason = stage === 'READY' ? readyGateReason(task, now) : undefined;
+      const dto: StudentBankTaskDto = {
+        taskId: task.taskId,
+        title: task.title,
+        description: task.description,
+        reward: task.reward,
+        stage,
+        completable: stage === 'READY' && !blockedReason,
+        ...(blockedReason ? { blockedReason } : {}),
+        ...(task.dueAt ? { dueAt: task.dueAt } : {}),
+        ...(task.recurrence ? { recurrence: task.recurrence } : {}),
+        ...(task.prerequisiteTitle ? { prerequisiteTitle: task.prerequisiteTitle } : {}),
+      };
+      return [{ dto, sortOrder: task.sortOrder }];
+    })
+    .sort((left, right) => {
+      const stage = STAGE_ORDER[left.dto.stage] - STAGE_ORDER[right.dto.stage];
+      if (stage !== 0) return stage;
+      if (left.dto.completable !== right.dto.completable) return left.dto.completable ? -1 : 1;
+      if (left.sortOrder !== right.sortOrder) return left.sortOrder - right.sortOrder;
+      return left.dto.taskId < right.dto.taskId ? -1 : left.dto.taskId > right.dto.taskId ? 1 : 0;
+    })
+    .map(({ dto }) => dto);
+}
+
+function readyGateReason(task: StudentTaskProjectionDto, now: string): string | undefined {
+  if (task.prerequisiteStatus === 'REQUIRED') {
+    return task.prerequisiteTitle
+      ? `먼저 '${task.prerequisiteTitle}' 과제를 완료해야 해요.`
+      : '먼저 해야 하는 과제가 있어요.';
+  }
+  if (task.prerequisiteStatus === 'UNAVAILABLE') return '먼저 해야 하는 과제를 지금은 할 수 없어요. 선생님께 물어봐 주세요.';
+  let availability: ReturnType<typeof classifyTaskAvailability>;
+  try {
+    availability = classifyTaskAvailability({ availableFrom: task.availableFrom, dueAt: task.dueAt }, now);
+  } catch {
+    return '지금은 완료할 수 없어요.';
+  }
+  if (availability === 'UPCOMING') return '아직 시작 전이에요.';
+  if (availability === 'EXPIRED') return '기한이 지났어요.';
+  return undefined;
+}

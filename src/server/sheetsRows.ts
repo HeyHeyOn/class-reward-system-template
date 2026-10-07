@@ -15,6 +15,8 @@ import type {
   Transaction,
 } from '@/domain/types';
 import { parseTaskScheduleCells, serializeTaskScheduleCells } from '@/domain/taskSchedule';
+import { BudgetExceededError, BudgetUnavailableError, addBudgetSet, equalBudgetValue, trimBudgetString, utf8ByteLength, type BudgetContext } from '@/lib/boundedWork';
+import { assertBoundedSheetsHeaderIndex, createBoundedSheetsHeaderIndex, createBoundedSheetsScheduleInputs, registeredBoundedKeys, stringBoundedJson } from '@/lib/boundedJson';
 
 export type HeaderIndex = Map<string, number>;
 
@@ -22,7 +24,8 @@ export type RequiredColumnsResult =
   | { ok: true }
   | { ok: false; missingColumns: string[] };
 
-export function createHeaderIndex(headers: string[]): HeaderIndex {
+export function createHeaderIndex(headers: string[], budget?: BudgetContext): HeaderIndex {
+  if (budget) return createBoundedSheetsHeaderIndex(headers, budget);
   const index = new Map<string, number>();
   headers.forEach((header, position) => {
     const normalized = header.trim();
@@ -31,13 +34,26 @@ export function createHeaderIndex(headers: string[]): HeaderIndex {
   return index;
 }
 
-export function requireColumns(headerIndex: HeaderIndex, requiredColumns: readonly string[]): RequiredColumnsResult {
-  const missingColumns = requiredColumns.filter((column) => (headerIndex.get(column) ?? -1) < 0);
-
-  if (missingColumns.length > 0) {
-    return { ok: false, missingColumns };
+export function requireColumns(headerIndex: HeaderIndex, requiredColumns: readonly string[], budget?: BudgetContext): RequiredColumnsResult {
+  if (budget && requiredColumns !== null && (typeof requiredColumns === 'object' || typeof requiredColumns === 'function')) registeredBoundedKeys(requiredColumns, budget);
+  return requireRowColumns(headerIndex, requiredColumns, budget);
+}
+function requireRowColumns(headerIndex: HeaderIndex, requiredColumns: readonly string[], budget?: BudgetContext): RequiredColumnsResult {
+  if (budget) {
+    assertBoundedSheetsHeaderIndex(headerIndex, budget);
+    budget.reserve({ nodes: 3, slots: (Array.isArray(requiredColumns) ? requiredColumns.length : 0) + 2, structuralBytes: 80 + 4 * (Array.isArray(requiredColumns) ? requiredColumns.length : 0) });
+    budget.spend();
   }
-
+  const missingColumns = requiredColumns.filter((column) => {
+    budget?.spend();
+    if (budget && typeof column === 'object' && column !== null) registeredBoundedKeys(column, budget);
+    budget?.spend(1 + (typeof column === 'string' ? Math.ceil(column.length / 256) : 0));
+    const index = budget ? Map.prototype.get.call(headerIndex, column) as number | undefined : headerIndex.get(column);
+    if (budget && index !== undefined && !Number.isSafeInteger(index)) throw new BudgetExceededError();
+    const missing = (index ?? -1) < 0; budget?.check(); return missing;
+  });
+  budget?.spend();
+  if (missingColumns.length > 0) return { ok: false, missingColumns };
   return { ok: true };
 }
 
@@ -92,54 +108,60 @@ export const REQUIRED_PROMOTION_COLUMNS = [
 export const REQUIRED_PROMOTION_PRODUCT_COLUMNS = [
   'promotionProductId', 'promotionId', 'productId', 'createdAt', 'schemaVersion',
 ] as const;
+// Private fixed code schema; never trusts mutation of the public compatibility array.
+const PRIVATE_PROMOTION_COLUMNS = Object.freeze(REQUIRED_PROMOTION_COLUMNS.slice());
 const PROMOTION_SCHEMA_VERSION = 3;
 
-export function parsePromotionRow(row: string[], headerIndex: HeaderIndex): Promotion | null {
-  if (requireColumns(headerIndex, REQUIRED_PROMOTION_COLUMNS).ok === false) return null;
-  const promotionId = getRowCell(row, headerIndex, 'promotionId');
-  const name = getRowCell(row, headerIndex, 'name');
-  const description = getRowCell(row, headerIndex, 'description');
-  const type = getRowCell(row, headerIndex, 'type');
-  const valueCell = getRowCell(row, headerIndex, 'value');
-  const buyQuantityCell = getRowCell(row, headerIndex, 'buyQuantity');
-  const freeQuantityCell = getRowCell(row, headerIndex, 'freeQuantity');
-  const startsAt = getRowCell(row, headerIndex, 'startsAt');
-  const endsAt = getRowCell(row, headerIndex, 'endsAt');
-  const isActive = parseStrictBooleanCell(getRowCell(row, headerIndex, 'isActive'));
-  const sortOrder = parseSafeIntegerCell(getRowCell(row, headerIndex, 'sortOrder'));
-  const createdAt = getRowCell(row, headerIndex, 'createdAt');
-  const updatedAt = getRowCell(row, headerIndex, 'updatedAt');
-  const schemaVersion = parseSafeIntegerCell(getRowCell(row, headerIndex, 'schemaVersion'));
-  if (!promotionId || !name || !isCanonicalIsoTimestamp(startsAt) || !isCanonicalIsoTimestamp(endsAt)
-    || Date.parse(startsAt) >= Date.parse(endsAt) || isActive === null || sortOrder === null
-    || !isCanonicalIsoTimestamp(createdAt) || !isCanonicalIsoTimestamp(updatedAt)
+export function parsePromotionRow(row: string[], headerIndex: HeaderIndex, budget?: BudgetContext): Promotion | null {
+  if (budget) { if (row !== null && (typeof row === 'object' || typeof row === 'function')) registeredBoundedKeys(row, budget); assertBoundedSheetsHeaderIndex(headerIndex, budget); }
+  if (requireRowColumns(headerIndex, budget ? PRIVATE_PROMOTION_COLUMNS : REQUIRED_PROMOTION_COLUMNS, budget).ok === false) return null;
+  const promotionId = getRowCell(row, headerIndex, 'promotionId', budget);
+  const name = getRowCell(row, headerIndex, 'name', budget);
+  const description = getRowCell(row, headerIndex, 'description', budget);
+  const type = getRowCell(row, headerIndex, 'type', budget);
+  const valueCell = getRowCell(row, headerIndex, 'value', budget);
+  const buyQuantityCell = getRowCell(row, headerIndex, 'buyQuantity', budget);
+  const freeQuantityCell = getRowCell(row, headerIndex, 'freeQuantity', budget);
+  const startsAt = getRowCell(row, headerIndex, 'startsAt', budget);
+  const endsAt = getRowCell(row, headerIndex, 'endsAt', budget);
+  const isActive = parseStrictBooleanCell(getRowCell(row, headerIndex, 'isActive', budget), budget);
+  const sortOrder = parseSafeIntegerCell(getRowCell(row, headerIndex, 'sortOrder', budget), budget);
+  const createdAt = getRowCell(row, headerIndex, 'createdAt', budget);
+  const updatedAt = getRowCell(row, headerIndex, 'updatedAt', budget);
+  const schemaVersion = parseSafeIntegerCell(getRowCell(row, headerIndex, 'schemaVersion', budget), budget);
+  if (!promotionId || !name || !isCanonicalIsoTimestamp(startsAt, budget) || !isCanonicalIsoTimestamp(endsAt, budget)
+    || parseDateCell(startsAt, budget) >= parseDateCell(endsAt, budget) || isActive === null || sortOrder === null
+    || !isCanonicalIsoTimestamp(createdAt, budget) || !isCanonicalIsoTimestamp(updatedAt, budget)
     || schemaVersion !== PROMOTION_SCHEMA_VERSION) return null;
 
+  // Common record, nested empty productIds, and maximum variant spread.
+  budget?.reserve({ nodes: 32, slots: 29, structuralBytes: 768 });
+  budget?.spend(29);
   const common = {
     promotionId, name, description, productIds: [], startsAt, endsAt, isActive, sortOrder,
     createdAt, updatedAt, schemaVersion,
   };
-  if (type === 'N_PLUS_ONE') {
-    const buyQuantity = parseSafePositiveIntegerCell(buyQuantityCell);
-    const freeQuantity = parseSafePositiveIntegerCell(freeQuantityCell);
+  if (equalBudgetValue(type, 'N_PLUS_ONE', budget)) {
+    const buyQuantity = parseSafePositiveIntegerCell(buyQuantityCell, budget);
+    const freeQuantity = parseSafePositiveIntegerCell(freeQuantityCell, budget);
     return valueCell || buyQuantity === null || freeQuantity === null
       ? null
       : { ...common, type, buyQuantity, freeQuantity };
   }
-  if (type === 'PROMOTIONAL_PRICE') {
-    const promotionalUnitPrice = parseSafeNonNegativeIntegerCell(valueCell);
+  if (equalBudgetValue(type, 'PROMOTIONAL_PRICE', budget)) {
+    const promotionalUnitPrice = parseSafeNonNegativeIntegerCell(valueCell, budget);
     return buyQuantityCell || freeQuantityCell || promotionalUnitPrice === null
       ? null
       : { ...common, type, promotionalUnitPrice };
   }
-  if (type === 'PERCENT_DISCOUNT') {
-    const percent = parseFiniteNumberCell(valueCell);
+  if (equalBudgetValue(type, 'PERCENT_DISCOUNT', budget)) {
+    const percent = parseFiniteNumberCell(valueCell, budget);
     return buyQuantityCell || freeQuantityCell || percent === null || percent <= 0 || percent > 100
       ? null
       : { ...common, type, percent };
   }
-  if (type === 'FIXED_DISCOUNT') {
-    const discountAmount = parseSafePositiveIntegerCell(valueCell);
+  if (equalBudgetValue(type, 'FIXED_DISCOUNT', budget)) {
+    const discountAmount = parseSafePositiveIntegerCell(valueCell, budget);
     return buyQuantityCell || freeQuantityCell || discountAmount === null
       ? null
       : { ...common, type, discountAmount };
@@ -209,30 +231,36 @@ export function buildPromotionProductAppendRow(
   return buildRowPreservingExistingCells(headers, canonicalValues, existingRow);
 }
 
-export function parseTaskRow(row: string[], headerIndex: HeaderIndex, classTimeZone = 'Asia/Seoul'): ClassTask | null {
-  const taskId = getRowCell(row, headerIndex, 'taskId');
-  const title = getRowCell(row, headerIndex, 'title');
-  const reward = parseNumberCell(getRowCell(row, headerIndex, 'reward'));
-  const sortOrder = parseNumberCell(getRowCell(row, headerIndex, 'sortOrder')) ?? 0;
+export function parseTaskRow(row: string[], headerIndex: HeaderIndex, classTimeZone = 'Asia/Seoul', budget?: BudgetContext): ClassTask | null {
+  if (budget) { if (row !== null && (typeof row === 'object' || typeof row === 'function')) registeredBoundedKeys(row, budget); assertBoundedSheetsHeaderIndex(headerIndex, budget); }
+  const taskId = getRowCell(row, headerIndex, 'taskId', budget);
+  const title = getRowCell(row, headerIndex, 'title', budget);
+  const reward = parseNumberCell(getRowCell(row, headerIndex, 'reward', budget), budget);
+  const sortOrder = parseNumberCell(getRowCell(row, headerIndex, 'sortOrder', budget), budget) ?? 0;
 
   if (!taskId || !title || reward === null) return null;
 
-  const createdAt = getRowCell(row, headerIndex, 'createdAt');
-  const schedule = parseTaskScheduleCells(
-    Object.fromEntries(Array.from(headerIndex, ([header, index]) => [header, String(row[index] ?? '').trim()])),
-    { taskId, createdAt, classTimeZone },
-  );
+  const createdAt = getRowCell(row, headerIndex, 'createdAt', budget);
+  const schedule = budget
+    ? parseTaskScheduleCells(...createBoundedSheetsScheduleInputs(row, headerIndex, taskId, createdAt, classTimeZone, budget), budget)
+    : parseTaskScheduleCells(
+      Object.fromEntries(Array.from(headerIndex, ([header, index]) => [header, String(row[index] ?? '').trim()])),
+      { taskId, createdAt, classTimeZone },
+    );
+  // Fixed result and all optional one-field spread operands, before any literal.
+  budget?.reserve({ nodes: 24, slots: 24, structuralBytes: 768 });
+  budget?.spend(24);
   return {
     taskId,
     title,
-    description: getRowCell(row, headerIndex, 'description'),
+    description: getRowCell(row, headerIndex, 'description', budget),
     reward,
-    isActive: parseTaskBooleanCell(getRowCell(row, headerIndex, 'isActive')),
+    isActive: parseTaskBooleanCell(getRowCell(row, headerIndex, 'isActive', budget), budget),
     sortOrder,
-    allowedStudentIds: parseAllowedStudentIds(getRowCell(row, headerIndex, 'allowedStudentIds')),
-    ...(getRowCell(row, headerIndex, 'availableFrom') ? { availableFrom: getRowCell(row, headerIndex, 'availableFrom') } : {}),
-    ...(getRowCell(row, headerIndex, 'dueAt') ? { dueAt: getRowCell(row, headerIndex, 'dueAt') } : {}),
-    ...(getRowCell(row, headerIndex, 'prerequisiteTaskId') ? { prerequisiteTaskId: getRowCell(row, headerIndex, 'prerequisiteTaskId') } : {}),
+    allowedStudentIds: parseAllowedStudentIds(getRowCell(row, headerIndex, 'allowedStudentIds', budget), budget),
+    ...(getRowCell(row, headerIndex, 'availableFrom', budget) ? { availableFrom: getRowCell(row, headerIndex, 'availableFrom', budget) } : {}),
+    ...(getRowCell(row, headerIndex, 'dueAt', budget) ? { dueAt: getRowCell(row, headerIndex, 'dueAt', budget) } : {}),
+    ...(getRowCell(row, headerIndex, 'prerequisiteTaskId', budget) ? { prerequisiteTaskId: getRowCell(row, headerIndex, 'prerequisiteTaskId', budget) } : {}),
     taskInstanceId: schedule.taskInstanceId,
     schedule: schedule.currentSchedule,
     pendingSchedule: schedule.pendingSchedule,
@@ -241,8 +269,40 @@ export function parseTaskRow(row: string[], headerIndex: HeaderIndex, classTimeZ
   };
 }
 
-export function parseAllowedStudentIds(value: string): string[] {
-  return Array.from(new Set(value.split(/[\n,;]/).map((id) => id.trim()).filter(Boolean)));
+export function parseAllowedStudentIds(value: string, budget?: BudgetContext): string[] {
+  if (!budget) return Array.from(new Set(value.split(/[\n,;]/).map((id) => id.trim()).filter(Boolean)));
+  // This Sheets parser deduplicates in first-occurrence order. The migration
+  // normalizer's raw duplicate-rejection list is deliberately a different seam.
+  let count = 1;
+  budget.spend();
+  for (let index = 0; index < value.length; index++) {
+    if (index % 256 === 0) budget.spend();
+    const code = value.charCodeAt(index);
+    if (code === 10 || code === 44 || code === 59) count++;
+  }
+  const bytes = utf8ByteLength(value, budget);
+  if (bytes > budget.limits.stringBytes) throw new BudgetExceededError();
+  budget.reserve({ nodes: count + 1, slots: count, contentBytes: bytes, structuralBytes: 16 + 8 * count });
+  budget.spend(1 + Math.ceil(value.length / 256));
+  const pieces = value.split(/[\n,;]/);
+  budget.check();
+  budget.reserve({ nodes: 2, slots: count, structuralBytes: 32 + 4 * count });
+  budget.spend(2);
+  const seen = new Set<string>();
+  const output: string[] = [];
+  for (let index = 0; index < pieces.length; index++) {
+    budget.spend();
+    const id = trimBudgetString(pieces[index], budget);
+    if (!id) continue;
+    budget.spend(1 + Math.ceil(id.length / 256));
+    if (seen.has(id)) { budget.check(); continue; }
+    addBudgetSet(seen, id, budget);
+    budget.spend();
+    output.push(id);
+    budget.check();
+  }
+  budget.check();
+  return output;
 }
 
 export function buildTaskAppendRow(headers: string[], task: ClassTask, timestamp: string, existingRow?: string[]): string[] {
@@ -475,9 +535,13 @@ export function buildTaskAssignmentAppendRow(headers: string[], assignment: Task
   return headers.map((header) => valuesByHeader[header.trim()] ?? '');
 }
 
-function getRowCell(row: string[], headerIndex: HeaderIndex, column: string): string {
-  const index = headerIndex.get(column);
+function getRowCell(row: string[], headerIndex: HeaderIndex, column: string, budget?: BudgetContext): string {
+  if (budget) { if (row !== null && (typeof row === 'object' || typeof row === 'function')) registeredBoundedKeys(row, budget); assertBoundedSheetsHeaderIndex(headerIndex, budget); budget.spend(1 + Math.ceil(column.length / 256)); }
+  const index = budget ? Map.prototype.get.call(headerIndex, column) as number | undefined : headerIndex.get(column);
+  if (budget && index !== undefined && !Number.isSafeInteger(index)) throw new BudgetExceededError();
   if (index === undefined || index < 0) return '';
+  if (budget && typeof row === 'string') budget.reserveString(3);
+  if (budget) return trimBudgetString(stringBoundedJson(row[index] ?? '', budget), budget);
   return String(row[index] ?? '').trim();
 }
 
@@ -568,10 +632,27 @@ function isPersistedPromotion(value: unknown, productId: string): value is Promo
   return value.type === 'FIXED_DISCOUNT' && isSafePositiveInteger(value.discountAmount);
 }
 
-function isCanonicalIsoTimestamp(value: unknown): value is string {
+function parseDateCell(value: string, budget?: BudgetContext): number {
+  budget?.reserve({ nodes: 1, structuralBytes: 4 });
+  budget?.spend(1 + Math.ceil(value.length / 256));
+  try { const result = Date.parse(value); budget?.check(); return result; }
+  catch (error) { if (error instanceof BudgetExceededError || error instanceof BudgetUnavailableError) throw error; budget?.check(); throw error; }
+}
+function isCanonicalIsoTimestamp(value: unknown, budget?: BudgetContext): value is string {
+  budget?.spend();
   if (typeof value !== 'string') return false;
-  const timestamp = Date.parse(value);
-  return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
+  const timestamp = parseDateCell(value, budget);
+  budget?.spend();
+  if (!Number.isFinite(timestamp)) return false;
+  budget?.reserve({ nodes: 1, structuralBytes: 16 });
+  budget?.reserveString(27);
+  budget?.spend();
+  try {
+    const date = new Date(timestamp); budget?.check();
+    budget?.spend();
+    const canonical = date.toISOString();
+    budget?.check(); return equalBudgetValue(canonical, value, budget);
+  } catch (error) { if (error instanceof BudgetExceededError || error instanceof BudgetUnavailableError) throw error; budget?.check(); throw error; }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -582,12 +663,17 @@ function isNonBlankString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
-function parseNumberCell(value: string): number | null {
+function parseNumberCell(value: string, budget?: BudgetContext): number | null {
+  budget?.spend();
   if (!value) return null;
-
-  const parsed = Number(value.replace(/,/g, ''));
-
-  return Number.isFinite(parsed) ? parsed : null;
+  if (budget) { budget.reserveString(utf8ByteLength(value, budget)); budget.spend(1 + Math.ceil(value.length / 256)); }
+  const normalized = value.replace(/,/g, ''); budget?.check();
+  budget?.reserve({ nodes: 1, structuralBytes: 4 });
+  budget?.spend(1 + Math.ceil(normalized.length / 256));
+  let parsed: number;
+  try { parsed = Number(normalized); budget?.check(); }
+  catch (error) { if (error instanceof BudgetExceededError || error instanceof BudgetUnavailableError) throw error; budget?.check(); throw error; }
+  return finiteNumberResult(parsed, budget);
 }
 
 function parsePositiveIntegerCell(value: string): number | null {
@@ -595,24 +681,39 @@ function parsePositiveIntegerCell(value: string): number | null {
   return parsed !== null && Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-function parseFiniteNumberCell(value: string): number | null {
+function parseFiniteNumberCell(value: string, budget?: BudgetContext): number | null {
+  budget?.spend();
   if (!value) return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+  budget?.reserve({ nodes: 1, structuralBytes: 4 });
+  budget?.spend(1 + Math.ceil(value.length / 256));
+  let parsed: number;
+  try { parsed = Number(value); budget?.check(); }
+  catch (error) { if (error instanceof BudgetExceededError || error instanceof BudgetUnavailableError) throw error; budget?.check(); throw error; }
+  return finiteNumberResult(parsed, budget);
+}
+function finiteNumberResult(value: number, budget?: BudgetContext): number | null {
+  budget?.spend();
+  try {
+    const finite = Number.isFinite(value); budget?.check();
+    return finite ? value : null;
+  } catch (error) { if (error instanceof BudgetExceededError || error instanceof BudgetUnavailableError) throw error; budget?.check(); throw error; }
 }
 
-function parseSafeIntegerCell(value: string): number | null {
-  const parsed = parseFiniteNumberCell(value);
+function parseSafeIntegerCell(value: string, budget?: BudgetContext): number | null {
+  budget?.spend();
+  const parsed = parseFiniteNumberCell(value, budget);
   return parsed !== null && Number.isSafeInteger(parsed) ? parsed : null;
 }
 
-function parseSafePositiveIntegerCell(value: string): number | null {
-  const parsed = parseSafeIntegerCell(value);
+function parseSafePositiveIntegerCell(value: string, budget?: BudgetContext): number | null {
+  budget?.spend();
+  const parsed = parseSafeIntegerCell(value, budget);
   return parsed !== null && parsed > 0 ? parsed : null;
 }
 
-function parseSafeNonNegativeIntegerCell(value: string): number | null {
-  const parsed = parseSafeIntegerCell(value);
+function parseSafeNonNegativeIntegerCell(value: string, budget?: BudgetContext): number | null {
+  budget?.spend();
+  const parsed = parseSafeIntegerCell(value, budget);
   return parsed !== null && parsed >= 0 ? parsed : null;
 }
 
@@ -762,14 +863,16 @@ function parseBooleanCell(value: string): boolean | null {
   return null;
 }
 
-function parseStrictBooleanCell(value: string): boolean | null {
-  if (value === 'TRUE') return true;
-  if (value === 'FALSE') return false;
+function parseStrictBooleanCell(value: string, budget?: BudgetContext): boolean | null {
+  if (equalBudgetValue(value, 'TRUE', budget)) return true;
+  if (equalBudgetValue(value, 'FALSE', budget)) return false;
   return null;
 }
 
-function parseTaskBooleanCell(value: string): boolean {
-  return /^(true|1|yes|y|활성)$/i.test(value.trim());
+function parseTaskBooleanCell(value: string, budget?: BudgetContext): boolean {
+  const normalized = trimBudgetString(value, budget);
+  budget?.spend(1 + Math.ceil(normalized.length / 256));
+  const result = /^(true|1|yes|y|활성)$/i.test(normalized); budget?.check(); return result;
 }
 
 function parseStudentStatus(value: string): StudentStatus | null {

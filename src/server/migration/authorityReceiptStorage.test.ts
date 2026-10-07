@@ -9,7 +9,7 @@ const USER = '20000000-0000-4000-8000-000000000019';
 const RECEIPT = '30000000-0000-4000-8000-000000000019';
 const HASH = 'a'.repeat(64);
 beforeEach(async () => {
-  harness = await createPgliteDatabaseHarness();
+  harness = await createPgliteDatabaseHarness({ migrationSet: 'base' });
   const directory = resolve(process.cwd(), 'src/server/db/migrations');
   for (const name of (await readdir(directory)).filter((name) => /^\d{4}_.*\.sql$/.test(name) && name.slice(0, 4) > '0008').sort()) {
     await harness.database.exec(await readFile(resolve(directory, name), 'utf8'));

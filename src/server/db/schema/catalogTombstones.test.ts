@@ -18,6 +18,8 @@ let database: PGlite;
 
 beforeEach(async () => {
   database = new PGlite();
+  // Keep cold database initialization in the setup hook budget.
+  await database.waitReady;
 });
 
 afterEach(async () => {

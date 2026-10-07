@@ -1,0 +1,917 @@
+{
+  "head": "448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8",
+  "cases": [
+    {
+      "name": "TASK_REWARD--20",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": "product-0"
+                }
+              ]
+            },
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Transactions": {
+              "headers": [
+                "transactionId",
+                "timestamp",
+                "studentId",
+                "studentName",
+                "items",
+                "totalAmount",
+                "balanceBefore",
+                "balanceAfter",
+                "status",
+                "operator"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "TX1",
+                    "2026-08-31T00:00:00.000Z",
+                    "S1",
+                    "Alice",
+                    "[]",
+                    "-20",
+                    "100",
+                    "80",
+                    "TASK_REWARD",
+                    "kiosk"
+                  ],
+                  "hash": "8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}],\"transaction_items\":[],\"transactions\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"transactionId\":\"TX1\",\"occurredAt\":\"2026-08-31T00:00:00.000Z\",\"studentId\":\"S1\",\"studentNameSnapshot\":\"Alice\",\"kind\":\"TASK_REWARD\",\"legacyTotalAmount\":-20,\"balanceDelta\":-20,\"balanceBefore\":100,\"balanceAfter\":80,\"operatorSnapshot\":\"kiosk\",\"legacyStatusSnapshot\":\"TASK_REWARD\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":\"product-0\"},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Transactions\",\"rowNumber\":2,\"rowHash\":\"8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349\"},\"redactedSourceRecord\":{\"identityDigest\":\"4804e3ae090e3fb82de9a66aca0543c39d1ffff786133871f382ed612053687a\",\"recognizedFieldCount\":10,\"omittedFieldCount\":0},\"canonicalRecord\":{\"transactionId\":\"TX1\",\"timestamp\":\"2026-08-31T00:00:00.000Z\",\"studentId\":\"S1\",\"studentName\":\"Alice\",\"items\":[],\"totalAmount\":-20,\"balanceBefore\":100,\"balanceAfter\":80,\"status\":\"TASK_REWARD\",\"operator\":\"kiosk\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"transactions\",\"targetId\":\"TX1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"product-0\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349\",\"targetTable\":\"transactions\",\"targetId\":\"TX1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}",
+        "canonicalItemRows": 0,
+        "canonicalTransactionRows": 1
+      }
+    },
+    {
+      "name": "TASK_REWARD-0",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": "product-0"
+                }
+              ]
+            },
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Transactions": {
+              "headers": [
+                "transactionId",
+                "timestamp",
+                "studentId",
+                "studentName",
+                "items",
+                "totalAmount",
+                "balanceBefore",
+                "balanceAfter",
+                "status",
+                "operator"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "TX1",
+                    "2026-08-31T00:00:00.000Z",
+                    "S1",
+                    "Alice",
+                    "[]",
+                    "0",
+                    "100",
+                    "100",
+                    "TASK_REWARD",
+                    "kiosk"
+                  ],
+                  "hash": "8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}],\"transaction_items\":[],\"transactions\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"transactionId\":\"TX1\",\"occurredAt\":\"2026-08-31T00:00:00.000Z\",\"studentId\":\"S1\",\"studentNameSnapshot\":\"Alice\",\"kind\":\"TASK_REWARD\",\"legacyTotalAmount\":0,\"balanceDelta\":0,\"balanceBefore\":100,\"balanceAfter\":100,\"operatorSnapshot\":\"kiosk\",\"legacyStatusSnapshot\":\"TASK_REWARD\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":\"product-0\"},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Transactions\",\"rowNumber\":2,\"rowHash\":\"8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349\"},\"redactedSourceRecord\":{\"identityDigest\":\"4804e3ae090e3fb82de9a66aca0543c39d1ffff786133871f382ed612053687a\",\"recognizedFieldCount\":10,\"omittedFieldCount\":0},\"canonicalRecord\":{\"transactionId\":\"TX1\",\"timestamp\":\"2026-08-31T00:00:00.000Z\",\"studentId\":\"S1\",\"studentName\":\"Alice\",\"items\":[],\"totalAmount\":0,\"balanceBefore\":100,\"balanceAfter\":100,\"status\":\"TASK_REWARD\",\"operator\":\"kiosk\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"transactions\",\"targetId\":\"TX1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"product-0\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349\",\"targetTable\":\"transactions\",\"targetId\":\"TX1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}",
+        "canonicalItemRows": 0,
+        "canonicalTransactionRows": 1
+      }
+    },
+    {
+      "name": "TASK_REWARD-20",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": "product-0"
+                }
+              ]
+            },
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Transactions": {
+              "headers": [
+                "transactionId",
+                "timestamp",
+                "studentId",
+                "studentName",
+                "items",
+                "totalAmount",
+                "balanceBefore",
+                "balanceAfter",
+                "status",
+                "operator"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "TX1",
+                    "2026-08-31T00:00:00.000Z",
+                    "S1",
+                    "Alice",
+                    "[]",
+                    "20",
+                    "100",
+                    "120",
+                    "TASK_REWARD",
+                    "kiosk"
+                  ],
+                  "hash": "8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}],\"transaction_items\":[],\"transactions\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"transactionId\":\"TX1\",\"occurredAt\":\"2026-08-31T00:00:00.000Z\",\"studentId\":\"S1\",\"studentNameSnapshot\":\"Alice\",\"kind\":\"TASK_REWARD\",\"legacyTotalAmount\":20,\"balanceDelta\":20,\"balanceBefore\":100,\"balanceAfter\":120,\"operatorSnapshot\":\"kiosk\",\"legacyStatusSnapshot\":\"TASK_REWARD\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":\"product-0\"},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Transactions\",\"rowNumber\":2,\"rowHash\":\"8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349\"},\"redactedSourceRecord\":{\"identityDigest\":\"4804e3ae090e3fb82de9a66aca0543c39d1ffff786133871f382ed612053687a\",\"recognizedFieldCount\":10,\"omittedFieldCount\":0},\"canonicalRecord\":{\"transactionId\":\"TX1\",\"timestamp\":\"2026-08-31T00:00:00.000Z\",\"studentId\":\"S1\",\"studentName\":\"Alice\",\"items\":[],\"totalAmount\":20,\"balanceBefore\":100,\"balanceAfter\":120,\"status\":\"TASK_REWARD\",\"operator\":\"kiosk\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"transactions\",\"targetId\":\"TX1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"product-0\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349\",\"targetTable\":\"transactions\",\"targetId\":\"TX1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}",
+        "canonicalItemRows": 0,
+        "canonicalTransactionRows": 1
+      }
+    },
+    {
+      "name": "ADMIN_ADJUSTMENT--20",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": "product-0"
+                }
+              ]
+            },
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Transactions": {
+              "headers": [
+                "transactionId",
+                "timestamp",
+                "studentId",
+                "studentName",
+                "items",
+                "totalAmount",
+                "balanceBefore",
+                "balanceAfter",
+                "status",
+                "operator"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "TX1",
+                    "2026-08-31T00:00:00.000Z",
+                    "S1",
+                    "Alice",
+                    "[{\"productId\":\"ADMIN-SET\",\"name\":\"관리자 잔액 지정\",\"price\":-20,\"quantity\":1,\"subtotal\":-20}]",
+                    "-20",
+                    "100",
+                    "120",
+                    "ADMIN_ADJUSTMENT",
+                    "kiosk"
+                  ],
+                  "hash": "8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349"
+                }
+              ]
+            },
+            "Adjustments": {
+              "headers": [
+                "adjustmentId",
+                "timestamp",
+                "studentId",
+                "amount",
+                "mode",
+                "operator"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "hash": "admin-adjustment",
+                  "cells": [
+                    "A1",
+                    "2026-08-31T00:00:00.000Z",
+                    "S1",
+                    "120",
+                    "set",
+                    "kiosk"
+                  ]
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100}],\"adjustments\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"adjustmentId\":\"A1\",\"transactionId\":\"TX1\",\"mode\":\"set\",\"requestedAmount\":120,\"operatorSnapshot\":\"kiosk\",\"legacyAdjustmentId\":\"A1\"}],\"products\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}],\"transaction_items\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"itemId\":\"eaa53066-5374-59db-a4c5-9023a4c99ba1\",\"transactionId\":\"TX1\",\"lineNumber\":1,\"productIdSnapshot\":\"ADMIN-SET\",\"currentProductId\":null,\"productNameSnapshot\":\"관리자 잔액 지정\",\"quantity\":1,\"unitPriceSnapshot\":-20,\"subtotalSnapshot\":-20}],\"transactions\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"transactionId\":\"TX1\",\"occurredAt\":\"2026-08-31T00:00:00.000Z\",\"studentId\":\"S1\",\"studentNameSnapshot\":\"Alice\",\"kind\":\"ADMIN_ADJUSTMENT\",\"legacyTotalAmount\":-20,\"balanceDelta\":20,\"balanceBefore\":100,\"balanceAfter\":120,\"operatorSnapshot\":\"kiosk\",\"legacyStatusSnapshot\":\"ADMIN_ADJUSTMENT\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Adjustments\",\"rowNumber\":2,\"rowHash\":\"admin-adjustment\"},\"redactedSourceRecord\":{\"identityDigest\":\"16a36e86f6fed5d465ff332511a0ce1a863b55d364b25a7cdaa25db19abf9648\",\"recognizedFieldCount\":6,\"omittedFieldCount\":0},\"canonicalRecord\":{\"adjustmentId\":\"A1\",\"timestamp\":\"2026-08-31T00:00:00.000Z\",\"studentId\":\"S1\",\"amount\":120,\"mode\":\"set\",\"operator\":\"kiosk\",\"operatorDigest\":\"d99cff6fc8a2f1fbc39e1c8f4f9eb28d692c40900bbb3486b426a13da37b79a0\",\"transactionId\":\"TX1\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"adjustments\",\"targetId\":\"A1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":\"product-0\"},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Transactions\",\"rowNumber\":2,\"rowHash\":\"8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349\"},\"redactedSourceRecord\":{\"identityDigest\":\"4804e3ae090e3fb82de9a66aca0543c39d1ffff786133871f382ed612053687a\",\"recognizedFieldCount\":10,\"omittedFieldCount\":0},\"canonicalRecord\":{\"transactionId\":\"TX1\",\"timestamp\":\"2026-08-31T00:00:00.000Z\",\"studentId\":\"S1\",\"studentName\":\"Alice\",\"items\":[{\"productId\":\"ADMIN-SET\",\"name\":\"관리자 잔액 지정\",\"price\":-20,\"quantity\":1,\"subtotal\":-20,\"itemId\":\"eaa53066-5374-59db-a4c5-9023a4c99ba1\",\"transactionId\":\"TX1\",\"lineNumber\":1}],\"totalAmount\":-20,\"balanceBefore\":100,\"balanceAfter\":120,\"status\":\"ADMIN_ADJUSTMENT\",\"operator\":\"kiosk\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"transactions\",\"targetId\":\"TX1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"admin-adjustment\",\"targetTable\":\"adjustments\",\"targetId\":\"A1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"product-0\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349\",\"targetTable\":\"transaction_items\",\"targetId\":\"eaa53066-5374-59db-a4c5-9023a4c99ba1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349\",\"targetTable\":\"transactions\",\"targetId\":\"TX1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}",
+        "canonicalItemRows": 1,
+        "canonicalTransactionRows": 1
+      }
+    },
+    {
+      "name": "ADMIN_ADJUSTMENT-0",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": "product-0"
+                }
+              ]
+            },
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Transactions": {
+              "headers": [
+                "transactionId",
+                "timestamp",
+                "studentId",
+                "studentName",
+                "items",
+                "totalAmount",
+                "balanceBefore",
+                "balanceAfter",
+                "status",
+                "operator"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "TX1",
+                    "2026-08-31T00:00:00.000Z",
+                    "S1",
+                    "Alice",
+                    "[{\"productId\":\"ADMIN-SET\",\"name\":\"관리자 잔액 지정\",\"price\":0,\"quantity\":1,\"subtotal\":0}]",
+                    "0",
+                    "100",
+                    "100",
+                    "ADMIN_ADJUSTMENT",
+                    "kiosk"
+                  ],
+                  "hash": "8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349"
+                }
+              ]
+            },
+            "Adjustments": {
+              "headers": [
+                "adjustmentId",
+                "timestamp",
+                "studentId",
+                "amount",
+                "mode",
+                "operator"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "hash": "admin-adjustment",
+                  "cells": [
+                    "A1",
+                    "2026-08-31T00:00:00.000Z",
+                    "S1",
+                    "100",
+                    "set",
+                    "kiosk"
+                  ]
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100}],\"adjustments\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"adjustmentId\":\"A1\",\"transactionId\":\"TX1\",\"mode\":\"set\",\"requestedAmount\":100,\"operatorSnapshot\":\"kiosk\",\"legacyAdjustmentId\":\"A1\"}],\"products\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}],\"transaction_items\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"itemId\":\"6f28347e-40cd-5fe9-a831-f6ea76ea8dc3\",\"transactionId\":\"TX1\",\"lineNumber\":1,\"productIdSnapshot\":\"ADMIN-SET\",\"currentProductId\":null,\"productNameSnapshot\":\"관리자 잔액 지정\",\"quantity\":1,\"unitPriceSnapshot\":0,\"subtotalSnapshot\":0}],\"transactions\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"transactionId\":\"TX1\",\"occurredAt\":\"2026-08-31T00:00:00.000Z\",\"studentId\":\"S1\",\"studentNameSnapshot\":\"Alice\",\"kind\":\"ADMIN_ADJUSTMENT\",\"legacyTotalAmount\":0,\"balanceDelta\":0,\"balanceBefore\":100,\"balanceAfter\":100,\"operatorSnapshot\":\"kiosk\",\"legacyStatusSnapshot\":\"ADMIN_ADJUSTMENT\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Adjustments\",\"rowNumber\":2,\"rowHash\":\"admin-adjustment\"},\"redactedSourceRecord\":{\"identityDigest\":\"16a36e86f6fed5d465ff332511a0ce1a863b55d364b25a7cdaa25db19abf9648\",\"recognizedFieldCount\":6,\"omittedFieldCount\":0},\"canonicalRecord\":{\"adjustmentId\":\"A1\",\"timestamp\":\"2026-08-31T00:00:00.000Z\",\"studentId\":\"S1\",\"amount\":100,\"mode\":\"set\",\"operator\":\"kiosk\",\"operatorDigest\":\"d99cff6fc8a2f1fbc39e1c8f4f9eb28d692c40900bbb3486b426a13da37b79a0\",\"transactionId\":\"TX1\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"adjustments\",\"targetId\":\"A1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":\"product-0\"},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Transactions\",\"rowNumber\":2,\"rowHash\":\"8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349\"},\"redactedSourceRecord\":{\"identityDigest\":\"4804e3ae090e3fb82de9a66aca0543c39d1ffff786133871f382ed612053687a\",\"recognizedFieldCount\":10,\"omittedFieldCount\":0},\"canonicalRecord\":{\"transactionId\":\"TX1\",\"timestamp\":\"2026-08-31T00:00:00.000Z\",\"studentId\":\"S1\",\"studentName\":\"Alice\",\"items\":[{\"productId\":\"ADMIN-SET\",\"name\":\"관리자 잔액 지정\",\"price\":0,\"quantity\":1,\"subtotal\":0,\"itemId\":\"6f28347e-40cd-5fe9-a831-f6ea76ea8dc3\",\"transactionId\":\"TX1\",\"lineNumber\":1}],\"totalAmount\":0,\"balanceBefore\":100,\"balanceAfter\":100,\"status\":\"ADMIN_ADJUSTMENT\",\"operator\":\"kiosk\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"transactions\",\"targetId\":\"TX1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"admin-adjustment\",\"targetTable\":\"adjustments\",\"targetId\":\"A1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"product-0\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349\",\"targetTable\":\"transaction_items\",\"targetId\":\"6f28347e-40cd-5fe9-a831-f6ea76ea8dc3\",\"status\":\"STAGED\"},{\"sourceDigest\":\"8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349\",\"targetTable\":\"transactions\",\"targetId\":\"TX1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}",
+        "canonicalItemRows": 1,
+        "canonicalTransactionRows": 1
+      }
+    },
+    {
+      "name": "ADMIN_ADJUSTMENT-20",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": "product-0"
+                }
+              ]
+            },
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Transactions": {
+              "headers": [
+                "transactionId",
+                "timestamp",
+                "studentId",
+                "studentName",
+                "items",
+                "totalAmount",
+                "balanceBefore",
+                "balanceAfter",
+                "status",
+                "operator"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "TX1",
+                    "2026-08-31T00:00:00.000Z",
+                    "S1",
+                    "Alice",
+                    "[{\"productId\":\"ADMIN-SET\",\"name\":\"관리자 잔액 지정\",\"price\":20,\"quantity\":1,\"subtotal\":20}]",
+                    "20",
+                    "100",
+                    "80",
+                    "ADMIN_ADJUSTMENT",
+                    "kiosk"
+                  ],
+                  "hash": "8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349"
+                }
+              ]
+            },
+            "Adjustments": {
+              "headers": [
+                "adjustmentId",
+                "timestamp",
+                "studentId",
+                "amount",
+                "mode",
+                "operator"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "hash": "admin-adjustment",
+                  "cells": [
+                    "A1",
+                    "2026-08-31T00:00:00.000Z",
+                    "S1",
+                    "80",
+                    "set",
+                    "kiosk"
+                  ]
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100}],\"adjustments\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"adjustmentId\":\"A1\",\"transactionId\":\"TX1\",\"mode\":\"set\",\"requestedAmount\":80,\"operatorSnapshot\":\"kiosk\",\"legacyAdjustmentId\":\"A1\"}],\"products\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}],\"transaction_items\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"itemId\":\"50e8d36c-ee7d-5db3-aba2-05578ee6da7e\",\"transactionId\":\"TX1\",\"lineNumber\":1,\"productIdSnapshot\":\"ADMIN-SET\",\"currentProductId\":null,\"productNameSnapshot\":\"관리자 잔액 지정\",\"quantity\":1,\"unitPriceSnapshot\":20,\"subtotalSnapshot\":20}],\"transactions\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"transactionId\":\"TX1\",\"occurredAt\":\"2026-08-31T00:00:00.000Z\",\"studentId\":\"S1\",\"studentNameSnapshot\":\"Alice\",\"kind\":\"ADMIN_ADJUSTMENT\",\"legacyTotalAmount\":20,\"balanceDelta\":-20,\"balanceBefore\":100,\"balanceAfter\":80,\"operatorSnapshot\":\"kiosk\",\"legacyStatusSnapshot\":\"ADMIN_ADJUSTMENT\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Adjustments\",\"rowNumber\":2,\"rowHash\":\"admin-adjustment\"},\"redactedSourceRecord\":{\"identityDigest\":\"16a36e86f6fed5d465ff332511a0ce1a863b55d364b25a7cdaa25db19abf9648\",\"recognizedFieldCount\":6,\"omittedFieldCount\":0},\"canonicalRecord\":{\"adjustmentId\":\"A1\",\"timestamp\":\"2026-08-31T00:00:00.000Z\",\"studentId\":\"S1\",\"amount\":80,\"mode\":\"set\",\"operator\":\"kiosk\",\"operatorDigest\":\"d99cff6fc8a2f1fbc39e1c8f4f9eb28d692c40900bbb3486b426a13da37b79a0\",\"transactionId\":\"TX1\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"adjustments\",\"targetId\":\"A1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":\"product-0\"},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Transactions\",\"rowNumber\":2,\"rowHash\":\"8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349\"},\"redactedSourceRecord\":{\"identityDigest\":\"4804e3ae090e3fb82de9a66aca0543c39d1ffff786133871f382ed612053687a\",\"recognizedFieldCount\":10,\"omittedFieldCount\":0},\"canonicalRecord\":{\"transactionId\":\"TX1\",\"timestamp\":\"2026-08-31T00:00:00.000Z\",\"studentId\":\"S1\",\"studentName\":\"Alice\",\"items\":[{\"productId\":\"ADMIN-SET\",\"name\":\"관리자 잔액 지정\",\"price\":20,\"quantity\":1,\"subtotal\":20,\"itemId\":\"50e8d36c-ee7d-5db3-aba2-05578ee6da7e\",\"transactionId\":\"TX1\",\"lineNumber\":1}],\"totalAmount\":20,\"balanceBefore\":100,\"balanceAfter\":80,\"status\":\"ADMIN_ADJUSTMENT\",\"operator\":\"kiosk\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"transactions\",\"targetId\":\"TX1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"admin-adjustment\",\"targetTable\":\"adjustments\",\"targetId\":\"A1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"product-0\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349\",\"targetTable\":\"transaction_items\",\"targetId\":\"50e8d36c-ee7d-5db3-aba2-05578ee6da7e\",\"status\":\"STAGED\"},{\"sourceDigest\":\"8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349\",\"targetTable\":\"transactions\",\"targetId\":\"TX1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}",
+        "canonicalItemRows": 1,
+        "canonicalTransactionRows": 1
+      }
+    },
+    {
+      "name": "accepted-mixed-legacy-and-all-four-promotion-variants",
+      "input": {
+        "tenantId": "10000000-0000-4000-8000-000000000001",
+        "migrationJobId": "20000000-0000-4000-8000-000000000001",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "MIX0",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": "mixed-0"
+                },
+                {
+                  "rowNumber": 3,
+                  "cells": [
+                    "MIX1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": "mixed-1"
+                },
+                {
+                  "rowNumber": 4,
+                  "cells": [
+                    "MIX2",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": "mixed-2"
+                },
+                {
+                  "rowNumber": 5,
+                  "cells": [
+                    "MIX3",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": "mixed-3"
+                },
+                {
+                  "rowNumber": 6,
+                  "cells": [
+                    "MIX4",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": "mixed-4"
+                }
+              ]
+            },
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Transactions": {
+              "headers": [
+                "transactionId",
+                "timestamp",
+                "studentId",
+                "studentName",
+                "items",
+                "totalAmount",
+                "balanceBefore",
+                "balanceAfter",
+                "status",
+                "operator"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "TX1",
+                    "2026-08-31T00:00:00.000Z",
+                    "S1",
+                    "Alice",
+                    "[{\"productId\":\"MIX0\",\"name\":\"Pencil\",\"price\":20,\"quantity\":1,\"subtotal\":20},{\"productId\":\"MIX1\",\"name\":\"Product\",\"price\":10,\"quantity\":1,\"subtotal\":9,\"regularUnitPrice\":10,\"regularTotal\":10,\"totalQuantity\":1,\"paidQuantity\":1,\"freeQuantity\":0,\"finalTotal\":9,\"totalDiscount\":1,\"adjustments\":[{\"promotionId\":\" promo \",\"type\":\"FIXED_DISCOUNT\",\"beforeAmount\":10,\"afterAmount\":9,\"discountAmount\":1}],\"appliedPromotions\":[{\"promotionId\":\" promo \",\"name\":\" name \",\"description\":\" \\ud800 \",\"productIds\":[\"MIX1\",\" other \"],\"startsAt\":\"2026-08-01T00:00:00.000Z\",\"endsAt\":\"2026-09-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-07-01T00:00:00.000Z\",\"updatedAt\":\"2026-07-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"FIXED_DISCOUNT\",\"discountAmount\":1}]},{\"productId\":\"MIX2\",\"name\":\"Product\",\"price\":10,\"quantity\":1,\"subtotal\":9,\"regularUnitPrice\":10,\"regularTotal\":10,\"totalQuantity\":1,\"paidQuantity\":1,\"freeQuantity\":0,\"finalTotal\":9,\"totalDiscount\":1,\"adjustments\":[{\"promotionId\":\" promo \",\"type\":\"PERCENT_DISCOUNT\",\"beforeAmount\":10,\"afterAmount\":9,\"discountAmount\":1}],\"appliedPromotions\":[{\"promotionId\":\" promo \",\"name\":\" name \",\"description\":\" \\ud800 \",\"productIds\":[\"MIX2\",\" other \"],\"startsAt\":\"2026-08-01T00:00:00.000Z\",\"endsAt\":\"2026-09-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-07-01T00:00:00.000Z\",\"updatedAt\":\"2026-07-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"PERCENT_DISCOUNT\",\"percent\":12.5}]},{\"productId\":\"MIX3\",\"name\":\"Product\",\"price\":10,\"quantity\":1,\"subtotal\":9,\"regularUnitPrice\":10,\"regularTotal\":10,\"totalQuantity\":1,\"paidQuantity\":1,\"freeQuantity\":0,\"finalTotal\":9,\"totalDiscount\":1,\"adjustments\":[{\"promotionId\":\" promo \",\"type\":\"PROMOTIONAL_PRICE\",\"beforeAmount\":10,\"afterAmount\":9,\"discountAmount\":1}],\"appliedPromotions\":[{\"promotionId\":\" promo \",\"name\":\" name \",\"description\":\" \\ud800 \",\"productIds\":[\"MIX3\",\" other \"],\"startsAt\":\"2026-08-01T00:00:00.000Z\",\"endsAt\":\"2026-09-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-07-01T00:00:00.000Z\",\"updatedAt\":\"2026-07-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"PROMOTIONAL_PRICE\",\"promotionalUnitPrice\":0}]},{\"productId\":\"MIX4\",\"name\":\"Product\",\"price\":10,\"quantity\":1,\"subtotal\":9,\"regularUnitPrice\":10,\"regularTotal\":10,\"totalQuantity\":1,\"paidQuantity\":0,\"freeQuantity\":1,\"finalTotal\":9,\"totalDiscount\":1,\"adjustments\":[{\"promotionId\":\" promo \",\"type\":\"N_PLUS_ONE\",\"beforeAmount\":10,\"afterAmount\":9,\"discountAmount\":1,\"freeQuantity\":1}],\"appliedPromotions\":[{\"promotionId\":\" promo \",\"name\":\" name \",\"description\":\" \\ud800 \",\"productIds\":[\"MIX4\",\" other \"],\"startsAt\":\"2026-08-01T00:00:00.000Z\",\"endsAt\":\"2026-09-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-07-01T00:00:00.000Z\",\"updatedAt\":\"2026-07-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"N_PLUS_ONE\",\"buyQuantity\":1,\"freeQuantity\":1}]}]",
+                    "56",
+                    "156",
+                    "100",
+                    "COMPLETED",
+                    "kiosk"
+                  ],
+                  "hash": "8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "outcome": {
+        "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"productId\":\"MIX0\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"productId\":\"MIX1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"productId\":\"MIX2\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"productId\":\"MIX3\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"productId\":\"MIX4\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}],\"transaction_items\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"itemId\":\"2a0088c2-b893-546b-acc9-20e951e0e97d\",\"transactionId\":\"TX1\",\"lineNumber\":4,\"productIdSnapshot\":\"MIX3\",\"currentProductId\":\"MIX3\",\"productNameSnapshot\":\"Product\",\"quantity\":1,\"unitPriceSnapshot\":10,\"subtotalSnapshot\":9,\"regularUnitPrice\":10,\"regularTotal\":10,\"totalQuantity\":1,\"paidQuantity\":1,\"freeQuantity\":0,\"finalTotal\":9,\"totalDiscount\":1,\"adjustmentsSnapshot\":[{\"promotionId\":\" promo \",\"type\":\"PROMOTIONAL_PRICE\",\"beforeAmount\":10,\"afterAmount\":9,\"discountAmount\":1}],\"appliedPromotionsSnapshot\":[{\"promotionId\":\" promo \",\"name\":\" name \",\"description\":\" \\ud800 \",\"productIds\":[\"MIX3\",\" other \"],\"startsAt\":\"2026-08-01T00:00:00.000Z\",\"endsAt\":\"2026-09-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-07-01T00:00:00.000Z\",\"updatedAt\":\"2026-07-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"PROMOTIONAL_PRICE\",\"promotionalUnitPrice\":0}]},{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"itemId\":\"8e051a00-89e0-5e63-a297-598ab2485619\",\"transactionId\":\"TX1\",\"lineNumber\":1,\"productIdSnapshot\":\"MIX0\",\"currentProductId\":\"MIX0\",\"productNameSnapshot\":\"Pencil\",\"quantity\":1,\"unitPriceSnapshot\":20,\"subtotalSnapshot\":20},{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"itemId\":\"aa421b3e-0832-5f6e-a29d-622ffea3d93b\",\"transactionId\":\"TX1\",\"lineNumber\":3,\"productIdSnapshot\":\"MIX2\",\"currentProductId\":\"MIX2\",\"productNameSnapshot\":\"Product\",\"quantity\":1,\"unitPriceSnapshot\":10,\"subtotalSnapshot\":9,\"regularUnitPrice\":10,\"regularTotal\":10,\"totalQuantity\":1,\"paidQuantity\":1,\"freeQuantity\":0,\"finalTotal\":9,\"totalDiscount\":1,\"adjustmentsSnapshot\":[{\"promotionId\":\" promo \",\"type\":\"PERCENT_DISCOUNT\",\"beforeAmount\":10,\"afterAmount\":9,\"discountAmount\":1}],\"appliedPromotionsSnapshot\":[{\"promotionId\":\" promo \",\"name\":\" name \",\"description\":\" \\ud800 \",\"productIds\":[\"MIX2\",\" other \"],\"startsAt\":\"2026-08-01T00:00:00.000Z\",\"endsAt\":\"2026-09-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-07-01T00:00:00.000Z\",\"updatedAt\":\"2026-07-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"PERCENT_DISCOUNT\",\"percent\":12.5}]},{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"itemId\":\"beb2f0fa-0524-51c6-a5b1-526ecae7ce53\",\"transactionId\":\"TX1\",\"lineNumber\":2,\"productIdSnapshot\":\"MIX1\",\"currentProductId\":\"MIX1\",\"productNameSnapshot\":\"Product\",\"quantity\":1,\"unitPriceSnapshot\":10,\"subtotalSnapshot\":9,\"regularUnitPrice\":10,\"regularTotal\":10,\"totalQuantity\":1,\"paidQuantity\":1,\"freeQuantity\":0,\"finalTotal\":9,\"totalDiscount\":1,\"adjustmentsSnapshot\":[{\"promotionId\":\" promo \",\"type\":\"FIXED_DISCOUNT\",\"beforeAmount\":10,\"afterAmount\":9,\"discountAmount\":1}],\"appliedPromotionsSnapshot\":[{\"promotionId\":\" promo \",\"name\":\" name \",\"description\":\" \\ud800 \",\"productIds\":[\"MIX1\",\" other \"],\"startsAt\":\"2026-08-01T00:00:00.000Z\",\"endsAt\":\"2026-09-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-07-01T00:00:00.000Z\",\"updatedAt\":\"2026-07-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"FIXED_DISCOUNT\",\"discountAmount\":1}]},{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"itemId\":\"fd4188fc-83b7-5f23-aead-83a026c08504\",\"transactionId\":\"TX1\",\"lineNumber\":5,\"productIdSnapshot\":\"MIX4\",\"currentProductId\":\"MIX4\",\"productNameSnapshot\":\"Product\",\"quantity\":1,\"unitPriceSnapshot\":10,\"subtotalSnapshot\":9,\"regularUnitPrice\":10,\"regularTotal\":10,\"totalQuantity\":1,\"paidQuantity\":0,\"freeQuantity\":1,\"finalTotal\":9,\"totalDiscount\":1,\"adjustmentsSnapshot\":[{\"promotionId\":\" promo \",\"type\":\"N_PLUS_ONE\",\"beforeAmount\":10,\"afterAmount\":9,\"discountAmount\":1,\"freeQuantity\":1}],\"appliedPromotionsSnapshot\":[{\"promotionId\":\" promo \",\"name\":\" name \",\"description\":\" \\ud800 \",\"productIds\":[\"MIX4\",\" other \"],\"startsAt\":\"2026-08-01T00:00:00.000Z\",\"endsAt\":\"2026-09-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-07-01T00:00:00.000Z\",\"updatedAt\":\"2026-07-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"N_PLUS_ONE\",\"buyQuantity\":1,\"freeQuantity\":1}]}],\"transactions\":[{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"transactionId\":\"TX1\",\"occurredAt\":\"2026-08-31T00:00:00.000Z\",\"studentId\":\"S1\",\"studentNameSnapshot\":\"Alice\",\"kind\":\"CHECKOUT\",\"legacyTotalAmount\":56,\"balanceDelta\":-56,\"balanceBefore\":156,\"balanceAfter\":100,\"operatorSnapshot\":\"kiosk\",\"legacyStatusSnapshot\":\"COMPLETED\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":\"mixed-0\"},\"redactedSourceRecord\":{\"identityDigest\":\"43f8881e297a7d843f4b5b0c108318c4a3e97d24775f03a46f89c3959ec1bc86\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"MIX0\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"MIX0\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":3,\"rowHash\":\"mixed-1\"},\"redactedSourceRecord\":{\"identityDigest\":\"81c78cc488acabe8bbe9f6bcbb9576c90f66145ef4dccf7a22174b093a22a7ee\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"MIX1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"MIX1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":4,\"rowHash\":\"mixed-2\"},\"redactedSourceRecord\":{\"identityDigest\":\"754373d3a424f87954686d91e62c0bfa1709542306590b1a91c6994115da0912\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"MIX2\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"MIX2\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":5,\"rowHash\":\"mixed-3\"},\"redactedSourceRecord\":{\"identityDigest\":\"5092316aa1550c4cedea3caf6575530934e62e746f7cb5f6abcd972e75dee018\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"MIX3\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"MIX3\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":6,\"rowHash\":\"mixed-4\"},\"redactedSourceRecord\":{\"identityDigest\":\"fd35f1478988e033faa958067bc6ca7134ac53c13e53c50b1442812a9d472e92\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"MIX4\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"MIX4\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Transactions\",\"rowNumber\":2,\"rowHash\":\"8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349\"},\"redactedSourceRecord\":{\"identityDigest\":\"4804e3ae090e3fb82de9a66aca0543c39d1ffff786133871f382ed612053687a\",\"recognizedFieldCount\":10,\"omittedFieldCount\":0},\"canonicalRecord\":{\"transactionId\":\"TX1\",\"timestamp\":\"2026-08-31T00:00:00.000Z\",\"studentId\":\"S1\",\"studentName\":\"Alice\",\"items\":[{\"productId\":\"MIX0\",\"name\":\"Pencil\",\"price\":20,\"quantity\":1,\"subtotal\":20,\"itemId\":\"8e051a00-89e0-5e63-a297-598ab2485619\",\"transactionId\":\"TX1\",\"lineNumber\":1},{\"productId\":\"MIX1\",\"name\":\"Product\",\"price\":10,\"quantity\":1,\"subtotal\":9,\"regularUnitPrice\":10,\"regularTotal\":10,\"totalQuantity\":1,\"paidQuantity\":1,\"freeQuantity\":0,\"finalTotal\":9,\"totalDiscount\":1,\"adjustments\":[{\"promotionId\":\" promo \",\"type\":\"FIXED_DISCOUNT\",\"beforeAmount\":10,\"afterAmount\":9,\"discountAmount\":1}],\"appliedPromotions\":[{\"promotionId\":\" promo \",\"name\":\" name \",\"description\":\" \\ud800 \",\"productIds\":[\"MIX1\",\" other \"],\"startsAt\":\"2026-08-01T00:00:00.000Z\",\"endsAt\":\"2026-09-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-07-01T00:00:00.000Z\",\"updatedAt\":\"2026-07-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"FIXED_DISCOUNT\",\"discountAmount\":1}],\"itemId\":\"beb2f0fa-0524-51c6-a5b1-526ecae7ce53\",\"transactionId\":\"TX1\",\"lineNumber\":2},{\"productId\":\"MIX2\",\"name\":\"Product\",\"price\":10,\"quantity\":1,\"subtotal\":9,\"regularUnitPrice\":10,\"regularTotal\":10,\"totalQuantity\":1,\"paidQuantity\":1,\"freeQuantity\":0,\"finalTotal\":9,\"totalDiscount\":1,\"adjustments\":[{\"promotionId\":\" promo \",\"type\":\"PERCENT_DISCOUNT\",\"beforeAmount\":10,\"afterAmount\":9,\"discountAmount\":1}],\"appliedPromotions\":[{\"promotionId\":\" promo \",\"name\":\" name \",\"description\":\" \\ud800 \",\"productIds\":[\"MIX2\",\" other \"],\"startsAt\":\"2026-08-01T00:00:00.000Z\",\"endsAt\":\"2026-09-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-07-01T00:00:00.000Z\",\"updatedAt\":\"2026-07-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"PERCENT_DISCOUNT\",\"percent\":12.5}],\"itemId\":\"aa421b3e-0832-5f6e-a29d-622ffea3d93b\",\"transactionId\":\"TX1\",\"lineNumber\":3},{\"productId\":\"MIX3\",\"name\":\"Product\",\"price\":10,\"quantity\":1,\"subtotal\":9,\"regularUnitPrice\":10,\"regularTotal\":10,\"totalQuantity\":1,\"paidQuantity\":1,\"freeQuantity\":0,\"finalTotal\":9,\"totalDiscount\":1,\"adjustments\":[{\"promotionId\":\" promo \",\"type\":\"PROMOTIONAL_PRICE\",\"beforeAmount\":10,\"afterAmount\":9,\"discountAmount\":1}],\"appliedPromotions\":[{\"promotionId\":\" promo \",\"name\":\" name \",\"description\":\" \\ud800 \",\"productIds\":[\"MIX3\",\" other \"],\"startsAt\":\"2026-08-01T00:00:00.000Z\",\"endsAt\":\"2026-09-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-07-01T00:00:00.000Z\",\"updatedAt\":\"2026-07-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"PROMOTIONAL_PRICE\",\"promotionalUnitPrice\":0}],\"itemId\":\"2a0088c2-b893-546b-acc9-20e951e0e97d\",\"transactionId\":\"TX1\",\"lineNumber\":4},{\"productId\":\"MIX4\",\"name\":\"Product\",\"price\":10,\"quantity\":1,\"subtotal\":9,\"regularUnitPrice\":10,\"regularTotal\":10,\"totalQuantity\":1,\"paidQuantity\":0,\"freeQuantity\":1,\"finalTotal\":9,\"totalDiscount\":1,\"adjustments\":[{\"promotionId\":\" promo \",\"type\":\"N_PLUS_ONE\",\"beforeAmount\":10,\"afterAmount\":9,\"discountAmount\":1,\"freeQuantity\":1}],\"appliedPromotions\":[{\"promotionId\":\" promo \",\"name\":\" name \",\"description\":\" \\ud800 \",\"productIds\":[\"MIX4\",\" other \"],\"startsAt\":\"2026-08-01T00:00:00.000Z\",\"endsAt\":\"2026-09-01T00:00:00.000Z\",\"isActive\":true,\"sortOrder\":1,\"createdAt\":\"2026-07-01T00:00:00.000Z\",\"updatedAt\":\"2026-07-01T00:00:00.000Z\",\"schemaVersion\":3,\"type\":\"N_PLUS_ONE\",\"buyQuantity\":1,\"freeQuantity\":1}],\"itemId\":\"fd4188fc-83b7-5f23-aead-83a026c08504\",\"transactionId\":\"TX1\",\"lineNumber\":5}],\"totalAmount\":56,\"balanceBefore\":156,\"balanceAfter\":100,\"status\":\"COMPLETED\",\"operator\":\"kiosk\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"transactions\",\"targetId\":\"TX1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"mixed-0\",\"targetTable\":\"products\",\"targetId\":\"MIX0\",\"status\":\"STAGED\"},{\"sourceDigest\":\"mixed-1\",\"targetTable\":\"products\",\"targetId\":\"MIX1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"mixed-2\",\"targetTable\":\"products\",\"targetId\":\"MIX2\",\"status\":\"STAGED\"},{\"sourceDigest\":\"mixed-3\",\"targetTable\":\"products\",\"targetId\":\"MIX3\",\"status\":\"STAGED\"},{\"sourceDigest\":\"mixed-4\",\"targetTable\":\"products\",\"targetId\":\"MIX4\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349\",\"targetTable\":\"transaction_items\",\"targetId\":\"2a0088c2-b893-546b-acc9-20e951e0e97d\",\"status\":\"STAGED\"},{\"sourceDigest\":\"8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349\",\"targetTable\":\"transaction_items\",\"targetId\":\"8e051a00-89e0-5e63-a297-598ab2485619\",\"status\":\"STAGED\"},{\"sourceDigest\":\"8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349\",\"targetTable\":\"transaction_items\",\"targetId\":\"aa421b3e-0832-5f6e-a29d-622ffea3d93b\",\"status\":\"STAGED\"},{\"sourceDigest\":\"8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349\",\"targetTable\":\"transaction_items\",\"targetId\":\"beb2f0fa-0524-51c6-a5b1-526ecae7ce53\",\"status\":\"STAGED\"},{\"sourceDigest\":\"8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349\",\"targetTable\":\"transaction_items\",\"targetId\":\"fd4188fc-83b7-5f23-aead-83a026c08504\",\"status\":\"STAGED\"},{\"sourceDigest\":\"8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349\",\"targetTable\":\"transactions\",\"targetId\":\"TX1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}",
+        "canonicalItemRows": 5,
+        "canonicalTransactionRows": 1
+      }
+    }
+  ]
+}

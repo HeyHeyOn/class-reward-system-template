@@ -1,4 +1,5 @@
 import 'server-only';
+import { TASK_STAGE_ORDER, taskStage, type TaskStage } from '@/domain/taskStage';
 
 import { createHash } from 'node:crypto';
 import type { DayOfMonth, IsoWeekday, TaskCompletionEvidence } from '@/domain/types';
@@ -11,7 +12,7 @@ import { createDatabasePadletClaimRepository,
   type DatabasePadletClaimRepository } from '@/server/repositories/database/padletClaims';
 import { createDatabaseTaskCompletionCommand,
   type PadletEvidenceResolutionInput } from '@/server/repositories/database/taskCompletionCommands';
-import { createDatabaseTaskCycleQueries } from '@/server/repositories/database/taskCycleQueries';
+import { createTaskLedgerReader } from '@/server/repositories/database/taskLedger/compatReader';
 import { createDatabaseTaskQueries } from '@/server/repositories/database/taskQueries';
 import type { RepositoryCreators } from '@/server/repositories/factory';
 import { getCompatibilityCentralTenantContext, resolveCompatibilityConfiguredRepository,
@@ -134,18 +135,28 @@ export function createTaskCompletionRepositoryCreators(
             studentId: input.studentId,
           });
           const result = parseDatabaseResult(raw, input);
-          const rawProjections = await cycles.listTaskCycleProjections({
-            studentId: input.studentId,
-            includeInactive: false,
-            now: result.completedAt,
-          });
-          if (!isStrictArray(rawProjections)) throw integrityError();
-          const projected: unknown = dependencies.buildStudentTaskProjection(
-            rawProjections as never,
-            input.studentId,
-            result.completedAt,
-          );
-          const tasks = parseSafeTasks(projected, input);
+          // The completion is committed. The task list returned with it is a convenience: if it
+          // cannot be built, the completion still succeeded and the client re-reads its tasks
+          // (an empty list), instead of reporting an unknown outcome for a finished reward.
+          let tasks: StudentTaskProjectionDto[] = [];
+          try {
+            const rawProjections = await cycles.listTaskCycleProjections({
+              studentId: input.studentId,
+              includeInactive: false,
+              now: result.completedAt,
+            });
+            if (!isStrictArray(rawProjections)) throw integrityError();
+            const projected: unknown = dependencies.buildStudentTaskProjection(
+              rawProjections as never,
+              input.studentId,
+              result.completedAt,
+            );
+            tasks = parseSafeTasks(projected, input);
+          } catch (error) {
+            console.error('[task-completion] task list after a committed completion could not be built',
+              input.taskId, error instanceof Error ? error.message : 'unknown');
+            tasks = [];
+          }
           return safeResult(result.taskTitle, result.reward, result.studentName, tasks, input);
         },
       };
@@ -304,6 +315,8 @@ function parseSafeTasks(
   input: Readonly<{ taskId: string; studentId: string }>,
 ): StudentTaskProjectionDto[] {
   if (!isStrictArray(value)) throw integrityError();
+  // Empty: the list could not be built after a committed completion; the client re-reads it.
+  if (value.length === 0) return [];
   const tasks = value.map(parseSafeTask);
   const targets = tasks.filter((task) => task.taskId === input.taskId);
   if (tasks.some((task) => task.studentStatus.studentId !== input.studentId)
@@ -323,12 +336,15 @@ function parseSafeTask(value: unknown): StudentTaskProjectionDto {
   const reward = dataValue(value, 'reward');
   const sortOrder = dataValue(value, 'sortOrder');
   const status = dataValue(value, 'studentStatus');
-  assertAllowedRecord(status, ['studentId', 'assigned'], ['completed']);
+  // ready/stage arrived with the 미완료/완료 가능 stages; stored older results do not have them.
+  assertAllowedRecord(status, ['studentId', 'assigned'], ['completed', 'ready', 'stage']);
   if (!isCanonicalId(taskId) || !isCanonicalText(title) || typeof description !== 'string'
     || !isNonnegativeSafeInteger(reward) || !Number.isSafeInteger(sortOrder)
     || !isCanonicalId(dataValue(status, 'studentId'))
     || typeof dataValue(status, 'assigned') !== 'boolean'
-    || (hasOwnDataProperty(status, 'completed') && typeof dataValue(status, 'completed') !== 'boolean')) {
+    || (hasOwnDataProperty(status, 'completed') && typeof dataValue(status, 'completed') !== 'boolean')
+    || (hasOwnDataProperty(status, 'ready') && typeof dataValue(status, 'ready') !== 'boolean')
+    || (hasOwnDataProperty(status, 'stage') && !(TASK_STAGE_ORDER as readonly unknown[]).includes(dataValue(status, 'stage')))) {
     throw integrityError();
   }
   for (const key of ['availableFrom', 'dueAt'] as const) {
@@ -364,12 +380,19 @@ function parseSafeTask(value: unknown): StudentTaskProjectionDto {
         StudentTaskProjectionDto['prerequisiteStatus'] } : {}),
     ...(hasOwnDataProperty(value, 'prerequisiteMessage')
       ? { prerequisiteMessage: dataValue(value, 'prerequisiteMessage') as string } : {}),
-    studentStatus: {
-      studentId: dataValue(status, 'studentId') as string,
-      assigned: dataValue(status, 'assigned') as boolean,
-      ...(hasOwnDataProperty(status, 'completed')
-        ? { completed: dataValue(status, 'completed') as boolean } : {}),
-    },
+    studentStatus: (() => {
+      const assigned = dataValue(status, 'assigned') as boolean;
+      const completed = hasOwnDataProperty(status, 'completed') ? dataValue(status, 'completed') as boolean : undefined;
+      const ready = hasOwnDataProperty(status, 'ready') ? dataValue(status, 'ready') as boolean : assigned;
+      return {
+        studentId: dataValue(status, 'studentId') as string,
+        assigned,
+        ...(completed === undefined ? {} : { completed }),
+        ready,
+        stage: hasOwnDataProperty(status, 'stage') ? dataValue(status, 'stage') as TaskStage
+          : taskStage({ assigned, ready, completed: completed === true }),
+      };
+    })(),
   };
 }
 
@@ -542,7 +565,10 @@ function productionCreators(request?: Request) {
     createDatabasePadletClaimRepository,
     createDatabaseTaskCompletionCommand,
     createDatabaseTaskQueries,
-    createDatabaseTaskCycleQueries: createDatabaseTaskCycleQueries as never,
+    // The tasks shown after a completion come from the stage ledger (no cycles).
+    createDatabaseTaskCycleQueries: ((dependencies: { tenantId: string; runTenantSnapshot: SnapshotRunner }) => createTaskLedgerReader({
+      tenantId: dependencies.tenantId, runTenantTransaction: withTenantTransaction, runTenantSnapshot: dependencies.runTenantSnapshot,
+    })) as never,
     createPadletCompletionEvidenceResolver: createPadletCompletionEvidenceResolver as never,
     fetchPadletBoardPosts,
     withTenantTransaction,

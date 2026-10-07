@@ -76,8 +76,9 @@ async function call(route: string, method: string, body?: unknown, query = '') {
 describe('legacy reads through real route/repository/Sheets adapter under freeze', () => {
   it.each(readRoutes)('$method $route remains available without Sheets/Redis mutations', async ({ route, method }) => {
     const before = structuredClone(sdk.rows);
-    const query = route === '/bank/student' || route === '/bank/balance' ? '?studentId=s1' : '';
+    const query = method === 'GET' && (route === '/bank/student' || route === '/bank/balance') ? '?studentId=s1' : '';
     const body = route === '/checkout/preview' ? { items: [{ productId: 'p1', quantity: 1 }] }
+      : route === '/bank/balance' && method === 'POST' ? { studentQr: 's1' }
       : route === '/qrcode' ? { kind: 'student', studentId: 's1' }
       : route === '/qrcode/link' ? { kind: 'system-link', url: 'https://legacy.example/' } : undefined;
     const response = await call(route, method, body, query);
@@ -88,7 +89,9 @@ describe('legacy reads through real route/repository/Sheets adapter under freeze
     expect(sdk.write).not.toHaveBeenCalled();
     expect(sdk.rows).toEqual(before);
     expect(fetch).not.toHaveBeenCalled();
-  });
+  // The first real route import compiles its dependency graph; this is an
+  // authority regression, not a request latency benchmark.
+  }, 15_000);
 
   it('allows existing login for readonly administration without credential writeback', async () => {
     vi.stubEnv('ADMIN_PASSWORD', 'test-password');

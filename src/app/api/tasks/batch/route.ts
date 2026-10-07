@@ -4,12 +4,15 @@ import { createConfiguredSheetsStore } from '@/server/googleSheets';
 import { deleteTasksBatch, updateTaskDetailsBatch } from '@/server/sheetsRepository';
 import { parseOptionalTaskScheduleEdit } from '../taskScheduleEdit';
 import { parseStrictBatchTaskFields } from '../taskPayload';
+import { legacyTaskWriterRefusal } from '@/server/legacyTaskWriters';
 
 export const dynamic = 'force-dynamic';
 
 export async function PATCH(request: Request) {
   const frozen = legacyWriteFreezeResponse();
   if (frozen) return frozen;
+  const unsupported = legacyTaskWriterRefusal();
+  if (unsupported) return unsupported;
 
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
@@ -48,6 +51,8 @@ function parseScheduleProperty(task: Record<string, unknown>) {
 export async function DELETE(request: Request) {
   const frozen = legacyWriteFreezeResponse();
   if (frozen) return frozen;
+  const unsupported = legacyTaskWriterRefusal();
+  if (unsupported) return unsupported;
 
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 

@@ -416,6 +416,11 @@ function parsePromotionAdminMutationRow(value: unknown): PromotionAdminMutationR
 }
 
 function positiveVersion(value: unknown): number {
+  // pg's INT8 text parser returns strings; bound and validate before conversion.
+  if (typeof value === 'string' && value.length <= 16
+    && /^[1-9][0-9]*$/.exec(value)?.[0] === value) {
+    value = Number(value);
+  }
   if (typeof value !== 'number' || !Number.isSafeInteger(value)
     || value < 1 || value >= Number.MAX_SAFE_INTEGER) {
     throw new Error('Promotion mutation version integrity check failed.');

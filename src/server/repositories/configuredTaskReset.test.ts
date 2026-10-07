@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
 
+import { LegacyTaskWriterUnsupportedError } from '@/server/legacyTaskWriters';
 import {
   createConfiguredTaskResetCommand,
   createTaskResetCommandRepositoryCreators,
@@ -25,8 +26,6 @@ describe('configured task reset mutation composition root', () => {
     const resetTaskCompletionsBatch = vi.fn(async () => RESULT);
     const createConfiguredSheetsStore = vi.fn(async () => store as never);
     const creators = createTaskResetCommandRepositoryCreators({
-      createDatabaseTaskResetCommands: vi.fn(),
-      withTenantTransaction: vi.fn(),
       createConfiguredSheetsStore,
       resetTaskCompletionsBatch,
     }, request);
@@ -48,17 +47,10 @@ describe('configured task reset mutation composition root', () => {
     expect(postgresGetter).not.toHaveBeenCalled();
   });
 
-  it('selects the tenant PostgreSQL command without inspecting Sheets or falling back after failure', async () => {
-    const dbError = new Error('database unavailable');
-    const resetBatch = vi.fn(async () => { throw dbError; });
-    const createDatabaseTaskResetCommands = vi.fn(() => ({ resetBatch }));
+  it('answers PostgreSQL authority as unsupported without inspecting Sheets', async () => {
     const createConfiguredSheetsStore = vi.fn();
-    const creators = createTaskResetCommandRepositoryCreators({
-      createDatabaseTaskResetCommands,
-      withTenantTransaction: vi.fn(),
-      createConfiguredSheetsStore,
-      resetTaskCompletionsBatch: vi.fn(),
-    });
+    const resetTaskCompletionsBatch = vi.fn();
+    const creators = createTaskResetCommandRepositoryCreators({ createConfiguredSheetsStore, resetTaskCompletionsBatch });
     const sheetsGetter = vi.fn();
     Object.defineProperty(creators, 'createSheets', { get: sheetsGetter });
 
@@ -67,12 +59,9 @@ describe('configured task reset mutation composition root', () => {
       getCentralTenantContext: () => activeTenant(), creators,
     });
 
-    expect(createDatabaseTaskResetCommands).toHaveBeenCalledWith({
-      tenantId: TENANT_ID,
-      runTenantTransaction: expect.any(Function),
-    });
-    await expect(command.resetBatch(INPUT)).rejects.toBe(dbError);
+    await expect(command.resetBatch(INPUT)).rejects.toBeInstanceOf(LegacyTaskWriterUnsupportedError);
     expect(sheetsGetter).not.toHaveBeenCalled();
     expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
+    expect(resetTaskCompletionsBatch).not.toHaveBeenCalled();
   });
 });

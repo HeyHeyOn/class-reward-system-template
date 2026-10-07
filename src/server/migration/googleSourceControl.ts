@@ -41,6 +41,8 @@ export type VerifiedGoogleSourceControlClaims = Readonly<{
   googleEmail: string;
   role: 'OWNER' | 'ORGANIZER';
   verifiedAt: string;
+  verificationMethod?: 'OPERATOR_GOOGLE_SHARE_UI';
+  evidenceDigest?: string;
 }>;
 
 export type VerifiedGoogleSourceControlProof = Readonly<{
@@ -56,6 +58,46 @@ type VerifyGoogleSheetSourceControlInput = Readonly<{
 }>;
 
 const mintedCapabilities = new WeakMap<object, VerifiedGoogleSourceControlClaims>();
+
+/** Operator-only alternative when the existing OAuth grant has Sheets but no
+ * Drive permission. The reader is a trusted composition dependency, never HTTP
+ * input: it must freshly observe Google's sharing UI and check the selected
+ * spreadsheet with the same provider-authenticated identity. Do not manufacture
+ * Drive metadata/permissions from this observation. This narrow path supports
+ * only a restricted, single-owner personal spreadsheet, not shared drives.
+ * The observation's digest is retained in the bootstrap audit.
+ */
+export async function verifyOperatorObservedGoogleSheetControl(input: Readonly<{
+  fileId: string;
+  session: GoogleSession;
+  readObservation: (fileId: string) => Promise<unknown>;
+  now?: () => number;
+}>): Promise<VerifiedGoogleSourceControlProof> {
+  const now = input.now?.() ?? Date.now();
+  const fileId = requireBoundedString(input.fileId, 1, 1024);
+  const subject = requireBoundedString(input.session?.subject, 1, 255);
+  const email = normalizeVerifiedEmail(input.session?.email);
+  if (!Number.isSafeInteger(now) || !Number.isSafeInteger(input.session?.issuedAt)
+    || input.session.issuedAt > now || now - input.session.issuedAt > MAX_EVIDENCE_AGE_MS) {
+    throw new Error('Fresh provider-authenticated operator identity required.');
+  }
+  const evidence = await input.readObservation(fileId);
+  if (!isRecord(evidence) || evidence.method !== 'OPERATOR_GOOGLE_SHARE_UI'
+    || evidence.fileId !== fileId || evidence.googleSubject !== subject
+    || !emailMatches(evidence.ownerEmail, email) || evidence.ownerIsSignedInUser !== true
+    || evidence.role !== 'OWNER' || evidence.generalAccess !== 'RESTRICTED'
+    || evidence.listedPrincipals !== 1 || evidence.providerSpreadsheetReadSucceeded !== true
+    || typeof evidence.observedAt !== 'number' || !Number.isSafeInteger(evidence.observedAt)
+    || evidence.observedAt > now || now - evidence.observedAt > MAX_EVIDENCE_AGE_MS
+    || typeof evidence.evidenceDigest !== 'string' || !/^[a-f0-9]{64}$/.test(evidence.evidenceDigest)) {
+    throw new Error('Fresh, matching Google sharing observation required.');
+  }
+  const capability = Object.freeze({ [capabilityBrand]: true as const });
+  mintedCapabilities.set(capability, Object.freeze({ externalSourceId: fileId,
+    googleSubject: subject, googleEmail: email, role: 'OWNER', verifiedAt: new Date(now).toISOString(),
+    verificationMethod: 'OPERATOR_GOOGLE_SHARE_UI', evidenceDigest: evidence.evidenceDigest }));
+  return capability;
+}
 
 export async function verifyGoogleSheetSourceControl(
   input: VerifyGoogleSheetSourceControlInput,

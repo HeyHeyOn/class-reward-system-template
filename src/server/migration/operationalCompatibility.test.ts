@@ -5,7 +5,6 @@ import { createPgliteDatabaseHarness, type PgliteDatabaseHarness } from '@/serve
 import { createDatabaseTaskCompletionCommand } from '@/server/repositories/database/taskCompletionCommands';
 import { createDatabasePadletClaimRepository } from '@/server/repositories/database/padletClaims';
 import { createDatabaseTaskCycleQueries } from '@/server/repositories/database/taskCycleQueries';
-import { materializeTaskConfigurationBoundaryCyclesInternal, materializeTaskNaturalCycleInternal } from '@/server/repositories/database/taskCycleMaterialization';
 import { createLegacyNormalizationManifest } from './manifest';
 import { importLegacyNormalizationManifest } from './importer';
 import { makeRedis, makeSheets, makeSupportedSheets } from './__fixtures__/normalization';
@@ -140,39 +139,6 @@ describe('legacy operational event compatibility acceptance', () => {
       .toMatchObject({ schemaVersion: 2, status: 'SUCCESS', operationId: null });
   });
 
-  it.each(['original completion note', '', '  \t  ', '  padded note  '])('materializes supported retained note %j at the actual configuration boundary', async (note) => {
-    const manifest = await importSource(retainedManifest((tabs) => {
-      tabs.TaskCompletions.rows[0].cells[tabs.TaskCompletions.headers.indexOf('note')] = note;
-    }));
-    expect(manifest.sourceRecords.find((row) => row.canonicalRecord?.completionId === 'C1')?.canonicalRecord?.note).toBe(note.trim());
-    const result = await harness.runTenantTransaction(harness.tenantOneId, (tx) =>
-      materializeTaskConfigurationBoundaryCyclesInternal({ tx, tenantId: harness.tenantOneId, targets: [{
-        taskId: 'T1', taskInstanceId: 'TI1', oldRuleVersion: 2, newRuleVersion: 3,
-        oldCycle: { cycleId: 'v1|TI1|r2|2026-08-31T00:00:00Z', startsAt: '2026-08-31T00:00:00Z',
-          endsAt: '2026-09-01T00:00:00Z', nextResetAt: '2026-09-01T00:00:00Z' },
-        newCycle: { cycleId: 'v1|TI1|r3|2026-08-31T12:00:00Z', startsAt: '2026-08-31T12:00:00Z',
-          endsAt: '2026-09-01T12:00:00Z', nextResetAt: '2026-09-01T12:00:00Z' },
-        timeZone: 'Asia/Seoul', now: new Date('2026-08-31T12:00:00Z'),
-      }] }));
-    expect(result[0].assignmentEventIds).toHaveLength(1);
-    expect(result[0].completionEventIds).toHaveLength(1);
-    const staged = await harness.database.query<{ canonical_record: Record<string, unknown> }>(
-      'SELECT canonical_record FROM migration_source_records WHERE tenant_id=$1 AND job_id=$2 AND target_table IN (\'task_assignments\',\'task_completions\')',
-      [harness.tenantOneId, JOB_ID]);
-    for (const source of manifest.sourceRecords.filter((row) => row.canonicalRecord?.assignmentId === 'AS1'
-      || row.canonicalRecord?.completionId === 'C1')) {
-      expect(staged.rows.map((row) => {
-        const { migrationCheckpoint, ...original } = row.canonical_record;
-        expect(migrationCheckpoint).toBeDefined();
-        return original;
-      })).toContainEqual(source.canonicalRecord);
-    }
-    expect((await harness.database.query('SELECT schema_version,status,note,created_at FROM task_completions WHERE completion_id=$1', ['C1'])).rows)
-      .toEqual([{ schema_version: 1, status: 'COMPLETED', note: note.trim() || null, created_at: new Date('2026-08-31T00:00:00Z') }]);
-    expect((await harness.database.query('SELECT schema_version,note FROM task_assignments WHERE assignment_id=$1', ['AS1'])).rows)
-      .toEqual([{ schema_version: 1, note: null }]);
-  });
-
   it('resumes supported history after interruption, then reruns exactly without activating or leaking tenants', async () => {
     const manifest = retainedManifest();
     await harness.database.query("INSERT INTO migration_jobs (tenant_id,job_id,status) VALUES ($1,$2,'VALIDATED')",
@@ -231,7 +197,7 @@ describe('legacy operational event compatibility acceptance', () => {
     expect((await harness.database.query('SELECT * FROM operations')).rows).toEqual([]);
   });
 
-  it('keeps real modern BANK writer, exact retry and configuration-boundary validation operational', async () => {
+  it('keeps the real modern BANK writer and exact retry operational on imported history', async () => {
     await importSource(retainedManifest((tabs) => {
       tabs.TaskCompletions.rows = [];
       for (const [key, value] of Object.entries({ ruleVersion: '2', recurrenceType: 'DAILY', recurrenceTime: '09:00' })) {
@@ -246,23 +212,12 @@ describe('legacy operational event compatibility acceptance', () => {
     const result = await command.execute(input);
     expect(result).toMatchObject({ ok: true, reward: 10, balanceBefore: 100, balanceAfter: 110 });
     expect(await command.execute(input)).toEqual(result);
-    const snapshot = await createDatabaseTaskCycleQueries({ tenantId: harness.tenantOneId,
-      runTenantSnapshot: harness.runTenantTransaction }).loadTaskCycleLedgerSnapshot();
-    expect(snapshot.completions).toEqual([expect.objectContaining({ source: 'BANK', status: 'SUCCESS', reward: 10 })]);
-    const boundary = new Date(Date.now() + 60_000);
-    const boundaryStart = boundary.toISOString().replace('.000Z', 'Z');
-    const boundaryEnd = new Date(boundary.getTime() + 86_400_000).toISOString().replace('.000Z', 'Z');
-    const materialized = await harness.runTenantTransaction(harness.tenantOneId, (tx) =>
-      materializeTaskConfigurationBoundaryCyclesInternal({ tx, tenantId: harness.tenantOneId, targets: [{
-        taskId: 'T1', taskInstanceId: 'TI1', oldRuleVersion: 2, newRuleVersion: 3,
-        oldCycle: { cycleId: 'v1|TI1|r2|2026-08-31T00:00:00Z', startsAt: '2026-08-31T00:00:00Z',
-          endsAt: '2026-09-01T00:00:00Z', nextResetAt: '2026-09-01T00:00:00Z' },
-        newCycle: { cycleId: `v1|TI1|r3|${boundaryStart}`, startsAt: boundaryStart,
-          endsAt: boundaryEnd, nextResetAt: boundaryEnd },
-        timeZone: 'Asia/Seoul', now: boundary,
-      }] }));
-    expect(materialized[0].completionEventIds).toHaveLength(1);
-    expect((await harness.database.query('SELECT operation_kind FROM operations')).rows).toEqual([{ operation_kind: 'TASK_REWARD' }]);
+    // The class's tasks moved onto the stage ledger before the reward; the reward is one BANK completion.
+    const completions = (await harness.database.query(`SELECT source, status, reward_snapshot::int AS reward FROM task_completions
+      WHERE tenant_id=$1 AND source='BANK'`, [harness.tenantOneId])).rows;
+    expect(completions).toEqual([{ source: 'BANK', status: 'COMPLETED', reward: 10 }]);
+    expect((await harness.database.query(`SELECT operation_kind FROM operations WHERE operation_id<>'task-ledger:v1'`)).rows)
+      .toEqual([{ operation_kind: 'TASK_REWARD' }]);
   });
 
   it.each([
@@ -325,20 +280,8 @@ describe('legacy operational event compatibility acceptance', () => {
     });
   }
 
-  it('quarantines an older open-ended seed rather than admitting history the natural consumer rejects', async () => {
+  it('quarantines an older open-ended seed rather than admitting history the natural consumer rejects', () => {
     const manifest = seedManifest(true);
-    // RED must exercise the real consumer if the normalizer admits this source.
-    if (manifest.status === 'READY_FOR_IMPORT') {
-      await importSource(manifest);
-      await harness.runTenantTransaction(harness.tenantOneId, (tx) =>
-        materializeTaskNaturalCycleInternal({ tx, tenantId: harness.tenantOneId,
-          taskId: 'T1', taskInstanceId: 'TI1', taskTitle: 'Homework',
-          schedule: { ruleVersion: 1, effectiveFrom: '2026-08-30T00:00:00.000Z',
-            recurrence: { type: 'DAILY' }, resetAssignmentOnCycle: false, resetCompletionOnCycle: false },
-          cycle: { cycleId: 'v1|TI1|r1|2026-09-01T00:00:00Z', startsAt: '2026-09-01T00:00:00Z',
-            endsAt: '2026-09-02T00:00:00Z', nextResetAt: '2026-09-02T00:00:00Z' },
-          isAvailable: true, now: new Date('2026-09-01T00:00:00Z') }));
-    }
     expect(manifest.status).toBe('BLOCKED');
     const source = manifest.sourceRecords.find((row) => row.canonicalRecord?.assignmentId === 'AS0');
     expect(source).toMatchObject({ mappingStatus: 'QUARANTINED',
@@ -363,23 +306,5 @@ describe('legacy operational event compatibility acceptance', () => {
     await expect(importLegacyNormalizationManifest({ tenantId: harness.tenantOneId,
       migrationJobId: JOB_ID, manifest, runTransaction })).rejects.toThrow(/unsupported legacy operational history/i);
     expect(runTransaction).not.toHaveBeenCalled();
-  });
-
-  it('never silently loses accepted retained completion state during actual natural-cycle carry', async () => {
-    await importSource();
-    const result = await harness.runTenantTransaction(harness.tenantOneId, (tx) =>
-      materializeTaskNaturalCycleInternal({ tx, tenantId: harness.tenantOneId,
-        taskId: 'T1', taskInstanceId: 'TI1', taskTitle: 'Homework',
-        schedule: { ruleVersion: 2, effectiveFrom: '2026-08-31T00:00:00.000Z',
-          recurrence: { type: 'DAILY' }, resetAssignmentOnCycle: false, resetCompletionOnCycle: false },
-        cycle: { cycleId: 'v1|TI1|r2|2026-09-01T00:00:00Z', startsAt: '2026-09-01T00:00:00Z',
-          endsAt: '2026-09-02T00:00:00Z', nextResetAt: '2026-09-02T00:00:00Z' }, isAvailable: true, now: new Date('2026-09-01T00:00:00Z') }));
-    expect(result.assignmentEventIds).toHaveLength(1);
-    expect(result.completionEventIds).toHaveLength(1);
-    const queries = createDatabaseTaskCycleQueries({ tenantId: harness.tenantOneId,
-      runTenantSnapshot: harness.runTenantTransaction });
-    expect((await queries.loadTaskCycleLedgerSnapshot()).completions).toEqual(expect.arrayContaining([
-      expect.objectContaining({ source: 'CARRY_FORWARD', status: 'SUCCESS', reward: 0, balanceAfter: 90 }),
-    ]));
   });
 });

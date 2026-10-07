@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createConfiguredBankReader } from '@/server/repositories/configuredBank';
 import { resolveStudentQrForCurrentTenant, StudentQrValidationError } from '@/server/studentQr';
-import { GET } from './route';
+import { GET, POST } from './route';
 
 vi.mock('@/server/repositories/configuredBank', () => ({ createConfiguredBankReader: vi.fn() }));
 vi.mock('@/server/studentQr', async (importOriginal) => ({
@@ -35,6 +35,23 @@ describe('GET /api/bank/balance', () => {
     });
     expect(getBalance).toHaveBeenCalledWith('S1');
     expect(resolveStudentQrForCurrentTenant).toHaveBeenCalledWith('S1');
+  });
+
+  it('reads a signed QR from a POST body without putting it in a URL', async () => {
+    getBalance.mockResolvedValue({ student, transactions });
+    const request = new Request('http://localhost/api/bank/balance', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ studentQr: 'csq1.body-only-fixture' }),
+    });
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      studentId: 'S1', name: '학생', balance: 123, transactions: transactions.slice(0, 10),
+    });
+    expect(resolveStudentQrForCurrentTenant).toHaveBeenCalledWith('csq1.body-only-fixture');
+    expect(createConfiguredBankReader).toHaveBeenCalledWith(request);
+    expect(getBalance).toHaveBeenCalledWith('S1');
+    expect(new URL(request.url).search).toBe('');
   });
 
   it('preserves validation before selecting a backend', async () => {

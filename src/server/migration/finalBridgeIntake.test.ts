@@ -19,7 +19,7 @@ const signing = generateKeyPairSync('ed25519');
 const writer = generateKeyPairSync('ed25519');
 const encryptionKey = randomBytes(32);
 beforeEach(async () => {
-  h = await createPgliteDatabaseHarness();
+  h = await createPgliteDatabaseHarness({ migrationSet: 'base' });
   const dir = resolve(process.cwd(), 'src/server/db/migrations');
   for (const name of (await readdir(dir)).filter((n) => /^\d{4}_.*\.sql$/.test(n) && n.slice(0, 4) > '0008').sort()) {
     await h.database.exec(await readFile(resolve(dir, name), 'utf8'));

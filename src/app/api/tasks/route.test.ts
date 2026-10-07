@@ -136,7 +136,7 @@ describe('GET /api/tasks', () => {
     expect(response.status).toBe(200);
     expect(payload[0]).toEqual(expect.objectContaining({
       taskId: 'T1',
-      studentStatus: { studentId: 'S1', assigned: true, completed: false },
+      studentStatus: { studentId: 'S1', assigned: true, completed: false, ready: true, stage: 'READY' },
     }));
     expect(payload[0]).not.toHaveProperty('allowedStudentIds');
     expect(payload[0]).not.toHaveProperty('currentCycle');

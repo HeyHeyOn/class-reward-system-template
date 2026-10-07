@@ -42,6 +42,31 @@ describe('ordinary Google identity OAuth', () => {
     }), NextResponse.json({ ok: true }), 'state-123')).toBeNull();
   });
 
+
+  it('roundtrips a scoped class target only with matching state', () => {
+    const issued = NextResponse.json({ ok: true });
+    setGoogleStateCookie(issued, 'state-123', '/c/alpha-class/admin');
+    const cookie = /class_store_google_state=([^;]+)/.exec(issued.headers.get('set-cookie') ?? '')![1];
+    const request = new Request('https://class-store.example/api/google/callback', {
+      headers: { cookie: `class_store_google_state=${cookie}` },
+    });
+    expect(consumeGoogleStateCookie(request, NextResponse.json({}), 'state-123'))
+      .toEqual({ state: 'state-123', returnTo: '/c/alpha-class/admin' });
+    expect(consumeGoogleStateCookie(request, NextResponse.json({}), 'wrong-state')).toBeNull();
+  });
+
+  it.each([
+    '//evil.example', '/c/Alpha/admin', '/c/alpha/admin/', '/c/alpha/admin?next=/classes',
+    '/c/alpha/admin#x', '/c/alpha%2fother/admin', '/c/alpha/../admin', '/c/alpha/admin\n',
+    '/c/alpha\\evil/admin', `/c/${'a'.repeat(64)}/admin`, null, 1,
+  ])('rejects noncanonical return paths in a state cookie: %s', (returnTo) => {
+    const value = encodeURIComponent(JSON.stringify({ state: 'state-123', returnTo }));
+    const request = new Request('https://class-store.example/api/google/callback', {
+      headers: { cookie: `class_store_google_state=${value}` },
+    });
+    expect(consumeGoogleStateCookie(request, NextResponse.json({}), 'state-123')).toBeNull();
+  });
+
   it('requests exactly the identity scopes without offline or forced consent options', () => {
     vi.stubEnv('GOOGLE_CLIENT_ID', env.GOOGLE_CLIENT_ID);
     vi.stubEnv('GOOGLE_CLIENT_SECRET', env.GOOGLE_CLIENT_SECRET);

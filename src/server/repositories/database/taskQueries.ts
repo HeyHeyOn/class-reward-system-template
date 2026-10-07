@@ -38,24 +38,26 @@ type TaskRow = {
   schedule_schema_version: unknown;
   created_at: unknown;
   allowed_student_id: unknown;
+  task_version: unknown;
 };
 
 export type DatabaseTaskReadOptions = Readonly<{
   activeOnly: boolean;
   taskId?: string;
+  adminMutation?: boolean;
 }>;
 
 export async function readDatabaseTasks(
   transaction: TenantTransaction,
   tenantId: string,
   options: DatabaseTaskReadOptions,
-): Promise<ClassTask[]> {
+): Promise<(ClassTask & { taskVersion?: number })[]> {
   const result = await transaction.execute(sql`
     SELECT t.task_instance_id, t.task_id, t.title, t.description,
            t.reward::text AS reward, t.is_active, t.sort_order,
            t.available_from, t.due_at, prerequisite.task_id AS prerequisite_task_id,
            t.padlet_board_id, t.current_schedule, t.pending_schedule,
-           t.schedule_schema_version, t.created_at,
+           t.schedule_schema_version, t.created_at, t.version::text AS task_version,
            allowed.student_id AS allowed_student_id
     FROM tasks t
     LEFT JOIN tasks prerequisite
@@ -70,7 +72,19 @@ export async function readDatabaseTasks(
       AND (${options.taskId ?? null}::text IS NULL OR t.task_id = ${options.taskId ?? null})
     ORDER BY t.created_at, t.task_id, allowed.created_at, allowed.student_id
   `);
-  return projectTasks(result.rows as TaskRow[]);
+  const tasks = projectTasks(result.rows as TaskRow[]);
+  if (!options.adminMutation) return tasks;
+  const versions = new Map<string, number>();
+  for (const row of result.rows as TaskRow[]) {
+    const version = safeInteger(row.task_version, 'Task version');
+    if (version < 1 || version >= Number.MAX_SAFE_INTEGER
+      || typeof row.task_instance_id !== 'string'
+      || (versions.has(row.task_instance_id) && versions.get(row.task_instance_id) !== version)) {
+      throw new Error('Task mutation precondition integrity check failed.');
+    }
+    versions.set(row.task_instance_id, version);
+  }
+  return tasks.map((task) => ({ ...task, taskVersion: versions.get(task.taskInstanceId!)! }));
 }
 
 export function createDatabaseTaskQueries(dependencies: DatabaseTaskQueryDependencies) {

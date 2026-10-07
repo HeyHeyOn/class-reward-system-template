@@ -3,11 +3,11 @@ import 'server-only';
 import type { TaskAssignmentStatus } from '@/domain/types';
 import type { TaskHistoryDetailDto } from '@/domain/taskHistoryDtos';
 import { createConfiguredSheetsReader } from '@/server/googleSheets';
-import { withTenantSnapshot } from '@/server/db/transaction';
+import { withTenantSnapshot, withTenantTransaction } from '@/server/db/transaction';
 import type { CentralTenantContextInput } from '@/server/repositories/context';
 import type { RepositoryCreators } from '@/server/repositories/factory';
 import { createDatabaseTaskQueries } from '@/server/repositories/database/taskQueries';
-import { createDatabaseTaskCycleQueries } from '@/server/repositories/database/taskCycleQueries';
+import { createTaskLedgerReader } from '@/server/repositories/database/taskLedger/compatReader';
 import {
   getCompatibilityCentralTenantContext,
   resolveCompatibilityConfiguredRepository,
@@ -29,7 +29,7 @@ import { buildBankTaskProjection, type BankTaskDto } from '@/server/taskReadProj
 
 export type TaskReader = Readonly<{
   listTaskCycleProjections: (options?: {
-    studentId?: string; includeInactive?: boolean; now?: string;
+    studentId?: string; includeInactive?: boolean; now?: string; adminMutation?: boolean;
   }) => Promise<TaskCycleProjectionDto[]>;
   getTaskCycleProjection: (
     taskId: string,
@@ -134,7 +134,12 @@ export function createTaskRepositoryCreators(
 function productionCreators(request?: Request) {
   return createTaskRepositoryCreators({
     createDatabaseTaskQueries,
-    createDatabaseTaskCycleQueries,
+    // PostgreSQL classes read task progress from the stage ledger (no cycles).
+    createDatabaseTaskCycleQueries: (dependencies) => createTaskLedgerReader({
+      tenantId: dependencies.tenantId,
+      runTenantTransaction: withTenantTransaction,
+      runTenantSnapshot: dependencies.runTenantSnapshot,
+    }),
     withTenantSnapshot,
     createConfiguredSheetsReader,
     sheets: {

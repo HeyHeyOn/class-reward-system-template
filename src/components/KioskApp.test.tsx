@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { StrictMode } from 'react';
 import { KioskApp } from './KioskApp';
 import { contrastRatio, THEME_PALETTES, type ThemeColor } from './uiTheme';
 
@@ -92,12 +93,29 @@ describe('KioskApp', () => {
     vi.unstubAllGlobals();
   });
 
+  it('issues one initial read per storefront endpoint under StrictMode and keeps explicit refresh working', async () => {
+    render(<StrictMode><KioskApp /></StrictMode>);
+
+    expect(await screen.findByRole('heading', { name: '햇살반 매점' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '상품 목록' })).toBeTruthy();
+    expect(screen.getByText('연필')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '새로고침' })).toHaveProperty('disabled', false);
+    expect(screen.queryByRole('dialog', { name: '시트 정보 불러오는 중' })).toBeNull();
+    const endpoints = ['/api/products', '/api/settings', '/api/promotions/active'];
+    endpoints.forEach((endpoint) => {
+      expect(fetch).toHaveBeenCalledWith(endpoint, { cache: 'no-store' });
+    });
+    const initialReadCounts = endpoints.map((endpoint) => vi.mocked(fetch).mock.calls.filter(([input, init]) => String(input) === endpoint
+      && (init?.method ?? 'GET') === 'GET').length);
+    expect(initialReadCounts).toEqual([1, 1, 1]);
+  });
+
   it('renders a reference-style kiosk main screen with product cards, cart controls, clear button, and QR payment button', async () => {
     const { container } = render(<KioskApp />);
 
     expect(await screen.findByRole('heading', { name: '햇살반 매점' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '상품 목록' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: '장바구니 (0)' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /^장바구니\s*\(0\)$/ })).toBeTruthy();
     expect(screen.getByText('연필')).toBeTruthy();
     expect(screen.getByRole('img', { name: '연필 이미지' }).getAttribute('src')).toBe('https://example.com/pencil.png');
     const fallbackLogo = screen.getByRole('img', { name: '지우개 기본 이미지' });
@@ -108,18 +126,26 @@ describe('KioskApp', () => {
     expect(screen.queryByText('시트 연동')).toBeNull();
 
     expect(screen.queryByRole('link', { name: '관리자 설정' })).toBeNull();
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('h-screen');
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain('--theme-shell: #FAEDED');
+    const shell = container.querySelector('[data-testid="kiosk-shell"]');
+    expect(shell?.className).toContain('h-[100dvh]');
+    expect(shell?.className).toContain('bg-[var(--theme-shell)]');
+    expect(shell?.getAttribute('data-theme')).toBe('pink');
+    expect(shell?.getAttribute('style')).toContain(`--theme-shell: ${THEME_PALETTES.pink.shell}`);
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain('SchoolSafeNotice');
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('overflow-hidden');
-    expect(container.querySelector('[data-testid="kiosk-main-grid"]')?.className).toContain('grid-rows-[minmax(0,2fr)_minmax(0,1fr)]');
-    expect(container.querySelector('[data-testid="kiosk-main-grid"]')?.className).toContain('landscape:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]');
+    // Portrait stacks products above the cart; landscape places the cart beside the products.
+    const mainGridClass = container.querySelector('[data-testid="kiosk-main-grid"]')?.className ?? '';
+    expect(mainGridClass).toMatch(/(^|\s)grid-rows-\[/);
+    expect(mainGridClass).toMatch(/(^|\s)landscape:grid-cols-\[/);
+    expect(mainGridClass).toContain('landscape:grid-rows-1');
     expect(container.querySelector('[data-testid="product-grid"]')?.className).toContain('grid-cols-3');
+    expect(container.querySelector('[data-testid="product-grid"]')?.className).toMatch(/md:grid-cols-\d/);
+    expect(container.querySelector('[data-testid="cart-panel"]')?.className).toContain('bg-[var(--theme-surface)]');
     expect(container.querySelector('[data-testid="product-scroll-block"]')?.className).toContain('overflow-y-auto');
     expect(container.querySelector('[data-testid="cart-scroll-block"]')?.className).toContain('overflow-y-auto');
 
     fireEvent.click(screen.getByRole('button', { name: '연필 300별 담기' }));
-    expect(screen.getByRole('heading', { name: '장바구니 (1)' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /^장바구니\s*\(1\)$/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: '연필 수량 줄이기' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '연필 수량 늘리기' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '비우기' })).toBeTruthy();
@@ -154,9 +180,12 @@ describe('KioskApp', () => {
       expect.stringContaining('판매 마이쮸'),
       expect.stringContaining('품절 연필'),
     ]);
-    expect(productCards[2].className).toContain('brightness-75');
     expect(productCards[2].className).toContain('grayscale');
-    expect(productCards[2].className).toContain('disabled:opacity-75');
+    expect(productCards[2].className).toMatch(/disabled:opacity-\d+/);
+    expect(productCards[0].className).not.toContain('grayscale');
+    expect((productCards[2] as HTMLButtonElement).disabled).toBe(true);
+    expect((productCards[0] as HTMLButtonElement).disabled).toBe(false);
+    expect(within(productCards[2]).getByText('품절')).toBeTruthy();
     expect(container.querySelector('[data-testid="product-grid"]')?.textContent?.lastIndexOf('품절 연필')).toBeGreaterThan(
       container.querySelector('[data-testid="product-grid"]')?.textContent?.lastIndexOf('판매 마이쮸') ?? -1,
     );
@@ -268,8 +297,9 @@ describe('KioskApp', () => {
     expect(screen.queryByRole('heading', { name: '상품 목록' })).toBeNull();
     resolveProducts();
     expect(await screen.findByRole('heading', { name: '학급 매점' })).toBeTruthy();
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain('--theme-shell: #FCFCFC');
-    expect(container.querySelector('[data-testid="products-panel"]')?.className).toContain('border-[var(--theme-border)]');
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain(`--theme-shell: ${THEME_PALETTES.white.shell}`);
+    expect(container.querySelector('[data-testid="cart-panel"]')?.className).toContain('border-[var(--crs-line)]');
+    expect(container.querySelector('[data-testid="cart-panel"]')?.className).toContain('bg-[var(--theme-surface)]');
   });
 
   it('applies the new navy theme from settings', async () => {
@@ -278,34 +308,40 @@ describe('KioskApp', () => {
     const { container } = render(<KioskApp />);
 
     expect(await screen.findByRole('heading', { name: '남색 매점' })).toBeTruthy();
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain('--theme-shell: #111A2E');
-    expect(container.querySelector('[data-testid="products-panel"]')?.className).toContain('bg-[var(--theme-surface)]');
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain(`--theme-shell: ${THEME_PALETTES.navy.shell}`);
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('data-theme')).toBe('navy');
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain(`--theme-surface: ${THEME_PALETTES.navy.surface}`);
+    expect(container.querySelector('[data-testid="cart-panel"]')?.className).toContain('bg-[var(--theme-surface)]');
     expect(screen.getByRole('button', { name: '전체' }).className).toContain('bg-[var(--theme-accent-solid)]');
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).not.toContain('bg-[#8F97CF]');
+    expect(screen.getByRole('button', { name: '전체' }).className).toContain('text-[var(--theme-accent-on-solid)]');
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-[var(--theme-shell)]');
   });
 
   it('keeps black kiosk theme cart action buttons readable on dark local backgrounds', async () => {
     vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse(products));
     vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '검정 매점', themeColor: 'black', qrManualInputEnabled: true, source: 'runtime' }));
-    render(<KioskApp />);
+    const { container } = render(<KioskApp />);
 
     expect(await screen.findByRole('heading', { name: '검정 매점' })).toBeTruthy();
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain(`--theme-surface: ${THEME_PALETTES.black.surface}`);
     fireEvent.click(screen.getByRole('button', { name: '연필 300별 담기' }));
-    expect(screen.getByRole('button', { name: '비우기' }).className).toContain('bg-[var(--theme-accent-soft)]');
-    expect(screen.getByRole('button', { name: '비우기' }).className).toContain('text-[var(--theme-accent-text)]');
-    expect(screen.getByText('재고 20').className).toContain('text-[var(--theme-accent-text)]');
+    expect(screen.getByRole('button', { name: '비우기' }).className).toContain('text-[var(--theme-muted-text)]');
+    expect(screen.getByRole('button', { name: '비우기' }).className).toContain('hover:text-[var(--theme-text)]');
+    expect(screen.getByText('재고 20').className).toContain('text-[var(--theme-muted-text)]');
     expect(screen.getByRole('button', { name: 'QR 결제' }).className).toContain('bg-[var(--theme-accent-solid)]');
     expect(screen.getByRole('button', { name: 'QR 결제' }).className).toContain('text-[var(--theme-accent-on-solid)]');
-    expect(screen.getAllByTestId('product-card')[0].className).toContain('bg-[var(--theme-content-card)]');
-    expect(screen.getByTestId('cart-item-row').className).toContain('bg-[var(--theme-surface-raised)]');
+    expect(screen.getAllByTestId('product-card')[0].className).toContain('bg-[var(--theme-surface)]');
     for (const button of [
       screen.getByRole('button', { name: '연필 수량 줄이기' }),
       screen.getByRole('button', { name: '연필 수량 늘리기' }),
     ]) {
-      expect(button.className).toContain('bg-[var(--theme-accent-soft)]');
-      expect(button.className).toContain('text-[var(--theme-accent-text)]');
-      expect(button.className).not.toContain('bg-[var(--theme-accent-solid)]');
+      expect(button.className).toContain('bg-[var(--theme-surface)]');
+      expect(button.className).toContain('text-[var(--theme-text)]');
     }
+    const palette = THEME_PALETTES.black;
+    expect(contrastRatio(palette.text, palette.surface)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(palette.mutedText, palette.surface)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(palette.accentOnSolid, palette.accentSolid)).toBeGreaterThanOrEqual(4.5);
   });
 
   it('keeps white-theme cart quantity controls distinct from the cart row', async () => {
@@ -314,17 +350,18 @@ describe('KioskApp', () => {
     render(<KioskApp />);
 
     fireEvent.click(await screen.findByRole('button', { name: '연필 300별 담기' }));
-    const decreaseButton = screen.getByRole('button', { name: '연필 수량 줄이기' });
-    const increaseButton = screen.getByRole('button', { name: '연필 수량 늘리기' });
+    const controls = screen.getByTestId('cart-quantity-controls');
+    expect(controls.className).toContain('bg-[var(--crs-subtle-hover)]');
+    const decreaseButton = within(controls).getByRole('button', { name: '연필 수량 줄이기' });
+    const increaseButton = within(controls).getByRole('button', { name: '연필 수량 늘리기' });
     for (const button of [decreaseButton, increaseButton]) {
-      expect(button.className).toContain('bg-[var(--theme-accent-solid)]');
-      expect(button.className).toContain('text-[var(--theme-accent-on-solid)]');
-      expect(button.className).not.toContain('bg-[var(--theme-accent-soft)]');
+      expect(button.className).toContain('bg-[var(--theme-surface)]');
+      expect(button.className).toContain('text-[var(--theme-text)]');
+      expect(button.className).not.toContain('bg-[var(--crs-subtle-hover)]');
     }
     const cartRow = screen.getByTestId('cart-item-row');
-    expect(cartRow.className).toContain('bg-[var(--theme-content-card)]');
-    expect(cartRow.className).not.toContain('bg-[var(--theme-surface-raised)]');
-    expect(contrastRatio(THEME_PALETTES.white.accentSolid, THEME_PALETTES.white.contentCard)).toBeGreaterThanOrEqual(3);
+    expect(cartRow.className).not.toContain('bg-[var(--theme-surface)]');
+    expect(contrastRatio(THEME_PALETTES.white.text, THEME_PALETTES.white.surface)).toBeGreaterThanOrEqual(4.5);
   });
 
   it('applies softer pastel theme classes from settings on the kiosk', async () => {
@@ -333,7 +370,7 @@ describe('KioskApp', () => {
     const { container } = render(<KioskApp />);
 
     expect(await screen.findByRole('heading', { name: '분홍 매점' })).toBeTruthy();
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain('--theme-shell: #FAEDED');
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain(`--theme-shell: ${THEME_PALETTES.pink.shell}`);
     expect(screen.getByRole('button', { name: '전체' }).className).toContain('bg-[var(--theme-accent-solid)]');
     expect(screen.getByRole('button', { name: '전체' }).className).not.toContain('bg-pink-500');
   });
@@ -341,17 +378,24 @@ describe('KioskApp', () => {
   it('applies paired semantic hover foreground and background classes to hoverable controls', async () => {
     render(<KioskApp />);
     await screen.findByRole('heading', { name: '햇살반 매점' });
-    for (const control of [screen.getByRole('button', { name: '새로고침' }), screen.getByRole('button', { name: 'QR 결제' })]) {
-      expect(control.className).toContain('hover:bg-[var(--theme-hover)]');
-      expect(control.className).toContain('hover:text-[var(--theme-hover-text)]');
+    const checkout = screen.getByRole('button', { name: 'QR 결제' });
+    expect(checkout.className).toContain('hover:bg-[var(--theme-hover)]');
+    expect(checkout.className).toContain('hover:text-[var(--theme-hover-text)]');
+    // Secondary surface controls only shift their foreground from muted to the theme text colour on hover.
+    for (const control of [screen.getByRole('button', { name: '새로고침' }), screen.getByRole('button', { name: '문구' })]) {
+      expect(control.className).toContain('text-[var(--theme-muted-text)]');
+      expect(control.className).toContain('hover:text-[var(--theme-text)]');
+    }
+    for (const theme of Object.values(THEME_PALETTES)) {
+      expect(contrastRatio(theme.hoverText, theme.hover)).toBeGreaterThanOrEqual(4.5);
     }
   });
 
   it('uses a soft yellow, balanced green, and darker black kiosk shell when selected', async () => {
     for (const [themeColor, expectedShell, rejectedShell] of [
-      ['yellow', '#FCFAE6', 'bg-yellow-100'],
-      ['green', '#DCF5C9', 'bg-green-50'],
-      ['black', '#1F1F1F', 'bg-slate-100'],
+      ['yellow', THEME_PALETTES.yellow.shell, 'bg-yellow-100'],
+      ['green', THEME_PALETTES.green.shell, 'bg-green-50'],
+      ['black', THEME_PALETTES.black.shell, 'bg-slate-100'],
     ] as const) {
       cleanup();
       vi.mocked(fetch).mockReset();
@@ -402,7 +446,7 @@ describe('KioskApp', () => {
     fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
     expect(await screen.findByRole('dialog', { name: '결제 확인' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '상품 목록', hidden: true })).toBeTruthy();
-    expect(screen.getByText('결제하려면 카메라에 QR 코드를 인식해주세요.')).toBeTruthy();
+    expect(screen.getByText('학생 QR을 카메라에 비추면 바로 결제됩니다.')).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
     fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 결제하기' }));
@@ -425,7 +469,7 @@ describe('KioskApp', () => {
     expectPageText('결제 후 잔액3,200별');
 
     fireEvent.click(screen.getByRole('button', { name: '처음으로' }));
-    expect(await screen.findByRole('heading', { name: '장바구니 (0)' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: /^장바구니\s*\(0\)$/ })).toBeTruthy();
   });
 
   it('keeps a signed QR in the checkout POST body after the student-safe lookup', async () => {
@@ -465,7 +509,7 @@ describe('KioskApp', () => {
     expect(screen.getByRole('button', { name: '다시 시도' })).toBeTruthy();
   });
 
-  it('recovers from malformed QR/student lookup errors instead of staying on the processing popup', async () => {
+  it('reports student lookup errors before any checkout submission', async () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/products') return jsonResponse(products);
@@ -487,27 +531,99 @@ describe('KioskApp', () => {
 
     expect(await screen.findByRole('dialog', { name: '결제 실패' })).toBeTruthy();
     expect(screen.queryByRole('dialog', { name: '결제 중' })).toBeNull();
-    expect(screen.getByText('잘못된 QR 코드입니다.')).toBeTruthy();
+    expect(screen.getByText('학생 정보를 확인하지 못했습니다. 결제는 요청되지 않았습니다.')).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: '결제 상태 확인 필요' })).toBeNull();
+    expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/checkout')).toHaveLength(0);
+  });
+
+  it('shows an uncertain checkout after response loss and only retries explicitly with the same signed QR and body', async () => {
+    const signedQr = 'csq1.k1.signed-payload.signed-signature';
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    const checkoutBodies: string[] = [];
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input) === `/api/students/${encodeURIComponent(signedQr)}`) return jsonResponse(studentBefore);
+      if (String(input) === '/api/checkout' && init?.method === 'POST') {
+        checkoutBodies.push(String(init.body));
+        if (checkoutBodies.length === 1) throw new TypeError('Failed to fetch');
+      }
+      return base(input, init);
+    });
+
+    render(<KioskApp />);
+    fireEvent.click(await screen.findByRole('button', { name: '연필 300별 담기' }));
+    fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
+    fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: signedQr } });
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 결제하기' }));
+
+    const uncertain = await screen.findByRole('dialog', { name: '결제 상태 확인 필요' });
+    expect(within(uncertain).getByRole('heading', { name: '결제 상태 확인 필요' })).toBeTruthy();
+    expect(within(uncertain).getByText('결제 응답을 받지 못해 처리 여부를 확인할 수 없습니다.')).toBeTruthy();
+    expect(within(uncertain).getByText('이미 처리되었을 수 있으니 거래 내역과 잔액을 먼저 확인하고, 별도의 새 결제를 하지 마세요.')).toBeTruthy();
+    expect(screen.queryByText('잘못된 QR 코드입니다.')).toBeNull();
+    expect(screen.queryByText('결제 실패')).toBeNull();
+    expect(screen.queryByRole('dialog', { name: '결제 완료' })).toBeNull();
+    expect(within(uncertain).getByRole('button', { name: '닫기' })).toBeTruthy();
+    await act(async () => { await Promise.resolve(); });
+    expect(checkoutBodies).toHaveLength(1);
+
+    fireEvent.click(within(uncertain).getByRole('button', { name: '다시 시도' }));
+    expect(screen.getByLabelText('QR 값 직접 입력')).toHaveProperty('value', '');
+    expect(checkoutBodies).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: signedQr } });
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 결제하기' }));
+    await screen.findByRole('dialog', { name: '결제 완료' });
+    expect(checkoutBodies).toHaveLength(2);
+    expect(checkoutBodies[1]).toBe(checkoutBodies[0]);
+    expect(JSON.parse(checkoutBodies[0]).studentId).toBe(signedQr);
+  });
+
+  it.each([
+    { status: 404, payload: { error: '잘못된 QR 코드입니다.' } },
+    { status: 400, payload: { error: '잔액이 부족합니다.', currentBalance: 100 } },
+  ])('preserves explicit checkout refusal $status instead of calling it uncertain', async ({ status, payload }) => {
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input) === '/api/checkout' && init?.method === 'POST') return jsonResponse(payload, { status });
+      return base(input, init);
+    });
+    render(<KioskApp />);
+    fireEvent.click(await screen.findByRole('button', { name: '연필 300별 담기' }));
+    fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
+    fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 결제하기' }));
+    const failed = await screen.findByRole('dialog', { name: '결제 실패' });
+    expect(within(failed).getByText(payload.error)).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: '결제 상태 확인 필요' })).toBeNull();
+    expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/checkout')).toHaveLength(1);
   });
 
   it('uses responsive kiosk layout classes for small screens and keeps the total/payment area aligned', async () => {
     const { container } = render(<KioskApp />);
 
     expect(await screen.findByText('연필')).toBeTruthy();
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('h-screen');
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain('--theme-shell: #FAEDED');
+    const shell = container.querySelector('[data-testid="kiosk-shell"]');
+    expect(shell?.className).toContain('h-[100dvh]');
+    expect(shell?.className).toContain('bg-[var(--theme-shell)]');
+    expect(shell?.getAttribute('data-theme')).toBe('pink');
+    expect(shell?.getAttribute('style')).toContain(`--theme-shell: ${THEME_PALETTES.pink.shell}`);
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('overflow-hidden');
     expect(container.querySelector('[data-testid="kiosk-content"]')?.className).toContain('h-full');
+    expect(container.querySelector('[data-testid="kiosk-content"]')?.className).toMatch(/sm:p-\d/);
     expect(container.querySelector('[data-testid="kiosk-title"]')?.className).toContain('text-[clamp(');
-    expect(container.querySelector('[data-testid="products-panel"]')?.className).toContain('text-[clamp(');
-    expect(container.querySelector('[data-testid="cart-panel"]')?.className).toContain('text-[clamp(');
-    expect(container.querySelector('[data-testid="product-card"]')?.className).toContain('text-[clamp(');
-    expect(container.querySelector('[data-testid="product-card-footer"]')?.className).toContain('flex-row');
+    expect(container.querySelector('[data-testid="kiosk-title"]')?.className).toContain('truncate');
+    expect(container.querySelector('[data-testid="products-panel"]')?.className).toContain('min-h-0');
+    expect(container.querySelector('[data-testid="category-tabs"]')?.className).toContain('overflow-x-auto');
+    expect(container.querySelector('[data-testid="cart-panel"]')?.className).toContain('min-h-0');
+    expect(container.querySelector('[data-testid="cart-panel"]')?.innerHTML).toContain('text-[clamp(');
+    expect(container.querySelector('[data-testid="product-card"]')?.innerHTML).toContain('text-[clamp(');
+    expect(container.querySelector('[data-testid="product-card-footer"]')?.className).toContain('flex-wrap');
     expect(container.querySelector('[data-testid="product-card-stock"]')?.className).toContain('whitespace-nowrap');
-    expect(container.querySelector('[data-testid="checkout-total-bar"]')?.className).toContain('text-[clamp(');
-    expect(container.querySelector('[data-testid="checkout-total-bar"]')?.className).toContain('sm:flex-row');
+    const totalBar = container.querySelector('[data-testid="checkout-total-bar"]');
+    expect(totalBar?.className).toContain('items-center');
+    expect(totalBar?.innerHTML).toContain('text-[clamp(');
+    expect(totalBar?.querySelector('[data-testid="checkout-button"]')).toBeTruthy();
     expect(container.querySelector('[data-testid="checkout-button"]')?.className).toContain('text-[clamp(');
-    expect(container.querySelector('[data-testid="checkout-button"]')?.className).toContain('sm:w-auto');
+    expect(container.querySelector('[data-testid="checkout-button"]')?.className).toContain('shrink-0');
   });
 
   it('keeps cart item names visible while controls sit near the middle-right and subtotal can wrap when long', async () => {
@@ -521,19 +637,21 @@ describe('KioskApp', () => {
     const quantityControls = container.querySelector('[data-testid="cart-quantity-controls"]');
     const subtotal = container.querySelector('[data-testid="cart-item-subtotal"]');
 
-    expect(cartRow?.className).toContain('grid-cols-[minmax(0,2fr)_auto_minmax(3.5rem,1fr)]');
-    expect(cartRow?.className).toContain('landscape:grid-cols-[minmax(0,2fr)_auto_minmax(3.5rem,1fr)]');
+    // Name column flexes (min-w-0), subtotal sits in an auto column on the right spanning both rows.
+    expect(cartRow?.className).toContain('grid');
+    expect(cartRow?.className).toContain('grid-cols-[minmax(0,1fr)_auto]');
     expect(cartName?.className).toContain('min-w-0');
-    expect(quantityControls?.className).toContain('justify-self-center');
-    expect(quantityControls?.className).not.toContain('justify-self-start');
+    expect(cartName?.textContent).toBe('연필');
     expect(quantityControls?.className).toContain('z-10');
-    expect(subtotal?.className).toContain('break-words');
+    expect(quantityControls?.className).toContain('w-fit');
+    expect(subtotal?.className).toContain('row-span-2');
+    expect(subtotal?.className).toContain('text-right');
     expect(subtotal?.className).not.toContain('truncate');
+    expect(subtotal?.textContent).toBe('300별');
     const decreaseButton = screen.getByRole('button', { name: '연필 수량 줄이기' });
     const increaseButton = screen.getByRole('button', { name: '연필 수량 늘리기' });
     expect(decreaseButton.className).toBe(increaseButton.className);
-    expect(increaseButton.className).toContain('w-[clamp(2rem,5vw,2.25rem)]');
-    expect(increaseButton.className).not.toContain('min-w-10');
+    expect(increaseButton.className).toContain('shrink-0');
     expect(increaseButton.className).toContain('touch-manipulation');
   });
 
@@ -658,17 +776,17 @@ describe('KioskApp', () => {
     };
 
     const card = await screen.findByRole('button', { name: /연필 270별 담기/ });
-    expectSemanticMuted(within(card).getByLabelText('정상 가격 300별'), palette.surfaceRaised);
-    expectSemanticMuted(screen.getByText('선택한 상품이 없습니다.'), palette.surfaceRaised);
-    expectSemanticMuted(within(screen.getByTestId('checkout-total-bar')).getByText('확인 중'), palette.surfaceRaised);
+    expectSemanticMuted(within(card).getByLabelText('정상 가격 300별'), palette.surface);
+    expectSemanticMuted(screen.getByText('선택한 상품이 없습니다.'), palette.surface);
+    expectSemanticMuted(within(screen.getByTestId('checkout-total-bar')).getByText('0별'), palette.surface);
 
     fireEvent.click(card);
     const cartRow = screen.getByTestId('cart-item-row');
-    expectSemanticMuted(within(cartRow).getByLabelText('정상 합계 300별'), palette.surfaceRaised);
-    expectSemanticMuted(within(screen.getByTestId('checkout-total-bar')).getByLabelText('정상 총액 300별'), palette.surfaceRaised);
+    expectSemanticMuted(within(cartRow).getByLabelText('정상 합계 300별'), palette.surface);
+    expectSemanticMuted(within(screen.getByTestId('checkout-total-bar')).getByLabelText('정상 총액 300별'), palette.surface);
     fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
     const checkoutDialog = await screen.findByRole('dialog', { name: '결제 확인' });
-    expectSemanticMuted(within(checkoutDialog).getByText('300별'), palette.surfaceRaised);
+    expectSemanticMuted(within(checkoutDialog).getByText('300별'), palette.surface);
     fireEvent.change(within(checkoutDialog).getByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
     fireEvent.click(within(checkoutDialog).getByRole('button', { name: 'QR 값으로 결제하기' }));
     const processingDialog = await screen.findByRole('dialog', { name: '결제 중' });
@@ -959,10 +1077,14 @@ describe('KioskApp', () => {
     fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
     const cancel = await screen.findByRole('button', { name: '결제 취소' });
     const submit = screen.getByRole('button', { name: 'QR 값으로 결제하기' });
-    expect(cancel.className).toContain('bg-rose-700');
-    expect(submit.className).toContain('bg-sky-700');
-    expect(contrastRatio('#FFFFFF', '#BE123C')).toBeGreaterThanOrEqual(4.5);
-    expect(contrastRatio('#FFFFFF', '#0369A1')).toBeGreaterThanOrEqual(4.5);
+    expect(cancel.className).toContain('text-[var(--theme-text)]');
+    expect(cancel.className).toContain('border-[var(--crs-line-strong)]');
+    expect(submit.className).toContain('bg-[var(--theme-accent-solid)]');
+    expect(submit.className).toContain('text-[var(--theme-accent-on-solid)]');
+    for (const palette of Object.values(THEME_PALETTES)) {
+      expect(contrastRatio(palette.text, palette.surface)).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(palette.accentOnSolid, palette.accentSolid)).toBeGreaterThanOrEqual(4.5);
+    }
   });
 
   it('moves focus into the modal, traps Tab, closes with Escape, restores focus, and hides the kiosk', async () => {

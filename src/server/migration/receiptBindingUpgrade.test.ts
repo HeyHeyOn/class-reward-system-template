@@ -6,7 +6,7 @@ import { createNonAuthorityReceiptStorage } from './authorityReceiptStorage';
 import { createFreezingApprovalIntake } from './freezingApprovalIntake';
 vi.mock('server-only', () => ({}));
 it('0017 preserves legacy receipt and challenge evidence exactly without granting old challenges authority',async () => {
-  const h = await createPgliteDatabaseHarness();
+  const h = await createPgliteDatabaseHarness({ migrationSet: 'base' });
   try {
     const dir = resolve('src/server/db/migrations');
     for (const n of (await readdir(dir)).filter(n => /^\d{4}_.*\.sql$/.test(n) && n.slice(0,4) > '0008' && n.slice(0,4) < '0017').sort()) await h.database.exec(await readFile(resolve(dir,n),'utf8'));

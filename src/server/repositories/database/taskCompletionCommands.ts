@@ -3,21 +3,31 @@ import 'server-only';
 import { createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { isTaskAvailable } from '@/domain/taskAvailability';
-import { projectTaskCycleState } from '@/domain/taskCycleState';
-import { getTaskCycle } from '@/domain/taskRecurrence';
-import { resolveTaskSchedule } from '@/domain/taskSchedule';
 import type {
   ClassTask,
-  TaskAssignment,
-  TaskCompletion,
   TaskCompletionEvidence,
   TaskSchedule,
 } from '@/domain/types';
 import type { TenantTransaction } from '@/server/db/transaction';
 import type { DatabasePadletClaimRepository } from './padletClaims';
 import { appendOperationAudit, assertOperationAudit } from './operationAudit';
-import { materializeTaskNaturalCycleInternal,
-  taskNaturalAssignmentMaterializationId } from './taskCycleMaterialization';
+import { ensureTaskLedger } from './taskLedger/migration';
+import { rewardAssignment, writeCarriedAssignmentIfMissing } from './taskLedger/reward';
+import {
+  clockNow,
+  groupEvents,
+  LEDGER_CYCLE_ID,
+  LEDGER_CYCLE_START,
+  LEDGER_RULE_VERSION,
+  latestEvent,
+  readLedgerEvents,
+  readLedgerFrom,
+  readLedgerTasks,
+  stageOf,
+  type LedgerEventRow,
+  type LedgerTask,
+} from './taskLedger/store';
+import { ledgerEventId } from './taskLedger/writes';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -29,11 +39,6 @@ type RunTenantTransaction = <TResult>(
   callback: (transaction: TenantTransaction) => Promise<TResult>,
 ) => Promise<TResult>;
 
-type InternalTaskCompletionTask = ClassTask & Readonly<{
-  taskInstanceId: string;
-  schedule: TaskSchedule;
-  padletBoardId?: string;
-}>;
 
 export type PadletEvidenceResolutionInput = Readonly<{
   taskId: string;
@@ -92,7 +97,8 @@ export type TaskRewardCommandErrorCode =
   | 'OPERATION_PENDING'
   | 'PROVIDER_UNAVAILABLE'
   | 'SUBMISSION_REQUIRED'
-  | 'EVIDENCE_CONFLICT';
+  | 'EVIDENCE_CONFLICT'
+  | 'NOT_READY';
 
 export class TaskRewardCommandError extends Error {
   constructor(readonly code: TaskRewardCommandErrorCode) {
@@ -146,6 +152,7 @@ export function createDatabaseTaskCompletionCommand(
       const now = dependencies.now?.() ?? new Date();
       if (!Number.isFinite(now.getTime())) throw new Error('A valid task reward timestamp is required.');
       const nowIso = now.toISOString();
+      await ensureTaskLedger({ tenantId: dependencies.tenantId, runTenantTransaction: dependencies.runTenantTransaction });
 
       const preflight = await dependencies.runTenantTransaction<
         { existing: TaskRewardSuccess } | { authorization: Authorization }
@@ -176,8 +183,9 @@ export function createDatabaseTaskCompletionCommand(
             studentName: initial.studentName,
             boardId: initial.boardId,
             cycleId: initial.cycleId,
-            cycleStartsAt: initial.cycleStartsAt,
-            cycleEndsAt: initial.cycleEndsAt,
+            // A post counts when it is newer than the student's previous completion of this task.
+            cycleStartsAt: initial.evidenceSince,
+            cycleEndsAt: null,
             operationId: input.operationId,
             now: nowIso,
           }));
@@ -194,9 +202,9 @@ export function createDatabaseTaskCompletionCommand(
       }
 
       return dependencies.runTenantTransaction(dependencies.tenantId, async (tx) => {
-        // LOCK ORDER: existing operation; tasks by task_instance_id; student/account;
-        // allowed-student rows; assignment events by event_sequence; prerequisite and
-        // completion events by event_sequence; finally the privileged global claim seam.
+        // LOCK ORDER: existing operation; tasks by task_instance_id; student/account; finally the
+        // privileged global claim seam. Progress events are append-only and take no lock: every
+        // writer of a task's progress holds that task's row first (see readLedgerTasks).
         const inserted = await tx.execute(sql`
           INSERT INTO operations
             (tenant_id, operation_id, operation_kind, payload_hash, status,
@@ -223,6 +231,9 @@ export function createDatabaseTaskCompletionCommand(
           throw new TaskRewardCommandError('CONFLICT');
         }
         validateEvidence(fresh, evidence, now);
+        await writeCarriedAssignmentIfMissing(tx, dependencies.tenantId, {
+          assignment: { assignmentId: fresh.assignmentId, existing: fresh.assignmentExists },
+          task: fresh.ledgerTask, studentId: fresh.studentId });
 
         const balanceAfter = checkedSum(fresh.balance, fresh.task.reward);
         await tx.execute(sql`
@@ -254,7 +265,7 @@ export function createDatabaseTaskCompletionCommand(
              cycle_end_at, rule_version, timezone, source, assignment_id, transaction_id,
              operation_id, operation_hash, schema_version, evidence_provider,
              evidence_board_id, evidence_post_id, evidence_created_at,
-             evidence_author_full_name)
+             evidence_author_full_name, created_at)
           VALUES
             (${dependencies.tenantId}, ${completionId}, ${now}, ${fresh.task.taskInstanceId},
              ${fresh.task.taskId}, ${fresh.task.title}, ${fresh.studentId}, ${fresh.studentName},
@@ -265,7 +276,7 @@ export function createDatabaseTaskCompletionCommand(
              ${input.operationId}, ${payloadHash}, 1, ${evidence?.evidenceProvider ?? null},
              ${evidence?.evidenceBoardId ?? null}, ${evidence?.evidencePostId ?? null},
              ${evidence ? new Date(evidence.evidenceCreatedAt) : null},
-             ${evidence?.evidenceAuthorFullName ?? null})
+             ${evidence?.evidenceAuthorFullName ?? null}, clock_timestamp())
         `);
 
         if (evidence) {
@@ -320,22 +331,6 @@ type OperationRow = {
   finished_at: Date | string | null;
 };
 
-type TaskRow = {
-  task_instance_id: string;
-  task_id: string;
-  title: string;
-  description: string;
-  reward: string;
-  is_active: boolean;
-  sort_order: number;
-  available_from: Date | string | null;
-  due_at: Date | string | null;
-  prerequisite_task_instance_id: string | null;
-  padlet_board_id: string | null;
-  current_schedule: TaskSchedule;
-  pending_schedule: TaskSchedule | null;
-  created_at: Date | string;
-};
 
 type AccountRow = {
   student_id: string;
@@ -344,47 +339,7 @@ type AccountRow = {
   balance: string;
 };
 
-type AssignmentRow = {
-  assignment_id: string;
-  task_id_snapshot: string;
-  task_instance_id: string;
-  cycle_id: string;
-  cycle_start_at: Date | string;
-  cycle_end_at: Date | string | null;
-  rule_version: number;
-  timezone: string;
-  student_id: string;
-  event_type: 'ASSIGNED' | 'UNASSIGNED';
-  source: TaskAssignment['source'];
-  previous_assignment_id: string | null;
-  created_at: Date | string;
-  schema_version: number;
-  note: string | null;
-};
 
-type CompletionRow = {
-  completion_id: string;
-  completed_at: Date | string;
-  task_instance_id: string | null;
-  task_id_snapshot: string;
-  student_id: string;
-  student_name_snapshot: string;
-  reward_snapshot: string;
-  balance_before: string;
-  balance_after: string;
-  status: string;
-  note: string | null;
-  cycle_id: string | null;
-  cycle_start_at: Date | string | null;
-  cycle_end_at: Date | string | null;
-  rule_version: number | null;
-  timezone: string | null;
-  source: TaskCompletion['source'] | null;
-  assignment_id: string | null;
-  operation_id: string | null;
-  operation_hash: string | null;
-  schema_version: number;
-};
 
 type RewardSnapshotRow = {
   completion_id: string;
@@ -425,17 +380,30 @@ type RewardSnapshotRow = {
 
 type Authorization = {
   task: ClassTask & { taskInstanceId: string; schedule: TaskSchedule };
+  ledgerTask: LedgerTask;
   studentId: string;
   studentName: string;
   balance: number;
   boardId: string | null;
   assignmentId: string;
+  /** False when a carried 완료 가능 row has to be written first (see rewardAssignment). */
+  assignmentExists: boolean;
   cycleId: string;
   cycleStartsAt: string;
   cycleEndsAt: string | null;
   ruleVersion: number;
+  /** Padlet posts must be newer than this (the student's previous completion of the task). */
+  evidenceSince: string;
 };
 
+function isCompletion(event: LedgerEventRow): event is LedgerEventRow & { kind: 'COMPLETED' } {
+  return event.kind === 'COMPLETED';
+}
+
+/**
+ * A student may complete a task (and receive its reward) only at 완료 가능: the task is live and
+ * available, the student is active, and its prerequisite (if any) is 완료 for the student.
+ */
 async function authorize(
   tx: TenantTransaction,
   tenantId: string,
@@ -443,169 +411,76 @@ async function authorize(
   now: string,
   lock: boolean,
 ): Promise<Authorization> {
-  const taskResult = await tx.execute(lock ? sql`
-    SELECT task_instance_id, task_id, title, description, reward::text AS reward,
-           is_active, sort_order, available_from, due_at, prerequisite_task_instance_id,
-           padlet_board_id, current_schedule, pending_schedule, created_at
-    FROM tasks
-    WHERE tenant_id=${tenantId} AND deleted_at IS NULL
-    ORDER BY task_instance_id
-    FOR UPDATE
-  ` : sql`
-    SELECT task_instance_id, task_id, title, description, reward::text AS reward,
-           is_active, sort_order, available_from, due_at, prerequisite_task_instance_id,
-           padlet_board_id, current_schedule, pending_schedule, created_at
-    FROM tasks
-    WHERE tenant_id=${tenantId} AND deleted_at IS NULL
-    ORDER BY task_instance_id
-  `);
-  const rows = taskResult.rows as TaskRow[];
-  const targetRow = rows.find((row) => row.task_id === input.taskId);
-  if (!targetRow) throw new TaskRewardCommandError('POLICY');
+  const ledgerFrom = await readLedgerFrom(tx, tenantId);
+  if (!ledgerFrom) throw new Error('Task ledger start is missing.');
+  const tasks = await readLedgerTasks(tx, tenantId, { lock });
+  const target = tasks.find((task) => task.taskId === input.taskId);
+  if (!target) throw new TaskRewardCommandError('POLICY');
 
   const accountResult = await tx.execute(lock ? sql`
     SELECT s.student_id, s.name, s.status, a.balance::text AS balance
     FROM students s
     JOIN accounts a ON a.tenant_id=s.tenant_id AND a.student_id=s.student_id
-    WHERE s.tenant_id=${tenantId} AND s.student_id=${input.studentId}
+    WHERE s.tenant_id=${tenantId} AND s.student_id=${input.studentId} AND s.deleted_at IS NULL
     FOR UPDATE OF s, a
   ` : sql`
     SELECT s.student_id, s.name, s.status, a.balance::text AS balance
     FROM students s
     JOIN accounts a ON a.tenant_id=s.tenant_id AND a.student_id=s.student_id
-    WHERE s.tenant_id=${tenantId} AND s.student_id=${input.studentId}
+    WHERE s.tenant_id=${tenantId} AND s.student_id=${input.studentId} AND s.deleted_at IS NULL
   `);
   const account = accountResult.rows[0] as AccountRow | undefined;
   if (!account || account.status !== 'ACTIVE') throw new TaskRewardCommandError('POLICY');
 
-  const allowedResult = await tx.execute(lock ? sql`
-    SELECT task_instance_id, student_id
-    FROM task_allowed_students
-    WHERE tenant_id=${tenantId}
-    ORDER BY task_instance_id, student_id
-    FOR UPDATE
-  ` : sql`
-    SELECT task_instance_id, student_id
-    FROM task_allowed_students
-    WHERE tenant_id=${tenantId}
-    ORDER BY task_instance_id, student_id
-  `);
-  const allowedByTask = new Map<string, string[]>();
-  for (const row of allowedResult.rows as Array<{ task_instance_id: string; student_id: string }>) {
-    const ids = allowedByTask.get(row.task_instance_id) ?? [];
-    ids.push(row.student_id);
-    allowedByTask.set(row.task_instance_id, ids);
-  }
-  const rowByInstance = new Map(rows.map((row) => [row.task_instance_id, row]));
-  const taskByInstance = new Map(rows.map((row) => [
-    row.task_instance_id,
-    toTask(row, allowedByTask.get(row.task_instance_id) ?? [], rowByInstance),
-  ]));
-  const task = taskByInstance.get(targetRow.task_instance_id);
-  if (task && lock) {
-    const effective = resolveTaskSchedule({ currentSchedule: task.schedule,
-      pendingSchedule: task.pendingSchedule ?? null, now });
-    await materializeTaskNaturalCycleInternal({ tx, tenantId, taskId: task.taskId,
-      taskInstanceId: task.taskInstanceId, taskTitle: task.title, schedule: effective,
-      cycle: getTaskCycle({ taskInstanceId: task.taskInstanceId, schedule: effective,
-        taskCreatedAt: task.createdAt, now }),
-      isAvailable: task.isActive && isTaskAvailable(task, now), now: new Date(now) });
-  }
-  if (!task || !(allowedByTask.get(targetRow.task_instance_id) ?? []).includes(input.studentId)) {
+  const events = groupEvents(await readLedgerEvents(tx, tenantId, ledgerFrom, { studentId: input.studentId }));
+  const own = events.get(target.taskInstanceId)?.get(input.studentId);
+  // Stages follow the database clock that ordered their events (the app clock may lag a little).
+  const ledgerNow = await clockNow(tx);
+  const state = stageOf(target, own, ledgerNow);
+  const availability = {
+    ...(target.availableFrom ? { availableFrom: target.availableFrom } : {}),
+    ...(target.dueAt ? { dueAt: target.dueAt } : {}),
+  };
+  if (!target.isActive || !isTaskAvailable(availability, now) || state.stage === 'UNASSIGNED' || state.stage === 'COMPLETED') {
     throw new TaskRewardCommandError('POLICY');
   }
-
-  const assignmentResult = await tx.execute(lock ? sql`
-    SELECT assignment_id, task_id_snapshot, task_instance_id, cycle_id, cycle_start_at,
-           cycle_end_at, rule_version, timezone, student_id, event_type, source,
-           previous_assignment_id, created_at, schema_version, note
-    FROM task_assignments
-    WHERE tenant_id=${tenantId} AND student_id=${input.studentId}
-    ORDER BY event_sequence
-    FOR UPDATE
-  ` : sql`
-    SELECT assignment_id, task_id_snapshot, task_instance_id, cycle_id, cycle_start_at,
-           cycle_end_at, rule_version, timezone, student_id, event_type, source,
-           previous_assignment_id, created_at, schema_version, note
-    FROM task_assignments
-    WHERE tenant_id=${tenantId} AND student_id=${input.studentId}
-    ORDER BY event_sequence
-  `);
-  const completionResult = await tx.execute(lock ? sql`
-    SELECT completion_id, completed_at, task_instance_id, task_id_snapshot, student_id,
-           student_name_snapshot, reward_snapshot::text AS reward_snapshot,
-           balance_before::text AS balance_before, balance_after::text AS balance_after,
-           status, note, cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone,
-           source, assignment_id, operation_id, operation_hash, schema_version
-    FROM task_completions
-    WHERE tenant_id=${tenantId} AND student_id=${input.studentId}
-    ORDER BY event_sequence
-    FOR UPDATE
-  ` : sql`
-    SELECT completion_id, completed_at, task_instance_id, task_id_snapshot, student_id,
-           student_name_snapshot, reward_snapshot::text AS reward_snapshot,
-           balance_before::text AS balance_before, balance_after::text AS balance_after,
-           status, note, cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone,
-           source, assignment_id, operation_id, operation_hash, schema_version
-    FROM task_completions
-    WHERE tenant_id=${tenantId} AND student_id=${input.studentId}
-    ORDER BY event_sequence
-  `);
-  const assignments = (assignmentResult.rows as AssignmentRow[]).map(toAssignment);
-  const completions = (completionResult.rows as CompletionRow[]).map(toCompletion);
-  const effectiveSchedule = resolveTaskSchedule({
-    currentSchedule: task.schedule,
-    pendingSchedule: task.pendingSchedule ?? null,
-    now,
-  });
-  if (!lock && task.isActive && isTaskAvailable(task, now)
-    && !effectiveSchedule.resetAssignmentOnCycle) {
-    const naturalCycle = getTaskCycle({ taskInstanceId: task.taskInstanceId,
-      schedule: effectiveSchedule, taskCreatedAt: task.createdAt, now });
-    const naturalStart = new Date(naturalCycle.startsAt).getTime();
-    const hasCurrent = assignments.some((event) => event.taskInstanceId === task.taskInstanceId
-      && event.studentId === input.studentId && event.cycleId === naturalCycle.cycleId);
-    const predecessor = assignments.filter((event) => event.taskInstanceId === task.taskInstanceId
-      && event.studentId === input.studentId
-      && new Date(event.cycleStartsAt).getTime() < naturalStart).at(-1);
-    if (!hasCurrent && predecessor?.status === 'ASSIGNED'
-      && naturalStart !== new Date(effectiveSchedule.effectiveFrom).getTime()) {
-      assignments.push({ assignmentId: taskNaturalAssignmentMaterializationId(
-        task.taskInstanceId, naturalCycle.cycleId, input.studentId), taskId: task.taskId,
-      taskInstanceId: task.taskInstanceId, cycleId: naturalCycle.cycleId,
-      cycleStartsAt: naturalCycle.startsAt, cycleEndsAt: naturalCycle.endsAt,
-      ruleVersion: effectiveSchedule.ruleVersion, timeZone: 'Asia/Seoul',
-      studentId: input.studentId, status: 'ASSIGNED', source: 'CARRY_FORWARD',
-      previousAssignmentId: predecessor.assignmentId, createdAt: now,
-      schemaVersion: 1, note: '' });
-    }
-  }
-  const state = projectTaskCycleState({ task, now, assignments, completions });
-  const studentState = state.students[input.studentId];
-
-  if (!task.isActive || !isTaskAvailable(task, now) || !studentState?.assigned || studentState.completed) {
-    throw new TaskRewardCommandError('POLICY');
-  }
-  if (task.prerequisiteTaskId) {
-    const prerequisite = [...taskByInstance.values()].find((candidate) => candidate.taskId === task.prerequisiteTaskId);
+  // 미완료: assigned and visible, but the teacher has not made it completable (완료 가능) yet.
+  if (state.stage !== 'READY') throw new TaskRewardCommandError('NOT_READY');
+  if (target.prerequisiteTaskInstanceId) {
+    const prerequisite = tasks.find((task) => task.taskInstanceId === target.prerequisiteTaskInstanceId);
     if (!prerequisite) throw new TaskRewardCommandError('POLICY');
-    const prerequisiteState = projectTaskCycleState({ task: prerequisite, now, assignments, completions });
-    if (!prerequisiteState.students[input.studentId]?.completed) throw new TaskRewardCommandError('POLICY');
+    const prerequisiteState = stageOf(prerequisite, events.get(prerequisite.taskInstanceId)?.get(input.studentId), ledgerNow);
+    if (prerequisiteState.stage !== 'COMPLETED') throw new TaskRewardCommandError('POLICY');
   }
-  const assignmentId = studentState.assignmentEvent?.assignmentId;
-  if (!assignmentId) throw new TaskRewardCommandError('POLICY');
+  const assignment = rewardAssignment(own, ledgerEventId('tl-a', 'bank', input.operationId));
+  const previousCompletion = latestEvent(own, isCompletion);
 
   return {
-    task,
+    task: {
+      taskId: target.taskId,
+      taskInstanceId: target.taskInstanceId,
+      title: target.title,
+      description: target.description,
+      reward: target.reward,
+      isActive: target.isActive,
+      sortOrder: target.sortOrder,
+      allowedStudentIds: [],
+      createdAt: target.createdAt,
+      schedule: target.currentSchedule,
+      ...(target.padletBoardId ? { padletBoardId: target.padletBoardId } : {}),
+    } as ClassTask & { taskInstanceId: string; schedule: TaskSchedule },
+    ledgerTask: target,
     studentId: account.student_id,
     studentName: account.name.trim(),
     balance: safeInteger(account.balance, 'account balance'),
-    boardId: task.padletBoardId ?? null,
-    assignmentId,
-    cycleId: state.cycle.cycleId,
-    cycleStartsAt: state.cycle.startsAt,
-    cycleEndsAt: state.cycle.endsAt,
-    ruleVersion: effectiveSchedule.ruleVersion,
+    boardId: target.padletBoardId ?? null,
+    assignmentId: assignment.assignmentId,
+    assignmentExists: assignment.existing,
+    cycleId: LEDGER_CYCLE_ID,
+    cycleStartsAt: LEDGER_CYCLE_START,
+    cycleEndsAt: null,
+    ruleVersion: LEDGER_RULE_VERSION,
+    evidenceSince: new Date(previousCompletion?.at ?? target.createdAt).toISOString(),
   };
 }
 
@@ -615,7 +490,7 @@ async function readOperation(
   operationId: string,
   lock: boolean,
 ): Promise<OperationRow | null> {
-  const result = await tx.execute(lock ? sql`
+  const currentOperation = lock ? sql`
     SELECT operation_kind, payload_hash, status, result_snapshot, finished_at
     FROM operations
     WHERE tenant_id=${tenantId} AND operation_id=${operationId}
@@ -624,81 +499,16 @@ async function readOperation(
     SELECT operation_kind, payload_hash, status, result_snapshot, finished_at
     FROM operations
     WHERE tenant_id=${tenantId} AND operation_id=${operationId}
-  `);
+  `;
+  // Historical UUIDs must never become a new reward, including after a reset.
+  // This is a read-only conflict marker, not a fabricated operations receipt.
+  const result = await tx.execute(sql`WITH current_operation AS (${currentOperation})
+    SELECT * FROM current_operation
+    UNION ALL
+    SELECT 'HISTORICAL_TASK_REWARD' AS operation_kind, historical_operation_hash AS payload_hash,
+      'SUCCEEDED' AS status, NULL::jsonb AS result_snapshot, imported_at AS finished_at
+    FROM legacy_task_origins WHERE tenant_id=${tenantId} AND historical_operation_id=${operationId}`);
   return (result.rows[0] as OperationRow | undefined) ?? null;
-}
-
-function toTask(
-  row: TaskRow,
-  allowedStudentIds: string[],
-  rowByInstance: ReadonlyMap<string, TaskRow>,
-): InternalTaskCompletionTask {
-  const prerequisite = row.prerequisite_task_instance_id
-    ? rowByInstance.get(row.prerequisite_task_instance_id)
-    : undefined;
-  return {
-    taskId: row.task_id,
-    taskInstanceId: row.task_instance_id,
-    title: row.title,
-    description: row.description,
-    reward: safeInteger(row.reward, `reward for ${row.task_id}`),
-    isActive: row.is_active,
-    sortOrder: row.sort_order,
-    allowedStudentIds,
-    ...(row.available_from ? { availableFrom: iso(row.available_from) } : {}),
-    ...(row.due_at ? { dueAt: iso(row.due_at) } : {}),
-    ...(prerequisite ? { prerequisiteTaskId: prerequisite.task_id } : {}),
-    ...(row.padlet_board_id ? { padletBoardId: row.padlet_board_id } : {}),
-    createdAt: iso(row.created_at),
-    schedule: row.current_schedule,
-    pendingSchedule: row.pending_schedule,
-  };
-}
-
-function toAssignment(row: AssignmentRow): TaskAssignment {
-  return {
-    assignmentId: row.assignment_id,
-    taskId: row.task_id_snapshot,
-    taskInstanceId: row.task_instance_id,
-    cycleId: row.cycle_id,
-    cycleStartsAt: iso(row.cycle_start_at),
-    cycleEndsAt: row.cycle_end_at ? iso(row.cycle_end_at) : null,
-    ruleVersion: row.rule_version,
-    timeZone: row.timezone,
-    studentId: row.student_id,
-    status: row.event_type,
-    source: row.source,
-    previousAssignmentId: row.previous_assignment_id ?? '',
-    createdAt: iso(row.created_at),
-    schemaVersion: row.schema_version,
-    note: row.note ?? '',
-  };
-}
-
-function toCompletion(row: CompletionRow): TaskCompletion {
-  return {
-    completionId: row.completion_id,
-    timestamp: iso(row.completed_at),
-    taskId: row.task_id_snapshot,
-    studentId: row.student_id,
-    studentName: row.student_name_snapshot,
-    reward: safeInteger(row.reward_snapshot, 'completion reward'),
-    balanceBefore: safeInteger(row.balance_before, 'completion balance before'),
-    balanceAfter: safeInteger(row.balance_after, 'completion balance after'),
-    status: row.status === 'COMPLETED' ? 'SUCCESS' : row.status === 'CANCELLED' ? 'RESET' : row.status,
-    note: row.note ?? '',
-    ...(row.task_instance_id ? { taskInstanceId: row.task_instance_id } : {}),
-    ...(row.cycle_id ? { cycleId: row.cycle_id } : {}),
-    ...(row.cycle_start_at ? { cycleStartsAt: iso(row.cycle_start_at) } : {}),
-    ...(row.cycle_end_at !== null ? { cycleEndsAt: iso(row.cycle_end_at) } : {}),
-    ...(row.rule_version !== null ? { ruleVersion: row.rule_version } : {}),
-    ...(row.timezone !== null ? { timeZone: row.timezone } : {}),
-    ...(row.source !== null ? { source: row.source } : {}),
-    ...(row.assignment_id ? { assignmentId: row.assignment_id } : {}),
-    schemaVersion: row.schema_version,
-    ...(row.operation_id ? { operationId: row.operation_id } : {}),
-    ...(row.operation_hash ? { operationPayloadHash: row.operation_hash } : {}),
-  };
 }
 
 function payloadFor(authorization: Authorization, evidence?: TaskCompletionEvidence): TaskRewardPayload {
@@ -755,12 +565,10 @@ function validateEvidence(authorization: Authorization, evidence: TaskCompletion
     throw new TaskRewardCommandError('CONFLICT');
   }
   const createdAt = new Date(evidence.evidenceCreatedAt);
-  const startsAt = new Date(authorization.cycleStartsAt);
-  const endsAt = authorization.cycleEndsAt ? new Date(authorization.cycleEndsAt) : null;
+  const startsAt = new Date(authorization.evidenceSince);
   if (!Number.isFinite(createdAt.getTime())
     || createdAt < startsAt
-    || createdAt > now
-    || (endsAt !== null && createdAt >= endsAt)) {
+    || createdAt > now) {
     throw new TaskRewardCommandError('SUBMISSION_REQUIRED');
   }
 }
@@ -1073,6 +881,7 @@ function messageFor(code: TaskRewardCommandErrorCode): string {
     case 'PROVIDER_UNAVAILABLE': return 'Evidence verification is unavailable.';
     case 'SUBMISSION_REQUIRED': return 'Valid task evidence is required.';
     case 'EVIDENCE_CONFLICT': return 'Task evidence has already been used.';
+    case 'NOT_READY': return 'Task is not completable yet.';
   }
 }
 

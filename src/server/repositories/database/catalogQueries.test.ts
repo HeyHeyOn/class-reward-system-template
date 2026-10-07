@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { SQL } from 'drizzle-orm';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import { types as pgTypes } from 'pg';
 import {
   createDatabaseCatalogQueries,
   type DatabaseCatalogQueryDependencies,
@@ -125,7 +128,181 @@ async function seedPromotionProduct(
   );
 }
 
+function rawPromotionVersionRow(version: unknown): Record<string, unknown> {
+  return {
+    promotion_id: 'M-raw', name: '원시 버전 행사', description: 'INT8 reader contract',
+    type: 'N_PLUS_ONE', n_plus_one_buy_quantity: 1, n_plus_one_free_quantity: 1,
+    promotional_price: null, percent_discount: null, fixed_discount: null,
+    starts_at: '2026-01-01T00:00:00.000Z', ends_at: '2026-12-31T00:00:00.000Z',
+    is_active: true, sort_order: 2,
+    created_at: '2026-01-01T00:00:00.000Z', updated_at: '2026-01-01T00:00:00.000Z',
+    schema_version: 3, product_id: 'P1', product_schema_version: 3, version,
+  };
+}
+
+function rawPromotionVersionQueries(rows: Record<string, unknown>[]) {
+  const runTenantTransaction: DatabaseCatalogQueryDependencies['runTenantTransaction'] =
+    async (tenantId, callback) => {
+      expect(tenantId).toBe(harness.tenantOneId);
+      return callback({ execute: async () => ({ rows }) } as never);
+    };
+  return queries({ runTenantTransaction });
+}
+
 describe('database catalog queries', () => {
+  it('normalizes the installed INT8 text parser through the real promotion mutation reader', async () => {
+    // Unit/raw-adapter contract, not a native PostgreSQL execution.
+    const parsedVersion = pgTypes.getTypeParser(pgTypes.builtins.INT8, 'text')('1');
+    expect(parsedVersion).toBe('1');
+    expect(typeof parsedVersion).toBe('string');
+    const row = rawPromotionVersionRow(parsedVersion);
+    expect(Object.getPrototypeOf(row)).toBe(Object.prototype);
+    for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(row))) {
+      expect(descriptor).toEqual({
+        value: descriptor.value, enumerable: true, writable: true, configurable: true,
+      });
+    }
+    const execute = vi.fn(async (_query: SQL) => {
+      void _query;
+      return { rows: [row] };
+    });
+    const runTenantTransaction = vi.fn<DatabaseCatalogQueryDependencies['runTenantTransaction']>(
+      async (_tenantId, callback) => callback({ execute } as never),
+    ) as ReturnType<typeof vi.fn<DatabaseCatalogQueryDependencies['runTenantTransaction']>>
+      & DatabaseCatalogQueryDependencies['runTenantTransaction'];
+    const reader = createDatabaseCatalogQueries({
+      tenantId: harness.tenantOneId, runTenantTransaction,
+    });
+    const snapshot = await reader.getPromotionsForAdminMutation();
+    expect(snapshot).toEqual({
+      promotions: [{
+        promotionId: 'M-raw', name: '원시 버전 행사', description: 'INT8 reader contract',
+        type: 'N_PLUS_ONE', buyQuantity: 1, freeQuantity: 1, productIds: ['P1'],
+        startsAt: '2026-01-01T00:00:00.000Z', endsAt: '2026-12-31T00:00:00.000Z',
+        isActive: true, sortOrder: 2,
+        createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+        schemaVersion: 3,
+      }],
+      mutationPreconditions: [{ promotionId: 'M-raw', expectedVersion: 1 }],
+    });
+    expect(typeof snapshot.mutationPreconditions[0].expectedVersion).toBe('number');
+    expect(Object.hasOwn(snapshot.promotions[0], 'version')).toBe(false);
+    expect(runTenantTransaction).toHaveBeenCalledOnce();
+    expect(runTenantTransaction.mock.calls[0][0]).toBe(harness.tenantOneId);
+    expect(execute).toHaveBeenCalledOnce();
+    const rendered = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
+    expect(rendered.params).toEqual([harness.tenantOneId, harness.tenantOneId]);
+    expect(rendered.sql.replace(/\s+/g, ' ').trim()).toBe(
+      'SELECT p.promotion_id, p.name, p.description, p.type, '
+      + 'p.n_plus_one_buy_quantity, p.n_plus_one_free_quantity, '
+      + 'p.promotional_price, p.percent_discount, p.fixed_discount, '
+      + 'p.starts_at, p.ends_at, p.is_active, p.sort_order, '
+      + 'p.created_at, p.updated_at, p.schema_version, pp.product_id, '
+      + 'pp.schema_version AS product_schema_version, p.version '
+      + 'FROM promotions p LEFT JOIN promotion_products pp '
+      + 'ON pp.tenant_id = $1 AND pp.promotion_id = p.promotion_id '
+      + 'WHERE p.tenant_id = $2 AND p.deleted_at IS NULL '
+      + 'ORDER BY p.sort_order, p.promotion_id, pp.product_id',
+    );
+    row.version = '2';
+    row.name = 'changed after snapshot';
+    expect(snapshot.mutationPreconditions).toEqual([{ promotionId: 'M-raw', expectedVersion: 1 }]);
+    expect(snapshot.promotions[0].name).toBe('원시 버전 행사');
+  });
+
+  it('normalizes canonical positive decimal promotion versions to primitive numeric preconditions', async () => {
+    const valid = [
+      1, '1', 2, '2', 1234567890123456, '1234567890123456',
+      Number.MAX_SAFE_INTEGER - 1, String(Number.MAX_SAFE_INTEGER - 1),
+    ];
+    for (const version of valid) {
+      const snapshot = await rawPromotionVersionQueries([rawPromotionVersionRow(version)])
+        .getPromotionsForAdminMutation();
+      expect(snapshot.mutationPreconditions).toEqual([{
+        promotionId: 'M-raw', expectedVersion: typeof version === 'number' ? version : Number(version),
+      }]);
+      expect(typeof snapshot.mutationPreconditions[0].expectedVersion).toBe('number');
+      expect(Object.hasOwn(snapshot.promotions[0], 'version')).toBe(false);
+    }
+  });
+
+  it('rejects noncanonical and huge promotion INT8 text without repairing it', async () => {
+    const malformed = [
+      '', '0', '-0', '-1', '+1', '01', '001', ' 1', '1 ', '\t1', '1\t',
+      '1\n', '1\r', '1\r\n', '1\u2028', '1\u2029', '1.0', '1.5', '1e0', '1E+0',
+      '0x1', '0b1', '1_000', 'NaN', 'Infinity', '１２', '١', '1'.repeat(100_000),
+    ];
+    for (const version of malformed) {
+      await expect(rawPromotionVersionQueries([rawPromotionVersionRow(version)])
+        .getPromotionsForAdminMutation())
+        .rejects.toThrow('Promotion mutation version integrity check failed.');
+    }
+  });
+
+  it('retains the strict promotion version upper bound for numbers and canonical text', async () => {
+    const invalid = [
+      Number.MAX_SAFE_INTEGER, String(Number.MAX_SAFE_INTEGER),
+      Number.MAX_SAFE_INTEGER + 1, String(Number.MAX_SAFE_INTEGER + 1),
+      '9007199254740993', '9999999999999999', '10000000000000000', '9223372036854775807',
+    ];
+    for (const version of invalid) {
+      await expect(rawPromotionVersionQueries([rawPromotionVersionRow(version)])
+        .getPromotionsForAdminMutation())
+        .rejects.toThrow('Promotion mutation version integrity check failed.');
+    }
+  });
+
+  it('rejects nonprimitive and invalid numeric promotion versions without invoking hooks', async () => {
+    const hook = vi.fn(() => { throw new Error('version hook invoked'); });
+    const accessor = Object.create(null);
+    Object.defineProperty(accessor, 'length', { get: hook });
+    Object.defineProperty(accessor, Symbol.toPrimitive, { get: hook });
+    const proxy = new Proxy({}, {
+      get: hook, ownKeys: hook, getPrototypeOf: hook, getOwnPropertyDescriptor: hook,
+    });
+    const invalid: unknown[] = [
+      0, -0, -1, 1.5, NaN, Infinity, -Infinity, true, false, null, undefined,
+      BigInt(1), Symbol('version'), new Number(1), new String('1'), new Boolean(true),
+      [], {}, { valueOf: hook, toString: hook, [Symbol.toPrimitive]: hook },
+      accessor, proxy, hook,
+    ];
+    for (const version of invalid) {
+      await expect(rawPromotionVersionQueries([rawPromotionVersionRow(version)])
+        .getPromotionsForAdminMutation())
+        .rejects.toThrow('Promotion mutation version integrity check failed.');
+    }
+    expect(hook).not.toHaveBeenCalled();
+  });
+
+  it('accepts equal mixed numeric and text promotion versions across joined rows', async () => {
+    const equal = [
+      [1, '1'], ['1', 1], ['1', '1'], [1, 1],
+      [Number.MAX_SAFE_INTEGER - 1, String(Number.MAX_SAFE_INTEGER - 1)],
+    ];
+    for (const [first, second] of equal) {
+      const snapshot = await rawPromotionVersionQueries([
+        rawPromotionVersionRow(first), { ...rawPromotionVersionRow(second), product_id: 'P2' },
+      ]).getPromotionsForAdminMutation();
+      expect(snapshot.mutationPreconditions).toEqual([{
+        promotionId: 'M-raw', expectedVersion: typeof first === 'number' ? first : Number(first),
+      }]);
+      expect(typeof snapshot.mutationPreconditions[0].expectedVersion).toBe('number');
+      expect(snapshot.promotions).toHaveLength(1);
+      expect(snapshot.promotions[0].productIds).toEqual(['P1', 'P2']);
+      expect(Object.hasOwn(snapshot.promotions[0], 'version')).toBe(false);
+    }
+  });
+
+  it('rejects unequal mixed numeric and text promotion versions across joined rows', async () => {
+    const unequal = [[1, '2'], ['1', 2], [2, '1'], ['2', 1], ['1', '2']];
+    for (const [first, second] of unequal) {
+      await expect(rawPromotionVersionQueries([
+        rawPromotionVersionRow(first), { ...rawPromotionVersionRow(second), product_id: 'P2' },
+      ]).getPromotionsForAdminMutation())
+        .rejects.toThrow('Promotion mutation version integrity check failed.');
+    }
+  });
+
   it('matches the Sheets product projection and ordering including inactive products', async () => {
     const sheetReader: SheetsReader = {
       getRows: async (sheetName) => sheetName === 'Products' ? [

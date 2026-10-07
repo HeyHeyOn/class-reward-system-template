@@ -19,7 +19,7 @@ async function applyRemainingMigrations() {
   }
 }
 beforeEach(async () => {
-  harness = await createPgliteDatabaseHarness();
+  harness = await createPgliteDatabaseHarness({ migrationSet: 'base' });
   await applyRemainingMigrations();
 });
 afterEach(async () => { await harness?.close(); });
@@ -50,6 +50,13 @@ async function envelopes() {
 }
 
 describe('untrusted immutable final candidate and delta PLAN through all production DDL', () => {
+  it('preserves actual ORIGINAL/CANDIDATE/PLAN envelopes from byte-exact frozen HEAD', async () => {
+    const frozen = JSON.parse(await readFile(resolve('src/server/migration/__fixtures__/preparation-budget-golden.json'), 'utf8'));
+    const input = await fixture();
+    expect(input).toEqual(frozen.input);
+    expect(await stage(input)).toEqual(frozen.result);
+    expect(await envelopes()).toEqual(frozen.rows);
+  });
   it.each([['settings', 'candidate'], [' Settings ', 'candidate'], ['settings', 'original'], [' Settings ', 'original']] as const)('refuses rehashed credential alias %s in %s before a transaction', async (alias, side) => {
     const input = await fixture();
     const unsafe = makeSupportedSheets(3, (tabs) => {
@@ -152,7 +159,7 @@ describe('untrusted immutable final candidate and delta PLAN through all product
     const rows = await envelopes();
     // A second isolated harness reproduces a pre-existing INSERT-only conflict.
     const saved = harness;
-    harness = await createPgliteDatabaseHarness();
+    harness = await createPgliteDatabaseHarness({ migrationSet: 'base' });
     try {
       await applyRemainingMigrations();
       const freshInput = await fixture();
@@ -164,7 +171,9 @@ describe('untrusted immutable final candidate and delta PLAN through all product
       expect((await harness.database.query('SELECT event_type FROM audit_events')).rows).toEqual([{ event_type: 'CONFLICT' }]);
     } finally { await harness.close(); harness = saved; }
     expect(await envelopes()).toEqual(rows);
-  });
+  // This case installs a second isolated database inside the test body. Give
+  // that cold schema setup the same budget as the fixture hook.
+  }, 30_000);
   it('detaches snapshots before the first transaction await', async () => {
     const input = await fixture(); const candidate = input.candidate.sheets;
     const result = await stage(input, (tenant, callback) => {

@@ -38,11 +38,15 @@ export function createDatabasePadletClaimRepository(): DatabasePadletClaimReposi
     async findClaimedPostIds(transaction, boardId, postIds) {
       const requestedPostIds = canonicalClaimLookupRequest(boardId, postIds);
       const result = await transaction.execute(sql`
-        SELECT post_id
-        FROM padlet_evidence_claims
-        WHERE provider = 'PADLET'
-          AND board_id = ${boardId}
-          AND post_id IN (${sql.join(requestedPostIds.map((postId) => sql`${postId}`), sql`, `)})
+        SELECT post_id FROM (
+          SELECT post_id FROM padlet_evidence_claims
+          WHERE provider = 'PADLET' AND board_id = ${boardId}
+            AND post_id IN (${sql.join(requestedPostIds.map((postId) => sql`${postId}`), sql`, `)})
+          UNION
+          SELECT candidate.post_id FROM (VALUES ${sql.join(requestedPostIds.map(postId =>
+            sql`(${postId}::text,${padletTupleDigest(boardId, postId)}::text)`), sql`, `)}) AS candidate(post_id,tuple_digest)
+          JOIN padlet_claim_digest_tombstones history ON history.tuple_digest=candidate.tuple_digest
+        ) claimed
         ORDER BY post_id COLLATE "C"
       `);
       return projectClaimedPostIds(result.rows, requestedPostIds);

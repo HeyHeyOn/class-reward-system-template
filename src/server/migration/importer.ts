@@ -7,8 +7,8 @@ import type { TenantTransaction } from '@/server/db/transaction';
 import { withTenantTransaction } from '@/server/db/transaction';
 import type { LegacyNormalizationManifest } from './manifest';
 import type { ReconciliationDiagnostic } from './report';
-import { canonicalTransactionItem, adjustmentKey, adjustmentTransactionKey, sameAssignmentCompletionTuple, cancellationOriginalId } from './semanticValidators';
-import { canonicalJson, isHexDigest, isPlainRecord, sha256 } from './validators';
+import { canonicalTransactionItem, isSheetsBankRewardLedger, adjustmentKey, adjustmentTransactionKey, sameAssignmentCompletionTuple, cancellationOriginalId } from './semanticValidators';
+import { assertOfflineBaselineEvidence, canonicalJson, isHexDigest, isPlainRecord, sha256 } from './validators';
 
 const MAX_BATCH_SIZE = 500;
 const DEFAULT_BATCH_SIZE = 100;
@@ -36,6 +36,8 @@ export type MigrationImportResult = Readonly<{
   targetRecords: number;
   importedTargetRecords: number;
   deferredTargetRecords: number;
+  evidenceScope?: 'OFFLINE_REHEARSAL';
+  claimsCoverage?: 'UNCONFIRMED';
 }>;
 
 export type LegacyMigrationImportInput = Readonly<{
@@ -44,6 +46,8 @@ export type LegacyMigrationImportInput = Readonly<{
   manifest: LegacyNormalizationManifest;
   batchSize?: number;
   runTransaction?: TenantImportTransactionRunner;
+  /** Requires a caller-supplied isolated transaction runner. Never confers cutover authority. */
+  offlineRehearsal?: true;
 }>;
 
 type WorkRecord = Readonly<{ table: string; id: string; value: Record<string, unknown> }>;
@@ -133,6 +137,10 @@ const TABLE_ORDER = [
 
 export async function importLegacyNormalizationManifest(input: LegacyMigrationImportInput): Promise<MigrationImportResult> {
   assertInput(input);
+  if (input.manifest.sourceArtifacts.sheets.offlineBaseline
+    && (input.offlineRehearsal !== true || !input.runTransaction || input.runTransaction === withTenantTransaction)) {
+    throw new Error('Offline baseline requires an explicit isolated rehearsal transaction runner.');
+  }
   const runTransaction = input.runTransaction ?? withTenantTransaction;
   const batchSize = input.batchSize ?? DEFAULT_BATCH_SIZE;
   const sourceRecords = projectSourceRecords(input.manifest, input.tenantId, input.migrationJobId);
@@ -174,6 +182,8 @@ export async function importLegacyNormalizationManifest(input: LegacyMigrationIm
     targetRecords: work.length,
     importedTargetRecords: work.length,
     deferredTargetRecords: [...DEFERRED_TABLES].reduce((count, table) => count + (input.manifest.records[table]?.length ?? 0), 0),
+    ...(input.manifest.sourceArtifacts.sheets.offlineBaseline
+      ? { evidenceScope: 'OFFLINE_REHEARSAL' as const, claimsCoverage: 'UNCONFIRMED' as const } : {}),
   };
 }
 
@@ -259,7 +269,7 @@ export async function inspectLegacyImport(
     if (actual.size !== rows.length) issues.push({ category: 'INTEGRITY', code: 'CARDINALITY_MISMATCH', rowReference: table });
     for (const record of expected) {
       const row = actual.get(key(record.value));
-      if (!row || !Object.entries(record.value).every(([column, value]) => equalDatabaseValue(row[column], value))) {
+      if (!row || !Object.entries(record.value).every(([column, value]) => equalTargetDatabaseValue(table, column, row[column], value))) {
         issues.push({ category: 'INTEGRITY', code: 'ROW_MISMATCH', rowReference: `${table}\0${record.id}` });
       }
     }
@@ -267,6 +277,25 @@ export async function inspectLegacyImport(
   try { await assertHistoricalOrder(transaction, input.tenantId, work); }
   catch { issues.push({ category: 'RECURRENCE', code: 'HISTORY_ORDER' }); }
   return issues;
+}
+
+/** Pure validated graph for non-authoritative generation staging. Reuses the
+ * importer's domain/projection and contributor rules, but performs no DB I/O and
+ * does not publish deferred claims/bindings or confer READY/ACTIVE authority. */
+export function projectLegacyStagingGraph(manifest: LegacyNormalizationManifest) {
+  assertInput({ tenantId: manifest.tenantId, migrationJobId: manifest.migrationJobId, manifest });
+  const targets = Object.entries(manifest.records).flatMap(([table, rows]) => rows.map(value => ({
+    table, id: expectedManifestTargetId(table, value, manifest), value,
+  })));
+  const contributors = manifest.mappings.flatMap((mapping, mappingOrdinal) => {
+    const matched = manifest.sourceRecords.flatMap((source, sourceOrdinal) =>
+      sourceDigestOf(source) === mapping.sourceDigest
+        && sourceCanMap(source, mapping.targetTable, mapping.targetId, manifest)
+        ? [{ mappingOrdinal, sourceOrdinal }] : []);
+    if (!matched.length) throw new Error('Manifest mapping has no typed contributor.');
+    return matched;
+  });
+  return { targets, contributors };
 }
 
 function assertInput(input: LegacyMigrationImportInput): void {
@@ -348,17 +377,19 @@ function assertImportManifestShape(value: unknown): asserts value is LegacyNorma
     || !isHexDigest(value.sourceFingerprint) || !isHexDigest(value.manifestDigest)) invalidManifest();
   if (!isPlainRecord(value.sourceArtifacts) || !hasExactKeys(value.sourceArtifacts, ['sheets'], ['redis'])) invalidManifest();
   const sheets = value.sourceArtifacts.sheets;
-  if (!isPlainRecord(sheets) || !hasExactKeys(sheets, ['digest', 'spreadsheetIdDigest', 'revisionDigest', 'credentialHashes'])
-    || !isHexDigest(sheets.digest) || !isHexDigest(sheets.spreadsheetIdDigest) || !isHexDigest(sheets.revisionDigest)
+  if (!isPlainRecord(sheets) || !hasExactKeys(sheets, ['digest', 'spreadsheetIdDigest', 'revisionDigest', 'credentialHashes'], ['offlineBaseline'])
+    || !isHexDigest(sheets.digest) || !isHexDigest(sheets.spreadsheetIdDigest)
+    || (Object.hasOwn(sheets, 'offlineBaseline') ? sheets.revisionDigest !== '' : !isHexDigest(sheets.revisionDigest))
     || !isPlainRecord(sheets.credentialHashes)
     || !hasExactKeys(sheets.credentialHashes, [], ['adminPasswordHash', 'recoveryCodeHash'])
     || Object.values(sheets.credentialHashes).some((digest) => typeof digest !== 'string'
       || (!/^[a-f0-9]{64}$/.test(digest) && !/^scrypt\$16384\$8\$1\$[a-f0-9]{32}\$[a-f0-9]{64}$/.test(digest)))) invalidManifest();
+  if (Object.hasOwn(sheets, 'offlineBaseline')) assertOfflineBaselineEvidence(sheets.offlineBaseline);
   const redis = value.sourceArtifacts.redis;
   if (redis !== undefined && (!isPlainRecord(redis) || !hasExactKeys(redis, ['digest', 'revisionDigest'])
     || !isHexDigest(redis.digest) || !isHexDigest(redis.revisionDigest))) invalidManifest();
   if (!isPlainRecord(value.metadata) || !hasExactKeys(value.metadata, ['sheetSchemaVersion', 'classTimeZone'])
-    || ![1, 2, 3].includes(value.metadata.sheetSchemaVersion as number) || typeof value.metadata.classTimeZone !== 'string') invalidManifest();
+    || ![1, 2, 3, 4].includes(value.metadata.sheetSchemaVersion as number) || typeof value.metadata.classTimeZone !== 'string') invalidManifest();
   if (!isPlainRecord(value.records) || !Array.isArray(value.sourceRecords) || !Array.isArray(value.mappings)
     || !Array.isArray(value.warnings) || !Array.isArray(value.blockingConflicts) || !Array.isArray(value.quarantines)
     || value.sourceRecords.length > 10_000 || value.mappings.length > 100_000) invalidManifest();
@@ -1010,6 +1041,7 @@ function assertFinancialHistory(manifest: LegacyNormalizationManifest): void {
     const total = Number(row.totalAmount);
     const purchase = row.status === 'COMPLETED' || row.status === 'CANCELLED';
     const admin = row.status === 'ADMIN_ADJUSTMENT';
+    const bankReward = isSheetsBankRewardLedger(String(row.status), String(row.operator), String(row.transactionId), items.length, total, delta);
     if (!nonBlank(row.studentName) || !nonBlank(row.operator) || !Number.isSafeInteger(delta)) fail();
     if (row.status === 'CANCEL_REVERSAL') {
       const originalId = cancellationOriginalId(String(row.operator));
@@ -1022,13 +1054,14 @@ function assertFinancialHistory(manifest: LegacyNormalizationManifest): void {
         || Number(original.totalAmount) !== -total
         || Number(original.balanceAfter) - Number(original.balanceBefore) !== -delta) fail();
     } else if ((purchase && (!items.length || total < 0 || delta !== -total))
-      || (admin ? items.length !== 1 : !purchase && items.length !== 0)
-      || (row.status === 'TASK_REWARD' && delta !== total) || (admin && delta !== -total)) fail();
+      || (admin ? items.length !== 1 : !purchase && !bankReward && items.length !== 0)
+      || (row.status === 'TASK_REWARD' && !bankReward && delta !== total) || (admin && delta !== -total)) fail();
     let itemTotal = 0;
     const products = new Set<unknown>();
     for (const item of items) {
       const raw = Object.fromEntries(Object.entries(item).filter(([key]) => !['itemId', 'transactionId', 'lineNumber'].includes(key)));
-      if (!canonicalTransactionItem(raw, admin) || products.has(item.productId)) fail();
+      if (!canonicalTransactionItem(raw, admin || bankReward) || products.has(item.productId)) fail();
+      if (bankReward && (item.quantity !== 1 || item.price !== total || item.subtotal !== total)) fail();
       products.add(item.productId);
       itemTotal += Number(item.subtotal);
       if (!Number.isSafeInteger(itemTotal)) fail();
@@ -1295,10 +1328,13 @@ function canonicalTransactionItemTarget(canonical: Record<string, unknown>, targ
 
 function projectCanonicalTransactionItem(canonical: Record<string, unknown>, item: Record<string, unknown>, tenantId: string): Record<string, unknown> | null {
   if (!hasExactKeys(item, ['productId', 'name', 'price', 'quantity', 'subtotal', 'itemId', 'transactionId', 'lineNumber'], ['regularUnitPrice', 'regularTotal', 'totalQuantity', 'paidQuantity', 'freeQuantity', 'finalTotal', 'totalDiscount', 'adjustments', 'appliedPromotions'])) return null;
+  const bankReward = isSheetsBankRewardLedger(String(canonical.status), String(canonical.operator),
+    String(canonical.transactionId), Array.isArray(canonical.items) ? canonical.items.length : 0,
+    Number(canonical.totalAmount), Number(canonical.balanceAfter) - Number(canonical.balanceBefore));
   const expected: Record<string, unknown> = {
     tenantId, itemId: item.itemId, transactionId: item.transactionId, lineNumber: item.lineNumber,
     productIdSnapshot: item.productId,
-    currentProductId: canonical.status === 'ADMIN_ADJUSTMENT' ? null : item.productId,
+    currentProductId: canonical.status === 'ADMIN_ADJUSTMENT' || bankReward ? null : item.productId,
     productNameSnapshot: item.name, quantity: item.quantity, unitPriceSnapshot: item.price,
     subtotalSnapshot: item.subtotal,
   };
@@ -1321,6 +1357,13 @@ function invalidManifest(): never {
   throw new Error('Legacy migration manifest is structurally invalid.');
 }
 
+function importBinding(input: LegacyMigrationImportInput) {
+  const offlineBaseline = input.manifest.sourceArtifacts.sheets.offlineBaseline;
+  return { bindingKind: offlineBaseline ? 'OFFLINE_REHEARSAL_IMPORT' : 'LEGACY_NORMALIZATION_IMPORT',
+    sourceFingerprint: input.manifest.sourceFingerprint, manifestDigest: input.manifest.manifestDigest,
+    ...(offlineBaseline ? { offlineBaseline } : {}) };
+}
+
 async function bindImport(transaction: TenantTransaction, input: LegacyMigrationImportInput): Promise<void> {
   const { rows: tenantRows } = await transaction.execute(sql`SELECT lifecycle FROM tenants WHERE id=${input.tenantId} FOR UPDATE`);
   const tenant = tenantRows[0] as { lifecycle?: string } | undefined;
@@ -1332,11 +1375,12 @@ async function bindImport(transaction: TenantTransaction, input: LegacyMigration
   if (job.source_fingerprint && job.source_fingerprint !== input.manifest.sourceFingerprint) throw new Error('Migration source fingerprint changed.');
 
   await ensureSources(transaction, input);
-  const { rows: snapshots } = await transaction.execute(sql`SELECT artifact_digest FROM migration_snapshots WHERE tenant_id=${input.tenantId} AND job_id=${input.migrationJobId} AND phase='PREFLIGHT' AND redacted_manifest->>'bindingKind'='LEGACY_NORMALIZATION_IMPORT' FOR UPDATE`);
+  const binding = importBinding(input);
+  const { rows: snapshots } = await transaction.execute(sql`SELECT artifact_digest FROM migration_snapshots WHERE tenant_id=${input.tenantId} AND job_id=${input.migrationJobId} AND phase='PREFLIGHT' AND redacted_manifest->>'bindingKind'=${binding.bindingKind} FOR UPDATE`);
   if (snapshots.some((row) => (row as { artifact_digest?: string }).artifact_digest !== input.manifest.manifestDigest)) throw new Error('Migration manifest digest changed.');
   if (snapshots.length === 0) {
     const sourceId = sourceIdFor('SHEET', input.manifest.sourceArtifacts.sheets.digest);
-    await transaction.execute(sql`INSERT INTO migration_snapshots (tenant_id,job_id,source_id,snapshot_id,phase,artifact_digest,redacted_manifest,row_count) VALUES (${input.tenantId},${input.migrationJobId},${sourceId},${`import:${input.manifest.manifestDigest}`},'PREFLIGHT',${input.manifest.manifestDigest},${JSON.stringify({ bindingKind: 'LEGACY_NORMALIZATION_IMPORT', sourceFingerprint: input.manifest.sourceFingerprint, manifestDigest: input.manifest.manifestDigest })}::jsonb,${input.manifest.sourceRecords.length})`);
+    await transaction.execute(sql`INSERT INTO migration_snapshots (tenant_id,job_id,source_id,snapshot_id,phase,artifact_digest,redacted_manifest,row_count) VALUES (${input.tenantId},${input.migrationJobId},${sourceId},${`import:${input.manifest.manifestDigest}`},'PREFLIGHT',${input.manifest.manifestDigest},${JSON.stringify(binding)}::jsonb,${input.manifest.sourceRecords.length})`);
   }
   if (!job.source_fingerprint || job.status === 'VALIDATED') {
     await transaction.execute(sql`UPDATE migration_jobs SET source_fingerprint=${input.manifest.sourceFingerprint}, status='IMPORTING', state_version=state_version+1, updated_at=now() WHERE tenant_id=${input.tenantId} AND job_id=${input.migrationJobId}`);
@@ -1363,7 +1407,8 @@ async function ensureSources(transaction: TenantTransaction, input: LegacyMigrat
 
 async function assertBoundImport(transaction: TenantTransaction, input: LegacyMigrationImportInput,
   readOnlyReconciliation = false): Promise<void> {
-  const { rows } = await transaction.execute(sql`SELECT t.lifecycle,j.status,j.source_fingerprint,(SELECT count(*)::int FROM migration_snapshots s WHERE s.tenant_id=j.tenant_id AND s.job_id=j.job_id AND s.phase='PREFLIGHT' AND s.artifact_digest=${input.manifest.manifestDigest} AND s.redacted_manifest->>'bindingKind'='LEGACY_NORMALIZATION_IMPORT') AS manifest_count FROM tenants t JOIN migration_jobs j ON j.tenant_id=t.id WHERE t.id=${input.tenantId} AND j.job_id=${input.migrationJobId} FOR UPDATE OF t,j`);
+  const bindingKind = readOnlyReconciliation ? 'LEGACY_NORMALIZATION_IMPORT' : importBinding(input).bindingKind;
+  const { rows } = await transaction.execute(sql`SELECT t.lifecycle,j.status,j.source_fingerprint,(SELECT count(*)::int FROM migration_snapshots s WHERE s.tenant_id=j.tenant_id AND s.job_id=j.job_id AND s.phase='PREFLIGHT' AND s.artifact_digest=${input.manifest.manifestDigest} AND s.redacted_manifest->>'bindingKind'=${bindingKind}) AS manifest_count FROM tenants t JOIN migration_jobs j ON j.tenant_id=t.id WHERE t.id=${input.tenantId} AND j.job_id=${input.migrationJobId} FOR UPDATE OF t,j`);
   const row = rows[0] as Record<string, unknown> | undefined;
   // Import writes retain the strict IMPORTING-only default. Only the read-only
   // audit can inspect a preparatory state; this flag is not exported to callers.
@@ -1720,7 +1765,7 @@ async function insertIdenticalOrFail(transaction: TenantTransaction, record: Wor
   const { rows: existing } = await transaction.execute(sql`SELECT ${sql.join(columns.map((column) => sql.identifier(column)), sql`, `)} FROM ${sql.identifier(descriptor.physicalTable)} WHERE ${where} FOR UPDATE`);
   if (existing.length) {
     const actual = existing[0] as Record<string, unknown>;
-    if (!columns.every((column) => equalDatabaseValue(actual[column], record.value[column]))) throw new Error(`Target conflict for ${record.table}.`);
+    if (!columns.every((column) => equalTargetDatabaseValue(record.table, column, actual[column], record.value[column]))) throw new Error(`Target conflict for ${record.table}.`);
     return;
   }
   const values = columns.map((column) => record.value[column]);
@@ -1731,6 +1776,43 @@ function sqlValue(value: unknown) {
   if (value === null) return sql`NULL`;
   if (Array.isArray(value) || isRecord(value)) return sql`${JSON.stringify(value)}::jsonb`;
   return sql`${value}`;
+}
+
+// Only projected timestamptz columns (0002/0005), never source/checkpoint JSON,
+// identifiers, schedule JSON, or arbitrary date-shaped text. Generated audit
+// timestamps excluded by completeProjected are still excluded from comparison.
+const TARGET_INSTANT_COLUMNS: Readonly<Record<string, ReadonlySet<string>>> = {
+  students: new Set(['deleted_at']),
+  products: new Set(['deleted_at']),
+  promotions: new Set(['starts_at', 'ends_at', 'created_at', 'updated_at', 'deleted_at']),
+  promotion_products: new Set(['created_at']),
+  tasks: new Set(['available_from', 'available_until', 'due_at', 'created_at', 'updated_at', 'deleted_at']),
+  task_assignments: new Set(['cycle_start_at', 'cycle_end_at', 'created_at']),
+  transactions: new Set(['occurred_at']),
+  task_completions: new Set(['completed_at', 'cycle_start_at', 'cycle_end_at', 'evidence_created_at', 'created_at']),
+};
+
+function equalTargetDatabaseValue(table: string, column: string, actual: unknown, expected: unknown): boolean {
+  if (!TARGET_INSTANT_COLUMNS[table]?.has(column)) return equalDatabaseValue(actual, expected);
+  if (expected === null) return actual === null;
+  if (!isCanonicalInstant(expected)) return false;
+  if (actual instanceof Date) return Number.isFinite(actual.getTime()) && actual.toISOString() === expected;
+  if (typeof actual !== 'string') return false;
+  // PostgreSQL ISO DateStyle text, with an explicit numeric offset or Z. Reject
+  // missing zones, infinity, BC, invalid calendar dates, and unrecognized forms.
+  const match = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.(\d{1,6}))?(Z|([+-])(\d{2})(?::(\d{2}))?(?::(\d{2}))?)$/.exec(actual);
+  if (!match) return false;
+  const fraction = (match[3] ?? '').padEnd(6, '0');
+  const local = `${match[1]}T${match[2]}.${fraction.slice(0, 3)}Z`;
+  if (!isCanonicalInstant(local)) return false;
+  const hours = Number(match[6] ?? 0), minutes = Number(match[7] ?? 0), seconds = Number(match[8] ?? 0);
+  if (hours > 15 || minutes > 59 || seconds > 59) return false;
+  const offsetSeconds = (hours * 3600 + minutes * 60 + seconds) * (match[5] === '-' ? -1 : 1);
+  // Do not round/truncate PG microseconds through Date.parse: .123001 must not
+  // compare equal to a canonical .123Z. Only parse a calendar-validated millis
+  // component and keep the remaining precision in exact integer arithmetic.
+  const actualMicros = BigInt(Date.parse(local)) * BigInt(1000) + BigInt(fraction.slice(3)) - BigInt(offsetSeconds) * BigInt(1_000_000);
+  return actualMicros === BigInt(Date.parse(expected)) * BigInt(1000);
 }
 
 function equalDatabaseValue(actual: unknown, expected: unknown): boolean {

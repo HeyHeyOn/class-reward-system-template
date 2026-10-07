@@ -3,6 +3,7 @@ import { isAuthorizedAdminRequest } from '@/server/apiAuth';
 import { createConfiguredSheetsStore } from '@/server/googleSheets';
 import { updateTaskDetailsBatch } from '@/server/sheetsRepository';
 import { PATCH } from './route';
+vi.mock('server-only', () => ({}));
 
 vi.mock('@/server/apiAuth', () => ({
   isAuthorizedAdminRequest: vi.fn(() => true),

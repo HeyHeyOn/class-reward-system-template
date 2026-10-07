@@ -1,4 +1,5 @@
 import { legacyWriteFreezeResponse } from '@/server/legacyDeploymentMode';
+import { legacyTaskWriterRefusal } from '@/server/legacyTaskWriters';
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { createConfiguredTaskCreation } from '@/server/repositories/configuredTaskCreation';
 import { createConfiguredTaskReader } from '@/server/repositories/configuredTasks';
@@ -6,6 +7,7 @@ import { buildStudentTaskProjection } from '@/server/studentTaskProjection';
 import { resolveStudentQrForCurrentTenant, StudentQrValidationError } from '@/server/studentQr';
 import { parseOptionalTaskScheduleEdit } from './taskScheduleEdit';
 import { parseStrictTaskCreate } from './taskPayload';
+import { getOptionalTrustedTenantRequestContext } from '@/server/trustedTenantRequestContext';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +29,7 @@ export async function GET(request: Request) {
     const tasks = await reader.listTaskCycleProjections({
       ...(includeInactive || studentId ? { includeInactive: true } : {}),
       ...(studentId ? { studentId } : {}),
+      ...(!studentId && getOptionalTrustedTenantRequestContext() ? { adminMutation: true } : {}),
     });
     if (!studentId) return Response.json(tasks);
     const now = new Date().toISOString();
@@ -45,6 +48,8 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const frozen = legacyWriteFreezeResponse();
   if (frozen) return frozen;
+  const unsupported = legacyTaskWriterRefusal();
+  if (unsupported) return unsupported;
 
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 

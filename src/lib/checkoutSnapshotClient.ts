@@ -1,5 +1,7 @@
 import type { CartItem, CheckoutLineSnapshot, PromotionAdjustment } from '@/domain/types';
 import { parsePromotionResponse } from './promotionClient';
+import { type BudgetContext, trimBudgetString, mapBudgetList, uniqueBudgetStrings, equalBudgetValue } from './boundedWork';
+import { createBoundedParserProjection, registeredBoundedKeys } from './boundedJson';
 
 export type CheckoutPreviewPayload = {
   ok: true;
@@ -42,26 +44,31 @@ function positiveQuantity(value: unknown): value is number {
 function nonnegativeQuantity(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) >= 0;
 }
-function promotionType(value: unknown): value is PromotionAdjustment['type'] {
-  return value === 'N_PLUS_ONE' || value === 'PROMOTIONAL_PRICE' || value === 'PERCENT_DISCOUNT' || value === 'FIXED_DISCOUNT';
+function promotionType(value: unknown, budget?: BudgetContext): value is PromotionAdjustment['type'] {
+  return equalBudgetValue(value, 'N_PLUS_ONE', budget) || equalBudgetValue(value, 'PROMOTIONAL_PRICE', budget)
+    || equalBudgetValue(value, 'PERCENT_DISCOUNT', budget) || equalBudgetValue(value, 'FIXED_DISCOUNT', budget);
 }
 
-function parseAdjustment(value: unknown): PromotionAdjustment | null {
-  if (!isRecord(value) || typeof value.promotionId !== 'string' || !value.promotionId.trim()
-    || !promotionType(value.type) || !safeMoney(value.beforeAmount) || !safeMoney(value.afterAmount)
+function parseAdjustment(value: unknown, budget?: BudgetContext): PromotionAdjustment | null {
+  budget?.spend();
+  if (budget && value !== null && typeof value === 'object') registeredBoundedKeys(value, budget);
+  if (!isRecord(value) || typeof value.promotionId !== 'string' || !trimBudgetString(value.promotionId, budget)
+    || !promotionType(value.type, budget) || !safeMoney(value.beforeAmount) || !safeMoney(value.afterAmount)
     || !safeMoney(value.discountAmount) || value.afterAmount > value.beforeAmount
     || value.discountAmount !== value.beforeAmount - value.afterAmount
     || (value.freeQuantity !== undefined && !positiveQuantity(value.freeQuantity))) return null;
-  return {
+  return budget ? createBoundedParserProjection('adjustment', () => value, budget) as unknown as PromotionAdjustment : {
     promotionId: value.promotionId, type: value.type, beforeAmount: value.beforeAmount,
     afterAmount: value.afterAmount, discountAmount: value.discountAmount,
     ...(value.freeQuantity === undefined ? {} : { freeQuantity: value.freeQuantity }),
   };
 }
 
-export function parseCheckoutLineSnapshot(value: unknown): CheckoutLineSnapshot | null {
-  if (!isRecord(value) || typeof value.productId !== 'string' || !value.productId.trim()
-    || typeof value.name !== 'string' || !value.name.trim()
+export function parseCheckoutLineSnapshot(value: unknown, budget?: BudgetContext): CheckoutLineSnapshot | null {
+  budget?.spend();
+  if (budget && value !== null && typeof value === 'object') registeredBoundedKeys(value, budget);
+  if (!isRecord(value) || typeof value.productId !== 'string' || !trimBudgetString(value.productId, budget)
+    || typeof value.name !== 'string' || !trimBudgetString(value.name, budget)
     || !safeMoney(value.price) || !positiveQuantity(value.quantity) || !safeMoney(value.subtotal)
     || !safeMoney(value.regularUnitPrice) || !safeMoney(value.regularTotal)
     || !positiveQuantity(value.totalQuantity) || !nonnegativeQuantity(value.paidQuantity)
@@ -72,24 +79,25 @@ export function parseCheckoutLineSnapshot(value: unknown): CheckoutLineSnapshot 
     || value.regularTotal - value.finalTotal !== value.totalDiscount
     || !Array.isArray(value.adjustments) || !Array.isArray(value.appliedPromotions)) return null;
   const productId = value.productId;
-  const adjustments = value.adjustments.map(parseAdjustment);
-  const appliedPromotions = value.appliedPromotions.map(parsePromotionResponse);
-  if (!adjustments.every((item): item is PromotionAdjustment => item !== null)
-    || !appliedPromotions.every((item): item is NonNullable<ReturnType<typeof parsePromotionResponse>> => item !== null)
+  const adjustments = mapBudgetList(value.adjustments, (item) => parseAdjustment(item, budget), budget);
+  const appliedPromotions = mapBudgetList(value.appliedPromotions, (item) => parsePromotionResponse(item, budget), budget);
+  if (!adjustments.every((item): item is PromotionAdjustment => { budget?.spend(); return item !== null; })
+    || !appliedPromotions.every((item): item is NonNullable<ReturnType<typeof parsePromotionResponse>> => { budget?.spend(); return item !== null; })
     || adjustments.length !== appliedPromotions.length
-    || new Set(appliedPromotions.map((item) => item.promotionId)).size !== appliedPromotions.length
+    || !uniqueBudgetStrings(mapBudgetList(appliedPromotions, (item) => item.promotionId, budget), budget)
     || adjustments.some((adjustment, index) => {
+      budget?.spend();
       const promotion = appliedPromotions[index];
-      return adjustment.promotionId !== promotion?.promotionId
-        || adjustment.type !== promotion.type
-        || !promotion.productIds.includes(productId)
+      return !equalBudgetValue(adjustment.promotionId, promotion?.promotionId, budget)
+        || !equalBudgetValue(adjustment.type, promotion.type, budget)
+        || !promotion.productIds.some((id) => equalBudgetValue(id, productId, budget))
         || (adjustment.type === 'N_PLUS_ONE' ? adjustment.freeQuantity === undefined : adjustment.freeQuantity !== undefined);
     })
-    || adjustments.reduce((sum, adjustment) => sum + (adjustment.freeQuantity ?? 0), 0) !== value.freeQuantity
+    || adjustments.reduce((sum, adjustment) => { budget?.spend(); return sum + (adjustment.freeQuantity ?? 0); }, 0) !== value.freeQuantity
     || (adjustments.length > 0 && (adjustments[0].beforeAmount !== value.regularTotal
       || adjustments[adjustments.length - 1].afterAmount !== value.finalTotal
-      || adjustments.some((adjustment, index) => index > 0 && adjustment.beforeAmount !== adjustments[index - 1].afterAmount)))) return null;
-  return {
+      || adjustments.some((adjustment, index) => { budget?.spend(); return index > 0 && adjustment.beforeAmount !== adjustments[index - 1].afterAmount; })))) return null;
+  return budget ? createBoundedParserProjection('checkout', () => value, budget) as unknown as CheckoutLineSnapshot : {
     productId, name: value.name, price: value.price, quantity: value.quantity,
     subtotal: value.subtotal, regularUnitPrice: value.regularUnitPrice, regularTotal: value.regularTotal,
     totalQuantity: value.totalQuantity, paidQuantity: value.paidQuantity, freeQuantity: value.freeQuantity,
@@ -100,7 +108,7 @@ export function parseCheckoutLineSnapshot(value: unknown): CheckoutLineSnapshot 
 
 export function parseCheckoutPreviewResponse(value: unknown): CheckoutPreviewPayload | null {
   if (!isRecord(value) || value.ok !== true || !safeMoney(value.totalAmount) || !Array.isArray(value.items) || value.items.length === 0) return null;
-  const items = value.items.map(parseCheckoutLineSnapshot);
+  const items = value.items.map((item) => parseCheckoutLineSnapshot(item));
   if (!items.every((item): item is CheckoutLineSnapshot => item !== null)
     || new Set(items.map((item) => item.productId)).size !== items.length
     || items.reduce((sum, item) => sum + item.finalTotal, 0) !== value.totalAmount) return null;

@@ -8,6 +8,7 @@ import {
   parsePromotionResponse,
 } from '@/lib/promotionClient';
 import { tenantFetch } from '@/lib/tenantApiPath';
+import { Icon, buttonClass } from '../ui';
 import { normalizeThemeColor, themeStyles, type ThemeColor } from '../uiTheme';
 
 export { parsePromotionResponse } from '@/lib/promotionClient';
@@ -803,73 +804,105 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
   }
 
   return (
-    <section aria-label="행사 관리" data-theme={normalizedTheme} style={theme.variables} className={`${theme.shell} ${theme.text} rounded-2xl p-2`}>
+    <section aria-label="행사 관리" data-theme={normalizedTheme} style={theme.variables} className="text-[var(--theme-text)]">
       <div
         data-testid="promotion-panel-content"
-        className="grid gap-3 lg:grid-cols-[minmax(300px,380px)_minmax(0,1fr)]"
+        className="grid items-start gap-5 lg:grid-cols-[minmax(320px,400px)_minmax(0,1fr)]"
         inert={modalOpen ? true : undefined}
         aria-hidden={modalOpen ? true : undefined}
         onFocusCapture={(event) => { if (modalOpen) { event.stopPropagation(); refocusActiveDialog(); } }}
         onClickCapture={(event) => { if (modalOpen) { event.preventDefault(); event.stopPropagation(); refocusActiveDialog(); } }}
       >
-      <div className={`${theme.surface} ${theme.border} rounded-2xl border p-4 shadow-sm`}>
-        <h2 className="text-lg font-black">행사 만들기</h2>
-        <form className="mt-3" onSubmit={submitCreate}>
-          <fieldset aria-label="행사 편집 입력" className="space-y-2" disabled={saving}>
+      <div className={panelClass}>
+        <h2 className="text-[17px] font-extrabold tracking-[-0.02em]">행사 만들기</h2>
+        <p className="mt-1 text-[13px] text-[var(--theme-muted-text)]">1+1, 할인가 같은 매점 행사를 정합니다.</p>
+        <form className="mt-5" onSubmit={submitCreate}>
+          <fieldset aria-label="행사 편집 입력" className="space-y-4" disabled={saving}>
           <DraftFields draft={draft} setDraft={(next) => setDraft(next)} products={products} timeZone={timeZone} />
-          {formError ? <p role="alert" className="rounded-lg bg-rose-100 p-2 text-sm font-bold text-rose-800">{formError}</p> : null}
-          {message ? <p role="status" className="rounded-lg bg-emerald-100 p-2 text-sm font-bold text-emerald-900">{message}</p> : null}
-          {saving && !editingId && !deleteTarget ? <p role="status" aria-label="행사 저장 중" className="text-sm font-bold">저장 중…</p> : null}
-          <button disabled={saving} className={`${theme.accentSolid} ${theme.accentOnSolid} ${theme.ring} w-full rounded-lg p-2 font-black focus:ring-2 disabled:opacity-50`} type="submit">행사 추가</button>
+          {formError ? <p role="alert" className={alertClass}>{formError}</p> : null}
+          {message ? <p role="status" className="rounded-[12px] bg-[var(--crs-success-bg)] px-3.5 py-2.5 text-[13px] font-semibold text-[var(--crs-success-text)]">{message}</p> : null}
+          {saving && !editingId && !deleteTarget ? <p role="status" aria-label="행사 저장 중" className="text-[13px] font-semibold text-[var(--theme-muted-text)]">저장 중…</p> : null}
+          <button disabled={saving} className={buttonClass({ variant: 'primary', block: true, size: 'lg' })} type="submit">행사 추가</button>
           </fieldset>
         </form>
 
-        <div className={`${theme.border} mt-4 border-t pt-3`}>
-          <h3 className="font-black">가격 미리보기</h3>
-          <fieldset aria-label="가격 미리보기 입력" className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2" disabled={saving}><label className="text-xs font-bold">미리보기 상품<select aria-label="미리보기 상품" className={inputClass} value={previewProductId} onChange={(event) => setPreviewProductId(event.target.value)}><option value="">선택</option>{products.map((product) => <option key={product.productId} value={product.productId}>{product.name}</option>)}</select></label><NumberField label="총 수령 수량" value={previewQuantity} min={1} onChange={setPreviewQuantity} /></fieldset>
-          {preview ? <PreviewResult preview={preview} names={promotionNames} currencyUnit={currencyUnit} /> : <p className={`${theme.mutedText} mt-2 text-xs`}>상품과 행사 설정을 입력하면 예상 가격을 계산합니다.</p>}
+        <div className="mt-6 border-t border-[var(--crs-line)] pt-5">
+          <h3 className="text-sm font-extrabold">가격 미리보기</h3>
+          <fieldset aria-label="가격 미리보기 입력" className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2" disabled={saving}>
+            <label className={labelClass}>미리보기 상품<select aria-label="미리보기 상품" className={inputClass} value={previewProductId} onChange={(event) => setPreviewProductId(event.target.value)}><option value="">선택</option>{products.map((product) => <option key={product.productId} value={product.productId}>{product.name}</option>)}</select></label>
+            <NumberField label="총 수령 수량" value={previewQuantity} min={1} onChange={setPreviewQuantity} />
+          </fieldset>
+          {preview ? <PreviewResult preview={preview} names={promotionNames} currencyUnit={currencyUnit} /> : <p className="mt-2 text-xs text-[var(--theme-muted-text)]">상품과 행사 설정을 입력하면 예상 가격을 계산합니다.</p>}
         </div>
       </div>
 
-      <div className={`${theme.surface} ${theme.border} rounded-2xl border p-4 shadow-sm`}>
-        <div className="flex items-center justify-between gap-2"><h2 className="text-lg font-black">행사 목록</h2><button ref={refreshButtonRef} type="button" aria-label="행사 목록 새로고침" className={`${theme.accentSoft} ${theme.accentText} ${theme.ring} rounded-lg px-3 py-2 text-xs font-black focus:ring-2`} onClick={() => void loadPromotions()}>새로고침</button></div>
-        {loading ? <p role="status" aria-label="행사 목록 불러오는 중" className="mt-3">행사 목록을 불러오는 중입니다.</p> : null}
-        {!loading && loadError ? <div role="alert" className="mt-3 rounded-lg bg-rose-100 p-3 text-rose-800"><p>{loadError}</p><button type="button" className={`${theme.surface} mt-2 rounded px-3 py-1 font-bold text-rose-900`} onClick={() => void loadPromotions()}>다시 시도</button></div> : null}
-        {!loading && !loadError && promotions.length === 0 ? <p className={`${theme.surfaceRaised} mt-3 rounded-lg p-3`}>등록된 행사가 없습니다.</p> : null}
-        {!loading && !loadError ? <div className="mt-3 space-y-2">{promotions.map((promotion) => {
+      <div className={panelClass}>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-[17px] font-extrabold tracking-[-0.02em]">행사 목록 <span className="ml-1 text-sm font-semibold text-[var(--theme-muted-text)]">{promotions.length}</span></h2>
+          <button ref={refreshButtonRef} type="button" aria-label="행사 목록 새로고침" className={buttonClass({ variant: 'secondary', size: 'sm' })} onClick={() => void loadPromotions()}><Icon name="refresh" size={15} />새로고침</button>
+        </div>
+        {loading ? <p role="status" aria-label="행사 목록 불러오는 중" className="mt-4 text-[13px] text-[var(--theme-muted-text)]">행사 목록을 불러오는 중입니다.</p> : null}
+        {!loading && loadError ? <div role="alert" className={`mt-4 ${alertClass}`}><p>{loadError}</p><button type="button" className={buttonClass({ variant: 'secondary', size: 'sm', className: 'mt-2' })} onClick={() => void loadPromotions()}>다시 시도</button></div> : null}
+        {!loading && !loadError && promotions.length === 0 ? <p className="mt-4 rounded-[14px] border border-dashed border-[var(--crs-line-strong)] px-4 py-10 text-center text-[13px] text-[var(--theme-muted-text)]">등록된 행사가 없습니다.</p> : null}
+        {!loading && !loadError ? <div className="mt-4 space-y-2.5">{promotions.map((promotion) => {
           const productTargets = summarizeProductTargets(promotion.productIds, productNames);
-          return <article data-testid="promotion-row" key={promotion.promotionId} className={`${theme.contentCard} ${theme.border} rounded-xl border p-3 text-sm`}>
-          <div className="flex flex-wrap items-start justify-between gap-2"><dl className="grid min-w-0 gap-1"><div><dt className={`${theme.mutedText} inline font-bold`}>행사명</dt><dd className="ml-2 inline font-black">{promotion.name}</dd></div><div><dt className={`${theme.mutedText} inline font-bold`}>행사 설명</dt><dd className="ml-2 inline">{promotion.description || '설명 없음'}</dd></div><div><dt className={`${theme.mutedText} inline font-bold`}>행사 내용</dt><dd className="ml-2 inline font-bold">{formatPromotionContent(promotion, currencyUnit)}</dd></div><div><dt className={`${theme.mutedText} inline font-bold`}>대상 상품</dt><dd className="ml-2 inline" title={productTargets.title}>{productTargets.summary || '대상 상품 없음'}</dd></div><div><dt className={`${theme.mutedText} inline font-bold`}>행사 기간</dt><dd className="ml-2 inline">{formatPromotionPeriod(promotion.startsAt, promotion.endsAt)}</dd></div></dl><div className="flex flex-wrap gap-1"><button disabled={saving} type="button" aria-label={`${promotion.name} 편집`} className={`${theme.accentSoft} ${theme.accentText} ${theme.border} rounded border px-2 py-1 font-bold outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-content-card)] disabled:opacity-50`} onClick={(event) => edit(promotion, event.currentTarget)}>편집</button><button disabled={saving} type="button" aria-label={`${promotion.name} ${promotion.isActive ? '비활성화' : '재활성화'}`} className={`${theme.accentSolid} ${theme.accentOnSolid} ${theme.border} rounded border px-2 py-1 font-bold outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-content-card)] disabled:opacity-50`} onClick={() => void toggleActivation(promotion)}>{promotion.isActive ? '비활성화' : '재활성화'}</button><button disabled={saving} type="button" aria-label={`${promotion.name} 삭제`} className="rounded bg-red-700 px-2 py-1 font-bold text-white disabled:opacity-50" onClick={(event) => requestDelete(promotion, event.currentTarget)}>삭제</button></div></div>
-        </article>;
+          return <article data-testid="promotion-row" key={promotion.promotionId} className={`rounded-[16px] border border-[var(--crs-line)] p-4 text-sm ${promotion.isActive ? '' : 'opacity-70'}`}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11.5px] font-bold ${promotion.isActive ? 'bg-[var(--crs-success-bg)] text-[var(--crs-success-text)]' : 'bg-[var(--crs-subtle-hover)] text-[var(--theme-muted-text)]'}`}>{promotion.isActive ? '진행' : '중지'}</span>
+                  <span className="rounded-full bg-[var(--theme-accent-soft)] px-2.5 py-0.5 text-[11.5px] font-bold text-[var(--theme-accent-text)]">{formatPromotionContent(promotion, currencyUnit)}</span>
+                </div>
+                <dl className="mt-2 grid gap-1">
+                  <div><dt className="sr-only">행사명</dt><dd className="text-[15px] font-extrabold">{promotion.name}</dd></div>
+                  <div><dt className="sr-only">행사 설명</dt><dd className="text-[13px] text-[var(--theme-muted-text)]">{promotion.description || '설명 없음'}</dd></div>
+                  <div className="sr-only"><dt>행사 내용</dt><dd>{formatPromotionContent(promotion, currencyUnit)}</dd></div>
+                  <div className="flex gap-1.5 text-xs text-[var(--theme-muted-text)]"><dt className="shrink-0 font-semibold">대상 상품</dt><dd className="truncate" title={productTargets.title}>{productTargets.summary || '대상 상품 없음'}</dd></div>
+                  <div className="flex gap-1.5 text-xs text-[var(--theme-muted-text)]"><dt className="shrink-0 font-semibold">행사 기간</dt><dd>{formatPromotionPeriod(promotion.startsAt, promotion.endsAt)}</dd></div>
+                </dl>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                <button disabled={saving} type="button" aria-label={`${promotion.name} 편집`} className={buttonClass({ variant: 'secondary', size: 'sm' })} onClick={(event) => edit(promotion, event.currentTarget)}>편집</button>
+                <button disabled={saving} type="button" aria-label={`${promotion.name} ${promotion.isActive ? '비활성화' : '재활성화'}`} className={buttonClass({ variant: 'ghost', size: 'sm' })} onClick={() => void toggleActivation(promotion)}>{promotion.isActive ? '비활성화' : '재활성화'}</button>
+                <button disabled={saving} type="button" aria-label={`${promotion.name} 삭제`} className={buttonClass({ variant: 'dangerGhost', size: 'sm' })} onClick={(event) => requestDelete(promotion, event.currentTarget)}>삭제</button>
+              </div>
+            </div>
+          </article>;
         })}</div> : null}
       </div>
       </div>
 
-      {editingId && editDraft ? <div ref={editDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="promotion-edit-title" className={`${theme.text} fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4`} onMouseDown={(event) => { if (event.target === event.currentTarget) closeEdit(); }} onKeyDown={(event) => { if (event.key === 'Tab' && !event.shiftKey && event.target === editSaveRef.current) { event.preventDefault(); editNameRef.current?.focus(); } else if (event.key === 'Tab' && event.shiftKey && event.target === editNameRef.current) { event.preventDefault(); editSaveRef.current?.focus(); } else trapDialogFocus(event); if (event.key === 'Escape') closeEdit(); }}>
-        <div className={`${theme.surface} ${theme.border} max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border p-5 shadow-2xl`}>
-          <h2 id="promotion-edit-title" className="text-lg font-black">{promotions.find((item) => item.promotionId === editingId)?.name ?? editDraft.name} 행사 편집</h2>
-          <form className="mt-3" onSubmit={submitEdit}><fieldset className="space-y-2" disabled={saving}>
+      {editingId && editDraft ? <div ref={editDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="promotion-edit-title" className={overlayClass} onMouseDown={(event) => { if (event.target === event.currentTarget) closeEdit(); }} onKeyDown={(event) => { if (event.key === 'Tab' && !event.shiftKey && event.target === editSaveRef.current) { event.preventDefault(); editNameRef.current?.focus(); } else if (event.key === 'Tab' && event.shiftKey && event.target === editNameRef.current) { event.preventDefault(); editSaveRef.current?.focus(); } else trapDialogFocus(event); if (event.key === 'Escape') closeEdit(); }}>
+        <div className={`${dialogClass} max-h-[90vh] max-w-2xl overflow-y-auto`}>
+          <h2 id="promotion-edit-title" className="text-lg font-black tracking-[-0.02em]">{promotions.find((item) => item.promotionId === editingId)?.name ?? editDraft.name} 행사 편집</h2>
+          <form className="mt-4" onSubmit={submitEdit}><fieldset className="space-y-4" disabled={saving}>
             <DraftFields draft={editDraft} setDraft={(next) => setEditDraft(next)} products={products} timeZone={timeZone} labelPrefix="수정 " firstInputRef={(node) => { editNameRef.current = node; }} />
-            {editError ? <p role="alert" className="rounded-lg bg-rose-100 p-2 text-sm font-bold text-rose-800">{editError}</p> : null}
-            {saving ? <p role="status" aria-label="행사 저장 중" className="text-sm font-bold">저장 중…</p> : null}
-            <div className="flex justify-end gap-2"><button type="button" disabled={saving} className={`${theme.accentSoft} ${theme.accentText} rounded-lg px-4 py-2 font-bold disabled:opacity-50`} onClick={closeEdit}>편집 취소</button><button ref={editSaveRef} type="submit" disabled={saving} className={`${theme.accentSolid} ${theme.accentOnSolid} rounded-lg px-4 py-2 font-black disabled:opacity-50`}>행사 수정 저장</button></div>
+            {editError ? <p role="alert" className={alertClass}>{editError}</p> : null}
+            {saving ? <p role="status" aria-label="행사 저장 중" className="text-[13px] font-semibold text-[var(--theme-muted-text)]">저장 중…</p> : null}
+            <div className="flex justify-end gap-2 border-t border-[var(--crs-line)] pt-4"><button type="button" disabled={saving} className={buttonClass({ variant: 'ghost' })} onClick={closeEdit}>편집 취소</button><button ref={editSaveRef} type="submit" disabled={saving} className={buttonClass({ variant: 'primary' })}>행사 수정 저장</button></div>
           </fieldset></form>
         </div>
       </div> : null}
 
-      {deleteTarget ? <div ref={deleteDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="promotion-delete-title" className={`${theme.text} fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4`} onMouseDown={(event) => { if (event.target === event.currentTarget) closeDelete(); }} onKeyDown={(event) => { if (event.key === 'Tab' && !event.shiftKey && event.target === deleteConfirmRef.current) { event.preventDefault(); deleteCancelRef.current?.focus(); } else if (event.key === 'Tab' && event.shiftKey && event.target === deleteCancelRef.current) { event.preventDefault(); deleteConfirmRef.current?.focus(); } else trapDialogFocus(event); if (event.key === 'Escape') closeDelete(); }}>
-        <div className={`${theme.surface} ${theme.border} w-full max-w-md rounded-2xl border p-5 shadow-2xl`}><h2 id="promotion-delete-title" className="text-lg font-black">{deleteTarget.name} 행사 삭제</h2><p className={`${theme.mutedText} mt-2`}>이 행사를 삭제할까요? 삭제 후에는 되돌릴 수 없습니다.</p>{deleteError ? <p role="alert" className="mt-2 rounded-lg bg-rose-100 p-2 text-sm font-bold text-rose-800">{deleteError}</p> : null}{saving ? <p role="status" className="mt-2 font-bold">삭제 중…</p> : null}<div className="mt-4 flex justify-end gap-2"><button ref={deleteCancelRef} type="button" disabled={saving} className={`${theme.accentSoft} ${theme.accentText} rounded-lg px-4 py-2 font-bold disabled:opacity-50`} onClick={closeDelete}>취소</button><button ref={deleteConfirmRef} type="button" disabled={saving} className="rounded-lg bg-red-700 px-4 py-2 font-black text-white disabled:opacity-50" onClick={() => void confirmDelete()}>삭제 확인</button></div></div>
+      {deleteTarget ? <div ref={deleteDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="promotion-delete-title" className={overlayClass} onMouseDown={(event) => { if (event.target === event.currentTarget) closeDelete(); }} onKeyDown={(event) => { if (event.key === 'Tab' && !event.shiftKey && event.target === deleteConfirmRef.current) { event.preventDefault(); deleteCancelRef.current?.focus(); } else if (event.key === 'Tab' && event.shiftKey && event.target === deleteCancelRef.current) { event.preventDefault(); deleteConfirmRef.current?.focus(); } else trapDialogFocus(event); if (event.key === 'Escape') closeDelete(); }}>
+        <div className={`${dialogClass} max-w-md`}><h2 id="promotion-delete-title" className="text-lg font-black tracking-[-0.02em]">{deleteTarget.name} 행사 삭제</h2><p className="mt-2 text-[13px] leading-relaxed text-[var(--theme-muted-text)]">이 행사를 삭제할까요? 삭제 후에는 되돌릴 수 없습니다.</p>{deleteError ? <p role="alert" className={`mt-3 ${alertClass}`}>{deleteError}</p> : null}{saving ? <p role="status" className="mt-2 text-[13px] font-semibold">삭제 중…</p> : null}<div className="mt-5 flex justify-end gap-2"><button ref={deleteCancelRef} type="button" disabled={saving} className={buttonClass({ variant: 'ghost' })} onClick={closeDelete}>취소</button><button ref={deleteConfirmRef} type="button" disabled={saving} className={buttonClass({ variant: 'danger' })} onClick={() => void confirmDelete()}>삭제 확인</button></div></div>
       </div> : null}
     </section>
   );
 }
 
+const panelClass = 'min-w-0 rounded-[var(--crs-radius-lg)] border border-[var(--crs-line)] bg-[var(--theme-surface)] p-5 shadow-[var(--crs-shadow-sm)] sm:p-6';
+const alertClass = 'rounded-[12px] bg-[var(--crs-danger-bg)] px-3.5 py-2.5 text-[13px] font-semibold text-[var(--crs-danger-text)]';
+const overlayClass = 'fixed inset-0 z-50 flex items-center justify-center bg-[rgb(15_23_42/0.42)] p-4 text-[var(--theme-text)] backdrop-blur-[2px]';
+const dialogClass = 'w-full rounded-[22px] border border-[var(--crs-line)] bg-[var(--theme-surface)] p-6 shadow-[var(--crs-shadow-lg)]';
+const labelClass = 'block text-[13px] font-bold';
+
 function PreviewResult({ preview, names, currencyUnit }: { preview: ReturnType<typeof calculatePromotionPrice> | { ok: false; message: string }; names: Map<string, string>; currencyUnit: string }) {
-  if (!preview.ok) return <div role="region" aria-label="가격 미리보기 결과" className="mt-2 rounded-lg bg-rose-50 p-2"><p role="alert">가격 계산 오류: {preview.message}</p></div>;
-  return <div role="region" aria-label="가격 미리보기 결과" className="mt-2 rounded-lg bg-[var(--theme-surface-raised)] p-2 text-xs"><p>정상 합계 {money(preview.regularTotal, currencyUnit)}</p><p className="font-black">최종 합계 {money(preview.finalAmount, currencyUnit)}</p><p>유료 {preview.paidQuantity}개 · 무료 {preview.freeQuantity}개 · 할인 합계 {money(preview.totalDiscount, currencyUnit)}</p><ol className="mt-1 list-decimal pl-4">{preview.adjustments.map((adjustment) => <li data-testid="preview-adjustment" key={`${adjustment.promotionId}-${adjustment.type}`}>{names.get(adjustment.promotionId) ?? adjustment.promotionId} ({TYPE_LABELS[adjustment.type]}): {money(adjustment.beforeAmount, currencyUnit)} → {money(adjustment.afterAmount, currencyUnit)}{adjustment.freeQuantity ? ` · 무료 ${adjustment.freeQuantity}개` : ''}</li>)}</ol></div>;
+  if (!preview.ok) return <div role="region" aria-label="가격 미리보기 결과" className="mt-3 rounded-[12px] bg-[var(--crs-danger-bg)] px-3.5 py-2.5 text-[13px] text-[var(--crs-danger-text)]"><p role="alert">가격 계산 오류: {preview.message}</p></div>;
+  return <div role="region" aria-label="가격 미리보기 결과" className="mt-3 rounded-[12px] bg-[var(--crs-subtle)] px-3.5 py-3 text-xs leading-relaxed"><p className="text-[var(--theme-muted-text)]">정상 합계 {money(preview.regularTotal, currencyUnit)}</p><p className="text-sm font-black">최종 합계 {money(preview.finalAmount, currencyUnit)}</p><p>유료 {preview.paidQuantity}개 · 무료 {preview.freeQuantity}개 · 할인 합계 {money(preview.totalDiscount, currencyUnit)}</p><ol className="mt-1 list-decimal pl-4">{preview.adjustments.map((adjustment) => <li data-testid="preview-adjustment" key={`${adjustment.promotionId}-${adjustment.type}`}>{names.get(adjustment.promotionId) ?? adjustment.promotionId} ({TYPE_LABELS[adjustment.type]}): {money(adjustment.beforeAmount, currencyUnit)} → {money(adjustment.afterAmount, currencyUnit)}{adjustment.freeQuantity ? ` · 무료 ${adjustment.freeQuantity}개` : ''}</li>)}</ol></div>;
 }
 
-const inputClass = 'mt-1 w-full rounded-lg border border-[var(--theme-border)] bg-[var(--theme-input)] p-2 text-[var(--theme-text)] focus:ring-2 focus:ring-[var(--theme-focus-ring)]';
+const inputClass = 'mt-1.5 block h-11 w-full min-w-0 rounded-[11px] border border-[var(--crs-line-strong)] bg-[var(--theme-input)] px-3.5 text-[15px] font-medium text-[var(--theme-text)] outline-none transition focus:border-[var(--theme-focus-ring)] focus:ring-[3px] focus:ring-[color-mix(in_srgb,var(--theme-focus-ring)_18%,transparent)]';
 
 function DraftFields({ draft, setDraft, products, timeZone, labelPrefix = '', firstInputRef }: { draft: Draft; setDraft: (draft: Draft) => void; products: Product[]; timeZone: string; labelPrefix?: string; firstInputRef?: (node: HTMLInputElement | null) => void }) {
   const label = (value: string) => `${labelPrefix}${value}`;
@@ -878,24 +911,24 @@ function DraftFields({ draft, setDraft, products, timeZone, labelPrefix = '', fi
   const toggleProduct = (productId: string) => set('productIds', draft.productIds.includes(productId) ? draft.productIds.filter((id) => id !== productId) : [...draft.productIds, productId]);
   return <>
     <TextField label={label('행사명')} value={draft.name} onChange={(value) => set('name', value)} inputRef={firstInputRef} />
-    <label className="block text-xs font-bold">{label('행사 설명')}<textarea aria-label={label('행사 설명')} className={`${inputClass} min-h-16`} value={draft.description} onChange={(event) => set('description', event.target.value)} /></label>
-    <label className="block text-xs font-bold">{label('행사 유형')}<select aria-label={label('행사 유형')} className={inputClass} value={draft.type} onChange={(event) => set('type', event.target.value as PromotionType)}>{Object.entries(TYPE_LABELS).map(([value, typeLabel]) => <option key={value} value={value}>{typeLabel}</option>)}</select></label>
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+    <label className="block text-[13px] font-bold">{label('행사 설명')}<textarea aria-label={label('행사 설명')} className={`${inputClass} h-auto min-h-20 py-2.5`} value={draft.description} onChange={(event) => set('description', event.target.value)} /></label>
+    <label className="block text-[13px] font-bold">{label('행사 유형')}<select aria-label={label('행사 유형')} className={inputClass} value={draft.type} onChange={(event) => set('type', event.target.value as PromotionType)}>{Object.entries(TYPE_LABELS).map(([value, typeLabel]) => <option key={value} value={value}>{typeLabel}</option>)}</select></label>
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       {draft.type === 'N_PLUS_ONE' ? <><NumberField label={label('구매 수량')} value={draft.buyQuantity} min={1} onChange={(value) => set('buyQuantity', value)} /><NumberField label={label('무료 수량')} value={draft.freeQuantity} min={1} onChange={(value) => set('freeQuantity', value)} /></> : null}
       {draft.type === 'PROMOTIONAL_PRICE' ? <NumberField label={label('행사 단가')} value={draft.promotionalUnitPrice} min={0} onChange={(value) => set('promotionalUnitPrice', value)} /> : null}
       {draft.type === 'PERCENT_DISCOUNT' ? <NumberField label={label('할인율')} value={draft.percent} min={0} step="any" onChange={(value) => set('percent', value)} /> : null}
       {draft.type === 'FIXED_DISCOUNT' ? <NumberField label={label('유료 수량당 할인액')} value={draft.discountAmount} min={1} onChange={(value) => set('discountAmount', value)} /> : null}
     </div>
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2"><DateField label={label('시작 일시')} value={isoToZonedDatetimeLocal(draft.startsAt, timeZone)} onChange={(value) => changeDate('startsAt', value)} /><DateField label={label('종료 일시')} value={isoToZonedDatetimeLocal(draft.endsAt, timeZone)} onChange={(value) => changeDate('endsAt', value)} /></div>
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><DateField label={label('시작 일시')} value={isoToZonedDatetimeLocal(draft.startsAt, timeZone)} onChange={(value) => changeDate('startsAt', value)} /><DateField label={label('종료 일시')} value={isoToZonedDatetimeLocal(draft.endsAt, timeZone)} onChange={(value) => changeDate('endsAt', value)} /></div>
     <NumberField label={label('정렬 우선순위')} value={draft.sortOrder} onChange={(value) => set('sortOrder', value)} />
-    <label className="flex gap-2 text-sm font-bold"><input aria-label={label('행사 활성')} type="checkbox" checked={draft.isActive} onChange={(event) => set('isActive', event.target.checked)} />활성</label>
-    <fieldset className="rounded-lg border border-[var(--theme-border)] p-2"><legend className="px-1 text-xs font-black">{label('대상 상품')}</legend><div className="grid gap-1 sm:grid-cols-2">{products.map((product) => <label key={product.productId} className="flex gap-2 text-xs"><input aria-label={label(`${product.name} (${product.productId}) 대상`)} type="checkbox" checked={draft.productIds.includes(product.productId)} onChange={() => toggleProduct(product.productId)} />{product.name} ({product.productId})</label>)}</div></fieldset>
+    <label className="flex items-center gap-2.5 rounded-[12px] border border-[var(--crs-line)] px-3.5 py-3 text-sm font-bold"><input className="h-[18px] w-[18px] accent-[var(--theme-accent-text)]" aria-label={label('행사 활성')} type="checkbox" checked={draft.isActive} onChange={(event) => set('isActive', event.target.checked)} />활성</label>
+    <fieldset className="rounded-[14px] border border-[var(--crs-line)] p-3.5"><legend className="px-1.5 text-[13px] font-bold">{label('대상 상품')}</legend><div className="grid gap-1.5 sm:grid-cols-2">{products.map((product) => <label key={product.productId} className="flex items-center gap-2 rounded-[9px] px-1.5 py-1 text-[13px] hover:bg-[var(--crs-subtle)]"><input className="h-4 w-4 accent-[var(--theme-accent-text)]" aria-label={label(`${product.name} (${product.productId}) 대상`)} type="checkbox" checked={draft.productIds.includes(product.productId)} onChange={() => toggleProduct(product.productId)} />{product.name} ({product.productId})</label>)}</div></fieldset>
   </>;
 }
 
-function TextField({ label, value, onChange, inputRef }: { label: string; value: string; onChange: (value: string) => void; inputRef?: (node: HTMLInputElement | null) => void }) { return <label className="block text-xs font-bold">{label}<input ref={inputRef} aria-label={label} className={inputClass} value={value} onChange={(event) => onChange(event.target.value)} /></label>; }
-function NumberField({ label, value, min, step = 1, onChange }: { label: string; value: number; min?: number; step?: number | 'any'; onChange: (value: number) => void }) { return <label className="block text-xs font-bold">{label}<input aria-label={label} className={inputClass} type="number" step={step} min={min} value={value} onChange={(event) => onChange(Number(event.target.value))} /></label>; }
-function DateField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) { return <label className="min-w-0 text-xs font-bold">{label}<input aria-label={label} className={`${inputClass} min-w-0`} type="datetime-local" value={value} onChange={(event) => onChange(event.target.value)} /></label>; }
+function TextField({ label, value, onChange, inputRef }: { label: string; value: string; onChange: (value: string) => void; inputRef?: (node: HTMLInputElement | null) => void }) { return <label className="block text-[13px] font-bold">{label}<input ref={inputRef} aria-label={label} className={inputClass} value={value} onChange={(event) => onChange(event.target.value)} /></label>; }
+function NumberField({ label, value, min, step = 1, onChange }: { label: string; value: number; min?: number; step?: number | 'any'; onChange: (value: number) => void }) { return <label className="block text-[13px] font-bold">{label}<input aria-label={label} className={inputClass} type="number" step={step} min={min} value={value} onChange={(event) => onChange(Number(event.target.value))} /></label>; }
+function DateField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) { return <label className="min-w-0 text-[13px] font-bold">{label}<input aria-label={label} className={`${inputClass} min-w-0`} type="datetime-local" value={value} onChange={(event) => onChange(event.target.value)} /></label>; }
 function readError(payload: unknown, fallback: string) { return payload && typeof payload === 'object' && 'error' in payload && typeof payload.error === 'string' ? payload.error : fallback; }
 function money(value: number, currencyUnit: string) { return `${value.toLocaleString('ko-KR')}${currencyUnit}`; }
 export function formatPromotionPeriod(startsAt: string, endsAt: string): string {

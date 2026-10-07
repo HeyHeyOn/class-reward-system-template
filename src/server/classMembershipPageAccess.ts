@@ -23,6 +23,8 @@ export type ClassMembershipPageItem = Readonly<{
   lifecycleLabel: string;
   href: `/c/${string}` | null;
   selectable: boolean;
+  setupHref?: `/classes/${string}/start`;
+  dashboard?: ClassMembership['dashboard'] & Readonly<{ role: TenantMembershipRole; lifecycle: TenantLifecycle }>;
 }>;
 
 export type ClassMembershipPageDependencies = ClassMembershipRepository & Readonly<{
@@ -61,7 +63,7 @@ export async function loadClassMembershipPage(
 }
 
 function toPageItem(membership: ClassMembership): ClassMembershipPageItem {
-  const selectable = membership.lifecycle === 'ACTIVE';
+  const selectable = membership.lifecycle === 'ACTIVE' && !membership.dashboard?.deletedAt;
   return {
     slug: membership.slug,
     displayName: membership.displayName,
@@ -69,5 +71,8 @@ function toPageItem(membership: ClassMembership): ClassMembershipPageItem {
     lifecycleLabel: lifecycleLabels[membership.lifecycle],
     href: selectable ? `/c/${membership.slug}` : null,
     selectable,
+    ...(membership.dashboard ? { dashboard: { ...membership.dashboard, role: membership.role, lifecycle: membership.lifecycle } } : {}),
+    ...(membership.lifecycle === 'DRAFT' && membership.role === 'OWNER'
+      ? { setupHref: `/classes/${membership.slug}/start` as const } : {}),
   };
 }

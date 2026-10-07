@@ -10,8 +10,12 @@ const READ_AUTHORITY = [
   ['migrations/[jobId]/freezing/reacquisition/[attemptId]', 'GET', 'getProductionFreezingReacquisitionStatus'],
   ['migrations/[jobId]/freezing/start/[attemptId]', 'GET', 'getProductionStartFreezingStatus'],
   ['bank/balance', 'GET', 'createConfiguredBankReader'],
+  ['bank/balance', 'POST', 'createConfiguredBankReader'],
   ['bank/student', 'GET', 'createConfiguredBankReader'],
   ['bank/tasks', 'GET', 'createConfiguredTaskReader'],
+  ['bank/session', 'GET', 'createConfiguredStudentBankReader'],
+  ['bank/me/transactions', 'GET', 'createConfiguredStudentBankReader'],
+  ['bank/me/tasks', 'GET', 'createConfiguredTaskReader'],
   ['checkout/preview', 'POST', 'createConfiguredCheckoutPreviewService'],
   ['products', 'GET', 'createConfiguredCatalogReader'],
   ['promotions/active', 'GET', 'createConfiguredCatalogReader'],
@@ -20,11 +24,16 @@ const READ_AUTHORITY = [
   ['settings', 'GET', 'createConfiguredSettingsReader'],
   ['students/[studentId]', 'GET', 'createConfiguredStudentReader'],
   ['students', 'GET', 'createConfiguredStudentReader'],
-  ['tasks/[taskId]/assignments', 'GET', 'createConfiguredTaskReader'],
-  ['tasks/[taskId]/history', 'GET', 'createConfiguredTaskReader'],
+  ['students/import/template', 'GET', 'createStudentImportTemplate'],
+  ['students/import/preview', 'POST', 'createConfiguredStudentImport'],
+  ['products/import/template', 'GET', 'createProductImportTemplate'],
+  ['products/import/preview', 'POST', 'createConfiguredProductImport'],
   ['tasks/[taskId]', 'GET', 'createConfiguredTaskReader'],
   ['tasks', 'GET', 'createConfiguredTaskReader'],
   ['transactions', 'GET', 'createConfiguredTransactionReader'],
+  ['migrations/xlsx/preview', 'POST', 'createConfiguredXlsxImport'],
+  ['task-ledger', 'GET', 'createConfiguredTaskLedger'],
+  ['task-ledger/tasks/[taskId]/history', 'GET', 'createConfiguredTaskLedger'],
 ] as const;
 const CONFIGURED_MUTATION_AUTHORITY = [
   ['migrations/[jobId]/freezing/reacquisition/challenge', 'POST', 'getProductionFreezingReacquisitionHandlers'],
@@ -34,18 +43,37 @@ const CONFIGURED_MUTATION_AUTHORITY = [
   ['migrations/[jobId]/freezing/consent/challenge', 'POST', 'getProductionFreezingConsentHandlers'],
   ['migrations/[jobId]/freezing/consent', 'POST', 'getProductionFreezingConsentHandlers'],
   ['admin/login', 'POST', 'getProductionTenantLegacyAdminAuth'],
+  ['bank/session', 'POST', 'createConfiguredStudentBankReader'],
+  ['bank/me/tasks/[taskId]/complete', 'POST', 'createConfiguredTaskCompletion'],
   ['checkout', 'POST', 'createConfiguredCheckoutCommand'],
   ['products', 'POST', 'createConfiguredProductCreation'],
+  ['products/batch', 'PATCH', 'createConfiguredProductMutation'],
   ['products/[productId]', 'DELETE', 'createConfiguredProductDeletion'],
   ['promotions/[promotionId]', 'DELETE', 'createConfiguredPromotionDeletion'],
   ['promotions/[promotionId]', 'PATCH', 'createConfiguredPromotionMutation'],
   ['promotions', 'POST', 'createConfiguredPromotionCreation'],
   ['students', 'POST', 'createConfiguredStudentCreation'],
+  ['students/batch', 'PATCH', 'createConfiguredStudentMutation'],
+  ['students/batch', 'DELETE', 'createConfiguredStudentDeletion'],
+  ['students/[studentId]', 'DELETE', 'createConfiguredStudentDeletion'],
   ['students/bulk', 'PATCH', 'createConfiguredAdminAdjustmentCommand'],
+  ['students/import/commit', 'POST', 'createConfiguredStudentImport'],
+  ['products/import/commit', 'POST', 'createConfiguredProductImport'],
   ['tasks/[taskId]/complete', 'POST', 'createConfiguredTaskCompletion'],
-  ['tasks', 'POST', 'createConfiguredTaskCreation'],
-  ['tasks/completions/reset', 'POST', 'createConfiguredTaskResetCommand'],
   ['transactions/[transactionId]/cancel', 'POST', 'createConfiguredTransactionCancellation'],
+  ['migrations/xlsx/commit', 'POST', 'createConfiguredXlsxImport'],
+  ['task-ledger/tasks', 'POST', 'createConfiguredTaskLedger'],
+  ['task-ledger/tasks/delete', 'POST', 'createConfiguredTaskLedger'],
+  ['task-ledger/tasks/[taskId]', 'PATCH', 'createConfiguredTaskLedger'],
+  ['task-ledger/stages', 'POST', 'createConfiguredTaskLedger'],
+  ['task-ledger/reset', 'POST', 'createConfiguredTaskLedger'],
+  ['task-ledger/repeat', 'POST', 'createConfiguredTaskLedger'],
+  ['task-ledger/qr', 'POST', 'createConfiguredTaskLedger'],
+] as const;
+
+// Logout touches no class data: it only clears the student's own bank session cookie.
+const SESSION_ONLY_MUTATIONS = [
+  ['bank/session', 'DELETE', 'clearedStudentBankSessionCookie'],
 ] as const;
 
 async function exportedMethodBody(route: string, method: string): Promise<string> {
@@ -86,7 +114,7 @@ describe('tenant read route PostgreSQL authority', () => {
       .sort((left, right) => `${left[0]}:${left[1]}`.localeCompare(`${right[0]}:${right[1]}`));
     const authority = READ_AUTHORITY.map(([route, method]) => [route, method] as string[])
       .sort((left, right) => `${left[0]}:${left[1]}`.localeCompare(`${right[0]}:${right[1]}`));
-    expect(inventory).toHaveLength(19);
+    expect(inventory).toHaveLength(28);
     expect(authority).toEqual(inventory);
   });
 
@@ -108,17 +136,23 @@ describe('tenant mutation route PostgreSQL authority', () => {
     },
   );
 
-  it('keeps every other tenant mutation intentionally on direct Sheets authority', async () => {
+  it.each(SESSION_ONLY_MUTATIONS)('%s %s only clears the session cookie through %s', async (route, method, root) => {
+    const body = await exportedMethodBody(route, method);
+    expect(body).toContain(`${root}(`);
+    expect(body).not.toMatch(/createConfigured\w*\s*\(|request\.(json|arrayBuffer|text)/);
+  });
+
+  it('accounts for the remaining tenant mutations that retain a legacy Sheets branch', async () => {
     const configured = new Set(
-      CONFIGURED_MUTATION_AUTHORITY.map(([route, method]) => `${method} /${route}`),
+      [...CONFIGURED_MUTATION_AUTHORITY, ...SESSION_ONLY_MUTATIONS].map(([route, method]) => `${method} /${route}`),
     );
     const sheetsMutations = TENANT_ROUTE_INVENTORY.filter((entry) =>
       entry.scope === 'tenant-data'
       && entry.effect === 'mutation'
       && !configured.has(`${entry.method} ${entry.route}`));
 
-    expect(CONFIGURED_MUTATION_AUTHORITY).toHaveLength(19);
-    expect(sheetsMutations).toHaveLength(15);
+    expect(CONFIGURED_MUTATION_AUTHORITY).toHaveLength(33);
+    expect(sheetsMutations).toHaveLength(4);
     for (const entry of sheetsMutations) {
       const body = await exportedMethodBody(entry.route.replace(/^\//, ''), entry.method);
       expect(body, `${entry.method} ${entry.route}`).toMatch(/createConfiguredSheetsStore\s*\(/);

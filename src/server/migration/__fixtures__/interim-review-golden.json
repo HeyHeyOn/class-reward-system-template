@@ -1,0 +1,105 @@
+[
+  {
+    "input": {
+      "cells": {
+        "taskInstanceId": []
+      },
+      "legacy": {
+        "taskId": "t"
+      }
+    },
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "cells.taskInstanceId?.trim is not a function"
+      }
+    }
+  },
+  {
+    "input": {
+      "cells": {
+        "taskInstanceId": {}
+      },
+      "legacy": {
+        "taskId": "t"
+      }
+    },
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "cells.taskInstanceId?.trim is not a function"
+      }
+    }
+  },
+  {
+    "input": {
+      "cells": {
+        "taskInstanceId": 1
+      },
+      "legacy": {
+        "taskId": "t"
+      }
+    },
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "cells.taskInstanceId?.trim is not a function"
+      }
+    }
+  },
+  {
+    "input": {
+      "cells": {
+        "taskInstanceId": true
+      },
+      "legacy": {
+        "taskId": "t"
+      }
+    },
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "cells.taskInstanceId?.trim is not a function"
+      }
+    }
+  },
+  {
+    "input": {
+      "cells": {
+        "taskInstanceId": ""
+      },
+      "legacy": {
+        "taskId": "t"
+      }
+    },
+    "outcome": {
+      "json": "{\"taskInstanceId\":\"legacy:t:1970-01-01T00:00:00.000Z\",\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"1970-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null}"
+    }
+  },
+  {
+    "input": {
+      "cells": {
+        "taskInstanceId": " id "
+      },
+      "legacy": {
+        "taskId": "t"
+      }
+    },
+    "outcome": {
+      "json": "{\"taskInstanceId\":\"id\",\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"1970-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null,\"readWarnings\":[\"INVALID_CURRENT_SCHEDULE\"]}"
+    }
+  },
+  {
+    "input": {
+      "cells": {
+        "taskInstanceId": null
+      },
+      "legacy": {
+        "taskId": "t"
+      }
+    },
+    "outcome": {
+      "json": "{\"taskInstanceId\":\"legacy:t:1970-01-01T00:00:00.000Z\",\"currentSchedule\":{\"ruleVersion\":1,\"effectiveFrom\":\"1970-01-01T00:00:00.000Z\",\"timeZone\":\"Asia/Seoul\",\"recurrence\":{\"type\":\"NONE\"},\"resetCompletionOnCycle\":false,\"resetAssignmentOnCycle\":false},\"pendingSchedule\":null}"
+    }
+  }
+]

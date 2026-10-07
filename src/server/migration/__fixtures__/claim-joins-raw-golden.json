@@ -1,0 +1,428 @@
+{
+  "head": "448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8",
+  "cases": [
+    {
+      "name": "redis-duplicate-1",
+      "groups": [
+        {
+          "record": "{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"provider\":\"PADLET\",\"tupleDigest\":\"ee6dcb6d1569504a193f774f47b225879f98324d3d3a31659ae19b8c0b1952e3\",\"boardId\":\"BOARD12345678901\",\"postId\":\"POST-1\",\"ownerDigest\":\"71a0ef7195df486543f63f0cb1dff83ee245c10fb566219b128a7fa99a8bbbac\",\"operationId\":\"op-1\",\"operationPayloadHash\":\"sha256:12b1402077feb153603cbd8f3698975b163eb3322ee70cde56377be7ceb78a1f\",\"taskId\":\"T1\",\"studentId\":\"S1\",\"cycleStartsAt\":\"2026-08-31T00:00:00.000Z\",\"evidenceCreatedAt\":\"2026-08-31T00:00:00.000Z\",\"evidenceAuthorFullName\":\"Alice\",\"provenances\":[{\"kind\":\"REDIS\",\"artifactDigest\":\"867f384774439b1408e380db19911962e2af99a261f3b9160dd6e2b64c5e925c\",\"provenance\":\"upstash:padlet:evidence-bindings:v2\",\"sourceDigest\":\"29fc882a63c86e3c72c7baff5a9d84a272a97a71f23639f315bc1750dc21d5f3\"}]}",
+          "members": [
+            {
+              "errors": [],
+              "refs": [
+                {
+                  "code": "BROKEN_TASK_REFERENCE",
+                  "table": "task_business",
+                  "id": "T1"
+                },
+                {
+                  "code": "BROKEN_STUDENT_REFERENCE",
+                  "table": "students",
+                  "id": "S1"
+                }
+              ],
+              "canonicalShared": true,
+              "targetShared": true
+            }
+          ],
+          "sheetEntries": []
+        }
+      ]
+    },
+    {
+      "name": "redis-duplicate-3",
+      "groups": [
+        {
+          "record": "{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"provider\":\"PADLET\",\"tupleDigest\":\"ee6dcb6d1569504a193f774f47b225879f98324d3d3a31659ae19b8c0b1952e3\",\"boardId\":\"BOARD12345678901\",\"postId\":\"POST-1\",\"ownerDigest\":\"71a0ef7195df486543f63f0cb1dff83ee245c10fb566219b128a7fa99a8bbbac\",\"operationId\":\"op-1\",\"operationPayloadHash\":null,\"provenances\":[{\"kind\":\"REDIS\",\"artifactDigest\":\"867f384774439b1408e380db19911962e2af99a261f3b9160dd6e2b64c5e925c\",\"provenance\":\"upstash:padlet:evidence-bindings:v2\",\"sourceDigest\":\"29fc882a63c86e3c72c7baff5a9d84a272a97a71f23639f315bc1750dc21d5f3\"},{\"kind\":\"REDIS\",\"artifactDigest\":\"867f384774439b1408e380db19911962e2af99a261f3b9160dd6e2b64c5e925c\",\"provenance\":\"upstash:padlet:evidence-bindings:v2\",\"sourceDigest\":\"29fc882a63c86e3c72c7baff5a9d84a272a97a71f23639f315bc1750dc21d5f3\"},{\"kind\":\"REDIS\",\"artifactDigest\":\"867f384774439b1408e380db19911962e2af99a261f3b9160dd6e2b64c5e925c\",\"provenance\":\"upstash:padlet:evidence-bindings:v2\",\"sourceDigest\":\"29fc882a63c86e3c72c7baff5a9d84a272a97a71f23639f315bc1750dc21d5f3\"}]}",
+          "members": [
+            {
+              "errors": [
+                "CLAIM_BINDING_CONFLICT",
+                "CLAIM_BINDING_CONFLICT",
+                "CLAIM_BINDING_CONFLICT",
+                "CLAIM_BINDING_CONFLICT"
+              ],
+              "refs": [],
+              "canonicalShared": true,
+              "targetShared": true
+            },
+            {
+              "errors": [
+                "CLAIM_BINDING_CONFLICT",
+                "CLAIM_BINDING_CONFLICT",
+                "CLAIM_BINDING_CONFLICT"
+              ],
+              "refs": [],
+              "canonicalShared": true,
+              "targetShared": true
+            },
+            {
+              "errors": [
+                "CLAIM_BINDING_CONFLICT",
+                "CLAIM_BINDING_CONFLICT"
+              ],
+              "refs": [],
+              "canonicalShared": true,
+              "targetShared": true
+            }
+          ],
+          "sheetEntries": []
+        }
+      ]
+    },
+    {
+      "name": "actual-bank-redis",
+      "groups": [
+        {
+          "record": "{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"provider\":\"PADLET\",\"tupleDigest\":\"0807d69cc7257f85bcd99329cc0e0d41783a0ba7beea40db6cc595999e5fdcda\",\"boardId\":\"BOARD123456789012\",\"postId\":\"POST-1\",\"ownerDigest\":\"71a0ef7195df486543f63f0cb1dff83ee245c10fb566219b128a7fa99a8bbbac\",\"operationId\":\"op-1\",\"operationPayloadHash\":\"sha256:0117f8bd34c796b51ddd11126fc68678200f607b58114b70633ba75ad55fed9c\",\"taskId\":\"T1\",\"studentId\":\"S1\",\"cycleStartsAt\":\"2026-08-31T00:00:00.000Z\",\"evidenceCreatedAt\":\"2026-08-31T00:00:00.000Z\",\"evidenceAuthorFullName\":\"Alice\",\"provenances\":[{\"kind\":\"SHEET\",\"artifactDigest\":\"514ac4c6a38d4e129fe72ead0db53a4d3d2e61d66fe3dc5c76c6d6614e2599f1\",\"tab\":\"TaskCompletions\",\"rowNumber\":2,\"rowHash\":\"2e457817fc39b45dc724d5a2825ea2455b41a9e313f6dbcac29ec4c0c5bd522f\"}]}",
+          "members": [
+            {
+              "errors": [
+                "UNSUPPORTED_LEGACY_BANK_AUTHORITY",
+                "CLAIM_BINDING_CONFLICT",
+                "CLAIM_BINDING_CONFLICT"
+              ],
+              "refs": [],
+              "canonicalShared": true,
+              "targetShared": true
+            }
+          ],
+          "sheetEntries": [
+            {
+              "errors": [
+                "BROKEN_ASSIGNMENT_REFERENCE",
+                "UNSUPPORTED_LEGACY_BANK_AUTHORITY"
+              ],
+              "refs": [
+                {
+                  "code": "BROKEN_STUDENT_REFERENCE",
+                  "table": "students",
+                  "id": "S1"
+                },
+                {
+                  "code": "BROKEN_TASK_REFERENCE",
+                  "table": "tasks",
+                  "id": "TI1"
+                },
+                {
+                  "code": "BROKEN_ASSIGNMENT_REFERENCE",
+                  "table": "task_assignments",
+                  "id": "AS1"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "record": "{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"provider\":\"PADLET\",\"tupleDigest\":\"ee6dcb6d1569504a193f774f47b225879f98324d3d3a31659ae19b8c0b1952e3\",\"boardId\":\"BOARD12345678901\",\"postId\":\"POST-1\",\"ownerDigest\":\"71a0ef7195df486543f63f0cb1dff83ee245c10fb566219b128a7fa99a8bbbac\",\"operationId\":\"op-1\",\"operationPayloadHash\":\"sha256:12b1402077feb153603cbd8f3698975b163eb3322ee70cde56377be7ceb78a1f\",\"taskId\":\"T1\",\"studentId\":\"S1\",\"cycleStartsAt\":\"2026-08-31T00:00:00.000Z\",\"evidenceCreatedAt\":\"2026-08-31T00:00:00.000Z\",\"evidenceAuthorFullName\":\"Alice\",\"provenances\":[{\"kind\":\"REDIS\",\"artifactDigest\":\"867f384774439b1408e380db19911962e2af99a261f3b9160dd6e2b64c5e925c\",\"provenance\":\"upstash:padlet:evidence-bindings:v2\",\"sourceDigest\":\"29fc882a63c86e3c72c7baff5a9d84a272a97a71f23639f315bc1750dc21d5f3\"}]}",
+          "members": [
+            {
+              "errors": [
+                "UNSUPPORTED_LEGACY_BANK_AUTHORITY",
+                "CLAIM_BINDING_CONFLICT"
+              ],
+              "refs": [
+                {
+                  "code": "BROKEN_TASK_REFERENCE",
+                  "table": "task_business",
+                  "id": "T1"
+                },
+                {
+                  "code": "BROKEN_STUDENT_REFERENCE",
+                  "table": "students",
+                  "id": "S1"
+                }
+              ],
+              "canonicalShared": true,
+              "targetShared": true
+            }
+          ],
+          "sheetEntries": []
+        }
+      ]
+    },
+    {
+      "name": "orphan-only",
+      "groups": []
+    },
+    {
+      "name": "orphan-collision",
+      "groups": [
+        {
+          "record": "{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"provider\":\"PADLET\",\"tupleDigest\":\"ee6dcb6d1569504a193f774f47b225879f98324d3d3a31659ae19b8c0b1952e3\",\"boardId\":\"BOARD12345678901\",\"postId\":\"POST-1\",\"ownerDigest\":\"71a0ef7195df486543f63f0cb1dff83ee245c10fb566219b128a7fa99a8bbbac\",\"operationId\":\"op-1\",\"operationPayloadHash\":\"sha256:12b1402077feb153603cbd8f3698975b163eb3322ee70cde56377be7ceb78a1f\",\"taskId\":\"T1\",\"studentId\":\"S1\",\"cycleStartsAt\":\"2026-08-31T00:00:00.000Z\",\"evidenceCreatedAt\":\"2026-08-31T00:00:00.000Z\",\"evidenceAuthorFullName\":\"Alice\",\"provenances\":[{\"kind\":\"REDIS\",\"artifactDigest\":\"867f384774439b1408e380db19911962e2af99a261f3b9160dd6e2b64c5e925c\",\"provenance\":\"upstash:padlet:evidence-bindings:v2\",\"sourceDigest\":\"29fc882a63c86e3c72c7baff5a9d84a272a97a71f23639f315bc1750dc21d5f3\"}]}",
+          "members": [
+            {
+              "errors": [
+                "ORPHAN_CLAIM_COLLISION",
+                "CLAIM_BINDING_CONFLICT"
+              ],
+              "refs": [
+                {
+                  "code": "BROKEN_TASK_REFERENCE",
+                  "table": "task_business",
+                  "id": "T1"
+                },
+                {
+                  "code": "BROKEN_STUDENT_REFERENCE",
+                  "table": "students",
+                  "id": "S1"
+                }
+              ],
+              "canonicalShared": true,
+              "targetShared": true
+            }
+          ],
+          "sheetEntries": []
+        }
+      ]
+    },
+    {
+      "name": "v1-collision",
+      "groups": [
+        {
+          "record": "{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"provider\":\"PADLET\",\"tupleDigest\":\"ee6dcb6d1569504a193f774f47b225879f98324d3d3a31659ae19b8c0b1952e3\",\"boardId\":\"BOARD12345678901\",\"postId\":\"POST-1\",\"ownerDigest\":\"71a0ef7195df486543f63f0cb1dff83ee245c10fb566219b128a7fa99a8bbbac\",\"operationId\":\"op-1\",\"operationPayloadHash\":\"sha256:12b1402077feb153603cbd8f3698975b163eb3322ee70cde56377be7ceb78a1f\",\"taskId\":\"T1\",\"studentId\":\"S1\",\"cycleStartsAt\":\"2026-08-31T00:00:00.000Z\",\"evidenceCreatedAt\":\"2026-08-31T00:00:00.000Z\",\"evidenceAuthorFullName\":\"Alice\",\"provenances\":[{\"kind\":\"REDIS\",\"artifactDigest\":\"867f384774439b1408e380db19911962e2af99a261f3b9160dd6e2b64c5e925c\",\"provenance\":\"upstash:padlet:evidence-bindings:v2\",\"sourceDigest\":\"29fc882a63c86e3c72c7baff5a9d84a272a97a71f23639f315bc1750dc21d5f3\"}]}",
+          "members": [
+            {
+              "errors": [
+                "V1_TOMBSTONE_COLLISION",
+                "CLAIM_BINDING_CONFLICT"
+              ],
+              "refs": [
+                {
+                  "code": "BROKEN_TASK_REFERENCE",
+                  "table": "task_business",
+                  "id": "T1"
+                },
+                {
+                  "code": "BROKEN_STUDENT_REFERENCE",
+                  "table": "students",
+                  "id": "S1"
+                }
+              ],
+              "canonicalShared": true,
+              "targetShared": true
+            }
+          ],
+          "sheetEntries": []
+        }
+      ]
+    },
+    {
+      "name": "binding-conflict",
+      "groups": [
+        {
+          "record": "{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"provider\":\"PADLET\",\"tupleDigest\":\"ee6dcb6d1569504a193f774f47b225879f98324d3d3a31659ae19b8c0b1952e3\",\"boardId\":\"BOARD12345678901\",\"postId\":\"POST-1\",\"ownerDigest\":\"71a0ef7195df486543f63f0cb1dff83ee245c10fb566219b128a7fa99a8bbbac\",\"operationId\":\"op-1\",\"operationPayloadHash\":\"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"taskId\":\"T1\",\"studentId\":\"S1\",\"cycleStartsAt\":\"2026-08-31T00:00:00.000Z\",\"evidenceCreatedAt\":\"2026-08-31T00:00:00.000Z\",\"evidenceAuthorFullName\":\"Alice\",\"provenances\":[{\"kind\":\"REDIS\",\"artifactDigest\":\"867f384774439b1408e380db19911962e2af99a261f3b9160dd6e2b64c5e925c\",\"provenance\":\"upstash:padlet:evidence-bindings:v2\",\"sourceDigest\":\"29fc882a63c86e3c72c7baff5a9d84a272a97a71f23639f315bc1750dc21d5f3\"}]}",
+          "members": [
+            {
+              "errors": [
+                "CLAIM_BINDING_CONFLICT",
+                "CLAIM_BINDING_CONFLICT"
+              ],
+              "refs": [
+                {
+                  "code": "BROKEN_TASK_REFERENCE",
+                  "table": "task_business",
+                  "id": "T1"
+                },
+                {
+                  "code": "BROKEN_STUDENT_REFERENCE",
+                  "table": "students",
+                  "id": "S1"
+                }
+              ],
+              "canonicalShared": true,
+              "targetShared": true
+            }
+          ],
+          "sheetEntries": []
+        }
+      ]
+    },
+    {
+      "name": "unbound-claim",
+      "groups": [
+        {
+          "record": "{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"provider\":\"PADLET\",\"tupleDigest\":\"ee6dcb6d1569504a193f774f47b225879f98324d3d3a31659ae19b8c0b1952e3\",\"boardId\":\"BOARD12345678901\",\"postId\":\"POST-1\",\"ownerDigest\":\"71a0ef7195df486543f63f0cb1dff83ee245c10fb566219b128a7fa99a8bbbac\",\"operationId\":\"op-1\",\"operationPayloadHash\":null,\"provenances\":[{\"kind\":\"REDIS\",\"artifactDigest\":\"867f384774439b1408e380db19911962e2af99a261f3b9160dd6e2b64c5e925c\",\"provenance\":\"upstash:padlet:evidence-bindings:v2\",\"sourceDigest\":\"29fc882a63c86e3c72c7baff5a9d84a272a97a71f23639f315bc1750dc21d5f3\"}]}",
+          "members": [
+            {
+              "errors": [
+                "CLAIM_BINDING_CONFLICT",
+                "CLAIM_BINDING_CONFLICT"
+              ],
+              "refs": [],
+              "canonicalShared": true,
+              "targetShared": true
+            }
+          ],
+          "sheetEntries": []
+        }
+      ]
+    },
+    {
+      "name": "missing-binding",
+      "groups": [
+        {
+          "record": "{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"provider\":\"PADLET\",\"tupleDigest\":\"ee6dcb6d1569504a193f774f47b225879f98324d3d3a31659ae19b8c0b1952e3\",\"boardId\":\"BOARD12345678901\",\"postId\":\"POST-1\",\"ownerDigest\":\"71a0ef7195df486543f63f0cb1dff83ee245c10fb566219b128a7fa99a8bbbac\",\"operationId\":\"op-1\",\"operationPayloadHash\":null,\"provenances\":[{\"kind\":\"REDIS\",\"artifactDigest\":\"867f384774439b1408e380db19911962e2af99a261f3b9160dd6e2b64c5e925c\",\"provenance\":\"upstash:padlet:evidence-bindings:v2\",\"sourceDigest\":\"29fc882a63c86e3c72c7baff5a9d84a272a97a71f23639f315bc1750dc21d5f3\"}]}",
+          "members": [
+            {
+              "errors": [
+                "CLAIM_BINDING_CONFLICT",
+                "CLAIM_BINDING_CONFLICT"
+              ],
+              "refs": [],
+              "canonicalShared": true,
+              "targetShared": true
+            }
+          ],
+          "sheetEntries": []
+        }
+      ]
+    },
+    {
+      "name": "duplicate-binding",
+      "groups": [
+        {
+          "record": "{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"provider\":\"PADLET\",\"tupleDigest\":\"ee6dcb6d1569504a193f774f47b225879f98324d3d3a31659ae19b8c0b1952e3\",\"boardId\":\"BOARD12345678901\",\"postId\":\"POST-1\",\"ownerDigest\":\"71a0ef7195df486543f63f0cb1dff83ee245c10fb566219b128a7fa99a8bbbac\",\"operationId\":\"op-1\",\"operationPayloadHash\":null,\"provenances\":[{\"kind\":\"REDIS\",\"artifactDigest\":\"867f384774439b1408e380db19911962e2af99a261f3b9160dd6e2b64c5e925c\",\"provenance\":\"upstash:padlet:evidence-bindings:v2\",\"sourceDigest\":\"29fc882a63c86e3c72c7baff5a9d84a272a97a71f23639f315bc1750dc21d5f3\"}]}",
+          "members": [
+            {
+              "errors": [
+                "CLAIM_BINDING_CONFLICT",
+                "CLAIM_BINDING_CONFLICT"
+              ],
+              "refs": [],
+              "canonicalShared": true,
+              "targetShared": true
+            }
+          ],
+          "sheetEntries": []
+        }
+      ]
+    },
+    {
+      "name": "swapped-binding",
+      "groups": [
+        {
+          "record": "{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"provider\":\"PADLET\",\"tupleDigest\":\"ee6dcb6d1569504a193f774f47b225879f98324d3d3a31659ae19b8c0b1952e3\",\"boardId\":\"BOARD12345678901\",\"postId\":\"POST-1\",\"ownerDigest\":\"71a0ef7195df486543f63f0cb1dff83ee245c10fb566219b128a7fa99a8bbbac\",\"operationId\":\"op-1\",\"operationPayloadHash\":\"sha256:12b1402077feb153603cbd8f3698975b163eb3322ee70cde56377be7ceb78a1f\",\"taskId\":\"T1\",\"studentId\":\"other-student\",\"cycleStartsAt\":\"2026-08-31T00:00:00.000Z\",\"evidenceCreatedAt\":\"2026-08-31T00:00:00.000Z\",\"evidenceAuthorFullName\":\"Alice\",\"provenances\":[{\"kind\":\"REDIS\",\"artifactDigest\":\"867f384774439b1408e380db19911962e2af99a261f3b9160dd6e2b64c5e925c\",\"provenance\":\"upstash:padlet:evidence-bindings:v2\",\"sourceDigest\":\"29fc882a63c86e3c72c7baff5a9d84a272a97a71f23639f315bc1750dc21d5f3\"}]}",
+          "members": [
+            {
+              "errors": [
+                "CLAIM_BINDING_CONFLICT",
+                "BROKEN_STUDENT_REFERENCE",
+                "CLAIM_BINDING_CONFLICT"
+              ],
+              "refs": [
+                {
+                  "code": "BROKEN_TASK_REFERENCE",
+                  "table": "task_business",
+                  "id": "T1"
+                },
+                {
+                  "code": "BROKEN_STUDENT_REFERENCE",
+                  "table": "students",
+                  "id": "other-student"
+                }
+              ],
+              "canonicalShared": true,
+              "targetShared": true
+            }
+          ],
+          "sheetEntries": []
+        }
+      ]
+    },
+    {
+      "name": "provenance-order",
+      "groups": [
+        {
+          "record": "{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"provider\":\"PADLET\",\"tupleDigest\":\"ee6dcb6d1569504a193f774f47b225879f98324d3d3a31659ae19b8c0b1952e3\",\"boardId\":\"BOARD12345678901\",\"postId\":\"POST-1\",\"ownerDigest\":\"71a0ef7195df486543f63f0cb1dff83ee245c10fb566219b128a7fa99a8bbbac\",\"operationId\":\"op-1\",\"operationPayloadHash\":\"sha256:12b1402077feb153603cbd8f3698975b163eb3322ee70cde56377be7ceb78a1f\",\"taskId\":\"T1\",\"studentId\":\"S1\",\"cycleStartsAt\":\"2026-08-31T00:00:00.000Z\",\"evidenceCreatedAt\":\"2026-08-31T00:00:00.000Z\",\"evidenceAuthorFullName\":\"Alice\",\"provenances\":[{\"kind\":\"REDIS\",\"artifactDigest\":\"867f384774439b1408e380db19911962e2af99a261f3b9160dd6e2b64c5e925c\",\"provenance\":\"upstash:padlet:evidence-bindings:v2\",\"sourceDigest\":\"29fc882a63c86e3c72c7baff5a9d84a272a97a71f23639f315bc1750dc21d5f3\"},{\"kind\":\"REDIS\",\"artifactDigest\":\"867f384774439b1408e380db19911962e2af99a261f3b9160dd6e2b64c5e925c\",\"provenance\":\"aaa:source\",\"sourceDigest\":\"87aba147e7dc08dc78bc19030a3c01ac2cc87d6c67b92303044753cd519c0f50\"}]}",
+          "members": [
+            {
+              "errors": [
+                "CLAIM_BINDING_CONFLICT",
+                "CLAIM_BINDING_CONFLICT",
+                "CLAIM_BINDING_CONFLICT"
+              ],
+              "refs": [
+                {
+                  "code": "BROKEN_TASK_REFERENCE",
+                  "table": "task_business",
+                  "id": "T1"
+                },
+                {
+                  "code": "BROKEN_STUDENT_REFERENCE",
+                  "table": "students",
+                  "id": "S1"
+                }
+              ],
+              "canonicalShared": true,
+              "targetShared": true
+            },
+            {
+              "errors": [
+                "CLAIM_BINDING_CONFLICT",
+                "CLAIM_BINDING_CONFLICT"
+              ],
+              "refs": [
+                {
+                  "code": "BROKEN_TASK_REFERENCE",
+                  "table": "task_business",
+                  "id": "T1"
+                },
+                {
+                  "code": "BROKEN_STUDENT_REFERENCE",
+                  "table": "students",
+                  "id": "S1"
+                }
+              ],
+              "canonicalShared": true,
+              "targetShared": true
+            }
+          ],
+          "sheetEntries": []
+        }
+      ]
+    },
+    {
+      "name": "v1-repeated-binding",
+      "groups": [
+        {
+          "record": "{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"provider\":\"PADLET\",\"tupleDigest\":\"ee6dcb6d1569504a193f774f47b225879f98324d3d3a31659ae19b8c0b1952e3\",\"boardId\":\"BOARD12345678901\",\"postId\":\"POST-1\",\"ownerDigest\":\"71a0ef7195df486543f63f0cb1dff83ee245c10fb566219b128a7fa99a8bbbac\",\"operationId\":\"op-1\",\"operationPayloadHash\":null,\"provenances\":[{\"kind\":\"REDIS\",\"artifactDigest\":\"867f384774439b1408e380db19911962e2af99a261f3b9160dd6e2b64c5e925c\",\"provenance\":\"upstash:padlet:evidence-bindings:v2\",\"sourceDigest\":\"29fc882a63c86e3c72c7baff5a9d84a272a97a71f23639f315bc1750dc21d5f3\"}]}",
+          "members": [
+            {
+              "errors": [
+                "CLAIM_BINDING_CONFLICT",
+                "V1_TOMBSTONE_COLLISION",
+                "CLAIM_BINDING_CONFLICT"
+              ],
+              "refs": [],
+              "canonicalShared": true,
+              "targetShared": true
+            }
+          ],
+          "sheetEntries": []
+        }
+      ]
+    },
+    {
+      "name": "orphan-repeated-binding",
+      "groups": [
+        {
+          "record": "{\"tenantId\":\"10000000-0000-4000-8000-000000000001\",\"provider\":\"PADLET\",\"tupleDigest\":\"ee6dcb6d1569504a193f774f47b225879f98324d3d3a31659ae19b8c0b1952e3\",\"boardId\":\"BOARD12345678901\",\"postId\":\"POST-1\",\"ownerDigest\":\"71a0ef7195df486543f63f0cb1dff83ee245c10fb566219b128a7fa99a8bbbac\",\"operationId\":\"op-1\",\"operationPayloadHash\":null,\"provenances\":[{\"kind\":\"REDIS\",\"artifactDigest\":\"867f384774439b1408e380db19911962e2af99a261f3b9160dd6e2b64c5e925c\",\"provenance\":\"upstash:padlet:evidence-bindings:v2\",\"sourceDigest\":\"29fc882a63c86e3c72c7baff5a9d84a272a97a71f23639f315bc1750dc21d5f3\"}]}",
+          "members": [
+            {
+              "errors": [
+                "CLAIM_BINDING_CONFLICT",
+                "ORPHAN_CLAIM_COLLISION",
+                "CLAIM_BINDING_CONFLICT"
+              ],
+              "refs": [],
+              "canonicalShared": true,
+              "targetShared": true
+            }
+          ],
+          "sheetEntries": []
+        }
+      ]
+    }
+  ]
+}

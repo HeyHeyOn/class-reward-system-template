@@ -6,6 +6,7 @@ import {
 import { products } from './catalog';
 import { operations } from './operations';
 import { students } from './students';
+import { legacyTaskOrigins } from './legacyTaskOrigins';
 import { taskAssignments, tasks } from './tasks';
 
 export const transactionKinds = [
@@ -134,6 +135,7 @@ export const inventoryLedger = pgTable('inventory_ledger', {
 ]);
 
 export const taskCompletions = pgTable('task_completions', {
+  legacyOriginId: text('legacy_origin_id'),
   tenantId: uuid('tenant_id').notNull(),
   completionId: text('completion_id').notNull(),
   eventSequence: bigint('event_sequence', { mode: 'bigint' }).generatedByDefaultAsIdentity().notNull(),
@@ -169,6 +171,8 @@ export const taskCompletions = pgTable('task_completions', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   primaryKey({ name: 'task_completions_pkey', columns: [table.tenantId, table.completionId] }),
+  foreignKey({ name: 'task_completions_legacy_origin_fk', columns: [table.tenantId, table.legacyOriginId], foreignColumns: [legacyTaskOrigins.tenantId, legacyTaskOrigins.originId] }),
+  check('task_completions_legacy_operation_check', sql`${table.legacyOriginId} IS NULL OR (${table.adminOperationId} IS NULL AND ${table.adminOperationHash} IS NULL AND ${table.operationId} IS NULL AND ${table.operationHash} IS NULL)`),
   unique('task_completions_event_sequence_unique').on(table.tenantId, table.eventSequence),
   foreignKey({ name: 'task_completions_task_fk', columns: [table.tenantId, table.taskInstanceId], foreignColumns: [tasks.tenantId, tasks.taskInstanceId] }),
   foreignKey({ name: 'task_completions_student_fk', columns: [table.tenantId, table.studentId], foreignColumns: [students.tenantId, students.studentId] }),

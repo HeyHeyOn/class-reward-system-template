@@ -21,6 +21,10 @@ export type TransactionConnection = {
     values?: unknown[],
   ): Promise<QueryResult<TResult>>;
   release(error?: Error | boolean): void;
+  // node-postgres removes the pool's idle error listener during checkout.
+  // Non-evented test adapters (e.g. PGlite) need neither method.
+  on?(event: 'error', listener: (error: Error) => void): unknown;
+  removeListener?(event: 'error', listener: (error: Error) => void): unknown;
 };
 
 export type TransactionPool = {
@@ -124,7 +128,19 @@ export function createTenantTransactionRunner(
       let committed = false;
       let commitAttempted = false;
       let discardConnection = false;
+      let connectionError: Error | undefined;
+      let listenerAttached = false;
+      const onConnectionError = (error: Error) => {
+        connectionError ??= error;
+        discardConnection = true;
+      };
       try {
+        // A transport close both rejects the active query AND emits Client.error.
+        // A query catch alone cannot prevent EventEmitter's uncaught exception.
+        if (connection.on && connection.removeListener) {
+          connection.on('error', onConnectionError);
+          listenerAttached = true;
+        }
         await connection.query(isolationLevel === 'READ COMMITTED'
           ? 'BEGIN'
           : 'BEGIN ISOLATION LEVEL REPEATABLE READ');
@@ -134,6 +150,7 @@ export function createTenantTransactionRunner(
           [tenantId],
         );
         const result = await callback(createDatabase(connection));
+        if (connectionError) throw connectionError;
         commitAttempted = true;
         await connection.query('COMMIT');
         began = false;
@@ -154,7 +171,7 @@ export function createTenantTransactionRunner(
           }
         }
 
-        if (readSqlState(error) !== SERIALIZATION_FAILURE) {
+        if (connectionError || readSqlState(error) !== SERIALIZATION_FAILURE) {
           throw error;
         }
         if (attempt === maxAttempts) {
@@ -177,6 +194,9 @@ export function createTenantTransactionRunner(
           } else {
             throw releaseError;
           }
+        } finally {
+          // release() first restores the pool's listener; remove only ours.
+          if (listenerAttached) connection.removeListener?.('error', onConnectionError);
         }
       }
     }

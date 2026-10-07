@@ -1,0 +1,244 @@
+{
+  "scope": "DDL_BLOCKER_SOURCE_INSPECTION_ONLY_NO_TEST_OR_ACCEPTANCE_EVIDENCE",
+  "source_owner": "secondbot",
+  "inspection": {
+    "evidence_kind": "READ_ONLY_SOURCE_INSPECTION_NOT_TEST_EXECUTION",
+    "packet_id": "secondbot-p3-core-ddl-gate",
+    "task_id": "Task19",
+    "repository": "/home/haeon/workspace/projects/class-store",
+    "git_head": "fe0d13b37e87f34934787c68fd72c49cca35bd1d",
+    "branch": "feat/postgres-multitenant-migration",
+    "git_status_porcelain_at_inspection": " M AGENTS.md\n M docs/database-architecture.md\n M docs/plans/2026-08-28-postgres-multitenant-migration.md\n M src/domain/taskSchedule.ts\n M src/domain/timeZone.ts\n M src/lib/checkoutSnapshotClient.ts\n M src/lib/promotionClient.ts\n M src/server/legacyWriteFreezeRoutes.test.ts\n M src/server/migration/finalGeneration.test.ts\n M src/server/migration/finalGeneration.ts\n M src/server/migration/importer.ts\n M src/server/migration/normalize.ts\n M src/server/migration/operationalProjection.ts\n M src/server/migration/semanticValidators.ts\n M src/server/migration/sensitiveRedaction.ts\n M src/server/migration/sheetsSnapshot.ts\n M src/server/migration/validators.ts\n M src/server/repositories/routeInventory.test.ts\n M src/server/repositories/routeInventory.ts\n M src/server/sheetsRows.ts\n M src/server/testing/legacyWriteFreezeRoutes.json\n?? .gitattributes\n?? .hermes/plans/2026-08-24_211225-crs-development-roadmap.md\n?? .hermes/plans/2026-08-24_212944-crs-r0-data-contract-safety-plan.md\n?? .hermes/plans/2026-08-25-crs-r1-recurring-tasks-plan.md\n?? .hermes/plans/2026-08-26-crs-r2-promotions.md\n?? .hermes/plans/2026-08-26_171403-crs-r2-ux-and-legacy-task-fixes.md\n?? .hermes/plans/2026-08-26_185229-store-promotion-admin-theme-ux.md\n?? .hermes/plans/2026-08-26_233724-task-bulk-actions-and-softer-ui.md\n?? .hermes/plans/2026-08-27_114347-task-prerequisite-deadline-bank-list.md\n?? .hermes/plans/2026-08-27_161401-mobile-task-chain-bank-ux.md\n?? .hermes/plans/2026-08-27_213950-bank-task-carousel-polish-public-chains.md\n?? .hermes/plans/2026-08-27_232053-kiosk-cart-bank-task-reliability.md\n?? .hermes/plans/2026-08-28-crs-carousel-padlet-task-verification.md\n?? .hermes/plans/2026-09-14_065651-task19-astra-low-replan.md\n?? choi-task20-inventory-audit.md\n?? class-store-supervision/choi-historical-route-blocker.md\n?? docs/architecture/migration-normalization-budget.md\n?? docs/cutover-rollback-runbook.md\n?? docs/data-retention-export.md\n?? docs/plans/2026-08-30-carousel-interaction-polish.md\n?? docs/plans/2026-08-30-sheets-padlet-integration.md\n?? docs/sheets-migration-runbook.md\n?? scripts/task21-synthetic-retained-backup.mjs\n?? scripts/task21-synthetic-retained-backup.test.mjs\n?? src/app/api/exports/[slug]/historical-local-generation-metadata.csv/route.auth-binding.test.ts\n?? src/app/api/exports/[slug]/historical-local-generation-metadata.csv/route.test.ts\n?? src/app/api/exports/[slug]/historical-local-generation-metadata.csv/route.ts\n?? src/app/api/migrations/status/[slug]/identityLifetime.test.ts\n?? src/app/api/migrations/status/[slug]/jobStatus.test.ts\n?? src/app/api/migrations/status/[slug]/preflight/download/route.loopback.test.ts\n?? src/app/api/migrations/status/[slug]/preflight/download/route.test.ts\n?? src/app/api/migrations/status/[slug]/preflight/download/route.ts\n?? src/app/api/migrations/status/[slug]/preflight/identityBoundary.test.ts\n?? src/app/api/migrations/status/[slug]/preflight/route.dispatch.test.ts\n?? src/app/api/migrations/status/[slug]/preflight/route.test.ts\n?? src/app/api/migrations/status/[slug]/preflight/route.ts\n?? src/app/api/migrations/status/[slug]/route.test.ts\n?? src/app/api/migrations/status/[slug]/route.ts\n?? src/app/api/migrations/status/currentPreflight.acceptanceBoundary.test.ts\n?? src/app/api/migrations/status/historicalReportDownload.test.ts\n?? src/app/api/migrations/status/historicalReportDownload.ts\n?? src/app/api/migrations/status/jobStatus.integration.test.ts\n?? src/app/api/migrations/status/preflightReportProjection.test.ts\n?? src/app/api/migrations/status/preflightReportProjection.ts\n?? src/app/api/migrations/status/readHistoricalReportDownload.sql.test.ts\n?? src/app/api/migrations/status/readHistoricalReportDownload.test.ts\n?? src/app/api/migrations/status/readHistoricalReportDownload.ts\n?? src/app/api/migrations/status/readJobStatus.ts\n?? src/app/api/migrations/status/readPreflightReport.test.ts\n?? src/app/api/migrations/status/readPreflightReport.ts\n?? src/app/api/migrations/status/readStatus.ts\n?? src/app/c/[slug]/admin/migrations/history/download.browser-boundary.test.tsx\n?? src/app/c/[slug]/admin/migrations/history/page.test.tsx\n?? src/app/c/[slug]/admin/migrations/history/page.tsx\n?? src/app/c/[slug]/admin/migrations/status/historicalConflictLink.boundary.test.tsx\n?? src/app/c/[slug]/admin/migrations/status/jobStatus.test.tsx\n?? src/app/c/[slug]/admin/migrations/status/page.test.tsx\n?? src/app/c/[slug]/admin/migrations/status/page.tsx\n?? src/app/c/[slug]/admin/migrations/status/statusSlugExactMatch.characterization.test.tsx\n?? src/domain/taskSchedule.budget.test.ts\n?? src/domain/timeZone.budget.test.ts\n?? src/lib/boundedJson.relational.budget.test.ts\n?? src/lib/boundedJson.stringExact.budget.test.ts\n?? src/lib/boundedJson.test.ts\n?? src/lib/boundedJson.ts\n?? src/lib/boundedWork.test.ts\n?? src/lib/boundedWork.ts\n?? src/server/db/localFourGuardInstallAtomicity.postgres.test.ts\n?? src/server/db/migrationLocalGenerationReconciliation.test.ts\n?? src/server/db/migrations/0024_local_final_generation_stage.sql\n?? src/server/db/testing/disposablePostgres.ts\n?? src/server/db/testing/pgStdioRelay.c\n?? src/server/exports/historicalLocalGenerationCsv.test.ts\n?? src/server/exports/historicalLocalGenerationCsv.ts\n?? src/server/exports/productInventoryCsv.test.ts\n?? src/server/exports/productInventoryCsv.ts\n?? src/server/exports/productInventoryCsvComposition.test.ts\n?? src/server/exports/readAuthorizedProductInventoryDisplay.test.ts\n?? src/server/exports/readAuthorizedProductInventoryDisplay.ts\n?? src/server/exports/readHistoricalLocalGenerationCsvDownload.test.ts\n?? src/server/exports/readHistoricalLocalGenerationCsvDownload.ts\n?? src/server/exports/readPersistedLocalGeneration.test.ts\n?? src/server/exports/readPersistedLocalGeneration.ts\n?? src/server/exports/readProductInventoryCsvDownload.test.ts\n?? src/server/exports/readProductInventoryCsvDownload.ts\n?? src/server/exports/reconciliationSummary.test.ts\n?? src/server/exports/reconciliationSummary.ts\n?? src/server/exports/retainedExportManifest.test.ts\n?? src/server/exports/retainedExportManifest.ts\n?? src/server/googleOAuth.identityKeyBoundary.test.ts\n?? src/server/googleOAuth.ordinaryIdentityFallback.test.ts\n?? src/server/migration/__fixtures__/adjustment-construction-golden.json\n?? src/server/migration/__fixtures__/adjustment-correlation-golden.json\n?? src/server/migration/__fixtures__/allowed-budget-golden.json\n?? src/server/migration/__fixtures__/bank-peer-guards-golden.json\n?? src/server/migration/__fixtures__/cancellation-validation-golden.json\n?? src/server/migration/__fixtures__/claim-construction-golden.json\n?? src/server/migration/__fixtures__/claim-joins-golden.json\n?? src/server/migration/__fixtures__/claim-joins-raw-golden.json\n?? src/server/migration/__fixtures__/claim-merge-golden.json\n?? src/server/migration/__fixtures__/definition-construction-golden.json\n?? src/server/migration/__fixtures__/final-diagnostics-golden.json\n?? src/server/migration/__fixtures__/global-index-golden.json\n?? src/server/migration/__fixtures__/history-construction-golden.json\n?? src/server/migration/__fixtures__/interim-review-golden.json\n?? src/server/migration/__fixtures__/mapping-construction-golden.json\n?? src/server/migration/__fixtures__/mapping-metadata-original-golden.json\n?? src/server/migration/__fixtures__/mapping-sort-golden.json\n?? src/server/migration/__fixtures__/normalization-budget-golden.json\n?? src/server/migration/__fixtures__/normalizer-entry-budget-golden.json\n?? src/server/migration/__fixtures__/normalizer-rows-budget-golden.json\n?? src/server/migration/__fixtures__/operational-budget-golden.json\n?? src/server/migration/__fixtures__/operational-integration-golden.json\n?? src/server/migration/__fixtures__/parser-budget-cases.json\n?? src/server/migration/__fixtures__/parser-budget-edge-cases.json\n?? src/server/migration/__fixtures__/parser-budget-edge-golden.json\n?? src/server/migration/__fixtures__/parser-budget-golden.json\n?? src/server/migration/__fixtures__/preparation-budget-golden.json\n?? src/server/migration/__fixtures__/raw-diagnostics-golden.json\n?? src/server/migration/__fixtures__/reference-guards-golden.json\n?? src/server/migration/__fixtures__/required-settings-golden.json\n?? src/server/migration/__fixtures__/row-handoff-golden.json\n?? src/server/migration/__fixtures__/row-integration-golden.json\n?? src/server/migration/__fixtures__/schedule-core-edge-golden.json\n?? src/server/migration/__fixtures__/schedule-core-golden.json\n?? src/server/migration/__fixtures__/settings-construction-golden.json\n?? src/server/migration/__fixtures__/source-construction-golden.json\n?? src/server/migration/__fixtures__/target-index-golden.json\n?? src/server/migration/__fixtures__/task-construction-golden.json\n?? src/server/migration/__fixtures__/timezone-budget-golden.json\n?? src/server/migration/__fixtures__/transaction-cancellation-golden.json\n?? src/server/migration/__fixtures__/transaction-final-records-golden.json\n?? src/server/migration/__fixtures__/transaction-item-loop-golden.json\n?? src/server/migration/__fixtures__/validator-budget-cases.json\n?? src/server/migration/__fixtures__/validator-budget-golden.json\n?? src/server/migration/finalCaptureProvenance.stage.test.ts\n?? src/server/migration/finalCaptureProvenance.test.ts\n?? src/server/migration/finalCaptureWindow.test.ts\n?? src/server/migration/finalCaptureWindow.ts\n?? src/server/migration/importer.timestamps.test.ts\n?? src/server/migration/interimReview.budget.test.ts\n?? src/server/migration/localActivationCompatibility.test.ts\n?? src/server/migration/localAddedProductStage.test.ts\n?? src/server/migration/localAddedProductStage.ts\n?? src/server/migration/localCapturedSourceCoverage.test.ts\n?? src/server/migration/localCapturedSourceCoverage.ts\n?? src/server/migration/localCapturedStudentProjection.test.ts\n?? src/server/migration/localCapturedStudentProjection.ts\n?? src/server/migration/localFourGuardServiceCompatibility.postgres.test.ts\n?? src/server/migration/localFullCategoryDeltaCoverage.compositeRetained.test.ts\n?? src/server/migration/localFullCategoryDeltaCoverage.test.ts\n?? src/server/migration/localFullCategoryDeltaCoverage.ts\n?? src/server/migration/localFullCategoryIsolation.postgres.test.ts\n?? src/server/migration/localFullDeltaCheckedPreparation.captureBinding.test.ts\n?? src/server/migration/localFullDeltaCheckedPreparation.test.ts\n?? src/server/migration/localFullDeltaCheckedPreparation.ts\n?? src/server/migration/localMultiAddedProductPlan.test.ts\n?? src/server/migration/localMultiAddedProductPlan.ts\n?? src/server/migration/localMultiAddedProductReconciliation.postgres.test.ts\n?? src/server/migration/localMultiAddedProductReconciliation.test.ts\n?? src/server/migration/localMultiAddedProductReconciliation.ts\n?? src/server/migration/localMultiAddedProductStage.postgres.test.ts\n?? src/server/migration/localMultiAddedProductStage.test.ts\n?? src/server/migration/localMultiAddedProductStage.ts\n?? src/server/migration/localNonprivilegedOwnerIsolation.postgres.test.ts\n?? src/server/migration/localNoopReconciliation.test.ts\n?? src/server/migration/localNoopReconciliation.ts\n?? src/server/migration/localPointerCheckedPreparation.postgres.test.ts\n?? src/server/migration/localPointerCheckedPreparation.test.ts\n?? src/server/migration/localPointerCheckedPreparation.ts\n?? src/server/migration/localProductReconciliation.ts\n?? src/server/migration/localProtectedDeleteGuard.prototype.postgres.test.ts\n?? src/server/migration/localProtectedEntryGuard.prototype.postgres.test.ts\n?? src/server/migration/localProtectedEvidenceGuard.prototype.postgres.test.ts\n?? src/server/migration/localProtectedExitGuard.prototype.postgres.test.ts\n?? src/server/migration/localProtectedJobEvidenceMutation.test.ts\n?? src/server/migration/localProtectedJobInsert.postgres.test.ts\n?? src/server/migration/localProtectedJobInsertCharacterization.test.ts\n?? src/server/migration/localStudentAttestedPreparation.test.ts\n?? src/server/migration/localStudentAttestedPreparation.ts\n?? src/server/migration/localStudentCheckedPreparation.priorEnvelope.test.ts\n?? src/server/migration/localStudentCheckedPreparation.test.ts\n?? src/server/migration/localStudentCheckedPreparation.ts\n?? src/server/migration/localUpdatedProductStage.test.ts\n?? src/server/migration/localUpdatedProductStage.ts\n?? src/server/migration/manifest.budget.test.ts\n?? src/server/migration/normalizationBudgetParity.test.ts\n?? src/server/migration/normalizationOutput.ts\n?? src/server/migration/normalize.adjustmentConstruction.budget.test.ts\n?? src/server/migration/normalize.adjustments.budget.test.ts\n?? src/server/migration/normalize.bankPeers.budget.test.ts\n?? src/server/migration/normalize.budget.test.ts\n?? src/server/migration/normalize.cancellationValidation.budget.test.ts\n?? src/server/migration/normalize.claimConstruction.budget.test.ts\n?? src/server/migration/normalize.claimJoins.budget.test.ts\n?? src/server/migration/normalize.claimMerge.budget.test.ts\n?? src/server/migration/normalize.construction.budget.test.ts\n?? src/server/migration/normalize.definitions.budget.test.ts\n?? src/server/migration/normalize.definitions.native.budget.test.ts\n?? src/server/migration/normalize.finalDiagnostics.budget.test.ts\n?? src/server/migration/normalize.globalIndexes.budget.test.ts\n?? src/server/migration/normalize.history.budget.test.ts\n?? src/server/migration/normalize.history.native.budget.test.ts\n?? src/server/migration/normalize.mappingConstruction.budget.test.ts\n?? src/server/migration/normalize.mappingSort.budget.test.ts\n?? src/server/migration/normalize.operational.budget.test.ts\n?? src/server/migration/normalize.operational.native.budget.test.ts\n?? src/server/migration/normalize.output.budget.test.ts\n?? src/server/migration/normalize.rawDiagnostics.budget.test.ts\n?? src/server/migration/normalize.references.budget.test.ts\n?? src/server/migration/normalize.requiredSettings.budget.test.ts\n?? src/server/migration/normalize.rowHandoff.budget.test.ts\n?? src/server/migration/normalize.rows.budget.test.ts\n?? src/server/migration/normalize.settingsConstruction.budget.test.ts\n?? src/server/migration/normalize.sourceConstruction.budget.test.ts\n?? src/server/migration/normalize.stringExact.budget.test.ts\n?? src/server/migration/normalize.targetIndex.budget.test.ts\n?? src/server/migration/normalize.tasks.budget.test.ts\n?? src/server/migration/normalize.tasks.native.budget.test.ts\n?? src/server/migration/normalize.transaction.budget.test.ts\n?? src/server/migration/normalize.transaction.cancellation.budget.test.ts\n?? src/server/migration/normalize.transaction.final.budget.test.ts\n?? src/server/migration/operationalProjection.budget.test.ts\n?? src/server/migration/parserBudget.test.ts\n?? src/server/migration/registeredFreezingReacquisition.exclusionBoundary.test.ts\n?? src/server/migration/registeredFreezingReacquisition.fenceWindow.test.ts\n?? src/server/migration/validators.nativeBoundary.budget.test.ts\n?? src/server/sheetsAllowed.budget.test.ts\n?? src/server/sheetsRows.budget.test.ts\n?? src/server/sheetsRows.nativeCatch.budget.test.ts\n?? test-support/crs-http-browser/evidence/probe-168137c1682f4b7c99898aa6434f5aed/result.json\n?? test-support/crs-http-browser/evidence/probe-168137c1682f4b7c99898aa6434f5aed/stderr.log\n?? test-support/crs-http-browser/evidence/probe-168137c1682f4b7c99898aa6434f5aed/stdout.log\n?? test-support/crs-http-browser/probe.py\n?? test-support/crs-recovery/retained-store.test.mjs\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/manifest.json\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/src/domain/taskAvailability.ts.txt\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/src/domain/taskCompletionPolicy.ts.txt\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/src/domain/taskCycleHistory.ts.txt\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/src/domain/taskCycleState.ts.txt\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/src/domain/taskPrerequisite.ts.txt\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/src/domain/taskRecurrence.ts.txt\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/src/domain/taskSchedule.ts.txt\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/src/domain/timeZone.ts.txt\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/src/lib/checkoutSnapshotClient.ts.txt\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/src/lib/promotionClient.ts.txt\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/src/server/migration/normalize.ts.txt\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/src/server/migration/operationalProjection.ts.txt\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/src/server/migration/semanticValidators.ts.txt\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/src/server/migration/sensitiveRedaction.ts.txt\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/src/server/migration/sheetsSnapshot.ts.txt\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/src/server/migration/validators.ts.txt\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/src/server/operationTelemetry.ts.txt\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/src/server/repositories/sheets/recurringSchemaMigrator.ts.txt\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/src/server/repositories/sheets/taskAssignmentCommands.ts.txt\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/src/server/repositories/sheets/taskCommandQueue.ts.txt\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/src/server/repositories/sheets/taskCompletionCommands.ts.txt\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/src/server/repositories/sheets/taskCycleQueries.ts.txt\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/src/server/repositories/sheets/taskScheduleCommands.ts.txt\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/src/server/sheetsRepository.ts.txt\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/src/server/sheetsRows.ts.txt\n?? test-support/frozen-oracles/448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8/src/server/storage/tabularStore.ts.txt",
+    "started_at": "2026-09-26T11:19:21.722618+00:00",
+    "ended_at": "2026-09-26T11:19:21.733478+00:00",
+    "duration_ms": 10,
+    "observations": {
+      "cutover_exported_functions": [
+        "createLegacyCutoverAbortService"
+      ],
+      "cutover_sql_status_assignments": [
+        "ABORTED"
+      ],
+      "normalized_delta_catalog": [
+        "students",
+        "accounts",
+        "products",
+        "settings",
+        "tasks",
+        "task_allowed_students",
+        "promotions",
+        "promotion_products",
+        "transactions",
+        "transaction_items",
+        "adjustments",
+        "task_assignments",
+        "task_completions",
+        "legacy_operation_bindings",
+        "padlet_evidence_claims",
+        "padlet_claim_digest_tombstones"
+      ],
+      "normalized_delta_catalog_count": 16
+    },
+    "selected_source_sha256": [
+      {
+        "path": "AGENTS.md",
+        "sha256": "63f2c50380ed6303237cce215ce27af1d620d094c215e28d1b1538a3c070e3bb"
+      },
+      {
+        "path": "package.json",
+        "sha256": "25a50b4037fcc7bf97cb9210ea2a56458445f3b287f70b33804d0b6de87be61a"
+      },
+      {
+        "path": "src/server/db/migrations/0001_identity_tenants.sql",
+        "sha256": "b397b7470f86b7d2a1ffbcb9d28e6d5e5d0e93e9bcf4ae2b7deea39c85645e70"
+      },
+      {
+        "path": "src/server/db/migrations/0002_operational.sql",
+        "sha256": "319640a1433e670e507111368ec03e18ed4a0bc675b940a4d4ce790f00119c28"
+      },
+      {
+        "path": "src/server/db/migrations/0003_operations_migrations.sql",
+        "sha256": "dae0450cb63964cc8568df07d93377420e704017c488aca8460f06653a7f7fa2"
+      },
+      {
+        "path": "src/server/db/migrations/0004_admin_operation_kinds.sql",
+        "sha256": "91ecda0d2746ea6ab93bc19036fd0be163e613a54a19ca05119a898eb680346f"
+      },
+      {
+        "path": "src/server/db/migrations/0005_mutable_entity_versions.sql",
+        "sha256": "3b65abb7de514c30940521f7d8008da6d4b314e14c07f8dd7917e69c5006be17"
+      },
+      {
+        "path": "src/server/db/migrations/0006_immutable_ledger_guards.sql",
+        "sha256": "aabe0cfd0666adf6ee0e27c2fd8c8b7c7c96884088b6244827708780c7b11e59"
+      },
+      {
+        "path": "src/server/db/migrations/0007_inventory_ledger_guard.sql",
+        "sha256": "5360f1950b772e4d2f028f57a48e038e178519230799066d98af36c583d29cb7"
+      },
+      {
+        "path": "src/server/db/migrations/0008_product_tombstone_invariant.sql",
+        "sha256": "df95ca73a07db83066f907be3dd42384b04ecd30e09ae8753aca10546f3c1ba3"
+      },
+      {
+        "path": "src/server/db/migrations/0009_promotion_tombstone_invariant.sql",
+        "sha256": "18fdf04ff935bde1721098ef1130be9f920cbdad86a5ba3e464d26510ca185fb"
+      },
+      {
+        "path": "src/server/db/migrations/0010_task_admin_invariants.sql",
+        "sha256": "15a4afe29103c2e9ac55de871c1a308fb7bcd9a798a99468fed53cf55b6badc0"
+      },
+      {
+        "path": "src/server/db/migrations/0011_generator_grant_claims.sql",
+        "sha256": "ec33fdc8f9256984e59147bb3fa97e4b2f79d0dd5fcd5d7b6caca5663398a8c7"
+      },
+      {
+        "path": "src/server/db/migrations/0012_platform_tenant_discovery.sql",
+        "sha256": "6605711b09e1e7de5528de7c4ff5562d56dfafab7455a92183efd3f3f9bafe86"
+      },
+      {
+        "path": "src/server/db/migrations/0013_migration_authority_storage.sql",
+        "sha256": "255af49730a23c47ab255557381284d730ce805ed688f5d1f3c657867aa6b717"
+      },
+      {
+        "path": "src/server/db/migrations/0014_final_bridge_intake.sql",
+        "sha256": "e7b0e897c934a950d27256ba14e40794d7073b3b2759897a0b4fe7163f5e4d1b"
+      },
+      {
+        "path": "src/server/db/migrations/0015_freezing_approval_challenges.sql",
+        "sha256": "c6bf482d9d89e17522e003a9c0bc588386ec55d12e39adcaef290c46202acace"
+      },
+      {
+        "path": "src/server/db/migrations/0016_migration_snapshots_immutable.sql",
+        "sha256": "6189311e83533d44a2f6fe32cb7f4fa08dfe5e7af06e448116c614e2f5f059a2"
+      },
+      {
+        "path": "src/server/db/migrations/0017_receipt_acquisition_binding.sql",
+        "sha256": "345b6bf72c26258062f7934a168d755e778c3889e14fec4bdb7cbffa1670032f"
+      },
+      {
+        "path": "src/server/db/migrations/0018_freezing_consent.sql",
+        "sha256": "c8737dc48b286f0a05a9a64a9a07a82559fb756a480af5babc87f2c1e3334564"
+      },
+      {
+        "path": "src/server/db/migrations/0019_start_freezing_ceremony.sql",
+        "sha256": "6cef13c49ee554f7a340bada156aba73f3b957c355ea9ca13055092c09a866ea"
+      },
+      {
+        "path": "src/server/db/migrations/0020_bridge_producer_reservations.sql",
+        "sha256": "467dbb54b693b83e77491c3891eec6ca8c089fd55a410f57bd1defc0c464e568"
+      },
+      {
+        "path": "src/server/db/migrations/0021_start_freezing_executions.sql",
+        "sha256": "6c34f4bb658acf54e9ea8d2f986872fac4e2fb0f5beb62411be74257582a4dc7"
+      },
+      {
+        "path": "src/server/db/migrations/0022_freezing_producer_reservations.sql",
+        "sha256": "e2649282e561b30a827f912e2e73042e5fcd37d95aa9609ecd1f8d267642487d"
+      },
+      {
+        "path": "src/server/db/migrations/0023_freezing_reacquisition_intake.sql",
+        "sha256": "a11cbf5853c4b1a80b0b3849466f9e22caa5800ecffe1a9698bb27fdd528a4eb"
+      },
+      {
+        "path": "src/server/db/migrations/0024_local_final_generation_stage.sql",
+        "sha256": "1336c38b30f60099a942173a65b0dcec46e17a81420613926770c1e107848c83"
+      },
+      {
+        "path": "src/server/db/testing/pglite.ts",
+        "sha256": "d6146bfd75d9395fd174df6c831e25f62e3ee47780b3f0b76e2125a0b48b1914"
+      },
+      {
+        "path": "src/server/migration/cutover.ts",
+        "sha256": "4b5fefeb5c8f41c7843c49fd1b78e602c88a1b664ff73554bf51091ad25deca7"
+      },
+      {
+        "path": "src/server/migration/finalGeneration.ts",
+        "sha256": "396ae3bed5288c9750dfda68f98845487e15d431c7708facec3f1e1f7b1a4e73"
+      },
+      {
+        "path": "src/server/migration/importer.ts",
+        "sha256": "1fb14aab5a5c3664670d073d3c3e41bf4cffe8e74ebe13003037c64e5e7abf94"
+      },
+      {
+        "path": "src/server/migration/localFullCategoryDeltaCoverage.ts",
+        "sha256": "ed94ce4aed2ccc25049212de5feefc02d040f865fca3c2d58bf79eefb45becd7"
+      },
+      {
+        "path": "src/server/migration/localFullDeltaCheckedPreparation.ts",
+        "sha256": "211034e9c2eec8e7a373ab85fcf839dd539df24ae9c2d7afda73bd122d9a53d4"
+      },
+      {
+        "path": "src/server/migration/localMultiAddedProductStage.postgres.test.ts",
+        "sha256": "8642d1b7510ed1ea3fb2293307343e22b99bfce0ebef4e8bc6b978717162438e"
+      },
+      {
+        "path": "src/server/migration/localMultiAddedProductStage.ts",
+        "sha256": "7f163a1c5753d5ca0fbe9eb7cf9f893a12a2cfc65fe3d07d2a4bb7ab903e396d"
+      },
+      {
+        "path": "src/server/migration/localPointerCheckedPreparation.ts",
+        "sha256": "992ad651acf3f960df000e26f473001dda757c256e0a0aa0bec1803652bb57f9"
+      },
+      {
+        "path": "src/server/migration/manifest.ts",
+        "sha256": "367c31afe55f9d07c3500ebc9c1398b9496a88edabd260fafcf69953cf9d558c"
+      },
+      {
+        "path": "src/server/migration/operationalProjection.ts",
+        "sha256": "1f2740f7e50e442f385b5ed64db424bf0c3772e22b1048c4389e91dc13a68479"
+      },
+      {
+        "path": "vitest.config.mts",
+        "sha256": "78b4a76128817ea09ebaf367186020f9c43395555f8414a7e2b71a1f3339f483"
+      }
+    ],
+    "selected_source_manifest_sha256": "69d355c3bfda2416db7309e8ef90564e054a4bbaf94c6b8b5baec9d4cf3ddc71",
+    "snapshot_scope": "SELECTED_FILES_ONLY_NOT_FROZEN_INTEGRATION_SNAPSHOT",
+    "shared_runners": "NOT_RUN",
+    "postgres_runtime": "NOT_RUN",
+    "test_counts": {
+      "pass": null,
+      "fail": null,
+      "skip": null
+    },
+    "security_outcome": "NOT_PROVEN",
+    "acceptance": "0/8",
+    "independent_verifier": null
+  },
+  "execution": {
+    "exact_argv": [
+      "python3",
+      "-c",
+      "import datetime, hashlib, json, pathlib, re, subprocess, time\nroot = pathlib.Path.cwd()\nstarted = datetime.datetime.now(datetime.timezone.utc).isoformat()\nbegin = time.monotonic_ns()\npaths = [\n \"AGENTS.md\", \"package.json\", \"vitest.config.mts\",\n \"src/server/migration/cutover.ts\", \"src/server/migration/finalGeneration.ts\",\n \"src/server/migration/importer.ts\", \"src/server/migration/manifest.ts\",\n \"src/server/migration/localFullDeltaCheckedPreparation.ts\",\n \"src/server/migration/localFullCategoryDeltaCoverage.ts\",\n \"src/server/migration/localPointerCheckedPreparation.ts\",\n \"src/server/migration/localMultiAddedProductStage.ts\",\n \"src/server/migration/localMultiAddedProductStage.postgres.test.ts\",\n \"src/server/migration/operationalProjection.ts\",\n \"src/server/db/testing/pglite.ts\"\n]\npaths += [str(p.relative_to(root)) for p in sorted((root / \"src/server/db/migrations\").glob(\"*.sql\"))]\nmanifest = [{\"path\": p, \"sha256\": hashlib.sha256((root / p).read_bytes()).hexdigest()} for p in sorted(paths)]\ncutover = (root / \"src/server/migration/cutover.ts\").read_text()\ncoverage = (root / \"src/server/migration/localFullCategoryDeltaCoverage.ts\").read_text()\ncatalog = re.findall(r\"\\{ table: '([^']+)', identityKeys:\", coverage)\ndef git(*args):\n    return subprocess.check_output([\"git\", *args], text=True).rstrip(\"\\n\")\nresult = {\n \"evidence_kind\": \"READ_ONLY_SOURCE_INSPECTION_NOT_TEST_EXECUTION\",\n \"packet_id\": \"secondbot-p3-core-ddl-gate\", \"task_id\": \"Task19\",\n \"repository\": str(root), \"git_head\": git(\"rev-parse\", \"HEAD\"),\n \"branch\": git(\"branch\", \"--show-current\"),\n \"git_status_porcelain_at_inspection\": git(\"status\", \"--short\", \"--untracked-files=all\"),\n \"started_at\": started, \"ended_at\": datetime.datetime.now(datetime.timezone.utc).isoformat(),\n \"duration_ms\": (time.monotonic_ns() - begin) // 1000000,\n \"observations\": {\n  \"cutover_exported_functions\": re.findall(r\"export (?:async )?function (\\w+)\", cutover),\n  \"cutover_sql_status_assignments\": re.findall(r\"SET status='([^']+)'\", cutover),\n  \"normalized_delta_catalog\": catalog, \"normalized_delta_catalog_count\": len(catalog)\n },\n \"selected_source_sha256\": manifest,\n \"selected_source_manifest_sha256\": hashlib.sha256(json.dumps(manifest, separators=(\",\", \":\"), sort_keys=True).encode()).hexdigest(),\n \"snapshot_scope\": \"SELECTED_FILES_ONLY_NOT_FROZEN_INTEGRATION_SNAPSHOT\",\n \"shared_runners\": \"NOT_RUN\", \"postgres_runtime\": \"NOT_RUN\",\n \"test_counts\": {\"pass\": None, \"fail\": None, \"skip\": None},\n \"security_outcome\": \"NOT_PROVEN\", \"acceptance\": \"0/8\",\n \"independent_verifier\": None\n}\nprint(json.dumps(result, ensure_ascii=False, indent=2))"
+    ],
+    "exit_code": 0,
+    "error": null
+  },
+  "closing_source_check": {
+    "checked_at": "2026-09-26T11:22:43.396406+00:00",
+    "python_version": "3.14.4",
+    "selected_sources_changed_since_inspection": [],
+    "report_sha256": "b4b430ea8c38e31d7163586c66685bdca6332c0e34d8a0c59138ef49f898f0ed",
+    "scope": "SOURCE_FINGERPRINT_CHECK_ONLY_NOT_TEST",
+    "exit_code": 0,
+    "exact_argv": [
+      "python3",
+      "-c",
+      "import datetime, hashlib, json, pathlib, sys\nroot = pathlib.Path.cwd()\nexpected = json.loads(sys.argv[1])\nchanged = [entry['path'] for entry in expected if not (root/entry['path']).is_file() or hashlib.sha256((root/entry['path']).read_bytes()).hexdigest() != entry['sha256']]\nreport = root/'test-support/crs-core/secondbot-p3-ddl-gate.md'\nprint(json.dumps({'checked_at': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'python_version': sys.version.split()[0], 'selected_sources_changed_since_inspection': changed, 'report_sha256': hashlib.sha256(report.read_bytes()).hexdigest(), 'scope': 'SOURCE_FINGERPRINT_CHECK_ONLY_NOT_TEST'}, indent=2))\nraise SystemExit(1 if changed else 0)",
+      "[{\"path\":\"AGENTS.md\",\"sha256\":\"63f2c50380ed6303237cce215ce27af1d620d094c215e28d1b1538a3c070e3bb\"},{\"path\":\"package.json\",\"sha256\":\"25a50b4037fcc7bf97cb9210ea2a56458445f3b287f70b33804d0b6de87be61a\"},{\"path\":\"src/server/db/migrations/0001_identity_tenants.sql\",\"sha256\":\"b397b7470f86b7d2a1ffbcb9d28e6d5e5d0e93e9bcf4ae2b7deea39c85645e70\"},{\"path\":\"src/server/db/migrations/0002_operational.sql\",\"sha256\":\"319640a1433e670e507111368ec03e18ed4a0bc675b940a4d4ce790f00119c28\"},{\"path\":\"src/server/db/migrations/0003_operations_migrations.sql\",\"sha256\":\"dae0450cb63964cc8568df07d93377420e704017c488aca8460f06653a7f7fa2\"},{\"path\":\"src/server/db/migrations/0004_admin_operation_kinds.sql\",\"sha256\":\"91ecda0d2746ea6ab93bc19036fd0be163e613a54a19ca05119a898eb680346f\"},{\"path\":\"src/server/db/migrations/0005_mutable_entity_versions.sql\",\"sha256\":\"3b65abb7de514c30940521f7d8008da6d4b314e14c07f8dd7917e69c5006be17\"},{\"path\":\"src/server/db/migrations/0006_immutable_ledger_guards.sql\",\"sha256\":\"aabe0cfd0666adf6ee0e27c2fd8c8b7c7c96884088b6244827708780c7b11e59\"},{\"path\":\"src/server/db/migrations/0007_inventory_ledger_guard.sql\",\"sha256\":\"5360f1950b772e4d2f028f57a48e038e178519230799066d98af36c583d29cb7\"},{\"path\":\"src/server/db/migrations/0008_product_tombstone_invariant.sql\",\"sha256\":\"df95ca73a07db83066f907be3dd42384b04ecd30e09ae8753aca10546f3c1ba3\"},{\"path\":\"src/server/db/migrations/0009_promotion_tombstone_invariant.sql\",\"sha256\":\"18fdf04ff935bde1721098ef1130be9f920cbdad86a5ba3e464d26510ca185fb\"},{\"path\":\"src/server/db/migrations/0010_task_admin_invariants.sql\",\"sha256\":\"15a4afe29103c2e9ac55de871c1a308fb7bcd9a798a99468fed53cf55b6badc0\"},{\"path\":\"src/server/db/migrations/0011_generator_grant_claims.sql\",\"sha256\":\"ec33fdc8f9256984e59147bb3fa97e4b2f79d0dd5fcd5d7b6caca5663398a8c7\"},{\"path\":\"src/server/db/migrations/0012_platform_tenant_discovery.sql\",\"sha256\":\"6605711b09e1e7de5528de7c4ff5562d56dfafab7455a92183efd3f3f9bafe86\"},{\"path\":\"src/server/db/migrations/0013_migration_authority_storage.sql\",\"sha256\":\"255af49730a23c47ab255557381284d730ce805ed688f5d1f3c657867aa6b717\"},{\"path\":\"src/server/db/migrations/0014_final_bridge_intake.sql\",\"sha256\":\"e7b0e897c934a950d27256ba14e40794d7073b3b2759897a0b4fe7163f5e4d1b\"},{\"path\":\"src/server/db/migrations/0015_freezing_approval_challenges.sql\",\"sha256\":\"c6bf482d9d89e17522e003a9c0bc588386ec55d12e39adcaef290c46202acace\"},{\"path\":\"src/server/db/migrations/0016_migration_snapshots_immutable.sql\",\"sha256\":\"6189311e83533d44a2f6fe32cb7f4fa08dfe5e7af06e448116c614e2f5f059a2\"},{\"path\":\"src/server/db/migrations/0017_receipt_acquisition_binding.sql\",\"sha256\":\"345b6bf72c26258062f7934a168d755e778c3889e14fec4bdb7cbffa1670032f\"},{\"path\":\"src/server/db/migrations/0018_freezing_consent.sql\",\"sha256\":\"c8737dc48b286f0a05a9a64a9a07a82559fb756a480af5babc87f2c1e3334564\"},{\"path\":\"src/server/db/migrations/0019_start_freezing_ceremony.sql\",\"sha256\":\"6cef13c49ee554f7a340bada156aba73f3b957c355ea9ca13055092c09a866ea\"},{\"path\":\"src/server/db/migrations/0020_bridge_producer_reservations.sql\",\"sha256\":\"467dbb54b693b83e77491c3891eec6ca8c089fd55a410f57bd1defc0c464e568\"},{\"path\":\"src/server/db/migrations/0021_start_freezing_executions.sql\",\"sha256\":\"6c34f4bb658acf54e9ea8d2f986872fac4e2fb0f5beb62411be74257582a4dc7\"},{\"path\":\"src/server/db/migrations/0022_freezing_producer_reservations.sql\",\"sha256\":\"e2649282e561b30a827f912e2e73042e5fcd37d95aa9609ecd1f8d267642487d\"},{\"path\":\"src/server/db/migrations/0023_freezing_reacquisition_intake.sql\",\"sha256\":\"a11cbf5853c4b1a80b0b3849466f9e22caa5800ecffe1a9698bb27fdd528a4eb\"},{\"path\":\"src/server/db/migrations/0024_local_final_generation_stage.sql\",\"sha256\":\"1336c38b30f60099a942173a65b0dcec46e17a81420613926770c1e107848c83\"},{\"path\":\"src/server/db/testing/pglite.ts\",\"sha256\":\"d6146bfd75d9395fd174df6c831e25f62e3ee47780b3f0b76e2125a0b48b1914\"},{\"path\":\"src/server/migration/cutover.ts\",\"sha256\":\"4b5fefeb5c8f41c7843c49fd1b78e602c88a1b664ff73554bf51091ad25deca7\"},{\"path\":\"src/server/migration/finalGeneration.ts\",\"sha256\":\"396ae3bed5288c9750dfda68f98845487e15d431c7708facec3f1e1f7b1a4e73\"},{\"path\":\"src/server/migration/importer.ts\",\"sha256\":\"1fb14aab5a5c3664670d073d3c3e41bf4cffe8e74ebe13003037c64e5e7abf94\"},{\"path\":\"src/server/migration/localFullCategoryDeltaCoverage.ts\",\"sha256\":\"ed94ce4aed2ccc25049212de5feefc02d040f865fca3c2d58bf79eefb45becd7\"},{\"path\":\"src/server/migration/localFullDeltaCheckedPreparation.ts\",\"sha256\":\"211034e9c2eec8e7a373ab85fcf839dd539df24ae9c2d7afda73bd122d9a53d4\"},{\"path\":\"src/server/migration/localMultiAddedProductStage.postgres.test.ts\",\"sha256\":\"8642d1b7510ed1ea3fb2293307343e22b99bfce0ebef4e8bc6b978717162438e\"},{\"path\":\"src/server/migration/localMultiAddedProductStage.ts\",\"sha256\":\"7f163a1c5753d5ca0fbe9eb7cf9f893a12a2cfc65fe3d07d2a4bb7ab903e396d\"},{\"path\":\"src/server/migration/localPointerCheckedPreparation.ts\",\"sha256\":\"992ad651acf3f960df000e26f473001dda757c256e0a0aa0bec1803652bb57f9\"},{\"path\":\"src/server/migration/manifest.ts\",\"sha256\":\"367c31afe55f9d07c3500ebc9c1398b9496a88edabd260fafcf69953cf9d558c\"},{\"path\":\"src/server/migration/operationalProjection.ts\",\"sha256\":\"1f2740f7e50e442f385b5ed64db424bf0c3772e22b1048c4389e91dc13a68479\"},{\"path\":\"vitest.config.mts\",\"sha256\":\"78b4a76128817ea09ebaf367186020f9c43395555f8414a7e2b71a1f3339f483\"}]"
+    ]
+  },
+  "implementation_changes": [],
+  "own_new_files": [
+    "test-support/crs-core/secondbot-p3-ddl-gate.md",
+    "test-support/crs-core/secondbot-p3-source-inspection.json"
+  ],
+  "test_execution": "NOT_RUN",
+  "runtime_error": null,
+  "security_outcome": "NOT_PROVEN",
+  "blocker": "BLOCKED_DDL_INTEGRATION",
+  "actual_final_import": "NOT_IMPLEMENTED",
+  "task19_acceptance": "0/8",
+  "independent_verifier": null
+}

@@ -53,7 +53,8 @@ beforeEach(async () => {
     transactionId: TIED_ID,
     occurredAt: '2026-08-29T03:00:00.000Z',
     kind: 'TASK_REWARD', totalAmount: 50, balanceDelta: 50,
-    balanceBefore: 1000, balanceAfter: 1050, operator: 'task', status: 'TASK_REWARD',
+    // Match createDatabaseTaskCompletionCommand's actual modern ledger write.
+    balanceBefore: 1000, balanceAfter: 1050, operator: 'task', status: 'COMPLETED',
   });
   await seedTransaction(harness.tenantOneId, {
     transactionId: REVERSAL_ID,
@@ -104,6 +105,7 @@ type TransactionSeed = {
   status: string | null;
   reversesTransactionId?: string;
   studentName?: string;
+  studentId?: string;
 };
 
 async function seedStudent(tenantId: string, studentId: string, name: string) {
@@ -120,7 +122,7 @@ async function seedTransaction(tenantId: string, seed: TransactionSeed) {
        legacy_total_amount, balance_delta, balance_before, balance_after, operator_snapshot,
        legacy_status_snapshot, reverses_transaction_id, schema_version)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,1)`,
-    [tenantId, seed.transactionId, seed.occurredAt, STUDENT_ID, seed.studentName ?? '김학생',
+    [tenantId, seed.transactionId, seed.occurredAt, seed.studentId ?? STUDENT_ID, seed.studentName ?? '김학생',
       seed.kind, seed.totalAmount, seed.balanceDelta, seed.balanceBefore, seed.balanceAfter,
       seed.operator, seed.status, seed.reversesTransactionId ?? null],
   );
@@ -473,5 +475,44 @@ describe('database transaction queries', () => {
     await seedBaseItem(harness.tenantOneId, BASE_ID, 1, 'DUP', '중복', 1, 1, 1);
 
     await expect(queries().getTransactionById(BASE_ID)).rejects.toThrow(/position|line|duplicate|integrity/i);
+  });
+});
+
+
+describe('bounded student history for bank balance reads', () => {
+  it('limits parent transactions without truncating items or losing cancellation links, and excludes other students and tenants', async () => {
+    await seedStudent(harness.tenantOneId, 'S2', 'Second student');
+    await seedTransaction(harness.tenantOneId, {
+      transactionId: 'OTHER-STUDENT', studentId: 'S2', occurredAt: '2026-09-01T00:00:00.000Z',
+      kind: 'ADMIN_ADJUSTMENT', totalAmount: -10, balanceDelta: 10,
+      balanceBefore: 0, balanceAfter: 10, operator: 'admin', status: 'ADMIN_ADJUSTMENT',
+    });
+    const full = (await queries().getTransactions()).filter(row => row.studentId === STUDENT_ID);
+    expect(await queries().getTransactions({ studentId: STUDENT_ID, limit: 1 })).toEqual(full.slice(0, 1));
+    const five = await queries().getTransactions({ studentId: STUDENT_ID, limit: 5 });
+    expect(five).toEqual(full);
+    expect(five.find(row => row.transactionId === BASE_ID)?.items).toHaveLength(2);
+    expect(five.find(row => row.transactionId === BASE_ID)?.status).toBe('CANCELLED');
+    for (let i = 0; i < 20; i++) {
+      await seedTransaction(harness.tenantOneId, {
+        transactionId: `RECENT-${i}`, occurredAt: `2026-08-31T01:${String(i).padStart(2, '0')}:00.000Z`,
+        kind: 'ADMIN_ADJUSTMENT', totalAmount: -1, balanceDelta: 1,
+        balanceBefore: 1750 + i, balanceAfter: 1751 + i, operator: 'admin', status: 'ADMIN_ADJUSTMENT',
+      });
+    }
+    const recent = await queries().getTransactions({ studentId: STUDENT_ID, limit: 10 });
+    expect(recent).toHaveLength(10);
+    expect(recent).toEqual((await queries().getTransactions()).filter(row => row.studentId === STUDENT_ID).slice(0, 10));
+    expect(await queries().getTransactions({ studentId: 'unknown', limit: 10 })).toEqual([]);
+  });
+
+  it('rejects invalid bounds before opening a transaction', async () => {
+    const runTenantTransaction = vi.fn();
+    const reader = queries({ runTenantTransaction });
+    for (const window of [
+      { studentId: '', limit: 10 }, { studentId: ' S1', limit: 10 },
+      ...[0, -1, 101, 1.5, NaN, Infinity].map(limit => ({ studentId: STUDENT_ID, limit })),
+    ]) await expect(reader.getTransactions(window)).rejects.toThrow('Invalid student transaction window.');
+    expect(runTenantTransaction).not.toHaveBeenCalled();
   });
 });

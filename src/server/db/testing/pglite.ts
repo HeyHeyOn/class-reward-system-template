@@ -14,7 +14,7 @@ import {
 
 const TENANT_ONE = '20000000-0000-4000-8000-000000000001';
 const TENANT_TWO = '20000000-0000-4000-8000-000000000002';
-const MIGRATIONS = [
+const BASE_MIGRATIONS = [
   '0001_identity_tenants.sql',
   '0002_operational.sql',
   '0003_operations_migrations.sql',
@@ -23,6 +23,11 @@ const MIGRATIONS = [
   '0006_immutable_ledger_guards.sql',
   '0007_inventory_ledger_guard.sql',
   '0008_product_tombstone_invariant.sql',
+] as const;
+const READER_MIGRATIONS = [
+  // Read support; current native PostgreSQL suites apply the complete guard chain.
+  '0032_legacy_transaction_origins.sql',
+  '0033_legacy_task_origins.sql',
 ] as const;
 
 type PgQueryConfig = {
@@ -79,10 +84,16 @@ export type PgliteDatabaseHarness = {
   close(): Promise<void>;
 };
 
-export async function createPgliteDatabaseHarness(): Promise<PgliteDatabaseHarness> {
+export async function createPgliteDatabaseHarness(
+  options: { migrationSet?: 'base' | 'runtime-readers' } = {},
+): Promise<PgliteDatabaseHarness> {
   const database = new PGlite({ extensions: { pgcrypto } });
   try {
-    for (const migration of MIGRATIONS) {
+    // Migration suites append the full ordered chain themselves. They must start
+    // at 0008, without preinstalled later reader tables that would be applied twice.
+    const migrations = options.migrationSet === 'base'
+      ? BASE_MIGRATIONS : [...BASE_MIGRATIONS, ...READER_MIGRATIONS];
+    for (const migration of migrations) {
       const migrationSql = await readFile(resolve(
         process.cwd(),
         'src/server/db/migrations',

@@ -1,0 +1,2702 @@
+{
+  "commit": "448cbed7bd303ad0f9ef3fd4c974c313bf4c8da8",
+  "cases": [
+    {
+      "name": "rowHash/number/distinct-path",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": 123
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"tenant-1\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":123},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":123,\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}"
+    },
+    {
+      "name": "rowHash/number/tied-path",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": 123
+                },
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P2",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": 20
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"tenant-1\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},{\"tenantId\":\"tenant-1\",\"productId\":\"P2\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":20},\"redactedSourceRecord\":{\"identityDigest\":\"acbbb742c7524cecdec7557d60e4a19af062346309ce5731c88485c7daf48982\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P2\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P2\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":123},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":123,\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":20,\"targetTable\":\"products\",\"targetId\":\"P2\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}"
+    },
+    {
+      "name": "rowHash/number/quarantined",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": 123
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "error": {
+        "name": "TypeError",
+        "message": "The \"data\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received type number (123)"
+      }
+    },
+    {
+      "name": "rowHash/array/distinct-path",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": [
+                    12,
+                    3
+                  ]
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"tenant-1\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":[12,3]},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":[12,3],\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}"
+    },
+    {
+      "name": "rowHash/array/tied-path",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": [
+                    12,
+                    3
+                  ]
+                },
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P2",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": [
+                    2,
+                    0
+                  ]
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"tenant-1\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},{\"tenantId\":\"tenant-1\",\"productId\":\"P2\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":[12,3]},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":[2,0]},\"redactedSourceRecord\":{\"identityDigest\":\"acbbb742c7524cecdec7557d60e4a19af062346309ce5731c88485c7daf48982\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P2\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P2\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":[12,3],\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":[2,0],\"targetTable\":\"products\",\"targetId\":\"P2\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}"
+    },
+    {
+      "name": "rowHash/array/quarantined",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": [
+                    12,
+                    3
+                  ]
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "error": {
+        "name": "TypeError",
+        "message": "The \"data\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received an instance of Array"
+      }
+    },
+    {
+      "name": "rowHash/nested-array/distinct-path",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": [
+                    [
+                      12
+                    ],
+                    [
+                      3
+                    ]
+                  ]
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"tenant-1\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":[[12],[3]]},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":[[12],[3]],\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}"
+    },
+    {
+      "name": "rowHash/nested-array/tied-path",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": [
+                    [
+                      12
+                    ],
+                    [
+                      3
+                    ]
+                  ]
+                },
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P2",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": [
+                    2,
+                    0
+                  ]
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"tenant-1\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},{\"tenantId\":\"tenant-1\",\"productId\":\"P2\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":[[12],[3]]},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":[2,0]},\"redactedSourceRecord\":{\"identityDigest\":\"acbbb742c7524cecdec7557d60e4a19af062346309ce5731c88485c7daf48982\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P2\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P2\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":[[12],[3]],\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":[2,0],\"targetTable\":\"products\",\"targetId\":\"P2\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}"
+    },
+    {
+      "name": "rowHash/nested-array/quarantined",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": [
+                    [
+                      12
+                    ],
+                    [
+                      3
+                    ]
+                  ]
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "error": {
+        "name": "TypeError",
+        "message": "The \"data\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received an instance of Array"
+      }
+    },
+    {
+      "name": "rowHash/long-string/distinct-path",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": "hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"tenant-1\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":\"hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh\"},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}"
+    },
+    {
+      "name": "rowHash/long-string/tied-path",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": "hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh"
+                },
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P2",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"tenant-1\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},{\"tenantId\":\"tenant-1\",\"productId\":\"P2\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":\"hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh\"},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":\"zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz\"},\"redactedSourceRecord\":{\"identityDigest\":\"acbbb742c7524cecdec7557d60e4a19af062346309ce5731c88485c7daf48982\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P2\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P2\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz\",\"targetTable\":\"products\",\"targetId\":\"P2\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}"
+    },
+    {
+      "name": "rowHash/long-string/quarantined",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": "hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh"
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[],\"students\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":\"hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh\"},\"redactedSourceRecord\":{\"identityDigest\":\"17c0dab46c66cd1a50a464c1c4132a1661c0d40135ed015fd357f7931a0edcb5\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":null,\"mappingStatus\":\"QUARANTINED\",\"warningCodes\":[],\"errorCodes\":[\"MALFORMED_REQUIRED_RECORD\"]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"MALFORMED_REQUIRED_RECORD\",\"path\":\"Products[000000002]\",\"sourceDigest\":\"17c0dab46c66cd1a50a464c1c4132a1661c0d40135ed015fd357f7931a0edcb5\"}]}"
+    },
+    {
+      "name": "rowHash/max-finite/distinct-path",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": 1.7976931348623157e+308
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"tenant-1\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":1.7976931348623157e+308},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":1.7976931348623157e+308,\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}"
+    },
+    {
+      "name": "rowHash/max-finite/tied-path",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": 1.7976931348623157e+308
+                },
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P2",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": 20
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"tenant-1\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},{\"tenantId\":\"tenant-1\",\"productId\":\"P2\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":20},\"redactedSourceRecord\":{\"identityDigest\":\"acbbb742c7524cecdec7557d60e4a19af062346309ce5731c88485c7daf48982\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P2\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P2\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":1.7976931348623157e+308},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":1.7976931348623157e+308,\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":20,\"targetTable\":\"products\",\"targetId\":\"P2\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}"
+    },
+    {
+      "name": "rowHash/max-finite/quarantined",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": 1.7976931348623157e+308
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "error": {
+        "name": "TypeError",
+        "message": "The \"data\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received type number (1.7976931348623157e+308)"
+      }
+    },
+    {
+      "name": "rowHash/boolean/distinct-path",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": true
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"tenant-1\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":true},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":true,\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}"
+    },
+    {
+      "name": "rowHash/boolean/tied-path",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": true
+                },
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P2",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": false
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"tenant-1\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},{\"tenantId\":\"tenant-1\",\"productId\":\"P2\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":false},\"redactedSourceRecord\":{\"identityDigest\":\"acbbb742c7524cecdec7557d60e4a19af062346309ce5731c88485c7daf48982\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P2\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P2\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":true},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":true,\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":false,\"targetTable\":\"products\",\"targetId\":\"P2\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}"
+    },
+    {
+      "name": "rowHash/boolean/quarantined",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": true
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "error": {
+        "name": "TypeError",
+        "message": "The \"data\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received type boolean (true)"
+      }
+    },
+    {
+      "name": "rowHash/null/distinct-path",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": null
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"tenant-1\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":null},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":null,\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}"
+    },
+    {
+      "name": "rowHash/null/tied-path",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": null
+                },
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P2",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": false
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"tenant-1\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},{\"tenantId\":\"tenant-1\",\"productId\":\"P2\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":null},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":false},\"redactedSourceRecord\":{\"identityDigest\":\"acbbb742c7524cecdec7557d60e4a19af062346309ce5731c88485c7daf48982\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P2\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P2\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":null,\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":false,\"targetTable\":\"products\",\"targetId\":\"P2\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}"
+    },
+    {
+      "name": "rowHash/null/quarantined",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": null
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "error": {
+        "name": "TypeError",
+        "message": "The \"data\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received null"
+      }
+    },
+    {
+      "name": "rowHash/empty-array/distinct-path",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": []
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"tenant-1\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":[]},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":[],\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}"
+    },
+    {
+      "name": "rowHash/empty-array/tied-path",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": []
+                },
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P2",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": []
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"tenant-1\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},{\"tenantId\":\"tenant-1\",\"productId\":\"P2\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":[]},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":[]},\"redactedSourceRecord\":{\"identityDigest\":\"acbbb742c7524cecdec7557d60e4a19af062346309ce5731c88485c7daf48982\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P2\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P2\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":[],\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":[],\"targetTable\":\"products\",\"targetId\":\"P2\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}"
+    },
+    {
+      "name": "metadata/missing",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ]
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"tenant-1\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}"
+    },
+    {
+      "name": "metadata/object",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": {}
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"tenant-1\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":{}},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":{},\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}"
+    },
+    {
+      "name": "metadata/shadow-null",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": {
+                    "toString": null
+                  }
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "error": {
+        "name": "TypeError",
+        "message": "Cannot convert object to primitive value"
+      }
+    },
+    {
+      "name": "metadata/shadow-object",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": {
+                    "toString": {}
+                  }
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "error": {
+        "name": "TypeError",
+        "message": "Cannot convert object to primitive value"
+      }
+    },
+    {
+      "name": "metadata/nested-error",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": [
+                    {
+                      "toString": null
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "error": {
+        "name": "TypeError",
+        "message": "Cannot convert object to primitive value"
+      }
+    },
+    {
+      "name": "metadata/false",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": false
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"tenant-1\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":false},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":false,\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}"
+    },
+    {
+      "name": "metadata/true",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": true
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"tenant-1\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":true},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":true,\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}"
+    },
+    {
+      "name": "metadata/min",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": 5e-324
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"tenant-1\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":5e-324},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":5e-324,\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}"
+    },
+    {
+      "name": "metadata/negative-max",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": -1.7976931348623157e+308
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"tenant-1\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":-1.7976931348623157e+308},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":-1.7976931348623157e+308,\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}"
+    },
+    {
+      "name": "metadata/unicode-nested",
+      "input": {
+        "tenantId": "tenant-1",
+        "migrationJobId": "job-1",
+        "sheets": {
+          "snapshotVersion": 1,
+          "spreadsheetId": "sheet-1",
+          "sourceRevision": "rev-1",
+          "capturedAt": "2026-08-31T00:00:00.000Z",
+          "schemaVersion": 1,
+          "missingOptionalTabs": [
+            "TaskAssignments",
+            "TaskCompletions",
+            "Promotions",
+            "PromotionProducts"
+          ],
+          "tabs": {
+            "Students": {
+              "headers": [
+                "studentId",
+                "name",
+                "balance",
+                "status"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "S1",
+                    "Alice",
+                    "100",
+                    "ACTIVE"
+                  ],
+                  "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+                }
+              ]
+            },
+            "Products": {
+              "headers": [
+                "productId",
+                "name",
+                "price",
+                "stock",
+                "isActive",
+                "imageUrl",
+                "category",
+                "sortOrder"
+              ],
+              "rows": [
+                {
+                  "rowNumber": 2,
+                  "cells": [
+                    "P1",
+                    "Pencil",
+                    "20",
+                    "5",
+                    "TRUE",
+                    "",
+                    "school",
+                    "1"
+                  ],
+                  "hash": [
+                    null,
+                    [
+                      12,
+                      "한😀\ud800",
+                      null
+                    ]
+                  ]
+                }
+              ]
+            }
+          },
+          "credentialHashes": {
+            "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+          },
+          "digest": "c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04"
+        }
+      },
+      "json": "{\"records\":{\"accounts\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"balance\":100}],\"products\":[{\"tenantId\":\"tenant-1\",\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1}],\"students\":[{\"tenantId\":\"tenant-1\",\"studentId\":\"S1\",\"name\":\"Alice\",\"status\":\"ACTIVE\"}]},\"sourceRecords\":[{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Products\",\"rowNumber\":2,\"rowHash\":[null,[12,\"한😀\\ud800\",null]]},\"redactedSourceRecord\":{\"identityDigest\":\"fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a\",\"recognizedFieldCount\":8,\"omittedFieldCount\":0},\"canonicalRecord\":{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"stock\":5,\"isActive\":true,\"imageUrl\":null,\"category\":\"school\",\"sortOrder\":1},\"mappingStatus\":\"STAGED\",\"targetTable\":\"products\",\"targetId\":\"P1\",\"warningCodes\":[],\"errorCodes\":[]},{\"source\":{\"kind\":\"SHEET\",\"artifactDigest\":\"c621b25b27cde14093663df3c04b38e54d45cb122f8fa4fa2a866b064ca22e04\",\"tab\":\"Students\",\"rowNumber\":2,\"rowHash\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\"},\"redactedSourceRecord\":{\"identityDigest\":\"3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d\",\"recognizedFieldCount\":4,\"omittedFieldCount\":0},\"canonicalRecord\":{\"studentId\":\"S1\",\"name\":\"Alice\",\"balance\":100,\"status\":\"ACTIVE\"},\"mappingStatus\":\"STAGED\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"warningCodes\":[],\"errorCodes\":[]}],\"mappings\":[{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"accounts\",\"targetId\":\"S1\",\"status\":\"STAGED\"},{\"sourceDigest\":[null,[12,\"한😀\\ud800\",null]],\"targetTable\":\"products\",\"targetId\":\"P1\",\"status\":\"STAGED\"},{\"sourceDigest\":\"f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef\",\"targetTable\":\"students\",\"targetId\":\"S1\",\"status\":\"STAGED\"}],\"warnings\":[],\"blockingConflicts\":[{\"code\":\"INVALID_CLASS_TIME_ZONE_SETTING\",\"path\":\"Settings.classTimeZone\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"},{\"code\":\"INVALID_SCHEMA_VERSION_SETTING\",\"path\":\"Settings.schemaVersion\",\"sourceDigest\":\"19e6b3a5310ed8dd5e3e5faba22b5b881bacbd85584ef006a8e2e3251a65693c\"}]}"
+    }
+  ]
+}

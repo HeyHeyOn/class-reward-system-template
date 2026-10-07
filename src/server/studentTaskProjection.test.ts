@@ -64,7 +64,7 @@ describe('buildStudentTaskProjection', () => {
       availableFrom: NOW,
       dueAt: '2026-08-27T13:00:00.000Z',
       recurrence: { type: 'WEEKLY', weekdays: [1, 4], time: '10:00' },
-      studentStatus: { studentId: 'S1', assigned: true, completed: false },
+      studentStatus: { studentId: 'S1', assigned: true, completed: false, ready: true, stage: 'READY' },
     }]);
   });
 
@@ -72,7 +72,7 @@ describe('buildStudentTaskProjection', () => {
     const projection = task({
       scheduleReadWarnings: ['INVALID_CURRENT_SCHEDULE'],
       studentStatus: {
-        studentId: 'S2', assigned: true, completed: true,
+        studentId: 'S2', assigned: true, ready: true, completed: true, stage: 'COMPLETED',
         assignmentOrigin: 'EVENT', completionOrigin: 'EVENT',
       },
       spreadsheetRow: 42,
@@ -93,7 +93,7 @@ describe('buildStudentTaskProjection', () => {
     for (const key of denied) expect(serialized).not.toContain(key);
     expect(result).toEqual({
       taskId: 'T1', title: '읽기', description: '10쪽 읽기', reward: 5, sortOrder: 1,
-      studentStatus: { studentId: 'S1', assigned: true, completed: false },
+      studentStatus: { studentId: 'S1', assigned: true, completed: false, ready: true, stage: 'READY' },
     });
   });
 
@@ -143,12 +143,12 @@ describe('buildStudentTaskProjection', () => {
     });
 
     expect(buildStudentTaskProjection([projection], 'S1', NOW)[0].studentStatus).toEqual({
-      studentId: 'S1', assigned: false, completed: false,
+      studentId: 'S1', assigned: false, completed: false, ready: false, stage: 'UNASSIGNED',
     });
 
     const legacyProjection = task({ currentCycle: { cycleId: 'legacy-cycle' } as TaskCycleProjectionDto['currentCycle'] });
     expect(buildStudentTaskProjection([legacyProjection], 'S1', NOW)[0].studentStatus).toEqual({
-      studentId: 'S1', assigned: true,
+      studentId: 'S1', assigned: true, ready: true, stage: 'READY',
     });
   });
 });

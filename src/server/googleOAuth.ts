@@ -1,6 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { google } from 'googleapis';
 import type { NextResponse } from 'next/server';
+import { parseGoogleIdentityReturnTo, type GoogleIdentityReturnTo } from '@/lib/googleIdentityReturnTo';
 
 export const GOOGLE_AUTH_COOKIE = 'class_store_google_auth';
 export const GENERATOR_GRANT_COOKIE = 'class_store_generator_grant';
@@ -35,7 +36,7 @@ export type GoogleSession = {
 
 export type GoogleIdentityState = Readonly<{
   state: string;
-  returnTo?: '/classes';
+  returnTo?: GoogleIdentityReturnTo;
 }>;
 
 export type GeneratorConsentState = {
@@ -137,7 +138,8 @@ export function createGeneratorConsentAuthUrl(origin: string, state: string): st
   });
 }
 
-export function setGoogleStateCookie(response: NextResponse, state: string, returnTo?: '/classes') {
+export function setGoogleStateCookie(response: NextResponse, state: string, returnTo?: GoogleIdentityReturnTo) {
+  if (returnTo !== undefined && !parseGoogleIdentityReturnTo(returnTo)) throw new Error('Invalid Google login return path.');
   const value = returnTo ? JSON.stringify({ state, returnTo } satisfies GoogleIdentityState) : state;
   response.cookies.set(STATE_COOKIE, value, {
     httpOnly: true,
@@ -163,8 +165,9 @@ export function consumeGoogleStateCookie(
       if (!isRecord(parsed)
         || Object.keys(parsed).some((key) => key !== 'state' && key !== 'returnTo')
         || typeof parsed.state !== 'string'
-        || (parsed.returnTo !== undefined && parsed.returnTo !== '/classes')) return null;
-      saved = { state: parsed.state, ...(parsed.returnTo === '/classes' ? { returnTo: '/classes' } : {}) };
+        || (parsed.returnTo !== undefined && !parseGoogleIdentityReturnTo(parsed.returnTo))) return null;
+      const returnTo = parseGoogleIdentityReturnTo(parsed.returnTo);
+      saved = { state: parsed.state, ...(returnTo ? { returnTo } : {}) };
     } catch {
       return null;
     }

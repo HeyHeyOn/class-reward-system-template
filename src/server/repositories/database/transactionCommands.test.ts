@@ -1,6 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createDatabaseAdminCommands } from './adminCommands';
+import { createDatabaseTransactionQueries } from './transactionQueries';
 import {
   createTaskRewardPayloadHash,
 } from './taskCompletionCommands';
@@ -126,11 +128,18 @@ async function seedValidTaskReward() {
     studentId: STUDENT_ID,
     studentName: '김민준',
     assignmentId: 'ASSIGNMENT-1',
-    cycleId: 'cycle-1',
-    cycleStartsAt: '2026-08-28T00:00:00.000Z',
-    cycleEndsAt: '2026-08-29T00:00:00.000Z',
+    cycleId: 'ledger',
+    cycleStartsAt: '1970-01-01T00:00:00.000Z',
+    cycleEndsAt: null,
     reward: 500,
   });
+  // The class keeps task progress as a stage ledger that started before this reward.
+  await harness.database.query(
+    `INSERT INTO operations (tenant_id, operation_id, operation_kind, payload_hash, status, result_snapshot,
+       started_at, finished_at, created_at, updated_at)
+     VALUES ($1, 'task-ledger:v1', 'TASK_ADMIN', $2, 'SUCCEEDED', $3::jsonb, $4, $4, $4, $4)`,
+    [harness.tenantOneId, 'c'.repeat(64), JSON.stringify({ ledgerFrom: '2026-08-27T00:00:00.000Z' }), '2026-08-27T00:00:00.000Z'],
+  );
   await harness.withImmutableLedgerTampering(async () => {
     await harness.database.query(`DELETE FROM transaction_items WHERE tenant_id=$1`, [harness.tenantOneId]);
     await harness.database.query(`DELETE FROM transactions WHERE tenant_id=$1`, [harness.tenantOneId]);
@@ -141,7 +150,7 @@ async function seedValidTaskReward() {
       (tenant_id, task_instance_id, task_id, title, description, reward, is_active,
        sort_order, current_schedule, schedule_schema_version, created_at, updated_at)
      VALUES ($1, 'INSTANCE-1', 'TASK-1', '과제', '설명', 500, true, 1,
-       '{"ruleVersion":1,"effectiveFrom":"2026-08-28T00:00:00.000Z","timeZone":"Asia/Seoul","recurrence":{"type":"DAILY","time":"09:00"},"resetCompletionOnCycle":true,"resetAssignmentOnCycle":true}'::jsonb,
+       '{"ruleVersion":1,"effectiveFrom":"2026-08-28T00:00:00.000Z","timeZone":"Asia/Seoul","recurrence":{"type":"NONE"},"resetCompletionOnCycle":false,"resetAssignmentOnCycle":false}'::jsonb,
        1, '2026-08-28T00:00:00Z', '2026-08-28T00:00:00Z')`,
     [harness.tenantOneId],
   );
@@ -150,9 +159,9 @@ async function seedValidTaskReward() {
       (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id,
        cycle_start_at, cycle_end_at, rule_version, timezone, student_id, event_type,
        source, created_at, schema_version)
-     VALUES ($1, 'ASSIGNMENT-1', 'TASK-1', 'INSTANCE-1', 'cycle-1',
-       '2026-08-28T00:00:00Z', '2026-08-29T00:00:00Z', 1, 'Asia/Seoul', $2,
-       'ASSIGNED', 'ADMIN', '2026-08-28T00:00:00Z', 1)`,
+     VALUES ($1, 'ASSIGNMENT-1', 'TASK-1', 'INSTANCE-1', 'ledger',
+       '1970-01-01T00:00:00Z', NULL, 1, 'Asia/Seoul', $2,
+       'ASSIGNED', 'CARRY_FORWARD', '2026-08-28T00:00:00Z', 1)`,
     [harness.tenantOneId, STUDENT_ID],
   );
   await harness.database.query(
@@ -170,12 +179,12 @@ async function seedValidTaskReward() {
        task_name_snapshot, student_id, student_name_snapshot, reward_snapshot,
        balance_before, balance_after, status, note, cycle_id, cycle_start_at,
        cycle_end_at, rule_version, timezone, source, assignment_id, transaction_id,
-       operation_id, operation_hash, schema_version)
+       operation_id, operation_hash, schema_version, created_at)
      VALUES ($1, $2, '2026-08-28T05:00:00Z', 'INSTANCE-1',
        'TASK-1', '과제', $3, '김민준', 500, 500, 1000, 'COMPLETED',
-       'bank-self-completion', 'cycle-1', '2026-08-28T00:00:00Z',
-       '2026-08-29T00:00:00Z', 1, 'Asia/Seoul', 'BANK', 'ASSIGNMENT-1', $4,
-       $5, $6, 1)`,
+       'bank-self-completion', 'ledger', '1970-01-01T00:00:00Z',
+       NULL, 1, 'Asia/Seoul', 'BANK', 'ASSIGNMENT-1', $4,
+       $5, $6, 1, '2026-08-28T05:00:00Z')`,
     [harness.tenantOneId, REWARD_COMPLETION_ID, STUDENT_ID, REWARD_ORIGINAL_ID, REWARD_OPERATION_ID, rewardHash],
   );
 }
@@ -395,7 +404,7 @@ describe('database transaction cancellation commands', () => {
       task_instance_id: 'INSTANCE-1', task_id_snapshot: 'TASK-1', task_name_snapshot: '과제',
       student_id: STUDENT_ID, student_name_snapshot: '김민준', reward_snapshot: '500',
       balance_before: '1000', balance_after: '500', status: 'CANCELLED',
-      note: `cancels-completion:${REWARD_COMPLETION_ID}`, cycle_id: 'cycle-1',
+      note: `cancels-completion:${REWARD_COMPLETION_ID}`, cycle_id: 'ledger',
       rule_version: 1, timezone: 'Asia/Seoul', source: 'ADMIN_RESET',
       assignment_id: 'ASSIGNMENT-1', transaction_id: `cancellation:${OPERATION_ID}`,
       operation_id: OPERATION_ID, schema_version: 1,
@@ -413,8 +422,8 @@ describe('database transaction cancellation commands', () => {
     const evidenceHash = createTaskRewardPayloadHash({
       taskId: 'TASK-1', taskInstanceId: 'INSTANCE-1', taskTitle: '과제',
       studentId: STUDENT_ID, studentName: '김민준', assignmentId: 'ASSIGNMENT-1',
-      cycleId: 'cycle-1', cycleStartsAt: '2026-08-28T00:00:00.000Z',
-      cycleEndsAt: '2026-08-29T00:00:00.000Z', reward: 500,
+      cycleId: 'ledger', cycleStartsAt: '1970-01-01T00:00:00.000Z',
+      cycleEndsAt: null, reward: 500,
       evidence: {
         evidenceProvider: 'PADLET', evidenceBoardId: 'AbCdEfGhIjKlMnOp', evidencePostId: 'post-001',
         evidenceCreatedAt: '2026-08-28T04:00:00.000Z', evidenceAuthorFullName: '보호자 작성자',
@@ -517,29 +526,44 @@ describe('database transaction cancellation commands', () => {
       .rejects.toThrow(/stored|completion|integrity/i);
   });
 
-  it('rejects a reversal that would produce a negative balance', async () => {
+  it('recovers a task reward into a negative current balance exactly once with matching history', async () => {
     await seedValidTaskReward();
-    const largeRewardHash = createTaskRewardPayloadHash({
-      taskId: 'TASK-1', taskInstanceId: 'INSTANCE-1', taskTitle: '과제',
-      studentId: STUDENT_ID, studentName: '김민준', assignmentId: 'ASSIGNMENT-1',
-      cycleId: 'cycle-1', cycleStartsAt: '2026-08-28T00:00:00.000Z',
-      cycleEndsAt: '2026-08-29T00:00:00.000Z', reward: 5000,
+    const admin = createDatabaseAdminCommands({ tenantId: harness.tenantOneId,
+      runTenantTransaction: harness.runTenantTransaction, now: () => NOW });
+    await admin.adjust({ operationId: '30000000-0000-4000-8000-000000000002',
+      studentIds: [STUDENT_ID], mode: 'set', amount: 5 });
+    const input = { operationId: OPERATION_ID, transactionId: REWARD_ORIGINAL_ID };
+    const result = await commands().cancel(input);
+    expect(result).toMatchObject({ balanceBefore: 5, balanceAfter: -495, reversalAmount: -500 });
+    const state = await snapshot();
+    expect(state.accounts[0]).toMatchObject({ balance: '-495' });
+    expect(state.completions.find(row => (row as { status: string }).status === 'CANCELLED')).toMatchObject({
+      balance_before: '5', balance_after: '-495', transaction_id: result.reversalTransactionId,
     });
-    await harness.withImmutableLedgerTampering(() => harness.database.query(
-      `UPDATE transactions SET legacy_total_amount=5000, balance_delta=5000,
-         balance_before=-4000, balance_after=1000, operation_hash=$3
-       WHERE tenant_id=$1 AND transaction_id=$2`,
-      [harness.tenantOneId, REWARD_ORIGINAL_ID, largeRewardHash],
-    ));
-    await harness.database.query(
-      `UPDATE task_completions SET reward_snapshot=5000, balance_before=-4000,
-         balance_after=1000, operation_hash=$3 WHERE tenant_id=$1 AND transaction_id=$2`,
-      [harness.tenantOneId, REWARD_ORIGINAL_ID, largeRewardHash],
-    );
-    const before = await snapshot();
-    await expect(commands().cancel({ operationId: OPERATION_ID, transactionId: REWARD_ORIGINAL_ID }))
-      .rejects.toMatchObject({ code: 'NEGATIVE_BALANCE' });
-    expect(await snapshot()).toEqual(before);
+    const pair = await createDatabaseTransactionQueries({ tenantId: harness.tenantOneId,
+      runTenantTransaction: harness.runTenantTransaction }).getCancellationPair(REWARD_ORIGINAL_ID, result.reversalTransactionId);
+    expect(pair.cancelledTransaction.status).toBe('CANCELLED');
+    expect(pair.reversalTransaction).toMatchObject({ status: 'CANCEL_REVERSAL', balanceBefore: 5, balanceAfter: -495 });
+    expect(await commands().cancel(input)).toEqual(result);
+    await expect(commands().cancel({ ...input, operationId: '30000000-0000-4000-8000-000000000003' }))
+      .rejects.toMatchObject({ code: 'ALREADY_REVERSED' });
+    expect(await snapshot()).toEqual(state);
+  });
+
+  it('cancels an administrator credit against an already negative balance', async () => {
+    const admin = createDatabaseAdminCommands({ tenantId: harness.tenantOneId,
+      runTenantTransaction: harness.runTenantTransaction, now: () => NOW });
+    const credit = await admin.adjust({ operationId: '30000000-0000-4000-8000-000000000002',
+      studentIds: [STUDENT_ID], mode: 'add', amount: 20 });
+    await admin.adjust({ operationId: '30000000-0000-4000-8000-000000000003',
+      studentIds: [STUDENT_ID], mode: 'subtract', amount: 2925 });
+    const result = await commands().cancel({ operationId: OPERATION_ID,
+      transactionId: credit.students[0].transactionId! });
+    expect(result).toMatchObject({ originalKind: 'ADMIN_ADJUSTMENT', balanceBefore: -5,
+      balanceAfter: -25, reversalAmount: -20, restoredItems: [] });
+    const state = await snapshot();
+    expect(state.accounts[0]).toMatchObject({ balance: '-25' });
+    expect(state.ledger).toHaveLength(0);
   });
 
   it('rolls back account, stock, operation, reversal, and inventory ledger on injected failure', async () => {

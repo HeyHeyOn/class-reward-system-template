@@ -12,6 +12,7 @@ import {
   zonedDatetimeLocalToIso,
   isoToZonedDatetimeLocal,
 } from './PromotionAdminPanel';
+import { THEME_PALETTES } from '../uiTheme';
 
 const products: Product[] = [
   { productId: 'P001', name: '연필', price: 1_000, stock: 10, isActive: true, sortOrder: 1 },
@@ -912,13 +913,17 @@ describe('PromotionAdminPanel', () => {
 
   it('uses single-column mobile grids and full-width shrinkable datetime inputs', async () => {
     await load();
-    expect(screen.getByRole('group', { name: '가격 미리보기 입력' }).className).toContain('grid-cols-1 sm:grid-cols-2');
-    expect(screen.getByLabelText('구매 수량').parentElement?.parentElement?.className).toContain('grid-cols-1 sm:grid-cols-2');
+    const responsiveGrid = (element: Element | null | undefined) => {
+      expect(element?.classList.contains('grid-cols-1')).toBe(true);
+      expect(element?.classList.contains('sm:grid-cols-2')).toBe(true);
+    };
+    responsiveGrid(screen.getByRole('group', { name: '가격 미리보기 입력' }));
+    responsiveGrid(screen.getByLabelText('구매 수량').parentElement?.parentElement);
     for (const label of ['시작 일시', '종료 일시']) {
       const input = screen.getByLabelText(label);
-      expect(input.className).toContain('min-w-0');
-      expect(input.className).toContain('w-full');
-      expect(input.parentElement?.parentElement?.className).toContain('grid-cols-1 sm:grid-cols-2');
+      expect(input.classList.contains('min-w-0')).toBe(true);
+      expect(input.classList.contains('w-full')).toBe(true);
+      responsiveGrid(input.parentElement?.parentElement);
     }
   });
 
@@ -1406,19 +1411,22 @@ describe('PromotionAdminPanel', () => {
     const panel = screen.getByLabelText('행사 관리');
     await screen.findByText(percent.name);
     expect(panel.getAttribute('data-theme')).toBe(themeColor);
-    expect(panel.className).toContain('bg-[var(--theme-shell)]');
+    const palette = THEME_PALETTES[themeColor];
+    expect(panel.style.getPropertyValue('--theme-surface')).toBe(palette.surface);
+    expect(panel.style.getPropertyValue('--theme-text')).toBe(palette.text);
+    expect(panel.style.getPropertyValue('--theme-input')).toBe(palette.input);
+    expect(panel.className).toContain('text-[var(--theme-text)]');
+    expect(screen.getByRole('heading', { name: '행사 만들기' }).parentElement?.className).toContain('bg-[var(--theme-surface)]');
     const row = screen.getByTestId('promotion-row');
-    expect(row.className).toContain('bg-[var(--theme-content-card)]');
-    const edit = within(row).getByRole('button', { name: `${percent.name} 편집` });
-    const activation = within(row).getByRole('button', { name: `${percent.name} 비활성화` });
-    expect(edit.className).toContain('bg-[var(--theme-accent-soft)]');
-    expect(activation.className).toContain('bg-[var(--theme-accent-solid)]');
-    for (const action of [edit, activation]) {
-      expect(action.className).toContain('border-[var(--theme-border)]');
-      expect(action.className).toContain('focus-visible:ring-[var(--theme-focus-ring)]');
+    for (const action of ['편집', '비활성화', '삭제']) {
+      expect(within(row).getByRole('button', { name: `${percent.name} ${action}` }).className).toMatch(/var\(--(theme|crs)-/);
     }
     expect(screen.getByLabelText('행사명').className).toContain('bg-[var(--theme-input)]');
+    expect(panel.innerHTML).not.toMatch(/\b(?:bg|text|border)-(?:slate|sky|rose|violet|amber|emerald)-\d/);
     fireEvent.click(screen.getByRole('button', { name: `${percent.name} 편집` }));
-    expect(screen.getByRole('dialog').className).toContain('text-[var(--theme-text)]');
+    const dialog = screen.getByRole('dialog');
+    expect(panel.contains(dialog)).toBe(true);
+    expect(dialog.className).toContain('text-[var(--theme-text)]');
+    expect(within(dialog).getByLabelText('수정 행사명').className).toContain('bg-[var(--theme-input)]');
   });
 });

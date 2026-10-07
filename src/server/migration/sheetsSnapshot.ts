@@ -1,5 +1,8 @@
 import { createHash } from 'node:crypto';
+import { type BudgetContext, utf8ByteLength } from '@/lib/boundedWork';
+import { canonicalBoundedJson } from '@/lib/boundedJson';
 import { parseSheetSettingsRows } from '@/server/sheetsRepository';
+import { readOfflineGoogleGrid } from './offlineGoogleGrid';
 import {
   assertDenseWorkbookRow, deepFreeze, isSensitiveTabName, redactWorkbook, type CredentialHashes,
 } from './sensitiveRedaction';
@@ -28,12 +31,20 @@ export interface WorkbookSnapshotReader {
 
 export type SheetSnapshotRow = Readonly<{ rowNumber: number; cells: readonly string[]; hash: string }>;
 export type SheetTabSnapshot = Readonly<{ headers: readonly string[]; rows: readonly SheetSnapshotRow[] }>;
+export type OfflineBaselineEvidence = Readonly<{
+  kind: 'OFFLINE_GRID_REHEARSAL';
+  contentSha256: string;
+  googleDriveVersion: null;
+  writerFreezeProven: false;
+  redisClaims: 'UNCONFIRMED';
+}>;
 export type SheetsSnapshot = Readonly<{
   snapshotVersion: 1;
   spreadsheetId: string;
   sourceRevision: string;
+  offlineBaseline?: OfflineBaselineEvidence;
   capturedAt: string;
-  schemaVersion: 1 | 2 | 3;
+  schemaVersion: 1 | 2 | 3 | 4;
   missingOptionalTabs: readonly string[];
   tabs: Readonly<Record<string, SheetTabSnapshot>>;
   credentialHashes: CredentialHashes;
@@ -49,6 +60,35 @@ export async function captureSheetsSnapshot(input: Readonly<{
   assertCanonicalInstant(input.capturedAt);
   const before = await input.reader.getRevision();
   assertBoundedText(before, 'source revision', 512);
+  return captureWorkbook(input, before, async () => {
+    if (before !== await input.reader.getRevision()) throw new Error('Workbook source changed during snapshot capture.');
+  });
+}
+
+/** Non-authoritative, already acquired grid. No revision reader or writer exists on this path. */
+export async function captureOfflineGoogleGridBaseline(input: Readonly<{
+  gridJson: string; capturedAt: string;
+}>): Promise<SheetsSnapshot> {
+  return captureOfflineSheetsBaseline({ ...readOfflineGoogleGrid(input.gridJson), capturedAt: input.capturedAt });
+}
+
+/** Low-level already-adapted rehearsal input. Content digest identifies the external capture, not Google. */
+export async function captureOfflineSheetsBaseline(input: Readonly<{
+  spreadsheetId: string; capturedAt: string; contentSha256: string;
+  tabs: Readonly<Record<string, readonly (readonly string[])[]>>;
+}>): Promise<SheetsSnapshot> {
+  if (!/^[a-f0-9]{64}$/.test(input.contentSha256)) throw new Error('Offline capture content digest is invalid.');
+  return captureWorkbook({ ...input, reader: {
+    listSheetNames: async () => Object.keys(input.tabs), getRows: async name => input.tabs[name],
+  } }, '', undefined, { kind: 'OFFLINE_GRID_REHEARSAL', contentSha256: input.contentSha256,
+    googleDriveVersion: null, writerFreezeProven: false, redisClaims: 'UNCONFIRMED' });
+}
+
+async function captureWorkbook(input: Readonly<{
+  spreadsheetId: string; capturedAt: string; reader: Pick<WorkbookSnapshotReader, 'listSheetNames' | 'getRows'>;
+}>, before: string, verifyRevision?: () => Promise<void>, offlineBaseline?: OfflineBaselineEvidence): Promise<SheetsSnapshot> {
+  assertBoundedText(input.spreadsheetId, 'spreadsheet id', 512);
+  assertCanonicalInstant(input.capturedAt);
   const budget = new AggregateUtf8Budget(MAX_AGGREGATE_UTF8_BYTES);
   budget.consumeText(input.spreadsheetId);
   budget.consumeText(input.capturedAt);
@@ -90,14 +130,13 @@ export async function captureSheetsSnapshot(input: Readonly<{
       });
     });
   }
-  const after = await input.reader.getRevision();
-  if (before !== after) throw new Error('Workbook source changed during snapshot capture.');
+  await verifyRevision?.();
 
   const redacted = redactWorkbook(rawTabs);
   // Reuse the established pure Settings parser; snapshotting never invokes a writer or migrator.
   const settings = parseSheetSettingsRows((redacted.tabs.Settings ?? []).map((row) => [...row]));
   const parsedVersion = Number(settings.schemaVersion ?? 1);
-  if (!Number.isSafeInteger(parsedVersion) || parsedVersion < 1 || parsedVersion > 3) {
+  if (parsedVersion !== 1 && parsedVersion !== 2 && parsedVersion !== 3 && parsedVersion !== 4) {
     throw new Error('Workbook schema version is unsupported.');
   }
 
@@ -109,12 +148,13 @@ export async function captureSheetsSnapshot(input: Readonly<{
       rows: rows.map((row, index) => ({ rowNumber: index + 2, cells: [...row], hash: stableRowHash(row) })),
     };
   }
-  const artifact = {
+  const artifact: Omit<SheetsSnapshot, 'digest'> = {
     snapshotVersion: 1 as const,
     spreadsheetId: input.spreadsheetId,
     sourceRevision: before,
+    ...(offlineBaseline ? { offlineBaseline } : {}),
     capturedAt: input.capturedAt,
-    schemaVersion: parsedVersion as 1 | 2 | 3,
+    schemaVersion: parsedVersion,
     missingOptionalTabs: OPTIONAL_TABS.filter((name) => !names.includes(name)),
     tabs,
     credentialHashes: redacted.credentialHashes,
@@ -122,7 +162,14 @@ export async function captureSheetsSnapshot(input: Readonly<{
   return deepFreeze({ ...artifact, digest: sha256(canonicalJson(artifact)) });
 }
 
-export function stableRowHash(cells: readonly string[]): string {
+export function stableRowHash(cells: readonly string[], budget?: BudgetContext): string {
+  if (budget !== undefined) {
+    // Registered immutable arrays need no spread copy to preserve array order.
+    const encoded = canonicalBoundedJson(cells, budget);
+    const bytes = utf8ByteLength(encoded, budget);
+    budget.spend(1 + Math.ceil(bytes / 256)); budget.reserveString(64);
+    const result = sha256(encoded); budget.check(); return result;
+  }
   return sha256(canonicalJson([...cells]));
 }
 

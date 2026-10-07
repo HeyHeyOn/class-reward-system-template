@@ -9,6 +9,10 @@ export type ClassMembership = Readonly<{
   displayName: string;
   role: TenantMembershipRole;
   lifecycle: TenantLifecycle;
+  dashboard?: Readonly<{
+    deletedAt: string | null; managementVersion: string; createdAt: string;
+    studentCount: number; productCount: number; taskCount: number;
+  }>;
 }>;
 
 export type ClassMembershipRepository = Readonly<{

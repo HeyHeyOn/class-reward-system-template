@@ -43,6 +43,12 @@ export async function proxy(request: NextRequest) {
       target.pathname = compatibilityTarget;
       return NextResponse.redirect(target);
     }
+
+    // PostgreSQL pages need an explicit class; recover old OAuth/bookmark URLs.
+    if (process.env.CLASS_STORE_STORAGE === 'postgresql'
+      && (pathname === '/' || pathname === '/bank' || pathname === '/admin' || pathname.startsWith('/admin/'))) {
+      return NextResponse.redirect(new URL('/classes', request.url));
+    }
   }
 
   if (!pathname.startsWith('/admin') || pathname === '/admin/login') {

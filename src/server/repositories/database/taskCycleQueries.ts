@@ -1,4 +1,5 @@
 import 'server-only';
+import { hasLegacyTaskOrigin } from './legacyTaskOrigin';
 
 import { sql } from 'drizzle-orm';
 import { projectTaskCycleState, type TaskCycleState } from '@/domain/taskCycleState';
@@ -9,6 +10,7 @@ import {
 import {
   buildTaskHistoryDetailDto,
   buildTaskHistoryListDto,
+  buildTaskHistoryStudents,
   type TaskHistoryDetailDto,
   type TaskHistoryListDto,
 } from '@/domain/taskHistoryDtos';
@@ -69,12 +71,13 @@ export function createDatabaseTaskCycleQueries(
       );
     },
     async listTaskCycleProjections(options: {
-      studentId?: string; includeInactive?: boolean; now?: string;
+      studentId?: string; includeInactive?: boolean; now?: string; adminMutation?: boolean;
     } = {}): Promise<TaskCycleProjectionDto[]> {
       const now = projectionTimestamp(options.now);
       return dependencies.runTenantSnapshot(dependencies.tenantId, async (transaction) => {
         const tasks = await readDatabaseTasks(transaction, dependencies.tenantId, {
           activeOnly: options.includeInactive !== true,
+          adminMutation: options.adminMutation === true && !options.studentId,
         });
         const snapshot = await readLedgerSnapshot(transaction, dependencies.tenantId, 'ledger');
         return tasks.map((task) => buildTaskCycleProjection(task,
@@ -123,7 +126,9 @@ export function createDatabaseTaskCycleQueries(
               studentId: student.studentId,
               name: student.name,
               assigned: projected?.assigned ?? false,
+              ready: projected?.ready ?? false,
               completed: projected?.completed ?? false,
+              stage: projected?.stage ?? 'UNASSIGNED',
               assignmentOrigin: projected?.assignmentOrigin ?? 'DEFAULT',
               ...(projected?.assignmentEvent?.source
                 ? { assignmentSource: projected.assignmentEvent.source } : {}),
@@ -213,6 +218,7 @@ export function createDatabaseTaskCycleQueries(
         if (tasks.length > 1) throw new Error('Task query returned duplicate tasks.');
         const task = tasks[0] ?? null;
         const snapshot = await readLedgerSnapshot(transaction, dependencies.tenantId, 'ledger');
+        const events = projectTaskCycleHistoryFromSnapshot(snapshot, filter);
         return buildTaskHistoryDetailDto({
           taskId: filter.taskId,
           requestedTaskInstanceId: filter.taskInstanceId ?? null,
@@ -221,11 +227,32 @@ export function createDatabaseTaskCycleQueries(
           currentCycleState: task?.taskInstanceId && task.schedule
             ? projectTaskCycleState({ task, now: projectionNow, ...snapshot })
             : null,
-          events: projectTaskCycleHistoryFromSnapshot(snapshot, filter),
+          events,
+          students: buildTaskHistoryStudents(events, events.length === 0
+            ? [] : await readHistoryStudentNames(transaction, dependencies.tenantId)),
         });
       });
     },
   };
+}
+
+/** Every student row of the tenant, deleted ones included, to name the students of a history. */
+async function readHistoryStudentNames(
+  transaction: TenantTransaction,
+  tenantId: string,
+): Promise<Array<{ studentId: string; name: string; deleted: boolean }>> {
+  const result = await transaction.execute(sql`
+    SELECT student_id, name, deleted_at IS NOT NULL AS deleted
+    FROM students
+    WHERE tenant_id = ${tenantId}
+  `);
+  return (result.rows as Array<Record<string, unknown>>).map((row) => {
+    if (typeof row.student_id !== 'string' || !row.student_id
+      || typeof row.name !== 'string' || typeof row.deleted !== 'boolean') {
+      throw new Error('Student identity integrity check failed.');
+    }
+    return { studentId: row.student_id, name: row.name, deleted: row.deleted };
+  });
 }
 
 function projectionTimestamp(now: string | undefined): string {
@@ -260,6 +287,7 @@ async function readLedgerSnapshot(
       SELECT 'assignment'::text AS ledger_kind, event_sequence,
              jsonb_build_object(
                'assignment_id', assignment_id,
+               'legacy_origin_id', legacy_origin_id,
                'event_sequence', event_sequence::text,
                'task_id_snapshot', task_id_snapshot,
                'task_instance_id', task_instance_id,
@@ -286,6 +314,7 @@ async function readLedgerSnapshot(
       SELECT 'completion'::text AS ledger_kind, event_sequence,
              jsonb_build_object(
                'completion_id', completion_id,
+               'legacy_origin_id', legacy_origin_id,
                'event_sequence', event_sequence::text,
                'completed_at', completed_at,
                'task_instance_id', task_instance_id,
@@ -336,7 +365,8 @@ async function readLedgerSnapshot(
   const assignmentSequences = assertStrictEventSequences(assignmentRows, 'Task assignment');
   const completionSequences = assertStrictEventSequences(completionRows, 'Task completion');
   const assignments = assignmentRows.map(projectAssignment);
-  assertAssignmentProvenance(assignments, assignmentSequences);
+  assertAssignmentProvenance(assignments, assignmentSequences,
+    new Set(assignmentRows.filter(hasLegacyTaskOrigin).map(row => String(row.assignment_id))));
   const projectedCompletions = completionRows.map((row, index): ProjectedCompletion => ({
     completion: projectCompletion(row),
     eventSequence: completionSequences[index],
@@ -365,6 +395,7 @@ function assertStrictEventSequences(rows: Record<string, unknown>[], label: stri
 }
 
 function projectAssignment(row: AssignmentRow): TaskAssignment {
+  const legacy = hasLegacyTaskOrigin(row);
   positiveSafeInteger(row.event_sequence, 'Task assignment event sequence');
   assertSchemaVersion(row.schema_version, 'Task assignment');
   const status = exactValue(row.event_type, ['ASSIGNED', 'UNASSIGNED'] as const, 'Task assignment event');
@@ -373,7 +404,7 @@ function projectAssignment(row: AssignmentRow): TaskAssignment {
     ['ADMIN', 'QR', 'LEGACY_SEED', 'CARRY_FORWARD'] as const,
     'Task assignment source',
   );
-  if (source === 'ADMIN' || source === 'QR') {
+  if (!legacy && (source === 'ADMIN' || source === 'QR')) {
     canonicalRequiredString(row.admin_operation_id, 'Task assignment admin operation ID');
     if (typeof row.admin_operation_hash !== 'string'
       || !/^[a-f0-9]{64}$/.test(row.admin_operation_hash)) {
@@ -411,7 +442,7 @@ function projectAssignment(row: AssignmentRow): TaskAssignment {
   };
 }
 
-function assertAssignmentProvenance(assignments: TaskAssignment[], eventSequences: number[]): void {
+function assertAssignmentProvenance(assignments: TaskAssignment[], eventSequences: number[], legacyAssignments: ReadonlySet<string>): void {
   const indexed = assignments.map((assignment, index) => ({
     assignment,
     eventSequence: eventSequences[index],
@@ -442,20 +473,39 @@ function assertAssignmentProvenance(assignments: TaskAssignment[], eventSequence
       }
       return;
     }
-    if (assignment.status !== 'ASSIGNED' || assignment.previousAssignmentId === '') {
+    const legacy = legacyAssignments.has(assignment.assignmentId);
+    if ((!legacy && assignment.status !== 'ASSIGNED') || assignment.previousAssignmentId === '') {
       throw new Error('Carry-forward task assignment requires an assigned previous assignment.');
     }
     const previous = byId.get(assignment.previousAssignmentId);
+    const predecessor = previous?.assignment;
+    if (legacy) {
+      // Sheets materialized a carry when next read, which can be later than
+      // the boundary. Its protected archive proves the original predecessor.
+      if (!previous || !predecessor || previous.eventSequence >= eventSequence
+        || predecessor.status !== assignment.status || predecessor.studentId !== assignment.studentId
+        || predecessor.taskId !== assignment.taskId || predecessor.taskInstanceId !== assignment.taskInstanceId
+        || predecessor.cycleId === assignment.cycleId || predecessor.createdAt > assignment.createdAt
+        || predecessor.cycleStartsAt > assignment.cycleStartsAt || predecessor.ruleVersion > assignment.ruleVersion
+        || (predecessor.cycleStartsAt === assignment.cycleStartsAt && predecessor.ruleVersion >= assignment.ruleVersion)) {
+        throw new Error('Historical carry-forward task assignment provenance is invalid.');
+      }
+      return;
+    }
+    const configurationBoundary = predecessor !== undefined
+      && assignment.ruleVersion > predecessor.ruleVersion
+      && assignment.createdAt === assignment.cycleStartsAt
+      && (predecessor.cycleEndsAt === null || predecessor.cycleEndsAt >= assignment.cycleStartsAt);
     if (!previous
       || previous.eventSequence >= eventSequence
-      || previous.assignment.status !== 'ASSIGNED'
+      || (legacy ? previous.assignment.status !== assignment.status : previous.assignment.status !== 'ASSIGNED')
       || previous.assignment.studentId !== assignment.studentId
       || previous.assignment.taskId !== assignment.taskId
       || previous.assignment.taskInstanceId !== assignment.taskInstanceId
       || previous.assignment.cycleId === assignment.cycleId
       || previous.assignment.cycleStartsAt >= assignment.cycleStartsAt
-      || previous.assignment.cycleEndsAt === null
-      || previous.assignment.cycleEndsAt > assignment.cycleStartsAt) {
+      || (!configurationBoundary && (previous.assignment.cycleEndsAt === null
+        || previous.assignment.cycleEndsAt > assignment.cycleStartsAt))) {
       throw new Error('Carry-forward task assignment provenance is invalid.');
     }
   });
@@ -484,6 +534,7 @@ function assertCompletionAssignments(
 }
 
 function projectCompletion(row: CompletionRow): TaskCompletion {
+  const legacy = hasLegacyTaskOrigin(row);
   positiveSafeInteger(row.event_sequence, 'Task completion event sequence');
   assertSchemaVersion(row.schema_version, 'Task completion');
   const reward = safeInteger(row.reward_snapshot, 'Task completion reward');
@@ -554,17 +605,23 @@ function projectCompletion(row: CompletionRow): TaskCompletion {
         || balanceAfter !== expectedBalance) {
         throw new Error('BANK task completion status or balance shape is invalid.');
       }
-      if (!hasOperation
+      if (!legacy && (!hasOperation
         || typeof row.operation_id !== 'string'
         || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(row.operation_id)
         || typeof row.operation_hash !== 'string'
-        || !/^[0-9a-f]{64}$/.test(row.operation_hash)) {
+        || !/^[0-9a-f]{64}$/.test(row.operation_hash))) {
         throw new Error('BANK task completion operation metadata is invalid.');
       }
     } else if (source === 'ADMIN_RESET') {
-      assertAdminResetWriterShape(row, {
-        reward, balanceBefore, balanceAfter, storedStatus, hasOperation, hasAdminOperation,
-      });
+      if (legacy) {
+        if (storedStatus !== 'CANCELLED' || reward !== 0 || balanceBefore !== balanceAfter || row.transaction_id !== null) {
+          throw new Error('Historical task reset shape is invalid.');
+        }
+      } else {
+        assertAdminResetWriterShape(row, {
+          reward, balanceBefore, balanceAfter, storedStatus, hasOperation, hasAdminOperation,
+        });
+      }
     } else {
       if (storedStatus !== 'COMPLETED' || reward !== 0 || balanceBefore !== balanceAfter) {
         throw new Error(`${source} task completion writer shape is invalid.`);

@@ -121,6 +121,13 @@ export async function POST(request: Request, context: RouteContext) {
           operationId,
         }, { status: 400 });
       }
+      if (error.code === 'NOT_READY') {
+        return Response.json({
+          error: '아직 완료할 수 없는 과제예요. 선생님이 확인하면 완료할 수 있어요.',
+          code: 'NOT_READY',
+          operationId,
+        }, { status: 409 });
+      }
       if (error.code === 'OPERATION_CONFLICT') return operationConflict(operationId);
       return statusUnknown(operationId);
     }

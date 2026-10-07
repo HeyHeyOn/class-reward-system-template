@@ -9,13 +9,20 @@
     "lint": "eslint",
     "generator": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types src/generator/bin.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:classes": "vitest run --config test-support/class-creation.config.mts",
+    "test:classes:postgres": "RUN_REAL_POSTGRES=1 vitest run --config test-support/class-creation.config.mts src/server/repositories/database/classCreation.postgres.test.ts src/server/repositories/database/classStart.postgres.test.ts",
+    "test:settings": "vitest run --config test-support/settings.config.mts",
+    "test:settings:postgres": "RUN_REAL_POSTGRES=1 vitest run --config test-support/settings.config.mts src/server/repositories/database/settingsCommands.postgres.test.ts",
+    "test:watch": "vitest",
+    "test:migration:legacy": "vitest run --config test-support/legacy-financial.config.mts",
+    "test:migration:legacy:postgres": "RUN_REAL_POSTGRES=1 vitest run --config test-support/legacy-financial.config.mts"
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",
     "@types/qrcode": "^1.5.6",
     "@vercel/functions": "^3.9.5",
     "drizzle-orm": "^0.45.2",
+    "exceljs": "^4.4.0",
     "googleapis": "^171.4.0",
     "html5-qrcode": "^2.3.8",
     "next": "^16.3.3",

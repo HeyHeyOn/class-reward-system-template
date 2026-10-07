@@ -45,3 +45,13 @@ yarn-error.log*
 next-env.d.ts
 
 .vercel
+
+# Local operator records, personal agent state, and generated evidence.
+# Keep these files on disk; publish only reviewed, non-sensitive summaries.
+/.claude/
+/.hermes/
+/class-store-supervision/
+/choi-task20-inventory-audit.md
+**/.hermes-tmp.*
+/test-support/crs-http-browser/evidence/
+/test-support/crs-recovery/evidence/

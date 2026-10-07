@@ -1,0 +1,3709 @@
+{
+  "input": {
+    "tenantId": "20000000-0000-4000-8000-000000000001",
+    "migrationJobId": "20000000-0000-4000-8000-000000000019",
+    "expectedStateVersion": "4",
+    "originalSnapshotId": "import:51e95e628485ba0d350ba0c5624132ab2b782ed6c3e24bed153e2da302c74418",
+    "originalSourceId": "sheet:dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8",
+    "exclusionGenerationReference": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "original": {
+      "sheets": {
+        "snapshotVersion": 1,
+        "spreadsheetId": "sheet-1",
+        "sourceRevision": "rev-1",
+        "capturedAt": "2026-08-31T00:00:00.000Z",
+        "schemaVersion": 3,
+        "missingOptionalTabs": [],
+        "tabs": {
+          "Adjustments": {
+            "headers": [
+              "adjustmentId",
+              "timestamp",
+              "studentId",
+              "amount",
+              "mode",
+              "operator"
+            ],
+            "rows": [
+              {
+                "rowNumber": 2,
+                "cells": [
+                  "ADJ1",
+                  "2026-08-31T00:00:00.000Z",
+                  "S1",
+                  "10",
+                  "add",
+                  "admin"
+                ],
+                "hash": "4ecca6538e2e5d44fe11b7a382151c27736042d1d1f0a6de8d70a9e5d00d6e28"
+              }
+            ]
+          },
+          "Products": {
+            "headers": [
+              "productId",
+              "name",
+              "price",
+              "stock",
+              "isActive",
+              "imageUrl",
+              "category",
+              "sortOrder"
+            ],
+            "rows": [
+              {
+                "rowNumber": 2,
+                "cells": [
+                  "P1",
+                  "Pencil",
+                  "20",
+                  "5",
+                  "TRUE",
+                  "",
+                  "school",
+                  "1"
+                ],
+                "hash": "93f68ea1d00470db48541bd3a271550fea91ad870cd9e31d1ee01c646e8c0291"
+              }
+            ]
+          },
+          "PromotionProducts": {
+            "headers": [
+              "promotionProductId",
+              "promotionId",
+              "productId",
+              "createdAt",
+              "schemaVersion"
+            ],
+            "rows": [
+              {
+                "rowNumber": 2,
+                "cells": [
+                  "LINK1",
+                  "PROMO1",
+                  "P1",
+                  "2026-08-31T00:00:00.000Z",
+                  "3"
+                ],
+                "hash": "d8e3c8e6f022afee050046b40372a4f1784e420159ae4bb6fe42bb93d6e04369"
+              }
+            ]
+          },
+          "Promotions": {
+            "headers": [
+              "promotionId",
+              "name",
+              "description",
+              "type",
+              "value",
+              "buyQuantity",
+              "freeQuantity",
+              "startsAt",
+              "endsAt",
+              "isActive",
+              "sortOrder",
+              "createdAt",
+              "updatedAt",
+              "schemaVersion"
+            ],
+            "rows": [
+              {
+                "rowNumber": 2,
+                "cells": [
+                  "PROMO1",
+                  "Sale",
+                  "discount",
+                  "FIXED_DISCOUNT",
+                  "5",
+                  "",
+                  "",
+                  "2026-08-31T00:00:00.000Z",
+                  "2026-09-01T00:00:00.000Z",
+                  "TRUE",
+                  "1",
+                  "2026-08-31T00:00:00.000Z",
+                  "2026-08-31T00:00:00.000Z",
+                  "3"
+                ],
+                "hash": "b47af12a5b3a6f2e016f759b60f30b043957a4e476b584e5943bfc00f71d2045"
+              }
+            ]
+          },
+          "Settings": {
+            "headers": [
+              "key",
+              "value"
+            ],
+            "rows": [
+              {
+                "rowNumber": 2,
+                "cells": [
+                  "schemaVersion",
+                  "3"
+                ],
+                "hash": "2ec4f535937929a42a03e65c6ae92cc4b18bcdf99250c50876bb64233a56727d"
+              },
+              {
+                "rowNumber": 3,
+                "cells": [
+                  "classTimeZone",
+                  "Asia/Seoul"
+                ],
+                "hash": "d55a44a91b8a3270885897e048ab573180cf3f25e5996cc0c371e9e2caa63613"
+              },
+              {
+                "rowNumber": 4,
+                "cells": [
+                  "themeColor",
+                  "blue"
+                ],
+                "hash": "2c8f35e06de4cda67f37a42a16f9e3cf65e7f902d974c9191111ee37c19c787d"
+              },
+              {
+                "rowNumber": 5,
+                "cells": [
+                  "adminPasswordHash",
+                  "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"
+                ],
+                "hash": "4dfed580af3028ffdc315b92690aae5ad334d935063b6e5c1af3b59f3f20d7ab"
+              },
+              {
+                "rowNumber": 6,
+                "cells": [
+                  "recoveryCodeHash",
+                  "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+                ],
+                "hash": "0044930e67b402e673cf32c854490ac2597e9591b4c5ca8e001fe6d18426e1c5"
+              }
+            ]
+          },
+          "Students": {
+            "headers": [
+              "studentId",
+              "name",
+              "balance",
+              "status"
+            ],
+            "rows": [
+              {
+                "rowNumber": 2,
+                "cells": [
+                  "S1",
+                  "Alice",
+                  "100",
+                  "ACTIVE"
+                ],
+                "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+              }
+            ]
+          },
+          "TaskAssignments": {
+            "headers": [
+              "assignmentId",
+              "taskId",
+              "taskInstanceId",
+              "cycleId",
+              "cycleStartsAt",
+              "cycleEndsAt",
+              "ruleVersion",
+              "timeZone",
+              "studentId",
+              "status",
+              "source",
+              "previousAssignmentId",
+              "createdAt",
+              "schemaVersion",
+              "note"
+            ],
+            "rows": [
+              {
+                "rowNumber": 2,
+                "cells": [
+                  "AS0",
+                  "T1",
+                  "TI1",
+                  "v1|TI1|r1|2026-08-30T00:00:00Z",
+                  "2026-08-30T00:00:00.000Z",
+                  "2026-08-31T00:00:00.000Z",
+                  "1",
+                  "Asia/Seoul",
+                  "S1",
+                  "ASSIGNED",
+                  "LEGACY_SEED",
+                  "",
+                  "2026-08-30T00:00:00.000Z",
+                  "2",
+                  ""
+                ],
+                "hash": "4a2dd0f708da017cff7abc88b7e3107f724529dd67655b0a968224ea629900f3"
+              },
+              {
+                "rowNumber": 3,
+                "cells": [
+                  "AS1",
+                  "T1",
+                  "TI1",
+                  "v1|TI1|r2|2026-08-31T00:00:00Z",
+                  "2026-08-31T00:00:00.000Z",
+                  "2026-09-01T00:00:00.000Z",
+                  "2",
+                  "Asia/Seoul",
+                  "S1",
+                  "ASSIGNED",
+                  "CARRY_FORWARD",
+                  "AS0",
+                  "2026-08-31T00:00:00.000Z",
+                  "2",
+                  "original assignment note"
+                ],
+                "hash": "9d28a59e560f994a8e7a7739deec686c41de060a481add90c7554e74c24a4fa0"
+              }
+            ]
+          },
+          "TaskCompletions": {
+            "headers": [
+              "completionId",
+              "timestamp",
+              "taskId",
+              "studentId",
+              "studentName",
+              "reward",
+              "balanceBefore",
+              "balanceAfter",
+              "status",
+              "note",
+              "taskInstanceId",
+              "cycleId",
+              "cycleStartsAt",
+              "cycleEndsAt",
+              "ruleVersion",
+              "timeZone",
+              "source",
+              "assignmentId",
+              "schemaVersion",
+              "operationId",
+              "operationPayloadHash",
+              "evidenceProvider",
+              "evidenceBoardId",
+              "evidencePostId",
+              "evidenceCreatedAt",
+              "evidenceAuthorFullName"
+            ],
+            "rows": [
+              {
+                "rowNumber": 2,
+                "cells": [
+                  "C1",
+                  "2026-08-31T00:00:00.000Z",
+                  "T1",
+                  "S1",
+                  "Alice",
+                  "0",
+                  "90",
+                  "90",
+                  "SUCCESS",
+                  "original completion note",
+                  "TI1",
+                  "v1|TI1|r2|2026-08-31T00:00:00Z",
+                  "2026-08-31T00:00:00.000Z",
+                  "2026-09-01T00:00:00.000Z",
+                  "2",
+                  "Asia/Seoul",
+                  "CARRY_FORWARD",
+                  "AS1",
+                  "2",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  ""
+                ],
+                "hash": "0bd8e6562ffa0345b55e1dae4e1920cbde958c71539f61e8646f9352937cbbf1"
+              }
+            ]
+          },
+          "Tasks": {
+            "headers": [
+              "taskId",
+              "title",
+              "description",
+              "reward",
+              "isActive",
+              "sortOrder",
+              "createdAt",
+              "updatedAt",
+              "allowedStudentIds",
+              "taskInstanceId",
+              "ruleVersion",
+              "scheduleEffectiveFrom",
+              "recurrenceTimeZone",
+              "recurrenceType",
+              "recurrenceTime",
+              "recurrenceWeekday",
+              "recurrenceDayOfMonth",
+              "resetCompletionOnCycle",
+              "resetAssignmentOnCycle",
+              "pendingRuleVersion",
+              "pendingEffectiveFrom",
+              "pendingTimeZone",
+              "pendingRecurrenceType",
+              "pendingRecurrenceTime",
+              "pendingRecurrenceWeekday",
+              "pendingRecurrenceDayOfMonth",
+              "pendingResetCompletionOnCycle",
+              "pendingResetAssignmentOnCycle",
+              "availableFrom",
+              "dueAt",
+              "prerequisiteTaskId",
+              "recurrenceWeekdays",
+              "pendingRecurrenceWeekdays"
+            ],
+            "rows": [
+              {
+                "rowNumber": 2,
+                "cells": [
+                  "T1",
+                  "Homework",
+                  "Read",
+                  "10",
+                  "TRUE",
+                  "1",
+                  "2026-08-31T00:00:00.000Z",
+                  "2026-09-01T00:00:00.000Z",
+                  "S1",
+                  "TI1",
+                  "1",
+                  "2026-08-31T00:00:00.000Z",
+                  "Asia/Seoul",
+                  "NONE",
+                  "",
+                  "",
+                  "",
+                  "FALSE",
+                  "FALSE",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  ""
+                ],
+                "hash": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33"
+              }
+            ]
+          },
+          "Transactions": {
+            "headers": [
+              "transactionId",
+              "timestamp",
+              "studentId",
+              "studentName",
+              "items",
+              "totalAmount",
+              "balanceBefore",
+              "balanceAfter",
+              "status",
+              "operator"
+            ],
+            "rows": [
+              {
+                "rowNumber": 2,
+                "cells": [
+                  "TX1",
+                  "2026-08-31T00:00:00.000Z",
+                  "S1",
+                  "Alice",
+                  "[{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"quantity\":1,\"subtotal\":20}]",
+                  "20",
+                  "100",
+                  "80",
+                  "COMPLETED",
+                  "kiosk"
+                ],
+                "hash": "8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349"
+              },
+              {
+                "rowNumber": 3,
+                "cells": [
+                  "TX-ADJ1",
+                  "2026-08-31T00:00:00.000Z",
+                  "S1",
+                  "Alice",
+                  "[{\"productId\":\"ADMIN-ADD\",\"name\":\"관리자 지급\",\"price\":-10,\"quantity\":1,\"subtotal\":-10}]",
+                  "-10",
+                  "80",
+                  "90",
+                  "ADMIN_ADJUSTMENT",
+                  "admin"
+                ],
+                "hash": "e5329b80d5985721e3c59682280460b1521d13811648a967014a5a5553adfc0a"
+              }
+            ]
+          }
+        },
+        "credentialHashes": {
+          "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+          "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+        },
+        "digest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+      },
+      "redis": {
+        "snapshotVersion": 1,
+        "capturedAt": "2026-08-31T00:00:00.000Z",
+        "sourceRevision": "redis-rev-1",
+        "v2Claims": [],
+        "operationBindings": [],
+        "v1Tombstones": [],
+        "orphanedClaimDigests": [],
+        "digest": "0ea6831bac3240f82bf3701a4799b2c7479f6909c6a50191e541f45a3d5b9453"
+      }
+    },
+    "candidate": {
+      "sheets": {
+        "snapshotVersion": 1,
+        "spreadsheetId": "sheet-1",
+        "sourceRevision": "rev-1",
+        "capturedAt": "2026-08-31T00:00:00.000Z",
+        "schemaVersion": 3,
+        "missingOptionalTabs": [],
+        "tabs": {
+          "Adjustments": {
+            "headers": [
+              "adjustmentId",
+              "timestamp",
+              "studentId",
+              "amount",
+              "mode",
+              "operator"
+            ],
+            "rows": [
+              {
+                "rowNumber": 2,
+                "cells": [
+                  "ADJ1",
+                  "2026-08-31T00:00:00.000Z",
+                  "S1",
+                  "10",
+                  "add",
+                  "admin"
+                ],
+                "hash": "4ecca6538e2e5d44fe11b7a382151c27736042d1d1f0a6de8d70a9e5d00d6e28"
+              }
+            ]
+          },
+          "Products": {
+            "headers": [
+              "productId",
+              "name",
+              "price",
+              "stock",
+              "isActive",
+              "imageUrl",
+              "category",
+              "sortOrder"
+            ],
+            "rows": [
+              {
+                "rowNumber": 2,
+                "cells": [
+                  "P1",
+                  "Pencil",
+                  "20",
+                  "5",
+                  "TRUE",
+                  "",
+                  "school",
+                  "1"
+                ],
+                "hash": "93f68ea1d00470db48541bd3a271550fea91ad870cd9e31d1ee01c646e8c0291"
+              }
+            ]
+          },
+          "PromotionProducts": {
+            "headers": [
+              "promotionProductId",
+              "promotionId",
+              "productId",
+              "createdAt",
+              "schemaVersion"
+            ],
+            "rows": [
+              {
+                "rowNumber": 2,
+                "cells": [
+                  "LINK1",
+                  "PROMO1",
+                  "P1",
+                  "2026-08-31T00:00:00.000Z",
+                  "3"
+                ],
+                "hash": "d8e3c8e6f022afee050046b40372a4f1784e420159ae4bb6fe42bb93d6e04369"
+              }
+            ]
+          },
+          "Promotions": {
+            "headers": [
+              "promotionId",
+              "name",
+              "description",
+              "type",
+              "value",
+              "buyQuantity",
+              "freeQuantity",
+              "startsAt",
+              "endsAt",
+              "isActive",
+              "sortOrder",
+              "createdAt",
+              "updatedAt",
+              "schemaVersion"
+            ],
+            "rows": [
+              {
+                "rowNumber": 2,
+                "cells": [
+                  "PROMO1",
+                  "Sale",
+                  "discount",
+                  "FIXED_DISCOUNT",
+                  "5",
+                  "",
+                  "",
+                  "2026-08-31T00:00:00.000Z",
+                  "2026-09-01T00:00:00.000Z",
+                  "TRUE",
+                  "1",
+                  "2026-08-31T00:00:00.000Z",
+                  "2026-08-31T00:00:00.000Z",
+                  "3"
+                ],
+                "hash": "b47af12a5b3a6f2e016f759b60f30b043957a4e476b584e5943bfc00f71d2045"
+              }
+            ]
+          },
+          "Settings": {
+            "headers": [
+              "key",
+              "value"
+            ],
+            "rows": [
+              {
+                "rowNumber": 2,
+                "cells": [
+                  "schemaVersion",
+                  "3"
+                ],
+                "hash": "2ec4f535937929a42a03e65c6ae92cc4b18bcdf99250c50876bb64233a56727d"
+              },
+              {
+                "rowNumber": 3,
+                "cells": [
+                  "classTimeZone",
+                  "Asia/Seoul"
+                ],
+                "hash": "d55a44a91b8a3270885897e048ab573180cf3f25e5996cc0c371e9e2caa63613"
+              },
+              {
+                "rowNumber": 4,
+                "cells": [
+                  "themeColor",
+                  "blue"
+                ],
+                "hash": "2c8f35e06de4cda67f37a42a16f9e3cf65e7f902d974c9191111ee37c19c787d"
+              },
+              {
+                "rowNumber": 5,
+                "cells": [
+                  "adminPasswordHash",
+                  "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"
+                ],
+                "hash": "4dfed580af3028ffdc315b92690aae5ad334d935063b6e5c1af3b59f3f20d7ab"
+              },
+              {
+                "rowNumber": 6,
+                "cells": [
+                  "recoveryCodeHash",
+                  "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+                ],
+                "hash": "0044930e67b402e673cf32c854490ac2597e9591b4c5ca8e001fe6d18426e1c5"
+              }
+            ]
+          },
+          "Students": {
+            "headers": [
+              "studentId",
+              "name",
+              "balance",
+              "status"
+            ],
+            "rows": [
+              {
+                "rowNumber": 2,
+                "cells": [
+                  "S1",
+                  "Alice",
+                  "100",
+                  "ACTIVE"
+                ],
+                "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+              }
+            ]
+          },
+          "TaskAssignments": {
+            "headers": [
+              "assignmentId",
+              "taskId",
+              "taskInstanceId",
+              "cycleId",
+              "cycleStartsAt",
+              "cycleEndsAt",
+              "ruleVersion",
+              "timeZone",
+              "studentId",
+              "status",
+              "source",
+              "previousAssignmentId",
+              "createdAt",
+              "schemaVersion",
+              "note"
+            ],
+            "rows": [
+              {
+                "rowNumber": 2,
+                "cells": [
+                  "AS0",
+                  "T1",
+                  "TI1",
+                  "v1|TI1|r1|2026-08-30T00:00:00Z",
+                  "2026-08-30T00:00:00.000Z",
+                  "2026-08-31T00:00:00.000Z",
+                  "1",
+                  "Asia/Seoul",
+                  "S1",
+                  "ASSIGNED",
+                  "LEGACY_SEED",
+                  "",
+                  "2026-08-30T00:00:00.000Z",
+                  "2",
+                  ""
+                ],
+                "hash": "4a2dd0f708da017cff7abc88b7e3107f724529dd67655b0a968224ea629900f3"
+              },
+              {
+                "rowNumber": 3,
+                "cells": [
+                  "AS1",
+                  "T1",
+                  "TI1",
+                  "v1|TI1|r2|2026-08-31T00:00:00Z",
+                  "2026-08-31T00:00:00.000Z",
+                  "2026-09-01T00:00:00.000Z",
+                  "2",
+                  "Asia/Seoul",
+                  "S1",
+                  "ASSIGNED",
+                  "CARRY_FORWARD",
+                  "AS0",
+                  "2026-08-31T00:00:00.000Z",
+                  "2",
+                  "original assignment note"
+                ],
+                "hash": "9d28a59e560f994a8e7a7739deec686c41de060a481add90c7554e74c24a4fa0"
+              }
+            ]
+          },
+          "TaskCompletions": {
+            "headers": [
+              "completionId",
+              "timestamp",
+              "taskId",
+              "studentId",
+              "studentName",
+              "reward",
+              "balanceBefore",
+              "balanceAfter",
+              "status",
+              "note",
+              "taskInstanceId",
+              "cycleId",
+              "cycleStartsAt",
+              "cycleEndsAt",
+              "ruleVersion",
+              "timeZone",
+              "source",
+              "assignmentId",
+              "schemaVersion",
+              "operationId",
+              "operationPayloadHash",
+              "evidenceProvider",
+              "evidenceBoardId",
+              "evidencePostId",
+              "evidenceCreatedAt",
+              "evidenceAuthorFullName"
+            ],
+            "rows": [
+              {
+                "rowNumber": 2,
+                "cells": [
+                  "C1",
+                  "2026-08-31T00:00:00.000Z",
+                  "T1",
+                  "S1",
+                  "Alice",
+                  "0",
+                  "90",
+                  "90",
+                  "SUCCESS",
+                  "original completion note",
+                  "TI1",
+                  "v1|TI1|r2|2026-08-31T00:00:00Z",
+                  "2026-08-31T00:00:00.000Z",
+                  "2026-09-01T00:00:00.000Z",
+                  "2",
+                  "Asia/Seoul",
+                  "CARRY_FORWARD",
+                  "AS1",
+                  "2",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  ""
+                ],
+                "hash": "0bd8e6562ffa0345b55e1dae4e1920cbde958c71539f61e8646f9352937cbbf1"
+              }
+            ]
+          },
+          "Tasks": {
+            "headers": [
+              "taskId",
+              "title",
+              "description",
+              "reward",
+              "isActive",
+              "sortOrder",
+              "createdAt",
+              "updatedAt",
+              "allowedStudentIds",
+              "taskInstanceId",
+              "ruleVersion",
+              "scheduleEffectiveFrom",
+              "recurrenceTimeZone",
+              "recurrenceType",
+              "recurrenceTime",
+              "recurrenceWeekday",
+              "recurrenceDayOfMonth",
+              "resetCompletionOnCycle",
+              "resetAssignmentOnCycle",
+              "pendingRuleVersion",
+              "pendingEffectiveFrom",
+              "pendingTimeZone",
+              "pendingRecurrenceType",
+              "pendingRecurrenceTime",
+              "pendingRecurrenceWeekday",
+              "pendingRecurrenceDayOfMonth",
+              "pendingResetCompletionOnCycle",
+              "pendingResetAssignmentOnCycle",
+              "availableFrom",
+              "dueAt",
+              "prerequisiteTaskId",
+              "recurrenceWeekdays",
+              "pendingRecurrenceWeekdays"
+            ],
+            "rows": [
+              {
+                "rowNumber": 2,
+                "cells": [
+                  "T1",
+                  "Homework",
+                  "Read",
+                  "10",
+                  "TRUE",
+                  "1",
+                  "2026-08-31T00:00:00.000Z",
+                  "2026-09-01T00:00:00.000Z",
+                  "S1",
+                  "TI1",
+                  "1",
+                  "2026-08-31T00:00:00.000Z",
+                  "Asia/Seoul",
+                  "NONE",
+                  "",
+                  "",
+                  "",
+                  "FALSE",
+                  "FALSE",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  ""
+                ],
+                "hash": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33"
+              }
+            ]
+          },
+          "Transactions": {
+            "headers": [
+              "transactionId",
+              "timestamp",
+              "studentId",
+              "studentName",
+              "items",
+              "totalAmount",
+              "balanceBefore",
+              "balanceAfter",
+              "status",
+              "operator"
+            ],
+            "rows": [
+              {
+                "rowNumber": 2,
+                "cells": [
+                  "TX1",
+                  "2026-08-31T00:00:00.000Z",
+                  "S1",
+                  "Alice",
+                  "[{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"quantity\":1,\"subtotal\":20}]",
+                  "20",
+                  "100",
+                  "80",
+                  "COMPLETED",
+                  "kiosk"
+                ],
+                "hash": "8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349"
+              },
+              {
+                "rowNumber": 3,
+                "cells": [
+                  "TX-ADJ1",
+                  "2026-08-31T00:00:00.000Z",
+                  "S1",
+                  "Alice",
+                  "[{\"productId\":\"ADMIN-ADD\",\"name\":\"관리자 지급\",\"price\":-10,\"quantity\":1,\"subtotal\":-10}]",
+                  "-10",
+                  "80",
+                  "90",
+                  "ADMIN_ADJUSTMENT",
+                  "admin"
+                ],
+                "hash": "e5329b80d5985721e3c59682280460b1521d13811648a967014a5a5553adfc0a"
+              }
+            ]
+          }
+        },
+        "credentialHashes": {
+          "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+          "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+        },
+        "digest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+      },
+      "redis": {
+        "snapshotVersion": 1,
+        "capturedAt": "2026-08-31T00:00:00.000Z",
+        "sourceRevision": "redis-rev-1",
+        "v2Claims": [],
+        "operationBindings": [],
+        "v1Tombstones": [],
+        "orphanedClaimDigests": [],
+        "digest": "0ea6831bac3240f82bf3701a4799b2c7479f6909c6a50191e541f45a3d5b9453"
+      }
+    }
+  },
+  "result": {
+    "storage": "UNTRUSTED_PREPARATION",
+    "originalGenerationId": "preparation:original:a3828a138a60bf7e2a079c673bc9f13a4c84a7c8031ca8c42271309cd203ce15",
+    "candidateGenerationId": "preparation:candidate:6c252dbfdb24e5a51dda5cdacfc4f09825e366b8bfaa98a5c1f49a8076a761ed",
+    "planId": "preparation:plan:a864457744ddb10898a5cd9ae4b35c819360fd1767214eb87357e67dfaa35ad1",
+    "plan": {
+      "status": "DIFF_VALIDATED",
+      "changes": [],
+      "blockers": []
+    }
+  },
+  "rows": [
+    {
+      "event_id": "preparation:candidate:6c252dbfdb24e5a51dda5cdacfc4f09825e366b8bfaa98a5c1f49a8076a761ed",
+      "event_type": "MIGRATION_PREPARATION_CANDIDATE",
+      "redacted_details": {
+        "phase": "FINAL_CANDIDATE",
+        "binding": {
+          "tenantId": "20000000-0000-4000-8000-000000000001",
+          "expectedStatus": "READY",
+          "migrationJobId": "20000000-0000-4000-8000-000000000019",
+          "originalSourceId": "sheet:dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8",
+          "originalSnapshotId": "import:51e95e628485ba0d350ba0c5624132ab2b782ed6c3e24bed153e2da302c74418",
+          "expectedStateVersion": "4",
+          "originalManifestDigest": "51e95e628485ba0d350ba0c5624132ab2b782ed6c3e24bed153e2da302c74418",
+          "originalSourceFingerprint": "c042610351d04c7a32f098f9b76701488e198847391055026f555f70ba077bd5"
+        },
+        "storage": "UNTRUSTED_PREPARATION",
+        "manifest": {
+          "status": "READY_FOR_IMPORT",
+          "records": {
+            "tasks": [
+              {
+                "dueAt": null,
+                "title": "Homework",
+                "reward": 10,
+                "taskId": "T1",
+                "isActive": true,
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "createdAt": "2026-08-31T00:00:00.000Z",
+                "sortOrder": 1,
+                "updatedAt": "2026-09-01T00:00:00.000Z",
+                "description": "Read",
+                "availableFrom": null,
+                "schemaVersion": 3,
+                "taskInstanceId": "TI1",
+                "currentSchedule": {
+                  "timeZone": "Asia/Seoul",
+                  "recurrence": {
+                    "type": "NONE"
+                  },
+                  "ruleVersion": 1,
+                  "effectiveFrom": "2026-08-31T00:00:00.000Z",
+                  "resetAssignmentOnCycle": false,
+                  "resetCompletionOnCycle": false
+                },
+                "pendingSchedule": null,
+                "allowedStudentIds": [
+                  "S1"
+                ],
+                "prerequisiteTaskId": null
+              }
+            ],
+            "accounts": [
+              {
+                "balance": 100,
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "studentId": "S1"
+              }
+            ],
+            "products": [
+              {
+                "name": "Pencil",
+                "price": 20,
+                "stock": 5,
+                "category": "school",
+                "imageUrl": null,
+                "isActive": true,
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "productId": "P1",
+                "sortOrder": 1
+              }
+            ],
+            "settings": [
+              {
+                "key": "classTimeZone",
+                "value": "Asia/Seoul",
+                "tenantId": "20000000-0000-4000-8000-000000000001"
+              },
+              {
+                "key": "schemaVersion",
+                "value": "3",
+                "tenantId": "20000000-0000-4000-8000-000000000001"
+              },
+              {
+                "key": "themeColor",
+                "value": "blue",
+                "tenantId": "20000000-0000-4000-8000-000000000001"
+              }
+            ],
+            "students": [
+              {
+                "name": "Alice",
+                "status": "ACTIVE",
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "studentId": "S1"
+              }
+            ],
+            "promotions": [
+              {
+                "name": "Sale",
+                "type": "FIXED_DISCOUNT",
+                "endsAt": "2026-09-01T00:00:00.000Z",
+                "isActive": true,
+                "startsAt": "2026-08-31T00:00:00.000Z",
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "createdAt": "2026-08-31T00:00:00.000Z",
+                "sortOrder": 1,
+                "updatedAt": "2026-08-31T00:00:00.000Z",
+                "description": "discount",
+                "promotionId": "PROMO1",
+                "schemaVersion": 3,
+                "discountAmount": 5
+              }
+            ],
+            "adjustments": [
+              {
+                "mode": "add",
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "adjustmentId": "ADJ1",
+                "transactionId": "TX-ADJ1",
+                "requestedAmount": 10,
+                "operatorSnapshot": "admin",
+                "legacyAdjustmentId": "ADJ1"
+              }
+            ],
+            "transactions": [
+              {
+                "kind": "ADMIN_ADJUSTMENT",
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "studentId": "S1",
+                "occurredAt": "2026-08-31T00:00:00.000Z",
+                "balanceAfter": 90,
+                "balanceDelta": 10,
+                "balanceBefore": 80,
+                "transactionId": "TX-ADJ1",
+                "operatorSnapshot": "admin",
+                "legacyTotalAmount": -10,
+                "studentNameSnapshot": "Alice",
+                "legacyStatusSnapshot": "ADMIN_ADJUSTMENT"
+              },
+              {
+                "kind": "CHECKOUT",
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "studentId": "S1",
+                "occurredAt": "2026-08-31T00:00:00.000Z",
+                "balanceAfter": 80,
+                "balanceDelta": -20,
+                "balanceBefore": 100,
+                "transactionId": "TX1",
+                "operatorSnapshot": "kiosk",
+                "legacyTotalAmount": 20,
+                "studentNameSnapshot": "Alice",
+                "legacyStatusSnapshot": "COMPLETED"
+              }
+            ],
+            "task_assignments": [
+              {
+                "note": "",
+                "source": "LEGACY_SEED",
+                "status": "ASSIGNED",
+                "taskId": "T1",
+                "cycleId": "v1|TI1|r1|2026-08-30T00:00:00Z",
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "timeZone": "Asia/Seoul",
+                "createdAt": "2026-08-30T00:00:00.000Z",
+                "studentId": "S1",
+                "cycleEndsAt": "2026-08-31T00:00:00.000Z",
+                "ruleVersion": 1,
+                "assignmentId": "AS0",
+                "cycleStartsAt": "2026-08-30T00:00:00.000Z",
+                "schemaVersion": 2,
+                "taskInstanceId": "TI1",
+                "previousAssignmentId": null
+              },
+              {
+                "note": "original assignment note",
+                "source": "CARRY_FORWARD",
+                "status": "ASSIGNED",
+                "taskId": "T1",
+                "cycleId": "v1|TI1|r2|2026-08-31T00:00:00Z",
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "timeZone": "Asia/Seoul",
+                "createdAt": "2026-08-31T00:00:00.000Z",
+                "studentId": "S1",
+                "cycleEndsAt": "2026-09-01T00:00:00.000Z",
+                "ruleVersion": 2,
+                "assignmentId": "AS1",
+                "cycleStartsAt": "2026-08-31T00:00:00.000Z",
+                "schemaVersion": 2,
+                "taskInstanceId": "TI1",
+                "previousAssignmentId": "AS0"
+              }
+            ],
+            "task_completions": [
+              {
+                "note": "original completion note",
+                "reward": 0,
+                "source": "CARRY_FORWARD",
+                "status": "SUCCESS",
+                "taskId": "T1",
+                "cycleId": "v1|TI1|r2|2026-08-31T00:00:00Z",
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "timeZone": "Asia/Seoul",
+                "studentId": "S1",
+                "timestamp": "2026-08-31T00:00:00.000Z",
+                "cycleEndsAt": "2026-09-01T00:00:00.000Z",
+                "operationId": null,
+                "ruleVersion": 2,
+                "studentName": "Alice",
+                "assignmentId": "AS1",
+                "balanceAfter": 90,
+                "completionId": "C1",
+                "balanceBefore": 90,
+                "cycleStartsAt": "2026-08-31T00:00:00.000Z",
+                "schemaVersion": 2,
+                "taskInstanceId": "TI1",
+                "operationPayloadHash": null
+              }
+            ],
+            "transaction_items": [
+              {
+                "itemId": "20ee618a-d502-5039-af1b-31ade7dcd82b",
+                "quantity": 1,
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "lineNumber": 1,
+                "transactionId": "TX1",
+                "currentProductId": "P1",
+                "subtotalSnapshot": 20,
+                "productIdSnapshot": "P1",
+                "unitPriceSnapshot": 20,
+                "productNameSnapshot": "Pencil"
+              },
+              {
+                "itemId": "e3272940-2098-5f40-a82e-ee3c88cc0677",
+                "quantity": 1,
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "lineNumber": 1,
+                "transactionId": "TX-ADJ1",
+                "currentProductId": null,
+                "subtotalSnapshot": -10,
+                "productIdSnapshot": "ADMIN-ADD",
+                "unitPriceSnapshot": -10,
+                "productNameSnapshot": "관리자 지급"
+              }
+            ],
+            "promotion_products": [
+              {
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "createdAt": "2026-08-31T00:00:00.000Z",
+                "productId": "P1",
+                "promotionId": "PROMO1",
+                "schemaVersion": 3,
+                "promotionProductId": "LINK1"
+              }
+            ],
+            "task_allowed_students": [
+              {
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "studentId": "S1",
+                "taskInstanceId": "TI1"
+              }
+            ],
+            "padlet_evidence_claims": []
+          },
+          "mappings": [
+            {
+              "status": "STAGED",
+              "targetId": "S1",
+              "targetTable": "accounts",
+              "sourceDigest": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "ADJ1",
+              "targetTable": "adjustments",
+              "sourceDigest": "4ecca6538e2e5d44fe11b7a382151c27736042d1d1f0a6de8d70a9e5d00d6e28"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "P1",
+              "targetTable": "products",
+              "sourceDigest": "93f68ea1d00470db48541bd3a271550fea91ad870cd9e31d1ee01c646e8c0291"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "LINK1",
+              "targetTable": "promotion_products",
+              "sourceDigest": "d8e3c8e6f022afee050046b40372a4f1784e420159ae4bb6fe42bb93d6e04369"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "PROMO1",
+              "targetTable": "promotions",
+              "sourceDigest": "b47af12a5b3a6f2e016f759b60f30b043957a4e476b584e5943bfc00f71d2045"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "classTimeZone",
+              "targetTable": "settings",
+              "sourceDigest": "d55a44a91b8a3270885897e048ab573180cf3f25e5996cc0c371e9e2caa63613"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "schemaVersion",
+              "targetTable": "settings",
+              "sourceDigest": "2ec4f535937929a42a03e65c6ae92cc4b18bcdf99250c50876bb64233a56727d"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "themeColor",
+              "targetTable": "settings",
+              "sourceDigest": "2c8f35e06de4cda67f37a42a16f9e3cf65e7f902d974c9191111ee37c19c787d"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "S1",
+              "targetTable": "students",
+              "sourceDigest": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "1cce75b2-ef1a-5aa7-a349-ebe8e6a24ecf",
+              "targetTable": "task_allowed_students",
+              "sourceDigest": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "AS0",
+              "targetTable": "task_assignments",
+              "sourceDigest": "4a2dd0f708da017cff7abc88b7e3107f724529dd67655b0a968224ea629900f3"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "AS1",
+              "targetTable": "task_assignments",
+              "sourceDigest": "9d28a59e560f994a8e7a7739deec686c41de060a481add90c7554e74c24a4fa0"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "C1",
+              "targetTable": "task_completions",
+              "sourceDigest": "0bd8e6562ffa0345b55e1dae4e1920cbde958c71539f61e8646f9352937cbbf1"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "TI1",
+              "targetTable": "tasks",
+              "sourceDigest": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "20ee618a-d502-5039-af1b-31ade7dcd82b",
+              "targetTable": "transaction_items",
+              "sourceDigest": "8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "e3272940-2098-5f40-a82e-ee3c88cc0677",
+              "targetTable": "transaction_items",
+              "sourceDigest": "e5329b80d5985721e3c59682280460b1521d13811648a967014a5a5553adfc0a"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "TX-ADJ1",
+              "targetTable": "transactions",
+              "sourceDigest": "e5329b80d5985721e3c59682280460b1521d13811648a967014a5a5553adfc0a"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "TX1",
+              "targetTable": "transactions",
+              "sourceDigest": "8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349"
+            }
+          ],
+          "metadata": {
+            "classTimeZone": "Asia/Seoul",
+            "sheetSchemaVersion": 3
+          },
+          "tenantId": "20000000-0000-4000-8000-000000000001",
+          "warnings": [],
+          "quarantines": [],
+          "sourceRecords": [
+            {
+              "source": {
+                "tab": "Adjustments",
+                "kind": "SHEET",
+                "rowHash": "4ecca6538e2e5d44fe11b7a382151c27736042d1d1f0a6de8d70a9e5d00d6e28",
+                "rowNumber": 2,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "ADJ1",
+              "errorCodes": [],
+              "targetTable": "adjustments",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "mode": "add",
+                "amount": 10,
+                "operator": "admin",
+                "studentId": "S1",
+                "timestamp": "2026-08-31T00:00:00.000Z",
+                "adjustmentId": "ADJ1",
+                "transactionId": "TX-ADJ1",
+                "operatorDigest": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "3cb04a12f40fb03169fdb4b0b4b50f74fe9739f193970a164f6dde7ce019ea48",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 6
+              }
+            },
+            {
+              "source": {
+                "tab": "Products",
+                "kind": "SHEET",
+                "rowHash": "93f68ea1d00470db48541bd3a271550fea91ad870cd9e31d1ee01c646e8c0291",
+                "rowNumber": 2,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "P1",
+              "errorCodes": [],
+              "targetTable": "products",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "name": "Pencil",
+                "price": 20,
+                "stock": 5,
+                "category": "school",
+                "imageUrl": null,
+                "isActive": true,
+                "productId": "P1",
+                "sortOrder": 1
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 8
+              }
+            },
+            {
+              "source": {
+                "tab": "PromotionProducts",
+                "kind": "SHEET",
+                "rowHash": "d8e3c8e6f022afee050046b40372a4f1784e420159ae4bb6fe42bb93d6e04369",
+                "rowNumber": 2,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "LINK1",
+              "errorCodes": [],
+              "targetTable": "promotion_products",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "createdAt": "2026-08-31T00:00:00.000Z",
+                "productId": "P1",
+                "promotionId": "PROMO1",
+                "schemaVersion": 3,
+                "promotionProductId": "LINK1"
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "0790bdd142c601409ae5ae52ed69ba264e03a20e1d613e9f0474f24345b776da",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 5
+              }
+            },
+            {
+              "source": {
+                "tab": "Promotions",
+                "kind": "SHEET",
+                "rowHash": "b47af12a5b3a6f2e016f759b60f30b043957a4e476b584e5943bfc00f71d2045",
+                "rowNumber": 2,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "PROMO1",
+              "errorCodes": [],
+              "targetTable": "promotions",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "name": "Sale",
+                "type": "FIXED_DISCOUNT",
+                "endsAt": "2026-09-01T00:00:00.000Z",
+                "isActive": true,
+                "startsAt": "2026-08-31T00:00:00.000Z",
+                "createdAt": "2026-08-31T00:00:00.000Z",
+                "sortOrder": 1,
+                "updatedAt": "2026-08-31T00:00:00.000Z",
+                "description": "discount",
+                "promotionId": "PROMO1",
+                "schemaVersion": 3,
+                "discountAmount": 5
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "a4083c0545b6f836309e46379c883a18d645a5260ba158d59a31d6cd3fde87d9",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 14
+              }
+            },
+            {
+              "source": {
+                "tab": "Settings",
+                "kind": "SHEET",
+                "rowHash": "2ec4f535937929a42a03e65c6ae92cc4b18bcdf99250c50876bb64233a56727d",
+                "rowNumber": 2,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "schemaVersion",
+              "errorCodes": [],
+              "targetTable": "settings",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "key": "schemaVersion",
+                "value": "3"
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "ff63b0467d555ea1b674b981a393aa821c9840ba1068a48d8e0793b398534726",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 2
+              }
+            },
+            {
+              "source": {
+                "tab": "Settings",
+                "kind": "SHEET",
+                "rowHash": "d55a44a91b8a3270885897e048ab573180cf3f25e5996cc0c371e9e2caa63613",
+                "rowNumber": 3,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "classTimeZone",
+              "errorCodes": [],
+              "targetTable": "settings",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "key": "classTimeZone",
+                "value": "Asia/Seoul"
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "30895bcb3a120ccc6becdf9acd2d64964b57f525deb3ce4336ddf8343cb34132",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 2
+              }
+            },
+            {
+              "source": {
+                "tab": "Settings",
+                "kind": "SHEET",
+                "rowHash": "2c8f35e06de4cda67f37a42a16f9e3cf65e7f902d974c9191111ee37c19c787d",
+                "rowNumber": 4,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "themeColor",
+              "errorCodes": [],
+              "targetTable": "settings",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "key": "themeColor",
+                "value": "blue"
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "2b9f5f38f7dfc335c46287d468ec73571ed640a22fc8bccf160fb4f48b476378",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 2
+              }
+            },
+            {
+              "source": {
+                "tab": "Settings",
+                "kind": "SHEET",
+                "rowHash": "4dfed580af3028ffdc315b92690aae5ad334d935063b6e5c1af3b59f3f20d7ab",
+                "rowNumber": 5,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "errorCodes": [],
+              "warningCodes": [
+                "SETTING_OMITTED"
+              ],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "key": "adminPasswordHash",
+                "valueDigest": "998ed4d621742d0c2d85ed84173db569afa194d4597686cae947324aa58ab4bb"
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "a3f1645538c6c955a153685f7f53533d0aeae3bc6ec93d3a43e14ee571dfca0c",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 2
+              }
+            },
+            {
+              "source": {
+                "tab": "Settings",
+                "kind": "SHEET",
+                "rowHash": "0044930e67b402e673cf32c854490ac2597e9591b4c5ca8e001fe6d18426e1c5",
+                "rowNumber": 6,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "errorCodes": [],
+              "warningCodes": [
+                "SETTING_OMITTED"
+              ],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "key": "recoveryCodeHash",
+                "valueDigest": "55447115db3b69a5a3d9daf3d4727e81751badda67e53d30c6b5b782c7213eed"
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "1d19565a0da6333bae71a1d526b0648fdd944d563a9cf9d3649d9a66d75387bc",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 2
+              }
+            },
+            {
+              "source": {
+                "tab": "Students",
+                "kind": "SHEET",
+                "rowHash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef",
+                "rowNumber": 2,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "S1",
+              "errorCodes": [],
+              "targetTable": "students",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "name": "Alice",
+                "status": "ACTIVE",
+                "balance": 100,
+                "studentId": "S1"
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 4
+              }
+            },
+            {
+              "source": {
+                "tab": "TaskAssignments",
+                "kind": "SHEET",
+                "rowHash": "4a2dd0f708da017cff7abc88b7e3107f724529dd67655b0a968224ea629900f3",
+                "rowNumber": 2,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "AS0",
+              "errorCodes": [],
+              "targetTable": "task_assignments",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "note": "",
+                "source": "LEGACY_SEED",
+                "status": "ASSIGNED",
+                "taskId": "T1",
+                "cycleId": "v1|TI1|r1|2026-08-30T00:00:00Z",
+                "timeZone": "Asia/Seoul",
+                "createdAt": "2026-08-30T00:00:00.000Z",
+                "studentId": "S1",
+                "cycleEndsAt": "2026-08-31T00:00:00.000Z",
+                "ruleVersion": 1,
+                "assignmentId": "AS0",
+                "cycleStartsAt": "2026-08-30T00:00:00.000Z",
+                "schemaVersion": 2,
+                "taskInstanceId": "TI1",
+                "previousAssignmentId": null
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "9724f006dceab5ddd5c2c54247cc750671d78d88a1586e4a1f5b9600c9106a1f",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 15
+              }
+            },
+            {
+              "source": {
+                "tab": "TaskAssignments",
+                "kind": "SHEET",
+                "rowHash": "9d28a59e560f994a8e7a7739deec686c41de060a481add90c7554e74c24a4fa0",
+                "rowNumber": 3,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "AS1",
+              "errorCodes": [],
+              "targetTable": "task_assignments",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "note": "original assignment note",
+                "source": "CARRY_FORWARD",
+                "status": "ASSIGNED",
+                "taskId": "T1",
+                "cycleId": "v1|TI1|r2|2026-08-31T00:00:00Z",
+                "timeZone": "Asia/Seoul",
+                "createdAt": "2026-08-31T00:00:00.000Z",
+                "studentId": "S1",
+                "cycleEndsAt": "2026-09-01T00:00:00.000Z",
+                "ruleVersion": 2,
+                "assignmentId": "AS1",
+                "cycleStartsAt": "2026-08-31T00:00:00.000Z",
+                "schemaVersion": 2,
+                "taskInstanceId": "TI1",
+                "previousAssignmentId": "AS0"
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "627fd5d4db7c84d9b0e46e97e949827bcb485ea05aa91879298b7836af55a128",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 15
+              }
+            },
+            {
+              "source": {
+                "tab": "TaskCompletions",
+                "kind": "SHEET",
+                "rowHash": "0bd8e6562ffa0345b55e1dae4e1920cbde958c71539f61e8646f9352937cbbf1",
+                "rowNumber": 2,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "C1",
+              "errorCodes": [],
+              "targetTable": "task_completions",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "note": "original completion note",
+                "reward": 0,
+                "source": "CARRY_FORWARD",
+                "status": "SUCCESS",
+                "taskId": "T1",
+                "cycleId": "v1|TI1|r2|2026-08-31T00:00:00Z",
+                "timeZone": "Asia/Seoul",
+                "studentId": "S1",
+                "timestamp": "2026-08-31T00:00:00.000Z",
+                "cycleEndsAt": "2026-09-01T00:00:00.000Z",
+                "operationId": null,
+                "ruleVersion": 2,
+                "studentName": "Alice",
+                "assignmentId": "AS1",
+                "balanceAfter": 90,
+                "completionId": "C1",
+                "balanceBefore": 90,
+                "cycleStartsAt": "2026-08-31T00:00:00.000Z",
+                "schemaVersion": 2,
+                "taskInstanceId": "TI1",
+                "operationPayloadHash": null
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "ab861dc170dc2e43224e45278d3d31a675b9ebc34c9b0f48c066ca1eeaed8ee6",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 26
+              }
+            },
+            {
+              "source": {
+                "tab": "Tasks",
+                "kind": "SHEET",
+                "rowHash": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33",
+                "rowNumber": 2,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "TI1",
+              "errorCodes": [],
+              "targetTable": "tasks",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "dueAt": null,
+                "title": "Homework",
+                "reward": 10,
+                "taskId": "T1",
+                "isActive": true,
+                "createdAt": "2026-08-31T00:00:00.000Z",
+                "sortOrder": 1,
+                "updatedAt": "2026-09-01T00:00:00.000Z",
+                "description": "Read",
+                "availableFrom": null,
+                "schemaVersion": 3,
+                "taskInstanceId": "TI1",
+                "currentSchedule": {
+                  "timeZone": "Asia/Seoul",
+                  "recurrence": {
+                    "type": "NONE"
+                  },
+                  "ruleVersion": 1,
+                  "effectiveFrom": "2026-08-31T00:00:00.000Z",
+                  "resetAssignmentOnCycle": false,
+                  "resetCompletionOnCycle": false
+                },
+                "pendingSchedule": null,
+                "allowedStudentIds": [
+                  "S1"
+                ],
+                "prerequisiteTaskId": null
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "1f93603db53bfad5c92390f735d0cbb8617b4ab8214ae91c5664a3d1e9b009c8",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 33
+              }
+            },
+            {
+              "source": {
+                "tab": "Transactions",
+                "kind": "SHEET",
+                "rowHash": "8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349",
+                "rowNumber": 2,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "TX1",
+              "errorCodes": [],
+              "targetTable": "transactions",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "items": [
+                  {
+                    "name": "Pencil",
+                    "price": 20,
+                    "itemId": "20ee618a-d502-5039-af1b-31ade7dcd82b",
+                    "quantity": 1,
+                    "subtotal": 20,
+                    "productId": "P1",
+                    "lineNumber": 1,
+                    "transactionId": "TX1"
+                  }
+                ],
+                "status": "COMPLETED",
+                "operator": "kiosk",
+                "studentId": "S1",
+                "timestamp": "2026-08-31T00:00:00.000Z",
+                "studentName": "Alice",
+                "totalAmount": 20,
+                "balanceAfter": 80,
+                "balanceBefore": 100,
+                "transactionId": "TX1"
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "4804e3ae090e3fb82de9a66aca0543c39d1ffff786133871f382ed612053687a",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 10
+              }
+            },
+            {
+              "source": {
+                "tab": "Transactions",
+                "kind": "SHEET",
+                "rowHash": "e5329b80d5985721e3c59682280460b1521d13811648a967014a5a5553adfc0a",
+                "rowNumber": 3,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "TX-ADJ1",
+              "errorCodes": [],
+              "targetTable": "transactions",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "items": [
+                  {
+                    "name": "관리자 지급",
+                    "price": -10,
+                    "itemId": "e3272940-2098-5f40-a82e-ee3c88cc0677",
+                    "quantity": 1,
+                    "subtotal": -10,
+                    "productId": "ADMIN-ADD",
+                    "lineNumber": 1,
+                    "transactionId": "TX-ADJ1"
+                  }
+                ],
+                "status": "ADMIN_ADJUSTMENT",
+                "operator": "admin",
+                "studentId": "S1",
+                "timestamp": "2026-08-31T00:00:00.000Z",
+                "studentName": "Alice",
+                "totalAmount": -10,
+                "balanceAfter": 90,
+                "balanceBefore": 80,
+                "transactionId": "TX-ADJ1"
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "631c2d769263bc918347046608cfc907321aba82903c8f63e956c644e373aadc",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 10
+              }
+            }
+          ],
+          "manifestDigest": "51e95e628485ba0d350ba0c5624132ab2b782ed6c3e24bed153e2da302c74418",
+          "migrationJobId": "20000000-0000-4000-8000-000000000019",
+          "manifestVersion": 1,
+          "sourceArtifacts": {
+            "redis": {
+              "digest": "0ea6831bac3240f82bf3701a4799b2c7479f6909c6a50191e541f45a3d5b9453",
+              "revisionDigest": "a10ed3857c08dbc7d25cc1f51321485bada908f62a2cf3901911781354492b5a"
+            },
+            "sheets": {
+              "digest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8",
+              "revisionDigest": "a6d1d4ea8e5a4fa08e8438c91ab01e2055faf19e5134fddd3a61efc0c133aa46",
+              "credentialHashes": {
+                "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341",
+                "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"
+              },
+              "spreadsheetIdDigest": "a4e51d4d1b567d98fb630b09c2b6d75315ef15da0ed48df19875734ae8e30712"
+            }
+          },
+          "blockingConflicts": [],
+          "sourceFingerprint": "c042610351d04c7a32f098f9b76701488e198847391055026f555f70ba077bd5"
+        },
+        "acquisition": {
+          "redis": {
+            "digest": "0ea6831bac3240f82bf3701a4799b2c7479f6909c6a50191e541f45a3d5b9453",
+            "v2Claims": [],
+            "capturedAt": "2026-08-31T00:00:00.000Z",
+            "v1Tombstones": [],
+            "sourceRevision": "redis-rev-1",
+            "snapshotVersion": 1,
+            "operationBindings": [],
+            "orphanedClaimDigests": []
+          },
+          "sheets": {
+            "tabs": {
+              "Tasks": {
+                "rows": [
+                  {
+                    "hash": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33",
+                    "cells": [
+                      "T1",
+                      "Homework",
+                      "Read",
+                      "10",
+                      "TRUE",
+                      "1",
+                      "2026-08-31T00:00:00.000Z",
+                      "2026-09-01T00:00:00.000Z",
+                      "S1",
+                      "TI1",
+                      "1",
+                      "2026-08-31T00:00:00.000Z",
+                      "Asia/Seoul",
+                      "NONE",
+                      "",
+                      "",
+                      "",
+                      "FALSE",
+                      "FALSE",
+                      "",
+                      "",
+                      "",
+                      "",
+                      "",
+                      "",
+                      "",
+                      "",
+                      "",
+                      "",
+                      "",
+                      "",
+                      "",
+                      ""
+                    ],
+                    "rowNumber": 2
+                  }
+                ],
+                "headers": [
+                  "taskId",
+                  "title",
+                  "description",
+                  "reward",
+                  "isActive",
+                  "sortOrder",
+                  "createdAt",
+                  "updatedAt",
+                  "allowedStudentIds",
+                  "taskInstanceId",
+                  "ruleVersion",
+                  "scheduleEffectiveFrom",
+                  "recurrenceTimeZone",
+                  "recurrenceType",
+                  "recurrenceTime",
+                  "recurrenceWeekday",
+                  "recurrenceDayOfMonth",
+                  "resetCompletionOnCycle",
+                  "resetAssignmentOnCycle",
+                  "pendingRuleVersion",
+                  "pendingEffectiveFrom",
+                  "pendingTimeZone",
+                  "pendingRecurrenceType",
+                  "pendingRecurrenceTime",
+                  "pendingRecurrenceWeekday",
+                  "pendingRecurrenceDayOfMonth",
+                  "pendingResetCompletionOnCycle",
+                  "pendingResetAssignmentOnCycle",
+                  "availableFrom",
+                  "dueAt",
+                  "prerequisiteTaskId",
+                  "recurrenceWeekdays",
+                  "pendingRecurrenceWeekdays"
+                ]
+              },
+              "Products": {
+                "rows": [
+                  {
+                    "hash": "93f68ea1d00470db48541bd3a271550fea91ad870cd9e31d1ee01c646e8c0291",
+                    "cells": [
+                      "P1",
+                      "Pencil",
+                      "20",
+                      "5",
+                      "TRUE",
+                      "",
+                      "school",
+                      "1"
+                    ],
+                    "rowNumber": 2
+                  }
+                ],
+                "headers": [
+                  "productId",
+                  "name",
+                  "price",
+                  "stock",
+                  "isActive",
+                  "imageUrl",
+                  "category",
+                  "sortOrder"
+                ]
+              },
+              "Settings": {
+                "rows": [
+                  {
+                    "hash": "2ec4f535937929a42a03e65c6ae92cc4b18bcdf99250c50876bb64233a56727d",
+                    "cells": [
+                      "schemaVersion",
+                      "3"
+                    ],
+                    "rowNumber": 2
+                  },
+                  {
+                    "hash": "d55a44a91b8a3270885897e048ab573180cf3f25e5996cc0c371e9e2caa63613",
+                    "cells": [
+                      "classTimeZone",
+                      "Asia/Seoul"
+                    ],
+                    "rowNumber": 3
+                  },
+                  {
+                    "hash": "2c8f35e06de4cda67f37a42a16f9e3cf65e7f902d974c9191111ee37c19c787d",
+                    "cells": [
+                      "themeColor",
+                      "blue"
+                    ],
+                    "rowNumber": 4
+                  },
+                  {
+                    "hash": "4dfed580af3028ffdc315b92690aae5ad334d935063b6e5c1af3b59f3f20d7ab",
+                    "cells": [
+                      "adminPasswordHash",
+                      "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"
+                    ],
+                    "rowNumber": 5
+                  },
+                  {
+                    "hash": "0044930e67b402e673cf32c854490ac2597e9591b4c5ca8e001fe6d18426e1c5",
+                    "cells": [
+                      "recoveryCodeHash",
+                      "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+                    ],
+                    "rowNumber": 6
+                  }
+                ],
+                "headers": [
+                  "key",
+                  "value"
+                ]
+              },
+              "Students": {
+                "rows": [
+                  {
+                    "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef",
+                    "cells": [
+                      "S1",
+                      "Alice",
+                      "100",
+                      "ACTIVE"
+                    ],
+                    "rowNumber": 2
+                  }
+                ],
+                "headers": [
+                  "studentId",
+                  "name",
+                  "balance",
+                  "status"
+                ]
+              },
+              "Promotions": {
+                "rows": [
+                  {
+                    "hash": "b47af12a5b3a6f2e016f759b60f30b043957a4e476b584e5943bfc00f71d2045",
+                    "cells": [
+                      "PROMO1",
+                      "Sale",
+                      "discount",
+                      "FIXED_DISCOUNT",
+                      "5",
+                      "",
+                      "",
+                      "2026-08-31T00:00:00.000Z",
+                      "2026-09-01T00:00:00.000Z",
+                      "TRUE",
+                      "1",
+                      "2026-08-31T00:00:00.000Z",
+                      "2026-08-31T00:00:00.000Z",
+                      "3"
+                    ],
+                    "rowNumber": 2
+                  }
+                ],
+                "headers": [
+                  "promotionId",
+                  "name",
+                  "description",
+                  "type",
+                  "value",
+                  "buyQuantity",
+                  "freeQuantity",
+                  "startsAt",
+                  "endsAt",
+                  "isActive",
+                  "sortOrder",
+                  "createdAt",
+                  "updatedAt",
+                  "schemaVersion"
+                ]
+              },
+              "Adjustments": {
+                "rows": [
+                  {
+                    "hash": "4ecca6538e2e5d44fe11b7a382151c27736042d1d1f0a6de8d70a9e5d00d6e28",
+                    "cells": [
+                      "ADJ1",
+                      "2026-08-31T00:00:00.000Z",
+                      "S1",
+                      "10",
+                      "add",
+                      "admin"
+                    ],
+                    "rowNumber": 2
+                  }
+                ],
+                "headers": [
+                  "adjustmentId",
+                  "timestamp",
+                  "studentId",
+                  "amount",
+                  "mode",
+                  "operator"
+                ]
+              },
+              "Transactions": {
+                "rows": [
+                  {
+                    "hash": "8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349",
+                    "cells": [
+                      "TX1",
+                      "2026-08-31T00:00:00.000Z",
+                      "S1",
+                      "Alice",
+                      "[{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"quantity\":1,\"subtotal\":20}]",
+                      "20",
+                      "100",
+                      "80",
+                      "COMPLETED",
+                      "kiosk"
+                    ],
+                    "rowNumber": 2
+                  },
+                  {
+                    "hash": "e5329b80d5985721e3c59682280460b1521d13811648a967014a5a5553adfc0a",
+                    "cells": [
+                      "TX-ADJ1",
+                      "2026-08-31T00:00:00.000Z",
+                      "S1",
+                      "Alice",
+                      "[{\"productId\":\"ADMIN-ADD\",\"name\":\"관리자 지급\",\"price\":-10,\"quantity\":1,\"subtotal\":-10}]",
+                      "-10",
+                      "80",
+                      "90",
+                      "ADMIN_ADJUSTMENT",
+                      "admin"
+                    ],
+                    "rowNumber": 3
+                  }
+                ],
+                "headers": [
+                  "transactionId",
+                  "timestamp",
+                  "studentId",
+                  "studentName",
+                  "items",
+                  "totalAmount",
+                  "balanceBefore",
+                  "balanceAfter",
+                  "status",
+                  "operator"
+                ]
+              },
+              "TaskAssignments": {
+                "rows": [
+                  {
+                    "hash": "4a2dd0f708da017cff7abc88b7e3107f724529dd67655b0a968224ea629900f3",
+                    "cells": [
+                      "AS0",
+                      "T1",
+                      "TI1",
+                      "v1|TI1|r1|2026-08-30T00:00:00Z",
+                      "2026-08-30T00:00:00.000Z",
+                      "2026-08-31T00:00:00.000Z",
+                      "1",
+                      "Asia/Seoul",
+                      "S1",
+                      "ASSIGNED",
+                      "LEGACY_SEED",
+                      "",
+                      "2026-08-30T00:00:00.000Z",
+                      "2",
+                      ""
+                    ],
+                    "rowNumber": 2
+                  },
+                  {
+                    "hash": "9d28a59e560f994a8e7a7739deec686c41de060a481add90c7554e74c24a4fa0",
+                    "cells": [
+                      "AS1",
+                      "T1",
+                      "TI1",
+                      "v1|TI1|r2|2026-08-31T00:00:00Z",
+                      "2026-08-31T00:00:00.000Z",
+                      "2026-09-01T00:00:00.000Z",
+                      "2",
+                      "Asia/Seoul",
+                      "S1",
+                      "ASSIGNED",
+                      "CARRY_FORWARD",
+                      "AS0",
+                      "2026-08-31T00:00:00.000Z",
+                      "2",
+                      "original assignment note"
+                    ],
+                    "rowNumber": 3
+                  }
+                ],
+                "headers": [
+                  "assignmentId",
+                  "taskId",
+                  "taskInstanceId",
+                  "cycleId",
+                  "cycleStartsAt",
+                  "cycleEndsAt",
+                  "ruleVersion",
+                  "timeZone",
+                  "studentId",
+                  "status",
+                  "source",
+                  "previousAssignmentId",
+                  "createdAt",
+                  "schemaVersion",
+                  "note"
+                ]
+              },
+              "TaskCompletions": {
+                "rows": [
+                  {
+                    "hash": "0bd8e6562ffa0345b55e1dae4e1920cbde958c71539f61e8646f9352937cbbf1",
+                    "cells": [
+                      "C1",
+                      "2026-08-31T00:00:00.000Z",
+                      "T1",
+                      "S1",
+                      "Alice",
+                      "0",
+                      "90",
+                      "90",
+                      "SUCCESS",
+                      "original completion note",
+                      "TI1",
+                      "v1|TI1|r2|2026-08-31T00:00:00Z",
+                      "2026-08-31T00:00:00.000Z",
+                      "2026-09-01T00:00:00.000Z",
+                      "2",
+                      "Asia/Seoul",
+                      "CARRY_FORWARD",
+                      "AS1",
+                      "2",
+                      "",
+                      "",
+                      "",
+                      "",
+                      "",
+                      "",
+                      ""
+                    ],
+                    "rowNumber": 2
+                  }
+                ],
+                "headers": [
+                  "completionId",
+                  "timestamp",
+                  "taskId",
+                  "studentId",
+                  "studentName",
+                  "reward",
+                  "balanceBefore",
+                  "balanceAfter",
+                  "status",
+                  "note",
+                  "taskInstanceId",
+                  "cycleId",
+                  "cycleStartsAt",
+                  "cycleEndsAt",
+                  "ruleVersion",
+                  "timeZone",
+                  "source",
+                  "assignmentId",
+                  "schemaVersion",
+                  "operationId",
+                  "operationPayloadHash",
+                  "evidenceProvider",
+                  "evidenceBoardId",
+                  "evidencePostId",
+                  "evidenceCreatedAt",
+                  "evidenceAuthorFullName"
+                ]
+              },
+              "PromotionProducts": {
+                "rows": [
+                  {
+                    "hash": "d8e3c8e6f022afee050046b40372a4f1784e420159ae4bb6fe42bb93d6e04369",
+                    "cells": [
+                      "LINK1",
+                      "PROMO1",
+                      "P1",
+                      "2026-08-31T00:00:00.000Z",
+                      "3"
+                    ],
+                    "rowNumber": 2
+                  }
+                ],
+                "headers": [
+                  "promotionProductId",
+                  "promotionId",
+                  "productId",
+                  "createdAt",
+                  "schemaVersion"
+                ]
+              }
+            },
+            "digest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8",
+            "capturedAt": "2026-08-31T00:00:00.000Z",
+            "schemaVersion": 3,
+            "spreadsheetId": "sheet-1",
+            "sourceRevision": "rev-1",
+            "snapshotVersion": 1,
+            "credentialHashes": {
+              "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341",
+              "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"
+            },
+            "missingOptionalTabs": []
+          }
+        },
+        "originalGenerationId": "preparation:original:a3828a138a60bf7e2a079c673bc9f13a4c84a7c8031ca8c42271309cd203ce15",
+        "exclusionGenerationReference": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    {
+      "event_id": "preparation:original:a3828a138a60bf7e2a079c673bc9f13a4c84a7c8031ca8c42271309cd203ce15",
+      "event_type": "MIGRATION_PREPARATION_ORIGINAL",
+      "redacted_details": {
+        "phase": "ORIGINAL_PREFLIGHT",
+        "storage": "UNTRUSTED_PREPARATION",
+        "manifest": {
+          "status": "READY_FOR_IMPORT",
+          "records": {
+            "tasks": [
+              {
+                "dueAt": null,
+                "title": "Homework",
+                "reward": 10,
+                "taskId": "T1",
+                "isActive": true,
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "createdAt": "2026-08-31T00:00:00.000Z",
+                "sortOrder": 1,
+                "updatedAt": "2026-09-01T00:00:00.000Z",
+                "description": "Read",
+                "availableFrom": null,
+                "schemaVersion": 3,
+                "taskInstanceId": "TI1",
+                "currentSchedule": {
+                  "timeZone": "Asia/Seoul",
+                  "recurrence": {
+                    "type": "NONE"
+                  },
+                  "ruleVersion": 1,
+                  "effectiveFrom": "2026-08-31T00:00:00.000Z",
+                  "resetAssignmentOnCycle": false,
+                  "resetCompletionOnCycle": false
+                },
+                "pendingSchedule": null,
+                "allowedStudentIds": [
+                  "S1"
+                ],
+                "prerequisiteTaskId": null
+              }
+            ],
+            "accounts": [
+              {
+                "balance": 100,
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "studentId": "S1"
+              }
+            ],
+            "products": [
+              {
+                "name": "Pencil",
+                "price": 20,
+                "stock": 5,
+                "category": "school",
+                "imageUrl": null,
+                "isActive": true,
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "productId": "P1",
+                "sortOrder": 1
+              }
+            ],
+            "settings": [
+              {
+                "key": "classTimeZone",
+                "value": "Asia/Seoul",
+                "tenantId": "20000000-0000-4000-8000-000000000001"
+              },
+              {
+                "key": "schemaVersion",
+                "value": "3",
+                "tenantId": "20000000-0000-4000-8000-000000000001"
+              },
+              {
+                "key": "themeColor",
+                "value": "blue",
+                "tenantId": "20000000-0000-4000-8000-000000000001"
+              }
+            ],
+            "students": [
+              {
+                "name": "Alice",
+                "status": "ACTIVE",
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "studentId": "S1"
+              }
+            ],
+            "promotions": [
+              {
+                "name": "Sale",
+                "type": "FIXED_DISCOUNT",
+                "endsAt": "2026-09-01T00:00:00.000Z",
+                "isActive": true,
+                "startsAt": "2026-08-31T00:00:00.000Z",
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "createdAt": "2026-08-31T00:00:00.000Z",
+                "sortOrder": 1,
+                "updatedAt": "2026-08-31T00:00:00.000Z",
+                "description": "discount",
+                "promotionId": "PROMO1",
+                "schemaVersion": 3,
+                "discountAmount": 5
+              }
+            ],
+            "adjustments": [
+              {
+                "mode": "add",
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "adjustmentId": "ADJ1",
+                "transactionId": "TX-ADJ1",
+                "requestedAmount": 10,
+                "operatorSnapshot": "admin",
+                "legacyAdjustmentId": "ADJ1"
+              }
+            ],
+            "transactions": [
+              {
+                "kind": "ADMIN_ADJUSTMENT",
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "studentId": "S1",
+                "occurredAt": "2026-08-31T00:00:00.000Z",
+                "balanceAfter": 90,
+                "balanceDelta": 10,
+                "balanceBefore": 80,
+                "transactionId": "TX-ADJ1",
+                "operatorSnapshot": "admin",
+                "legacyTotalAmount": -10,
+                "studentNameSnapshot": "Alice",
+                "legacyStatusSnapshot": "ADMIN_ADJUSTMENT"
+              },
+              {
+                "kind": "CHECKOUT",
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "studentId": "S1",
+                "occurredAt": "2026-08-31T00:00:00.000Z",
+                "balanceAfter": 80,
+                "balanceDelta": -20,
+                "balanceBefore": 100,
+                "transactionId": "TX1",
+                "operatorSnapshot": "kiosk",
+                "legacyTotalAmount": 20,
+                "studentNameSnapshot": "Alice",
+                "legacyStatusSnapshot": "COMPLETED"
+              }
+            ],
+            "task_assignments": [
+              {
+                "note": "",
+                "source": "LEGACY_SEED",
+                "status": "ASSIGNED",
+                "taskId": "T1",
+                "cycleId": "v1|TI1|r1|2026-08-30T00:00:00Z",
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "timeZone": "Asia/Seoul",
+                "createdAt": "2026-08-30T00:00:00.000Z",
+                "studentId": "S1",
+                "cycleEndsAt": "2026-08-31T00:00:00.000Z",
+                "ruleVersion": 1,
+                "assignmentId": "AS0",
+                "cycleStartsAt": "2026-08-30T00:00:00.000Z",
+                "schemaVersion": 2,
+                "taskInstanceId": "TI1",
+                "previousAssignmentId": null
+              },
+              {
+                "note": "original assignment note",
+                "source": "CARRY_FORWARD",
+                "status": "ASSIGNED",
+                "taskId": "T1",
+                "cycleId": "v1|TI1|r2|2026-08-31T00:00:00Z",
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "timeZone": "Asia/Seoul",
+                "createdAt": "2026-08-31T00:00:00.000Z",
+                "studentId": "S1",
+                "cycleEndsAt": "2026-09-01T00:00:00.000Z",
+                "ruleVersion": 2,
+                "assignmentId": "AS1",
+                "cycleStartsAt": "2026-08-31T00:00:00.000Z",
+                "schemaVersion": 2,
+                "taskInstanceId": "TI1",
+                "previousAssignmentId": "AS0"
+              }
+            ],
+            "task_completions": [
+              {
+                "note": "original completion note",
+                "reward": 0,
+                "source": "CARRY_FORWARD",
+                "status": "SUCCESS",
+                "taskId": "T1",
+                "cycleId": "v1|TI1|r2|2026-08-31T00:00:00Z",
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "timeZone": "Asia/Seoul",
+                "studentId": "S1",
+                "timestamp": "2026-08-31T00:00:00.000Z",
+                "cycleEndsAt": "2026-09-01T00:00:00.000Z",
+                "operationId": null,
+                "ruleVersion": 2,
+                "studentName": "Alice",
+                "assignmentId": "AS1",
+                "balanceAfter": 90,
+                "completionId": "C1",
+                "balanceBefore": 90,
+                "cycleStartsAt": "2026-08-31T00:00:00.000Z",
+                "schemaVersion": 2,
+                "taskInstanceId": "TI1",
+                "operationPayloadHash": null
+              }
+            ],
+            "transaction_items": [
+              {
+                "itemId": "20ee618a-d502-5039-af1b-31ade7dcd82b",
+                "quantity": 1,
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "lineNumber": 1,
+                "transactionId": "TX1",
+                "currentProductId": "P1",
+                "subtotalSnapshot": 20,
+                "productIdSnapshot": "P1",
+                "unitPriceSnapshot": 20,
+                "productNameSnapshot": "Pencil"
+              },
+              {
+                "itemId": "e3272940-2098-5f40-a82e-ee3c88cc0677",
+                "quantity": 1,
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "lineNumber": 1,
+                "transactionId": "TX-ADJ1",
+                "currentProductId": null,
+                "subtotalSnapshot": -10,
+                "productIdSnapshot": "ADMIN-ADD",
+                "unitPriceSnapshot": -10,
+                "productNameSnapshot": "관리자 지급"
+              }
+            ],
+            "promotion_products": [
+              {
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "createdAt": "2026-08-31T00:00:00.000Z",
+                "productId": "P1",
+                "promotionId": "PROMO1",
+                "schemaVersion": 3,
+                "promotionProductId": "LINK1"
+              }
+            ],
+            "task_allowed_students": [
+              {
+                "tenantId": "20000000-0000-4000-8000-000000000001",
+                "studentId": "S1",
+                "taskInstanceId": "TI1"
+              }
+            ],
+            "padlet_evidence_claims": []
+          },
+          "mappings": [
+            {
+              "status": "STAGED",
+              "targetId": "S1",
+              "targetTable": "accounts",
+              "sourceDigest": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "ADJ1",
+              "targetTable": "adjustments",
+              "sourceDigest": "4ecca6538e2e5d44fe11b7a382151c27736042d1d1f0a6de8d70a9e5d00d6e28"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "P1",
+              "targetTable": "products",
+              "sourceDigest": "93f68ea1d00470db48541bd3a271550fea91ad870cd9e31d1ee01c646e8c0291"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "LINK1",
+              "targetTable": "promotion_products",
+              "sourceDigest": "d8e3c8e6f022afee050046b40372a4f1784e420159ae4bb6fe42bb93d6e04369"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "PROMO1",
+              "targetTable": "promotions",
+              "sourceDigest": "b47af12a5b3a6f2e016f759b60f30b043957a4e476b584e5943bfc00f71d2045"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "classTimeZone",
+              "targetTable": "settings",
+              "sourceDigest": "d55a44a91b8a3270885897e048ab573180cf3f25e5996cc0c371e9e2caa63613"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "schemaVersion",
+              "targetTable": "settings",
+              "sourceDigest": "2ec4f535937929a42a03e65c6ae92cc4b18bcdf99250c50876bb64233a56727d"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "themeColor",
+              "targetTable": "settings",
+              "sourceDigest": "2c8f35e06de4cda67f37a42a16f9e3cf65e7f902d974c9191111ee37c19c787d"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "S1",
+              "targetTable": "students",
+              "sourceDigest": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "1cce75b2-ef1a-5aa7-a349-ebe8e6a24ecf",
+              "targetTable": "task_allowed_students",
+              "sourceDigest": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "AS0",
+              "targetTable": "task_assignments",
+              "sourceDigest": "4a2dd0f708da017cff7abc88b7e3107f724529dd67655b0a968224ea629900f3"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "AS1",
+              "targetTable": "task_assignments",
+              "sourceDigest": "9d28a59e560f994a8e7a7739deec686c41de060a481add90c7554e74c24a4fa0"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "C1",
+              "targetTable": "task_completions",
+              "sourceDigest": "0bd8e6562ffa0345b55e1dae4e1920cbde958c71539f61e8646f9352937cbbf1"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "TI1",
+              "targetTable": "tasks",
+              "sourceDigest": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "20ee618a-d502-5039-af1b-31ade7dcd82b",
+              "targetTable": "transaction_items",
+              "sourceDigest": "8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "e3272940-2098-5f40-a82e-ee3c88cc0677",
+              "targetTable": "transaction_items",
+              "sourceDigest": "e5329b80d5985721e3c59682280460b1521d13811648a967014a5a5553adfc0a"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "TX-ADJ1",
+              "targetTable": "transactions",
+              "sourceDigest": "e5329b80d5985721e3c59682280460b1521d13811648a967014a5a5553adfc0a"
+            },
+            {
+              "status": "STAGED",
+              "targetId": "TX1",
+              "targetTable": "transactions",
+              "sourceDigest": "8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349"
+            }
+          ],
+          "metadata": {
+            "classTimeZone": "Asia/Seoul",
+            "sheetSchemaVersion": 3
+          },
+          "tenantId": "20000000-0000-4000-8000-000000000001",
+          "warnings": [],
+          "quarantines": [],
+          "sourceRecords": [
+            {
+              "source": {
+                "tab": "Adjustments",
+                "kind": "SHEET",
+                "rowHash": "4ecca6538e2e5d44fe11b7a382151c27736042d1d1f0a6de8d70a9e5d00d6e28",
+                "rowNumber": 2,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "ADJ1",
+              "errorCodes": [],
+              "targetTable": "adjustments",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "mode": "add",
+                "amount": 10,
+                "operator": "admin",
+                "studentId": "S1",
+                "timestamp": "2026-08-31T00:00:00.000Z",
+                "adjustmentId": "ADJ1",
+                "transactionId": "TX-ADJ1",
+                "operatorDigest": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "3cb04a12f40fb03169fdb4b0b4b50f74fe9739f193970a164f6dde7ce019ea48",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 6
+              }
+            },
+            {
+              "source": {
+                "tab": "Products",
+                "kind": "SHEET",
+                "rowHash": "93f68ea1d00470db48541bd3a271550fea91ad870cd9e31d1ee01c646e8c0291",
+                "rowNumber": 2,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "P1",
+              "errorCodes": [],
+              "targetTable": "products",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "name": "Pencil",
+                "price": 20,
+                "stock": 5,
+                "category": "school",
+                "imageUrl": null,
+                "isActive": true,
+                "productId": "P1",
+                "sortOrder": 1
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "fbeae7c18667b6987518f3ae61ed8b19038e5961e8e7368597428eff76e4842a",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 8
+              }
+            },
+            {
+              "source": {
+                "tab": "PromotionProducts",
+                "kind": "SHEET",
+                "rowHash": "d8e3c8e6f022afee050046b40372a4f1784e420159ae4bb6fe42bb93d6e04369",
+                "rowNumber": 2,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "LINK1",
+              "errorCodes": [],
+              "targetTable": "promotion_products",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "createdAt": "2026-08-31T00:00:00.000Z",
+                "productId": "P1",
+                "promotionId": "PROMO1",
+                "schemaVersion": 3,
+                "promotionProductId": "LINK1"
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "0790bdd142c601409ae5ae52ed69ba264e03a20e1d613e9f0474f24345b776da",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 5
+              }
+            },
+            {
+              "source": {
+                "tab": "Promotions",
+                "kind": "SHEET",
+                "rowHash": "b47af12a5b3a6f2e016f759b60f30b043957a4e476b584e5943bfc00f71d2045",
+                "rowNumber": 2,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "PROMO1",
+              "errorCodes": [],
+              "targetTable": "promotions",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "name": "Sale",
+                "type": "FIXED_DISCOUNT",
+                "endsAt": "2026-09-01T00:00:00.000Z",
+                "isActive": true,
+                "startsAt": "2026-08-31T00:00:00.000Z",
+                "createdAt": "2026-08-31T00:00:00.000Z",
+                "sortOrder": 1,
+                "updatedAt": "2026-08-31T00:00:00.000Z",
+                "description": "discount",
+                "promotionId": "PROMO1",
+                "schemaVersion": 3,
+                "discountAmount": 5
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "a4083c0545b6f836309e46379c883a18d645a5260ba158d59a31d6cd3fde87d9",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 14
+              }
+            },
+            {
+              "source": {
+                "tab": "Settings",
+                "kind": "SHEET",
+                "rowHash": "2ec4f535937929a42a03e65c6ae92cc4b18bcdf99250c50876bb64233a56727d",
+                "rowNumber": 2,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "schemaVersion",
+              "errorCodes": [],
+              "targetTable": "settings",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "key": "schemaVersion",
+                "value": "3"
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "ff63b0467d555ea1b674b981a393aa821c9840ba1068a48d8e0793b398534726",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 2
+              }
+            },
+            {
+              "source": {
+                "tab": "Settings",
+                "kind": "SHEET",
+                "rowHash": "d55a44a91b8a3270885897e048ab573180cf3f25e5996cc0c371e9e2caa63613",
+                "rowNumber": 3,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "classTimeZone",
+              "errorCodes": [],
+              "targetTable": "settings",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "key": "classTimeZone",
+                "value": "Asia/Seoul"
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "30895bcb3a120ccc6becdf9acd2d64964b57f525deb3ce4336ddf8343cb34132",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 2
+              }
+            },
+            {
+              "source": {
+                "tab": "Settings",
+                "kind": "SHEET",
+                "rowHash": "2c8f35e06de4cda67f37a42a16f9e3cf65e7f902d974c9191111ee37c19c787d",
+                "rowNumber": 4,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "themeColor",
+              "errorCodes": [],
+              "targetTable": "settings",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "key": "themeColor",
+                "value": "blue"
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "2b9f5f38f7dfc335c46287d468ec73571ed640a22fc8bccf160fb4f48b476378",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 2
+              }
+            },
+            {
+              "source": {
+                "tab": "Settings",
+                "kind": "SHEET",
+                "rowHash": "4dfed580af3028ffdc315b92690aae5ad334d935063b6e5c1af3b59f3f20d7ab",
+                "rowNumber": 5,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "errorCodes": [],
+              "warningCodes": [
+                "SETTING_OMITTED"
+              ],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "key": "adminPasswordHash",
+                "valueDigest": "998ed4d621742d0c2d85ed84173db569afa194d4597686cae947324aa58ab4bb"
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "a3f1645538c6c955a153685f7f53533d0aeae3bc6ec93d3a43e14ee571dfca0c",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 2
+              }
+            },
+            {
+              "source": {
+                "tab": "Settings",
+                "kind": "SHEET",
+                "rowHash": "0044930e67b402e673cf32c854490ac2597e9591b4c5ca8e001fe6d18426e1c5",
+                "rowNumber": 6,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "errorCodes": [],
+              "warningCodes": [
+                "SETTING_OMITTED"
+              ],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "key": "recoveryCodeHash",
+                "valueDigest": "55447115db3b69a5a3d9daf3d4727e81751badda67e53d30c6b5b782c7213eed"
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "1d19565a0da6333bae71a1d526b0648fdd944d563a9cf9d3649d9a66d75387bc",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 2
+              }
+            },
+            {
+              "source": {
+                "tab": "Students",
+                "kind": "SHEET",
+                "rowHash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef",
+                "rowNumber": 2,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "S1",
+              "errorCodes": [],
+              "targetTable": "students",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "name": "Alice",
+                "status": "ACTIVE",
+                "balance": 100,
+                "studentId": "S1"
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "3696ad59777e09d5f2daacb544022d435e7cd053d87c5781241fabd8fdf2a90d",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 4
+              }
+            },
+            {
+              "source": {
+                "tab": "TaskAssignments",
+                "kind": "SHEET",
+                "rowHash": "4a2dd0f708da017cff7abc88b7e3107f724529dd67655b0a968224ea629900f3",
+                "rowNumber": 2,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "AS0",
+              "errorCodes": [],
+              "targetTable": "task_assignments",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "note": "",
+                "source": "LEGACY_SEED",
+                "status": "ASSIGNED",
+                "taskId": "T1",
+                "cycleId": "v1|TI1|r1|2026-08-30T00:00:00Z",
+                "timeZone": "Asia/Seoul",
+                "createdAt": "2026-08-30T00:00:00.000Z",
+                "studentId": "S1",
+                "cycleEndsAt": "2026-08-31T00:00:00.000Z",
+                "ruleVersion": 1,
+                "assignmentId": "AS0",
+                "cycleStartsAt": "2026-08-30T00:00:00.000Z",
+                "schemaVersion": 2,
+                "taskInstanceId": "TI1",
+                "previousAssignmentId": null
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "9724f006dceab5ddd5c2c54247cc750671d78d88a1586e4a1f5b9600c9106a1f",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 15
+              }
+            },
+            {
+              "source": {
+                "tab": "TaskAssignments",
+                "kind": "SHEET",
+                "rowHash": "9d28a59e560f994a8e7a7739deec686c41de060a481add90c7554e74c24a4fa0",
+                "rowNumber": 3,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "AS1",
+              "errorCodes": [],
+              "targetTable": "task_assignments",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "note": "original assignment note",
+                "source": "CARRY_FORWARD",
+                "status": "ASSIGNED",
+                "taskId": "T1",
+                "cycleId": "v1|TI1|r2|2026-08-31T00:00:00Z",
+                "timeZone": "Asia/Seoul",
+                "createdAt": "2026-08-31T00:00:00.000Z",
+                "studentId": "S1",
+                "cycleEndsAt": "2026-09-01T00:00:00.000Z",
+                "ruleVersion": 2,
+                "assignmentId": "AS1",
+                "cycleStartsAt": "2026-08-31T00:00:00.000Z",
+                "schemaVersion": 2,
+                "taskInstanceId": "TI1",
+                "previousAssignmentId": "AS0"
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "627fd5d4db7c84d9b0e46e97e949827bcb485ea05aa91879298b7836af55a128",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 15
+              }
+            },
+            {
+              "source": {
+                "tab": "TaskCompletions",
+                "kind": "SHEET",
+                "rowHash": "0bd8e6562ffa0345b55e1dae4e1920cbde958c71539f61e8646f9352937cbbf1",
+                "rowNumber": 2,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "C1",
+              "errorCodes": [],
+              "targetTable": "task_completions",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "note": "original completion note",
+                "reward": 0,
+                "source": "CARRY_FORWARD",
+                "status": "SUCCESS",
+                "taskId": "T1",
+                "cycleId": "v1|TI1|r2|2026-08-31T00:00:00Z",
+                "timeZone": "Asia/Seoul",
+                "studentId": "S1",
+                "timestamp": "2026-08-31T00:00:00.000Z",
+                "cycleEndsAt": "2026-09-01T00:00:00.000Z",
+                "operationId": null,
+                "ruleVersion": 2,
+                "studentName": "Alice",
+                "assignmentId": "AS1",
+                "balanceAfter": 90,
+                "completionId": "C1",
+                "balanceBefore": 90,
+                "cycleStartsAt": "2026-08-31T00:00:00.000Z",
+                "schemaVersion": 2,
+                "taskInstanceId": "TI1",
+                "operationPayloadHash": null
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "ab861dc170dc2e43224e45278d3d31a675b9ebc34c9b0f48c066ca1eeaed8ee6",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 26
+              }
+            },
+            {
+              "source": {
+                "tab": "Tasks",
+                "kind": "SHEET",
+                "rowHash": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33",
+                "rowNumber": 2,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "TI1",
+              "errorCodes": [],
+              "targetTable": "tasks",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "dueAt": null,
+                "title": "Homework",
+                "reward": 10,
+                "taskId": "T1",
+                "isActive": true,
+                "createdAt": "2026-08-31T00:00:00.000Z",
+                "sortOrder": 1,
+                "updatedAt": "2026-09-01T00:00:00.000Z",
+                "description": "Read",
+                "availableFrom": null,
+                "schemaVersion": 3,
+                "taskInstanceId": "TI1",
+                "currentSchedule": {
+                  "timeZone": "Asia/Seoul",
+                  "recurrence": {
+                    "type": "NONE"
+                  },
+                  "ruleVersion": 1,
+                  "effectiveFrom": "2026-08-31T00:00:00.000Z",
+                  "resetAssignmentOnCycle": false,
+                  "resetCompletionOnCycle": false
+                },
+                "pendingSchedule": null,
+                "allowedStudentIds": [
+                  "S1"
+                ],
+                "prerequisiteTaskId": null
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "1f93603db53bfad5c92390f735d0cbb8617b4ab8214ae91c5664a3d1e9b009c8",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 33
+              }
+            },
+            {
+              "source": {
+                "tab": "Transactions",
+                "kind": "SHEET",
+                "rowHash": "8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349",
+                "rowNumber": 2,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "TX1",
+              "errorCodes": [],
+              "targetTable": "transactions",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "items": [
+                  {
+                    "name": "Pencil",
+                    "price": 20,
+                    "itemId": "20ee618a-d502-5039-af1b-31ade7dcd82b",
+                    "quantity": 1,
+                    "subtotal": 20,
+                    "productId": "P1",
+                    "lineNumber": 1,
+                    "transactionId": "TX1"
+                  }
+                ],
+                "status": "COMPLETED",
+                "operator": "kiosk",
+                "studentId": "S1",
+                "timestamp": "2026-08-31T00:00:00.000Z",
+                "studentName": "Alice",
+                "totalAmount": 20,
+                "balanceAfter": 80,
+                "balanceBefore": 100,
+                "transactionId": "TX1"
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "4804e3ae090e3fb82de9a66aca0543c39d1ffff786133871f382ed612053687a",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 10
+              }
+            },
+            {
+              "source": {
+                "tab": "Transactions",
+                "kind": "SHEET",
+                "rowHash": "e5329b80d5985721e3c59682280460b1521d13811648a967014a5a5553adfc0a",
+                "rowNumber": 3,
+                "artifactDigest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8"
+              },
+              "targetId": "TX-ADJ1",
+              "errorCodes": [],
+              "targetTable": "transactions",
+              "warningCodes": [],
+              "mappingStatus": "STAGED",
+              "canonicalRecord": {
+                "items": [
+                  {
+                    "name": "관리자 지급",
+                    "price": -10,
+                    "itemId": "e3272940-2098-5f40-a82e-ee3c88cc0677",
+                    "quantity": 1,
+                    "subtotal": -10,
+                    "productId": "ADMIN-ADD",
+                    "lineNumber": 1,
+                    "transactionId": "TX-ADJ1"
+                  }
+                ],
+                "status": "ADMIN_ADJUSTMENT",
+                "operator": "admin",
+                "studentId": "S1",
+                "timestamp": "2026-08-31T00:00:00.000Z",
+                "studentName": "Alice",
+                "totalAmount": -10,
+                "balanceAfter": 90,
+                "balanceBefore": 80,
+                "transactionId": "TX-ADJ1"
+              },
+              "redactedSourceRecord": {
+                "identityDigest": "631c2d769263bc918347046608cfc907321aba82903c8f63e956c644e373aadc",
+                "omittedFieldCount": 0,
+                "recognizedFieldCount": 10
+              }
+            }
+          ],
+          "manifestDigest": "51e95e628485ba0d350ba0c5624132ab2b782ed6c3e24bed153e2da302c74418",
+          "migrationJobId": "20000000-0000-4000-8000-000000000019",
+          "manifestVersion": 1,
+          "sourceArtifacts": {
+            "redis": {
+              "digest": "0ea6831bac3240f82bf3701a4799b2c7479f6909c6a50191e541f45a3d5b9453",
+              "revisionDigest": "a10ed3857c08dbc7d25cc1f51321485bada908f62a2cf3901911781354492b5a"
+            },
+            "sheets": {
+              "digest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8",
+              "revisionDigest": "a6d1d4ea8e5a4fa08e8438c91ab01e2055faf19e5134fddd3a61efc0c133aa46",
+              "credentialHashes": {
+                "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341",
+                "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"
+              },
+              "spreadsheetIdDigest": "a4e51d4d1b567d98fb630b09c2b6d75315ef15da0ed48df19875734ae8e30712"
+            }
+          },
+          "blockingConflicts": [],
+          "sourceFingerprint": "c042610351d04c7a32f098f9b76701488e198847391055026f555f70ba077bd5"
+        },
+        "tenantId": "20000000-0000-4000-8000-000000000001",
+        "acquisition": {
+          "redis": {
+            "digest": "0ea6831bac3240f82bf3701a4799b2c7479f6909c6a50191e541f45a3d5b9453",
+            "v2Claims": [],
+            "capturedAt": "2026-08-31T00:00:00.000Z",
+            "v1Tombstones": [],
+            "sourceRevision": "redis-rev-1",
+            "snapshotVersion": 1,
+            "operationBindings": [],
+            "orphanedClaimDigests": []
+          },
+          "sheets": {
+            "tabs": {
+              "Tasks": {
+                "rows": [
+                  {
+                    "hash": "4a58c5130c53873aa58df385d428849b89f08244b5ee62d25f73e04ca9aeae33",
+                    "cells": [
+                      "T1",
+                      "Homework",
+                      "Read",
+                      "10",
+                      "TRUE",
+                      "1",
+                      "2026-08-31T00:00:00.000Z",
+                      "2026-09-01T00:00:00.000Z",
+                      "S1",
+                      "TI1",
+                      "1",
+                      "2026-08-31T00:00:00.000Z",
+                      "Asia/Seoul",
+                      "NONE",
+                      "",
+                      "",
+                      "",
+                      "FALSE",
+                      "FALSE",
+                      "",
+                      "",
+                      "",
+                      "",
+                      "",
+                      "",
+                      "",
+                      "",
+                      "",
+                      "",
+                      "",
+                      "",
+                      "",
+                      ""
+                    ],
+                    "rowNumber": 2
+                  }
+                ],
+                "headers": [
+                  "taskId",
+                  "title",
+                  "description",
+                  "reward",
+                  "isActive",
+                  "sortOrder",
+                  "createdAt",
+                  "updatedAt",
+                  "allowedStudentIds",
+                  "taskInstanceId",
+                  "ruleVersion",
+                  "scheduleEffectiveFrom",
+                  "recurrenceTimeZone",
+                  "recurrenceType",
+                  "recurrenceTime",
+                  "recurrenceWeekday",
+                  "recurrenceDayOfMonth",
+                  "resetCompletionOnCycle",
+                  "resetAssignmentOnCycle",
+                  "pendingRuleVersion",
+                  "pendingEffectiveFrom",
+                  "pendingTimeZone",
+                  "pendingRecurrenceType",
+                  "pendingRecurrenceTime",
+                  "pendingRecurrenceWeekday",
+                  "pendingRecurrenceDayOfMonth",
+                  "pendingResetCompletionOnCycle",
+                  "pendingResetAssignmentOnCycle",
+                  "availableFrom",
+                  "dueAt",
+                  "prerequisiteTaskId",
+                  "recurrenceWeekdays",
+                  "pendingRecurrenceWeekdays"
+                ]
+              },
+              "Products": {
+                "rows": [
+                  {
+                    "hash": "93f68ea1d00470db48541bd3a271550fea91ad870cd9e31d1ee01c646e8c0291",
+                    "cells": [
+                      "P1",
+                      "Pencil",
+                      "20",
+                      "5",
+                      "TRUE",
+                      "",
+                      "school",
+                      "1"
+                    ],
+                    "rowNumber": 2
+                  }
+                ],
+                "headers": [
+                  "productId",
+                  "name",
+                  "price",
+                  "stock",
+                  "isActive",
+                  "imageUrl",
+                  "category",
+                  "sortOrder"
+                ]
+              },
+              "Settings": {
+                "rows": [
+                  {
+                    "hash": "2ec4f535937929a42a03e65c6ae92cc4b18bcdf99250c50876bb64233a56727d",
+                    "cells": [
+                      "schemaVersion",
+                      "3"
+                    ],
+                    "rowNumber": 2
+                  },
+                  {
+                    "hash": "d55a44a91b8a3270885897e048ab573180cf3f25e5996cc0c371e9e2caa63613",
+                    "cells": [
+                      "classTimeZone",
+                      "Asia/Seoul"
+                    ],
+                    "rowNumber": 3
+                  },
+                  {
+                    "hash": "2c8f35e06de4cda67f37a42a16f9e3cf65e7f902d974c9191111ee37c19c787d",
+                    "cells": [
+                      "themeColor",
+                      "blue"
+                    ],
+                    "rowNumber": 4
+                  },
+                  {
+                    "hash": "4dfed580af3028ffdc315b92690aae5ad334d935063b6e5c1af3b59f3f20d7ab",
+                    "cells": [
+                      "adminPasswordHash",
+                      "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"
+                    ],
+                    "rowNumber": 5
+                  },
+                  {
+                    "hash": "0044930e67b402e673cf32c854490ac2597e9591b4c5ca8e001fe6d18426e1c5",
+                    "cells": [
+                      "recoveryCodeHash",
+                      "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341"
+                    ],
+                    "rowNumber": 6
+                  }
+                ],
+                "headers": [
+                  "key",
+                  "value"
+                ]
+              },
+              "Students": {
+                "rows": [
+                  {
+                    "hash": "f418549c00903c66c7b7e26e051bdf6501337121192076bd00757169f55864ef",
+                    "cells": [
+                      "S1",
+                      "Alice",
+                      "100",
+                      "ACTIVE"
+                    ],
+                    "rowNumber": 2
+                  }
+                ],
+                "headers": [
+                  "studentId",
+                  "name",
+                  "balance",
+                  "status"
+                ]
+              },
+              "Promotions": {
+                "rows": [
+                  {
+                    "hash": "b47af12a5b3a6f2e016f759b60f30b043957a4e476b584e5943bfc00f71d2045",
+                    "cells": [
+                      "PROMO1",
+                      "Sale",
+                      "discount",
+                      "FIXED_DISCOUNT",
+                      "5",
+                      "",
+                      "",
+                      "2026-08-31T00:00:00.000Z",
+                      "2026-09-01T00:00:00.000Z",
+                      "TRUE",
+                      "1",
+                      "2026-08-31T00:00:00.000Z",
+                      "2026-08-31T00:00:00.000Z",
+                      "3"
+                    ],
+                    "rowNumber": 2
+                  }
+                ],
+                "headers": [
+                  "promotionId",
+                  "name",
+                  "description",
+                  "type",
+                  "value",
+                  "buyQuantity",
+                  "freeQuantity",
+                  "startsAt",
+                  "endsAt",
+                  "isActive",
+                  "sortOrder",
+                  "createdAt",
+                  "updatedAt",
+                  "schemaVersion"
+                ]
+              },
+              "Adjustments": {
+                "rows": [
+                  {
+                    "hash": "4ecca6538e2e5d44fe11b7a382151c27736042d1d1f0a6de8d70a9e5d00d6e28",
+                    "cells": [
+                      "ADJ1",
+                      "2026-08-31T00:00:00.000Z",
+                      "S1",
+                      "10",
+                      "add",
+                      "admin"
+                    ],
+                    "rowNumber": 2
+                  }
+                ],
+                "headers": [
+                  "adjustmentId",
+                  "timestamp",
+                  "studentId",
+                  "amount",
+                  "mode",
+                  "operator"
+                ]
+              },
+              "Transactions": {
+                "rows": [
+                  {
+                    "hash": "8358ddda9c1880da207fbede9c4b957f74f94ebe43e0bfa1d147df4daf59f349",
+                    "cells": [
+                      "TX1",
+                      "2026-08-31T00:00:00.000Z",
+                      "S1",
+                      "Alice",
+                      "[{\"productId\":\"P1\",\"name\":\"Pencil\",\"price\":20,\"quantity\":1,\"subtotal\":20}]",
+                      "20",
+                      "100",
+                      "80",
+                      "COMPLETED",
+                      "kiosk"
+                    ],
+                    "rowNumber": 2
+                  },
+                  {
+                    "hash": "e5329b80d5985721e3c59682280460b1521d13811648a967014a5a5553adfc0a",
+                    "cells": [
+                      "TX-ADJ1",
+                      "2026-08-31T00:00:00.000Z",
+                      "S1",
+                      "Alice",
+                      "[{\"productId\":\"ADMIN-ADD\",\"name\":\"관리자 지급\",\"price\":-10,\"quantity\":1,\"subtotal\":-10}]",
+                      "-10",
+                      "80",
+                      "90",
+                      "ADMIN_ADJUSTMENT",
+                      "admin"
+                    ],
+                    "rowNumber": 3
+                  }
+                ],
+                "headers": [
+                  "transactionId",
+                  "timestamp",
+                  "studentId",
+                  "studentName",
+                  "items",
+                  "totalAmount",
+                  "balanceBefore",
+                  "balanceAfter",
+                  "status",
+                  "operator"
+                ]
+              },
+              "TaskAssignments": {
+                "rows": [
+                  {
+                    "hash": "4a2dd0f708da017cff7abc88b7e3107f724529dd67655b0a968224ea629900f3",
+                    "cells": [
+                      "AS0",
+                      "T1",
+                      "TI1",
+                      "v1|TI1|r1|2026-08-30T00:00:00Z",
+                      "2026-08-30T00:00:00.000Z",
+                      "2026-08-31T00:00:00.000Z",
+                      "1",
+                      "Asia/Seoul",
+                      "S1",
+                      "ASSIGNED",
+                      "LEGACY_SEED",
+                      "",
+                      "2026-08-30T00:00:00.000Z",
+                      "2",
+                      ""
+                    ],
+                    "rowNumber": 2
+                  },
+                  {
+                    "hash": "9d28a59e560f994a8e7a7739deec686c41de060a481add90c7554e74c24a4fa0",
+                    "cells": [
+                      "AS1",
+                      "T1",
+                      "TI1",
+                      "v1|TI1|r2|2026-08-31T00:00:00Z",
+                      "2026-08-31T00:00:00.000Z",
+                      "2026-09-01T00:00:00.000Z",
+                      "2",
+                      "Asia/Seoul",
+                      "S1",
+                      "ASSIGNED",
+                      "CARRY_FORWARD",
+                      "AS0",
+                      "2026-08-31T00:00:00.000Z",
+                      "2",
+                      "original assignment note"
+                    ],
+                    "rowNumber": 3
+                  }
+                ],
+                "headers": [
+                  "assignmentId",
+                  "taskId",
+                  "taskInstanceId",
+                  "cycleId",
+                  "cycleStartsAt",
+                  "cycleEndsAt",
+                  "ruleVersion",
+                  "timeZone",
+                  "studentId",
+                  "status",
+                  "source",
+                  "previousAssignmentId",
+                  "createdAt",
+                  "schemaVersion",
+                  "note"
+                ]
+              },
+              "TaskCompletions": {
+                "rows": [
+                  {
+                    "hash": "0bd8e6562ffa0345b55e1dae4e1920cbde958c71539f61e8646f9352937cbbf1",
+                    "cells": [
+                      "C1",
+                      "2026-08-31T00:00:00.000Z",
+                      "T1",
+                      "S1",
+                      "Alice",
+                      "0",
+                      "90",
+                      "90",
+                      "SUCCESS",
+                      "original completion note",
+                      "TI1",
+                      "v1|TI1|r2|2026-08-31T00:00:00Z",
+                      "2026-08-31T00:00:00.000Z",
+                      "2026-09-01T00:00:00.000Z",
+                      "2",
+                      "Asia/Seoul",
+                      "CARRY_FORWARD",
+                      "AS1",
+                      "2",
+                      "",
+                      "",
+                      "",
+                      "",
+                      "",
+                      "",
+                      ""
+                    ],
+                    "rowNumber": 2
+                  }
+                ],
+                "headers": [
+                  "completionId",
+                  "timestamp",
+                  "taskId",
+                  "studentId",
+                  "studentName",
+                  "reward",
+                  "balanceBefore",
+                  "balanceAfter",
+                  "status",
+                  "note",
+                  "taskInstanceId",
+                  "cycleId",
+                  "cycleStartsAt",
+                  "cycleEndsAt",
+                  "ruleVersion",
+                  "timeZone",
+                  "source",
+                  "assignmentId",
+                  "schemaVersion",
+                  "operationId",
+                  "operationPayloadHash",
+                  "evidenceProvider",
+                  "evidenceBoardId",
+                  "evidencePostId",
+                  "evidenceCreatedAt",
+                  "evidenceAuthorFullName"
+                ]
+              },
+              "PromotionProducts": {
+                "rows": [
+                  {
+                    "hash": "d8e3c8e6f022afee050046b40372a4f1784e420159ae4bb6fe42bb93d6e04369",
+                    "cells": [
+                      "LINK1",
+                      "PROMO1",
+                      "P1",
+                      "2026-08-31T00:00:00.000Z",
+                      "3"
+                    ],
+                    "rowNumber": 2
+                  }
+                ],
+                "headers": [
+                  "promotionProductId",
+                  "promotionId",
+                  "productId",
+                  "createdAt",
+                  "schemaVersion"
+                ]
+              }
+            },
+            "digest": "dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8",
+            "capturedAt": "2026-08-31T00:00:00.000Z",
+            "schemaVersion": 3,
+            "spreadsheetId": "sheet-1",
+            "sourceRevision": "rev-1",
+            "snapshotVersion": 1,
+            "credentialHashes": {
+              "recoveryCodeHash": "8c585378513f5f7a2e1456ee54042605fdb890392becefadd2ab180fd02fb341",
+              "adminPasswordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"
+            },
+            "missingOptionalTabs": []
+          }
+        },
+        "migrationJobId": "20000000-0000-4000-8000-000000000019",
+        "originalSourceId": "sheet:dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8",
+        "originalSnapshotId": "import:51e95e628485ba0d350ba0c5624132ab2b782ed6c3e24bed153e2da302c74418"
+      }
+    },
+    {
+      "event_id": "preparation:plan:a864457744ddb10898a5cd9ae4b35c819360fd1767214eb87357e67dfaa35ad1",
+      "event_type": "MIGRATION_PREPARATION_PLAN",
+      "redacted_details": {
+        "phase": "DELTA_PLAN",
+        "status": "DIFF_VALIDATED",
+        "binding": {
+          "tenantId": "20000000-0000-4000-8000-000000000001",
+          "expectedStatus": "READY",
+          "migrationJobId": "20000000-0000-4000-8000-000000000019",
+          "originalSourceId": "sheet:dae041b2dac80ea16e5d8d42674b20656c559f8d928f2f83da751bde755c6eb8",
+          "originalSnapshotId": "import:51e95e628485ba0d350ba0c5624132ab2b782ed6c3e24bed153e2da302c74418",
+          "expectedStateVersion": "4",
+          "originalManifestDigest": "51e95e628485ba0d350ba0c5624132ab2b782ed6c3e24bed153e2da302c74418",
+          "originalSourceFingerprint": "c042610351d04c7a32f098f9b76701488e198847391055026f555f70ba077bd5"
+        },
+        "changes": [],
+        "storage": "UNTRUSTED_PREPARATION",
+        "blockers": [],
+        "originalGenerationId": "preparation:original:a3828a138a60bf7e2a079c673bc9f13a4c84a7c8031ca8c42271309cd203ce15",
+        "candidateGenerationId": "preparation:candidate:6c252dbfdb24e5a51dda5cdacfc4f09825e366b8bfaa98a5c1f49a8076a761ed",
+        "originalManifestDigest": "51e95e628485ba0d350ba0c5624132ab2b782ed6c3e24bed153e2da302c74418",
+        "candidateManifestDigest": "51e95e628485ba0d350ba0c5624132ab2b782ed6c3e24bed153e2da302c74418",
+        "exclusionGenerationReference": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    }
+  ]
+}

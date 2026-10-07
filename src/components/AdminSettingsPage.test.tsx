@@ -22,13 +22,16 @@ describe('AdminSettingsPage Seoul-only policy', () => {
     render(<AdminSettingsPage />);
     await screen.findByText('현재 설정을 불러오지 못했습니다.');
     expect(screen.queryByText('미설정')).toBeNull();
-    const save = screen.getByRole('button', { name: '시스템 설정 저장' }) as HTMLButtonElement;
+    const save = screen.getByRole('button', { name: '설정 저장' }) as HTMLButtonElement;
     expect(save.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText('Google Sheets 주소 또는 시트 ID'), { target: { value: 'manual-sheet-id' } });
     fireEvent.click(save);
     expect(vi.mocked(fetch).mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: '설정 다시 불러오기' }));
     await screen.findByDisplayValue('sheet');
+    // Reload replaces the draft with the server values; nothing changed yet, so save stays disabled.
+    expect(save.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('매점 제목'), { target: { value: '새 매점' } });
     expect(save.disabled).toBe(false);
     fireEvent.click(save);
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/settings', expect.objectContaining({ method: 'POST' })));
@@ -56,7 +59,7 @@ describe('AdminSettingsPage Seoul-only policy', () => {
     const view = render(<AdminSettingsPage />);
     await screen.findByDisplayValue('sheet');
     fireEvent.change(screen.getByLabelText('관리자 암호 설정'), { target: { value: 'top-secret' } });
-    fireEvent.click(screen.getByRole('button', { name: '시스템 설정 저장' }));
+    fireEvent.click(screen.getByRole('button', { name: '설정 저장' }));
 
     const image = await screen.findByRole('img', { name: '관리자 로그인 QR' });
     await waitFor(() => expect(image.getAttribute('src')).toBe('blob:admin-qr'));
@@ -73,11 +76,17 @@ describe('AdminSettingsPage Seoul-only policy', () => {
   it('keeps general settings saves free of timezone fields and PATCH requests', async () => {
     render(<AdminSettingsPage />);
     await screen.findByDisplayValue('sheet');
-    fireEvent.click(screen.getByRole('button', { name: '시스템 설정 저장' }));
+    const save = screen.getByRole('button', { name: '설정 저장' }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.click(screen.getByRole('radio', { name: '초록' }));
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/settings', expect.objectContaining({ method: 'POST' })));
     const post = vi.mocked(fetch).mock.calls.find(([, init]) => init?.method === 'POST');
-    expect(JSON.parse(String(post?.[1]?.body))).not.toHaveProperty('classTimeZone');
+    const body = JSON.parse(String(post?.[1]?.body));
+    expect(body).not.toHaveProperty('classTimeZone');
+    expect(body).toMatchObject({ spreadsheetIdOrUrl: 'sheet', themeColor: 'green', currencyUnit: '별', appTitle: '매점', bankTitle: '은행' });
     expect(vi.mocked(fetch).mock.calls.some(([, init]) => init?.method === 'PATCH')).toBe(false);
   });
 });

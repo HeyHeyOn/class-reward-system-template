@@ -1,11 +1,17 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type { SQL } from 'drizzle-orm';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
+vi.mock('@/server/db/transaction', () => ({ withTenantSnapshot: vi.fn() }));
 
 import { createAdminPasswordHash } from '@/server/adminAuth';
+import { withTenantSnapshot, type TenantTransaction } from '@/server/db/transaction';
 import { runWithTrustedTenantRequestContext } from '@/server/trustedTenantRequestContext';
 import {
   createTenantLegacyAdminAuth,
+  getProductionTenantLegacyAdminAuth,
   TenantLegacyAdminAuthError,
 } from '@/server/tenantLegacyAdminAuth';
 
@@ -147,5 +153,116 @@ describe('tenant-scoped imported admin credential compatibility', () => {
 
     storedSession = { ...storedSession, sessionVersion: 8 };
     await expect(auth.verifySession(result.sessionToken, ALPHA_ID)).resolves.toBe(false);
+  });
+});
+
+describe('production legacy-admin DB adapter unit timestamp regression (no native SQL or HTTP)', () => {
+  // Pinned Drizzle rawQueryConfig TIMESTAMPTZ (OID 1184, text) shape:
+  // node-postgres/session.js returns the zoned PostgreSQL literal unchanged.
+  const rawExpiry = '2030-01-01 00:00:00.123456+00';
+  const tokenRaw = 'A'.repeat(43);
+  const token = `csa1.1.${tokenRaw}`;
+  const dialect = new PgDialect();
+  const snapshot = vi.mocked(withTenantSnapshot);
+  let sessionRow: Record<string, unknown>;
+  let credentialRow: Record<string, unknown>;
+  const execute = vi.fn(async (query: SQL) => {
+    const compiled = dialect.sqlToQuery(query);
+    expect(compiled.params[0]).toBe(ALPHA_ID);
+    if (compiled.sql.includes('FROM public.tenant_sessions s')) {
+      const matchesToken = compiled.params[1] === createHash('sha256').update(tokenRaw).digest('hex');
+      return { rows: matchesToken ? [sessionRow] : [] };
+    }
+    expect(compiled.sql).toContain('FROM public.tenants t');
+    return { rows: [credentialRow] };
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-02T00:00:00Z'));
+    sessionRow = {
+      tenant_id: ALPHA_ID, credential_version: 1, session_version: 1,
+      expires_at: rawExpiry, revoked_at: null,
+    };
+    credentialRow = {
+      tenant_id: ALPHA_ID, lifecycle: 'READY', credential_version: 1, secret_version: 1,
+      secret_hash: createAdminPasswordHash('correct horse'), hash_algorithm: 'scrypt', revoked_at: null,
+    };
+    snapshot.mockImplementation(async (_tenantId, callback) =>
+      callback({ execute } as unknown as TenantTransaction));
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it('authorizes a valid persisted raw-text session through production readers', async () => {
+    await expect(getProductionTenantLegacyAdminAuth(env).verifySession(token, ALPHA_ID)).resolves.toBe(true);
+    expect(snapshot).toHaveBeenNthCalledWith(1, ALPHA_ID, expect.any(Function));
+    expect(snapshot).toHaveBeenNthCalledWith(2, ALPHA_ID, expect.any(Function));
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ['Date', new Date('2030-01-01T00:00:00.123Z')],
+    ['zoned ISO', '2030-01-01T09:00:00.123+09:00'],
+  ])('preserves equivalent valid %s expiry authorization', async (_label, expiry) => {
+    sessionRow.expires_at = expiry;
+    await expect(getProductionTenantLegacyAdminAuth(env).verifySession(token, ALPHA_ID)).resolves.toBe(true);
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('fails closed for expired, exact-boundary and invalid expiry values', async () => {
+    const auth = getProductionTenantLegacyAdminAuth(env);
+    for (const expiry of [
+      '2026-10-01 00:00:00+00', new Date('2026-10-02T00:00:00Z'),
+      '2026-10-02 09:00:00+09',
+      new Date(NaN), 'infinity', '2030-02-30 00:00:00+00',
+      '2030-01-01T00:00:00', '2030-01-01T00:00:00+24:00', `${rawExpiry}\n`,
+      null, undefined, 1, true, {},
+    ]) {
+      sessionRow.expires_at = expiry;
+      await expect(auth.verifySession(token, ALPHA_ID)).resolves.toBe(false);
+    }
+    expect(execute.mock.calls.every(([query]) =>
+      dialect.sqlToQuery(query).sql.includes('FROM public.tenant_sessions s'))).toBe(true);
+  });
+
+  it.each(['session', 'credential'] as const)('never treats nonnull %s revocation as unrevoked', async (kind) => {
+    const auth = getProductionTenantLegacyAdminAuth(env);
+    for (const revoked of [
+      '2026-10-01 00:00:00.123456+00', new Date('2026-10-01T00:00:00Z'),
+      'malformed', new Date(NaN), undefined, 0, false, {},
+    ]) {
+      (kind === 'session' ? sessionRow : credentialRow).revoked_at = revoked;
+      await expect(auth.verifySession(token, ALPHA_ID)).resolves.toBe(false);
+      if (kind === 'credential') {
+        await expect(inTenant(ALPHA_ID, 'READY', () => auth.login({ kind: 'password', value: 'correct horse' })))
+          .rejects.toBeInstanceOf(TenantLegacyAdminAuthError);
+      }
+    }
+  });
+
+  it('retains production tenant, credential/secret/session version and lifecycle denials', async () => {
+    const auth = getProductionTenantLegacyAdminAuth(env);
+    const originalSession = { ...sessionRow };
+    const originalCredential = { ...credentialRow };
+    for (const [session, currentCredential] of [
+      [{ tenant_id: BETA_ID }, {}], [{ credential_version: 2 }, {}], [{ session_version: 2 }, {}],
+      [{}, { tenant_id: BETA_ID }], [{}, { secret_version: 2 }],
+      [{}, { lifecycle: 'ACTIVE' }], [{}, { lifecycle: 'FROZEN' }],
+    ]) {
+      sessionRow = { ...originalSession, ...session };
+      credentialRow = { ...originalCredential, ...currentCredential };
+      await expect(auth.verifySession(token, ALPHA_ID)).resolves.toBe(false);
+    }
+  });
+
+  it('retains opaque token shape and hash matching denials', async () => {
+    const auth = getProductionTenantLegacyAdminAuth(env);
+    for (const invalidToken of [undefined, 'malformed', `csa1.0.${tokenRaw}`]) {
+      await expect(auth.verifySession(invalidToken, ALPHA_ID)).resolves.toBe(false);
+    }
+    expect(snapshot).not.toHaveBeenCalled();
+    await expect(auth.verifySession(`csa1.1.${'B'.repeat(43)}`, ALPHA_ID)).resolves.toBe(false);
+    expect(execute).toHaveBeenCalledOnce();
   });
 });

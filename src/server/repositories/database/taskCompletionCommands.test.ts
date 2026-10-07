@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -35,9 +35,14 @@ const EVIDENCE: TaskCompletionEvidence = {
 let harness: PgliteDatabaseHarness;
 
 beforeEach(async () => {
-  harness = await createPgliteDatabaseHarness();
+  harness = await createPgliteDatabaseHarness({ migrationSet: 'base' });
+  for (const name of (await readdir(resolve(process.cwd(), 'src/server/db/migrations'))).filter((name) => /^\d{4}_.*\.sql$/.test(name) && name.slice(0, 4) > '0008').sort()) {
+    await harness.database.exec(await readFile(resolve(process.cwd(), 'src/server/db/migrations', name), 'utf8'));
+  }
+  await harness.database.exec(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_runtime;
+    GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_runtime;`);
   await seedTenant(harness.tenantOneId);
-});
+}, 120_000);
 
 afterEach(async () => {
   await harness?.close();
@@ -84,12 +89,20 @@ async function seedTenant(
         ruleVersion: 1,
         effectiveFrom: '2026-08-28T00:00:00.000Z',
         timeZone: 'Asia/Seoul',
-        recurrence: { type: 'DAILY', time: '09:00' },
-        resetCompletionOnCycle: true,
-        resetAssignmentOnCycle: true,
+        recurrence: { type: 'NONE' },
+        resetCompletionOnCycle: false,
+        resetAssignmentOnCycle: false,
       }),
       '2026-08-28T00:00:00.000Z',
     ],
+  );
+  // The class keeps task progress as a stage ledger that started before the seeded events.
+  await harness.database.query(
+    `INSERT INTO operations (tenant_id, operation_id, operation_kind, payload_hash, status, result_snapshot,
+       started_at, finished_at, created_at, updated_at)
+     VALUES ($1, 'task-ledger:v1', 'TASK_ADMIN', $2, 'SUCCEEDED', $3::jsonb, $4, $4, $4, $4)
+     ON CONFLICT (tenant_id, operation_id) DO NOTHING`,
+    [tenantId, 'b'.repeat(64), JSON.stringify({ ledgerFrom: '2026-08-27T00:00:00.000Z' }), '2026-08-27T00:00:00.000Z'],
   );
   await harness.database.query(
     `INSERT INTO task_allowed_students (tenant_id, task_instance_id, student_id)
@@ -101,16 +114,13 @@ async function seedTenant(
       (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id,
        cycle_start_at, cycle_end_at, rule_version, timezone, student_id,
        event_type, source, schema_version, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 1, 'Asia/Seoul', $8,
-             'ASSIGNED', 'ADMIN', 1, $6)`,
+     VALUES ($1, $2, $3, $4, 'ledger', '1970-01-01T00:00:00.000Z', NULL, 1, 'Asia/Seoul', $5,
+             'ASSIGNED', 'CARRY_FORWARD', 1, '2026-08-28T00:00:00.000Z')`,
     [
       tenantId,
       `ASSIGNMENT-1${suffix}`,
       `${TASK_ID}${suffix}`,
       `${TASK_INSTANCE_ID}${suffix}`,
-      `v1|${TASK_INSTANCE_ID}${suffix}|r1|2026-08-28T00:00:00Z`,
-      '2026-08-28T00:00:00.000Z',
-      '2026-08-29T00:00:00.000Z',
       `${STUDENT_ID}${suffix}`,
     ],
   );
@@ -126,7 +136,7 @@ async function snapshot(tenantId = harness.tenantOneId, studentId = STUDENT_ID) 
     harness.database.query(`SELECT *, reward_snapshot::text AS reward_snapshot,
       balance_before::text AS balance_before, balance_after::text AS balance_after
       FROM task_completions WHERE tenant_id=$1 ORDER BY completion_id`, [tenantId]),
-    harness.database.query(`SELECT * FROM operations WHERE tenant_id=$1 ORDER BY operation_id`, [tenantId]),
+    harness.database.query(`SELECT * FROM operations WHERE tenant_id=$1 AND operation_id<>'task-ledger:v1' ORDER BY operation_id`, [tenantId]),
     harness.database.query(`SELECT * FROM padlet_evidence_claims ORDER BY board_id, post_id`),
     harness.database.query(`SELECT * FROM audit_events WHERE tenant_id=$1 ORDER BY event_id`, [tenantId]),
   ]);
@@ -156,7 +166,7 @@ describe('database task completion command', () => {
       reward: 50,
       balanceBefore: 100,
       balanceAfter: 150,
-      cycleId: `v1|${TASK_INSTANCE_ID}|r1|2026-08-28T00:00:00Z`,
+      cycleId: 'ledger',
       transactionId: `task-reward:${OPERATION_ID}`,
       completionId: `task-completion:${OPERATION_ID}`,
       evidence: EVIDENCE,
@@ -188,8 +198,8 @@ describe('database task completion command', () => {
       payload_hash: createTaskRewardPayloadHash({
         taskId: TASK_ID, taskInstanceId: TASK_INSTANCE_ID, taskTitle: '과제',
         studentId: STUDENT_ID, studentName: '김민준', assignmentId: 'ASSIGNMENT-1',
-        cycleId: result.cycleId, cycleStartsAt: '2026-08-28T00:00:00Z',
-        cycleEndsAt: '2026-08-29T00:00:00Z', reward: 50, evidence: EVIDENCE,
+        cycleId: result.cycleId, cycleStartsAt: '1970-01-01T00:00:00.000Z',
+        cycleEndsAt: null, reward: 50, evidence: EVIDENCE,
       }),
     });
     expect(state.audits).toEqual([
@@ -200,7 +210,7 @@ describe('database task completion command', () => {
         entity_id: `task-completion:${OPERATION_ID}`,
         redacted_details: {
           completedAt: NOW.toISOString(),
-          cycleId: `v1|${TASK_INSTANCE_ID}|r1|2026-08-28T00:00:00Z`,
+          cycleId: 'ledger',
           reward: 50,
           studentId: STUDENT_ID,
           taskId: TASK_ID,
@@ -335,10 +345,15 @@ describe('database task completion command', () => {
     const resolvePadletEvidence = vi.fn().mockResolvedValue(EVIDENCE);
     const taskCommand = command({ resolvePadletEvidence });
     await taskCommand.execute({ operationId: OPERATION_ID, taskId: TASK_ID, studentId: STUDENT_ID });
-    await harness.withImmutableLedgerTampering(() => harness.database.query(
-      mutation,
-      [harness.tenantOneId, `task-reward:${OPERATION_ID}`],
-    ));
+    await harness.withImmutableLedgerTampering(async () => {
+      // Test-owner corruption of the append-only completion row as well.
+      await harness.database.exec('ALTER TABLE task_completions DISABLE TRIGGER task_completions_append_only');
+      try {
+        await harness.database.query(mutation, [harness.tenantOneId, `task-reward:${OPERATION_ID}`]);
+      } finally {
+        await harness.database.exec('ALTER TABLE task_completions ENABLE ALWAYS TRIGGER task_completions_append_only');
+      }
+    });
 
     await expect(taskCommand.execute({
       operationId: OPERATION_ID, taskId: TASK_ID, studentId: STUDENT_ID,
@@ -422,8 +437,8 @@ describe('database task completion command', () => {
     const payload = {
       taskId: TASK_ID, taskInstanceId: TASK_INSTANCE_ID, taskTitle: '과제',
       studentId: STUDENT_ID, studentName: '김민준', assignmentId: 'ASSIGNMENT-1',
-      cycleId: `v1|${TASK_INSTANCE_ID}|r1|2026-08-28T00:00:00Z`,
-      cycleStartsAt: '2026-08-28T00:00:00Z', cycleEndsAt: '2026-08-29T00:00:00Z',
+      cycleId: 'ledger',
+      cycleStartsAt: '1970-01-01T00:00:00.000Z', cycleEndsAt: null,
       reward: 50,
     };
     expect(createTaskRewardPayloadHash({ ...payload, evidence: reordered }))
@@ -446,10 +461,36 @@ describe('database task completion command', () => {
     expect(state.claims).toHaveLength(0);
   });
 
-  it('fails closed when current allowed-student membership is removed after assignment', async () => {
+  it('refuses a 미완료 (assigned, not yet completable) student without any write', async () => {
     await harness.database.query(
-      `DELETE FROM task_allowed_students WHERE tenant_id=$1 AND task_instance_id=$2 AND student_id=$3`,
-      [harness.tenantOneId, TASK_INSTANCE_ID, STUDENT_ID],
+      `INSERT INTO task_assignments
+        (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id,
+         cycle_start_at, cycle_end_at, rule_version, timezone, student_id,
+         event_type, source, previous_assignment_id, schema_version, created_at, note)
+       VALUES ($1, 'ASSIGNMENT-PENDING', $2, $3, $4, '1970-01-01T00:00:00.000Z', NULL,
+               1, 'Asia/Seoul', $5, 'ASSIGNED', 'CARRY_FORWARD', NULL, 1, '2026-08-28T01:00:00.000Z', 'stage:pending')`,
+      [harness.tenantOneId, TASK_ID, TASK_INSTANCE_ID, 'ledger', STUDENT_ID],
+    );
+    const resolvePadletEvidence = vi.fn().mockResolvedValue(EVIDENCE);
+    await expect(command({ resolvePadletEvidence }).execute({
+      operationId: OPERATION_ID, taskId: TASK_ID, studentId: STUDENT_ID,
+    })).rejects.toMatchObject({ code: 'NOT_READY' });
+    expect(resolvePadletEvidence).not.toHaveBeenCalled();
+    const state = await snapshot();
+    expect(state.account).toEqual([{ balance: '100', version: '1' }]);
+    expect(state.transactions).toHaveLength(0);
+    expect(state.completions).toHaveLength(0);
+    expect(state.operations).toHaveLength(0);
+  });
+
+  it('fails closed when the student was moved back to 미부여 after being given the task', async () => {
+    await harness.database.query(
+      `INSERT INTO task_assignments
+        (tenant_id, assignment_id, task_id_snapshot, task_instance_id, cycle_id, cycle_start_at, rule_version, timezone,
+         student_id, event_type, source, schema_version, created_at)
+       VALUES ($1, 'ASSIGNMENT-REMOVED', $2, $3, 'ledger', '1970-01-01T00:00:00.000Z', 1, 'Asia/Seoul', $4,
+               'UNASSIGNED', 'CARRY_FORWARD', 1, '2026-08-28T01:00:00.000Z')`,
+      [harness.tenantOneId, TASK_ID, TASK_INSTANCE_ID, STUDENT_ID],
     );
     const resolvePadletEvidence = vi.fn().mockResolvedValue(EVIDENCE);
 
@@ -470,80 +511,6 @@ describe('database task completion command', () => {
     expect(result.evidence).toBeUndefined();
     expect(resolvePadletEvidence).not.toHaveBeenCalled();
     expect((await snapshot()).claims).toHaveLength(0);
-  });
-
-  it('materializes false-flag assignment carry at the next natural boundary before rewarding once', async () => {
-    await harness.database.exec(await readFile(resolve(
-      process.cwd(), 'src/server/db/migrations/0010_task_admin_invariants.sql'), 'utf8'));
-    const naturalNow = new Date('2026-08-29T03:00:00.000Z');
-    await harness.database.query(
-      `UPDATE tasks SET padlet_board_id=NULL, current_schedule=$3::jsonb
-       WHERE tenant_id=$1 AND task_instance_id=$2`,
-      [harness.tenantOneId, TASK_INSTANCE_ID, JSON.stringify({
-        ruleVersion: 1,
-        effectiveFrom: '2026-08-28T00:00:00.000Z',
-        timeZone: 'Asia/Seoul',
-        recurrence: { type: 'DAILY', time: '09:00' },
-        resetCompletionOnCycle: false,
-        resetAssignmentOnCycle: false,
-      })],
-    );
-
-    const result = await command({ now: () => naturalNow }).execute({
-      operationId: OPERATION_ID, taskId: TASK_ID, studentId: STUDENT_ID,
-    });
-
-    expect(result.cycleId).toBe(`v1|${TASK_INSTANCE_ID}|r1|2026-08-29T00:00:00Z`);
-    const rows = await harness.database.query(
-      `SELECT assignment_id, cycle_id, source, previous_assignment_id
-       FROM task_assignments WHERE tenant_id=$1 AND task_instance_id=$2 ORDER BY event_sequence`,
-      [harness.tenantOneId, TASK_INSTANCE_ID],
-    );
-    expect(rows.rows).toHaveLength(2);
-    expect(rows.rows[1]).toEqual(expect.objectContaining({
-      cycle_id: result.cycleId,
-      source: 'CARRY_FORWARD',
-      previous_assignment_id: 'ASSIGNMENT-1',
-    }));
-    expect((await snapshot()).account).toEqual([{ balance: '150', version: '2' }]);
-    await expect(command({ now: () => naturalNow }).execute({
-      operationId: OPERATION_ID, taskId: TASK_ID, studentId: STUDENT_ID,
-    })).resolves.toEqual(result);
-    expect((await harness.database.query(
-      `SELECT assignment_id FROM task_assignments WHERE tenant_id=$1 AND task_instance_id=$2`,
-      [harness.tenantOneId, TASK_INSTANCE_ID],
-    )).rows).toHaveLength(2);
-  });
-
-  it('uses the same captured now for a newly effective pending schedule and provider allocation', async () => {
-    await harness.database.query(
-      `UPDATE tasks SET pending_schedule=$3::jsonb
-       WHERE tenant_id=$1 AND task_instance_id=$2`,
-      [harness.tenantOneId, TASK_INSTANCE_ID, JSON.stringify({
-        ruleVersion: 2,
-        effectiveFrom: NOW.toISOString(),
-        timeZone: 'Asia/Seoul',
-        recurrence: { type: 'DAILY', time: '09:00' },
-        resetCompletionOnCycle: true,
-        resetAssignmentOnCycle: true,
-      })],
-    );
-    const resolvePadletEvidence = vi.fn().mockResolvedValue({
-      ...EVIDENCE,
-      evidenceCreatedAt: NOW.toISOString(),
-    });
-
-    const result = await command({ resolvePadletEvidence }).execute({
-      operationId: OPERATION_ID, taskId: TASK_ID, studentId: STUDENT_ID,
-    });
-
-    expect(resolvePadletEvidence).toHaveBeenCalledWith(expect.objectContaining({
-      now: NOW.toISOString(),
-      cycleId: `v1|${TASK_INSTANCE_ID}|r2|${NOW.toISOString().replace('.000Z', 'Z')}`,
-      cycleStartsAt: NOW.toISOString().replace('.000Z', 'Z'),
-    }));
-    expect(result.cycleId).toBe(`v1|${TASK_INSTANCE_ID}|r2|${NOW.toISOString().replace('.000Z', 'Z')}`);
-    expect((await snapshot()).completions[0]).toMatchObject({ rule_version: 2 });
   });
 
   it('uses a serialized PGlite fallback so one global board/post rewards exactly once across tenants', async () => {
@@ -653,11 +620,13 @@ describe('database task completion command', () => {
       readFile(resolve(process.cwd(), 'src/server/repositories/database/padletClaims.ts'), 'utf8'),
     ]);
 
+    const ledgerSource = await readFile(resolve(process.cwd(), 'src/server/repositories/database/taskLedger/store.ts'), 'utf8');
     expect(commandSource).toMatch(/LOCK ORDER/);
     expect(commandSource).toMatch(/FROM operations[\s\S]*FOR UPDATE/);
-    expect(commandSource).toMatch(/ORDER BY task_instance_id[\s\S]*FOR UPDATE/);
+    // Every writer of a task's progress holds the task rows (in task_instance_id order) first.
+    expect(commandSource).toMatch(/readLedgerTasks\(tx, tenantId, \{ lock \}\)/);
+    expect(ledgerSource).toMatch(/ORDER BY t\.task_instance_id[\s\S]*FOR UPDATE OF t/);
     expect(commandSource).toMatch(/FOR UPDATE OF s, a/);
-    expect(commandSource).toMatch(/ORDER BY event_sequence[\s\S]*FOR UPDATE/);
     expect(claimSource).toMatch(/INSERT INTO padlet_evidence_claims/);
     expect(claimSource).toMatch(/tuple_digest/);
   });

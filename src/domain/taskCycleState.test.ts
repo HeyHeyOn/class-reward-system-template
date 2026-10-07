@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ClassTask, TaskAssignment, TaskCompletion } from './types';
 import { projectTaskCycleState } from './taskCycleState';
+import { PENDING_ASSIGNMENT_NOTE } from './taskStage';
 
 const schedule = {
   ruleVersion: 1,
@@ -201,8 +202,9 @@ describe('projectTaskCycleState', () => {
         resetCompletionOnCycle,
       },
     };
-    const priorAssignments = [assignment({ cycleId: 'old', cycleStartsAt: '2026-08-25T00:00:00Z' })];
-    const priorCompletions = [completion({ cycleId: 'old', cycleStartsAt: '2026-08-25T00:00:00Z' })];
+    // The daily cycle that was running when the rule changed at 09:30.
+    const priorAssignments = [assignment({ cycleId: 'old', cycleStartsAt: '2026-08-25T00:00:00Z', cycleEndsAt: '2026-08-26T00:00:00Z' })];
+    const priorCompletions = [completion({ cycleId: 'old', cycleStartsAt: '2026-08-25T00:00:00Z', cycleEndsAt: '2026-08-26T00:00:00Z' })];
     const first = projectTaskCycleState({ task: changedTask, now: '2026-08-25T09:30:00Z', assignments: priorAssignments, completions: priorCompletions });
     const natural = projectTaskCycleState({ task: changedTask, now: '2026-08-26T00:00:00Z', assignments: priorAssignments, completions: priorCompletions });
     expect(first.transition).toBe('SCHEDULE_CHANGE_FIRST_CYCLE');
@@ -263,6 +265,30 @@ describe('projectTaskCycleState', () => {
     expect(state.students.excluded).toBeUndefined();
   });
 
+  it.each([
+    [true, true, false, false],
+    [false, false, true, true],
+    [false, true, true, false],
+  ])('carries state from older cycles into a changed rule only when that dimension is not reset (reset assignment %s, completion %s)', (
+    resetAssignmentOnCycle, resetCompletionOnCycle, expectedAssigned, expectedCompleted,
+  ) => {
+    // A rule change on 2026-08-27 after the student last acted in the 08-24 cycle (two cycles earlier).
+    const changedTask: ClassTask = { ...task, schedule: { ...schedule, ruleVersion: 2,
+      effectiveFrom: '2026-08-27T09:30:00.000Z', resetAssignmentOnCycle, resetCompletionOnCycle } };
+    const state = projectTaskCycleState({ task: changedTask, now: '2026-08-27T09:30:00Z',
+      assignments: [assignment({ assignmentId: 'stale' })], completions: [completion({ completionId: 'stale' })] });
+    expect(state.transition).toBe('SCHEDULE_CHANGE_FIRST_CYCLE');
+    expect(state.students.S1).toMatchObject({ assigned: expectedAssigned, completed: expectedCompleted });
+  });
+
+  it('still carries the live cycle state into a changed rule even when both dimensions reset', () => {
+    const changedTask: ClassTask = { ...task, schedule: { ...schedule, ruleVersion: 2,
+      effectiveFrom: '2026-08-24T09:30:00.000Z', resetAssignmentOnCycle: true, resetCompletionOnCycle: true } };
+    const state = projectTaskCycleState({ task: changedTask, now: '2026-08-24T09:30:00Z',
+      assignments: [assignment({ assignmentId: 'live' })], completions: [completion({ completionId: 'live' })] });
+    expect(state.students.S1).toMatchObject({ assigned: true, completed: true, assignmentOrigin: 'CARRY', completionOrigin: 'CARRY' });
+  });
+
   it('still requires a strictly earlier cycle start outside a schedule-change first cycle', () => {
     const boundary = '2026-08-25T00:00:00Z';
     const state = projectTaskCycleState({
@@ -300,8 +326,8 @@ describe('projectTaskCycleState', () => {
     const state = projectTaskCycleState({
       task: changedTask,
       now: changedAt,
-      assignments: [assignment({ assignmentId: 'recurring-prior', cycleId: 'old', cycleStartsAt: '2026-08-25T00:00:00Z' })],
-      completions: [completion({ completionId: 'recurring-prior', cycleId: 'old', cycleStartsAt: '2026-08-25T00:00:00Z' })],
+      assignments: [assignment({ assignmentId: 'recurring-prior', cycleId: 'old', cycleStartsAt: '2026-08-25T00:00:00Z', cycleEndsAt: '2026-08-26T00:00:00Z' })],
+      completions: [completion({ completionId: 'recurring-prior', cycleId: 'old', cycleStartsAt: '2026-08-25T00:00:00Z', cycleEndsAt: '2026-08-26T00:00:00Z' })],
     });
 
     expect(state.transition).toBe('SCHEDULE_CHANGE_FIRST_CYCLE');
@@ -688,5 +714,47 @@ describe('projectTaskCycleState', () => {
 
     expect(state.students.legacy).toMatchObject({ completed: false, completionOrigin: 'DEFAULT' });
     expect(state.completedStudentIds).toEqual([]);
+  });
+
+  describe('stages: 미부여 → 미완료 → 완료 가능 → 완료', () => {
+    const now = '2026-08-24T12:00:00Z';
+    it('reads a pending-marked assignment as 미완료 and a plain one as 완료 가능', () => {
+      const state = projectTaskCycleState({ task: { ...task, allowedStudentIds: [] }, now, completions: [], assignments: [
+        assignment({ assignmentId: 'p', studentId: 'S1', note: PENDING_ASSIGNMENT_NOTE }),
+        assignment({ assignmentId: 'r', studentId: 'S2' }),
+        assignment({ assignmentId: 'u', studentId: 'S3', status: 'UNASSIGNED' }),
+      ] });
+      expect(state.students.S1).toMatchObject({ assigned: true, ready: false, stage: 'PENDING' });
+      expect(state.students.S2).toMatchObject({ assigned: true, ready: true, stage: 'READY' });
+      expect(state.students.S3).toMatchObject({ assigned: false, ready: false, stage: 'UNASSIGNED' });
+      expect(state.pendingStudentIds).toEqual(['S1']);
+      expect(state.readyStudentIds).toEqual(['S2']);
+    });
+
+    it('moves from 미완료 to 완료 가능 by a later plain assignment in the same cycle', () => {
+      const state = projectTaskCycleState({ task: { ...task, allowedStudentIds: [] }, now, completions: [], assignments: [
+        assignment({ assignmentId: 'p', note: PENDING_ASSIGNMENT_NOTE }),
+        assignment({ assignmentId: 'r', previousAssignmentId: 'p' }),
+      ] });
+      expect(state.students.S1.stage).toBe('READY');
+    });
+
+    it('carries 미완료 into the next cycle and keeps earlier assignments 완료 가능', () => {
+      const prior = { cycleId: 'v1|I1|r1|2026-08-23T00:00:00Z', cycleStartsAt: '2026-08-23T00:00:00Z', cycleEndsAt: '2026-08-24T00:00:00Z' };
+      const state = projectTaskCycleState({ task: { ...task, allowedStudentIds: ['legacy'] }, now, completions: [], assignments: [
+        assignment({ ...prior, assignmentId: 'p', studentId: 'S1', note: PENDING_ASSIGNMENT_NOTE }),
+        assignment({ ...prior, assignmentId: 'r', studentId: 'S2', note: 'materialized cycle carry' }),
+      ] });
+      expect(state.students.S1).toMatchObject({ assignmentOrigin: 'CARRY', stage: 'PENDING' });
+      expect(state.students.S2).toMatchObject({ assignmentOrigin: 'CARRY', stage: 'READY' });
+      expect(state.students.legacy).toMatchObject({ assignmentOrigin: 'LEGACY', stage: 'READY' });
+    });
+
+    it('shows 완료 for a completion whatever the assignment says', () => {
+      const state = projectTaskCycleState({ task: { ...task, allowedStudentIds: [] }, now, assignments: [
+        assignment({ assignmentId: 'u', studentId: 'S1', status: 'UNASSIGNED' }),
+      ], completions: [completion({ studentId: 'S1' })] });
+      expect(state.students.S1).toMatchObject({ assigned: false, completed: true, stage: 'COMPLETED' });
+    });
   });
 });

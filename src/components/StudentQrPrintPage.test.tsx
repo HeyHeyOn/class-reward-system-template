@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { StrictMode } from 'react';
 import { StudentQrPrintPage } from './StudentQrPrintPage';
 
 const students = [
@@ -33,10 +34,35 @@ describe('StudentQrPrintPage', () => {
     vi.unstubAllGlobals();
   });
 
+  it('issues one initial scoped student read under StrictMode and preserves QR print readiness', async () => {
+    render(<StrictMode><StudentQrPrintPage /></StrictMode>);
+
+    expect(await screen.findByText('김민준')).toBeTruthy();
+    expect(screen.getByText('이서연')).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByRole('img', { name: '김민준 QR 코드' }).getAttribute('src')).toBe('blob:qr-1');
+      expect(screen.getByRole('img', { name: '이서연 QR 코드' }).getAttribute('src')).toBe('blob:qr-2');
+      expect(screen.getByRole('button', { name: 'QR 카드 인쇄하기' })).toHaveProperty('disabled', false);
+    });
+    const qrCalls = vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/c/alpha-class/qrcode');
+    expect(qrCalls).toHaveLength(students.length);
+    students.forEach((student) => {
+      expect(qrCalls.filter(([, init]) => init?.method === 'POST'
+        && init.body === JSON.stringify({ kind: 'student', studentId: student.studentId }))).toHaveLength(1);
+    });
+    expect(screen.getAllByRole('img').every((image) => /^blob:/.test(image.getAttribute('src') ?? ''))).toBe(true);
+    expect(document.body.innerHTML).not.toContain('csq1.');
+    expect(document.body.innerHTML).not.toContain('?value=');
+    const studentReads = vi.mocked(fetch).mock.calls.filter(([input, init]) => String(input) === '/api/c/alpha-class/students'
+      && (init?.method ?? 'GET') === 'GET');
+    expect(studentReads).toHaveLength(1);
+  });
+
   it('POSTs exact student bodies once and renders only blob URLs', async () => {
     render(<StudentQrPrintPage />);
 
     expect(await screen.findByText('김민준')).toBeTruthy();
+    expect(screen.queryByText(/Google Sheets에서/)).toBeNull();
     await waitFor(() => expect(screen.getByRole('img', { name: '김민준 QR 코드' }).getAttribute('src')).toBe('blob:qr-1'));
     expect(screen.getByRole('img', { name: '이서연 QR 코드' }).getAttribute('src')).toBe('blob:qr-2');
     const qrCalls = vi.mocked(fetch).mock.calls.filter(([input]) => String(input).endsWith('/qrcode'));

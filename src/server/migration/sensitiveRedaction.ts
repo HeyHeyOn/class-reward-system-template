@@ -1,3 +1,6 @@
+import { type BudgetContext, utf8ByteLength } from '@/lib/boundedWork';
+import { assertRegisteredBoundedJson } from '@/lib/boundedJson';
+
 const SENSITIVE_WORDS = new Set([
   'recovery', 'recoveries', 'password', 'passwords', 'secret', 'secrets',
   'token', 'tokens', 'credential', 'credentials',
@@ -131,7 +134,23 @@ function isSupportedAdminHash(value: string): boolean {
   return SHA256.test(value) || SCRYPT.test(value);
 }
 
-function isSensitiveName(value: string): boolean {
+function isSensitiveName(value: string, budget?: BudgetContext): boolean {
+  if (budget !== undefined) {
+    const words = identifierWords(value, budget);
+    // Preserve all four original predicates and their short-circuit order.
+    budget.reserve({ nodes: 1, structuralBytes: 16 });
+    const wordSet = new Set<string>();
+    for (const word of words) {
+      budget.spend(2 + Math.ceil(word.length / 256));
+      if (!wordSet.has(word)) { budget.reserve({ slots: 1, structuralBytes: 4 }); wordSet.add(word); }
+    }
+    return words.some((word) => { budget.spend(2 + Math.ceil(word.length / 256)); return SENSITIVE_WORDS.has(word); })
+      || words.some((word, index) => { budget.spend(); return word === 'api' && words[index + 1] === 'key'; })
+      || words.some((word, index) => { budget.spend(); return word === 'private' && words[index + 1] === 'key'; })
+      || (() => { budget.spend(); return wordSet.has('redis') && words.some((word) => {
+        budget.spend(2 + Math.ceil(word.length / 256)); return ENDPOINT_LOCATOR_WORDS.has(word);
+      }); })();
+  }
   const words = identifierWords(value);
   const wordSet = new Set(words);
   return words.some((word) => SENSITIVE_WORDS.has(word))
@@ -140,11 +159,29 @@ function isSensitiveName(value: string): boolean {
     || (wordSet.has('redis') && words.some((word) => ENDPOINT_LOCATOR_WORDS.has(word)));
 }
 
-export function isSensitiveTabName(value: string): boolean {
-  return isSensitiveName(value);
+export function isSensitiveTabName(value: string, budget?: BudgetContext): boolean {
+  return isSensitiveName(value, budget);
 }
 
-function identifierWords(value: string): string[] {
+function identifierWords(value: string, budget?: BudgetContext): string[] {
+  if (budget !== undefined) {
+    const transform = (input: string, bytes: number, apply: () => string): string => {
+      budget.spend(1 + Math.ceil(input.length / 256)); budget.reserveString(bytes);
+      const result = apply(); budget.check(); return result;
+    };
+    let text = transform(value, utf8ByteLength(value, budget), () => value.trim());
+    text = transform(text, text.length * 6, () => text.replace(/([a-z0-9])([A-Z])/g, '$1 $2'));
+    text = transform(text, text.length * 6, () => text.replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2'));
+    // Unicode default lowercasing can expand: allow three UTF-16 units per
+    // input unit, each at most three UTF-8 bytes (not same-length ASCII math).
+    text = transform(text, text.length * 9, () => text.toLowerCase());
+    const count = text.length + 1;
+    budget.reserve({ nodes: 2 + count, slots: 2 * count, contentBytes: text.length * 3,
+      structuralBytes: 32 + 12 * count });
+    budget.spend(1 + Math.ceil(text.length / 256));
+    const words = text.split(/[^a-z0-9]+/); budget.check();
+    return words.filter((word) => { budget.spend(); return Boolean(word); });
+  }
   return value.trim()
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
@@ -164,7 +201,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-export function deepFreeze<T>(value: T): T {
+export function deepFreeze<T>(value: T, budget?: BudgetContext): T {
+  if (budget !== undefined) {
+    // Registered graphs are already transitively frozen. Do not mint a stale
+    // shape by freezing/enumerating an arbitrary mutable caller graph.
+    assertRegisteredBoundedJson(value, budget);
+    return value;
+  }
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
     Object.freeze(value);
     for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child);

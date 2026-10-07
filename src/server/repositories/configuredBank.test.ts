@@ -27,6 +27,7 @@ describe('configured bank read composition root', () => {
     const getStudentById = vi.fn(async () => STUDENT);
     const getTransactions = vi.fn(async () => [TRANSACTION]);
     const createDatabaseStudentQueries = vi.fn(({ runTenantTransaction }) => ({
+      getAdminStudents: vi.fn(),
       getStudents: vi.fn(),
       getStudentById: () => runTenantTransaction(TENANT_ID, async (received: unknown) => {
         expect(received).toBe(transaction);
@@ -36,8 +37,9 @@ describe('configured bank read composition root', () => {
     const createDatabaseTransactionQueries = vi.fn(({ runTenantTransaction }) => ({
       getTransactionById: vi.fn(),
       getCancellationPair: vi.fn(),
-      getTransactions: () => runTenantTransaction(TENANT_ID, async (received: unknown) => {
+      getTransactions: (window?: { studentId: string; limit: number }) => runTenantTransaction(TENANT_ID, async (received: unknown) => {
         expect(received).toBe(transaction);
+        expect(window).toEqual({ studentId: 'S1', limit: 10 });
         return getTransactions();
       }),
     }));

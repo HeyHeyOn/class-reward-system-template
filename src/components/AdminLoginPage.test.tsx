@@ -22,7 +22,7 @@ describe('AdminLoginPage', () => {
   it('uses the default white theme shell instead of the old blue background', () => {
     const { container } = render(<AdminLoginPage googleLoginEnabled />);
 
-    expect(container.querySelector('main')?.className).toContain('bg-slate-100');
+    expect(container.querySelector('main')?.className).toContain('bg-[var(--theme-shell)]');
     expect(container.querySelector('main')?.className).not.toContain('bg-[#dbeaf6]');
   });
 

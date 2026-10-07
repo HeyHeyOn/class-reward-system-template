@@ -12,9 +12,6 @@ import {
   createDatabaseTaskCycleQueries,
   type DatabaseTaskCycleQueryDependencies,
 } from './taskCycleQueries';
-import { createDatabaseTaskCompletionCommand } from './taskCompletionCommands';
-import { createDatabaseTransactionCommands } from './transactionCommands';
-import { createDatabasePadletClaimRepository } from './padletClaims';
 
 vi.mock('server-only', () => ({}));
 
@@ -23,7 +20,6 @@ const BANK_OPERATION_ID = '123e4567-e89b-42d3-a456-426614174000';
 const BANK_OPERATION_HASH = 'a'.repeat(64);
 const RESET_ADMIN_OPERATION_ID = '40000000-0000-4000-8000-000000000001';
 const RESET_ADMIN_OPERATION_HASH = 'c'.repeat(64);
-const REWARD_OPERATION_ID = '10000000-0000-4000-8000-000000000001';
 const CANCELLATION_OPERATION_ID = '30000000-0000-4000-8000-000000000001';
 const READER_ADMIN_OPERATION_ID = 'reader-admin-op';
 const READER_ADMIN_OPERATION_HASH = 'b'.repeat(64);
@@ -237,83 +233,12 @@ async function seedLiveTask(taskId = 'LIVE', taskInstanceId = 'LIVE-I') {
   );
 }
 
-async function runProductionTaskRewardCancellation() {
-  await seedLiveTask('PROD', 'PROD-I');
-  await harness.database.query(
-    `UPDATE tasks SET current_schedule=$2::jsonb WHERE tenant_id=$1 AND task_instance_id='PROD-I'`,
-    [harness.tenantOneId, JSON.stringify({
-      ...SCHEDULE,
-      recurrence: { type: 'DAILY', time: '09:00' },
-      resetCompletionOnCycle: true,
-      resetAssignmentOnCycle: true,
-    })],
-  );
-  await harness.database.query(
-    `INSERT INTO accounts (tenant_id, student_id, balance) VALUES ($1, 'S1', 100)`,
-    [harness.tenantOneId],
-  );
-  await seedAssignment({
-    assignmentId: 'PROD-A', eventSequence: 1, taskId: 'PROD', taskInstanceId: 'PROD-I',
-    cycleId: 'v1|PROD-I|r1|2026-08-10T00:00:00Z',
-    cycleStartAt: '2026-08-10T00:00:00.000Z', cycleEndAt: '2026-08-11T00:00:00.000Z',
-  });
-  await harness.database.query(
-    `UPDATE task_assignments SET rule_version=1 WHERE tenant_id=$1 AND assignment_id='PROD-A'`,
-    [harness.tenantOneId],
-  );
-  const reward = await createDatabaseTaskCompletionCommand({
-    tenantId: harness.tenantOneId,
-    runTenantTransaction: harness.runTenantTransaction,
-    padletClaims: createDatabasePadletClaimRepository(),
-    now: () => new Date('2026-08-10T03:00:00.000Z'),
-  }).execute({ operationId: REWARD_OPERATION_ID, taskId: 'PROD', studentId: 'S1' });
-  const cancellation = await createDatabaseTransactionCommands({
-    tenantId: harness.tenantOneId,
-    runTenantTransaction: harness.runTenantTransaction,
-    now: () => new Date('2026-08-10T10:00:00.000Z'),
-  }).cancel({ operationId: CANCELLATION_OPERATION_ID, transactionId: reward.transactionId });
-  return { reward, cancellation };
-}
-
 describe('database task cycle queries', () => {
   it('keeps internal evidence fields out of the public completion type', () => {
     expectTypeOf<'evidenceProvider' extends keyof TaskCompletion ? true : false>()
       .toEqualTypeOf<false>();
     expectTypeOf<'evidenceBoardId' extends keyof TaskCompletion ? true : false>()
       .toEqualTypeOf<false>();
-  });
-
-  it('reads and projects a production task reward cancellation as an ADMIN_RESET', async () => {
-    const { reward, cancellation } = await runProductionTaskRewardCancellation();
-
-    const completions = await queries().getTaskCompletions();
-    const history = await queries().getTaskCycleHistory({ taskId: 'PROD' });
-
-    expect(completions).toEqual([
-      expect.objectContaining({
-        completionId: cancellation.cancellationCompletionId,
-        timestamp: cancellation.cancelledAt,
-        taskId: 'PROD', taskInstanceId: 'PROD-I', studentId: 'S1',
-        reward: 5, balanceBefore: 105, balanceAfter: 100,
-        status: 'RESET', source: 'ADMIN_RESET', assignmentId: 'PROD-A',
-        operationId: CANCELLATION_OPERATION_ID,
-        operationPayloadHash: expect.stringMatching(/^[0-9a-f]{64}$/),
-      }),
-      expect.objectContaining({
-        completionId: reward.completionId, reward: 5, balanceBefore: 100,
-        balanceAfter: 105, status: 'SUCCESS', source: 'BANK',
-      }),
-    ]);
-    expect(completions[0]).not.toHaveProperty('transactionId');
-    expect(completions[0]).not.toHaveProperty('adminOperationId');
-    expect(history).toEqual([
-      expect.objectContaining({ eventType: 'ASSIGNMENT', eventId: 'PROD-A',
-        assignmentStatus: 'ASSIGNED', assignmentSource: 'ADMIN' }),
-      expect.objectContaining({ eventType: 'COMPLETION', eventId: reward.completionId,
-        completionStatus: 'SUCCESS', completionSource: 'BANK', reward: 5 }),
-      expect.objectContaining({ eventType: 'COMPLETION', eventId: cancellation.cancellationCompletionId,
-        completionStatus: 'RESET', completionSource: 'ADMIN_RESET', reward: 5 }),
-    ]);
   });
 
   it('accepts the mutually exclusive administrator-bound ADMIN_RESET variant', async () => {
@@ -470,6 +395,37 @@ describe('database task cycle queries', () => {
         }],
       },
     });
+  });
+
+  it('names history students with their current tenant names, deleted students included', async () => {
+    await harness.database.query(
+      `INSERT INTO students (tenant_id, student_id, name, status, deleted_at)
+       VALUES ($1, 'S2', '전학 간 학생', 'INACTIVE', now())`,
+      [harness.tenantOneId],
+    );
+    await harness.database.query(
+      `UPDATE students SET name = '바뀐 이름' WHERE tenant_id = $1 AND student_id = 'S1'`,
+      [harness.tenantOneId],
+    );
+    await seedAssignment({ assignmentId: 'A1', eventSequence: 1 });
+    await seedAssignment({ assignmentId: 'A2', eventSequence: 2, studentId: 'S2' });
+    await seedCompletion({ completionId: 'C1', eventSequence: 1, completedAt: '2026-08-10T09:00:00.000Z' });
+
+    const detail = await queries().getTaskHistoryDetail({ taskId: 'T1' }, '2026-08-10T00:00:00.000Z');
+
+    // The completion snapshot says '학생 하나' and tenant two calls S1 '학생 둘': the current tenant row wins.
+    expect(detail.students).toEqual([
+      { studentId: 'S1', name: '바뀐 이름', deleted: false },
+      { studentId: 'S2', name: '전학 간 학생', deleted: true },
+    ]);
+    expect(detail.cumulativeHistory.eventCount).toBe(3);
+  });
+
+  it('returns an empty student list for a task without history', async () => {
+    await seedLiveTask();
+    const detail = await queries().getTaskHistoryDetail({ taskId: 'LIVE' }, '2026-08-10T00:00:00.000Z');
+    expect(detail.students).toEqual([]);
+    expect(detail.cumulativeHistory.eventCount).toBe(0);
   });
 
   it('filters task history by exact lifecycle instance ID', async () => {

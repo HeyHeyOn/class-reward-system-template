@@ -27,7 +27,7 @@ const tables=['migration_consent_challenges','migration_consent_confirmations','
 let h:PgliteDatabaseHarness;let cookie:string;let calls:string[];let active=0;let nonce='';let cleanupFail=false;let providerHook:()=>Promise<void>;let extraTab='';let blockedCapture=false;let clients:InstanceType<typeof google.auth.OAuth2>[]=[];
 const {privateKey,publicKey}=generateKeyPairSync('rsa',{modulusLength:2048});
 beforeEach(async()=>{
-  h=await createPgliteDatabaseHarness();
+  h=await createPgliteDatabaseHarness({ migrationSet: 'base' });
   const dir=resolve('src/server/db/migrations');
   for(const n of (await readdir(dir)).filter(n=>/^\d{4}_.*\.sql$/.test(n)&&n.slice(0,4)>'0008').sort())await h.database.exec(await readFile(resolve(dir,n),'utf8'));
   await h.database.query("INSERT INTO users(id,google_subject,canonical_email) VALUES($1,'owner','owner@example.invalid')",[USER]);

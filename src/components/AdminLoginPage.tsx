@@ -3,6 +3,8 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { tenantFetch, tenantPagePath } from '@/lib/tenantApiPath';
+import { themeStyles } from './uiTheme';
+import { LoadingOverlay, buttonClass, controlClass } from './ui';
 
 type BarcodeDetectorCtor = new (options?: { formats?: string[] }) => {
   detect(source: CanvasImageSource): Promise<Array<{ rawValue: string }>>;
@@ -17,11 +19,11 @@ declare global {
 export function AdminLoginPage({
   googleLoginEnabled = true,
   membershipOnly = false,
-  tenantScoped = false,
+  tenantSlug,
 }: {
   googleLoginEnabled?: boolean;
   membershipOnly?: boolean;
-  tenantScoped?: boolean;
+  tenantSlug?: string;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -126,64 +128,54 @@ export function AdminLoginPage({
     void submitCredential(qrText, 'qr', true);
   }
 
+  const divider = (
+    <div className="my-6 flex items-center gap-3 text-xs font-semibold text-[var(--theme-muted-text)]"><span className="h-px flex-1 bg-[var(--crs-line)]" /><span>또는</span><span className="h-px flex-1 bg-[var(--crs-line)]" /></div>
+  );
   return (
-    <main className="min-h-screen bg-slate-100 px-4 py-10 text-[#25313f]">
+    <main style={themeStyles('white').variables} className="flex min-h-screen items-center justify-center bg-[var(--theme-shell)] px-4 py-10 text-[var(--theme-text)]">
       {isSubmitting ? (
-        <LoadingDialog
+        <LoadingOverlay
           title="관리자 로그인 확인 중"
           message={submittingFromQr ? 'QR을 인식했습니다. 관리자 권한을 확인하는 중입니다.' : '관리자 권한을 확인하는 중입니다.'}
         />
       ) : null}
-      <section className="mx-auto max-w-md rounded-[2rem] bg-white p-8 shadow-[0_20px_60px_rgba(37,49,63,0.15)]">
-        <p className="text-sm font-bold uppercase tracking-[0.3em] text-[#4f8fba]">Class Store Admin</p>
-        <h1 className="mt-3 text-3xl font-black">관리자 로그인</h1>
-        <p className="mt-3 text-sm text-[#627184]">{googleLoginEnabled ? 'Google 계정, 관리자 암호, 관리자 QR 중 편한 방법으로 로그인합니다.' : '관리자 암호, 관리자 QR, Recovery 탭의 recoveryCode로 로그인합니다.'}</p>
+      <section className="w-full max-w-md rounded-[26px] border border-[var(--crs-line)] bg-[var(--theme-surface)] p-7 shadow-[var(--crs-shadow)] sm:p-9">
+        <span role="img" aria-label="학급 보상 시스템 로고" className="block h-11 w-11 bg-[var(--theme-accent-text)] [mask-image:url('/class-reward-system-icon.png')] [mask-position:center] [mask-repeat:no-repeat] [mask-size:contain]" />
+        <h1 className="mt-5 text-[28px] font-black tracking-[-0.035em]">관리자 로그인</h1>
+        <p className="mt-2 text-sm leading-relaxed text-[var(--theme-muted-text)]">{googleLoginEnabled ? 'Google 계정, 관리자 암호, 관리자 QR 중 편한 방법으로 로그인합니다.' : '관리자 암호, 관리자 QR, Recovery 탭의 recoveryCode로 로그인합니다.'}</p>
 
         {googleLoginEnabled ? (
           <>
-            <a className="mt-8 flex w-full items-center justify-center rounded-2xl bg-[#4285f4] px-5 py-3 text-center font-black text-white shadow-[0_10px_30px_rgba(66,133,244,0.25)]" href={tenantScoped ? `/api/google/login?returnTo=${encodeURIComponent(tenantPagePath('/admin'))}` : '/api/google/login'}>
+            <a className={buttonClass({ variant: 'primary', size: 'lg', block: true, className: 'mt-7' })} href={tenantSlug ? `/api/google/login?returnTo=${encodeURIComponent(`/c/${tenantSlug}/admin`)}` : '/api/google/login'}>
               Google 계정으로 로그인
             </a>
-
-            <div className="my-6 flex items-center gap-3 text-xs font-bold uppercase tracking-[0.2em] text-[#94a3b8]"><span className="h-px flex-1 bg-[#e2e8f0]" /><span>또는</span><span className="h-px flex-1 bg-[#e2e8f0]" /></div>
+            {divider}
           </>
         ) : (
-          <div className="mt-6 rounded-2xl bg-sky-50 px-4 py-3 text-sm font-bold text-sky-800">
+          <div className="mt-6 space-y-2 rounded-[14px] bg-[var(--crs-subtle-hover)] px-4 py-3 text-[13px] leading-relaxed text-[var(--theme-muted-text)]">
             <p>이 배포 앱은 생성 시 연결된 Google Sheets 권한으로 동작합니다. 관리자 화면 접속은 관리자 비밀번호, 관리자 QR, 또는 스프레드시트 Recovery 탭의 recoveryCode를 사용하세요.</p>
-            <p className="mt-2">비밀번호가 틀리거나 기억나지 않으면 Google Drive에서 학급 보상 시스템 스프레드시트를 열고 Recovery 탭의 recoveryCode 값을 아래 칸에 그대로 입력하면 복구 로그인할 수 있습니다.</p>
+            <p>비밀번호가 틀리거나 기억나지 않으면 Google Drive에서 학급 보상 시스템 스프레드시트를 열고 Recovery 탭의 recoveryCode 값을 아래 칸에 그대로 입력하면 복구 로그인할 수 있습니다.</p>
           </div>
         )}
 
-        <button type="button" onClick={isScanning ? stopScan : startScan} className="w-full rounded-2xl bg-sky-600 px-5 py-3 font-black text-white">
+        <button type="button" onClick={isScanning ? stopScan : startScan} className={buttonClass({ variant: 'secondary', size: 'lg', block: true, className: googleLoginEnabled ? '' : 'mt-6' })}>
           {isScanning ? 'QR 인식 중지' : 'QR로 로그인'}
         </button>
-        {isScanning ? <video ref={videoRef} className="mt-3 aspect-video w-full rounded-2xl bg-black object-cover" muted playsInline /> : null}
+        {isScanning ? <video ref={videoRef} className="mt-3 aspect-video w-full rounded-[16px] bg-black object-cover" muted playsInline /> : null}
         <div className="mt-3 flex gap-2">
-          <input aria-label="QR 로그인 값" value={qrText} onChange={(event) => setQrText(event.target.value)} placeholder="QR 내용 붙여넣기" className="min-w-0 flex-1 rounded-2xl border border-[#c8d7e3] px-3 py-2 text-sm outline-none" />
-          <button type="button" onClick={applyQrText} className="rounded-2xl bg-slate-100 px-3 py-2 text-sm font-black">적용</button>
+          <input aria-label="QR 로그인 값" value={qrText} onChange={(event) => setQrText(event.target.value)} placeholder="QR 내용 붙여넣기" className={`${controlClass} h-10 text-sm`} />
+          <button type="button" onClick={applyQrText} className={buttonClass({ variant: 'soft' })}>적용</button>
         </div>
 
-        <div className="my-6 flex items-center gap-3 text-xs font-bold uppercase tracking-[0.2em] text-[#94a3b8]"><span className="h-px flex-1 bg-[#e2e8f0]" /><span>또는</span><span className="h-px flex-1 bg-[#e2e8f0]" /></div>
+        {divider}
 
-        <form className="space-y-4" onSubmit={handleSubmit}>
-          <label className="block text-sm font-bold" htmlFor="admin-password">관리자 비밀번호</label>
-          <input id="admin-password" className="w-full rounded-2xl border border-[#c8d7e3] px-4 py-3 text-lg outline-none focus:border-[#4f8fba]" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="비밀번호 또는 복구 코드" autoFocus />
-          {message ? <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{message}</p> : null}
-          <button className="w-full rounded-2xl bg-[#25313f] px-5 py-3 font-black text-white disabled:opacity-60" type="submit" disabled={isSubmitting}>{isSubmitting ? '확인 중...' : '관리자 페이지로 이동'}</button>
+        <form className="space-y-3" onSubmit={handleSubmit}>
+          <label className="block text-[13px] font-bold" htmlFor="admin-password">관리자 비밀번호</label>
+          <input id="admin-password" className={`${controlClass} h-12 text-base`} type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="비밀번호 또는 복구 코드" autoFocus />
+          {message ? <p className="rounded-[12px] bg-[var(--crs-danger-bg)] px-4 py-3 text-[13px] font-semibold text-[var(--crs-danger-text)]">{message}</p> : null}
+          <button className={buttonClass({ variant: 'primary', size: 'lg', block: true })} type="submit" disabled={isSubmitting}>{isSubmitting ? '확인 중...' : '관리자 페이지로 이동'}</button>
         </form>
       </section>
     </main>
-  );
-}
-
-function LoadingDialog({ title, message }: { title: string; message: string }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 text-slate-950">
-      <section role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-md rounded-[2rem] bg-white p-6 text-center shadow-2xl">
-        <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-sky-500" aria-hidden="true" />
-        <h2 className="mt-4 text-2xl font-black">{title}</h2>
-        <p className="mt-2 rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-600">{message}</p>
-      </section>
-    </div>
   );
 }

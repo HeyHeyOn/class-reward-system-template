@@ -76,7 +76,7 @@ export function createBankRepositoryCreators(
               runTenantTransaction,
             });
             const student = await students.getStudentById(studentId);
-            const history = student ? await transactions.getTransactions() : [];
+            const history = student ? await transactions.getTransactions({ studentId, limit: 10 }) : [];
             return { student, transactions: history };
           });
         },

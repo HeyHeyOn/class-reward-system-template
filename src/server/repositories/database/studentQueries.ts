@@ -2,6 +2,7 @@ import 'server-only';
 
 import { sql } from 'drizzle-orm';
 import type { Student, StudentStatus } from '@/domain/types';
+import type { VersionedAdminStudent } from '@/lib/studentAdminSnapshot';
 import type { TenantTransaction } from '@/server/db/transaction';
 
 type RunTenantTransaction = <TResult>(
@@ -23,6 +24,25 @@ type StudentRow = {
 
 export function createDatabaseStudentQueries(dependencies: DatabaseStudentQueryDependencies) {
   return {
+    async getAdminStudents(): Promise<VersionedAdminStudent[]> {
+      return dependencies.runTenantTransaction(dependencies.tenantId, async (transaction) => {
+        // One statement: displayed fields and BOTH preconditions share the MVCC snapshot.
+        const result = await transaction.execute(sql`
+          SELECT s.student_id, s.name, s.status, a.balance,
+                 s.version AS student_version, a.version AS account_version
+          FROM students s
+          LEFT JOIN accounts a ON a.tenant_id=s.tenant_id AND a.student_id=s.student_id
+          WHERE s.tenant_id=${dependencies.tenantId} AND s.deleted_at IS NULL
+        `);
+        return (result.rows as (StudentRow & { student_version: unknown; account_version: unknown })[])
+          .map((row) => ({
+            ...toStudent(row),
+            studentVersion: positiveVersion(row.student_version),
+            accountVersion: positiveVersion(row.account_version),
+          })).sort(compareStudentsLikeSheets);
+      });
+    },
+
     async getStudents(): Promise<Student[]> {
       return dependencies.runTenantTransaction(dependencies.tenantId, (transaction) =>
         readDatabaseStudents(transaction, dependencies.tenantId));
@@ -107,4 +127,10 @@ function toStudent(row: StudentRow): Student {
 function compareStudentsLikeSheets(left: Student, right: Student): number {
   return left.studentId.localeCompare(right.studentId, 'ko-KR', { numeric: true })
     || left.name.localeCompare(right.name);
+}
+
+function positiveVersion(value: unknown): number {
+  const version = Number(value);
+  if (!Number.isSafeInteger(version) || version < 1) throw new Error('Student editor version is invalid.');
+  return version;
 }

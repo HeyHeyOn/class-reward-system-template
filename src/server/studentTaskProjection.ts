@@ -1,5 +1,6 @@
 import { isTaskAvailable } from '@/domain/taskAvailability';
 import { resolveTaskSchedule } from '@/domain/taskSchedule';
+import { taskStage, type TaskStage } from '@/domain/taskStage';
 import type { TaskRecurrence } from '@/domain/types';
 import type { TaskCycleProjectionDto } from '@/server/repositories/sheets/taskHistoryQueries';
 
@@ -20,6 +21,10 @@ export type StudentTaskProjectionDto = {
     studentId: string;
     assigned: boolean;
     completed?: boolean;
+    /** Assigned and completable (완료 가능); assigned without it is 미완료. */
+    ready: boolean;
+    /** 미부여 → 미완료 → 완료 가능 → 완료. */
+    stage: TaskStage;
   };
 };
 
@@ -40,7 +45,10 @@ export function buildStudentTaskProjection(
       ?? (Array.isArray(task.currentCycle?.completedStudentIds)
         ? task.currentCycle.completedStudentIds.includes(studentId)
         : undefined);
-    return { assigned, completed };
+    // Projections from before stages existed have no ready flag: there, assigned meant completable.
+    const ready = assigned && (directStatus?.ready ?? (Array.isArray(task.currentCycle?.pendingStudentIds)
+      ? !task.currentCycle.pendingStudentIds.includes(studentId) : true));
+    return { assigned, completed, ready, stage: taskStage({ assigned, ready, completed: completed === true }) };
   };
 
   const visibleTasks = tasks.filter((task) => task.isActive && isTaskAvailable(task, now));
@@ -49,7 +57,7 @@ export function buildStudentTaskProjection(
     .map((task) => task.taskId));
 
   return visibleTasks.map((task) => {
-    const { assigned, completed } = getStudentStatus(task);
+    const { assigned, completed, ready, stage } = getStudentStatus(task);
     const effectiveSchedule = task.schedule ? resolveTaskSchedule({
       currentSchedule: task.schedule,
       pendingSchedule: task.pendingSchedule ?? null,
@@ -76,8 +84,8 @@ export function buildStudentTaskProjection(
       description: task.description,
       reward: task.reward,
       sortOrder: task.sortOrder,
-      ...(task.availableFrom ? { availableFrom: task.availableFrom } : {}),
-      ...(task.dueAt ? { dueAt: task.dueAt } : {}),
+      ...(task.availableFrom ? { availableFrom: standardInstant(task.availableFrom) } : {}),
+      ...(task.dueAt ? { dueAt: standardInstant(task.dueAt) } : {}),
       ...(effectiveSchedule ? { recurrence: effectiveSchedule.recurrence } : {}),
       ...(task.prerequisiteTaskId ? {
         ...(assigned && assignedVisibleTaskIds.has(task.prerequisiteTaskId)
@@ -91,7 +99,15 @@ export function buildStudentTaskProjection(
         studentId,
         assigned,
         ...(completed === undefined ? {} : { completed }),
+        ready,
+        stage,
       },
     };
   });
+}
+
+/** Times sent to students take the standard form (as Date#toISOString), whatever precision they were stored with. */
+function standardInstant(value: string): string {
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : value;
 }

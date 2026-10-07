@@ -105,7 +105,7 @@ describe('reader-only task history queries', () => {
 
     expect(dto).toMatchObject({ ...source, currentCycle: { cycleId: currentCycle } });
     expect(dto.studentStatus).toEqual({
-      studentId: 'S1', assigned: false, completed: false,
+      studentId: 'S1', assigned: false, ready: false, completed: false, stage: 'UNASSIGNED',
       assignmentOrigin: 'EVENT', completionOrigin: 'DEFAULT',
     });
     expectNoWrites(writes);

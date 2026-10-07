@@ -160,6 +160,10 @@ export type StudentBatchUpdate = StudentUpdate & {
   studentId: string;
 };
 
+// Omitted numeric fields are not writes, even when a later cancellation races this save.
+export type StudentEditorUpdate = Omit<StudentBatchUpdate, 'balance'> & { balance?: number };
+export type ProductEditorUpdate = Omit<ProductBatchUpdate, 'stock'> & { stock?: number };
+
 export type ProductBatchUpdate = ProductUpdate & {
   productId: string;
 };
@@ -2197,6 +2201,12 @@ export async function createStudent(store: SheetsStore, create: StudentCreate): 
 }
 
 export async function updateStudentDetails(store: SheetsStore, studentId: string, update: StudentUpdate): Promise<Student> {
+  return enqueueTaskCommand(taskCommandQueueKey(''), () => updateStudentDetailsNow(store, studentId, update));
+}
+
+async function updateStudentDetailsNow(store: SheetsStore, studentId: string, update: StudentUpdate): Promise<Student> {
+  // Refresh after entering the shared local queue, not before waiting in it.
+  if (store.getRowsFresh) await store.getRowsFresh('Students');
   const record = await getStudentRecordById(store, studentId);
 
   if (!record) {
@@ -2214,9 +2224,13 @@ export async function updateStudentDetails(store: SheetsStore, studentId: string
 }
 
 export async function updateStudentDetailsBatch(store: SheetsStore, updates: StudentBatchUpdate[]): Promise<Student[]> {
+  return enqueueTaskCommand(taskCommandQueueKey(''), () => updateStudentDetailsBatchNow(store, updates));
+}
+
+async function updateStudentDetailsBatchNow(store: SheetsStore, updates: StudentBatchUpdate[]): Promise<Student[]> {
   if (!Array.isArray(updates) || updates.length === 0) throw new Error('저장할 학생이 없습니다.');
 
-  const rows = await store.getRows('Students');
+  const rows = await (store.getRowsFresh ? store.getRowsFresh('Students') : store.getRows('Students'));
   const recordsById = getStudentRecordsFromRows(rows);
   const normalized = updates.map((update) => ({ ...update, studentId: update.studentId.trim() }));
   const duplicateIds = findDuplicates(normalized.map((update) => update.studentId));
@@ -2245,7 +2259,7 @@ export async function updateStudentDetailsBatch(store: SheetsStore, updates: Stu
 
 export function updateStudentDetailsBatchWithBalanceTransactions(
   store: SheetsStore,
-  updates: StudentBatchUpdate[],
+  updates: StudentEditorUpdate[],
   operationId: string,
 ): Promise<Student[]> {
   return enqueueTaskCommand(taskCommandQueueKey(''), () =>
@@ -2254,7 +2268,7 @@ export function updateStudentDetailsBatchWithBalanceTransactions(
 
 async function updateStudentDetailsBatchWithBalanceTransactionsNow(
   store: SheetsStore,
-  updates: StudentBatchUpdate[],
+  updates: StudentEditorUpdate[],
   operationId: string,
 ): Promise<Student[]> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(operationId)) {
@@ -2265,10 +2279,11 @@ async function updateStudentDetailsBatchWithBalanceTransactionsNow(
   }
   if (!Array.isArray(updates) || updates.length === 0) throw new Error('저장할 학생이 없습니다.');
 
+  const read = (name: SheetName) => store.getRowsFresh ? store.getRowsFresh(name) : store.getRows(name);
   const [studentRows, transactionRows, settingsRows] = await Promise.all([
-    store.getRows('Students'),
-    store.getRows('Transactions'),
-    store.getRows('Settings'),
+    read('Students'),
+    read('Transactions'),
+    read('Settings'),
   ]);
   const recordsById = getStudentRecordsFromRows(studentRows);
   const normalized = updates
@@ -2279,9 +2294,11 @@ async function updateStudentDetailsBatchWithBalanceTransactionsNow(
 
   const students: Student[] = normalized.map((update) => {
     validateStudentId(update.studentId);
-    validateStudentUpdate(update);
-    if (!recordsById.has(update.studentId)) throw new Error(`학생을 찾을 수 없습니다: ${update.studentId}`);
-    return { studentId: update.studentId, name: update.name, balance: update.balance, status: update.status };
+    const record = recordsById.get(update.studentId);
+    if (!record) throw new Error(`학생을 찾을 수 없습니다: ${update.studentId}`);
+    const balance = Object.hasOwn(update, 'balance') ? update.balance! : record.student.balance;
+    validateStudentUpdate({ ...update, balance });
+    return { studentId: update.studentId, name: update.name, balance, status: update.status };
   });
   const transactionHeaderIndex = createHeaderIndex(transactionRows[0] ?? []);
   const transactionItemsColumn = TRANSACTION_ITEM_COLUMN_ALIASES.find(
@@ -2292,7 +2309,10 @@ async function updateStudentDetailsBatchWithBalanceTransactionsNow(
     throw studentListSaveReconciliationError();
   }
 
-  const payloadHash = await sha256Hex(JSON.stringify(students));
+  // Preserve the old full-row hash, but never hash an omitted field's live value.
+  const intent = students.map((student, index) => Object.hasOwn(normalized[index], 'balance')
+    ? student : { studentId: student.studentId, name: student.name, status: student.status });
+  const payloadHash = await sha256Hex(JSON.stringify(intent));
   const operationPrefix = `ADMIN-LIST-${operationId}-`;
   const operationRows = getRawBulkOperationRows(transactionRows, operationPrefix);
   const marker = buildStudentListSaveOperationMarker(operationId, payloadHash, students);
@@ -2343,6 +2363,10 @@ async function updateStudentDetailsBatchWithBalanceTransactionsNow(
 
   await store.applyAtomicMutation({
     updates: [...profileUpdates, ...balanceUpdates],
+    uniqueClaim: {
+      name: `student_list_${createHash('sha256').update(operationId).digest('hex')}`,
+      sheetName: 'Students', rowNumber: 1, columnNumber: 1,
+    },
     appends: changes.length === 0
       ? [{ sheetName: 'Settings' as const, values: buildStudentListSaveOperationMarkerRow(settingsRows, marker) }]
       : await Promise.all(changes.map(async ({ record, student, transactionAmount }) => ({
@@ -2389,6 +2413,13 @@ export async function bulkAdjustStudentBalances(
   store: SheetsStore,
   update: StudentBulkBalanceUpdate,
 ): Promise<Array<{ studentId: string; balance: number }>> {
+  return enqueueTaskCommand(taskCommandQueueKey(''), () => bulkAdjustStudentBalancesNow(store, update));
+}
+
+async function bulkAdjustStudentBalancesNow(
+  store: SheetsStore,
+  update: StudentBulkBalanceUpdate,
+): Promise<Array<{ studentId: string; balance: number }>> {
   validateStudentBulkBalanceUpdate(update);
 
   const studentIds = update.studentIds.map((id) => id.trim()).sort();
@@ -2402,10 +2433,8 @@ export async function bulkAdjustStudentBalances(
     }
   }
 
-  const [studentRows, transactionRows] = await Promise.all([
-    store.getRows('Students'),
-    store.getRows('Transactions'),
-  ]);
+  const read = (name: SheetName) => store.getRowsFresh ? store.getRowsFresh(name) : store.getRows(name);
+  const [studentRows, transactionRows] = await Promise.all([read('Students'), read('Transactions')]);
   const transactionHeaderIndex = createHeaderIndex(transactionRows[0] ?? []);
   const transactionItemsColumn = TRANSACTION_ITEM_COLUMN_ALIASES.find(
     (column) => (transactionHeaderIndex.get(column) ?? -1) >= 0,
@@ -2555,6 +2584,11 @@ export async function createProduct(store: SheetsStore, create: ProductCreate): 
 }
 
 export async function updateProductDetails(store: SheetsStore, productId: string, update: ProductUpdate): Promise<Product> {
+  return enqueueTaskCommand(taskCommandQueueKey(''), () => updateProductDetailsNow(store, productId, update));
+}
+
+async function updateProductDetailsNow(store: SheetsStore, productId: string, update: ProductUpdate): Promise<Product> {
+  if (store.getRowsFresh) await store.getRowsFresh('Products');
   const record = (await getProductRecords(store)).find(({ product }) => product.productId === productId);
 
   if (!record) {
@@ -2586,10 +2620,25 @@ export async function updateProductDetails(store: SheetsStore, productId: string
   };
 }
 
-export async function updateProductDetailsBatch(store: SheetsStore, updates: ProductBatchUpdate[]): Promise<Product[]> {
+export async function updateProductDetailsBatch(
+  store: SheetsStore, updates: ProductEditorUpdate[], operationId?: string,
+): Promise<Product[]> {
+  // Local mitigation only: another runtime, checkout or direct Sheets writer
+  // can still race. Neither this queue nor operationId claims are numeric CAS.
+  return enqueueTaskCommand(taskCommandQueueKey(''), () => updateProductDetailsBatchNow(store, updates, operationId));
+}
+
+async function updateProductDetailsBatchNow(
+  store: SheetsStore, updates: ProductEditorUpdate[], operationId?: string,
+): Promise<Product[]> {
   if (!Array.isArray(updates) || updates.length === 0) throw new Error('저장할 상품이 없습니다.');
 
-  const recordsById = new Map((await getProductRecords(store)).map((record) => [record.product.productId, record]));
+  if (operationId !== undefined
+    && (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(operationId)
+      || !store.applyAtomicMutation)) throw new Error('원자적 상품 저장을 지원하지 않거나 작업 ID가 올바르지 않습니다.');
+  const productRows = await (store.getRowsFresh ? store.getRowsFresh('Products') : store.getRows('Products'));
+  const recordsById = new Map((await getProductRecords({ getRows: async () => productRows }))
+    .map((record) => [record.product.productId, record]));
   const normalized = updates.map((update) => ({ ...update, productId: update.productId.trim() }));
   const duplicateIds = findDuplicates(normalized.map((update) => update.productId));
   if (duplicateIds.length > 0) throw new Error(`중복된 상품 ID가 있습니다: ${duplicateIds.join(', ')}`);
@@ -2598,9 +2647,10 @@ export async function updateProductDetailsBatch(store: SheetsStore, updates: Pro
   const products: Product[] = [];
   for (const update of normalized) {
     validateProductId(update.productId);
-    validateProductUpdate(update);
     const record = recordsById.get(update.productId);
     if (!record) throw new Error(`상품을 찾을 수 없습니다: ${update.productId}`);
+    const stock = Object.hasOwn(update, 'stock') ? update.stock! : record.product.stock;
+    validateProductUpdate({ ...update, stock });
 
     const name = update.name.trim();
     const imageUrl = update.imageUrl?.trim() || undefined;
@@ -2608,7 +2658,7 @@ export async function updateProductDetailsBatch(store: SheetsStore, updates: Pro
     cellUpdates.push(
       { rowNumber: record.rowNumber, columnName: 'name', value: name },
       { rowNumber: record.rowNumber, columnName: 'price', value: update.price },
-      { rowNumber: record.rowNumber, columnName: 'stock', value: update.stock },
+      ...(Object.hasOwn(update, 'stock') ? [{ rowNumber: record.rowNumber, columnName: 'stock', value: stock }] : []),
       { rowNumber: record.rowNumber, columnName: 'isActive', value: update.isActive ? 'TRUE' : 'FALSE' },
       { rowNumber: record.rowNumber, columnName: 'imageUrl', value: imageUrl ?? '' },
       { rowNumber: record.rowNumber, columnName: 'category', value: category ?? '' },
@@ -2619,7 +2669,7 @@ export async function updateProductDetailsBatch(store: SheetsStore, updates: Pro
       productId: update.productId,
       name,
       price: update.price,
-      stock: update.stock,
+      stock,
       isActive: update.isActive,
       imageUrl,
       category,
@@ -2627,7 +2677,37 @@ export async function updateProductDetailsBatch(store: SheetsStore, updates: Pro
     });
   }
 
-  await applyCellUpdates(store, 'Products', cellUpdates);
+  if (operationId === undefined) {
+    // Existing direct repository callers retain their legacy non-replay contract.
+    await applyCellUpdates(store, 'Products', cellUpdates);
+  } else {
+    const settingsRows = await (store.getRowsFresh ? store.getRowsFresh('Settings') : store.getRows('Settings'));
+    const marker = {
+      key: `productListSaveOperation:${createHash('sha256').update(operationId).digest('hex')}`,
+      value: await sha256Hex(JSON.stringify(normalized)),
+    };
+    const receipts = studentListSaveOperationMarkerCandidates(settingsRows, marker.key);
+    if (receipts.length > 0) {
+      if (receipts.length !== 1 || receipts[0] !== marker.value) {
+        throw new Error('상품 저장 작업 ID가 다른 요청에 사용되었습니다. 새로고침해 주세요.');
+      }
+      return normalized.map(({ productId }) => recordsById.get(productId)!.product);
+    }
+    const headers = createHeaderIndex(productRows[0] ?? []);
+    if (!requireColumns(headers, cellUpdates.map(({ columnName }) => columnName)).ok) {
+      throw new Error('상품 저장 열을 확인하지 못했습니다.');
+    }
+    await store.applyAtomicMutation!({
+      updates: cellUpdates.map(({ rowNumber, columnName, value }) => ({
+        sheetName: 'Products', rowNumber, columnNumber: headers.get(columnName)! + 1, value,
+      })),
+      appends: [{ sheetName: 'Settings', values: buildStudentListSaveOperationMarkerRow(settingsRows, marker) }],
+      uniqueClaim: {
+        name: `product_list_${createHash('sha256').update(operationId).digest('hex')}`,
+        sheetName: 'Products', rowNumber: 1, columnNumber: 1,
+      },
+    });
+  }
   return products.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
 }
 

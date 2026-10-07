@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { isGeneratorDeployment } from '@/server/deploymentMode';
+import { isGeneratorDeployment, isSystemDeployment } from '@/server/deploymentMode';
+import { googleIdentityLoginPath, type GoogleIdentityReturnTo } from '@/lib/googleIdentityReturnTo';
 import {
   consumeGeneratorConsentStateCookie,
   consumeGoogleStateCookie,
@@ -20,10 +21,11 @@ export async function GET(request: Request) {
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state') ?? '';
   const isGeneratorConsent = hasGeneratorConsentStateCookie(request);
-  const successPath = isGeneratorDeployment() ? '/admin/generator?step=google' : '/admin';
+  const postgresIdentity = isSystemDeployment() && process.env.CLASS_STORE_STORAGE === 'postgresql';
+  const successPath = isGeneratorDeployment() ? '/admin/generator?step=google' : postgresIdentity ? '/classes' : '/admin';
   const response = NextResponse.redirect(new URL(successPath, request.url));
   let issuedGeneratorGrant: GeneratorGrant | null = null;
-  let identityReturnTo: '/classes' | undefined;
+  let identityReturnTo: GoogleIdentityReturnTo | undefined;
 
   try {
     if (!code) throw new Error(url.searchParams.get('error_description') || url.searchParams.get('error') || 'Google 인증 코드가 없습니다.');
@@ -43,7 +45,7 @@ export async function GET(request: Request) {
 
     const identityState = consumeGoogleStateCookie(request, response, state);
     if (!identityState) throw new Error('Google 로그인 상태값이 올바르지 않습니다. 다시 로그인해 주세요.');
-    if (identityState.returnTo === '/classes') identityReturnTo = '/classes';
+    identityReturnTo = identityState.returnTo;
     const session = await exchangeGoogleCodeForSession(url.origin, code);
     setGoogleSessionCookie(response, session);
     if (identityState.returnTo) {
@@ -56,14 +58,12 @@ export async function GET(request: Request) {
     }
     if (!isGeneratorConsent && !identityReturnTo) {
       const failedIdentityState = consumeGoogleStateCookie(request, response, state);
-      if (failedIdentityState?.returnTo === '/classes') identityReturnTo = '/classes';
+      identityReturnTo = failedIdentityState?.returnTo;
     }
     const message = encodeURIComponent(error instanceof Error ? error.message : 'Google 로그인에 실패했습니다.');
     const errorPath = isGeneratorDeployment()
       ? `/admin/generator?error=${message}`
-      : identityReturnTo
-        ? `/classes?error=${message}`
-        : `/admin/login?error=${message}`;
+      : `${googleIdentityLoginPath(identityReturnTo ?? (postgresIdentity ? '/classes' : undefined))}?error=${message}`;
     const errorResponse = NextResponse.redirect(new URL(errorPath, request.url));
     if (isGeneratorConsent) {
       consumeGeneratorConsentStateCookie(request, errorResponse, state);

@@ -6,6 +6,7 @@ import {
 import { students } from './students';
 import { tenants } from './tenants';
 import { operations } from './operations';
+import { legacyTaskOrigins } from './legacyTaskOrigins';
 
 export const taskAssignmentEvents = ['ASSIGNED', 'UNASSIGNED'] as const;
 export const taskAssignmentSources = ['ADMIN', 'QR', 'LEGACY_SEED', 'CARRY_FORWARD'] as const;
@@ -86,6 +87,7 @@ export const taskAllowedStudents = pgTable('task_allowed_students', {
 ]);
 
 export const taskAssignments = pgTable('task_assignments', {
+  legacyOriginId: text('legacy_origin_id'),
   tenantId: uuid('tenant_id').notNull(),
   assignmentId: text('assignment_id').notNull(),
   eventSequence: bigint('event_sequence', { mode: 'bigint' }).generatedByDefaultAsIdentity().notNull(),
@@ -107,6 +109,8 @@ export const taskAssignments = pgTable('task_assignments', {
   note: text('note'),
 }, (table) => [
   primaryKey({ name: 'task_assignments_pkey', columns: [table.tenantId, table.assignmentId] }),
+  foreignKey({ name: 'task_assignments_legacy_origin_fk', columns: [table.tenantId, table.legacyOriginId], foreignColumns: [legacyTaskOrigins.tenantId, legacyTaskOrigins.originId] }),
+  check('task_assignments_legacy_operation_check', sql`${table.legacyOriginId} IS NULL OR (${table.adminOperationId} IS NULL AND ${table.adminOperationHash} IS NULL)`),
   unique('task_assignments_event_sequence_unique').on(table.tenantId, table.eventSequence),
   foreignKey({ name: 'task_assignments_task_fk', columns: [table.tenantId, table.taskInstanceId], foreignColumns: [tasks.tenantId, tasks.taskInstanceId] }),
   foreignKey({ name: 'task_assignments_student_fk', columns: [table.tenantId, table.studentId], foreignColumns: [students.tenantId, students.studentId] }),

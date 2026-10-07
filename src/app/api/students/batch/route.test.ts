@@ -4,6 +4,8 @@ import { createConfiguredSheetsStore } from '@/server/googleSheets';
 import { updateStudentDetailsBatchWithBalanceTransactions } from '@/server/sheetsRepository';
 import { PATCH } from './route';
 
+vi.mock('server-only', () => ({}));
+
 vi.mock('@/server/apiAuth', () => ({
   isAuthorizedAdminRequest: vi.fn(() => true),
   unauthorizedAdminResponse: () => Response.json({ error: 'unauthorized' }, { status: 401 }),

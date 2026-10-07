@@ -86,10 +86,15 @@ describe('database Padlet claimed-post lookup', () => {
 
     expect(execute).toHaveBeenCalledTimes(1);
     const query = compiledQuery(execute);
-    expect(query.sql).toMatch(/^\s*SELECT post_id\s+FROM padlet_evidence_claims\s+WHERE provider = 'PADLET'\s+AND board_id = \$1\s+AND post_id IN \(\$2, \$3, \$4\)\s+ORDER BY post_id COLLATE "C"\s*$/);
+    expect(query.sql).toContain('FROM padlet_evidence_claims');
+    expect(query.sql).toContain('JOIN padlet_claim_digest_tombstones');
+    expect(query.sql).toContain('ORDER BY post_id COLLATE "C"');
     expect(query.sql).not.toMatch(/ORDER BY post_id\s*$/);
-    expect(query.params).toEqual([BOARD_ID, 'A_post', 'a-post', 'z_post']);
-    expect(query.sql).not.toMatch(/tenant|tombstone|SET ROLE|set_config/i);
+    expect(query.params.slice(0,4)).toEqual([BOARD_ID, 'A_post', 'a-post', 'z_post']);
+    expect(query.params).toHaveLength(10);
+    expect(query.params.filter((_,i)=>i>=4&&i%2===0)).toEqual(['A_post','a-post','z_post']);
+    for(const digest of query.params.filter((_,i)=>i>=4&&i%2===1)) expect(digest).toMatch(/^[a-f0-9]{64}$/);
+    expect(query.sql).not.toMatch(/tenant|SET ROLE|set_config/i);
   });
 
   it.each([

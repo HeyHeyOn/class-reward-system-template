@@ -92,7 +92,7 @@ async function prepare(tenantId = harness.tenantOneId) {
 }
 
 beforeEach(async () => {
-  harness = await createPgliteDatabaseHarness();
+  harness = await createPgliteDatabaseHarness({ migrationSet: 'base' });
   for (const migration of (await readdir(resolve(process.cwd(), 'src/server/db/migrations'))).filter(name => /^\d{4}_.*\.sql$/.test(name) && name.slice(0, 4) > '0008').sort()) {
     await harness.database.exec(await readFile(resolve(process.cwd(), 'src/server/db/migrations', migration), 'utf8'));
   }

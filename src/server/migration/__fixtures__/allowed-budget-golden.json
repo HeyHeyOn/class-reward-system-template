@@ -1,0 +1,62 @@
+[
+  {
+    "value": "",
+    "result": []
+  },
+  {
+    "value": "a,a",
+    "result": [
+      "a"
+    ]
+  },
+  {
+    "value": " a ; b\na,,;b ",
+    "result": [
+      "a",
+      "b"
+    ]
+  },
+  {
+    "value": "a|b",
+    "result": [
+      "a|b"
+    ]
+  },
+  {
+    "value": " A , A,a",
+    "result": [
+      "A",
+      "a"
+    ]
+  },
+  {
+    "value": "a\r\nb\rc",
+    "result": [
+      "a",
+      "b\rc"
+    ]
+  },
+  {
+    "value": "\ud800,\ud800",
+    "result": [
+      "\ud800"
+    ]
+  },
+  {
+    "value": "학생;👨‍👩‍👧",
+    "result": [
+      "학생",
+      "👨‍👩‍👧"
+    ]
+  },
+  {
+    "value": ",;;\n",
+    "result": []
+  },
+  {
+    "value": "id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id,id",
+    "result": [
+      "id"
+    ]
+  }
+]

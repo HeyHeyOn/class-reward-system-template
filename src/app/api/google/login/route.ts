@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { googleIdentityLoginPath, parseGoogleIdentityReturnTo } from '@/lib/googleIdentityReturnTo';
 import { isGeneratorDeployment, isSystemDeployment } from '@/server/deploymentMode';
 import {
   createGeneratorConsentAuthUrl,
@@ -13,10 +14,11 @@ import {
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const returnTo = parseGoogleIdentityReturnTo(url.searchParams.get('returnTo'))
+    ?? (isSystemDeployment() && process.env.CLASS_STORE_STORAGE === 'postgresql' ? '/classes' : undefined);
   try {
-    const url = new URL(request.url);
     const purpose = url.searchParams.get('purpose');
-    const returnTo = url.searchParams.get('returnTo') === '/classes' ? '/classes' : undefined;
 
     if (purpose === 'generator') {
       if (!isGeneratorDeployment()) {
@@ -55,7 +57,7 @@ export async function GET(request: Request) {
     return response;
   } catch (error) {
     const message = encodeURIComponent(error instanceof Error ? error.message : 'Google 로그인을 시작하지 못했습니다.');
-    const errorPath = isSystemDeployment() ? `/admin/login?error=${message}` : `/admin/generator?error=${message}`;
+    const errorPath = isSystemDeployment() ? `${googleIdentityLoginPath(returnTo)}?error=${message}` : `/admin/generator?error=${message}`;
     return NextResponse.redirect(new URL(errorPath, request.url));
   }
 }

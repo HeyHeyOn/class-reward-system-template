@@ -96,7 +96,7 @@ async function prepareFixture(taskName: string, peer = false) {
   vi.spyOn(https, 'request').mockImplementation(() => { throw Error('Nonlocal HTTPS forbidden'); });
   vi.stubGlobal('fetch', () => { throw Error('Nonlocal HTTP forbidden'); });
   if (!peer) {
-    h = await createPgliteDatabaseHarness();
+    h = await createPgliteDatabaseHarness({ migrationSet: 'base' });
     JOB = '40000000-0000-4000-8000-000000000029'; spreadsheetId = 'sheet-1';
   } else { JOB = '40000000-0000-4000-8000-000000000039'; spreadsheetId = 'sheet-peer'; }
   fixtureTenant = peer ? h.tenantOneId : h.tenantTwoId;

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TransactionsPage } from './TransactionsPage';
 
@@ -61,6 +61,15 @@ function jsonResponse(payload: unknown, init?: ResponseInit) {
   });
 }
 
+function rowCount() {
+  return screen.queryAllByTestId(/^transaction-row-/).length;
+}
+
+function statValue(label: string) {
+  const card = screen.getByText(label, { selector: 'p' }).closest('div')?.parentElement;
+  return card?.querySelector('p.tabular-nums')?.textContent ?? null;
+}
+
 function deferredResponse(payload: unknown) {
   let resolve!: () => void;
   const gate = new Promise<void>((res) => { resolve = res; });
@@ -69,7 +78,6 @@ function deferredResponse(payload: unknown) {
 
 describe('TransactionsPage', () => {
   beforeEach(() => {
-    vi.stubGlobal('confirm', vi.fn(() => true));
     vi.stubGlobal('crypto', { randomUUID: vi.fn(() => '30000000-0000-4000-8000-000000000001') });
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -127,56 +135,71 @@ describe('TransactionsPage', () => {
     });
     const { container } = render(<TransactionsPage />);
 
-    expect(await screen.findByRole('heading', { name: '거래 내역 확인' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '거래 내역' })).toBeTruthy();
+    expect(screen.getByText('거래 내역을 불러오는 중입니다.')).toBeTruthy();
+    expect(container.querySelector('main')?.getAttribute('style')).toContain('--theme-shell');
     queueMicrotask(readinessGate.resolve);
-    await screen.findByRole('heading', { name: '거래 내역 (4)' });
-    expect(screen.getByRole('heading', { name: '거래 내역 (4)' })).toBeTruthy();
+    await waitFor(() => expect(rowCount()).toBe(4));
+    expect(statValue('거래 수')).toBe('4건');
+    expect(statValue('수입')).toBe('+500별');
+    expect(statValue('지출')).toBe('-600별');
     expect(screen.queryByText('거래 건수')).toBeNull();
     expect(screen.queryByText('순 지출')).toBeNull();
     expect(screen.queryByText('화폐 단위')).toBeNull();
-    expect(screen.getByRole('button', { name: '전체' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '수입' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '지출' })).toBeTruthy();
-    expect(screen.getByText('-600별')).toBeTruthy();
-    expect(screen.getAllByText('+500별').length).toBeGreaterThan(0);
-    expect(container.querySelector('[data-testid="transaction-row-T001"]')?.className).toContain('bg-sky-50');
-    expect(container.querySelector('[data-testid="transaction-row-T002"]')?.className).toContain('bg-rose-50');
-    expect(container.querySelector('[data-testid="transaction-row-T003"]')?.className).toContain('bg-slate-100');
-    expect(container.querySelector('[data-testid="transaction-row-CANCEL-T003"]')?.className).toContain('bg-rose-50');
-    expect(screen.getByTestId('transaction-amount-T003').className).toContain('text-sky-700');
-    expect(screen.getByTestId('transaction-amount-T003').className).not.toContain('line-through');
-    expect(screen.getByTestId('transaction-cancelled-label-T003').className).toContain('rounded-xl');
-    expect(screen.getByTestId('transaction-cancelled-label-T003').className).toContain('text-xs');
+    const filters = screen.getByRole('group', { name: '거래 필터' });
+    expect(within(filters).getByRole('button', { name: '전체' })).toBeTruthy();
+    expect(within(filters).getByRole('button', { name: '수입' })).toBeTruthy();
+    expect(within(filters).getByRole('button', { name: '지출' })).toBeTruthy();
+    expect(screen.getByTestId('transaction-amount-T001').textContent).toBe('-600별');
+    expect(screen.getByTestId('transaction-amount-T002').textContent).toBe('+500별');
+    expect(screen.getByTestId('transaction-amount-CANCEL-T003').textContent).toBe('+500별');
+    expect(screen.getByTestId('transaction-amount-T002').className).toContain('text-[var(--crs-success-text)]');
+    expect(screen.getByTestId('transaction-amount-CANCEL-T003').className).toContain('text-[var(--crs-success-text)]');
+    expect(screen.getByTestId('transaction-amount-T001').className).toContain('text-[var(--theme-text)]');
+    expect(screen.getByTestId('transaction-amount-T001').className).not.toContain('line-through');
+    expect(screen.getByTestId('transaction-amount-T003').className).toContain('text-[var(--theme-text)]');
+    expect(screen.getByTestId('transaction-amount-T003').className).toContain('line-through');
+    expect(screen.getByTestId('transaction-row-T003').className).toContain('opacity-60');
+    expect(screen.getByTestId('transaction-row-T001').className).not.toContain('opacity-60');
+    expect(screen.getByTestId('transaction-cancelled-label-T003').textContent).toBe('취소됨');
+    expect(screen.queryByTestId('transaction-cancelled-label-T001')).toBeNull();
+    expect(screen.getByTestId('transaction-row-T001').textContent).toContain('연필 ×2');
+    expect(screen.getByTestId('transaction-row-T003').textContent).toContain('지우개');
+    expect(screen.getByTestId('transaction-row-T003').textContent).not.toContain('×1');
     const cancelledAt = new Date(transactions[2].cancelledAt!);
     const expectedCancellationTimestamp = `${cancelledAt.getFullYear()}. ${cancelledAt.getMonth() + 1}. ${cancelledAt.getDate()}. ${cancelledAt.getHours()}시 ${cancelledAt.getMinutes()}분 ${cancelledAt.getSeconds()}초`;
     expect(screen.getByText(/취소 일시:/).textContent).toContain(expectedCancellationTimestamp);
-    expect(screen.getAllByText('+500별').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'T001 거래 취소' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'T002 거래 취소' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'T003 거래 취소' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'CANCEL-T003 거래 취소' })).toBeNull();
     expect(screen.queryByText(/결제/)).toBeNull();
   });
 
   it('filters transaction rows by all, income, and expense tabs', async () => {
     render(<TransactionsPage />);
 
-    expect(await screen.findByRole('heading', { name: '거래 내역 (4)' })).toBeTruthy();
+    await waitFor(() => expect(rowCount()).toBe(4));
     expect(screen.getByTestId('transaction-row-T001')).toBeTruthy();
     expect(screen.getByTestId('transaction-row-T002')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '수입' }));
-    expect(await screen.findByRole('heading', { name: '거래 내역 (2)' })).toBeTruthy();
+    await waitFor(() => expect(rowCount()).toBe(2));
+    expect(screen.getByRole('button', { name: '수입' }).getAttribute('aria-pressed')).toBe('true');
+    expect(statValue('거래 수')).toBe('4건');
     expect(screen.queryByTestId('transaction-row-T001')).toBeNull();
     expect(screen.getByTestId('transaction-row-T002')).toBeTruthy();
     expect(screen.getByTestId('transaction-row-CANCEL-T003')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '지출' }));
-    expect(await screen.findByRole('heading', { name: '거래 내역 (2)' })).toBeTruthy();
+    await waitFor(() => expect(screen.queryByTestId('transaction-row-T002')).toBeNull());
+    expect(rowCount()).toBe(2);
     expect(screen.getByTestId('transaction-row-T001')).toBeTruthy();
     expect(screen.queryByTestId('transaction-row-T002')).toBeNull();
     expect(screen.getByTestId('transaction-row-T003')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '전체' }));
-    expect(await screen.findByRole('heading', { name: '거래 내역 (4)' })).toBeTruthy();
+    await waitFor(() => expect(rowCount()).toBe(4));
   });
 
   it('shows loading popups while cancelling and refreshing transactions', async () => {
@@ -211,6 +234,7 @@ describe('TransactionsPage', () => {
 
     render(<TransactionsPage />);
     fireEvent.click(await screen.findByRole('button', { name: 'T001 거래 취소' }));
+    fireEvent.click(screen.getByRole('button', { name: '거래 취소 확정' }));
     expect(await screen.findByRole('dialog', { name: '거래 취소 중' })).toBeTruthy();
     expect(screen.getByText('거래를 취소하는 중입니다.')).toBeTruthy();
     cancelDeferred.resolve();
@@ -218,9 +242,10 @@ describe('TransactionsPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '거래 내역 새로고침' }));
     expect(await screen.findByRole('dialog', { name: '새로고침 중' })).toBeTruthy();
-    expect(screen.getByText('새로고침하는 중입니다.')).toBeTruthy();
+    expect(screen.getByText('최신 거래 내역을 불러오는 중입니다.')).toBeTruthy();
     refreshDeferred.resolve();
-    expect(await screen.findByRole('heading', { name: '거래 내역 (1)' })).toBeTruthy();
+    await waitFor(() => expect(rowCount()).toBe(1));
+    expect(screen.getByTestId('transaction-row-T002')).toBeTruthy();
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '새로고침 중' })).toBeNull());
   });
 
@@ -228,6 +253,7 @@ describe('TransactionsPage', () => {
     render(<TransactionsPage />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'T002 거래 취소' }));
+    fireEvent.click(screen.getByRole('button', { name: '거래 취소 확정' }));
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith('/api/transactions/T002/cancel', {
@@ -237,22 +263,43 @@ describe('TransactionsPage', () => {
       });
     });
     expect(await screen.findAllByText('취소됨')).toHaveLength(2);
-    await waitFor(() => expect(screen.getAllByText((_, element) => element?.textContent === '거래 취소 × 1').length).toBeGreaterThan(0));
-    expect(screen.getAllByText('-500별').length).toBeGreaterThan(0);
+    expect(screen.getByTestId('transaction-cancelled-label-T002')).toBeTruthy();
+    expect(screen.getByTestId('transaction-row-CANCEL-T002').textContent).toContain('거래 취소');
+    expect(screen.getByTestId('transaction-row-CANCEL-T002').textContent).not.toContain('×1');
+    expect(screen.getByTestId('transaction-amount-CANCEL-T002').textContent).toBe('-500별');
+    expect(screen.queryByRole('button', { name: 'T002 거래 취소' })).toBeNull();
+    expect(rowCount()).toBe(5);
   });
 
-  it('describes current-balance inverse effects and task reset without the old wording', async () => {
+  it('shows the exact transaction and current-balance effect without sending until confirmed', async () => {
     render(<TransactionsPage />);
-
-    fireEvent.click(await screen.findByRole('button', { name: 'T002 거래 취소' }));
-    expect(confirm).toHaveBeenLastCalledWith(expect.stringContaining('현재 잔액에서 보상 금액을 회수'));
-    expect(confirm).toHaveBeenLastCalledWith(expect.stringContaining('과제 완료도 함께 취소'));
-    expect(confirm).not.toHaveBeenLastCalledWith(expect.stringContaining('이전 잔액'));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'T001 거래 취소' })).toBeTruthy());
-
+    const opener = await screen.findByRole('button', { name: 'T002 거래 취소' });
+    opener.focus(); fireEvent.click(opener);
+    const dialog = screen.getByRole('dialog', { name: '거래 취소 확인' });
+    expect(dialog.textContent).toContain('이서연 · +500별');
+    expect(dialog.textContent).toContain('T002');
+    expect(dialog.textContent).toContain('보상만큼 현재 잔액에서 회수');
+    expect(dialog.textContent).toContain('과제 완료도 취소');
+    expect(dialog.textContent).toContain('초기화 후 새로 완료한 기록은 그대로');
+    expect(dialog.textContent).toContain('잔액이 음수가 될 수 있습니다');
+    expect(vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
+    // The safe 돌아가기 action receives initial focus; Tab is trapped between the header close button and the confirm button.
+    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: '돌아가기' }));
+    const closeButton = within(dialog).getByRole('button', { name: '닫기' });
+    closeButton.focus();
+    fireEvent.keyDown(document.activeElement!, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: '거래 취소 확정' }));
+    fireEvent.keyDown(document.activeElement!, { key: 'Tab' });
+    expect(document.activeElement).toBe(closeButton);
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(opener));
     fireEvent.click(screen.getByRole('button', { name: 'T001 거래 취소' }));
-    expect(confirm).toHaveBeenLastCalledWith(expect.stringContaining('현재 잔액에 반대 거래 효과'));
-    expect(confirm).not.toHaveBeenLastCalledWith(expect.stringContaining('이전 잔액'));
+    expect(screen.getByRole('dialog').textContent).toContain('반대 거래를 현재 잔액에 적용');
+    fireEvent.click(screen.getByRole('button', { name: '돌아가기' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
+    expect(crypto.randomUUID).not.toHaveBeenCalled();
   });
 
   it('surfaces a safe server integrity error instead of a generic cancellation failure', async () => {
@@ -268,6 +315,7 @@ describe('TransactionsPage', () => {
     });
     render(<TransactionsPage />);
     fireEvent.click(await screen.findByRole('button', { name: 'T002 거래 취소' }));
+    fireEvent.click(screen.getByRole('button', { name: '거래 취소 확정' }));
     expect(await screen.findByText('과제 완료 기록 무결성을 확인할 수 없어 취소하지 않았습니다.')).toBeTruthy();
     expect(screen.queryByText('거래를 취소하지 못했습니다.')).toBeNull();
   });
@@ -295,6 +343,7 @@ describe('TransactionsPage', () => {
     const firstButton = await screen.findByRole('button', { name: 'T001 거래 취소' });
     const secondButton = screen.getByRole('button', { name: 'T002 거래 취소' });
     fireEvent.click(firstButton);
+    fireEvent.click(screen.getByRole('button', { name: '거래 취소 확정' }));
     fireEvent.click(secondButton);
 
     expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/cancel'))).toHaveLength(1);
@@ -327,11 +376,13 @@ describe('TransactionsPage', () => {
 
     render(<TransactionsPage />);
     fireEvent.click(await screen.findByRole('button', { name: 'T001 거래 취소' }));
+    fireEvent.click(screen.getByRole('button', { name: '거래 취소 확정' }));
     expect(await screen.findByText('거래를 취소하지 못했습니다.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'T001 거래 취소' })).toBeTruthy();
     expect(screen.queryByTestId('transaction-row-CANCEL-T001')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'T001 거래 취소' }));
+    fireEvent.click(screen.getByRole('button', { name: '거래 취소 확정' }));
     expect(await screen.findByTestId('transaction-row-CANCEL-T001')).toBeTruthy();
     expect(screen.getByTestId('transaction-cancelled-label-T001')).toBeTruthy();
     const requests = fetchMock.mock.calls.filter(([url]) => String(url).includes('/cancel'));
@@ -363,6 +414,7 @@ describe('TransactionsPage', () => {
 
     render(<TransactionsPage />);
     fireEvent.click(await screen.findByRole('button', { name: 'T001 거래 취소' }));
+    fireEvent.click(screen.getByRole('button', { name: '거래 취소 확정' }));
 
     expect(await screen.findByText('거래를 취소하지 못했습니다.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'T001 거래 취소' })).toBeTruthy();
@@ -394,12 +446,16 @@ describe('TransactionsPage', () => {
     render(<TransactionsPage />);
     const button = await screen.findByRole('button', { name: 'T001 거래 취소' });
     fireEvent.click(button);
+    const confirmButton = screen.getByRole('button', { name: '거래 취소 확정' });
+    fireEvent.click(confirmButton);
+    fireEvent.click(confirmButton);
     fireEvent.click(button);
     expect(cancellationCalls).toBe(1);
     firstFailure.resolve();
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '거래 취소 중' })).toBeNull());
 
     fireEvent.click(screen.getByRole('button', { name: 'T001 거래 취소' }));
+    fireEvent.click(screen.getByRole('button', { name: '거래 취소 확정' }));
     await waitFor(() => expect(cancellationCalls).toBe(2));
     const cancellationRequests = fetchMock.mock.calls.filter(([url]) => String(url).includes('/cancel'));
     expect(cancellationRequests[0][1]?.body).toBe(cancellationRequests[1][1]?.body);

@@ -12,7 +12,7 @@ const STATES = ['DISCOVERED', 'VALIDATED', 'IMPORTING', 'RECONCILING', 'READY', 
 let harness: PgliteDatabaseHarness;
 
 beforeEach(async () => {
-  harness = await createPgliteDatabaseHarness();
+  harness = await createPgliteDatabaseHarness({ migrationSet: 'base' });
   const directory = resolve(process.cwd(), 'src/server/db/migrations');
   for (const name of (await readdir(directory)).filter((name) => /^\d{4}_.*\.sql$/.test(name) && name.slice(0, 4) > '0008').sort()) {
     await harness.database.exec(await readFile(resolve(directory, name), 'utf8'));

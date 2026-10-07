@@ -6,6 +6,7 @@ import {
 } from '@/server/settings';
 import { createConfiguredSheetsStore, verifySpreadsheetAccess } from '@/server/googleSheets';
 import { createConfiguredSettingsReader } from '@/server/repositories/configuredSettings';
+import { getOptionalTrustedTenantRequestContext } from '@/server/trustedTenantRequestContext';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +26,15 @@ async function parseRequestJson(request: Request): Promise<{ ok: true; body: Rec
 
 export async function GET(request: Request) {
   try {
+    const context = getOptionalTrustedTenantRequestContext();
+    if (context) {
+      if (context.tenant.lifecycle !== 'ACTIVE') throw new Error('Inactive class.');
+      const [{ createDatabaseSettingsCommands }, { withTenantSnapshot }] = await Promise.all([
+        import('@/server/repositories/database/settingsCommands'), import('@/server/db/transaction'),
+      ]);
+      const settings = await createDatabaseSettingsCommands({ tenantId: context.tenant.id, runTenantTransaction: withTenantSnapshot }).get();
+      return Response.json(settings, { headers: { 'cache-control': 'no-store' } });
+    }
     void request;
     const settingsReader = await createConfiguredSettingsReader(request);
     const settings = await settingsReader.getAppSettings();
@@ -51,6 +61,41 @@ export async function POST(request: Request) {
   if (frozen) return frozen;
 
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
+
+  const context = getOptionalTrustedTenantRequestContext();
+  if (context) {
+    const [{ createDatabaseSettingsCommands, SettingsInputError, SettingsConflictError }, { withTenantTransaction }, { hasSameOrigin }] = await Promise.all([
+      import('@/server/repositories/database/settingsCommands'), import('@/server/db/transaction'), import('@/server/classMutationRequest'),
+    ]);
+    const reply = (body: unknown, status: number) => Response.json(body, { status, headers: { 'cache-control': 'no-store' } });
+    const url = new URL(request.url);
+    if (url.search || !hasSameOrigin(request, url) || request.headers.get('sec-fetch-site') !== 'same-origin'
+      || request.headers.get('content-type')?.split(';')[0].trim() !== 'application/json' || request.headers.has('content-encoding')) {
+      return reply({ error: '같은 사이트의 설정 화면에서 저장해 주세요.' }, 403);
+    }
+    const reader = request.body?.getReader();
+    if (!reader) return reply({ error: INVALID_JSON_ERROR }, 400);
+    let body: unknown;
+    try {
+      const parts: Uint8Array[] = []; let size = 0;
+      for (;;) {
+        const { done, value } = await reader.read(); if (done) break;
+        size += value.byteLength;
+        if (size > 8192) { await reader.cancel(); return reply({ error: '입력이 너무 큽니다.' }, 413); }
+        parts.push(value);
+      }
+      body = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(parts)));
+    } catch { return reply({ error: INVALID_JSON_ERROR }, 400); }
+    finally { reader.releaseLock(); }
+    try {
+      const saved = await createDatabaseSettingsCommands({ tenantId: context.tenant.id, runTenantTransaction: withTenantTransaction }).save(body);
+      return reply(saved, 200);
+    } catch (error) {
+      if (error instanceof SettingsInputError) return reply({ error: error.message }, 400);
+      if (error instanceof SettingsConflictError) return reply({ error: error.message, code: 'SETTINGS_CONFLICT' }, 409);
+      return reply({ error: '설정 저장 결과를 확인하지 못했습니다. 같은 요청으로 다시 확인해 주세요.', retryable: true }, 503);
+    }
+  }
 
   const parsed = await parseRequestJson(request);
   if (!parsed.ok) return Response.json({ error: INVALID_JSON_ERROR }, { status: 400 });

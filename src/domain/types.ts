@@ -210,7 +210,10 @@ export type TaskAssignmentStudentStatus = {
   studentId: string;
   name: string;
   assigned: boolean;
+  /** Assigned and completable (완료 가능). Absent from older responses: then assigned means 완료 가능. */
+  ready?: boolean;
   completed: boolean;
+  stage?: import('./taskStage').TaskStage;
   assignmentOrigin?: TaskCycleStateStudentOrigin;
   /** Physical assignment ledger source when an event backs this projected state. */
   assignmentSource?: TaskAssignmentSource;

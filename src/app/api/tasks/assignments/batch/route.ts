@@ -1,6 +1,7 @@
 import { legacyWriteFreezeResponse } from '@/server/legacyDeploymentMode';
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { createConfiguredSheetsStore } from '@/server/googleSheets';
+import { legacyTaskWriterRefusal } from '@/server/legacyTaskWriters';
 import {
   type TaskBatchAssignmentOperation,
   type TaskBatchAssignmentTarget,
@@ -22,6 +23,8 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
   const frozen = legacyWriteFreezeResponse();
   if (frozen) return frozen;
+  const unsupported = legacyTaskWriterRefusal();
+  if (unsupported) return unsupported;
 
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 

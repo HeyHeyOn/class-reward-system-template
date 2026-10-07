@@ -1,9 +1,8 @@
 import 'server-only';
 
-import { withTenantTransaction } from '@/server/db/transaction';
 import { createConfiguredSheetsStore } from '@/server/googleSheets';
+import { LegacyTaskWriterUnsupportedError } from '@/server/legacyTaskWriters';
 import type { CentralTenantContextInput } from '@/server/repositories/context';
-import { createDatabaseTaskResetCommands } from '@/server/repositories/database/taskResetCommands';
 import type { RepositoryCreators } from '@/server/repositories/factory';
 import {
   getCompatibilityCentralTenantContext,
@@ -28,8 +27,6 @@ export type TaskResetCommand = Readonly<{
 }>;
 
 type TaskResetCommandCreatorDependencies = Readonly<{
-  createDatabaseTaskResetCommands: typeof createDatabaseTaskResetCommands;
-  withTenantTransaction: typeof withTenantTransaction;
   createConfiguredSheetsStore: typeof createConfiguredSheetsStore;
   resetTaskCompletionsBatch: typeof resetTaskCompletionsBatch;
 }>;
@@ -42,17 +39,17 @@ export type ConfiguredTaskResetOptions = Readonly<{
   creators: RepositoryCreators<TaskResetCommand, TaskResetCommand>;
 }>;
 
+/** PostgreSQL classes reset stages in the task ledger, never through this per-cycle writer. */
+const unsupported: TaskResetCommand = {
+  async resetBatch() { throw new LegacyTaskWriterUnsupportedError(); },
+};
+
 export function createTaskResetCommandRepositoryCreators(
   dependencies: TaskResetCommandCreatorDependencies,
   request?: Request,
 ): RepositoryCreators<TaskResetCommand, TaskResetCommand> {
   return {
-    createPostgresql(authority) {
-      return dependencies.createDatabaseTaskResetCommands({
-        tenantId: authority.tenantId,
-        runTenantTransaction: dependencies.withTenantTransaction,
-      });
-    },
+    createPostgresql: () => unsupported,
     createSheets() {
       let storePromise: ReturnType<typeof createConfiguredSheetsStore> | undefined;
       const configuredStore = () => {
@@ -72,8 +69,6 @@ export function createTaskResetCommandRepositoryCreators(
 
 function productionCreators(request?: Request): RepositoryCreators<TaskResetCommand, TaskResetCommand> {
   return createTaskResetCommandRepositoryCreators({
-    createDatabaseTaskResetCommands,
-    withTenantTransaction,
     createConfiguredSheetsStore,
     resetTaskCompletionsBatch,
   }, request);

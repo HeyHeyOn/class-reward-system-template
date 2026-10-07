@@ -16,9 +16,13 @@ export type StudentQrEnv = Readonly<{
   STUDENT_QR_SIGNING_KEYS?: string;
 }>;
 
+/** Which configuration check failed; carries no key material, so it is safe to log. */
+export type StudentQrConfigurationProblem =
+  | 'ACTIVE_KEY_ID' | 'KEYS_MISSING' | 'KEYS_JSON' | 'KEYS_COUNT' | 'KEY_ID' | 'KEY_FORMAT' | 'ACTIVE_KEY_MISSING';
+
 export class StudentQrConfigurationError extends Error {
-  constructor() {
-    super('Student QR signing configuration is invalid.');
+  constructor(readonly problem?: StudentQrConfigurationProblem) {
+    super(problem ? `Student QR signing configuration is invalid (${problem}).` : 'Student QR signing configuration is invalid.');
     this.name = 'StudentQrConfigurationError';
   }
 }
@@ -121,32 +125,49 @@ function verifySignedStudentQr(value: string, trustedTenantId: string, env: Stud
   return validateStudentId(parsed[1], true);
 }
 
-function parseConfiguration(env: StudentQrEnv): SigningConfiguration {
-  const activeKeyId = env.STUDENT_QR_ACTIVE_KEY_ID;
-  if (typeof activeKeyId !== 'string' || !KEY_ID.test(activeKeyId)
-    || typeof env.STUDENT_QR_SIGNING_KEYS !== 'string'
-    || env.STUDENT_QR_SIGNING_KEYS.length > 2048) {
-    throw new StudentQrConfigurationError();
+/** Environment values are often pasted with surrounding whitespace or quotes; neither is part of the value. */
+function unwrapEnvValue(value: string | undefined): string | undefined {
+  if (typeof value !== 'string') return value;
+  let unwrapped = value.trim();
+  while (unwrapped.length >= 2 && ((unwrapped.startsWith("'") && unwrapped.endsWith("'"))
+    || (unwrapped.startsWith('"') && unwrapped.endsWith('"') && !unwrapped.startsWith('"{')))) {
+    unwrapped = unwrapped.slice(1, -1).trim();
   }
+  return unwrapped;
+}
+
+/** A 32-byte key, written as base64url (canonical) or as standard/padded base64. */
+function decodeSigningKey(encoded: string): Buffer | null {
+  const trimmed = encoded.trim();
+  if (!/^[A-Za-z0-9+/_-]{43}={0,1}$/.test(trimmed)) return null;
+  const key = Buffer.from(trimmed.replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_'), 'base64url');
+  return key.length === 32 ? key : null;
+}
+
+function parseConfiguration(env: StudentQrEnv): SigningConfiguration {
+  const activeKeyId = unwrapEnvValue(env.STUDENT_QR_ACTIVE_KEY_ID);
+  const rawKeys = unwrapEnvValue(env.STUDENT_QR_SIGNING_KEYS);
+  if (typeof activeKeyId !== 'string' || !KEY_ID.test(activeKeyId)) throw new StudentQrConfigurationError('ACTIVE_KEY_ID');
+  if (typeof rawKeys !== 'string' || !rawKeys || rawKeys.length > 2048) throw new StudentQrConfigurationError('KEYS_MISSING');
   let parsed: unknown;
   try {
-    parsed = JSON.parse(env.STUDENT_QR_SIGNING_KEYS);
+    parsed = JSON.parse(rawKeys);
+    // A JSON object stored as a JSON string (double-encoded) is the same configuration.
+    if (typeof parsed === 'string') parsed = JSON.parse(parsed);
   } catch {
-    throw new StudentQrConfigurationError();
+    throw new StudentQrConfigurationError('KEYS_JSON');
   }
-  if (!isPlainRecord(parsed)) throw new StudentQrConfigurationError();
+  if (!isPlainRecord(parsed)) throw new StudentQrConfigurationError('KEYS_JSON');
   const entries = Object.entries(parsed);
-  if (entries.length < 1 || entries.length > MAX_KEYS) throw new StudentQrConfigurationError();
+  if (entries.length < 1 || entries.length > MAX_KEYS) throw new StudentQrConfigurationError('KEYS_COUNT');
   const keys = new Map<string, Buffer>();
   for (const [keyId, encoded] of entries) {
-    if (!KEY_ID.test(keyId) || typeof encoded !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(encoded)) {
-      throw new StudentQrConfigurationError();
-    }
-    const key = Buffer.from(encoded, 'base64url');
-    if (key.length !== 32 || key.toString('base64url') !== encoded) throw new StudentQrConfigurationError();
+    if (!KEY_ID.test(keyId)) throw new StudentQrConfigurationError('KEY_ID');
+    const key = typeof encoded === 'string' ? decodeSigningKey(encoded) : null;
+    if (!key) throw new StudentQrConfigurationError('KEY_FORMAT');
     keys.set(keyId, key);
   }
-  if (!keys.has(activeKeyId)) throw new StudentQrConfigurationError();
+  if (!keys.has(activeKeyId)) throw new StudentQrConfigurationError('ACTIVE_KEY_MISSING');
   return { activeKeyId, keys };
 }
 

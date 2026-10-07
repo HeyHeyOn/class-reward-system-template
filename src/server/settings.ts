@@ -28,6 +28,7 @@ export type LegacyAppSettings = {
 
 export type DatabaseAppSettings = {
   currencyUnit: string;
+  qrManualInputEnabled?: boolean;
   className: string;
   googleSheetsUrl: string;
   googleSheetsId: string;

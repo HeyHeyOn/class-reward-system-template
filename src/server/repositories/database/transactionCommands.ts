@@ -5,7 +5,10 @@ import { sql } from 'drizzle-orm';
 import { parseCheckoutLineSnapshot } from '@/lib/checkoutSnapshotClient';
 import { createTaskRewardPayloadHash } from './taskCompletionCommands';
 import type { TenantTransaction } from '@/server/db/transaction';
+import { ensureTaskLedger } from './taskLedger/migration';
+import { clockNow, readLedgerEvents, readLedgerFrom, readLedgerTasks, stageOf } from './taskLedger/store';
 import { appendOperationAudit, assertOperationAudit } from './operationAudit';
+import { readCancellationItems, validateLegacyCancellationSource } from './legacyCancellationSource';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -42,7 +45,7 @@ export type CancellationSuccess = Readonly<{
   reversalTransactionId: string;
   studentId: string;
   studentName: string;
-  originalKind: 'CHECKOUT' | 'TASK_REWARD' | 'ADMIN_ADJUSTMENT';
+  originalKind: 'CHECKOUT' | 'TASK_REWARD' | 'ADMIN_ADJUSTMENT' | 'LEGACY';
   reversalAmount: number;
   balanceBefore: number;
   balanceAfter: number;
@@ -61,7 +64,6 @@ export type TransactionCancellationErrorCode =
   | 'NOT_REVERSIBLE'
   | 'ALREADY_REVERSED'
   | 'MANUAL_RECONCILIATION_REQUIRED'
-  | 'NEGATIVE_BALANCE'
   | 'OPERATION_CONFLICT'
   | 'OPERATION_PENDING'
   | 'OPERATION_FAILED';
@@ -81,7 +83,7 @@ type OperationRow = {
   finished_at: Date | string | null;
 };
 
-type OriginalTransactionRow = {
+export type OriginalTransactionRow = {
   transaction_id: string;
   occurred_at: Date | string;
   student_id: string;
@@ -99,7 +101,7 @@ type OriginalTransactionRow = {
   schema_version: number;
 };
 
-type TransactionItemRow = {
+export type TransactionItemRow = {
   line_number: number;
   product_id_snapshot: string;
   current_product_id: string | null;
@@ -133,7 +135,7 @@ type ProductRow = {
   updated_at: Date | string;
 };
 
-type TaskCompletionRow = {
+export type TaskCompletionRow = {
   completion_id: string;
   completed_at: Date | string;
   task_instance_id: string | null;
@@ -162,6 +164,7 @@ type TaskCompletionRow = {
   evidence_post_id: string | null;
   evidence_created_at: Date | string | null;
   evidence_author_full_name: string | null;
+  legacy_origin_id?: string | null;
 };
 
 type TaskAssignmentRow = {
@@ -193,6 +196,12 @@ export function createDatabaseTransactionCommands(
   return {
     async cancel(rawInput: CancelTransactionInput): Promise<CancellationSuccess> {
       const input = canonicalizeInput(rawInput);
+      // A task reward cancellation judges the student's stage on the class's task ledger.
+      const kind = await dependencies.runTenantTransaction(dependencies.tenantId, async (tx) => (await tx.execute(sql`
+        SELECT kind FROM transactions WHERE tenant_id=${dependencies.tenantId} AND transaction_id=${input.transactionId}`)).rows[0]);
+      if ((kind as { kind?: unknown } | undefined)?.kind === 'TASK_REWARD') {
+        await ensureTaskLedger({ tenantId: dependencies.tenantId, runTenantTransaction: dependencies.runTenantTransaction });
+      }
       const now = dependencies.now?.() ?? new Date();
       if (!Number.isFinite(now.getTime())) throw new Error('A valid cancellation timestamp is required.');
 
@@ -216,6 +225,11 @@ export function createDatabaseTransactionCommands(
           tx, dependencies.tenantId, input.transactionId, true,
         );
         if (priorReversal) throw new TransactionCancellationError('ALREADY_REVERSED');
+        if (now.getTime() < new Date(state.original.occurred_at).getTime()) {
+          throw new TransactionCancellationError('MANUAL_RECONCILIATION_REQUIRED');
+        }
+        const resetTaskCompletion = state.originalCompletion !== null
+          && await shouldResetCompletion(tx, dependencies.tenantId, state.originalCompletion, 'now');
 
         const inserted = await tx.execute(sql`
           INSERT INTO operations
@@ -248,7 +262,8 @@ export function createDatabaseTransactionCommands(
         const originalDelta = safeInteger(state.original.balance_delta, 'original balance delta');
         const reversalDelta = checkedNegation(originalDelta, 'original balance delta');
         const balanceAfter = checkedSum(currentBalance, reversalDelta, 'cancellation balance');
-        if (balanceAfter < 0) throw new TransactionCancellationError('NEGATIVE_BALANCE');
+        // Match Sheets: recovering a prior credit may leave the current balance
+        // negative. Keep the exact inverse; integer-range checks still apply.
 
         const productIds = state.restoredItems.map((item) => item.productId);
         const products = productIds.length > 0
@@ -308,10 +323,10 @@ export function createDatabaseTransactionCommands(
              ${state.payloadHash}, 1)
         `);
         await dependencies.afterReversalTransaction?.();
-        const cancellationCompletionId = state.originalCompletion
+        const cancellationCompletionId = resetTaskCompletion
           ? cancellationTaskCompletionId(input.operationId)
           : null;
-        if (state.originalCompletion) {
+        if (state.originalCompletion && resetTaskCompletion) {
           const completion = state.originalCompletion;
           await tx.execute(sql`
             INSERT INTO task_completions
@@ -398,32 +413,39 @@ async function readAndValidateOriginal(
   `);
   const original = originalResult.rows[0] as OriginalTransactionRow | undefined;
   if (!original) throw new TransactionCancellationError('NOT_FOUND');
-  if (!REVERSIBLE_KINDS.has(original.kind) || original.reverses_transaction_id !== null) {
+  if ((!REVERSIBLE_KINDS.has(original.kind) && original.kind !== 'LEGACY') || original.reverses_transaction_id !== null) {
+    throw new TransactionCancellationError('NOT_REVERSIBLE');
+  }
+  if (original.kind === 'LEGACY' && original.legacy_status_snapshot === 'CANCELLED') {
+    throw new TransactionCancellationError('ALREADY_REVERSED');
+  }
+  if (original.kind === 'LEGACY' && original.legacy_status_snapshot === 'CANCEL_REVERSAL') {
     throw new TransactionCancellationError('NOT_REVERSIBLE');
   }
 
   validateOriginalMoney(original);
   const completionRows = await readTaskCompletionsForTransaction(tx, tenantId, transactionId, true);
-  const originalCompletion = validateOriginalCompletion(original, completionRows);
+  const items = await readCancellationItems(tx, tenantId, transactionId, true);
+  let originalCompletion: TaskCompletionRow | null;
+  let restoredItems: CancellationSuccess['restoredItems'];
+  if (original.kind === 'LEGACY') {
+    try {
+      ({ originalCompletion, restoredItems } = await validateLegacyCancellationSource(tx, tenantId, original, items, completionRows));
+    } catch {
+      throw new TransactionCancellationError('MANUAL_RECONCILIATION_REQUIRED');
+    }
+  } else {
+    originalCompletion = validateOriginalCompletion(original, completionRows);
+    restoredItems = validateItems(original, items);
+  }
   if (originalCompletion) {
+    // Serialize with task completion/reset commands before locking the account.
+    // Cancelling an old reward must not clear a newer completion after a reset.
+    const task = await tx.execute(sql`SELECT task_instance_id FROM tasks
+      WHERE tenant_id=${tenantId} AND task_instance_id=${originalCompletion.task_instance_id} FOR UPDATE`);
+    if (task.rows.length !== 1) throw new TransactionCancellationError('MANUAL_RECONCILIATION_REQUIRED');
     await readAndValidateOriginalAssignment(tx, tenantId, originalCompletion);
   }
-  const itemResult = await tx.execute(sql`
-    SELECT line_number, product_id_snapshot, current_product_id, product_name_snapshot,
-           quantity::text AS quantity, unit_price_snapshot::text AS unit_price_snapshot,
-           subtotal_snapshot::text AS subtotal_snapshot,
-           regular_unit_price::text AS regular_unit_price, regular_total::text AS regular_total,
-           total_quantity::text AS total_quantity, paid_quantity::text AS paid_quantity,
-           free_quantity::text AS free_quantity, final_total::text AS final_total,
-           total_discount::text AS total_discount, adjustments_snapshot,
-           applied_promotions_snapshot
-    FROM transaction_items
-    WHERE tenant_id=${tenantId} AND transaction_id=${transactionId}
-    ORDER BY line_number
-    FOR UPDATE
-  `);
-  const items = itemResult.rows as TransactionItemRow[];
-  const restoredItems = validateItems(original, items);
   const typedOriginal = original as CancellationState['original'];
   return {
     original: typedOriginal,
@@ -458,7 +480,7 @@ async function readTaskCompletionsForTransaction(
            status, note, cycle_id, cycle_start_at, cycle_end_at, rule_version, timezone,
            source, assignment_id, transaction_id, operation_id, operation_hash,
            schema_version, evidence_provider, evidence_board_id, evidence_post_id,
-           evidence_created_at, evidence_author_full_name
+           evidence_created_at, evidence_author_full_name, legacy_origin_id
     FROM task_completions
     WHERE tenant_id=${tenantId} AND transaction_id=${transactionId}
     ORDER BY completion_id
@@ -555,7 +577,8 @@ function validateOriginalCompletion(
       || original.legacy_status_snapshot !== 'COMPLETED'
       || canonicalTimestamp(row.completed_at) !== canonicalTimestamp(original.occurred_at)
       || row.source !== 'BANK'
-      || row.note !== 'bank-self-completion'
+      // A teacher's paid 완료 writes the same rows as a bank completion, marked by its note.
+      || (row.note !== 'bank-self-completion' && row.note !== 'teacher-completion-reward')
       || !hasValidEvidence) {
     throw new TransactionCancellationError('MANUAL_RECONCILIATION_REQUIRED');
   }
@@ -595,6 +618,38 @@ async function readAndValidateOriginalAssignment(
       || assignment.schema_version < 1) {
     throw new TransactionCancellationError('MANUAL_RECONCILIATION_REQUIRED');
   }
+}
+
+/**
+ * Cancelling a task reward also takes back its completion only while that completion is still
+ * what the student's stage stands on (no later stage change or automatic reset). Otherwise the
+ * money is returned and the student's current stage stays as it is.
+ */
+async function shouldResetCompletion(
+  tx: TenantTransaction,
+  tenantId: string,
+  original: TaskCompletionRow,
+  cancelledAt: Date | 'now',
+): Promise<boolean> {
+  if (!original.task_instance_id) return false;
+  // A live cancellation judges by the database clock that ordered the events; a replay re-checks
+  // the decision as of the stored cancellation time.
+  const asOf = cancelledAt === 'now' ? await clockNow(tx) : cancelledAt.toISOString();
+  const ledgerFrom = await readLedgerFrom(tx, tenantId);
+  if (!ledgerFrom) return false;
+  const [task] = await readLedgerTasks(tx, tenantId, { taskInstanceIds: [original.task_instance_id] });
+  if (!task) return false;
+  const events = await readLedgerEvents(tx, tenantId, ledgerFrom, {
+    taskInstanceIds: [task.taskInstanceId], studentId: original.student_id,
+  });
+  const state = stageOf(task, events, asOf);
+  if (state.stage !== 'COMPLETED' || state.byReset) return false;
+  if (state.lastEventId === original.completion_id) return true;
+  // A completion from before the ledger stands through the carry-over row that copied it.
+  const last = events.find((event) => event.id === state.lastEventId);
+  return Boolean(last && last.kind === 'COMPLETED' && last.source === 'CARRY_FORWARD' && last.id.startsWith('tl-c:')
+    && new Date(original.completed_at).getTime() <= new Date(ledgerFrom).getTime()
+    && !events.some((event) => event.kind === 'COMPLETED' && event.id !== last.id));
 }
 
 function validateItems(
@@ -789,9 +844,8 @@ function parseStoredResult(
       || checkedSum(value.balanceBefore as number, value.reversalAmount as number, 'stored cancellation result') !== value.balanceAfter
       || !storedItemsMatch(value.restoredItems, state.restoredItems)
       || value.originalCompletionId !== (state.originalCompletion?.completion_id ?? null)
-      || value.cancellationCompletionId !== (state.originalCompletion
-        ? cancellationTaskCompletionId(input.operationId)
-        : null)
+      || (value.cancellationCompletionId !== null && (!state.originalCompletion
+        || value.cancellationCompletionId !== cancellationTaskCompletionId(input.operationId)))
       || typeof value.cancelledAt !== 'string'
       || !Number.isFinite(new Date(value.cancelledAt).getTime())) {
     throw new Error('Stored cancellation result is invalid.');
@@ -826,7 +880,13 @@ async function validateStoredLedgers(
   const cancellationCompletions = await readTaskCompletionsForTransaction(
     tx, tenantId, result.reversalTransactionId, true,
   );
-  validateCancellationCompletion(state, result, cancellationCompletions);
+  if (state.originalCompletion && result.cancellationCompletionId === null) {
+    if (cancellationCompletions.length !== 0 || await shouldResetCompletion(
+      tx, tenantId, state.originalCompletion, new Date(result.cancelledAt),
+    )) throw new Error('Stored cancellation reset-boundary integrity failure.');
+  } else {
+    validateCancellationCompletion(state, result, cancellationCompletions);
+  }
   const reversalItems = await tx.execute(sql`
     SELECT line_number
     FROM transaction_items
@@ -1092,7 +1152,6 @@ function messageFor(code: TransactionCancellationErrorCode): string {
     case 'NOT_REVERSIBLE': return '취소할 수 없는 거래입니다.';
     case 'ALREADY_REVERSED': return '이미 취소된 거래입니다.';
     case 'MANUAL_RECONCILIATION_REQUIRED': return '거래 기록을 자동으로 취소할 수 없어 수동 조정이 필요합니다.';
-    case 'NEGATIVE_BALANCE': return '거래 취소 후 잔액은 0보다 작아질 수 없습니다.';
     case 'OPERATION_CONFLICT': return '동일한 작업 ID가 다른 취소 요청에 사용되었습니다.';
     case 'OPERATION_PENDING': return '동일한 취소 작업이 이미 처리 중입니다.';
     case 'OPERATION_FAILED': return '이 작업 ID의 취소는 이미 실패로 종료되었습니다.';

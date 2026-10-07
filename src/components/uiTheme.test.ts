@@ -20,7 +20,7 @@ describe('semantic kiosk theme palettes', () => {
       THEME_PALETTES.black.surface,
       THEME_PALETTES.black.surfaceRaised,
     ]).size).toBe(3);
-    expect(THEME_PALETTES.navy).toMatchObject({ shell: '#111A2E', surface: '#1B2945', surfaceRaised: '#293B61' });
+    expect(THEME_PALETTES.navy).toMatchObject({ shell: '#141C2E', surface: '#1C263B', surfaceRaised: '#253149' });
   });
 
   it('keeps panel and black raised-card boundaries at non-text contrast', () => {
@@ -65,9 +65,26 @@ describe('semantic kiosk theme palettes', () => {
     }
   });
 
+  it("keeps '파랑' (white) a plain white page with blue accents and the other light themes soft pastels", () => {
+    const chroma = (hex: string) => {
+      const channels = [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16));
+      return Math.max(...channels) - Math.min(...channels);
+    };
+    const white = THEME_PALETTES.white;
+    for (const key of ['shell', 'surface', 'surfaceRaised', 'text', 'mutedText', 'border', 'divider'] as const) {
+      expect(chroma(white[key]), `white ${key} has no hue`).toBeLessThanOrEqual(12);
+    }
+    expect(white).toMatchObject({ accentSolid: '#2B6DE8', accentOnSolid: '#FFFFFF', accentText: '#1D58C6', focusRing: '#2B6DE8' });
+    for (const name of ['blue', 'pink', 'yellow', 'green', 'purple'] as const) {
+      const palette = THEME_PALETTES[name];
+      expect(contrastRatio(palette.accentSolid, '#FFFFFF'), `${name} accent is a light pastel`).toBeLessThan(1.6);
+      expect(contrastRatio(palette.accentOnSolid, palette.accentSolid), `${name} accent text`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
   it('projects palette values into shared semantic CSS variables and classes', () => {
     const navy = themeStyles('navy');
-    expect(navy.variables['--theme-shell']).toBe('#111A2E');
+    expect(navy.variables['--theme-shell']).toBe('#141C2E');
     expect(navy.shell).toContain('bg-[var(--theme-shell)]');
     expect(navy.surfaceRaised).toContain('bg-[var(--theme-surface-raised)]');
     expect(navy.contentCard).toContain('bg-[var(--theme-content-card)]');

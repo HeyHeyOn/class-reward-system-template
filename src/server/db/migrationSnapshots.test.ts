@@ -6,7 +6,7 @@ vi.mock('server-only', () => ({}));
 let h: PgliteDatabaseHarness;
 afterEach(async () => { await h?.close(); });
 it('upgrades existing evidence unchanged and rejects every snapshot mutation while retaining append/idempotency', async () => {
-  h = await createPgliteDatabaseHarness();
+  h = await createPgliteDatabaseHarness({ migrationSet: 'base' });
   const dir = resolve('src/server/db/migrations');
   for (const n of (await readdir(dir)).filter(n => /^\d{4}_.*\.sql$/.test(n) && n.slice(0, 4) > '0008' && n.slice(0, 4) < '0016').sort()) await h.database.exec(await readFile(resolve(dir, n), 'utf8'));
   await h.database.query("INSERT INTO migration_jobs(tenant_id,job_id,status,source_fingerprint) VALUES($1,'job','READY',repeat('a',64))", [h.tenantOneId]);

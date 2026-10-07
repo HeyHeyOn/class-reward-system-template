@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
     clientFingerprint: 'a'.repeat(64),
     issuedAt: Date.now(),
   })),
-  consumeGoogleState: vi.fn(() => true),
+  consumeGoogleState: vi.fn<() => import('@/server/googleOAuth').GoogleIdentityState | null>(() => ({ state: 'state-123' })),
   exchangeGrant: vi.fn(async () => ({
     purpose: 'generator' as const,
     subject: 'google-subject-123',
@@ -48,7 +48,8 @@ describe('GET /api/google/callback', () => {
     mocks.hasGeneratorState.mockReset();
     mocks.hasGeneratorState.mockReturnValue(false);
     mocks.consumeGeneratorState.mockClear();
-    mocks.consumeGoogleState.mockClear();
+    mocks.consumeGoogleState.mockReset();
+    mocks.consumeGoogleState.mockReturnValue({ state: 'state-123' });
     mocks.exchangeGrant.mockClear();
     mocks.exchangeSession.mockClear();
     mocks.getSession.mockClear();
@@ -131,4 +132,38 @@ describe('GET /api/google/callback', () => {
     expect(decodeURIComponent(response.headers.get('location') ?? ''))
       .toBe('https://teacher-app.vercel.app/classes?error=identity exchange failed');
   });
+
+  it('returns a PostgreSQL login to its state-bound class, ignoring callback query targets', async () => {
+    vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
+    mocks.consumeGoogleState.mockReturnValue({ state: 'state-123', returnTo: '/c/alpha-class/admin' });
+    const response = await GET(new Request('https://teacher-app.vercel.app/api/google/callback?code=ok&state=state-123&returnTo=https://evil.example'));
+    expect(response.headers.get('location')).toBe('https://teacher-app.vercel.app/c/alpha-class/admin');
+    expect(mocks.setSession).toHaveBeenCalledOnce();
+  });
+
+  it('sends a legacy plain-state PostgreSQL login to class selection', async () => {
+    vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
+    const response = await GET(new Request('https://teacher-app.vercel.app/api/google/callback?code=ok&state=state-123&returnTo=/c/untrusted/admin'));
+    expect(response.headers.get('location')).toBe('https://teacher-app.vercel.app/classes');
+  });
+
+  it.each(['exchange', 'denied'])('preserves the original class on %s failure', async (failure) => {
+    vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
+    mocks.consumeGoogleState.mockReturnValue({ state: 'state-123', returnTo: '/c/alpha-class/admin' });
+    if (failure === 'exchange') mocks.exchangeSession.mockRejectedValueOnce(new Error('exchange failed'));
+    const query = failure === 'exchange' ? 'code=bad' : 'error=access_denied';
+    const response = await GET(new Request(`https://teacher-app.vercel.app/api/google/callback?${query}&state=state-123`));
+    expect(new URL(response.headers.get('location')!).pathname).toBe('/c/alpha-class/admin/login');
+    expect(mocks.setSession).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid state without granting a session or trusting callback returnTo', async () => {
+    vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
+    mocks.consumeGoogleState.mockReturnValue(null);
+    const response = await GET(new Request('https://teacher-app.vercel.app/api/google/callback?code=ok&state=wrong&returnTo=/c/untrusted/admin'));
+    expect(new URL(response.headers.get('location')!).pathname).toBe('/classes');
+    expect(mocks.exchangeSession).not.toHaveBeenCalled();
+    expect(mocks.setSession).not.toHaveBeenCalled();
+  });
+
 });

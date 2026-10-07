@@ -22,6 +22,8 @@ export type DatabaseTransactionQueryDependencies = Readonly<{
   runTenantTransaction: RunTenantTransaction;
 }>;
 
+export type StudentTransactionWindow = Readonly<{ studentId: string; limit: number }>;
+
 type TransactionRow = TransactionItemRow & {
   transaction_id: unknown;
   event_sequence: unknown;
@@ -56,9 +58,13 @@ export function createDatabaseTransactionQueries(
   dependencies: DatabaseTransactionQueryDependencies,
 ) {
   return {
-    async getTransactions(): Promise<Transaction[]> {
+    async getTransactions(window?: StudentTransactionWindow): Promise<Transaction[]> {
+      if (window && (!window.studentId || window.studentId.trim() !== window.studentId
+        || !Number.isSafeInteger(window.limit) || window.limit < 1 || window.limit > 100)) {
+        throw new Error('Invalid student transaction window.');
+      }
       return dependencies.runTenantTransaction(dependencies.tenantId, async (transaction) => {
-        const rows = await readTransactionRows(transaction, dependencies.tenantId);
+        const rows = await readTransactionRows(transaction, dependencies.tenantId, undefined, window);
         return projectTransactions(rows);
       });
     },
@@ -106,12 +112,21 @@ async function readTransactionRows(
   transaction: TenantTransaction,
   tenantId: string,
   transactionIds?: readonly string[],
+  window?: StudentTransactionWindow,
 ): Promise<TransactionRow[]> {
   const idPredicate = transactionIds === undefined
     ? sql``
     : transactionIds.length === 1
       ? sql`AND t.transaction_id = ${transactionIds[0]}`
       : sql`AND (t.transaction_id = ${transactionIds[0]} OR t.transaction_id = ${transactionIds[1]})`;
+  // Bound parent transactions before joining items so multi-line purchases stay
+  // complete. Reversal/original lookups below still see the full tenant ledger.
+  const source = window ? sql`(
+    SELECT * FROM transactions
+    WHERE tenant_id = ${tenantId} AND student_id = ${window.studentId}
+    ORDER BY occurred_at DESC, event_sequence ASC
+    LIMIT ${window.limit}
+  )` : sql`transactions`;
   const result = await transaction.execute(sql`
     SELECT t.transaction_id, t.event_sequence::text AS event_sequence, t.occurred_at,
            t.student_id, t.student_name_snapshot, t.kind,
@@ -165,7 +180,7 @@ async function readTransactionRows(
            item.final_total::text AS final_total,
            item.total_discount::text AS total_discount,
            item.adjustments_snapshot, item.applied_promotions_snapshot
-    FROM transactions t
+    FROM ${source} t
     LEFT JOIN transactions original
       ON original.tenant_id = ${tenantId}
      AND original.transaction_id = t.reverses_transaction_id
@@ -292,7 +307,11 @@ function projectTransaction(rows: TransactionRow[]): Transaction {
     totalAmount,
     balanceBefore,
     balanceAfter,
-    status: reversalCount === 1 ? 'CANCELLED' : statusSnapshot || 'UNKNOWN',
+    // Modern reward commands store COMPLETED as the ledger status. Expose the
+    // public reward category so cancellation explains the completion reset too.
+    status: reversalCount === 1 ? 'CANCELLED'
+      : kind === 'TASK_REWARD' && statusSnapshot === 'COMPLETED' ? 'TASK_REWARD'
+      : statusSnapshot || 'UNKNOWN',
     operator: requiredSnapshotString(first.operator_snapshot, 'Transaction operator'),
     ...(cancelledAt ? { cancelledAt } : {}),
   };

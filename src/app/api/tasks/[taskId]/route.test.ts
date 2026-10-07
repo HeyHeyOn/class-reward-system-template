@@ -6,6 +6,7 @@ import { getTaskCycleProjection } from '@/server/repositories/sheets/taskHistory
 import { createConfiguredTaskReader } from '@/server/repositories/configuredTasks';
 import { DELETE, GET, PATCH } from './route';
 
+vi.mock('server-only', () => ({}));
 vi.mock('@/server/apiAuth', () => ({ isAuthorizedAdminRequest: vi.fn(() => true), unauthorizedAdminResponse: () => Response.json({ error: 'unauthorized' }, { status: 401 }) }));
 vi.mock('@/server/googleSheets', () => ({ createConfiguredSheetsReader: vi.fn(), createConfiguredSheetsStore: vi.fn() }));
 vi.mock('@/server/sheetsRepository', () => ({

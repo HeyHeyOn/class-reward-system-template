@@ -5,13 +5,14 @@ import Link from 'next/link';
 import { parseClassRewardArgs, renderCliResult } from '@/generator/cli.ts';
 import { useQrObjectUrl } from '@/lib/qrCodeClient';
 
+// 'white' is the white page with blue accents (파랑); 'blue' is the pastel blue (하늘).
 const THEMES = [
-  { value: 'blue', label: '파랑' },
+  { value: 'white', label: '파랑' },
+  { value: 'blue', label: '하늘' },
   { value: 'pink', label: '분홍' },
   { value: 'yellow', label: '노랑' },
   { value: 'green', label: '초록' },
   { value: 'purple', label: '보라' },
-  { value: 'white', label: '흰색' },
   { value: 'black', label: '검은색' },
   { value: 'navy', label: '남색' },
 ];

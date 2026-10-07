@@ -1,16 +1,40 @@
-import { createConfiguredBankReader } from '@/server/repositories/configuredBank';
+import { createConfiguredBankReader, type BankReader } from '@/server/repositories/configuredBank';
 import { resolveStudentQrForCurrentTenant, StudentQrValidationError } from '@/server/studentQr';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const qrValue = String(searchParams.get('studentId') ?? '').trim();
+  return readBalance(qrValue, () => createConfiguredBankReader(request));
+}
+
+export async function POST(request: Request) {
+  let qrValue: string;
   try {
-    const { searchParams } = new URL(request.url);
-    const qrValue = String(searchParams.get('studentId') ?? '').trim();
+    if (new URL(request.url).search !== ''
+      || request.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase() !== 'application/json') {
+      return Response.json({ error: '학생 QR을 인식해 주세요.' }, { status: 400 });
+    }
+    const body: unknown = await request.json();
+    if (!body || typeof body !== 'object' || Array.isArray(body)
+      || Object.keys(body).length !== 1 || !('studentQr' in body)
+      || typeof body.studentQr !== 'string' || Buffer.byteLength(body.studentQr, 'utf8') > 512) {
+      return Response.json({ error: '학생 QR을 인식해 주세요.' }, { status: 400 });
+    }
+    qrValue = body.studentQr.trim();
+  } catch {
+    return Response.json({ error: '학생 QR을 인식해 주세요.' }, { status: 400 });
+  }
+  return readBalance(qrValue, () => createConfiguredBankReader(request));
+}
+
+async function readBalance(qrValue: string, createReader: () => Promise<BankReader>) {
+  try {
     if (!qrValue) return Response.json({ error: '학생 QR을 인식해 주세요.' }, { status: 400 });
     const { studentId } = resolveStudentQrForCurrentTenant(qrValue);
 
-    const reader = await createConfiguredBankReader(request);
+    const reader = await createReader();
     const { student, transactions: allTransactions } = await reader.getBalance(studentId);
     if (!student || student.status !== 'ACTIVE') return Response.json({ error: '학생 정보를 찾을 수 없습니다.' }, { status: 404 });
 

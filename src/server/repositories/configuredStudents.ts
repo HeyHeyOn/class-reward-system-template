@@ -1,6 +1,9 @@
 import 'server-only';
 
 import type { Student } from '@/domain/types';
+import type { StudentAdminSnapshot } from '@/lib/studentAdminSnapshot';
+import { getOptionalTrustedTenantRequestContext } from '@/server/trustedTenantRequestContext';
+import { parseStorageSelection } from '@/server/repositories/context';
 import { createConfiguredSheetsReader } from '@/server/googleSheets';
 import { withTenantSnapshot } from '@/server/db/transaction';
 import type { CentralTenantContextInput } from '@/server/repositories/context';
@@ -17,6 +20,21 @@ export type StudentReader = Readonly<{
   getStudents: () => Promise<Student[]>;
   getStudentById: (studentId: string) => Promise<Student | null>;
 }>;
+
+export async function readConfiguredStudentAdminSnapshot(): Promise<StudentAdminSnapshot> {
+  const context = getOptionalTrustedTenantRequestContext();
+  const authority = parseStorageSelection(
+    { CLASS_STORE_STORAGE: context ? 'postgresql' : (process.env.CLASS_STORE_STORAGE ?? 'sheets') },
+    context ? { tenantId: context.tenant.id, tenantStatus: context.tenant.lifecycle } : undefined,
+  );
+  if (authority.storage === 'postgresql') {
+    const students = await createDatabaseStudentQueries({
+      tenantId: authority.tenantId, runTenantTransaction: withTenantSnapshot,
+    }).getAdminStudents();
+    return { storage: 'postgresql', students };
+  }
+  return { storage: 'sheets', students: await getStudents(await createConfiguredSheetsReader()) };
+}
 
 type StudentQueryFactory = (dependencies: {
   tenantId: string;

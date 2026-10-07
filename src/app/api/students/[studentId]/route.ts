@@ -2,7 +2,8 @@ import { legacyWriteFreezeResponse } from '@/server/legacyDeploymentMode';
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { createConfiguredSheetsStore } from '@/server/googleSheets';
 import { createConfiguredStudentReader } from '@/server/repositories/configuredStudents';
-import { deleteStudent, updateStudentDetails } from '@/server/sheetsRepository';
+import { updateStudentDetails } from '@/server/sheetsRepository';
+import { createConfiguredStudentDeletion, readStudentDeletionBody, studentDeletionFailure } from '@/server/repositories/configuredStudentDeletion';
 import { resolveStudentQrForCurrentTenant, StudentQrValidationError } from '@/server/studentQr';
 
 export const dynamic = 'force-dynamic';
@@ -67,13 +68,10 @@ export async function DELETE(request: Request, context: RouteContext) {
 
   try {
     const { studentId } = await context.params;
-    const store = await createConfiguredSheetsStore();
-    const result = await deleteStudent(store, decodeURIComponent(studentId));
-
-    return Response.json(result);
+    const body = await readStudentDeletionBody(request);
+    const command = await createConfiguredStudentDeletion(request);
+    return Response.json(await command.delete(decodeURIComponent(studentId), body));
   } catch (error) {
-    const message = error instanceof Error ? error.message : '학생을 삭제하지 못했습니다.';
-
-    return Response.json({ error: message }, { status: 400 });
+    return studentDeletionFailure(error);
   }
 }

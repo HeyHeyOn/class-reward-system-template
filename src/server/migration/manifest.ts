@@ -1,4 +1,4 @@
-import type { SheetsSnapshot } from './sheetsSnapshot';
+import type { SheetsSnapshot, OfflineBaselineEvidence } from './sheetsSnapshot';
 import type { RedisClaimSnapshot } from './redisClaimSnapshot';
 import { deepFreeze } from './sensitiveRedaction';
 import { normalizeLegacySnapshots, type Diagnostic, type NormalizedSourceRecord, type SourceMapping } from './normalize';
@@ -13,10 +13,10 @@ export type LegacyNormalizationManifest = Readonly<{
   migrationJobId: string;
   sourceFingerprint: string;
   sourceArtifacts: Readonly<{
-    sheets: Readonly<{ digest: string; spreadsheetIdDigest: string; revisionDigest: string; credentialHashes: Readonly<Record<string, string>> }>;
+    sheets: Readonly<{ digest: string; spreadsheetIdDigest: string; revisionDigest: string; credentialHashes: Readonly<Record<string, string>>; offlineBaseline?: OfflineBaselineEvidence }>;
     redis?: Readonly<{ digest: string; revisionDigest: string }>;
   }>;
-  metadata: Readonly<{ sheetSchemaVersion: 1 | 2 | 3; classTimeZone: string }>;
+  metadata: Readonly<{ sheetSchemaVersion: 1 | 2 | 3 | 4; classTimeZone: string }>;
   records: Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>;
   sourceRecords: readonly NormalizedSourceRecord[];
   mappings: readonly SourceMapping[];
@@ -50,7 +50,10 @@ export function createLegacyNormalizationManifest(input: Readonly<{
     migrationJobId: input.migrationJobId,
     sourceFingerprint,
     sourceArtifacts: {
-      sheets: { digest: input.sheets.digest, spreadsheetIdDigest: sha256(input.sheets.spreadsheetId), revisionDigest: sha256(input.sheets.sourceRevision), credentialHashes: { ...input.sheets.credentialHashes } },
+      sheets: { digest: input.sheets.digest, spreadsheetIdDigest: sha256(input.sheets.spreadsheetId),
+        revisionDigest: input.sheets.offlineBaseline ? '' : sha256(input.sheets.sourceRevision),
+        credentialHashes: { ...input.sheets.credentialHashes },
+        ...(input.sheets.offlineBaseline ? { offlineBaseline: { ...input.sheets.offlineBaseline } } : {}) },
       ...(input.redis ? { redis: { digest: input.redis.digest, revisionDigest: sha256(input.redis.sourceRevision) } } : {}),
     },
     metadata: { sheetSchemaVersion: input.sheets.schemaVersion, classTimeZone },

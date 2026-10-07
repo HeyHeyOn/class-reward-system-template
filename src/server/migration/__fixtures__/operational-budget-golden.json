@@ -1,0 +1,993 @@
+[
+  {
+    "fn": "unsupportedOperationalRecords",
+    "args": [
+      [],
+      []
+    ],
+    "outcome": {
+      "json": "[]"
+    }
+  },
+  {
+    "fn": "unsupportedOperationalRecords",
+    "args": [
+      [
+        {
+          "schemaVersion": 2,
+          "taskId": "t",
+          "taskInstanceId": "i",
+          "studentId": "s",
+          "ruleVersion": 1,
+          "timeZone": "Asia/Seoul",
+          "cycleStartsAt": "2026-01-01T00:00:00.000Z",
+          "cycleEndsAt": "2026-01-02T00:00:00.000Z",
+          "cycleId": "v1|i|r1|2026-01-01T00:00:00Z",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "assignmentId": "a",
+          "previousAssignmentId": null,
+          "source": "LEGACY_SEED",
+          "status": "ASSIGNED"
+        }
+      ],
+      []
+    ],
+    "outcome": {
+      "json": "[]"
+    }
+  },
+  {
+    "fn": "unsupportedOperationalRecords",
+    "args": [
+      [
+        {
+          "schemaVersion": 2,
+          "taskId": "t",
+          "taskInstanceId": "i",
+          "studentId": "s",
+          "ruleVersion": 1,
+          "timeZone": "Asia/Seoul",
+          "cycleStartsAt": "2026-01-01T00:00:00.000Z",
+          "cycleEndsAt": "2026-01-02T00:00:00.000Z",
+          "cycleId": "v1|i|r1|2026-01-01T00:00:00Z",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "assignmentId": "a",
+          "previousAssignmentId": null,
+          "source": "LEGACY_SEED",
+          "status": "ASSIGNED"
+        },
+        {
+          "schemaVersion": 2,
+          "taskId": "t",
+          "taskInstanceId": "i",
+          "studentId": "s",
+          "ruleVersion": 2,
+          "timeZone": "Asia/Seoul",
+          "cycleStartsAt": "2026-01-02T00:00:00.000Z",
+          "cycleEndsAt": "2026-01-03T00:00:00.000Z",
+          "cycleId": "v1|i|r2|2026-01-02T00:00:00Z",
+          "createdAt": "2026-01-02T00:00:00.000Z",
+          "assignmentId": "b",
+          "previousAssignmentId": "a",
+          "source": "CARRY_FORWARD",
+          "status": "ASSIGNED"
+        }
+      ],
+      [
+        {
+          "schemaVersion": 2,
+          "taskId": "t",
+          "taskInstanceId": "i",
+          "studentId": "s",
+          "ruleVersion": 2,
+          "timeZone": "Asia/Seoul",
+          "cycleStartsAt": "2026-01-02T00:00:00.000Z",
+          "cycleEndsAt": "2026-01-03T00:00:00.000Z",
+          "cycleId": "v1|i|r2|2026-01-02T00:00:00Z",
+          "createdAt": "2026-01-02T00:00:00.000Z",
+          "assignmentId": "b",
+          "previousAssignmentId": "a",
+          "source": "CARRY_FORWARD",
+          "status": "SUCCESS",
+          "timestamp": "2026-01-02T00:00:00.000Z",
+          "reward": 0,
+          "balanceBefore": 10,
+          "balanceAfter": 10,
+          "operationId": null,
+          "operationPayloadHash": null,
+          "note": null
+        }
+      ]
+    ],
+    "outcome": {
+      "json": "[]"
+    }
+  },
+  {
+    "fn": "unsupportedOperationalRecords",
+    "args": [
+      [
+        {
+          "schemaVersion": 2,
+          "taskId": "t",
+          "taskInstanceId": "i",
+          "studentId": "s",
+          "ruleVersion": 2,
+          "timeZone": "Asia/Seoul",
+          "cycleStartsAt": "2026-01-02T00:00:00.000Z",
+          "cycleEndsAt": "2026-01-03T00:00:00.000Z",
+          "cycleId": "v1|i|r2|2026-01-02T00:00:00Z",
+          "createdAt": "2026-01-02T00:00:00.000Z",
+          "assignmentId": "b",
+          "previousAssignmentId": "a",
+          "source": "CARRY_FORWARD",
+          "status": "ASSIGNED"
+        },
+        {
+          "schemaVersion": 2,
+          "taskId": "t",
+          "taskInstanceId": "i",
+          "studentId": "s",
+          "ruleVersion": 1,
+          "timeZone": "Asia/Seoul",
+          "cycleStartsAt": "2026-01-01T00:00:00.000Z",
+          "cycleEndsAt": "2026-01-02T00:00:00.000Z",
+          "cycleId": "v1|i|r1|2026-01-01T00:00:00Z",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "assignmentId": "a",
+          "previousAssignmentId": null,
+          "source": "LEGACY_SEED",
+          "status": "ASSIGNED"
+        }
+      ],
+      [
+        {
+          "schemaVersion": 2,
+          "taskId": "t",
+          "taskInstanceId": "i",
+          "studentId": "s",
+          "ruleVersion": 2,
+          "timeZone": "Asia/Seoul",
+          "cycleStartsAt": "2026-01-02T00:00:00.000Z",
+          "cycleEndsAt": "2026-01-03T00:00:00.000Z",
+          "cycleId": "v1|i|r2|2026-01-02T00:00:00Z",
+          "createdAt": "2026-01-02T00:00:00.000Z",
+          "assignmentId": "b",
+          "previousAssignmentId": "a",
+          "source": "CARRY_FORWARD",
+          "status": "SUCCESS",
+          "timestamp": "2026-01-02T00:00:00.000Z",
+          "reward": 0,
+          "balanceBefore": 10,
+          "balanceAfter": 10,
+          "operationId": null,
+          "operationPayloadHash": null,
+          "note": null
+        }
+      ]
+    ],
+    "outcome": {
+      "json": "[0,2]"
+    }
+  },
+  {
+    "fn": "unsupportedOperationalRecords",
+    "args": [
+      [
+        {
+          "schemaVersion": 2,
+          "taskId": "t",
+          "taskInstanceId": "i",
+          "studentId": "s",
+          "ruleVersion": 1,
+          "timeZone": "Asia/Seoul",
+          "cycleStartsAt": "2026-01-01T00:00:00.000Z",
+          "cycleEndsAt": "2026-01-02T00:00:00.000Z",
+          "cycleId": "v1|i|r1|2026-01-01T00:00:00Z",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "assignmentId": "a",
+          "previousAssignmentId": null,
+          "source": "LEGACY_SEED",
+          "status": "ASSIGNED"
+        },
+        {
+          "schemaVersion": 2,
+          "taskId": "t",
+          "taskInstanceId": "i",
+          "studentId": "s",
+          "ruleVersion": 1,
+          "timeZone": "Asia/Seoul",
+          "cycleStartsAt": "2026-01-01T00:00:00.000Z",
+          "cycleEndsAt": "2026-01-02T00:00:00.000Z",
+          "cycleId": "v1|i|r1|2026-01-01T00:00:00Z",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "assignmentId": "a",
+          "previousAssignmentId": null,
+          "source": "LEGACY_SEED",
+          "status": "ASSIGNED"
+        }
+      ],
+      []
+    ],
+    "outcome": {
+      "json": "[]"
+    }
+  },
+  {
+    "fn": "unsupportedOperationalRecords",
+    "args": [
+      [
+        {
+          "schemaVersion": 2,
+          "taskId": "t",
+          "taskInstanceId": "i",
+          "studentId": "s",
+          "ruleVersion": 1,
+          "timeZone": "Asia/Seoul",
+          "cycleStartsAt": "2026-01-01T00:00:00.000Z",
+          "cycleEndsAt": null,
+          "cycleId": "v1|i|r1|2026-01-01T00:00:00Z",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "assignmentId": "a",
+          "previousAssignmentId": null,
+          "source": "LEGACY_SEED",
+          "status": "ASSIGNED"
+        }
+      ],
+      [
+        {
+          "schemaVersion": 2,
+          "taskId": "t",
+          "taskInstanceId": "i",
+          "studentId": "s",
+          "ruleVersion": 2,
+          "timeZone": "Asia/Seoul",
+          "cycleStartsAt": "2026-01-02T00:00:00.000Z",
+          "cycleEndsAt": "2026-01-03T00:00:00.000Z",
+          "cycleId": "v1|i|r2|2026-01-02T00:00:00Z",
+          "createdAt": "2026-01-02T00:00:00.000Z",
+          "assignmentId": "b",
+          "previousAssignmentId": "a",
+          "source": "BANK",
+          "status": "SUCCESS",
+          "timestamp": "2026-01-02T00:00:00.000Z",
+          "reward": 0,
+          "balanceBefore": 10,
+          "balanceAfter": 10,
+          "operationId": null,
+          "operationPayloadHash": null,
+          "note": null
+        }
+      ]
+    ],
+    "outcome": {
+      "json": "[0]"
+    }
+  },
+  {
+    "fn": "unsupportedOperationalRecords",
+    "args": [
+      [
+        {
+          "schemaVersion": 2,
+          "taskId": "t",
+          "taskInstanceId": "i",
+          "studentId": "s",
+          "ruleVersion": 1,
+          "timeZone": "Asia/Seoul",
+          "cycleStartsAt": "2026-01-01T00:00:00.000Z",
+          "cycleEndsAt": "2026-01-02T00:00:00.000Z",
+          "cycleId": "v1|i|r1|2026-01-01T00:00:00Z",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "assignmentId": "a",
+          "previousAssignmentId": null,
+          "source": "LEGACY_SEED",
+          "status": "ASSIGNED"
+        },
+        {
+          "schemaVersion": 2,
+          "taskId": "t",
+          "taskInstanceId": "i",
+          "studentId": "s",
+          "ruleVersion": 2,
+          "timeZone": "Asia/Seoul",
+          "cycleStartsAt": "2026-01-02T00:00:00.000Z",
+          "cycleEndsAt": "2026-01-03T00:00:00.000Z",
+          "cycleId": "v1|i|r2|2026-01-02T00:00:00Z",
+          "createdAt": "2026-01-02T00:00:00.000Z",
+          "assignmentId": "b",
+          "previousAssignmentId": "a",
+          "source": "CARRY_FORWARD",
+          "status": "ASSIGNED"
+        }
+      ],
+      [
+        {
+          "schemaVersion": 2,
+          "taskId": "t",
+          "taskInstanceId": "i",
+          "studentId": "s",
+          "ruleVersion": 2,
+          "timeZone": "Asia/Seoul",
+          "cycleStartsAt": "2026-01-02T00:00:00.000Z",
+          "cycleEndsAt": "2026-01-03T00:00:00.000Z",
+          "cycleId": "v1|i|r2|2026-01-02T00:00:00Z",
+          "createdAt": "2026-01-02T00:00:00.000Z",
+          "assignmentId": "b",
+          "previousAssignmentId": "a",
+          "source": "CARRY_FORWARD",
+          "status": "SUCCESS",
+          "timestamp": "2026-01-02T00:00:00.000Z",
+          "reward": 0,
+          "balanceBefore": 10,
+          "balanceAfter": 10,
+          "operationId": null,
+          "operationPayloadHash": null,
+          "note": null
+        },
+        {
+          "schemaVersion": 2,
+          "taskId": "t",
+          "taskInstanceId": "i",
+          "studentId": "s",
+          "ruleVersion": 2,
+          "timeZone": "Asia/Seoul",
+          "cycleStartsAt": "2026-01-02T00:00:00.000Z",
+          "cycleEndsAt": "2026-01-03T00:00:00.000Z",
+          "cycleId": "v1|i|r2|2026-01-02T00:00:00Z",
+          "createdAt": "2026-01-02T00:00:00.000Z",
+          "assignmentId": "b",
+          "previousAssignmentId": "a",
+          "source": "CARRY_FORWARD",
+          "status": "SUCCESS",
+          "timestamp": "2026-01-02T00:00:00.000Z",
+          "reward": 0,
+          "balanceBefore": 10,
+          "balanceAfter": 10,
+          "operationId": null,
+          "operationPayloadHash": null,
+          "note": null
+        }
+      ]
+    ],
+    "outcome": {
+      "json": "[3]"
+    }
+  },
+  {
+    "fn": "unsupportedOperationalRecords",
+    "args": [
+      [
+        {
+          "schemaVersion": 2,
+          "taskId": {
+            "z": 1,
+            "a": 2
+          },
+          "taskInstanceId": "i",
+          "studentId": "s",
+          "ruleVersion": 1,
+          "timeZone": "Asia/Seoul",
+          "cycleStartsAt": "2026-01-01T00:00:00.000Z",
+          "cycleEndsAt": "2026-01-02T00:00:00.000Z",
+          "cycleId": "v1|i|r1|2026-01-01T00:00:00Z",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "assignmentId": "a",
+          "previousAssignmentId": null,
+          "source": "LEGACY_SEED",
+          "status": "ASSIGNED"
+        }
+      ],
+      []
+    ],
+    "outcome": {
+      "json": "[]"
+    }
+  },
+  {
+    "fn": "unsupportedOperationalRecords",
+    "args": [
+      [
+        {
+          "schemaVersion": 2,
+          "taskId": "t",
+          "taskInstanceId": "i",
+          "studentId": "s",
+          "ruleVersion": 1,
+          "timeZone": "Asia/Seoul",
+          "cycleStartsAt": "bad",
+          "cycleEndsAt": "2026-01-02T00:00:00.000Z",
+          "cycleId": "v1|i|r1|2026-01-01T00:00:00Z",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "assignmentId": "a",
+          "previousAssignmentId": null,
+          "source": "LEGACY_SEED",
+          "status": "ASSIGNED"
+        }
+      ],
+      []
+    ],
+    "outcome": {
+      "json": "[0]"
+    }
+  },
+  {
+    "fn": "unsupportedOperationalRecords",
+    "args": [
+      [
+        {
+          "schemaVersion": 2,
+          "taskId": "t",
+          "taskInstanceId": "i",
+          "studentId": "s",
+          "ruleVersion": 1,
+          "timeZone": "Asia/Seoul",
+          "cycleStartsAt": "2026-01-01T00:00:00.000Z",
+          "cycleEndsAt": "2026-01-02T00:00:00.000Z",
+          "cycleId": "v1|i|r1|2026-01-01T00:00:00Z",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "assignmentId": "a",
+          "previousAssignmentId": null,
+          "source": "LEGACY_SEED",
+          "status": "ASSIGNED"
+        }
+      ],
+      [
+        {
+          "schemaVersion": 2,
+          "taskId": "t",
+          "taskInstanceId": "i",
+          "studentId": "s",
+          "ruleVersion": 2,
+          "timeZone": "Asia/Seoul",
+          "cycleStartsAt": "2026-01-02T00:00:00.000Z",
+          "cycleEndsAt": "2026-01-03T00:00:00.000Z",
+          "cycleId": "v1|i|r2|2026-01-02T00:00:00Z",
+          "createdAt": "2026-01-02T00:00:00.000Z",
+          "assignmentId": "b",
+          "previousAssignmentId": "a",
+          "source": "CARRY_FORWARD",
+          "status": "SUCCESS",
+          "timestamp": "2026-01-02T00:00:00.000Z",
+          "reward": 0,
+          "balanceBefore": 10,
+          "balanceAfter": 10,
+          "operationId": null,
+          "operationPayloadHash": null,
+          "note": " bad "
+        }
+      ]
+    ],
+    "outcome": {
+      "json": "[1]"
+    }
+  },
+  {
+    "fn": "unsupportedOperationalRecords",
+    "args": [
+      [
+        {
+          "schemaVersion": 2,
+          "taskId": "t",
+          "taskInstanceId": "i",
+          "studentId": "s",
+          "ruleVersion": 1,
+          "timeZone": "Asia/Seoul",
+          "cycleStartsAt": "2026-01-01T00:00:00.000Z",
+          "cycleEndsAt": "2026-01-02T00:00:00.000Z",
+          "cycleId": "v1|i|r1|2026-01-01T00:00:00Z",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "assignmentId": "a",
+          "previousAssignmentId": null,
+          "source": "LEGACY_SEED",
+          "status": "ASSIGNED"
+        }
+      ],
+      [
+        {
+          "schemaVersion": 2,
+          "taskId": "t",
+          "taskInstanceId": "i",
+          "studentId": "s",
+          "ruleVersion": 2,
+          "timeZone": "Asia/Seoul",
+          "cycleStartsAt": "2026-01-02T00:00:00.000Z",
+          "cycleEndsAt": "2026-01-03T00:00:00.000Z",
+          "cycleId": "v1|i|r2|2026-01-02T00:00:00Z",
+          "createdAt": "2026-01-02T00:00:00.000Z",
+          "assignmentId": "b",
+          "previousAssignmentId": "a",
+          "source": "CARRY_FORWARD",
+          "status": "SUCCESS",
+          "timestamp": "2026-01-02T00:00:00.000Z",
+          "reward": 0,
+          "balanceBefore": 10,
+          "balanceAfter": 10,
+          "operationId": null,
+          "operationPayloadHash": null,
+          "note": null,
+          "evidenceBoardId": "x"
+        }
+      ]
+    ],
+    "outcome": {
+      "json": "[1]"
+    }
+  },
+  {
+    "fn": "adjustmentKey",
+    "args": [
+      {
+        "timestamp": "2026",
+        "studentId": "\ud55c\ud800",
+        "operator": "a",
+        "mode": "add",
+        "amount": 1
+      }
+    ],
+    "outcome": {
+      "json": "\"[\\\"2026\\\",\\\"\ud55c\\\\ud800\\\",\\\"a\\\",\\\"add\\\",1]\""
+    }
+  },
+  {
+    "fn": "adjustmentKey",
+    "args": [
+      {
+        "timestamp": "2026",
+        "studentId": "\ud55c\ud800",
+        "operator": "a",
+        "mode": "subtract",
+        "amount": 1
+      }
+    ],
+    "outcome": {
+      "json": "\"[\\\"2026\\\",\\\"\ud55c\\\\ud800\\\",\\\"a\\\",\\\"subtract\\\",1]\""
+    }
+  },
+  {
+    "fn": "adjustmentKey",
+    "args": [
+      {
+        "timestamp": "2026",
+        "studentId": "\ud55c\ud800",
+        "operator": "a",
+        "mode": "set",
+        "amount": 1
+      }
+    ],
+    "outcome": {
+      "json": "\"[\\\"2026\\\",\\\"\ud55c\\\\ud800\\\",\\\"a\\\",\\\"set\\\",1]\""
+    }
+  },
+  {
+    "fn": "adjustmentKey",
+    "args": [
+      {
+        "timestamp": "2026",
+        "studentId": "\ud55c\ud800",
+        "operator": "a",
+        "mode": "bad",
+        "amount": 1
+      }
+    ],
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "fn": "adjustmentKey",
+    "args": [
+      {
+        "timestamp": "2026",
+        "studentId": "\ud55c\ud800",
+        "operator": "a",
+        "mode": [
+          "add"
+        ],
+        "amount": 1
+      }
+    ],
+    "outcome": {
+      "json": "\"[\\\"2026\\\",\\\"\ud55c\\\\ud800\\\",\\\"a\\\",[\\\"add\\\"],1]\""
+    }
+  },
+  {
+    "fn": "adjustmentKey",
+    "args": [
+      {
+        "timestamp": "2026",
+        "studentId": "\ud55c\ud800",
+        "operator": "a",
+        "mode": {},
+        "amount": 1
+      }
+    ],
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "fn": "adjustmentKey",
+    "args": [
+      {
+        "timestamp": "2026",
+        "studentId": "\ud55c\ud800",
+        "operator": "a",
+        "mode": null,
+        "amount": 1
+      }
+    ],
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "fn": "adjustmentTransactionKey",
+    "args": [
+      {
+        "timestamp": "2026",
+        "studentId": "s",
+        "operator": "o",
+        "status": "ADMIN_ADJUSTMENT",
+        "totalAmount": -5,
+        "balanceBefore": 10,
+        "balanceAfter": 15,
+        "items": [
+          {
+            "productId": "ADMIN-ADD",
+            "name": "\uad00\ub9ac\uc790 \uc9c0\uae09",
+            "price": -5,
+            "quantity": 1,
+            "subtotal": -5
+          }
+        ]
+      }
+    ],
+    "outcome": {
+      "json": "\"[\\\"2026\\\",\\\"s\\\",\\\"o\\\",\\\"add\\\",5]\""
+    }
+  },
+  {
+    "fn": "adjustmentTransactionKey",
+    "args": [
+      {
+        "timestamp": "2026",
+        "studentId": "s",
+        "operator": "o",
+        "status": "ADMIN_ADJUSTMENT",
+        "totalAmount": 5,
+        "balanceBefore": 10,
+        "balanceAfter": 5,
+        "items": [
+          {
+            "productId": "ADMIN-SUBTRACT",
+            "name": "\uad00\ub9ac\uc790 \ud68c\uc218",
+            "price": 5,
+            "quantity": 1,
+            "subtotal": 5
+          }
+        ]
+      }
+    ],
+    "outcome": {
+      "json": "\"[\\\"2026\\\",\\\"s\\\",\\\"o\\\",\\\"subtract\\\",5]\""
+    }
+  },
+  {
+    "fn": "adjustmentTransactionKey",
+    "args": [
+      {
+        "timestamp": "2026",
+        "studentId": "s",
+        "operator": "o",
+        "status": "ADMIN_ADJUSTMENT",
+        "totalAmount": 5,
+        "balanceBefore": 10,
+        "balanceAfter": 5,
+        "items": [
+          {
+            "productId": "ADMIN-SET",
+            "name": "\uad00\ub9ac\uc790 \uc794\uc561 \uc9c0\uc815",
+            "price": 5,
+            "quantity": 1,
+            "subtotal": 5
+          }
+        ]
+      }
+    ],
+    "outcome": {
+      "json": "\"[\\\"2026\\\",\\\"s\\\",\\\"o\\\",\\\"set\\\",5]\""
+    }
+  },
+  {
+    "fn": "adjustmentTransactionKey",
+    "args": [
+      {
+        "timestamp": "2026",
+        "studentId": "s",
+        "operator": "o",
+        "status": "ADMIN_ADJUSTMENT",
+        "totalAmount": 5,
+        "balanceBefore": 10,
+        "balanceAfter": 5,
+        "items": [
+          {
+            "productId": "bad",
+            "name": "\uad00\ub9ac\uc790 \uc794\uc561 \uc9c0\uc815",
+            "price": 5,
+            "quantity": 1,
+            "subtotal": 5
+          }
+        ]
+      }
+    ],
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "fn": "adjustmentTransactionKey",
+    "args": [
+      {
+        "timestamp": "t",
+        "studentId": "s",
+        "operator": "o",
+        "status": "ADMIN_ADJUSTMENT",
+        "totalAmount": 1,
+        "balanceBefore": 2,
+        "balanceAfter": 1,
+        "items": [
+          null
+        ]
+      }
+    ],
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "Cannot read properties of null (reading 'productId')"
+      }
+    }
+  },
+  {
+    "fn": "sameAssignmentCompletionTuple",
+    "args": [
+      {
+        "schemaVersion": 2,
+        "taskId": "t",
+        "taskInstanceId": "i",
+        "studentId": "s",
+        "ruleVersion": 1,
+        "timeZone": "Asia/Seoul",
+        "cycleStartsAt": "2026-01-01T00:00:00.000Z",
+        "cycleEndsAt": "2026-01-02T00:00:00.000Z",
+        "cycleId": "v1|i|r1|2026-01-01T00:00:00Z",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "assignmentId": "a",
+        "previousAssignmentId": null,
+        "source": "LEGACY_SEED",
+        "status": "ASSIGNED"
+      },
+      {
+        "schemaVersion": 2,
+        "taskId": "t",
+        "taskInstanceId": "i",
+        "studentId": "s",
+        "ruleVersion": 1,
+        "timeZone": "Asia/Seoul",
+        "cycleStartsAt": "2026-01-01T00:00:00.000Z",
+        "cycleEndsAt": "2026-01-02T00:00:00.000Z",
+        "cycleId": "v1|i|r1|2026-01-01T00:00:00Z",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "assignmentId": "a",
+        "previousAssignmentId": null,
+        "source": "LEGACY_SEED",
+        "status": "ASSIGNED"
+      }
+    ],
+    "outcome": {
+      "json": "true"
+    }
+  },
+  {
+    "fn": "sameAssignmentCompletionTuple",
+    "args": [
+      {
+        "schemaVersion": 2,
+        "taskId": "t",
+        "taskInstanceId": "i",
+        "studentId": "s",
+        "ruleVersion": 1,
+        "timeZone": "Asia/Seoul",
+        "cycleStartsAt": "2026-01-01T00:00:00.000Z",
+        "cycleEndsAt": "2026-01-02T00:00:00.000Z",
+        "cycleId": "v1|i|r1|2026-01-01T00:00:00Z",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "assignmentId": "a",
+        "previousAssignmentId": null,
+        "source": "LEGACY_SEED",
+        "status": "ASSIGNED"
+      },
+      {
+        "schemaVersion": 2,
+        "taskId": "t",
+        "taskInstanceId": "i",
+        "studentId": "s",
+        "ruleVersion": 1,
+        "timeZone": "Asia/Seoul",
+        "cycleStartsAt": "2026-01-01T00:00:00.000Z",
+        "cycleEndsAt": "2026-01-02T00:00:00.000Z",
+        "cycleId": "no",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "assignmentId": "a",
+        "previousAssignmentId": null,
+        "source": "LEGACY_SEED",
+        "status": "ASSIGNED"
+      }
+    ],
+    "outcome": {
+      "json": "false"
+    }
+  },
+  {
+    "fn": "sameAssignmentCompletionTuple",
+    "args": [
+      {
+        "schemaVersion": 2,
+        "taskId": "t",
+        "taskInstanceId": "i",
+        "studentId": "s",
+        "ruleVersion": 1,
+        "timeZone": "Asia/Seoul",
+        "cycleStartsAt": "2026-01-01T00:00:00.000Z",
+        "cycleEndsAt": "2026-01-02T00:00:00.000Z",
+        "cycleId": "v1|i|r1|2026-01-01T00:00:00Z",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "assignmentId": "a",
+        "previousAssignmentId": null,
+        "source": "LEGACY_SEED",
+        "status": "ASSIGNED"
+      },
+      {}
+    ],
+    "outcome": {
+      "json": "false"
+    }
+  },
+  {
+    "fn": "cancellationOriginalId",
+    "args": [
+      "cancel-task-pre-reset:abc"
+    ],
+    "outcome": {
+      "json": "\"abc\""
+    }
+  },
+  {
+    "fn": "cancellationOriginalId",
+    "args": [
+      "cancel-task-unlinked:abc"
+    ],
+    "outcome": {
+      "json": "\"abc\""
+    }
+  },
+  {
+    "fn": "cancellationOriginalId",
+    "args": [
+      "cancel-task:abc"
+    ],
+    "outcome": {
+      "json": "\"abc\""
+    }
+  },
+  {
+    "fn": "cancellationOriginalId",
+    "args": [
+      "cancel:abc"
+    ],
+    "outcome": {
+      "json": "\"abc\""
+    }
+  },
+  {
+    "fn": "cancellationOriginalId",
+    "args": [
+      "cancel: a "
+    ],
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "fn": "cancellationOriginalId",
+    "args": [
+      "other"
+    ],
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "fn": "cancellationOriginalId",
+    "args": [
+      "cancel:"
+    ],
+    "outcome": {
+      "json": "null"
+    }
+  },
+  {
+    "fn": "cancellationOriginalId",
+    "args": [
+      null
+    ],
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "Cannot read properties of null (reading 'startsWith')"
+      }
+    }
+  },
+  {
+    "fn": "cancellationOriginalId",
+    "args": [
+      0
+    ],
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "operator.startsWith is not a function"
+      }
+    }
+  },
+  {
+    "fn": "cancellationOriginalId",
+    "args": [
+      true
+    ],
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "operator.startsWith is not a function"
+      }
+    }
+  },
+  {
+    "fn": "cancellationOriginalId",
+    "args": [
+      {}
+    ],
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "operator.startsWith is not a function"
+      }
+    }
+  },
+  {
+    "fn": "cancellationOriginalId",
+    "args": [
+      []
+    ],
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "operator.startsWith is not a function"
+      }
+    }
+  },
+  {
+    "fn": "cancellationOriginalId",
+    "args": [
+      {
+        "startsWith": 4
+      }
+    ],
+    "outcome": {
+      "error": {
+        "name": "TypeError",
+        "message": "operator.startsWith is not a function"
+      }
+    }
+  }
+]

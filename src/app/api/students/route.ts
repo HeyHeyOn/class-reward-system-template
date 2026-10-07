@@ -4,12 +4,15 @@ import {
   createConfiguredStudentCreation,
   type ConfiguredStudentCreationInput,
 } from '@/server/repositories/configuredStudentCreation';
-import { createConfiguredStudentReader } from '@/server/repositories/configuredStudents';
+import { createConfiguredStudentReader, readConfiguredStudentAdminSnapshot } from '@/server/repositories/configuredStudents';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request?: Request) {
+  const includeInactive = request && new URL(request.url).searchParams.get('includeInactive') === '1';
+  if (includeInactive && !isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
   try {
+    if (includeInactive) return Response.json(await readConfiguredStudentAdminSnapshot());
     const reader = await createConfiguredStudentReader();
     const students = await reader.getStudents();
 

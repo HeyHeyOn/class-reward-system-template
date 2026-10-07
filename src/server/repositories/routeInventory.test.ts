@@ -12,14 +12,14 @@ function exportedHttpMethods(source: string): string[] {
       && ts.getModifiers(node)?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword);
     if (!exported) return;
     if (ts.isFunctionDeclaration(node) && node.name
-      && ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'].includes(node.name.text)) {
+      && ['GET', 'HEAD', 'POST', 'PATCH', 'PUT', 'DELETE'].includes(node.name.text)) {
       methods.push(node.name.text);
       return;
     }
     if (ts.isVariableStatement(node)) {
       for (const declaration of node.declarationList.declarations) {
         if (ts.isIdentifier(declaration.name)
-          && ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'].includes(declaration.name.text)) {
+          && ['GET', 'HEAD', 'POST', 'PATCH', 'PUT', 'DELETE'].includes(declaration.name.text)) {
           methods.push(declaration.name.text);
         }
       }
@@ -65,17 +65,45 @@ describe('tenant route inventory', () => {
       .map(({ route, method }) => ({ route, method }))
       .sort(compareRouteMethod);
     expect(inventory).toEqual(discovered);
-    expect(new Set(inventory.map(({ route, method }) => `${method} ${route}`)).size).toBe(66);
+    expect(discovered.filter(({ route }) => route === '/exports/[slug]/historical-local-generation-metadata.csv')).toEqual([
+      { route: '/exports/[slug]/historical-local-generation-metadata.csv', method: 'GET' },
+      { route: '/exports/[slug]/historical-local-generation-metadata.csv', method: 'HEAD' },
+    ]);
+    expect(inventory).toHaveLength(102);
+    expect(new Set(inventory.map(({ route, method }) => `${method} ${route}`)).size).toBe(inventory.length);
   });
 
-  it('preserves the reviewed Task 10 authority boundary counts', () => {
-    expect(TENANT_ROUTE_INVENTORY).toHaveLength(66);
-    expect(TENANT_ROUTE_INVENTORY.filter((entry) => entry.scope === 'tenant-data' && entry.effect === 'read')).toHaveLength(19);
-    expect(TENANT_ROUTE_INVENTORY.filter((entry) => entry.scope === 'tenant-data' && entry.effect === 'mutation')).toHaveLength(34);
-    expect(TENANT_ROUTE_INVENTORY.filter((entry) => entry.scope === 'unsupported')).toEqual([
+  it('preserves the current authority boundary counts and isolates the status read', () => {
+    expect(TENANT_ROUTE_INVENTORY).toHaveLength(102);
+    expect(TENANT_ROUTE_INVENTORY.filter((entry) => entry.scope === 'tenant-status')).toEqual([
+      { route: '/migrations/status/[slug]', method: 'GET', scope: 'tenant-status', effect: 'read' },
+      { route: '/migrations/status/[slug]/preflight', method: 'GET', scope: 'tenant-status', effect: 'read' },
+      { route: '/migrations/status/[slug]/preflight', method: 'HEAD', scope: 'tenant-status', effect: 'read' },
+      { route: '/migrations/status/[slug]/preflight/download', method: 'GET', scope: 'tenant-status', effect: 'read' },
+      { route: '/migrations/status/[slug]/preflight/download', method: 'HEAD', scope: 'tenant-status', effect: 'read' },
+      { route: '/exports/[slug]/historical-local-generation-metadata.csv', method: 'GET', scope: 'tenant-status', effect: 'read' },
+      { route: '/exports/[slug]/historical-local-generation-metadata.csv', method: 'HEAD', scope: 'tenant-status', effect: 'read' },
+    ]);
+    expect(TENANT_ROUTE_INVENTORY.filter((entry) => entry.scope === 'tenant-data' && entry.effect === 'read')).toHaveLength(28);
+    expect(TENANT_ROUTE_INVENTORY.filter((entry) => entry.scope === 'tenant-data' && entry.effect === 'mutation')).toHaveLength(38);
+    expect(TENANT_ROUTE_INVENTORY.filter((entry) => entry.scope === 'unsupported')
+      .sort((left, right) => `${left.route} ${left.method}`.localeCompare(`${right.route} ${right.method}`))).toEqual([
       { route: '/qrcode', method: 'GET', scope: 'unsupported', effect: 'none' },
       { route: '/settings', method: 'PATCH', scope: 'unsupported', effect: 'none' },
-    ]);
-    expect(TENANT_ROUTE_INVENTORY.filter((entry) => entry.scope === 'platform')).toHaveLength(11);
+      { route: '/tasks/[taskId]/assignments', method: 'GET', scope: 'unsupported', effect: 'none' },
+      { route: '/tasks/[taskId]/assignments', method: 'PATCH', scope: 'unsupported', effect: 'none' },
+      { route: '/tasks/[taskId]/history', method: 'GET', scope: 'unsupported', effect: 'none' },
+      { route: '/tasks/[taskId]', method: 'DELETE', scope: 'unsupported', effect: 'none' },
+      { route: '/tasks/[taskId]', method: 'PATCH', scope: 'unsupported', effect: 'none' },
+      { route: '/tasks/assignments/batch', method: 'POST', scope: 'unsupported', effect: 'none' },
+      { route: '/tasks/admin-completion', method: 'POST', scope: 'unsupported', effect: 'none' },
+      { route: '/tasks/qr-assignment', method: 'POST', scope: 'unsupported', effect: 'none' },
+      { route: '/tasks/batch', method: 'DELETE', scope: 'unsupported', effect: 'none' },
+      { route: '/tasks/batch', method: 'PATCH', scope: 'unsupported', effect: 'none' },
+      { route: '/tasks/completions/reset', method: 'POST', scope: 'unsupported', effect: 'none' },
+      { route: '/tasks', method: 'POST', scope: 'unsupported', effect: 'none' },
+      { route: '/tasks/schedules/batch', method: 'POST', scope: 'unsupported', effect: 'none' },
+    ].sort((left, right) => `${left.route} ${left.method}`.localeCompare(`${right.route} ${right.method}`)));
+    expect(TENANT_ROUTE_INVENTORY.filter((entry) => entry.scope === 'platform')).toHaveLength(14);
   });
 });

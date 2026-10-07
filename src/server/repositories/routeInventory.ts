@@ -1,7 +1,8 @@
 export type TenantRouteInventoryEntry = Readonly<{
   route: string;
-  method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
-  scope: 'tenant-data' | 'platform' | 'unsupported';
+  method: 'GET' | 'HEAD' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+  // tenant-status is a concrete, membership-gated endpoint, not a tenant-data dispatcher route.
+  scope: 'tenant-data' | 'tenant-status' | 'platform' | 'unsupported';
   effect: 'read' | 'mutation' | 'none';
 }>;
 
@@ -18,6 +19,17 @@ const platform = (
 ): TenantRouteInventoryEntry => ({ route, method, scope: 'platform', effect });
 
 export const TENANT_ROUTE_INVENTORY: readonly TenantRouteInventoryEntry[] = [
+  // Google identity + current OWNER/ADMIN membership; read-only BLOCKED/UNKNOWN.
+  // No configured data authority, compatibility fallback, or catch-all exposure.
+  { route: '/migrations/status/[slug]', method: 'GET', scope: 'tenant-status', effect: 'read' },
+  // Historical archive only; HEAD repeats membership checks without a body.
+  { route: '/migrations/status/[slug]/preflight', method: 'GET', scope: 'tenant-status', effect: 'read' },
+  { route: '/migrations/status/[slug]/preflight', method: 'HEAD', scope: 'tenant-status', effect: 'read' },
+  { route: '/migrations/status/[slug]/preflight/download', method: 'GET', scope: 'tenant-status', effect: 'read' },
+  { route: '/migrations/status/[slug]/preflight/download', method: 'HEAD', scope: 'tenant-status', effect: 'read' },
+  // NONAUTHORITY historical LOCAL_CANDIDATE metadata; GET/HEAD recheck membership.
+  { route: '/exports/[slug]/historical-local-generation-metadata.csv', method: 'GET', scope: 'tenant-status', effect: 'read' },
+  { route: '/exports/[slug]/historical-local-generation-metadata.csv', method: 'HEAD', scope: 'tenant-status', effect: 'read' },
   tenantRead('/migrations/[jobId]/freezing/reacquisition/bootstrap'),
   tenantRead('/migrations/[jobId]/freezing/reacquisition/[attemptId]'),
   tenantMutation('/migrations/[jobId]/freezing/reacquisition/challenge', 'POST'),
@@ -33,8 +45,19 @@ export const TENANT_ROUTE_INVENTORY: readonly TenantRouteInventoryEntry[] = [
   tenantMutation('/admin/login', 'POST'),
   platform('/admin/logout', 'POST', 'mutation'),
   tenantRead('/bank/balance'),
+  tenantRead('/bank/balance', 'POST'),
   tenantRead('/bank/student'),
   tenantRead('/bank/tasks'),
+  // Personal bank: the student comes only from the sealed session cookie, never from the client.
+  tenantRead('/bank/session'),
+  tenantMutation('/bank/session', 'POST'),
+  tenantMutation('/bank/session', 'DELETE'),
+  tenantRead('/bank/me/transactions'),
+  tenantRead('/bank/me/tasks'),
+  tenantMutation('/bank/me/tasks/[taskId]/complete', 'POST'),
+  platform('/classes', 'POST', 'mutation'),
+  platform('/classes/[slug]/start', 'POST', 'mutation'),
+  platform('/classes/[slug]/manage', 'POST', 'mutation'),
   tenantMutation('/checkout', 'POST'),
   tenantRead('/checkout/preview', 'POST'),
   platform('/generator/create', 'POST', 'mutation'),
@@ -47,6 +70,10 @@ export const TENANT_ROUTE_INVENTORY: readonly TenantRouteInventoryEntry[] = [
   tenantMutation('/products/[productId]', 'PATCH'),
   tenantMutation('/products/batch', 'DELETE'),
   tenantMutation('/products/batch', 'PATCH'),
+  // Bulk xlsx import: static template, write-free preview, transactional commit (PostgreSQL only).
+  tenantRead('/products/import/template'),
+  tenantRead('/products/import/preview', 'POST'),
+  tenantMutation('/products/import/commit', 'POST'),
   tenantRead('/products'),
   tenantMutation('/products', 'POST'),
   tenantMutation('/promotions/[promotionId]', 'DELETE'),
@@ -66,22 +93,52 @@ export const TENANT_ROUTE_INVENTORY: readonly TenantRouteInventoryEntry[] = [
   tenantMutation('/students/batch', 'DELETE'),
   tenantMutation('/students/batch', 'PATCH'),
   tenantMutation('/students/bulk', 'PATCH'),
+  tenantRead('/students/import/template'),
+  tenantRead('/students/import/preview', 'POST'),
+  tenantMutation('/students/import/commit', 'POST'),
   tenantRead('/students'),
   tenantMutation('/students', 'POST'),
-  tenantRead('/tasks/[taskId]/assignments'),
-  tenantMutation('/tasks/[taskId]/assignments', 'PATCH'),
+  // Per-cycle task writer: kept for Sheets installs only, not routed for PostgreSQL classes.
+  { route: '/tasks/[taskId]/assignments', method: 'GET', scope: 'unsupported', effect: 'none' },
+  // Per-cycle task writer: kept for Sheets installs only, not routed for PostgreSQL classes.
+  { route: '/tasks/[taskId]/assignments', method: 'PATCH', scope: 'unsupported', effect: 'none' },
   tenantMutation('/tasks/[taskId]/complete', 'POST'),
-  tenantRead('/tasks/[taskId]/history'),
-  tenantMutation('/tasks/[taskId]', 'DELETE'),
+  // Per-cycle task writer: kept for Sheets installs only, not routed for PostgreSQL classes.
+  { route: '/tasks/[taskId]/history', method: 'GET', scope: 'unsupported', effect: 'none' },
+  // Per-cycle task writer: kept for Sheets installs only, not routed for PostgreSQL classes.
+  { route: '/tasks/[taskId]', method: 'DELETE', scope: 'unsupported', effect: 'none' },
   tenantRead('/tasks/[taskId]'),
-  tenantMutation('/tasks/[taskId]', 'PATCH'),
-  tenantMutation('/tasks/assignments/batch', 'POST'),
-  tenantMutation('/tasks/batch', 'DELETE'),
-  tenantMutation('/tasks/batch', 'PATCH'),
-  tenantMutation('/tasks/completions/reset', 'POST'),
+  // Per-cycle task writer: kept for Sheets installs only, not routed for PostgreSQL classes.
+  { route: '/tasks/[taskId]', method: 'PATCH', scope: 'unsupported', effect: 'none' },
+  // Per-cycle task writer: kept for Sheets installs only, not routed for PostgreSQL classes.
+  { route: '/tasks/assignments/batch', method: 'POST', scope: 'unsupported', effect: 'none' },
+  // Per-cycle task writer: kept for Sheets installs only, not routed for PostgreSQL classes.
+  { route: '/tasks/admin-completion', method: 'POST', scope: 'unsupported', effect: 'none' },
+  // Per-cycle task writer: kept for Sheets installs only, not routed for PostgreSQL classes.
+  { route: '/tasks/qr-assignment', method: 'POST', scope: 'unsupported', effect: 'none' },
+  // Per-cycle task writer: kept for Sheets installs only, not routed for PostgreSQL classes.
+  { route: '/tasks/batch', method: 'DELETE', scope: 'unsupported', effect: 'none' },
+  // Per-cycle task writer: kept for Sheets installs only, not routed for PostgreSQL classes.
+  { route: '/tasks/batch', method: 'PATCH', scope: 'unsupported', effect: 'none' },
+  // Per-cycle task writer: kept for Sheets installs only, not routed for PostgreSQL classes.
+  { route: '/tasks/completions/reset', method: 'POST', scope: 'unsupported', effect: 'none' },
   tenantRead('/tasks'),
-  tenantMutation('/tasks', 'POST'),
-  tenantMutation('/tasks/schedules/batch', 'POST'),
+  // Per-cycle task writer: kept for Sheets installs only, not routed for PostgreSQL classes.
+  { route: '/tasks', method: 'POST', scope: 'unsupported', effect: 'none' },
+  // Per-cycle task writer: kept for Sheets installs only, not routed for PostgreSQL classes.
+  { route: '/tasks/schedules/batch', method: 'POST', scope: 'unsupported', effect: 'none' },
+  tenantRead('/task-ledger'),
+  tenantMutation('/task-ledger/tasks', 'POST'),
+  tenantMutation('/task-ledger/tasks/delete', 'POST'),
+  tenantMutation('/task-ledger/tasks/[taskId]', 'PATCH'),
+  tenantRead('/task-ledger/tasks/[taskId]/history'),
+  tenantMutation('/task-ledger/stages', 'POST'),
+  tenantMutation('/task-ledger/reset', 'POST'),
+  tenantMutation('/task-ledger/repeat', 'POST'),
+  tenantMutation('/task-ledger/qr', 'POST'),
   tenantMutation('/transactions/[transactionId]/cancel', 'POST'),
   tenantRead('/transactions'),
+  // Self-service CRS workbook (.xlsx) import: POST preview validates only; commit writes.
+  tenantRead('/migrations/xlsx/preview', 'POST'),
+  tenantMutation('/migrations/xlsx/commit', 'POST'),
 ];

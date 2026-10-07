@@ -1,6 +1,7 @@
 import { legacyWriteFreezeResponse } from '@/server/legacyDeploymentMode';
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { createConfiguredTaskResetCommand } from '@/server/repositories/configuredTaskReset';
+import { legacyTaskWriterRefusal } from '@/server/legacyTaskWriters';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,6 +10,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 export async function POST(request: Request) {
   const frozen = legacyWriteFreezeResponse();
   if (frozen) return frozen;
+  const unsupported = legacyTaskWriterRefusal();
+  if (unsupported) return unsupported;
 
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
