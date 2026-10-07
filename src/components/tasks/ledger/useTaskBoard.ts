@@ -35,7 +35,7 @@ export const BOARD_REFRESH_MS = 20_000;
  * they return, and the board re-reads itself every 20 s while visible and when the page gets focus.
  * Editors keep their unsaved input themselves, so a refresh can never overwrite it.
  */
-export function useTaskBoard({ enabled }: { enabled: boolean }): TaskBoard {
+export function useTaskBoard({ enabled, polling = true }: { enabled: boolean; polling?: boolean }): TaskBoard {
   const [data, setData] = useState<BoardData>({ tasks: [], now: null, status: 'loading', error: '' });
   const epoch = useRef(0);
   const writes = useRef(0);
@@ -101,7 +101,7 @@ export function useTaskBoard({ enabled }: { enabled: boolean }): TaskBoard {
 
   useEffect(() => {
     mounted.current = true;
-    if (!enabled) return () => { mounted.current = false; };
+    if (!enabled || !polling) return () => { mounted.current = false; };
     const refresh = () => { if (document.visibilityState === 'visible') void reloadRef.current({ background: true }); };
     void Promise.resolve().then(() => reloadRef.current());
     const timer = window.setInterval(refresh, BOARD_REFRESH_MS);
@@ -113,7 +113,7 @@ export function useTaskBoard({ enabled }: { enabled: boolean }): TaskBoard {
       window.removeEventListener('focus', refresh);
       document.removeEventListener('visibilitychange', refresh);
     };
-  }, [enabled]);
+  }, [enabled, polling]);
 
   return { enabled, tasks: data.tasks, now: data.now, status: data.status, error: data.error, reload, applyTasks, removeTasks, beginWrite };
 }

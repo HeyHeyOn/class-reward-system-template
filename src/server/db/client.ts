@@ -2,7 +2,7 @@ import 'server-only';
 
 import { attachDatabasePool } from '@vercel/functions';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { Pool } from 'pg';
+import { Pool, type PoolConfig } from 'pg';
 import { getDatabaseConfig, type DatabaseConfig } from '@/server/db/config';
 import * as schema from '@/server/db/schema';
 
@@ -20,6 +20,43 @@ export type DatabaseClientDependencies<TPool = unknown, TDatabase = unknown> = {
   createDrizzle: (pool: TPool) => TDatabase;
   disposePool: (pool: TPool) => void;
 };
+
+type PoolDiagnostic = Readonly<{ code: string }>;
+type RuntimePoolDependencies = Readonly<{
+  createPool: (config: PoolConfig) => Pool;
+  reportIdleError: (diagnostic: PoolDiagnostic) => void;
+}>;
+
+// Keep each server instance's pool small and bound both queued acquisition and connection setup.
+const RUNTIME_POOL_MAX = 5;
+const CONNECTION_TIMEOUT_MS = 5_000;
+const IDLE_ERROR_CODES = new Set([
+  '08000', '08001', '08003', '08004', '08006', '08007', '08P01',
+  '53300', '53400', '57P01', '57P02', '57P03',
+  'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EPIPE', 'ENOTFOUND', 'EAI_AGAIN',
+]);
+
+/** pg removes failed idle clients itself; handle the event without logging connection details. */
+export function createRuntimeDatabasePool(
+  connectionString: string,
+  dependencies: RuntimePoolDependencies = {
+    createPool: (config) => new Pool(config),
+    reportIdleError: (diagnostic) => console.error('[database-pool] idle connection failure', diagnostic),
+  },
+): Pool {
+  const pool = dependencies.createPool({ connectionString, max: RUNTIME_POOL_MAX, connectionTimeoutMillis: CONNECTION_TIMEOUT_MS });
+  pool.on('error', (error: unknown) => {
+    let code = 'UNKNOWN';
+    try {
+      const candidate = error && typeof error === 'object' && 'code' in error ? error.code : undefined;
+      if (typeof candidate === 'string' && IDLE_ERROR_CODES.has(candidate)) code = candidate;
+    } catch { /* Diagnostic fields are not trusted. */ }
+    try {
+      dependencies.reportIdleError({ code });
+    } catch { /* Observability must not turn an idle connection failure into an uncaught error. */ }
+  });
+  return pool;
+}
 
 export function createDatabaseClientManager<TPool, TDatabase>(
   dependencies: DatabaseClientDependencies<TPool, TDatabase>,
@@ -62,7 +99,7 @@ export function createDatabaseClientManager<TPool, TDatabase>(
 
 const productionDependencies: DatabaseClientDependencies<Pool, ProductionDatabase> = {
   getConfig: getDatabaseConfig,
-  createPool: (connectionString) => new Pool({ connectionString }),
+  createPool: createRuntimeDatabasePool,
   attachPool: attachDatabasePool,
   createDrizzle: (pool) => drizzle(pool, { schema }),
   disposePool: (pool) => { void pool.end().catch(() => {}); },

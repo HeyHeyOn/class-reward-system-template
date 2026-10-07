@@ -1,11 +1,5 @@
-import { NextResponse } from 'next/server';
-import { clearGeneratorGrantCookie, clearGoogleSessionCookie } from '@/server/googleOAuth';
-import { ADMIN_SESSION_COOKIE } from '@/server/adminAuth';
+import { logoutAdministrator } from '@/server/adminLogout';
 
-export async function POST() {
-  const response = NextResponse.json({ ok: true });
-  clearGoogleSessionCookie(response);
-  clearGeneratorGrantCookie(response);
-  response.cookies.set(ADMIN_SESSION_COOKIE, '', { path: '/', maxAge: 0 });
-  return response;
+export async function POST(request: Request) {
+  return logoutAdministrator(request);
 }

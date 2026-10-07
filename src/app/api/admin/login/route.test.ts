@@ -1,12 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createConfiguredSheetsReader } from '@/server/googleSheets';
 import { runWithTrustedTenantRequestContext } from '@/server/trustedTenantRequestContext';
-import { getProductionTenantLegacyAdminAuth } from '@/server/tenantLegacyAdminAuth';
+import { getProductionTenantLegacyAdminAuth, TenantLegacyAdminRateLimitError } from '@/server/tenantLegacyAdminAuth';
 import { POST } from './route';
 import * as route from './route';
 
 vi.mock('@/server/googleSheets', () => ({ createConfiguredSheetsReader: vi.fn() }));
-vi.mock('@/server/tenantLegacyAdminAuth', () => ({ getProductionTenantLegacyAdminAuth: vi.fn() }));
+vi.mock('server-only', () => ({}));
+vi.mock('@/server/tenantLegacyAdminAuth', async importOriginal => ({
+  ...await importOriginal<typeof import('@/server/tenantLegacyAdminAuth')>(), getProductionTenantLegacyAdminAuth: vi.fn(),
+}));
 
 const tenant = { id: '20000000-0000-4000-8000-000000000001', slug: 'alpha-class', displayName: 'Alpha', lifecycle: 'ACTIVE' as const, timezone: 'Asia/Seoul' as const };
 
@@ -104,5 +107,19 @@ describe('/api/admin/login', () => {
     })));
     expect(response.status).toBe(400);
     expect(login).not.toHaveBeenCalled();
+  });
+
+  it('returns a bounded Retry-After without issuing a cookie when password attempts are exhausted', async () => {
+    process.env.CLASS_STORE_STORAGE = 'postgresql';
+    const login = vi.fn().mockRejectedValue(new TenantLegacyAdminRateLimitError(240));
+    vi.mocked(getProductionTenantLegacyAdminAuth).mockReturnValue({ login } as never);
+    const response = await runWithTrustedTenantRequestContext({ tenant }, () => POST(new Request('https://example.test/api/admin/login', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind: 'password', value: 'candidate' }),
+    })));
+    expect(response.status).toBe(429);
+    expect(response.headers.get('retry-after')).toBe('240');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('set-cookie')).toBeNull();
+    expect(await response.text()).not.toContain('candidate');
   });
 });

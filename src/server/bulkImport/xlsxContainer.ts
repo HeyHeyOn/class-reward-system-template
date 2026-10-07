@@ -27,6 +27,8 @@ type ZipEntry = Readonly<{
   compressedSize: number;
   size: number;
   localOffset: number;
+  flags: number;
+  directoryOffset: number;
 }>;
 
 export function assertSafeXlsxContainer(bytes: Uint8Array): void {
@@ -73,12 +75,14 @@ function readCentralDirectory(bytes: Uint8Array, view: DataView): ZipEntry[] {
     || entryCount !== view.getUint16(end + 8, true)) throw corrupted();
   if (entryCount === 0 || entryCount === 0xffff || directoryOffset === 0xffffffff) throw corrupted();
   if (entryCount > MAX_ENTRIES) throw tooLarge();
-  if (directoryOffset + directorySize > end) throw corrupted();
+  if (directorySize === 0xffffffff || directoryOffset + directorySize !== end) throw corrupted();
 
   const decoder = new TextDecoder('utf-8');
   const entries: ZipEntry[] = [];
   let total = 0;
   let pointer = directoryOffset;
+  const names = new Set<string>();
+  const offsets = new Set<number>();
   for (let index = 0; index < entryCount; index += 1) {
     if (pointer + 46 > end || view.getUint32(pointer, true) !== CENTRAL_HEADER) throw corrupted();
     const flags = view.getUint16(pointer + 8, true);
@@ -89,8 +93,12 @@ function readCentralDirectory(bytes: Uint8Array, view: DataView): ZipEntry[] {
     const extraLength = view.getUint16(pointer + 30, true);
     const commentLength = view.getUint16(pointer + 32, true);
     const localOffset = view.getUint32(pointer + 42, true);
-    if (pointer + 46 + nameLength > end) throw corrupted();
+    if (pointer + 46 + nameLength + extraLength + commentLength > end) throw corrupted();
     const name = decoder.decode(bytes.subarray(pointer + 46, pointer + 46 + nameLength));
+
+    if (!name || names.has(name) || offsets.has(localOffset) || view.getUint16(pointer + 34, true) !== 0) throw corrupted();
+    names.add(name);
+    offsets.add(localOffset);
 
     if (flags & 0x1) {
       throw new BulkImportFileError('INVALID_FILE', `암호가 걸린 파일은 열 수 없어요. 암호를 풀고 ${SAVE_AS_XLSX}`);
@@ -102,26 +110,35 @@ function readCentralDirectory(bytes: Uint8Array, view: DataView): ZipEntry[] {
     total += size;
     if (total > MAX_TOTAL_UNCOMPRESSED) throw tooLarge();
 
-    entries.push({ name, method, compressedSize, size, localOffset });
+    entries.push({ name, method, compressedSize, size, localOffset, flags, directoryOffset });
     pointer += 46 + nameLength + extraLength + commentLength;
   }
+  if (pointer !== end) throw corrupted();
   return entries;
 }
 
 function findEndOfCentralDirectory(view: DataView): number {
   const minimum = Math.max(0, view.byteLength - (22 + 0xffff));
-  for (let offset = view.byteLength - 22; offset >= minimum; offset -= 1) {
-    if (view.getUint32(offset, true) === END_OF_CENTRAL_DIRECTORY) return offset;
+  // JSZip uses the raw last signature. Never skip a later inconsistent record
+  // and validate a different directory from the downstream workbook parser.
+  for (let offset = view.byteLength - 4; offset >= minimum; offset -= 1) {
+    if (view.getUint32(offset, true) !== END_OF_CENTRAL_DIRECTORY) continue;
+    if (offset + 22 > view.byteLength
+      || offset + 22 + view.getUint16(offset + 20, true) !== view.byteLength) throw corrupted();
+    return offset;
   }
   throw corrupted();
 }
 
 function inflateEntry(bytes: Uint8Array, view: DataView, entry: ZipEntry): Uint8Array {
   const local = entry.localOffset;
-  if (local + 30 > bytes.byteLength || view.getUint32(local, true) !== LOCAL_HEADER) throw corrupted();
+  if (local + 30 > entry.directoryOffset || view.getUint32(local, true) !== LOCAL_HEADER) throw corrupted();
   const start = local + 30 + view.getUint16(local + 26, true) + view.getUint16(local + 28, true);
   const finish = start + entry.compressedSize;
-  if (finish > bytes.byteLength) throw corrupted();
+  if (start > entry.directoryOffset || finish > entry.directoryOffset
+    || view.getUint16(local + 6, true) !== entry.flags
+    || view.getUint16(local + 8, true) !== entry.method
+    || new TextDecoder('utf-8').decode(bytes.subarray(local + 30, local + 30 + view.getUint16(local + 26, true))) !== entry.name) throw corrupted();
   const data = bytes.subarray(start, finish);
   if (entry.method === 0) {
     if (entry.compressedSize !== entry.size) throw corrupted();

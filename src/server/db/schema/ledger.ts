@@ -42,6 +42,9 @@ export const transactions = pgTable('transactions', {
   foreignKey({ name: 'transactions_student_fk', columns: [table.tenantId, table.studentId], foreignColumns: [students.tenantId, students.studentId] }),
   foreignKey({ name: 'transactions_reversal_fk', columns: [table.tenantId, table.reversesTransactionId], foreignColumns: [table.tenantId, table.transactionId] }),
   index('transactions_student_history_idx').on(table.tenantId, table.studentId, table.occurredAt.desc(), table.eventSequence.desc()),
+  index('transactions_tenant_history_idx').on(table.tenantId, table.occurredAt.desc(), table.eventSequence.asc()),
+  index('transactions_cancellation_lookup_idx').on(table.tenantId, table.reversesTransactionId)
+    .where(sql`${table.kind} = 'CANCELLATION'`),
   uniqueIndex('transactions_operation_unique').on(table.tenantId, table.operationId).where(sql`${table.operationId} IS NOT NULL`),
   check('transactions_kind_check', sql`${table.kind} IN ('CHECKOUT', 'CANCELLATION', 'ADMIN_ADJUSTMENT', 'TASK_REWARD', 'LEGACY')`),
   check('transactions_id_check', sql`${table.transactionId} = btrim(${table.transactionId}) AND length(${table.transactionId}) > 0`),

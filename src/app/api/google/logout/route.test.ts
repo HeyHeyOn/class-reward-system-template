@@ -14,7 +14,7 @@ import { POST } from './route';
 
 describe('POST /api/google/logout', () => {
   it('clears both the ordinary identity session and separate generator grant', async () => {
-    const response = await POST();
+    const response = await POST(new Request('https://class.example/api/google/logout', { method: 'POST' }));
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ ok: true });

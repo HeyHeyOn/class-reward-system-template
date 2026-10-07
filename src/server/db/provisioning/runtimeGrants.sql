@@ -1,4 +1,4 @@
--- Apply after migrations 0001–0038 as the migration owner, in the same
+-- Apply after migrations 0001–0040 as the migration owner, in the same
 -- transaction as creation of crs_app_runtime LOGIN NOSUPERUSER NOBYPASSRLS
 -- NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION. Never grant role membership.
 -- Passwords and provider URLs belong to the provisioning runner, not this file.
@@ -35,5 +35,7 @@ GRANT EXECUTE ON FUNCTION
   public.platform_create_draft_class(uuid,text,text,text),
   public.platform_get_new_class_setup(text,text),
   public.platform_start_new_class(uuid,text,text),
+  public.platform_consume_tenant_login_attempt(uuid),
+  public.platform_revoke_tenant_session(text,integer),
   public.platform_list_class_dashboard(text),
   public.platform_manage_class(uuid,text,text,text,text,bigint) TO crs_app_runtime;

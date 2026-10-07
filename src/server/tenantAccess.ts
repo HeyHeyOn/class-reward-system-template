@@ -9,8 +9,7 @@ import type {
 } from '@/server/tenantAuth';
 import type { TenantLifecycle, TenantRecord } from '@/server/tenantContext';
 import { getProductionTenantLegacyAdminAuth } from '@/server/tenantLegacyAdminAuth';
-
-const TENANT_ADMIN_SESSION_COOKIE = 'class_store_tenant_admin';
+import { readTenantAdminSessionCookie } from '@/server/tenantAdminSessionCookie';
 
 type QueryResult = Readonly<{ rows: unknown[] }>;
 type Queryable = Readonly<{
@@ -65,7 +64,7 @@ export function createTenantAccessDependencies(
     getSession,
     async getCompatibilitySession(request, tenantId) {
       if (process.env.CLASS_STORE_STORAGE !== 'postgresql') return null;
-      const token = parseCookieHeader(request.headers.get('cookie') ?? '').get(TENANT_ADMIN_SESSION_COOKIE);
+      const token = readTenantAdminSessionCookie(request);
       if (!await getProductionTenantLegacyAdminAuth().verifySession(token, tenantId)) return null;
       return { tenantId };
     },
@@ -119,18 +118,4 @@ function projectMembership(value: unknown): TenantMembership | null {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function parseCookieHeader(header: string): Map<string, string> {
-  const cookies = new Map<string, string>();
-  for (const part of header.split(';')) {
-    const [key, ...value] = part.trim().split('=');
-    if (!key) continue;
-    try {
-      cookies.set(key, decodeURIComponent(value.join('=')));
-    } catch {
-      // Ignore malformed cookie values and fail closed.
-    }
-  }
-  return cookies;
 }

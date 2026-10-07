@@ -103,12 +103,16 @@ async function rewriteScopedRequest(request: Request, slug: string, path: string
   url.pathname = `/api/${path.map(encodeURIComponent).join('/')}`;
   const body = request.method === 'GET' || request.method === 'HEAD'
     ? undefined
-    : await request.arrayBuffer();
-  return new Request(url, {
+    : request.body;
+  // Forward the stream so each handler's bounded reader can reject an upload
+  // before it is buffered. Node's fetch requires duplex for a streaming body.
+  const init: RequestInit & { duplex: 'half' } = {
     method: request.method,
     headers: request.headers,
     body,
     redirect: request.redirect,
     signal: request.signal,
-  });
+    duplex: 'half',
+  };
+  return new Request(url, init);
 }

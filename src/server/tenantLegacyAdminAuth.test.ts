@@ -4,15 +4,16 @@ import type { SQL } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
-vi.mock('@/server/db/transaction', () => ({ withTenantSnapshot: vi.fn() }));
+vi.mock('@/server/db/transaction', () => ({ withTenantSnapshot: vi.fn(), withTenantTransaction: vi.fn() }));
 
 import { createAdminPasswordHash } from '@/server/adminAuth';
-import { withTenantSnapshot, type TenantTransaction } from '@/server/db/transaction';
+import { withTenantSnapshot, withTenantTransaction, type TenantTransaction } from '@/server/db/transaction';
 import { runWithTrustedTenantRequestContext } from '@/server/trustedTenantRequestContext';
 import {
   createTenantLegacyAdminAuth,
   getProductionTenantLegacyAdminAuth,
   TenantLegacyAdminAuthError,
+  TenantLegacyAdminRateLimitError,
 } from '@/server/tenantLegacyAdminAuth';
 
 const ALPHA_ID = '20000000-0000-4000-8000-000000000001';
@@ -154,6 +155,33 @@ describe('tenant-scoped imported admin credential compatibility', () => {
     storedSession = { ...storedSession, sessionVersion: 8 };
     await expect(auth.verifySession(result.sessionToken, ALPHA_ID)).resolves.toBe(false);
   });
+
+  it('stops exhausted attempts before credential reads or password hashing', async () => {
+    const consumeLoginAttempt = vi.fn(async () => 240);
+    const auth = createTenantLegacyAdminAuth({ readCurrentCredential, consumeLoginAttempt }, env);
+    await expect(inTenant(ALPHA_ID, 'READY', () => auth.login({ kind: 'password', value: 'candidate' })))
+      .rejects.toBeInstanceOf(TenantLegacyAdminRateLimitError);
+    expect(consumeLoginAttempt).toHaveBeenCalledWith(ALPHA_ID);
+    expect(readCurrentCredential).not.toHaveBeenCalled();
+  });
+
+  it('counts unsuccessful and successful password or QR attempts before checking the credential', async () => {
+    const events: string[] = [];
+    const current = credential();
+    const consumeLoginAttempt = vi.fn(async () => { events.push('attempt'); return 0; });
+    const auth = createTenantLegacyAdminAuth({ consumeLoginAttempt,
+      readCurrentCredential: async () => { events.push('credential'); return current; }, now: () => 1000 }, env);
+    await expect(inTenant(ALPHA_ID, 'READY', () => auth.login({ kind: 'password', value: 'wrong' }))).rejects.toBeInstanceOf(TenantLegacyAdminAuthError);
+    await expect(inTenant(ALPHA_ID, 'READY', () => auth.login({ kind: 'qr', value: 'class-store-admin:correct horse' }))).resolves.toHaveProperty('sessionToken');
+    expect(events).toEqual(['attempt', 'credential', 'attempt', 'credential']);
+  });
+
+  it('fails closed when the durable limiter is unavailable', async () => {
+    const auth = createTenantLegacyAdminAuth({ readCurrentCredential,
+      consumeLoginAttempt: async () => { throw new Error('synthetic unavailable'); } }, env);
+    await expect(inTenant(ALPHA_ID, 'READY', () => auth.login({ kind: 'password', value: 'correct horse' }))).rejects.toThrow();
+    expect(readCurrentCredential).not.toHaveBeenCalled();
+  });
 });
 
 describe('production legacy-admin DB adapter unit timestamp regression (no native SQL or HTTP)', () => {
@@ -169,6 +197,7 @@ describe('production legacy-admin DB adapter unit timestamp regression (no nativ
   const execute = vi.fn(async (query: SQL) => {
     const compiled = dialect.sqlToQuery(query);
     expect(compiled.params[0]).toBe(ALPHA_ID);
+    if (compiled.sql.includes('platform_consume_tenant_login_attempt')) return { rows: [{ retry_after: 0 }] };
     if (compiled.sql.includes('FROM public.tenant_sessions s')) {
       const matchesToken = compiled.params[1] === createHash('sha256').update(tokenRaw).digest('hex');
       return { rows: matchesToken ? [sessionRow] : [] };
@@ -189,6 +218,8 @@ describe('production legacy-admin DB adapter unit timestamp regression (no nativ
       secret_hash: createAdminPasswordHash('correct horse'), hash_algorithm: 'scrypt', revoked_at: null,
     };
     snapshot.mockImplementation(async (_tenantId, callback) =>
+      callback({ execute } as unknown as TenantTransaction));
+    vi.mocked(withTenantTransaction).mockImplementation(async (_tenantId, callback) =>
       callback({ execute } as unknown as TenantTransaction));
   });
 

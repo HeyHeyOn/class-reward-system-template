@@ -122,6 +122,11 @@ export function createTaskLedgerCommands(dependencies: TaskLedgerCommandDependen
 
   /** Fresh DTOs of the given tasks (all live tasks when omitted), read after the write. */
   async function readTasks(taskIds?: readonly string[]): Promise<AdminTaskDto[]> {
+    return (await readBoard(taskIds)).tasks;
+  }
+
+  /** Project stages and return their clock from the same read snapshot. */
+  async function readBoard(taskIds?: readonly string[]): Promise<{ now: string; tasks: AdminTaskDto[] }> {
     await ensureTaskLedger(dependencies);
     const read = dependencies.runTenantSnapshot ?? dependencies.runTenantTransaction;
     return read(tenantId, async (tx) => {
@@ -131,7 +136,10 @@ export function createTaskLedgerCommands(dependencies: TaskLedgerCommandDependen
       const students = await readLedgerStudents(tx, tenantId);
       const events = groupEvents(ledgerFrom === null ? [] : await readLedgerEvents(tx, tenantId, ledgerFrom,
         { taskInstanceIds: tasks.map((task) => task.taskInstanceId) }));
-      return sortTasks(tasks.map((task) => buildAdminTaskDto(task, students, events.get(task.taskInstanceId), now)));
+      return {
+        now: new Date(now).toISOString(),
+        tasks: sortTasks(tasks.map((task) => buildAdminTaskDto(task, students, events.get(task.taskInstanceId), now))),
+      };
     });
   }
 
@@ -277,6 +285,7 @@ export function createTaskLedgerCommands(dependencies: TaskLedgerCommandDependen
 
   return {
     readTasks,
+    readBoard,
 
     /**
      * `internal` is for server-side callers only (the .xlsx import keeps the sheet's task IDs and

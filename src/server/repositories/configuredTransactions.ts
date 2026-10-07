@@ -1,6 +1,7 @@
 import 'server-only';
 
 import type { Transaction } from '@/domain/types';
+import type { TransactionPage, TransactionPageRequest } from '@/lib/transactionHistory';
 import { createConfiguredSheetsReader } from '@/server/googleSheets';
 import { withTenantSnapshot } from '@/server/db/transaction';
 import type { CentralTenantContextInput } from '@/server/repositories/context';
@@ -15,6 +16,7 @@ import { getTransactions, type SheetsReader } from '@/server/sheetsRepository';
 
 export type TransactionReader = Readonly<{
   getTransactions: () => Promise<Transaction[]>;
+  getTransactionPage?: (request: TransactionPageRequest) => Promise<TransactionPage>;
 }>;
 
 type TransactionQueryFactory = (dependencies: {

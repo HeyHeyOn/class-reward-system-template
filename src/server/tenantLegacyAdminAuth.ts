@@ -2,10 +2,11 @@ import 'server-only';
 
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { verifyAdminPasswordHash } from '@/server/adminAuth';
-import { withTenantSnapshot } from '@/server/db/transaction';
+import { verifyAdminPasswordHashAsync } from '@/server/adminAuth';
+import { withTenantSnapshot, withTenantTransaction } from '@/server/db/transaction';
 import { getOptionalTrustedTenantRequestContext } from '@/server/trustedTenantRequestContext';
 import type { TenantLifecycle } from '@/server/tenantContext';
+import { parseTenantAdminSessionToken } from '@/server/tenantAdminSessionCookie';
 
 const SESSION_VERSION = 'csa1';
 const SESSION_LIFETIME_MS = 12 * 60 * 60 * 1_000;
@@ -31,6 +32,7 @@ export type TenantLegacyAdminCredential = Readonly<{
 }>;
 
 export type TenantLegacyAdminAuthDependencies = Readonly<{
+  consumeLoginAttempt?(tenantId: string): Promise<number>;
   readCurrentCredential(tenantId: string): Promise<TenantLegacyAdminCredential | null>;
   createSession?(tenantId: string, credentialVersion: number, expiresAt: Date): Promise<Readonly<{
     token: string;
@@ -56,6 +58,13 @@ export class TenantLegacyAdminAuthError extends Error {
   }
 }
 
+export class TenantLegacyAdminRateLimitError extends Error {
+  constructor(readonly retryAfterSeconds: number) {
+    super('Tenant admin login attempt limit reached.');
+    this.name = 'TenantLegacyAdminRateLimitError';
+  }
+}
+
 export function createTenantLegacyAdminAuth(
   dependencies: TenantLegacyAdminAuthDependencies,
   env: Env = process.env,
@@ -73,9 +82,16 @@ export function createTenantLegacyAdminAuth(
       const context = getOptionalTrustedTenantRequestContext();
       if (!context) throw new TenantLegacyAdminAuthError();
       const password = parseCredentialInput(input);
+      // Consume and commit the durable attempt before reading or hashing a
+      // credential. Failure never silently falls back to unlimited verification.
+      if (dependencies.consumeLoginAttempt) {
+        const retryAfter = await dependencies.consumeLoginAttempt(context.tenant.id);
+        if (!Number.isSafeInteger(retryAfter) || retryAfter < 0 || retryAfter > 3600) throw new TenantLegacyAdminAuthError();
+        if (retryAfter > 0) throw new TenantLegacyAdminRateLimitError(retryAfter);
+      }
       const credential = await dependencies.readCurrentCredential(context.tenant.id);
       if (!isUsableCredential(credential, context.tenant.id, context.tenant.lifecycle)
-        || !verifyAdminPasswordHash(password, credential.secretHash)) {
+        || !await verifyAdminPasswordHashAsync(password, credential.secretHash)) {
         throw new TenantLegacyAdminAuthError();
       }
       if (dependencies.createSession) {
@@ -300,7 +316,7 @@ async function createProductionSession(
 }
 
 async function readProductionSession(tenantId: string, token: string): Promise<TenantLegacyAdminSession | null> {
-  const parsed = parseOpaqueSessionToken(token);
+  const parsed = parseTenantAdminSessionToken(token);
   if (!parsed) return null;
   return withTenantSnapshot(tenantId, async (transaction) => {
     const result = await transaction.execute(sql`
@@ -327,20 +343,17 @@ async function readProductionSession(tenantId: string, token: string): Promise<T
   });
 }
 
-function parseOpaqueSessionToken(token: string): { raw: string; sessionVersion: number } | null {
-  const parts = token.split('.');
-  const version = Number(parts[1]);
-  if (parts.length !== 3 || parts[0] !== SESSION_VERSION || !Number.isSafeInteger(version)
-    || version < 1 || !/^[A-Za-z0-9_-]{43}$/.test(parts[2])) return null;
-  return { raw: parts[2], sessionVersion: version };
-}
-
 function hashSessionToken(raw: string): string {
   return createHash('sha256').update(raw, 'utf8').digest('hex');
 }
 
 export function getProductionTenantLegacyAdminAuth(env: Env = process.env) {
   return createTenantLegacyAdminAuth({
+    consumeLoginAttempt: (tenantId) => withTenantTransaction(tenantId, async transaction => {
+      const result = await transaction.execute(sql`SELECT public.platform_consume_tenant_login_attempt(${tenantId}::uuid) AS retry_after`);
+      if (result.rows.length !== 1) throw new TenantLegacyAdminAuthError();
+      return result.rows[0].retry_after as number;
+    }),
     readCurrentCredential: readProductionCredential,
     createSession: createProductionSession,
     readSession: readProductionSession,

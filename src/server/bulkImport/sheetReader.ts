@@ -57,7 +57,8 @@ export async function readImportSheet<TField extends string>(
 
   const workbook = new ExcelJS.Workbook();
   try {
-    await workbook.xlsx.load(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength) as never);
+    // Keep the stored top-left value; merged formatting must not allocate cells.
+    await workbook.xlsx.load(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength) as never, { ignoreNodes: ['mergeCells'] });
   } catch {
     throw new BulkImportFileError('INVALID_FILE',
       "엑셀 파일을 읽지 못했어요. 엑셀에서 '다른 이름으로 저장 → Excel 통합 문서(*.xlsx)'로 저장한 뒤 다시 올려 주세요.");

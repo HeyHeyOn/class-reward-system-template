@@ -726,7 +726,7 @@ export function AdminManagePage({ migrationsHref }: { migrationsHref?: string } 
   // PostgreSQL classes (/c/{slug}) use the stage-ledger task screen (src/components/tasks/ledger).
   // There the old task list below never loads; it serves Google Sheets classes only.
   const ledgerMode = isTaskLedgerMode();
-  const taskLedger = useTaskLedger({ enabled: ledgerMode });
+  const taskLedger = useTaskLedger({ enabled: ledgerMode, polling: activeTab === 'home' || activeTab === 'tasks' });
 
   const loadLinkedSheetData = useCallback(async (options: { silent?: boolean; shouldApply?: () => boolean } = {}) => {
     const shouldApply = options.shouldApply ?? (() => true);

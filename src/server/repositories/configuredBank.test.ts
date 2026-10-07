@@ -35,6 +35,7 @@ describe('configured bank read composition root', () => {
       }),
     }));
     const createDatabaseTransactionQueries = vi.fn(({ runTenantTransaction }) => ({
+      getTransactionPage: vi.fn(),
       getTransactionById: vi.fn(),
       getCancellationPair: vi.fn(),
       getTransactions: (window?: { studentId: string; limit: number }) => runTenantTransaction(TENANT_ID, async (received: unknown) => {

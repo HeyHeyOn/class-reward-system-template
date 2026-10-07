@@ -2,6 +2,8 @@ import 'server-only';
 
 import { sql } from 'drizzle-orm';
 import type { Transaction } from '@/domain/types';
+import type { TransactionPage, TransactionPageRequest } from '@/lib/transactionHistory';
+import { encodeTransactionCursor, readTransactionCursor } from '@/server/transactionPagination';
 import type { TenantTransaction } from '@/server/db/transaction';
 import {
   isoString,
@@ -25,6 +27,7 @@ export type DatabaseTransactionQueryDependencies = Readonly<{
 export type StudentTransactionWindow = Readonly<{ studentId: string; limit: number }>;
 
 type TransactionRow = TransactionItemRow & {
+  cursor_timestamp: unknown;
   transaction_id: unknown;
   event_sequence: unknown;
   occurred_at: unknown;
@@ -69,6 +72,39 @@ export function createDatabaseTransactionQueries(
       });
     },
 
+    async getTransactionPage(request: TransactionPageRequest): Promise<TransactionPage> {
+      const cursor = readTransactionCursor(request, 'postgresql');
+      return dependencies.runTenantTransaction(dependencies.tenantId, async (transaction) => {
+        const filter = transactionPageFilter(dependencies.tenantId, request);
+        const after = cursor ? sql`AND (t.occurred_at < ${cursor.at}::timestamptz
+          OR (t.occurred_at = ${cursor.at}::timestamptz AND t.event_sequence > ${cursor.key}::bigint))` : sql``;
+        // Select complete parent rows before the item join, including one look-ahead parent.
+        const parents = sql`(SELECT t.* FROM transactions t WHERE ${filter} ${after}
+          ORDER BY t.occurred_at DESC, t.event_sequence ASC LIMIT ${request.limit + 1})`;
+        const rows = await readTransactionRows(transaction, dependencies.tenantId, undefined, undefined, parents);
+        const projected = projectTransactions(rows);
+        const page = projected.slice(0, request.limit);
+        const last = page.at(-1);
+        const lastRow = last && rows.find((row) => row.transaction_id === last.transactionId);
+        const totals = await transaction.execute(sql`
+          SELECT count(*)::text AS count,
+            COALESCE(sum(CASE WHEN counted AND balance_delta > 0 THEN balance_delta ELSE 0 END), 0)::text AS income,
+            COALESCE(sum(CASE WHEN counted AND balance_delta <= 0 THEN -balance_delta ELSE 0 END), 0)::text AS expense
+          FROM (SELECT t.balance_delta,
+            t.kind <> 'CANCELLATION' AND COALESCE(t.legacy_status_snapshot, '') NOT IN ('CANCELLED', 'CANCEL_REVERSAL')
+            AND NOT EXISTS (SELECT 1 FROM transactions reversal
+              WHERE reversal.tenant_id = ${dependencies.tenantId}
+                AND reversal.reverses_transaction_id = t.transaction_id AND reversal.kind = 'CANCELLATION') AS counted
+            FROM transactions t WHERE ${filter}) matching`);
+        const summary = totals.rows[0] as Record<string, unknown>;
+        return { transactions: page,
+          nextCursor: projected.length > request.limit && lastRow
+            ? encodeTransactionCursor('postgresql', String(lastRow.cursor_timestamp), String(lastRow.event_sequence), request) : null,
+          totals: { count: safeInteger(summary.count, 'Transaction count'),
+            income: safeInteger(summary.income, 'Transaction income'), expense: safeInteger(summary.expense, 'Transaction expense') } };
+      });
+    },
+
     async getTransactionById(transactionId: string): Promise<Transaction | null> {
       assertCanonicalTransactionId(transactionId);
       return dependencies.runTenantTransaction(dependencies.tenantId, async (transaction) => {
@@ -108,11 +144,27 @@ export function createDatabaseTransactionQueries(
   };
 }
 
+function transactionPageFilter(tenantId: string, request: TransactionPageRequest) {
+  // Escape LIKE metacharacters: the UI search is a literal substring, not a pattern language.
+  const needle = `%${request.query.replace(/[\\%_]/g, '\\$&')}%`;
+  return sql`t.tenant_id = ${tenantId}
+    ${request.studentId ? sql`AND t.student_id = ${request.studentId}` : sql``}
+    ${request.direction === 'income' ? sql`AND t.balance_delta > 0`
+      : request.direction === 'expense' ? sql`AND t.balance_delta <= 0` : sql``}
+    ${request.from ? sql`AND t.occurred_at >= (${request.from}::date::timestamp AT TIME ZONE 'Asia/Seoul')` : sql``}
+    ${request.through ? sql`AND t.occurred_at < ((${request.through}::date + 1)::timestamp AT TIME ZONE 'Asia/Seoul')` : sql``}
+    ${request.query ? sql`AND ((t.student_name_snapshot || ' ' || t.student_id) ILIKE ${needle}
+      OR EXISTS (SELECT 1 FROM transaction_items searched
+        WHERE searched.tenant_id = ${tenantId} AND searched.transaction_id = t.transaction_id
+          AND searched.product_name_snapshot ILIKE ${needle}))` : sql``}`;
+}
+
 async function readTransactionRows(
   transaction: TenantTransaction,
   tenantId: string,
   transactionIds?: readonly string[],
   window?: StudentTransactionWindow,
+  pageParents?: ReturnType<typeof sql>,
 ): Promise<TransactionRow[]> {
   const idPredicate = transactionIds === undefined
     ? sql``
@@ -121,14 +173,15 @@ async function readTransactionRows(
       : sql`AND (t.transaction_id = ${transactionIds[0]} OR t.transaction_id = ${transactionIds[1]})`;
   // Bound parent transactions before joining items so multi-line purchases stay
   // complete. Reversal/original lookups below still see the full tenant ledger.
-  const source = window ? sql`(
+  const source = pageParents ?? (window ? sql`(
     SELECT * FROM transactions
     WHERE tenant_id = ${tenantId} AND student_id = ${window.studentId}
     ORDER BY occurred_at DESC, event_sequence ASC
     LIMIT ${window.limit}
-  )` : sql`transactions`;
+  )` : sql`transactions`);
   const result = await transaction.execute(sql`
     SELECT t.transaction_id, t.event_sequence::text AS event_sequence, t.occurred_at,
+           to_char(t.occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_timestamp,
            t.student_id, t.student_name_snapshot, t.kind,
            t.legacy_total_amount::text AS legacy_total_amount,
            t.balance_delta::text AS balance_delta,
@@ -136,34 +189,8 @@ async function readTransactionRows(
            t.balance_after::text AS balance_after,
            t.operator_snapshot, t.legacy_status_snapshot, t.reverses_transaction_id,
            t.schema_version,
-           (
-             SELECT count(*)::text
-             FROM transactions reversal_count_row
-             WHERE reversal_count_row.tenant_id = ${tenantId}
-               AND reversal_count_row.reverses_transaction_id = t.transaction_id
-               AND reversal_count_row.kind = 'CANCELLATION'
-           ) AS reversal_count,
-           (
-             SELECT max(reversal_time_row.occurred_at)
-             FROM transactions reversal_time_row
-             WHERE reversal_time_row.tenant_id = ${tenantId}
-               AND reversal_time_row.reverses_transaction_id = t.transaction_id
-               AND reversal_time_row.kind = 'CANCELLATION'
-           ) AS cancelled_at,
-           (
-             SELECT max(reversal_student_row.student_id)
-             FROM transactions reversal_student_row
-             WHERE reversal_student_row.tenant_id = ${tenantId}
-               AND reversal_student_row.reverses_transaction_id = t.transaction_id
-               AND reversal_student_row.kind = 'CANCELLATION'
-           ) AS cancellation_student_id,
-           (
-             SELECT max(reversal_delta_row.balance_delta)::text
-             FROM transactions reversal_delta_row
-             WHERE reversal_delta_row.tenant_id = ${tenantId}
-               AND reversal_delta_row.reverses_transaction_id = t.transaction_id
-               AND reversal_delta_row.kind = 'CANCELLATION'
-           ) AS cancellation_balance_delta,
+           reversal.reversal_count, reversal.cancelled_at,
+           reversal.cancellation_student_id, reversal.cancellation_balance_delta,
            original.occurred_at AS reversed_transaction_at,
            original.kind AS reversed_transaction_kind,
            original.student_id AS reversed_transaction_student_id,
@@ -181,6 +208,12 @@ async function readTransactionRows(
            item.total_discount::text AS total_discount,
            item.adjustments_snapshot, item.applied_promotions_snapshot
     FROM ${source} t
+    LEFT JOIN LATERAL (
+      SELECT count(*)::text AS reversal_count, max(r.occurred_at) AS cancelled_at,
+        max(r.student_id) AS cancellation_student_id, max(r.balance_delta)::text AS cancellation_balance_delta
+      FROM transactions r WHERE r.tenant_id = ${tenantId}
+        AND r.reverses_transaction_id = t.transaction_id AND r.kind = 'CANCELLATION'
+    ) reversal ON true
     LEFT JOIN transactions original
       ON original.tenant_id = ${tenantId}
      AND original.transaction_id = t.reverses_transaction_id
@@ -310,6 +343,7 @@ function projectTransaction(rows: TransactionRow[]): Transaction {
     // Modern reward commands store COMPLETED as the ledger status. Expose the
     // public reward category so cancellation explains the completion reset too.
     status: reversalCount === 1 ? 'CANCELLED'
+      : kind === 'CANCELLATION' ? 'CANCEL_REVERSAL'
       : kind === 'TASK_REWARD' && statusSnapshot === 'COMPLETED' ? 'TASK_REWARD'
       : statusSnapshot || 'UNKNOWN',
     operator: requiredSnapshotString(first.operator_snapshot, 'Transaction operator'),

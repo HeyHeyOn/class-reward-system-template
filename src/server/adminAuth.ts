@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, scrypt, scryptSync, timingSafeEqual } from 'node:crypto';
 import type { SheetsReader, SheetsStore } from '@/server/sheetsRepository';
 import { getSheetSettings, saveSheetSetting } from '@/server/sheetsRepository';
 
@@ -90,6 +90,21 @@ export function verifyAdminPasswordHash(password: string, savedHash: string): bo
   } catch {
     return false;
   }
+}
+
+/** Compatibility logins run scrypt in Node's worker pool, not the event loop. */
+export async function verifyAdminPasswordHashAsync(password: string, savedHash: string): Promise<boolean> {
+  if (/^[a-f0-9]{64}$/.test(savedHash)) return safeEqual(hashValue(password), savedHash);
+  const [version, cost, blockSize, parallelization, saltHex, hashHex, ...extra] = savedHash.split('$');
+  if (version !== PASSWORD_HASH_VERSION || cost !== String(SCRYPT_COST)
+    || blockSize !== String(SCRYPT_BLOCK_SIZE) || parallelization !== String(SCRYPT_PARALLELIZATION)
+    || !new RegExp(`^[a-f0-9]{${PASSWORD_SALT_BYTES * 2}}$`).test(saltHex ?? '')
+    || !new RegExp(`^[a-f0-9]{${PASSWORD_HASH_BYTES * 2}}$`).test(hashHex ?? '') || extra.length) return false;
+  return new Promise(resolve => {
+    scrypt(password, Buffer.from(saltHex, 'hex'), PASSWORD_HASH_BYTES, {
+      N: SCRYPT_COST, r: SCRYPT_BLOCK_SIZE, p: SCRYPT_PARALLELIZATION,
+    }, (error, hash) => resolve(!error && safeEqual(hash.toString('hex'), hashHex)));
+  });
 }
 
 export function createAdminSessionToken(env: AdminAuthEnv = process.env): string {

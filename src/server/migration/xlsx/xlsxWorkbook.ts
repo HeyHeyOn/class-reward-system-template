@@ -55,18 +55,26 @@ export function assertSafeXlsxArchive(bytes: Uint8Array): void {
     refuse('NOT_XLSX', '엑셀(.xlsx) 파일만 올릴 수 있어요. 구글 시트에서 [파일 → 다운로드 → Microsoft Excel(.xlsx)]로 저장해 주세요.');
   }
   let end = -1;
-  for (let offset = buffer.length - 22; offset >= Math.max(0, buffer.length - 22 - 0xffff); offset -= 1) {
-    if (buffer.readUInt32LE(offset) === 0x06054b50) { end = offset; break; }
+  // Match JSZip's raw last-signature selection; a later invalid record is a
+  // refusal, never a reason to validate an earlier, different directory.
+  for (let offset = buffer.length - 4; offset >= Math.max(0, buffer.length - 22 - 0xffff); offset -= 1) {
+    if (buffer.readUInt32LE(offset) !== 0x06054b50) continue;
+    if (offset + 22 > buffer.length || offset + 22 + buffer.readUInt16LE(offset + 20) !== buffer.length) {
+      refuse('UNSAFE_ARCHIVE', '파일 구조가 올바르지 않아요. 다시 저장해 주세요.');
+    }
+    end = offset; break;
   }
   if (end < 0) refuse('NOT_XLSX', '파일이 손상되었거나 엑셀(.xlsx) 파일이 아니에요.');
   const entries = buffer.readUInt16LE(end + 10);
   const directorySize = buffer.readUInt32LE(end + 12);
   const directoryOffset = buffer.readUInt32LE(end + 16);
-  if (entries === 0xffff || directorySize === 0xffffffff || directoryOffset === 0xffffffff
-    || entries > MAX_ZIP_ENTRIES || directoryOffset + directorySize > end) {
+  if (entries === 0 || buffer.readUInt16LE(end + 4) !== 0 || buffer.readUInt16LE(end + 6) !== 0
+    || buffer.readUInt16LE(end + 8) !== entries || entries === 0xffff || directorySize === 0xffffffff || directoryOffset === 0xffffffff
+    || entries > MAX_ZIP_ENTRIES || directoryOffset + directorySize !== end) {
     refuse('UNSAFE_ARCHIVE', '파일 구조가 지원하지 않는 형식이에요. 구글 시트에서 다시 다운로드해 주세요.');
   }
   const names = new Set<string>();
+  const offsets = new Set<number>();
   let total = 0;
   let cursor = directoryOffset;
   for (let index = 0; index < entries; index += 1) {
@@ -81,7 +89,13 @@ export function assertSafeXlsxArchive(bytes: Uint8Array): void {
     const extraLength = buffer.readUInt16LE(cursor + 30);
     const commentLength = buffer.readUInt16LE(cursor + 32);
     const localOffset = buffer.readUInt32LE(cursor + 42);
+    if (cursor + 46 + nameLength + extraLength + commentLength > end
+      || buffer.readUInt16LE(cursor + 34) !== 0 || offsets.has(localOffset)) {
+      refuse('UNSAFE_ARCHIVE', '파일 구조가 올바르지 않아요. 다시 저장해 주세요.');
+    }
+    offsets.add(localOffset);
     const name = buffer.toString('utf8', cursor + 46, cursor + 46 + nameLength);
+    if (!name || names.has(name)) refuse('UNSAFE_ARCHIVE', '파일 구조가 올바르지 않아요. 다시 저장해 주세요.');
     cursor += 46 + nameLength + extraLength + commentLength;
     if ((flags & 0x1) !== 0 || compressed === 0xffffffff || uncompressed === 0xffffffff
       || (method !== 0 && method !== 8) || uncompressed > MAX_ENTRY_BYTES) {
@@ -90,11 +104,13 @@ export function assertSafeXlsxArchive(bytes: Uint8Array): void {
     total += uncompressed;
     if (total > MAX_UNCOMPRESSED_BYTES) refuse('TOO_MANY_CELLS', '파일 내용이 너무 커요. 사용하지 않는 시트를 지운 뒤 다시 저장해 주세요.');
     names.add(name);
-    if (localOffset + 30 > buffer.length || buffer.readUInt32LE(localOffset) !== 0x04034b50) {
+    if (localOffset + 30 > directoryOffset || buffer.readUInt32LE(localOffset) !== 0x04034b50) {
       refuse('UNSAFE_ARCHIVE', '파일이 손상되었어요. 구글 시트에서 다시 다운로드해 주세요.');
     }
     const dataStart = localOffset + 30 + buffer.readUInt16LE(localOffset + 26) + buffer.readUInt16LE(localOffset + 28);
-    if (dataStart + compressed > buffer.length) refuse('UNSAFE_ARCHIVE', '파일이 손상되었어요. 구글 시트에서 다시 다운로드해 주세요.');
+    if (dataStart > directoryOffset || dataStart + compressed > directoryOffset
+      || buffer.readUInt16LE(localOffset + 6) !== flags || buffer.readUInt16LE(localOffset + 8) !== method
+      || buffer.toString('utf8', localOffset + 30, localOffset + 30 + buffer.readUInt16LE(localOffset + 26)) !== name) refuse('UNSAFE_ARCHIVE', '파일이 손상되었어요. 구글 시트에서 다시 다운로드해 주세요.');
     if (method === 8) {
       let inflated: Buffer;
       try {
@@ -107,6 +123,7 @@ export function assertSafeXlsxArchive(bytes: Uint8Array): void {
       refuse('UNSAFE_ARCHIVE', '파일이 손상되었어요. 구글 시트에서 다시 다운로드해 주세요.');
     }
   }
+  if (cursor !== end) refuse('UNSAFE_ARCHIVE', '파일 구조가 올바르지 않아요. 다시 저장해 주세요.');
   if (!names.has('[Content_Types].xml') || !names.has('xl/workbook.xml')) {
     refuse('NOT_XLSX', '엑셀(.xlsx) 파일만 올릴 수 있어요. 구글 시트에서 [파일 → 다운로드 → Microsoft Excel(.xlsx)]로 저장해 주세요.');
   }
@@ -193,7 +210,9 @@ export async function readXlsxWorkbookGrid(bytes: Uint8Array): Promise<XlsxWorkb
   const workbook = new ExcelJS.Workbook();
   try {
     const archive = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    await workbook.xlsx.load(archive as unknown as Parameters<typeof workbook.xlsx.load>[0]);
+    // Imported values use the top-left cell only. Ignoring merge metadata avoids
+    // allocating every cell of a formatting-only merged rectangle.
+    await workbook.xlsx.load(archive as unknown as Parameters<typeof workbook.xlsx.load>[0], { ignoreNodes: ['mergeCells'] });
   } catch {
     refuse('UNREADABLE', '파일을 읽지 못했어요. 구글 시트에서 [파일 → 다운로드 → Microsoft Excel(.xlsx)]로 다시 저장해 주세요.');
   }

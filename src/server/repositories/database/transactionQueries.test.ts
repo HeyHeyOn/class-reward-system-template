@@ -1,4 +1,8 @@
+// @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { parseTransactionPageRequest } from '@/server/transactionPagination';
 import {
   createDatabaseTransactionQueries,
   type DatabaseTransactionQueryDependencies,
@@ -23,6 +27,7 @@ const OTHER_TENANT_ONLY_ID = 'OTHER-ONLY';
 
 beforeEach(async () => {
   harness = await createPgliteDatabaseHarness();
+  await harness.database.exec(await readFile(resolve(process.cwd(), 'src/server/db/migrations/0039_transaction_history_indexes.sql'), 'utf8'));
   await seedStudent(harness.tenantOneId, STUDENT_ID, '김학생');
   await seedStudent(harness.tenantTwoId, STUDENT_ID, '다른 반 학생');
 
@@ -514,5 +519,113 @@ describe('bounded student history for bank balance reads', () => {
       ...[0, -1, 101, 1.5, NaN, Infinity].map(limit => ({ studentId: STUDENT_ID, limit })),
     ]) await expect(reader.getTransactions(window)).rejects.toThrow('Invalid student transaction window.');
     expect(runTenantTransaction).not.toHaveBeenCalled();
+  });
+});
+
+describe('admin transaction keyset pages', () => {
+  const request = (parameters = '') => parseTransactionPageRequest(new URLSearchParams(parameters));
+
+  it('pages complete parents in stable tie order and resolves cancellation links outside each page', async () => {
+    const repository = queries();
+    const full = await repository.getTransactions();
+    const collected = [];
+    let cursor: string | null = null;
+    do {
+      const page = await repository.getTransactionPage({ ...request('limit=1'), cursor });
+      expect(page.transactions).toHaveLength(1);
+      expect(page.totals).toEqual({ count: 5, income: 350, expense: 600 });
+      collected.push(...page.transactions);
+      cursor = page.nextCursor;
+    } while (cursor);
+    expect(collected).toEqual(full);
+    expect(collected.at(-1)).toMatchObject({ transactionId: BASE_ID, status: 'CANCELLED', items: [{ productId: 'P1' }, { productId: 'P2' }] });
+  });
+
+  it('retains microsecond cursor precision even though public DTO timestamps use milliseconds', async () => {
+    for (const [transactionId, occurredAt] of [['MICRO-1', '2026-09-01T01:00:00.000001Z'], ['MICRO-2', '2026-09-01T01:00:00.000002Z']]) {
+      await seedTransaction(harness.tenantOneId, { transactionId, occurredAt, kind: 'ADMIN_ADJUSTMENT', totalAmount: -1,
+        balanceDelta: 1, balanceBefore: 0, balanceAfter: 1, operator: 'admin', status: 'ADMIN_ADJUSTMENT' });
+    }
+    const first = await queries().getTransactionPage(request('limit=1'));
+    const second = await queries().getTransactionPage({ ...request('limit=1'), cursor: first.nextCursor });
+    expect(first.transactions[0].transactionId).toBe('MICRO-2');
+    expect(second.transactions[0].transactionId).toBe('MICRO-1');
+    expect(first.transactions[0].timestamp).toBe(second.transactions[0].timestamp);
+    const third = await queries().getTransactionPage({ ...request('limit=1'), cursor: second.nextCursor });
+    expect(third.transactions[0].transactionId).toBe(REVERSAL_ID);
+  });
+
+  it('filters full parents by item text and direction and computes totals over every matching page', async () => {
+    const matched = await queries().getTransactionPage(request('query=연필&limit=1'));
+    expect(matched.transactions).toHaveLength(1);
+    expect(matched.transactions[0].items).toHaveLength(2);
+    expect(matched.totals).toEqual({ count: 1, income: 0, expense: 0 });
+    const income = await queries().getTransactionPage(request('direction=income&limit=1'));
+    expect(income.totals).toEqual({ count: 3, income: 350, expense: 0 });
+    expect(income.nextCursor).not.toBeNull();
+    const expense = await queries().getTransactionPage(request('direction=expense&limit=1'));
+    expect(expense.totals).toEqual({ count: 2, income: 0, expense: 600 });
+    expect((await queries().getTransactionPage(request('query=%25'))).totals.count).toBe(0);
+    expect((await queries().getTransactionPage(request('studentId=other'))).transactions).toEqual([]);
+    expect((await queries().getTransactionPage(request('query=다른'))).totals.count).toBe(0);
+  });
+
+  it('uses inclusive Seoul calendar dates and keeps student filters tenant-scoped', async () => {
+    await seedStudent(harness.tenantOneId, 'S2', '학생 둘');
+    for (const [transactionId, occurredAt] of [['MIDNIGHT', '2026-08-28T15:00:00Z'], ['NEXT-DAY', '2026-08-29T15:00:00Z']]) {
+      await seedTransaction(harness.tenantOneId, { transactionId, occurredAt, studentId: 'S2', kind: 'ADMIN_ADJUSTMENT',
+        totalAmount: -1, balanceDelta: 1, balanceBefore: 0, balanceAfter: 1, operator: 'admin', status: 'ADMIN_ADJUSTMENT' });
+    }
+    const page = await queries().getTransactionPage(request('from=2026-08-29&through=2026-08-29&studentId=S2'));
+    expect(page.transactions.map((row) => row.transactionId)).toEqual(['MIDNIGHT']);
+    expect(page.totals).toEqual({ count: 1, income: 1, expense: 0 });
+  });
+
+  it('matches full-history signed totals while excluding native reversals and legacy cancelled snapshots', async () => {
+    await harness.withImmutableLedgerTampering(() => harness.database.query(
+      'UPDATE transactions SET legacy_status_snapshot=NULL WHERE tenant_id=$1 AND transaction_id=$2',
+      [harness.tenantOneId, REVERSAL_ID]));
+    await seedTransaction(harness.tenantOneId, { transactionId: 'LEGACY-CANCELLED', occurredAt: '2026-08-30T00:00:00Z',
+      kind: 'LEGACY', totalAmount: -10, balanceDelta: 10, balanceBefore: 0, balanceAfter: 10,
+      operator: 'legacy', status: 'CANCELLED' });
+    await seedTransaction(harness.tenantOneId, { transactionId: 'ZERO', occurredAt: '2026-08-30T01:00:00Z',
+      kind: 'ADMIN_ADJUSTMENT', totalAmount: 0, balanceDelta: 0, balanceBefore: 10, balanceAfter: 10,
+      operator: 'admin', status: 'ADMIN_ADJUSTMENT' });
+    const rows = await queries().getTransactions();
+    expect(rows.find((row) => row.transactionId === REVERSAL_ID)?.status).toBe('CANCEL_REVERSAL');
+    const totals = rows.reduce((result, row) => {
+      if (row.status !== 'CANCELLED' && row.status !== 'CANCEL_REVERSAL') {
+        const delta = row.balanceAfter - row.balanceBefore;
+        if (delta > 0) result.income += delta; else result.expense -= delta;
+      }
+      return result;
+    }, { count: rows.length, income: 0, expense: 0 });
+    expect((await queries().getTransactionPage(request('limit=1'))).totals).toEqual(totals);
+    expect(totals).toEqual({ count: 7, income: 350, expense: 600 });
+  });
+
+  it('rejects a cursor reused with changed filters before opening the next transaction', async () => {
+    const first = await queries().getTransactionPage(request('limit=1'));
+    const runTenantTransaction = vi.fn();
+    await expect(queries({ runTenantTransaction }).getTransactionPage({ ...request('direction=income'), cursor: first.nextCursor }))
+      .rejects.toThrow('거래 조회 조건');
+    expect(runTenantTransaction).not.toHaveBeenCalled();
+  });
+
+  it('adds nonunique reversal and mixed-direction chronology indexes without weakening duplicate detection', async () => {
+    const indexes = await harness.database.query<{ indexname: string; indexdef: string }>(
+      "SELECT indexname,indexdef FROM pg_indexes WHERE tablename='transactions'");
+    const reversal = indexes.rows.find((row) => row.indexname === 'transactions_cancellation_lookup_idx')!;
+    expect(reversal.indexdef).not.toContain('UNIQUE');
+    expect(reversal.indexdef).toContain('(tenant_id, reverses_transaction_id)');
+    expect(reversal.indexdef).toContain('CANCELLATION');
+    expect(indexes.rows.find((row) => row.indexname === 'transactions_tenant_history_idx')?.indexdef)
+      .toContain('(tenant_id, occurred_at DESC, event_sequence)');
+    await seedTransaction(harness.tenantOneId, {
+      transactionId: 'DUPLICATE-REVERSAL', occurredAt: '2026-08-29T05:00:00Z', kind: 'CANCELLATION',
+      totalAmount: -700, balanceDelta: 700, balanceBefore: 0, balanceAfter: 700,
+      operator: `cancel:${BASE_ID}`, status: 'CANCEL_REVERSAL', reversesTransactionId: BASE_ID,
+    });
+    await expect(queries().getTransactionPage(request('query=연필'))).rejects.toThrow(/reversal|integrity/i);
   });
 });

@@ -6,10 +6,22 @@ import {
   isValidAdminSession,
   verifyAdminPassword,
   verifyAdminPasswordHash,
+  verifyAdminPasswordHashAsync,
   verifyAdminPasswordWithSettings,
 } from '@/server/adminAuth';
 
 describe('admin auth', () => {
+  it('asynchronously verifies existing scrypt and SHA-256 credentials and rejects tampering', async () => {
+    const scryptHash = createAdminPasswordHash('synthetic-password');
+    const { createHash } = await import('node:crypto');
+    const legacyHash = createHash('sha256').update('synthetic-password').digest('hex');
+    for (const hash of [scryptHash, legacyHash]) {
+      await expect(verifyAdminPasswordHashAsync('synthetic-password', hash)).resolves.toBe(true);
+      await expect(verifyAdminPasswordHashAsync('wrong-password', hash)).resolves.toBe(false);
+    }
+    await expect(verifyAdminPasswordHashAsync('synthetic-password', scryptHash.replace('$16384$', '$1073741824$'))).resolves.toBe(false);
+    await expect(verifyAdminPasswordHashAsync('synthetic-password', `${scryptHash}$extra`)).resolves.toBe(false);
+  });
   it('is disabled when no admin password is configured', () => {
     expect(isAdminAuthEnabled({})).toBe(false);
     expect(isValidAdminSession(undefined, {})).toBe(true);

@@ -11,14 +11,14 @@ import {
 import { createTaskLedgerCommands } from '@/server/repositories/database/taskLedger/commands';
 import { readTaskLedgerHistory } from '@/server/repositories/database/taskLedger/history';
 import { ensureTaskLedger } from '@/server/repositories/database/taskLedger/migration';
-import { clockNow, TaskLedgerError } from '@/server/repositories/database/taskLedger/store';
+import { TaskLedgerError } from '@/server/repositories/database/taskLedger/store';
 import type { RepositoryCreators } from '@/server/repositories/factory';
 import { resolveStudentQrForCurrentTenant } from '@/server/studentQr';
 
 type Commands = ReturnType<typeof createTaskLedgerCommands>;
 
 /** The task ledger of one PostgreSQL class (tasks without cycles). */
-export type ConfiguredTaskLedger = Omit<Commands, 'readTasks'> & Readonly<{
+export type ConfiguredTaskLedger = Omit<Commands, 'readTasks' | 'readBoard'> & Readonly<{
   board(): Promise<TaskBoardDto>;
   history(taskId: string): Promise<TaskHistoryDto>;
 }>;
@@ -46,10 +46,7 @@ export function createTaskLedgerRepositoryCreators(): RepositoryCreators<Configu
       return {
         ...commands,
         async board() {
-          await ensureTaskLedger(dependencies);
-          const tasks = await commands.readTasks();
-          const now = await withTenantSnapshot(authority.tenantId, (tx) => clockNow(tx));
-          return { now: new Date(now).toISOString(), tasks };
+          return commands.readBoard();
         },
         async history(taskId) {
           await ensureTaskLedger(dependencies);

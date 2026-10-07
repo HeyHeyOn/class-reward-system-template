@@ -54,9 +54,9 @@ export function clearLegacyTaskJournals(storage: Storage | undefined = typeof wi
   return stale.length;
 }
 
-export function useTaskLedger({ enabled }: { enabled: boolean }): TaskLedger {
-  const board = useTaskBoard({ enabled });
+export function useTaskLedger({ enabled, polling = true }: { enabled: boolean; polling?: boolean }): TaskLedger {
   const [overlay, setOverlay] = useState<LedgerOverlay | null>(null);
+  const board = useTaskBoard({ enabled, polling: polling || overlay !== null });
   const [selection, setSelectionState] = useState<readonly string[]>([]);
 
   useEffect(() => {

@@ -1,12 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import type { Transaction } from '@/domain/types';
-import { tenantFetch } from '@/lib/tenantApiPath';
+import { tenantApiPath, tenantFetch } from '@/lib/tenantApiPath';
+import { ADMIN_TRANSACTION_PAGE_SIZE, type TransactionPage } from '@/lib/transactionHistory';
 import { themeStyles } from './uiTheme';
 import {
-  Badge, Button, Callout, Card, EmptyState, Icon, IconButton, LoadingOverlay, Modal, SearchInput, SegmentedControl, StatCard,
+  Badge, Button, Callout, Card, EmptyState, Icon, IconButton, Input, LoadingOverlay, Modal, SearchInput, SegmentedControl, StatCard,
   buttonClass, cx, type IconName,
 } from './ui';
 
@@ -14,6 +15,9 @@ type SettingsResponse = { currencyUnit?: string };
 type ApiError = { error?: string };
 type CancelTransactionResponse = { cancelledTransaction: Transaction; reversalTransaction: Transaction };
 type TransactionFilter = 'all' | 'income' | 'expense';
+const subscribeToClassPath = () => () => {};
+const transactionPageMode = () => tenantApiPath('/api/transactions') !== '/api/transactions';
+const serverTransactionPageMode = (): boolean | null => null;
 
 function formatCurrency(amount: number, unit: string) {
   return `${amount.toLocaleString()}${unit}`;
@@ -89,6 +93,13 @@ function isCancelTransactionResponse(
     && reversalTransaction.studentId === cancelledTransaction.studentId;
 }
 
+function isTransactionPage(value: unknown): value is TransactionPage {
+  if (!isRecord(value) || !Array.isArray(value.transactions) || !value.transactions.every(isTransaction)
+    || (value.nextCursor !== null && typeof value.nextCursor !== 'string') || !isRecord(value.totals)) return false;
+  const totals = value.totals;
+  return ['count', 'income', 'expense'].every((key) => Number.isSafeInteger(totals[key]) && Number(totals[key]) >= 0);
+}
+
 export function TransactionsPage({ adminHref = '/admin' }: { adminHref?: string }) {
   return (
     <main style={themeStyles('white').variables} className="min-h-screen bg-[var(--theme-shell)] px-4 py-6 text-[var(--theme-text)] sm:px-6 lg:py-10">
@@ -141,34 +152,84 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [transactionFilter, setTransactionFilter] = useState<TransactionFilter>('all');
   const [query, setQuery] = useState('');
+  // Resolve the browser class path after hydration, before starting either read mode.
+  const paged = useSyncExternalStore(subscribeToClassPath, transactionPageMode, serverTransactionPageMode);
+  const [historyFilter, setHistoryFilter] = useState({ query: '', direction: 'all' as TransactionFilter, studentId: '', from: '', through: '' });
+  const [cursorHistory, setCursorHistory] = useState<Array<string | null>>([null]);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [pageTotals, setPageTotals] = useState<TransactionPage['totals']>({ count: 0, income: 0, expense: 0 });
+  const readEpoch = useRef(0);
   const cancellationInFlightRef = useRef(new Set<string>());
   const cancellationOperationIdsRef = useRef(new Map<string, string>());
 
-  const loadTransactions = useCallback(async (options: { shouldApply?: () => boolean } = {}) => {
-    const shouldApply = options.shouldApply ?? (() => true);
-    const [transactionsResponse, settingsResponse] = await Promise.all([
-      tenantFetch('/api/transactions', { cache: 'no-store' }),
-      tenantFetch('/api/settings', { cache: 'no-store' }),
-    ]);
-    const transactionsPayload = (await transactionsResponse.json()) as Transaction[] | ApiError;
-    const settingsPayload = (await settingsResponse.json().catch(() => null)) as SettingsResponse | null;
-
-    if (!transactionsResponse.ok || !Array.isArray(transactionsPayload)) {
-      throw new Error('error' in transactionsPayload && transactionsPayload.error ? transactionsPayload.error : '거래 내역을 불러오지 못했습니다.');
-    }
-
-    if (!shouldApply()) return;
-    setTransactions(transactionsPayload);
-    if (settingsPayload?.currencyUnit) setCurrencyUnit(settingsPayload.currencyUnit);
-    setMessage('');
-    setLoading(false);
+  const changeHistoryFilter = useCallback((change: Partial<typeof historyFilter>) => {
+    readEpoch.current += 1;
+    setHistoryFilter((current) => ({ ...current, ...change }));
+    setCursorHistory([null]);
+    setPageIndex(0);
   }, []);
 
   useEffect(() => {
-    let ignore = false;
+    if (!paged || confirmation || cancelingId || query.trim() === historyFilter.query) return;
+    const timer = window.setTimeout(() => {
+      if (cancellationInFlightRef.current.size === 0) changeHistoryFilter({ query: query.trim() });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [paged, query, historyFilter.query, changeHistoryFilter, confirmation, cancelingId]);
 
+  const loadTransactions = useCallback(async (options: { shouldApply?: () => boolean } = {}) => {
+    if (paged === null) return;
+    const epoch = ++readEpoch.current;
+    const shouldApply = options.shouldApply ?? (() => true);
+    if (paged) {
+      setTransactions([]);
+      setNextCursor(null);
+      setPageTotals({ count: 0, income: 0, expense: 0 });
+    }
+    const params = new URLSearchParams({ paged: '1', limit: String(ADMIN_TRANSACTION_PAGE_SIZE), ...historyFilter });
+    const cursor = cursorHistory[pageIndex];
+    if (cursor) params.set('cursor', cursor);
+    try {
+      const [transactionsResponse, settingsResponse] = await Promise.all([
+        tenantFetch(paged ? `/api/transactions?${params}` : '/api/transactions', { cache: 'no-store' }),
+        tenantFetch('/api/settings', { cache: 'no-store' }),
+      ]);
+      const transactionsPayload: unknown = await transactionsResponse.json();
+      const settingsPayload = (await settingsResponse.json().catch(() => null)) as SettingsResponse | null;
+
+      if (!transactionsResponse.ok || (paged ? !isTransactionPage(transactionsPayload) : !Array.isArray(transactionsPayload))) {
+        throw new Error(isRecord(transactionsPayload) && typeof transactionsPayload.error === 'string' ? transactionsPayload.error : '거래 내역을 불러오지 못했습니다.');
+      }
+
+      if (!shouldApply() || epoch !== readEpoch.current) return;
+      if (paged && isTransactionPage(transactionsPayload)) {
+        setTransactions(transactionsPayload.transactions);
+        setNextCursor(transactionsPayload.nextCursor);
+        setPageTotals(transactionsPayload.totals);
+      } else setTransactions(transactionsPayload as Transaction[]);
+      if (settingsPayload?.currencyUnit) setCurrencyUnit(settingsPayload.currencyUnit);
+      setMessage('');
+      setLoading(false);
+    } catch (error) {
+      // A rejected older refresh is just as stale as an older successful read.
+      if (!shouldApply() || epoch !== readEpoch.current) return;
+      throw error;
+    }
+  }, [paged, historyFilter, cursorHistory, pageIndex]);
+
+  const latestLoader = useRef(loadTransactions);
+  useEffect(() => { latestLoader.current = loadTransactions; }, [loadTransactions]);
+
+  useEffect(() => {
+    if (paged === null) return;
+    let ignore = false;
     void Promise.resolve()
-      .then(() => loadTransactions({ shouldApply: () => !ignore }))
+      .then(() => {
+        if (ignore) return;
+        setLoading(true);
+        return loadTransactions({ shouldApply: () => !ignore });
+      })
       .catch((error) => {
         if (!ignore) { setMessage(error instanceof Error ? error.message : '거래 내역을 불러오지 못했습니다.'); setLoading(false); }
       });
@@ -176,15 +237,17 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
     return () => {
       ignore = true;
     };
-  }, [loadTransactions]);
+  }, [loadTransactions, paged]);
 
   const filteredTransactions = useMemo(() => {
+    if (paged) return transactions;
     const needle = query.trim().toLowerCase();
     return transactions.filter((transaction) => (transactionFilter === 'all' || getTransactionAmountTone(transaction) === transactionFilter)
       && (!needle || `${transaction.studentName} ${transaction.studentId} ${transaction.items.map((item) => item.name).join(' ')}`.toLowerCase().includes(needle)));
-  }, [transactions, transactionFilter, query]);
+  }, [transactions, transactionFilter, query, paged]);
 
   const totals = useMemo(() => {
+    if (paged) return pageTotals;
     let income = 0;
     let expense = 0;
     for (const transaction of transactions) {
@@ -193,16 +256,20 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
       if (delta > 0) income += delta; else expense -= delta;
     }
     return { income, expense };
-  }, [transactions]);
+  }, [transactions, paged, pageTotals]);
 
   const groups = useMemo(() => {
     const map = new Map<string, Transaction[]>();
     for (const transaction of filteredTransactions) {
       const key = dayKey(transaction.timestamp);
-      map.set(key, [...(map.get(key) ?? []), transaction]);
+      const rows = map.get(key) ?? [];
+      rows.push(transaction);
+      map.set(key, rows);
     }
     return Array.from(map.entries());
   }, [filteredTransactions]);
+  const hasHistoryFilters = paged && (historyFilter.query || historyFilter.studentId || historyFilter.from
+    || historyFilter.through || historyFilter.direction !== 'all');
 
   async function refreshTransactions() {
     setIsRefreshing(true);
@@ -221,6 +288,7 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
       || cancellationInFlightRef.current.size > 0) return;
     setConfirmation(null);
     cancellationInFlightRef.current.add(transaction.transactionId);
+    readEpoch.current += 1;
     const operationId = cancellationOperationIdsRef.current.get(transaction.transactionId)
       ?? crypto.randomUUID();
     cancellationOperationIdsRef.current.set(transaction.transactionId, operationId);
@@ -242,9 +310,12 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
       const { cancelledTransaction, reversalTransaction } = payload;
       setTransactions((current) => {
         const updated = current.map((item) => item.transactionId === transaction.transactionId ? cancelledTransaction : item);
-        return [reversalTransaction, ...updated];
+        return paged ? updated : [reversalTransaction, ...updated];
       });
       cancellationOperationIdsRef.current.delete(transaction.transactionId);
+      // Re-read the bounded page and full matching totals; do not inject a reversal
+      // that may belong on another page or outside the selected date/direction.
+      if (paged) await latestLoader.current();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '거래를 취소하지 못했습니다.');
     } finally {
@@ -257,22 +328,38 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
     <div className={cx('grid gap-5', embedded && 'pb-6')}>
       <section inert={confirmation !== null} aria-hidden={confirmation ? true : undefined} aria-label="거래 내역 목록" className="grid gap-5">
         <div className="grid grid-cols-3 gap-3">
-          <StatCard label="수입" value={<span className="text-[var(--crs-success-text)]">+{formatCurrency(totals.income, currencyUnit)}</span>} hint="취소된 거래 제외" />
-          <StatCard label="지출" value={<span className="text-[var(--crs-danger-text)]">-{formatCurrency(totals.expense, currencyUnit)}</span>} hint="취소된 거래 제외" />
-          <StatCard label="거래 수" value={`${transactions.length.toLocaleString('ko-KR')}건`} hint={filteredTransactions.length !== transactions.length ? `표시 ${filteredTransactions.length}건` : '전체'} />
+          <StatCard label="수입" value={<span className="text-[var(--crs-success-text)]">+{formatCurrency(totals.income, currencyUnit)}</span>} hint={paged ? '검색 조건 기준 · 취소 제외' : '취소된 거래 제외'} />
+          <StatCard label="지출" value={<span className="text-[var(--crs-danger-text)]">-{formatCurrency(totals.expense, currencyUnit)}</span>} hint={paged ? '검색 조건 기준 · 취소 제외' : '취소된 거래 제외'} />
+          <StatCard label="거래 수" value={`${(paged ? pageTotals.count : transactions.length).toLocaleString('ko-KR')}건`} hint={paged ? `현재 ${transactions.length}건 표시` : filteredTransactions.length !== transactions.length ? `표시 ${filteredTransactions.length}건` : '전체'} />
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <SearchInput value={query} onChange={setQuery} placeholder="학생 이름 또는 상품 검색" ariaLabel="거래 검색" className="w-full sm:w-72" />
-          <TransactionFilterTabs value={transactionFilter} onChange={setTransactionFilter} />
-          <IconButton icon="refresh" label="거래 내역 새로고침" variant="secondary" onClick={refreshTransactions} className="ml-auto" />
-        </div>
+        <fieldset disabled={cancelingId !== null} className="contents">
+          <div className="flex flex-wrap items-center gap-3">
+            <SearchInput value={query} onChange={(value) => setQuery(paged ? value.slice(0, 100) : value)} placeholder="학생 이름 또는 상품 검색" ariaLabel="거래 검색" className="w-full sm:w-72" />
+            <TransactionFilterTabs value={transactionFilter} onChange={(direction) => {
+              setTransactionFilter(direction);
+              if (paged) changeHistoryFilter({ direction });
+            }} />
+            <IconButton icon="refresh" label="거래 내역 새로고침" variant="secondary" disabled={loading || isRefreshing} onClick={refreshTransactions} className="ml-auto" />
+          </div>
+
+          {paged ? <div className="flex flex-wrap items-end gap-3">
+            <label className="text-xs font-semibold text-[var(--theme-muted-text)]">시작일
+              <Input type="date" aria-label="거래 시작일" value={historyFilter.from} onChange={(event) => changeHistoryFilter({ from: event.target.value })} /></label>
+            <label className="text-xs font-semibold text-[var(--theme-muted-text)]">종료일
+              <Input type="date" aria-label="거래 종료일" value={historyFilter.through} onChange={(event) => changeHistoryFilter({ through: event.target.value })} /></label>
+            <label className="text-xs font-semibold text-[var(--theme-muted-text)]">학생 번호
+              <Input aria-label="거래 학생 번호" placeholder="전체 학생" maxLength={100} value={historyFilter.studentId}
+                onChange={(event) => changeHistoryFilter({ studentId: event.target.value.trim() })} /></label>
+            {loading ? <span role="status" className="text-xs text-[var(--theme-muted-text)]">거래 내역을 불러오는 중입니다.</span> : null}
+          </div> : null}
+        </fieldset>
 
         {message ? <Callout tone={loading ? 'neutral' : 'warning'}>{message}</Callout> : null}
 
-        {filteredTransactions.length === 0 && !message ? (
-          <EmptyState icon="receipt" title={transactions.length ? '조건에 맞는 거래가 없습니다' : '아직 거래가 없습니다'}
-            description={transactions.length ? '검색어나 필터를 바꿔 보세요.' : '학생이 매점에서 사거나 과제 보상을 받으면 여기에 기록됩니다.'} />
+        {filteredTransactions.length === 0 && !message && !loading ? (
+          <EmptyState icon="receipt" title={transactions.length || hasHistoryFilters ? '조건에 맞는 거래가 없습니다' : '아직 거래가 없습니다'}
+            description={transactions.length || hasHistoryFilters ? '검색어나 필터를 바꿔 보세요.' : '학생이 매점에서 사거나 과제 보상을 받으면 여기에 기록됩니다.'} />
         ) : null}
 
         {groups.map(([day, rows]) => (
@@ -315,7 +402,7 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
                       {canCancel ? (
                         <Button size="sm" variant="ghost"
                           aria-label={`${transaction.transactionId} 거래 취소`}
-                          disabled={cancelingId !== null || confirmation !== null}
+                          disabled={cancelingId !== null || confirmation !== null || (paged === true && (loading || isRefreshing))}
                           onClick={(event) => {
                             if (!confirmation && cancellationInFlightRef.current.size === 0) {
                               setConfirmation({ transaction, opener: event.currentTarget });
@@ -332,6 +419,16 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
             </Card>
           </div>
         ))}
+        {paged ? <nav aria-label="거래 페이지" className="flex items-center justify-center gap-4">
+          <Button variant="secondary" disabled={pageIndex === 0 || loading || isRefreshing || cancelingId !== null}
+            onClick={() => setPageIndex((index) => index - 1)}>이전 거래</Button>
+          <span className="text-sm text-[var(--theme-muted-text)]">{pageIndex + 1}페이지</span>
+          <Button variant="secondary" disabled={!nextCursor || loading || isRefreshing || cancelingId !== null}
+            onClick={() => {
+              setCursorHistory((current) => [...current.slice(0, pageIndex + 1), nextCursor]);
+              setPageIndex((index) => index + 1);
+            }}>다음 거래</Button>
+        </nav> : null}
       </section>
       {confirmation ? <TransactionCancelDialog transaction={confirmation.transaction} currencyUnit={currencyUnit}
         opener={confirmation.opener} onClose={() => setConfirmation(null)}

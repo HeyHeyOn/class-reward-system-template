@@ -24,6 +24,20 @@ function dependencies(memberTenantId: string | null = null) {
 }
 
 describe('tenant API dispatcher', () => {
+  it('forwards the body stream to the handler without buffering it first', async () => {
+    const request = new Request('https://example.test/api/c/alpha-class/upload', {
+      method: 'POST', body: 'small upload',
+    });
+    const buffer = vi.spyOn(request, 'arrayBuffer').mockRejectedValue(new Error('Must not buffer at dispatcher'));
+    const dispatch = createTenantApiDispatcher(dependencies(), [{
+      method: 'POST', pattern: 'upload', access: 'public',
+      handler: async (forwarded) => Response.json({ text: await forwarded.text() }),
+    }]);
+    const response = await dispatch(request, { slug: 'alpha-class', path: ['upload'] });
+    expect(await response.json()).toEqual({ text: 'small upload' });
+    expect(buffer).not.toHaveBeenCalled();
+  });
+
   it('binds a public handler only to the canonical URL tenant despite header query and body overrides', async () => {
     const handler = vi.fn(async (request: Request) => Response.json({
       tenantId: getTrustedTenantRequestContext().tenant.id,
