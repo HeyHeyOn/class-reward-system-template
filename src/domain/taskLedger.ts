@@ -59,6 +59,17 @@ export type LedgerStageState = Readonly<{
   lastCompletionAt: string | null;
 }>;
 
+/** Exact event-fold checkpoint. Automatic schedule resets are deliberately not persisted. */
+export type LedgerFoldCheckpoint = Readonly<{
+  stage: TaskStage;
+  since: string | null;
+  beforeCompletion: TaskStage;
+  beforeCompletionSince: string | null;
+  lastEventId: string | null;
+  lastCompletionAt: string | null;
+  lastAt: string | null;
+}>;
+
 const KIND_ORDER: Readonly<Record<LedgerEvent['kind'], number>> = { STAGE: 0, COMPLETED: 1, UNCOMPLETED: 2 };
 
 export function compareLedgerEvents(left: LedgerEvent, right: LedgerEvent): number {
@@ -74,16 +85,17 @@ export function projectLedgerStage(input: Readonly<{
   events: readonly LedgerEvent[];
   windows: readonly ResetWindow[];
   now: string;
+  checkpoint?: LedgerFoldCheckpoint;
 }>): LedgerStageState {
   const events = [...input.events].filter((event) => compareInstants(event.at, input.now) <= 0)
     .sort(compareLedgerEvents);
-  let stage: TaskStage = 'UNASSIGNED';
-  let since: string | null = null;
-  let beforeCompletion: TaskStage = 'UNASSIGNED';
-  let beforeCompletionSince: string | null = null;
-  let lastEventId: string | null = null;
-  let lastCompletionAt: string | null = null;
-  let lastAt: string | null = null;
+  let stage: TaskStage = input.checkpoint?.stage ?? 'UNASSIGNED';
+  let since: string | null = input.checkpoint?.since ?? null;
+  let beforeCompletion: TaskStage = input.checkpoint?.beforeCompletion ?? 'UNASSIGNED';
+  let beforeCompletionSince: string | null = input.checkpoint?.beforeCompletionSince ?? null;
+  let lastEventId: string | null = input.checkpoint?.lastEventId ?? null;
+  let lastCompletionAt: string | null = input.checkpoint?.lastCompletionAt ?? null;
+  let lastAt: string | null = input.checkpoint?.lastAt ?? null;
   for (const event of events) {
     lastEventId = event.id;
     lastAt = event.at;

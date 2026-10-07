@@ -72,7 +72,8 @@ export class LedgerServer {
   async handle(url: string, init?: RequestInit): Promise<Response> {
     const prefix = `/api/c/${SLUG}/task-ledger`;
     if (!url.startsWith(prefix)) return Response.json({ error: `unexpected ${url}` }, { status: 500 });
-    const path = url.slice(prefix.length) || '/';
+    const parsed = new URL(url, 'https://crs.example');
+    const path = parsed.pathname.slice(prefix.length) || '/';
     const method = init?.method ?? 'GET';
     const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : null;
     this.calls.push({ method, path, body });
@@ -87,7 +88,11 @@ export class LedgerServer {
     const affected = (ids: readonly string[]) => this.tasks.filter((task) => ids.includes(task.taskId));
 
     if (method === 'GET' && path === '/') return json({ now: NOW, tasks: this.tasks });
-    if (method === 'GET' && path.endsWith('/history')) return json(this.history ?? { taskId: path.split('/')[2], title: '', entries: [], truncated: false });
+    if (method === 'GET' && path.endsWith('/history')) {
+      const history = this.history ?? { taskId: path.split('/')[2], title: '', entries: [], truncated: false };
+      const studentId = parsed.searchParams.get('studentId');
+      return json({ ...history, entries: studentId ? history.entries.filter((entry) => entry.studentId === studentId) : history.entries });
+    }
     if (method === 'POST' && path === '/stages') {
       const changes = body!.changes as Array<{ taskId: string; studentId: string; stage: TaskStage }>;
       for (const change of changes) this.setStage(change.taskId, change.studentId, change.stage);

@@ -1,11 +1,9 @@
 import 'server-only';
 
-import {
-  createSheetsCheckoutCommand,
-  type CheckoutCommand,
-} from '@/server/checkoutService';
+import { createSheetsCheckoutCommand } from '@/server/repositories/sheets/lazy';
+import type { CheckoutCommand } from '@/server/checkoutService';
 import { withTenantTransaction } from '@/server/db/transaction';
-import { createConfiguredSheetsStore } from '@/server/googleSheets';
+import { createConfiguredSheetsStore } from '@/server/repositories/sheets/lazy';
 import type { CentralTenantContextInput } from '@/server/repositories/context';
 import type { RepositoryCreators } from '@/server/repositories/factory';
 import { createDatabaseCheckoutCommand } from '@/server/repositories/database/checkoutCommands';

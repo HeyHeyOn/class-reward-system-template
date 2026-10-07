@@ -9,13 +9,15 @@ import {
   type CheckoutPreviewResult,
 } from '@/domain/checkout';
 import { buildTransactionAppendRow } from '@/server/sheetsRows';
-import { getActivePromotions } from '@/server/repositories/sheets/promotionQueries';
-import {
-  getProductRecords,
-  getStudentRecordById,
-  type ProductRecord,
-} from '@/server/sheetsRepository';
+import type { ProductRecord } from '@/server/sheetsRepository';
 import type { TabularStore } from '@/server/storage/tabularStore';
+const getActivePromotions: typeof import('@/server/repositories/sheets/promotionQueries').getActivePromotions = async (...args) =>
+  (await import('@/server/repositories/sheets/promotionQueries')).getActivePromotions(...args);
+
+const getProductRecords: typeof import('@/server/sheetsRepository').getProductRecords = async (...args) =>
+  (await import('@/server/sheetsRepository')).getProductRecords(...args);
+const getStudentRecordById: typeof import('@/server/sheetsRepository').getStudentRecordById = async (...args) =>
+  (await import('@/server/sheetsRepository')).getStudentRecordById(...args);
 
 export type ProcessCheckoutInput = {
   studentId: string;

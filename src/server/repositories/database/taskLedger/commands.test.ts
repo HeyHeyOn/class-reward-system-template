@@ -24,6 +24,7 @@ function fixture(withSnapshot = true) {
       queries.push({ snapshot: current, ...query });
       if (query.sql.includes('AS ledger_from')) return { rows: [{ ledger_from: FROM }] };
       if (query.sql.includes('clock_timestamp()')) return { rows: [{ now: NOW }] };
+      if (query.sql.includes('FROM task_ledger_checkpoints')) return { rows: [] };
       if (query.sql.includes('FROM tasks t')) return { rows: [{
         task_instance_id: 'synthetic-instance', task_id: 'T001', title: 'Synthetic task', description: '',
         reward: '0', is_active: true, sort_order: 0, available_from: null, due_at: null,

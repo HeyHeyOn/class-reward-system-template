@@ -7,16 +7,15 @@ import type { TaskCurrentCycleStatusDto } from '@/domain/taskHistoryDtos';
 import type { TaskReader } from '@/server/repositories/configuredTasks';
 import { buildBankTaskProjection, type TaskCycleProjectionDto } from '@/server/taskReadProjection';
 import { ensureTaskLedger, type RunTenantTransaction } from './migration';
+import { readCurrentLedgerStates } from './currentState';
 import {
   buildAdminTaskDto,
   clockNow,
-  groupEvents,
-  readLedgerEvents,
   readLedgerFrom,
   readLedgerStudents,
   readLedgerTasks,
   sortTasks,
-  type LedgerEventRow,
+  type LedgerEventSource,
   type LedgerStudent,
   type LedgerTask,
 } from './store';
@@ -42,8 +41,8 @@ export function createTaskLedgerReader(dependencies: Readonly<{
       const tasks = (await readLedgerTasks(tx, tenantId, options.taskId ? { taskIds: [options.taskId] } : {}))
         .filter((task) => options.includeInactive || task.isActive);
       const students = await readLedgerStudents(tx, tenantId);
-      const events = groupEvents(ledgerFrom === null ? [] : await readLedgerEvents(tx, tenantId, ledgerFrom, {
-        taskInstanceIds: tasks.map((task) => task.taskInstanceId), ...(options.studentId ? { studentId: options.studentId } : {}) }));
+      const events = ledgerFrom === null ? new Map() : await readCurrentLedgerStates(tx, tenantId, now, {
+        taskInstanceIds: tasks.map((task) => task.taskInstanceId), ...(options.studentId ? { studentId: options.studentId } : {}) });
       const scoped = options.studentId ? students.filter((student) => student.studentId === options.studentId) : students;
       return { now, students, rows: sortTasks(tasks).map((task) => toProjection(task, scoped, events.get(task.taskInstanceId), now, options.studentId)) };
     });
@@ -81,7 +80,7 @@ export function createTaskLedgerReader(dependencies: Readonly<{
 }
 
 function toProjection(task: LedgerTask, students: readonly LedgerStudent[],
-  events: ReadonlyMap<string, readonly LedgerEventRow[]> | undefined, now: string, studentId?: string): TaskCycleProjectionDto {
+  events: ReadonlyMap<string, LedgerEventSource> | undefined, now: string, studentId?: string): TaskCycleProjectionDto {
   const dto = buildAdminTaskDto(task, students, events, now);
   const inForce = scheduleInForce(task.currentSchedule, task.pendingSchedule, now);
   const byStage = (stage: TaskStage) => dto.students.filter((row) => row.stage === stage).map((row) => row.studentId);

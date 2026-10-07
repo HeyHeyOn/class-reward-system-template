@@ -1,7 +1,6 @@
 import type { SheetsReader, SheetsStore } from '@/server/sheetsRepository';
 import type { RecurringSchemaMigrationStore } from '@/server/storage/tabularStore';
-import { changeClassTimeZone, type ClassTimeZoneChangeResult } from '@/server/repositories/sheets/taskScheduleCommands';
-import { getSheetSettings, parseSheetSettingsRows, upsertSheetSettings } from '@/server/sheetsRepository';
+import type { ClassTimeZoneChangeResult } from '@/server/repositories/sheets/taskScheduleCommands';
 import { createAdminPasswordHash, verifyAdminPasswordHash } from '@/server/adminAuth';
 import { SYSTEM_NAME_KO, SYSTEM_VERSION } from '@/generator/config/versions';
 import { normalizeFontFamily, type FontFamily } from '@/lib/fontSettings';
@@ -122,7 +121,7 @@ export async function updateClassTimeZone(
 ): Promise<ClassTimeZoneChangeResult> {
   const validation = validateClassTimeZone(value);
   if (validation.ok === false) throw new Error(validation.message);
-  return changeClassTimeZone(store, validation.classTimeZone);
+  return (await import('@/server/repositories/sheets/taskScheduleCommands')).changeClassTimeZone(store, validation.classTimeZone);
 }
 
 export function getEnvSpreadsheetId(env: SettingsEnv = process.env): string {
@@ -138,6 +137,7 @@ export async function getAppSettings(options: SettingsOptions = {}): Promise<Leg
 
   if (options.settingsReader) {
     try {
+      const { getSheetSettings } = await import('@/server/sheetsRepository');
       const sheetSettings = await getSheetSettings(options.settingsReader);
       return {
         spreadsheetId: envSpreadsheetId,
@@ -187,6 +187,7 @@ export async function saveAppSettings(options: SaveSettingsOptions): Promise<Leg
   const themeColor = normalizeThemeColor(options.themeColor);
   const fontFamily = normalizeFontFamily(options.fontFamily);
   const qrManualInputEnabled = normalizeQrManualInputEnabled(options.qrManualInputEnabled);
+  const { parseSheetSettingsRows, upsertSheetSettings } = await import('@/server/sheetsRepository');
   const settingsRows = await options.settingsStore.getRows('Settings');
   const existingSettings = parseSheetSettingsRows(settingsRows);
   const submittedAdminPassword = options.adminPassword?.trim() ?? '';

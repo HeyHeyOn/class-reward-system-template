@@ -2,7 +2,7 @@ import 'server-only';
 
 import type { Student, Transaction } from '@/domain/types';
 import { withTenantSnapshot, type TenantTransaction } from '@/server/db/transaction';
-import { createConfiguredSheetsReader } from '@/server/googleSheets';
+import { createConfiguredSheetsReader } from '@/server/repositories/sheets/lazy';
 import type { ConfirmedStudentLookup } from '@/server/studentLookup';
 import { confirmStudentLookup } from '@/server/studentLookup';
 import type { CentralTenantContextInput } from '@/server/repositories/context';
@@ -14,7 +14,8 @@ import {
   resolveCompatibilityConfiguredRepository,
   type CompatibilityCentralTenantEnv,
 } from '@/server/repositories/configuredRepository';
-import { getStudentById, getTransactions, type SheetsReader } from '@/server/sheetsRepository';
+import { getStudentById, getTransactions } from '@/server/repositories/sheets/lazy';
+import type { SheetsReader } from '@/server/sheetsRepository';
 
 export type BankBalanceSnapshot = Readonly<{
   student: Student | null;

@@ -2,7 +2,7 @@ import 'server-only';
 
 import type { Transaction } from '@/domain/types';
 import type { TransactionPage, TransactionPageRequest } from '@/lib/transactionHistory';
-import { createConfiguredSheetsReader } from '@/server/googleSheets';
+import { createConfiguredSheetsReader } from '@/server/repositories/sheets/lazy';
 import { withTenantSnapshot } from '@/server/db/transaction';
 import type { CentralTenantContextInput } from '@/server/repositories/context';
 import type { RepositoryCreators } from '@/server/repositories/factory';
@@ -12,7 +12,8 @@ import {
   resolveCompatibilityConfiguredRepository,
   type CompatibilityCentralTenantEnv,
 } from '@/server/repositories/configuredRepository';
-import { getTransactions, type SheetsReader } from '@/server/sheetsRepository';
+import { getTransactions } from '@/server/repositories/sheets/lazy';
+import type { SheetsReader } from '@/server/sheetsRepository';
 
 export type TransactionReader = Readonly<{
   getTransactions: () => Promise<Transaction[]>;

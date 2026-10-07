@@ -19,4 +19,5 @@ export * from './migrations';
 export * from './operations';
 export * from './students';
 export * from './tasks';
+export * from './taskLedgerCheckpoints';
 export * from './tenants';

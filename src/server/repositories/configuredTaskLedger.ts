@@ -1,6 +1,6 @@
 import 'server-only';
 
-import type { TaskBoardDto, TaskHistoryDto } from '@/lib/taskLedgerApi';
+import type { TaskBoardDto, TaskHistoryDto, TaskHistoryPageRequest } from '@/lib/taskLedgerApi';
 import { withTenantSnapshot, withTenantTransaction } from '@/server/db/transaction';
 import type { CentralTenantContextInput } from '@/server/repositories/context';
 import {
@@ -20,7 +20,7 @@ type Commands = ReturnType<typeof createTaskLedgerCommands>;
 /** The task ledger of one PostgreSQL class (tasks without cycles). */
 export type ConfiguredTaskLedger = Omit<Commands, 'readTasks' | 'readBoard'> & Readonly<{
   board(): Promise<TaskBoardDto>;
-  history(taskId: string): Promise<TaskHistoryDto>;
+  history(taskId: string, request?: TaskHistoryPageRequest): Promise<TaskHistoryDto>;
 }>;
 
 export type ConfiguredTaskLedgerOptions = Readonly<{
@@ -48,9 +48,9 @@ export function createTaskLedgerRepositoryCreators(): RepositoryCreators<Configu
         async board() {
           return commands.readBoard();
         },
-        async history(taskId) {
+        async history(taskId, request) {
           await ensureTaskLedger(dependencies);
-          return withTenantSnapshot(authority.tenantId, (tx) => readTaskLedgerHistory(tx, authority.tenantId, taskId));
+          return withTenantSnapshot(authority.tenantId, (tx) => readTaskLedgerHistory(tx, authority.tenantId, taskId, request));
         },
       };
     },

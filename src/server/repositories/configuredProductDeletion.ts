@@ -2,7 +2,7 @@ import 'server-only';
 
 import { types as nodeUtilTypes } from 'node:util';
 import { withTenantTransaction } from '@/server/db/transaction';
-import { createConfiguredSheetsStore } from '@/server/googleSheets';
+import { createConfiguredSheetsStore } from '@/server/repositories/sheets/lazy';
 import type { CentralTenantContextInput } from '@/server/repositories/context';
 import {
   createDatabaseCatalogCommands,
@@ -15,11 +15,8 @@ import {
   resolveCompatibilityConfiguredRepository,
   type CompatibilityCentralTenantEnv,
 } from '@/server/repositories/configuredRepository';
-import {
-  deleteProduct,
-  type ProductDeletionInput,
-  type SheetsStore,
-} from '@/server/sheetsRepository';
+import { deleteProduct } from '@/server/repositories/sheets/lazy';
+import type { ProductDeletionInput, SheetsStore } from '@/server/sheetsRepository';
 
 export type ConfiguredProductDeletionInput = DeactivateProductAdminInput;
 export type ConfiguredProductDeletionResult = Readonly<{ productId: string }>;

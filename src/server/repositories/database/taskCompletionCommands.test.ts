@@ -623,8 +623,9 @@ describe('database task completion command', () => {
     const ledgerSource = await readFile(resolve(process.cwd(), 'src/server/repositories/database/taskLedger/store.ts'), 'utf8');
     expect(commandSource).toMatch(/LOCK ORDER/);
     expect(commandSource).toMatch(/FROM operations[\s\S]*FOR UPDATE/);
-    // Every writer of a task's progress holds the task rows (in task_instance_id order) first.
-    expect(commandSource).toMatch(/readLedgerTasks\(tx, tenantId, \{ lock \}\)/);
+    // Completion holds the target and prerequisite closure in the same row order.
+    // Actual independent-task progress and graph races are exercised in checkpoints.postgres.test.ts.
+    expect(commandSource).toMatch(/readCompletionTasks\(tx, tenantId, input.taskId, lock\)/);
     expect(ledgerSource).toMatch(/ORDER BY t\.task_instance_id[\s\S]*FOR UPDATE OF t/);
     expect(commandSource).toMatch(/FOR UPDATE OF s, a/);
     expect(claimSource).toMatch(/INSERT INTO padlet_evidence_claims/);

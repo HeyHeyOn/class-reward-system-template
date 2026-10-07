@@ -244,11 +244,11 @@ describe('task details', () => {
     fireEvent.click(within(sheet).getByRole('button', { name: '수학 익힘책 기록 보기' }));
     const dialog = await screen.findByRole('dialog', { name: '과제 기록' });
     expect(await within(dialog).findByText('김민준 · 완료 가능 → 완료 · 은행에서 완료 (+120원)')).toBeTruthy();
-    expect(within(dialog).getByText('이서연 · 미부여 → 미완료 · QR')).toBeTruthy();
+    expect(await within(dialog).findByText('이서연 · 미부여 → 미완료 · QR')).toBeTruthy();
     expect(within(dialog).getAllByRole('heading', { level: 3 }).map((node) => node.textContent)).toEqual(['오늘 · 10월 6일(화)', '10월 4일(일)']);
     fireEvent.change(within(dialog).getByLabelText('기록 학생 고르기'), { target: { value: 'S2' } });
     expect(within(dialog).queryByText(/^김민준 ·/)).toBeNull();
-    expect(within(dialog).getByText('이서연 · 미부여 → 미완료 · QR')).toBeTruthy();
+    expect(await within(dialog).findByText('이서연 · 미부여 → 미완료 · QR')).toBeTruthy();
     expect(server.calls.some((call) => call.method === 'GET' && call.path === '/tasks/task-1/history')).toBe(true);
   });
 });

@@ -117,6 +117,7 @@ export const taskAssignments = pgTable('task_assignments', {
   foreignKey({ name: 'task_assignments_previous_fk', columns: [table.tenantId, table.previousAssignmentId], foreignColumns: [table.tenantId, table.assignmentId] }),
   foreignKey({ name: 'task_assignments_admin_operation_fk', columns: [table.tenantId, table.adminOperationId], foreignColumns: [operations.tenantId, operations.operationId] }),
   index('task_assignments_cycle_student_event_idx').on(table.tenantId, table.taskInstanceId, table.cycleId, table.studentId, table.eventSequence),
+  index('task_assignments_ledger_pair_order_idx').on(table.tenantId, table.taskInstanceId, table.studentId, table.createdAt, table.eventSequence),
   check('task_assignments_id_check', sql`${table.assignmentId} = btrim(${table.assignmentId}) AND length(${table.assignmentId}) > 0`),
   check('task_assignments_task_id_snapshot_check', sql`${table.taskIdSnapshot} = btrim(${table.taskIdSnapshot}) AND length(${table.taskIdSnapshot}) > 0`),
   check('task_assignments_previous_id_check', sql`${table.previousAssignmentId} IS NULL OR (${table.previousAssignmentId} = btrim(${table.previousAssignmentId}) AND length(${table.previousAssignmentId}) > 0)`),

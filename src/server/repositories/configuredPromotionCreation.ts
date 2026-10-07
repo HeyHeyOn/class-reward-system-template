@@ -2,7 +2,7 @@ import 'server-only';
 
 import type { Promotion } from '@/domain/types';
 import { withTenantTransaction } from '@/server/db/transaction';
-import { createConfiguredSheetsStore } from '@/server/googleSheets';
+import { createConfiguredSheetsStore } from '@/server/repositories/sheets/lazy';
 import type { CentralTenantContextInput } from '@/server/repositories/context';
 import {
   createDatabasePromotionCommands,
@@ -15,11 +15,8 @@ import {
   resolveCompatibilityConfiguredRepository,
   type CompatibilityCentralTenantEnv,
 } from '@/server/repositories/configuredRepository';
-import {
-  createPromotion,
-  replacePromotionProducts,
-  type PromotionCreateInput,
-} from '@/server/repositories/sheets/promotionCommands';
+import { createPromotion, replacePromotionProducts } from '@/server/repositories/sheets/lazy';
+import type { PromotionCreateInput } from '@/server/repositories/sheets/promotionCommands';
 import type { AdditiveSchemaMigrationStore } from '@/server/storage/tabularStore';
 
 export type ConfiguredPromotionCreationInput = CreatePromotionAdminInput;

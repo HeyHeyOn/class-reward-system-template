@@ -2,7 +2,7 @@ import 'server-only';
 
 import type { Student, Transaction } from '@/domain/types';
 import { withTenantSnapshot, type TenantTransaction } from '@/server/db/transaction';
-import { createConfiguredSheetsReader } from '@/server/googleSheets';
+import { createConfiguredSheetsReader } from '@/server/repositories/sheets/lazy';
 import type { CentralTenantContextInput } from '@/server/repositories/context';
 import type { RepositoryCreators } from '@/server/repositories/factory';
 import { createDatabaseStudentQueries } from '@/server/repositories/database/studentQueries';
@@ -12,7 +12,8 @@ import {
   resolveCompatibilityConfiguredRepository,
   type CompatibilityCentralTenantEnv,
 } from '@/server/repositories/configuredRepository';
-import { getTransactions, type SheetsReader } from '@/server/sheetsRepository';
+import { getTransactions } from '@/server/repositories/sheets/lazy';
+import type { SheetsReader } from '@/server/sheetsRepository';
 import { confirmStudentLookup, type ConfirmedStudentLookup } from '@/server/studentLookup';
 
 /** The PostgreSQL per-student window never returns more than this many parent transactions. */

@@ -2,7 +2,7 @@ import 'server-only';
 
 import type { Product } from '@/domain/types';
 import { withTenantTransaction } from '@/server/db/transaction';
-import { createConfiguredSheetsStore } from '@/server/googleSheets';
+import { createConfiguredSheetsStore } from '@/server/repositories/sheets/lazy';
 import type { CentralTenantContextInput } from '@/server/repositories/context';
 import {
   createDatabaseCatalogCommands,
@@ -15,7 +15,8 @@ import {
   resolveCompatibilityConfiguredRepository,
   type CompatibilityCentralTenantEnv,
 } from '@/server/repositories/configuredRepository';
-import { createProduct, type ProductCreate, type SheetsStore } from '@/server/sheetsRepository';
+import { createProduct } from '@/server/repositories/sheets/lazy';
+import type { ProductCreate, SheetsStore } from '@/server/sheetsRepository';
 
 export type ConfiguredProductCreationInput = CreateProductAdminInput;
 

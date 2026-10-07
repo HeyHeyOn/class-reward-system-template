@@ -12,9 +12,9 @@ import { TaskLedgerError } from '@/server/repositories/database/taskLedger/store
 
 const A = 'e1300000-0000-4000-8000-000000000001';
 const OPERATION = 'e1300000-0000-4000-8000-000000000011';
-const call = (method: 'GET' | 'POST' | 'PATCH', path: string[], body?: unknown) => {
+const call = (method: 'GET' | 'POST' | 'PATCH', path: string[], body?: unknown, query = '') => {
   const handler = method === 'GET' ? GET : method === 'POST' ? POST : PATCH;
-  const request = new Request(`https://test.invalid/api/c/class-a/${path.join('/')}`, {
+  const request = new Request(`https://test.invalid/api/c/class-a/${path.join('/')}${query}`, {
     method, ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
   });
   return handler(request, { params: Promise.resolve({ slug: 'class-a', path }) });
@@ -46,7 +46,15 @@ describe('task ledger routes for classes', () => {
     expect(await board.json()).toEqual({ now: '2026-10-06T00:00:00.000Z', tasks: [] });
     expect(board.headers.get('cache-control')).toBe('no-store');
     expect((await call('GET', ['task-ledger', 'tasks', 'T001', 'history'])).status).toBe(200);
-    expect(m.ledger.history).toHaveBeenCalledWith('T001');
+    expect(m.ledger.history).toHaveBeenCalledWith('T001', { limit: 50, cursor: null, studentId: '' });
+  });
+
+  it('passes bounded history filters and rejects malformed page requests before storage', async () => {
+    expect((await call('GET', ['task-ledger', 'tasks', 'T001', 'history'], undefined, '?limit=25&studentId=S1')).status).toBe(200);
+    expect(m.ledger.history).toHaveBeenCalledWith('T001', { limit: 25, cursor: null, studentId: 'S1' });
+    for (const query of ['?limit=101', '?limit=2&limit=3', '?cursor=bad', '?studentId=%20S1'])
+      expect((await call('GET', ['task-ledger', 'tasks', 'T001', 'history'], undefined, query)).status).toBe(400);
+    expect(m.ledger.history).toHaveBeenCalledTimes(1);
   });
 
   it('passes a valid stage change and refuses an invalid one before storage, in Korean', async () => {

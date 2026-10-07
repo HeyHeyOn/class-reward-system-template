@@ -79,7 +79,13 @@ export type TaskHistoryEntryDto = Readonly<{
   reward: number | null;
 }>;
 
-export type TaskHistoryDto = Readonly<{ taskId: string; title: string; entries: readonly TaskHistoryEntryDto[]; truncated: boolean }>;
+export type TaskHistoryPageRequest = Readonly<{ limit?: number; cursor?: string | null; studentId?: string }>;
+export type TaskHistoryDto = Readonly<{
+  taskId: string; title: string; entries: readonly TaskHistoryEntryDto[]; truncated: boolean;
+  /** Older clients can still read entries; current clients continue the frozen snapshot. */
+  nextCursor?: string | null;
+  snapshotAt?: string;
+}>;
 
 // ---------- requests ----------
 

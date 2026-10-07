@@ -12,29 +12,50 @@ import { createDatabaseCheckoutCommand } from '@/server/repositories/database/ch
 import { createDatabaseSettingsCommands } from '@/server/repositories/database/settingsCommands';
 import { createDatabaseTaskCompletionCommand } from '@/server/repositories/database/taskCompletionCommands';
 import { createTaskLedgerCommands } from '@/server/repositories/database/taskLedger/commands';
+import { readTaskLedgerHistory } from '@/server/repositories/database/taskLedger/history';
 import { createDatabasePadletClaimRepository } from '@/server/repositories/database/padletClaims';
 import { createCartPricingPreview } from '@/domain/checkout';
 import { createCheckoutPayloadHash } from '@/server/checkoutService';
+import { createDisposablePostgres, type DisposablePostgres } from '@/server/db/testing/disposablePostgres';
 vi.mock('server-only', () => ({}));
-const suite = process.env.RUN_MANAGED_TEST_POSTGRES === '1' ? describe : describe.skip;
+const isolated = process.env.RUN_REAL_POSTGRES === '1';
+const suite = isolated || process.env.RUN_MANAGED_TEST_POSTGRES === '1' ? describe : describe.skip;
 
 // Explicitly opt in to an operator-provisioned TEST runtime URL. No owner URL,
 // fixture activation or schema mutation. All synthetic business data rolls back
 // in the outer transaction; this verifies deployed ACLs, not Google identity.
+// RUN_REAL_POSTGRES instead provisions the same ACL in an owned, networkless
+// PostgreSQL container. It never reads an environment file or external URL.
 suite('managed PostgreSQL ordinary runtime ACL', () => {
   it('enforces role isolation and executes purchase, reward, negative cancellation and replay', async () => {
     expect(process.env.DATABASE_URL).toBeUndefined();
-    const file = process.env.MANAGED_TEST_RUNTIME_ENV_FILE;
-    if (!file) throw new Error('Explicit TEST runtime environment file required');
-    const env = parseEnv(readFileSync(file, 'utf8'));
-    if (!env.DATABASE_URL) throw new Error('Missing TEST runtime URL');
-    const url = new URL(env.DATABASE_URL);
-    expect(url.username).toBe('crs_app_runtime');
-    expect(url.hostname).toMatch(/-pooler\.[a-z0-9.-]+\.neon\.tech$/);
-    expect(url.searchParams.get('sslmode')).toBe('verify-full');
-    const pool = new Pool({ connectionString: url.toString(), max: 1, connectionTimeoutMillis: 20000 });
+    let disposable: DisposablePostgres | undefined;
+    let pool: Pool | undefined;
     let client: PoolClient | undefined;
     try {
+      if (isolated) {
+        disposable = await createDisposablePostgres();
+        // Remove the general test harness's broad baseline privileges first.
+        // Production provisioning names crs_app_runtime; only the isolated
+        // fixture's role name differs, not the granted objects or privileges.
+        await disposable.owner.query(`REVOKE ALL ON ALL TABLES IN SCHEMA public FROM app_runtime;
+          REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM app_runtime;
+          REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM app_runtime;
+          REVOKE ALL ON SCHEMA public FROM app_runtime`);
+        await disposable.owner.query(readFileSync('src/server/db/provisioning/runtimeGrants.sql', 'utf8')
+          .replace(/\bcrs_app_runtime\b/g, 'app_runtime'));
+        pool = disposable.runtime;
+      } else {
+        const file = process.env.MANAGED_TEST_RUNTIME_ENV_FILE;
+        if (!file) throw new Error('Explicit TEST runtime environment file required');
+        const env = parseEnv(readFileSync(file, 'utf8'));
+        if (!env.DATABASE_URL) throw new Error('Missing TEST runtime URL');
+        const url = new URL(env.DATABASE_URL);
+        expect(url.username).toBe('crs_app_runtime');
+        expect(url.hostname).toMatch(/-pooler\.[a-z0-9.-]+\.neon\.tech$/);
+        expect(url.searchParams.get('sslmode')).toBe('verify-full');
+        pool = new Pool({ connectionString: url.toString(), max: 1, connectionTimeoutMillis: 20000 });
+      }
       client = await pool.connect();
       const role = (await client.query('SELECT rolsuper,rolbypassrls,rolcreaterole,rolcreatedb,rolinherit FROM pg_roles WHERE rolname=current_user')).rows[0];
       expect(Object.values(role)).toEqual([false, false, false, false, false]);
@@ -70,7 +91,9 @@ suite('managed PostgreSQL ordinary runtime ACL', () => {
       await denied('SELECT * FROM legacy_full_snapshot_archives');
       await denied('SELECT * FROM legacy_redis_snapshot_archives');
       await denied('SELECT * FROM users');
-      await denied('SET ROLE neondb_owner');
+      await denied(isolated ? 'SET ROLE postgres' : 'SET ROLE neondb_owner');
+      await denied('UPDATE task_ledger_checkpoints SET stage=stage');
+      await denied("SELECT refresh_tenant_task_ledger_checkpoints(current_setting('app.tenant_id')::uuid)");
       await denied("UPDATE tenants SET lifecycle='ACTIVE'");
       await client.query("INSERT INTO students(tenant_id,student_id,name,status) VALUES($1,'S1','Synthetic student','ACTIVE')", [tenantId]);
       await client.query("INSERT INTO accounts(tenant_id,student_id,balance) VALUES($1,'S1',100)", [tenantId]);
@@ -112,9 +135,14 @@ suite('managed PostgreSQL ordinary runtime ACL', () => {
       expect((await cancel.cancel(rewardCancel)).balanceAfter).toBe(-15);
       const [task] = await ledger.readTasks(['T1']);
       expect(task.students.find((row) => row.studentId === 'S1')?.stage).toBe('READY');
+      const history = await runTenantTransaction(tenantId, tx => readTaskLedgerHistory(tx, tenantId, 'T1'));
+      expect(history.entries.map(entry => entry.cause)).toEqual(['CANCELLED', 'BANK', 'TEACHER']);
       await client.query('ROLLBACK');
       expect((await client.query('SELECT * FROM platform_list_memberships_by_google_subject($1)', [subject])).rows).toEqual([]);
       expect((await client.query('SELECT * FROM accounts')).rows).toEqual([]);
-    } finally { if (client) { await client.query('ROLLBACK').catch(() => {}); client.release(); } await pool.end(); }
+    } finally {
+      if (client) { await client.query('ROLLBACK').catch(() => {}); client.release(); }
+      if (disposable) await disposable.close(); else await pool?.end();
+    }
   }, 120000);
 });

@@ -9,6 +9,7 @@ import {
   nextResetAt,
   projectLedgerStage,
   type LedgerEvent,
+  type LedgerFoldCheckpoint,
   type LedgerStageState,
   type ResetWindow,
 } from '@/domain/taskLedger';
@@ -61,6 +62,18 @@ export type LedgerEventRow = LedgerEvent & Readonly<{
   completedAt: string | null;
   transactionId: string | null;
 }>;
+
+export type LedgerCurrentSnapshot = Readonly<{
+  checkpoint: LedgerFoldCheckpoint;
+  lastEvent: LedgerEventRow;
+  latestAssignment: LedgerEventRow | null;
+  latestCompletion: LedgerEventRow | null;
+  completionCount: number;
+}>;
+export type LedgerEventSource = readonly LedgerEventRow[] | LedgerCurrentSnapshot;
+export function isLedgerSnapshot(events: LedgerEventSource): events is LedgerCurrentSnapshot {
+  return 'checkpoint' in events;
+}
 
 /** Event times keep microseconds: they order a student's events. */
 const ISO = 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"';
@@ -194,7 +207,7 @@ export async function readLedgerStudents(tx: TenantTransaction, tenantId: string
   }));
 }
 
-function toEvent(row: Record<string, unknown>): LedgerEventRow | null {
+export function toLedgerEvent(row: Record<string, unknown>): LedgerEventRow | null {
   const base = {
     id: text(row.id), at: text(row.at), seq: number(row.seq), taskInstanceId: text(row.task_instance_id),
     studentId: text(row.student_id), source: nullableText(row.source), note: nullableText(row.note),
@@ -234,7 +247,7 @@ export async function readLedgerEvents(tx: TenantTransaction, tenantId: string, 
            NULL::text AS event_type, note, source, status, reward_snapshot::text AS reward,
            to_char(completed_at AT TIME ZONE 'UTC', ${ISO}) AS completed_at, transaction_id
     FROM task_completions WHERE tenant_id=${tenantId} AND task_instance_id IS NOT NULL ${since} ${tasks} ${student}`);
-  return (result.rows as Record<string, unknown>[]).map(toEvent).filter((event): event is LedgerEventRow => event !== null);
+  return (result.rows as Record<string, unknown>[]).map(toLedgerEvent).filter((event): event is LedgerEventRow => event !== null);
 }
 
 export function groupEvents(events: readonly LedgerEventRow[]): Map<string, Map<string, LedgerEventRow[]>> {
@@ -253,15 +266,20 @@ export function taskWindows(task: LedgerTask): ResetWindow[] {
   return resetWindowsOf(task.currentSchedule, task.pendingSchedule);
 }
 
-export function stageOf(task: LedgerTask, events: readonly LedgerEventRow[] | undefined, now: string): LedgerStageState {
-  return projectLedgerStage({ events: events ?? [], windows: taskWindows(task), now });
+export function stageOf(task: LedgerTask, events: LedgerEventSource | undefined, now: string): LedgerStageState {
+  return events && isLedgerSnapshot(events)
+    ? projectLedgerStage({ events: [], checkpoint: events.checkpoint, windows: taskWindows(task), now })
+    : projectLedgerStage({ events: events ?? [], windows: taskWindows(task), now });
 }
 
 /** The latest event of a kind for one student, in ledger order. */
-export function latestEvent<T extends LedgerEventRow>(events: readonly LedgerEventRow[] | undefined,
+export function latestEvent<T extends LedgerEventRow>(events: LedgerEventSource | undefined,
   predicate: (event: LedgerEventRow) => event is T): T | null {
   let latest: T | null = null;
-  for (const event of events ?? []) {
+  const candidates = events && isLedgerSnapshot(events)
+    ? [events.latestAssignment, events.latestCompletion, events.lastEvent].filter((event): event is LedgerEventRow => event !== null)
+    : events ?? [];
+  for (const event of candidates) {
     if (!predicate(event)) continue;
     if (latest === null || compareInstants(event.at, latest.at) > 0
       || (compareInstants(event.at, latest.at) === 0 && event.table === latest.table && event.seq > latest.seq)) latest = event;
@@ -270,7 +288,7 @@ export function latestEvent<T extends LedgerEventRow>(events: readonly LedgerEve
 }
 
 export function buildAdminTaskDto(task: LedgerTask, students: readonly LedgerStudent[],
-  eventsByStudent: ReadonlyMap<string, readonly LedgerEventRow[]> | undefined, now: string): AdminTaskDto {
+  eventsByStudent: ReadonlyMap<string, LedgerEventSource> | undefined, now: string): AdminTaskDto {
   const inForce = scheduleInForce(task.currentSchedule, task.pendingSchedule, now);
   const windows = taskWindows(task);
   const counts: Record<TaskStage, number> = { UNASSIGNED: 0, PENDING: 0, READY: 0, COMPLETED: 0 };

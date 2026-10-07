@@ -5,12 +5,10 @@ import {
   createCartPricingPreview,
   type CartPricingPreviewResult,
 } from '@/domain/checkout';
-import {
-  previewCheckoutCart,
-  type PreviewCheckoutCartInput,
-} from '@/server/checkoutService';
+import { previewCheckoutCart } from '@/server/repositories/sheets/lazy';
+import type { PreviewCheckoutCartInput } from '@/server/checkoutService';
 import { withTenantSnapshot, type TenantTransaction } from '@/server/db/transaction';
-import { createConfiguredSheetsStore } from '@/server/googleSheets';
+import { createConfiguredSheetsStore } from '@/server/repositories/sheets/lazy';
 import type { CentralTenantContextInput } from '@/server/repositories/context';
 import type { RepositoryCreators } from '@/server/repositories/factory';
 import { createDatabaseCatalogQueries } from '@/server/repositories/database/catalogQueries';

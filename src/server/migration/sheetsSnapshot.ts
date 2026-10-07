@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { type BudgetContext, utf8ByteLength } from '@/lib/boundedWork';
 import { canonicalBoundedJson } from '@/lib/boundedJson';
-import { parseSheetSettingsRows } from '@/server/sheetsRepository';
+import { parseSheetSettingsRows } from '@/server/sheetsSettingsRows';
 import { readOfflineGoogleGrid } from './offlineGoogleGrid';
 import {
   assertDenseWorkbookRow, deepFreeze, isSensitiveTabName, redactWorkbook, type CredentialHashes,

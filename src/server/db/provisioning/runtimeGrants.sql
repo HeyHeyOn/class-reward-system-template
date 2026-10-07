@@ -1,4 +1,4 @@
--- Apply after migrations 0001–0040 as the migration owner, in the same
+-- Apply after migrations 0001–0042 as the migration owner, in the same
 -- transaction as creation of crs_app_runtime LOGIN NOSUPERUSER NOBYPASSRLS
 -- NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION. Never grant role membership.
 -- Passwords and provider URLs belong to the provisioning runner, not this file.
@@ -9,6 +9,11 @@ GRANT USAGE ON SCHEMA public TO crs_app_runtime;
 GRANT SELECT ON tenants, tenant_memberships, tenant_auth_secrets,
   tenant_sessions, legacy_task_origins, legacy_transaction_origins,
   migration_sources, padlet_claim_digest_tombstones TO crs_app_runtime;
+-- Derived projections are maintained only by owner-owned event triggers.
+REVOKE ALL ON task_ledger_checkpoints, task_history_revisions,
+  task_history_prefixes, task_history_entries FROM crs_app_runtime;
+GRANT SELECT ON task_ledger_checkpoints, task_history_revisions,
+  task_history_prefixes, task_history_entries TO crs_app_runtime;
 GRANT INSERT ON tenant_sessions TO crs_app_runtime;
 GRANT SELECT, INSERT, UPDATE ON students, accounts, products, promotions,
   tasks, tenant_settings, operations TO crs_app_runtime;

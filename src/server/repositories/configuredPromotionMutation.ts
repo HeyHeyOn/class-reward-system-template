@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { withTenantTransaction } from '@/server/db/transaction';
-import { createConfiguredSheetsStore } from '@/server/googleSheets';
+import { createConfiguredSheetsStore } from '@/server/repositories/sheets/lazy';
 import type { CentralTenantContextInput } from '@/server/repositories/context';
 import {
   createDatabasePromotionCommands,
@@ -14,12 +14,8 @@ import {
   resolveCompatibilityConfiguredRepository,
   type CompatibilityCentralTenantEnv,
 } from '@/server/repositories/configuredRepository';
-import {
-  replacePromotionProducts,
-  setPromotionActive,
-  updatePromotion,
-  type PromotionDefinitionInput,
-} from '@/server/repositories/sheets/promotionCommands';
+import { replacePromotionProducts, setPromotionActive, updatePromotion } from '@/server/repositories/sheets/lazy';
+import type { PromotionDefinitionInput } from '@/server/repositories/sheets/promotionCommands';
 import type { AdditiveSchemaMigrationStore } from '@/server/storage/tabularStore';
 
 export const PROMOTION_MUTATION_TARGET_PARTIAL_FAILURE_MESSAGE =

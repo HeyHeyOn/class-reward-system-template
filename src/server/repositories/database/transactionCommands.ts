@@ -6,7 +6,8 @@ import { parseCheckoutLineSnapshot } from '@/lib/checkoutSnapshotClient';
 import { createTaskRewardPayloadHash } from './taskCompletionCommands';
 import type { TenantTransaction } from '@/server/db/transaction';
 import { ensureTaskLedger } from './taskLedger/migration';
-import { clockNow, readLedgerEvents, readLedgerFrom, readLedgerTasks, stageOf } from './taskLedger/store';
+import { clockNow, readLedgerFrom, readLedgerTasks, stageOf } from './taskLedger/store';
+import { readCurrentLedgerStates } from './taskLedger/currentState';
 import { appendOperationAudit, assertOperationAudit } from './operationAudit';
 import { readCancellationItems, validateLegacyCancellationSource } from './legacyCancellationSource';
 
@@ -328,6 +329,8 @@ export function createDatabaseTransactionCommands(
           : null;
         if (state.originalCompletion && resetTaskCompletion) {
           const completion = state.originalCompletion;
+          // A lock wait (or a composed transaction) must not backdate this event
+          // before the completion it cancels: ledger order uses insertion time.
           await tx.execute(sql`
             INSERT INTO task_completions
               (tenant_id, completion_id, completed_at, task_instance_id, task_id_snapshot,
@@ -336,7 +339,7 @@ export function createDatabaseTransactionCommands(
                cycle_end_at, rule_version, timezone, source, assignment_id, transaction_id,
                operation_id, operation_hash, schema_version, evidence_provider,
                evidence_board_id, evidence_post_id, evidence_created_at,
-               evidence_author_full_name)
+               evidence_author_full_name, created_at)
             VALUES
               (${dependencies.tenantId}, ${cancellationCompletionId}, ${now},
                ${completion.task_instance_id}, ${completion.task_id_snapshot},
@@ -347,7 +350,7 @@ export function createDatabaseTransactionCommands(
                ${completion.cycle_start_at}, ${completion.cycle_end_at}, ${completion.rule_version},
                ${completion.timezone}, 'ADMIN_RESET', ${completion.assignment_id},
                ${reversalTransactionId}, ${input.operationId}, ${state.payloadHash}, 1,
-               NULL, NULL, NULL, NULL, NULL)
+               NULL, NULL, NULL, NULL, NULL, clock_timestamp())
           `);
         }
         for (const item of state.restoredItems) {
@@ -639,17 +642,17 @@ async function shouldResetCompletion(
   if (!ledgerFrom) return false;
   const [task] = await readLedgerTasks(tx, tenantId, { taskInstanceIds: [original.task_instance_id] });
   if (!task) return false;
-  const events = await readLedgerEvents(tx, tenantId, ledgerFrom, {
+  const events = (await readCurrentLedgerStates(tx, tenantId, asOf, {
     taskInstanceIds: [task.taskInstanceId], studentId: original.student_id,
-  });
+  })).get(task.taskInstanceId)?.get(original.student_id);
   const state = stageOf(task, events, asOf);
   if (state.stage !== 'COMPLETED' || state.byReset) return false;
   if (state.lastEventId === original.completion_id) return true;
   // A completion from before the ledger stands through the carry-over row that copied it.
-  const last = events.find((event) => event.id === state.lastEventId);
+  const last = events?.lastEvent;
   return Boolean(last && last.kind === 'COMPLETED' && last.source === 'CARRY_FORWARD' && last.id.startsWith('tl-c:')
     && new Date(original.completed_at).getTime() <= new Date(ledgerFrom).getTime()
-    && !events.some((event) => event.kind === 'COMPLETED' && event.id !== last.id));
+    && events?.completionCount === 1);
 }
 
 function validateItems(

@@ -2,7 +2,7 @@ import 'server-only';
 
 import type { Student } from '@/domain/types';
 import { withTenantTransaction } from '@/server/db/transaction';
-import { createConfiguredSheetsStore } from '@/server/googleSheets';
+import { createConfiguredSheetsStore } from '@/server/repositories/sheets/lazy';
 import type { CentralTenantContextInput } from '@/server/repositories/context';
 import {
   createDatabaseStudentCommands,
@@ -16,7 +16,8 @@ import {
   resolveCompatibilityConfiguredRepository,
   type CompatibilityCentralTenantEnv,
 } from '@/server/repositories/configuredRepository';
-import { createStudent, type SheetsStore, type StudentCreate } from '@/server/sheetsRepository';
+import { createStudent } from '@/server/repositories/sheets/lazy';
+import type { SheetsStore, StudentCreate } from '@/server/sheetsRepository';
 
 export type ConfiguredStudentCreationInput = CreateStudentAdminInput;
 

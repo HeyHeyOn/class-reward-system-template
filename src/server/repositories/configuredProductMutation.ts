@@ -2,8 +2,9 @@ import 'server-only';
 
 import type { Product } from '@/domain/types';
 import { withTenantTransaction } from '@/server/db/transaction';
-import { createConfiguredSheetsStore } from '@/server/googleSheets';
-import { updateProductDetailsBatch, type ProductEditorUpdate } from '@/server/sheetsRepository';
+import { createConfiguredSheetsStore } from '@/server/repositories/sheets/lazy';
+import { updateProductDetailsBatch } from '@/server/repositories/sheets/lazy';
+import type { ProductEditorUpdate } from '@/server/sheetsRepository';
 import { getOptionalTrustedTenantRequestContext } from '@/server/trustedTenantRequestContext';
 import { parseStorageSelection } from './context';
 import { createDatabaseCatalogCommands, type UpdateProductsAdminBatchInput } from './database/catalogCommands';

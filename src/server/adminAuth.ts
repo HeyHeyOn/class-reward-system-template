@@ -1,6 +1,9 @@
 import { createHash, createHmac, randomBytes, scrypt, scryptSync, timingSafeEqual } from 'node:crypto';
 import type { SheetsReader, SheetsStore } from '@/server/sheetsRepository';
-import { getSheetSettings, saveSheetSetting } from '@/server/sheetsRepository';
+const getSheetSettings: typeof import('@/server/sheetsRepository').getSheetSettings = async (...args) =>
+  (await import('@/server/sheetsRepository')).getSheetSettings(...args);
+const saveSheetSetting: typeof import('@/server/sheetsRepository').saveSheetSetting = async (...args) =>
+  (await import('@/server/sheetsRepository')).saveSheetSetting(...args);
 
 export const ADMIN_SESSION_COOKIE = 'class_store_admin';
 const SESSION_VERSION = 'v1';

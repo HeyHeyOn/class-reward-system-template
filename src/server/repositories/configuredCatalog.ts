@@ -1,7 +1,7 @@
 import 'server-only';
 
 import type { Product, Promotion } from '@/domain/types';
-import { createConfiguredSheetsReader } from '@/server/googleSheets';
+import { createConfiguredSheetsReader } from '@/server/repositories/sheets/lazy';
 import { withTenantSnapshot } from '@/server/db/transaction';
 import type { CentralTenantContextInput } from '@/server/repositories/context';
 import { type RepositoryCreators } from '@/server/repositories/factory';
@@ -10,16 +10,14 @@ import {
   type ProductAdminMutationSnapshot,
   type PromotionAdminMutationSnapshot,
 } from '@/server/repositories/database/catalogQueries';
-import {
-  getActivePromotions,
-  getPromotions,
-} from '@/server/repositories/sheets/promotionQueries';
+import { getActivePromotions, getPromotions } from '@/server/repositories/sheets/lazy';
 import {
   getCompatibilityCentralTenantContext,
   resolveCompatibilityConfiguredRepository,
   type CompatibilityCentralTenantEnv,
 } from '@/server/repositories/configuredRepository';
-import { getActiveProducts, getProducts, type SheetsReader } from '@/server/sheetsRepository';
+import { getActiveProducts, getProducts } from '@/server/repositories/sheets/lazy';
+import type { SheetsReader } from '@/server/sheetsRepository';
 
 export type CatalogReader = Readonly<{
   getProducts: () => Promise<Product[]>;

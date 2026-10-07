@@ -183,6 +183,8 @@ export const taskCompletions = pgTable('task_completions', {
   foreignKey({ name: 'task_completions_transaction_fk', columns: [table.tenantId, table.transactionId], foreignColumns: [transactions.tenantId, transactions.transactionId] }),
   foreignKey({ name: 'task_completions_admin_operation_fk', columns: [table.tenantId, table.adminOperationId], foreignColumns: [operations.tenantId, operations.operationId] }),
   index('task_completions_cycle_student_event_idx').on(table.tenantId, table.taskInstanceId, table.cycleId, table.studentId, table.eventSequence),
+  index('task_completions_ledger_pair_order_idx').on(table.tenantId, table.taskInstanceId, table.studentId, table.createdAt, table.eventSequence)
+    .where(sql`${table.taskInstanceId} IS NOT NULL AND ${table.status} IN ('COMPLETED','CANCELLED')`),
   uniqueIndex('task_completions_operation_unique').on(table.tenantId, table.operationId).where(sql`${table.operationId} IS NOT NULL`),
   check('task_completions_id_check', sql`${table.completionId} = btrim(${table.completionId}) AND length(${table.completionId}) > 0`),
   check('task_completions_task_id_snapshot_check', sql`${table.taskIdSnapshot} = btrim(${table.taskIdSnapshot}) AND length(${table.taskIdSnapshot}) > 0`),

@@ -20,13 +20,13 @@ import type { TenantTransaction } from '@/server/db/transaction';
 import { appendOperationAudit } from '../operationAudit';
 import { ensureTaskLedger, type RunTenantTransaction } from './migration';
 import { writeTeacherPaidCompletion } from './reward';
+import { readCurrentLedgerStates } from './currentState';
+import { lockTaskGraph } from './locking';
 import {
   buildAdminTaskDto,
   canonicalJson,
   clockNow,
-  groupEvents,
   latestEvent,
-  readLedgerEvents,
   readLedgerFrom,
   readLedgerStudents,
   readLedgerTasks,
@@ -35,6 +35,7 @@ import {
   stageOf,
   TaskLedgerError,
   type LedgerEventRow,
+  type LedgerEventSource,
   type LedgerStudent,
   type LedgerTask,
 } from './store';
@@ -57,14 +58,14 @@ export type TaskLedgerCommandDependencies = Readonly<{
   resolveStudentQr?: (value: string) => string;
 }>;
 
-type Context = Readonly<{
+type Context = {
   tx: TenantTransaction;
   tenantId: string;
   now: string;
   ledgerFrom: string;
   operationId: string;
   payloadHash: string;
-}>;
+};
 
 /** Why an event was written; shown in the history (the ID prefix keeps it). */
 type Cause = 'TEACHER' | 'QR' | 'RESET';
@@ -134,8 +135,8 @@ export function createTaskLedgerCommands(dependencies: TaskLedgerCommandDependen
       const now = await clockNow(tx);
       const tasks = await readLedgerTasks(tx, tenantId, taskIds ? { taskIds } : {});
       const students = await readLedgerStudents(tx, tenantId);
-      const events = groupEvents(ledgerFrom === null ? [] : await readLedgerEvents(tx, tenantId, ledgerFrom,
-        { taskInstanceIds: tasks.map((task) => task.taskInstanceId) }));
+      const events = ledgerFrom === null ? new Map() : await readCurrentLedgerStates(tx, tenantId, now,
+        { taskInstanceIds: tasks.map((task) => task.taskInstanceId) });
       return {
         now: new Date(now).toISOString(),
         tasks: sortTasks(tasks.map((task) => buildAdminTaskDto(task, students, events.get(task.taskInstanceId), now))),
@@ -171,7 +172,7 @@ export function createTaskLedgerCommands(dependencies: TaskLedgerCommandDependen
     stage: TaskStage;
     withReward: boolean;
     cause: Cause;
-    events: readonly LedgerEventRow[] | undefined;
+    events: LedgerEventSource | undefined;
     balances: Map<string, number>;
   }>): Promise<{ changed: boolean; paid: number }> {
     const current = stageOf(input.task, input.events, context.now);
@@ -210,8 +211,11 @@ export function createTaskLedgerCommands(dependencies: TaskLedgerCommandDependen
   }
 
   async function ledgerEventsFor(context: Context, tasks: readonly LedgerTask[], studentId?: string) {
-    return groupEvents(await readLedgerEvents(context.tx, tenantId, context.ledgerFrom, {
-      taskInstanceIds: tasks.map((task) => task.taskInstanceId), ...(studentId === undefined ? {} : { studentId }) }));
+    // Task/student locks can wait behind a committed writer. Project after the
+    // wait, not at the request's earlier operation timestamp.
+    context.now = await clockNow(context.tx);
+    return readCurrentLedgerStates(context.tx, tenantId, context.now, {
+      taskInstanceIds: tasks.map((task) => task.taskInstanceId), ...(studentId === undefined ? {} : { studentId }) });
   }
 
   /**
@@ -219,7 +223,7 @@ export function createTaskLedgerCommands(dependencies: TaskLedgerCommandDependen
    * since each student's last event — before that schedule is replaced, so they stay true.
    */
   async function settleResets(context: Context, task: LedgerTask, students: readonly LedgerStudent[],
-    events: ReadonlyMap<string, readonly LedgerEventRow[]> | undefined, balances: Map<string, number>): Promise<void> {
+    events: ReadonlyMap<string, LedgerEventSource> | undefined, balances: Map<string, number>): Promise<void> {
     for (const student of students) {
       const state = stageOf(task, events?.get(student.studentId), context.now);
       if (!state.byReset || state.since === null) continue;
@@ -293,6 +297,7 @@ export function createTaskLedgerCommands(dependencies: TaskLedgerCommandDependen
      */
     async createTask(request: CreateTaskRequest, internal: Readonly<{ taskId?: string; padletBoardId?: string | null }> = {}): Promise<AdminTaskDto> {
       const result = await withOperation('create', request.operationId, { ...request, internal }, async (context) => {
+        await lockTaskGraph(context.tx, tenantId, 'exclusive');
         const taskId = internal.taskId ?? await nextTaskId(context);
         if (internal.taskId) {
           const taken = await context.tx.execute(sql`SELECT 1 FROM tasks WHERE tenant_id=${tenantId} AND task_id=${taskId} AND deleted_at IS NULL`);
@@ -330,6 +335,7 @@ export function createTaskLedgerCommands(dependencies: TaskLedgerCommandDependen
 
     async updateTask(taskId: string, request: UpdateTaskRequest): Promise<AdminTaskDto> {
       await withOperation('update', request.operationId, { taskId, ...request }, async (context) => {
+        await lockTaskGraph(context.tx, tenantId, 'exclusive');
         const tasks = await lockTasks(context, [taskId]);
         return { changed: await writeDefinition(context, tasks.get(taskId)!, request.task) };
       }, (value) => ({ taskId, changed: value.changed }));
@@ -340,6 +346,7 @@ export function createTaskLedgerCommands(dependencies: TaskLedgerCommandDependen
 
     async deleteTasks(request: DeleteTasksRequest): Promise<{ deletedTaskIds: string[] }> {
       const result = await withOperation('delete', request.operationId, request, async (context) => {
+        await lockTaskGraph(context.tx, tenantId, 'exclusive');
         const live = await readLedgerTasks(context.tx, tenantId, { lock: true, taskIds: request.taskIds });
         if (live.length === 0) return { deletedTaskIds: [] as string[] };
         const instanceIds = live.map((task) => task.taskInstanceId);

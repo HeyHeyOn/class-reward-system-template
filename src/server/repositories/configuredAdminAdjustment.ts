@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { withTenantTransaction } from '@/server/db/transaction';
-import { createConfiguredSheetsStore } from '@/server/googleSheets';
+import { createConfiguredSheetsStore } from '@/server/repositories/sheets/lazy';
 import type { CentralTenantContextInput } from '@/server/repositories/context';
 import {
   createDatabaseAdminCommands,
@@ -13,7 +13,7 @@ import {
   resolveCompatibilityConfiguredRepository,
   type CompatibilityCentralTenantEnv,
 } from '@/server/repositories/configuredRepository';
-import { bulkAdjustStudentBalances } from '@/server/sheetsRepository';
+import { bulkAdjustStudentBalances } from '@/server/repositories/sheets/lazy';
 
 export type ConfiguredAdminAdjustmentInput = Readonly<{
   operationId: string;

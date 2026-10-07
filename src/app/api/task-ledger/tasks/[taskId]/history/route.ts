@@ -1,6 +1,7 @@
 import { parseId } from '@/lib/taskLedgerApi';
 import { isAuthorizedAdminRequest } from '@/server/apiAuth';
 import { createConfiguredTaskLedger } from '@/server/repositories/configuredTaskLedger';
+import { parseTaskHistoryPageRequest } from '@/server/repositories/database/taskLedger/historyQueries';
 import { taskLedgerAdminRequired, taskLedgerFailure, taskLedgerJson } from '@/server/taskLedgerHttp';
 
 export const dynamic = 'force-dynamic';
@@ -10,8 +11,9 @@ export async function GET(request: Request, context: { params: Promise<{ taskId:
   if (!isAuthorizedAdminRequest(request)) return taskLedgerAdminRequired();
   try {
     const taskId = parseId((await context.params).taskId, '과제 번호');
+    const page = parseTaskHistoryPageRequest(new URL(request.url).searchParams);
     const ledger = await createConfiguredTaskLedger(request);
-    return taskLedgerJson(await ledger.history(taskId));
+    return taskLedgerJson(await ledger.history(taskId, page));
   } catch (error) {
     return taskLedgerFailure(error, 'history');
   }

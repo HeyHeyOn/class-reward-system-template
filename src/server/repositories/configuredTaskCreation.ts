@@ -1,7 +1,7 @@
 import 'server-only';
 
 import type { ClassTask, TaskRecurrence } from '@/domain/types';
-import { createConfiguredSheetsStore } from '@/server/googleSheets';
+import { createConfiguredSheetsStore } from '@/server/repositories/sheets/lazy';
 import { LegacyTaskWriterUnsupportedError } from '@/server/legacyTaskWriters';
 import type { CentralTenantContextInput } from '@/server/repositories/context';
 import type { RepositoryCreators } from '@/server/repositories/factory';
@@ -10,7 +10,8 @@ import {
   resolveCompatibilityConfiguredRepository,
   type CompatibilityCentralTenantEnv,
 } from '@/server/repositories/configuredRepository';
-import { createTask, type SheetsStore, type TaskCreate } from '@/server/sheetsRepository';
+import { createTask } from '@/server/repositories/sheets/lazy';
+import type { SheetsStore, TaskCreate } from '@/server/sheetsRepository';
 
 export type ConfiguredTaskCreationInput = Readonly<{
   operationId: string;

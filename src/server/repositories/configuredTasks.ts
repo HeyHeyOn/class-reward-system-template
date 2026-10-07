@@ -2,7 +2,7 @@ import 'server-only';
 
 import type { TaskAssignmentStatus } from '@/domain/types';
 import type { TaskHistoryDetailDto } from '@/domain/taskHistoryDtos';
-import { createConfiguredSheetsReader } from '@/server/googleSheets';
+import { createConfiguredSheetsReader } from '@/server/repositories/sheets/lazy';
 import { withTenantSnapshot, withTenantTransaction } from '@/server/db/transaction';
 import type { CentralTenantContextInput } from '@/server/repositories/context';
 import type { RepositoryCreators } from '@/server/repositories/factory';
@@ -13,18 +13,10 @@ import {
   resolveCompatibilityConfiguredRepository,
   type CompatibilityCentralTenantEnv,
 } from '@/server/repositories/configuredRepository';
-import {
-  getTaskAssignmentStatus,
-  getTaskById,
-  getTasks,
-  type SheetsReader,
-} from '@/server/sheetsRepository';
-import {
-  getTaskCycleProjection,
-  getTaskHistoryDetail,
-  listTaskCycleProjections,
-  type TaskCycleProjectionDto,
-} from '@/server/repositories/sheets/taskHistoryQueries';
+import { getTaskAssignmentStatus, getTaskById, getTasks } from '@/server/repositories/sheets/lazy';
+import type { SheetsReader } from '@/server/sheetsRepository';
+import { getTaskCycleProjection, getTaskHistoryDetail, listTaskCycleProjections } from '@/server/repositories/sheets/lazy';
+import type { TaskCycleProjectionDto } from '@/server/repositories/sheets/taskHistoryQueries';
 import { buildBankTaskProjection, type BankTaskDto } from '@/server/taskReadProjection';
 
 export type TaskReader = Readonly<{

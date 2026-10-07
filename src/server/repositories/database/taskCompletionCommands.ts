@@ -12,17 +12,16 @@ import type { TenantTransaction } from '@/server/db/transaction';
 import type { DatabasePadletClaimRepository } from './padletClaims';
 import { appendOperationAudit, assertOperationAudit } from './operationAudit';
 import { ensureTaskLedger } from './taskLedger/migration';
+import { readCurrentLedgerStates } from './taskLedger/currentState';
+import { readCompletionTasks } from './taskLedger/locking';
 import { rewardAssignment, writeCarriedAssignmentIfMissing } from './taskLedger/reward';
 import {
   clockNow,
-  groupEvents,
   LEDGER_CYCLE_ID,
   LEDGER_CYCLE_START,
   LEDGER_RULE_VERSION,
   latestEvent,
-  readLedgerEvents,
   readLedgerFrom,
-  readLedgerTasks,
   stageOf,
   type LedgerEventRow,
   type LedgerTask,
@@ -202,7 +201,7 @@ export function createDatabaseTaskCompletionCommand(
       }
 
       return dependencies.runTenantTransaction(dependencies.tenantId, async (tx) => {
-        // LOCK ORDER: existing operation; tasks by task_instance_id; student/account; finally the
+        // LOCK ORDER: existing operation; shared graph gate; dependency task rows by ID; student/account; finally the
         // privileged global claim seam. Progress events are append-only and take no lock: every
         // writer of a task's progress holds that task's row first (see readLedgerTasks).
         const inserted = await tx.execute(sql`
@@ -413,7 +412,7 @@ async function authorize(
 ): Promise<Authorization> {
   const ledgerFrom = await readLedgerFrom(tx, tenantId);
   if (!ledgerFrom) throw new Error('Task ledger start is missing.');
-  const tasks = await readLedgerTasks(tx, tenantId, { lock });
+  const tasks = await readCompletionTasks(tx, tenantId, input.taskId, lock);
   const target = tasks.find((task) => task.taskId === input.taskId);
   if (!target) throw new TaskRewardCommandError('POLICY');
 
@@ -432,10 +431,11 @@ async function authorize(
   const account = accountResult.rows[0] as AccountRow | undefined;
   if (!account || account.status !== 'ACTIVE') throw new TaskRewardCommandError('POLICY');
 
-  const events = groupEvents(await readLedgerEvents(tx, tenantId, ledgerFrom, { studentId: input.studentId }));
-  const own = events.get(target.taskInstanceId)?.get(input.studentId);
   // Stages follow the database clock that ordered their events (the app clock may lag a little).
   const ledgerNow = await clockNow(tx);
+  const events = await readCurrentLedgerStates(tx, tenantId, ledgerNow,
+    { taskInstanceIds: tasks.map(task => task.taskInstanceId), studentId: input.studentId });
+  const own = events.get(target.taskInstanceId)?.get(input.studentId);
   const state = stageOf(target, own, ledgerNow);
   const availability = {
     ...(target.availableFrom ? { availableFrom: target.availableFrom } : {}),

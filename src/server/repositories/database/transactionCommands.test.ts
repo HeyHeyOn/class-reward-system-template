@@ -30,6 +30,8 @@ let harness: PgliteDatabaseHarness;
 
 beforeEach(async () => {
   harness = await createPgliteDatabaseHarness();
+  await harness.database.exec(await readFile(resolve('src/server/db/migrations/0041_task_ledger_checkpoints.sql'), 'utf8'));
+  await harness.database.exec('GRANT SELECT ON task_ledger_checkpoints TO app_runtime');
   await seedBase();
 });
 

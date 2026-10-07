@@ -4,7 +4,7 @@ import { TASK_STAGE_ORDER, taskStage, type TaskStage } from '@/domain/taskStage'
 import { createHash } from 'node:crypto';
 import type { DayOfMonth, IsoWeekday, TaskCompletionEvidence } from '@/domain/types';
 import { withTenantSnapshot, withTenantTransaction } from '@/server/db/transaction';
-import { createConfiguredSheetsStore } from '@/server/googleSheets';
+import { createConfiguredSheetsStore } from '@/server/repositories/sheets/lazy';
 import { fetchPadletBoardPosts, isCanonicalPadletPostId } from '@/server/padletClient';
 import { createPadletCompletionEvidenceResolver } from '@/server/padletCompletionEvidenceResolver';
 import type { CentralTenantContextInput } from '@/server/repositories/context';
@@ -17,10 +17,10 @@ import { createDatabaseTaskQueries } from '@/server/repositories/database/taskQu
 import type { RepositoryCreators } from '@/server/repositories/factory';
 import { getCompatibilityCentralTenantContext, resolveCompatibilityConfiguredRepository,
   type CompatibilityCentralTenantEnv } from '@/server/repositories/configuredRepository';
-import { listTaskCycleProjections } from '@/server/repositories/sheets/taskHistoryQueries';
+import { listTaskCycleProjections } from '@/server/repositories/sheets/lazy';
 import { buildStudentTaskProjection,
   type StudentTaskProjectionDto } from '@/server/studentTaskProjection';
-import { completeTaskForStudent } from '@/server/sheetsRepository';
+import { completeTaskForStudent } from '@/server/repositories/sheets/lazy';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 

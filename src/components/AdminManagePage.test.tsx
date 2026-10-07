@@ -267,7 +267,11 @@ describe('AdminManagePage', () => {
     vi.stubGlobal('alert', vi.fn());
     vi.stubGlobal('confirm', vi.fn(() => true));
     let qrBlobNumber = 0;
-    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => `blob:manage-qr-${++qrBlobNumber}`), revokeObjectURL: vi.fn() });
+    // Preserve the URL constructor for deferred modules resolved by the test runner.
+    vi.stubGlobal('URL', class extends URL {
+      static createObjectURL = vi.fn(() => `blob:manage-qr-${++qrBlobNumber}`);
+      static revokeObjectURL = vi.fn();
+    });
     vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue('50000000-0000-4000-8000-000000000001');
     vi.stubGlobal(
       'fetch',
@@ -419,7 +423,7 @@ describe('AdminManagePage', () => {
     fireEvent.click(promotionsTab);
 
     expect(await screen.findByRole('tabpanel', { name: '행사 관리' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: '행사 만들기' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '행사 만들기' })).toBeTruthy();
     expect(screen.getByLabelText('연필 (P001) 대상')).toBeTruthy();
     expect(screen.getByText('등록된 행사가 없습니다.')).toBeTruthy();
     expect(fetch).toHaveBeenCalledWith('/api/promotions', { cache: 'no-store' });
@@ -457,7 +461,7 @@ describe('AdminManagePage', () => {
     expect(document.activeElement).toBe(inventoryTab);
     fireEvent.keyDown(inventoryTab, { key: 'End' });
     expect(document.activeElement).toBe(promotionsTab);
-    expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/promotions')).toHaveLength(1);
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/promotions')).toHaveLength(1));
   });
 
   it('exposes stable primary tab/panel relationships with wrapped roving keyboard selection', async () => {
@@ -599,7 +603,7 @@ describe('AdminManagePage', () => {
     const storeTabs = screen.getByRole('tablist', { name: '매점 관리 메뉴' });
     fireEvent.click(within(storeTabs).getByRole('tab', { name: '행사 관리' }));
     await screen.findByRole('tabpanel', { name: '행사 관리' });
-    fireEvent.change(screen.getByLabelText('행사명'), { target: { value: '작성 중인 행사' } });
+    fireEvent.change(await screen.findByLabelText('행사명'), { target: { value: '작성 중인 행사' } });
     fireEvent.click(within(storeTabs).getByRole('tab', { name: '상품·재고' }));
 
     fireEvent.click(screen.getByRole('button', { name: '상품 추가' }));
@@ -608,7 +612,7 @@ describe('AdminManagePage', () => {
     fireEvent.keyDown(screen.getByRole('dialog', { name: '상품 추가' }), { key: 'Escape' });
     fireEvent.click(within(storeTabs).getByRole('tab', { name: '행사 관리' }));
     expect(screen.getByLabelText('행사명')).toHaveProperty('value', '작성 중인 행사');
-    expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/promotions')).toHaveLength(1);
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/promotions')).toHaveLength(1));
   });
 
   it('lists each task as a read-only row with a selection checkbox and a single editor button', async () => {

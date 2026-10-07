@@ -3,7 +3,7 @@ import {
   TASK_STAGES,
   type AdminTaskDto, type CreateTaskRequest, type DeleteTasksRequest, type QrStageRequest, type QrStageResultDto,
   type ResetTasksRequest, type SetRepeatRequest, type SetStagesRequest, type TaskBoardDto, type TaskHistoryDto,
-  type TaskHistoryEntryDto, type UpdateTaskRequest,
+  type TaskHistoryEntryDto, type TaskHistoryPageRequest, type UpdateTaskRequest,
 } from '@/lib/taskLedgerApi';
 import type { TaskStage } from '@/domain/taskStage';
 
@@ -73,9 +73,14 @@ function readBoard(value: unknown): TaskBoardDto | null {
 
 function readHistory(value: unknown): TaskHistoryDto | null {
   if (!isRecord(value) || !isText(value.taskId) || !Array.isArray(value.entries)) return null;
+  if (value.nextCursor !== undefined && !isTextOrNull(value.nextCursor)) return null;
+  if (value.snapshotAt !== undefined && (!isText(value.snapshotAt) || !Number.isFinite(Date.parse(value.snapshotAt)))) return null;
   const entries = value.entries.filter((entry): entry is TaskHistoryEntryDto => isRecord(entry) && isText(entry.id) && isText(entry.at)
     && isText(entry.studentId) && isStage(entry.stage));
-  return { taskId: value.taskId, title: isText(value.title) ? value.title : '', entries, truncated: value.truncated === true };
+  if (entries.length !== value.entries.length) return null;
+  return { taskId: value.taskId, title: isText(value.title) ? value.title : '', entries, truncated: value.truncated === true,
+    ...(value.nextCursor !== undefined ? { nextCursor: value.nextCursor as string | null } : {}),
+    ...(value.snapshotAt !== undefined ? { snapshotAt: value.snapshotAt as string } : {}) };
 }
 
 function readQr(value: unknown): QrStageResultDto | null {
@@ -114,6 +119,14 @@ const send = (method: 'POST' | 'PATCH', body: unknown): RequestInit => ({
 });
 const taskPath = (taskId: string) => `/api/task-ledger/tasks/${encodeURIComponent(taskId)}`;
 
+function historyPath(taskId: string, page: TaskHistoryPageRequest = {}): string {
+  const query = new URLSearchParams();
+  if (page.limit !== undefined) query.set('limit', String(page.limit));
+  if (page.cursor) query.set('cursor', page.cursor);
+  if (page.studentId) query.set('studentId', page.studentId);
+  return `${taskPath(taskId)}/history${query.size ? `?${query}` : ''}`;
+}
+
 /** A fresh request number for each click. Never stored. */
 export function newOperationId(): string {
   return crypto.randomUUID();
@@ -121,7 +134,7 @@ export function newOperationId(): string {
 
 export const ledgerClient = {
   board: () => call('/api/task-ledger', get(), readBoard, LOAD_FAILED),
-  history: (taskId: string) => call(`${taskPath(taskId)}/history`, get(), readHistory, LOAD_FAILED),
+  history: (taskId: string, page?: TaskHistoryPageRequest) => call(historyPath(taskId, page), get(), readHistory, LOAD_FAILED),
   create: (body: CreateTaskRequest) => call('/api/task-ledger/tasks', send('POST', body), readTaskEnvelope, SAVE_FAILED),
   update: (taskId: string, body: UpdateTaskRequest) => call(taskPath(taskId), send('PATCH', body), readTaskEnvelope, SAVE_FAILED),
   remove: (body: DeleteTasksRequest) => call('/api/task-ledger/tasks/delete', send('POST', body), readDeleted, SAVE_FAILED),

@@ -2,7 +2,7 @@ import 'server-only';
 
 import type { Transaction } from '@/domain/types';
 import { withTenantSnapshot, withTenantTransaction } from '@/server/db/transaction';
-import { createConfiguredSheetsStore } from '@/server/googleSheets';
+import { createConfiguredSheetsStore } from '@/server/repositories/sheets/lazy';
 import type { CentralTenantContextInput } from '@/server/repositories/context';
 import {
   createDatabaseTransactionCommands,
@@ -15,7 +15,7 @@ import {
   resolveCompatibilityConfiguredRepository,
   type CompatibilityCentralTenantEnv,
 } from '@/server/repositories/configuredRepository';
-import { cancelTransaction } from '@/server/sheetsRepository';
+import { cancelTransaction } from '@/server/repositories/sheets/lazy';
 
 export type ConfiguredTransactionCancellationInput = Readonly<
   Pick<CancelTransactionInput, 'operationId' | 'transactionId'>

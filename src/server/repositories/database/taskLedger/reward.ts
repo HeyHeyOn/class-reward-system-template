@@ -11,6 +11,7 @@ import {
   latestEvent,
   TaskLedgerError,
   type LedgerEventRow,
+  type LedgerEventSource,
   type LedgerStudent,
   type LedgerTask,
 } from './store';
@@ -31,7 +32,7 @@ function isAssigned(event: LedgerEventRow): event is AssignmentEvent {
  * when the student holds the task only through a carried 완료 or an automatic reset — a carried
  * 완료 가능 row written just before the completion (`plannedId`).
  */
-export function rewardAssignment(events: readonly LedgerEventRow[] | undefined, plannedId: string):
+export function rewardAssignment(events: LedgerEventSource | undefined, plannedId: string):
   Readonly<{ assignmentId: string; existing: boolean }> {
   const latest = latestEvent(events, isAssigned);
   return latest ? { assignmentId: latest.id, existing: true } : { assignmentId: plannedId, existing: false };
@@ -56,7 +57,7 @@ export async function writeTeacherPaidCompletion(tx: TenantTransaction, tenantId
   task: LedgerTask;
   student: LedgerStudent;
   balance: number;
-  events: readonly LedgerEventRow[] | undefined;
+  events: LedgerEventSource | undefined;
 }>): Promise<Readonly<{ balanceAfter: number; completionId: string }>> {
   const rewardOperationId = derivedUuid('task-ledger-reward', input.adminOperationId, input.task.taskInstanceId, input.student.studentId);
   const assignment = rewardAssignment(input.events, ledgerEventId('tl-a', 'reward', rewardOperationId));

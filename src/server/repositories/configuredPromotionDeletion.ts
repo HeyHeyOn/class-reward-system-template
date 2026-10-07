@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { withTenantTransaction } from '@/server/db/transaction';
-import { createConfiguredSheetsStore } from '@/server/googleSheets';
+import { createConfiguredSheetsStore } from '@/server/repositories/sheets/lazy';
 import type { CentralTenantContextInput } from '@/server/repositories/context';
 import {
   createDatabasePromotionCommands,
@@ -14,7 +14,7 @@ import {
   resolveCompatibilityConfiguredRepository,
   type CompatibilityCentralTenantEnv,
 } from '@/server/repositories/configuredRepository';
-import { deletePromotion } from '@/server/repositories/sheets/promotionCommands';
+import { deletePromotion } from '@/server/repositories/sheets/lazy';
 import type { AdditiveSchemaMigrationStore } from '@/server/storage/tabularStore';
 
 export type ConfiguredPromotionDeletionInput = DeletePromotionAdminInput;

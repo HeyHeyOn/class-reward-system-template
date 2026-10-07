@@ -4,7 +4,7 @@ import type { Student } from '@/domain/types';
 import type { StudentAdminSnapshot } from '@/lib/studentAdminSnapshot';
 import { getOptionalTrustedTenantRequestContext } from '@/server/trustedTenantRequestContext';
 import { parseStorageSelection } from '@/server/repositories/context';
-import { createConfiguredSheetsReader } from '@/server/googleSheets';
+import { createConfiguredSheetsReader } from '@/server/repositories/sheets/lazy';
 import { withTenantSnapshot } from '@/server/db/transaction';
 import type { CentralTenantContextInput } from '@/server/repositories/context';
 import { type RepositoryCreators } from '@/server/repositories/factory';
@@ -14,7 +14,8 @@ import {
   resolveCompatibilityConfiguredRepository,
   type CompatibilityCentralTenantEnv,
 } from '@/server/repositories/configuredRepository';
-import { getStudentById, getStudents, type SheetsReader } from '@/server/sheetsRepository';
+import { getStudentById, getStudents } from '@/server/repositories/sheets/lazy';
+import type { SheetsReader } from '@/server/sheetsRepository';
 
 export type StudentReader = Readonly<{
   getStudents: () => Promise<Student[]>;

@@ -2,7 +2,7 @@ import 'server-only';
 
 import type { AppSettings } from '@/server/settings';
 import { getAppSettings } from '@/server/settings';
-import { createConfiguredSheetsStore } from '@/server/googleSheets';
+import { createConfiguredSheetsStore } from '@/server/repositories/sheets/lazy';
 import { withTenantSnapshot } from '@/server/db/transaction';
 import type { CentralTenantContextInput } from '@/server/repositories/context';
 import type { RepositoryCreators } from '@/server/repositories/factory';

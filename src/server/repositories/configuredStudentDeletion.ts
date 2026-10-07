@@ -1,8 +1,8 @@
 import 'server-only';
 
 import { withTenantTransaction } from '@/server/db/transaction';
-import { createConfiguredSheetsStore } from '@/server/googleSheets';
-import { deleteStudent, deleteStudentsBatch } from '@/server/sheetsRepository';
+import { createConfiguredSheetsStore } from '@/server/repositories/sheets/lazy';
+import { deleteStudent, deleteStudentsBatch } from '@/server/repositories/sheets/lazy';
 import { getOptionalTrustedTenantRequestContext } from '@/server/trustedTenantRequestContext';
 import { parseStorageSelection } from './context';
 import { createDatabaseStudentCommands, StudentAdminConflictError, StudentAdminRefusalError } from './database/studentCommands';
