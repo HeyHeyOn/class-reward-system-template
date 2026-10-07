@@ -1,95 +1,79 @@
-# 학급 보상 시스템 / 학급 매점
+# 학급 보상 시스템 / CRS
 
-학급 보상 시스템·학급 매점 키오스크 웹앱입니다. 기존 Google Sheets 운영과 중앙 PostgreSQL 기반 학급별(tenant) 경로를 구분합니다.
-이 저장소는 선생님이 Vercel에서 가져와 개인 학급용 URL을 만들기 위한 템플릿 저장소로 사용할 수 있습니다.
+교사가 Google 계정으로 로그인해 학급을 만들고, 학생·상품·과제·학급 화폐를 관리하는 Next.js 앱입니다. 중앙 PostgreSQL 서비스와 기존 Google Sheets 템플릿·생성기 코드를 함께 보관합니다.
 
-## 주요 기능
+## 현재 기준 — 2026-10-07
 
-- 학생 학급 화폐 잔액 조회
-- 상품/재고 관리
-- QR 기반 학생 선택
-- 장바구니 결제
-- 잔액/재고/결제내역 기록(기존 Google Sheets / 중앙 PostgreSQL)
-- 관리자 페이지
-- 학생 QR 출력
-- 결제 내역 확인
-- 학급 화폐 단위 설정
-- 시작·마감 기한, 선행 과제, 다중 요일을 포함한 일/주/월 반복 과제 관리
-- 은행 홈의 QR 없는 활성 과제 조회와 QR 기반 과제 완료
-  - 공개 과제 목록은 홈 카드 안에서 스크롤되며, 모바일에서도 `내 계좌`와 `과제 완료` 버튼은 가로로 유지됩니다.
-  - 공개 목록과 QR 확인 후 완료 목록 모두 연결된 과제를 한 장의 카드에서 좌우로 넘겨 볼 수 있습니다. 하단의 작은 채운 점으로 위치를 표시하고, 터치에서는 스와이프를, 마우스 환경에서는 카드 가장자리의 화살표를 사용할 수 있습니다.
-  - 완료 목록은 학생명을 표시하며, 잠금 안내와 채운 알약형 완료 표시는 카드 위에 겹쳐 보여 목록 높이를 불필요하게 늘리지 않습니다. 완료된 카드는 배경만 어둡게 표시하고, 연결 과제는 완료된 슬라이드 영역에만 적용합니다.
-  - 과제 상세를 닫아도 목록 스크롤과 각 연결 과제의 현재 슬라이드를 유지합니다. 완료 응답이 늦거나 유실되면 같은 operation ID로 상태를 재확인하고 학생 세션과 목록을 보존합니다.
-- 관리자 과제 lifecycle/cycle 이력 조회
-- 학생 API의 요청 학생 한정 공개 DTO와 관리자 인증 raw 조회 분리
+- 중앙 운영 서비스: <https://crs-postgresql.vercel.app/classes>. 교사마다 Vercel 프로젝트나 Google 시트를 만들 필요가 없습니다.
+- TEST 및 선정 운영 학급의 동결 전체 이전은 10월 5일 완료했습니다. 이후 학급 관리 화면, 공통 UI, 학생 개인 은행, 과제 장부, Excel 가져오기를 추가·개편했습니다.
+- 10월 7일 운영 DB를 새 앱 운영 계정 소유의 Neon으로 옮겼습니다. 현재 데이터의 권위는 새 PostgreSQL DB에 있습니다. 예전 배포나 이전 DB로 단순 복귀하면 이후 기록을 잃을 수 있습니다.
+- 현행 계획은 9월 29일 승인된 **A–F 파일럿**입니다. Task1–24 문서는 과거 기록입니다. A–E의 10월 5일 수용 이력과 이후 Claude 변경의 검증 범위를 구분하며, F의 실제 사용 관찰·다음 학급 확대는 아직 최종 완료로 표시하지 않습니다.
+- 상세 개인 운영 기록은 로컬 `class-store-supervision/codex-development-20261005.json` 한 곳에 유지합니다. 이 디렉터리는 운영 식별자·비공개 증거 경로를 포함하므로 Git에서 제외합니다. 이 README와 아래 문서는 공유 가능한 기술 요약입니다.
 
-## 중앙 tenant / DB 구조와 이전 상태
+## 주소와 시작 방법
 
-- 중앙 학급 화면은 `/c/[slug]`, API는 `/api/c/[slug]/…`를 사용합니다. 서버가 canonical slug를 DB에서 조회해 요청별 tenant context를 만들며, 운영 PostgreSQL repository는 `ACTIVE` tenant만 허용합니다. 요청 context가 있으면 전역 환경 설정으로 tenant를 대체하거나 Sheets로 fallback하지 않습니다.
-- Google 로그인 자체는 관리자 권한이 아닙니다. 선택 학급의 `OWNER`/`ADMIN` membership을 검사하며, 제한된 기존 tenant 관리자 세션 호환은 별도 검증합니다. 모든 조회가 관리자 전용인 것은 아닙니다.
-- tenant 데이터는 transaction-local `app.tenant_id`와 FORCE RLS로 격리합니다. 중앙 runtime은 비소유자 `NOSUPERUSER NOBYPASSRLS` 최소 권한 계정이어야 하며 migration 계정과 분리합니다. 실제 DB 적용·권한 검증 완료를 뜻하지 않습니다.
-- **자동 이전이나 activation 완료 상태가 아닙니다.** 준비용 READY는 bound snapshot 검증이며 live freeze 증명이 아닙니다. 구현된 FREEZING start도 `NOT_PROVEN`, 진단 재취득도 `NONAUTHORITY`·`finalImportEligible:false`입니다. 유지되는 외부 writer 배제, 최종 import·정합성·전역 claim 공개·activation은 아직 완료되지 않았습니다.
-- live freeze·activation·옛 배포 은퇴·원본 삭제는 별도 승인 사항입니다. 원본 Sheets는 자동 삭제하지 않습니다. 앱 버전 rollback은 PostgreSQL 권위를 유지하며, Sheets 복귀는 단순 storage 값 변경이 아닌 별도 통제 migration입니다.
+| 화면 | 경로 | 사용 방법 |
+|---|---|---|
+| 로그인·내 학급 | `/classes` | Google 로그인 후 권한이 있는 학급을 선택합니다. |
+| 새 학급 | `/classes/new` | 생성 후 빈 학급 시작 또는 기존 CRS Excel 가져오기를 선택합니다. |
+| 매점 | `/c/{slug}` | 상품 선택·QR 결제 화면입니다. |
+| 학생 은행 | `/c/{slug}/bank` | 학생 QR로 로그인해 자신의 잔액·거래·과제를 확인합니다. |
+| 관리자 | `/c/{slug}/admin` | 해당 학급 OWNER/ADMIN 권한을 확인합니다. |
+| 학생 QR 출력 | `/c/{slug}/admin/student-qrs` | 관리자용 QR 발급·출력 화면입니다. |
+| 거래 내역 | `/c/{slug}/admin/transactions` | 관리자용 거래 조회·취소 화면입니다. |
 
-구성과 한계는 [DB 아키텍처](docs/database-architecture.md), 배포 역할·환경 설정·운영 승인 경계는 [Vercel 배포 가이드](docs/vercel-deploy-guide.md)를 확인하세요.
+`{slug}`는 학급 생성 시 정해진 주소 식별자입니다. 내 학급 화면에서 매점·은행·관리자 화면으로 이동하고, 학급 복제·삭제·로그아웃을 할 수 있습니다. 새 학급은 DRAFT로 생성되며 사용 시작 또는 가져오기 절차를 완료한 뒤 ACTIVE가 됩니다. Google 로그인만으로 다른 학급의 관리 권한을 얻지는 않습니다.
 
-## 로컬 실행
+## 주요 동작
+
+- 학생·상품·프로모션·재고 관리, QR 결제, 거래 조회와 취소. 학생·상품은 Excel 템플릿 → 미리보기 → 확정으로 일괄 등록할 수 있습니다.
+- **거래 취소는 한 번만 가능하며, 회수 후 음수 잔액을 허용합니다.** 일반 구매는 잔액과 재고를 검사합니다.
+- **PostgreSQL 과제는 네 단계 장부**를 사용합니다: 미부여 → 미완료 → 완료 가능 → 완료. 최신 이벤트와 반복 초기화 설정으로 상태를 계산합니다. 완료 표시와 보상 지급을 구분하며, 단계 초기화만으로 과거 보상금을 자동 회수하지 않습니다.
+- 학생 개인 은행은 학급에 묶인 7일 세션을 사용합니다. 완료 응답이 불확실하면 같은 요청 번호로 재확인해 중복 지급을 방지합니다.
+- 공통 UI의 저장 값 `white`는 화면의 ‘파랑’(흰 바탕·파랑 강조), `blue`는 ‘하늘’입니다. 저장 값의 이름을 임의로 치환하지 않습니다.
+- **셀프 Excel 이전은 현재 학생·잔액·상품·프로모션·과제·현재 과제 상태를 가져옵니다. 과거 거래·과제 이력은 가져오지 않습니다.** 10월 5일 수행한 전체 이력 보존 이전과 범위가 다릅니다.
+- 매점의 개별 학생 조회와 결제는 번호형 QR 호환 경로를 유지합니다. 공개 범위 변경은 10월 7일 사용자 결정으로 보류했습니다. 은행 개인 세션이나 관리자 권한과 동일한 인증 경계로 간주하지 않습니다.
+
+## 개발과 검증
 
 ```bash
-npm install
+npm ci
 npm run dev
+npx tsc --noEmit
+npm run lint
+npm run build
 ```
 
-## 환경변수
+Next.js를 수정하기 전 [AGENTS.md](AGENTS.md)와 설치된 `node_modules/next/dist/docs/`의 관련 안내를 읽습니다.
 
-[`.env.example`](.env.example)을 참고해 `.env.local` 또는 Vercel 환경변수를 설정합니다. 아래는 **기존 Sheets 운영용 발췌**입니다. 중앙 DB·생성기·서명 QR 등 역할별 추가 설정은 예시 파일과 배포 가이드를 확인하세요. `CLASS_STORE_STORAGE`는 정확히 `sheets` 또는 `postgresql`을 명시하며 설정 변경만으로 이전되지 않습니다.
+애플리케이션 검사의 기본 진입점은 다음과 같습니다. 이 설정은 `.env.local`을 읽지 않고, 부모 테스트가 실행할 `test-support` 자식 파일을 독립 suite로 수집하지 않습니다.
 
-중앙 `DATABASE_URL`과 migration 전용 `DIRECT_DATABASE_URL`은 역할을 분리해 준비합니다. `CLASS_STORE_CENTRAL_TENANT_ID/STATUS`는 요청 context 없는 명시적 호환 경로용이지 중앙 `/c/[slug]`의 전역 기본값이 아니며, 일반 중앙 배포에서는 비웁니다.
-
-```text
-CLASS_STORE_STORAGE=sheets
-GOOGLE_SHEET_ID=
-
-# OAuth refresh token 방식 권장: 학생/키오스크는 Google 로그인 없이 작동
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-GOOGLE_REFRESH_TOKEN=
-AUTH_SECRET=
-ADMIN_PASSWORD=
-
-# 기존 서비스 계정 방식: OAuth refresh token이 없을 때 fallback
-GOOGLE_SERVICE_ACCOUNT_EMAIL=
-GOOGLE_PRIVATE_KEY=
+```bash
+npx vitest run --config test-support/release-unit.config.mts
+# 특정 변경 검증 예시
+npx vitest run --config test-support/release-unit.config.mts src/domain/taskLedger.test.ts src/server/tenantApiDispatcher.test.ts
 ```
 
-## Vercel 배포
+전체 검사가 필요하면 고정된 동일 소스에서 `--shard=1/4`부터 `--shard=4/4`까지 순차 실행하고 결과를 합칩니다. `npm test`의 기본 수집 범위에는 하네스 자식 진입점도 포함될 수 있으므로 명령·설정·제외 목록을 결과와 함께 기록합니다. 네이티브 PostgreSQL 검사는 `RUN_REAL_POSTGRES=1`과 Docker 등 해당 하네스의 사전 조건이 필요합니다. 운영 DB 연결이나 운영 인증값은 테스트에 전달하지 않습니다.
 
-기존 Sheets 운영 방식에서는 이 저장소를 GitHub 템플릿 저장소로 공개한 뒤 Vercel에서 Import하면 선생님별 운영 앱을 만들 수 있습니다. 중앙 PostgreSQL 준비는 별도 배포 역할이며, 아래 Sheets 설정을 변경해 live 이전하는 절차가 아닙니다.
+10월 7일 인수 시 보관된 전체 검사 결과는 **31,415 통과·4 시간 초과·988 건너뜀**입니다. Claude는 시간 초과 4건의 개별 재검사 통과를 보고했으나, 인수 검토에서 독립 결과 파일을 찾지 못했습니다. 따라서 이를 현재 코드의 ‘전체 무실패’ 결과로 표기하지 않습니다. 별도 실자료 재생 기록은 단계 208건·은행 화면 26건·명령 125건·학생 은행 완료 364건에서 불일치 또는 실패 0건이며, 실제 다중 학급 운영 부하의 증거는 아닙니다.
 
-기존 Sheets 운영의 기본 환경변수(전체 설정은 `.env.example` 참고):
+10월 7일 Git 정리 체크포인트 `2ab7c21`에서는 TypeScript 전체 검사와 핵심 12개 파일의 228개 검사가 새로 통과했습니다(실패·건너뜀 0). 이는 코드 보존 확인용 집중 검사이며 전체 회귀 검사나 운영 부하 재검증이 아닙니다. 해당 정리에서는 제품 동작을 바꾸지 않고 6개 파일의 줄 끝 공백·EOF 빈 줄만 정리했습니다.
 
-```text
-CLASS_STORE_STORAGE=sheets
-GOOGLE_SHEET_ID=생성기가 만든 스프레드시트 ID
-ADMIN_PASSWORD=관리자 페이지 비밀번호
-AUTH_SECRET=긴 무작위 문자열
-```
+## 환경과 배포
 
-Google Sheets 접근용 인증값은 OAuth refresh token 방식 또는 서비스 계정 방식 중 하나를 설정해야 합니다. 자세한 내용은 `docs/vercel-deploy-guide.md`를 확인하세요.
+역할별 예시는 [`.env.example`](.env.example), 실제 설정 절차는 [배포 가이드](docs/vercel-deploy-guide.md)를 확인합니다. 중앙 앱은 `CLASS_STORE_STORAGE=postgresql`이며 요청 URL로 학급을 선택합니다. runtime DB 계정은 migration 계정과 분리하고 FORCE RLS를 우회하지 않아야 합니다. 환경변수만 변경해서 기존 Sheets 학급을 이전할 수는 없습니다.
 
-## Google Sheets 템플릿
+현재 Git 원격은 기존 템플릿 저장소입니다. 로컬 체크포인트 저장, 원격 push, Vercel 배포는 별도 작업입니다. 원격 연결과 자동 배포 대상을 확인한 뒤 게시하며, 로컬 커밋을 현재 운영 배포와 동일하다고 가정하지 않습니다. 환경 파일·DB 덤프·학생 자료·인증 토큰·개인 도구 실행 설정은 커밋하지 않습니다.
 
-필수 시트와 컬럼은 `docs/google-sheets-template.md`를 확인하세요.
+## 남은 작업과 문서
 
-## 아키텍처 문서
+- F: 실제 학급 사용 관찰 결과를 정리하고, 다음 확대 대상이 정해지면 해당 조건으로 검증합니다.
+- 다중 학급 부하를 측정하고 교사 과제 화면의 전체 이력 조회·넓은 잠금 범위를 개선합니다.
+- 이후 기능 변경 후보의 전체 검사 근거를 정리합니다. 과거 결과나 이번 문서 정리 검사를 새 출시 후보의 전체 합격으로 재사용하지 않습니다.
+- 옛 DB는 보관 기간·새 DB 관찰 결과를 확인한 뒤 별도 폐기합니다. 자동 삭제하거나 옛 쓰기 권한을 복구하지 않습니다.
+- 학생 번호 공개 조회 정책은 보류 상태로 유지합니다.
 
-- [스키마 호환성 정책](docs/architecture/schema-compatibility.md)
-- [금전 작업 신뢰성 계약](docs/architecture/money-operation-contracts.md) — 현재/R1 부분 실패 경계와 향후 idempotency·outbox 목표
+현재 기술 기준: [DB 아키텍처](docs/database-architecture.md) · [배포](docs/vercel-deploy-guide.md) · [이전 절차](docs/sheets-migration-runbook.md) · [복구](docs/cutover-rollback-runbook.md) · [보관](docs/data-retention-export.md).
 
-## 결제 예상 금액 API
-
-아래는 기존 unscoped API 경로입니다. 중앙 tenant에서는 같은 기능을 `/api/c/[slug]/checkout/preview`, `/api/c/[slug]/checkout`, `/api/c/[slug]/promotions/active`로 요청합니다.
-
-`POST /api/checkout/preview`는 현재 상품, 재고, 활성 행사 정보를 기준으로 장바구니의 예상 결제 금액과 항목별 가격 스냅샷을 반환합니다. 이 결과는 조회 시점의 안내값이며 재고나 행사가 이후 변경될 수 있습니다. 실제 `POST /api/checkout` 결제는 저장 직전에 상품, 재고, 행사, 학생 잔액을 다시 읽고 금액을 권위 있게 재계산합니다.
-
-키오스크는 인증 없이 `GET /api/promotions/active`에서 활성화된 행사 정의를 조회할 수 있습니다.
+과거 계획·검토: [A–F 인수 정정 기록](docs/plans/2026-10-04-crs-takeover-assessment.md) · [대체된 Task1–24](docs/plans/2026-08-28-postgres-multitenant-migration.md). 과거 문서의 미완료 표·작업 지시는 당시 상황을 나타내며 현재 실행 순서가 아닙니다.

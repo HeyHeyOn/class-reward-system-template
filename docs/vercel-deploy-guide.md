@@ -1,6 +1,6 @@
 # Vercel 배포 가이드
 
-> 배포 준비 문서입니다. 실제 provider 설정·DB 권한 설치·배포·이전 완료를 증명하지 않습니다. 기존 학급은 Sheets 권위를 유지하며 자동 cutover하지 않습니다. 최종 이전 서비스가 완성되지 않은 상태에서 환경변수만 바꿔 운영을 전환하지 마세요.
+> 2026-10-07 기준 중앙 운영 앱은 `crs-postgresql`이며 `/classes`에서 시작한다. 선정 학급의 실제 이전은 완료됐고 운영 DB도 새 앱 운영 계정 소유의 Neon으로 옮겼다. 아래 절차는 새 환경 설정·후속 배포를 위한 가이드이며 완료된 이전을 다시 실행하는 지시가 아니다. 현재 수용 범위는 [README](../README.md)를 따른다.
 
 ## 1. 먼저 배포 역할을 나누세요
 
@@ -8,7 +8,7 @@
 |---|---|
 | 기존 학급 Sheets | 사용자 → Vercel Next.js 앱/API → Google Sheets. `CLASS_STORE_STORAGE=sheets`를 명시하고 기존 Sheet ID·인증값을 보존합니다. |
 | 생성기 | `NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT=generator`를 정확히 설정한 별도 배포. identity 로그인과 별도 생성 동의 후 새 Sheets 운영 배포의 설정을 안내합니다. 생성 grant의 일회 사용 기록에는 PostgreSQL도 필요합니다. |
-| 중앙 PostgreSQL 준비 | `CLASS_STORE_STORAGE=postgresql`, 검토된 DB 연결/ACL, URL 기반 tenant 및 membership을 사용합니다. 기존 Sheets 배포의 storage를 바꾸는 작업과 다릅니다. |
+| 중앙 PostgreSQL 서비스 | `CLASS_STORE_STORAGE=postgresql`, 검토된 DB 연결/ACL, URL 기반 tenant 및 membership을 사용합니다. 기존 Sheets 배포의 storage를 바꾸는 작업과 다릅니다. |
 
 [환경변수 예시](../.env.example)에서 필요한 역할만 비공개로 설정하고 [DB 아키텍처](database-architecture.md)를 함께 읽으세요. 빈 예시는 준비 완료가 아닙니다. `NEXT_PUBLIC_*`에는 비밀을 넣지 마세요. 비밀·학생 QR·실제 학급 식별자·연결 문자열은 문서, 채팅, 공개 로그, 커밋에 남기지 마세요.
 
@@ -55,18 +55,29 @@ Sheets 모드의 영구 설정은 로컬 `data/settings.json`이 아니라 Sheet
 
 [생성 route](../src/app/api/generator/create/route.ts) · [grant DB 소비자](../src/server/repositories/configuredGeneratorGrantClaims.ts)
 
-## 4. 중앙 PostgreSQL 준비 — 아직 live 이전 아님
+## 4. 중앙 PostgreSQL 환경·권한 설정
 
-### 검토 후에만 provision
+### TEST와 운영 환경을 구분한 provisioning
 
-[Task24 요구사항](plans/2026-08-28-postgres-multitenant-migration.md)에 따라 **schema/transaction 독립 검토 통과 후에만 Vercel을 통한 Neon provisioning**을 별도 승인으로 수행합니다. 이 문서는 현재 Vercel 화면 위치, provider 버전, provision 성공을 주장하지 않습니다.
+현재 개발 기준은 2026-09-29 A–F 파일럿 계획이며, 이전 Task 1–24의 배포 승인 대기는 현행 절차가 아닙니다. 사용자가 위임한 `crs-test` 범위에서 TEST DB와 Preview를 구성하고 검증합니다. 실제 운영 학급의 전환 대상·담당자·중단 창은 F 단계에서 확정합니다. 개별 실행 결과는 `class-store-supervision/codex-development-20261005.json`에 기록합니다.
 
 - Preview와 Production은 분리된 DB 환경·runtime 계정·비밀을 사용합니다. Preview에 Production credential이나 실제 학급 데이터를 그대로 복제하지 마세요.
 - runtime `DATABASE_URL`은 pooled 연결 운영 계약으로 준비하되 **nonowner, NOSUPERUSER, NOBYPASSRLS** 최소 권한 계정을 사용합니다. 필요한 schema USAGE/DML/lock 권한만 검토하고 DDL, trigger-disable, TRUNCATE 권한을 주지 마세요.
+- 일반 중앙 앱의 ACL은 [runtimeGrants.sql](../src/server/db/provisioning/runtimeGrants.sql)에 명시합니다. 역할은 SQL로 별도 생성하며 role membership을 주지 않습니다. 이 ACL은 generator·이관·bootstrap 실행 권한을 포함하지 않습니다. [관리형 DB 검사](../src/server/db/provisioning/managedRuntime.postgres.test.ts)는 명시적으로 지정한 TEST runtime 연결만 사용하고, 검증용 업무 자료는 외부 트랜잭션에서 모두 롤백합니다. 이 검사는 실제 Google 로그인 검증을 대신하지 않습니다.
 - schema migration용 직접 연결은 별도 실행 환경의 `DIRECT_DATABASE_URL`로 분리합니다. **migration credential을 runtime DATABASE_URL에 넣지 마세요.** runtime에 불필요한 migration 비밀도 배포하지 마세요.
 - 실제 parser는 URL trim 후 `postgres:`/`postgresql:`과 hostname을 검사합니다. `DIRECT_DATABASE_URL`이 비면 `DATABASE_URL`로 fallback하고, runtime config는 설정된 direct 값도 검증합니다. Drizzle config도 direct→runtime 순입니다. 따라서 변수 이름만으로 pooled/direct endpoint나 실제 DB 역할/ACL이 설치·격리되지는 않습니다. [DB config](../src/server/db/config.ts) · [Drizzle config](../drizzle.config.ts)
 - migration 0012 실행자/SECURITY DEFINER 함수 owner는 **superuser 또는 BYPASSRLS**가 필요합니다. FORCE RLS 아래 일반 table owner만으로 부족합니다. 이것은 migration owner 요구이지 runtime 우회 권한을 주라는 뜻이 아닙니다.
 - runtime discovery는 `platform_find_tenant_by_slug(text)`, `platform_find_membership_by_tenant_and_google_subject(uuid,text)`, `platform_list_memberships_by_google_subject(text)`의 정확한 signature에 필요한 EXECUTE를 별도 부여하는 계약입니다. migration은 PUBLIC 실행권한을 revoke하며 주석의 GRANT 지시는 실제 설치 증거가 아닙니다. [0012](../src/server/db/migrations/0012_platform_tenant_discovery.sql)
+
+- 새 학급 생성은 [0030 migration](../src/server/db/migrations/0030_class_creation.sql)의 `platform_create_draft_class(uuid,text,text,text)`에 대한 runtime `EXECUTE`도 필요합니다. 함수는 migration/BYPASSRLS 소유권과 고정 `search_path`를 유지하고, `class_creation_operations` 직접 접근 권한은 runtime에 주지 않습니다. 학급·OWNER·요청 식별자를 한 트랜잭션으로 저장하며 `DRAFT`만 생성합니다. 같은 요청 재전송은 동일 학급을 반환하고, 다른 계정이나 바뀐 내용으로 요청을 재사용하면 거부합니다.
+- 새 빈 학급의 사용 시작에는 [0031 migration](../src/server/db/migrations/0031_new_class_start.sql)의 `platform_get_new_class_setup(text,text)`, `platform_start_new_class(uuid,text,text)` 정확한 signature에 대한 runtime EXECUTE가 필요합니다. 새 학급 생성 기록과 현재 OWNER를 확인하고, 이전 job이나 업무 자료가 있는 학급은 거부합니다. 기본 설정·변경 불가능한 시작 기록·ACTIVE가 한 거래로 확정되며 동일 요청 재시도는 다시 활성화하거나 설정을 덮어쓰지 않습니다. `new_class_start_operations` 직접 접근 권한은 주지 않습니다.
+- 중앙 학급의 설정 화면은 Sheets ID 없이 화폐 단위·제목·테마·글꼴·수동 QR 입력 여부를 PostgreSQL에 저장합니다. `tenant_settings`/`operations`/`audit_events`에 필요한 runtime 권한을 설치하세요. 저장 버전 충돌 시 다시 불러오기를 요구하며, 응답이 유실된 재시도는 동일 요청을 재사용합니다. 공개 설정 응답에는 이관 원본 ID와 API 비밀을 포함하지 않습니다.
+- 과거 schema-4 이력 이관 코드는 [0032](../src/server/db/migrations/0032_legacy_transaction_origins.sql)·[0033](../src/server/db/migrations/0033_legacy_task_origins.sql)·[0034](../src/server/db/migrations/0034_legacy_task_event_guards.sql)를 모두 적용한 DB가 필요합니다. runtime에는 `legacy_task_origins` SELECT를 부여해야 과거 보상 요청 번호의 재사용을 거부할 수 있습니다. 원본 보관 테이블 INSERT는 신뢰된 이관 실행자에게만 부여하며 UPDATE/DELETE/TRUNCATE는 허용하지 않습니다. 과거 관리자·BANK 기록은 원본 증거로 보관하며 현대 `operations` 인증 기록을 생성하지 않습니다. 이관 함수는 비공개 학급만 대상으로 하며 원본 획득·쓰기 중단·claim 게시·활성화는 별도의 전체 이관 절차가 담당합니다.
+- 전체 Sheets 스냅샷 이관에는 [0035](../src/server/db/migrations/0035_legacy_full_snapshot_archives.sql)의 비공개 원본 보관 테이블도 필요합니다. 실행자는 학생·잔액·재고·과제·프로모션·이력을 빈 학급에 한 트랜잭션으로 넣고 양방향 대조합니다. 동일 원본 재시도는 대조만 수행하며, 현재 데이터가 바뀌었거나 대상이 비어 있지 않으면 덮어쓰지 않습니다. 원본 아카이브에는 개인정보와 과거 설정이 포함되므로 이관 실행자 외의 SELECT 권한과 공개 API를 부여하지 않습니다. 이 단계만으로 Redis claim 또는 실서비스 전환이 검증되지는 않습니다.
+
+- 과거 거래 취소에는 tenant RLS 아래 `legacy_transaction_origins`, `legacy_task_origins`, `migration_sources` SELECT가 필요합니다. 원본 행과 이관된 거래·과제 연결을 대조하는 내부 읽기이며, 전체 원본 아카이브나 Redis 보관 테이블의 runtime 접근은 필요하지 않습니다. 과거 원장을 덮어쓰거나 현대 인증 이력을 소급 생성하지 않습니다. 2026-10-05 확정 정책에 따라 과거·신규 거래 모두 취소로 잔액이 음수가 될 수 있고, 이미 초기화된 보상 취소는 새 과제 완료를 되돌리지 않습니다.
+
+- Redis 과거 claim 보존에는 [0036](../src/server/db/migrations/0036_legacy_redis_archives.sql)을 적용합니다. 비공개 스냅샷의 v1/v2 소유권과 연결 정보를 보존하고, 최종 활성화 트랜잭션에서 사용된 게시물의 전역 중복 방지 기록을 게시합니다. 연결되지 않은 claim, 다른 소유자, job 버전·원본 지문 불일치는 거부합니다. 일반 runtime에는 게시물 선택에서 중복을 숨기기 위한 `padlet_claim_digest_tombstones` SELECT가 필요합니다. `legacy_redis_snapshot_archives`와 `legacy_claim_publications` SELECT/INSERT는 이관 실행자에게만 부여하세요. 내부 게시 함수만 호출하는 것은 전체 이관이 아니며, 호출자가 실제 쓰기 중단·진행 요청 종료·최종 원본 대조·현재 관리자 권한을 확인하고 활성화와 함께 커밋해야 합니다.
 
 실제 적용 migration, 함수 owner, role flags·membership, ACL, FORCE RLS 음성 검사, 연결 재사용 시 tenant 누출, transaction session 기본 isolation, backup 복원을 검증한 증거가 있어야 합니다. 기본 runner는 `READ COMMITTED` 옵션 분기에 일반 BEGIN을 보내므로 DB session default를 확인해야 합니다. 상세 schema/transaction 계약은 [DB 아키텍처](database-architecture.md)를 따르며 여기서 재작성하지 않습니다.
 
@@ -89,8 +100,8 @@ companion은 독립 `CLASS_STORE_BRIDGE_PRODUCER_DATABASE_URL`을 요구하고 �
 아래는 **실행 전 체크리스트**이며 이 문서 작성 중 통과한 결과가 아닙니다.
 
 1. 승인된 소스 revision, 대상 프로젝트/역할, Preview·Production 범위, 기존 실제 서비스 도메인과 배포 연결을 확인합니다. 생성기·학급 템플릿·기존 복사본은 서로 다른 배포이므로 하나의 업데이트로 전부 바뀐다고 가정하지 마세요.
-2. 작업 writer와 suite가 정지한 별도 검증 시점에 기존 로컬 script를 사용합니다. [package.json](../package.json)에 있는 명령은 `npm test`(vitest run), `npm run lint`(eslint), `npm run build`(next build), `npm run dev`(개발), `npm run start`(빌드 후 실행)입니다. 이 문서에는 임의 migration script를 만들지 않습니다.
-3. 위 명령만으로 충분하지 않습니다. [Task23](plans/2026-08-28-postgres-multitenant-migration.md)의 타입/정적 검사, secret/diff 검사, 독립 리뷰, 격리된 실제 PostgreSQL migration·constraint·transaction rehearsal, 복사한 승인 Sheet import와 필수 delta 0 정합성, route inventory·RLS cross-tenant 음성 검사, Redis claim rehearsal를 별도 완료해야 합니다.
+2. 작업 writer와 suite가 정지한 별도 검증 시점에 기존 로컬 script를 사용합니다. [package.json](../package.json)에 있는 명령은 `npx vitest run --config test-support/release-unit.config.mts`(애플리케이션 검사), `npm run lint`(eslint), `npm run build`(next build), `npm run dev`(개발), `npm run start`(빌드 후 실행)입니다. 이 문서에는 임의 migration script를 만들지 않습니다.
+3. 위 명령만으로 충분하지 않습니다. [현행 A–F 기준](../README.md)의 타입/정적 검사, secret/diff 검사, 독립 리뷰, 격리된 실제 PostgreSQL migration·constraint·transaction rehearsal, 승인 원본의 동결 전체 import와 전량 정합성, route inventory·RLS cross-tenant 음성 검사, Redis claim rehearsal를 별도 완료해야 합니다.
 4. 검토된 저장소를 Vercel Next.js 프로젝트로 연결하고 역할별 환경변수를 해당 범위에 등록한 후 승인된 Preview를 배포합니다. 기존 Sheets ID·설정·credential을 보존하고 변경된 환경값은 재배포에 반영합니다. 현재 provider UI 단계/버전은 이 문서의 검증 대상이 아닙니다.
 5. 실제 브라우저에서 페이지뿐 아니라 연결된 API 응답·화면 데이터·권한 거절을 확인합니다. HTML 200만으로 성공 판정하지 마세요. 아래 확인은 승인된 격리 환경에서 하며 생성/금전/이전 동작은 데이터 쓰기 승인이 필요합니다.
 
@@ -102,17 +113,18 @@ companion은 독립 `CLASS_STORE_BRIDGE_PRODUCER_DATABASE_URL`을 요구하고 �
 
 확인 실패 시 승격하지 않습니다. Production 승격 후에도 실제 대상 도메인이 의도한 프로젝트/revision을 가리키는지와 동일 경로/API를 다시 확인한 증거를 남깁니다. 비밀 원문 대신 비식별 결과만 기록하세요.
 
-## 6. live canary·중단·보존 경계
+## 6. 현재 운영·후속 이전·복구
 
-- DB-capable 코드 배포 후에도 기존 tenant는 Sheets에 남습니다. 첫 실제 이전 대상은 **현재 관리 중인 학급 한 곳**이며, 명시적인 live canary/freeze/activation 승인이 먼저 필요합니다. 성공 관찰과 재정합성 확인 **이후에만** 다른 기존 배포를 초대합니다.
-- 현재 preparatory READY는 bound snapshot 검증이지 live freeze 증명이 아닙니다. final-generation의 `UNTRUSTED_PREPARATION`/`DIFF_VALIDATED`도 실행 가능한 최종 SQL delta가 아닙니다.
-- 구현된 FREEZING start는 READY→FREEZING 및 `NOT_PROVEN`, `automaticRetry:false`, `automaticEnable:false`를 반환합니다. 진단 재취득은 `NONAUTHORITY`, `NOT_PROVEN`, `finalImportEligible:false`입니다. maintained writer exclusion, final-purpose fresh consent/acquisition, FINAL_IMPORT·최종 정합성·전역 claim publication·activation은 지원 완료로 취급하지 않습니다. enum/상태 이름이나 빈 환경변수를 채우는 것만으로 이 경계를 넘을 수 없습니다.
-- `MIGRATION_READ_ONLY`는 빈 값/정확히 `false`만 해제이고 그 외 nonempty 값(공백이나 `0` 포함)은 freeze 요청입니다. 기존 Sheets 쓰기 거절 스위치일 뿐 외부 writer 배제 증명이 아닙니다. `MIGRATION_CENTRAL_TARGET_URL`은 최대 2048자의 canonical HTTPS `/c/slug` 안내 주소만 허용하며 query/fragment/userinfo/끝 slash는 안 됩니다. 안내 URL은 auth/cutover 권한이 아닙니다.
-- abort는 `ABORTED`와 `externalCleanup:NOT_PERFORMED`만 기록합니다. 로컬 transaction rollback이나 UNKNOWN 결과는 이미 수행된 외부 disable을 되돌리지 않으며 자동 resend/enable 허가도 아닙니다.
-- **앱 버전 rollback은 PostgreSQL 권위를 유지합니다.** Sheets 복귀는 DB write freeze → post-cutover delta 전체 export/apply → 전체 정합성 → authority 전환 → legacy writer 재개라는 별도 승인 migration입니다. storage 값을 sheets로 바꾸거나 오래된 URL로 돌아가는 shortcut은 금지합니다. 이 순서는 요구사항이며 현재 실행 가능한 복귀 서비스 완료 주장이 아닙니다.
-- 원본 Sheets는 **자동 삭제하지 않습니다**. 승인된 freeze 이후 기본은 무기한 read-only 보존이며 관리자가 export/retention 정책을 선택합니다. 옛 배포 URL 은퇴·구 QR 종료·원본 삭제는 각각 별도 결정입니다. 민감한 raw staging/backup export 보존 기간은 첫 실제 import 전에 결정하고 aggregate 정합성/audit는 durable하게 유지합니다.
+- 중앙 운영 앱의 최초 진입은 <https://crs-postgresql.vercel.app/classes>다. 기존 Sheets 배포·생성기와 별도 프로젝트이며, 새 앱 수정으로 기존 프로젝트를 덮어쓰지 않는다.
+- 최신 확인 운영 배포는 `dpl_Dc39E98LPdA4GQ5dzCYwRJ2UiVNU`(10월 7일, Singapore)다. 운영 DB도 새 계정으로 이전됐다. 연결값과 계정 식별 상세는 비공개 운영 기록에만 둔다.
+- 현재 SQL migration은 `0038_class_dashboard.sql`까지 존재한다. 새 DB 준비 시 migration 파일과 [provisioning](../src/server/db/provisioning)을 함께 확인한다. SQL 파일이 존재한다는 이유만으로 실제 ACL 설치를 가정하지 않는다.
+- 과제는 장부 모델, 은행은 학생별 세션 모델이다. AUTH_SECRET 및 STUDENT_QR 설정은 현재 운영값과 호환되어야 한다. QR 서명 키 교체 시 기존 QR의 검증 가능 여부를 별도로 확인한다.
+- 추가 Sheets 학급을 이전할 때는 대상·원본 쓰기 경로·현재 중단 약속을 확인하고 동결 전체 이전을 수행한다. 완료된 TEST/운영 학급을 반복 이전하지 않는다. 과거 중단 약속을 새 유지보수 창으로 재사용하지 않는다.
+- Excel 셀프 가져오기는 현재 데이터만 옮긴다. 거래·과제 이력 전체 보존이 필요하면 해당 기능과 혼동하지 않는다.
+- **롤백 후보는 현재 DB와 과제 장부를 모두 지원해야 한다.** 이전 DB 주소가 저장된 Vercel 배포를 승격하거나 옛 DB 쓰기 권한을 다시 여는 것은 최신 기록을 분리시킬 수 있다. 우선 현재 DB를 유지한 수정 배포를 준비한다. 데이터 복귀가 꼭 필요하면 전환 이후 전체 변경분 대조를 포함하는 별도 이전으로 다룬다.
+- 원본 Sheets와 옛 DB는 보관 대상이다. 관찰 후 보관·폐기를 결정하며 이 문서 정리는 삭제나 쓰기 재개를 수행하지 않는다.
 
-[현재 구현/한계](database-architecture.md) · [start](../src/server/migration/startFreezing.ts) · [진단 재취득](../src/server/migration/freezingReacquisitionIntake.ts) · [abort](../src/server/migration/cutover.ts)
+[동결 이전 코드](../src/server/migration/frozenFullCutover.ts) · [아키텍처](database-architecture.md) · [복구 주의](cutover-rollback-runbook.md)
 
 ## 7. 기존 Sheets BANK 과제 완료 장애 확인
 

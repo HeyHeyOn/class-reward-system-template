@@ -1,6 +1,16 @@
 # PostgreSQL 데이터베이스 아키텍처
 
-> 구현된 데이터베이스 경계와 아직 완료되지 않은 전환 경로를 구분한다. 이 문서는 운영 배포·마이그레이션 완료 또는 실제 DB 권한 검증을 의미하지 않는다. 인용 링크는 저장소 소스이며 검토 시점의 바이트 식별자는 부록에 있다.
+> 현재 기술 기준: 2026-10-07. 운영 정보와 검증 범위는 [README](../README.md)를 참조한다.
+
+## 0. 현재 과제·은행·학급 모델
+
+- PostgreSQL 과제의 현재 권위는 [과제 장부](../src/domain/taskLedger.ts)와 [DB 장부 명령](../src/server/repositories/database/taskLedger/commands.ts)이다. 네 단계는 `UNASSIGNED`, `PENDING`, `READY`, `COMPLETED`이며, [반복 설정](../src/domain/taskRepeat.ts)은 조회 시 초기화 경계를 계산한다.
+- 기존 `task_assignments`·`task_completions` 이벤트 테이블을 재사용한다. 새 기록의 `cycle_id`는 `ledger`로 고정하며, 과거 회차를 계속 물리적으로 생성하는 구조가 아니다. [store](../src/server/repositories/database/taskLedger/store.ts)
+- 최초 장부 접근 시 [carry-over](../src/server/repositories/database/taskLedger/migration.ts)가 기존 화면의 학생별 상태를 보존하고 `operations`에 `task-ledger:v1` 완료 표식을 기록한다. 이전 이벤트는 과거 이력으로 남는다. 예전 cycle reader는 이 초기 변환·호환 용도로 남아 있으며 현재 PG 과제 쓰기 권위가 아니다. [옛 쓰기 경로 차단](../src/server/legacyTaskWriters.ts)
+- 완료 표시와 보상 지급은 구분한다. 단계 초기화는 이미 지급한 금액을 자동 회수하지 않는다. 금액 회수는 연결된 거래 취소 명령으로 처리한다.
+- [학생 은행 세션](../src/server/studentBankSession.ts)은 학급에 묶인 암호화 쿠키로 7일간 유지된다. `/bank/me/*` handler는 자신의 세션을 요구한다. 옛 ATM 조회·완료 경로는 관리자 전용이며, 매점의 개별 학생 조회·결제는 번호형 QR 호환을 유지한다. 후자의 정책 변경은 사용자 결정으로 보류했다.
+- 학급 생성·시작·관리에는 SQL migration `0030`·`0031`·`0038`과 해당 provisioning이 필요하다. [학급 관리](../src/server/repositories/database/classDashboard.ts)는 소유자·요청 번호·관리 버전을 검사한다. 삭제는 복구 가능한 보관 처리이며 과거 금융 원장을 제거하는 요청이 아니다.
+- [Excel 셀프 이전](../src/server/migration/xlsx/xlsxImportService.ts)은 빈 새 학급의 현재 자료를 가져온다. 과거 거래·과제 이력 전체 이전과는 별도 경로다.
 
 ## 1. 구성과 권위 흐름
 
@@ -72,14 +82,20 @@ pre-context discovery는 `platform_find_tenant_by_slug(text)`, `platform_find_me
 - COMMIT 응답 실패 후 ROLLBACK ACK가 와도 원래 COMMIT 결과는 확정되지 않는다. COMMIT 시도 중 오류가 발생한 연결 또는 rollback 실패 연결은 `release(true)`로 폐기한다. 성공 commit 뒤 release 오류는 관측 처리하며 성공을 실패로 바꾸지 않는다. **DB 예외 = 미커밋**으로 해석하지 않는다. [transaction.ts:142–180](../src/server/db/transaction.ts#L142-L180)
 - checkout은 tenant/operation ID를 claim하고 kind/hash를 대조하며 기존 성공의 저장 결과와 audit를 검사한다. 재시도는 같은 operation identity의 의미를 유지해야 한다. 이는 해당 command의 idempotency 경계이지 외부 provider 전체의 exactly-once 보장이 아니다. [checkoutCommands.ts:90–154](../src/server/repositories/database/checkoutCommands.ts#L90-L154)
 
-## 6. import staging과 activation의 분리
+## 6. 전체 이전·셀프 가져오기·과거 준비 경로의 구분
+
+거래 취소는 현재 잔액에 원거래의 증감분을 반대로 적용하며, 회수 후 음수 잔액을 허용한다(2026-10-05 사용자 확정). 과거 `LEGACY` 거래도 원본 행·출처 지문·이관된 거래 항목과 과제 연결을 대조한 뒤 새 취소 요청으로 처리한다. 원본은 수정하지 않고 취소 원장·요청 결과·감사 기록을 한 트랜잭션으로 추가하며, 화면은 연결된 원장을 기준으로 ‘취소됨’을 표시한다. 이미 취소된 원거래와 취소 내역 자체는 재취소하지 않는다. 과제 보상이 이미 초기화된 경우에는 금액만 회수하여 이후 완료를 유지하고, 아직 완료 중이면 연결된 취소 완료 기록을 추가한다. 과거 보상 요청 번호와 제출물 중복 방지 기록은 유지한다. [취소 명령](../src/server/repositories/database/transactionCommands.ts) · [원본 대조](../src/server/repositories/database/legacyCancellationSource.ts)
+
+현재 파일럿의 전체 이전은 [prepareFrozenFullCutover](../src/server/migration/prepareFrozenFullCutover.ts) → [frozenFullCutover](../src/server/migration/frozenFullCutover.ts) 경로로 구현·실행했다. 모든 원본 쓰기 중단과 진행 요청 종료를 확인한 뒤 전체 원본 보관·이력 포함 import·양방향 대조·claim 게시·활성화를 연결한다. 10월 5일 TEST와 선정 운영 학급 전환이 완료됐다. 범용 실시간 delta나 자동 Sheets 역이전 완성을 뜻하지 않는다.
+
+아래 1–6은 **과거 범용 bridge/preparatory 경로 각각의 한계**다. 이들만 호출하면 운영 전환이 완료되지 않는다는 경계를 보존하며, 위 동결 전체 이전 서비스의 미구현 주장으로 해석하지 않는다.
 
 1. **Import:** unblocked manifest를 검증하고 tenant/job/source/manifest binding을 잠근다. 원본 checkpoint staging, 운영 target, checkpoint 완료를 각각 restartable batch transaction으로 기록한다. 전체 import가 하나의 transaction은 아니므로 뒤 batch 실패가 앞서 commit된 batch까지 되돌리지는 않는다. 반환 상태는 IMPORTING이다. [importer.ts:134–177](../src/server/migration/importer.ts#L134-L177) [importer.ts:1324–1372](../src/server/migration/importer.ts#L1324-L1372)
 2. **미공개 evidence:** `padlet_evidence_claims`, `padlet_claim_digest_tombstones`, `legacy_operation_bindings`는 deferred다. import 성공으로 전역 claim을 publish하거나 legacy binding을 현대 `operations` 권한으로 바꾸지 않는다. [importer.ts:13–17](../src/server/migration/importer.ts#L13-L17) [importer.ts:114–132](../src/server/migration/importer.ts#L114-L132)
 3. **Preparatory READY:** `reconcileLegacyImport`는 잠긴 source/SQL/operational projection 비교이고 자체 write는 없다. `prepareLegacyImportReady`는 같은 transaction에서 immutable audit report를 기록하고, `MATCHED_PREFLIGHT`일 때 job READY 전이를 readback한다. BLOCKED도 반환할 수 있으며 이미 READY인 job에 binding-valid drift가 있으면 FAILED로 전환한다. report에는 `BOUND_SNAPSHOT_NOT_LIVE_FREEZE`를 기록한다. tenant는 IMPORTING에 머문다. source manifest의 자기 hash나 READY report는 live freshness/freeze 증명이 아니다. [reconcile.ts:13–35](../src/server/migration/reconcile.ts#L13-L35) [reconcile.ts:79–143](../src/server/migration/reconcile.ts#L79-L143) [importer.ts:1364–1372](../src/server/migration/importer.ts#L1364-L1372)
 4. **Final-generation 준비:** `stageLegacyFinalGeneration`은 원본/candidate/plan audit envelope만 저장하며 `UNTRUSTED_PREPARATION`이다. `DIFF_VALIDATED`는 canonical 차이 검증일 뿐 실행 가능한 SQL delta나 최종 승인권이 아니다. [finalGeneration.ts:30–34](../src/server/migration/finalGeneration.ts#L30-L34) [finalGeneration.ts:60–93](../src/server/migration/finalGeneration.ts#L60-L93)
 5. **현재 구현된 FREEZING start:** fresh intake 바인딩, dispatch/nonce/capture, audit/execution exact readback 뒤 job READY→FREEZING CAS를 수행한다. final fingerprint/freeze verified/completed 필드는 NULL로 검사하며 결과는 `exclusion: NOT_PROVEN`, 자동 재시도/enable false다. FREEZING을 maintained writer exclusion으로 읽지 않는다. [startFreezing.ts:95–137](../src/server/migration/startFreezing.ts#L95-L137)
-6. **현재 진단 reacquisition:** candidate는 `NONAUTHORITY`, `NOT_PROVEN`, `finalImportEligible:false`다. 별도 final fresh consent/acquisition, maintained exclusion, final import/reconciliation, activation은 아직 지원 완료 상태가 아니다. 기존 상세 문서의 시험 수치/승인 서술은 이 초안의 검증 결과로 재사용하지 않는다. [freezingReacquisitionIntake.ts:246–250](../src/server/migration/freezingReacquisitionIntake.ts#L246-L250) [migration-freezing-reacquisition-intake.md:64–70](architecture/migration-freezing-reacquisition-intake.md#L64-L70)
+6. **현재 진단 reacquisition:** candidate는 `NONAUTHORITY`, `NOT_PROVEN`, `finalImportEligible:false`다. 이 진단 경로 자체는 최종 import/reconciliation/activation 권한을 제공하지 않는다. 기존 상세 문서의 시험 수치/승인 서술은 이 초안의 검증 결과로 재사용하지 않는다. [freezingReacquisitionIntake.ts:246–250](../src/server/migration/freezingReacquisitionIntake.ts#L246-L250) [migration-freezing-reacquisition-intake.md:64–70](architecture/migration-freezing-reacquisition-intake.md#L64-L70)
 
 SQL job 상태 제약은 DISCOVERED/VALIDATED/IMPORTING/RECONCILING/READY/FREEZING/FINAL_IMPORT/ACTIVE/FAILED/ABORTED와 전이를 정의한다. **FINAL_IMPORT/ACTIVE가 enum/check에 있다는 사실은 해당 실행 서비스가 완성됐다는 뜻이 아니다.** tenant lifecycle와 job status도 별개 상태다. [0003_operations_migrations.sql:124–168](../src/server/db/migrations/0003_operations_migrations.sql#L124-L168) [tenants.ts:17–24](../src/server/db/schema/tenants.ts#L17-L24)
 
@@ -90,16 +106,17 @@ SQL job 상태 제약은 DISCOVERED/VALIDATED/IMPORTING/RECONCILING/READY/FREEZI
 - **앱 버전 rollback과 저장소 rollback은 다르다.** 전자는 PostgreSQL authority를 유지한다. Sheets 복귀는 DB write freeze, 모든 post-cutover delta export/apply, 전체 정합성 확인, authority 전환 뒤 legacy writer 재개라는 별도 통제 migration이다. stale Sheet URL로 직접 돌아가면 안 된다. 이 순서는 원래 계획의 요구사항이며 현재 실행 가능한 runbook/구현 완료 주장도 아니다. [2026-08-28-postgres-multitenant-migration.md:257–263](plans/2026-08-28-postgres-multitenant-migration.md#L257-L263)
 - retained snapshot/audit/preparation에는 학생·이력·지원 credential hash가 남을 수 있다. redaction은 익명화가 아니다. snapshot parent 삭제와 permanent producer replay 삭제를 일반 housekeeping으로 취급하지 않는다. retention/access/backup/예외 삭제 승인은 별도다. [migration-final-generation-preparation.md:37–39](architecture/migration-final-generation-preparation.md#L37-L39) [0016_migration_snapshots_immutable.sql:1–14](../src/server/db/migrations/0016_migration_snapshots_immutable.sql#L1-L14) [0022_freezing_producer_reservations.sql:20–25](../src/server/db/migrations/0022_freezing_producer_reservations.sql#L20-L25)
 
-## 8. 운영 검증과 남은 경계
+## 8. 검증 범위와 복구 주의
 
-- 소스에 정의된 계약과 실제 DB 적용 상태는 다르다. 적용 migration, grants, owner/role flags, session isolation, backup 복원 가능성은 별도 운영 검증 대상이다.
-- 이 문서는 전체 route/SQL/ORM parity 감사나 독립 connection race 검증 결과가 아니다. full test/build, 실제 PostgreSQL 및 tenant 격리 검증은 원래 계획의 Task23 gate에 남는다. [2026-08-28-postgres-multitenant-migration.md:273–287](plans/2026-08-28-postgres-multitenant-migration.md#L273-L287)
-- maintained external writer exclusion, final-purpose fresh consent/acquisition, final operational delta 적용·정합성·전역 claim publication·activation 및 storage rollback 실행은 아직 완료되지 않았다.
-- live freeze/activation/canary/data 변경은 별도 명시적 승인이 필요하다. 배포 준비나 이 문서의 존재는 운영 권한을 부여하지 않는다. [2026-08-28-postgres-multitenant-migration.md:289–307](plans/2026-08-28-postgres-multitenant-migration.md#L289-L307)
+- A–E의 기존 수용은 10월 5일 고정 후보와 당시 파일럿 조건에 대한 이력이다. 10월 6–7일 장부·은행·UI·DB 이전 변경은 별도 검증 근거로 추적한다. [현재 검사 요약](../README.md#개발과-검증)
+- 10월 7일 새 운영 계정의 Neon으로 복사·대조한 기록과 사용자 확인이 있다. 이 문서 정리에서 운영 DB를 다시 검사하거나 변경한 것은 아니다.
+- 현재 PG 자료에 장부 기록이 생긴 뒤에는 장부를 모르는 예전 앱을 승격하지 않는다. DB 이전 후에는 옛 DB에 연결된 배포를 승격하는 것도 금지한다. 최신 데이터와 호환되는 코드를 현재 DB에 배포하는 복구를 우선한다.
+- F의 실사용 관찰·다음 학급 확대, 실제 다중 학급 부하 및 교사 화면의 전체 이력 조회·넓은 잠금 개선이 남아 있다. 학생 번호 조회 정책은 보류 상태다.
+- skipped·미완료·출처가 확인되지 않은 재검사를 통과로 합산하지 않는다. 새 출시 후보의 전체 수용은 고정 소스·명령·결과·제외 근거가 필요하다.
 
-## 부록: 검토 소스 식별자
+## 부록: 과거 검토 소스 식별자
 
-아래 SHA-256은 검토한 전체 파일의 원시 바이트 기준이다. 저장소 상대 링크는 향후 변경될 수 있으므로 행 링크만을 immutable 증거로 사용하지 않는다. 문서를 갱신할 때 관련 source hash와 설명을 함께 재검토한다.
+아래 값은 이전 검토 당시 원시 바이트의 역사적 증거다. 2026-10-07 코드의 해시로 재사용하지 않는다. 현재 파일은 Git 커밋과 경로로 식별하며, 과거 행 번호 링크는 주변 설명과 실제 소스를 함께 확인한다.
 
 | 소스 | SHA-256 |
 |---|---|
@@ -129,7 +146,7 @@ SQL job 상태 제약은 DISCOVERED/VALIDATED/IMPORTING/RECONCILING/READY/FREEZI
 | [src/server/migration/finalGeneration.ts](../src/server/migration/finalGeneration.ts) | `07e89f82351a3c59e5c0d167010fd818a23d1e32ee6e8c5eae3d2f6a5aedb08a` |
 | [src/server/migration/freezingConsentProduction.ts](../src/server/migration/freezingConsentProduction.ts) | `c7d2d4931c1b761f5e67990f4245d7ed25544772ca9b0a6c1f2fc36ebd64c033` |
 | [src/server/migration/freezingReacquisitionIntake.ts](../src/server/migration/freezingReacquisitionIntake.ts) | `73411a9efa894a2696afae6b18906aac1661579c07fd0aa44ab92ef6e8edf8b9` |
-| [src/server/migration/importer.ts](../src/server/migration/importer.ts) | `c96aaf9d54ad7e324b3a4658ed10cebb4e0df9b005341f60654eb6fc065a4f40` |
+| [src/server/migration/importer.ts](../src/server/migration/importer.ts) | `1fb14aab5a5c3664670d073d3c3e41bf4cffe8e74ebe13003037c64e5e7abf94` |
 | [src/server/migration/reconcile.ts](../src/server/migration/reconcile.ts) | `9ed4997849b72ae5988704a50d654ef3fbe0d3b90974170256a3a6d77e90e203` |
 | [src/server/migration/startFreezing.ts](../src/server/migration/startFreezing.ts) | `85283e5bcf9b630f05f17fd7dfe496fada1841078b05af6eebbc51b451d388c3` |
 | [src/server/repositories/configuredRepository.ts](../src/server/repositories/configuredRepository.ts) | `9080a87012a0f4f8fb14120e9e015d787fe47745e656e97a7773a18dd8033fea` |

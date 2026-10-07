@@ -1,5 +1,9 @@
 # PostgreSQL Multi-Tenant CRS Implementation Plan
 
+> **2026-10-07 문서 정리:** 현행 제품·검증·잔여 작업은 [README](../../README.md)에 요약한다. 아래 Hermes 역할 배정과 커밋·작업 지시는 과거 계획의 일부이며 실행 지시가 아니다.
+
+> **과거 계획 — 2026-10-05 정정:** Task1–24는 2026-09-29 사용자 승인으로 A–F 파일럿 계획에 대체되었습니다. 아래 작업 번호·Hermes 실행 지시는 이력이며 현행 완료율이나 실행 순서의 기준이 아닙니다. 현재 목표·범위와 원본 근거는 [정정된 인수 보고서](2026-10-04-crs-takeover-assessment.md)를 참조합니다. 첫 출시는 짧은 입력 중단 동안 동결한 전체 자료의 일괄 이전이며, 범용 실시간 delta·자동 Sheets 역이전은 필수 범위에서 제외됐습니다.
+
 > **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task.
 
 **Goal:** Replace Google Sheets as the CRS operational source of truth with a central multi-tenant Neon PostgreSQL service, migrate existing individually deployed classes without data loss, and make checkout, task rewards, cancellations, and Padlet evidence claims transactional and idempotent.
@@ -7,6 +11,23 @@
 **Architecture:** Keep current domain calculations and introduce explicit repository/command boundaries. Use tenant-scoped PostgreSQL tables for operational data, globally unique Padlet evidence claims, immutable transaction snapshots, and durable operation records. Existing Sheets become a read-only import/export adapter; migration uses preflight snapshots, source mappings, reconciliation gates, a write-freeze cutover, and retained rollback artifacts.
 
 **Tech Stack:** Next.js 16, TypeScript, PostgreSQL/Neon, Drizzle ORM + SQL migrations, `pg` pooled connections on Vercel, Vitest, PGlite for real PostgreSQL-compatible schema/constraint tests, Google OAuth with least-privilege incremental Sheets consent.
+
+---
+
+## Codex 인수 — 2026-10-04
+
+사용자 지시에 따라 구현·검증 담당을 Codex로 변경했습니다. 기존 423개 변경 항목과 감독 상태는 백업했으며, 중복 배정을 막기 위해 work_hub의 CRS 전용 감독만 일시 정지했습니다. 기존 D53 실패 기록은 보존하고, 이후 작업은 제품 코드와 재현 가능한 집중 검사로 직접 진행합니다. 아래의 과거 Hermes 실행자/감독 지정은 인수 전 이력입니다.
+
+이번 완료 범위는 **신규 학급 생성과 DRAFT 접근 제한의 로컬 검증**입니다.
+
+- 초기 화면의 JavaScript 초기화 전 제출이 일반 GET으로 실행되던 문제를 수정했습니다. 입력·제출은 초기화 후 활성화됩니다.
+- Next.js가 loopback IP를 localhost로 정규화해 정상 생성 POST를 403으로 거부하던 문제를 수정했습니다. 원래 Host와 포트가 정확히 일치하는 경우만 허용하고, 외부 출처·다른 포트·위조 전달 헤더는 거부합니다.
+- `npm run test:classes`: 140 PASS. 이 명령에서 opt-in 네이티브 8개는 SKIP이며, 다음 명령으로 별도 실행했습니다.
+- `npm run test:classes:postgres`: 실제 PostgreSQL 17, 현재 migration, 별도 DB 연결에서 8 PASS. 동시 요청 중복 방지·계정 격리·원자적 취소·DRAFT 사용 거부를 확인했습니다.
+- 실제 Chrome/Next/PostgreSQL에서 로그인 요구 → 합성 인증 세션 → 새 학급 입력/클릭 → 생성 201 → 내 목록의 OWNER/DRAFT → 다른 계정 비노출 → 세션 제거 후 로그인 요구까지 6개 확인을 통과했습니다. 임시 앱·프로세스·DB는 정리했습니다. 외부 Google OAuth 자체의 검증은 아닙니다.
+- 전체 TypeScript 검사 exit 0. 변경 파일 ESLint exit 0이며 기존 `window.location.assign` 관련 Next.js 경고 1개가 남습니다.
+
+[검증·인수 기록](../../class-store-supervision/codex-development-20261004.json)에 실행 결과와 원본 증거 경로가 있습니다. A–F 전체, 실제 학급 활성화 또는 운영 배포가 완료된 상태는 아닙니다. 현행 계획에 따른 남은 일은 일반 사용자 흐름, 필요한 과거 이력 호환, 동결 전체 스냅샷의 일괄 이전·대조·활성화, 실제 OAuth·배포·백업 복원·파일럿 검증입니다. 인수 당시 적은 범용 최종 delta 구현 우선순위는 철회합니다.
 
 ---
 
@@ -20,7 +41,7 @@
 - Balance, stock, completion, transaction ledger, Padlet claim, and operation result commit atomically in one DB transaction.
 - Padlet provider fetch occurs before the short DB transaction; authorization is rechecked inside the transaction before claim/reward.
 - `(board_id, post_id)` is globally unique; a claim has no TTL and is never deleted by completion reset.
-- Student balances may be negative because existing administrative adjustments and later reward recovery support that state. Database checks must not globally clamp account or ledger balances; checkout and cancellation commands enforce their own policy.
+- Student balances may be negative because existing administrative adjustments and later reward recovery support that state. Database checks must not globally clamp account or ledger balances; checkout still checks available funds; cancellation applies the exact inverse to the current balance even when the result is negative (user-confirmed Sheets compatibility policy, 2026-10-05).
 - Existing `Asia/Seoul` recurrence and carry/reset rules remain unchanged.
 - Existing student QR values remain accepted only within an already selected tenant context; new QR values are tenant-scoped and signed.
 - Existing Sheets are never modified during preflight. Cutover requires a verified legacy write freeze and a final delta snapshot.
@@ -140,7 +161,7 @@
 - Modify: cancellation/adjustment routes and clients for operation IDs.
 - Test: focused command/route tests.
 
-**RED:** repeat cancellation returns prior result; stock and balance reversal atomic; original transaction and reversal linked; task reward cancellation links and reverses completion according to the preserved policy; a reversal that would make the balance negative is rejected; malformed legacy transaction requires manual reconciliation; no best-effort ledger.
+**RED:** repeat cancellation returns prior result; stock and balance reversal atomic; original transaction and reversal linked; task reward cancellation links and reverses completion according to the preserved policy; a reversal may make the current balance negative and must retain the exact inverse amount, one reversal, and matching audit/completion history; malformed legacy transaction requires manual reconciliation; no best-effort ledger.
 
 ### Task 10: Implement DB query repositories and every remaining mutation path
 
@@ -192,7 +213,7 @@
 - Reuse existing parsers without mutating the source.
 - Test: schema v1/v2/v3, missing optional tabs, unknown trailing columns, blank/custom headers, stable row hashes, complete Upstash claim/operation-binding registry capture, orphaned claims without completion rows, digest-only v1 claims, signed manifest tampering/replay, and conflicting binding detection.
 
-**Redis acquisition:** The bridge runs inside each legacy deployment and uses its own existing Upstash environment variables. It enumerates the v2 fixed hash and v1 claim-key namespace, creates a bounded signed/encrypted one-time manifest, and sends no Redis URL/token to the central service. At final freeze it emits a fresh delta manifest and then disables the legacy Redis writer. If the deployment cannot run the bridge, cutover is blocked unless it can prove Padlet/Redis was never configured; credentials are never requested manually.
+**Redis acquisition:** The bridge runs inside each legacy deployment and uses its own existing Upstash environment variables. It enumerates the v2 fixed hash and v1 claim-key namespace, creates a bounded signed/encrypted one-time manifest, and sends no Redis URL/token to the central service. For final capture, first exclude **all** legacy writers (not just Redis: every deployment generation, worker/retry/cron, direct credential user and human/service-account Sheet editor), drain in-flight writes and verify continuing exclusion. Only then acquire fresh Sheet and Redis delta manifests while the exclusion remains in force through activation; do not retire source infrastructure before retained recovery is proven. If the deployment cannot run the bridge, cutover is blocked unless it can prove Padlet/Redis was never configured; credentials are never requested manually. The paused execution contract and approval gates are in `/home/haeon/workhub-tasks/live/class-store-supervision/EXECUTION-CONTRACT.md`.
 
 **Digest-only preservation:** A v1 key exposes only `sha256(boardId + NUL + postId)`. Preserve that digest as a permanent global tombstone with an owner digest and source provenance. Do not attempt tuple reconstruction. PostgreSQL claim insertion computes the same digest and fails on any tombstone, so an orphaned historical post cannot become reusable.
 
@@ -244,7 +265,7 @@
 - Create: `src/server/migration/cutover.ts`
 - Test: verified freeze required, final source fingerprint, delta import, reconciliation, atomic tenant activation, aborted cutover, no dual-active state.
 
-**States:** `DISCOVERED → VALIDATED → IMPORTING → RECONCILING → READY → FREEZING → FINAL_IMPORT → ACTIVE`, with explicit failed/aborted states. Entering `FREEZING` requires fresh Google re-consent for the final Sheet snapshot and a fresh bridge manifest for Redis claims. Final import captures both deltas, reconciles full claims plus digest tombstones, activates PostgreSQL claim authority atomically, then retires/disables the legacy Redis writer and deletes the migration grant.
+**States (design target, not current implementation):** `DISCOVERED → VALIDATED → IMPORTING → RECONCILING → READY → FREEZING → FINAL_IMPORT → ACTIVE`, with explicit failed/aborted states. The current `cutover.ts` implements ABORT only. `FREEZING` must fail closed until independent evidence shows all Sheet and Redis writers excluded and in-flight writes drained; fresh Google re-consent is necessary for the Sheet capture but is **not** exclusion proof. Under maintained exclusion, acquire the final Sheet snapshot and fresh Redis bridge manifest, import both deltas, reconcile full claims/digest tombstones, and activate PostgreSQL claim authority atomically only after the other acceptance/approval gates. Keep source writers fenced through activation; retire their resources only later under retention/recovery approval. Failure must not silently reopen either writer; after new PostgreSQL writes, rollback requires a separate reconciled forward-repair/storage migration, not a URL flip. See the paused execution contract above.
 
 ### Task 20: Add migration administration UI/API
 
@@ -306,4 +327,4 @@ Only pause implementation for decisions that materially alter data ownership or 
 5. Source Sheet retention/deletion after the rollback window; default is indefinite read-only retention.
 6. Retention period for sensitive raw migration staging rows and generated backup exports; this is decided before the first real import, while aggregate reconciliation/audit records remain durable.
 
-Safe defaults requiring no interruption: Neon PostgreSQL, Asia/Seoul, Google identity for tenant owners, no stored migration refresh token, legacy student QR compatibility within tenant context, forced post-cutover admin credential rotation, globally unique Padlet tuples across tenants, cancellation rejection when recovery would make balance negative, all-or-nothing administrator batches, source-conflict stop, malformed/duplicate financial-row quarantine with cutover blocking, Sheets read-only retention, and staged canary rollout.
+Safe defaults requiring no interruption: Neon PostgreSQL, Asia/Seoul, Google identity for tenant owners, no stored migration refresh token, legacy student QR compatibility within tenant context, forced post-cutover admin credential rotation, globally unique Padlet tuples across tenants, Sheets-compatible cancellation allowing negative balances on recovery (confirmed 2026-10-05), all-or-nothing administrator batches, source-conflict stop, malformed/duplicate financial-row quarantine with cutover blocking, Sheets read-only retention, and staged canary rollout.
