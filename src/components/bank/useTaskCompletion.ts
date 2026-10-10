@@ -17,10 +17,12 @@ export type CompletionSuccess = Readonly<{
   task: Readonly<{ taskId: string; title: string; reward: number }>;
   tasks: StudentBankTaskDto[];
   student?: Readonly<{ name: string; balance: number }>;
+  /** What the task added to the class tree (drops) and the student's pet (growth), when anything. */
+  growth?: Readonly<{ tree: number; pet: number }>;
 }>;
 
 export type CompletionOutcome =
-  | Readonly<{ kind: 'success'; taskTitle: string; reward: number; balance?: number }>
+  | Readonly<{ kind: 'success'; taskTitle: string; reward: number; balance?: number; growth?: Readonly<{ tree: number; pet: number }> }>
   | Readonly<{ kind: 'policy'; message: string }>
   | Readonly<{ kind: 'unknown'; message: string }>
   | Readonly<{ kind: 'conflict'; message: string }>
@@ -65,6 +67,14 @@ function isCompletionSuccess(payload: unknown, operation: PendingCompletion): pa
       && typeof candidate.student?.balance === 'number' && Number.isSafeInteger(candidate.student.balance)));
 }
 
+/** The growth a completion reports, when it is well formed. */
+function growthOf(value: unknown): CompletionSuccess['growth'] {
+  if (!value || typeof value !== 'object') return undefined;
+  const { tree, pet } = value as { tree?: unknown; pet?: unknown };
+  const ok = (n: unknown): n is number => typeof n === 'number' && Number.isSafeInteger(n) && n >= 0;
+  return ok(tree) && ok(pet) ? { tree, pet } : undefined;
+}
+
 /**
  * Bank task completion: one idempotent operation ID per attempt, bounded automatic retries of that
  * same ID, and an "unknown" state that can be re-checked later with the same ID (journaled across
@@ -106,7 +116,7 @@ export function useTaskCompletion({ onSuccess, onPolicyFailure, onSessionExpired
         if (response && response.status >= 200 && response.status < 300 && isCompletionSuccess(payload, operation)) {
           settle(operation);
           onSuccess(payload);
-          setOutcome({ kind: 'success', taskTitle: payload.task.title, reward: payload.task.reward, balance: payload.student?.balance });
+          setOutcome({ kind: 'success', taskTitle: payload.task.title, reward: payload.task.reward, balance: payload.student?.balance, growth: growthOf(payload.growth) });
           return;
         }
         const error = payload && typeof payload === 'object' ? payload as { error?: unknown; code?: unknown; retryable?: unknown } : {};

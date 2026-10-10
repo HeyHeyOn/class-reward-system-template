@@ -1,29 +1,38 @@
 'use client';
 
 import { forwardRef } from 'react';
-import { CLASS_TREE_STAGES, classTreeLook } from '@/domain/classTree';
-import { TreeCanvas, treePercent, type TreePlay } from '../classTree/TreeCanvas';
+import { CLASS_TREE_STAGES, classTreeLook, classTreeStageProgress } from '@/domain/classTree';
+import { TreeCanvas, type TreePlay } from '../classTree/TreeCanvas';
 import { Button, Callout, Icon, IconButton, Spinner } from '../ui';
 import type { ClassTreeStudentViewDto } from './bankClient';
 import { formatMoney } from './format';
 
-function ProgressBar({ drops, goal }: Readonly<{ drops: number; goal: number }>) {
-  const percent = treePercent(drops, goal);
+/** The way to the next stage only — students never see how far the whole goal is. */
+function StageBar({ drops, goal }: Readonly<{ drops: number; goal: number }>) {
+  const progress = classTreeStageProgress(drops, goal);
+  const percent = Math.round(progress.fraction * 100);
+  const label = progress.next === null ? '수확까지' : `${CLASS_TREE_STAGES[progress.next]}까지`;
   return (
-    <span role="progressbar" aria-label="학급 나무 양분" aria-valuemin={0} aria-valuemax={goal} aria-valuenow={Math.min(drops, goal)}
+    <span role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}
       className="block h-2.5 overflow-hidden rounded-full bg-[var(--theme-accent-soft)]">
       <span className="block h-full rounded-full bg-[var(--theme-accent-solid)] transition-[width] duration-300" style={{ width: `${percent}%` }} />
     </span>
   );
 }
 
-/** The class tree on the bank home: a small picture and the class's progress. Opens the tree. */
+/** '다음 단계: 새싹' (or the harvest after the last stage). */
+function nextStageText(drops: number, goal: number): string {
+  const next = classTreeStageProgress(drops, goal).next;
+  return `다음 단계: ${next === null ? '수확' : CLASS_TREE_STAGES[next]}`;
+}
+
+/** The class tree on the bank home: a small picture, and how close it is to its next stage. Opens the tree. */
 export function BankTreeCard({ view, onOpen }: Readonly<{ view: ClassTreeStudentViewDto; onOpen: () => void }>) {
   const tree = view.tree;
   if (!view.enabled || !tree) return null;
   const look = classTreeLook(tree.drops, tree.goal, view.apples);
   return (
-    <button type="button" onClick={onOpen} aria-label={`${view.treeName}, 양분 ${tree.drops}, 목표 ${tree.goal}`}
+    <button type="button" onClick={onOpen} aria-label={`${view.treeName}, ${CLASS_TREE_STAGES[look.stage]}, ${look.ready ? '열매가 다 익었어요' : nextStageText(tree.drops, tree.goal)}`}
       className="mt-4 flex w-full items-center gap-4 rounded-[22px] border border-[var(--crs-line)] bg-[var(--theme-surface)] p-4 text-left shadow-[var(--crs-shadow-sm)] transition-[transform,background-color] duration-150 hover:bg-[var(--crs-subtle-hover)] active:scale-[0.99]">
       <span aria-hidden="true" className="shrink-0 rounded-2xl bg-[var(--theme-accent-soft)] p-1">
         <TreeCanvas drops={tree.drops} goal={tree.goal} apples={view.apples} size={80} name={view.treeName} />
@@ -33,7 +42,10 @@ export function BankTreeCard({ view, onOpen }: Readonly<{ view: ClassTreeStudent
         <span className="mt-0.5 block text-[13px] font-semibold text-[var(--theme-muted-text)]">
           {look.ready ? '열매가 다 익었어요! 수확을 기다려요' : `${CLASS_TREE_STAGES[look.stage]} · 오늘 양분 준 친구 ${view.waterersToday}명`}
         </span>
-        <span className="mt-2 block"><ProgressBar drops={tree.drops} goal={tree.goal} /></span>
+        <span className="mt-2 block">
+          <StageBar drops={tree.drops} goal={tree.goal} />
+          {!look.ready ? <span className="mt-1 block text-[12px] font-bold text-[var(--theme-accent-text)]">{nextStageText(tree.drops, tree.goal)}</span> : null}
+        </span>
       </span>
       <Icon name="chevronRight" size={20} className="shrink-0 text-[var(--theme-muted-text)]" />
     </button>
@@ -95,13 +107,11 @@ export const BankTreeView = forwardRef<HTMLHeadingElement, BankTreeViewProps>(fu
           <div className="flex justify-center rounded-[20px] bg-[var(--theme-accent-soft)] p-3">
             <TreeCanvas drops={tree.drops} goal={tree.goal} apples={view.apples} size={320} play={play} onPlayEnd={onPlayEnd} name={view.treeName} />
           </div>
-          <div className="mt-4 flex items-baseline justify-between gap-3">
+          <div className="mt-4 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
             <span className="text-[20px] font-black tracking-[-0.02em]">{CLASS_TREE_STAGES[look.stage]}</span>
-            <span className="text-[14px] font-bold tabular-nums text-[var(--theme-muted-text)]">
-              양분 {tree.drops.toLocaleString('ko-KR')} / {tree.goal.toLocaleString('ko-KR')}
-            </span>
+            <span className="text-[14px] font-bold text-[var(--theme-accent-text)]">{look.ready ? '열매가 다 익었어요!' : nextStageText(tree.drops, tree.goal)}</span>
           </div>
-          <div className="mt-2"><ProgressBar drops={tree.drops} goal={tree.goal} /></div>
+          <div className="mt-2"><StageBar drops={tree.drops} goal={tree.goal} /></div>
           <p className="mt-2 text-[13px] font-semibold text-[var(--theme-muted-text)]">
             {look.stage === 7 ? `사과 ${view.apples}개 중 ${look.ripe}개가 빨갛게 익었어요. ` : ''}
             오늘 양분 준 친구 {view.waterersToday}명{view.harvestedTrees > 0 ? ` · 지금까지 수확한 나무 ${view.harvestedTrees}그루` : ''}

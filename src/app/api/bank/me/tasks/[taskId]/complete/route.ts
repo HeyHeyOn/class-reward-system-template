@@ -1,4 +1,5 @@
 import { legacyWriteFreezeResponse } from '@/server/legacyDeploymentMode';
+import { createConfiguredPets } from '@/server/repositories/configuredPets';
 import { createConfiguredStudentBankReader } from '@/server/repositories/configuredStudentBank';
 import {
   createConfiguredTaskCompletion,
@@ -96,10 +97,20 @@ export async function POST(request: Request, context: RouteContext) {
     console.error('[bank-completion] task list after a committed completion could not be shaped',
       error instanceof Error ? error.message : 'unknown');
   }
+  // What the task gave the class tree and the student's pet, for the completion message. Without it
+  // (a Sheets class, a failed read) the message simply leaves it out.
+  let growth: { tree: number; pet: number } | undefined;
+  try {
+    const gains = await (await createConfiguredPets(request)).taskGains(`task-reward:${operationId}`);
+    if (gains.tree > 0 || gains.pet > 0) growth = gains;
+  } catch {
+    growth = undefined;
+  }
   return studentBankJson({
     operation: result.operation,
     task: result.task,
     tasks,
     ...(student ? { student } : {}),
+    ...(growth ? { growth } : {}),
   });
 }

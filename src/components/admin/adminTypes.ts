@@ -26,7 +26,7 @@ export type TaskAssignmentDraft = {
   readyIds?: string[]; initialReadyIds?: string[];
 };
 
-export type AdminTab = 'home' | 'settings' | 'students' | 'products' | 'tasks' | 'tree' | 'transactions' | 'currency';
+export type AdminTab = 'home' | 'settings' | 'students' | 'products' | 'tasks' | 'tree' | 'pets' | 'transactions' | 'currency';
 
 export type TaskSheetTab = 'basic' | 'schedule' | 'students';
 

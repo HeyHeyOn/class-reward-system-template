@@ -22,7 +22,10 @@ export type StudentBankTransactionKind =
   | 'DEPOSIT'
   | 'WITHDRAWAL'
   | 'TREE_WATER'
-  | 'TREE_HARVEST';
+  | 'TREE_HARVEST'
+  | 'PET_FEED'
+  | 'PET_DECOR'
+  | 'PET_GRADUATE';
 
 export type StudentBankTransactionDto = Readonly<{
   transactionId: string;
@@ -84,6 +87,9 @@ function transactionKind(transaction: Transaction, amount: number): StudentBankT
   if (transaction.status === 'TASK_REWARD' || transaction.operator === 'bank-task-completion') return 'TASK_REWARD';
   if (transaction.status === 'TREE_WATER') return 'TREE_WATER';
   if (transaction.status === 'TREE_HARVEST') return 'TREE_HARVEST';
+  if (transaction.status === 'PET_FEED') return 'PET_FEED';
+  if (transaction.status === 'PET_DECOR') return 'PET_DECOR';
+  if (transaction.status === 'PET_GRADUATE') return 'PET_GRADUATE';
   if (transaction.items.length > 0 && amount <= 0) return 'PURCHASE';
   if (transaction.status === 'ADMIN_ADJUSTMENT' || transaction.operator === 'admin') {
     return amount >= 0 ? 'TEACHER_GRANT' : 'TEACHER_DEDUCT';

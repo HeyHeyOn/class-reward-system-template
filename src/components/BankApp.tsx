@@ -5,7 +5,7 @@ import styles from './classroom.module.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getFontFamilyCss } from '@/lib/fontSettings';
 import { normalizeThemeColor, themeStyles } from './uiTheme';
-import { Button, Callout, IconButton, LoadingOverlay, Modal, Spinner } from './ui';
+import { Button, Callout, Icon, IconButton, LoadingOverlay, Modal, Spinner } from './ui';
 import {
   DEFAULT_BANK_SETTINGS,
   fetchBankSettings,
@@ -31,12 +31,15 @@ import { BankLogin } from './bank/BankLogin';
 import { BankTasks } from './bank/BankTasks';
 import { BankBagMenu, BankBagView } from './bank/BankBag';
 import { BankTreeCard, BankTreeView } from './bank/BankTree';
+import { BankPetCard, BankPetView } from './pet/BankPet';
+import { fetchPet } from './pet/petBankClient';
+import type { PetStudentViewDto } from '@/lib/petApi';
 import type { TreePlay } from './classTree/TreeCanvas';
 import { formatMoney } from './bank/format';
 import { useTaskCompletion, type CompletionOutcome, type CompletionSuccess } from './bank/useTaskCompletion';
 
 type Phase = 'checking' | 'unavailable' | 'login' | 'home';
-type View = 'home' | 'history' | 'tasks' | 'tree' | 'bag';
+type View = 'home' | 'history' | 'tasks' | 'tree' | 'bag' | 'pet';
 
 const SESSION_ENDED = '로그인 시간이 끝났어요. 다시 로그인해 주세요.';
 const LOAD_FAILED = '은행에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.';
@@ -74,6 +77,9 @@ export function BankApp() {
   const [bag, setBag] = useState<StudentBagDto | null>(null);
   const [bagLoading, setBagLoading] = useState(false);
   const [bagError, setBagError] = useState('');
+  const [petView, setPetView] = useState<PetStudentViewDto | null>(null);
+  const [petLoading, setPetLoading] = useState(false);
+  const [petError, setPetError] = useState('');
   // A watering whose answer was lost is resent with the same operation ID, so it is paid only once.
   const pendingWater = useRef<string | null>(null);
   // Bumped on every login/logout/expiry so responses from an earlier session are ignored.
@@ -84,6 +90,7 @@ export function BankApp() {
   const tasksHeadingRef = useRef<HTMLHeadingElement>(null);
   const treeHeadingRef = useRef<HTMLHeadingElement>(null);
   const bagHeadingRef = useRef<HTMLHeadingElement>(null);
+  const petHeadingRef = useRef<HTMLHeadingElement>(null);
 
   const themeColor = normalizeThemeColor(settings.themeColor);
   const semantic = themeStyles(themeColor);
@@ -105,6 +112,8 @@ export function BankApp() {
     setTasks(null);
     setTransactions(null);
     setTreeView(null);
+    setPetView(null);
+    setPetError('');
     setBag(null);
     setBagError('');
     setTreeError('');
@@ -145,6 +154,26 @@ export function BankApp() {
       setTreeView(null);
     } else {
       setTreeError(result.error ?? '학급 나무를 불러오지 못했어요.');
+    }
+  }, [expireSession]);
+
+  const loadPet = useCallback(async () => {
+    const current = generation.current;
+    setPetLoading(true);
+    setPetError('');
+    const result = await fetchPet();
+    if (current !== generation.current) return;
+    setPetLoading(false);
+    if (result.ok) {
+      setPetView(result.data.pet);
+      const balance = result.data.balance;
+      setProfile((existing) => existing ? { ...existing, student: { ...existing.student, balance } } : existing);
+    } else if (isSessionRequired(result)) {
+      expireSession();
+    } else if (result.status === 404) {
+      setPetView(null);
+    } else {
+      setPetError(result.error ?? '펫을 불러오지 못했어요.');
     }
   }, [expireSession]);
 
@@ -199,13 +228,15 @@ export function BankApp() {
     } else {
       void refreshProfile();
     }
-  }, [loadTasks, refreshProfile]);
+    // The task also grew the class tree or the pet: their cards show the new progress.
+    if (payload.growth) { void loadTree(); void loadPet(); }
+  }, [loadPet, loadTasks, loadTree, refreshProfile]);
   const completion = useTaskCompletion({
     onSuccess: onCompletionSuccess,
     onPolicyFailure: () => { void loadTasks(); },
     onSessionExpired: () => expireSession(),
     onOutcome: (result) => setAnnouncement(result.kind === 'success'
-      ? `보상 ${formatMoney(result.reward, unit)} 받았어요.`
+      ? `보상 ${formatMoney(result.reward, unit)} 받았어요.${result.growth?.pet ? ` 펫 성장 +${result.growth.pet}.` : ''}${result.growth?.tree ? ` 나무 성장 +${result.growth.tree}.` : ''}`
       : result.message),
   });
   const { restore: restoreCompletion, reset: resetCompletion, reconcile: reconcileCompletion } = completion;
@@ -225,8 +256,9 @@ export function BankApp() {
     restoreCompletion(next.student.studentId);
     void loadTasks();
     void loadTree();
+    void loadPet();
     void loadBag();
-  }, [loadBag, loadTasks, loadTree, restoreCompletion]);
+  }, [loadBag, loadPet, loadTasks, loadTree, restoreCompletion]);
 
   const checkSession = useCallback(async () => {
     setPhase('checking');
@@ -259,7 +291,7 @@ export function BankApp() {
   useEffect(() => {
     if (phase !== 'home') return;
     (view === 'history' ? historyHeadingRef.current : view === 'tasks' ? tasksHeadingRef.current
-      : view === 'tree' ? treeHeadingRef.current : view === 'bag' ? bagHeadingRef.current : homeHeadingRef.current)?.focus();
+      : view === 'tree' ? treeHeadingRef.current : view === 'bag' ? bagHeadingRef.current : view === 'pet' ? petHeadingRef.current : homeHeadingRef.current)?.focus();
   }, [phase, view]);
 
   async function handleLogin(studentQr: string): Promise<boolean> {
@@ -298,7 +330,7 @@ export function BankApp() {
   async function refreshAll() {
     setRefreshing(true);
     try {
-      await Promise.all([refreshProfile(), loadTasks(), loadTree(), loadBag()]);
+      await Promise.all([refreshProfile(), loadTasks(), loadTree(), loadPet(), loadBag()]);
     } finally {
       setRefreshing(false);
     }
@@ -327,6 +359,11 @@ export function BankApp() {
   function openBag() {
     void loadBag();
     openSubView('bag');
+  }
+
+  function openPet() {
+    void loadPet();
+    openSubView('pet');
   }
 
   function openTree() {
@@ -421,8 +458,9 @@ export function BankApp() {
               waiting={(tasks ?? []).filter((task) => task.stage === 'PENDING' || (task.stage === 'READY' && !task.completable)).length}
               completed={(tasks ?? []).filter((task) => task.stage === 'COMPLETED').length}
               attention={Boolean(completion.pending)} onOpen={openTasks} />
-            {treeView ? <BankTreeCard view={treeView} onOpen={openTree} /> : null}
             {bag ? <BankBagMenu bag={bag} onOpen={openBag} /> : null}
+            {petView ? <BankPetCard view={petView} onOpen={openPet} /> : null}
+            {treeView ? <BankTreeCard view={treeView} onOpen={openTree} /> : null}
           </BankHome>
         ) : null}
 
@@ -445,6 +483,17 @@ export function BankApp() {
             loading={treeLoading} watering={watering} error={treeError} notice={treeNotice} play={treePlay}
             onPlayEnd={() => setTreePlay(null)}
             onBack={closeHistory} onRefresh={() => void loadTree()} onWater={() => void handleWater()} />
+        ) : null}
+
+        {phase === 'home' && profile && view === 'pet' ? (
+          <BankPetView ref={petHeadingRef} view={petView} balance={profile.student.balance} currencyUnit={unit}
+            loading={petLoading} error={petError} onBack={closeHistory} onRefresh={() => void loadPet()}
+            onChanged={(next, balance) => {
+              setPetView(next);
+              setTransactions(null);
+              setProfile((existing) => existing ? { ...existing, student: { ...existing.student, balance } } : existing);
+            }}
+            onSessionExpired={() => expireSession()} onAnnounce={setAnnouncement} />
         ) : null}
 
         {phase === 'home' && profile && view === 'bag' ? (
@@ -481,6 +530,20 @@ function CompletionDialog({ outcome, currencyUnit, onClose, onRecheck }: {
         <p className="mt-3 text-center text-[34px] font-black tabular-nums tracking-[-0.04em] text-[var(--crs-success-text)]">+{formatMoney(outcome.reward, currencyUnit)}</p>
         {typeof outcome.balance === 'number' ? (
           <p className="mt-1 text-center text-sm font-semibold text-[var(--theme-muted-text)]">지금 잔액 {formatMoney(outcome.balance, currencyUnit)}</p>
+        ) : null}
+        {outcome.growth && (outcome.growth.pet > 0 || outcome.growth.tree > 0) ? (
+          <ul aria-label="함께 자란 것" className="mt-3 flex flex-wrap justify-center gap-2">
+            {outcome.growth.pet > 0 ? (
+              <li className="inline-flex items-center gap-1.5 rounded-full bg-[var(--theme-accent-soft)] px-3 py-1 text-[14px] font-black text-[var(--theme-accent-text)]">
+                <Icon name="paw" size={16} />펫 성장 +{outcome.growth.pet}
+              </li>
+            ) : null}
+            {outcome.growth.tree > 0 ? (
+              <li className="inline-flex items-center gap-1.5 rounded-full bg-[var(--theme-accent-soft)] px-3 py-1 text-[14px] font-black text-[var(--theme-accent-text)]">
+                <Icon name="sprout" size={16} />나무 성장 +{outcome.growth.tree}
+              </li>
+            ) : null}
+          </ul>
         ) : null}
       </Modal>
     );

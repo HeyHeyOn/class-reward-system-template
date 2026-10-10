@@ -123,6 +123,17 @@ export async function giveHarvestReward(tx: TenantTransaction, tenantId: string,
             'TREE_HARVEST', ${String(input.treeNo)}, ${input.product.productId}, ${shape.voucherProductId}, ${input.operationId})`);
 }
 
+/** A pet graduation reward (called by the pet graduation, inside its transaction). */
+export async function givePetReward(tx: TenantTransaction, tenantId: string, input: Readonly<{
+  studentId: string; product: StorageProduct; petId: string; operationId: string;
+}>): Promise<void> {
+  const shape = storageItemShape(input.product);
+  await tx.execute(sql`
+    INSERT INTO student_items (tenant_id, item_id, student_id, kind, title, source, source_ref, product_id, voucher_product_id, operation_id)
+    VALUES (${tenantId}, ${`pet-reward:${input.operationId}`}, ${input.studentId}, ${shape.kind}, ${shape.title},
+            'PET_GRADUATION', ${input.petId}, ${input.product.productId}, ${shape.voucherProductId}, ${input.operationId})`);
+}
+
 /**
  * Items for the digital products in a checkout: one per unit (free units of a promotion included).
  * Runs inside the checkout transaction after its transaction row exists. Returns how many were given.

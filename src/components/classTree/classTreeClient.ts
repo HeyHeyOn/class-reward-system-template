@@ -17,7 +17,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isBoard(value: unknown): value is ClassTreeAdminBoardDto {
-  return isRecord(value) && isRecord(value.settings) && typeof value.activeStudents === 'number' && typeof value.computedGoal === 'number'
+  return isRecord(value) && isRecord(value.settings) && typeof value.activeStudents === 'number'
     && (value.tree === null || isRecord(value.tree)) && Array.isArray(value.contributions) && Array.isArray(value.harvests);
 }
 

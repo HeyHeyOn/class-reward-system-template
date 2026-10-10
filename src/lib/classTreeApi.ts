@@ -58,7 +58,6 @@ export type ClassTreeHarvestDto = Readonly<{
 export type ClassTreeAdminBoardDto = Readonly<{
   settings: ClassTreeSettings;
   activeStudents: number;
-  computedGoal: number;
   /** Store products a harvest reward can be picked from (deleted ones excluded). */
   rewardProducts: ReadonlyArray<ClassTreeRewardProductDto>;
   tree: ClassTreeDto | null;

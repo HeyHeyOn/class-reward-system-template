@@ -36,6 +36,8 @@ const READ_AUTHORITY = [
   ['task-ledger/tasks/[taskId]/history', 'GET', 'createConfiguredTaskLedger'],
   ['bank/me/tree', 'GET', 'createConfiguredClassTree'],
   ['class-tree', 'GET', 'createConfiguredClassTree'],
+  ['bank/me/pet', 'GET', 'createConfiguredPets'],
+  ['pets', 'GET', 'createConfiguredPets'],
   ['bank/me/bag', 'GET', 'createConfiguredStudentBag'],
   ['bag/students/[studentId]', 'GET', 'createConfiguredStudentBag'],
   ['bag/digital-products', 'GET', 'createConfiguredStudentBag'],
@@ -78,6 +80,14 @@ const CONFIGURED_MUTATION_AUTHORITY = [
   ['class-tree/settings', 'POST', 'createConfiguredClassTree'],
   ['class-tree/feed', 'POST', 'createConfiguredClassTree'],
   ['class-tree/harvest', 'POST', 'createConfiguredClassTree'],
+  ['bank/me/pet/adopt', 'POST', 'createConfiguredPets'],
+  ['bank/me/pet/care', 'POST', 'createConfiguredPets'],
+  ['bank/me/pet/graduate', 'POST', 'createConfiguredPets'],
+  ['bank/me/pet/decor/buy', 'POST', 'createConfiguredPets'],
+  ['bank/me/pet/decor/place', 'POST', 'createConfiguredPets'],
+  ['bank/me/pet/companions', 'POST', 'createConfiguredPets'],
+  ['pets/settings', 'POST', 'createConfiguredPets'],
+  ['pets/rename', 'POST', 'createConfiguredPets'],
   ['bag/items/use', 'POST', 'createConfiguredStudentBag'],
   ['bag/items/give', 'POST', 'createConfiguredStudentBag'],
   ['bag/items/revoke', 'POST', 'createConfiguredStudentBag'],
@@ -132,7 +142,7 @@ describe('tenant read route PostgreSQL authority', () => {
       .sort((left, right) => `${left[0]}:${left[1]}`.localeCompare(`${right[0]}:${right[1]}`));
     const authority = READ_AUTHORITY.map(([route, method]) => [route, method] as string[])
       .sort((left, right) => `${left[0]}:${left[1]}`.localeCompare(`${right[0]}:${right[1]}`));
-    expect(inventory).toHaveLength(34);
+    expect(inventory).toHaveLength(36);
     expect(authority).toEqual(inventory);
   });
 
@@ -177,7 +187,7 @@ describe('tenant mutation route PostgreSQL authority', () => {
       && entry.effect === 'mutation'
       && !configured.has(`${entry.method} ${entry.route}`));
 
-    expect(CONFIGURED_MUTATION_AUTHORITY).toHaveLength(40);
+    expect(CONFIGURED_MUTATION_AUTHORITY).toHaveLength(48);
     expect(sheetsMutations).toHaveLength(4);
     for (const entry of sheetsMutations) {
       const body = await exportedMethodBody(entry.route.replace(/^\//, ''), entry.method);

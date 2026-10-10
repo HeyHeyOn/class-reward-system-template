@@ -17,6 +17,7 @@ import {
 } from './store';
 import { insertStageEvent, ledgerEventId } from './writes';
 import { addTaskTreeDrops } from '../classTree';
+import { addTaskPetGrowth } from '../pets';
 
 export const BANK_REWARD_NOTE = 'bank-self-completion';
 /** A teacher marked the task done and paid its reward; cancellable like a bank completion. */
@@ -106,5 +107,6 @@ export async function writeTeacherPaidCompletion(tx: TenantTransaction, tenantId
        ${TEACHER_REWARD_NOTE}, ${LEDGER_CYCLE_ID}, ${LEDGER_CYCLE_START}::timestamptz, NULL, 1, 'Asia/Seoul', 'BANK',
        ${assignment.assignmentId}, ${transactionId}, ${rewardOperationId}, ${payloadHash}, 1, clock_timestamp())`);
   await addTaskTreeDrops(tx, tenantId, { studentId: input.student.studentId, transactionId, operationId: rewardOperationId });
+  await addTaskPetGrowth(tx, tenantId, { studentId: input.student.studentId, transactionId, operationId: rewardOperationId });
   return { balanceAfter, completionId };
 }

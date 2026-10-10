@@ -32,7 +32,7 @@ it('loads optional panel code on first use and retains unsaved state across menu
     return Response.json({ error: 'Unexpected test request' }, { status: 404 });
   }));
   render(<AdminManagePage />);
-  await screen.findByRole('heading', { name: '학급 보상 시스템' });
+  await screen.findByRole('heading', { level: 1, name: '학급 매점' });
   expect(moduleLoads).toEqual({ transactions: 0, promotions: 0 });
 
   await openAdminMenu('매점');

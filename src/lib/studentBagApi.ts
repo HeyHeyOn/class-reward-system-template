@@ -8,7 +8,7 @@
 
 export type DigitalKind = 'CONSUMABLE' | 'COLLECTIBLE';
 export type BagItemKind = DigitalKind;
-export type BagItemSource = 'TREE_HARVEST' | 'STORE_PURCHASE' | 'TEACHER';
+export type BagItemSource = 'TREE_HARVEST' | 'STORE_PURCHASE' | 'TEACHER' | 'PET_GRADUATION';
 
 export const DIGITAL_KINDS: readonly DigitalKind[] = ['CONSUMABLE', 'COLLECTIBLE'];
 export const DIGITAL_KIND_LABELS: Readonly<Record<DigitalKind, string>> = { CONSUMABLE: '소모품', COLLECTIBLE: '수집품' };
@@ -64,6 +64,7 @@ export type CheckoutVoucherDto = Readonly<{
 /** Where an item came from, in the words students and teachers see. */
 export function bagItemOrigin(item: Pick<BagItemDto, 'source' | 'sourceRef'>): string {
   if (item.source === 'TREE_HARVEST') return '학급 나무 수확';
+  if (item.source === 'PET_GRADUATION') return '펫 졸업 보상';
   if (item.source === 'TEACHER') return '선생님이 넣어 줌';
   return '매점에서 구입';
 }

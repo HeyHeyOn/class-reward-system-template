@@ -19,7 +19,7 @@ export function isBagItem(value: unknown): value is BagItemDto {
   return isRecord(value) && typeof value.itemId === 'string' && isKind(value.kind) && typeof value.title === 'string'
     && isNullableString(value.productId) && isNullableString(value.imageUrl) && typeof value.description === 'string'
     && isNullableString(value.voucherProductId) && isNullableString(value.voucherProductName)
-    && (value.source === 'TREE_HARVEST' || value.source === 'STORE_PURCHASE' || value.source === 'TEACHER') && typeof value.sourceRef === 'string'
+    && (value.source === 'TREE_HARVEST' || value.source === 'STORE_PURCHASE' || value.source === 'TEACHER' || value.source === 'PET_GRADUATION') && typeof value.sourceRef === 'string'
     && typeof value.issuedAt === 'string' && isNullableString(value.usedAt) && typeof value.usedAtCheckout === 'boolean';
 }
 

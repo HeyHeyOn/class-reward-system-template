@@ -60,7 +60,8 @@ function failureFrom(status: number, payload: unknown): BankFailure {
   };
 }
 
-async function bankRequest<T>(path: string, init: RequestInit, isData: (value: unknown) => value is T): Promise<BankResult<T>> {
+/** A student bank request: the data when it has the expected shape, else a failure. Shared by the pet screen. */
+export async function bankRequest<T>(path: string, init: RequestInit, isData: (value: unknown) => value is T): Promise<BankResult<T>> {
   let response: Response;
   try {
     response = await tenantFetch(path, { cache: 'no-store', credentials: 'same-origin', ...init });
@@ -109,7 +110,7 @@ export function isTask(value: unknown): value is StudentBankTaskDto {
 
 const TRANSACTION_KINDS = new Set<StudentBankTransactionKind>([
   'PURCHASE', 'TASK_REWARD', 'TEACHER_GRANT', 'TEACHER_DEDUCT', 'CANCELLATION', 'DEPOSIT', 'WITHDRAWAL',
-  'TREE_WATER', 'TREE_HARVEST',
+  'TREE_WATER', 'TREE_HARVEST', 'PET_FEED', 'PET_DECOR', 'PET_GRADUATE',
 ]);
 
 function isTransaction(value: unknown): value is StudentBankTransactionDto {

@@ -39,6 +39,7 @@
 .cardTop { justify-content:space-between; gap:12px; margin-bottom:20px; }
 .classIcon { display:inline-flex; align-items:center; justify-content:center; width:48px; height:48px; border-radius:15px; background:var(--theme-surface-raised); }
 .classIcon svg { width:25px; height:25px; }
+.crsMark { display:block; width:28px; height:28px; background:var(--theme-accent-text, currentColor); -webkit-mask:url('/class-reward-system-icon.png') center / contain no-repeat; mask:url('/class-reward-system-icon.png') center / contain no-repeat; }
 .badge { display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border-radius:20px; font-size:11px; font-weight:750; background:var(--theme-surface-raised); color:var(--theme-muted-text); }
 .badge i { width:5px; height:5px; border-radius:50%; background:currentColor; }
 .activeBadge { background:#edf8f1; color:#22603b; }

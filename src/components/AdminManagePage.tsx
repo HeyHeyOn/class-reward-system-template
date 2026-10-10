@@ -64,7 +64,10 @@ const StudentStorageSection = dynamic(() => import('./bag/StudentStorageSection'
   loading: () => <SheetLoading label="보관함 여는 중" />,
 });
 const ClassTreePanel = dynamic(() => import('./classTree/ClassTreePanel').then((module) => module.ClassTreePanel), {
-  loading: () => <SheetLoading label="학급 나무 불러오는 중" />,
+  loading: () => <SheetLoading label="나무 키우기 불러오는 중" />,
+});
+const PetPanel = dynamic(() => import('./pet/PetPanel').then((module) => module.PetPanel), {
+  loading: () => <SheetLoading label="펫 키우기 불러오는 중" />,
 });
 
 const TASK_DEFINITION_FIELDS = ['title', 'description', 'reward', 'isActive', 'sortOrder', 'availableFrom', 'dueAt', 'prerequisiteTaskId'] as const;
@@ -2200,10 +2203,17 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
         <aside className="sticky top-0 z-30 border-b border-[var(--crs-line)] bg-[color-mix(in_srgb,var(--theme-surface)_88%,transparent)] backdrop-blur-md lg:h-screen lg:border-b-0 lg:border-r lg:bg-[var(--theme-surface)] lg:backdrop-blur-0">
           <div className="flex h-full flex-col">
             <div className="flex items-center gap-3 px-4 pb-2 pt-3 sm:px-6 lg:px-5 lg:pb-5 lg:pt-6">
-              <span role="img" aria-label="학급 보상 시스템 로고" className="h-9 w-9 shrink-0 bg-[var(--theme-accent-text)] [mask-image:url('/class-reward-system-icon.png')] [mask-position:center] [mask-repeat:no-repeat] [mask-size:contain]" />
+              {/* The CRS mark goes back to the class list; next to it, the class being managed. */}
+              {tenantScoped ? (
+                <a href="/classes" aria-label="학급 목록으로" title="학급 목록으로"
+                  className="shrink-0 rounded-[10px] p-0.5 outline-none transition-colors hover:bg-[var(--crs-subtle-hover)] focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)]">
+                  <span aria-hidden="true" className="block h-9 w-9 bg-[var(--theme-accent-text)] [mask-image:url('/class-reward-system-icon.png')] [mask-position:center] [mask-repeat:no-repeat] [mask-size:contain]" />
+                </a>
+              ) : (
+                <span role="img" aria-label="학급 보상 시스템 로고" className="h-9 w-9 shrink-0 bg-[var(--theme-accent-text)] [mask-image:url('/class-reward-system-icon.png')] [mask-position:center] [mask-repeat:no-repeat] [mask-size:contain]" />
+              )}
               <div className="min-w-0 flex-1">
-                <h1 className="truncate text-[15px] font-black tracking-[-0.02em]">학급 보상 시스템</h1>
-                <p className="truncate text-xs font-semibold text-[var(--theme-muted-text)]">관리자 · {settings.className ?? settings.appTitle ?? '학급 매점'}</p>
+                <h1 className="truncate text-[19px] font-black leading-tight tracking-[-0.03em] lg:text-[20px]" title={classLabel}>{classLabel}</h1>
               </div>
               <div className="flex items-center gap-1 lg:hidden">
                 <a href={storeHref} target="_blank" rel="noopener noreferrer" aria-label="매점 열기 새 탭 열림" className={buttonClass({ variant: 'ghost', size: 'sm' })}><Icon name="store" size={16} /><span className="hidden sm:inline">매점</span></a>
@@ -2597,8 +2607,14 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
             ) : null}
 
             {activeTab === 'tree' ? (
-              <section id="admin-panel-tree" role="tabpanel" aria-labelledby="admin-tab-tree" aria-label="학급 나무">
+              <section id="admin-panel-tree" role="tabpanel" aria-labelledby="admin-tab-tree" aria-label="나무 키우기">
                 <ClassTreePanel unit={unit} notify={notify} />
+              </section>
+            ) : null}
+
+            {activeTab === 'pets' ? (
+              <section id="admin-panel-pets" role="tabpanel" aria-labelledby="admin-tab-pets" aria-label="펫 키우기">
+                <PetPanel unit={unit} notify={notify} />
               </section>
             ) : null}
 

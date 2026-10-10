@@ -11,6 +11,7 @@ import { readCurrentLedgerStates } from './taskLedger/currentState';
 import { appendOperationAudit, assertOperationAudit } from './operationAudit';
 import { readCancellationItems, validateLegacyCancellationSource } from './legacyCancellationSource';
 import { revokeTreeDropsForTransaction } from './classTree';
+import { revokePetForTransaction } from './pets';
 import { restoreCheckoutVouchers, revokeStoreCoupons, storeCouponsUsed } from './studentBag';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -331,7 +332,8 @@ export function createDatabaseTransactionCommands(
              ${state.payloadHash}, 1)
         `);
         await dependencies.afterReversalTransaction?.();
-        // A cancelled watering or task reward takes its drops back from a tree that is still growing.
+        // A cancelled watering or task reward takes its drops back from a tree that is still growing,
+        // and a cancelled feeding, decor purchase or task reward its growth (and decor) back from the pet.
         // A cancelled checkout takes back the digital products it gave and gives back the 교환권 it used.
         if (state.original.kind === 'CHECKOUT') {
           await revokeStoreCoupons(tx, dependencies.tenantId, state.original.transaction_id);
@@ -339,6 +341,8 @@ export function createDatabaseTransactionCommands(
         }
         if (state.original.kind === 'GROWTH_SPEND' || state.original.kind === 'TASK_REWARD') {
           await revokeTreeDropsForTransaction(tx, dependencies.tenantId, {
+            originalTransactionId: state.original.transaction_id, reversalTransactionId, operationId: input.operationId });
+          await revokePetForTransaction(tx, dependencies.tenantId, {
             originalTransactionId: state.original.transaction_id, reversalTransactionId, operationId: input.operationId });
         }
         const cancellationCompletionId = resetTaskCompletion

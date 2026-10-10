@@ -1,12 +1,37 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_CLASS_TREE_SETTINGS, classTreeGoal, classTreeLook, parseClassTreeSettings } from './classTree';
+import {
+  DEFAULT_CLASS_TREE_SETTINGS,
+  classTreeEstimateDays,
+  classTreeLook,
+  classTreeStageProgress,
+  classTreeSuggestedGoal,
+  parseClassTreeSettings,
+} from './classTree';
 
-describe('class tree goal', () => {
-  it('is students × (daily waterings + one task) × 5 school days × weeks, unless typed in', () => {
-    expect(classTreeGoal(DEFAULT_CLASS_TREE_SETTINGS, 25)).toBe(25 * 3 * 5 * 4);
-    expect(classTreeGoal({ ...DEFAULT_CLASS_TREE_SETTINGS, waterDailyLimit: 0, taskDrops: 0 }, 10)).toBe(10 * 1 * 5 * 4);
-    expect(classTreeGoal({ ...DEFAULT_CLASS_TREE_SETTINGS, goalOverride: 333 }, 25)).toBe(333);
-    expect(classTreeGoal(DEFAULT_CLASS_TREE_SETTINGS, 0)).toBe(60);
+describe('class tree goal and estimate', () => {
+  it('suggests about four weeks of daily waterings and a task a day for a class that has not set a goal', () => {
+    expect(classTreeSuggestedGoal(DEFAULT_CLASS_TREE_SETTINGS, 25)).toBe(25 * 3 * 5 * 4);
+    expect(classTreeSuggestedGoal({ waterDailyLimit: 0, taskDrops: 0 }, 10)).toBe(10 * 1 * 5 * 4);
+    expect(classTreeSuggestedGoal(DEFAULT_CLASS_TREE_SETTINGS, 0)).toBe(60);
+  });
+
+  it('estimates the school days from the waterings and the tasks a student completes a week', () => {
+    // 25 students × (2 waterings + 1 drop × 5 tasks / 5 days) = 75 drops a day
+    expect(classTreeEstimateDays({ goal: 1500, tasksPerWeek: 5, waterDailyLimit: 2, taskDrops: 1 }, 25)).toBe(20);
+    expect(classTreeEstimateDays({ goal: 1500, tasksPerWeek: 10, waterDailyLimit: 2, taskDrops: 1 }, 25)).toBe(15);
+    expect(classTreeEstimateDays({ goal: 1500, tasksPerWeek: 5, waterDailyLimit: 2, taskDrops: 1 }, 25, 1425)).toBe(1);
+    expect(classTreeEstimateDays({ goal: 100, tasksPerWeek: 0, waterDailyLimit: 0, taskDrops: 1 }, 25)).toBeNull();
+    expect(classTreeEstimateDays({ goal: 100, tasksPerWeek: 5, waterDailyLimit: 1, taskDrops: 1 }, 0)).toBeNull();
+  });
+
+  it('shows students only the way to the next stage', () => {
+    expect(classTreeStageProgress(0, 100)).toEqual({ stage: 0, next: 1, fraction: 0 });
+    const sprout = classTreeStageProgress(10, 100);
+    expect([sprout.stage, sprout.next]).toEqual([1, 2]);
+    expect(sprout.fraction).toBeCloseTo(0.5);
+    const fruit = classTreeStageProgress(92, 100);
+    expect([fruit.stage, fruit.next]).toEqual([7, null]);
+    expect(fruit.fraction).toBeCloseTo(0.5);
   });
 });
 
@@ -32,7 +57,7 @@ describe('class tree settings from the teacher', () => {
   });
 
   it('refuses out-of-range or non-integer values with a Korean reason', () => {
-    for (const patch of [{ waterPrice: -1 }, { waterDailyLimit: 11 }, { taskDrops: 1.5 }, { targetWeeks: 0 }, { goalOverride: 0 },
+    for (const patch of [{ waterPrice: -1 }, { waterDailyLimit: 11 }, { taskDrops: 1.5 }, { goal: 0 }, { goal: null }, { tasksPerWeek: -1 },
       { rewardAmount: '100' }, { rewardProductId: '' }, { rewardProductId: ' P003' }, { rewardProductId: 3 }, { enabled: 'yes' },
       { treeName: '' }, { treeName: '   ' }, { treeName: '가'.repeat(13) }, { treeName: 3 }]) {
       const result = parseClassTreeSettings({ ...valid, ...patch });

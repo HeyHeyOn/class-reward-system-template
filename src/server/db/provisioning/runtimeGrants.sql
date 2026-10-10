@@ -1,4 +1,4 @@
--- Apply after migrations 0001–0047 as the migration owner, in the same
+-- Apply after migrations 0001–0049 as the migration owner, in the same
 -- transaction as creation of crs_app_runtime LOGIN NOSUPERUSER NOBYPASSRLS
 -- NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION. Never grant role membership.
 -- Passwords and provider URLs belong to the provisioning runner, not this file.
@@ -42,6 +42,12 @@ GRANT USAGE ON SEQUENCE tree_drops_event_sequence_seq TO crs_app_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON coupon_products TO crs_app_runtime;
 GRANT SELECT, INSERT ON student_items TO crs_app_runtime;
 GRANT UPDATE (used_at, revoked_at, used_transaction_id) ON student_items TO crs_app_runtime;
+-- Pets (0048–0049): settings, pets (accessories too) and rooms (companions too) change in place; growth
+-- and cares are append-only; owned decor changes only when its purchase is cancelled.
+GRANT SELECT, INSERT, UPDATE ON pet_settings, pets, pet_rooms TO crs_app_runtime;
+GRANT SELECT, INSERT ON pet_growth, pet_cares, pet_decor TO crs_app_runtime;
+GRANT UPDATE (revoked_at) ON pet_decor TO crs_app_runtime;
+GRANT USAGE ON SEQUENCE pet_growth_event_sequence_seq TO crs_app_runtime;
 GRANT EXECUTE ON FUNCTION
   public.platform_find_tenant_by_slug(text),
   public.platform_find_membership_by_tenant_and_google_subject(uuid,text),

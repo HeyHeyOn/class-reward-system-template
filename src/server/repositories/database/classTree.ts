@@ -7,7 +7,7 @@ import {
   CLASS_TREE_LIMITS,
   DEFAULT_CLASS_TREE_SETTINGS,
   DEFAULT_TREE_NAME,
-  classTreeGoal,
+  classTreeSuggestedGoal,
   type ClassTreeSettings,
 } from '@/domain/classTree';
 import {
@@ -23,7 +23,7 @@ import { appendOperationAudit } from './operationAudit';
 import { giveHarvestReward, readRewardProduct, storageItemShape } from './studentBag';
 
 /*
- * The class apple tree (migration 0044). Lock order, shared with every other money writer:
+ * The class apple tree (migrations 0044, 0047, 0049). Lock order, shared with every other money writer:
  * student/account rows first, then the growing tree row. A harvest locks all active accounts
  * (in student_id order) before the tree, so it never waits on a tree while holding the tree.
  */
@@ -50,7 +50,7 @@ const MAX_SAFE = Number.MAX_SAFE_INTEGER;
 
 type SettingsRow = {
   tree_enabled: boolean; water_price: string; water_daily_limit: number; task_drops: number; target_weeks: number;
-  goal_override: string | null; reward_amount: string; reward_product_id: string | null; tree_name: string;
+  goal_override: string | null; tasks_per_week: number; reward_amount: string; reward_product_id: string | null; tree_name: string;
 };
 type TreeRow = {
   tree_no: number; goal: string; drops: string; status: string; started_at: Date | string;
@@ -83,24 +83,36 @@ async function treeTablesPresent(tx: TenantTransaction): Promise<boolean> {
   return (result.rows[0] as { present?: unknown } | undefined)?.present === true;
 }
 
-export async function readClassTreeSettings(tx: TenantTransaction, tenantId: string): Promise<ClassTreeSettings> {
+/**
+ * The class's tree settings, or null when the teacher has not saved any. A class without a goal yet
+ * (settings saved before 0049 by the weeks) gets the goal the weeks gave for the current class size.
+ */
+async function readStoredSettings(tx: TenantTransaction, tenantId: string): Promise<ClassTreeSettings | null> {
   const result = await tx.execute(sql`
     SELECT tree_enabled, water_price::text AS water_price, water_daily_limit, task_drops, target_weeks,
-           goal_override::text AS goal_override, reward_amount::text AS reward_amount, reward_product_id, tree_name
+           goal_override::text AS goal_override, tasks_per_week, reward_amount::text AS reward_amount, reward_product_id, tree_name
     FROM growth_settings WHERE tenant_id=${tenantId}`);
   const row = result.rows[0] as SettingsRow | undefined;
-  if (!row) return DEFAULT_CLASS_TREE_SETTINGS;
+  if (!row) return null;
+  const waterDailyLimit = toNumber(row.water_daily_limit), taskDrops = toNumber(row.task_drops);
+  const goal = row.goal_override !== null ? toNumber(row.goal_override)
+    : Math.min(CLASS_TREE_LIMITS.goal.max, Math.max(1, Math.max(1, await countActiveStudents(tx, tenantId))
+      * Math.max(1, waterDailyLimit + taskDrops) * 5 * toNumber(row.target_weeks)));
   return {
     enabled: row.tree_enabled === true,
     treeName: row.tree_name || DEFAULT_TREE_NAME,
     waterPrice: toNumber(row.water_price),
-    waterDailyLimit: toNumber(row.water_daily_limit),
-    taskDrops: toNumber(row.task_drops),
-    targetWeeks: toNumber(row.target_weeks),
-    goalOverride: row.goal_override === null ? null : toNumber(row.goal_override),
+    waterDailyLimit,
+    taskDrops,
+    goal,
+    tasksPerWeek: toNumber(row.tasks_per_week),
     rewardAmount: toNumber(row.reward_amount),
     rewardProductId: row.reward_product_id,
   };
+}
+
+export async function readClassTreeSettings(tx: TenantTransaction, tenantId: string): Promise<ClassTreeSettings> {
+  return await readStoredSettings(tx, tenantId) ?? DEFAULT_CLASS_TREE_SETTINGS;
 }
 
 async function readGrowingTree(tx: TenantTransaction, tenantId: string, lock: boolean): Promise<TreeRow | undefined> {
@@ -279,9 +291,11 @@ export function createClassTreeCommands(dependencies: ClassTreeDependencies) {
     /** Everything the teacher's tree screen shows. */
     async adminBoard(): Promise<ClassTreeAdminBoardDto> {
       return runTenantTransaction(tenantId, async (tx) => {
-        const settings = await readClassTreeSettings(tx, tenantId);
-        const tree = await readGrowingTree(tx, tenantId, false);
         const activeStudents = await countActiveStudents(tx, tenantId);
+        // A class that has not saved settings yet starts from a goal that fits its size.
+        const settings = await readStoredSettings(tx, tenantId)
+          ?? { ...DEFAULT_CLASS_TREE_SETTINGS, goal: classTreeSuggestedGoal(DEFAULT_CLASS_TREE_SETTINGS, activeStudents) };
+        const tree = await readGrowingTree(tx, tenantId, false);
         const contributions = await tx.execute(sql`
           SELECT s.student_id, s.name,
                  COALESCE(sum(d.amount) FILTER (WHERE d.source='WATER' AND c.drop_id IS NULL), 0)::text AS water,
@@ -312,7 +326,6 @@ export function createClassTreeCommands(dependencies: ClassTreeDependencies) {
         return {
           settings,
           activeStudents,
-          computedGoal: classTreeGoal({ ...settings, goalOverride: null }, activeStudents),
           rewardProducts: (rewardProducts.rows as Array<{ product_id: string; name: string; image_url: string | null; is_active: boolean; digital_kind: string | null }>)
             .map((row) => ({
               productId: row.product_id, name: row.name, imageUrl: row.image_url || null, isActive: row.is_active === true,
@@ -335,36 +348,32 @@ export function createClassTreeCommands(dependencies: ClassTreeDependencies) {
     },
 
     /**
-     * Saves the teacher's settings. Turning the tree on for the first time plants tree No. 1; a
-     * change to anything the goal depends on resets the growing tree's goal.
+     * Saves the teacher's settings. Turning the tree on for the first time plants tree No. 1; a new
+     * goal becomes the growing tree's goal.
      */
     async saveSettings(settings: ClassTreeSettings): Promise<ClassTreeAdminBoardDto> {
       await runTenantTransaction(tenantId, async (tx) => {
         if (settings.rewardProductId !== null && !await readRewardProduct(tx, tenantId, settings.rewardProductId)) {
           throw new ClassTreeError('INVALID_INPUT', '수확 보상 상품을 찾지 못했어요. 상품 목록을 새로 불러와 주세요.', 400);
         }
-        const before = await readClassTreeSettings(tx, tenantId);
         await tx.execute(sql`
-          INSERT INTO growth_settings (tenant_id, tree_enabled, water_price, water_daily_limit, task_drops, target_weeks,
-                                       goal_override, reward_amount, reward_coupon, reward_product_id, tree_name)
+          INSERT INTO growth_settings (tenant_id, tree_enabled, water_price, water_daily_limit, task_drops, goal_override,
+                                       tasks_per_week, reward_amount, reward_coupon, reward_product_id, tree_name)
           VALUES (${tenantId}, ${settings.enabled}, ${settings.waterPrice}, ${settings.waterDailyLimit}, ${settings.taskDrops},
-                  ${settings.targetWeeks}, ${settings.goalOverride}, ${settings.rewardAmount}, '', ${settings.rewardProductId}, ${settings.treeName})
+                  ${settings.goal}, ${settings.tasksPerWeek}, ${settings.rewardAmount}, '', ${settings.rewardProductId}, ${settings.treeName})
           ON CONFLICT (tenant_id) DO UPDATE SET
             tree_enabled=EXCLUDED.tree_enabled, water_price=EXCLUDED.water_price, water_daily_limit=EXCLUDED.water_daily_limit,
-            task_drops=EXCLUDED.task_drops, target_weeks=EXCLUDED.target_weeks, goal_override=EXCLUDED.goal_override,
+            task_drops=EXCLUDED.task_drops, goal_override=EXCLUDED.goal_override, tasks_per_week=EXCLUDED.tasks_per_week,
             reward_amount=EXCLUDED.reward_amount, reward_coupon=EXCLUDED.reward_coupon, reward_product_id=EXCLUDED.reward_product_id,
             tree_name=EXCLUDED.tree_name,
             version=growth_settings.version+1, updated_at=clock_timestamp()`);
         const tree = await readGrowingTree(tx, tenantId, true);
-        const goal = classTreeGoal(settings, await countActiveStudents(tx, tenantId));
         if (!tree) {
-          if (settings.enabled) await startTree(tx, tenantId, goal);
+          if (settings.enabled) await startTree(tx, tenantId, settings.goal);
           return;
         }
-        const goalInputsChanged = before.targetWeeks !== settings.targetWeeks || before.goalOverride !== settings.goalOverride
-          || before.waterDailyLimit !== settings.waterDailyLimit || before.taskDrops !== settings.taskDrops;
-        if (goalInputsChanged && toNumber(tree.goal) !== goal) {
-          await tx.execute(sql`UPDATE class_trees SET goal=${goal}, version=version+1 WHERE tenant_id=${tenantId} AND tree_no=${tree.tree_no}`);
+        if (toNumber(tree.goal) !== settings.goal) {
+          await tx.execute(sql`UPDATE class_trees SET goal=${settings.goal}, version=version+1 WHERE tenant_id=${tenantId} AND tree_no=${tree.tree_no}`);
         }
       });
       return commands.adminBoard();
@@ -462,7 +471,7 @@ export function createClassTreeCommands(dependencies: ClassTreeDependencies) {
 
     /**
      * Harvests a full tree: every active student gets the reward money and reward product set now, and
-     * the next tree is planted with a goal for the current class size.
+     * the next tree is planted with the goal the teacher set.
      */
     async harvest(input: Readonly<{ operationId: string; treeNo: number }>): Promise<ClassTreeHarvestResultDto> {
       const operationId = requireOperationId(input.operationId);
@@ -514,7 +523,7 @@ export function createClassTreeCommands(dependencies: ClassTreeDependencies) {
                  version=version+1
           WHERE tenant_id=${tenantId} AND tree_no=${tree.tree_no} RETURNING harvested_at`);
         const harvestedAt = iso((harvested.rows[0] as { harvested_at: Date | string }).harvested_at);
-        const nextGoal = classTreeGoal(settings, students.length);
+        const nextGoal = settings.goal;
         const nextTreeNo = await startTree(tx, tenantId, nextGoal);
         const result: ClassTreeHarvestResultDto = {
           ok: true, operationId, treeNo: tree.tree_no, recipients: students.length, rewardAmount, rewardItem,

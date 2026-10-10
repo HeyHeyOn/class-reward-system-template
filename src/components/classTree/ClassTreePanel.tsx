@@ -1,10 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   CLASS_TREE_LIMITS,
   CLASS_TREE_STAGES,
-  classTreeGoal,
+  classTreeEstimateDays,
   classTreeLook,
   parseClassTreeSettings,
   DEFAULT_TREE_NAME,
@@ -12,6 +12,7 @@ import {
   type ClassTreeSettings,
 } from '@/domain/classTree';
 import type { ClassTreeAdminBoardDto } from '@/lib/classTreeApi';
+import { schoolDaysEstimate } from '@/domain/schoolDays';
 import { withParticle } from '@/lib/koreanParticle';
 import { DIGITAL_KIND_LABELS } from '@/lib/studentBagApi';
 import { Button, Callout, Card, CardHeader, EmptyState, Field, Input, Modal, PageHeader, Select, Spinner, StatCard, Switch } from '../ui';
@@ -19,18 +20,17 @@ import { TreeCanvas, treePercent, type TreePlay } from './TreeCanvas';
 import { fetchClassTreeBoard, giveClassFeed, harvestTree, saveClassTreeSettings } from './classTreeClient';
 
 type Draft = Readonly<{
-  enabled: boolean; waterPrice: string; waterDailyLimit: string; taskDrops: string; targetWeeks: string;
-  manualGoal: boolean; goalOverride: string; rewardAmount: string; rewardProductId: string; treeName: string;
+  enabled: boolean; waterPrice: string; waterDailyLimit: string; taskDrops: string; goal: string; tasksPerWeek: string;
+  rewardAmount: string; rewardProductId: string; treeName: string;
 }>;
 
-const toDraft = (settings: ClassTreeSettings, computedGoal: number): Draft => ({
+const toDraft = (settings: ClassTreeSettings): Draft => ({
   enabled: settings.enabled,
   waterPrice: String(settings.waterPrice),
   waterDailyLimit: String(settings.waterDailyLimit),
   taskDrops: String(settings.taskDrops),
-  targetWeeks: String(settings.targetWeeks),
-  manualGoal: settings.goalOverride !== null,
-  goalOverride: String(settings.goalOverride ?? computedGoal),
+  goal: String(settings.goal),
+  tasksPerWeek: String(settings.tasksPerWeek),
   rewardAmount: String(settings.rewardAmount),
   rewardProductId: settings.rewardProductId ?? '',
   treeName: settings.treeName,
@@ -44,8 +44,8 @@ function fromDraft(draft: Draft, enabled = draft.enabled) {
     waterPrice: wholeOrNaN(draft.waterPrice),
     waterDailyLimit: wholeOrNaN(draft.waterDailyLimit),
     taskDrops: wholeOrNaN(draft.taskDrops),
-    targetWeeks: wholeOrNaN(draft.targetWeeks),
-    goalOverride: draft.manualGoal ? wholeOrNaN(draft.goalOverride) : null,
+    goal: wholeOrNaN(draft.goal),
+    tasksPerWeek: wholeOrNaN(draft.tasksPerWeek),
     rewardAmount: wholeOrNaN(draft.rewardAmount),
     rewardProductId: draft.rewardProductId || null,
     treeName: draft.treeName,
@@ -75,7 +75,7 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
 
   const applyBoard = useCallback((next: ClassTreeAdminBoardDto, resetDraft: boolean) => {
     setBoard(next);
-    if (resetDraft) setDraft(toDraft(next.settings, next.computedGoal));
+    if (resetDraft) setDraft(toDraft(next.settings));
     setFeedAmount((current) => current || String(Math.max(1, next.activeStudents)));
   }, []);
 
@@ -89,9 +89,7 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
 
   useEffect(() => { void Promise.resolve().then(() => load(true)); }, [load]);
 
-  const parsed = useMemo(() => (draft ? fromDraft(draft) : null), [draft]);
-  const previewGoal = board && parsed?.ok ? classTreeGoal({ ...parsed.settings, goalOverride: null }, board.activeStudents) : null;
-  const dirty = Boolean(board && draft && JSON.stringify(toDraft(board.settings, board.computedGoal)) !== JSON.stringify(draft));
+  const dirty = Boolean(board && draft && JSON.stringify(toDraft(board.settings)) !== JSON.stringify(draft));
 
   async function save(enabled?: boolean) {
     if (!draft) return;
@@ -104,7 +102,7 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
     if (!result.ok) { setFormError(result.error); return; }
     const wasOff = !board?.tree;
     applyBoard(result.data, true);
-    notify(checked.settings.enabled && wasOff && result.data.tree ? `${withParticle(checked.settings.treeName, '을/를')} 심었어요. 학생 은행 화면에 나무가 보여요.` : '학급 나무 설정을 저장했어요.');
+    notify(checked.settings.enabled && wasOff && result.data.tree ? `${withParticle(checked.settings.treeName, '을/를')} 심었어요. 학생 은행 화면에 나무가 보여요.` : '나무 키우기 설정을 저장했어요.');
   }
 
   async function classFeed() {
@@ -159,7 +157,7 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
   if (!board || !draft) {
     return (
       <div className="space-y-6">
-        <PageHeader title="학급 나무" description="학생들이 함께 양분을 주어 나무를 키우고, 열매가 다 익으면 반 전체가 보상을 받아요." />
+        <PageHeader title="나무 키우기" description="학생들이 함께 양분을 주어 나무를 키우고, 열매가 다 익으면 반 전체가 보상을 받아요." />
         {loadError ? (
           <Callout tone="danger" title="불러오지 못했어요">
             <p>{loadError}</p>
@@ -184,7 +182,7 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
 
   return (
     <div className="space-y-6">
-      <PageHeader title="학급 나무" description="학생들이 함께 양분을 주어 나무를 키우고, 열매가 다 익으면 반 전체가 보상을 받아요."
+      <PageHeader title="나무 키우기" description="학생들이 함께 양분을 주어 나무를 키우고, 열매가 다 익으면 반 전체가 보상을 받아요."
         actions={<Button variant="secondary" size="sm" icon="refresh" onClick={() => void load(!dirty)} disabled={loading}>새로고침</Button>} />
 
       {actionError ? <div role="alert"><Callout tone="danger">{actionError}</Callout></div> : null}
@@ -192,7 +190,7 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
       {!settings.enabled && !tree ? (
         <Card>
           <EmptyState icon="sprout" title="아직 학급 나무를 심지 않았어요"
-            description="아래에서 이름과 기간, 보상을 정하고 시작하면 씨앗이 심어져요. 학생들은 은행 화면에서 양분을 주고, 과제를 완료해도 양분이 쌓여요."
+            description="아래에서 이름과 목표 양분, 보상을 정하고 시작하면 씨앗이 심어져요. 학생들은 은행 화면에서 양분을 주고, 과제를 완료해도 양분이 쌓여요."
             action={<Button variant="primary" icon="sprout" onClick={() => void save(true)} loading={saving} disabled={saving}>학급 나무 시작하기</Button>} />
         </Card>
       ) : null}
@@ -251,7 +249,7 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
       ) : null}
 
       <Card className="space-y-5">
-        <CardHeader title="키우기 설정" description="기간을 고르면 학생 수에 맞춰 목표 양분을 계산해요. 보상은 수확할 때의 설정으로 줘요." />
+        <CardHeader title="키우기 설정" description="목표 양분은 선생님이 정해요. 아래에서 예상 키우기 기간을 참고할 수 있어요. 보상은 수확할 때의 설정으로 줘요." />
         {tree || settings.enabled ? (
           <Switch checked={draft.enabled} onChange={(enabled) => set({ enabled })} label="학생 화면에 학급 나무 보이기"
             description="끄면 학생들은 나무를 볼 수 없고 양분도 쌓이지 않아요. 지금까지 쌓인 양분은 그대로 남아요." />
@@ -262,18 +260,8 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
             <Input id="tree-name" value={draft.treeName} maxLength={TREE_NAME_LENGTH} placeholder={DEFAULT_TREE_NAME}
               onChange={(event) => set({ treeName: event.target.value })} />
           </Field>
-          <Field label="키우는 기간" htmlFor="tree-weeks"
-            hint={previewGoal !== null && board ? `학생 ${board.activeStudents}명 × 하루 ${Math.max(1, wholeOrNaN(draft.waterDailyLimit) + wholeOrNaN(draft.taskDrops) || 1)}개 × ${wholeOrNaN(draft.targetWeeks) * 5}일 = ${fmt(previewGoal)}개` : undefined}>
-            <Select id="tree-weeks" value={draft.targetWeeks} onChange={(event) => set({ targetWeeks: event.target.value })}>
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((weeks) => <option key={weeks} value={weeks}>약 {weeks}주</option>)}
-            </Select>
-          </Field>
-          <Field label="목표 양분" htmlFor="tree-goal" hint={draft.manualGoal ? '직접 정한 목표를 써요.' : '기간에 맞춰 자동으로 정해요.'}>
-            <div className="flex items-center gap-2">
-              <Input id="tree-goal" inputMode="numeric" value={draft.manualGoal ? draft.goalOverride : String(previewGoal ?? '')} disabled={!draft.manualGoal}
-                onChange={(event) => set({ goalOverride: event.target.value })} suffix="개" />
-              <Switch checked={draft.manualGoal} onChange={(manualGoal) => set({ manualGoal, goalOverride: draft.goalOverride || String(previewGoal ?? '') })} ariaLabel="목표 양분 직접 정하기" />
-            </div>
+          <Field label="목표 양분" htmlFor="tree-goal" hint="양분이 이만큼 쌓이면 열매가 다 익어요. 바꾸면 지금 자라는 나무에도 바로 적용돼요.">
+            <Input id="tree-goal" inputMode="numeric" value={draft.goal} onChange={(event) => set({ goal: event.target.value })} suffix="개" />
           </Field>
           <Field label="양분 주기 가격" htmlFor="tree-price" hint="0으로 두면 무료로 줄 수 있어요.">
             <Input id="tree-price" inputMode="numeric" value={draft.waterPrice} onChange={(event) => set({ waterPrice: event.target.value })} suffix={unit} />
@@ -306,6 +294,7 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
             </Select>
           </Field>
         </div>
+        <TreeEstimate draft={draft} activeStudents={board.activeStudents} drops={tree?.drops ?? null} onTasks={(tasksPerWeek) => set({ tasksPerWeek })} />
         {formError ? <p role="alert" className="text-sm font-semibold text-[var(--crs-danger-text)]">{formError}</p> : null}
         <div className="flex flex-wrap gap-2">
           {tree || settings.enabled ? (
@@ -313,7 +302,7 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
           ) : (
             <Button variant="primary" icon="sprout" onClick={() => void save(true)} loading={saving} disabled={saving}>이 설정으로 시작하기</Button>
           )}
-          {dirty ? <Button variant="ghost" onClick={() => { setDraft(toDraft(board.settings, board.computedGoal)); setFormError(''); }} disabled={saving}>되돌리기</Button> : null}
+          {dirty ? <Button variant="ghost" onClick={() => { setDraft(toDraft(board.settings)); setFormError(''); }} disabled={saving}>되돌리기</Button> : null}
         </div>
       </Card>
 
@@ -379,5 +368,36 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
         </Modal>
       ) : null}
     </div>
+  );
+}
+
+/** 예상 키우기 기간: what the settings typed so far mean in school days, for the teacher's reference only. */
+function TreeEstimate({ draft, activeStudents, drops, onTasks }: Readonly<{
+  draft: Draft; activeStudents: number; drops: number | null; onTasks: (tasksPerWeek: string) => void;
+}>) {
+  const input = {
+    goal: wholeOrNaN(draft.goal), tasksPerWeek: wholeOrNaN(draft.tasksPerWeek),
+    waterDailyLimit: wholeOrNaN(draft.waterDailyLimit), taskDrops: wholeOrNaN(draft.taskDrops),
+  };
+  const ready = Object.values(input).every((value) => Number.isSafeInteger(value)) && input.goal >= 1;
+  const days = ready ? classTreeEstimateDays(input, activeStudents) : null;
+  const left = ready && drops !== null ? classTreeEstimateDays(input, activeStudents, drops) : null;
+  return (
+    <section aria-labelledby="tree-estimate" className="space-y-3 rounded-[16px] bg-[var(--theme-accent-soft)] p-4">
+      <h3 id="tree-estimate" className="text-sm font-black">예상 키우기 기간 <span className="text-xs font-semibold text-[var(--theme-muted-text)]">· 참고용</span></h3>
+      <div className="flex flex-wrap items-center gap-2">
+        <label htmlFor="tree-tasks-week" className="text-sm font-semibold">학생 한 명당 일주일에 과제를 몇 개 정도 완료하나요?</label>
+        <Input id="tree-tasks-week" inputMode="numeric" value={draft.tasksPerWeek} className="w-[6.5rem]" suffix="개" onChange={(event) => onTasks(event.target.value)} />
+      </div>
+      <p className="text-[22px] font-black tracking-[-0.02em]" aria-live="polite">
+        {!ready ? '숫자를 모두 넣으면 계산해요' : days === null ? '이 설정으로는 열매가 익지 않아요' : schoolDaysEstimate(days)}
+      </p>
+      <p className="text-[13px] text-[var(--theme-muted-text)]">
+        {left !== null && drops !== null && drops > 0 ? `지금 자라는 나무는 평일 약 ${left}일 뒤에 다 익어요. ` : ''}
+        학생 {activeStudents}명이 평일마다 양분을 하루 {Number.isSafeInteger(input.waterDailyLimit) ? input.waterDailyLimit : '?'}번(하루 최대)씩 주고,
+        과제를 일주일에 {Number.isSafeInteger(input.tasksPerWeek) ? input.tasksPerWeek : '?'}개 완료한다고 보고 계산했어요. 선생님이 반 전체에 주는 양분은 빼고 셌어요.
+        과제 수는 이 계산에만 쓰여요.
+      </p>
+    </section>
   );
 }

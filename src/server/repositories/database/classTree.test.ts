@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_CLASS_TREE_SETTINGS, classTreeGoal, type ClassTreeSettings } from '@/domain/classTree';
+import { DEFAULT_CLASS_TREE_SETTINGS, type ClassTreeSettings } from '@/domain/classTree';
 import { createPgliteDatabaseHarness, type PgliteDatabaseHarness } from '@/server/db/testing/pglite';
 import { ClassTreeError, addTaskTreeDrops, createClassTreeCommands, revokeTreeDropsForTransaction } from './classTree';
 import { createStudentBagCommands } from './studentBag';
@@ -13,11 +13,12 @@ vi.mock('server-only', () => ({}));
 let harness: PgliteDatabaseHarness;
 let sequence = 0;
 const op = () => `50000000-0000-4000-8000-${String(++sequence).padStart(12, '0')}`;
-const ON: ClassTreeSettings = { ...DEFAULT_CLASS_TREE_SETTINGS, enabled: true };
+const ON: ClassTreeSettings = { ...DEFAULT_CLASS_TREE_SETTINGS, enabled: true, goal: 180 };
 
 beforeEach(async () => {
   harness = await createPgliteDatabaseHarness();
-  for (const file of ['0044_class_tree.sql', '0045_student_bag.sql', '0046_vouchers.sql', '0047_tree_name.sql']) {
+  for (const file of ['0044_class_tree.sql', '0045_student_bag.sql', '0046_vouchers.sql', '0047_tree_name.sql', '0048_pets.sql',
+    '0049_growth_goals_and_pet_company.sql']) {
     await harness.database.exec(await readFile(resolve(process.cwd(), 'src/server/db/migrations', file), 'utf8'));
   }
   await harness.database.exec('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_runtime');
@@ -58,12 +59,12 @@ describe('class tree settings', () => {
     expect((await tree().adminBoard()).tree).toBeNull();
     expect(await failure(tree().water({ studentId: 'S001', operationId: op() }))).toBe('TREE_OFF');
 
-    const board = await tree().saveSettings(ON);
-    expect(board.settings.enabled).toBe(true);
+    // Before any settings: a goal of about four weeks for the class size — 3 students × (2 waterings + 1 task) × 5 days × 4 weeks.
+    expect((await tree().adminBoard()).settings.goal).toBe(180);
+    const board = await tree().saveSettings({ ...ON, goal: 150, tasksPerWeek: 7 });
+    expect(board.settings).toMatchObject({ enabled: true, goal: 150, tasksPerWeek: 7 });
     expect(board.activeStudents).toBe(3);
-    // 3 students × (2 waterings + 1 task) a day × 5 days × 4 weeks
-    expect(board.tree).toMatchObject({ treeNo: 1, drops: 0, goal: 180 });
-    expect(classTreeGoal(ON, 3)).toBe(180);
+    expect(board.tree).toMatchObject({ treeNo: 1, drops: 0, goal: 150 });
   });
 
   it('keeps the name the class gives its tree', async () => {
@@ -73,10 +74,16 @@ describe('class tree settings', () => {
     expect((await tree().studentView('S001')).treeName).toBe('햇살 나무');
   });
 
-  it('moves the growing goal only when what the goal depends on changes', async () => {
+  it('gives the growing tree the goal the teacher sets', async () => {
     await tree().saveSettings(ON);
-    expect((await tree().saveSettings({ ...ON, rewardAmount: 5 })).tree?.goal).toBe(180);
-    expect((await tree().saveSettings({ ...ON, rewardAmount: 5, goalOverride: 7 })).tree?.goal).toBe(7);
+    expect((await tree().saveSettings({ ...ON, rewardAmount: 5, waterDailyLimit: 5 })).tree?.goal).toBe(180);
+    expect((await tree().saveSettings({ ...ON, rewardAmount: 5, goal: 7 })).tree?.goal).toBe(7);
+  });
+
+  it('reads a goal saved before 0049 from its weeks', async () => {
+    await harness.database.query(`INSERT INTO growth_settings (tenant_id, tree_enabled, target_weeks) VALUES ($1, true, 2)`, [harness.tenantOneId]);
+    // 3 students × (2 + 1) × 5 days × 2 weeks
+    expect((await tree().adminBoard()).settings).toMatchObject({ goal: 90, tasksPerWeek: 5 });
   });
 });
 
@@ -130,7 +137,7 @@ describe('watering', () => {
 describe('classFeed and harvest', () => {
   it('fills the tree, stops watering when full, and pays every active student at the harvest', async () => {
     // An inactive physical product still works as a reward: it lands as its 교환권.
-    await tree().saveSettings({ ...ON, goalOverride: 20, rewardAmount: 50, rewardProductId: 'P010' });
+    await tree().saveSettings({ ...ON, goal: 20, rewardAmount: 50, rewardProductId: 'P010' });
     await tree().water({ studentId: 'S001', operationId: op() });
     expect(await failure(tree().harvest({ operationId: op(), treeNo: 1 }))).toBe('TREE_NOT_READY');
     const fed = await tree().classFeed({ operationId: op(), amount: 19, note: '모둠 활동 칭찬' });
