@@ -26,6 +26,8 @@ export type ProcessCheckoutInput = {
   now?: () => Date;
   transactionIdFactory?: () => string;
   expectedPricing: CartPricingPreviewSuccess;
+  /** 교환권 (storage items) the student chose to use; PostgreSQL classes only. */
+  voucherItemIds?: string[];
 };
 
 export type ProcessCheckoutSuccess = {
@@ -44,6 +46,7 @@ export type ProcessCheckoutResult =
   | Exclude<CheckoutPreviewResult, { ok: true }>
   | { ok: false; code: 'STUDENT_NOT_FOUND'; message: string }
   | { ok: false; code: 'STUDENT_INACTIVE'; message: string }
+  | { ok: false; code: 'VOUCHER_UNAVAILABLE'; message: string }
   | { ok: false; code: 'PRICE_CHANGED'; message: string; latestPricing: CartPricingPreviewSuccess };
 
 export type CheckoutCommandInput = ProcessCheckoutInput & {
@@ -72,6 +75,7 @@ export function createSheetsCheckoutCommand(store: TabularStore): CheckoutComman
         studentId: input.studentId,
         items: input.items,
         expectedPricing: input.expectedPricing,
+        voucherItemIds: input.voucherItemIds,
         operator: input.operator,
         now: input.now,
         transactionIdFactory: input.transactionIdFactory,
@@ -80,8 +84,13 @@ export function createSheetsCheckoutCommand(store: TabularStore): CheckoutComman
   };
 }
 
+/** The chosen 교환권 IDs in canonical order (trimmed, unique, sorted). */
+export function canonicalVoucherItemIds(ids: readonly string[] | undefined): string[] {
+  return [...new Set((ids ?? []).map((id) => id.trim()))].sort((left, right) => left.localeCompare(right));
+}
+
 export function createCheckoutPayloadHash(
-  input: Pick<CheckoutCommandInput, 'studentId' | 'items' | 'expectedPricing' | 'operator'>,
+  input: Pick<CheckoutCommandInput, 'studentId' | 'items' | 'expectedPricing' | 'operator' | 'voucherItemIds'>,
 ): string {
   const quantities = new Map<string, number>();
   for (const item of input.items) {
@@ -100,7 +109,10 @@ export function createCheckoutPayloadHash(
     expectedPricing: input.expectedPricing,
     operator: input.operator?.trim() || 'kiosk',
   };
-  if (!canonicalPayload.studentId || !input.expectedPricing?.ok) {
+  // A checkout without 교환권 hashes exactly as before they existed.
+  const voucherItemIds = canonicalVoucherItemIds(input.voucherItemIds);
+  if (voucherItemIds.length > 0) Object.assign(canonicalPayload, { voucherItemIds });
+  if (!canonicalPayload.studentId || !input.expectedPricing?.ok || voucherItemIds.some((id) => !id)) {
     throw new Error('Cannot hash an invalid checkout payload.');
   }
   return createHash('sha256').update(stableJson(canonicalPayload), 'utf8').digest('hex');
@@ -108,13 +120,22 @@ export function createCheckoutPayloadHash(
 
 export type PreviewCheckoutCartInput = {
   items: CartItem[];
+  /** 교환권 counts per product (PostgreSQL classes only). */
+  vouchers?: Readonly<Record<string, number>>;
   now?: () => Date;
 };
+
+const NO_VOUCHERS = {
+  ok: false, code: 'INVALID_VOUCHERS', message: '교환권은 새 방식(PostgreSQL) 학급에서만 쓸 수 있습니다.',
+} as const;
+const hasVouchers = (vouchers: Readonly<Record<string, number>> | readonly string[] | undefined) =>
+  vouchers !== undefined && Object.keys(vouchers).length > 0;
 
 export async function previewCheckoutCart(
   store: TabularStore,
   input: PreviewCheckoutCartInput,
 ): Promise<CartPricingPreviewResult> {
+  if (hasVouchers(input.vouchers)) return NO_VOUCHERS;
   const now = input.now?.() ?? new Date();
   const productRecords = await getProductRecords(store);
   const productRecordsById = new Map(productRecords.map((record) => [record.product.productId, record]));
@@ -133,6 +154,7 @@ export async function processCheckout(
   store: TabularStore,
   input: ProcessCheckoutInput,
 ): Promise<ProcessCheckoutResult> {
+  if (hasVouchers(input.voucherItemIds)) return NO_VOUCHERS;
   const now = input.now?.() ?? new Date();
   const studentRecord = await getStudentRecordById(store, input.studentId);
 

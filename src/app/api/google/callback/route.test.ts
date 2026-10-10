@@ -26,6 +26,19 @@ const mocks = vi.hoisted(() => ({
   setGrant: vi.fn(),
   revokeGrant: vi.fn(async () => undefined),
   setSession: vi.fn(),
+  clearSession: vi.fn(),
+  setPending: vi.fn(),
+  hasAgreement: vi.fn(async () => true),
+  latestAgreement: vi.fn(async (): Promise<{ version: string; agreedAt: string } | null> => null),
+  listMemberships: vi.fn(async (): Promise<unknown[]> => []),
+}));
+
+vi.mock('@/server/teacherAccounts', () => ({
+  teacherAccountsEnabled: () => process.env.CLASS_STORE_STORAGE === 'postgresql' && process.env.NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT !== 'generator',
+  getProductionTeacherAccountStore: () => ({ hasAgreement: mocks.hasAgreement, latestAgreement: mocks.latestAgreement }),
+}));
+vi.mock('@/server/repositories/database/classMemberships', () => ({
+  getProductionClassMembershipRepository: () => ({ listByGoogleSubject: mocks.listMemberships }),
 }));
 
 vi.mock('@/server/googleOAuth', () => ({
@@ -38,6 +51,8 @@ vi.mock('@/server/googleOAuth', () => ({
   setGeneratorGrantCookie: mocks.setGrant,
   revokeGeneratorGrant: mocks.revokeGrant,
   setGoogleSessionCookie: mocks.setSession,
+  clearGoogleSessionCookie: mocks.clearSession,
+  setPendingAgreementCookie: mocks.setPending,
 }));
 
 import { GET } from './route';
@@ -56,6 +71,14 @@ describe('GET /api/google/callback', () => {
     mocks.setGrant.mockClear();
     mocks.revokeGrant.mockClear();
     mocks.setSession.mockClear();
+    mocks.clearSession.mockClear();
+    mocks.setPending.mockClear();
+    mocks.hasAgreement.mockReset();
+    mocks.hasAgreement.mockResolvedValue(true);
+    mocks.latestAgreement.mockReset();
+    mocks.latestAgreement.mockResolvedValue(null);
+    mocks.listMemberships.mockReset();
+    mocks.listMemberships.mockResolvedValue([]);
   });
 
   it('returns generator users to the generator page after ordinary identity OAuth', async () => {
@@ -139,6 +162,42 @@ describe('GET /api/google/callback', () => {
     const response = await GET(new Request('https://teacher-app.vercel.app/api/google/callback?code=ok&state=state-123&returnTo=https://evil.example'));
     expect(response.headers.get('location')).toBe('https://teacher-app.vercel.app/c/alpha-class/admin');
     expect(mocks.setSession).toHaveBeenCalledOnce();
+    expect(mocks.setSession).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ subject: 'google-subject-123', agreement: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) }));
+  });
+
+  it('holds a first PostgreSQL sign-in at the agreement page without starting a session', async () => {
+    vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
+    mocks.consumeGoogleState.mockReturnValue({ state: 'state-123', returnTo: '/classes' });
+    mocks.hasAgreement.mockResolvedValueOnce(false);
+    const response = await GET(new Request('https://teacher-app.vercel.app/api/google/callback?code=ok&state=state-123'));
+    expect(response.headers.get('location')).toBe('https://teacher-app.vercel.app/signup');
+    expect(mocks.setSession).not.toHaveBeenCalled();
+    expect(mocks.clearSession).toHaveBeenCalledOnce();
+    expect(mocks.setPending).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      purpose: 'agreement', subject: 'google-subject-123', email: 'teacher@example.com', mode: 'signup', returnTo: '/classes',
+    }));
+  });
+
+  it('asks a teacher with classes (or an older agreement) to agree again rather than sign up', async () => {
+    vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
+    mocks.hasAgreement.mockResolvedValue(false);
+    mocks.listMemberships.mockResolvedValueOnce([{ slug: 'alpha-class' }]);
+    await GET(new Request('https://teacher-app.vercel.app/api/google/callback?code=ok&state=state-123'));
+    expect(mocks.setPending).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ mode: 'update' }));
+
+    mocks.latestAgreement.mockResolvedValueOnce({ version: '2026-01-01', agreedAt: '2026-01-01T00:00:00.000Z' });
+    await GET(new Request('https://teacher-app.vercel.app/api/google/callback?code=ok&state=state-123'));
+    expect(mocks.setPending).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ mode: 'update', agreedVersion: '2026-01-01' }));
+    expect(mocks.setSession).not.toHaveBeenCalled();
+  });
+
+  it('fails the sign-in safely when agreements cannot be checked', async () => {
+    vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
+    mocks.hasAgreement.mockRejectedValueOnce(new Error('database unavailable'));
+    const response = await GET(new Request('https://teacher-app.vercel.app/api/google/callback?code=ok&state=state-123'));
+    expect(new URL(response.headers.get('location')!).pathname).toBe('/classes');
+    expect(mocks.setSession).not.toHaveBeenCalled();
+    expect(mocks.setPending).not.toHaveBeenCalled();
   });
 
   it('sends a legacy plain-state PostgreSQL login to class selection', async () => {

@@ -39,8 +39,15 @@ import { parseAssignmentBatchResult, buildTaskCreationBody, canonicalTaskCreatio
 import { formatShortDate, isoToSeoulLocal, seoulLocalToIso } from './admin/adminDates';
 import { TaskBasicFields, NewTaskStudentPicker, TaskAssignmentBoard, BulkAssignmentBoard } from './admin/AdminTaskEditors';
 import { ProductThumb, ProductFields } from './admin/AdminProductEditor';
+import { fetchDigitalProducts, saveDigitalProduct } from './bag/bagClient';
+import { DigitalProductFields, EMPTY_DIGITAL_DRAFT, digitalDraftOf, digitalSettingOf, sameDigitalDraft, type DigitalDraft } from './bag/DigitalProductFields';
+import { DIGITAL_KIND_LABELS, type DigitalProductDto } from '@/lib/studentBagApi';
 import { TaskResetConfirmDialog, TaskDeleteConfirmDialog, ProductDeleteConfirmDialog } from './admin/AdminConfirmDialogs';
-import { SidebarLink, QuickAction, SheetLoading, LoadingScreen, StudentQrCard } from './admin/AdminPresentation';
+import { SidebarLink, SidebarShortcut, SidebarButton, QuickAction, SheetLoading, LoadingScreen, StudentQrCard } from './admin/AdminPresentation';
+import { ShareLinkDialog, sharePaths, type ShareTarget } from './admin/ShareLinkDialog';
+import { ParentConsentFormDialog } from './admin/ParentConsentFormDialog';
+import { AccountLink } from './account/AccountLink';
+import type { AvatarConfig } from './profile/avatar';
 
 // Retain the existing public parser exports for callers outside the page.
 export { parseProductAdminEnvelope, getProductExpectedVersion, type ProductAdminState } from './admin/productAdminResponse';
@@ -52,6 +59,13 @@ const TransactionsPanel = dynamic(() => import('./TransactionsPage').then((modul
 const PromotionAdminPanel = dynamic(() => import('./promotions/PromotionAdminPanel').then((module) => module.PromotionAdminPanel), {
   loading: () => <SheetLoading label="프로모션 불러오는 중" />,
 });
+const BulkGiveDialog = dynamic(() => import('./bag/BulkGiveDialog').then((module) => module.BulkGiveDialog));
+const StudentStorageSection = dynamic(() => import('./bag/StudentStorageSection').then((module) => module.StudentStorageSection), {
+  loading: () => <SheetLoading label="보관함 여는 중" />,
+});
+const ClassTreePanel = dynamic(() => import('./classTree/ClassTreePanel').then((module) => module.ClassTreePanel), {
+  loading: () => <SheetLoading label="학급 나무 불러오는 중" />,
+});
 
 const TASK_DEFINITION_FIELDS = ['title', 'description', 'reward', 'isActive', 'sortOrder', 'availableFrom', 'dueAt', 'prerequisiteTaskId'] as const;
 
@@ -59,7 +73,7 @@ const EMPTY_STUDENT: NewStudentDraft = { studentId: '', name: '', balance: 0, st
 const EMPTY_PRODUCT: NewProductDraft = { name: '', price: 0, stock: 0, isActive: true, imageUrl: '', category: '', sortOrder: 1 };
 const EMPTY_TASK: Omit<TaskDraft, 'taskId'> = { title: '', description: '', reward: 0, isActive: true, sortOrder: 1, allowedStudentIds: [] };
 
-export function AdminManagePage({ migrationsHref }: { migrationsHref?: string } = {}) {
+export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: string; account?: Readonly<{ nickname: string; avatar: AvatarConfig }> } = {}) {
   const { activeTab, storeTab, adminTabRefs, storeTabRefs, hasOpenedPromotions, hasOpenedTransactions, selectAdminTab, selectStoreTab, handleAdminTabKeyDown, handleStoreTabKeyDown } = useAdminNavigation();
   const [students, setStudents] = useState<StudentDraft[]>([]);
   const [productAdminState, setProductAdminState] = useState<ProductAdminState>({
@@ -145,6 +159,24 @@ export function AdminManagePage({ migrationsHref }: { migrationsHref?: string } 
   const [productSheet, setProductSheet] = useState<EntitySheetState<ProductDraft> | null>(null);
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
   const [bulkBalanceOpen, setBulkBalanceOpen] = useState(false);
+  const [bulkGiveOpener, setBulkGiveOpener] = useState<HTMLElement | null>(null);
+  const [shareState, setShareState] = useState<Readonly<{ target: ShareTarget; opener: HTMLElement }> | null>(null);
+  const [consentFormOpener, setConsentFormOpener] = useState<HTMLElement | null>(null);
+  // 디지털 상품: store products whose purchase goes into the buyer's 보관함, by type (PostgreSQL classes).
+  const [digitalProducts, setDigitalProductMap] = useState<ReadonlyMap<string, DigitalProductDto>>(() => new Map());
+  const setDigitalProducts = useCallback((list: readonly DigitalProductDto[]) => {
+    setDigitalProductMap(new Map(list.map((product) => [product.productId, product])));
+  }, []);
+  const [newProductDigital, setNewProductDigital] = useState<DigitalDraft>(EMPTY_DIGITAL_DRAFT);
+  // Unsaved 디지털 상품 settings of the product open in the editor (saved with its 저장 button).
+  const [sheetDigitalDraft, setSheetDigitalDraft] = useState<Readonly<{ productId: string; draft: DigitalDraft }> | null>(null);
+  useEffect(() => {
+    if (tenantApiPath('/api/tasks') === '/api/tasks') return;
+    void Promise.resolve().then(async () => {
+      const result = await fetchDigitalProducts();
+      if (result.ok) setDigitalProducts(result.data);
+    });
+  }, [setDigitalProducts]);
   const [taskQuery, setTaskQuery] = useState('');
   const [taskFilter, setTaskFilter] = useState<'all' | 'active' | 'hidden'>('all');
   const [studentQuery, setStudentQuery] = useState('');
@@ -1732,6 +1764,8 @@ export function AdminManagePage({ migrationsHref }: { migrationsHref?: string } 
   async function createNewProduct(event?: FormEvent<HTMLFormElement>): Promise<boolean> {
     event?.preventDefault();
     if (productCreationInFlight.current) return false;
+    const digitalSetting = digitalSettingOf(newProductDigital);
+    if (!digitalSetting.ok) { notify(digitalSetting.error); return false; }
     let succeeded = false;
     const body = {
       productId: nextPrefixedId(products.map((product) => product.productId), 'P'),
@@ -1800,6 +1834,12 @@ export function AdminManagePage({ migrationsHref }: { migrationsHref?: string } 
         return currentSemanticKey === semanticKey ? EMPTY_PRODUCT : current;
       });
       productCreationAttempt.current = null;
+      if (digitalSetting.setting) {
+        const marked = await saveDigitalProduct(payload.productId, digitalSetting.setting);
+        if (marked.ok) setDigitalProducts(marked.data);
+        else refreshWarning += ' 디지털 상품 설정은 저장하지 못했어요. 상품을 열어 다시 설정해 주세요.';
+      }
+      setNewProductDigital(EMPTY_DIGITAL_DRAFT);
       notify(`${payload.productId} 추가 완료${refreshWarning}`);
       succeeded = true;
     } catch (error) {
@@ -1920,6 +1960,14 @@ export function AdminManagePage({ migrationsHref }: { migrationsHref?: string } 
   const rootStyle = { ...semantic.variables, ...(fontFamilyCss ? { fontFamily: fontFamilyCss } : {}) };
   const unit = settings.currencyUnit ?? '원';
   const tenantScoped = tenantApiPath('/api/tasks') !== '/api/tasks';
+  // Store products the teacher can put into a 보관함 (a physical product goes in as its 교환권).
+  const giveOptions = products.map((product) => ({
+    productId: product.productId, name: product.name, kind: digitalProducts.get(product.productId)?.kind ?? null, isActive: product.isActive,
+  }));
+  const digitalLabel = (productId: string) => {
+    const digital = digitalProducts.get(productId);
+    return digital ? ` · 디지털 ${DIGITAL_KIND_LABELS[digital.kind]}` : '';
+  };
   const money = (value: number) => `${value.toLocaleString('ko-KR')}${unit}`;
 
   /* ---------------- task panel helpers ---------------- */
@@ -2046,8 +2094,29 @@ export function AdminManagePage({ migrationsHref }: { migrationsHref?: string } 
     && (sheetStudent.name !== studentSheet.snapshot.name || sheetStudent.balance !== studentSheet.snapshot.balance || (sheetStudent.status ?? 'ACTIVE') !== (studentSheet.snapshot.status ?? 'ACTIVE')));
   const sheetProduct = productSheet?.mode === 'edit' ? products.find((product) => product.productId === productSheet.id) ?? null : null;
   const productFields = ['name', 'price', 'stock', 'category', 'imageUrl', 'sortOrder', 'isActive'] as const;
-  const productDirty = Boolean(productSheet?.mode === 'edit' && sheetProduct
+  const productFieldsDirty = Boolean(productSheet?.mode === 'edit' && sheetProduct
     && productFields.some((field) => JSON.stringify(sheetProduct[field] ?? null) !== JSON.stringify(productSheet.snapshot[field] ?? null)));
+  const savedSheetDigital = sheetProduct ? digitalDraftOf(digitalProducts.get(sheetProduct.productId)) : EMPTY_DIGITAL_DRAFT;
+  const sheetDigital = sheetProduct && sheetDigitalDraft?.productId === sheetProduct.productId ? sheetDigitalDraft.draft : savedSheetDigital;
+  const digitalDirty = Boolean(sheetProduct) && !sameDigitalDraft(sheetDigital, savedSheetDigital);
+  const productDirty = productFieldsDirty || digitalDirty;
+
+  /** Saves the open product: its fields, then its 디지털 상품 settings. */
+  async function saveProductSheet(product: ProductDraft) {
+    const digitalSetting = digitalSettingOf(sheetDigital);
+    if (!digitalSetting.ok) { notify(digitalSetting.error); return; }
+    if (productFieldsDirty && !await saveProductRows([product], '상품')) return;
+    if (digitalDirty) {
+      const result = await saveDigitalProduct(product.productId, digitalSetting.setting);
+      if (!result.ok) { notify(result.error); return; }
+      setDigitalProducts(result.data);
+      const saved = result.data.find((entry) => entry.productId === product.productId);
+      notify(saved ? `'${product.name}' 상품을 디지털 상품(${DIGITAL_KIND_LABELS[saved.kind]})으로 저장했어요.`
+        : `'${product.name}' 상품의 디지털 상품 설정을 끄고 저장했어요.`);
+    }
+    setSheetDigitalDraft(null);
+    setProductSheet(null);
+  }
   const productCategories = Array.from(new Set(products.map((product) => product.category?.trim()).filter((value): value is string => Boolean(value))));
 
   function confirmDiscard(close: () => void) {
@@ -2074,7 +2143,8 @@ export function AdminManagePage({ migrationsHref }: { migrationsHref?: string } 
 
   function closeProductSheet(force = false) {
     if (!force && productSheet?.mode === 'edit' && productDirty) { confirmDiscard(() => closeProductSheet(true)); return; }
-    if (productSheet?.mode === 'edit' && productDirty) {
+    setSheetDigitalDraft(null);
+    if (productSheet?.mode === 'edit' && productFieldsDirty) {
       const snapshot = productSheet.snapshot;
       setProductAdminState((current) => ({
         ...current,
@@ -2107,8 +2177,8 @@ export function AdminManagePage({ migrationsHref }: { migrationsHref?: string } 
   const lowStockProducts = products.filter((product) => product.isActive && product.stock <= 3);
 
   const overlayOpen = Boolean(taskHistory || taskDeleteConfirmation || productDeleteConfirmation || taskScheduleEditor || taskAssignmentEditor || taskResetConfirmation
-    || taskSheet || studentSheet || productSheet || confirmState || bulkBalanceOpen || qrPrintStudents || qrTaskPickerOpen || qrTaskScan || qrTaskResult
-    || currencyScannerOpen || currencyResult || taskDescriptionEditor || taskLedger.overlayOpen);
+    || taskSheet || studentSheet || productSheet || confirmState || bulkBalanceOpen || bulkGiveOpener || qrPrintStudents || qrTaskPickerOpen || qrTaskScan || qrTaskResult
+    || currencyScannerOpen || currencyResult || taskDescriptionEditor || taskLedger.overlayOpen || shareState || consentFormOpener);
   const ledgerTasks = ledgerTaskSummary(taskLedger);
   // Home tab task numbers: the ledger board in PostgreSQL classes (null while it loads), else the old list.
   const homeTaskCounts = ledgerMode ? ledgerTasks : { active: summary.activeTasks, total: tasks.length };
@@ -2120,6 +2190,8 @@ export function AdminManagePage({ migrationsHref }: { migrationsHref?: string } 
 
   const storeHref = tenantPagePath('/');
   const bankHref = tenantPagePath('/bank');
+  const classLabel = settings.className ?? settings.appTitle ?? '학급 매점';
+  const openShare = (target: ShareTarget) => (event: React.MouseEvent<HTMLElement>) => setShareState({ target, opener: event.currentTarget });
   const messageTone = isSuccessNotice(message) ? 'success' : 'warning';
 
   return (
@@ -2136,6 +2208,8 @@ export function AdminManagePage({ migrationsHref }: { migrationsHref?: string } 
               <div className="flex items-center gap-1 lg:hidden">
                 <a href={storeHref} target="_blank" rel="noopener noreferrer" aria-label="매점 열기 새 탭 열림" className={buttonClass({ variant: 'ghost', size: 'sm' })}><Icon name="store" size={16} /><span className="hidden sm:inline">매점</span></a>
                 <a href={bankHref} target="_blank" rel="noopener noreferrer" aria-label="은행 열기 새 탭 열림" className={buttonClass({ variant: 'ghost', size: 'sm' })}><Icon name="bank" size={16} /><span className="hidden sm:inline">은행</span></a>
+                <button type="button" aria-label="공유" onClick={openShare('store')} className={buttonClass({ variant: 'ghost', size: 'sm' })}><Icon name="share" size={16} /><span className="hidden sm:inline">공유</span></button>
+                {account ? <AccountLink nickname={account.nickname} avatar={account.avatar} compact /> : null}
               </div>
             </div>
             <nav data-testid="admin-tabs" role="tablist" aria-label="관리자 메뉴" aria-orientation="vertical"
@@ -2165,11 +2239,17 @@ export function AdminManagePage({ migrationsHref }: { migrationsHref?: string } 
             </nav>
             <div className="mt-auto hidden space-y-1 px-3 pb-5 pt-6 lg:block">
               <p className="px-3 pb-1 text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--theme-muted-text)]">바로가기</p>
-              <SidebarLink href={storeHref} icon="store" label="매점 열기" external />
-              <SidebarLink href={bankHref} icon="bank" label="은행 열기" external />
+              <SidebarShortcut href={storeHref} icon="store" label="매점 열기" shareLabel="매점 공유" onShare={openShare('store')} />
+              <SidebarShortcut href={bankHref} icon="bank" label="은행 열기" shareLabel="은행 공유" onShare={openShare('bank')} />
+              <SidebarButton icon="share" label="관리자 페이지 공유" onClick={openShare('admin')} />
               <SidebarLink href={tenantPagePath('/admin/student-qrs')} icon="qr" label="학생 QR 인쇄" external />
               {migrationsHref ? <SidebarLink href={migrationsHref} icon="migrate" label="자료 가져오기" external /> : null}
-              {tenantScoped ? <SidebarLink href="/classes" icon="school" label="내 학급 목록" /> : null}
+              {tenantScoped ? <SidebarLink href="/classes" icon="school" label="메인 화면으로" /> : null}
+              {account ? (
+                <div className="mt-3 border-t border-[var(--crs-line)] pt-3">
+                  <AccountLink nickname={account.nickname} avatar={account.avatar} className="w-full text-[13px]" />
+                </div>
+              ) : null}
             </div>
           </div>
         </aside>
@@ -2298,6 +2378,15 @@ export function AdminManagePage({ migrationsHref }: { migrationsHref?: string } 
                     {tenantScoped ? <StudentBulkImport unit={unit} onImported={() => { void refreshStudents(); }} /> : null}
                     <Button variant="primary" icon="plus" onClick={(event) => { setStudentSheet({ mode: 'new', opener: event.currentTarget }); }}>학생 추가</Button>
                   </>} />
+                <Callout tone="warning" title="학생 실명은 학부모 동의를 받은 뒤에 입력해 주세요">
+                  <p>
+                    만 14세 미만 학생의 이름과 실제 학년·반·번호를 쓰려면 법정대리인(학부모)의 개인정보 수집·이용 동의가 필요해요.
+                    동의를 받지 않은 학생은 실명이나 실제 번호 대신 별명과 임의 번호로 등록해 주세요.
+                  </p>
+                  <Button variant="secondary" size="sm" icon="printer" className="mt-2.5" onClick={(event) => setConsentFormOpener(event.currentTarget)}>
+                    학부모 동의서 내려받기
+                  </Button>
+                </Callout>
                 <div className="flex flex-wrap items-center gap-3">
                   <SearchInput value={studentQuery} onChange={setStudentQuery} placeholder="이름 또는 번호 검색" ariaLabel="학생 검색" className="w-full sm:w-72" />
                   <SegmentedControl ariaLabel="학생 상태 필터" value={studentFilter} onChange={setStudentFilter}
@@ -2345,6 +2434,7 @@ export function AdminManagePage({ migrationsHref }: { migrationsHref?: string } 
                 <SelectionBar count={selectedStudentIds.length} label="명 선택됨" onClear={() => setSelectedStudentIds([])}>
                   <SelectionBarButton icon="coins" onClick={() => setBulkBalanceOpen(true)}>잔액 변경</SelectionBarButton>
                   <SelectionBarButton icon="qr" onClick={() => setQrPrintStudents(students.filter((student) => selectedStudentIds.includes(student.studentId)))}>QR 카드 발급</SelectionBarButton>
+                  {tenantScoped ? <SelectionBarButton icon="package" onClick={(event) => setBulkGiveOpener(event.currentTarget)}>보관함에 넣기</SelectionBarButton> : null}
                   <SelectionBarButton icon="trash" danger onClick={() => confirmDelete(`학생 ${selectedStudentIds.length}명을 삭제할까요?`, '삭제한 학생은 명단에서 사라집니다. 거래 기록은 그대로 남습니다.', deleteSelectedStudents)}>삭제</SelectionBarButton>
                 </SelectionBar>
               </section>
@@ -2400,7 +2490,7 @@ export function AdminManagePage({ migrationsHref }: { migrationsHref?: string } 
                                   className="block max-w-full truncate text-left text-[15px] font-bold outline-none after:absolute after:inset-0 after:content-[''] focus-visible:underline">
                                   {product.name}
                                 </button>
-                                <span className="block truncate text-xs text-[var(--theme-muted-text)]">{product.category || '분류 없음'}<span className="sm:hidden"> · 재고 {product.stock}개</span></span>
+                                <span className="block truncate text-xs text-[var(--theme-muted-text)]">{product.category || '분류 없음'}{digitalLabel(product.productId)}<span className="sm:hidden"> · 재고 {product.stock}개</span></span>
                               </span>
                             </span>
                             <span role="cell" className="text-right text-[15px] font-extrabold tabular-nums">{money(product.price)}</span>
@@ -2503,6 +2593,12 @@ export function AdminManagePage({ migrationsHref }: { migrationsHref?: string } 
                   <SelectionBarButton icon="users" aria-label="선택 과제 학생 부여" onClick={(event) => openBulkTaskAssignmentEditor(event.currentTarget)}>학생 부여</SelectionBarButton>
                   <SelectionBarButton icon="trash" danger onClick={() => confirmDelete(`과제 ${selectedTaskIds.length}개를 삭제할까요?`, '삭제한 과제는 학생 은행 화면에서 사라집니다. 이미 지급한 보상은 그대로 남습니다.', deleteSelectedTasks)}>삭제</SelectionBarButton>
                 </SelectionBar>
+              </section>
+            ) : null}
+
+            {activeTab === 'tree' ? (
+              <section id="admin-panel-tree" role="tabpanel" aria-labelledby="admin-tab-tree" aria-label="학급 나무">
+                <ClassTreePanel unit={unit} notify={notify} />
               </section>
             ) : null}
 
@@ -2746,6 +2842,10 @@ export function AdminManagePage({ migrationsHref }: { migrationsHref?: string } 
               <Switch checked={(sheetStudent.status ?? 'ACTIVE') === 'ACTIVE'} ariaLabel={`${sheetStudent.studentId} 활성`}
                 onChange={(checked) => updateStudent(sheetStudent.studentId, { status: checked ? 'ACTIVE' : 'INACTIVE' })}
                 label="활성 학생" description="끄면 이 학생은 매점과 은행을 쓸 수 없습니다. 전학 간 학생 등에 사용하세요." />
+              {tenantScoped ? (
+                <StudentStorageSection key={sheetStudent.studentId} studentId={sheetStudent.studentId} name={sheetStudent.name} notify={notify}
+                  giveOptions={giveOptions} />
+              ) : null}
             </div>
           ) : null}
         </Sheet>
@@ -2772,7 +2872,7 @@ export function AdminManagePage({ migrationsHref }: { migrationsHref?: string } 
               <Button variant="dangerGhost" icon="trash" aria-label={`${sheetProduct.productId} 상품 삭제`} onClick={(event) => requestProductDelete(sheetProduct, event.currentTarget)}>삭제</Button>
               <div className="ml-auto" />
               <Button variant="ghost" onClick={() => closeProductSheet()}>취소</Button>
-              <Button variant="primary" icon="check" disabled={!productDirty} onClick={async () => { if (await saveProductRows([sheetProduct], '상품')) setProductSheet(null); }}>저장</Button>
+              <Button variant="primary" icon="check" disabled={!productDirty} onClick={() => void saveProductSheet(sheetProduct)}>저장</Button>
             </>
           ) : null}
         >
@@ -2785,6 +2885,10 @@ export function AdminManagePage({ migrationsHref }: { migrationsHref?: string } 
                 categories={productCategories}
                 unit={unit}
                 onChange={(patch) => setNewProduct((current) => ({ ...current, ...patch }))}
+                digital={tenantScoped ? (
+                  <DigitalProductFields idPrefix="new-product" ariaPrefix="새 상품" value={newProductDigital}
+                    onChange={(patch) => setNewProductDigital((current) => ({ ...current, ...patch }))} />
+                ) : undefined}
               />
             </form>
           ) : sheetProduct ? (
@@ -2795,6 +2899,10 @@ export function AdminManagePage({ migrationsHref }: { migrationsHref?: string } 
               categories={productCategories}
               unit={unit}
               onChange={(patch) => updateProduct(sheetProduct.productId, patch)}
+              digital={tenantScoped ? (
+                <DigitalProductFields idPrefix="product-sheet" ariaPrefix={sheetProduct.productId} value={sheetDigital}
+                  onChange={(patch) => setSheetDigitalDraft({ productId: sheetProduct.productId, draft: { ...sheetDigital, ...patch } })} />
+              ) : undefined}
             />
           ) : null}
         </Sheet>
@@ -2804,6 +2912,22 @@ export function AdminManagePage({ migrationsHref }: { migrationsHref?: string } 
       {isSavingTaskSchedule ? <LoadingOverlay title="반복 설정 저장 중" message="반복 설정을 저장하고 있습니다." /> : null}
       {taskResetConfirmation?.resetting ? <LoadingOverlay title="완료 기록 초기화 중" message="완료 기록을 초기화하고 최신 과제 목록을 불러오는 중입니다." restoreFocus={false} /> : null}
       {isRefreshingLists ? <LoadingOverlay title="새로고침 중" message="최신 목록을 불러오는 중입니다." /> : null}
+
+
+      {consentFormOpener ? (
+        <ParentConsentFormDialog classLabel={settings.className ?? ''} opener={consentFormOpener} onClose={() => setConsentFormOpener(null)} />
+      ) : null}
+
+      {shareState ? (
+        <ShareLinkDialog initialTarget={shareState.target} paths={sharePaths(tenantPagePath)} classLabel={classLabel}
+          titles={{ store: settings.appTitle ?? '학급 매점', bank: settings.bankTitle ?? '학급 은행' }}
+          opener={shareState.opener} onClose={() => setShareState(null)} />
+      ) : null}
+
+      {bulkGiveOpener ? (
+        <BulkGiveDialog studentIds={selectedStudentIds} options={giveOptions} opener={bulkGiveOpener}
+          onClose={() => setBulkGiveOpener(null)} notify={notify} />
+      ) : null}
 
       {bulkBalanceOpen ? (
         <Modal title="잔액 한꺼번에 바꾸기" description={`선택한 학생 ${selectedStudentIds.length}명의 잔액을 바꿉니다.`} onClose={() => setBulkBalanceOpen(false)}
@@ -3045,5 +3169,5 @@ export function AdminManagePage({ migrationsHref }: { migrationsHref?: string } 
 /* ------------------------------------------------------------------ */
 
 function isSuccessNotice(text: string) {
-  return /완료|저장했|추가했/.test(text) && !/실패|못했|불확실|거절|확인해 주세요|미저장|새로고침/.test(text);
+  return /완료|저장했|추가했|심었어요|줬어요|수확했어요|넣었어요|회수했어요/.test(text) && !/실패|못했|불확실|거절|확인해 주세요|미저장|새로고침/.test(text);
 }

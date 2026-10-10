@@ -3,7 +3,7 @@
 .header,.brand,.account,.hero,.toolbar,.searchRow,.cardTop,.secondaryLinks,.cardActions { display:flex; align-items:center; }
 .header { justify-content:space-between; gap:20px; border-bottom:1px solid var(--theme-divider); padding-bottom:22px; flex-wrap:wrap; }
 .brand { gap:12px; font-size:18px; font-weight:900; letter-spacing:-.5px; }
-.brand small { display:block; font-size:10px; font-weight:600; letter-spacing:1.2px; color:var(--theme-muted-text); margin-top:3px; }
+
 .logo { width:44px; height:44px; flex-shrink:0; background:var(--theme-accent-text); mask:url('/class-reward-system-icon.png') center/contain no-repeat; }
 .account { gap:12px; font-size:14px; font-weight:600; }
 .accountName { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -16,7 +16,6 @@
 .shell button:disabled { opacity:.45; cursor:default; }
 .shell button:focus-visible,.shell a:focus-visible,.shell input:focus-visible,.shell select:focus-visible { outline:2px solid var(--theme-focus-ring); outline-offset:3px; }
 .hero { justify-content:space-between; gap:20px; flex-wrap:wrap; padding:42px 0 28px; align-items:flex-end; }
-.eyebrow { font-size:13px; font-weight:650; color:var(--theme-muted-text); margin-bottom:8px; }
 .hero h1 { font-size:36px; font-weight:900; line-height:1.25; letter-spacing:-1.2px; }
 .hero p:last-child { margin-top:10px; font-size:14px; color:var(--theme-muted-text); }
 .stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin-bottom:32px; }

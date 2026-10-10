@@ -1,18 +1,43 @@
 'use client';
 
 /* eslint-disable @next/next/no-img-element */
+import type { MouseEvent } from 'react';
 import type { Student } from '@/domain/types';
 import { Icon, type IconName } from '../ui';
 import { themeStyles } from '../uiTheme';
 
+const sidebarRowClass = 'flex items-center gap-2.5 rounded-[11px] px-3 py-2 text-[13px] font-semibold text-[var(--theme-muted-text)] transition-colors hover:bg-[var(--crs-subtle-hover)] hover:text-[var(--theme-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)]';
+
 export function SidebarLink({ href, icon, label, external = false }: { href: string; icon: IconName; label: string; external?: boolean }) {
   return (
     <a href={href} {...(external ? { target: '_blank', rel: 'noopener noreferrer', 'aria-label': `${label} 새 탭 열림` } : {})}
-      className="flex items-center gap-2.5 rounded-[11px] px-3 py-2 text-[13px] font-semibold text-[var(--theme-muted-text)] transition-colors hover:bg-[var(--crs-subtle-hover)] hover:text-[var(--theme-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)]">
+      className={sidebarRowClass}>
       <Icon name={icon} size={17} />
       <span className="flex-1">{label}</span>
       {external ? <Icon name="external" size={14} className="opacity-60" /> : null}
     </a>
+  );
+}
+
+/** A shortcut that opens a page, with a share button (address, copy, QR) beside it. */
+export function SidebarShortcut({ href, icon, label, shareLabel, onShare }: { href: string; icon: IconName; label: string; shareLabel: string; onShare: (event: MouseEvent<HTMLButtonElement>) => void }) {
+  return (
+    <div className="flex items-center gap-0.5">
+      <div className="min-w-0 flex-1"><SidebarLink href={href} icon={icon} label={label} external /></div>
+      <button type="button" aria-label={shareLabel} title={shareLabel} onClick={onShare}
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] text-[var(--theme-muted-text)] transition-colors hover:bg-[var(--crs-subtle-hover)] hover:text-[var(--theme-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)]">
+        <Icon name="share" size={16} />
+      </button>
+    </div>
+  );
+}
+
+export function SidebarButton({ icon, label, onClick }: { icon: IconName; label: string; onClick: (event: MouseEvent<HTMLButtonElement>) => void }) {
+  return (
+    <button type="button" onClick={onClick} className={`${sidebarRowClass} w-full text-left`}>
+      <Icon name={icon} size={17} />
+      <span className="flex-1">{label}</span>
+    </button>
   );
 }
 

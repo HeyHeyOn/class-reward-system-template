@@ -16,7 +16,10 @@ export async function POST(request: Request) {
 
   try {
     const service = await createConfiguredCheckoutPreviewService(request);
-    const result = await service.previewCheckoutCart({ items: validation.items });
+    const result = await service.previewCheckoutCart({
+      items: validation.items,
+      ...(validation.vouchers ? { vouchers: validation.vouchers } : {}),
+    });
     if (!result.ok) {
       switch (result.code) {
         case 'PRICING_FAILED':
@@ -48,12 +51,24 @@ function checkoutPreviewFailureResponse(): Response {
 }
 
 type CartRequestValidation =
-  | { ok: true; items: CartItem[] }
+  | { ok: true; items: CartItem[]; vouchers?: Record<string, number> }
   | { ok: false };
 
 function parsePreviewCartRequest(value: unknown): CartRequestValidation {
-  if (!isExactObject(value, ['items']) || !Array.isArray(value.items) || value.items.length === 0) {
+  const withVouchers = isExactObject(value, ['items', 'vouchers']);
+  if ((!withVouchers && !isExactObject(value, ['items'])) || !Array.isArray(value.items) || value.items.length === 0) {
     return { ok: false };
+  }
+  // 교환권 counts per product: { productId: count }.
+  let vouchers: Record<string, number> | undefined;
+  if (withVouchers) {
+    const raw = (value as { vouchers: unknown }).vouchers;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ok: false };
+    vouchers = {};
+    for (const [productId, count] of Object.entries(raw)) {
+      if (!productId.trim() || !Number.isSafeInteger(count) || (count as number) < 1) return { ok: false };
+      vouchers[productId] = count as number;
+    }
   }
 
   const items: CartItem[] = [];
@@ -71,7 +86,7 @@ function parsePreviewCartRequest(value: unknown): CartRequestValidation {
     });
   }
 
-  return { ok: true, items };
+  return { ok: true, items, ...(vouchers ? { vouchers } : {}) };
 }
 
 function isExactObject<T extends string>(

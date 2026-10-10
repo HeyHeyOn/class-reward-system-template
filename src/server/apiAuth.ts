@@ -16,7 +16,8 @@ type ApiAuthEnv = {
 export function isAuthorizedAdminRequest(request: Request, env: ApiAuthEnv = process.env): boolean {
   const trusted = getOptionalTrustedTenantRequestContext();
   if (trusted) {
-    return trusted.compatibilitySession?.tenantId === trusted.tenant.id || Boolean(trusted.membership && trusted.session
+    // Class administrators sign in with Google only (OWNER/ADMIN membership of this class).
+    return Boolean(trusted.membership && trusted.session
       && trusted.membership.tenantId === trusted.tenant.id
       && trusted.membership.googleSubject === trusted.session.subject
       && (trusted.membership.role === 'OWNER' || trusted.membership.role === 'ADMIN'));

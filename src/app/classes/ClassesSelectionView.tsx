@@ -7,6 +7,11 @@ import type { ClassMembershipPageItem, ClassMembershipPageModel } from '@/server
 import type { ClassManagementAction } from '@/server/repositories/database/classDashboard';
 import { ClassManagementDialog } from './ClassManagementDialog';
 import styles from './dashboard.module.css';
+import { SiteFooter } from '@/components/SiteFooter';
+import { publicOrigin } from '@/lib/publicOrigin';
+import { AccountLink } from '@/components/account/AccountLink';
+import { LegalAgreementGate } from '@/components/account/LegalAgreementGate';
+import type { TeacherAccountView } from '@/server/teacherAccounts';
 
 const theme = themeStyles('white');
 const subscribe = () => () => {};
@@ -26,7 +31,12 @@ function Icon({ name }: { name: keyof typeof paths }) {
 }
 const dateLabel = (value: string) => new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Seoul' }).format(new Date(value));
 
-export function ClassesSelectionView({ model }: Readonly<{ model: ClassMembershipPageModel }>) {
+export function ClassesSelectionView({ model, account, withdrawn = false }: Readonly<{
+  model: ClassMembershipPageModel;
+  /** The signed-in teacher's profile and legal notice (PostgreSQL classes). */
+  account?: TeacherAccountView;
+  withdrawn?: boolean;
+}>) {
   const router = useRouter();
   const ready = useSyncExternalStore(subscribe, () => true, () => false);
   const [query, setQuery] = useState('');
@@ -57,25 +67,28 @@ export function ClassesSelectionView({ model }: Readonly<{ model: ClassMembershi
     } catch { setNotice('로그아웃하지 못했습니다. 연결을 확인하고 다시 시도해 주세요.'); setLogoutPending(false); }
   }
   async function copyAddress(item: ClassMembershipPageItem) {
-    try { await navigator.clipboard.writeText(`${window.location.origin}/c/${item.slug}`); setNotice(`${item.displayName}의 매점 주소를 복사했습니다.`); }
+    try { await navigator.clipboard.writeText(`${publicOrigin()}/c/${item.slug}`); setNotice(`${item.displayName}의 매점 주소를 복사했습니다.`); }
     catch { setNotice('주소를 복사하지 못했습니다. 매점을 연 뒤 주소창의 주소를 복사해 주세요.'); }
   }
   return <main style={theme.variables} className={styles.shell}>
     <div className={styles.container}>
       <header className={styles.header}>
         <Link href="/classes" aria-label="학급 보상 시스템 내 학급" className={styles.brand}>
-          <span aria-hidden="true" className={styles.logo}/><span>학급 보상 시스템<small>CLASS REWARD SYSTEM</small></span>
+          <span aria-hidden="true" className={styles.logo}/><span>학급 보상 시스템</span>
         </Link>
         {model.kind === 'MEMBERSHIPS' && <div className={styles.account}>
-          <span className={styles.avatar} aria-hidden="true">{Array.from(model.accountLabel)[0]}</span><span className={styles.accountName}>{model.accountLabel}</span>
+          {account
+            ? <AccountLink nickname={account.profile.nickname} avatar={account.profile.avatar} />
+            : <><span className={styles.avatar} aria-hidden="true">{Array.from(model.accountLabel)[0]}</span><span className={styles.accountName}>{model.accountLabel}</span></>}
           <button onClick={logout} disabled={!ready || logoutPending} className={styles.outline}><Icon name="logout"/>{logoutPending ? '로그아웃 중…' : '로그아웃'}</button>
         </div>}
       </header>
+      {model.kind === 'LOGIN_REQUIRED' && withdrawn ? <p role="status" className={styles.notice}>회원 탈퇴가 끝났어요. 그동안 학급 보상 시스템을 이용해 주셔서 고마워요.</p> : null}
       {model.kind === 'LOGIN_REQUIRED' ? <section className={styles.welcome}>
-        <div><p className={styles.eyebrow}>나의 교실, 하나의 공간</p><h1>우리 반의 성장과<br/>보상을 함께 관리해요.</h1><p className={styles.intro}>학급마다 매점과 은행을 운영하고,<br/>학생들의 작은 도전을 보상으로 연결하세요.</p><div className={styles.features}>{['여러 학급 관리','학급 매점 · 은행','과제와 보상'].map(s => <span key={s}>{s}</span>)}</div></div>
+        <div><h1>우리 반의 성장과<br/>보상을 함께 관리해요.</h1><p className={styles.intro}>학급마다 매점과 은행을 운영하고,<br/>학생들의 작은 도전을 보상으로 연결하세요.</p><div className={styles.features}>{['여러 학급 관리','학급 매점 · 은행','과제와 보상'].map(s => <span key={s}>{s}</span>)}</div></div>
         <div className={styles.loginCard}><span className={styles.classIcon}><Icon name="school"/></span><h2>내 학급으로 시작하기</h2><p>Google 계정으로 로그인하면 내 학급을 확인하거나 새로운 학급을 만들 수 있습니다.</p><a href={model.loginHref} className={styles.primary}>Google 계정으로 로그인<Icon name="arrow"/></a><small>이미 만든 학급이 있다면<br/>그 학급을 만든 Google 계정으로 로그인해 주세요.</small></div>
       </section> : <>
-        <section className={styles.hero}><div><p className={styles.eyebrow}>선생님의 학급 공간</p><h1>내 학급</h1><p>학급을 선택하고 오늘의 활동을 시작하세요.</p></div><Link href="/classes/new" aria-label="새 학급" className={styles.primary}><Icon name="plus"/>새 학급 만들기</Link></section>
+        <section className={styles.hero}><div><h1>내 학급</h1><p>학급을 선택하고 오늘의 활동을 시작하세요.</p></div><Link href="/classes/new" aria-label="새 학급" className={styles.primary}><Icon name="plus"/>새 학급 만들기</Link></section>
         <section aria-label="학급 현황" className={styles.stats}>
           {[
             ['전체 학급', current.length, '내가 소속된 학급'], ['사용 중', active.length, '지금 운영 중인 학급'],
@@ -113,8 +126,9 @@ export function ClassesSelectionView({ model }: Readonly<{ model: ClassMembershi
         </section>
         <aside className={styles.help}><details><summary>학급 복제와 삭제, 어떻게 동작하나요?</summary><p>복제하면 설정·학생 명단·상품과 재고·과제·할인 행사를 새 학급에 가져옵니다. 학생 잔액은 0으로 시작하고 거래·과제 완료·부여 내역은 가져오지 않습니다. 과제와 할인 행사는 확인 후 켤 수 있도록 비활성 상태로 복제합니다.</p><p>삭제한 학급은 휴지통에 보관되며, 기존 기록을 유지한 채 소유자가 복원할 수 있습니다. 이름 변경·복제·삭제·복원은 학급 소유자만 사용할 수 있습니다.</p></details></aside>
       </>}
-      <footer className={styles.footer}>학급 보상 시스템<span aria-hidden="true"> · </span>함께 성장하는 우리 반</footer>
+      <SiteFooter className={styles.footer}/>
     </div>
     {dialog && <ClassManagementDialog key={`${dialog.item.slug}-${dialog.action}`} item={dialog.item} action={dialog.action} onClose={() => setDialog(null)} onSuccess={message => { setDialog(null); setNotice(message); router.refresh(); }}/> }
+    {account ? <LegalAgreementGate notice={account.notice} classNames={memberships.filter((item) => item.roleLabel === '소유자').map((item) => item.displayName)} /> : null}
   </main>;
 }

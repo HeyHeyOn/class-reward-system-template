@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
+import { lineVoucherCount } from '@/domain/checkout';
 import type { Transaction } from '@/domain/types';
 import { tenantApiPath, tenantFetch } from '@/lib/tenantApiPath';
 import { ADMIN_TRANSACTION_PAGE_SIZE, type TransactionPage } from '@/lib/transactionHistory';
@@ -124,6 +125,8 @@ function describeTransaction(transaction: Transaction): TransactionKind {
   const delta = transaction.balanceAfter - transaction.balanceBefore;
   if (transaction.status === 'CANCEL_REVERSAL') return { label: '취소 반영', icon: 'restore', tone: 'neutral' };
   if (transaction.status === 'TASK_REWARD') return { label: '과제 보상', icon: 'task', tone: 'income' };
+  if (transaction.status === 'TREE_WATER') return { label: '학급 나무 양분 주기', icon: 'sprout', tone: 'expense' };
+  if (transaction.status === 'TREE_HARVEST') return { label: '학급 나무 수확 보상', icon: 'sprout', tone: 'income' };
   if (transaction.items.length > 0 && delta <= 0) return { label: '매점 구매', icon: 'cart', tone: 'expense' };
   if (delta > 0) return { label: '지급', icon: 'plus', tone: 'income' };
   if (delta < 0) return { label: '회수', icon: 'minus', tone: 'expense' };
@@ -372,7 +375,10 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
                 const isCancelled = tone === 'cancelled';
                 const canCancel = !isCancelled && transaction.status !== 'CANCEL_REVERSAL';
                 const kind = describeTransaction(transaction);
-                const itemsText = transaction.items.map((item) => `${item.name}${item.quantity > 1 ? ` ×${item.quantity}` : ''}`).join(', ');
+                const itemsText = transaction.items.map((item) => {
+                  const vouchers = lineVoucherCount(item);
+                  return `${item.name}${item.quantity > 1 ? ` ×${item.quantity}` : ''}${vouchers > 0 ? ` (교환권 ${vouchers}장)` : ''}`;
+                }).join(', ');
                 return (
                   <article data-testid={`transaction-row-${transaction.transactionId}`} key={transaction.transactionId}
                     className={cx('flex items-center gap-3.5 px-4 py-3.5 sm:px-5', isCancelled && 'opacity-60')}>
@@ -444,8 +450,10 @@ function TransactionCancelDialog({ transaction, currencyUnit, opener, onClose, o
   onClose: () => void; onConfirm: () => void;
 }) {
   const detail = transaction.status === 'TASK_REWARD'
-    ? '지급한 보상만큼 현재 잔액에서 회수하고, 이 과제 완료도 취소합니다. 초기화 후 새로 완료한 기록은 그대로 둡니다.'
-    : '이 거래를 되돌리는 반대 거래를 현재 잔액에 적용합니다.';
+    ? '지급한 보상만큼 현재 잔액에서 회수하고, 이 과제 완료도 취소합니다. 초기화 후 새로 완료한 기록은 그대로 둡니다. 학급 나무가 아직 자라는 중이면 이 과제로 준 양분도 뺍니다.'
+    : transaction.status === 'TREE_WATER'
+      ? '양분 주기에 쓴 돈을 돌려주고, 학급 나무가 아직 자라는 중이면 그 양분도 뺍니다.'
+      : '이 거래를 되돌리는 반대 거래를 현재 잔액에 적용합니다.';
   return (
     <Modal size="sm" tone="danger" title="거래를 취소할까요?" ariaLabel="거래 취소 확인" opener={opener} onClose={onClose}
       footer={<>

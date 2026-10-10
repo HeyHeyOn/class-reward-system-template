@@ -54,6 +54,26 @@ export function AdminLoginPage({
     );
   }
 
+  if (tenantSlug) {
+    // A class is administered by its Google accounts only (the membership of that class); the password
+    // and QR logins below belong to the Google Sheets edition, which had no social login.
+    return (
+      <main style={themeStyles('white').variables} className="flex min-h-screen items-center justify-center bg-[var(--theme-shell)] px-4 py-10 text-[var(--theme-text)]">
+        <section className="w-full max-w-md rounded-[26px] border border-[var(--crs-line)] bg-[var(--theme-surface)] p-7 shadow-[var(--crs-shadow)] sm:p-9">
+          <span role="img" aria-label="학급 보상 시스템 로고" className="block h-11 w-11 bg-[var(--theme-accent-text)] [mask-image:url('/class-reward-system-icon.png')] [mask-position:center] [mask-repeat:no-repeat] [mask-size:contain]" />
+          <h1 className="mt-5 text-[28px] font-black tracking-[-0.035em]">관리자 로그인</h1>
+          <p className="mt-2 text-sm leading-relaxed text-[var(--theme-muted-text)]">이 학급을 만든 Google 계정으로 로그인해 주세요.</p>
+          <a className={buttonClass({ variant: 'primary', size: 'lg', block: true, className: 'mt-7' })}
+            href={`/api/google/login?returnTo=${encodeURIComponent(`/c/${tenantSlug}/admin`)}`}>
+            Google 계정으로 로그인
+          </a>
+          {message ? <p role="alert" className="mt-4 rounded-[12px] bg-[var(--crs-danger-bg)] px-4 py-3 text-[13px] font-semibold text-[var(--crs-danger-text)]">{message}</p> : null}
+          <a className={buttonClass({ variant: 'ghost', size: 'md', block: true, className: 'mt-3' })} href="/classes">메인 화면으로</a>
+        </section>
+      </main>
+    );
+  }
+
   async function submitCredential(value: string, kind: 'password' | 'qr', fromQr = false) {
     setSubmittingFromQr(fromQr);
     setIsSubmitting(true);

@@ -23,6 +23,7 @@ const CANCELLATION_FAILURE_REASONS = new Map<string, string>([
   ['취소 작업 ID가 다른 거래에 사용되었습니다.', 'operation-id-conflict'],
   ['이미 취소된 거래이거나 취소 기록의 무결성을 확인할 수 없습니다.', 'already-cancelled-or-invalid'],
   ['이미 취소된 거래입니다.', 'already-cancelled'],
+  ['이 결제로 보관함에 들어간 디지털 상품을 이미 사용해서 취소할 수 없어요. 학생 보관함에서 사용 표시를 먼저 되돌리거나, 그 교환권을 쓴 결제를 먼저 취소해 주세요.', 'coupon-already-used'],
   ['취소할 수 없는 거래입니다.', 'transaction-not-cancellable'],
   ['거래 상품 스냅샷이 올바르지 않습니다.', 'item-snapshot-invalid'],
   ['학생 정보를 찾을 수 없습니다.', 'student-not-found'],
@@ -80,6 +81,10 @@ export async function POST(request: Request, context: RouteContext) {
     console.error('transaction_cancellation_failed', {
       reason: cancellationFailureReason(error),
     });
+    // The one refusal the teacher can act on: say why, so the coupon use can be taken back first.
+    if (error instanceof Error && (error as { code?: unknown }).code === 'COUPON_ALREADY_USED') {
+      return Response.json({ error: error.message, code: 'COUPON_ALREADY_USED' }, { status: 409 });
+    }
     return Response.json({ error: '거래를 취소하지 못했습니다.' }, { status: 400 });
   }
 }

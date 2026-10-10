@@ -15,6 +15,8 @@ const KIND_LABELS: Record<StudentBankTransactionKind, { label: string; icon: Ico
   CANCELLATION: { label: '거래 취소', icon: 'restore' },
   DEPOSIT: { label: '입금', icon: 'plus' },
   WITHDRAWAL: { label: '출금', icon: 'minus' },
+  TREE_WATER: { label: '학급 나무 양분 주기', icon: 'sprout' },
+  TREE_HARVEST: { label: '학급 나무 수확 보상', icon: 'sprout' },
 };
 
 export function transactionLabel(kind: StudentBankTransactionKind): string {

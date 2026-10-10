@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createCartPricingPreview, createCheckoutPreview } from '@/domain/checkout';
+import { applyCheckoutVouchers, checkoutPricingMatches, createCartPricingPreview, createCheckoutPreview, removeCheckoutVouchers } from '@/domain/checkout';
 import type { Product, Promotion, Student } from '@/domain/types';
 
 const activeStudent: Student = {
@@ -412,5 +412,49 @@ describe('createCartPricingPreview', () => {
 
     expect(cartPreview).toEqual(checkoutPreview);
     expect(cartPreview.ok).toBe(false);
+  });
+});
+
+describe('교환권 (checkout vouchers)', () => {
+  const priced = () => {
+    const result = createCartPricingPreview({ products, cartItems: [{ productId: 'P001', quantity: 3 }, { productId: 'P002', quantity: 1 }], promotions: stackedPromotions, now: new Date('2026-01-15T00:00:00.000Z') });
+    if (!result.ok) throw new Error('fixture');
+    return result;
+  };
+
+  it('takes one regular unit price per 교환권 off after the promotions, never below 0', () => {
+    const base = priced();
+    const pencil = base.items.find((item) => item.productId === 'P001')!;
+    const applied = applyCheckoutVouchers(base, { P001: 1, P002: 1 });
+    expect(applied.ok).toBe(true);
+    if (!applied.ok) return;
+    const line = applied.items.find((item) => item.productId === 'P001')!;
+    expect(line.adjustments.at(-1)).toEqual({ type: 'VOUCHER', beforeAmount: pencil.finalTotal, afterAmount: pencil.finalTotal - 300, discountAmount: 300, voucherCount: 1 });
+    expect(line).toMatchObject({ finalTotal: pencil.finalTotal - 300, subtotal: pencil.finalTotal - 300, totalDiscount: pencil.totalDiscount + 300, paidQuantity: pencil.paidQuantity });
+    expect(applied.items.find((item) => item.productId === 'P002')).toMatchObject({ finalTotal: 0 });
+    expect(applied.totalAmount).toBe(applied.items.reduce((sum, item) => sum + item.finalTotal, 0));
+    expect(removeCheckoutVouchers(applied)).toEqual(base);
+  });
+
+  it('matches the same quote from the cart pricing with voucher counts', () => {
+    const fromCart = createCartPricingPreview({ products, cartItems: [{ productId: 'P001', quantity: 3 }, { productId: 'P002', quantity: 1 }], promotions: stackedPromotions, vouchers: { P001: 2 }, now: new Date('2026-01-15T00:00:00.000Z') });
+    expect(fromCart).toEqual(applyCheckoutVouchers(priced(), { P001: 2 }));
+  });
+
+  it('refuses more 교환권 than units, products outside the cart, and applying twice', () => {
+    expect(applyCheckoutVouchers(priced(), { P001: 4 })).toMatchObject({ ok: false, code: 'INVALID_VOUCHERS' });
+    expect(applyCheckoutVouchers(priced(), { P003: 1 })).toMatchObject({ ok: false, code: 'INVALID_VOUCHERS' });
+    expect(applyCheckoutVouchers(priced(), { P001: 0 })).toMatchObject({ ok: false, code: 'INVALID_VOUCHERS' });
+    const once = applyCheckoutVouchers(priced(), { P001: 1 });
+    if (!once.ok) throw new Error('fixture');
+    expect(applyCheckoutVouchers(once, { P001: 1 })).toMatchObject({ ok: false, code: 'INVALID_VOUCHERS' });
+    expect(createCartPricingPreview({ products, cartItems: [{ productId: 'P001', quantity: 1 }], vouchers: { P001: 2 } })).toMatchObject({ ok: false, code: 'INVALID_VOUCHERS' });
+  });
+
+  it('treats a quote with 교환권 as different from one without', () => {
+    const applied = applyCheckoutVouchers(priced(), { P001: 1 });
+    if (!applied.ok) throw new Error('fixture');
+    expect(checkoutPricingMatches(priced(), applied)).toBe(false);
+    expect(checkoutPricingMatches(applied, applyCheckoutVouchers(priced(), { P001: 1 }) as typeof applied)).toBe(true);
   });
 });

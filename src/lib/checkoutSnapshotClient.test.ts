@@ -54,3 +54,26 @@ describe('checkoutSnapshotClient', () => {
     })).toBeNull();
   });
 });
+
+describe('checkoutSnapshotClient 교환권', () => {
+  const voucher = { type: 'VOUCHER', beforeAmount: 600, afterAmount: 300, discountAmount: 300, voucherCount: 1 };
+  const withVoucher = { ...item, subtotal: 300, finalTotal: 300, totalDiscount: 600, adjustments: [...item.adjustments, voucher] };
+
+  it('accepts one trailing 교환권 step that continues the promotion chain', () => {
+    expect(parseCheckoutPreviewResponse({ ok: true, totalAmount: 300, items: [withVoucher] })?.items[0].adjustments.at(-1)).toEqual(voucher);
+    const plain = { ...item, adjustments: [], appliedPromotions: [], paidQuantity: 3, freeQuantity: 0, subtotal: 600, finalTotal: 600, totalDiscount: 300,
+      regularTotal: 900 };
+    const onlyVoucher = { ...plain, adjustments: [{ ...voucher, beforeAmount: 900, afterAmount: 600, discountAmount: 300 }] };
+    expect(parseCheckoutPreviewResponse({ ok: true, totalAmount: 600, items: [onlyVoucher] })).not.toBeNull();
+  });
+
+  it('refuses a 교환권 step out of place, over the quantity, or breaking the chain', () => {
+    const parse = (line: unknown) => parseCheckoutPreviewResponse({ ok: true, totalAmount: 300, items: [line] });
+    expect(parse({ ...withVoucher, adjustments: [voucher, ...item.adjustments] })).toBeNull();
+    expect(parse({ ...withVoucher, adjustments: [...item.adjustments, { ...voucher, voucherCount: 4 }] })).toBeNull();
+    expect(parse({ ...withVoucher, adjustments: [...item.adjustments, { ...voucher, voucherCount: 0 }] })).toBeNull();
+    expect(parse({ ...withVoucher, adjustments: [...item.adjustments, { ...voucher, beforeAmount: 700, discountAmount: 400 }] })).toBeNull();
+    expect(parse({ ...withVoucher, adjustments: [...item.adjustments, { ...voucher, promotionId: 'N21' }] })).toBeNull();
+    expect(parse({ ...withVoucher, adjustments: [...item.adjustments, voucher, voucher] })).toBeNull();
+  });
+});

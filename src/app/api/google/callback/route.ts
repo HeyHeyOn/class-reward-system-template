@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { isGeneratorDeployment, isSystemDeployment } from '@/server/deploymentMode';
 import { googleIdentityLoginPath, type GoogleIdentityReturnTo } from '@/lib/googleIdentityReturnTo';
+import { currentLegalRevision } from '@/lib/legalDocuments';
+import { getProductionClassMembershipRepository } from '@/server/repositories/database/classMemberships';
+import { getProductionTeacherAccountStore, teacherAccountsEnabled } from '@/server/teacherAccounts';
 import {
+  clearGoogleSessionCookie,
   consumeGeneratorConsentStateCookie,
   consumeGoogleStateCookie,
   exchangeGoogleCodeForGeneratorGrant,
@@ -11,6 +15,7 @@ import {
   revokeGeneratorGrant,
   setGeneratorGrantCookie,
   setGoogleSessionCookie,
+  setPendingAgreementCookie,
   type GeneratorGrant,
 } from '@/server/googleOAuth';
 
@@ -47,7 +52,33 @@ export async function GET(request: Request) {
     if (!identityState) throw new Error('Google 로그인 상태값이 올바르지 않습니다. 다시 로그인해 주세요.');
     identityReturnTo = identityState.returnTo;
     const session = await exchangeGoogleCodeForSession(url.origin, code);
-    setGoogleSessionCookie(response, session);
+    if (teacherAccountsEnabled()) {
+      // The account starts only after agreeing to the terms in force: until then this sign-in waits.
+      const accounts = getProductionTeacherAccountStore();
+      const version = currentLegalRevision().version;
+      if (!(await accounts.hasAgreement(session.subject, version))) {
+        const latest = await accounts.latestAgreement(session.subject);
+        // Teachers who made classes before the terms existed agree as existing members (and may withdraw).
+        const existing = latest !== null
+          || (await getProductionClassMembershipRepository().listByGoogleSubject(session.subject)).length > 0;
+        clearGoogleSessionCookie(response);
+        setPendingAgreementCookie(response, {
+          purpose: 'agreement',
+          subject: session.subject,
+          email: session.email,
+          ...(session.name ? { name: session.name } : {}),
+          mode: existing ? 'update' : 'signup',
+          ...(latest ? { agreedVersion: latest.version } : {}),
+          ...(identityState.returnTo ? { returnTo: identityState.returnTo } : {}),
+          issuedAt: Date.now(),
+        });
+        response.headers.set('location', new URL('/signup', request.url).toString());
+        return response;
+      }
+      setGoogleSessionCookie(response, { ...session, agreement: version });
+    } else {
+      setGoogleSessionCookie(response, session);
+    }
     if (identityState.returnTo) {
       response.headers.set('location', new URL(identityState.returnTo, request.url).toString());
     }

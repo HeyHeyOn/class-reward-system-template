@@ -1,4 +1,5 @@
 import { classifyTaskAvailability } from '@/domain/taskAvailability';
+import { lineVoucherCount } from '@/domain/checkout';
 import type { TaskRecurrence, Transaction } from '@/domain/types';
 import type { StudentTaskProjectionDto } from '@/server/studentTaskProjection';
 
@@ -19,7 +20,9 @@ export type StudentBankTransactionKind =
   | 'TEACHER_DEDUCT'
   | 'CANCELLATION'
   | 'DEPOSIT'
-  | 'WITHDRAWAL';
+  | 'WITHDRAWAL'
+  | 'TREE_WATER'
+  | 'TREE_HARVEST';
 
 export type StudentBankTransactionDto = Readonly<{
   transactionId: string;
@@ -79,6 +82,8 @@ export function projectStudentBankTransactions(
 function transactionKind(transaction: Transaction, amount: number): StudentBankTransactionKind {
   if (transaction.status === 'CANCEL_REVERSAL') return 'CANCELLATION';
   if (transaction.status === 'TASK_REWARD' || transaction.operator === 'bank-task-completion') return 'TASK_REWARD';
+  if (transaction.status === 'TREE_WATER') return 'TREE_WATER';
+  if (transaction.status === 'TREE_HARVEST') return 'TREE_HARVEST';
   if (transaction.items.length > 0 && amount <= 0) return 'PURCHASE';
   if (transaction.status === 'ADMIN_ADJUSTMENT' || transaction.operator === 'admin') {
     return amount >= 0 ? 'TEACHER_GRANT' : 'TEACHER_DEDUCT';
@@ -92,7 +97,8 @@ function transactionDetail(transaction: Transaction, kind: StudentBankTransactio
     .map((item) => {
       const name = typeof item.name === 'string' ? item.name.trim() : '';
       if (!name) return '';
-      return Number.isSafeInteger(item.quantity) && item.quantity > 1 ? `${name} ×${item.quantity}` : name;
+      const vouchers = lineVoucherCount(item);
+      return `${Number.isSafeInteger(item.quantity) && item.quantity > 1 ? `${name} ×${item.quantity}` : name}${vouchers > 0 ? ` (교환권 ${vouchers}장)` : ''}`;
     })
     .filter(Boolean);
   if (names.length === 0) return undefined;

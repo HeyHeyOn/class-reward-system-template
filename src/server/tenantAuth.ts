@@ -70,15 +70,10 @@ export async function authorizeTenantAdmin(
 
 export type TenantAdminContextDependencies = TenantDirectory & TenantMembershipStore & Readonly<{
   getSession(request: Request): GoogleSession | null | Promise<GoogleSession | null>;
-  getCompatibilitySession?(request: Request, tenantId: string): Promise<TenantCompatibilitySession | null>;
 }>;
 
-export type TenantCompatibilitySession = Readonly<{ tenantId: string }>;
-
-export type TenantAdminContext = TenantContext & (
-  Readonly<{ session: GoogleSession; membership: TenantMembership; compatibilitySession?: never }>
-  | Readonly<{ session?: undefined; membership?: undefined; compatibilitySession: TenantCompatibilitySession }>
-);
+/** Class administrators are Google accounts with an OWNER/ADMIN membership; there is no other way in. */
+export type TenantAdminContext = TenantContext & Readonly<{ session: GoogleSession; membership: TenantMembership }>;
 
 export async function resolveTenantAdminContext(
   requestedSlug: unknown,
@@ -89,20 +84,7 @@ export async function resolveTenantAdminContext(
   // Request headers, query parameters and bodies are deliberately not candidates.
   const context = await resolveTenantContext(requestedSlug, dependencies);
   const session = await dependencies.getSession(request);
-  let membership: TenantMembership;
-  try {
-    membership = await authorizeTenantAdmin(context.tenant, session, dependencies);
-  } catch (error) {
-    if (
-      !(error instanceof TenantAuthorizationError)
-      || (error.code !== 'NOT_A_MEMBER' && error.code !== 'UNAUTHENTICATED')
-    ) {
-      throw error;
-    }
-    const compatibilitySession = await dependencies.getCompatibilitySession?.(request, context.tenant.id);
-    if (compatibilitySession?.tenantId === context.tenant.id) return { ...context, compatibilitySession };
-    throw error;
-  }
+  const membership = await authorizeTenantAdmin(context.tenant, session, dependencies);
   if (!session) {
     throw new TenantAuthorizationError('UNAUTHENTICATED', 401, 'Google authentication is required.');
   }

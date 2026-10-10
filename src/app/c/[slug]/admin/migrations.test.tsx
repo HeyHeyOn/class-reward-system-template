@@ -7,6 +7,7 @@ vi.mock('@/server/tenantAdminPageAccess', () => ({ requireTenantAdminPage: gate 
 vi.mock('next/navigation', () => ({ notFound: () => { throw Error('not-found'); }, redirect: () => { throw Error('redirect'); } }));
 vi.mock('@/components/AdminManagePage', () => ({ AdminManagePage: ({ migrationsHref }: { migrationsHref?: string }) => <a href={migrationsHref}>마이그레이션</a> }));
 vi.mock('@/components/AdminLoginPage', () => ({ AdminLoginPage: () => null }));
+vi.mock('@/server/teacherAccounts', () => ({ teacherAccountsEnabled: () => false, loadTeacherAccountView: vi.fn() }));
 vi.mock('@/components/StudentQrPrintPage', () => ({ StudentQrPrintPage: () => null }));
 vi.mock('@/components/TransactionsPage', () => ({ TransactionsPage: () => null }));
 import Page from './[...path]/page';

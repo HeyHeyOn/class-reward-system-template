@@ -57,6 +57,21 @@ describe('POST /api/checkout', () => {
     expect(executeCheckout).toHaveBeenCalledWith(expect.objectContaining({ studentId: 'S001' }));
   });
 
+  it('passes chosen 교환권 through, maps an unavailable one to 409, and rejects malformed lists', async () => {
+    executeCheckout.mockResolvedValue({ ok: false, code: 'VOUCHER_UNAVAILABLE', message: '고른 교환권 중 이미 쓴 것이 있어요.' });
+    const response = await POST(checkoutRequest({ voucherItemIds: [' give:a:1 ', 'reward:b:S001'] }));
+    expect(response.status).toBe(409);
+    expect(executeCheckout).toHaveBeenCalledWith(expect.objectContaining({ voucherItemIds: ['give:a:1', 'reward:b:S001'] }));
+
+    executeCheckout.mockClear();
+    await POST(checkoutRequest());
+    expect(executeCheckout.mock.calls[0][0]).not.toHaveProperty('voucherItemIds');
+
+    for (const voucherItemIds of ['V1', [1], [''], ['V1', 'V1'], Array.from({ length: 101 }, (_, i) => `V${i}`)]) {
+      expect((await POST(checkoutRequest({ voucherItemIds }))).status).toBe(400);
+    }
+  });
+
   it('maps invalid or wrong-tenant QR values to a nondisclosing failure before selecting a backend', async () => {
     vi.mocked(resolveStudentQrForCurrentTenant).mockImplementation(() => { throw new StudentQrValidationError(); });
     const response = await POST(checkoutRequest({ studentId: 'csq1.wrong-tenant' }));

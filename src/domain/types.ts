@@ -40,7 +40,8 @@ export type CheckoutLineSnapshot = Readonly<CheckoutLineItem> & {
   readonly freeQuantity: number;
   readonly finalTotal: number;
   readonly totalDiscount: number;
-  readonly adjustments: readonly PromotionAdjustment[];
+  /** Promotion steps in order, then at most one trailing 교환권 step. */
+  readonly adjustments: readonly CheckoutAdjustment[];
   readonly appliedPromotions: readonly Promotion[];
 };
 
@@ -52,6 +53,21 @@ export type PromotionAdjustment = {
   readonly discountAmount: number;
   readonly freeQuantity?: number;
 };
+
+/** 교환권 the student used for this line: each pays for one unit at its regular price (never below 0). */
+export type VoucherAdjustment = {
+  readonly type: 'VOUCHER';
+  readonly beforeAmount: number;
+  readonly afterAmount: number;
+  readonly discountAmount: number;
+  readonly voucherCount: number;
+};
+
+export type CheckoutAdjustment = PromotionAdjustment | VoucherAdjustment;
+
+export function isVoucherAdjustment(adjustment: CheckoutAdjustment): adjustment is VoucherAdjustment {
+  return adjustment.type === 'VOUCHER';
+}
 
 export type PromotionBase = {
   promotionId: string;

@@ -61,6 +61,7 @@ export function createCheckoutPreviewRepositoryCreators(
               products: selectProducts(products, input.items),
               cartItems: input.items,
               promotions,
+              ...(input.vouchers ? { vouchers: input.vouchers } : {}),
               now,
             });
           });

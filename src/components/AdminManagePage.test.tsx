@@ -469,8 +469,8 @@ describe('AdminManagePage', () => {
     await screen.findByRole('heading', { name: '학급 보상 시스템' });
     const tablist = screen.getByRole('tablist', { name: '관리자 메뉴' });
     const primaryTabs = within(tablist).getAllByRole('tab');
-    const tabKeys = ['home', 'students', 'products', 'tasks', 'currency', 'transactions', 'settings'];
-    expect(primaryTabs.map((tab) => tab.textContent)).toEqual(['홈', '학생', '매점', '과제', '지급·회수', '거래 내역', '설정']);
+    const tabKeys = ['home', 'students', 'products', 'tasks', 'tree', 'currency', 'transactions', 'settings'];
+    expect(primaryTabs.map((tab) => tab.textContent)).toEqual(['홈', '학생', '매점', '과제', '학급 나무', '지급·회수', '거래 내역', '설정']);
     const last = primaryTabs.length - 1;
     primaryTabs.forEach((tab, index) => {
       expect(tab.id).toBe(`admin-tab-${tabKeys[index]}`);
@@ -1695,7 +1695,7 @@ describe('AdminManagePage', () => {
     expect(logo.className).not.toContain('bg-white');
     const adminTabs = screen.getByRole('tablist', { name: '관리자 메뉴' });
     expect(adminTabs).toBe(screen.getByTestId('admin-tabs'));
-    expect(within(adminTabs).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['홈', '학생', '매점', '과제', '지급·회수', '거래 내역', '설정']);
+    expect(within(adminTabs).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['홈', '학생', '매점', '과제', '학급 나무', '지급·회수', '거래 내역', '설정']);
     expect(screen.getByRole('tab', { name: '홈' }).getAttribute('aria-selected')).toBe('true');
     expect(screen.getByRole('tabpanel', { name: '홈' })).toBeTruthy();
     expect(screen.queryByRole('link', { name: /시스템 생성기/ })).toBeNull();
@@ -1724,6 +1724,23 @@ describe('AdminManagePage', () => {
     expect(screen.getByLabelText('글꼴')).toBeTruthy();
     expect(screen.getByDisplayValue('학교안심 보드마카')).toBeTruthy();
     expect(screen.getByRole('button', { name: '설정 저장' })).toHaveProperty('disabled', true);
+  });
+
+  it('shares the store, the bank, and the admin page from the shortcuts with an address and a QR', async () => {
+    render(<AdminManagePage />);
+    expect(await screen.findByRole('heading', { name: '학급 보상 시스템' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '은행 공유' }));
+    const dialog = await screen.findByRole('dialog', { name: '학급 은행 공유' });
+    expect((within(dialog).getByLabelText('주소') as HTMLInputElement).value).toBe(`${window.location.origin}/bank`);
+    expect(within(dialog).getByRole('button', { name: '은행' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(within(dialog).getByRole('button', { name: '닫기' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+    fireEvent.click(screen.getByRole('button', { name: '관리자 페이지 공유' }));
+    const adminDialog = await screen.findByRole('dialog', { name: '관리자 페이지 공유' });
+    expect((within(adminDialog).getByLabelText('주소') as HTMLInputElement).value).toBe(`${window.location.origin}/admin`);
+    expect(within(adminDialog).getByText('선생님 전용 주소예요')).toBeTruthy();
   });
 
   it('uses the updated admin transaction, currency, and product image helper wording', async () => {

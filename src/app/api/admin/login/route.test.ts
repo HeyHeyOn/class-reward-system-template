@@ -1,15 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createConfiguredSheetsReader } from '@/server/googleSheets';
 import { runWithTrustedTenantRequestContext } from '@/server/trustedTenantRequestContext';
-import { getProductionTenantLegacyAdminAuth, TenantLegacyAdminRateLimitError } from '@/server/tenantLegacyAdminAuth';
 import { POST } from './route';
 import * as route from './route';
 
 vi.mock('@/server/googleSheets', () => ({ createConfiguredSheetsReader: vi.fn() }));
 vi.mock('server-only', () => ({}));
-vi.mock('@/server/tenantLegacyAdminAuth', async importOriginal => ({
-  ...await importOriginal<typeof import('@/server/tenantLegacyAdminAuth')>(), getProductionTenantLegacyAdminAuth: vi.fn(),
-}));
 
 const tenant = { id: '20000000-0000-4000-8000-000000000001', slug: 'alpha-class', displayName: 'Alpha', lifecycle: 'ACTIVE' as const, timezone: 'Asia/Seoul' as const };
 
@@ -54,72 +50,23 @@ describe('/api/admin/login', () => {
     expect(response.headers.get('set-cookie')).toBeNull();
   });
 
-  it('does not accept environment passwords in central PostgreSQL mode', async () => {
+  it.each([
+    ['an environment password (central)', null, { password: 'legacy-global-password' }],
+    ['a class password', tenant, { kind: 'password', value: 'top-secret' }],
+    ['a class admin QR', tenant, { kind: 'qr', value: 'class-store-admin:top-secret' }],
+    ['a malformed body', tenant, { value: 'top-secret' }],
+  ] as const)('refuses %s in PostgreSQL mode: class administrators sign in with Google only', async (_label, scope, body) => {
     process.env.CLASS_STORE_STORAGE = 'postgresql';
     process.env.ADMIN_PASSWORD = 'legacy-global-password';
-
-    const response = await POST(new Request('http://localhost/api/admin/login', {
-      method: 'POST', body: JSON.stringify({ password: 'legacy-global-password' }),
-    }));
-
-    expect(response.status).toBe(404);
-    expect(response.headers.get('set-cookie')).toBeNull();
-    expect(createConfiguredSheetsReader).not.toHaveBeenCalled();
-  });
-
-  it('accepts only strict body-only JSON in a trusted scoped tenant context and emits an opaque secure cookie', async () => {
-    process.env.CLASS_STORE_STORAGE = 'postgresql';
-    const login = vi.fn(async () => ({ sessionToken: 'opaque-token', credentialVersion: 2, sessionVersion: 4 }));
-    vi.mocked(getProductionTenantLegacyAdminAuth).mockReturnValue({ login, verifySession: vi.fn() } as never);
-    const credential = 'class-store-admin:top-secret';
-    const request = new Request(`https://example.test/api/admin/login`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ kind: 'qr', value: credential }),
+    const request = new Request('https://example.test/api/admin/login', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
     });
 
-    const response = await runWithTrustedTenantRequestContext({ tenant }, () => POST(request));
+    const response = scope ? await runWithTrustedTenantRequestContext({ tenant: scope }, () => POST(request)) : await POST(request);
 
-    expect(response.status).toBe(200);
-    expect(login).toHaveBeenCalledWith({ kind: 'qr', value: credential });
-    const cookie = response.headers.get('set-cookie') ?? '';
-    expect(cookie).toContain('class_store_tenant_admin=opaque-token');
-    expect(cookie).toMatch(/HttpOnly/i);
-    expect(cookie).toMatch(/Secure/i);
-    expect(cookie).toMatch(/SameSite=Lax/i);
-    expect(cookie).toMatch(/Path=\//i);
-    expect(cookie).not.toContain('top-secret');
-    expect(await response.text()).not.toContain('top-secret');
-  });
-
-  it.each([
-    ['query credential', 'https://example.test/api/admin/login?password=top-secret', { kind: 'password', value: 'top-secret' }, 'application/json'],
-    ['missing field', 'https://example.test/api/admin/login', { value: 'top-secret' }, 'application/json'],
-    ['smuggled field', 'https://example.test/api/admin/login', { kind: 'password', value: 'top-secret', tenantId: tenant.id }, 'application/json'],
-    ['unknown kind', 'https://example.test/api/admin/login', { kind: 'recovery', value: 'top-secret' }, 'application/json'],
-    ['non-JSON', 'https://example.test/api/admin/login', { kind: 'password', value: 'top-secret' }, 'text/plain'],
-  ])('rejects scoped %s before credential validation', async (_label, url, body, contentType) => {
-    process.env.CLASS_STORE_STORAGE = 'postgresql';
-    const login = vi.fn();
-    vi.mocked(getProductionTenantLegacyAdminAuth).mockReturnValue({ login, verifySession: vi.fn() } as never);
-    const response = await runWithTrustedTenantRequestContext({ tenant }, () => POST(new Request(url, {
-      method: 'POST', headers: { 'content-type': contentType }, body: JSON.stringify(body),
-    })));
-    expect(response.status).toBe(400);
-    expect(login).not.toHaveBeenCalled();
-  });
-
-  it('returns a bounded Retry-After without issuing a cookie when password attempts are exhausted', async () => {
-    process.env.CLASS_STORE_STORAGE = 'postgresql';
-    const login = vi.fn().mockRejectedValue(new TenantLegacyAdminRateLimitError(240));
-    vi.mocked(getProductionTenantLegacyAdminAuth).mockReturnValue({ login } as never);
-    const response = await runWithTrustedTenantRequestContext({ tenant }, () => POST(new Request('https://example.test/api/admin/login', {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind: 'password', value: 'candidate' }),
-    })));
-    expect(response.status).toBe(429);
-    expect(response.headers.get('retry-after')).toBe('240');
-    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.status).toBe(410);
+    expect(await response.json()).toEqual({ error: '학급 관리자는 Google 계정으로 로그인해 주세요.', code: 'GOOGLE_LOGIN_REQUIRED' });
     expect(response.headers.get('set-cookie')).toBeNull();
-    expect(await response.text()).not.toContain('candidate');
+    expect(createConfiguredSheetsReader).not.toHaveBeenCalled();
   });
 });

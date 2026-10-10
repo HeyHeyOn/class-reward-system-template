@@ -1,4 +1,4 @@
--- Apply after migrations 0001–0042 as the migration owner, in the same
+-- Apply after migrations 0001–0047 as the migration owner, in the same
 -- transaction as creation of crs_app_runtime LOGIN NOSUPERUSER NOBYPASSRLS
 -- NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION. Never grant role membership.
 -- Passwords and provider URLs belong to the provisioning runner, not this file.
@@ -33,6 +33,15 @@ GRANT UPDATE (tenant_id) ON task_assignments, task_completions,
 GRANT USAGE ON SEQUENCE task_assignments_event_sequence_seq,
   transactions_event_sequence_seq, inventory_ledger_event_sequence_seq,
   task_completions_event_sequence_seq TO crs_app_runtime;
+-- Class tree (0044): settings and trees change in place, drops are append-only.
+GRANT SELECT, INSERT, UPDATE ON growth_settings, class_trees TO crs_app_runtime;
+GRANT SELECT, INSERT ON tree_drops TO crs_app_runtime;
+GRANT USAGE ON SEQUENCE tree_drops_event_sequence_seq TO crs_app_runtime;
+-- Student storage (0045–0046): an item changes only when it is used, taken back, or a purchase is
+-- cancelled; a digital product mark (and its type) is set by the teacher.
+GRANT SELECT, INSERT, UPDATE, DELETE ON coupon_products TO crs_app_runtime;
+GRANT SELECT, INSERT ON student_items TO crs_app_runtime;
+GRANT UPDATE (used_at, revoked_at, used_transaction_id) ON student_items TO crs_app_runtime;
 GRANT EXECUTE ON FUNCTION
   public.platform_find_tenant_by_slug(text),
   public.platform_find_membership_by_tenant_and_google_subject(uuid,text),
@@ -43,4 +52,10 @@ GRANT EXECUTE ON FUNCTION
   public.platform_consume_tenant_login_attempt(uuid),
   public.platform_revoke_tenant_session(text,integer),
   public.platform_list_class_dashboard(text),
-  public.platform_manage_class(uuid,text,text,text,text,bigint) TO crs_app_runtime;
+  public.platform_manage_class(uuid,text,text,text,text,bigint),
+  public.platform_latest_user_agreement(text),
+  public.platform_has_user_agreement(text,text),
+  public.platform_record_user_agreement(text,text),
+  public.platform_get_user_profile(text),
+  public.platform_save_user_profile(text,text,jsonb),
+  public.platform_withdraw_user(text) TO crs_app_runtime;

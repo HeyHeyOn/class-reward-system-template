@@ -1,4 +1,4 @@
-import type { CartItem, CheckoutLineSnapshot, PromotionAdjustment } from '@/domain/types';
+import type { CartItem, CheckoutAdjustment, CheckoutLineSnapshot, PromotionAdjustment, VoucherAdjustment } from '@/domain/types';
 import { parsePromotionResponse } from './promotionClient';
 import { type BudgetContext, trimBudgetString, mapBudgetList, uniqueBudgetStrings, equalBudgetValue } from './boundedWork';
 import { createBoundedParserProjection, registeredBoundedKeys } from './boundedJson';
@@ -49,7 +49,20 @@ function promotionType(value: unknown, budget?: BudgetContext): value is Promoti
     || equalBudgetValue(value, 'PERCENT_DISCOUNT', budget) || equalBudgetValue(value, 'FIXED_DISCOUNT', budget);
 }
 
-function parseAdjustment(value: unknown, budget?: BudgetContext): PromotionAdjustment | null {
+/** A 교환권 step (runtime snapshots only; migrated legacy history never has one). */
+function parseVoucherAdjustment(value: Record<string, unknown>): VoucherAdjustment | null {
+  if (value.promotionId !== undefined || value.freeQuantity !== undefined
+    || !safeMoney(value.beforeAmount) || !safeMoney(value.afterAmount) || !safeMoney(value.discountAmount)
+    || value.afterAmount > value.beforeAmount || value.discountAmount !== value.beforeAmount - value.afterAmount
+    || !positiveQuantity(value.voucherCount)) return null;
+  return {
+    type: 'VOUCHER', beforeAmount: value.beforeAmount, afterAmount: value.afterAmount,
+    discountAmount: value.discountAmount, voucherCount: value.voucherCount,
+  };
+}
+
+function parseAdjustment(value: unknown, budget?: BudgetContext): CheckoutAdjustment | null {
+  if (!budget && isRecord(value) && value.type === 'VOUCHER') return parseVoucherAdjustment(value);
   budget?.spend();
   if (budget && value !== null && typeof value === 'object') registeredBoundedKeys(value, budget);
   if (!isRecord(value) || typeof value.promotionId !== 'string' || !trimBudgetString(value.promotionId, budget)
@@ -81,11 +94,18 @@ export function parseCheckoutLineSnapshot(value: unknown, budget?: BudgetContext
   const productId = value.productId;
   const adjustments = mapBudgetList(value.adjustments, (item) => parseAdjustment(item, budget), budget);
   const appliedPromotions = mapBudgetList(value.appliedPromotions, (item) => parsePromotionResponse(item, budget), budget);
-  if (!adjustments.every((item): item is PromotionAdjustment => { budget?.spend(); return item !== null; })
+  if (!adjustments.every((item): item is CheckoutAdjustment => { budget?.spend(); return item !== null; })) return null;
+  // Promotion steps pair with the applied promotions; a 교환권 step may only come last.
+  const last = adjustments[adjustments.length - 1];
+  const voucher = last?.type === 'VOUCHER' ? last : null;
+  const steps = voucher ? adjustments.slice(0, -1) : adjustments;
+  if (!budget && steps.some((adjustment) => adjustment.type === 'VOUCHER')) return null;
+  const promotionSteps = steps as PromotionAdjustment[];
+  if ((voucher !== null && voucher.voucherCount > value.totalQuantity)
     || !appliedPromotions.every((item): item is NonNullable<ReturnType<typeof parsePromotionResponse>> => { budget?.spend(); return item !== null; })
-    || adjustments.length !== appliedPromotions.length
+    || promotionSteps.length !== appliedPromotions.length
     || !uniqueBudgetStrings(mapBudgetList(appliedPromotions, (item) => item.promotionId, budget), budget)
-    || adjustments.some((adjustment, index) => {
+    || promotionSteps.some((adjustment, index) => {
       budget?.spend();
       const promotion = appliedPromotions[index];
       return !equalBudgetValue(adjustment.promotionId, promotion?.promotionId, budget)
@@ -93,7 +113,7 @@ export function parseCheckoutLineSnapshot(value: unknown, budget?: BudgetContext
         || !promotion.productIds.some((id) => equalBudgetValue(id, productId, budget))
         || (adjustment.type === 'N_PLUS_ONE' ? adjustment.freeQuantity === undefined : adjustment.freeQuantity !== undefined);
     })
-    || adjustments.reduce((sum, adjustment) => { budget?.spend(); return sum + (adjustment.freeQuantity ?? 0); }, 0) !== value.freeQuantity
+    || promotionSteps.reduce((sum, adjustment) => { budget?.spend(); return sum + (adjustment.freeQuantity ?? 0); }, 0) !== value.freeQuantity
     || (adjustments.length > 0 && (adjustments[0].beforeAmount !== value.regularTotal
       || adjustments[adjustments.length - 1].afterAmount !== value.finalTotal
       || adjustments.some((adjustment, index) => { budget?.spend(); return index > 0 && adjustment.beforeAmount !== adjustments[index - 1].afterAmount; })))) return null;

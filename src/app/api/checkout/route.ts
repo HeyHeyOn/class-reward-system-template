@@ -14,7 +14,10 @@ type CheckoutRequestBody = {
   studentId?: unknown;
   items?: unknown;
   expectedPricing?: unknown;
+  voucherItemIds?: unknown;
 };
+
+const MAX_VOUCHERS = 100;
 
 export async function POST(request: Request) {
   const frozen = legacyWriteFreezeResponse();
@@ -39,6 +42,7 @@ export async function POST(request: Request) {
       studentId,
       items: validation.items,
       expectedPricing: validation.expectedPricing,
+      ...(validation.voucherItemIds.length > 0 ? { voucherItemIds: validation.voucherItemIds } : {}),
       operator: 'kiosk',
     };
     const result = await command.execute({
@@ -48,7 +52,7 @@ export async function POST(request: Request) {
 
     if (!result.ok) {
       const conflictCodes = new Set([
-        'PRICE_CHANGED', 'OPERATION_CONFLICT', 'OPERATION_PENDING', 'OPERATION_FAILED',
+        'PRICE_CHANGED', 'OPERATION_CONFLICT', 'OPERATION_PENDING', 'OPERATION_FAILED', 'VOUCHER_UNAVAILABLE',
       ]);
       return Response.json(result, { status: conflictCodes.has(result.code) ? 409 : 400 });
     }
@@ -64,7 +68,7 @@ export async function POST(request: Request) {
 }
 
 type CheckoutBodyValidation =
-  | { ok: true; operationId: string; studentId: string; items: CartItem[]; expectedPricing: CheckoutPreviewPayload }
+  | { ok: true; operationId: string; studentId: string; items: CartItem[]; expectedPricing: CheckoutPreviewPayload; voucherItemIds: string[] }
   | { ok: false; message: string };
 
 function validateCheckoutBody(body: CheckoutRequestBody): CheckoutBodyValidation {
@@ -93,12 +97,20 @@ function validateCheckoutBody(body: CheckoutRequestBody): CheckoutBodyValidation
     return { ok: false, message: '예상 결제 금액 형식이 올바르지 않습니다.' };
   }
 
+  const voucherItemIds = body.voucherItemIds ?? [];
+  if (!Array.isArray(voucherItemIds) || voucherItemIds.length > MAX_VOUCHERS
+    || voucherItemIds.some((id) => typeof id !== 'string' || !id.trim() || id.length > 200)
+    || new Set(voucherItemIds).size !== voucherItemIds.length) {
+    return { ok: false, message: '교환권 형식이 올바르지 않습니다.' };
+  }
+
   return {
     ok: true,
     operationId: body.operationId,
     studentId: body.studentId.trim(),
     items,
     expectedPricing,
+    voucherItemIds: (voucherItemIds as string[]).map((id) => id.trim()),
   };
 }
 

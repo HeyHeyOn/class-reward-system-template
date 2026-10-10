@@ -3,19 +3,25 @@
 import styles from './classroom.module.css';
 
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { createCartPricingPreview } from '@/domain/checkout';
+import { applyCheckoutVouchers, createCartPricingPreview, removeCheckoutVouchers } from '@/domain/checkout';
 import { calculatePromotionPrice } from '@/domain/promotions';
 import type { CartItem, CheckoutLineSnapshot, Product, Promotion, Student } from '@/domain/types';
 import { checkoutPreviewMatchesCart, parseCheckoutPreviewResponse, parseCheckoutSuccessResponse, type CheckoutPreviewPayload, type CheckoutSuccessPayload } from '@/lib/checkoutSnapshotClient';
 import { getFontFamilyCss, type FontFamily } from '@/lib/fontSettings';
 import { effectivePromotionsForProduct, parsePromotionListResponse, promotionBadgeLabel } from '@/lib/promotionClient';
 import { tenantFetch } from '@/lib/tenantApiPath';
+import type { CheckoutVoucherDto } from '@/lib/studentBagApi';
+import { fetchCheckoutVouchers, fetchDigitalProducts } from './bag/bagClient';
+import { ItemPicture } from './bag/ItemPicture';
 import { QrScanner } from './QrScanner';
 import { PromotionPills } from './promotions/PromotionPills';
 import { normalizeThemeColor, themeStyles, type ThemeColor, type ThemeStyles } from './uiTheme';
 import { Icon } from './ui';
 
-type PaymentStep = 'checkout' | 'processing' | 'failure' | 'complete';
+type PaymentStep = 'checkout' | 'vouchers' | 'processing' | 'failure' | 'complete';
+
+/** After the QR scan: the student's 교환권 that fit the cart, offered before paying. */
+type VoucherOffer = { qrValue: string; studentId: string; studentName: string; vouchers: CheckoutVoucherDto[] };
 
 type PaymentResult = CheckoutSuccessPayload & {
   studentNumber?: number;
@@ -41,6 +47,13 @@ type KioskSettings = { currencyUnit?: string; appTitle?: string; themeColor?: Th
 
 type ProductFilter = { kind: 'all' } | { kind: 'promotion' } | { kind: 'category'; category: string };
 
+const UNCERTAIN_FAILURE: FailureState = {
+  title: '결제 상태 확인 필요',
+  message: '결제 응답을 받지 못해 처리 여부를 확인할 수 없습니다.',
+  detail: '이미 처리되었을 수 있으니 거래 내역과 잔액을 먼저 확인하고, 별도의 새 결제를 하지 마세요.',
+  uncertain: true,
+};
+
 function isApiError(payload: unknown): payload is ApiError {
   return Boolean(payload && typeof payload === 'object' && ('error' in payload || 'message' in payload));
 }
@@ -60,6 +73,9 @@ function promotionAccessibleSummary(promotions: Promotion[], currencyUnit: strin
 
 export function KioskApp() {
   const [products, setProducts] = useState<Product[]>([]);
+  // 디지털 상품: products whose purchase goes into the buyer's 보관함 (PostgreSQL classes; none elsewhere).
+  const [couponIds, setCouponIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [voucherOffer, setVoucherOffer] = useState<VoucherOffer | null>(null);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [renderClock, setRenderClock] = useState(() => new Date());
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
@@ -123,6 +139,10 @@ export function KioskApp() {
       if (Number.isFinite(serverEpoch)) serverClockOffsetRef.current = serverEpoch - Date.now();
       setProducts(payload as Product[]);
       setPromotions(parsedPromotions);
+      // No digital product marks (a Sheets class, or a failed call): the store works as before.
+      void fetchDigitalProducts().then((result) => {
+        if (mountedRef.current) setCouponIds(new Set(result.ok ? result.data.map((product) => product.productId) : []));
+      });
       cartGenerationRef.current += 1;
       setConfirmedServerPricing(null);
       setRenderClock(new Date(Date.now() + serverClockOffsetRef.current));
@@ -323,9 +343,8 @@ export function KioskApp() {
     checkoutInFlightRef.current = true;
     setIsCheckingOut(true);
     setFailure(null);
+    setVoucherOffer(null);
     setPaymentStep('processing');
-    const checkoutCartGeneration = cartGenerationRef.current;
-    const checkoutCartKey = cartKey;
     let checkoutSubmitted = false;
 
     try {
@@ -341,72 +360,20 @@ export function KioskApp() {
         return;
       }
 
-      const checkoutBody = JSON.stringify({
-        operationId: checkoutOperationId(studentPayload.studentId, cartItems, currentPreview),
-        studentId,
-        items: cartItems,
-        expectedPricing: currentPreview,
-      });
-      checkoutSubmitted = true;
-      const checkoutResponse = await tenantFetch('/api/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: checkoutBody,
-      });
-      const checkoutRaw: unknown = await checkoutResponse.json().catch(() => null);
-      const checkoutPayload = checkoutResponse.ok ? parseCheckoutSuccessResponse(checkoutRaw) : null;
-
-      if (!checkoutPayload) {
-        const errorPayload = isApiError(checkoutRaw) ? checkoutRaw : {};
-        if (checkoutResponse.status === 409 && errorPayload.code === 'PRICE_CHANGED') {
-          const latestPricing = parseCheckoutPreviewResponse(errorPayload.latestPricing);
-          const currentPricingContext = pricingContextRef.current;
-          if (latestPricing
-            && cartGenerationRef.current === checkoutCartGeneration
-            && currentPricingContext.cartKey === checkoutCartKey
-            && checkoutPreviewMatchesCart(latestPricing, currentPricingContext.cartItems)) {
-            setConfirmedServerPricing({
-              cartKey: currentPricingContext.cartKey,
-              localFingerprint: currentPricingContext.localFingerprint,
-              payload: latestPricing,
-            });
-            checkoutOperationRef.current = null;
-            setMessage(errorPayload.message || '상품 가격 또는 행사가 변경되었습니다. 최신 금액을 확인해 주세요.');
-            setManualQrValue('');
-            setPaymentStep(null);
-            return;
-          }
-        }
-        const errorMessage = errorPayload.message || errorPayload.error || '결제에 실패했습니다.';
-        const detail =
-          typeof errorPayload.currentBalance === 'number'
-            ? `현재 잔액: ${formatCurrency(errorPayload.currentBalance, currencyUnit)}`
-            : undefined;
-
-        setFailure({ title: '결제 실패', message: errorMessage, detail });
-        setPaymentStep('failure');
+      // 교환권 that fit the cart (lines that still cost something) are offered before paying.
+      const paidLines = new Set(currentPreview.items.filter((item) => item.finalTotal > 0).map((item) => item.productId));
+      const offer = paidLines.size > 0 ? await fetchCheckoutVouchers(studentId, [...paidLines]) : null;
+      const usable = offer?.ok ? offer.data.filter((voucher) => paidLines.has(voucher.productId)) : [];
+      if (usable.length > 0) {
+        setVoucherOffer({ qrValue: studentId, studentId: studentPayload.studentId, studentName: studentPayload.name, vouchers: usable });
+        setPaymentStep('vouchers');
         return;
       }
 
-      setProducts((currentProducts) =>
-        currentProducts.map((product) => {
-          const completedItem = checkoutPayload.items.find((item) => item.productId === product.productId);
-          return completedItem ? { ...product, stock: product.stock - completedItem.totalQuantity } : product;
-        }),
-      );
-      setPaymentResult(checkoutPayload);
-      checkoutOperationRef.current = null;
-      setCompletedCartDetails(checkoutPayload.items);
-      setCartItems([]);
-      setManualQrValue('');
-      setPaymentStep('complete');
+      checkoutSubmitted = true;
+      await submitCheckout(studentId, studentPayload.studentId, currentPreview, []);
     } catch {
-      setFailure(checkoutSubmitted ? {
-        title: '결제 상태 확인 필요',
-        message: '결제 응답을 받지 못해 처리 여부를 확인할 수 없습니다.',
-        detail: '이미 처리되었을 수 있으니 거래 내역과 잔액을 먼저 확인하고, 별도의 새 결제를 하지 마세요.',
-        uncertain: true,
-      } : {
+      setFailure(checkoutSubmitted ? UNCERTAIN_FAILURE : {
         title: '결제 실패',
         message: '학생 정보를 확인하지 못했습니다. 결제는 요청되지 않았습니다.',
       });
@@ -417,6 +384,108 @@ export function KioskApp() {
     }
   }
 
+  /** The student's choice on the 교환권 step: pay with the chosen ones, or with none. */
+  async function payAfterVoucherChoice(voucherItemIds: string[]) {
+    if (checkoutInFlightRef.current || !voucherOffer || !currentPreview) return;
+    checkoutInFlightRef.current = true;
+    setIsCheckingOut(true);
+    setFailure(null);
+    setPaymentStep('processing');
+    try {
+      await submitCheckout(voucherOffer.qrValue, voucherOffer.studentId, currentPreview, voucherItemIds);
+    } catch {
+      setFailure(UNCERTAIN_FAILURE);
+      setPaymentStep('failure');
+    } finally {
+      checkoutInFlightRef.current = false;
+      setIsCheckingOut(false);
+    }
+  }
+
+  async function submitCheckout(qrValue: string, resolvedStudentId: string, basePricing: CheckoutPreviewPayload, voucherItemIds: string[]) {
+    const checkoutCartGeneration = cartGenerationRef.current;
+    const checkoutCartKey = cartKey;
+    let expectedPricing = basePricing;
+    if (voucherItemIds.length > 0) {
+      const chosen = new Set(voucherItemIds);
+      const counts: Record<string, number> = {};
+      for (const voucher of voucherOffer?.vouchers ?? []) {
+        if (chosen.has(voucher.itemId)) counts[voucher.productId] = (counts[voucher.productId] ?? 0) + 1;
+      }
+      const applied = applyCheckoutVouchers(basePricing, counts);
+      if (!applied.ok) {
+        setFailure({ title: '결제 실패', message: applied.message });
+        setPaymentStep('failure');
+        return;
+      }
+      expectedPricing = applied;
+    }
+
+    const checkoutBody = JSON.stringify({
+      operationId: checkoutOperationId(resolvedStudentId, cartItems, expectedPricing, voucherItemIds),
+      studentId: qrValue,
+      items: cartItems,
+      expectedPricing,
+      ...(voucherItemIds.length > 0 ? { voucherItemIds } : {}),
+    });
+    const checkoutResponse = await tenantFetch('/api/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: checkoutBody,
+    });
+    const checkoutRaw: unknown = await checkoutResponse.json().catch(() => null);
+    const checkoutPayload = checkoutResponse.ok ? parseCheckoutSuccessResponse(checkoutRaw) : null;
+
+    if (!checkoutPayload) {
+      const errorPayload = isApiError(checkoutRaw) ? checkoutRaw : {};
+      if (checkoutResponse.status === 409 && errorPayload.code === 'PRICE_CHANGED') {
+        const parsedPricing = parseCheckoutPreviewResponse(errorPayload.latestPricing);
+        // The server quote includes the 교환권; the kiosk keeps it without them and asks again.
+        const latestPricing = parsedPricing ? removeCheckoutVouchers(parsedPricing) : null;
+        const currentPricingContext = pricingContextRef.current;
+        if (latestPricing
+          && cartGenerationRef.current === checkoutCartGeneration
+          && currentPricingContext.cartKey === checkoutCartKey
+          && checkoutPreviewMatchesCart(latestPricing, currentPricingContext.cartItems)) {
+          setConfirmedServerPricing({
+            cartKey: currentPricingContext.cartKey,
+            localFingerprint: currentPricingContext.localFingerprint,
+            payload: latestPricing,
+          });
+          checkoutOperationRef.current = null;
+          setMessage(errorPayload.message || '상품 가격 또는 행사가 변경되었습니다. 최신 금액을 확인해 주세요.');
+          setManualQrValue('');
+          setVoucherOffer(null);
+          setPaymentStep(null);
+          return;
+        }
+      }
+      const errorMessage = errorPayload.message || errorPayload.error || '결제에 실패했습니다.';
+      const detail =
+        typeof errorPayload.currentBalance === 'number'
+          ? `현재 잔액: ${formatCurrency(errorPayload.currentBalance, currencyUnit)}`
+          : undefined;
+
+      setFailure({ title: '결제 실패', message: errorMessage, detail });
+      setPaymentStep('failure');
+      return;
+    }
+
+    setProducts((currentProducts) =>
+      currentProducts.map((product) => {
+        const completedItem = checkoutPayload.items.find((item) => item.productId === product.productId);
+        return completedItem ? { ...product, stock: product.stock - completedItem.totalQuantity } : product;
+      }),
+    );
+    setPaymentResult(checkoutPayload);
+    checkoutOperationRef.current = null;
+    setCompletedCartDetails(checkoutPayload.items);
+    setCartItems([]);
+    setManualQrValue('');
+    setVoucherOffer(null);
+    setPaymentStep('complete');
+  }
+
   function handleManualQrSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void completeCheckoutWithQrValue(manualQrValue);
@@ -425,6 +494,7 @@ export function KioskApp() {
   function resetToShop() {
     cartGenerationRef.current += 1;
     checkoutOperationRef.current = null;
+    setVoucherOffer(null);
     setPaymentStep(null);
     setPaymentResult(null);
     setCompletedCartDetails([]);
@@ -437,15 +507,22 @@ export function KioskApp() {
   function retryPayment() {
     setFailure(null);
     setManualQrValue('');
+    setVoucherOffer(null);
     setPaymentStep('checkout');
+  }
+
+  function closePayment() {
+    setVoucherOffer(null);
+    setPaymentStep(null);
   }
 
   function checkoutOperationId(
     studentId: string,
     items: CartItem[],
     expectedPricing: CheckoutPreviewPayload,
+    voucherItemIds: string[],
   ): string {
-    const fingerprint = JSON.stringify({ studentId, items, expectedPricing });
+    const fingerprint = JSON.stringify({ studentId, items, expectedPricing, voucherItemIds: [...voucherItemIds].sort() });
     if (checkoutOperationRef.current?.fingerprint === fingerprint) {
       return checkoutOperationRef.current.operationId;
     }
@@ -540,6 +617,12 @@ export function KioskApp() {
                           pillClassName="bg-[var(--crs-danger-solid)] text-white"
                         />
                         {isSoldOut ? <span className="absolute inset-0 flex items-center justify-center bg-black/35 text-[clamp(0.8rem,2.6vw,1.1rem)] font-black text-white">품절</span> : null}
+                        {couponIds.has(product.productId) ? (
+                          <span role="img" aria-label="디지털 상품" title="디지털 상품: 구입하면 보관함에 저장돼요"
+                            className="absolute bottom-1.5 right-1.5 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--theme-accent-solid)] text-[var(--theme-accent-on-solid)] shadow-[var(--crs-shadow)]">
+                            <Icon name="package" size={18} strokeWidth={2} />
+                          </span>
+                        ) : null}
                         {inCart ? <span aria-hidden="true" className="absolute right-1.5 top-1.5 flex h-7 min-w-7 items-center justify-center rounded-full bg-[var(--theme-accent-solid)] px-2 text-sm font-black text-[var(--theme-accent-on-solid)] shadow-[var(--crs-shadow)]">{inCart}</span> : null}
                       </div>
                       <div className="mt-2 min-w-0 px-0.5">
@@ -650,12 +733,16 @@ export function KioskApp() {
           setManualQrValue={setManualQrValue}
           onManualQrSubmit={handleManualQrSubmit}
           onScan={completeCheckoutWithQrValue}
-          onCancel={() => setPaymentStep(null)}
+          onCancel={closePayment}
+          voucherOffer={voucherOffer}
+          basePricing={currentPreview}
+          onVoucherChoice={(itemIds) => void payAfterVoucherChoice(itemIds)}
           onRetry={retryPayment}
           onReset={resetToShop}
           isCheckingOut={isCheckingOut}
           paymentResult={paymentResult}
           completedCartDetails={completedCartDetails}
+          couponCount={completedCartDetails.reduce((sum, line) => sum + (couponIds.has(line.productId) ? line.totalQuantity : 0), 0)}
           failure={failure}
           currencyUnit={currencyUnit}
           themeColor={themeColor}
@@ -692,6 +779,12 @@ type PaymentModalProps = {
   isCheckingOut: boolean;
   paymentResult: PaymentResult | null;
   completedCartDetails: CheckoutLineSnapshot[];
+  /** 디지털 상품 the purchase put into the student's 보관함. */
+  couponCount: number;
+  voucherOffer: VoucherOffer | null;
+  /** The quote before any 교환권. */
+  basePricing: CheckoutPreviewPayload | null;
+  onVoucherChoice: (voucherItemIds: string[]) => void;
   failure: FailureState | null;
   currencyUnit: string;
   themeColor: ThemeColor;
@@ -712,13 +805,17 @@ function PaymentModal({
   isCheckingOut,
   paymentResult,
   completedCartDetails,
+  couponCount,
+  voucherOffer,
+  basePricing,
+  onVoucherChoice,
   failure,
   currencyUnit,
   themeColor,
   qrManualInputEnabled,
 }: PaymentModalProps) {
   const theme = themeStyles(themeColor);
-  const dialogLabel = step === 'checkout' ? '결제 확인' : step === 'processing' ? '결제 중' : step === 'failure' ? failure?.title || '결제 실패' : '결제 완료';
+  const dialogLabel = step === 'checkout' ? '결제 확인' : step === 'vouchers' ? '교환권 사용' : step === 'processing' ? '결제 중' : step === 'failure' ? failure?.title || '결제 실패' : '결제 완료';
   const dialogRef = useRef<HTMLElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
 
@@ -740,7 +837,7 @@ function PaymentModal({
 
   function handleDialogKeyDown(event: React.KeyboardEvent<HTMLElement>) {
     if (event.key === 'Escape') {
-      if (!isCheckingOut && (step === 'checkout' || step === 'failure')) {
+      if (!isCheckingOut && (step === 'checkout' || step === 'vouchers' || step === 'failure')) {
         event.preventDefault();
         onCancel();
       }
@@ -814,6 +911,11 @@ function PaymentModal({
           </>
         ) : null}
 
+        {step === 'vouchers' && voucherOffer && basePricing ? (
+          <VoucherStep offer={voucherOffer} basePricing={basePricing} currencyUnit={currencyUnit}
+            onCancel={onCancel} onChoice={onVoucherChoice} disabled={isCheckingOut} />
+        ) : null}
+
         {step === 'processing' ? (
           <div className="py-14 text-center">
             <div className="mx-auto h-14 w-14 animate-spin rounded-full border-[5px] border-[var(--crs-line-strong)] border-t-[var(--theme-accent-text)]" />
@@ -850,6 +952,11 @@ function PaymentModal({
             <div className="mt-5 text-left">
               <CartSummary cartDetails={completedCartDetails} totalAmount={paymentResult.totalAmount} accent="" theme={theme} showTotal={false} currencyUnit={currencyUnit} />
             </div>
+            {couponCount > 0 ? (
+              <p role="status" className="mt-4 flex items-center justify-center gap-2 rounded-[16px] bg-[var(--theme-accent-soft)] px-4 py-3 text-[16px] font-bold text-[var(--theme-accent-text)]">
+                <Icon name="package" size={20} />디지털 상품 {couponCount}개를 {paymentResult.studentName}님의 보관함에 넣었어요.
+              </p>
+            ) : null}
             <div className="mt-4 grid grid-cols-2 gap-3 text-left">
               <div className="rounded-[16px] bg-[var(--crs-subtle)] p-4">
                 <p className="text-sm font-semibold text-[var(--theme-muted-text)]">총 결제 금액</p>
@@ -867,6 +974,114 @@ function PaymentModal({
         ) : null}
       </section>
     </div>
+  );
+}
+
+type VoucherStack = { key: string; productId: string; title: string; imageUrl: string | null; itemIds: string[] };
+
+/**
+ * After the QR scan, when the student holds 교환권 for products in the cart: pick any (the same 교환권
+ * stacked with a count), then pay with them, pay without them, or cancel the payment.
+ */
+function VoucherStep({ offer, basePricing, currencyUnit, onCancel, onChoice, disabled }: {
+  offer: VoucherOffer;
+  basePricing: CheckoutPreviewPayload;
+  currencyUnit: string;
+  onCancel: () => void;
+  onChoice: (voucherItemIds: string[]) => void;
+  disabled: boolean;
+}) {
+  const [chosen, setChosen] = useState<Record<string, number>>({});
+  const lines = new Map(basePricing.items.map((item) => [item.productId, item]));
+  const stacks: VoucherStack[] = [];
+  for (const voucher of offer.vouchers) {
+    const key = `${voucher.productId}\u0000${voucher.title}`;
+    const stack = stacks.find((entry) => entry.key === key);
+    if (stack) stack.itemIds.push(voucher.itemId);
+    else stacks.push({ key, productId: voucher.productId, title: voucher.title, imageUrl: voucher.imageUrl, itemIds: [voucher.itemId] });
+  }
+  // One 교환권 pays for one unit, so a product takes at most as many as are in the cart.
+  const usedFor = (productId: string, exceptKey = '') => stacks
+    .filter((stack) => stack.productId === productId && stack.key !== exceptKey)
+    .reduce((sum, stack) => sum + (chosen[stack.key] ?? 0), 0);
+  const maxFor = (stack: VoucherStack) => Math.min(stack.itemIds.length, (lines.get(stack.productId)?.totalQuantity ?? 0) - usedFor(stack.productId, stack.key));
+  const setCount = (stack: VoucherStack, count: number) => setChosen((current) => ({ ...current, [stack.key]: Math.max(0, Math.min(count, maxFor(stack))) }));
+
+  const counts: Record<string, number> = {};
+  const chosenIds: string[] = [];
+  for (const stack of stacks) {
+    const count = chosen[stack.key] ?? 0;
+    if (count > 0) {
+      counts[stack.productId] = (counts[stack.productId] ?? 0) + count;
+      chosenIds.push(...stack.itemIds.slice(0, count));
+    }
+  }
+  const applied = chosenIds.length > 0 ? applyCheckoutVouchers(basePricing, counts) : null;
+  const finalTotal = applied?.ok ? applied.totalAmount : basePricing.totalAmount;
+
+  return (
+    <>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-[26px] font-black tracking-[-0.035em]">교환권 사용</h2>
+          <p className="mt-1 text-sm font-semibold text-[var(--theme-muted-text)]">{offer.studentName}님이 이번 결제에 쓸 수 있는 교환권이 있어요. 쓸 교환권을 골라 주세요.</p>
+        </div>
+        <button onClick={onCancel} disabled={disabled} aria-label="결제 창 닫기" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[var(--theme-muted-text)] hover:bg-[var(--crs-subtle-hover)]"><Icon name="close" size={20} /></button>
+      </div>
+      <ul className="mt-5 grid gap-2.5">
+        {stacks.map((stack) => {
+          const line = lines.get(stack.productId);
+          const count = chosen[stack.key] ?? 0;
+          const max = maxFor(stack);
+          const selected = count > 0;
+          return (
+            <li key={stack.key}>
+              <div className={`flex items-center gap-3 rounded-[18px] border-2 p-3 transition-colors ${selected ? 'border-[var(--theme-accent-solid)] bg-[var(--theme-accent-soft)]' : 'border-[var(--crs-line)] bg-[var(--theme-surface)]'}`}>
+                <button type="button" role="checkbox" aria-checked={selected} disabled={disabled || (!selected && max < 1)}
+                  onClick={() => setCount(stack, selected ? 0 : 1)}
+                  aria-label={`${stack.title}${stack.itemIds.length > 1 ? ` ${stack.itemIds.length}장 중` : ''} 사용`}
+                  className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:opacity-50">
+                  <span aria-hidden="true" className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 ${selected ? 'border-[var(--theme-accent-solid)] bg-[var(--theme-accent-solid)] text-[var(--theme-accent-on-solid)]' : 'border-[var(--crs-line-strong)]'}`}>
+                    {selected ? <Icon name="check" size={16} strokeWidth={3} /> : null}
+                  </span>
+                  <ItemPicture imageUrl={stack.imageUrl} kind="CONSUMABLE" voucher size={48} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[16px] font-extrabold">{stack.title}</span>
+                    <span className="block text-[13px] font-semibold text-[var(--theme-muted-text)]">
+                      {line ? `${line.name} 1개 값(${formatCurrency(line.regularUnitPrice, currencyUnit)}) · ` : ''}{stack.itemIds.length}장 있음
+                    </span>
+                  </span>
+                </button>
+                {stack.itemIds.length > 1 && (line?.totalQuantity ?? 0) > 1 ? (
+                  <span className="flex shrink-0 items-center gap-1">
+                    <button type="button" aria-label={`${stack.title} 한 장 덜 쓰기`} disabled={disabled || count < 1} onClick={() => setCount(stack, count - 1)}
+                      className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--theme-surface)] shadow-[var(--crs-shadow-sm)] disabled:opacity-40"><Icon name="minus" size={16} /></button>
+                    <span aria-live="polite" className="w-7 text-center text-[16px] font-black tabular-nums">{count}</span>
+                    <button type="button" aria-label={`${stack.title} 한 장 더 쓰기`} disabled={disabled || count >= max} onClick={() => setCount(stack, count + 1)}
+                      className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--theme-surface)] shadow-[var(--crs-shadow-sm)] disabled:opacity-40"><Icon name="plus" size={16} /></button>
+                  </span>
+                ) : null}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      <div className="mt-4 flex flex-wrap items-baseline justify-between gap-2 rounded-[16px] bg-[var(--crs-subtle)] px-4 py-3">
+        <p className="text-base font-bold">{chosenIds.length > 0 ? `교환권 ${chosenIds.length}장을 쓰면` : '총 결제 금액'}</p>
+        <p className="text-[26px] font-black tabular-nums tracking-[-0.03em]">
+          {chosenIds.length > 0 ? <span className="mr-2 text-base font-semibold text-[var(--theme-muted-text)] line-through">{formatCurrency(basePricing.totalAmount, currencyUnit)}</span> : null}
+          {formatCurrency(finalTotal, currencyUnit)}
+        </p>
+      </div>
+      <div className="mt-5 grid grid-cols-3 gap-2.5">
+        <button type="button" onClick={onCancel} disabled={disabled} className="h-14 rounded-[16px] border border-[var(--crs-line-strong)] text-[16px] font-bold disabled:opacity-40">결제 취소</button>
+        <button type="button" onClick={() => onChoice([])} disabled={disabled} className="h-14 rounded-[16px] border border-[var(--crs-line-strong)] text-[16px] font-bold disabled:opacity-40">사용 안 함</button>
+        <button type="button" onClick={() => onChoice(chosenIds)} disabled={disabled || chosenIds.length === 0 || !applied?.ok}
+          className="h-14 rounded-[16px] bg-[var(--theme-accent-solid)] text-[16px] font-black text-[var(--theme-accent-on-solid)] disabled:opacity-40">
+          {chosenIds.length > 0 ? `사용 (${chosenIds.length}장)` : '사용'}
+        </button>
+      </div>
+    </>
   );
 }
 
@@ -888,7 +1103,12 @@ function CartSummary({
       <div className="divide-y divide-[var(--crs-line)] rounded-[16px] border border-[var(--crs-line)] px-4">
         {cartDetails.map((item) => (
           <div key={item.productId} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 py-3">
-            <p className="truncate text-base font-bold">{item.name}</p>
+            <div className="min-w-0">
+              <p className="truncate text-base font-bold">{item.name}</p>
+              {item.adjustments.map((adjustment) => (adjustment.type === 'VOUCHER'
+                ? <p key="voucher" className="flex items-center gap-1 text-xs font-bold text-[var(--theme-accent-text)]"><Icon name="ticket" size={13} />교환권 {adjustment.voucherCount}장 사용</p>
+                : null))}
+            </div>
             <p className="text-sm font-semibold tabular-nums text-[var(--theme-muted-text)]">× {item.totalQuantity}</p>
             <div className="min-w-20 text-right"><p className="text-base font-black tabular-nums">{formatCurrency(item.finalTotal, currencyUnit)}</p>{item.totalDiscount > 0 ? <p className="text-xs text-[var(--theme-muted-text)] line-through">{formatCurrency(item.regularTotal, currencyUnit)}</p> : null}</div>
           </div>

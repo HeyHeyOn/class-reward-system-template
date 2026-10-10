@@ -2,6 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 import { Field, Icon, Input, Switch } from '../ui';
+import type { ReactNode } from 'react';
 import type { NewProductDraft } from './adminTypes';
 
 export function ProductThumb({ name, imageUrl }: { name: string; imageUrl?: string }) {
@@ -12,13 +13,15 @@ export function ProductThumb({ name, imageUrl }: { name: string; imageUrl?: stri
   );
 }
 
-export function ProductFields({ idPrefix, labelPrefix, values, categories, unit, onChange }: {
+export function ProductFields({ idPrefix, labelPrefix, values, categories, unit, onChange, digital }: {
   idPrefix: string;
   labelPrefix: string;
   values: NewProductDraft;
   categories: string[];
   unit: string;
   onChange: (patch: Partial<NewProductDraft>) => void;
+  /** PostgreSQL classes: the 디지털 상품 settings (buying one puts it into the buyer's 보관함). */
+  digital?: ReactNode;
 }) {
   const isNew = labelPrefix === '새 상품';
   const label = (field: string) => isNew ? `새 상품 ${field}` : `${labelPrefix} ${field}`;
@@ -55,6 +58,7 @@ export function ProductFields({ idPrefix, labelPrefix, values, categories, unit,
       </div>
       <Switch checked={Boolean(values.isActive)} ariaLabel={isNew ? '새 상품 판매중' : `${labelPrefix} 판매중`} onChange={(checked) => onChange({ isActive: checked })}
         label="판매 중" description="끄면 매점 화면에서 이 상품이 숨겨집니다." />
+      {digital ?? null}
     </div>
   );
 }

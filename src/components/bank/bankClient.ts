@@ -7,7 +7,12 @@ import type {
   StudentBankTransactionKind,
 } from '@/server/studentBankViews';
 
+import type { ClassTreeStudentViewDto, ClassTreeWaterResultDto } from '@/lib/classTreeApi';
+import type { StudentBagDto } from '@/lib/studentBagApi';
+import { isStudentBag } from '../bag/bagClient';
+
 export type { StudentBankProfileDto, StudentBankTaskDto, StudentBankTransactionDto, StudentBankTransactionKind };
+export type { ClassTreeStudentViewDto, ClassTreeWaterResultDto, StudentBagDto };
 
 export type BankSettings = {
   currencyUnit: string;
@@ -104,6 +109,7 @@ export function isTask(value: unknown): value is StudentBankTaskDto {
 
 const TRANSACTION_KINDS = new Set<StudentBankTransactionKind>([
   'PURCHASE', 'TASK_REWARD', 'TEACHER_GRANT', 'TEACHER_DEDUCT', 'CANCELLATION', 'DEPOSIT', 'WITHDRAWAL',
+  'TREE_WATER', 'TREE_HARVEST',
 ]);
 
 function isTransaction(value: unknown): value is StudentBankTransactionDto {
@@ -168,6 +174,49 @@ export function fetchTasks(): Promise<BankResult<TasksPayload>> {
 
 export function fetchTransactions(): Promise<BankResult<TransactionsPayload>> {
   return bankRequest('/api/bank/me/transactions', { method: 'GET' }, isTransactionsPayload);
+}
+
+function isTreeView(value: unknown): value is ClassTreeStudentViewDto {
+  if (!isRecord(value) || typeof value.enabled !== 'boolean' || typeof value.treeName !== 'string' || !isSafeInteger(value.apples) || !isSafeInteger(value.waterPrice)
+    || !isSafeInteger(value.waterDailyLimit) || !isSafeInteger(value.myWaterToday) || !isSafeInteger(value.waterersToday)
+    || !isSafeInteger(value.harvestedTrees)) return false;
+  const tree = value.tree;
+  if (tree !== null && !(isRecord(tree) && isSafeInteger(tree.treeNo) && isSafeInteger(tree.goal) && isSafeInteger(tree.drops)
+    && typeof tree.startedAt === 'string')) return false;
+  return true;
+}
+
+export type TreePayload = { balance: number; tree: ClassTreeStudentViewDto };
+function isTreePayload(value: unknown): value is TreePayload {
+  return isRecord(value) && isSafeInteger(value.balance) && isTreeView(value.tree);
+}
+
+export type WaterPayload = { result: ClassTreeWaterResultDto; tree: ClassTreeStudentViewDto };
+function isWaterPayload(value: unknown): value is WaterPayload {
+  return isRecord(value) && isRecord(value.result) && value.result.ok === true && isSafeInteger(value.result.balanceAfter)
+    && isSafeInteger(value.result.drops) && isTreeView(value.tree);
+}
+
+/** The class tree and the student's coupons. 404 UNSUPPORTED means a Sheets class without a tree. */
+export function fetchTree(): Promise<BankResult<TreePayload>> {
+  return bankRequest('/api/bank/me/tree', { method: 'GET' }, isTreePayload);
+}
+
+export type BagPayload = { bag: StudentBagDto };
+function isBagPayload(value: unknown): value is BagPayload {
+  return isRecord(value) && isStudentBag(value.bag);
+}
+
+/** The student's own bag. 404 UNSUPPORTED means a Sheets class without bags. */
+export function fetchBag(): Promise<BankResult<BagPayload>> {
+  return bankRequest('/api/bank/me/bag', { method: 'GET' }, isBagPayload);
+}
+
+/** Waters the tree once. Resend the same operation ID after a lost response; it is charged only once. */
+export function waterTree(operationId: string): Promise<BankResult<WaterPayload>> {
+  return bankRequest('/api/bank/me/tree/water', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operationId }),
+  }, isWaterPayload);
 }
 
 export type CompletionResponse = Readonly<{ status: number; payload: unknown }> | null;

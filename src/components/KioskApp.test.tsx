@@ -472,6 +472,67 @@ describe('KioskApp', () => {
     expect(await screen.findByRole('heading', { name: /^장바구니\s*\(0\)$/ })).toBeTruthy();
   });
 
+  it('offers the student 교환권 for the cart before paying, and pays with the chosen ones or none', async () => {
+    const voucher = (itemId: string) => ({ itemId, productId: 'P001', title: '연필 교환권', imageUrl: null, issuedAt: '2026-10-09T00:00:00.000Z' });
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input) === '/api/checkout/vouchers') {
+        expect(JSON.parse(String(init?.body))).toEqual({ studentId: 'S001', productIds: ['P001'] });
+        return jsonResponse({ vouchers: [voucher('V1'), voucher('V2')] });
+      }
+      return base(input, init);
+    });
+
+    render(<KioskApp />);
+    expect(await screen.findByText('연필')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '연필 300별 담기' }));
+    fireEvent.click(screen.getByRole('button', { name: '연필 300별 담기' }));
+    await waitFor(() => expect(screen.getByTestId('checkout-total-bar').textContent).toContain('600별'));
+    fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
+    fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 결제하기' }));
+
+    const step = await screen.findByRole('dialog', { name: '교환권 사용' });
+    expect(within(step).getByRole('button', { name: '사용' })).toHaveProperty('disabled', true);
+    fireEvent.click(within(step).getByRole('checkbox', { name: '연필 교환권 2장 중 사용' }));
+    expectPageText('교환권 1장을 쓰면600별300별');
+    fireEvent.click(within(step).getByRole('button', { name: '연필 교환권 한 장 더 쓰기' }));
+    expectPageText('교환권 2장을 쓰면600별0별');
+    fireEvent.click(within(step).getByRole('button', { name: '사용 (2장)' }));
+
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input) === '/api/checkout')).toBe(true));
+    const checkoutCall = vi.mocked(fetch).mock.calls.find(([input]) => String(input) === '/api/checkout')!;
+    const body = JSON.parse(String(checkoutCall[1]?.body)) as { voucherItemIds: string[]; expectedPricing: { totalAmount: number; items: Array<{ adjustments: unknown[] }> } };
+    expect(body.voucherItemIds).toEqual(['V1', 'V2']);
+    expect(body.expectedPricing.totalAmount).toBe(0);
+    expect(body.expectedPricing.items[0].adjustments).toEqual([{ type: 'VOUCHER', beforeAmount: 600, afterAmount: 0, discountAmount: 600, voucherCount: 2 }]);
+  });
+
+  it('pays without 교환권 when the student chooses 사용 안 함', async () => {
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input) === '/api/checkout/vouchers') {
+        return jsonResponse({ vouchers: [{ itemId: 'V1', productId: 'P001', title: '연필 교환권', imageUrl: null, issuedAt: '2026-10-09T00:00:00.000Z' }] });
+      }
+      return base(input, init);
+    });
+
+    render(<KioskApp />);
+    expect(await screen.findByText('연필')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '연필 300별 담기' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'QR 결제' })).toHaveProperty('disabled', false));
+    fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
+    fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 결제하기' }));
+    fireEvent.click(within(await screen.findByRole('dialog', { name: '교환권 사용' })).getByRole('button', { name: '사용 안 함' }));
+
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input) === '/api/checkout')).toBe(true));
+    const checkoutCall = vi.mocked(fetch).mock.calls.find(([input]) => String(input) === '/api/checkout')!;
+    const body = JSON.parse(String(checkoutCall[1]?.body)) as Record<string, unknown>;
+    expect(body).not.toHaveProperty('voucherItemIds');
+    expect(body.expectedPricing).toEqual(regularPreview([{ productId: 'P001', quantity: 1 }]));
+  });
+
   it('keeps a signed QR in the checkout POST body after the student-safe lookup', async () => {
     const signedQr = 'csq1.k1.signed-payload.signed-signature';
     const base = vi.mocked(fetch).getMockImplementation()!;

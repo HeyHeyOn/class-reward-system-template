@@ -54,7 +54,7 @@ type TransactionRow = TransactionItemRow & {
 };
 
 const SUPPORTED_KINDS = new Set([
-  'CHECKOUT', 'CANCELLATION', 'ADMIN_ADJUSTMENT', 'TASK_REWARD', 'LEGACY',
+  'CHECKOUT', 'CANCELLATION', 'ADMIN_ADJUSTMENT', 'TASK_REWARD', 'LEGACY', 'GROWTH_SPEND', 'GROWTH_REWARD',
 ]);
 
 export function createDatabaseTransactionQueries(
@@ -434,7 +434,8 @@ function assertExactNegation(value: number, original: number): void {
 
 function validateKindMoney(kind: string, totalAmount: number, balanceDelta: number): void {
   if (kind === 'LEGACY') return;
-  const expected = kind === 'TASK_REWARD' ? balanceDelta : -balanceDelta;
+  // Rewards record the money received; purchases (checkout, watering) record the money paid.
+  const expected = kind === 'TASK_REWARD' || kind === 'GROWTH_REWARD' ? balanceDelta : -balanceDelta;
   if (!Number.isSafeInteger(expected) || totalAmount !== expected) {
     throw new Error('Transaction kind/total money integrity check failed.');
   }

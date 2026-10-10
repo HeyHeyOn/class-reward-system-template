@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AdminLoginPage } from '@/components/AdminLoginPage';
 
@@ -10,30 +10,18 @@ vi.mock('next/navigation', () => ({
 describe('AdminLoginPage tenant mode', () => {
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-  it('keeps Google membership login and offers the imported compatibility paths', () => {
-    render(<AdminLoginPage tenantSlug="alpha-class" />);
-
-    expect(screen.getByRole('link', { name: 'Google 계정으로 로그인' })).toBeTruthy();
-    expect(screen.getByLabelText('QR 로그인 값')).toBeTruthy();
-    expect(screen.getByLabelText('관리자 비밀번호')).toBeTruthy();
-  });
-
-  it('uses tenantFetch with an explicit kind and preserves the QR prefix only in the body', async () => {
-    window.history.replaceState({}, '', '/c/alpha-class/admin/login');
-    const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(
-      async () => Response.json({ ok: true }),
-    );
+  it('offers only Google sign-in for a class: no password or QR login, and sends nothing to the old login route', () => {
+    const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     render(<AdminLoginPage tenantSlug="alpha-class" />);
-    const credential = 'class-store-admin:secret-value';
-    fireEvent.change(screen.getByLabelText('QR 로그인 값'), { target: { value: credential } });
-    fireEvent.click(screen.getByRole('button', { name: '적용' }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(fetchMock).toHaveBeenCalledWith('/api/c/alpha-class/admin/login', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ kind: 'qr', value: credential }),
-    }));
-    expect(fetchMock.mock.calls[0]?.[0]).not.toContain('secret-value');
+    const google = screen.getByRole('link', { name: 'Google 계정으로 로그인' });
+    expect(google.getAttribute('href')).toBe(`/api/google/login?returnTo=${encodeURIComponent('/c/alpha-class/admin')}`);
+    expect(screen.getByText('이 학급을 만든 Google 계정으로 로그인해 주세요.')).toBeTruthy();
+    expect(screen.queryByLabelText('QR 로그인 값')).toBeNull();
+    expect(screen.queryByLabelText('관리자 비밀번호')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'QR로 로그인' })).toBeNull();
+    expect(screen.getByRole('link', { name: '메인 화면으로' }).getAttribute('href')).toBe('/classes');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

@@ -9,6 +9,7 @@ import {
   createCheckoutPreview,
 } from '@/domain/checkout';
 import {
+  canonicalVoucherItemIds,
   createCheckoutPayloadHash,
   type CheckoutCommand,
   type CheckoutCommandInput,
@@ -18,6 +19,7 @@ import {
 import type { TenantTransaction } from '@/server/db/transaction';
 import { parseCheckoutSuccessResponse } from '@/lib/checkoutSnapshotClient';
 import { appendOperationAudit, assertOperationAudit } from './operationAudit';
+import { giveStoreDigitalItems, lockCheckoutVouchers, spendCheckoutVouchers } from './studentBag';
 
 const SHA256 = /^[0-9a-f]{64}$/;
 
@@ -191,6 +193,13 @@ async function executeClaimedCheckout(
   const productRows = productResult.rows as ProductRow[];
   const domainProducts = productRows.map(toProduct);
   const promotions = await loadPromotions(tx, dependencies.tenantId, productIds, now);
+  // 교환권 the student chose: locked after the account and products, counted per product they pay for.
+  const voucherItemIds = input.voucherItemIds ?? [];
+  const voucherCounts = await lockCheckoutVouchers(tx, dependencies.tenantId, { studentId: account.student_id, itemIds: voucherItemIds });
+  if (!voucherCounts) {
+    fail({ ok: false, code: 'VOUCHER_UNAVAILABLE', message: '고른 교환권 중 이미 쓴 것이 있어요. 교환권을 다시 골라 주세요.' });
+  }
+  const vouchers = voucherItemIds.length > 0 ? { vouchers: Object.fromEntries(voucherCounts) } : {};
   const student: Student = {
     studentId: account.student_id,
     name: account.name,
@@ -202,6 +211,7 @@ async function executeClaimedCheckout(
     products: domainProducts,
     cartItems: normalizedItems,
     promotions,
+    ...vouchers,
     now,
   });
   if (!authoritativePricing.ok) fail(authoritativePricing);
@@ -219,6 +229,7 @@ async function executeClaimedCheckout(
     products: domainProducts,
     cartItems: normalizedItems,
     promotions,
+    ...vouchers,
     now,
   });
   if (!preview.ok) fail(preview);
@@ -267,6 +278,12 @@ async function executeClaimedCheckout(
          ${JSON.stringify(item.appliedPromotions)}::jsonb)
     `);
   }
+  // Digital products put one item per unit (free promotion units included) into the buyer's 보관함.
+  await giveStoreDigitalItems(tx, dependencies.tenantId, {
+    studentId: student.studentId, transactionId, operationId: input.operationId,
+    lines: preview.items.map((item) => ({ productId: item.productId, quantity: item.totalQuantity })),
+  });
+  await spendCheckoutVouchers(tx, dependencies.tenantId, { itemIds: voucherItemIds, transactionId });
 
   for (const item of sortedPreviewItems) {
     const product = productById.get(item.productId);
@@ -448,10 +465,16 @@ function canonicalizeCheckoutInput(input: CheckoutCommandInput): CheckoutCommand
   if (input.operator !== undefined && typeof input.operator !== 'string') {
     throw new Error('Checkout operator is invalid.');
   }
+  if (input.voucherItemIds !== undefined && (!Array.isArray(input.voucherItemIds)
+    || input.voucherItemIds.some((id) => typeof id !== 'string' || !id.trim() || id.length > 200))) {
+    throw new Error('Checkout vouchers are invalid.');
+  }
+  const voucherItemIds = canonicalVoucherItemIds(input.voucherItemIds);
   return {
     ...input,
     studentId: input.studentId.trim(),
     operator: input.operator?.trim() || 'kiosk',
+    ...(voucherItemIds.length > 0 ? { voucherItemIds } : { voucherItemIds: undefined }),
   };
 }
 

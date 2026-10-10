@@ -21,7 +21,8 @@ const paths = {
   bank: 'M3 8 12 3 21 8H3z M3 21h18 M5 11v7 M12 11v7 M19 11v7',
   task: 'M9 11l3 3 8-8 M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9',
   receipt: 'M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2V3z M9 8h6 M9 12h6 M9 16h3',
-  coins: 'M9 14a6 6 0 1 0 0-12 6 6 0 0 0 0 12z M15.5 9.5A6 6 0 1 1 9.5 20 M9 5v6 M7 7h3a1 1 0 0 1 0 2H8a1 1 0 0 0 0 2h3',
+  // A coin with the won sign: reads as money even at 16px (two overlapping coins looked like a smudge).
+  coins: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M7.5 8l2 8 2.5-6 2.5 6 2-8 M6.5 12h11',
   tag: 'M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z M7.5 7.5h.01',
   box: 'M21 8 12 3 3 8v8l9 5 9-5V8z M3 8l9 5 9-5 M12 13v8',
   qr: 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h3v3h-3z M20 14v.01 M14 20h.01 M17 17h4v4h-4z',
@@ -52,6 +53,12 @@ const paths = {
   wallet: 'M20 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h15V11H5 M16 15h.01',
   sparkle: 'M12 3l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4L12 3z',
   filter: 'M3 4h18l-7 9v6l-4 2v-8L3 4z',
+  download: 'M12 3v12 M7 10l5 5 5-5 M5 21h14',
+  share: 'M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M6 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M18 22a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M8.6 13.5l6.8 4 M15.4 6.5l-6.8 4',
+  cameraFlip: 'M3 8a1 1 0 0 1 1-1h3l1.5-2h7L17 7h3a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z M8.5 13.5a3.5 3.5 0 0 1 6-2.5 M14.5 8.8V11h-2.2 M15.5 13.5a3.5 3.5 0 0 1-6 2.5 M9.5 18.2V16h2.2',
+  sprout: 'M12 21v-9 M12 12c0-3.5-2.5-6-7-6 0 3.5 2.5 6 7 6z M12 10c0-3 2.2-5 6-5 0 3-2.2 5-6 5z M7 21h10',
+  ticket: 'M3 7h18v4a2 2 0 0 0 0 4v4H3v-4a2 2 0 0 0 0-4z M14 7v12',
+  package: 'M21 8 12 3 3 8v8l9 5 9-5V8z M3 8l9 5 9-5 M12 13v8 M7.5 5.5l9 5v3',
 } as const;
 
 export type IconName = keyof typeof paths;

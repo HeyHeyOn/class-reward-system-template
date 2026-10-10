@@ -34,6 +34,12 @@ const READ_AUTHORITY = [
   ['migrations/xlsx/preview', 'POST', 'createConfiguredXlsxImport'],
   ['task-ledger', 'GET', 'createConfiguredTaskLedger'],
   ['task-ledger/tasks/[taskId]/history', 'GET', 'createConfiguredTaskLedger'],
+  ['bank/me/tree', 'GET', 'createConfiguredClassTree'],
+  ['class-tree', 'GET', 'createConfiguredClassTree'],
+  ['bank/me/bag', 'GET', 'createConfiguredStudentBag'],
+  ['bag/students/[studentId]', 'GET', 'createConfiguredStudentBag'],
+  ['bag/digital-products', 'GET', 'createConfiguredStudentBag'],
+  ['checkout/vouchers', 'POST', 'createConfiguredStudentBag'],
 ] as const;
 const CONFIGURED_MUTATION_AUTHORITY = [
   ['migrations/[jobId]/freezing/reacquisition/challenge', 'POST', 'getProductionFreezingReacquisitionHandlers'],
@@ -42,7 +48,6 @@ const CONFIGURED_MUTATION_AUTHORITY = [
   ['migrations/[jobId]/freezing/start', 'POST', 'getProductionStartFreezingHandlers'],
   ['migrations/[jobId]/freezing/consent/challenge', 'POST', 'getProductionFreezingConsentHandlers'],
   ['migrations/[jobId]/freezing/consent', 'POST', 'getProductionFreezingConsentHandlers'],
-  ['admin/login', 'POST', 'getProductionTenantLegacyAdminAuth'],
   ['bank/session', 'POST', 'createConfiguredStudentBankReader'],
   ['bank/me/tasks/[taskId]/complete', 'POST', 'createConfiguredTaskCompletion'],
   ['checkout', 'POST', 'createConfiguredCheckoutCommand'],
@@ -69,11 +74,24 @@ const CONFIGURED_MUTATION_AUTHORITY = [
   ['task-ledger/reset', 'POST', 'createConfiguredTaskLedger'],
   ['task-ledger/repeat', 'POST', 'createConfiguredTaskLedger'],
   ['task-ledger/qr', 'POST', 'createConfiguredTaskLedger'],
+  ['bank/me/tree/water', 'POST', 'createConfiguredClassTree'],
+  ['class-tree/settings', 'POST', 'createConfiguredClassTree'],
+  ['class-tree/feed', 'POST', 'createConfiguredClassTree'],
+  ['class-tree/harvest', 'POST', 'createConfiguredClassTree'],
+  ['bag/items/use', 'POST', 'createConfiguredStudentBag'],
+  ['bag/items/give', 'POST', 'createConfiguredStudentBag'],
+  ['bag/items/revoke', 'POST', 'createConfiguredStudentBag'],
+  ['bag/digital-products', 'POST', 'createConfiguredStudentBag'],
 ] as const;
 
 // Logout touches no class data: it only clears the student's own bank session cookie.
 const SESSION_ONLY_MUTATIONS = [
   ['bank/session', 'DELETE', 'clearedStudentBankSessionCookie'],
+] as const;
+
+// Class administrators sign in with Google only; these Sheets-era logins refuse every class request.
+const GOOGLE_ONLY_REFUSALS = [
+  ['admin/login', 'POST'],
 ] as const;
 
 async function exportedMethodBody(route: string, method: string): Promise<string> {
@@ -114,7 +132,7 @@ describe('tenant read route PostgreSQL authority', () => {
       .sort((left, right) => `${left[0]}:${left[1]}`.localeCompare(`${right[0]}:${right[1]}`));
     const authority = READ_AUTHORITY.map(([route, method]) => [route, method] as string[])
       .sort((left, right) => `${left[0]}:${left[1]}`.localeCompare(`${right[0]}:${right[1]}`));
-    expect(inventory).toHaveLength(28);
+    expect(inventory).toHaveLength(34);
     expect(authority).toEqual(inventory);
   });
 
@@ -142,16 +160,24 @@ describe('tenant mutation route PostgreSQL authority', () => {
     expect(body).not.toMatch(/createConfigured\w*\s*\(|request\.(json|arrayBuffer|text)/);
   });
 
+  it.each(GOOGLE_ONLY_REFUSALS)('%s %s refuses PostgreSQL classes before reading any credential', async (route, method) => {
+    const body = await exportedMethodBody(route, method);
+    const postgresBranch = body.slice(0, body.indexOf("code: 'GOOGLE_LOGIN_REQUIRED'"));
+    expect(body).toContain("code: 'GOOGLE_LOGIN_REQUIRED'");
+    expect(postgresBranch).toContain("process.env.CLASS_STORE_STORAGE === 'postgresql'");
+    expect(postgresBranch).not.toMatch(/request\.(json|arrayBuffer|text)|createConfigured\w*\s*\(/);
+  });
+
   it('accounts for the remaining tenant mutations that retain a legacy Sheets branch', async () => {
     const configured = new Set(
-      [...CONFIGURED_MUTATION_AUTHORITY, ...SESSION_ONLY_MUTATIONS].map(([route, method]) => `${method} /${route}`),
+      [...CONFIGURED_MUTATION_AUTHORITY, ...SESSION_ONLY_MUTATIONS, ...GOOGLE_ONLY_REFUSALS].map(([route, method]) => `${method} /${route}`),
     );
     const sheetsMutations = TENANT_ROUTE_INVENTORY.filter((entry) =>
       entry.scope === 'tenant-data'
       && entry.effect === 'mutation'
       && !configured.has(`${entry.method} ${entry.route}`));
 
-    expect(CONFIGURED_MUTATION_AUTHORITY).toHaveLength(33);
+    expect(CONFIGURED_MUTATION_AUTHORITY).toHaveLength(40);
     expect(sheetsMutations).toHaveLength(4);
     for (const entry of sheetsMutations) {
       const body = await exportedMethodBody(entry.route.replace(/^\//, ''), entry.method);

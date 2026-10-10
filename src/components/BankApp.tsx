@@ -12,23 +12,31 @@ import {
   fetchSession,
   fetchTasks,
   fetchTransactions,
+  fetchBag,
+  fetchTree,
   isSessionRequired,
   login,
   logout,
   type BankSettings,
+  type ClassTreeStudentViewDto,
+  type StudentBagDto,
   type StudentBankProfileDto,
   type StudentBankTaskDto,
   type StudentBankTransactionDto,
+  waterTree,
 } from './bank/bankClient';
 import { BankHistory } from './bank/BankHistory';
 import { BankHome, BankTasksMenu } from './bank/BankHome';
 import { BankLogin } from './bank/BankLogin';
 import { BankTasks } from './bank/BankTasks';
+import { BankBagMenu, BankBagView } from './bank/BankBag';
+import { BankTreeCard, BankTreeView } from './bank/BankTree';
+import type { TreePlay } from './classTree/TreeCanvas';
 import { formatMoney } from './bank/format';
 import { useTaskCompletion, type CompletionOutcome, type CompletionSuccess } from './bank/useTaskCompletion';
 
 type Phase = 'checking' | 'unavailable' | 'login' | 'home';
-type View = 'home' | 'history' | 'tasks';
+type View = 'home' | 'history' | 'tasks' | 'tree' | 'bag';
 
 const SESSION_ENDED = '로그인 시간이 끝났어요. 다시 로그인해 주세요.';
 const LOAD_FAILED = '은행에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.';
@@ -57,12 +65,25 @@ export function BankApp() {
   const [homeNotice, setHomeNotice] = useState('');
   const [loggingOut, setLoggingOut] = useState(false);
   const [announcement, setAnnouncement] = useState('');
+  const [treeView, setTreeView] = useState<ClassTreeStudentViewDto | null>(null);
+  const [treeLoading, setTreeLoading] = useState(false);
+  const [treeError, setTreeError] = useState('');
+  const [treeNotice, setTreeNotice] = useState('');
+  const [watering, setWatering] = useState(false);
+  const [treePlay, setTreePlay] = useState<TreePlay | null>(null);
+  const [bag, setBag] = useState<StudentBagDto | null>(null);
+  const [bagLoading, setBagLoading] = useState(false);
+  const [bagError, setBagError] = useState('');
+  // A watering whose answer was lost is resent with the same operation ID, so it is paid only once.
+  const pendingWater = useRef<string | null>(null);
   // Bumped on every login/logout/expiry so responses from an earlier session are ignored.
   const generation = useRef(0);
   const historyPushed = useRef(false);
   const homeHeadingRef = useRef<HTMLHeadingElement>(null);
   const historyHeadingRef = useRef<HTMLHeadingElement>(null);
   const tasksHeadingRef = useRef<HTMLHeadingElement>(null);
+  const treeHeadingRef = useRef<HTMLHeadingElement>(null);
+  const bagHeadingRef = useRef<HTMLHeadingElement>(null);
 
   const themeColor = normalizeThemeColor(settings.themeColor);
   const semantic = themeStyles(themeColor);
@@ -83,6 +104,12 @@ export function BankApp() {
     setProfile(null);
     setTasks(null);
     setTransactions(null);
+    setTreeView(null);
+    setBag(null);
+    setBagError('');
+    setTreeError('');
+    setTreeNotice('');
+    pendingWater.current = null;
     setView('home');
     setLoginError('');
     setLoginNotice(notice);
@@ -99,6 +126,39 @@ export function BankApp() {
     if (result.ok) setTasks(result.data.tasks);
     else if (isSessionRequired(result)) expireSession();
     else setTasksError(result.error ?? '과제를 불러오지 못했어요.');
+  }, [expireSession]);
+
+  const loadTree = useCallback(async () => {
+    const current = generation.current;
+    setTreeLoading(true);
+    setTreeError('');
+    const result = await fetchTree();
+    if (current !== generation.current) return;
+    setTreeLoading(false);
+    if (result.ok) {
+      setTreeView(result.data.tree);
+      const balance = result.data.balance;
+      setProfile((existing) => existing ? { ...existing, student: { ...existing.student, balance } } : existing);
+    } else if (isSessionRequired(result)) {
+      expireSession();
+    } else if (result.status === 404) {
+      setTreeView(null);
+    } else {
+      setTreeError(result.error ?? '학급 나무를 불러오지 못했어요.');
+    }
+  }, [expireSession]);
+
+  const loadBag = useCallback(async () => {
+    const current = generation.current;
+    setBagLoading(true);
+    setBagError('');
+    const result = await fetchBag();
+    if (current !== generation.current) return;
+    setBagLoading(false);
+    if (result.ok) setBag(result.data.bag);
+    else if (isSessionRequired(result)) expireSession();
+    else if (result.status === 404) setBag(null);
+    else setBagError(result.error ?? '보관함을 열지 못했어요.');
   }, [expireSession]);
 
   const refreshProfile = useCallback(async () => {
@@ -164,7 +224,9 @@ export function BankApp() {
     setPhase('home');
     restoreCompletion(next.student.studentId);
     void loadTasks();
-  }, [loadTasks, restoreCompletion]);
+    void loadTree();
+    void loadBag();
+  }, [loadBag, loadTasks, loadTree, restoreCompletion]);
 
   const checkSession = useCallback(async () => {
     setPhase('checking');
@@ -196,7 +258,8 @@ export function BankApp() {
 
   useEffect(() => {
     if (phase !== 'home') return;
-    (view === 'history' ? historyHeadingRef.current : view === 'tasks' ? tasksHeadingRef.current : homeHeadingRef.current)?.focus();
+    (view === 'history' ? historyHeadingRef.current : view === 'tasks' ? tasksHeadingRef.current
+      : view === 'tree' ? treeHeadingRef.current : view === 'bag' ? bagHeadingRef.current : homeHeadingRef.current)?.focus();
   }, [phase, view]);
 
   async function handleLogin(studentQr: string): Promise<boolean> {
@@ -235,7 +298,7 @@ export function BankApp() {
   async function refreshAll() {
     setRefreshing(true);
     try {
-      await Promise.all([refreshProfile(), loadTasks()]);
+      await Promise.all([refreshProfile(), loadTasks(), loadTree(), loadBag()]);
     } finally {
       setRefreshing(false);
     }
@@ -261,7 +324,51 @@ export function BankApp() {
     openSubView('tasks');
   }
 
+  function openBag() {
+    void loadBag();
+    openSubView('bag');
+  }
+
+  function openTree() {
+    setTreeNotice('');
+    void loadTree();
+    openSubView('tree');
+  }
+
+  async function handleWater() {
+    if (watering) return;
+    const operationId = pendingWater.current ?? crypto.randomUUID();
+    pendingWater.current = operationId;
+    setWatering(true);
+    setTreeError('');
+    setTreeNotice('');
+    const current = generation.current;
+    const before = treeView?.tree ? { drops: treeView.tree.drops, goal: treeView.tree.goal, apples: treeView.apples } : null;
+    const result = await waterTree(operationId);
+    if (current !== generation.current) return;
+    setWatering(false);
+    if (result.ok) {
+      pendingWater.current = null;
+      if (before) setTreePlay({ key: Date.now(), kind: 'feed', before, amount: 1 });
+      setTreeView(result.data.tree);
+      const balance = result.data.result.balanceAfter;
+      setProfile((existing) => existing ? { ...existing, student: { ...existing.student, balance } } : existing);
+      setTransactions(null);
+      const message = result.data.result.ready ? '양분을 줬어요! 나무가 다 자랐어요.' : '양분을 줬어요! 나무가 조금 더 자랐어요.';
+      setTreeNotice(message);
+      setAnnouncement(message);
+      return;
+    }
+    if (isSessionRequired(result)) { expireSession(); return; }
+    // No answer: keep the operation ID so pressing again cannot pay twice.
+    if (result.status !== 0) pendingWater.current = null;
+    setTreeError(result.error ?? '양분을 주지 못했어요. 다시 눌러 주세요.');
+    if (result.status === 409) void loadTree();
+  }
+
   function closeHistory() {
+    // An animation left unfinished must not replay when the tree opens again.
+    setTreePlay(null);
     setView('home');
     if (historyPushed.current) {
       historyPushed.current = false;
@@ -314,6 +421,8 @@ export function BankApp() {
               waiting={(tasks ?? []).filter((task) => task.stage === 'PENDING' || (task.stage === 'READY' && !task.completable)).length}
               completed={(tasks ?? []).filter((task) => task.stage === 'COMPLETED').length}
               attention={Boolean(completion.pending)} onOpen={openTasks} />
+            {treeView ? <BankTreeCard view={treeView} onOpen={openTree} /> : null}
+            {bag ? <BankBagMenu bag={bag} onOpen={openBag} /> : null}
           </BankHome>
         ) : null}
 
@@ -329,6 +438,18 @@ export function BankApp() {
               onComplete={(task) => completion.complete(task, profile.student.studentId)}
               onRecheck={completion.recheck} onRetry={() => void loadTasks()} />
           </div>
+        ) : null}
+
+        {phase === 'home' && profile && view === 'tree' ? (
+          <BankTreeView ref={treeHeadingRef} view={treeView} balance={profile.student.balance} currencyUnit={unit}
+            loading={treeLoading} watering={watering} error={treeError} notice={treeNotice} play={treePlay}
+            onPlayEnd={() => setTreePlay(null)}
+            onBack={closeHistory} onRefresh={() => void loadTree()} onWater={() => void handleWater()} />
+        ) : null}
+
+        {phase === 'home' && profile && view === 'bag' ? (
+          <BankBagView ref={bagHeadingRef} bag={bag} loading={bagLoading} error={bagError}
+            onBack={closeHistory} onRefresh={() => void loadBag()} />
         ) : null}
 
         {phase === 'home' && profile && view === 'history' ? (

@@ -10,10 +10,12 @@ import { clockNow, readLedgerFrom, readLedgerTasks, stageOf } from './taskLedger
 import { readCurrentLedgerStates } from './taskLedger/currentState';
 import { appendOperationAudit, assertOperationAudit } from './operationAudit';
 import { readCancellationItems, validateLegacyCancellationSource } from './legacyCancellationSource';
+import { revokeTreeDropsForTransaction } from './classTree';
+import { restoreCheckoutVouchers, revokeStoreCoupons, storeCouponsUsed } from './studentBag';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
-const REVERSIBLE_KINDS = new Set(['CHECKOUT', 'TASK_REWARD', 'ADMIN_ADJUSTMENT']);
+const REVERSIBLE_KINDS = new Set(['CHECKOUT', 'TASK_REWARD', 'ADMIN_ADJUSTMENT', 'GROWTH_SPEND', 'GROWTH_REWARD']);
 const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
 const MIN_SAFE = BigInt(Number.MIN_SAFE_INTEGER);
 
@@ -46,7 +48,7 @@ export type CancellationSuccess = Readonly<{
   reversalTransactionId: string;
   studentId: string;
   studentName: string;
-  originalKind: 'CHECKOUT' | 'TASK_REWARD' | 'ADMIN_ADJUSTMENT' | 'LEGACY';
+  originalKind: 'CHECKOUT' | 'TASK_REWARD' | 'ADMIN_ADJUSTMENT' | 'GROWTH_SPEND' | 'GROWTH_REWARD' | 'LEGACY';
   reversalAmount: number;
   balanceBefore: number;
   balanceAfter: number;
@@ -67,7 +69,8 @@ export type TransactionCancellationErrorCode =
   | 'MANUAL_RECONCILIATION_REQUIRED'
   | 'OPERATION_CONFLICT'
   | 'OPERATION_PENDING'
-  | 'OPERATION_FAILED';
+  | 'OPERATION_FAILED'
+  | 'COUPON_ALREADY_USED';
 
 export class TransactionCancellationError extends Error {
   constructor(readonly code: TransactionCancellationErrorCode) {
@@ -226,6 +229,10 @@ export function createDatabaseTransactionCommands(
           tx, dependencies.tenantId, input.transactionId, true,
         );
         if (priorReversal) throw new TransactionCancellationError('ALREADY_REVERSED');
+        // A purchase whose bag coupon was already used cannot be taken back (coupon rows are locked here).
+        if (state.original.kind === 'CHECKOUT' && await storeCouponsUsed(tx, dependencies.tenantId, state.original.transaction_id)) {
+          throw new TransactionCancellationError('COUPON_ALREADY_USED');
+        }
         if (now.getTime() < new Date(state.original.occurred_at).getTime()) {
           throw new TransactionCancellationError('MANUAL_RECONCILIATION_REQUIRED');
         }
@@ -324,6 +331,16 @@ export function createDatabaseTransactionCommands(
              ${state.payloadHash}, 1)
         `);
         await dependencies.afterReversalTransaction?.();
+        // A cancelled watering or task reward takes its drops back from a tree that is still growing.
+        // A cancelled checkout takes back the digital products it gave and gives back the 교환권 it used.
+        if (state.original.kind === 'CHECKOUT') {
+          await revokeStoreCoupons(tx, dependencies.tenantId, state.original.transaction_id);
+          await restoreCheckoutVouchers(tx, dependencies.tenantId, state.original.transaction_id);
+        }
+        if (state.original.kind === 'GROWTH_SPEND' || state.original.kind === 'TASK_REWARD') {
+          await revokeTreeDropsForTransaction(tx, dependencies.tenantId, {
+            originalTransactionId: state.original.transaction_id, reversalTransactionId, operationId: input.operationId });
+        }
         const cancellationCompletionId = resetTaskCompletion
           ? cancellationTaskCompletionId(input.operationId)
           : null;
@@ -1158,5 +1175,6 @@ function messageFor(code: TransactionCancellationErrorCode): string {
     case 'OPERATION_CONFLICT': return '동일한 작업 ID가 다른 취소 요청에 사용되었습니다.';
     case 'OPERATION_PENDING': return '동일한 취소 작업이 이미 처리 중입니다.';
     case 'OPERATION_FAILED': return '이 작업 ID의 취소는 이미 실패로 종료되었습니다.';
+    case 'COUPON_ALREADY_USED': return '이 결제로 보관함에 들어간 디지털 상품을 이미 사용해서 취소할 수 없어요. 학생 보관함에서 사용 표시를 먼저 되돌리거나, 그 교환권을 쓴 결제를 먼저 취소해 주세요.';
   }
 }

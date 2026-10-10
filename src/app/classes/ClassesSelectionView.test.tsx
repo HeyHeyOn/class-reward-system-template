@@ -24,6 +24,18 @@ describe('ClassesSelectionView', () => {
     fireEvent.click(screen.getByRole('button',{name:/휴지통\s*1/}));
     expect(screen.getByText('삭제 학급')).toBeTruthy();expect(screen.getByRole('button',{name:'학급 복원'})).toBeTruthy();expect(screen.queryByText('우리 반')).toBeNull();
   });
+  it.each([
+    ['signed out', { kind: 'LOGIN_REQUIRED', loginHref: '/api/google/login?returnTo=%2Fclasses' }],
+    ['signed in', { kind: 'MEMBERSHIPS', accountLabel: 'Teacher', memberships: [] }],
+  ] as const)('shows only the Korean title and a copyright footer with the privacy policy link when %s', (_label, model) => {
+    render(<ClassesSelectionView model={model as never}/>);
+    expect(screen.getByText('학급 보상 시스템')).toBeTruthy();
+    for (const removed of ['CLASS REWARD SYSTEM', '선생님의 학급 공간', '나의 교실, 하나의 공간', '함께 성장하는 우리 반']) {
+      expect(screen.queryByText(removed, { exact: false })).toBeNull();
+    }
+    expect(screen.getByText('© 2026 환잇쌤. All rights reserved.')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '개인정보처리방침' }).getAttribute('href')).toBe('/privacy');
+  });
   it('reports logout failure and allows another attempt', async () => {
     const fetcher=vi.fn().mockRejectedValue(new Error('offline'));vi.stubGlobal('fetch',fetcher);
     render(<ClassesSelectionView model={{kind:'MEMBERSHIPS',accountLabel:'Teacher',memberships:[]}}/>);
@@ -39,6 +51,20 @@ describe('ClassesSelectionView', () => {
       .toBe('/api/google/login?returnTo=%2Fclasses');
     expect(screen.queryByRole('link', { name: /학급으로 이동/ })).toBeNull();
     expect(screen.queryByRole('link', { name: '새 학급' })).toBeNull();
+  });
+
+  it('links the signed-in teacher to the profile page and asks for a pending agreement', () => {
+    const revision = { version: '2026-10-08', effectiveAt: '2026-10-08T00:00:00+09:00', effectiveLabel: '2026년 10월 8일', changes: ['이용약관을 새로 마련했어요.'] };
+    const avatar = { v: 1 as const, background: 'sky', face: 'bear', eyes: 'smile', mouth: 'smile', accessory: 'none' };
+    render(<ClassesSelectionView model={{ kind: 'MEMBERSHIPS', accountLabel: 'Teacher', memberships: [] }}
+      account={{ profile: { nickname: '햇살쌤', avatar }, notice: { required: { current: revision, changes: [revision] }, upcoming: null } }} />);
+    expect(screen.getByRole('link', { name: '내 프로필: 햇살쌤' }).getAttribute('href')).toBe('/profile');
+    expect(screen.getByRole('dialog', { name: '약관 동의가 필요해요' })).toBeTruthy();
+  });
+
+  it('confirms a finished withdrawal on the sign-in screen', () => {
+    render(<ClassesSelectionView model={{ kind: 'LOGIN_REQUIRED', loginHref: '/api/google/login?returnTo=%2Fclasses' }} withdrawn />);
+    expect(screen.getByRole('status').textContent).toBe('회원 탈퇴가 끝났어요. 그동안 학급 보상 시스템을 이용해 주셔서 고마워요.');
   });
 
   it('renders canonical active links and leaves suspended memberships non-navigable', () => {

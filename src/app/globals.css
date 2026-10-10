@@ -142,25 +142,8 @@ button {
   *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; }
 }
 
-/* html5-qrcode renders its own controls; align them with the CRS controls. */
-#class-store-qr-reader { border: 0 !important; }
-#class-store-qr-reader img[alt="Info icon"] { display: none !important; }
-#class-store-qr-reader__dashboard_section { padding: 10px 0 0 !important; }
-#class-store-qr-reader__dashboard_section_csr span,
-#class-store-qr-reader__dashboard_section_swaplink { font-size: 13px; color: var(--theme-muted-text, #60666f); }
-#class-store-qr-reader button {
-  margin: 4px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--theme-accent-solid, #2b6de8);
-  color: var(--theme-accent-on-solid, #ffffff);
-  padding: 9px 16px;
-  font-size: 13px;
-  font-weight: 700;
-}
-#class-store-qr-reader select {
-  border: 1px solid #cbd5e1;
-  border-radius: 10px;
-  padding: 6px 10px;
-  font-size: 13px;
-}
+/* html5-qrcode draws only the camera view here; the controls around it are our own (QrScanner). */
+.crs-qr-reader video { display: block; width: 100% !important; height: auto; object-fit: cover; }
+.crs-qr-reader img[alt="Info icon"] { display: none !important; }
+/* Front camera: mirrored like a camera app. Only the picture flips; QR reading uses the unmirrored frame. */
+.crs-qr-reader[data-mirror] video { transform: scaleX(-1); }

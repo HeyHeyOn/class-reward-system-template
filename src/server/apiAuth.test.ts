@@ -98,14 +98,11 @@ describe('api auth', () => {
       .toBe(false);
   });
 
-  it('recognizes only dispatcher-verified compatibility authority for the same tenant', () => {
+  it('gives a class request no admin authority without a Google membership, even with an old password/QR session cookie', () => {
     const tenant = { id: '20000000-0000-4000-8000-000000000001', slug: 'alpha-class', displayName: 'Alpha', lifecycle: 'ACTIVE' as const, timezone: 'Asia/Seoul' as const };
-    expect(runWithTrustedTenantRequestContext({ tenant, compatibilitySession: { tenantId: tenant.id } }, () =>
-      isAuthorizedAdminRequest(new Request('https://example.test/api/products'), { CLASS_STORE_STORAGE: 'postgresql' })))
-      .toBe(true);
-    expect(runWithTrustedTenantRequestContext({ tenant, compatibilitySession: { tenantId: '20000000-0000-4000-8000-000000000002' } }, () =>
-      isAuthorizedAdminRequest(new Request('https://example.test/api/products'), { CLASS_STORE_STORAGE: 'postgresql' })))
-      .toBe(false);
+    const request = new Request('https://example.test/api/products', { headers: { cookie: 'class_store_tenant_admin=v1.legacy-password-session' } });
+    expect(runWithTrustedTenantRequestContext({ tenant }, () =>
+      isAuthorizedAdminRequest(request, { CLASS_STORE_STORAGE: 'postgresql' }))).toBe(false);
   });
 
   it('preserves auth-disabled access when no admin or Google authentication is configured', () => {

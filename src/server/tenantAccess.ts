@@ -8,8 +8,6 @@ import type {
   TenantMembershipRole,
 } from '@/server/tenantAuth';
 import type { TenantLifecycle, TenantRecord } from '@/server/tenantContext';
-import { getProductionTenantLegacyAdminAuth } from '@/server/tenantLegacyAdminAuth';
-import { readTenantAdminSessionCookie } from '@/server/tenantAdminSessionCookie';
 
 type QueryResult = Readonly<{ rows: unknown[] }>;
 type Queryable = Readonly<{
@@ -62,12 +60,6 @@ export function createTenantAccessDependencies(
       return projectMembership(result.rows[0]);
     },
     getSession,
-    async getCompatibilitySession(request, tenantId) {
-      if (process.env.CLASS_STORE_STORAGE !== 'postgresql') return null;
-      const token = readTenantAdminSessionCookie(request);
-      if (!await getProductionTenantLegacyAdminAuth().verifySession(token, tenantId)) return null;
-      return { tenantId };
-    },
   };
 }
 

@@ -6,6 +6,10 @@ import { parseGoogleIdentityReturnTo, type GoogleIdentityReturnTo } from '@/lib/
 export const GOOGLE_AUTH_COOKIE = 'class_store_google_auth';
 export const GENERATOR_GRANT_COOKIE = 'class_store_generator_grant';
 const STATE_COOKIE = 'class_store_google_state';
+export const PENDING_AGREEMENT_COOKIE = 'class_store_pending_agreement';
+const PENDING_AGREEMENT_VERSION = 'pa1';
+const PENDING_AGREEMENT_MAX_AGE_SECONDS = 60 * 30;
+const AGREEMENT_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const GENERATOR_STATE_COOKIE = 'class_store_generator_state';
 const COOKIE_VERSION = 'v2';
 const GENERATOR_COOKIE_VERSION = 'g1';
@@ -32,7 +36,25 @@ export type GoogleSession = {
   email: string;
   name?: string;
   issuedAt: number;
+  /** Version (YYYY-MM-DD) of the terms and privacy policy agreed to, for PostgreSQL classes. */
+  agreement?: string;
 };
+
+/**
+ * A Google sign-in waiting for the teacher to agree to the terms (first sign-up, or a new version).
+ * No session exists until they agree, so nothing else in the app sees this identity.
+ */
+export type PendingAgreement = Readonly<{
+  purpose: 'agreement';
+  subject: string;
+  email: string;
+  name?: string;
+  mode: 'signup' | 'update';
+  /** The version agreed to before, when there is one. */
+  agreedVersion?: string;
+  returnTo?: GoogleIdentityReturnTo;
+  issuedAt: number;
+}>;
 
 export type GoogleIdentityState = Readonly<{
   state: string;
@@ -228,6 +250,59 @@ export function getGoogleSessionFromRequest(
   return decryptSession(cookieValue, env);
 }
 
+export function setPendingAgreementCookie(response: NextResponse, pending: PendingAgreement) {
+  if (!isPendingAgreement(pending)) throw new Error('약관 동의 대기 정보가 올바르지 않습니다.');
+  response.cookies.set(PENDING_AGREEMENT_COOKIE, sealPendingAgreement(pending), {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: PENDING_AGREEMENT_MAX_AGE_SECONDS,
+  });
+}
+
+export function clearPendingAgreementCookie(response: NextResponse) {
+  response.cookies.set(PENDING_AGREEMENT_COOKIE, '', { path: '/', maxAge: 0 });
+}
+
+export function getPendingAgreementFromRequest(request: Request, env: GoogleAuthEnv = process.env): PendingAgreement | null {
+  const value = getCookieValue(request, PENDING_AGREEMENT_COOKIE);
+  if (!value || value.length > 4096) return null;
+  try {
+    const [version, ivPart, tagPart, ciphertextPart, extra] = value.split('.');
+    if (version !== PENDING_AGREEMENT_VERSION || !ivPart || !tagPart || !ciphertextPart || extra) return null;
+    const iv = Buffer.from(ivPart, 'base64url');
+    const tag = Buffer.from(tagPart, 'base64url');
+    if (iv.length !== 12 || tag.length !== 16) return null;
+    const decipher = createDecipheriv('aes-256-gcm', getCookieKey(env), iv);
+    decipher.setAAD(Buffer.from(`class-store:pending-agreement:${PENDING_AGREEMENT_VERSION}`));
+    decipher.setAuthTag(tag);
+    const parsed = JSON.parse(Buffer.concat([decipher.update(Buffer.from(ciphertextPart, 'base64url')), decipher.final()]).toString('utf8')) as unknown;
+    return isPendingAgreement(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function sealPendingAgreement(pending: PendingAgreement): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', getCookieKey(process.env), iv);
+  cipher.setAAD(Buffer.from(`class-store:pending-agreement:${PENDING_AGREEMENT_VERSION}`));
+  const ciphertext = Buffer.concat([cipher.update(Buffer.from(JSON.stringify(pending), 'utf8')), cipher.final()]);
+  return [PENDING_AGREEMENT_VERSION, iv.toString('base64url'), cipher.getAuthTag().toString('base64url'), ciphertext.toString('base64url')].join('.');
+}
+
+function isPendingAgreement(value: unknown): value is PendingAgreement {
+  const keys = ['purpose', 'subject', 'email', 'name', 'mode', 'agreedVersion', 'returnTo', 'issuedAt'];
+  if (!isRecord(value) || Object.keys(value).some((key) => !keys.includes(key))) return false;
+  return value.purpose === 'agreement' && validSubject(value.subject) && validEmail(value.email)
+    && (value.name === undefined || validString(value.name, 1, 200))
+    && (value.mode === 'signup' || value.mode === 'update')
+    && (value.agreedVersion === undefined || (typeof value.agreedVersion === 'string' && AGREEMENT_VERSION_PATTERN.test(value.agreedVersion)))
+    && (value.returnTo === undefined || parseGoogleIdentityReturnTo(value.returnTo) === value.returnTo)
+    && validIssuedAt(value.issuedAt, PENDING_AGREEMENT_MAX_AGE_SECONDS);
+}
+
 export function setGeneratorGrantCookie(response: NextResponse, grant: GeneratorGrant) {
   assertGeneratorGrant(grant);
   response.cookies.set(GENERATOR_GRANT_COOKIE, encryptGeneratorPayload(grant, 'grant'), {
@@ -418,8 +493,9 @@ function getStrongGeneratorCookieKey(env: GoogleAuthEnv, kind: 'state' | 'grant'
 }
 
 function isGoogleSession(value: unknown): value is GoogleSession {
-  if (!isRecord(value) || Object.keys(value).some((key) => !['subject', 'email', 'name', 'issuedAt'].includes(key))) return false;
+  if (!isRecord(value) || Object.keys(value).some((key) => !['subject', 'email', 'name', 'issuedAt', 'agreement'].includes(key))) return false;
   if (!validSubject(value.subject) || !validEmail(value.email) || (value.name !== undefined && !validString(value.name, 1, 200))) return false;
+  if (value.agreement !== undefined && (typeof value.agreement !== 'string' || !AGREEMENT_VERSION_PATTERN.test(value.agreement))) return false;
   return validIssuedAt(value.issuedAt, MAX_AGE_SECONDS);
 }
 
