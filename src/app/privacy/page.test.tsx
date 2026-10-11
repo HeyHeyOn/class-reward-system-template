@@ -28,7 +28,13 @@ describe('privacy policy page', () => {
     expect(within(children).getByText(/별명과 임의 번호로 등록해야/)).toBeTruthy();
     const retention = screen.getByRole('heading', { name: '제3조 (개인정보의 처리 및 보유 기간)' }).closest('section')!;
     expect(within(retention).getByText(/회원이 탈퇴하면 그 회원이 만든 학급은 즉시 접속이 중지되고/)).toBeTruthy();
-    expect(screen.getByText(/2026년 10월 8일부터 적용됩니다/)).toBeTruthy();
+    const changes = screen.getByRole('heading', { name: '제14조 (개인정보처리방침의 변경)' }).closest('section')!;
+    expect(within(changes).getByText(/2026년 10월 18일부터 적용됩니다/)).toBeTruthy();
+    // Every revision is listed, newest first, and the rule it replaces stays readable until it takes effect.
+    const history = within(changes).getAllByRole('listitem').map((item) => item.textContent);
+    expect(history[0]).toMatch(/^2026년 10월 18일 시행: 탈퇴 시 학생 정보가 포함된/);
+    expect(history[1]).toMatch(/^2026년 10월 8일 시행: 이용약관을 새로 마련했어요/);
+    expect(within(changes).getByText(/종전 내용\(2026년 10월 8일 시행\): 회원이 탈퇴하면 .*30일 이내에 운영자가 파기합니다/)).toBeTruthy();
     expect(screen.getByRole('link', { name: '메인 화면으로' }).getAttribute('href')).toBe('/classes');
     expect(screen.getByText('© 2026 환잇쌤. All rights reserved.')).toBeTruthy();
   });

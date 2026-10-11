@@ -55,7 +55,7 @@ export function BulkRepeatDialog({ ledger, taskIds, opener, notify }: BulkProps)
   );
 }
 
-/** 단계 바꾸기: picked students × one stage, across every selected task. */
+/** 완료 단계: picked students × one stage, across every selected task. */
 export function BulkStagesDialog({ ledger, taskIds, opener, notify, students, unit }: BulkProps & { students: readonly LedgerStudent[]; unit: string }) {
   const tasks = selectedTasks(ledger, taskIds);
   const [stage, setStage] = useState<TaskStage>('READY');
@@ -84,14 +84,14 @@ export function BulkStagesDialog({ ledger, taskIds, opener, notify, students, un
     if (!result.ok) { setError(result.error); return; }
     ledger.board.applyTasks(result.data);
     ledger.close();
-    notify(`학생 단계 ${changes.length}건을 ${toWord(stageLabel(stage))} 저장했어요.`);
+    notify(`완료 단계 ${changes.length}건을 ${toWord(stageLabel(stage))} 저장했어요.`);
   }
 
   const rewardOf = tasks.length === 1 ? tasks[0].reward : null;
   const uniqueStudents = new Set(changes.map((change) => change.studentId)).size;
   return (
     <>
-      <Modal title="선택한 과제 단계 바꾸기" ariaLabel="선택 과제 단계 바꾸기" description={`대상: ${targetText(tasks)}`} size="lg" opener={opener} busy={busy}
+      <Modal title="선택한 과제의 완료 단계" ariaLabel="선택 과제 완료 단계" description={`대상: ${targetText(tasks)}`} size="lg" opener={opener} busy={busy}
         obscured={askReward} onClose={ledger.close}
         footer={<>
           <span className="mr-auto text-[13px] font-semibold text-[var(--theme-muted-text)]">바뀌는 학생 {uniqueStudents}명{tasks.length > 1 ? ` · ${changes.length}건` : ''}</span>

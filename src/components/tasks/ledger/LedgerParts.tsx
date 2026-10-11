@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import type { TaskStage } from '@/domain/taskStage';
 import type { AdminTaskDto } from '@/lib/taskLedgerApi';
-import { Button, Callout, Modal, SegmentedControl, cx } from '../../ui';
+import { Button, Callout, Modal, cx } from '../../ui';
 import { holderCount, money, stageLabel, TASK_STAGES } from './ledgerFormat';
 
 export type LedgerStudent = { studentId: string; name: string; status?: string };
@@ -29,18 +29,33 @@ export function studentLabels(students: readonly LedgerStudent[]): Map<string, s
     !student.name ? student.studentId : (counts.get(student.name) ?? 0) > 1 ? `${student.name}(${student.studentId})` : student.name]));
 }
 
-/** 미부여 → 미완료 → 완료 가능 → 완료, picked per student. Every stage can be chosen in both directions. */
-export function StagePicker({ label, value, onChange, disabled }: { label: string; value: TaskStage; onChange: (stage: TaskStage) => void; disabled?: boolean }) {
+type StagePill<T extends string> = { value: T; label: string; tone: string };
+
+const stagePills = (stages: readonly TaskStage[]): StagePill<TaskStage>[] =>
+  stages.map((stage) => ({ value: stage, label: stageLabel(stage), tone: STAGE_TONES[stage] }));
+
+const NO_RESET_PILL: StagePill<'NONE'> = { value: 'NONE', label: '초기화 안 함', tone: 'bg-[var(--crs-subtle-hover)] text-[var(--theme-text)]' };
+
+/** The one stage picker of the task screen: a row of pills, the chosen one in its stage colour. */
+function StagePills<T extends string>({ groupLabel, options, value, onChange, disabled, buttonLabel }: {
+  groupLabel: string;
+  options: readonly StagePill<T>[];
+  value: T;
+  onChange: (value: T) => void;
+  disabled?: boolean;
+  /** Spoken name of each pill, when the visible word is not enough (rows of students). */
+  buttonLabel?: (option: StagePill<T>) => string;
+}) {
   return (
-    <div role="group" aria-label={`${label} 단계`} className="inline-flex shrink-0 flex-wrap rounded-full border border-[var(--crs-line-strong)] p-0.5">
-      {TASK_STAGES.map((stage) => {
-        const active = value === stage;
+    <div role="group" aria-label={groupLabel} className="inline-flex shrink-0 flex-wrap rounded-full border border-[var(--crs-line-strong)] p-0.5">
+      {options.map((option) => {
+        const active = value === option.value;
         return (
-          <button key={stage} type="button" aria-label={`${label} ${stageLabel(stage)}`} aria-pressed={active} disabled={disabled}
-            onClick={() => { if (!active) onChange(stage); }}
+          <button key={option.value} type="button" aria-label={buttonLabel?.(option)} aria-pressed={active} disabled={disabled}
+            onClick={() => { if (!active) onChange(option.value); }}
             className={cx('h-7 rounded-full px-2.5 text-[11px] font-bold transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)] disabled:cursor-not-allowed disabled:opacity-60',
-              active ? STAGE_TONES[stage] : 'text-[var(--theme-muted-text)] hover:bg-[var(--crs-subtle-hover)]')}>
-            {stageLabel(stage)}
+              active ? option.tone : 'text-[var(--theme-muted-text)] hover:bg-[var(--crs-subtle-hover)]')}>
+            {option.label}
           </button>
         );
       })}
@@ -48,9 +63,24 @@ export function StagePicker({ label, value, onChange, disabled }: { label: strin
   );
 }
 
-/** Choose one stage (used by QR, reset and bulk dialogs). */
-export function StageChoice({ label, value, onChange, stages = TASK_STAGES }: { label: string; value: TaskStage; onChange: (stage: TaskStage) => void; stages?: readonly TaskStage[] }) {
-  return <SegmentedControl<TaskStage> ariaLabel={label} value={value} onChange={onChange} options={stages.map((stage) => ({ value: stage, label: stageLabel(stage) }))} />;
+/** 미부여 → 미완료 → 완료 가능 → 완료, picked per student. Every stage can be chosen in both directions. */
+export function StagePicker({ label, value, onChange, disabled }: { label: string; value: TaskStage; onChange: (stage: TaskStage) => void; disabled?: boolean }) {
+  return <StagePills groupLabel={`${label} 단계`} options={stagePills(TASK_STAGES)} value={value} onChange={onChange} disabled={disabled}
+    buttonLabel={(option) => `${label} ${option.label}`} />;
+}
+
+/** Choose one stage (QR, reset and bulk dialogs), looking the same as a student's row in 학생 현황. */
+export function StageChoice({ label, value, onChange, stages = TASK_STAGES, disabled }: {
+  label: string; value: TaskStage; onChange: (stage: TaskStage) => void; stages?: readonly TaskStage[]; disabled?: boolean;
+}) {
+  return <StagePills groupLabel={label} options={stagePills(stages)} value={value} onChange={onChange} disabled={disabled} />;
+}
+
+/** The stage a repeating task resets to, or no reset at all. */
+export function ResetStageChoice({ label, value, onChange, disabled }: {
+  label: string; value: TaskStage | 'NONE'; onChange: (stage: TaskStage | 'NONE') => void; disabled?: boolean;
+}) {
+  return <StagePills<TaskStage | 'NONE'> groupLabel={label} options={[...stagePills(TASK_STAGES), NO_RESET_PILL]} value={value} onChange={onChange} disabled={disabled} />;
 }
 
 export function MiniStat({ label, value, tone }: { label: string; value: string; tone?: TaskStage }) {

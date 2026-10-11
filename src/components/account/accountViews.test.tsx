@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AVATAR_PRESETS } from '@/components/profile/avatar';
 import type { LegalRevision } from '@/lib/legalDocuments';
 import { LegalAgreementGate } from './LegalAgreementGate';
+import { resetLegalNoticeDismissals } from './legalNoticeDismissal';
 import { ProfileView, type ProfileViewModel } from './ProfileView';
 import { SignupAgreementView } from './SignupAgreementView';
 
@@ -27,6 +28,9 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  window.localStorage.clear();
+  window.sessionStorage.clear();
+  resetLegalNoticeDismissals();
   vi.unstubAllGlobals();
   fetchMock.mockReset();
   assign.mockReset();
@@ -121,8 +125,37 @@ describe('LegalAgreementGate', () => {
     rerender(<LegalAgreementGate notice={{ required: null, upcoming: null }} />);
     expect(document.body.textContent).toBe('');
     cleanup();
+    resetLegalNoticeDismissals();
+    window.sessionStorage.clear();
     render(<LegalAgreementGate notice={{ required: null, upcoming }} />);
     expect(screen.getByRole('status').closest('[style*="--theme-surface"]')).not.toBeNull();
+  });
+
+  it('keeps a closed notice away on the next page of this tab, and a refused one away for good', () => {
+    render(<LegalAgreementGate notice={{ required: null, upcoming }} />);
+    fireEvent.click(screen.getByRole('button', { name: '안내 닫기' }));
+    cleanup();
+    resetLegalNoticeDismissals();
+    render(<LegalAgreementGate notice={{ required: null, upcoming }} />);
+    expect(screen.queryByRole('status')).toBeNull();
+    cleanup();
+
+    // A new tab forgets the closed notice, but not '다시 보지 않기'.
+    window.sessionStorage.clear();
+    resetLegalNoticeDismissals();
+    render(<LegalAgreementGate notice={{ required: null, upcoming }} />);
+    fireEvent.click(screen.getByRole('button', { name: '다시 보지 않기' }));
+    expect(screen.queryByRole('status')).toBeNull();
+    cleanup();
+    window.sessionStorage.clear();
+    resetLegalNoticeDismissals();
+    render(<LegalAgreementGate notice={{ required: null, upcoming }} />);
+    expect(screen.queryByRole('status')).toBeNull();
+
+    // A later revision is announced again.
+    cleanup();
+    render(<LegalAgreementGate notice={{ required: null, upcoming: { ...upcoming, version: '2027-01-01', effectiveLabel: '2027년 1월 1일' } }} />);
+    expect(screen.getByRole('status').textContent).toContain('2027년 1월 1일부터');
   });
 });
 

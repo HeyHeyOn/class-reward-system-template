@@ -90,7 +90,7 @@ export function TaskLedgerPanel({ ledger, unit, notify }: { ledger: TaskLedger; 
                   <span role="columnheader" className="flex"><Checkbox aria-label="전체 과제 선택" checked={allSelected} onChange={(event) => ledger.setSelection(event.target.checked ? tasks.map((task) => task.taskId) : [])} /></span>
                   <span role="columnheader">과제</span>
                   <span role="columnheader" className="hidden text-right md:block">보상</span>
-                  <span role="columnheader" className="hidden md:block">학생 단계</span>
+                  <span role="columnheader" className="hidden md:block">완료 단계</span>
                   <span role="columnheader" className="hidden md:block">상태</span>
                   <span role="columnheader" aria-hidden="true" />
                 </div>
@@ -127,7 +127,7 @@ export function TaskLedgerPanel({ ledger, unit, notify }: { ledger: TaskLedger; 
       )}
       <SelectionBar count={selection.length} onClear={() => ledger.setSelection([])}>
         <SelectionBarButton icon="repeat" aria-label="선택 과제 반복 설정" onClick={(event) => ledger.open({ kind: 'bulk-repeat', taskIds: selection, opener: event.currentTarget })}>반복 설정</SelectionBarButton>
-        <SelectionBarButton icon="users" aria-label="선택 과제 단계 바꾸기" onClick={(event) => ledger.open({ kind: 'bulk-stages', taskIds: selection, opener: event.currentTarget })}>단계 바꾸기</SelectionBarButton>
+        <SelectionBarButton icon="users" aria-label="선택 과제 완료 단계" onClick={(event) => ledger.open({ kind: 'bulk-stages', taskIds: selection, opener: event.currentTarget })}>완료 단계</SelectionBarButton>
         <SelectionBarButton icon="restore" aria-label="선택 과제 지금 초기화" onClick={(event) => ledger.open({ kind: 'reset', taskIds: selection, opener: event.currentTarget })}>지금 초기화</SelectionBarButton>
         <SelectionBarButton icon="trash" danger aria-label="선택 과제 삭제" onClick={(event) => ledger.open({ kind: 'delete', taskIds: selection, opener: event.currentTarget })}>삭제</SelectionBarButton>
       </SelectionBar>

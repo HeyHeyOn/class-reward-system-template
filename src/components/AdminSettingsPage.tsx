@@ -251,7 +251,7 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
         </Card>
       </fieldset>
 
-      <div className="sticky bottom-4 z-20 flex flex-wrap items-center gap-3 rounded-[18px] border border-[var(--crs-line)] bg-[color-mix(in_srgb,var(--theme-surface)_92%,transparent)] px-4 py-3 shadow-[var(--crs-shadow)] backdrop-blur-md">
+      <div className="sticky bottom-4 z-40 flex flex-wrap items-center gap-3 rounded-[18px] border border-[var(--crs-line)] bg-[color-mix(in_srgb,var(--theme-surface)_92%,transparent)] px-4 py-3 shadow-[var(--crs-shadow)] backdrop-blur-md">
         <p role="status" className={cx('min-w-0 flex-1 text-[13px] font-semibold', message ? (success ? 'text-[var(--crs-success-text)]' : 'text-[var(--crs-warning-text)]') : 'text-[var(--theme-muted-text)]')}>
           {message || (loadStatus === 'loading' ? '설정을 불러오는 중입니다.' : unchanged ? '모든 변경 사항이 저장되어 있습니다.' : '저장하지 않은 변경 사항이 있습니다.')}
           {!isDatabase && loadStatus === 'ready' ? <span className="ml-2 font-medium text-[var(--theme-muted-text)]">학생 {linkedStudentCount ?? 0}명 · 상품 {linkedProductCount ?? 0}개 연결됨</span> : null}

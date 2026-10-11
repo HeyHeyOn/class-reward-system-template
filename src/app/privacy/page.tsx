@@ -1,8 +1,12 @@
 import { Article, ContactLink, LegalPage, List, OPERATOR, OPERATOR_CONTACT_EMAIL, Table } from '@/components/legal/LegalDocument';
+import { LEGAL_REVISIONS } from '@/lib/legalDocuments';
 
 export const metadata = { title: '개인정보처리방침' };
 
-const EFFECTIVE_DATE = '2026년 10월 8일';
+const EFFECTIVE_DATE = '2026년 10월 18일';
+
+// 제3조 탈퇴 처리 문장의 직전(2026년 10월 8일 시행) 내용. 개정안 시행 전까지 적용되므로 함께 공개합니다.
+const PREVIOUS_WITHDRAWAL_RULE = '회원이 탈퇴하면 그 회원이 만든 학급은 즉시 접속이 중지되고, 학급 이름·설정과 학생 이름이 즉시 삭제됩니다. 바꿀 수 없도록 보호된 학급 화폐·과제 기록에는 학생 이름 없이 번호와 금액만 남아 개인을 알아볼 수 없으며, 기존 Google 시트에서 옮겨 온 원본 자료 등 보호된 기록은 탈퇴일부터 30일 이내에 운영자가 파기합니다.';
 
 export default function PrivacyPolicyPage() {
   const contact = <ContactLink />;
@@ -150,6 +154,11 @@ export default function PrivacyPolicyPage() {
         <p>
           이 개인정보처리방침은 {EFFECTIVE_DATE}부터 적용됩니다. 내용이 바뀌는 경우 시행 7일 전(이용자에게 불리하거나 중요한 변경은 30일 전)부터
           서비스 화면으로 알리고, 시행일 이후 처음 이용할 때 바뀐 내용에 다시 동의를 받습니다. 동의하지 않으면 회원 탈퇴를 할 수 있습니다.
+        </p>
+        <p className="font-bold">개정 이력</p>
+        <List items={[...LEGAL_REVISIONS].reverse().map((revision) => <>{revision.effectiveLabel} 시행: {revision.changes.join(' ')}</>)} />
+        <p>
+          {EFFECTIVE_DATE} 전까지 적용되는 제3조의 종전 내용(2026년 10월 8일 시행): {PREVIOUS_WITHDRAWAL_RULE}
         </p>
       </Article>
     </LegalPage>

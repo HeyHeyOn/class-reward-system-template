@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import type { LegalRevision } from '@/lib/legalDocuments';
 import { Button, Modal } from '../ui';
 import { Icon } from '../ui/icons';
@@ -8,6 +8,7 @@ import { themeStyles } from '../uiTheme';
 import { accountRequest } from './accountApi';
 import { AgreementChecklist, allAgreed, NO_AGREEMENT } from './AgreementChecklist';
 import { WithdrawalConfirm } from './WithdrawalConfirm';
+import { hideLegalNotice, legalNoticeHidden, subscribeLegalNotice } from './legalNoticeDismissal';
 
 // The gate may be rendered outside a themed page (e.g. next to the admin screen), so it carries its
 // own theme: without it the dialog has no surface colour and the page shows through.
@@ -43,7 +44,7 @@ export function LegalChanges({ changes }: Readonly<{ changes: readonly LegalRevi
 /**
  * Shown on teacher pages. When the terms or the privacy policy in force have not been agreed to by
  * this session, a dialog that cannot be dismissed asks for agreement (or withdrawal). A revision
- * announced for later is shown as a notice.
+ * announced for later is shown as a notice, which the teacher can close or stop seeing.
  */
 export function LegalAgreementGate({ notice, classNames }: Readonly<{ notice: LegalNoticeView; classNames?: readonly string[] }>) {
   const [choices, setChoices] = useState(NO_AGREEMENT);
@@ -51,7 +52,9 @@ export function LegalAgreementGate({ notice, classNames }: Readonly<{ notice: Le
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [agreed, setAgreed] = useState(false);
-  const [upcomingClosed, setUpcomingClosed] = useState(false);
+  const upcomingVersion = notice.upcoming?.version ?? '';
+  // Read after hydration (the server renders no notice), so a hidden notice never flashes on navigation.
+  const upcomingHidden = useSyncExternalStore(subscribeLegalNotice, () => !upcomingVersion || legalNoticeHidden(upcomingVersion), () => true);
 
   async function agree() {
     setBusy(true);
@@ -67,14 +70,22 @@ export function LegalAgreementGate({ notice, classNames }: Readonly<{ notice: Le
     window.location.reload();
   }
 
-  const upcoming = notice.upcoming && !upcomingClosed ? (
-    <div role="status" className="fixed inset-x-3 bottom-3 z-40 mx-auto flex max-w-xl items-start gap-3 rounded-[16px] border border-[var(--crs-line)] bg-[var(--theme-surface)] px-4 py-3 text-[13px] leading-relaxed text-[var(--theme-text)] shadow-[var(--crs-shadow-lg)]">
+  const linkClass = 'font-semibold text-[var(--theme-accent-text)] underline underline-offset-2';
+  // z-30: under the page's own bottom bars (selection z-40, settings save), which must stay usable.
+  const upcoming = notice.upcoming && !upcomingHidden ? (
+    <div role="status" className="fixed inset-x-3 bottom-3 z-30 mx-auto flex max-w-xl items-start gap-3 rounded-[16px] border border-[var(--crs-line)] bg-[var(--theme-surface)] px-4 py-3 text-[13px] leading-relaxed text-[var(--theme-text)] shadow-[var(--crs-shadow-lg)]">
       <span className="mt-0.5 shrink-0 text-[var(--theme-accent-text)]"><Icon name="info" size={17} /></span>
-      <p className="min-w-0 flex-1">
-        <strong className="font-bold">{notice.upcoming.effectiveLabel}</strong>부터 이용약관·개인정보처리방침이 바뀌어요. {notice.upcoming.changes[0]}{' '}
-        <a href="/terms" className="font-semibold text-[var(--theme-accent-text)] underline underline-offset-2">자세히 보기</a>
-      </p>
-      <button type="button" aria-label="안내 닫기" onClick={() => setUpcomingClosed(true)} className="shrink-0 rounded-md p-0.5 opacity-70 hover:opacity-100"><Icon name="close" size={16} /></button>
+      <div className="min-w-0 flex-1">
+        <p>
+          <strong className="font-bold">{notice.upcoming.effectiveLabel}</strong>부터 이용약관·개인정보처리방침이 바뀌어요. {notice.upcoming.changes[0]}
+        </p>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px]">
+          <a href="/terms" className={linkClass}>이용약관</a>
+          <a href="/privacy" className={linkClass}>개인정보처리방침</a>
+          <button type="button" onClick={() => hideLegalNotice(upcomingVersion, true)} className="ml-auto rounded-md px-1.5 py-0.5 font-semibold text-[var(--theme-muted-text)] hover:bg-[var(--crs-subtle)] hover:text-[var(--theme-text)]">다시 보지 않기</button>
+        </div>
+      </div>
+      <button type="button" aria-label="안내 닫기" onClick={() => hideLegalNotice(upcomingVersion, false)} className="shrink-0 rounded-md p-0.5 opacity-70 hover:opacity-100"><Icon name="close" size={16} /></button>
     </div>
   ) : null;
 

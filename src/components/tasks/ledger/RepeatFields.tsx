@@ -1,10 +1,10 @@
 'use client';
 
-import type { TaskStage } from '@/domain/taskStage';
 import type { IsoWeekday } from '@/domain/types';
-import { Field, Icon, Input, SegmentedControl, Select, cx } from '../../ui';
+import { Field, Icon, Input, SegmentedControl, cx } from '../../ui';
+import { ResetStageChoice } from './LedgerParts';
 import {
-  formatInstant, previewNextReset, recurrenceSummary, repeatFromForm, resetStageSummary, stageLabel, TASK_STAGES, toWord,
+  formatInstant, previewNextReset, recurrenceSummary, repeatFromForm, resetStageSummary,
   type RepeatForm, type RepeatType,
 } from './ledgerFormat';
 
@@ -81,14 +81,11 @@ export function RepeatFields({ form, onChange, now, idPrefix = 'ledger-repeat', 
       ) : null}
 
       {repeating ? (
-        <Field label="초기화하면" htmlFor={`${idPrefix}-reset-stage`}
-          hint="이 과제를 가진 학생(미부여가 아닌 학생)이 모두 고른 단계로 바뀌어요. 미부여인 학생은 그대로예요.">
-          <Select id={`${idPrefix}-reset-stage`} aria-label="초기화하면" value={form.resetStage}
-            onChange={(event) => onChange({ ...form, resetStage: event.target.value as TaskStage | 'NONE' })}>
-            {TASK_STAGES.map((stage) => <option key={stage} value={stage}>{toWord(stageLabel(stage))} 바꾸기</option>)}
-            <option value="NONE">초기화 안 함</option>
-          </Select>
-        </Field>
+        <div>
+          <p className="mb-1.5 text-[13px] font-bold">초기화하면</p>
+          <ResetStageChoice label="초기화하면" value={form.resetStage} onChange={(resetStage) => onChange({ ...form, resetStage })} />
+          <p className="mt-1.5 text-xs text-[var(--theme-muted-text)]">이 과제를 가진 학생(미부여가 아닌 학생)이 모두 고른 단계로 바뀌어요. 미부여인 학생은 그대로예요.</p>
+        </div>
       ) : form.type === 'NONE' ? (
         <p className="rounded-[var(--crs-radius)] bg-[var(--crs-subtle)] px-4 py-3 text-[13px] leading-relaxed text-[var(--theme-muted-text)]">
           저절로 초기화되지 않아요. 매주 하는 숙제처럼 다시 해야 하는 과제라면 주기를 골라 주세요.

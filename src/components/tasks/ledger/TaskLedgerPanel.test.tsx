@@ -222,7 +222,8 @@ describe('task details', () => {
     fireEvent.click(within(within(sheet).getByRole('group', { name: '반복 주기' })).getByRole('button', { name: '매주' }));
     fireEvent.click(within(sheet).getByRole('button', { name: '수요일' }));
     fireEvent.change(within(sheet).getByLabelText('반복 시간'), { target: { value: '08:30' } });
-    fireEvent.change(within(sheet).getByLabelText('초기화하면'), { target: { value: 'PENDING' } });
+    fireEvent.click(within(within(sheet).getByRole('group', { name: '초기화하면' })).getByRole('button', { name: '미완료' }));
+    expect(within(within(sheet).getByRole('group', { name: '초기화하면' })).getByRole('button', { name: '미완료' }).getAttribute('aria-pressed')).toBe('true');
     expect(within(sheet).getByText(/저장하면 다음 초기화:/)).toBeTruthy();
     fireEvent.click(within(sheet).getByRole('button', { name: '저장' }));
     await waitFor(() => expect(server.writes('POST /repeat')).toHaveLength(1));
@@ -298,13 +299,15 @@ describe('create, bulk and delete', () => {
     await renderBoard();
     fireEvent.click(screen.getByRole('checkbox', { name: '수학 익힘책 선택' }));
     fireEvent.click(screen.getByRole('checkbox', { name: '독서 기록 선택' }));
-    fireEvent.click(within(screen.getByRole('toolbar', { name: '선택 항목 작업' })).getByRole('button', { name: '선택 과제 단계 바꾸기' }));
-    const dialog = await screen.findByRole('dialog', { name: '선택 과제 단계 바꾸기' });
+    expect(screen.getByRole('columnheader', { name: '완료 단계' })).toBeTruthy();
+    expect(within(screen.getByRole('toolbar', { name: '선택 항목 작업' })).getByRole('button', { name: '선택 과제 완료 단계' }).textContent).toBe('완료 단계');
+    fireEvent.click(within(screen.getByRole('toolbar', { name: '선택 항목 작업' })).getByRole('button', { name: '선택 과제 완료 단계' }));
+    const dialog = await screen.findByRole('dialog', { name: '선택 과제 완료 단계' });
     fireEvent.click(within(within(dialog).getByRole('group', { name: '바꿀 단계' })).getByRole('button', { name: '미완료' }));
     fireEvent.click(within(dialog).getByRole('checkbox', { name: '김민준 고르기' }));
     fireEvent.click(within(dialog).getByRole('checkbox', { name: '최하윤 고르기' }));
     fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '선택 과제 단계 바꾸기' })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '선택 과제 완료 단계' })).toBeNull());
     // 독서 기록 already has 김민준 at 미완료, so only the real changes are sent.
     expect(server.writes('POST /stages')[0].body!.changes).toEqual([
       { taskId: 'task-1', studentId: 'S1', stage: 'PENDING' },
@@ -321,7 +324,7 @@ describe('create, bulk and delete', () => {
     expect((within(dialog).getByRole('button', { name: '저장' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(within(within(dialog).getByRole('group', { name: '반복 주기' })).getByRole('button', { name: '매월' }));
     fireEvent.change(within(dialog).getByLabelText('반복 날짜'), { target: { value: '15' } });
-    fireEvent.change(within(dialog).getByLabelText('초기화하면'), { target: { value: 'NONE' } });
+    fireEvent.click(within(within(dialog).getByRole('group', { name: '초기화하면' })).getByRole('button', { name: '초기화 안 함' }));
     fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
     await waitFor(() => expect(server.writes('POST /repeat')).toHaveLength(1));
     expect(server.writes('POST /repeat')[0].body).toEqual({ operationId: expect.stringMatching(UUID), taskIds: ['task-1', 'task-2'],
