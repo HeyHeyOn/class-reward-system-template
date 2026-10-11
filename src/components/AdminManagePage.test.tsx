@@ -469,8 +469,8 @@ describe('AdminManagePage', () => {
     await screen.findByRole('heading', { level: 1, name: '학급 매점' });
     const tablist = screen.getByRole('tablist', { name: '관리자 메뉴' });
     const primaryTabs = within(tablist).getAllByRole('tab');
-    const tabKeys = ['home', 'students', 'products', 'tasks', 'tree', 'pets', 'currency', 'transactions', 'settings'];
-    expect(primaryTabs.map((tab) => tab.textContent)).toEqual(['홈', '학생', '매점', '과제', '나무 키우기', '펫 키우기', '지급·회수', '거래 내역', '설정']);
+    const tabKeys = ['home', 'students', 'products', 'tasks', 'pets', 'tree', 'currency', 'transactions', 'settings'];
+    expect(primaryTabs.map((tab) => tab.textContent)).toEqual(['홈', '학생', '매점', '과제', '펫 키우기', '나무 키우기', '지급·회수', '거래 내역', '설정']);
     const last = primaryTabs.length - 1;
     primaryTabs.forEach((tab, index) => {
       expect(tab.id).toBe(`admin-tab-${tabKeys[index]}`);
@@ -1695,7 +1695,7 @@ describe('AdminManagePage', () => {
     expect(logo.className).not.toContain('bg-white');
     const adminTabs = screen.getByRole('tablist', { name: '관리자 메뉴' });
     expect(adminTabs).toBe(screen.getByTestId('admin-tabs'));
-    expect(within(adminTabs).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['홈', '학생', '매점', '과제', '나무 키우기', '펫 키우기', '지급·회수', '거래 내역', '설정']);
+    expect(within(adminTabs).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['홈', '학생', '매점', '과제', '펫 키우기', '나무 키우기', '지급·회수', '거래 내역', '설정']);
     expect(screen.getByRole('tab', { name: '홈' }).getAttribute('aria-selected')).toBe('true');
     expect(screen.getByRole('tabpanel', { name: '홈' })).toBeTruthy();
     expect(screen.queryByRole('link', { name: /시스템 생성기/ })).toBeNull();
