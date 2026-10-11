@@ -119,6 +119,34 @@ describe('padlet allocation', () => {
     expect(result.moves.map((move) => [move.postId, move.taskId])).toEqual([['p2', 'B']]);
   });
 
+  it('never counts a post written before the student became 미완료 (a reset or the teacher\'s change)', () => {
+    // S1 was sent back to 미완료 on 10/06; S2 has been 미완료 since 10/01.
+    const since = (taskId: string, studentId: string) => (studentId === 'S1' ? '2026-10-06T00:00:00.000123Z' : '2026-10-01T00:00:00.000Z');
+    const result = allocatePadletPosts({ tasks: [task('A')], students: STUDENTS,
+      stageOf: stages({ A: { S1: 'PENDING', S2: 'PENDING' } }), sinceOf: since,
+      posts: [post('old', '2026-10-05T01:00:00.000Z', '김민준'), post('same_ms', '2026-10-06T00:00:00.000Z', '김민준'),
+        post('s2', '2026-10-05T02:00:00.000Z', '이서연')], uses: [], now });
+    expect(result.moves.map((move) => [move.postId, move.studentId])).toEqual([['s2', 'S2']]);
+    expect(result.outcomes.map((outcome) => [outcome.postId, outcome.results])).toEqual([
+      ['same_ms', { A: 'EARLIER' }], ['s2', { A: 'MOVED' }], ['old', { A: 'EARLIER' }],
+    ]);
+    const fresh = allocatePadletPosts({ tasks: [task('A')], students: STUDENTS,
+      stageOf: stages({ A: { S1: 'PENDING' } }), sinceOf: since,
+      posts: [post('new', '2026-10-06T00:00:01.000Z', '김민준')], uses: [], now });
+    expect(fresh.moves.map((move) => move.postId)).toEqual(['new']);
+  });
+
+  it('does not hand a post that is too early for the chain\'s next task to a later task', () => {
+    const chain = [task('A'), task('B', { prerequisiteTaskId: 'A' })];
+    const result = allocatePadletPosts({ tasks: chain, students: STUDENTS,
+      stageOf: stages({ A: { S1: 'PENDING' }, B: { S1: 'PENDING' } }),
+      // A was reset on 10/06; B has been 미완료 since 10/01.
+      sinceOf: (taskId) => (taskId === 'A' ? '2026-10-06T00:00:00.000Z' : '2026-10-01T00:00:00.000Z'),
+      posts: [post('old', '2026-10-05T01:00:00.000Z', '김민준')], uses: [], now });
+    expect(result.moves).toEqual([]);
+    expect(result.outcomes[0].results).toEqual({ A: 'EARLIER', B: 'WAITING' });
+  });
+
   it('skips a chain task the post does not fit, and counts only open, visible, same-section tasks', () => {
     const chain = [task('A', { closesAt: '2026-10-04T00:00:00.000Z' }), task('B', { prerequisiteTaskId: 'A' })];
     const result = allocatePadletPosts({ tasks: chain, students: STUDENTS,

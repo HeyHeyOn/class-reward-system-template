@@ -81,6 +81,7 @@ describe('padlet links', () => {
     await createTask('칭찬 글쓰기', [{ studentId: 'S1', stage: 'PENDING' }, { studentId: 'S2', stage: 'PENDING' }]);
     await padlet().setKey('pdltp_test_key_9876');
     posts.push(post('post_old', '김민준', minutesAgo(60 * 24 * 400)), post('post_s1', '김민준', await later()),
+      post('post_s1_more', '김민준', await later()),
       post('post_s3', '박지후', await later()), post('post_x', '성지환', await later(), { subject: '오늘의 칭찬' }));
     const { tasks } = await padlet().link({ taskIds: ['T001'], address: ADDRESS, sectionId: 'sec_class' });
     expect(tasks[0].padlet).toEqual({ boardId: BOARD_ID, boardTitle: '5학년 6반 칭찬 게시판', boardUrl: ADDRESS, sectionId: 'sec_class', sectionTitle: '우리 반',
@@ -92,15 +93,19 @@ describe('padlet links', () => {
     expect(status.boards).toHaveLength(1);
     expect(status.boards[0]).toMatchObject({ boardId: BOARD_ID, taskIds: ['T001'], error: null });
     expect(status.boards[0].posts.map((item) => [item.postId, item.studentName, item.issue, item.results])).toEqual([
-      ['post_x', null, 'UNKNOWN', {}], ['post_s3', '박지후', null, { T001: 'NOT_ASSIGNED' }], ['post_s1', '김민준', null, { T001: 'MOVED' }],
+      ['post_x', null, 'UNKNOWN', {}], ['post_s3', '박지후', null, { T001: 'NOT_ASSIGNED' }],
+      ['post_s1_more', '김민준', null, { T001: 'DONE' }], ['post_s1', '김민준', null, { T001: 'MOVED' }],
       // Written before the task existed: it never counts.
       ['post_old', '김민준', null, { T001: 'OUTSIDE' }],
     ]);
 
-    // The teacher sends S1 back to 미완료: the same post does not count again, a new one does.
+    // The teacher sends S1 back to 미완료: neither the used post nor S1's other earlier post counts
+    // (both were written before this 미완료 began); a new one does.
     await ledger().setStages({ operationId: randomUUID(), changes: [{ taskId: 'T001', studentId: 'S1', stage: 'PENDING' }] });
     await padlet().syncNow();
     expect((await stages())['칭찬 글쓰기'].S1).toBe('PENDING');
+    expect((await padlet().status()).boards[0].posts.find((item) => item.postId === 'post_s1_more')?.results).toEqual({ T001: 'EARLIER' });
+
     posts.push(post('post_s1_again', '김민준', await later()), post('post_s2_other', '이서연', await later(), { sectionId: 'sec_one' }));
     await padlet().syncNow();
     expect((await stages())['칭찬 글쓰기']).toEqual({ S1: 'READY', S2: 'PENDING', S3: 'UNASSIGNED' });
@@ -110,6 +115,32 @@ describe('padlet links', () => {
       .toEqual([['READY', 'PADLET'], ['PENDING', 'TEACHER'], ['READY', 'PADLET'], ['PENDING', 'TEACHER']]);
     const uses = await harness.database.query<{ post_id: string }>('SELECT post_id FROM padlet_post_uses ORDER BY post_id');
     expect(uses.rows.map((row) => row.post_id)).toEqual(['post_s1', 'post_s1_again']);
+  }, 120_000);
+
+  it('never counts a post written before 지금 초기화, and a chain does not hand it to a later task', async () => {
+    await createTask('A 읽기', [{ studentId: 'S1', stage: 'PENDING' }, { studentId: 'S2', stage: 'PENDING' }]);
+    await createTask('B 쓰기', [{ studentId: 'S1', stage: 'PENDING' }], 'T001');
+    await padlet().setKey('pdltp_test_key_9876');
+    await padlet().link({ taskIds: ['T001', 'T002'], address: ADDRESS, sectionId: null });
+    // The teacher marks A 완료 가능 by hand; posts come in; then A is reset (지금 초기화) before any read.
+    await ledger().setStages({ operationId: randomUUID(), changes: [
+      { taskId: 'T001', studentId: 'S1', stage: 'READY' }, { taskId: 'T001', studentId: 'S2', stage: 'READY' }] });
+    posts.push(post('post_before_1', '김민준', await later()), post('post_before_2', '이서연', await later()));
+    await new Promise((done) => setTimeout(done, 15));
+    await ledger().resetTasks({ operationId: randomUUID(), taskIds: ['T001'], stage: 'PENDING' });
+    await padlet().syncNow();
+    let now = await stages();
+    // Both posts were written before the reset: nobody moves, and A's earlier post never skips to B
+    // (B has been 미완료 since before the post).
+    expect([now['A 읽기'].S1, now['B 쓰기'].S1, now['A 읽기'].S2]).toEqual(['PENDING', 'PENDING', 'PENDING']);
+    const summary = (await padlet().status()).boards[0].posts;
+    expect(summary.find((item) => item.postId === 'post_before_1')?.results).toEqual({ T001: 'EARLIER', T002: 'WAITING' });
+    expect(summary.find((item) => item.postId === 'post_before_2')?.results).toEqual({ T001: 'EARLIER', T002: 'NOT_ASSIGNED' });
+
+    posts.push(post('post_after', '김민준', await later()));
+    await padlet().syncNow();
+    now = await stages();
+    expect([now['A 읽기'].S1, now['B 쓰기'].S1, now['A 읽기'].S2]).toEqual(['READY', 'PENDING', 'PENDING']);
   }, 120_000);
 
   it('gives chained tasks one post each, in order, and separate tasks the same post', async () => {

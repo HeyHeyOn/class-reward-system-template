@@ -336,6 +336,8 @@ export function createTaskLedgerCommands(dependencies: TaskLedgerCommandDependen
       }),
       students: [...students.values()].map((student) => ({ studentId: student.studentId, name: student.name, active: student.status === 'ACTIVE' })),
       stageOf: (taskInstanceId, studentId) => stageOf(tasks.get(taskInstanceId)!, events.get(taskInstanceId)?.get(studentId), now).stage,
+      // Sent back to 미완료 (a reset or the teacher's change): only posts written after that count.
+      sinceOf: (taskInstanceId, studentId) => stageOf(tasks.get(taskInstanceId)!, events.get(taskInstanceId)?.get(studentId), now).since,
       posts,
       uses: uses.map((use) => ({ taskId: use.taskInstanceId, postId: use.postId, studentId: use.studentId })),
       now,

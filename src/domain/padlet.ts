@@ -135,6 +135,8 @@ export type PadletPostResult =
   | 'OTHER_TASK'   // used by an earlier task of the same chain
   | 'NOT_ASSIGNED' // the student does not have the task (미부여)
   | 'DONE'         // the student was already 완료 가능 or 완료
+  | 'EARLIER'      // written before the student's current 미완료 began (a reset or the teacher's change)
+  | 'WAITING'      // a chain's earlier task is still 미완료 and this post cannot count for it
   | 'OUTSIDE';     // before the task opened, after it closed, hidden, or another section
 
 export type PadletPostOutcome = Readonly<{
@@ -189,6 +191,21 @@ export function padletTaskGroups(tasks: readonly PadletLinkedTask[]): PadletLink
 
 const instant = (value: string) => Date.parse(value);
 
+/** True when the post was written at or after `since` (or `since` is unknown). */
+function writtenSince(post: PadletPost, since: string | null): boolean {
+  if (since === null) return true;
+  const start = micros(since);
+  return start === null || (micros(post.createdAt) ?? Number.NEGATIVE_INFINITY) >= start;
+}
+
+/** An ISO instant in microseconds (ledger times carry microseconds; Date keeps milliseconds). */
+function micros(value: string): number | null {
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) return null;
+  const fraction = /T\d{2}:\d{2}:\d{2}\.(\d+)/.exec(value)?.[1] ?? '';
+  return ms * 1000 + Number(fraction.padEnd(6, '0').slice(3, 6));
+}
+
 function postFits(task: PadletLinkedTask, post: PadletPost): boolean {
   if (!task.visible) return false;
   if (task.sectionId !== null && post.sectionId !== task.sectionId) return false;
@@ -208,6 +225,12 @@ export function allocatePadletPosts(input: Readonly<{
   students: readonly (PadletStudent & Readonly<{ active: boolean }>)[];
   /** The student's current stage on a task. */
   stageOf: (taskId: string, studentId: string) => TaskStage;
+  /**
+   * When the student's current stage began (the task was given, a reset, or the teacher's change);
+   * null when unknown. A post written before it never moves the student: after being sent back to
+   * 미완료 the student needs a new post.
+   */
+  sinceOf?: (taskId: string, studentId: string) => string | null;
   posts: readonly PadletPost[];
   uses: readonly PadletUse[];
   now: string;
@@ -246,19 +269,24 @@ export function allocatePadletPosts(input: Readonly<{
     for (const group of groups) {
       const used = group.find((task) => usedBy.get(post.id)?.has(task.taskId));
       let taker: PadletLinkedTask | undefined = used;
-      if (!used) {
-        taker = group.find((task) => postFits(task, post) && stage(task.taskId, studentId) === 'PENDING');
-        if (taker) {
-          moves.push({ taskId: taker.taskId, studentId, postId: post.id, postCreatedAt: post.createdAt });
-          stages.set(`${taker.taskId}\u0000${studentId}`, 'READY');
-          usedBy.set(post.id, new Set([...(usedBy.get(post.id) ?? []), taker.taskId]));
-        }
+      // The chain's first task that is still 미완료 for this student and that the post fits.
+      const next = used ? undefined : group.find((task) => postFits(task, post) && stage(task.taskId, studentId) === 'PENDING');
+      // Written before that 미완료 began: it counts for nothing, and never skips ahead to a later task.
+      const early = next && !writtenSince(post, input.sinceOf?.(next.taskId, studentId) ?? null) ? next : undefined;
+      if (next && !early) {
+        taker = next;
+        moves.push({ taskId: next.taskId, studentId, postId: post.id, postCreatedAt: post.createdAt });
+        stages.set(`${next.taskId}\u0000${studentId}`, 'READY');
+        usedBy.set(post.id, new Set([...(usedBy.get(post.id) ?? []), next.taskId]));
       }
       for (const task of group) {
+        const current = stage(task.taskId, studentId);
         if (taker && task.taskId === taker.taskId) results[task.taskId] = 'MOVED';
         else if (taker) results[task.taskId] = 'OTHER_TASK';
         else if (!postFits(task, post)) results[task.taskId] = 'OUTSIDE';
-        else if (stage(task.taskId, studentId) === 'UNASSIGNED') results[task.taskId] = 'NOT_ASSIGNED';
+        else if (early && task.taskId === early.taskId) results[task.taskId] = 'EARLIER';
+        else if (early && current === 'PENDING') results[task.taskId] = 'WAITING';
+        else if (current === 'UNASSIGNED') results[task.taskId] = 'NOT_ASSIGNED';
         else results[task.taskId] = 'DONE';
       }
     }

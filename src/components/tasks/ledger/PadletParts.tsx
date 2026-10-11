@@ -243,7 +243,7 @@ export function PadletSharingCallout({ tasks }: { tasks: readonly AdminTaskDto[]
 export function PadletRules() {
   return (
     <ul className="space-y-1 text-xs leading-relaxed text-[var(--theme-muted-text)]">
-      <li className="flex gap-1.5"><span aria-hidden="true">·</span>과제가 열린 뒤(시작 또는 마지막 초기화 이후) 마감 전까지 올라온 글만 세요.</li>
+      <li className="flex gap-1.5"><span aria-hidden="true">·</span>학생이 ‘미완료’가 된 뒤(과제를 받거나, 초기화·단계 변경으로 미완료가 된 뒤) 마감 전까지 올린 글만 세요. 그 전에 쓴 글은 세지 않아요.</li>
       <li className="flex gap-1.5"><span aria-hidden="true">·</span>글쓴이 이름에서 학생 이름을 찾고, 없으면 글 제목에서 찾아요. 로그인하지 않은 학생은 제목에 이름을 써 주세요.</li>
       <li className="flex gap-1.5"><span aria-hidden="true">·</span>이 과제가 ‘미완료’인 학생만 ‘완료 가능’으로 바뀌어요. 글 하나는 한 번만 세요.</li>
       <li className="flex gap-1.5"><span aria-hidden="true">·</span>과제 화면이나 학생 화면을 열면 저절로 확인해요. 바로 확인하려면 ‘지금 확인’을 눌러 주세요.</li>
@@ -256,6 +256,8 @@ const RESULT_BADGE: Record<string, { text: string; tone: Tone }> = {
   OTHER_TASK: { text: '연계된 다른 과제에 씀', tone: 'neutral' },
   NOT_ASSIGNED: { text: '과제 없는 학생(미부여)', tone: 'warning' },
   DONE: { text: '이미 완료 가능·완료', tone: 'neutral' },
+  EARLIER: { text: '미완료가 되기 전에 쓴 글', tone: 'neutral' },
+  WAITING: { text: '연계된 앞 과제 차례', tone: 'neutral' },
   OUTSIDE: { text: '세는 기간·칸 밖', tone: 'neutral' },
 };
 
