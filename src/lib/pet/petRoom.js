@@ -540,7 +540,7 @@ const ROOM = (() => {
 
       function mood() {
         if (s.stage === 0) return '두근두근';
-        if (s.action === 'sleep') return '꿈나라';
+        if (s.action === 'sleep') return '잠듦';
         if (s.emote && EMOTES[s.emote]) return EMOTES[s.emote];
         if (ACTION_MOODS[s.action]) return ACTION_MOODS[s.action];
         const n = s.needs;
