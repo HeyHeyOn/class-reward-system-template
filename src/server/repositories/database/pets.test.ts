@@ -181,18 +181,21 @@ describe('task rewards', () => {
     expect((await pets().studentView('S001')).pet).toMatchObject({ growth: 0, stage: 1 });
   });
 
-  it('counts a task reward as one of the day\'s feedings, and still adds it past the limit', async () => {
+  it('leaves the daily feedings alone, but records a task\'s food as care today', async () => {
     await pets().saveSettings({ ...ON, goal: 40 });
     await pets().adopt({ studentId: 'S001', operationId: op(), species: 'dog', name: '초코' });
     await harness.database.query(`UPDATE pets SET stage=1, color='brown', hatched_at=now(), growth=4 WHERE tenant_id=$1`, [harness.tenantOneId]);
     await rewardTransaction('task-reward:c', 'TASK_REWARD');
     await harness.runTenantTransaction(harness.tenantOneId, (tx) => addTaskPetGrowth(tx, harness.tenantOneId, { studentId: 'S001', transactionId: 'task-reward:c', operationId: op() }));
-    expect((await pets().studentView('S001')).feedsToday).toBe(1);
+    expect((await pets().studentView('S001')).feedsToday).toBe(0);
+    await pets().care({ studentId: 'S001', operationId: op(), kind: 'FEED' });
     await pets().care({ studentId: 'S001', operationId: op(), kind: 'FEED' });
     expect(await failure(pets().care({ studentId: 'S001', operationId: op(), kind: 'FEED' }))).toBe('DAILY_LIMIT');
+    // A task after the feedings still feeds the pet: tasks have no limit.
     await rewardTransaction('task-reward:d', 'TASK_REWARD');
     await harness.runTenantTransaction(harness.tenantOneId, (tx) => addTaskPetGrowth(tx, harness.tenantOneId, { studentId: 'S001', transactionId: 'task-reward:d', operationId: op() }));
-    expect(await pets().studentView('S001')).toMatchObject({ feedsToday: 3, pet: { growth: 7 } });
+    expect(await pets().studentView('S001')).toMatchObject({ feedsToday: 2, pet: { growth: 8 } });
+    expect((await pets().adminBoard()).students[0]).toMatchObject({ caresToday: 4, feedsToday: 2, taskFeedsToday: 2, caredDays7: 1, warmedToday: false });
   });
 
   it('adds nothing while pets are off, without a pet, or with task growth 0', async () => {

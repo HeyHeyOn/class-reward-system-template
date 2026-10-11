@@ -410,13 +410,11 @@ export function createPetCommands(dependencies: PetDependencies) {
     const pet = await readRaisingPet(tx, tenantId, studentId, false);
     let warmedToday = false, lastFedAt: string | null = null;
     // Feeding is for the whole room (the pet and the graduated pets with it): the limit and hunger count the
-    // student's feedings, and the limit also counts the food completed tasks gave.
+    // student's own feedings. Food from completed tasks has no limit and does not use one up.
     const counts = await tx.execute(sql`
       SELECT
         (SELECT count(*)::int FROM pet_cares WHERE tenant_id=${tenantId} AND student_id=${studentId} AND care_date=${KOREA_TODAY}
-           AND kind='FEED')
-          + (SELECT count(*)::int FROM pet_growth WHERE tenant_id=${tenantId} AND student_id=${studentId} AND source='TASK'
-           AND created_at >= ${KOREA_DAY_START}) AS feeds,
+           AND kind='FEED') AS feeds,
         (SELECT count(*)::int FROM pet_cares WHERE tenant_id=${tenantId} AND pet_id=${pet?.pet_id ?? ''} AND care_date=${KOREA_TODAY}
            AND kind='WARM') AS warms,
         (SELECT max(created_at) FROM pet_cares WHERE tenant_id=${tenantId} AND student_id=${studentId} AND kind='FEED') AS fed`);
@@ -539,16 +537,14 @@ export function createPetCommands(dependencies: PetDependencies) {
             throw new PetError('NO_COMPANY', '알은 먹이를 먹지 않아요. 알을 품어 주세요.', 409);
           }
         }
-        // A completed task's food counts as one of the day's feedings.
+        // Only the student's own feedings count toward the limit; food from completed tasks never does.
         const done = await tx.execute(kind === 'WARM'
           ? sql`SELECT count(*)::int AS count FROM pet_cares WHERE tenant_id=${tenantId} AND pet_id=${pet.pet_id} AND kind='WARM' AND care_date=${today}::date`
-          : sql`SELECT (SELECT count(*)::int FROM pet_cares WHERE tenant_id=${tenantId} AND student_id=${studentId} AND kind='FEED' AND care_date=${today}::date)
-                 + (SELECT count(*)::int FROM pet_growth WHERE tenant_id=${tenantId} AND student_id=${studentId} AND source='TASK'
-                    AND created_at >= (${today}::date::timestamp AT TIME ZONE 'Asia/Seoul')) AS count`);
+          : sql`SELECT count(*)::int AS count FROM pet_cares WHERE tenant_id=${tenantId} AND student_id=${studentId} AND kind='FEED' AND care_date=${today}::date`);
         const caresBefore = toNumber((done.rows[0] as { count: number }).count);
         if (caresBefore >= (kind === 'WARM' ? 1 : settings.feedDailyLimit)) {
           throw new PetError('DAILY_LIMIT', kind === 'WARM' ? '오늘은 알을 품어 줬어요. 내일 또 품어 줄 수 있어요.'
-            : '오늘 먹이는 다 줬어요. 과제를 완료해서 받은 먹이도 함께 세요. 내일 또 줄 수 있어요.', 409);
+            : '오늘 먹이는 다 줬어요. 내일 또 줄 수 있어요.', 409);
         }
         const price = kind === 'FEED' ? settings.feedPrice : 0;
         if (toNumber(account.balance) < price) throw new PetError('NOT_ENOUGH_MONEY', '잔액이 부족해서 먹이를 줄 수 없어요.', 409);
@@ -756,9 +752,18 @@ export function createPetCommands(dependencies: PetDependencies) {
           SELECT s.student_id, s.name,
                  p.pet_id, p.species, p.color, p.name AS pet_name, p.stage, p.growth::text AS growth, p.accessory,
                  (SELECT count(*)::int FROM pet_cares c WHERE c.tenant_id=s.tenant_id AND c.student_id=s.student_id
-                    AND c.care_date=${KOREA_TODAY}) AS cares_today,
-                 (SELECT count(DISTINCT c.care_date)::int FROM pet_cares c WHERE c.tenant_id=s.tenant_id AND c.student_id=s.student_id
-                    AND c.care_date > ${KOREA_TODAY} - 7) AS cared_days,
+                    AND c.care_date=${KOREA_TODAY} AND c.kind='WARM') AS warms_today,
+                 (SELECT count(*)::int FROM pet_cares c WHERE c.tenant_id=s.tenant_id AND c.student_id=s.student_id
+                    AND c.care_date=${KOREA_TODAY} AND c.kind='FEED') AS feeds_today,
+                 (SELECT count(*)::int FROM pet_growth g WHERE g.tenant_id=s.tenant_id AND g.student_id=s.student_id
+                    AND g.source='TASK' AND g.created_at >= ${KOREA_DAY_START}) AS task_feeds_today,
+                 (SELECT count(*)::int FROM (
+                    SELECT c.care_date AS day FROM pet_cares c WHERE c.tenant_id=s.tenant_id AND c.student_id=s.student_id
+                      AND c.care_date > ${KOREA_TODAY} - 7
+                    UNION
+                    SELECT (g.created_at AT TIME ZONE 'Asia/Seoul')::date FROM pet_growth g WHERE g.tenant_id=s.tenant_id
+                      AND g.student_id=s.student_id AND g.source='TASK' AND g.created_at >= (${KOREA_DAY_START} - interval '6 days')
+                  ) days) AS cared_days,
                  (SELECT count(*)::int FROM pets g WHERE g.tenant_id=s.tenant_id AND g.student_id=s.student_id
                     AND g.status='GRADUATED') AS graduations
           FROM students s
@@ -772,7 +777,8 @@ export function createPetCommands(dependencies: PetDependencies) {
           ORDER BY p.sort_order, p.name, p.product_id`);
         type StudentRow = {
           student_id: string; name: string; pet_id: string | null; species: string | null; color: string | null; pet_name: string | null;
-          stage: number | null; growth: string | null; accessory: string | null; cares_today: number; cared_days: number; graduations: number;
+          stage: number | null; growth: string | null; accessory: string | null; warms_today: number; feeds_today: number;
+          task_feeds_today: number; cared_days: number; graduations: number;
         };
         return {
           settings,
@@ -790,7 +796,11 @@ export function createPetCommands(dependencies: PetDependencies) {
               petId: row.pet_id, species: row.species, color: row.color, name: row.pet_name ?? '', stage: asStage(toNumber(row.stage)),
               growth: toNumber(row.growth), accessory: toNumber(row.stage) > 0 && isPetAccessory(row.accessory) ? row.accessory : null,
             } : null,
-            caresToday: toNumber(row.cares_today),
+            // The record counts everything the pet got today, food from completed tasks too.
+            caresToday: toNumber(row.warms_today) + toNumber(row.feeds_today) + toNumber(row.task_feeds_today),
+            warmedToday: toNumber(row.warms_today) > 0,
+            feedsToday: toNumber(row.feeds_today),
+            taskFeedsToday: toNumber(row.task_feeds_today),
             caredDays7: toNumber(row.cared_days),
             graduations: toNumber(row.graduations),
           })),

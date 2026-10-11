@@ -31,7 +31,10 @@ export type ClassTreeContributionDto = Readonly<{
   water: number;
   task: number;
   total: number;
+  /** The student's own waterings today. */
   waterToday: number;
+  /** Drops completed tasks gave today. */
+  taskToday: number;
 }>;
 
 export type ClassTreeRewardProductDto = Readonly<{

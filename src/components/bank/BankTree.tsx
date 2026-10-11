@@ -6,7 +6,7 @@ import { TreeCanvas, type TreePlay } from '../classTree/TreeCanvas';
 import { Button, Callout, Icon, IconButton, Spinner } from '../ui';
 import type { ClassTreeStudentViewDto } from './bankClient';
 import { formatMoney } from './format';
-import { NoticeDialog, type Notice } from './NoticeDialog';
+import { NoticeToast, type Notice } from './NoticeToast';
 
 /** The way to the next stage only — students never see how far the whole goal is. */
 function StageBar({ drops, goal }: Readonly<{ drops: number; goal: number }>) {
@@ -82,7 +82,7 @@ type BankTreeViewProps = Readonly<{
 export const BankTreeView = forwardRef<HTMLHeadingElement, BankTreeViewProps>(function BankTreeView(
   { view, balance, currencyUnit, loading, watering, error, notice, play, onPlayEnd, onBack, onRefresh, onWater }, headingRef,
 ) {
-  const [dialog, setDialog] = useState<Notice | null>(null);
+  const [toast, setToast] = useState<Notice | null>(null);
   const tree = view?.enabled ? view.tree : null;
   const look = tree && view ? classTreeLook(tree.drops, tree.goal, view.apples) : null;
   const doneToday = view ? view.myWaterToday >= view.waterDailyLimit : false;
@@ -91,7 +91,7 @@ export const BankTreeView = forwardRef<HTMLHeadingElement, BankTreeViewProps>(fu
   let blocked = '';
   if (look?.ready) blocked = '열매가 다 익었어요! 선생님이 수확할 때까지 기다려요.';
   else if (view && view.waterDailyLimit === 0) blocked = '지금은 양분 주기를 쉬고 있어요.';
-  else if (doneToday) blocked = '오늘은 양분을 다 줬어요. 과제를 완료해서 받은 양분도 함께 세요. 내일 또 줄 수 있어요.';
+  else if (doneToday) blocked = '오늘은 양분을 다 줬어요. 내일 또 줄 수 있어요.';
   else if (tooPoor) blocked = `잔액이 부족해서 양분을 줄 수 없어요. 양분 주기는 ${formatMoney(view?.waterPrice ?? 0, currencyUnit)}이에요.`;
 
   return (
@@ -129,15 +129,15 @@ export const BankTreeView = forwardRef<HTMLHeadingElement, BankTreeViewProps>(fu
           </p>
 
           <div className="mt-4">
-            {/* A button that cannot be used now still answers when pressed: its reason in a notice window. */}
+            {/* A button that cannot be used now still answers when pressed: its reason in a notice at the top. */}
             <Button variant="primary" size="lg" block icon="sprout" loading={watering} disabled={watering}
               aria-disabled={blocked ? true : undefined} className={blocked ? 'opacity-45' : undefined}
-              onClick={() => (blocked ? setDialog({ title: '양분 주기', message: blocked }) : onWater())}>{waterLabel}</Button>
+              onClick={() => (blocked ? setToast({ message: blocked }) : onWater())}>{waterLabel}</Button>
             {notice ? <p role="status" className="sr-only">{notice}</p> : null}
           </div>
         </section>
       ) : null}
-      {dialog ? <NoticeDialog notice={dialog} onClose={() => setDialog(null)} /> : null}
+      {toast ? <NoticeToast notice={toast} onClose={() => setToast(null)} /> : null}
     </div>
   );
 });

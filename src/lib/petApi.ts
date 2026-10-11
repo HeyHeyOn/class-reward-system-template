@@ -50,7 +50,7 @@ export type PetStudentViewDto = Readonly<{
   companions: ReadonlyArray<PetDto>;
   /** Whether the egg has been warmed today. */
   warmedToday: boolean;
-  /** The student's feedings today (one feeding fills the bowl for every animal in the room). */
+  /** The student's own feedings today, for the daily limit (food from completed tasks is not counted). */
   feedsToday: number;
   /** The student's last feeding (or when the egg was picked), for how hungry the animals look. */
   lastFedAt: string | null;
@@ -113,8 +113,14 @@ export type PetAdminStudentDto = Readonly<{
   studentId: string;
   name: string;
   pet: Pick<PetDto, 'petId' | 'species' | 'color' | 'name' | 'stage' | 'growth' | 'accessory'> | null;
+  /** Everything the pet got today: warming, the student's feedings and food from completed tasks. */
   caresToday: number;
-  /** Days with a care in the last 7 days (today included). */
+  warmedToday: boolean;
+  /** The student's own feedings today (these count toward the daily limit). */
+  feedsToday: number;
+  /** Food completed tasks gave today (no limit). */
+  taskFeedsToday: number;
+  /** Days with a care or a task's food in the last 7 days (today included). */
   caredDays7: number;
   graduations: number;
 }>;

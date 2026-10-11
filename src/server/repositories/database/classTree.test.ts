@@ -215,17 +215,21 @@ describe('task completions', () => {
     expect(board.contributions.find((row) => row.studentId === 'S001')).toMatchObject({ task: 0, total: 0 });
   });
 
-  it('counts a task reward as one of the day\'s waterings', async () => {
+  it('leaves the student\'s daily waterings alone, but records a task\'s drops as giving drops today', async () => {
     await tree().saveSettings({ ...ON, taskDrops: 3 });
     await rewardTransaction('task-reward:c', 'TASK_REWARD');
     await harness.runTenantTransaction(harness.tenantOneId, (tx) => addTaskTreeDrops(tx, harness.tenantOneId, { studentId: 'S001', transactionId: 'task-reward:c', operationId: op() }));
-    expect((await tree().studentView('S001')).myWaterToday).toBe(1);
+    expect(await tree().studentView('S001')).toMatchObject({ myWaterToday: 0, waterersToday: 1 });
+    await tree().water({ studentId: 'S001', operationId: op() });
     await tree().water({ studentId: 'S001', operationId: op() });
     expect(await failure(tree().water({ studentId: 'S001', operationId: op() }))).toBe('DAILY_LIMIT');
-    // A task past the limit still adds its drops.
+    // A task after the waterings still adds its drops: tasks have no limit.
     await rewardTransaction('task-reward:d', 'TASK_REWARD');
     await harness.runTenantTransaction(harness.tenantOneId, (tx) => addTaskTreeDrops(tx, harness.tenantOneId, { studentId: 'S001', transactionId: 'task-reward:d', operationId: op() }));
-    expect((await tree().studentView('S001'))).toMatchObject({ myWaterToday: 3, waterersToday: 1, tree: { drops: 7 } });
+    expect(await tree().studentView('S001')).toMatchObject({ myWaterToday: 2, tree: { drops: 8 } });
+    const board = await tree().adminBoard();
+    expect(board.waterersToday).toBe(1);
+    expect(board.contributions.find((row) => row.studentId === 'S001')).toMatchObject({ waterToday: 2, taskToday: 2, water: 2, task: 6 });
   });
 
   it('adds nothing while the tree is off or task drops are 0', async () => {

@@ -11,7 +11,7 @@ export type ClassTreeSettings = Readonly<{
   treeName: string;
   /** Price of one watering, in the class currency. 0 makes watering free. */
   waterPrice: number;
-  /** Waterings per student per day (Korea time); drops a completed task gives count as one. 0 turns watering off. */
+  /** The student's own waterings per day (Korea time); drops from completed tasks have no limit. 0 turns watering off. */
   waterDailyLimit: number;
   /** Drops a completed task adds. 0 turns it off. */
   taskDrops: number;
@@ -67,15 +67,15 @@ export function classTreeSuggestedGoal(settings: Pick<ClassTreeSettings, 'waterD
 
 /**
  * School days the tree takes to ripen when every active student waters it as often as allowed on
- * every school day and completes `tasksPerWeek` tasks a week. A task's drops count as one of the
- * day's waterings, so tasks only add on top once they pass the daily limit. Null when nothing adds
- * drops, or when it would take more than two school years. `from` drops are already there.
+ * every school day and completes `tasksPerWeek` tasks a week (a task's drops have no limit and come
+ * on top of the waterings). Null when nothing adds drops, or when it would take more than two school
+ * years. `from` drops are already there.
  */
 export function classTreeEstimateDays(
   settings: Pick<ClassTreeSettings, 'goal' | 'tasksPerWeek' | 'waterDailyLimit' | 'taskDrops'>, activeStudents: number, from = 0,
 ): number | null {
   const taskCount = settings.tasksPerWeek / SCHOOL_DAYS_PER_WEEK;
-  const perDay = Math.max(0, activeStudents) * (Math.max(0, settings.waterDailyLimit - taskCount) + settings.taskDrops * taskCount);
+  const perDay = Math.max(0, activeStudents) * (settings.waterDailyLimit + settings.taskDrops * taskCount);
   const left = Math.max(0, settings.goal - from);
   if (left === 0) return 0;
   if (perDay <= 0) return null;

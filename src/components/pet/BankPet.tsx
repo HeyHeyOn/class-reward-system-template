@@ -26,7 +26,7 @@ import PETS from '@/lib/pet/petSprites';
 import ROOM, { type PetRoom, type PetRoomPetInit } from '@/lib/pet/petRoom';
 import { isSessionRequired, type BankFailure } from '../bank/bankClient';
 import { formatMoney } from '../bank/format';
-import { NoticeDialog, type Notice } from '../bank/NoticeDialog';
+import { NoticeToast, type Notice } from '../bank/NoticeToast';
 import { Button, Callout, Icon, IconButton, Input, Modal, SegmentedControl, Spinner, cx } from '../ui';
 import { GraduateConfirm, PetCelebration, type PetCelebrationMoment } from './PetMoments';
 import { PetPicture } from './PetPicture';
@@ -150,7 +150,7 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
   const [preview, setPreview] = useState<Preview>(null);
   const [wearer, setWearer] = useState<string | null>(null);
   const [graduateOpen, setGraduateOpen] = useState<HTMLElement | null>(null);
-  const [dialog, setDialog] = useState<Notice | null>(null);
+  const [toast, setToast] = useState<Notice | null>(null);
   const [celebrate, setCelebrate] = useState<PetCelebrationMoment | null>(null);
   const [pickSpecies, setPickSpecies] = useState<PetSpecies | null>(null);
   const [pickName, setPickName] = useState('');
@@ -284,21 +284,20 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
     onAnnounce(message);
   }
 
-  /** A refusal: inside the open popup, or in its own notice window on the pet screen. */
-  function fail(result: BankFailure, key: string, fallback: string, title = '잠깐만요') {
+  /** A refusal: inside the open popup, or as a notice at the top of the pet screen. */
+  function fail(result: BankFailure, key: string, fallback: string) {
     if (isSessionRequired(result)) { onSessionExpired(); return; }
     // No answer: keep the operation ID so pressing again cannot pay twice.
     if (result.status !== 0) pending.current[key] = null;
     const message = result.error ?? fallback;
     if (popup) setActionError(message);
-    else { setDialog({ title, message, tone: 'danger' }); onAnnounce(message); }
+    else setToast({ message, tone: 'danger' });
     if (result.status === 409) onRefresh();
   }
 
-  /** A button that cannot be used now still answers when pressed: its reason in a notice window. */
-  function blocked(title: string, message: string) {
-    setDialog({ title, message });
-    onAnnounce(message);
+  /** A button that cannot be used now still answers when pressed: its reason in a notice at the top. */
+  function blocked(message: string) {
+    setToast({ message });
   }
 
   const operation = (key: string) => {
@@ -313,7 +312,7 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
     setBusy(key); setActionError(''); setNotice('');
     const result = await carePet(operation(key), kind);
     setBusy(null);
-    if (!result.ok) { fail(result, key, kind === 'WARM' ? '알을 품어 주지 못했어요. 다시 눌러 주세요.' : '먹이를 주지 못했어요. 다시 눌러 주세요.', kind === 'WARM' ? '알 품어 주기' : '먹이 주기'); return; }
+    if (!result.ok) { fail(result, key, kind === 'WARM' ? '알을 품어 주지 못했어요. 다시 눌러 주세요.' : '먹이를 주지 못했어요. 다시 눌러 주세요.'); return; }
     pending.current[key] = null;
     const outcome = result.data.result;
     onChanged(result.data.pet, result.data.balance);
@@ -345,7 +344,7 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
     setBusy('adopt'); setActionError(''); setNotice('');
     const result = await adoptPet({ operationId: operation('adopt'), species: pickSpecies, name });
     setBusy(null);
-    if (!result.ok) { fail(result, 'adopt', '알을 받지 못했어요. 다시 눌러 주세요.', '알 고르기'); return; }
+    if (!result.ok) { fail(result, 'adopt', '알을 받지 못했어요. 다시 눌러 주세요.'); return; }
     pending.current.adopt = null;
     setPickSpecies(null); setPickName('');
     onChanged(result.data.pet, result.data.balance);
@@ -359,7 +358,7 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
     const result = await graduatePet(operation('graduate'));
     setBusy(null);
     setGraduateOpen(null);
-    if (!result.ok) { fail(result, 'graduate', '졸업시키지 못했어요. 다시 눌러 주세요.', '졸업하기'); return; }
+    if (!result.ok) { fail(result, 'graduate', '졸업시키지 못했어요. 다시 눌러 주세요.'); return; }
     pending.current.graduate = null;
     const done = result.data.result;
     onChanged(result.data.pet, result.data.balance);
@@ -412,7 +411,7 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
     else {
       if (view.warmedToday) warmBlock = '오늘은 알을 품어 줬어요. 내일 또 품어 줄 수 있어요.';
       if (view.feedDailyLimit === 0) feedBlock = '지금은 먹이 주기를 쉬고 있어요.';
-      else if (view.feedsToday >= view.feedDailyLimit) feedBlock = '오늘 먹이는 다 줬어요. 과제를 완료해서 받은 먹이도 함께 세요. 내일 또 줄 수 있어요.';
+      else if (view.feedsToday >= view.feedDailyLimit) feedBlock = '오늘 먹이는 다 줬어요. 내일 또 줄 수 있어요.';
       else if (balance < view.feedPrice) feedBlock = `잔액이 부족해서 먹이를 줄 수 없어요. 먹이 주기는 ${formatMoney(view.feedPrice, currencyUnit)}이에요.`;
       else if ((status?.food ?? 0) > 0) feedBlock = '먹이통에 아직 먹이가 남아 있어요. 다 먹은 뒤에 다시 줄 수 있어요.';
       const ready = status?.play;
@@ -513,7 +512,7 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
                   <span className="text-[14px] font-bold text-[var(--theme-accent-text)]">다 자랐어요!</span>
                   {canGraduate ? (
                     <Button variant="primary" size="sm" icon="gift" {...soft(view.awake ? '' : offText)}
-                      onClick={(event) => (view.awake ? setGraduateOpen(event.currentTarget) : blocked('졸업하기', offText))}>졸업하기</Button>
+                      onClick={(event) => (view.awake ? setGraduateOpen(event.currentTarget) : blocked(offText))}>졸업하기</Button>
                   ) : null}
                 </div>
               )}
@@ -524,16 +523,16 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 [&_svg]:shrink-0">
             {egg ? (
               <Button variant="primary" icon="sparkle" loading={busy === 'warm'} disabled={Boolean(busy)} {...soft(warmBlock)}
-                onClick={() => (warmBlock ? blocked('알 품어 주기', warmBlock) : void care('WARM'))}
+                onClick={() => (warmBlock ? blocked(warmBlock) : void care('WARM'))}
                 className={cx('col-span-2 sm:col-span-3', warmBlock && 'opacity-45')}>알 품어 주기</Button>
             ) : null}
             {canFeed ? (
               <>
                 <Button variant={egg ? 'secondary' : 'primary'} icon="bowl" loading={busy === 'feed'} disabled={Boolean(busy)} {...soft(feedBlock)}
-                  onClick={() => (feedBlock ? blocked('먹이 주기', feedBlock) : void care('FEED'))}
+                  onClick={() => (feedBlock ? blocked(feedBlock) : void care('FEED'))}
                   className={cx('col-span-2 sm:col-span-1', feedBlock && 'opacity-45')}>{feedLabel}</Button>
-                <Button icon="hand" {...soft(patBlock)} onClick={() => (patBlock ? blocked('쓰다듬기', patBlock) : pat())}>쓰다듬기</Button>
-                <Button icon="ball" {...soft(playBlock)} onClick={() => (playBlock ? blocked('놀아 주기', playBlock) : play())}>놀아 주기</Button>
+                <Button icon="hand" {...soft(patBlock)} onClick={() => (patBlock ? blocked(patBlock) : pat())}>쓰다듬기</Button>
+                <Button icon="ball" {...soft(playBlock)} onClick={() => (playBlock ? blocked(playBlock) : play())}>놀아 주기</Button>
               </>
             ) : null}
           </div>
@@ -565,7 +564,7 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
         <GraduateConfirm pet={pet} prize={prize} busy={busy === 'graduate'} onConfirm={() => void graduate()} onClose={() => setGraduateOpen(null)} />
       ) : null}
       {celebrate && view && !popup && !graduateOpen ? <PetCelebration moment={celebrate} goal={view.goal} onClose={() => setCelebrate(null)} /> : null}
-      {dialog ? <NoticeDialog notice={dialog} onClose={() => setDialog(null)} /> : null}
+      {toast ? <NoticeToast notice={toast} onClose={() => setToast(null)} /> : null}
     </div>
   );
 });

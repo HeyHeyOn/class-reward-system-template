@@ -161,7 +161,7 @@ export type PetSettings = Readonly<{
   taskGrowth: number;
   /** Price of one feeding, in the class currency. 0 makes it free. Warming an egg is always free. */
   feedPrice: number;
-  /** Feedings per student per day (Korea time); food a completed task gives counts as one. 0 turns feeding off. */
+  /** The student's own feedings per day (Korea time); food from completed tasks has no limit. 0 turns feeding off. */
   feedDailyLimit: number;
   /** When on, pets are awake (and can be cared for) only within `hours`; with no spans, never. */
   hoursEnabled: boolean;
@@ -245,15 +245,15 @@ export function petStageSpan(growth: number, goal: number, stage: PetStage): Rea
 
 /**
  * School days a pet takes to grow up when its student warms the egg every school day, feeds it as
- * often as the class allows, and completes `tasksPerWeek` tasks a week. A task's food counts as one
- * of the day's feedings, so tasks only add on top once they pass the daily limit. Null when it would
- * never grow up (nothing adds growth), or would take more than two school years.
+ * often as the class allows, and completes `tasksPerWeek` tasks a week (a task's food has no limit and
+ * comes on top of the feedings). Null when it would never grow up (nothing adds growth), or would take
+ * more than two school years.
  */
 export function petEstimateDays(settings: Pick<PetSettings, 'goal' | 'tasksPerWeek' | 'careGrowth' | 'taskGrowth' | 'feedDailyLimit'>): number | null {
   const taskCount = settings.tasksPerWeek / SCHOOL_DAYS_PER_WEEK;
   const tasks = settings.taskGrowth * taskCount;
   const egg = settings.careGrowth + tasks;
-  const fed = settings.careGrowth * Math.max(0, settings.feedDailyLimit - taskCount) + tasks;
+  const fed = settings.careGrowth * settings.feedDailyLimit + tasks;
   const hatch = petStageStarts(settings.goal).hatch;
   if (egg <= 0 || fed <= 0) return null;
   let growth = 0, days = 0;

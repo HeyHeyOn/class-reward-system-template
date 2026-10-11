@@ -245,7 +245,7 @@ export function PetPanel({ unit, notify }: Readonly<{ unit: string; notify: (mes
                 <p className="text-[13px] text-[var(--theme-muted-text)]">
                   {estimateReady && estimate !== null && hatchDays !== null ? `부화까지 평일 약 ${hatchDays}일. ` : ''}
                   학생이 평일마다 알을 품어 주고, 부화한 뒤에는 먹이를 하루 {Number.isSafeInteger(estimateInput.feedDailyLimit) ? estimateInput.feedDailyLimit : '?'}번(하루 최대)씩 주며,
-                  과제를 일주일에 {Number.isSafeInteger(estimateInput.tasksPerWeek) ? estimateInput.tasksPerWeek : '?'}개 완료한다고 보고 계산했어요. 과제로 받은 먹이도 하루 횟수에 함께 세요.
+                  과제를 일주일에 {Number.isSafeInteger(estimateInput.tasksPerWeek) ? estimateInput.tasksPerWeek : '?'}개 완료한다고 보고 계산했어요. 과제로 받는 먹이는 하루 횟수와 상관없이 더해져요.
                   실제로는 학생마다 달라요. 과제 수는 이 계산에만 쓰여요.
                 </p>
               </section>
@@ -257,7 +257,7 @@ export function PetPanel({ unit, notify }: Readonly<{ unit: string; notify: (mes
               <Field label="먹이 주기 가격" htmlFor="pet-price" hint="0으로 두면 무료로 줄 수 있어요. 알 품어 주기는 항상 무료예요.">
                 <Input id="pet-price" inputMode="numeric" value={draft.feedPrice} onChange={(event) => set({ feedPrice: event.target.value })} suffix={unit} />
               </Field>
-              <Field label="하루에 먹이 줄 수 있는 횟수" htmlFor="pet-limit" hint="학생 한 명 기준이고, 과제를 완료해서 받은 먹이도 함께 세요. 먹이를 줄 때마다 자라니, 하루에 한 번만 자라게 하려면 1번으로 정해 주세요.">
+              <Field label="하루에 먹이 줄 수 있는 횟수" htmlFor="pet-limit" hint="학생이 펫 화면에서 직접 주는 먹이만 세요. 과제를 완료해서 받는 먹이는 횟수 제한이 없어요. 먹이를 줄 때마다 자라니, 하루에 한 번만 자라게 하려면 1번으로 정해 주세요.">
                 <Select id="pet-limit" value={draft.feedDailyLimit} onChange={(event) => set({ feedDailyLimit: event.target.value })}>
                   {Array.from({ length: PET_LIMITS.feedDailyLimit.max + 1 }, (_, i) => i).map((count) => <option key={count} value={count}>{count === 0 ? '먹이 주기 끄기' : `${count}번`}</option>)}
                 </Select>
@@ -443,8 +443,14 @@ function PetList({ board, onRenamed, onAdjusted }: Readonly<{
 
   const adjustRow = adjusting ? board.students.find((row) => row.studentId === adjusting.studentId) ?? null : null;
 
-  const todayLabel = (row: PetAdminStudentDto) => (!row.pet ? '—' : row.pet.stage === 0 ? (row.caresToday > 0 ? '알 품어 줌' : '아직 안 품음')
-    : row.caresToday > 0 ? `먹이 ${row.caresToday}번` : '아직 안 줌');
+  // 오늘: everything the pet got, food from completed tasks included (shown apart, as it has no limit).
+  const todayLabel = (row: PetAdminStudentDto) => {
+    if (!row.pet) return '—';
+    const tasks = row.taskFeedsToday > 0 ? `과제 ${row.taskFeedsToday}` : '';
+    if (row.pet.stage === 0) return `${row.warmedToday ? '알 품어 줌' : '아직 안 품음'}${tasks ? ` · ${tasks}번` : ''}`;
+    const feeds = row.feedsToday + row.taskFeedsToday;
+    return feeds > 0 ? `먹이 ${feeds}번${tasks ? ` (${tasks})` : ''}` : '아직 안 줌';
+  };
 
   async function rename(row: PetAdminStudentDto) {
     const pet = row.pet;
@@ -545,7 +551,7 @@ function PetList({ board, onRenamed, onAdjusted }: Readonly<{
         <PetGrowthDialog row={adjustRow} goal={goal} opener={adjusting.opener} onClose={() => setAdjusting(null)}
           onDone={(next, message) => { setAdjusting(null); onAdjusted(next, message); }} />
       ) : null}
-      <p className="text-xs text-[var(--theme-muted-text)]">펫 이름은 학생이 알을 고를 때 지어요. 알맞지 않은 이름은 여기서 고칠 수 있어요(1~{PET_NAME_LENGTH}자). ‘최근 7일’은 먹이를 주거나 알을 품어 준 날 수예요.</p>
+      <p className="text-xs text-[var(--theme-muted-text)]">펫 이름은 학생이 알을 고를 때 지어요. 알맞지 않은 이름은 여기서 고칠 수 있어요(1~{PET_NAME_LENGTH}자). ‘오늘’과 ‘최근 7일’에는 과제를 완료해서 준 먹이도 함께 세요(괄호 안은 그중 과제로 준 횟수). 하루 횟수 제한은 학생이 직접 주는 먹이에만 있어요.</p>
     </div>
   );
 }

@@ -259,7 +259,7 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
           <Field label="양분 주기 가격" htmlFor="tree-price" hint="0으로 두면 무료로 줄 수 있어요.">
             <Input id="tree-price" inputMode="numeric" value={draft.waterPrice} onChange={(event) => set({ waterPrice: event.target.value })} suffix={unit} />
           </Field>
-          <Field label="하루에 양분 줄 수 있는 횟수" htmlFor="tree-limit" hint="학생 한 명 기준이고, 과제를 완료해서 받은 양분도 함께 세요.">
+          <Field label="하루에 양분 줄 수 있는 횟수" htmlFor="tree-limit" hint="학생이 나무 화면에서 직접 주는 양분만 세요. 과제를 완료해서 받는 양분은 횟수 제한이 없어요.">
             <Select id="tree-limit" value={draft.waterDailyLimit} onChange={(event) => set({ waterDailyLimit: event.target.value })}>
               {Array.from({ length: 11 }, (_, i) => i).map((count) => <option key={count} value={count}>{count === 0 ? '양분 주기 끄기' : `${count}번`}</option>)}
             </Select>
@@ -301,7 +301,7 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
 
       {tree ? (
         <Card className="space-y-3">
-          <CardHeader title="함께 키운 학생" description={`${settings.treeName}에 양분을 보탠 기록이에요. 학생 화면에는 순위를 보여 주지 않아요.`} />
+          <CardHeader title="함께 키운 학생" description={`${settings.treeName}에 양분을 보탠 기록이에요. ‘오늘 양분’에는 과제를 완료해서 준 양분도 함께 세요(괄호 안은 그중 과제). 학생 화면에는 순위를 보여 주지 않아요.`} />
           <div className="overflow-x-auto">
             <table className="w-full min-w-[420px] text-sm">
               <thead>
@@ -317,7 +317,9 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
                     <td className="py-2 pr-3 text-right tabular-nums">{fmt(row.water)}</td>
                     <td className="py-2 pr-3 text-right tabular-nums">{fmt(row.task)}</td>
                     <td className="py-2 pr-3 text-right font-bold tabular-nums">{fmt(row.total)}</td>
-                    <td className="py-2 text-right tabular-nums">{row.waterToday > 0 ? `${row.waterToday}번` : '-'}</td>
+                    <td className="py-2 text-right tabular-nums">
+                      {row.waterToday + row.taskToday > 0 ? `${row.waterToday + row.taskToday}번${row.taskToday > 0 ? ` (과제 ${row.taskToday})` : ''}` : '-'}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -388,7 +390,7 @@ function TreeEstimate({ draft, activeStudents, drops, onTasks }: Readonly<{
       <p className="text-[13px] text-[var(--theme-muted-text)]">
         {left !== null && drops !== null && drops > 0 ? `지금 자라는 나무는 평일 약 ${left}일 뒤에 다 익어요. ` : ''}
         학생 {activeStudents}명이 평일마다 양분을 하루 {Number.isSafeInteger(input.waterDailyLimit) ? input.waterDailyLimit : '?'}번(하루 최대)씩 주고,
-        과제를 일주일에 {Number.isSafeInteger(input.tasksPerWeek) ? input.tasksPerWeek : '?'}개 완료한다고 보고 계산했어요. 과제로 받은 양분도 하루 횟수에 함께 세요. 선생님이 조정한 양분은 빼고 셌어요.
+        과제를 일주일에 {Number.isSafeInteger(input.tasksPerWeek) ? input.tasksPerWeek : '?'}개 완료한다고 보고 계산했어요. 과제로 받는 양분은 하루 횟수와 상관없이 더해져요. 선생님이 조정한 양분은 빼고 셌어요.
         과제 수는 이 계산에만 쓰여요.
       </p>
     </section>

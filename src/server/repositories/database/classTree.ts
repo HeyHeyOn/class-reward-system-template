@@ -268,7 +268,7 @@ export function createClassTreeCommands(dependencies: ClassTreeDependencies) {
         const tree = settings.enabled ? await readGrowingTree(tx, tenantId, false) : undefined;
         const counts = await tx.execute(sql`
           SELECT
-            (SELECT count(*)::int FROM tree_drops WHERE tenant_id=${tenantId} AND source IN ('WATER', 'TASK')
+            (SELECT count(*)::int FROM tree_drops WHERE tenant_id=${tenantId} AND source='WATER'
                AND student_id=${studentId} AND created_at >= ${DAY_START}) AS mine,
             (SELECT count(DISTINCT student_id)::int FROM tree_drops WHERE tenant_id=${tenantId} AND source IN ('WATER', 'TASK')
                AND created_at >= ${DAY_START}) AS waterers,
@@ -300,7 +300,8 @@ export function createClassTreeCommands(dependencies: ClassTreeDependencies) {
           SELECT s.student_id, s.name,
                  COALESCE(sum(d.amount) FILTER (WHERE d.source='WATER' AND c.drop_id IS NULL), 0)::text AS water,
                  COALESCE(sum(d.amount) FILTER (WHERE d.source='TASK' AND c.drop_id IS NULL), 0)::text AS task,
-                 count(*) FILTER (WHERE d.source='WATER' AND d.created_at >= ${DAY_START})::int AS water_today
+                 count(*) FILTER (WHERE d.source='WATER' AND d.created_at >= ${DAY_START})::int AS water_today,
+                 count(*) FILTER (WHERE d.source='TASK' AND d.created_at >= ${DAY_START})::int AS task_today
           FROM students s
           LEFT JOIN tree_drops d ON d.tenant_id=s.tenant_id AND d.student_id=s.student_id AND d.tree_no=${tree?.tree_no ?? -1}
             AND d.source IN ('WATER', 'TASK')
@@ -322,7 +323,9 @@ export function createClassTreeCommands(dependencies: ClassTreeDependencies) {
           FROM products p LEFT JOIN coupon_products c ON c.tenant_id=p.tenant_id AND c.product_id=p.product_id
           WHERE p.tenant_id=${tenantId} AND p.deleted_at IS NULL
           ORDER BY p.sort_order, p.name, p.product_id`);
-        const contributionRows = contributions.rows as Array<{ student_id: string; name: string; water: string; task: string; water_today: number }>;
+        const contributionRows = contributions.rows as Array<{
+          student_id: string; name: string; water: string; task: string; water_today: number; task_today: number;
+        }>;
         return {
           settings,
           activeStudents,
@@ -332,11 +335,15 @@ export function createClassTreeCommands(dependencies: ClassTreeDependencies) {
               digitalKind: row.digital_kind === 'CONSUMABLE' || row.digital_kind === 'COLLECTIBLE' ? row.digital_kind : null,
             })),
           tree: tree ? treeDto(tree) : null,
-          waterersToday: contributionRows.filter((row) => toNumber(row.water_today) > 0).length,
+          // The record counts drops from completed tasks as giving drops too.
+          waterersToday: contributionRows.filter((row) => toNumber(row.water_today) + toNumber(row.task_today) > 0).length,
           classFeedTotal: toNumber((sun.rows[0] as { total: string }).total),
           contributions: contributionRows.map((row) => {
             const water = toNumber(row.water), task = toNumber(row.task);
-            return { studentId: row.student_id, name: row.name, water, task, total: water + task, waterToday: toNumber(row.water_today) };
+            return {
+              studentId: row.student_id, name: row.name, water, task, total: water + task,
+              waterToday: toNumber(row.water_today), taskToday: toNumber(row.task_today),
+            };
           }),
           harvests: (harvests.rows as TreeRow[]).map((row) => ({
             treeNo: row.tree_no, goal: toNumber(row.goal), drops: toNumber(row.drops), startedAt: iso(row.started_at),
@@ -402,13 +409,13 @@ export function createClassTreeCommands(dependencies: ClassTreeDependencies) {
         if (toNumber(tree.drops) >= toNumber(tree.goal)) {
           throw new ClassTreeError('TREE_READY', '나무가 다 자랐어요. 선생님이 수확할 때까지 기다려 주세요.', 409);
         }
-        // A completed task's drops count as one of the day's waterings.
+        // Only the student's own waterings count toward the limit; drops from completed tasks never do.
         const today = await tx.execute(sql`
           SELECT count(*)::int AS count FROM tree_drops
-          WHERE tenant_id=${tenantId} AND source IN ('WATER', 'TASK') AND student_id=${studentId} AND created_at >= ${DAY_START}`);
+          WHERE tenant_id=${tenantId} AND source='WATER' AND student_id=${studentId} AND created_at >= ${DAY_START}`);
         const wateredToday = toNumber((today.rows[0] as { count: number }).count);
         if (wateredToday >= settings.waterDailyLimit) {
-          throw new ClassTreeError('DAILY_LIMIT', '오늘은 양분을 다 줬어요. 과제를 완료해서 받은 양분도 함께 세요. 내일 또 줄 수 있어요.', 409);
+          throw new ClassTreeError('DAILY_LIMIT', '오늘은 양분을 다 줬어요. 내일 또 줄 수 있어요.', 409);
         }
         const balance = toNumber(account.balance);
         const price = settings.waterPrice;

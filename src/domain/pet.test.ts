@@ -21,12 +21,12 @@ const valid = { ...DEFAULT_PET_SETTINGS, enabled: true };
 
 describe('pet growth', () => {
   it('estimates the school days to grow up from warming, the daily feedings and the tasks a week', () => {
-    // goal 40: the egg hatches at 4 (warm 1 + task 1 a day → 2 days); then a task a day takes one of the
-    // 2 feedings, so 1 feeding + 1 task a day (36 more → 18 days)
-    expect(petEstimateDays(DEFAULT_PET_SETTINGS)).toBe(20);
+    // goal 40: the egg hatches at 4 (warm 1 + task 1 a day → 2 days); then 2 feedings + 1 task a day,
+    // the task's food on top of the limit (36 more → 12 days)
+    expect(petEstimateDays(DEFAULT_PET_SETTINGS)).toBe(14);
     expect(petEstimateDays({ ...DEFAULT_PET_SETTINGS, tasksPerWeek: 0 })).toBe(4 + 18);
-    // 3 tasks a day go past the limit of 2: 3 growth a day after hatching
-    expect(petEstimateDays({ ...DEFAULT_PET_SETTINGS, tasksPerWeek: 15 })).toBe(1 + 12);
+    // 3 tasks a day: 4 a day while an egg (1 day), then 5 a day (36 more → 8 days)
+    expect(petEstimateDays({ ...DEFAULT_PET_SETTINGS, tasksPerWeek: 15 })).toBe(1 + 8);
     expect(petEstimateDays({ ...DEFAULT_PET_SETTINGS, careGrowth: 0, taskGrowth: 0 })).toBeNull();
     expect(petEstimateDays({ ...DEFAULT_PET_SETTINGS, feedDailyLimit: 0, tasksPerWeek: 0 })).toBeNull();
     expect([3, 14, 22, 52].map(schoolDaysLabel)).toEqual(['약 3일', '약 3주', '약 4.5주', '약 10.5주']);

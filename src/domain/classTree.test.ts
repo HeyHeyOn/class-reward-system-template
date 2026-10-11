@@ -16,10 +16,10 @@ describe('class tree goal and estimate', () => {
   });
 
   it('estimates the school days from the waterings and the tasks a student completes a week', () => {
-    // A task a day takes one of the 2 waterings: 25 students × (1 watering + 1 task) = 50 drops a day
-    expect(classTreeEstimateDays({ goal: 1500, tasksPerWeek: 5, waterDailyLimit: 2, taskDrops: 1 }, 25)).toBe(30);
-    // Tasks give 3 drops each: 25 × (1 + 3) = 100 a day
-    expect(classTreeEstimateDays({ goal: 1500, tasksPerWeek: 5, waterDailyLimit: 2, taskDrops: 3 }, 25)).toBe(15);
+    // Task drops come on top of the waterings: 25 students × (2 waterings + 1 task) = 75 drops a day
+    expect(classTreeEstimateDays({ goal: 1500, tasksPerWeek: 5, waterDailyLimit: 2, taskDrops: 1 }, 25)).toBe(20);
+    // Tasks give 3 drops each: 25 × (2 + 3) = 125 a day
+    expect(classTreeEstimateDays({ goal: 1500, tasksPerWeek: 5, waterDailyLimit: 2, taskDrops: 3 }, 25)).toBe(12);
     // No tasks: 25 × 2 = 50 a day
     expect(classTreeEstimateDays({ goal: 1500, tasksPerWeek: 0, waterDailyLimit: 2, taskDrops: 1 }, 25)).toBe(30);
     expect(classTreeEstimateDays({ goal: 1500, tasksPerWeek: 5, waterDailyLimit: 2, taskDrops: 1 }, 25, 1475)).toBe(1);
