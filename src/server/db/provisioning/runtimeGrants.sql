@@ -48,6 +48,9 @@ GRANT SELECT, INSERT, UPDATE ON pet_settings, pets, pet_rooms TO crs_app_runtime
 GRANT SELECT, INSERT ON pet_growth, pet_cares, pet_decor TO crs_app_runtime;
 GRANT UPDATE (revoked_at) ON pet_decor TO crs_app_runtime;
 GRANT USAGE ON SEQUENCE pet_growth_event_sequence_seq TO crs_app_runtime;
+-- Padlet links (0054): the key, links and board summaries change in place; a used post is append-only.
+GRANT SELECT, INSERT, UPDATE, DELETE ON padlet_settings, task_padlet_links, padlet_board_syncs TO crs_app_runtime;
+GRANT SELECT, INSERT ON padlet_post_uses TO crs_app_runtime;
 GRANT EXECUTE ON FUNCTION
   public.platform_find_tenant_by_slug(text),
   public.platform_find_membership_by_tenant_and_google_subject(uuid,text),

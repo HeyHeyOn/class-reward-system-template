@@ -4,14 +4,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { tenantApiPath } from '@/lib/tenantApiPath';
 import { useTaskBoard, type TaskBoard } from './useTaskBoard';
 
-export type TaskSheetTab = 'basic' | 'repeat' | 'students';
+export type TaskSheetTab = 'basic' | 'repeat' | 'students' | 'padlet';
 
 /** What the task screen shows on top of the list. Only one at a time; nested dialogs live inside them. */
 export type LedgerOverlay =
   | { kind: 'task'; taskId: string; tab: TaskSheetTab; opener: HTMLElement | null }
   | { kind: 'new'; opener: HTMLElement | null }
   | { kind: 'qr'; opener: HTMLElement | null }
-  | { kind: 'bulk-repeat' | 'bulk-stages' | 'reset' | 'delete'; taskIds: readonly string[]; opener: HTMLElement | null };
+  | { kind: 'bulk-repeat' | 'bulk-stages' | 'bulk-padlet' | 'reset' | 'delete'; taskIds: readonly string[]; opener: HTMLElement | null };
 
 export type TaskLedger = {
   enabled: boolean;

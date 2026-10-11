@@ -36,6 +36,7 @@ function fixture(withSnapshot = true) {
       }] };
       if (query.sql.includes('FROM students')) return { rows: [{ student_id: 'S1', name: 'Synthetic student', status: 'ACTIVE' }] };
       if (query.sql.includes('FROM task_assignments')) return { rows: [] };
+      if (query.sql.includes('FROM task_padlet_links')) return { rows: [] };
       throw new Error('Unexpected synthetic query');
     } } as unknown as TenantTransaction;
     return callback(tx);
@@ -55,6 +56,7 @@ describe('task ledger board snapshot', () => {
     expect(board.tasks).toHaveLength(1);
     expect(board.tasks[0].repeat.nextResetAt).toBe('2030-01-01T01:00:00.000Z');
     expect(board.tasks[0].students[0]).toMatchObject({ studentId: 'S1', stage: 'UNASSIGNED' });
+    expect(board.tasks[0].padlet).toBeNull();
     expect(runTenantSnapshot).toHaveBeenCalledTimes(2);
     expect(runTenantTransaction).not.toHaveBeenCalled();
     expect(queries.filter(query => query.sql.includes('clock_timestamp()'))).toHaveLength(1);

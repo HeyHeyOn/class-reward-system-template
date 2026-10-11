@@ -42,6 +42,20 @@ export type TaskDefinitionDto = Readonly<{
   prerequisiteTaskId: string | null;
 }>;
 
+/** The Padlet board a task is linked to (see src/domain/padlet.ts). */
+export type TaskPadletLinkDto = Readonly<{
+  boardId: string;
+  boardTitle: string;
+  boardUrl: string;
+  /** Only posts in this section count; null = the whole board. */
+  sectionId: string | null;
+  sectionTitle: string | null;
+  /** When the board was last read successfully. */
+  lastReadAt: string | null;
+  /** Why the last read failed (a PadletErrorCode), or null. */
+  error: string | null;
+}>;
+
 export type AdminTaskDto = TaskDefinitionDto & Readonly<{
   taskId: string;
   taskInstanceId: string;
@@ -53,6 +67,8 @@ export type AdminTaskDto = TaskDefinitionDto & Readonly<{
   students: readonly TaskStudentStageDto[];
   /** Stage counts over active students. */
   counts: Readonly<Record<TaskStage, number>>;
+  /** The linked Padlet board; absent or null when not linked. */
+  padlet?: TaskPadletLinkDto | null;
 }>;
 
 export type TaskBoardDto = Readonly<{ now: string; tasks: readonly AdminTaskDto[] }>;
@@ -65,7 +81,7 @@ export type TaskStageChangeDto = Readonly<{
   withReward?: boolean;
 }>;
 
-export type TaskHistoryCause = 'TEACHER' | 'QR' | 'BANK' | 'RESET' | 'AUTO_RESET' | 'CANCELLED' | 'IMPORTED';
+export type TaskHistoryCause = 'TEACHER' | 'QR' | 'PADLET' | 'BANK' | 'RESET' | 'AUTO_RESET' | 'CANCELLED' | 'IMPORTED';
 
 export type TaskHistoryEntryDto = Readonly<{
   id: string;
@@ -209,7 +225,7 @@ export function parseTaskDefinition(value: unknown): TaskDefinitionDto {
     availableFrom, dueAt, prerequisiteTaskId };
 }
 
-function parseTaskIds(value: unknown): string[] {
+export function parseTaskIds(value: unknown): string[] {
   if (!Array.isArray(value) || value.length < 1 || value.length > MAX_TASK_IDS) fail('과제를 하나 이상 골라 주세요.');
   const ids = value.map((id) => parseId(id, '과제 번호'));
   if (new Set(ids).size !== ids.length) fail('같은 과제가 두 번 들어 있습니다.');

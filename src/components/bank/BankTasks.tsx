@@ -153,11 +153,32 @@ function PendingTaskCard({ task, currencyUnit }: { task: StudentBankTaskDto; cur
       <TaskTitle id={titleId} title={task.title} />
       <TaskDescription text={task.description} />
       <TaskMeta task={task} />
-      <p className="mt-3 flex items-start gap-2 rounded-[var(--crs-radius)] bg-[var(--crs-subtle)] px-3.5 py-2.5 text-[13px] font-semibold leading-relaxed text-[var(--theme-muted-text)]">
-        <span className="mt-0.5 shrink-0"><Icon name="clock" size={15} /></span>
-        <span>선생님이 확인하면 완료할 수 있어요. 조금만 기다려 주세요.</span>
-      </p>
+      {task.padlet ? <PadletHint padlet={task.padlet} title={task.title} /> : (
+        <p className="mt-3 flex items-start gap-2 rounded-[var(--crs-radius)] bg-[var(--crs-subtle)] px-3.5 py-2.5 text-[13px] font-semibold leading-relaxed text-[var(--theme-muted-text)]">
+          <span className="mt-0.5 shrink-0"><Icon name="clock" size={15} /></span>
+          <span>선생님이 확인하면 완료할 수 있어요. 조금만 기다려 주세요.</span>
+        </p>
+      )}
     </article>
+  );
+}
+
+/** A task linked to a Padlet board: a post in the student's own name makes it 완료 가능. */
+function PadletHint({ padlet, title }: { padlet: NonNullable<StudentBankTaskDto['padlet']>; title: string }) {
+  const where = padlet.sectionTitle ? `‘${padlet.sectionTitle}’ 칸에` : '';
+  return (
+    <div className="mt-3 rounded-[var(--crs-radius)] bg-[var(--crs-subtle)] px-3.5 py-3 text-[13px] font-semibold leading-relaxed text-[var(--theme-muted-text)]">
+      <p className="flex items-start gap-2">
+        <span className="mt-0.5 shrink-0"><Icon name="link" size={15} /></span>
+        <span>패들렛 <b className="font-extrabold text-[var(--theme-text)]">{padlet.title || '게시판'}</b>{where ? ` ${where}` : '에'} 내 이름으로 글을 올리면 완료할 수 있어요. 올린 뒤 새로고침해 보세요.</span>
+      </p>
+      {/^https:\/\//.test(padlet.url) ? (
+        <a href={padlet.url} target="_blank" rel="noopener noreferrer" aria-label={`${title} 패들렛 열기`}
+          className="mt-2.5 inline-flex h-10 items-center gap-1.5 rounded-full border border-[var(--crs-line-strong)] bg-[var(--theme-surface)] px-4 text-[14px] font-bold text-[var(--theme-text)] hover:border-[var(--theme-accent-text)]">
+          패들렛 열기<Icon name="external" size={14} />
+        </a>
+      ) : null}
+    </div>
   );
 }
 

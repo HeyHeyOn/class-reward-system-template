@@ -57,6 +57,7 @@ export function createTaskLedgerRepositoryCreators(): RepositoryCreators<Configu
     createSheets: () => ({
       board: unsupported, history: unsupported, createTask: unsupported, updateTask: unsupported, deleteTasks: unsupported,
       setStages: unsupported, resetTasks: unsupported, setRepeat: unsupported, qrStage: unsupported,
+      planPadletBoard: unsupported, applyPadletBoard: unsupported,
     }),
   };
 }

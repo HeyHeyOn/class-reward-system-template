@@ -152,14 +152,19 @@ describe('withdrawal erasure: complete payload removal with isolated immutable g
   });
 
   it('orders the manifest before every referenced tenant table in the actual migrated schema', async () => {
-    const migration = await readFile(resolve('src/server/db/migrations/0053_withdrawal_erasure.sql'), 'utf8');
+    // The manifest as last (re)defined: 0053 wrote it, later migrations that add tenant tables extend it.
+    let migration = '';
+    for (const name of (await readdir(resolve('src/server/db/migrations'))).filter((name) => /^\d{4}_.*\.sql$/.test(name)).sort()) {
+      const text = await readFile(resolve('src/server/db/migrations', name), 'utf8');
+      if (/v_tables text\[\] := ARRAY\[/.test(text)) migration = text;
+    }
     const manifest = [...migration.match(/v_tables text\[\] := ARRAY\[([\s\S]*?)\];/)![1].matchAll(/'([a-z_]+)'/g)].map((match) => match[1]);
     const order = new Map(manifest.map((table, index) => [table, index]));
     const foreignKeys = (await db.query<{ child: string; parent: string; name: string }>(`SELECT
       child.relname AS child,parent.relname AS parent,c.conname AS name
       FROM pg_constraint c JOIN pg_class child ON child.oid=c.conrelid JOIN pg_class parent ON parent.oid=c.confrelid
       WHERE c.contype='f' AND child.relnamespace='public'::regnamespace AND parent.relnamespace='public'::regnamespace`)).rows;
-    expect(manifest).toHaveLength(85);
+    expect(manifest).toHaveLength(89);
     for (const fk of foreignKeys) {
       if (!order.has(fk.parent) || fk.child === fk.parent) continue;
       expect(order.has(fk.child), `${fk.name}: omitted child ${fk.child}`).toBe(true);

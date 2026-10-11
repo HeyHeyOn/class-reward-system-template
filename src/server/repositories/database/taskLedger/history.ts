@@ -14,6 +14,7 @@ export function historyCause(event: LedgerEventRow): TaskHistoryCause | null {
     if (event.source === 'QR' || prefix === 'tl-q') return 'QR';
     if (event.source === 'LEGACY_SEED') return 'IMPORTED';
     if (event.source === 'CARRY_FORWARD') return prefix === 'tl-s' ? 'AUTO_RESET' : null;
+    if (prefix === 'tl-p') return 'PADLET';
     return prefix === 'tl-r' ? 'RESET' : 'TEACHER';
   }
   if (event.kind === 'UNCOMPLETED') return event.transactionId ? 'CANCELLED' : 'RESET';

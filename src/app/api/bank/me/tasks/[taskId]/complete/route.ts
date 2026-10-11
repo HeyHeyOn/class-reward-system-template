@@ -1,4 +1,5 @@
 import { legacyWriteFreezeResponse } from '@/server/legacyDeploymentMode';
+import { padletBoardsForStudent } from '@/server/repositories/configuredPadlet';
 import { createConfiguredPets } from '@/server/repositories/configuredPets';
 import { createConfiguredStudentBankReader } from '@/server/repositories/configuredStudentBank';
 import {
@@ -92,7 +93,7 @@ export async function POST(request: Request, context: RouteContext) {
   // Likewise the task list: an empty one tells the client to re-read it, never that the reward is unknown.
   let tasks: ReturnType<typeof projectStudentBankTasks> = [];
   try {
-    tasks = projectStudentBankTasks(result.tasks, new Date().toISOString());
+    tasks = projectStudentBankTasks(result.tasks, new Date().toISOString(), await padletBoardsForStudent(request, { sync: false }));
   } catch (error) {
     console.error('[bank-completion] task list after a committed completion could not be shaped',
       error instanceof Error ? error.message : 'unknown');

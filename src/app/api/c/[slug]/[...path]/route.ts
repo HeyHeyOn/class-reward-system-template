@@ -94,6 +94,12 @@ const ROUTES: readonly TenantApiRoute[] = [
   route('POST', 'task-ledger/reset', 'admin', async (r) => (await import('@/app/api/task-ledger/reset/route')).POST(r)),
   route('POST', 'task-ledger/repeat', 'admin', async (r) => (await import('@/app/api/task-ledger/repeat/route')).POST(r)),
   route('POST', 'task-ledger/qr', 'admin', async (r) => (await import('@/app/api/task-ledger/qr/route')).POST(r)),
+  route('GET', 'task-ledger/padlet', 'admin', async (r) => (await import('@/app/api/task-ledger/padlet/route')).GET(r)),
+  route('GET', 'task-ledger/padlet/preview', 'admin', async (r) => (await import('@/app/api/task-ledger/padlet/preview/route')).GET(r)),
+  route('POST', 'task-ledger/padlet/key', 'admin', async (r) => (await import('@/app/api/task-ledger/padlet/key/route')).POST(r)),
+  route('POST', 'task-ledger/padlet/links', 'admin', async (r) => (await import('@/app/api/task-ledger/padlet/links/route')).POST(r)),
+  route('POST', 'task-ledger/padlet/unlink', 'admin', async (r) => (await import('@/app/api/task-ledger/padlet/unlink/route')).POST(r)),
+  route('POST', 'task-ledger/padlet/sync', 'admin', async (r) => (await import('@/app/api/task-ledger/padlet/sync/route')).POST(r)),
   // Class apple tree (PostgreSQL classes): the teacher's board, settings, classFeed, harvest and coupons.
   route('GET', 'class-tree', 'admin', async (r) => (await import('@/app/api/class-tree/route')).GET(r)),
   route('POST', 'class-tree/settings', 'admin', async (r) => (await import('@/app/api/class-tree/settings/route')).POST(r)),

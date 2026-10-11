@@ -1,5 +1,6 @@
 import { vi } from 'vitest';
 import type { TaskStage } from '@/domain/taskStage';
+import type { PadletBoardPreviewDto, PadletPostDto, PadletStatusDto } from '@/lib/padletLinkApi';
 import type { AdminTaskDto, TaskHistoryDto } from '@/lib/taskLedgerApi';
 
 /* In-memory stand-in for the /api/c/{slug}/task-ledger routes, for component tests only. */
@@ -43,6 +44,12 @@ export class LedgerServer {
   /** Next failures per route key ("POST /stages"); consumed one by one. */
   failures = new Map<string, Failure[]>();
   history: TaskHistoryDto | null = null;
+  padletKey: PadletStatusDto['key'] = { saved: false, hint: null, readable: false };
+  padletPreview: PadletBoardPreviewDto = { boardId: 'mvbij1byfal6f0ik', title: '5-6 칭찬 게시판', url: 'https://padlet.com/t/5-6-mvbij1byfal6f0ik',
+    sections: [{ id: 'sec_class', title: '우리 반' }, { id: 'sec_other', title: '다른 반' }], postCount: 3 };
+  padletPosts: PadletPostDto[] = [];
+  /** Students a link moves from 미완료 to 완료 가능 (as if their posts were already on the board). */
+  padletMoves: string[] = [];
   private nextId = 100;
 
   constructor(tasks: AdminTaskDto[]) { this.tasks = tasks; }
@@ -141,6 +148,39 @@ export class LedgerServer {
       if (previousStage !== stage) this.setStage(taskId, studentId, stage);
       return json({ task: this.tasks.find((task) => task.taskId === taskId), student: { studentId, name: student.name }, previousStage, stage, changed: previousStage !== stage });
     }
+    const padletStatus = (): PadletStatusDto => {
+      const boards = [...new Set(this.tasks.flatMap((task) => task.padlet ? [task.padlet.boardId] : []))].map((boardId) => {
+        const own = this.tasks.filter((task) => task.padlet?.boardId === boardId);
+        return { boardId, title: own[0].padlet!.boardTitle, url: own[0].padlet!.boardUrl, taskIds: own.map((task) => task.taskId),
+          checkedAt: NOW, succeededAt: NOW, error: null, posts: this.padletPosts };
+      });
+      return { now: NOW, key: this.padletKey, boards };
+    };
+    if (method === 'GET' && path === '/padlet') return json(padletStatus());
+    if (method === 'GET' && path === '/padlet/preview') return json(this.padletPreview);
+    if (method === 'POST' && path === '/padlet/key') {
+      const apiKey = body!.apiKey as string | null;
+      this.padletKey = apiKey ? { saved: true, hint: apiKey.slice(-4), readable: true } : { saved: false, hint: null, readable: false };
+      return json(padletStatus());
+    }
+    if (method === 'POST' && path === '/padlet/links') {
+      const ids = body!.taskIds as string[];
+      const section = this.padletPreview.sections.find((item) => item.id === body!.sectionId) ?? null;
+      for (const id of ids) {
+        this.set(id, (task) => ({ ...task, version: task.version + 1, padlet: { boardId: this.padletPreview.boardId, boardTitle: this.padletPreview.title,
+          boardUrl: this.padletPreview.url, sectionId: section?.id ?? null, sectionTitle: section?.title ?? null, lastReadAt: NOW, error: null } }));
+        for (const studentId of this.padletMoves) {
+          if (this.tasks.find((task) => task.taskId === id)!.students.find((row) => row.studentId === studentId)?.stage === 'PENDING') this.setStage(id, studentId, 'READY');
+        }
+      }
+      return json({ tasks: affected(ids) });
+    }
+    if (method === 'POST' && path === '/padlet/unlink') {
+      const ids = body!.taskIds as string[];
+      for (const id of ids) this.set(id, (task) => ({ ...task, version: task.version + 1, padlet: null }));
+      return json({ tasks: affected(ids) });
+    }
+    if (method === 'POST' && path === '/padlet/sync') return json(padletStatus());
     return json({ error: `unhandled ${key}` }, 500);
   }
 }

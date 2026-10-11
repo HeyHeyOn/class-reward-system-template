@@ -280,6 +280,7 @@ export function compareStudentIds(a: string, b: string): number {
 export const CAUSE_LABELS: Record<TaskHistoryCause, string> = {
   TEACHER: '선생님',
   QR: 'QR',
+  PADLET: '패들렛',
   BANK: '은행에서 완료',
   RESET: '지금 초기화',
   AUTO_RESET: '자동 초기화',

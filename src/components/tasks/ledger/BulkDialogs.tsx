@@ -11,13 +11,13 @@ import { RepeatFields } from './RepeatFields';
 import { runWrite } from './useTaskBoard';
 import type { TaskLedger } from './useTaskLedger';
 
-type BulkProps = { ledger: TaskLedger; taskIds: readonly string[]; opener: HTMLElement | null; notify: (message: string) => void };
+export type BulkProps = { ledger: TaskLedger; taskIds: readonly string[]; opener: HTMLElement | null; notify: (message: string) => void };
 
-function selectedTasks(ledger: TaskLedger, taskIds: readonly string[]): AdminTaskDto[] {
+export function selectedTasks(ledger: TaskLedger, taskIds: readonly string[]): AdminTaskDto[] {
   return ledger.board.tasks.filter((task) => taskIds.includes(task.taskId));
 }
 
-function targetText(tasks: readonly AdminTaskDto[]): string {
+export function targetText(tasks: readonly AdminTaskDto[]): string {
   if (tasks.length === 1) return `'${tasks[0].title}' 과제`;
   return `과제 ${tasks.length}개 (${tasks.slice(0, 3).map((task) => task.title).join(', ')}${tasks.length > 3 ? ' 외' : ''})`;
 }

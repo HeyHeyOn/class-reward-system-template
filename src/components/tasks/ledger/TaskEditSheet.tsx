@@ -6,6 +6,7 @@ import type { AdminTaskDto } from '@/lib/taskLedgerApi';
 import { Button, Callout, IconButton, MetaRow, Modal, Sheet, cx } from '../../ui';
 import { DefinitionFields } from './DefinitionFields';
 import { LedgerHistoryDialog } from './LedgerHistoryDialog';
+import { PadletTaskTab } from './PadletLinking';
 import { DeleteDialog, ErrorNote, ResetDialog, RewardConfirmDialog, type LedgerStudent } from './LedgerParts';
 import { ledgerClient, newOperationId } from './ledgerClient';
 import {
@@ -18,7 +19,7 @@ import { runWrite } from './useTaskBoard';
 import type { TaskLedger, TaskSheetTab } from './useTaskLedger';
 
 type Nested = 'history' | 'reset' | 'delete' | 'reward' | 'discard' | null;
-type Busy = 'basic' | 'repeat' | 'stages' | 'reset' | 'delete' | null;
+type Busy = 'basic' | 'repeat' | 'stages' | 'reset' | 'delete' | 'padlet' | null;
 type StageDraft = { baseline: AdminTaskDto; changes: StageChanges } | null;
 const NO_ERRORS = { basic: '', repeat: '', stages: '', reset: '', delete: '' };
 
@@ -48,7 +49,7 @@ export function DiscardDialog({ onCancel, onDiscard }: { onCancel: () => void; o
   );
 }
 
-/** One task: 기본 정보 / 반복 / 학생 현황, each saved on its own. Unsaved input survives refreshes and failures. */
+/** One task: 기본 정보 / 반복 / 학생 현황 / 패들렛, each saved on its own. Unsaved input survives refreshes and failures. */
 export function TaskEditSheet({ ledger, taskId, initialTab, opener, students, unit, notify }: {
   ledger: TaskLedger;
   taskId: string;
@@ -188,6 +189,8 @@ export function TaskEditSheet({ ledger, taskId, initialTab, opener, students, un
         <Button variant="ghost" disabled={!repeatDraft || Boolean(busy)} onClick={() => { setRepeatDraft(null); setError('repeat', ''); }}>되돌리기</Button>
         <Button variant="primary" icon="check" loading={busy === 'repeat'} disabled={!repeatDirty || Boolean(busy)} onClick={() => void saveRepeat()}>저장</Button>
       </>
+    ) : tab === 'padlet' ? (
+      <Button variant="ghost" className="ml-auto" disabled={Boolean(busy)} onClick={() => close()}>닫기</Button>
     ) : (
       <>
         <Button variant="ghost" icon="restore" disabled={stagesDirty || Boolean(busy)} title={stagesDirty ? '바꾼 단계를 저장하거나 되돌린 뒤에 초기화할 수 있어요.' : undefined}
@@ -206,7 +209,7 @@ export function TaskEditSheet({ ledger, taskId, initialTab, opener, students, un
         busy={Boolean(busy)} obscured={nested !== null}
         headerActions={live ? <IconButton icon="history" label={`${title} 기록 보기`} onClick={(event) => { setHistoryOpener(event.currentTarget); setNested('history'); }} /> : null}
         toolbar={live ? <SheetTabs<TaskSheetTab> value={tab} onChange={setTab}
-          tabs={[['basic', '기본 정보', basicDirty], ['repeat', '반복', repeatDirty], ['students', '학생 현황', stagesDirty]]} /> : undefined}
+          tabs={[['basic', '기본 정보', basicDirty], ['repeat', '반복', repeatDirty], ['students', '학생 현황', stagesDirty], ['padlet', '패들렛', false]]} /> : undefined}
         footer={footer}>
         {!live ? (
           <Callout tone="warning" title="이 과제를 찾을 수 없어요">다른 곳에서 삭제됐을 수 있어요. 닫고 목록을 확인해 주세요.</Callout>
@@ -232,6 +235,9 @@ export function TaskEditSheet({ ledger, taskId, initialTab, opener, students, un
             {stagesDirty ? <p className="text-xs font-semibold text-[var(--theme-muted-text)]">저장하기 전에는 다른 기기의 변경을 다시 불러오지 않아요.</p> : null}
             <StageBoard task={stageTask} students={students} changes={stageChanges} onChange={changeStages} disabled={busy === 'stages'} />
           </div>
+        ) : tab === 'padlet' ? (
+          <PadletTaskTab ledger={ledger} task={live} students={students} notify={notify} busy={Boolean(busy)}
+            onBusy={(next) => setBusy(next ? 'padlet' : null)} />
         ) : null}
       </Sheet>
 

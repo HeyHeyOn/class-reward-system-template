@@ -34,6 +34,8 @@ const READ_AUTHORITY = [
   ['migrations/xlsx/preview', 'POST', 'createConfiguredXlsxImport'],
   ['task-ledger', 'GET', 'createConfiguredTaskLedger'],
   ['task-ledger/tasks/[taskId]/history', 'GET', 'createConfiguredTaskLedger'],
+  ['task-ledger/padlet', 'GET', 'createConfiguredPadlet'],
+  ['task-ledger/padlet/preview', 'GET', 'createConfiguredPadlet'],
   ['bank/me/tree', 'GET', 'createConfiguredClassTree'],
   ['class-tree', 'GET', 'createConfiguredClassTree'],
   ['bank/me/pet', 'GET', 'createConfiguredPets'],
@@ -77,6 +79,10 @@ const CONFIGURED_MUTATION_AUTHORITY = [
   ['task-ledger/reset', 'POST', 'createConfiguredTaskLedger'],
   ['task-ledger/repeat', 'POST', 'createConfiguredTaskLedger'],
   ['task-ledger/qr', 'POST', 'createConfiguredTaskLedger'],
+  ['task-ledger/padlet/key', 'POST', 'createConfiguredPadlet'],
+  ['task-ledger/padlet/links', 'POST', 'createConfiguredPadlet'],
+  ['task-ledger/padlet/unlink', 'POST', 'createConfiguredPadlet'],
+  ['task-ledger/padlet/sync', 'POST', 'createConfiguredPadlet'],
   ['bank/me/tree/water', 'POST', 'createConfiguredClassTree'],
   ['class-tree/settings', 'POST', 'createConfiguredClassTree'],
   ['class-tree/feed', 'POST', 'createConfiguredClassTree'],
@@ -144,7 +150,7 @@ describe('tenant read route PostgreSQL authority', () => {
       .sort((left, right) => `${left[0]}:${left[1]}`.localeCompare(`${right[0]}:${right[1]}`));
     const authority = READ_AUTHORITY.map(([route, method]) => [route, method] as string[])
       .sort((left, right) => `${left[0]}:${left[1]}`.localeCompare(`${right[0]}:${right[1]}`));
-    expect(inventory).toHaveLength(37);
+    expect(inventory).toHaveLength(39);
     expect(authority).toEqual(inventory);
   });
 
@@ -189,7 +195,7 @@ describe('tenant mutation route PostgreSQL authority', () => {
       && entry.effect === 'mutation'
       && !configured.has(`${entry.method} ${entry.route}`));
 
-    expect(CONFIGURED_MUTATION_AUTHORITY).toHaveLength(49);
+    expect(CONFIGURED_MUTATION_AUTHORITY).toHaveLength(53);
     expect(sheetsMutations).toHaveLength(4);
     for (const entry of sheetsMutations) {
       const body = await exportedMethodBody(entry.route.replace(/^\//, ''), entry.method);

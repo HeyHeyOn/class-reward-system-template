@@ -97,7 +97,8 @@ export async function readTaskHistoryPage(tx: TenantTransaction, tenantId: strin
     ORDER BY h.display_at DESC,h.entry_key DESC LIMIT ${request.limit + 1}`)).rows as Array<Record<string, unknown>>;
   const items: Item[] = entries.map((r) => ({ key: String(r.entry_key), id: String(r.id), at: String(r.at), studentId: String(r.student_id),
     studentName: String(r.student_name), stage: r.stage as TaskStage, previousStage: r.previous_stage as TaskStage,
-    cause: r.cause as TaskHistoryEntryDto['cause'], reward: r.reward === null ? null : Number(r.reward) }));
+    // The stored projection (0042) predates Padlet and files its rows under TEACHER; the event ID keeps the truth.
+    cause: (String(r.id).startsWith('E:A:tl-p:') ? 'PADLET' : r.cause) as TaskHistoryEntryDto['cause'], reward: r.reward === null ? null : Number(r.reward) }));
   if (ledgerFrom !== null && taskWindows(task).some((w) => w.resetStage !== null && w.recurrence.type !== 'NONE')) {
     const tails = (await tx.execute(sql`
       SELECT s.student_id,coalesce(nullif(btrim(s.name),''),s.student_id) AS student_name,p.stage,p.before_completion,

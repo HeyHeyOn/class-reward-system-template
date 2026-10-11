@@ -1,9 +1,10 @@
+import type { PadletBoardPreviewDto, PadletBoardStatusDto, PadletErrorCode, PadletStatusDto } from '@/lib/padletLinkApi';
 import { tenantFetch } from '@/lib/tenantApiPath';
 import {
   TASK_STAGES,
   type AdminTaskDto, type CreateTaskRequest, type DeleteTasksRequest, type QrStageRequest, type QrStageResultDto,
   type ResetTasksRequest, type SetRepeatRequest, type SetStagesRequest, type TaskBoardDto, type TaskHistoryDto,
-  type TaskHistoryEntryDto, type TaskHistoryPageRequest, type UpdateTaskRequest,
+  type TaskHistoryEntryDto, type TaskHistoryPageRequest, type TaskPadletLinkDto, type UpdateTaskRequest,
 } from '@/lib/taskLedgerApi';
 import type { TaskStage } from '@/domain/taskStage';
 
@@ -48,6 +49,16 @@ function readTask(value: unknown): AdminTaskDto | null {
     repeat: { ...(repeat as AdminTaskDto['repeat']), resetStage: (repeat.resetStage as TaskStage | null | undefined) ?? null,
       nextResetAt: (repeat.nextResetAt as string | null | undefined) ?? null, lastResetAt: (repeat.lastResetAt as string | null | undefined) ?? null },
     students: students.map((row) => ({ ...(row as AdminTaskDto['students'][number]), since: (row.since as string | null | undefined) ?? null, byReset: row.byReset === true })),
+    padlet: readPadletLink(value.padlet),
+  };
+}
+
+function readPadletLink(value: unknown): TaskPadletLinkDto | null {
+  if (!isRecord(value) || !isText(value.boardId) || !isText(value.boardUrl)) return null;
+  return {
+    boardId: value.boardId, boardTitle: isText(value.boardTitle) ? value.boardTitle : '', boardUrl: value.boardUrl,
+    sectionId: isText(value.sectionId) ? value.sectionId : null, sectionTitle: isText(value.sectionTitle) ? value.sectionTitle : null,
+    lastReadAt: isText(value.lastReadAt) ? value.lastReadAt : null, error: isText(value.error) ? value.error : null,
   };
 }
 
@@ -89,6 +100,28 @@ function readQr(value: unknown): QrStageResultDto | null {
   if (!task) return null;
   return { task, student: { studentId: value.student.studentId, name: isText(value.student.name) ? value.student.name : value.student.studentId },
     previousStage: value.previousStage, stage: value.stage, changed: value.changed === true };
+}
+
+function readPadletStatus(value: unknown): PadletStatusDto | null {
+  if (!isRecord(value) || !isText(value.now) || !isRecord(value.key) || !Array.isArray(value.boards)) return null;
+  const boards = value.boards.filter((board): board is PadletBoardStatusDto => isRecord(board) && isText(board.boardId)
+    && Array.isArray(board.taskIds) && board.taskIds.every(isText) && Array.isArray(board.posts)
+    && board.posts.every((post) => isRecord(post) && isText(post.postId) && isText(post.at) && isRecord(post.results)));
+  if (boards.length !== value.boards.length) return null;
+  return {
+    now: value.now,
+    key: { saved: value.key.saved === true, hint: isText(value.key.hint) ? value.key.hint : null, readable: value.key.readable === true },
+    boards: boards.map((board) => ({ ...board, title: isText(board.title) ? board.title : '', url: isText(board.url) ? board.url : '',
+      checkedAt: isText(board.checkedAt) ? board.checkedAt : null, succeededAt: isText(board.succeededAt) ? board.succeededAt : null,
+      error: isText(board.error) ? board.error as PadletErrorCode : null })),
+  };
+}
+
+function readPadletPreview(value: unknown): PadletBoardPreviewDto | null {
+  if (!isRecord(value) || !isText(value.boardId) || !isText(value.url) || !Array.isArray(value.sections)) return null;
+  const sections = value.sections.filter((section): section is { id: string; title: string } => isRecord(section) && isText(section.id) && isText(section.title));
+  return { boardId: value.boardId, title: isText(value.title) ? value.title : '', url: value.url, sections,
+    postCount: isCount(value.postCount) ? value.postCount : 0 };
 }
 
 function readDeleted(value: unknown): string[] | null {
@@ -142,4 +175,17 @@ export const ledgerClient = {
   reset: (body: ResetTasksRequest) => call('/api/task-ledger/reset', send('POST', body), readTasksEnvelope, SAVE_FAILED),
   repeat: (body: SetRepeatRequest) => call('/api/task-ledger/repeat', send('POST', body), readTasksEnvelope, SAVE_FAILED),
   qr: (body: QrStageRequest) => call('/api/task-ledger/qr', send('POST', body), readQr, SAVE_FAILED),
+};
+
+export const PADLET_LOAD_FAILED = '패들렛 연결 정보를 불러오지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.';
+
+/** Padlet links (PostgreSQL classes). Linking and 지금 확인 read Padlet, so they can take a few seconds. */
+export const padletClient = {
+  status: () => call('/api/task-ledger/padlet', get(), readPadletStatus, PADLET_LOAD_FAILED),
+  preview: (address: string) => call(`/api/task-ledger/padlet/preview?${new URLSearchParams({ address })}`, get(), readPadletPreview, PADLET_LOAD_FAILED),
+  setKey: (apiKey: string | null) => call('/api/task-ledger/padlet/key', send('POST', { apiKey }), readPadletStatus, SAVE_FAILED),
+  link: (body: { taskIds: readonly string[]; address: string; sectionId: string | null }) =>
+    call('/api/task-ledger/padlet/links', send('POST', body), readTasksEnvelope, SAVE_FAILED),
+  unlink: (taskIds: readonly string[]) => call('/api/task-ledger/padlet/unlink', send('POST', { taskIds }), readTasksEnvelope, SAVE_FAILED),
+  sync: () => call('/api/task-ledger/padlet/sync', send('POST', {}), readPadletStatus, PADLET_LOAD_FAILED),
 };

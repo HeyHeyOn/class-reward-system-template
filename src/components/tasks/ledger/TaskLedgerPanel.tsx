@@ -3,12 +3,13 @@
 import { useState } from 'react';
 import {
   Badge, Button, Callout, Card, CardHeader, Checkbox, EmptyState, Icon, IconButton, PageHeader, ProgressBar, SearchInput,
-  SegmentedControl, SelectionBar, SelectionBarButton, type IconName,
+  SegmentedControl, SelectionBar, SelectionBarButton, cx, type IconName,
 } from '../../ui';
 import { BulkDeleteDialog, BulkRepeatDialog, BulkResetDialog, BulkStagesDialog } from './BulkDialogs';
 import { StageCounts, type LedgerStudent } from './LedgerParts';
 import { formatInstant, holderCount, money, recurrenceSummary, resetStageSummary, sortTasks, taskStatus } from './ledgerFormat';
 import { NewTaskSheet } from './NewTaskSheet';
+import { BulkPadletDialog } from './PadletLinking';
 import { QrStageDialog } from './QrStageDialog';
 import { TaskEditSheet } from './TaskEditSheet';
 import type { TaskLedger } from './useTaskLedger';
@@ -39,8 +40,8 @@ export function TaskLedgerPanel({ ledger, unit, notify }: { ledger: TaskLedger; 
     ledger.setSelection((current) => current.includes(taskId) ? current.filter((id) => id !== taskId) : [...current, taskId]);
   }
 
-  function meta(task: (typeof tasks)[number]): Array<{ icon: IconName; text: string }> {
-    const parts: Array<{ icon: IconName; text: string }> = [];
+  function meta(task: (typeof tasks)[number]): Array<{ icon: IconName; text: string; warn?: boolean }> {
+    const parts: Array<{ icon: IconName; text: string; warn?: boolean }> = [];
     if (task.repeat.recurrence.type !== 'NONE') {
       parts.push({ icon: 'repeat', text: `${recurrenceSummary(task.repeat.recurrence)} · ${resetStageSummary(task.repeat.resetStage)}${task.repeat.nextResetAt ? ` · 다음 ${formatInstant(task.repeat.nextResetAt, board.now)}` : ''}` });
     }
@@ -50,6 +51,10 @@ export function TaskLedgerPanel({ ledger, unit, notify }: { ledger: TaskLedger; 
     if (task.prerequisiteTaskId) {
       const prerequisite = board.tasks.find((candidate) => candidate.taskId === task.prerequisiteTaskId);
       parts.push({ icon: 'lock', text: `먼저: ${prerequisite?.title ?? '삭제된 과제'}` });
+    }
+    if (task.padlet) {
+      parts.push(task.padlet.error ? { icon: 'alert', text: '패들렛을 읽지 못함', warn: true }
+        : { icon: 'link', text: `패들렛: ${task.padlet.boardTitle || '게시판'}${task.padlet.sectionTitle ? ` · ${task.padlet.sectionTitle}` : ''}` });
     }
     return parts;
   }
@@ -107,7 +112,7 @@ export function TaskLedgerPanel({ ledger, unit, notify }: { ledger: TaskLedger; 
                         </button>
                         <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--theme-muted-text)]">
                           <span className="md:hidden">{money(task.reward, unit)}</span>
-                          {meta(task).map((item) => <span key={item.text} className="inline-flex items-center gap-1"><Icon name={item.icon} size={13} />{item.text}</span>)}
+                          {meta(task).map((item) => <span key={item.text} className={cx('inline-flex items-center gap-1', item.warn && 'font-semibold text-[var(--crs-warning-text)]')}><Icon name={item.icon} size={13} />{item.text}</span>)}
                           <span className="md:hidden"><Badge tone={status.tone}>{status.label}</Badge></span>
                         </span>
                         <span aria-hidden="true" className="mt-2 block md:hidden"><StageCounts task={task} className="block" /></span>
@@ -128,6 +133,7 @@ export function TaskLedgerPanel({ ledger, unit, notify }: { ledger: TaskLedger; 
       <SelectionBar count={selection.length} onClear={() => ledger.setSelection([])}>
         <SelectionBarButton icon="repeat" aria-label="선택 과제 반복 설정" onClick={(event) => ledger.open({ kind: 'bulk-repeat', taskIds: selection, opener: event.currentTarget })}>반복 설정</SelectionBarButton>
         <SelectionBarButton icon="users" aria-label="선택 과제 완료 단계" onClick={(event) => ledger.open({ kind: 'bulk-stages', taskIds: selection, opener: event.currentTarget })}>완료 단계</SelectionBarButton>
+        <SelectionBarButton icon="link" aria-label="선택 과제 패들렛 연결" onClick={(event) => ledger.open({ kind: 'bulk-padlet', taskIds: selection, opener: event.currentTarget })}>패들렛</SelectionBarButton>
         <SelectionBarButton icon="restore" aria-label="선택 과제 지금 초기화" onClick={(event) => ledger.open({ kind: 'reset', taskIds: selection, opener: event.currentTarget })}>지금 초기화</SelectionBarButton>
         <SelectionBarButton icon="trash" danger aria-label="선택 과제 삭제" onClick={(event) => ledger.open({ kind: 'delete', taskIds: selection, opener: event.currentTarget })}>삭제</SelectionBarButton>
       </SelectionBar>
@@ -156,6 +162,8 @@ export function TaskLedgerOverlays({ ledger, students, unit, notify, qrManualInp
       return <BulkRepeatDialog ledger={ledger} taskIds={overlay.taskIds} opener={overlay.opener} notify={notify} />;
     case 'bulk-stages':
       return <BulkStagesDialog ledger={ledger} taskIds={overlay.taskIds} opener={overlay.opener} notify={notify} students={students} unit={unit} />;
+    case 'bulk-padlet':
+      return <BulkPadletDialog ledger={ledger} taskIds={overlay.taskIds} opener={overlay.opener} notify={notify} />;
     case 'reset':
       return <BulkResetDialog ledger={ledger} taskIds={overlay.taskIds} opener={overlay.opener} notify={notify} />;
     case 'delete':

@@ -169,6 +169,12 @@ export const TENANT_ROUTE_INVENTORY: readonly TenantRouteInventoryEntry[] = [
   tenantMutation('/task-ledger/reset', 'POST'),
   tenantMutation('/task-ledger/repeat', 'POST'),
   tenantMutation('/task-ledger/qr', 'POST'),
+  tenantRead('/task-ledger/padlet'),
+  tenantRead('/task-ledger/padlet/preview'),
+  tenantMutation('/task-ledger/padlet/key', 'POST'),
+  tenantMutation('/task-ledger/padlet/links', 'POST'),
+  tenantMutation('/task-ledger/padlet/unlink', 'POST'),
+  tenantMutation('/task-ledger/padlet/sync', 'POST'),
   tenantMutation('/transactions/[transactionId]/cancel', 'POST'),
   tenantRead('/transactions'),
   // Self-service CRS workbook (.xlsx) import: POST preview validates only; commit writes.

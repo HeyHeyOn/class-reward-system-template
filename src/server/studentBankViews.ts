@@ -56,7 +56,11 @@ export type StudentBankTaskDto = Readonly<{
   dueAt?: string;
   recurrence?: TaskRecurrence;
   prerequisiteTitle?: string;
+  /** The Padlet board whose post (in the student's name) makes the task 완료 가능. */
+  padlet?: StudentBankPadletDto;
 }>;
+
+export type StudentBankPadletDto = Readonly<{ title: string; url: string; sectionTitle?: string }>;
 
 export function projectStudentBankTransactions(
   transactions: readonly Transaction[],
@@ -121,6 +125,7 @@ const STAGE_ORDER: Record<StudentBankTaskStage, number> = { READY: 0, PENDING: 1
 export function projectStudentBankTasks(
   projection: readonly StudentTaskProjectionDto[],
   now: string,
+  padletBoards: ReadonlyMap<string, StudentBankPadletDto> = new Map(),
 ): StudentBankTaskDto[] {
   return projection
     .flatMap((task) => {
@@ -138,6 +143,7 @@ export function projectStudentBankTasks(
         ...(task.dueAt ? { dueAt: task.dueAt } : {}),
         ...(task.recurrence ? { recurrence: task.recurrence } : {}),
         ...(task.prerequisiteTitle ? { prerequisiteTitle: task.prerequisiteTitle } : {}),
+        ...(padletBoards.has(task.taskId) ? { padlet: padletBoards.get(task.taskId) } : {}),
       };
       return [{ dto, sortOrder: task.sortOrder }];
     })

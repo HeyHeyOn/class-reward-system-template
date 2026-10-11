@@ -10,6 +10,7 @@ import { POST } from './route';
 
 vi.mock('server-only', () => ({}));
 vi.mock('@/server/repositories/configuredStudentBank', () => ({ createConfiguredStudentBankReader: vi.fn(), STUDENT_BANK_TRANSACTION_LIMIT: 100 }));
+vi.mock('@/server/repositories/configuredPadlet', () => ({ padletBoardsForStudent: vi.fn(async () => new Map()) }));
 vi.mock('@/server/repositories/configuredPets', () => ({ createConfiguredPets: vi.fn(async () => { throw new Error('no pets here'); }) }));
 vi.mock('@/server/repositories/configuredTaskCompletion', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/server/repositories/configuredTaskCompletion')>()),

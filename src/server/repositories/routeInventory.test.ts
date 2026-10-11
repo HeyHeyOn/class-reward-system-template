@@ -69,12 +69,12 @@ describe('tenant route inventory', () => {
       { route: '/exports/[slug]/historical-local-generation-metadata.csv', method: 'GET' },
       { route: '/exports/[slug]/historical-local-generation-metadata.csv', method: 'HEAD' },
     ]);
-    expect(inventory).toHaveLength(132);
+    expect(inventory).toHaveLength(138);
     expect(new Set(inventory.map(({ route, method }) => `${method} ${route}`)).size).toBe(inventory.length);
   });
 
   it('preserves the current authority boundary counts and isolates the status read', () => {
-    expect(TENANT_ROUTE_INVENTORY).toHaveLength(132);
+    expect(TENANT_ROUTE_INVENTORY).toHaveLength(138);
     expect(TENANT_ROUTE_INVENTORY.filter((entry) => entry.scope === 'tenant-status')).toEqual([
       { route: '/migrations/status/[slug]', method: 'GET', scope: 'tenant-status', effect: 'read' },
       { route: '/migrations/status/[slug]/preflight', method: 'GET', scope: 'tenant-status', effect: 'read' },
@@ -84,8 +84,8 @@ describe('tenant route inventory', () => {
       { route: '/exports/[slug]/historical-local-generation-metadata.csv', method: 'GET', scope: 'tenant-status', effect: 'read' },
       { route: '/exports/[slug]/historical-local-generation-metadata.csv', method: 'HEAD', scope: 'tenant-status', effect: 'read' },
     ]);
-    expect(TENANT_ROUTE_INVENTORY.filter((entry) => entry.scope === 'tenant-data' && entry.effect === 'read')).toHaveLength(37);
-    expect(TENANT_ROUTE_INVENTORY.filter((entry) => entry.scope === 'tenant-data' && entry.effect === 'mutation')).toHaveLength(55);
+    expect(TENANT_ROUTE_INVENTORY.filter((entry) => entry.scope === 'tenant-data' && entry.effect === 'read')).toHaveLength(39);
+    expect(TENANT_ROUTE_INVENTORY.filter((entry) => entry.scope === 'tenant-data' && entry.effect === 'mutation')).toHaveLength(59);
     expect(TENANT_ROUTE_INVENTORY.filter((entry) => entry.scope === 'unsupported')
       .sort((left, right) => `${left.route} ${left.method}`.localeCompare(`${right.route} ${right.method}`))).toEqual([
       { route: '/qrcode', method: 'GET', scope: 'unsupported', effect: 'none' },

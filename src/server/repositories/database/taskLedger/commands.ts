@@ -2,6 +2,8 @@ import 'server-only';
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
+import { allocatePadletPosts, PADLET_SUMMARY_LIMIT, type PadletAllocation, type PadletLinkedTask, type PadletPost } from '@/domain/padlet';
+import { lastResetAt } from '@/domain/taskLedger';
 import { initialSchedule, repeatSettingOf, sameRepeatSetting, scheduleForRepeat, scheduleInForce } from '@/domain/taskRepeat';
 import type { TaskStage } from '@/domain/taskStage';
 import type {
@@ -18,6 +20,7 @@ import type {
 } from '@/lib/taskLedgerApi';
 import type { TenantTransaction } from '@/server/db/transaction';
 import { appendOperationAudit } from '../operationAudit';
+import { insertPadletUse, readPadletBoardSyncs, readPadletLinks, readPadletUses, recordPadletBoardSync, type PadletLinkRow } from '../padletStore';
 import { applyTaskGrowth, type TaskGrowthInput } from '../taskGrowth';
 import { ensureTaskLedger, type RunTenantTransaction } from './migration';
 import { writeTeacherPaidCompletion } from './reward';
@@ -34,6 +37,7 @@ import {
   sha256,
   sortTasks,
   stageOf,
+  taskWindows,
   TaskLedgerError,
   type LedgerEventRow,
   type LedgerEventSource,
@@ -70,12 +74,23 @@ type Context = {
 };
 
 /** Why an event was written; shown in the history (the ID prefix keeps it). */
-type Cause = 'TEACHER' | 'QR' | 'RESET';
-const CAUSE_PREFIX: Readonly<Record<Cause, { stage: 'tl-a' | 'tl-q' | 'tl-r'; completion: 'tl-c' | 'tl-cq' | 'tl-cr' }>> = {
+type Cause = 'TEACHER' | 'QR' | 'RESET' | 'PADLET';
+const CAUSE_PREFIX: Readonly<Record<Cause, { stage: 'tl-a' | 'tl-q' | 'tl-r' | 'tl-p'; completion: 'tl-c' | 'tl-cq' | 'tl-cr' | 'tl-cp' }>> = {
   TEACHER: { stage: 'tl-a', completion: 'tl-c' },
   QR: { stage: 'tl-q', completion: 'tl-cq' },
   RESET: { stage: 'tl-r', completion: 'tl-cr' },
+  // A Padlet post only ever makes 미완료 into 완료 가능.
+  PADLET: { stage: 'tl-p', completion: 'tl-cp' },
 };
+
+/** A linked task as the Padlet rules see it: open from its start or latest reset until 마감. */
+function padletLinkedTask(task: LedgerTask, link: PadletLinkRow, now: string): PadletLinkedTask {
+  const opens = [task.createdAt, task.availableFrom, lastResetAt(taskWindows(task), now)]
+    .filter((value): value is string => typeof value === 'string')
+    .reduce((latest, value) => (Date.parse(value) > Date.parse(latest) ? value : latest));
+  return { taskId: task.taskInstanceId, title: task.title, sortOrder: task.sortOrder, prerequisiteTaskId: task.prerequisiteTaskInstanceId,
+    sectionId: link.sectionId, opensAt: opens, closesAt: task.dueAt, visible: task.isActive };
+}
 
 const eventId = ledgerEventId;
 
@@ -141,9 +156,17 @@ export function createTaskLedgerCommands(dependencies: TaskLedgerCommandDependen
       const students = await readLedgerStudents(tx, tenantId);
       const events = ledgerFrom === null ? new Map() : await readCurrentLedgerStates(tx, tenantId, now,
         { taskInstanceIds: tasks.map((task) => task.taskInstanceId) });
+      const links = new Map((await readPadletLinks(tx, tenantId)).map((link) => [link.taskInstanceId, link]));
+      const syncs = links.size ? new Map((await readPadletBoardSyncs(tx, tenantId)).map((sync) => [sync.boardId, sync])) : new Map();
       return {
         now: new Date(now).toISOString(),
-        tasks: sortTasks(tasks.map((task) => buildAdminTaskDto(task, students, events.get(task.taskInstanceId), now))),
+        tasks: sortTasks(tasks.map((task) => {
+          const link = links.get(task.taskInstanceId);
+          return { ...buildAdminTaskDto(task, students, events.get(task.taskInstanceId), now),
+            padlet: link ? { boardId: link.boardId, boardTitle: link.boardTitle, boardUrl: link.boardUrl,
+              sectionId: link.sectionId, sectionTitle: link.sectionTitle,
+              lastReadAt: syncs.get(link.boardId)?.succeededAt ?? null, error: syncs.get(link.boardId)?.errorCode ?? null } : null };
+        })),
       };
     });
   }
@@ -292,9 +315,71 @@ export function createTaskLedgerCommands(dependencies: TaskLedgerCommandDependen
     return true;
   }
 
+  /** Who a board's posts move, from the stages and uses as they are in `tx`. Null when no task uses the board. */
+  async function planPadlet(tx: TenantTransaction, now: string, boardId: string, posts: readonly PadletPost[], lock: boolean): Promise<{
+    allocation: PadletAllocation;
+    tasks: Map<string, LedgerTask>;
+    students: Map<string, LedgerStudent>;
+    events: Awaited<ReturnType<typeof readCurrentLedgerStates>>;
+  } | null> {
+    const links = await readPadletLinks(tx, tenantId, boardId);
+    if (links.length === 0) return null;
+    const tasks = new Map((await readLedgerTasks(tx, tenantId, { taskInstanceIds: links.map((link) => link.taskInstanceId), lock }))
+      .map((task) => [task.taskInstanceId, task]));
+    const students = new Map((await readLedgerStudents(tx, tenantId)).map((student) => [student.studentId, student]));
+    const events = await readCurrentLedgerStates(tx, tenantId, now, { taskInstanceIds: [...tasks.keys()] });
+    const uses = await readPadletUses(tx, tenantId, [...tasks.keys()]);
+    const allocation = allocatePadletPosts({
+      tasks: links.flatMap((link) => {
+        const task = tasks.get(link.taskInstanceId);
+        return task ? [padletLinkedTask(task, link, now)] : [];
+      }),
+      students: [...students.values()].map((student) => ({ studentId: student.studentId, name: student.name, active: student.status === 'ACTIVE' })),
+      stageOf: (taskInstanceId, studentId) => stageOf(tasks.get(taskInstanceId)!, events.get(taskInstanceId)?.get(studentId), now).stage,
+      posts,
+      uses: uses.map((use) => ({ taskId: use.taskInstanceId, postId: use.postId, studentId: use.studentId })),
+      now,
+    });
+    return { allocation, tasks, students, events };
+  }
+
   return {
     readTasks,
     readBoard,
+
+    /** What a board's posts would do now, without writing (most reads change nothing). */
+    async planPadletBoard(boardId: string, posts: readonly PadletPost[]): Promise<PadletAllocation | null> {
+      await ensureTaskLedger(dependencies);
+      const read = dependencies.runTenantSnapshot ?? dependencies.runTenantTransaction;
+      return read(tenantId, async (tx) => (await planPadlet(tx, await clockNow(tx), boardId, posts, false))?.allocation ?? null);
+    },
+
+    /**
+     * Moves the students whose posts count to 완료 가능 (recomputed under the task locks, so two
+     * reads of the same board never use a post twice) and keeps the board's summary.
+     */
+    async applyPadletBoard(input: Readonly<{ operationId: string; boardId: string; posts: readonly PadletPost[] }>): Promise<{ moved: number }> {
+      const request = { boardId: input.boardId, posts: input.posts.map((post) => [post.id, post.createdAt, post.status, post.authorName, post.subject, post.sectionId]) };
+      const result = await withOperation('padlet', input.operationId, request, async (context) => {
+        context.now = await clockNow(context.tx);
+        const plan = await planPadlet(context.tx, context.now, input.boardId, input.posts, true);
+        if (!plan) return { moved: 0, taskIds: [] as string[] };
+        const touched = new Set<string>();
+        for (const move of plan.allocation.moves) {
+          const task = plan.tasks.get(move.taskId)!;
+          const student = plan.students.get(move.studentId)!;
+          const moved = await moveStudent(context, { task, student, stage: 'READY', withReward: false, cause: 'PADLET',
+            events: plan.events.get(task.taskInstanceId)?.get(student.studentId), balances: new Map() });
+          if (moved.changed) touched.add(task.taskInstanceId);
+          await insertPadletUse(context.tx, tenantId, { taskInstanceId: task.taskInstanceId, postId: move.postId, boardId: input.boardId,
+            studentId: student.studentId, postCreatedAt: move.postCreatedAt, operationId: context.operationId });
+        }
+        await bumpVersions(context, touched);
+        await recordPadletBoardSync(context.tx, tenantId, input.boardId, { ok: true, summary: plan.allocation.outcomes.slice(0, PADLET_SUMMARY_LIMIT) });
+        return { moved: plan.allocation.moves.length, taskIds: [...touched].map((id) => plan.tasks.get(id)!.taskId).sort() };
+      }, (value) => ({ taskIds: value.taskIds, boardId: input.boardId, moved: value.moved }));
+      return { moved: result.value?.moved ?? 0 };
+    },
 
     /**
      * `internal` is for server-side callers only (the .xlsx import keeps the sheet's task IDs and
