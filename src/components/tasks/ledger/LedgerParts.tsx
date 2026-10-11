@@ -34,13 +34,12 @@ type StagePill<T extends string> = { value: T; label: string; tone: string };
 const stagePills = (stages: readonly TaskStage[]): StagePill<TaskStage>[] =>
   stages.map((stage) => ({ value: stage, label: stageLabel(stage), tone: STAGE_TONES[stage] }));
 
-const NO_RESET_PILL: StagePill<'NONE'> = { value: 'NONE', label: '초기화 안 함', tone: 'bg-[var(--crs-subtle-hover)] text-[var(--theme-text)]' };
-
 /** The one stage picker of the task screen: a row of pills, the chosen one in its stage colour. */
 function StagePills<T extends string>({ groupLabel, options, value, onChange, disabled, buttonLabel }: {
   groupLabel: string;
   options: readonly StagePill<T>[];
-  value: T;
+  /** Null when nothing is chosen yet. */
+  value: T | null;
   onChange: (value: T) => void;
   disabled?: boolean;
   /** Spoken name of each pill, when the visible word is not enough (rows of students). */
@@ -69,18 +68,11 @@ export function StagePicker({ label, value, onChange, disabled }: { label: strin
     buttonLabel={(option) => `${label} ${option.label}`} />;
 }
 
-/** Choose one stage (QR, reset and bulk dialogs), looking the same as a student's row in 학생 현황. */
+/** Choose one stage (repeat, QR, reset and bulk dialogs), looking the same as a student's row in 학생 현황. */
 export function StageChoice({ label, value, onChange, stages = TASK_STAGES, disabled }: {
-  label: string; value: TaskStage; onChange: (stage: TaskStage) => void; stages?: readonly TaskStage[]; disabled?: boolean;
+  label: string; value: TaskStage | null; onChange: (stage: TaskStage) => void; stages?: readonly TaskStage[]; disabled?: boolean;
 }) {
   return <StagePills groupLabel={label} options={stagePills(stages)} value={value} onChange={onChange} disabled={disabled} />;
-}
-
-/** The stage a repeating task resets to, or no reset at all. */
-export function ResetStageChoice({ label, value, onChange, disabled }: {
-  label: string; value: TaskStage | 'NONE'; onChange: (stage: TaskStage | 'NONE') => void; disabled?: boolean;
-}) {
-  return <StagePills<TaskStage | 'NONE'> groupLabel={label} options={[...stagePills(TASK_STAGES), NO_RESET_PILL]} value={value} onChange={onChange} disabled={disabled} />;
 }
 
 export function MiniStat({ label, value, tone }: { label: string; value: string; tone?: TaskStage }) {

@@ -216,6 +216,21 @@ describe('task details', () => {
     expect(patches[0].body!.operationId).not.toBe(patches[1].body!.operationId);
   });
 
+  it('asks for a reset stage on a repeat saved without one (old Sheets data)', async () => {
+    server = new LedgerServer([makeTask({ repeat: { recurrence: { type: 'WEEKLY', time: '09:00', weekdays: [1] }, resetStage: null, nextResetAt: null, lastResetAt: null } })]);
+    server.install();
+    await renderBoard();
+    const sheet = await openTask('수학 익힘책', '반복');
+    const group = within(sheet).getByRole('group', { name: '초기화하면' });
+    expect(within(group).getAllByRole('button').every((button) => button.getAttribute('aria-pressed') === 'false')).toBe(true);
+    expect(within(sheet).getByRole('alert').textContent).toContain('초기화할 단계를 골라 주세요');
+    expect((within(sheet).getByRole('button', { name: '저장' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(within(group).getByRole('button', { name: '완료 가능' }));
+    fireEvent.click(within(sheet).getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(server.writes('POST /repeat')).toHaveLength(1));
+    expect(server.writes('POST /repeat')[0].body!.repeat).toEqual({ recurrence: { type: 'WEEKLY', time: '09:00', weekdays: [1] }, resetStage: 'READY' });
+  });
+
   it('saves the repeat setting with the reset stage', async () => {
     await renderBoard();
     const sheet = await openTask('수학 익힘책', '반복');
@@ -329,11 +344,13 @@ describe('create, bulk and delete', () => {
     expect((within(dialog).getByRole('button', { name: '저장' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(within(within(dialog).getByRole('group', { name: '반복 주기' })).getByRole('button', { name: '매월' }));
     fireEvent.change(within(dialog).getByLabelText('반복 날짜'), { target: { value: '15' } });
-    fireEvent.click(within(within(dialog).getByRole('group', { name: '초기화하면' })).getByRole('button', { name: '초기화 안 함' }));
+    const resetGroup = within(dialog).getByRole('group', { name: '초기화하면' });
+    expect(within(resetGroup).getAllByRole('button').map((button) => button.textContent)).toEqual(['미부여', '미완료', '완료 가능', '완료']);
+    fireEvent.click(within(resetGroup).getByRole('button', { name: '미부여' }));
     fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
     await waitFor(() => expect(server.writes('POST /repeat')).toHaveLength(1));
     expect(server.writes('POST /repeat')[0].body).toEqual({ operationId: expect.stringMatching(UUID), taskIds: ['task-1', 'task-2'],
-      repeat: { recurrence: { type: 'MONTHLY', time: '09:00', dayOfMonth: 15 }, resetStage: null } });
+      repeat: { recurrence: { type: 'MONTHLY', time: '09:00', dayOfMonth: 15 }, resetStage: 'UNASSIGNED' } });
   });
 
   it('deletes the selected tasks after confirming', async () => {

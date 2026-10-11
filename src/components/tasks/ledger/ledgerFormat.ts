@@ -144,6 +144,7 @@ export type RepeatForm = {
   time: string;
   weekdays: IsoWeekday[];
   dayOfMonth: string;
+  /** 'NONE' only for a repeat saved without a reset (old Sheets data); it cannot be saved again. */
   resetStage: TaskStage | 'NONE';
 };
 
@@ -168,6 +169,8 @@ export type Checked<T> = { ok: true; value: T } | { ok: false; error: string };
 
 export function repeatFromForm(form: RepeatForm): Checked<TaskRepeatSettingDto> {
   if (!form.type) return { ok: false, error: '반복 주기를 골라 주세요.' };
+  // A repeat that resets nothing does nothing, so it is not offered; pick a stage or 반복 없음.
+  if (form.type !== 'NONE' && form.resetStage === 'NONE') return { ok: false, error: '초기화할 단계를 골라 주세요. 초기화하지 않으려면 ‘반복 없음’을 고르세요.' };
   let recurrence: unknown;
   if (form.type === 'NONE') recurrence = { type: 'NONE' };
   else if (form.type === 'DAILY') recurrence = { type: 'DAILY', time: form.time };

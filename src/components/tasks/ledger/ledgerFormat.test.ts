@@ -39,7 +39,9 @@ describe('forms', () => {
   it('turns repeat forms into the contract setting', () => {
     expect(repeatFromForm({ ...repeatFormOf(null), type: 'WEEKLY', weekdays: [5, 1], time: '07:40', resetStage: 'UNASSIGNED' }))
       .toEqual({ ok: true, value: { recurrence: { type: 'WEEKLY', time: '07:40', weekdays: [1, 5] }, resetStage: 'UNASSIGNED' } });
-    expect(repeatFromForm({ ...repeatFormOf(null), type: 'DAILY', resetStage: 'NONE' })).toEqual({ ok: true, value: { recurrence: { type: 'DAILY', time: '09:00' }, resetStage: null } });
+    // A repeat without a reset (old Sheets data) shows as such but cannot be saved again.
+    expect(repeatFormOf({ recurrence: { type: 'DAILY', time: '09:00' }, resetStage: null }).resetStage).toBe('NONE');
+    expect(repeatFromForm({ ...repeatFormOf(null), type: 'DAILY', resetStage: 'NONE' })).toEqual({ ok: false, error: '초기화할 단계를 골라 주세요. 초기화하지 않으려면 ‘반복 없음’을 고르세요.' });
     expect(repeatFromForm({ ...repeatFormOf(null), type: 'NONE', resetStage: 'PENDING' })).toEqual({ ok: true, value: { recurrence: { type: 'NONE' }, resetStage: null } });
     expect(repeatFromForm({ ...repeatFormOf(null), type: '' }).ok).toBe(false);
     expect(repeatFromForm({ ...repeatFormOf(null), type: 'MONTHLY', dayOfMonth: '' }).ok).toBe(false);

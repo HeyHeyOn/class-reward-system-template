@@ -2,7 +2,7 @@
 
 import type { IsoWeekday } from '@/domain/types';
 import { Field, Icon, Input, SegmentedControl, cx } from '../../ui';
-import { ResetStageChoice } from './LedgerParts';
+import { StageChoice } from './LedgerParts';
 import {
   formatInstant, previewNextReset, recurrenceSummary, repeatFromForm, resetStageSummary,
   type RepeatForm, type RepeatType,
@@ -83,7 +83,8 @@ export function RepeatFields({ form, onChange, now, idPrefix = 'ledger-repeat', 
       {repeating ? (
         <div>
           <p className="mb-1.5 text-[13px] font-bold">초기화하면</p>
-          <ResetStageChoice label="초기화하면" value={form.resetStage} onChange={(resetStage) => onChange({ ...form, resetStage })} />
+          {/* A repeat that resets nothing (kept only from old Sheets data) shows no stage until one is chosen. */}
+          <StageChoice label="초기화하면" value={form.resetStage === 'NONE' ? null : form.resetStage} onChange={(resetStage) => onChange({ ...form, resetStage })} />
           <p className="mt-1.5 text-xs text-[var(--theme-muted-text)]">이 과제를 가진 학생(미부여가 아닌 학생)이 모두 고른 단계로 바뀌어요. 미부여인 학생은 그대로예요.</p>
         </div>
       ) : form.type === 'NONE' ? (
