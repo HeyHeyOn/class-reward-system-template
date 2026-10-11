@@ -265,8 +265,13 @@ describe('create, bulk and delete', () => {
     fireEvent.click(within(within(sheet).getByRole('group', { name: '반복 주기' })).getByRole('button', { name: '매일' }));
     fireEvent.click(within(sheet).getByRole('tab', { name: /^대상 학생/ }));
     fireEvent.click(within(sheet).getByRole('checkbox', { name: '김민준 대상' }));
-    fireEvent.click(within(sheet).getByRole('checkbox', { name: '이서연 대상' }));
-    fireEvent.change(within(sheet).getByRole('combobox', { name: '이서연 처음 단계' }), { target: { value: 'PENDING' } });
+    // A stage pill picks the student too; 미부여 leaves them out again.
+    fireEvent.click(within(sheet).getByRole('button', { name: '이서연 미완료' }));
+    expect((within(sheet).getByRole('checkbox', { name: '이서연 대상' }) as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(within(sheet).getByRole('checkbox', { name: '최하윤 대상' }));
+    expect(within(sheet).getByRole('button', { name: '최하윤 완료 가능' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(within(sheet).getByRole('button', { name: '최하윤 미부여' }));
+    expect((within(sheet).getByRole('checkbox', { name: '최하윤 대상' }) as HTMLInputElement).checked).toBe(false);
     fireEvent.click(within(sheet).getByRole('button', { name: '과제 만들기' }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '새 과제' })).toBeNull());
     expect(server.writes('POST /tasks')[0].body).toEqual({

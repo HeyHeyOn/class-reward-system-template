@@ -4,7 +4,7 @@ import { useMemo, useState, useRef } from 'react';
 import type { TaskStage } from '@/domain/taskStage';
 import { Button, Callout, Checkbox, Sheet, cx } from '../../ui';
 import { DefinitionFields } from './DefinitionFields';
-import { ErrorNote, studentLabels, type LedgerStudent } from './LedgerParts';
+import { ErrorNote, StagePicker, studentLabels, type LedgerStudent } from './LedgerParts';
 import { ledgerClient, newOperationId } from './ledgerClient';
 import { compareStudentIds, definitionFromForm, repeatFormOf, repeatFromForm, stageLabel, type DefinitionForm, type RepeatForm } from './ledgerFormat';
 import { RepeatFields } from './RepeatFields';
@@ -130,12 +130,9 @@ export function NewTaskSheet({ ledger, opener, students, unit, notify }: {
                         <span className="truncate text-sm font-bold">{name}</span>
                         <span className="shrink-0 text-[11px] font-semibold tabular-nums text-[var(--theme-muted-text)] opacity-70">{student.studentId}</span>
                       </span>
-                      {stage ? (
-                        <select aria-label={`${name} 처음 단계`} value={stage} onChange={(event) => pick([student.studentId], event.target.value as TaskStage)}
-                          className="h-8 rounded-[9px] border border-[var(--crs-line-strong)] bg-[var(--theme-input)] px-2 text-xs font-bold">
-                          {STARTING_STAGES.map((option) => <option key={option} value={option}>{stageLabel(option)}</option>)}
-                        </select>
-                      ) : <span className="text-xs font-semibold text-[var(--theme-muted-text)]">미부여</span>}
+                      {/* Same pills as 학생 현황: 미부여 leaves the student out, any other stage picks them. */}
+                      <StagePicker label={name} value={stage ?? 'UNASSIGNED'}
+                        onChange={(next) => pick([student.studentId], next === 'UNASSIGNED' ? null : next)} />
                     </div>
                   );
                 })}
