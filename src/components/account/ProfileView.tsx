@@ -52,7 +52,7 @@ export function ProfileView({ model }: Readonly<{ model: ProfileViewModel }>) {
     setBusy(true);
     setStatus('');
     setError('');
-    const reply = await accountRequest('/api/account/profile', 'POST', { nickname: trimmed, avatar });
+    const reply = await accountRequest('/api/account/profile', 'POST', { nickname: trimmed, avatar, expectedSessionId: model.notice.expectedSessionId });
     setBusy(false);
     if (!reply.ok) {
       setError(reply.error ?? '프로필을 저장하지 못했어요. 잠시 뒤 다시 시도해 주세요.');
@@ -135,7 +135,7 @@ export function ProfileView({ model }: Readonly<{ model: ProfileViewModel }>) {
 
       {withdrawOpen ? (
         <Modal title="정말 탈퇴할까요?" description="탈퇴하면 아래처럼 처리돼요." onClose={() => setWithdrawOpen(false)} size="md" tone="danger">
-          <WithdrawalConfirm classNames={model.classNames} onCancel={() => setWithdrawOpen(false)} />
+          <WithdrawalConfirm classNames={model.classNames} expectedSessionId={model.notice.expectedSessionId} onCancel={() => setWithdrawOpen(false)} />
         </Modal>
       ) : null}
       <LegalAgreementGate notice={model.notice} classNames={model.classNames} />

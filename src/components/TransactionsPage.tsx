@@ -454,13 +454,15 @@ function TransactionCancelDialog({ transaction, currencyUnit, opener, onClose, o
 }) {
   const detail = transaction.status === 'TASK_REWARD'
     ? '지급한 보상만큼 현재 잔액에서 회수하고, 이 과제 완료도 취소합니다. 초기화 후 새로 완료한 기록은 그대로 둡니다. 학급 나무가 아직 자라는 중이면 이 과제로 준 양분도, 펫이 자라는 중이면 이 과제로 오른 성장도 뺍니다.'
-    : transaction.status === 'TREE_WATER'
-      ? '양분 주기에 쓴 돈을 돌려주고, 학급 나무가 아직 자라는 중이면 그 양분도 뺍니다.'
-      : transaction.status === 'PET_FEED'
-        ? '먹이 주기에 쓴 돈을 돌려주고, 펫이 아직 자라는 중이면 그 먹이로 오른 성장도 뺍니다.'
-        : transaction.status === 'PET_DECOR'
-          ? '산 돈을 돌려주고, 그 꾸미기 물건을 거둬들입니다. 방에 놓여 있었다면 기본 물건으로 바뀝니다.'
-          : '이 거래를 되돌리는 반대 거래를 현재 잔액에 적용합니다.';
+    : transaction.status === 'TREE_HARVEST' || transaction.status === 'PET_GRADUATE'
+      ? '지급한 화폐 보상만 현재 잔액에서 회수합니다. 나무 수확·펫 졸업 기록과 함께 받은 보관함 물품·교환권은 그대로 남습니다.'
+      : transaction.status === 'TREE_WATER'
+        ? '양분 주기에 쓴 돈을 돌려주고, 학급 나무가 아직 자라는 중이면 그 양분도 뺍니다.'
+        : transaction.status === 'PET_FEED'
+          ? '먹이 주기에 쓴 돈을 돌려주고, 펫이 아직 자라는 중이면 그 먹이로 오른 성장도 뺍니다.'
+          : transaction.status === 'PET_DECOR'
+            ? '산 돈을 돌려주고, 그 꾸미기 물건을 거둬들입니다. 방에 놓여 있었다면 기본 물건으로 바뀝니다.'
+            : '이 거래를 되돌리는 반대 거래를 현재 잔액에 적용합니다.';
   return (
     <Modal size="sm" tone="danger" title="거래를 취소할까요?" ariaLabel="거래 취소 확인" opener={opener} onClose={onClose}
       footer={<>

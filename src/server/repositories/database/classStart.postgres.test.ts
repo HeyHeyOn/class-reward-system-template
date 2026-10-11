@@ -11,6 +11,8 @@ import { loadClassMembershipPage } from '@/server/classMembershipPageAccess';
 import { createClassMembershipRepository } from './classMemberships';
 import { createClassCreationCommand } from './classCreation';
 import { createClassStartRepository } from './classStart';
+import { createTeacherSessionStore, type TeacherSessionBinding } from '@/server/teacherSession';
+import { currentLegalRevision } from '@/lib/legalDocuments';
 
 const destination = vi.hoisted(() => ({ pool: undefined as Pool | undefined, sheets: vi.fn() }));
 vi.mock('server-only', () => ({}));
@@ -27,10 +29,18 @@ let subject: string;
 let cookie: string;
 let slug: string;
 let tenantId: string;
+let binding:TeacherSessionBinding;
+const version=currentLegalRevision().version;
 
-function sessionCookie(subjectValue = subject) {
+async function identity(subjectValue:string) {
+  const store=createTeacherSessionStore(db.owner);
+  const value={subject:subjectValue,...await store.begin(subjectValue,version)};
+  await store.mutate(value,'AGREE',{version});
+  return {accountGeneration:value.accountGeneration,sessionId:value.sessionId};
+}
+function sessionCookie(subjectValue = subject, sessionBinding=binding) {
   const response = new NextResponse();
-  setGoogleSessionCookie(response, { subject: subjectValue, email: `${subjectValue}@example.invalid`, issuedAt: Date.now() });
+  setGoogleSessionCookie(response, { subject: subjectValue, email: `${subjectValue}@example.invalid`, issuedAt: Date.now(),agreement:version,...sessionBinding });
   return `${GOOGLE_AUTH_COOKIE}=${response.cookies.get(GOOGLE_AUTH_COOKIE)!.value}`;
 }
 function startRequest(operationId = randomUUID(), headers: Record<string, string> = {}, body: Record<string, unknown> = {}) {
@@ -53,17 +63,20 @@ suite('new empty class start on native PostgreSQL', () => {
     expect(process.env.DATABASE_URL).toBeUndefined();
     db = await createDisposablePostgres(); destination.pool = db.runtime;
     vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
+    vi.stubEnv('NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT','system');
     vi.stubEnv('AUTH_SECRET', randomBytes(32).toString('hex'));
     destination.sheets.mockImplementation(() => { throw new Error('Sheets fallback forbidden.'); });
-    await db.owner.query(`GRANT EXECUTE ON FUNCTION public.platform_create_draft_class(uuid,text,text,text),
+    await db.owner.query(`GRANT EXECUTE ON FUNCTION public.platform_create_draft_class_authenticated(uuid,text,text,text,uuid,uuid,text),
       public.platform_list_memberships_by_google_subject(text), public.platform_find_tenant_by_slug(text),
       public.platform_find_membership_by_tenant_and_google_subject(uuid,text),
-      public.platform_get_new_class_setup(text,text), public.platform_start_new_class(uuid,text,text) TO app_runtime`);
+      public.platform_validate_teacher_session(text,uuid,uuid,boolean,text),
+      public.platform_get_new_class_setup(text,text), public.platform_start_new_class_authenticated(uuid,text,text,uuid,uuid,text) TO app_runtime;
+      REVOKE ALL ON FUNCTION public.platform_start_new_class(uuid,text,text),public.platform_create_draft_class(uuid,text,text,text) FROM app_runtime`);
   }, 60_000);
   beforeEach(async () => {
-    subject = `class-start-${randomUUID()}`; cookie = sessionCookie();
+    subject = `class-start-${randomUUID()}`; binding=await identity(subject); cookie = sessionCookie();
     const created = await createClassCreationCommand(db.runtime).create({ operationId: randomUUID(), subject,
-      email: `${subject}@example.invalid`, displayName: '새 학급' });
+      email: `${subject}@example.invalid`, displayName: '새 학급',...binding });
     slug = created.slug;
     tenantId = (await db.owner.query('SELECT id FROM tenants WHERE slug=$1', [slug])).rows[0].id;
     destination.sheets.mockClear();
@@ -100,7 +113,7 @@ suite('new empty class start on native PostgreSQL', () => {
   it('refuses missing/foreign identity, cross-origin and forged authority without writes', async () => {
     const before = await state();
     expect((await start(randomUUID(), { cookie: '' })).status).toBe(401);
-    expect((await start(randomUUID(), { cookie: sessionCookie('other-subject') })).status).toBe(403);
+    expect((await start(randomUUID(), { cookie: sessionCookie('other-subject',await identity('other-subject')) })).status).toBe(403);
     expect((await start(randomUUID(), { origin: 'https://foreign.example.invalid' })).status).toBe(403);
     expect((await start(randomUUID(), {}, { lifecycle: 'ACTIVE' })).status).toBe(400);
     expect(await createClassStartRepository(db.runtime).getSetup(slug, 'other-subject')).toBeNull();
@@ -112,7 +125,7 @@ suite('new empty class start on native PostgreSQL', () => {
     try {
       const pids = await Promise.all(connections.map(c => c.query('SELECT pg_backend_pid() AS pid')));
       expect(pids[0].rows[0].pid).not.toBe(pids[1].rows[0].pid);
-      const input = { operationId: randomUUID(), slug, subject };
+      const input = { operationId: randomUUID(), slug, subject,...binding };
       const results = await Promise.all(connections.map(c => createClassStartRepository(c).start(input)));
       expect(results.map(r => r.replayed).sort()).toEqual([false, true]);
       expect((await state()).receipts).toHaveLength(1);
@@ -126,8 +139,8 @@ suite('new empty class start on native PostgreSQL', () => {
     expect((await start()).status).toBe(409);
     expect(await state()).toEqual(before);
     const other = await createClassCreationCommand(db.runtime).create({ operationId: randomUUID(), subject,
-      email: `${subject}@example.invalid`, displayName: '다른 학급' });
-    await expect(createClassStartRepository(db.runtime).start({ operationId, slug: other.slug, subject }))
+      email: `${subject}@example.invalid`, displayName: '다른 학급',...binding });
+    await expect(createClassStartRepository(db.runtime).start({ operationId, slug: other.slug, subject,...binding }))
       .rejects.toMatchObject({ code: '23505' });
     expect((await db.owner.query('SELECT lifecycle FROM tenants WHERE slug=$1', [other.slug])).rows[0].lifecycle).toBe('DRAFT');
   });
@@ -141,7 +154,7 @@ suite('new empty class start on native PostgreSQL', () => {
     const legacyId = randomUUID();
     await db.owner.query("INSERT INTO tenants(id,slug,display_name) VALUES($1,'legacy-start-test','이전 학급')", [legacyId]);
     await db.owner.query("INSERT INTO tenant_memberships(tenant_id,user_id,role) SELECT $1,id,'OWNER' FROM users WHERE google_subject=$2", [legacyId, subject]);
-    await expect(createClassStartRepository(db.runtime).start({ operationId: randomUUID(), slug: 'legacy-start-test', subject }))
+    await expect(createClassStartRepository(db.runtime).start({ operationId: randomUUID(), slug: 'legacy-start-test', subject,...binding }))
       .rejects.toMatchObject({ code: '42501' });
   });
 
@@ -187,5 +200,26 @@ suite('new empty class start on native PostgreSQL', () => {
       FROM pg_proc p JOIN pg_roles r ON r.oid=p.proowner WHERE p.proname IN ('platform_start_new_class','platform_get_new_class_setup')`);
     expect(functions.rows).toHaveLength(2);
     for (const row of functions.rows) expect(row).toEqual({ prosecdef: true, proconfig: ['search_path=pg_catalog'], privileged_owner: true, no_public: true });
+    await expect(db.runtime.query('SELECT * FROM platform_start_new_class($1,$2,$3)',[randomUUID(),slug,subject])).rejects.toMatchObject({code:'42501'});
   });
+  it('serializes a previously authenticated start with withdrawal and rejects it after erasure commits', async () => {
+    const withdrawal=await db.owner.connect(), starter=await db.runtime.connect();
+    try {
+      await withdrawal.query('BEGIN');
+      await createTeacherSessionStore(withdrawal).mutate({subject,...binding},'WITHDRAW',{});
+      const pid=(await starter.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+      const result=createClassStartRepository(starter).start({operationId:randomUUID(),slug,subject,...binding})
+        .then(()=>({code:'accepted'}),error=>({code:error.code}));
+      let blocked=false;
+      for(let attempt=0;attempt<100&&!blocked;attempt++) {
+        blocked=(await db.owner.query('SELECT cardinality(pg_blocking_pids($1))>0 AS blocked',[pid])).rows[0].blocked;
+        if(!blocked) await new Promise(resolve=>setTimeout(resolve,10));
+      }
+      expect(blocked).toBe(true);
+      await withdrawal.query('COMMIT');
+      expect(await result).toEqual({code:'28000'});
+      expect((await db.owner.query('SELECT lifecycle FROM tenants WHERE id=$1',[tenantId])).rows).toEqual([{lifecycle:'SUSPENDED'}]);
+      expect((await db.owner.query('SELECT count(*)::int n FROM new_class_start_operations WHERE tenant_id=$1',[tenantId])).rows[0].n).toBe(0);
+    } finally { await withdrawal.query('ROLLBACK'); withdrawal.release(); starter.release(); }
+  },20_000);
 });

@@ -2,9 +2,7 @@
 
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  PET_COLORS,
   PET_DECOR_SLOTS,
-  PET_MAX_COMPANIONS,
   PET_NAME_LENGTH,
   PET_SHOP_ITEMS,
   PET_SHOP_SLOTS,
@@ -12,10 +10,7 @@ import {
   PET_SPECIES,
   PET_SPECIES_NAMES,
   cleanPetName,
-  petColorName,
   petDecorKey,
-  petStageProgress,
-  petStageSpan,
   type PetShopSlot,
   type PetSpecies,
   type PetStage,
@@ -27,32 +22,20 @@ import ROOM, { type PetRoom, type PetRoomPetInit } from '@/lib/pet/petRoom';
 import { isSessionRequired, type BankFailure } from '../bank/bankClient';
 import { formatMoney } from '../bank/format';
 import { NoticeToast, type Notice } from '../bank/NoticeToast';
-import { Button, Callout, Icon, IconButton, Input, Modal, SegmentedControl, Spinner, cx } from '../ui';
+import { Button, Callout, IconButton, Input, Modal, SegmentedControl, Spinner, cx } from '../ui';
 import { GraduateConfirm, PetCelebration, type PetCelebrationMoment } from './PetMoments';
 import { PetPicture } from './PetPicture';
 import { DecorPreview, PetRoomCanvas } from './PetRoomCanvas';
 import { adoptPet, buyPetDecor, carePet, graduatePet, placePetDecor, setPetCompanions } from './petBankClient';
+import { nextStageTitle, petTitle, StageBar } from './petProgress';
+import { PetDex } from './PetDex';
+export { BankPetCard } from './BankPetCard';
 
-const STAGE_WORDS = ['', '아기', '어린', '다 자란'] as const;
 const EGG_CROP = [6, 11, 12, 12] as const;
 /** How fast the room's needs move in the app (the sample page runs at 1). */
 const ROOM_RATE = 0.3;
 /** Weekday hours from full to hungry. */
 const HUNGRY_AFTER_HOURS = 36;
-
-function petTitle(pet: Pick<PetDto, 'species' | 'stage'>): string {
-  return pet.stage === 0 ? `${PET_SPECIES_NAMES[pet.species]} 알` : `${STAGE_WORDS[pet.stage]} ${PET_SPECIES_NAMES[pet.species]}`;
-}
-
-/** The next stage as students read it ('어린 토끼', null once grown up), how far toward it, and the stage's points ('3/40'). */
-function nextStageTitle(pet: Pick<PetDto, 'species' | 'stage' | 'growth'>, goal: number): { title: string | null; fraction: number; points: string } {
-  const progress = petStageProgress(pet.growth, goal, pet.stage);
-  const span = petStageSpan(pet.growth, goal, pet.stage);
-  return {
-    title: progress.next === null ? null : petTitle({ species: pet.species, stage: progress.next as PetStage }),
-    fraction: progress.fraction, points: span ? `${span.done}/${span.need}` : '',
-  };
-}
 
 /** Hours since `iso` that fall on weekdays (Korea time): a pet does not get hungry over a weekend. */
 function weekdayHoursSince(iso: string, now: number): number {
@@ -63,50 +46,6 @@ function weekdayHoursSince(iso: string, now: number): number {
     if (day !== 0 && day !== 6) hours += Math.min(1, (now - t) / step);
   }
   return hours;
-}
-
-/** The way to the next stage only — students never see how far the whole goal is. */
-function StageBar({ fraction, label, track = 'bg-[var(--theme-accent-soft)]' }: Readonly<{ fraction: number; label: string; track?: string }>) {
-  const percent = Math.round(Math.min(1, Math.max(0, fraction)) * 100);
-  return (
-    <span role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}
-      className={cx('block h-2.5 overflow-hidden rounded-full', track)}>
-      <span className="block h-full rounded-full bg-[var(--theme-accent-solid)] transition-[width] duration-300" style={{ width: `${percent}%` }} />
-    </span>
-  );
-}
-
-/** The pet on the bank home: a small picture, its stage with the stage's points, and the way to the next stage. Opens the pet screen. */
-export function BankPetCard({ view, onOpen }: Readonly<{ view: PetStudentViewDto; onOpen: () => void }>) {
-  if (!view.enabled) return null;
-  const pet = view.pet;
-  const next = pet ? nextStageTitle(pet, view.goal) : null;
-  return (
-    <button type="button" onClick={onOpen}
-      aria-label={pet ? `${pet.name}, ${petTitle(pet)}${next?.points ? ` ${next.points}` : ''}${next?.title ? `, 다음 단계 ${next.title}` : ', 다 자랐어요'}` : '펫 키우기, 알을 골라 시작해요'}
-      className="mt-4 flex w-full items-center gap-4 rounded-[22px] border border-[var(--crs-line)] bg-[var(--theme-surface)] p-4 text-left shadow-[var(--crs-shadow-sm)] transition-[transform,background-color] duration-150 hover:bg-[var(--crs-subtle-hover)] active:scale-[0.99]">
-      <span aria-hidden="true" className="shrink-0 rounded-2xl bg-[var(--theme-accent-soft)] p-1">
-        {pet ? <PetPicture species={pet.species} stage={pet.stage} color={pet.color} accessory={pet.accessory} size={80} animate={view.awake} />
-          : <PetPicture species="dog" stage={0} color={null} size={80} crop={EGG_CROP} silhouette />}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[18px] font-black tracking-[-0.02em]">{pet ? pet.name : '펫 키우기'}</span>
-        {pet && next ? (
-          <>
-            <span className="mt-0.5 flex items-baseline justify-between gap-2 text-[13px] font-semibold text-[var(--theme-muted-text)]">
-              <span className="min-w-0 truncate">{petTitle(pet)}</span>
-              {next.points ? <span className="shrink-0 font-bold tabular-nums text-[var(--theme-text)]">{next.points}</span> : null}
-            </span>
-            <span className="mt-1.5 block">
-              <StageBar fraction={next.fraction} label={next.title ? `${next.title}까지` : '다 자람'} />
-              <span className="mt-1 block text-[12px] font-bold text-[var(--theme-accent-text)]">{next.title ? `다음 단계: ${next.title}` : '다 자랐어요! 졸업할 수 있어요'}</span>
-            </span>
-          </>
-        ) : <span className="mt-0.5 block text-[13px] font-semibold text-[var(--theme-muted-text)]">알을 골라 나만의 펫을 키워 보세요</span>}
-      </span>
-      <Icon name="chevronRight" size={20} className="shrink-0 text-[var(--theme-muted-text)]" />
-    </button>
-  );
 }
 
 type BankPetViewProps = Readonly<{
@@ -473,7 +412,7 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
           <Button className="mt-4" variant="primary" size="lg" block icon="paw" onClick={() => void adopt()} loading={busy === 'adopt'}
             disabled={!pickSpecies || !cleanPetName(pickName) || !view.awake || Boolean(busy)}>이 알로 시작하기</Button>
           <Button className="mt-2" variant="ghost" block icon="package" onClick={(event) => { setNotice(''); setActionError(''); setPopup({ kind: 'dex', opener: event.currentTarget }); }}>
-            도감 보기 · {view.dex.length}마리
+            도감 보기
           </Button>
         </section>
       ) : null}
@@ -559,7 +498,7 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
           description="다 키워 졸업한 펫이 남아요. 졸업한 펫은 방으로 불러 함께 지낼 수 있어요(키우는 펫까지 세 마리)."
           footer={<Button variant="ghost" onClick={() => { setPopup(null); setActionError(''); }}>닫기</Button>}>
           {actionError ? <div role="alert" className="mb-2"><Callout tone="danger">{actionError}</Callout></div> : null}
-          <PetDex view={view} busy={busy === 'company'} onCompany={(petIds) => void company(petIds)} />
+          <PetDex view={view} busy={busy === 'company'} onCompany={(petIds) => void company(petIds)} onSessionExpired={onSessionExpired} />
         </Modal>
       ) : null}
       {graduateOpen && pet ? (
@@ -665,61 +604,5 @@ function PetShop({ view, room, animals, running, balance, currencyUnit, slot, on
       {items.length === 1 ? <p className="mt-2 text-[13px] font-semibold text-[var(--theme-muted-text)]">{withParticle(PET_SHOP_SLOT_NAMES[slot], '은/는')} 아직 파는 물건이 없어요.</p> : null}
       {!chosen ? <p className="mt-3 text-[12.5px] font-semibold text-[var(--theme-muted-text)]">물건을 누르면 위의 방에서 먼저 볼 수 있어요.</p> : null}
     </Modal>
-  );
-}
-
-/** The 도감: graduated pets to call back to the room, then every species and color, the collected ones in color. */
-function PetDex({ view, busy, onCompany }: Readonly<{ view: PetStudentViewDto; busy: boolean; onCompany: (petIds: string[]) => void }>) {
-  const got = new Map(view.dex.map((entry) => [`${entry.species}:${entry.color}`, entry]));
-  const total = Object.values(PET_COLORS).reduce((sum, colors) => sum + colors.length, 0);
-  const company = view.companions.map((entry) => entry.petId);
-  const full = company.length >= PET_MAX_COMPANIONS;
-  return (
-    <div className="space-y-5">
-      {view.dex.length > 0 ? (
-        <section aria-labelledby="pet-dex-company" className="space-y-2">
-          <h3 id="pet-dex-company" className="text-[15px] font-black">졸업한 펫 <span className="text-[13px] font-bold text-[var(--theme-muted-text)]">· 방에 {company.length}/{PET_MAX_COMPANIONS}마리</span></h3>
-          {!view.pet ? <p className="text-[12.5px] font-semibold text-[var(--theme-muted-text)]">새 알을 고르면 졸업한 펫을 방으로 부를 수 있어요.</p> : null}
-          <ul className="grid gap-2 sm:grid-cols-2">
-            {[...view.dex].reverse().map((entry) => {
-              const here = company.includes(entry.petId);
-              return (
-                <li key={entry.petId} className="flex items-center gap-3 rounded-[14px] border border-[var(--crs-line)] p-2">
-                  <span className="shrink-0 rounded-[10px] bg-[var(--theme-accent-soft)]">
-                    <PetPicture species={entry.species} stage={3} color={entry.color} accessory={entry.accessory} size={48} crop={[2, 4, 20, 20]} />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[14px] font-bold">{entry.name}</span>
-                    <span className="block truncate text-[12px] font-semibold text-[var(--theme-muted-text)]">{petColorName(entry.species, entry.color)} {PET_SPECIES_NAMES[entry.species]}</span>
-                  </span>
-                  <Button size="sm" variant={here ? 'secondary' : 'primary'} disabled={busy || !view.awake || !view.pet || (!here && full)}
-                    onClick={() => onCompany(here ? company.filter((id) => id !== entry.petId) : [...company, entry.petId])}>
-                    {here ? '돌려보내기' : '방에 부르기'}
-                  </Button>
-                </li>
-              );
-            })}
-          </ul>
-          {full && view.pet ? <p className="text-[12.5px] font-semibold text-[var(--theme-muted-text)]">키우는 펫까지 세 마리가 함께 지내요. 다른 펫을 부르려면 먼저 한 마리를 돌려보내 주세요.</p> : null}
-        </section>
-      ) : null}
-      <section aria-labelledby="pet-dex-all">
-        <h3 id="pet-dex-all" className="text-[15px] font-black">모은 펫 <span className="text-[13px] font-bold tabular-nums text-[var(--theme-muted-text)]">{got.size}/{total}</span></h3>
-        <p className="mt-0.5 text-[12.5px] font-semibold text-[var(--theme-muted-text)]">아직 키우지 못한 종·색은 그림자로 보여요.</p>
-        <ul className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-7">
-          {PET_SPECIES.flatMap((value) => PET_COLORS[value].map((color) => {
-            const entry = got.get(`${value}:${color.id}`);
-            return (
-              <li key={`${value}:${color.id}`} className="flex flex-col items-center gap-0.5 rounded-[12px] bg-[var(--theme-accent-soft)] p-1.5 text-center">
-                <PetPicture species={value} stage={3} color={color.id} accessory={entry?.accessory ?? null} size={64} silhouette={!entry}
-                  label={entry ? `${entry.name}, ${color.name} ${PET_SPECIES_NAMES[value]}` : '아직 키우지 않은 펫'} />
-                <span className="w-full truncate text-[11.5px] font-bold">{entry ? entry.name : '???'}</span>
-                {entry ? <span className="w-full truncate text-[10.5px] font-semibold text-[var(--theme-muted-text)]">{color.name} {PET_SPECIES_NAMES[value]}</span> : null}
-              </li>
-            );
-          }))}
-        </ul>
-      </section>
-    </div>
   );
 }

@@ -1,9 +1,11 @@
 import { getProductionFreezingConsentHandlers } from '@/server/migration/freezingConsentProduction';
+import { getTeacherGoogleSessionFromRequest } from '@/server/teacherSession';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request): Promise<Response> {
   try {
+    if (!await getTeacherGoogleSessionFromRequest(request)) throw new Error('Authentication required');
     const consent = getProductionFreezingConsentHandlers();
     let ordinary = false;
     try { consent.readRoutingHint(request); ordinary = true; } catch { /* Try only the separately authenticated start purpose. */ }

@@ -37,6 +37,7 @@ const READ_AUTHORITY = [
   ['bank/me/tree', 'GET', 'createConfiguredClassTree'],
   ['class-tree', 'GET', 'createConfiguredClassTree'],
   ['bank/me/pet', 'GET', 'createConfiguredPets'],
+  ['bank/me/pet/dex', 'GET', 'createConfiguredPets'],
   ['pets', 'GET', 'createConfiguredPets'],
   ['bank/me/bag', 'GET', 'createConfiguredStudentBag'],
   ['bag/students/[studentId]', 'GET', 'createConfiguredStudentBag'],
@@ -143,7 +144,7 @@ describe('tenant read route PostgreSQL authority', () => {
       .sort((left, right) => `${left[0]}:${left[1]}`.localeCompare(`${right[0]}:${right[1]}`));
     const authority = READ_AUTHORITY.map(([route, method]) => [route, method] as string[])
       .sort((left, right) => `${left[0]}:${left[1]}`.localeCompare(`${right[0]}:${right[1]}`));
-    expect(inventory).toHaveLength(36);
+    expect(inventory).toHaveLength(37);
     expect(authority).toEqual(inventory);
   });
 

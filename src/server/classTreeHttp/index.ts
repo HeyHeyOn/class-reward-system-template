@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { readBoundedRequestText, RequestBodyError } from '@/server/boundedRequestBody';
 import { ClassTreeError } from '@/server/repositories/database/classTree';
 
 const NO_STORE = { 'Cache-Control': 'no-store' } as const;
@@ -14,17 +15,16 @@ export function classTreeAdminRequired(): Response {
 
 /** Reads a small JSON object body; returns a ready error response when it is not one. */
 export async function readClassTreeJson(request: Request): Promise<{ value: Record<string, unknown> } | Response> {
-  const invalid = () => classTreeJson({ error: '요청 형식이 올바르지 않아요. 화면을 새로 고친 뒤 다시 시도해 주세요.', code: 'INVALID_REQUEST' }, 400);
+  const invalid = (status = 400) => classTreeJson({ error: '요청 형식이 올바르지 않아요. 화면을 새로 고친 뒤 다시 시도해 주세요.', code: 'INVALID_REQUEST' }, status);
   if (new URL(request.url).search !== ''
     || request.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase() !== 'application/json') return invalid();
-  const text = await request.text();
-  if (text.length > 10_000) return invalid();
   try {
+    const text = await readBoundedRequestText(request, 10_000);
     const value: unknown = JSON.parse(text);
     if (!value || typeof value !== 'object' || Array.isArray(value)) return invalid();
     return { value: value as Record<string, unknown> };
-  } catch {
-    return invalid();
+  } catch (error) {
+    return invalid(error instanceof RequestBodyError ? error.status : 400);
   }
 }
 

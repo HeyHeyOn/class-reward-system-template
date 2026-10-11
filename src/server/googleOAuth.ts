@@ -38,6 +38,9 @@ export type GoogleSession = {
   issuedAt: number;
   /** Version (YYYY-MM-DD) of the terms and privacy policy agreed to, for PostgreSQL classes. */
   agreement?: string;
+  /** Durable PostgreSQL identity binding; absent only on legacy Sheets cookies. */
+  accountGeneration?: string;
+  sessionId?: string;
 };
 
 /**
@@ -54,6 +57,8 @@ export type PendingAgreement = Readonly<{
   agreedVersion?: string;
   returnTo?: GoogleIdentityReturnTo;
   issuedAt: number;
+  accountGeneration?: string;
+  sessionId?: string;
 }>;
 
 export type GoogleIdentityState = Readonly<{
@@ -293,13 +298,14 @@ function sealPendingAgreement(pending: PendingAgreement): string {
 }
 
 function isPendingAgreement(value: unknown): value is PendingAgreement {
-  const keys = ['purpose', 'subject', 'email', 'name', 'mode', 'agreedVersion', 'returnTo', 'issuedAt'];
+  const keys = ['purpose', 'subject', 'email', 'name', 'mode', 'agreedVersion', 'returnTo', 'issuedAt', 'accountGeneration', 'sessionId'];
   if (!isRecord(value) || Object.keys(value).some((key) => !keys.includes(key))) return false;
   return value.purpose === 'agreement' && validSubject(value.subject) && validEmail(value.email)
     && (value.name === undefined || validString(value.name, 1, 200))
     && (value.mode === 'signup' || value.mode === 'update')
     && (value.agreedVersion === undefined || (typeof value.agreedVersion === 'string' && AGREEMENT_VERSION_PATTERN.test(value.agreedVersion)))
     && (value.returnTo === undefined || parseGoogleIdentityReturnTo(value.returnTo) === value.returnTo)
+    && validIdentityBinding(value)
     && validIssuedAt(value.issuedAt, PENDING_AGREEMENT_MAX_AGE_SECONDS);
 }
 
@@ -493,10 +499,17 @@ function getStrongGeneratorCookieKey(env: GoogleAuthEnv, kind: 'state' | 'grant'
 }
 
 function isGoogleSession(value: unknown): value is GoogleSession {
-  if (!isRecord(value) || Object.keys(value).some((key) => !['subject', 'email', 'name', 'issuedAt', 'agreement'].includes(key))) return false;
+  if (!isRecord(value) || Object.keys(value).some((key) => !['subject', 'email', 'name', 'issuedAt', 'agreement', 'accountGeneration', 'sessionId'].includes(key))) return false;
   if (!validSubject(value.subject) || !validEmail(value.email) || (value.name !== undefined && !validString(value.name, 1, 200))) return false;
   if (value.agreement !== undefined && (typeof value.agreement !== 'string' || !AGREEMENT_VERSION_PATTERN.test(value.agreement))) return false;
-  return validIssuedAt(value.issuedAt, MAX_AGE_SECONDS);
+  return validIdentityBinding(value) && validIssuedAt(value.issuedAt, MAX_AGE_SECONDS);
+}
+
+function validIdentityBinding(value: Record<string, unknown>): boolean {
+  if (value.accountGeneration === undefined && value.sessionId === undefined) return true;
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  return typeof value.accountGeneration === 'string' && uuid.test(value.accountGeneration)
+    && typeof value.sessionId === 'string' && uuid.test(value.sessionId);
 }
 
 function assertGeneratorConsentState(value: GeneratorConsentState): void {

@@ -1,6 +1,7 @@
 import 'server-only';
 
 import type { GoogleSession } from '@/server/googleOAuth';
+import { isCurrentTeacherSession, type TeacherSessionQueryable } from '@/server/teacherSession';
 import {
   resolveTenantContext,
   type TenantContext,
@@ -43,8 +44,9 @@ export async function authorizeTenantAdmin(
   tenant: TenantRecord,
   session: Pick<GoogleSession, 'subject'> | null,
   memberships: TenantMembershipStore,
+  sessionQueryable?: TeacherSessionQueryable,
 ): Promise<TenantMembership> {
-  if (!session) {
+  if (!session || !await isCurrentTeacherSession(session, sessionQueryable)) {
     throw new TenantAuthorizationError('UNAUTHENTICATED', 401, 'Google authentication is required.');
   }
   const membership = await memberships.findByTenantAndSubject(tenant.id, session.subject);

@@ -1,5 +1,6 @@
 import 'server-only';
-import { getGoogleSessionFromRequest } from '@/server/googleOAuth';
+import { readBoundedRequestText, RequestBodyError } from '@/server/boundedRequestBody';
+import { getTeacherGoogleSessionFromRequest } from '@/server/teacherSession';
 import type { GoogleSession } from '@/server/googleOAuth';
 
 const MAX_BYTES = 2048;
@@ -29,7 +30,7 @@ export function hasSameOrigin(request: Request, url: URL): boolean {
 export async function readClassMutationRequest(request: Request): Promise<Response | {
   session: GoogleSession; body: Record<string, unknown>;
 }> {
-  const session = getGoogleSessionFromRequest(request);
+  const session = await getTeacherGoogleSessionFromRequest(request);
   if (!session) return classMutationReply(401, { error: '로그인이 필요하거나 만료되었습니다. 다시 로그인해 주세요.' });
   const url = new URL(request.url);
   if (request.method !== 'POST' || url.search || !hasSameOrigin(request, url)
@@ -43,20 +44,11 @@ export async function readClassMutationRequest(request: Request): Promise<Respon
   }
   let body: unknown;
   try {
-    const reader = request.body?.getReader();
-    if (!reader) return classMutationReply(400, { error: '학급 이름을 확인해 주세요.' });
-    const parts: Uint8Array[] = []; let size = 0;
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        size += value.byteLength;
-        if (size > MAX_BYTES) { await reader.cancel(); return classMutationReply(413, { error: '입력이 너무 큽니다.' }); }
-        parts.push(value);
-      }
-    } finally { reader.releaseLock(); }
-    body = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(parts)));
-  } catch { return classMutationReply(400, { error: '입력을 확인해 주세요.' }); }
+    body = JSON.parse(await readBoundedRequestText(request, MAX_BYTES));
+  } catch (error) {
+    if (error instanceof RequestBodyError && error.status === 413) return classMutationReply(413, { error: '입력이 너무 큽니다.' });
+    return classMutationReply(400, { error: '입력을 확인해 주세요.' });
+  }
   if (!body || typeof body !== 'object' || Array.isArray(body)) return classMutationReply(400, { error: '입력을 확인해 주세요.' });
   return { session, body: body as Record<string, unknown> };
 }

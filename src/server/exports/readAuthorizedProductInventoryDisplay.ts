@@ -360,7 +360,7 @@ export async function readAuthorizedProductInventoryDisplay(
             || !UUID.test(row.user_id) || !boundedString(row.google_subject, 1024)) return null;
           return { id: row.id, tenantId: row.tenant_id, userId: row.user_id, googleSubject: row.google_subject, role: row.role } as TenantMembership;
         },
-      });
+      }, { query });
       await query("SELECT set_config('app.tenant_id', $1, true)", [tenant.id]);
       const data = await query(DISPLAY_SQL, [tenant.id, session.subject, membership.id, membership.userId, tenant.slug]);
       check(); checkIdentity();

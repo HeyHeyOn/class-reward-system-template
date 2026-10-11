@@ -1,3 +1,4 @@
+import { hasTeacherSessionBinding, type TeacherSessionBinding } from '@/server/teacherSession';
 import 'server-only';
 import { createHash } from 'node:crypto';
 import { withTenantSnapshot, withTenantTransaction, type TenantTransaction } from '@/server/db/transaction';
@@ -43,13 +44,13 @@ class XlsxImportStepFailure extends Error {
   }
 }
 
-type Admission = Readonly<{ context: TrustedTenantRequestContext; mode: XlsxImportMode; subject: string }>;
+type Admission = Readonly<{ context: TrustedTenantRequestContext; mode: XlsxImportMode; subject: string; binding:TeacherSessionBinding }>;
 
 async function admit(request: Request, dependencies: XlsxImportDependencies): Promise<Admission> {
   const context = (dependencies.getContext ?? getOptionalTrustedTenantRequestContext)();
   if (!context) throw new RequestRefusal(404, 'Not found.');
   const { tenant, session, membership } = context;
-  if (!session || !membership || membership.tenantId !== tenant.id || membership.googleSubject !== session.subject
+  if (!session || !hasTeacherSessionBinding(session) || !membership || membership.tenantId !== tenant.id || membership.googleSubject !== session.subject
     || (membership.role !== 'OWNER' && membership.role !== 'ADMIN')) {
     throw new RequestRefusal(403, '학급 관리자(구글 계정 로그인)만 자료를 가져올 수 있어요.');
   }
@@ -61,10 +62,10 @@ async function admit(request: Request, dependencies: XlsxImportDependencies): Pr
   if (tenant.lifecycle === 'DRAFT') {
     const setup = membership.role === 'OWNER' ? await dependencies.getNewClassSetup(tenant.slug, session.subject) : null;
     if (!setup || setup.lifecycle !== 'DRAFT') throw new RequestRefusal(403, '새 학급을 만든 선생님만 사용을 시작할 수 있어요.');
-    return { context, mode: 'start', subject: session.subject };
+    return { context, mode: 'start', subject: session.subject, binding:{ accountGeneration:session.accountGeneration,sessionId:session.sessionId } };
   }
   if (tenant.lifecycle !== 'ACTIVE') throw new RequestRefusal(409, '지금은 이 학급에 자료를 가져올 수 없어요.');
-  return { context, mode: 'import', subject: session.subject };
+  return { context, mode: 'import', subject: session.subject, binding:{ accountGeneration:session.accountGeneration,sessionId:session.sessionId } };
 }
 
 type Upload = Readonly<{ bytes: Uint8Array; fileName: string; fields: Readonly<Record<string, string>> }>;
@@ -220,7 +221,7 @@ export function createXlsxImportHandlers(dependencies: XlsxImportDependencies): 
         const result = await dependencies.runTenantTransaction(tenant.id, async tx => {
           try {
             return await executeXlsxImportPlan(tx, { tenantId: tenant.id, plan, operationId,
-              ...(admission.mode === 'start' ? { start: { slug: tenant.slug, subject: admission.subject } } : {}) });
+              ...(admission.mode === 'start' ? { start: { slug: tenant.slug, subject: admission.subject, ...admission.binding } } : {}) });
           } catch (error) {
             if (error instanceof XlsxImportConflictError) throw error;
             throw new XlsxImportStepFailure(error);

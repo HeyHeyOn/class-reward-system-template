@@ -1,7 +1,7 @@
 import { headers } from 'next/headers';
 import { ClassesSelectionView } from './ClassesSelectionView';
 import { loadClassMembershipPage } from '@/server/classMembershipPageAccess';
-import { getGoogleSessionFromRequest } from '@/server/googleOAuth';
+import { getTeacherGoogleSessionFromRequest } from '@/server/teacherSession';
 import { getProductionClassDashboardRepository } from '@/server/repositories/database/classDashboard';
 import { loadTeacherAccountView, teacherAccountsEnabled } from '@/server/teacherAccounts';
 
@@ -13,10 +13,10 @@ export default async function ClassesPage({ searchParams }: Readonly<{ searchPar
   const request = new Request('http://classes.internal/classes', { headers: requestHeaders });
   const repository = getProductionClassDashboardRepository();
   const model = await loadClassMembershipPage(request, {
-    getSession: getGoogleSessionFromRequest,
+    getSession: getTeacherGoogleSessionFromRequest,
     listByGoogleSubject: repository.listByGoogleSubject,
   });
-  const session = model.kind === 'MEMBERSHIPS' && teacherAccountsEnabled() ? getGoogleSessionFromRequest(request) : null;
+  const session = model.kind === 'MEMBERSHIPS' && teacherAccountsEnabled() ? await getTeacherGoogleSessionFromRequest(request) : null;
   const account = session ? await loadTeacherAccountView(session) : undefined;
   const withdrawn = (await searchParams).withdrawn === '1';
   return <ClassesSelectionView model={model} account={account} withdrawn={withdrawn} />;

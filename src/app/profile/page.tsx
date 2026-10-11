@@ -2,7 +2,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { ProfileView } from '@/components/account/ProfileView';
 import { LEGAL_REVISIONS } from '@/lib/legalDocuments';
-import { getGoogleSessionFromRequest } from '@/server/googleOAuth';
+import { getTeacherGoogleSessionFromRequest } from '@/server/teacherSession';
 import { getProductionClassDashboardRepository } from '@/server/repositories/database/classDashboard';
 import { getProductionTeacherAccountStore, legalNoticeFor, resolveTeacherProfile, teacherAccountsEnabled } from '@/server/teacherAccounts';
 
@@ -19,7 +19,7 @@ function seoulDateTime(iso: string) {
 
 export default async function ProfilePage() {
   if (!teacherAccountsEnabled()) redirect('/classes');
-  const session = getGoogleSessionFromRequest(new Request('http://classes.internal/profile', { headers: await headers() }));
+  const session = await getTeacherGoogleSessionFromRequest(new Request('http://classes.internal/profile', { headers: await headers() }), { requireAgreement: false });
   if (!session) redirect('/classes');
   const accounts = getProductionTeacherAccountStore();
   const [stored, agreement, memberships] = await Promise.all([

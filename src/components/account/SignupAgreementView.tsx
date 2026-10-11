@@ -16,11 +16,12 @@ const theme = themeStyles('white');
  * The step between Google sign-in and the account: a new teacher agrees to sign up; an existing one
  * agrees to the terms in force (or withdraws).
  */
-export function SignupAgreementView({ mode, email, changes, classNames }: Readonly<{
+export function SignupAgreementView({ mode, email, changes, classNames, expectedSessionId }: Readonly<{
   mode: 'signup' | 'update';
   email: string;
   changes: readonly LegalRevision[];
   classNames?: readonly string[];
+  expectedSessionId?: string;
 }>) {
   const [choices, setChoices] = useState(NO_AGREEMENT);
   const [busy, setBusy] = useState(false);
@@ -30,7 +31,7 @@ export function SignupAgreementView({ mode, email, changes, classNames }: Readon
   async function agree() {
     setBusy(true);
     setError('');
-    const reply = await accountRequest('/api/account/agreement', 'POST', choices);
+    const reply = await accountRequest('/api/account/agreement', 'POST', { ...choices, expectedSessionId });
     if (!reply.ok) {
       setBusy(false);
       setError(reply.status === 401
@@ -64,7 +65,7 @@ export function SignupAgreementView({ mode, email, changes, classNames }: Readon
         </p>
         <div className="mt-5 space-y-3.5">
           {declining ? (
-            <WithdrawalConfirm classNames={classNames} onCancel={() => setDeclining(false)} cancelLabel="돌아가서 동의하기" />
+            <WithdrawalConfirm classNames={classNames} expectedSessionId={expectedSessionId} onCancel={() => setDeclining(false)} cancelLabel="돌아가서 동의하기" />
           ) : (
             <>
               {signup ? null : <LegalChanges changes={changes} />}

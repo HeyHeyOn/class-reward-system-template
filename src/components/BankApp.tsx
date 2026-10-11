@@ -3,6 +3,7 @@
 import styles from './classroom.module.css';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { getFontFamilyCss } from '@/lib/fontSettings';
 import { normalizeThemeColor, themeStyles } from './uiTheme';
 import { Button, Callout, Icon, IconButton, LoadingOverlay, Modal, Spinner } from './ui';
@@ -30,13 +31,16 @@ import { BankHome, BankTasksMenu } from './bank/BankHome';
 import { BankLogin } from './bank/BankLogin';
 import { BankTasks } from './bank/BankTasks';
 import { BankBagMenu, BankBagView } from './bank/BankBag';
-import { BankTreeCard, BankTreeView } from './bank/BankTree';
-import { BankPetCard, BankPetView } from './pet/BankPet';
+import { BankTreeCard } from './bank/BankTreeCard';
+import { BankPetCard } from './pet/BankPetCard';
 import { fetchPet } from './pet/petBankClient';
 import type { PetStudentViewDto } from '@/lib/petApi';
 import type { TreePlay } from './classTree/TreeCanvas';
 import { formatMoney } from './bank/format';
 import { useTaskCompletion, type CompletionOutcome, type CompletionSuccess } from './bank/useTaskCompletion';
+
+const BankTreeView = dynamic(() => import('./bank/BankTree').then((module) => module.BankTreeView));
+const BankPetView = dynamic(() => import('./pet/BankPet').then((module) => module.BankPetView));
 
 type Phase = 'checking' | 'unavailable' | 'login' | 'home';
 type View = 'home' | 'history' | 'tasks' | 'tree' | 'bag' | 'pet';
@@ -84,6 +88,10 @@ export function BankApp() {
   const pendingWater = useRef<string | null>(null);
   // Bumped on every login/logout/expiry so responses from an earlier session are ignored.
   const generation = useRef(0);
+  // Reads from before a confirmed mutation cannot replace its balance. Per-view tickets also
+  // prevent an older request (or a replaced current view) from winning by arriving last.
+  const mutationVersion = useRef(0);
+  const reads = useRef({ tasks: 0, tree: 0, pet: 0, bag: 0, profile: 0, transactions: 0 });
   const historyPushed = useRef(false);
   const homeHeadingRef = useRef<HTMLHeadingElement>(null);
   const historyHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -127,10 +135,11 @@ export function BankApp() {
 
   const loadTasks = useCallback(async () => {
     const current = generation.current;
+    const ticket = ++reads.current.tasks;
     setTasksLoading(true);
     setTasksError('');
     const result = await fetchTasks();
-    if (current !== generation.current) return;
+    if (current !== generation.current || ticket !== reads.current.tasks) return;
     setTasksLoading(false);
     if (result.ok) setTasks(result.data.tasks);
     else if (isSessionRequired(result)) expireSession();
@@ -139,15 +148,19 @@ export function BankApp() {
 
   const loadTree = useCallback(async () => {
     const current = generation.current;
+    const ticket = ++reads.current.tree;
+    const beforeWrite = mutationVersion.current;
     setTreeLoading(true);
     setTreeError('');
     const result = await fetchTree();
-    if (current !== generation.current) return;
+    if (current !== generation.current || ticket !== reads.current.tree) return;
     setTreeLoading(false);
     if (result.ok) {
       setTreeView(result.data.tree);
       const balance = result.data.balance;
-      setProfile((existing) => existing ? { ...existing, student: { ...existing.student, balance } } : existing);
+      if (beforeWrite === mutationVersion.current) {
+        setProfile((existing) => existing ? { ...existing, student: { ...existing.student, balance } } : existing);
+      }
     } else if (isSessionRequired(result)) {
       expireSession();
     } else if (result.status === 404) {
@@ -159,15 +172,19 @@ export function BankApp() {
 
   const loadPet = useCallback(async () => {
     const current = generation.current;
+    const ticket = ++reads.current.pet;
+    const beforeWrite = mutationVersion.current;
     setPetLoading(true);
     setPetError('');
     const result = await fetchPet();
-    if (current !== generation.current) return;
+    if (current !== generation.current || ticket !== reads.current.pet) return;
     setPetLoading(false);
     if (result.ok) {
       setPetView(result.data.pet);
       const balance = result.data.balance;
-      setProfile((existing) => existing ? { ...existing, student: { ...existing.student, balance } } : existing);
+      if (beforeWrite === mutationVersion.current) {
+        setProfile((existing) => existing ? { ...existing, student: { ...existing.student, balance } } : existing);
+      }
     } else if (isSessionRequired(result)) {
       expireSession();
     } else if (result.status === 404) {
@@ -179,10 +196,11 @@ export function BankApp() {
 
   const loadBag = useCallback(async () => {
     const current = generation.current;
+    const ticket = ++reads.current.bag;
     setBagLoading(true);
     setBagError('');
     const result = await fetchBag();
-    if (current !== generation.current) return;
+    if (current !== generation.current || ticket !== reads.current.bag) return;
     setBagLoading(false);
     if (result.ok) setBag(result.data.bag);
     else if (isSessionRequired(result)) expireSession();
@@ -192,24 +210,30 @@ export function BankApp() {
 
   const refreshProfile = useCallback(async () => {
     const current = generation.current;
+    const ticket = ++reads.current.profile;
+    const beforeWrite = mutationVersion.current;
     const result = await fetchSession();
-    if (current !== generation.current) return;
-    if (result.ok) setProfile(result.data);
+    if (current !== generation.current || ticket !== reads.current.profile) return;
+    if (result.ok) { if (beforeWrite === mutationVersion.current) setProfile(result.data); }
     else if (isSessionRequired(result)) expireSession();
   }, [expireSession]);
 
   const loadTransactions = useCallback(async () => {
     const current = generation.current;
+    const ticket = ++reads.current.transactions;
+    const beforeWrite = mutationVersion.current;
     setTransactionsLoading(true);
     setTransactionsError('');
     const result = await fetchTransactions();
-    if (current !== generation.current) return;
+    if (current !== generation.current || ticket !== reads.current.transactions) return;
     setTransactionsLoading(false);
     if (result.ok) {
       setTransactions(result.data.transactions);
       setTransactionLimit(result.data.limit);
       const balance = result.data.balance;
-      setProfile((existing) => existing ? { ...existing, student: { ...existing.student, balance } } : existing);
+      if (beforeWrite === mutationVersion.current) {
+        setProfile((existing) => existing ? { ...existing, student: { ...existing.student, balance } } : existing);
+      }
     } else if (isSessionRequired(result)) {
       expireSession();
     } else {
@@ -218,6 +242,12 @@ export function BankApp() {
   }, [expireSession]);
 
   const onCompletionSuccess = useCallback((payload: CompletionSuccess) => {
+    mutationVersion.current += 1;
+    reads.current.profile += 1;
+    reads.current.tasks += 1;
+    reads.current.transactions += 1;
+    setTasksLoading(false);
+    setTransactionsLoading(false);
     // An empty list means the server could not attach it to the (finished) completion: re-read it.
     if (payload.tasks.length > 0) setTasks(payload.tasks);
     else void loadTasks();
@@ -229,7 +259,8 @@ export function BankApp() {
       void refreshProfile();
     }
     // The task also grew the class tree or the pet: their cards show the new progress.
-    if (payload.growth) { void loadTree(); void loadPet(); }
+    // Also replaces initial in-flight reads, even if this completion did not grow a feature.
+    void loadTree(); void loadPet();
   }, [loadPet, loadTasks, loadTree, refreshProfile]);
   const completion = useTaskCompletion({
     onSuccess: onCompletionSuccess,
@@ -386,6 +417,12 @@ export function BankApp() {
     setWatering(false);
     if (result.ok) {
       pendingWater.current = null;
+      mutationVersion.current += 1;
+      reads.current.profile += 1;
+      reads.current.tree += 1;
+      reads.current.transactions += 1;
+      setTreeLoading(false);
+      setTransactionsLoading(false);
       if (before) setTreePlay({ key: Date.now(), kind: 'feed', before, amount: 1 });
       setTreeView(result.data.tree);
       const balance = result.data.result.balanceAfter;
@@ -489,6 +526,13 @@ export function BankApp() {
           <BankPetView ref={petHeadingRef} view={petView} balance={profile.student.balance} currencyUnit={unit}
             loading={petLoading} error={petError} onBack={closeHistory} onRefresh={() => void loadPet()}
             onChanged={(next, balance) => {
+              mutationVersion.current += 1;
+              reads.current.profile += 1;
+              reads.current.pet += 1;
+              reads.current.transactions += 1;
+              setPetLoading(false);
+              setTransactionsLoading(false);
+              if (petView?.pet && !next.pet) void loadBag();
               setPetView(next);
               setTransactions(null);
               setProfile((existing) => existing ? { ...existing, student: { ...existing.student, balance } } : existing);

@@ -126,6 +126,17 @@ describe('TransactionsPage', () => {
     vi.unstubAllGlobals();
   });
 
+  it.each(['TREE_HARVEST', 'PET_GRADUATE'])('explains money-only cancellation for %s before confirmation', async (status) => {
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => String(input) === '/api/transactions'
+      ? jsonResponse([{ ...transactions[1], status }]) : base(input, init));
+    render(<TransactionsPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'T002 거래 취소' }));
+    const dialog = screen.getByRole('dialog', { name: '거래 취소 확인' });
+    expect(within(dialog).getByText('지급한 화폐 보상만 현재 잔액에서 회수합니다. 나무 수확·펫 졸업 기록과 함께 받은 보관함 물품·교환권은 그대로 남습니다.')).toBeTruthy();
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/cancel'))).toBe(false);
+  });
+
   it('uses transaction wording, signed student-perspective amounts, filter tabs, and income/expense/cancel colors', async () => {
     const readinessGate = deferredResponse(transactions);
     const originalFetch = vi.mocked(fetch).getMockImplementation()!;

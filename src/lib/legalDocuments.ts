@@ -25,6 +25,15 @@ export const LEGAL_REVISIONS: readonly LegalRevision[] = [
       '개인정보처리방침에 가입 동의 기록, 프로필(닉네임·프로필 아이콘), 회원 탈퇴 시 처리, 학생 개인정보를 위한 법정대리인 동의에 관한 내용을 더했어요.',
     ],
   },
+  {
+    version: '2026-10-18',
+    effectiveAt: '2026-10-18T00:00:00+09:00',
+    effectiveLabel: '2026년 10월 18일',
+    changes: [
+      '탈퇴 시 학생 정보가 포함된 거래·과제·성장·보관함 기록과 이전 원본 자료를 함께 파기하는 절차를 명확히 했어요.',
+      '탈퇴 처리 사실과 폐기된 로그인·중복 보상 방지를 위한 보안용 식별자 해시의 보유 범위를 명시했어요.',
+    ],
+  },
 ];
 
 function effectiveTime(revision: LegalRevision) {

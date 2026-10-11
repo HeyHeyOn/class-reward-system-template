@@ -1,13 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 
+vi.mock('server-only', () => ({}));
+vi.mock('@/server/teacherSession', () => ({ endRequestTeacherSessions: vi.fn(async () => undefined) }));
+
 const mocks = vi.hoisted(() => ({
   clearSession: vi.fn(),
   clearGrant: vi.fn(),
+  clearPending: vi.fn(),
 }));
 
 vi.mock('@/server/googleOAuth', () => ({
   clearGoogleSessionCookie: mocks.clearSession,
   clearGeneratorGrantCookie: mocks.clearGrant,
+  clearPendingAgreementCookie: mocks.clearPending,
 }));
 
 import { POST } from './route';
@@ -20,5 +25,6 @@ describe('POST /api/google/logout', () => {
     await expect(response.json()).resolves.toEqual({ ok: true });
     expect(mocks.clearSession).toHaveBeenCalledWith(expect.anything());
     expect(mocks.clearGrant).toHaveBeenCalledWith(expect.anything());
+    expect(mocks.clearPending).toHaveBeenCalledWith(expect.anything());
   });
 });

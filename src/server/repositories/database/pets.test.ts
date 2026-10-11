@@ -22,7 +22,7 @@ let now = new Date('2026-10-12T03:00:00Z');
 beforeEach(async () => {
   harness = await createPgliteDatabaseHarness();
   for (const file of ['0044_class_tree.sql', '0045_student_bag.sql', '0046_vouchers.sql', '0047_tree_name.sql', '0048_pets.sql',
-    '0049_growth_goals_and_pet_company.sql', '0050_teacher_growth_adjustments.sql']) {
+    '0049_growth_goals_and_pet_company.sql', '0050_teacher_growth_adjustments.sql', '0052_pet_history_indexes.sql']) {
     await harness.database.exec(await readFile(resolve(process.cwd(), 'src/server/db/migrations', file), 'utf8'));
   }
   await harness.database.exec('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_runtime');
@@ -109,6 +109,20 @@ describe('settings and adopting', () => {
 });
 
 describe('daily care', () => {
+  it('shares the free warming limit across new eggs on the same Korean date', async () => {
+    await pets().saveSettings({ ...ON, goal: 1, careGrowth: 1, feedDailyLimit: 0, rewardAmount: 100 });
+    await pets().adopt({ studentId: 'S001', operationId: op(), species: 'dog', name: '첫째' });
+    await pets().care({ studentId: 'S001', operationId: op(), kind: 'WARM' });
+    await pets().graduate({ studentId: 'S001', operationId: op() });
+    await pets().adopt({ studentId: 'S001', operationId: op(), species: 'cat', name: '둘째' });
+    expect((await pets().studentView('S001')).warmedToday).toBe(true);
+    expect(await failure(pets().care({ studentId: 'S001', operationId: op(), kind: 'WARM' }))).toBe('DAILY_LIMIT');
+    expect(await balance('S001')).toBe(200);
+    await nextDay();
+    expect((await pets().studentView('S001')).warmedToday).toBe(false);
+    expect(await pets().care({ studentId: 'S001', operationId: op(), kind: 'WARM' })).toMatchObject({ grew: 1, caresToday: 1 });
+  });
+
   it('warms an egg once a day for free, and the first care of a day adds growth until it hatches', async () => {
     await pets().saveSettings(ON);
     await pets().adopt({ studentId: 'S001', operationId: op(), species: 'cat', name: '나비' });
@@ -224,7 +238,8 @@ describe('graduation and the 도감', () => {
 
     const view = await pets().studentView('S001');
     expect(view.pet).toBeNull();
-    expect(view.dex).toEqual([expect.objectContaining({ species: 'rabbit', color: 'white', name: '솜이' })]);
+    expect(view.dex).toEqual([]);
+    expect((await pets().dexPage('S001')).entries).toEqual([expect.objectContaining({ species: 'rabbit', color: 'white', name: '솜이' })]);
     const items = (await createStudentBagCommands({ tenantId: harness.tenantOneId, runTenantTransaction: harness.runTenantTransaction })
       .studentBag('S001', { includeUsed: false })).items;
     expect(items).toEqual([expect.objectContaining({ title: '초코 과자 교환권', source: 'PET_GRADUATION', voucherProductId: 'P010' })]);

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
 
+import { currentLegalRevision } from '@/lib/legalDocuments';
 import {
   TenantAuthorizationError,
   authorizeTenantAdmin,
@@ -36,6 +37,25 @@ describe('tenant membership authorization', () => {
     await expect(authorizeTenantAdmin(alpha, session, { findByTenantAndSubject }))
       .resolves.toMatchObject({ tenantId: ALPHA_ID, role });
     expect(findByTenantAndSubject).toHaveBeenCalledWith(ALPHA_ID, session.subject);
+  });
+
+  it('checks the persisted session using the bounded reader query before looking up membership', async () => {
+    vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
+    const bound = { ...session, agreement: currentLegalRevision().version,
+      accountGeneration: '11111111-1111-4111-8111-111111111111', sessionId: '22222222-2222-4222-8222-222222222222' };
+    const query = vi.fn(async () => ({ rows: [{ valid: false }] }));
+    const findByTenantAndSubject = vi.fn(async () => null);
+    try {
+      await expect(authorizeTenantAdmin(alpha, bound, { findByTenantAndSubject }, { query }))
+        .rejects.toMatchObject({ code: 'UNAUTHENTICATED' });
+      expect(findByTenantAndSubject).not.toHaveBeenCalled();
+      expect(query).toHaveBeenCalledWith(expect.stringContaining('platform_validate_teacher_session'),
+        [bound.subject, bound.accountGeneration, bound.sessionId, false, bound.agreement]);
+      query.mockResolvedValueOnce({ rows: [{ valid: true }] });
+      await expect(authorizeTenantAdmin(alpha, bound, { findByTenantAndSubject }, { query }))
+        .rejects.toMatchObject({ code: 'NOT_A_MEMBER' });
+      expect(findByTenantAndSubject).toHaveBeenCalledOnce();
+    } finally { vi.unstubAllEnvs(); }
   });
 
   it('gives an unauthenticated request no tenant-admin authority', async () => {

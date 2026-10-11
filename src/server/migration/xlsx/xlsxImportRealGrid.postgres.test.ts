@@ -10,6 +10,7 @@
  * settings, task definitions and current-cycle stages with values derived independently from the
  * grid (the Sheets app's own row parsers and cycle projection).
  */
+import { issueTeacherTestSession, grantProductionTestRuntime } from '@/server/db/testing/teacherIdentity';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
@@ -59,12 +60,13 @@ suite('xlsx import of the recorded operating grid (local end-to-end check)', () 
     expect(process.env.DATABASE_URL).toBeUndefined();
     const scratch = resolve(SCRATCH!);
     if (!relative(process.cwd(), scratch).startsWith('..')) throw Error('CRS_XLSX_SCRATCH_DIR must be outside the repository.');
-    db = await createDisposablePostgres(); destination.pool = db.runtime;
+    db = await createDisposablePostgres(); await grantProductionTestRuntime(db.owner); destination.pool = db.runtime;
     vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
     vi.stubEnv('AUTH_SECRET', randomBytes(32).toString('hex'));
-    await db.owner.query(`GRANT EXECUTE ON FUNCTION public.platform_create_draft_class(uuid,text,text,text),
+    await db.owner.query(`GRANT EXECUTE ON FUNCTION public.platform_create_draft_class_authenticated(uuid,text,text,text,uuid,uuid,text),
+      public.platform_validate_teacher_session(text,uuid,uuid,boolean,text),
       public.platform_find_tenant_by_slug(text), public.platform_find_membership_by_tenant_and_google_subject(uuid,text),
-      public.platform_get_new_class_setup(text,text), public.platform_start_new_class(uuid,text,text) TO app_runtime`);
+      public.platform_get_new_class_setup(text,text), public.platform_start_new_class_authenticated(uuid,text,text,uuid,uuid,text) TO app_runtime`);
   }, 120_000);
   afterAll(async () => {
     destination.pool = undefined; vi.unstubAllEnvs();
@@ -93,10 +95,12 @@ suite('xlsx import of the recorded operating grid (local end-to-end check)', () 
 
     // 2. Through the real tenant route: create a new class, preview, commit.
     const subject = `real-grid-${randomUUID()}`;
+    const identity=await issueTeacherTestSession(db.owner,{subject,email:`${subject}@example.invalid`});
+    const binding={accountGeneration:identity.accountGeneration,sessionId:identity.sessionId};
     const session = new NextResponse();
-    setGoogleSessionCookie(session, { subject, email: `${subject}@example.invalid`, issuedAt: Date.now() });
+    setGoogleSessionCookie(session,identity);
     const cookie = `${GOOGLE_AUTH_COOKIE}=${session.cookies.get(GOOGLE_AUTH_COOKIE)!.value}`;
-    const { slug } = await createClassCreationCommand(db.runtime).create({ operationId: randomUUID(), subject,
+    const { slug } = await createClassCreationCommand(db.runtime).create({ ...binding,operationId: randomUUID(), subject,
       email: `${subject}@example.invalid`, displayName: '기록 검증 학급' });
     const tenantId: string = (await db.owner.query('SELECT id FROM tenants WHERE slug=$1', [slug])).rows[0].id;
     const call = async (action: 'preview' | 'commit', fields: Record<string, string> = {}) => {

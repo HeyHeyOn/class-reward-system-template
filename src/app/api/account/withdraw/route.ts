@@ -2,7 +2,7 @@ import { ADMIN_SESSION_COOKIE } from '@/server/adminAuth';
 import { accountReply, readAccountIdentity, readAccountRequest, SIGN_IN_AGAIN, TRY_AGAIN_LATER } from '@/server/accountRequest';
 import { clearGeneratorGrantCookie, clearGoogleSessionCookie, clearPendingAgreementCookie } from '@/server/googleOAuth';
 import { clearTenantAdminSessionCookie } from '@/server/tenantAdminSessionCookie';
-import { getProductionTeacherAccountStore } from '@/server/teacherAccounts';
+import { getProductionTeacherSessionStore } from '@/server/teacherSession';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,15 +14,17 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
   const body = await readAccountRequest(request);
   if (body instanceof Response) return body;
-  if (Object.keys(body).length !== 1 || body.confirm !== true) {
+  if (Object.keys(body).some(key => !['confirm', 'expectedSessionId'].includes(key)) || body.confirm !== true) {
     return accountReply(400, { error: '탈퇴 안내를 확인했다고 표시해 주세요.' });
   }
-  const identity = readAccountIdentity(request);
+  const identity = await readAccountIdentity(request);
   if (!identity) return accountReply(401, { error: SIGN_IN_AGAIN });
-  const subject = identity.kind === 'pending' ? identity.pending.subject : identity.session.subject;
+  const who = identity.kind === 'pending' ? identity.pending : identity.session;
+  if (body.expectedSessionId !== who.sessionId) return accountReply(409, { error: '로그인 계정이 바뀌었어요. 화면을 새로 열어 주세요.', code: 'ACCOUNT_CHANGED' });
   let closedClasses: number;
   try {
-    closedClasses = await getProductionTeacherAccountStore().withdraw(subject);
+    const result = await getProductionTeacherSessionStore().mutate(who, 'WITHDRAW', {});
+    closedClasses = result.closedClasses!;
   } catch (error) {
     console.error('[account] withdrawal failed', error instanceof Error ? error.message : 'unknown');
     return accountReply(503, { error: `탈퇴를 마치지 못했어요. ${TRY_AGAIN_LATER}` });

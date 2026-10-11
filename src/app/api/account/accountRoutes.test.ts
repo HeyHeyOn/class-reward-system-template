@@ -4,13 +4,25 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
 const store = vi.hoisted(() => ({
-  recordAgreement: vi.fn(async () => '2026-10-08T03:00:00.000Z'),
-  saveProfile: vi.fn(async () => undefined),
-  withdraw: vi.fn(async () => 2),
+  recordAgreement: vi.fn<(subject: string, version: string) => Promise<string>>(async () => '2026-10-08T03:00:00.000Z'),
+  saveProfile: vi.fn<(subject: string, profile: unknown) => Promise<void>>(async () => undefined),
+  withdraw: vi.fn<(subject: string) => Promise<number>>(async () => 2),
 }));
 vi.mock('@/server/teacherAccounts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/server/teacherAccounts')>()),
   getProductionTeacherAccountStore: () => store,
+}));
+
+vi.mock('@/server/teacherSession', async (original) => ({
+  ...(await original<typeof import('@/server/teacherSession')>()),
+  getProductionTeacherSessionStore: () => ({ valid: async () => true, end: async () => undefined,
+    mutate: async (identity: { subject: string }, action: string, payload: { version: string }) => {
+      if (action === 'AGREE') { await store.recordAgreement(identity.subject, payload.version); return {}; }
+      return { closedClasses: await store.withdraw(identity.subject) };
+    },
+  }),
+  getTeacherGoogleSessionFromRequest: async (request: Request) => getGoogleSessionFromRequest(request),
+  saveTeacherProfile: async (identity: { subject: string }, profile: unknown) => store.saveProfile(identity.subject, profile),
 }));
 
 import { AVATAR_PRESETS } from '@/components/profile/avatar';
@@ -26,19 +38,20 @@ import { POST as withdraw } from './withdraw/route';
 const ORIGIN = 'https://crs.hwanit.com';
 const version = currentLegalRevision().version;
 const avatar = AVATAR_PRESETS[1].config;
+const binding = { accountGeneration: '11111111-1111-4111-8111-111111111111', sessionId: '22222222-2222-4222-8222-222222222222' };
 
 function cookieOf(response: NextResponse, name: string): string | undefined {
   return response.cookies.get(name)?.value;
 }
 function sessionCookie(session: GoogleSession) {
   const response = NextResponse.json({});
-  setGoogleSessionCookie(response, session);
+  setGoogleSessionCookie(response, { ...binding, ...session });
   return `${GOOGLE_AUTH_COOKIE}=${cookieOf(response, GOOGLE_AUTH_COOKIE)}`;
 }
 function pendingCookie(pending: Partial<PendingAgreement> = {}) {
   const response = NextResponse.json({});
   setPendingAgreementCookie(response, {
-    purpose: 'agreement', subject: 'google-new', email: 'new@example.com', name: '새선생', mode: 'signup', returnTo: '/classes', issuedAt: Date.now(), ...pending,
+    ...binding, purpose: 'agreement', subject: 'google-new', email: 'new@example.com', name: '새선생', mode: 'signup', returnTo: '/classes', issuedAt: Date.now(), ...pending,
   });
   return `${PENDING_AGREEMENT_COOKIE}=${cookieOf(response, PENDING_AGREEMENT_COOKIE)}`;
 }
@@ -49,7 +62,7 @@ function request(path: string, init: { method?: string; body?: unknown; cookie?:
   return new Request(`${ORIGIN}${path}`, { method: init.method ?? 'POST', headers, body: init.body === undefined ? undefined : JSON.stringify(init.body) });
 }
 const asRequest = (response: NextResponse, name: string) => new Request(ORIGIN, { headers: { cookie: `${name}=${cookieOf(response, name)}` } });
-const ALL = { terms: true, privacy: true, age: true };
+const ALL = { terms: true, privacy: true, age: true, expectedSessionId: binding.sessionId };
 
 beforeEach(() => {
   vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
@@ -115,7 +128,7 @@ describe('POST /api/account/withdraw', () => {
     expect((await withdraw(request('/api/account/withdraw', { body: { confirm: false }, cookie }))).status).toBe(400);
     expect(store.withdraw).not.toHaveBeenCalled();
 
-    const response = await withdraw(request('/api/account/withdraw', { body: { confirm: true }, cookie }));
+    const response = await withdraw(request('/api/account/withdraw', { body: { confirm: true, expectedSessionId: binding.sessionId }, cookie }));
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true, closedClasses: 2, redirectTo: '/classes?withdrawn=1' });
     expect(store.withdraw).toHaveBeenCalledWith('google-1');
@@ -123,7 +136,7 @@ describe('POST /api/account/withdraw', () => {
   });
 
   it('lets a teacher who declines a new version withdraw from the agreement step', async () => {
-    const response = await withdraw(request('/api/account/withdraw', { body: { confirm: true }, cookie: pendingCookie({ subject: 'google-old', mode: 'update' }) }));
+    const response = await withdraw(request('/api/account/withdraw', { body: { confirm: true, expectedSessionId: binding.sessionId }, cookie: pendingCookie({ subject: 'google-old', mode: 'update' }) }));
     expect(response.status).toBe(200);
     expect(store.withdraw).toHaveBeenCalledWith('google-old');
     expect(getPendingAgreementFromRequest(asRequest(response, PENDING_AGREEMENT_COOKIE))).toBeNull();
@@ -133,10 +146,10 @@ describe('POST /api/account/withdraw', () => {
 describe('POST /api/account/profile', () => {
   it('saves a valid profile for a session that agreed to the version in force', async () => {
     const cookie = sessionCookie({ subject: 'google-1', email: 'kim@example.com', issuedAt: Date.now(), agreement: version });
-    const response = await saveProfile(request('/api/account/profile', { body: { nickname: ' 햇살쌤 ', avatar }, cookie }));
+    const response = await saveProfile(request('/api/account/profile', { body: { nickname: ' 햇살쌤 ', avatar, expectedSessionId: binding.sessionId }, cookie }));
     expect(response.status).toBe(200);
     expect(store.saveProfile).toHaveBeenCalledWith('google-1', { nickname: '햇살쌤', avatar });
-    expect((await saveProfile(request('/api/account/profile', { body: { nickname: '', avatar }, cookie }))).status).toBe(400);
+    expect((await saveProfile(request('/api/account/profile', { body: { nickname: '', avatar, expectedSessionId: binding.sessionId }, cookie }))).status).toBe(400);
   });
 
   it('asks for the new agreement first, and refuses a waiting sign-in', async () => {

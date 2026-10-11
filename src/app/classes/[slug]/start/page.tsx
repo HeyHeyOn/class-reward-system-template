@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { headers } from 'next/headers';
-import { getGoogleSessionFromRequest } from '@/server/googleOAuth';
+import { getTeacherGoogleSessionFromRequest } from '@/server/teacherSession';
 import { getProductionClassStartRepository } from '@/server/repositories/database/classStart';
 import { parseTenantSlug } from '@/server/tenantContext';
 import { buttonClass } from '@/components/ui/classes';
@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function ClassStartPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const session = getGoogleSessionFromRequest(new Request('http://classes.internal/classes', { headers: await headers() }));
+  const session = await getTeacherGoogleSessionFromRequest(new Request('http://classes.internal/classes', { headers: await headers() }));
   if (!session) return (
     <ClassPageShell eyebrow="학급 준비" title="로그인이 필요합니다">
       <p className="text-sm">로그인이 필요합니다.</p>

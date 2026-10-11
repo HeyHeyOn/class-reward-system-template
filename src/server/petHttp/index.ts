@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { readBoundedRequestText, RequestBodyError } from '@/server/boundedRequestBody';
 import { PetError } from '@/server/repositories/database/pets';
 
 const NO_STORE = { 'Cache-Control': 'no-store' } as const;
@@ -14,17 +15,16 @@ export function petAdminRequired(): Response {
 
 /** Reads a small JSON object body; returns a ready error response when it is not one. */
 export async function readPetJson(request: Request): Promise<{ value: Record<string, unknown> } | Response> {
-  const invalid = () => petJson({ error: '요청 형식이 올바르지 않아요. 화면을 새로 고친 뒤 다시 시도해 주세요.', code: 'INVALID_REQUEST' }, 400);
+  const invalid = (status = 400) => petJson({ error: '요청 형식이 올바르지 않아요. 화면을 새로 고친 뒤 다시 시도해 주세요.', code: 'INVALID_REQUEST' }, status);
   if (new URL(request.url).search !== ''
     || request.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase() !== 'application/json') return invalid();
-  const text = await request.text();
-  if (text.length > 20_000) return invalid();
   try {
+    const text = await readBoundedRequestText(request, 20_000);
     const value: unknown = JSON.parse(text);
     if (!value || typeof value !== 'object' || Array.isArray(value)) return invalid();
     return { value: value as Record<string, unknown> };
-  } catch {
-    return invalid();
+  } catch (error) {
+    return invalid(error instanceof RequestBodyError ? error.status : 400);
   }
 }
 

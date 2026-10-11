@@ -42,6 +42,7 @@ function jsonResponse(payload: unknown, init?: ResponseInit) {
 
 describe('KioskApp', () => {
   beforeEach(() => {
+    sessionStorage.clear();
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -82,6 +83,7 @@ describe('KioskApp', () => {
           });
         }
 
+        if (String(input) === '/api/checkout/vouchers') return jsonResponse({ vouchers: [] });
         return jsonResponse({ error: 'not found' }, { status: 404 });
       }),
     );
@@ -89,6 +91,7 @@ describe('KioskApp', () => {
 
   afterEach(() => {
     cleanup();
+    sessionStorage.clear();
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -168,6 +171,7 @@ describe('KioskApp', () => {
       }
       if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '햇살반 매점', themeColor: 'pink', qrManualInputEnabled: true, source: 'runtime' });
       if (url === '/api/promotions/active') return jsonResponse([]);
+      if (String(input) === '/api/checkout/vouchers') return jsonResponse({ vouchers: [] });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
 
@@ -222,6 +226,7 @@ describe('KioskApp', () => {
       if (url === '/api/products') return jsonResponse(collisionProducts);
       if (url === '/api/settings') return jsonResponse({ currencyUnit: '별' });
       if (url === '/api/promotions/active') return jsonResponse([percent]);
+      if (String(input) === '/api/checkout/vouchers') return jsonResponse({ vouchers: [] });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
     const { container } = render(<KioskApp />);
@@ -251,6 +256,7 @@ describe('KioskApp', () => {
       }
       if (url === '/api/settings') return jsonResponse({ currencyUnit: '별' });
       if (url === '/api/promotions/active') return jsonResponse([percent]);
+      if (String(input) === '/api/checkout/vouchers') return jsonResponse({ vouchers: [] });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
     render(<KioskApp />);
@@ -271,6 +277,7 @@ describe('KioskApp', () => {
       if (url === '/api/products') return jsonResponse(products);
       if (url === '/api/settings') return jsonResponse({ currencyUnit: '별' });
       if (url === '/api/promotions/active') return jsonResponse([expiring], { headers: { 'x-server-now': expiring.endsAt } });
+      if (String(input) === '/api/checkout/vouchers') return jsonResponse({ vouchers: [] });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
     render(<KioskApp />);
@@ -288,6 +295,7 @@ describe('KioskApp', () => {
       if (url === '/api/products') return productGate.then(() => jsonResponse(products));
       if (url === '/api/settings') return jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '학급 매점', themeColor: 'white', qrManualInputEnabled: true, source: 'runtime' });
       if (url === '/api/promotions/active') return jsonResponse([]);
+      if (String(input) === '/api/checkout/vouchers') return jsonResponse({ vouchers: [] });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
 
@@ -578,6 +586,7 @@ describe('KioskApp', () => {
       if (url === '/api/promotions/active') return jsonResponse([]);
       if (url === '/api/checkout/preview' && init?.method === 'POST') return jsonResponse(regularPreview(JSON.parse(String(init.body)).items));
       if (url === '/api/students/BROKEN-QR') throw new SyntaxError('Unexpected token < in JSON');
+      if (String(input) === '/api/checkout/vouchers') return jsonResponse({ vouchers: [] });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
 
@@ -722,6 +731,7 @@ describe('KioskApp', () => {
       if (url === '/api/products') return jsonResponse(products);
       if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', appTitle: '행사 매점', themeColor: 'white' });
       if (url === '/api/promotions/active') return jsonResponse([percent, nPlusOne]);
+      if (String(input) === '/api/checkout/vouchers') return jsonResponse({ vouchers: [] });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
     render(<KioskApp />);
@@ -763,6 +773,7 @@ describe('KioskApp', () => {
       if (url === '/api/promotions/active') {
         return jsonResponse([futurePercent], { headers: { 'x-server-now': '2090-01-15T00:00:00.000Z' } });
       }
+      if (String(input) === '/api/checkout/vouchers') return jsonResponse({ vouchers: [] });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
 
@@ -796,6 +807,7 @@ describe('KioskApp', () => {
         }
         return jsonResponse([windowedPercent], { headers: { 'x-server-now': '2090-01-20T00:00:00.000Z' } });
       }
+      if (String(input) === '/api/checkout/vouchers') return jsonResponse({ vouchers: [] });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
 
@@ -826,6 +838,7 @@ describe('KioskApp', () => {
       if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', appTitle: `${themeColor} 매점`, themeColor, qrManualInputEnabled: true });
       if (url === '/api/promotions/active') return jsonResponse([percent]);
       if (url === '/api/students/S001') return studentGate.then(() => jsonResponse(studentBefore));
+      if (String(input) === '/api/checkout/vouchers') return jsonResponse({ vouchers: [] });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
     const { container } = render(<KioskApp />);
@@ -862,6 +875,7 @@ describe('KioskApp', () => {
       if (url === '/api/products') return jsonResponse(products);
       if (url === '/api/settings') return jsonResponse({ currencyUnit: '별' });
       if (url === '/api/promotions/active') return jsonResponse([{ ...percent, schemaVersion: 2 }]);
+      if (String(input) === '/api/checkout/vouchers') return jsonResponse({ vouchers: [] });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
     render(<KioskApp />);
@@ -895,6 +909,7 @@ describe('KioskApp', () => {
       if (url === '/api/promotions/active') return jsonResponse([]);
       if (url === '/api/students/S001') return jsonResponse(studentBefore);
       if (url === '/api/checkout') return jsonResponse({ ok: false, code: 'PRICE_CHANGED', message: '가격이 변경되었습니다.', latestPricing }, { status: 409 });
+      if (String(input) === '/api/checkout/vouchers') return jsonResponse({ vouchers: [] });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
     render(<KioskApp />);
@@ -931,6 +946,7 @@ describe('KioskApp', () => {
           items: regularPreview([{ productId: 'P001', quantity: 1 }]).items,
         });
       }
+      if (String(input) === '/api/checkout/vouchers') return jsonResponse({ vouchers: [] });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
 
@@ -969,6 +985,7 @@ describe('KioskApp', () => {
           items: regularPreview([{ productId: 'P001', quantity: 1 }]).items,
         });
       }
+      if (String(input) === '/api/checkout/vouchers') return jsonResponse({ vouchers: [] });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
 
@@ -977,7 +994,7 @@ describe('KioskApp', () => {
     fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
     fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
     fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 결제하기' }));
-    const failureDialog = await screen.findByRole('dialog', { name: '결제 실패' });
+    const failureDialog = await screen.findByRole('dialog', { name: '결제 상태 확인 필요' });
     fireEvent.click(within(failureDialog).getByRole('button', { name: '다시 시도' }));
     fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
     fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 결제하기' }));
@@ -1010,6 +1027,7 @@ describe('KioskApp', () => {
         }
         return jsonResponse({ code: 'PRICE_CHANGED', message: '서버가 다시 확인했습니다.', latestPricing }, { status: 409 });
       }
+      if (String(input) === '/api/checkout/vouchers') return jsonResponse({ vouchers: [] });
       return jsonResponse({}, { status: 404 });
     });
 
@@ -1052,6 +1070,7 @@ describe('KioskApp', () => {
           adjustments: [{ promotionId: 'N21', type: 'N_PLUS_ONE', beforeAmount: 1000, afterAmount: 500, discountAmount: 500, freeQuantity: 1 }],
           appliedPromotions: [nPlusOne] }],
       });
+      if (String(input) === '/api/checkout/vouchers') return jsonResponse({ vouchers: [] });
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
     render(<KioskApp />);
@@ -1072,6 +1091,7 @@ describe('KioskApp', () => {
       if (url === '/api/products') return jsonResponse(products);
       if (url === '/api/settings') return jsonResponse({ currencyUnit: '별' });
       if (url === '/api/promotions/active') return jsonResponse([nPlusOne, percent]);
+      if (String(input) === '/api/checkout/vouchers') return jsonResponse({ vouchers: [] });
       return jsonResponse({}, { status: 404 });
     });
     render(<KioskApp />);
@@ -1090,6 +1110,7 @@ describe('KioskApp', () => {
       if (url === '/api/promotions/active') return jsonResponse([]);
       if (url === '/api/students/S001') return jsonResponse(studentBefore);
       if (url === '/api/checkout') return jsonResponse({ code: 'PRICE_CHANGED', message: '가격이 변경되었습니다.', latestPricing }, { status: 409 });
+      if (String(input) === '/api/checkout/vouchers') return jsonResponse({ vouchers: [] });
       return jsonResponse({}, { status: 404 });
     });
     render(<KioskApp />);
@@ -1117,6 +1138,7 @@ describe('KioskApp', () => {
       if (url === '/api/promotions/active') return jsonResponse([expiring], { headers: { 'x-server-now': '2090-01-01T00:00:00.000Z' } });
       if (url === '/api/students/S001') return jsonResponse(studentBefore);
       if (url === '/api/checkout') return jsonResponse({ code: 'PRICE_CHANGED', message: '가격이 변경되었습니다.', latestPricing }, { status: 409 });
+      if (String(input) === '/api/checkout/vouchers') return jsonResponse({ vouchers: [] });
       return jsonResponse({}, { status: 404 });
     });
     render(<KioskApp />);
@@ -1185,6 +1207,7 @@ describe('KioskApp', () => {
       if (url === '/api/settings') return jsonResponse({ currencyUnit: '별', qrManualInputEnabled: true });
       if (url === '/api/promotions/active') return jsonResponse([]);
       if (url === '/api/students/S001') return studentGate.then(() => jsonResponse(studentBefore));
+      if (String(input) === '/api/checkout/vouchers') return jsonResponse({ vouchers: [] });
       return jsonResponse({}, { status: 404 });
     });
     render(<KioskApp />);

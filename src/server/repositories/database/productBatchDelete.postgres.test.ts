@@ -1,5 +1,6 @@
 // @vitest-environment node
 // D08: actual scoped handlers against an owned, network-none native PostgreSQL only.
+import { issueTeacherTestSession, grantProductionTestRuntime } from '@/server/db/testing/teacherIdentity';
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import { sql } from 'drizzle-orm';
@@ -52,10 +53,11 @@ async function state() {
 suite('D08 isolated native PostgreSQL product batch DELETE', () => {
   beforeAll(async () => {
     expect(process.env.DATABASE_URL).toBeUndefined();
-    db = await createDisposablePostgres(); destination.pool = db.runtime; evidence('owned', db.evidence);
+    db = await createDisposablePostgres(); await grantProductionTestRuntime(db.owner); destination.pool = db.runtime; evidence('owned', db.evidence);
     vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql'); vi.stubEnv('CLASS_STORE_CENTRAL_TENANT_ID', B);
     vi.stubEnv('CLASS_STORE_CENTRAL_TENANT_STATUS', 'ACTIVE'); vi.stubEnv('AUTH_SECRET', randomBytes(32).toString('hex'));
     destination.google.mockImplementation(() => { throw new Error('D08_GOOGLE_FORBIDDEN'); });
+    await db.owner.query('GRANT EXECUTE ON FUNCTION public.platform_validate_teacher_session(text,uuid,uuid,boolean,text) TO app_runtime');
     await db.owner.query('GRANT EXECUTE ON FUNCTION public.platform_find_tenant_by_slug(text) TO app_runtime');
     await db.owner.query('GRANT EXECUTE ON FUNCTION public.platform_find_membership_by_tenant_and_google_subject(uuid,text) TO app_runtime');
     // Synthetic pre-existing ACTIVE tenants, not an activation/import of any class.
@@ -63,7 +65,7 @@ suite('D08 isolated native PostgreSQL product batch DELETE', () => {
     const user = (await db.owner.query("INSERT INTO users(google_subject,canonical_email) VALUES('d08-owner','d08@example.test') RETURNING id")).rows[0].id;
     await db.owner.query("INSERT INTO tenant_memberships(tenant_id,user_id,role) VALUES($1,$2,'OWNER')", [A, user]);
     const reply = NextResponse.json({});
-    setGoogleSessionCookie(reply, { subject: 'd08-owner', email: 'd08@example.test', issuedAt: Date.now() });
+    setGoogleSessionCookie(reply, await issueTeacherTestSession(db.owner,{ subject:'d08-owner',email:'d08@example.test' }));
     cookie = `${GOOGLE_AUTH_COOKIE}=${reply.cookies.get(GOOGLE_AUTH_COOKIE)!.value}`;
     await db.owner.query("INSERT INTO products(tenant_id,product_id,name,price,stock,is_active,sort_order) VALUES($1,'FOREIGN','Foreign',1,777,true,1)", [B]);
     const identity = (await db.runtime.query('SELECT current_user,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user')).rows;

@@ -2,7 +2,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { SignupAgreementView } from '@/components/account/SignupAgreementView';
 import { revisionsSince } from '@/lib/legalDocuments';
-import { getPendingAgreementFromRequest } from '@/server/googleOAuth';
+import { readAccountIdentity } from '@/server/accountRequest';
 import { getProductionClassMembershipRepository } from '@/server/repositories/database/classMemberships';
 import { teacherAccountsEnabled } from '@/server/teacherAccounts';
 
@@ -11,7 +11,8 @@ export const dynamic = 'force-dynamic';
 
 export default async function SignupPage() {
   if (!teacherAccountsEnabled()) redirect('/classes');
-  const pending = getPendingAgreementFromRequest(new Request('http://classes.internal/signup', { headers: await headers() }));
+  const identity = await readAccountIdentity(new Request('http://classes.internal/signup', { headers: await headers() }));
+  const pending = identity?.kind === 'pending' ? identity.pending : null;
   if (!pending) redirect('/classes');
   let classNames: string[] | undefined;
   if (pending.mode === 'update') {
@@ -23,6 +24,7 @@ export default async function SignupPage() {
     <SignupAgreementView
       mode={pending.mode}
       email={pending.email}
+      expectedSessionId={pending.sessionId}
       changes={revisionsSince(pending.agreedVersion)}
       classNames={classNames}
     />

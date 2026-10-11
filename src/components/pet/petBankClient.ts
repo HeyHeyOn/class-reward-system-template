@@ -4,6 +4,7 @@ import type {
   PetCareResultDto,
   PetDecorResultDto,
   PetDto,
+  PetDexPageDto,
   PetGraduateResultDto,
   PetStudentViewDto,
 } from '@/lib/petApi';
@@ -53,6 +54,16 @@ const post = (body: unknown): RequestInit => ({ method: 'POST', headers: { 'Cont
 /** The pet screen. 404 UNSUPPORTED means a Sheets class without pets. */
 export function fetchPet(): Promise<BankResult<PetPayload>> {
   return bankRequest('/api/bank/me/pet', { method: 'GET' }, isPetPayload);
+}
+
+export function fetchPetDex(cursor: string | null = null): Promise<BankResult<PetDexPageDto>> {
+  const entry = (value: unknown) => isRecord(value) && typeof value.petId === 'string' && isPetSpecies(value.species)
+    && typeof value.color === 'string' && typeof value.name === 'string' && typeof value.graduatedAt === 'string'
+    && (value.accessory === null || typeof value.accessory === 'string');
+  return bankRequest(`/api/bank/me/pet/dex${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { method: 'GET' },
+    (value): value is PetDexPageDto => isRecord(value) && Array.isArray(value.entries) && value.entries.every(entry)
+      && Array.isArray(value.collection) && value.collection.every(entry)
+      && (value.nextCursor === null || typeof value.nextCursor === 'string'));
 }
 
 export function adoptPet(input: { operationId: string; species: string; name: string }): Promise<BankResult<Command<PetAdoptResultDto>>> {

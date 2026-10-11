@@ -12,7 +12,7 @@ import { captureSheetsSnapshot } from './sheetsSnapshot';
 import { stageLocalFullGeneration } from './localFullGenerationStage';
 import { materializeLocalCandidate, prepareLocalCandidateTransition, type LocalCandidateBinding } from './localCandidateMaterialization';
 import { inspectLegacyFinalGeneration, type FinalGenerationPreparationInput } from './finalGeneration';
-import { createOwnedLocalMaterializationRunner } from './localMaterializationRunner';
+import { createOwnedLocalMaterializationRunner, LOCAL_TASK_HISTORY_PROJECTIONS } from './localMaterializationRunner';
 import { canonicalJson, sha256 } from './validators';
 
 vi.mock('server-only', () => ({}));
@@ -23,7 +23,8 @@ const FULL = ['migration_full_generations','migration_full_sources','migration_f
   'migration_full_contributors','migration_full_reconciliation','migration_full_delta_entries','migration_full_claim_recaptures'];
 const DOMAIN = ['tenant_settings','students','accounts','products','promotions','promotion_products','tasks',
   'task_allowed_students','task_assignments','transactions','transaction_items','adjustments','task_completions',
-  'operations','padlet_evidence_claims','padlet_claim_digest_tombstones','padlet_claim_digest_registry','inventory_ledger'];
+  'operations','padlet_evidence_claims','padlet_claim_digest_tombstones','padlet_claim_digest_registry','inventory_ledger',
+  ...LOCAL_TASK_HISTORY_PROJECTIONS];
 const closes: Array<() => Promise<unknown>> = [];
 afterEach(async () => { for (const close of closes.splice(0).reverse()) console.info('DOMAIN_CLEANUP', await close()); });
 
@@ -43,6 +44,9 @@ async function database() {
   }
   if (pg) await query("INSERT INTO tenants(id,slug,display_name) VALUES($1,'domain-one','Synthetic'),($2,'domain-two','Synthetic other')", [TENANT,OTHER]);
   for (const table of FULL) await query(`GRANT SELECT,INSERT ON ${table} TO app_runtime`);
+  // Cache maintenance stays in the installed owner-owned triggers, in both engines.
+  await exec(`REVOKE ALL ON ${LOCAL_TASK_HISTORY_PROJECTIONS.join(',')} FROM app_runtime;
+    GRANT SELECT ON ${LOCAL_TASK_HISTORY_PROJECTIONS.join(',')} TO app_runtime;`);
   const run = (pg?.runTenantTransaction ?? lite!.runTenantTransaction) as TenantImportTransactionRunner;
   const state = async (tables = [...DOMAIN,...FULL,'audit_events','migration_jobs','migration_sources','migration_source_records','migration_snapshots','tenants']) =>
     Object.fromEntries(await Promise.all(tables.map(async table => [table,
@@ -269,6 +273,8 @@ describe('local candidate domain materialization', () => {
     expect(await f.source.state()).toEqual(before);
     const result = await materializeLocalCandidate(f.binding,f.run);
     expect(result).toMatchObject({scope:'LOCAL_DISPOSABLE_DOMAIN',authority:'NONAUTHORITY',activationAllowed:false,complete:false});
+    expect(result.readback.task_history_prefixes.count).toBeGreaterThan(0);
+    expect(result.readback.task_history_entries.count).toBeGreaterThan(0);
     const after = await f.destination.state();
     expect(await materializeLocalCandidate(f.binding,f.run)).toEqual(result);
     expect(await f.destination.state()).toEqual(after);
@@ -367,23 +373,37 @@ describe('local candidate domain materialization', () => {
       expect(await f.destination.state()).toEqual(before); expect(await f.source.state()).toEqual(original);
     },120_000);
 
-  it.each(['missing-product','substituted-product','operation-binding','claim','receipt','checkpoint'] as const)(
+  it.each(['missing-product','substituted-product','operation-binding','claim','receipt','checkpoint',
+    'history-prefix','history-entry'] as const)(
     'exact retry refuses %s without silent repairs',async kind => {
       const f = await fixture();
       await materializeLocalCandidate(f.binding,f.run);
       const table = kind === 'receipt' ? 'migration_local_materializations' : kind === 'checkpoint' ? 'migration_source_records'
-        : kind === 'claim' ? 'padlet_evidence_claims' : kind === 'operation-binding' ? 'operations' : 'products';
-      await f.destination.query(`ALTER TABLE ${table} DISABLE TRIGGER USER`);
+        : kind === 'claim' ? 'padlet_evidence_claims' : kind === 'operation-binding' ? 'operations'
+          : kind === 'history-prefix' ? 'task_history_prefixes' : kind === 'history-entry' ? 'task_history_entries' : 'products';
+      const projection = kind.startsWith('history-');
+      if (!projection) await f.destination.query(`ALTER TABLE ${table} DISABLE TRIGGER USER`);
       if (kind === 'missing-product') await f.destination.query("DELETE FROM products WHERE product_id='P2'");
       else if (kind === 'substituted-product') await f.destination.query("UPDATE products SET name='same-count substitution' WHERE product_id='P2'");
       else if (kind === 'operation-binding') await f.destination.query("UPDATE operations SET payload_hash=repeat('a',64)");
       else if (kind === 'claim') await f.destination.query("UPDATE padlet_evidence_claims SET evidence_author_full_name='substitute'");
+      else if (projection) await f.destination.query(`UPDATE ${table} SET stage='same-count-substitution'`);
       else await f.destination.query(`DELETE FROM ${table}`);
-      await f.destination.query(`ALTER TABLE ${table} ENABLE TRIGGER USER`);
+      if (!projection) await f.destination.query(`ALTER TABLE ${table} ENABLE TRIGGER USER`);
       const before = await f.destination.state();
       await expect(materializeLocalCandidate(f.binding,f.run)).rejects.toThrow();
       expect(await f.destination.state()).toEqual(before);
     },120_000);
+
+  it('refuses a projection hidden by missing SELECT privilege before writing or issuing a receipt',async () => {
+    const f = await fixture();
+    await f.destination.query('REVOKE SELECT ON task_history_prefixes FROM app_runtime');
+    const before = await f.destination.state();
+    await expect(materializeLocalCandidate(f.binding,f.run)).rejects.toThrow();
+    expect(await f.destination.state()).toEqual(before);
+    await f.destination.query('GRANT SELECT ON task_history_prefixes TO app_runtime');
+    await expect(materializeLocalCandidate(f.binding,f.run)).resolves.toMatchObject({activationAllowed:false});
+  },120_000);
 
   it.each(['throw-claim','suppress-product','suppress-receipt'] as const)('rolls back all destination domain/import/receipt rows on %s',async kind => {
     const f = await fixture();
@@ -405,6 +425,12 @@ describe('local candidate domain materialization', () => {
     }
     await materializeLocalCandidate(f.binding,f.run);
     await materializeLocalCandidate(f.binding,f.run);
+    for (const table of LOCAL_TASK_HISTORY_PROJECTIONS) {
+      const permissions = (await f.destination.query(`SELECT
+        has_table_privilege('app_runtime',$1,'SELECT') AS read,
+        has_table_privilege('app_runtime',$1,'INSERT,UPDATE,DELETE,TRUNCATE') AS write`, [table])).rows;
+      expect(permissions).toEqual([{read:true,write:false}]);
+    }
     await expect(f.destination.run(TENANT,tx => tx.execute(sql`SELECT 1 FROM generator_grant_claims LIMIT 1`))).rejects.toThrow();
     expect((await f.destination.run(OTHER,tx => tx.execute(sql`SELECT * FROM migration_local_materializations`))).rows).toEqual([]);
     for (const table of ['migration_local_materializations','migration_local_disposable_database','transactions','adjustments','padlet_evidence_claims','padlet_claim_digest_tombstones']) {

@@ -11,8 +11,7 @@ import type {
 import type { TenantTransaction } from '@/server/db/transaction';
 import type { DatabasePadletClaimRepository } from './padletClaims';
 import { appendOperationAudit, assertOperationAudit } from './operationAudit';
-import { addTaskTreeDrops } from './classTree';
-import { addTaskPetGrowth } from './pets';
+import { applyTaskGrowth } from './taskGrowth';
 import { ensureTaskLedger } from './taskLedger/migration';
 import { readCurrentLedgerStates } from './taskLedger/currentState';
 import { readCompletionTasks } from './taskLedger/locking';
@@ -279,8 +278,6 @@ export function createDatabaseTaskCompletionCommand(
              ${evidence ? new Date(evidence.evidenceCreatedAt) : null},
              ${evidence?.evidenceAuthorFullName ?? null}, clock_timestamp())
         `);
-        await addTaskTreeDrops(tx, dependencies.tenantId, { studentId: fresh.studentId, transactionId, operationId: input.operationId });
-        await addTaskPetGrowth(tx, dependencies.tenantId, { studentId: fresh.studentId, transactionId, operationId: input.operationId });
 
         if (evidence) {
           const claim = await dependencies.padletClaims.claim(tx, {
@@ -320,6 +317,7 @@ export function createDatabaseTaskCompletionCommand(
               finished_at=${now}, updated_at=${now}
           WHERE tenant_id=${dependencies.tenantId} AND operation_id=${input.operationId}
         `);
+        await applyTaskGrowth(tx, dependencies.tenantId, { studentId: fresh.studentId, transactionId, operationId: input.operationId });
         return result;
       });
     },

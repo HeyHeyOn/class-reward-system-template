@@ -1,5 +1,6 @@
 // @vitest-environment node
 // D05: owned native PG, actual scoped auth/GET/PATCH and real cancellation connection.
+import { issueTeacherTestSession, grantProductionTestRuntime } from '@/server/db/testing/teacherIdentity';
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import { NextResponse } from 'next/server';
@@ -66,11 +67,12 @@ async function state() {
 suite('D05 student editor vertical slice (native isolated fixture, not migration/deployment acceptance)', () => {
   beforeAll(async () => {
     expect(process.env.DATABASE_URL).toBeUndefined();
-    db = await createDisposablePostgres(); destination.pool = db.runtime;
+    db = await createDisposablePostgres(); await grantProductionTestRuntime(db.owner); destination.pool = db.runtime;
     evidence('owned', db.evidence);
     vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
     vi.stubEnv('AUTH_SECRET', randomBytes(32).toString('hex'));
     destination.google.mockImplementation(() => { throw new Error('D05_GOOGLE_FORBIDDEN'); });
+    await db.owner.query('GRANT EXECUTE ON FUNCTION public.platform_validate_teacher_session(text,uuid,uuid,boolean,text) TO app_runtime');
     await db.owner.query('GRANT EXECUTE ON FUNCTION public.platform_find_tenant_by_slug(text) TO app_runtime');
     await db.owner.query('GRANT EXECUTE ON FUNCTION public.platform_find_membership_by_tenant_and_google_subject(uuid,text) TO app_runtime');
     // Pre-existing ACTIVE business fixtures, NOT a DRAFT promotion or migration proof.
@@ -107,7 +109,7 @@ suite('D05 student editor vertical slice (native isolated fixture, not migration
     expect((await db.owner.query('SELECT status FROM migration_jobs WHERE tenant_id=$1 AND job_id=$2', [DRAFT, initialized.jobId])).rows).toEqual([{ status: 'DISCOVERED' }]);
     evidence('existing_initializer', { tenantId: DRAFT, lifecycle: 'DRAFT', jobStatus: 'DISCOVERED', sourceControlMetadata: 'explicit synthetic fixture, no real Google binding' });
     const reply = NextResponse.json({});
-    setGoogleSessionCookie(reply, { subject: 'd05-owner', email: 'd05@example.test', issuedAt: Date.now() });
+    setGoogleSessionCookie(reply, await issueTeacherTestSession(db.owner,{ subject:'d05-owner',email:'d05@example.test' }));
     cookie = `${GOOGLE_AUTH_COOKIE}=${reply.cookies.get(GOOGLE_AUTH_COOKIE)!.value}`;
     for (const [id, status] of [['READ', 'ACTIVE'], ['INACTIVE', 'INACTIVE'], ['DELETED', 'INACTIVE'], ['EDIT', 'ACTIVE'], ['RACE1', 'ACTIVE'], ['RACE2', 'ACTIVE'], ['ROLLBACK', 'ACTIVE']] as const) {
       await command().create({ operationId: randomUUID(), studentId: id, name: id, balance: 100, status });

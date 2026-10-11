@@ -1,12 +1,14 @@
 import 'server-only';
 import { getDatabaseClient } from '@/server/db/client';
 import { parseTenantSlug } from '@/server/tenantContext';
+import type { TeacherSessionBinding } from '@/server/teacherSession';
+import { currentLegalRevision } from '@/lib/legalDocuments';
 
 export type NewClassSetup = Readonly<{ slug: string; displayName: string; lifecycle: 'DRAFT' | 'ACTIVE' }>;
 export type ClassStartResult = NewClassSetup & Readonly<{ lifecycle: 'ACTIVE'; replayed: boolean }>;
 export type ClassStartRepository = Readonly<{
   getSetup(slug: string, subject: string): Promise<NewClassSetup | null>;
-  start(input: { operationId: string; slug: string; subject: string }): Promise<ClassStartResult>;
+  start(input: TeacherSessionBinding & { operationId: string; slug: string; subject: string }): Promise<ClassStartResult>;
 }>;
 type Queryable = Readonly<{ query(text: string, values?: unknown[]): Promise<{ rows: unknown[] }> }>;
 
@@ -26,9 +28,9 @@ export function createClassStartRepository(queryable: Queryable): ClassStartRepo
       if (rows.length > 1) throw new Error('Invalid new class result.');
       return rows.length ? project(rows[0], slug) : null;
     },
-    async start({ operationId, slug, subject }) {
-      const { rows } = await queryable.query('SELECT * FROM public.platform_start_new_class($1::uuid,$2,$3)',
-        [operationId, slug, subject]);
+    async start({ operationId, slug, subject, accountGeneration, sessionId }) {
+      const { rows } = await queryable.query('SELECT * FROM public.platform_start_new_class_authenticated($1::uuid,$2,$3,$4::uuid,$5::uuid,$6)',
+        [operationId, slug, subject, accountGeneration, sessionId, currentLegalRevision().version]);
       if (rows.length !== 1) throw new Error('Invalid class start result.');
       const result = project(rows[0], slug);
       const replayed = (rows[0] as Record<string, unknown>).replayed;

@@ -42,6 +42,7 @@ const ROUTES: readonly TenantApiRoute[] = [
   route('POST', 'bank/me/tree/water', 'public', async (r) => (await import('@/app/api/bank/me/tree/water/route')).POST(r)),
   route('GET', 'bank/me/bag', 'public', async (r) => (await import('@/app/api/bank/me/bag/route')).GET(r)),
   route('GET', 'bank/me/pet', 'public', async (r) => (await import('@/app/api/bank/me/pet/route')).GET(r)),
+  route('GET', 'bank/me/pet/dex', 'public', async (r) => (await import('@/app/api/bank/me/pet/dex/route')).GET(r)),
   route('POST', 'bank/me/pet/adopt', 'public', async (r) => (await import('@/app/api/bank/me/pet/adopt/route')).POST(r)),
   route('POST', 'bank/me/pet/care', 'public', async (r) => (await import('@/app/api/bank/me/pet/care/route')).POST(r)),
   route('POST', 'bank/me/pet/graduate', 'public', async (r) => (await import('@/app/api/bank/me/pet/graduate/route')).POST(r)),

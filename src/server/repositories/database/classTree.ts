@@ -21,6 +21,7 @@ import {
 } from '@/lib/classTreeApi';
 import { appendOperationAudit } from './operationAudit';
 import { giveHarvestReward, readRewardProduct, storageItemShape } from './studentBag';
+import { readGrowthCapabilities, readGrowthTransactionValue } from './growthTransaction';
 
 /*
  * The class apple tree (migrations 0044, 0047, 0049). Lock order, shared with every other money writer:
@@ -78,9 +79,8 @@ function requireOperationId(operationId: unknown): string {
 }
 
 /** Whether migration 0044 is installed; writers that are shared with older paths check it first. */
-async function treeTablesPresent(tx: TenantTransaction): Promise<boolean> {
-  const result = await tx.execute(sql`SELECT to_regclass('public.growth_settings') IS NOT NULL AS present`);
-  return (result.rows[0] as { present?: unknown } | undefined)?.present === true;
+async function treeTablesPresent(tx: TenantTransaction, tenantId: string): Promise<boolean> {
+  return (await readGrowthCapabilities(tx, tenantId)).tree;
 }
 
 /**
@@ -212,8 +212,8 @@ function resolveOperation<TResult>(row: OperationRow, payloadHash: string): TRes
 export async function addTaskTreeDrops(tx: TenantTransaction, tenantId: string, input: Readonly<{
   studentId: string; transactionId: string; operationId: string;
 }>): Promise<void> {
-  if (!await treeTablesPresent(tx)) return;
-  const settings = await readClassTreeSettings(tx, tenantId);
+  if (!await treeTablesPresent(tx, tenantId)) return;
+  const settings = await readGrowthTransactionValue(tx, tenantId, 'tree-settings', () => readClassTreeSettings(tx, tenantId));
   if (!settings.enabled || settings.taskDrops === 0) return;
   const tree = await readGrowingTree(tx, tenantId, true);
   if (!tree || toNumber(tree.drops) >= toNumber(tree.goal)) return;
@@ -230,7 +230,7 @@ export async function addTaskTreeDrops(tx: TenantTransaction, tenantId: string, 
 export async function revokeTreeDropsForTransaction(tx: TenantTransaction, tenantId: string, input: Readonly<{
   originalTransactionId: string; reversalTransactionId: string; operationId: string;
 }>): Promise<void> {
-  if (!await treeTablesPresent(tx)) return;
+  if (!await treeTablesPresent(tx, tenantId)) return;
   const given = await tx.execute(sql`
     SELECT tree_no, student_id, sum(amount)::text AS amount FROM tree_drops
     WHERE tenant_id=${tenantId} AND transaction_id=${input.originalTransactionId} AND source IN ('WATER', 'TASK')
@@ -265,7 +265,10 @@ export function createClassTreeCommands(dependencies: ClassTreeDependencies) {
     async studentView(studentId: string): Promise<ClassTreeStudentViewDto> {
       return runTenantTransaction(tenantId, async (tx) => {
         const settings = await readClassTreeSettings(tx, tenantId);
-        const tree = settings.enabled ? await readGrowingTree(tx, tenantId, false) : undefined;
+        if (!settings.enabled) return { enabled: false, treeName: settings.treeName, tree: null, apples: 0,
+          waterPrice: settings.waterPrice, waterDailyLimit: settings.waterDailyLimit,
+          myWaterToday: 0, waterersToday: 0, harvestedTrees: 0 };
+        const tree = await readGrowingTree(tx, tenantId, false);
         const counts = await tx.execute(sql`
           SELECT
             (SELECT count(*)::int FROM tree_drops WHERE tenant_id=${tenantId} AND source='WATER'
@@ -306,7 +309,7 @@ export function createClassTreeCommands(dependencies: ClassTreeDependencies) {
           LEFT JOIN tree_drops d ON d.tenant_id=s.tenant_id AND d.student_id=s.student_id AND d.tree_no=${tree?.tree_no ?? -1}
             AND d.source IN ('WATER', 'TASK')
           -- A cancelled watering or task reward no longer counts as help.
-          LEFT JOIN transactions r ON r.tenant_id=d.tenant_id AND r.reverses_transaction_id=d.transaction_id
+          LEFT JOIN transactions r ON r.tenant_id=d.tenant_id AND r.reverses_transaction_id=d.transaction_id AND r.kind='CANCELLATION'
           LEFT JOIN tree_drops c ON c.tenant_id=r.tenant_id AND c.transaction_id=r.transaction_id AND c.source='CANCEL'
           WHERE s.tenant_id=${tenantId} AND s.status='ACTIVE' AND s.deleted_at IS NULL
           GROUP BY s.student_id, s.name

@@ -19,7 +19,7 @@ import {
 import type { TenantTransaction } from '@/server/db/transaction';
 import { parseCheckoutSuccessResponse } from '@/lib/checkoutSnapshotClient';
 import { appendOperationAudit, assertOperationAudit } from './operationAudit';
-import { giveStoreDigitalItems, lockCheckoutVouchers, spendCheckoutVouchers } from './studentBag';
+import { giveStoreDigitalItems, lockCheckoutVouchers, MAX_CHECKOUT_DIGITAL_UNITS, prepareStoreDigitalItems, spendCheckoutVouchers } from './studentBag';
 
 const SHA256 = /^[0-9a-f]{64}$/;
 
@@ -234,6 +234,12 @@ async function executeClaimedCheckout(
   });
   if (!preview.ok) fail(preview);
 
+  const digitalItems = await prepareStoreDigitalItems(tx, dependencies.tenantId,
+    preview.items.map((item) => ({ productId: item.productId, quantity: item.totalQuantity })));
+  if (!digitalItems) {
+    fail({ ok: false, code: 'DIGITAL_ITEM_LIMIT', message: `디지털 상품은 한 번에 합계 ${MAX_CHECKOUT_DIGITAL_UNITS}개까지 살 수 있어요. 수량을 줄여 주세요.` });
+  }
+
   await tx.execute(sql`
     UPDATE accounts
     SET balance=${preview.balanceAfter}, version=version+1, updated_at=${now}
@@ -281,7 +287,7 @@ async function executeClaimedCheckout(
   // Digital products put one item per unit (free promotion units included) into the buyer's 보관함.
   await giveStoreDigitalItems(tx, dependencies.tenantId, {
     studentId: student.studentId, transactionId, operationId: input.operationId,
-    lines: preview.items.map((item) => ({ productId: item.productId, quantity: item.totalQuantity })),
+    items: digitalItems,
   });
   await spendCheckoutVouchers(tx, dependencies.tenantId, { itemIds: voucherItemIds, transactionId });
 

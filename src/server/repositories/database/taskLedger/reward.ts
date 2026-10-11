@@ -16,8 +16,7 @@ import {
   type LedgerTask,
 } from './store';
 import { insertStageEvent, ledgerEventId } from './writes';
-import { addTaskTreeDrops } from '../classTree';
-import { addTaskPetGrowth } from '../pets';
+import type { TaskGrowthInput } from '../taskGrowth';
 
 export const BANK_REWARD_NOTE = 'bank-self-completion';
 /** A teacher marked the task done and paid its reward; cancellable like a bank completion. */
@@ -60,7 +59,7 @@ export async function writeTeacherPaidCompletion(tx: TenantTransaction, tenantId
   student: LedgerStudent;
   balance: number;
   events: LedgerEventSource | undefined;
-}>): Promise<Readonly<{ balanceAfter: number; completionId: string }>> {
+}>): Promise<Readonly<{ balanceAfter: number; completionId: string; growth: TaskGrowthInput }>> {
   const rewardOperationId = derivedUuid('task-ledger-reward', input.adminOperationId, input.task.taskInstanceId, input.student.studentId);
   const assignment = rewardAssignment(input.events, ledgerEventId('tl-a', 'reward', rewardOperationId));
   await writeCarriedAssignmentIfMissing(tx, tenantId, { assignment, task: input.task, studentId: input.student.studentId });
@@ -106,7 +105,8 @@ export async function writeTeacherPaidCompletion(tx: TenantTransaction, tenantId
        ${input.student.studentId}, ${input.student.name}, ${input.task.reward}, ${input.balance}, ${balanceAfter}, 'COMPLETED',
        ${TEACHER_REWARD_NOTE}, ${LEDGER_CYCLE_ID}, ${LEDGER_CYCLE_START}::timestamptz, NULL, 1, 'Asia/Seoul', 'BANK',
        ${assignment.assignmentId}, ${transactionId}, ${rewardOperationId}, ${payloadHash}, 1, clock_timestamp())`);
-  await addTaskTreeDrops(tx, tenantId, { studentId: input.student.studentId, transactionId, operationId: rewardOperationId });
-  await addTaskPetGrowth(tx, tenantId, { studentId: input.student.studentId, transactionId, operationId: rewardOperationId });
-  return { balanceAfter, completionId };
+  // The caller applies these in original event order at the end of the same
+  // transaction, so a shared tree is not locked during the rest of a batch.
+  return { balanceAfter, completionId,
+    growth: { studentId: input.student.studentId, transactionId, operationId: rewardOperationId } };
 }

@@ -134,34 +134,47 @@ export async function givePetReward(tx: TenantTransaction, tenantId: string, inp
             'PET_GRADUATION', ${input.petId}, ${input.product.productId}, ${shape.voucherProductId}, ${input.operationId})`);
 }
 
-/**
- * Items for the digital products in a checkout: one per unit (free units of a promotion included).
- * Runs inside the checkout transaction after its transaction row exists. Returns how many were given.
- */
-export async function giveStoreDigitalItems(tx: TenantTransaction, tenantId: string, input: Readonly<{
-  studentId: string; transactionId: string; operationId: string;
-  lines: ReadonlyArray<Readonly<{ productId: string; quantity: number }>>;
-}>): Promise<number> {
-  if (input.lines.length === 0 || !await bagTablesPresent(tx)) return 0;
-  const products = await readStorageProducts(tx, tenantId, input.lines.map((line) => line.productId));
-  let given = 0;
+export const MAX_CHECKOUT_DIGITAL_UNITS = 100;
+type StoreDigitalItem = Readonly<{ productId: string; unit: number; kind: DigitalKind; title: string }>;
+
+/** Prepare under the checkout's product locks, before changing balances/stock. Null means over limit. */
+export async function prepareStoreDigitalItems(tx: TenantTransaction, tenantId: string,
+  lines: ReadonlyArray<Readonly<{ productId: string; quantity: number }>>,
+): Promise<readonly StoreDigitalItem[] | null> {
+  if (lines.length === 0 || !await bagTablesPresent(tx)) return [];
+  const products = await readStorageProducts(tx, tenantId, lines.map((line) => line.productId));
+  const items: StoreDigitalItem[] = [];
   const counted = new Map<string, number>();
-  for (const line of input.lines) {
+  for (const line of lines) {
     const product = products.get(line.productId);
     if (!product || product.digitalKind === null) continue;
+    // Check the whole normalized cart, including free promotion units, before expanding a number
+    // into rows. Physical units do not consume this digital storage budget.
+    if (!Number.isSafeInteger(line.quantity) || line.quantity < 1
+      || line.quantity > MAX_CHECKOUT_DIGITAL_UNITS - items.length) return null;
     const shape = storageItemShape(product);
     for (let unit = 0; unit < line.quantity; unit++) {
       const n = (counted.get(line.productId) ?? 0) + 1;
       counted.set(line.productId, n);
-      await tx.execute(sql`
-        INSERT INTO student_items (tenant_id, item_id, student_id, kind, title, source, source_ref, product_id, voucher_product_id,
-                                   transaction_id, operation_id)
-        VALUES (${tenantId}, ${`coupon:${input.transactionId}:${line.productId}:${n}`}, ${input.studentId}, ${shape.kind}, ${shape.title},
-                'STORE_PURCHASE', ${line.productId}, ${line.productId}, ${shape.voucherProductId}, ${input.transactionId}, ${input.operationId})`);
-      given += 1;
+      items.push({ productId: line.productId, unit: n, kind: shape.kind, title: shape.title });
     }
   }
-  return given;
+  return items;
+}
+
+/** One bounded insert after the transaction row exists; the surrounding checkout stays atomic. */
+export async function giveStoreDigitalItems(tx: TenantTransaction, tenantId: string, input: Readonly<{
+  studentId: string; transactionId: string; operationId: string; items: readonly StoreDigitalItem[];
+}>): Promise<number> {
+  if (input.items.length === 0) return 0;
+  if (input.items.length > MAX_CHECKOUT_DIGITAL_UNITS) throw new Error('Unbounded digital item grant.');
+  await tx.execute(sql`
+    INSERT INTO student_items (tenant_id, item_id, student_id, kind, title, source, source_ref, product_id,
+                               transaction_id, operation_id)
+    VALUES ${sql.join(input.items.map((item) => sql`(${tenantId}, ${`coupon:${input.transactionId}:${item.productId}:${item.unit}`},
+      ${input.studentId}, ${item.kind}, ${item.title}, 'STORE_PURCHASE', ${item.productId}, ${item.productId},
+      ${input.transactionId}, ${input.operationId})`), sql`, `)}`);
+  return input.items.length;
 }
 
 /**

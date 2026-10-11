@@ -474,3 +474,25 @@ describe('BankApp 내 과제', () => {
     expect(JSON.parse(window.sessionStorage.getItem(window.sessionStorage.key(0)!)!)).toMatchObject({ operationId: OPERATION_ID });
   });
 });
+
+
+describe('BankApp response ordering', () => {
+  it.each([1205, 1190])('keeps a confirmed balance of %i when an earlier tree read arrives later', async (balance) => {
+    let release!: (response: Response) => void;
+    const late = new Promise<Response>((resolve) => { release = resolve; });
+    let reads = 0;
+    state.extra = (url) => url === '/api/bank/me/tree' && reads++ === 0 ? late : undefined;
+    state.complete = (_url, init) => json(completionSuccess(JSON.parse(String(init?.body)).operationId, balance));
+    await renderTasks();
+    fireEvent.click(within(readyCard('책 10분 읽기')).getByRole('button', { name: /보상 받기/ }));
+    const dialog = await screen.findByRole('dialog', { name: '보상을 받았어요!' });
+    fireEvent.click(within(dialog).getByRole('button', { name: '확인' }));
+    fireEvent.click(screen.getByRole('button', { name: '홈으로 돌아가기' }));
+    await waitFor(() => expect(screen.getByTestId('bank-balance').textContent).toBe(`${balance.toLocaleString('ko-KR')}원`));
+    await act(async () => release(json({ balance: 1200, tree: {
+      enabled: false, treeName: '합성 나무', tree: null, apples: 1, waterPrice: 1,
+      waterDailyLimit: 1, myWaterToday: 0, waterersToday: 0, harvestedTrees: 0,
+    } })));
+    expect(screen.getByTestId('bank-balance').textContent).toBe(`${balance.toLocaleString('ko-KR')}원`);
+  });
+});

@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   setSession: vi.fn(),
   clearSession: vi.fn(),
   setPending: vi.fn(),
+  clearPending: vi.fn(),
   hasAgreement: vi.fn(async () => true),
   latestAgreement: vi.fn(async (): Promise<{ version: string; agreedAt: string } | null> => null),
   listMemberships: vi.fn(async (): Promise<unknown[]> => []),
@@ -36,6 +37,13 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/server/teacherAccounts', () => ({
   teacherAccountsEnabled: () => process.env.CLASS_STORE_STORAGE === 'postgresql' && process.env.NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT !== 'generator',
   getProductionTeacherAccountStore: () => ({ hasAgreement: mocks.hasAgreement, latestAgreement: mocks.latestAgreement }),
+}));
+vi.mock('@/server/teacherSession', () => ({
+  getProductionTeacherSessionStore: () => ({ begin: async () => ({
+    accountGeneration: '11111111-1111-4111-8111-111111111111',
+    sessionId: '22222222-2222-4222-8222-222222222222', agreed: await mocks.hasAgreement(),
+  }) }),
+  endRequestTeacherSessions: vi.fn(async () => undefined),
 }));
 vi.mock('@/server/repositories/database/classMemberships', () => ({
   getProductionClassMembershipRepository: () => ({ listByGoogleSubject: mocks.listMemberships }),
@@ -53,6 +61,7 @@ vi.mock('@/server/googleOAuth', () => ({
   setGoogleSessionCookie: mocks.setSession,
   clearGoogleSessionCookie: mocks.clearSession,
   setPendingAgreementCookie: mocks.setPending,
+  clearPendingAgreementCookie: mocks.clearPending,
 }));
 
 import { GET } from './route';
@@ -73,6 +82,7 @@ describe('GET /api/google/callback', () => {
     mocks.setSession.mockClear();
     mocks.clearSession.mockClear();
     mocks.setPending.mockClear();
+    mocks.clearPending.mockClear();
     mocks.hasAgreement.mockReset();
     mocks.hasAgreement.mockResolvedValue(true);
     mocks.latestAgreement.mockReset();
@@ -89,6 +99,7 @@ describe('GET /api/google/callback', () => {
     expect(response.status).toBe(307);
     expect(response.headers.get('location')).toBe('https://class-store-generator.vercel.app/admin/generator?step=google');
     expect(mocks.setSession).toHaveBeenCalledOnce();
+    expect(mocks.clearPending).toHaveBeenCalledOnce();
     expect(mocks.setGrant).not.toHaveBeenCalled();
   });
 

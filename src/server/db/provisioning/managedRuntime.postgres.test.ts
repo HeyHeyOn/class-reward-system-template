@@ -1,4 +1,6 @@
 // @vitest-environment node
+import { issueTeacherTestSession } from '@/server/db/testing/teacherIdentity';
+import { currentLegalRevision } from '@/lib/legalDocuments';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { parseEnv } from 'node:util';
@@ -62,12 +64,14 @@ suite('managed PostgreSQL ordinary runtime ACL', () => {
       expect((await client.query('SELECT 1 FROM pg_auth_members WHERE member=(SELECT oid FROM pg_roles WHERE rolname=current_user)')).rowCount).toBe(0);
       await client.query('BEGIN');
       const subject = `acl-smoke-${randomUUID()}`;
-      const created = (await client.query('SELECT * FROM platform_create_draft_class($1,$2,$3,$4)',
-        [randomUUID(), subject, `${subject}@example.invalid`, 'Rollback-only ACL test'])).rows[0];
+      const identity = await issueTeacherTestSession(client,{subject,email:`${subject}@example.invalid`});
+      const binding = [identity.accountGeneration,identity.sessionId,currentLegalRevision().version];
+      const created = (await client.query('SELECT * FROM platform_create_draft_class_authenticated($1,$2,$3,$4,$5,$6,$7)',
+        [randomUUID(), subject, `${subject}@example.invalid`, 'Rollback-only ACL test',...binding])).rows[0];
       const tenantId = (await client.query('SELECT id FROM platform_find_tenant_by_slug($1)', [created.slug])).rows[0].id as string;
-      await client.query('SELECT * FROM platform_start_new_class($1,$2,$3)', [randomUUID(), created.slug, subject]);
-      const other = (await client.query('SELECT * FROM platform_create_draft_class($1,$2,$3,$4)',
-        [randomUUID(), subject, `${subject}@example.invalid`, 'Rollback-only other class'])).rows[0];
+      await client.query('SELECT * FROM platform_start_new_class_authenticated($1,$2,$3,$4,$5,$6)', [randomUUID(), created.slug, subject,...binding]);
+      const other = (await client.query('SELECT * FROM platform_create_draft_class_authenticated($1,$2,$3,$4,$5,$6,$7)',
+        [randomUUID(), subject, `${subject}@example.invalid`, 'Rollback-only other class',...binding])).rows[0];
       const otherId = (await client.query('SELECT id FROM platform_find_tenant_by_slug($1)', [other.slug])).rows[0].id as string;
       const runTenantTransaction = async <T>(id: string, callback: (tx: TenantTransaction) => Promise<T>): Promise<T> => {
         await client!.query('SAVEPOINT command');

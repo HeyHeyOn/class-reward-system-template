@@ -1,9 +1,11 @@
 import 'server-only';
 
 import { NextResponse } from 'next/server';
+import { readBoundedRequestText, RequestBodyError } from '@/server/boundedRequestBody';
 import { hasSameOrigin } from '@/server/classMutationRequest';
 import { getGoogleSessionFromRequest, getPendingAgreementFromRequest, type GoogleSession, type PendingAgreement } from '@/server/googleOAuth';
 import { teacherAccountsEnabled } from '@/server/teacherAccounts';
+import { getProductionTeacherSessionStore, hasTeacherSessionBinding, type TeacherSessionBinding } from '@/server/teacherSession';
 
 const MAX_BYTES = 1024;
 
@@ -12,15 +14,19 @@ export function accountReply(status: number, body: unknown): NextResponse {
 }
 
 export type AccountIdentity =
-  | Readonly<{ kind: 'pending'; pending: PendingAgreement }>
-  | Readonly<{ kind: 'session'; session: GoogleSession }>;
+  | Readonly<{ kind: 'pending'; pending: PendingAgreement & TeacherSessionBinding }>
+  | Readonly<{ kind: 'session'; session: GoogleSession & TeacherSessionBinding }>;
 
-/** A sign-in waiting for agreement comes first: it is the newer Google sign-in in this browser. */
-export function readAccountIdentity(request: Request): AccountIdentity | null {
+/** Do not choose silently between two browser identities. Check persisted lifetime before account actions. */
+export async function readAccountIdentity(request: Request): Promise<AccountIdentity | null> {
   const pending = getPendingAgreementFromRequest(request);
-  if (pending) return { kind: 'pending', pending };
   const session = getGoogleSessionFromRequest(request);
-  return session ? { kind: 'session', session } : null;
+  if (pending && session && (pending.subject !== session.subject || pending.sessionId !== session.sessionId
+    || pending.accountGeneration !== session.accountGeneration)) return null;
+  const store = getProductionTeacherSessionStore();
+  if (session && hasTeacherSessionBinding(session) && await store.valid(session, false, null)) return { kind: 'session', session };
+  if (pending && hasTeacherSessionBinding(pending) && await store.valid(pending, true, null)) return { kind: 'pending', pending };
+  return null;
 }
 
 /**
@@ -35,15 +41,13 @@ export async function readAccountRequest(request: Request, options: Readonly<{ b
     return accountReply(403, { error: '이 화면에서 다시 시도해 주세요.' });
   }
   if (!options.body) return {};
-  const length = request.headers.get('content-length');
-  if (length !== null && (!/^\d+$/.test(length) || Number(length) > MAX_BYTES)) return accountReply(413, { error: '입력이 너무 커요.' });
   try {
-    const text = await request.text();
-    if (new TextEncoder().encode(text).length > MAX_BYTES) return accountReply(413, { error: '입력이 너무 커요.' });
+    const text = await readBoundedRequestText(request, MAX_BYTES);
     const body: unknown = JSON.parse(text);
     if (!body || typeof body !== 'object' || Array.isArray(body)) return accountReply(400, { error: '입력을 확인해 주세요.' });
     return body as Record<string, unknown>;
-  } catch {
+  } catch (error) {
+    if (error instanceof RequestBodyError && error.status === 413) return accountReply(413, { error: '입력이 너무 커요.' });
     return accountReply(400, { error: '입력을 확인해 주세요.' });
   }
 }

@@ -10,7 +10,7 @@ import { buildSyntheticCrsWorkbook, writeSyntheticXlsx } from './testing/synthet
 
 const origin = 'https://classes.example.invalid';
 const tenant = { id: '20000000-0000-4000-8000-000000000001', slug: 'alpha', displayName: '알파', lifecycle: 'ACTIVE' as const, timezone: 'Asia/Seoul' as const };
-const session = { subject: 'owner-subject', email: 'owner@example.invalid', issuedAt: Date.now() };
+const session = { accountGeneration:'11111111-1111-4111-8111-111111111111',sessionId:'22222222-2222-4222-8222-222222222222',subject: 'owner-subject', email: 'owner@example.invalid', issuedAt: Date.now() };
 const membership = { id: 'm', tenantId: tenant.id, userId: 'u', googleSubject: session.subject, role: 'OWNER' as const };
 const context = { tenant, session, membership } as TrustedTenantRequestContext;
 const empty = { students: 0, products: 0, promotions: 0, tasks: 0, transactions: 0 };

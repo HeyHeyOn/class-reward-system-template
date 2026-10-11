@@ -1,3 +1,4 @@
+import type { TeacherSessionBinding } from '@/server/teacherSession';
 import 'server-only';
 import { createHash } from 'node:crypto';
 import { sql, type SQL } from 'drizzle-orm';
@@ -88,7 +89,7 @@ function assertOk(result: unknown, operationId: string): void {
  * on the class it already filled is recognized by the first step's ledger row and writes nothing.
  */
 export async function executeXlsxImportPlan(tx: TenantTransaction, input: Readonly<{
-  tenantId: string; plan: XlsxImportPlan; operationId: string; start?: Readonly<{ slug: string; subject: string }>;
+  tenantId: string; plan: XlsxImportPlan; operationId: string; start?: TeacherSessionBinding & Readonly<{ slug: string; subject: string }>;
 }>): Promise<XlsxImportExecution> {
   const { tenantId, plan, operationId } = input;
   const derive = (...parts: string[]) => deriveXlsxImportOperationId(operationId, plan.fileDigest, ...parts);
@@ -100,11 +101,11 @@ export async function executeXlsxImportPlan(tx: TenantTransaction, input: Readon
   if (input.start) {
     try {
       const result = await createClassStartRepository(transactionQueryable(tx))
-        .start({ operationId: derive('class-start'), slug: input.start.slug, subject: input.start.subject });
+        .start({ ...input.start, operationId: derive('class-start') });
       started = !result.replayed;
     } catch (error) {
       const code = sqlState(error);
-      if (code === '42501') throw new XlsxImportConflictError('START_REFUSED');
+      if (code === '42501' || code === '28000') throw new XlsxImportConflictError('START_REFUSED');
       if (code === '23505') throw new XlsxImportConflictError('START_CONFLICT');
       throw error;
     }

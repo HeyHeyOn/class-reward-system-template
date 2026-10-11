@@ -1,4 +1,4 @@
--- Apply after migrations 0001–0050 as the migration owner, in the same
+-- Apply after migrations 0001–0053 as the migration owner, in the same
 -- transaction as creation of crs_app_runtime LOGIN NOSUPERUSER NOBYPASSRLS
 -- NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION. Never grant role membership.
 -- Passwords and provider URLs belong to the provisioning runner, not this file.
@@ -52,16 +52,30 @@ GRANT EXECUTE ON FUNCTION
   public.platform_find_tenant_by_slug(text),
   public.platform_find_membership_by_tenant_and_google_subject(uuid,text),
   public.platform_list_memberships_by_google_subject(text),
-  public.platform_create_draft_class(uuid,text,text,text),
+  public.platform_create_draft_class_authenticated(uuid,text,text,text,uuid,uuid,text),
   public.platform_get_new_class_setup(text,text),
-  public.platform_start_new_class(uuid,text,text),
+  public.platform_start_new_class_authenticated(uuid,text,text,uuid,uuid,text),
   public.platform_consume_tenant_login_attempt(uuid),
   public.platform_revoke_tenant_session(text,integer),
   public.platform_list_class_dashboard(text),
-  public.platform_manage_class(uuid,text,text,text,text,bigint),
+  public.platform_manage_class_authenticated(uuid,text,text,text,text,bigint,uuid,uuid,text),
   public.platform_latest_user_agreement(text),
   public.platform_has_user_agreement(text,text),
-  public.platform_record_user_agreement(text,text),
   public.platform_get_user_profile(text),
-  public.platform_save_user_profile(text,text,jsonb),
-  public.platform_withdraw_user(text) TO crs_app_runtime;
+  public.platform_begin_teacher_session(text,text),
+  public.platform_validate_teacher_session(text,uuid,uuid,boolean,text),
+  public.platform_mutate_teacher_account(text,text,uuid,uuid,jsonb),
+  public.platform_end_teacher_session(text,uuid,uuid) TO crs_app_runtime;
+-- Mutations require a durable, unexpired account session; the old helpers remain private to
+-- the generation-checked definer wrapper. Erasure helpers/context are never runtime-accessible.
+REVOKE ALL ON FUNCTION public.platform_create_draft_class(uuid,text,text,text),
+  public.platform_start_new_class(uuid,text,text),
+  public.platform_manage_class(uuid,text,text,text,text,bigint),
+  public.platform_lock_teacher_session(text,uuid,uuid,text),
+  public.platform_record_user_agreement(text,text),
+  public.platform_save_user_profile(text,text,jsonb), public.platform_withdraw_user(text),
+  public.platform_purge_withdrawal(uuid), public.platform_withdrawal_erasure_allowed(uuid)
+  FROM crs_app_runtime;
+REVOKE ALL ON public.teacher_identity_generations, public.teacher_auth_sessions,
+  public.withdrawal_erasure_context, public.account_withdrawals, public.user_agreements,
+  public.user_profiles FROM crs_app_runtime;

@@ -1,65 +1,15 @@
 'use client';
 
 import { forwardRef, useState } from 'react';
-import { CLASS_TREE_STAGES, classTreeLook, classTreeStageProgress } from '@/domain/classTree';
+import { CLASS_TREE_STAGES, classTreeLook } from '@/domain/classTree';
 import { TreeCanvas, type TreePlay } from '../classTree/TreeCanvas';
-import { Button, Callout, Icon, IconButton, Spinner } from '../ui';
+import { Button, Callout, IconButton, Spinner } from '../ui';
 import type { ClassTreeStudentViewDto } from './bankClient';
 import { formatMoney } from './format';
 import { NoticeToast, type Notice } from './NoticeToast';
 
-/** The way to the next stage only — students never see how far the whole goal is. */
-function StageBar({ drops, goal }: Readonly<{ drops: number; goal: number }>) {
-  const progress = classTreeStageProgress(drops, goal);
-  const percent = Math.round(progress.fraction * 100);
-  const label = progress.next === null ? '수확까지' : `${CLASS_TREE_STAGES[progress.next]}까지`;
-  return (
-    <span role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}
-      className="block h-2.5 overflow-hidden rounded-full bg-[var(--theme-accent-soft)]">
-      <span className="block h-full rounded-full bg-[var(--theme-accent-solid)] transition-[width] duration-300" style={{ width: `${percent}%` }} />
-    </span>
-  );
-}
-
-/** '다음 단계: 새싹' (or the harvest after the last stage). */
-function nextStageText(drops: number, goal: number): string {
-  const next = classTreeStageProgress(drops, goal).next;
-  return `다음 단계: ${next === null ? '수확' : CLASS_TREE_STAGES[next]}`;
-}
-
-/** The drops in the stage the tree is in, out of all the stage takes ('3/40'). */
-function stagePoints(drops: number, goal: number): string {
-  const { done, need } = classTreeStageProgress(drops, goal);
-  return `${done}/${need}`;
-}
-
-/** The class tree on the bank home: a small picture, and how close it is to its next stage. Opens the tree. */
-export function BankTreeCard({ view, onOpen }: Readonly<{ view: ClassTreeStudentViewDto; onOpen: () => void }>) {
-  const tree = view.tree;
-  if (!view.enabled || !tree) return null;
-  const look = classTreeLook(tree.drops, tree.goal, view.apples);
-  return (
-    <button type="button" onClick={onOpen}
-      aria-label={`${view.treeName}, ${CLASS_TREE_STAGES[look.stage]}${look.ready ? ', 열매가 다 익었어요' : ` ${stagePoints(tree.drops, tree.goal)}, ${nextStageText(tree.drops, tree.goal)}`}`}
-      className="mt-4 flex w-full items-center gap-4 rounded-[22px] border border-[var(--crs-line)] bg-[var(--theme-surface)] p-4 text-left shadow-[var(--crs-shadow-sm)] transition-[transform,background-color] duration-150 hover:bg-[var(--crs-subtle-hover)] active:scale-[0.99]">
-      <span aria-hidden="true" className="shrink-0 rounded-2xl bg-[var(--theme-accent-soft)] p-1">
-        <TreeCanvas drops={tree.drops} goal={tree.goal} apples={view.apples} size={80} name={view.treeName} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[18px] font-black tracking-[-0.02em]">{view.treeName}</span>
-        <span className="mt-0.5 flex items-baseline justify-between gap-2 text-[13px] font-semibold text-[var(--theme-muted-text)]">
-          <span className="min-w-0 truncate">{look.ready ? '열매가 다 익었어요! 수확을 기다려요' : CLASS_TREE_STAGES[look.stage]}</span>
-          {look.ready ? null : <span className="shrink-0 font-bold tabular-nums text-[var(--theme-text)]">{stagePoints(tree.drops, tree.goal)}</span>}
-        </span>
-        <span className="mt-1.5 block">
-          <StageBar drops={tree.drops} goal={tree.goal} />
-          {!look.ready ? <span className="mt-1 block text-[12px] font-bold text-[var(--theme-accent-text)]">{nextStageText(tree.drops, tree.goal)}</span> : null}
-        </span>
-      </span>
-      <Icon name="chevronRight" size={20} className="shrink-0 text-[var(--theme-muted-text)]" />
-    </button>
-  );
-}
+import { StageBar, nextStageText, stagePoints } from './treeProgress';
+export { BankTreeCard } from './BankTreeCard';
 
 type BankTreeViewProps = Readonly<{
   view: ClassTreeStudentViewDto | null;

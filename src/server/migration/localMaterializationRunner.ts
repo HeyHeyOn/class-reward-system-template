@@ -15,11 +15,15 @@ export type OwnedSyntheticDatabaseLease = Readonly<{
   queryOwner: (statement: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
 }>;
 
+// These owner-maintained caches are populated by legacy event inserts too.
+// They must be part of the immutable materialization receipt on exact retries.
+export const LOCAL_TASK_HISTORY_PROJECTIONS = ['task_history_revisions','task_history_prefixes','task_history_entries'] as const;
 const METADATA = new Set(['tenants','migration_jobs','migration_local_disposable_database']);
 const IMPORTED = new Set(['tenant_settings','students','accounts','products','promotions','promotion_products','tasks',
   'task_allowed_students','task_assignments','transactions','transaction_items','adjustments','task_completions',
   'operations','padlet_evidence_claims','padlet_claim_digest_tombstones','padlet_claim_digest_registry',
-  'migration_sources','migration_source_records','migration_snapshots','migration_local_materializations']);
+  'migration_sources','migration_source_records','migration_snapshots','migration_local_materializations',
+  ...LOCAL_TASK_HISTORY_PROJECTIONS]);
 const identifier = (value: string) => `"${value.replaceAll('"','""')}"`;
 function refused(): never { throw new Error('Owned local database boundary refused.'); }
 

@@ -1,25 +1,38 @@
 // @vitest-environment node
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('server-only', () => ({}));
+import { createTeacherSessionStore } from '@/server/teacherSession';
+import { currentLegalRevision } from '@/lib/legalDocuments';
 import { createClassCreationCommand } from './classCreation';
 
 let db: PGlite;
-const input = { operationId: '50000000-0000-4000-8000-000000000001', subject: 'subject-a', email: 'a@example.invalid', displayName: '새 학급' };
+const input = { operationId: '50000000-0000-4000-8000-000000000001', subject: 'subject-a', email: 'a@example.invalid', displayName: '새 학급', accountGeneration:'', sessionId:'' };
 beforeAll(async () => {
   db = new PGlite({ extensions: { pgcrypto } });
-  for (const name of ['0001_identity_tenants.sql', '0012_platform_tenant_discovery.sql', '0030_class_creation.sql']) {
+  for (const name of (await readdir('src/server/db/migrations')).filter(f=>/^\d{4}_.*\.sql$/.test(f)).sort()) {
     await db.exec(await readFile(`src/server/db/migrations/${name}`, 'utf8'));
   }
   await db.exec(`CREATE ROLE creation_runtime NOSUPERUSER NOBYPASSRLS;
     GRANT USAGE ON SCHEMA public TO creation_runtime;
-    GRANT EXECUTE ON FUNCTION public.platform_create_draft_class(uuid,text,text,text) TO creation_runtime`);
+    GRANT EXECUTE ON FUNCTION public.platform_create_draft_class_authenticated(uuid,text,text,text,uuid,uuid,text) TO creation_runtime`);
 });
 afterAll(async () => { await db?.close(); });
-beforeEach(async () => { await db.exec('RESET ROLE; TRUNCATE users, tenants CASCADE'); });
-const command = () => createClassCreationCommand({ query: (sql, values) => db.query(sql, values) });
+beforeEach(async () => {
+  await db.exec('RESET ROLE; BEGIN');
+  const sessions = createTeacherSessionStore({ query:(text,values)=>db.query(text,values) });
+  Object.assign(input,await sessions.begin(input.subject,currentLegalRevision().version));
+  await sessions.mutate(input,'AGREE',{ version:currentLegalRevision().version });
+});
+afterEach(async () => { await db.exec('ROLLBACK; RESET ROLE'); });
+async function guardedQuery(text:string, values?:unknown[]) {
+  await db.exec('SAVEPOINT statement');
+  try { const result=await db.query(text,values); await db.exec('RELEASE SAVEPOINT statement'); return result; }
+  catch(error) { await db.exec('ROLLBACK TO SAVEPOINT statement; RELEASE SAVEPOINT statement'); throw error; }
+}
+const command = () => createClassCreationCommand({ query: guardedQuery });
 const counts = async () => (await db.query(`SELECT (SELECT count(*) FROM users)::int AS users,
  (SELECT count(*) FROM tenants)::int AS tenants, (SELECT count(*) FROM tenant_memberships)::int AS memberships,
  (SELECT count(*) FROM class_creation_operations)::int AS operations`)).rows;
@@ -66,13 +79,13 @@ describe('atomic DRAFT creation command', () => {
   it('keeps FORCE RLS, migration ownership, exact search_path, and PUBLIC revoked', async () => {
     const guards = await db.query(`SELECT c.relrowsecurity, c.relforcerowsecurity FROM pg_class c WHERE c.oid='public.class_creation_operations'::regclass`);
     expect(guards.rows).toEqual([{ relrowsecurity: true, relforcerowsecurity: true }]);
-    const f = await db.query(`SELECT p.prosecdef,p.proconfig, r.rolsuper OR r.rolbypassrls AS privileged_owner FROM pg_proc p JOIN pg_roles r ON r.oid=p.proowner WHERE p.oid='public.platform_create_draft_class(uuid,text,text,text)'::regprocedure`);
+    const f = await db.query(`SELECT p.prosecdef,p.proconfig, r.rolsuper OR r.rolbypassrls AS privileged_owner FROM pg_proc p JOIN pg_roles r ON r.oid=p.proowner WHERE p.oid='public.platform_create_draft_class_authenticated(uuid,text,text,text,uuid,uuid,text)'::regprocedure`);
     expect(f.rows).toEqual([{ prosecdef: true, proconfig: ['search_path=pg_catalog'], privileged_owner: true }]);
     await db.exec('SET ROLE creation_runtime');
-    await expect(db.query('SELECT * FROM class_creation_operations')).rejects.toThrow();
-    await expect(db.query(`INSERT INTO tenants(slug,display_name) VALUES ('bypass','bypass')`)).rejects.toThrow();
+    await expect(guardedQuery('SELECT * FROM class_creation_operations')).rejects.toThrow();
+    await expect(guardedQuery(`INSERT INTO tenants(slug,display_name) VALUES ('bypass','bypass')`)).rejects.toThrow();
     await db.exec('RESET ROLE');
-    const grants = await db.query(`SELECT count(*)::int n FROM pg_proc p, LATERAL aclexplode(p.proacl) a WHERE p.oid='public.platform_create_draft_class(uuid,text,text,text)'::regprocedure AND a.grantee=0`);
+    const grants = await db.query(`SELECT count(*)::int n FROM pg_proc p, LATERAL aclexplode(p.proacl) a WHERE p.oid='public.platform_create_draft_class_authenticated(uuid,text,text,text,uuid,uuid,text)'::regprocedure AND a.grantee=0`);
     expect(grants.rows).toEqual([{ n: 0 }]);
   });
 });

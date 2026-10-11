@@ -242,3 +242,72 @@ describe('cancelling a purchase', () => {
     expect(await other.checkoutVouchers('S001', ['P005'])).toEqual([]);
   });
 });
+
+describe('bounded digital checkout writes', () => {
+  const fixtureProducts = products.map((product) => ({ ...product, price: 0, stock: 200 }));
+  async function prepareProducts() {
+    await markDigital();
+    await harness.database.query('UPDATE products SET price=0, stock=200 WHERE tenant_id=$1', [harness.tenantOneId]);
+  }
+  function input(items: CartItem[], operationId = op()) {
+    const expectedPricing = createCartPricingPreview({ products: fixtureProducts, cartItems: items, now: NOW });
+    if (!expectedPricing.ok) throw new Error('invalid test fixture');
+    const base = { operationId, studentId: 'S001', items, expectedPricing, operator: 'kiosk' };
+    return { ...base, payloadHash: createCheckoutPayloadHash(base) };
+  }
+  async function writeState() {
+    return (await harness.database.query(`SELECT
+      (SELECT balance::int FROM accounts WHERE tenant_id=$1 AND student_id='S001') AS balance,
+      (SELECT sum(stock)::int FROM products WHERE tenant_id=$1) AS stock,
+      (SELECT count(*)::int FROM operations WHERE tenant_id=$1) AS operations,
+      (SELECT count(*)::int FROM transactions WHERE tenant_id=$1) AS transactions,
+      (SELECT count(*)::int FROM inventory_ledger WHERE tenant_id=$1) AS inventory,
+      (SELECT count(*)::int FROM student_items WHERE tenant_id=$1) AS items`, [harness.tenantOneId])).rows[0];
+  }
+
+  it('uses the same query count for 1 and 24 digital units and retains deterministic IDs and replay', async () => {
+    await prepareProducts();
+    const samples: number[] = [];
+    for (const quantity of [1, 24]) {
+      let queries = 0;
+      const counted: typeof harness.runTenantTransaction = (tenantId, callback) => harness.runTenantTransaction(tenantId, (tx) => callback(new Proxy(tx, {
+        get(target, key, receiver) {
+          if (key === 'execute') return (...args: Parameters<typeof tx.execute>) => { queries++; return tx.execute(...args); };
+          return Reflect.get(target, key, receiver);
+        },
+      })));
+      const command = createDatabaseCheckoutCommand({ tenantId: harness.tenantOneId, runTenantTransaction: counted, now: () => NOW });
+      const request = input([{ productId: 'P002', quantity }]);
+      const result = await command.execute(request);
+      if (!result.ok) throw new Error('checkout failed');
+      samples.push(queries);
+      const items = (await usable()).filter((item) => item.itemId.startsWith(`coupon:${result.transactionId}:`));
+      expect(items.map((item) => item.itemId).sort()).toEqual(Array.from({ length: quantity }, (_, index) => `coupon:${result.transactionId}:P002:${index + 1}`).sort());
+      expect(await command.execute(request)).toEqual(result);
+    }
+    expect(samples[1]).toBe(samples[0]);
+    expect(await usable()).toHaveLength(25);
+  });
+
+  it.each([
+    [{ productId: 'P002', quantity: 60 }, { productId: 'P002', quantity: 41 }],
+    [{ productId: 'P002', quantity: 60 }, { productId: 'P004', quantity: 41 }],
+  ])('rejects normalized or mixed digital totals above 100 before resource updates and leaves no writes', async (...items) => {
+    await prepareProducts();
+    const before = await writeState();
+    const afterResourceUpdates = vi.fn();
+    const command = createDatabaseCheckoutCommand({ tenantId: harness.tenantOneId, runTenantTransaction: harness.runTenantTransaction,
+      now: () => NOW, afterResourceUpdates });
+    expect(await command.execute(input(items))).toEqual({ ok: false, code: 'DIGITAL_ITEM_LIMIT',
+      message: '디지털 상품은 한 번에 합계 100개까지 살 수 있어요. 수량을 줄여 주세요.' });
+    expect(afterResourceUpdates).not.toHaveBeenCalled();
+    expect(await writeState()).toEqual(before);
+  });
+
+  it('accepts exactly 100 digital units plus physical units', async () => {
+    await prepareProducts();
+    const command = createDatabaseCheckoutCommand({ tenantId: harness.tenantOneId, runTenantTransaction: harness.runTenantTransaction, now: () => NOW });
+    expect(await command.execute(input([{ productId: 'P002', quantity: 40 }, { productId: 'P004', quantity: 60 }, { productId: 'P001', quantity: 200 }]))).toMatchObject({ ok: true });
+    expect(await usable()).toHaveLength(100);
+  });
+});

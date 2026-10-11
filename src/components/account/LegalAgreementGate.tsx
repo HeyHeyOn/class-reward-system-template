@@ -14,6 +14,7 @@ import { WithdrawalConfirm } from './WithdrawalConfirm';
 const theme = themeStyles('white');
 
 export type LegalNoticeView = Readonly<{
+  expectedSessionId?: string;
   required: Readonly<{ current: LegalRevision; changes: readonly LegalRevision[] }> | null;
   upcoming: LegalRevision | null;
 }>;
@@ -55,7 +56,7 @@ export function LegalAgreementGate({ notice, classNames }: Readonly<{ notice: Le
   async function agree() {
     setBusy(true);
     setError('');
-    const reply = await accountRequest('/api/account/agreement', 'POST', choices);
+    const reply = await accountRequest('/api/account/agreement', 'POST', { ...choices, expectedSessionId: notice.expectedSessionId });
     if (!reply.ok) {
       setBusy(false);
       setError(reply.error ?? '동의를 저장하지 못했어요. 잠시 뒤 다시 시도해 주세요.');
@@ -96,7 +97,7 @@ export function LegalAgreementGate({ notice, classNames }: Readonly<{ notice: Le
           </>
         )}>
         {declining ? (
-          <WithdrawalConfirm classNames={classNames} onCancel={() => setDeclining(false)} cancelLabel="돌아가서 동의하기" />
+          <WithdrawalConfirm classNames={classNames} expectedSessionId={notice.expectedSessionId} onCancel={() => setDeclining(false)} cancelLabel="돌아가서 동의하기" />
         ) : (
           <div className="space-y-3.5">
             <LegalChanges changes={notice.required.changes} />

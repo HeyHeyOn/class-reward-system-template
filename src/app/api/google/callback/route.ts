@@ -4,8 +4,10 @@ import { googleIdentityLoginPath, type GoogleIdentityReturnTo } from '@/lib/goog
 import { currentLegalRevision } from '@/lib/legalDocuments';
 import { getProductionClassMembershipRepository } from '@/server/repositories/database/classMemberships';
 import { getProductionTeacherAccountStore, teacherAccountsEnabled } from '@/server/teacherAccounts';
+import { endRequestTeacherSessions, getProductionTeacherSessionStore } from '@/server/teacherSession';
 import {
   clearGoogleSessionCookie,
+  clearPendingAgreementCookie,
   consumeGeneratorConsentStateCookie,
   consumeGoogleStateCookie,
   exchangeGoogleCodeForGeneratorGrant,
@@ -56,7 +58,9 @@ export async function GET(request: Request) {
       // The account starts only after agreeing to the terms in force: until then this sign-in waits.
       const accounts = getProductionTeacherAccountStore();
       const version = currentLegalRevision().version;
-      if (!(await accounts.hasAgreement(session.subject, version))) {
+      const { agreed, ...binding } = await getProductionTeacherSessionStore().begin(session.subject, version);
+      await endRequestTeacherSessions(request);
+      if (!agreed) {
         const latest = await accounts.latestAgreement(session.subject);
         // Teachers who made classes before the terms existed agree as existing members (and may withdraw).
         const existing = latest !== null
@@ -71,14 +75,16 @@ export async function GET(request: Request) {
           ...(latest ? { agreedVersion: latest.version } : {}),
           ...(identityState.returnTo ? { returnTo: identityState.returnTo } : {}),
           issuedAt: Date.now(),
+          ...binding,
         });
         response.headers.set('location', new URL('/signup', request.url).toString());
         return response;
       }
-      setGoogleSessionCookie(response, { ...session, agreement: version });
+      setGoogleSessionCookie(response, { ...session, agreement: version, ...binding });
     } else {
       setGoogleSessionCookie(response, session);
     }
+    clearPendingAgreementCookie(response);
     if (identityState.returnTo) {
       response.headers.set('location', new URL(identityState.returnTo, request.url).toString());
     }

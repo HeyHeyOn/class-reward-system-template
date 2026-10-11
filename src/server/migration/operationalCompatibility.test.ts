@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createPgliteDatabaseHarness, type PgliteDatabaseHarness } from '@/server/db/testing/pglite';
 import { createDatabaseTaskCompletionCommand } from '@/server/repositories/database/taskCompletionCommands';
@@ -47,12 +47,22 @@ const JOB_ID = '20000000-0000-4000-8000-000000000099';
 let harness: PgliteDatabaseHarness;
 
 beforeEach(async () => {
-  harness = await createPgliteDatabaseHarness();
-  for (const migration of ['0009_promotion_tombstone_invariant.sql', '0010_task_admin_invariants.sql',
-    '0011_generator_grant_claims.sql', '0012_platform_tenant_discovery.sql']) {
+  harness = await createPgliteDatabaseHarness({ migrationSet: 'base' });
+  const directory = resolve(process.cwd(), 'src/server/db/migrations');
+  for (const migration of (await readdir(directory)).filter(name => /^\d{4}_.*\.sql$/.test(name) && name.slice(0,4) > '0008').sort()) {
     await harness.database.exec(await readFile(resolve(process.cwd(), 'src/server/db/migrations', migration), 'utf8'));
   }
-});
+  await harness.database.exec(`REVOKE ALL ON ALL TABLES IN SCHEMA public FROM app_runtime;
+    REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM app_runtime;`);
+  await harness.database.exec((await readFile(resolve('src/server/db/provisioning/runtimeGrants.sql'), 'utf8'))
+    .replace(/\bcrs_app_runtime\b/g, 'app_runtime'));
+  // This synthetic import fixture also holds the scoped migration capability;
+  // ordinary runtime ACLs above keep derived tables read-only.
+  await harness.database.exec(`GRANT SELECT,INSERT,UPDATE ON migration_jobs,migration_sources,
+    migration_source_records,migration_snapshots TO app_runtime;
+    GRANT UPDATE(lifecycle,updated_at) ON tenants TO app_runtime;
+    GRANT UPDATE(adjustment_id) ON adjustments TO app_runtime;`);
+}, 120_000);
 afterEach(async () => { await harness?.close(); });
 
 function sourceManifest(operationId = 'op-1') {

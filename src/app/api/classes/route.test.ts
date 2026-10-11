@@ -10,12 +10,13 @@ vi.mock('@/server/repositories/database/classCreation', () => ({
 import { POST } from './route';
 import { setGoogleSessionCookie } from '@/server/googleOAuth';
 
+const binding = { accountGeneration: '11111111-1111-4111-8111-111111111111', sessionId: '22222222-2222-4222-8222-222222222222' };
 const operationId = '50000000-0000-4000-8000-000000000001';
 function request(body: unknown = { operationId, displayName: '새 학급' }, mode = 'valid') {
   vi.stubEnv('AUTH_SECRET', randomBytes(32).toString('hex'));
   const response = new NextResponse();
   setGoogleSessionCookie(response, {
-    subject: 'synthetic-subject', email: 'teacher@example.invalid', name: 'Teacher',
+    ...binding, subject: 'synthetic-subject', email: 'teacher@example.invalid', name: 'Teacher',
     issuedAt: mode === 'expired' ? 1 : Date.now(),
   });
   let cookie = response.cookies.get('class_store_google_auth')!.value;
@@ -60,7 +61,7 @@ describe('POST /api/classes', () => {
     const response = await POST(request());
     expect(response.status).toBe(201);
     expect(response.headers.get('cache-control')).toBe('no-store');
-    expect(create).toHaveBeenCalledExactlyOnceWith({ operationId, displayName: '새 학급', subject: 'synthetic-subject', email: 'teacher@example.invalid' });
+    expect(create).toHaveBeenCalledExactlyOnceWith({ operationId, displayName: '새 학급', subject: 'synthetic-subject', email: 'teacher@example.invalid', ...binding });
     expect((await response.json()).lifecycle).toBe('DRAFT');
   });
   it('sanitizes an uncertain database failure and does not retry', async () => {

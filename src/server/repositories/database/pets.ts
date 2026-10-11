@@ -5,6 +5,7 @@ import { sql } from 'drizzle-orm';
 import type { TenantTransaction } from '@/server/db/transaction';
 import {
   DEFAULT_PET_SETTINGS,
+  DEFAULT_PET_DECOR,
   PET_COLORS,
   PET_DECOR_ITEMS,
   PET_LIMITS,
@@ -29,17 +30,21 @@ import {
 } from '@/domain/pet';
 import {
   PET_OPERATION_ID,
+  PET_DEX_PAGE_SIZE,
   type PetAdminBoardDto,
   type PetAdoptResultDto,
   type PetCareResultDto,
   type PetDecorResultDto,
   type PetDto,
+  type PetDexEntryDto,
+  type PetDexPageDto,
   type PetGraduateResultDto,
   type PetStudentViewDto,
   type PetTaskGainsDto,
 } from '@/lib/petApi';
 import { appendOperationAudit } from './operationAudit';
 import { givePetReward, readRewardProduct, storageItemShape } from './studentBag';
+import { readGrowthCapabilities, readGrowthTransactionValue } from './growthTransaction';
 
 /*
  * Personal pets (migrations 0048–0049). Lock order, shared with every other money writer: the student's
@@ -82,6 +87,36 @@ type PetRow = {
 };
 type OperationRow = { operation_kind: string; payload_hash: string; status: string; result_snapshot: unknown };
 type AccountRow = { name: string; status: string; deleted_at: unknown; balance: string };
+type DexRow = {
+  pet_id: string; species: string; color: string; name: string; graduated_at: Date | string;
+  graduated_cursor: string; accessory: string | null;
+};
+
+const DEX_COLUMNS = sql`pet_id, species, color, name, graduated_at, accessory,
+  to_char(graduated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS graduated_cursor`;
+
+function dexDto(row: DexRow): PetDexEntryDto {
+  if (!isPetSpecies(row.species)) throw new Error('Stored pet species is invalid.');
+  return { petId: row.pet_id, species: row.species, color: row.color, name: row.name, graduatedAt: iso(row.graduated_at),
+    accessory: isPetAccessory(row.accessory) ? row.accessory : null };
+}
+
+function dexCursor(raw: unknown, tenantId: string, studentId: string): { at: string; id: string } | null {
+  if (raw === undefined || raw === null) return null;
+  try {
+    if (typeof raw !== 'string' || !/^[A-Za-z0-9_-]{1,1024}$/.test(raw)) throw new Error();
+    const value = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
+    if (!value || Object.keys(value).length !== 4 || value.v !== 1 || value.tenant !== tenantId || value.student !== studentId
+      || !Array.isArray(value.after) || value.after.length !== 2) throw new Error();
+    const [at, id] = value.after;
+    if (typeof at !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(at) || at.startsWith('0000')
+      || new Date(at).toISOString().slice(0, 19) !== at.slice(0, 19)
+      || typeof id !== 'string' || !id || id.length > 200 || id.trim() !== id || /\p{Cc}/u.test(id)) throw new Error();
+    return { at, id };
+  } catch {
+    throw new PetError('INVALID_INPUT', '도감을 새로 열어 주세요.', 400);
+  }
+}
 
 const toNumber = (value: string | number | bigint | null | undefined): number => {
   const parsed = Number(value);
@@ -103,9 +138,8 @@ function requireOperationId(operationId: unknown): string {
 }
 
 /** Whether migration 0048 is installed; hooks shared with older paths check it first. */
-async function petTablesPresent(tx: TenantTransaction): Promise<boolean> {
-  const result = await tx.execute(sql`SELECT to_regclass('public.pet_growth') IS NOT NULL AS present`);
-  return (result.rows[0] as { present?: unknown } | undefined)?.present === true;
+async function petTablesPresent(tx: TenantTransaction, tenantId: string): Promise<boolean> {
+  return (await readGrowthCapabilities(tx, tenantId)).pet;
 }
 
 export async function readPetSettings(tx: TenantTransaction, tenantId: string): Promise<PetSettings> {
@@ -197,11 +231,13 @@ async function spend(tx: TenantTransaction, tenantId: string, input: Readonly<{
 
 /** A color for a hatching egg: one the student has not graduated yet in this species, else any. */
 async function pickColor(tx: TenantTransaction, tenantId: string, studentId: string, species: PetSpecies): Promise<string> {
-  const result = await tx.execute(sql`
-    SELECT DISTINCT color FROM pets
-    WHERE tenant_id=${tenantId} AND student_id=${studentId} AND species=${species} AND status='GRADUATED'`);
-  const had = new Set((result.rows as Array<{ color: string | null }>).map((row) => row.color));
   const all = PET_COLORS[species].map((color) => color.id);
+  const result = await tx.execute(sql`
+    SELECT wanted.color FROM (VALUES ${sql.join(all.map((color) => sql`(${color})`), sql`, `)}) wanted(color)
+    WHERE EXISTS (SELECT 1 FROM pets
+      WHERE tenant_id=${tenantId} AND student_id=${studentId} AND species=${species}
+        AND color=wanted.color AND status='GRADUATED')`);
+  const had = new Set((result.rows as Array<{ color: string | null }>).map((row) => row.color));
   const fresh = all.filter((color) => !had.has(color));
   const pool = fresh.length ? fresh : all;
   return pool[randomInt(pool.length)];
@@ -299,10 +335,14 @@ async function readRoom(tx: TenantTransaction, tenantId: string, studentId: stri
 /** The graduated pets the student has called back to the room, in the order they came. */
 async function readCompanions(tx: TenantTransaction, tenantId: string, studentId: string): Promise<PetRow[]> {
   const result = await tx.execute(sql`
-    SELECT p.pet_id, p.student_id, p.species, p.color, p.name, p.stage, p.growth::text AS growth, p.status, p.adopted_at, p.accessory
+    SELECT p.*
     FROM pet_rooms r
     CROSS JOIN LATERAL jsonb_array_elements_text(r.companions) WITH ORDINALITY AS c(pet_id, place)
-    JOIN pets p ON p.tenant_id=r.tenant_id AND p.pet_id=c.pet_id AND p.student_id=r.student_id AND p.status='GRADUATED'
+    CROSS JOIN LATERAL (
+      SELECT ${PET_COLUMNS} FROM pets
+      WHERE tenant_id=r.tenant_id AND pet_id=c.pet_id AND student_id=r.student_id AND status='GRADUATED'
+      LIMIT 1
+    ) p
     WHERE r.tenant_id=${tenantId} AND r.student_id=${studentId}
     ORDER BY c.place`);
   return result.rows as PetRow[];
@@ -328,8 +368,8 @@ async function saveCompanions(tx: TenantTransaction, tenantId: string, studentId
 export async function addTaskPetGrowth(tx: TenantTransaction, tenantId: string, input: Readonly<{
   studentId: string; transactionId: string; operationId: string;
 }>): Promise<void> {
-  if (!await petTablesPresent(tx)) return;
-  const settings = await readPetSettings(tx, tenantId);
+  if (!await petTablesPresent(tx, tenantId)) return;
+  const settings = await readGrowthTransactionValue(tx, tenantId, 'pet-settings', () => readPetSettings(tx, tenantId));
   if (!settings.enabled || settings.taskGrowth === 0) return;
   const pet = await readRaisingPet(tx, tenantId, input.studentId, true);
   if (!pet) return;
@@ -347,13 +387,14 @@ export async function addTaskPetGrowth(tx: TenantTransaction, tenantId: string, 
 export async function revokePetForTransaction(tx: TenantTransaction, tenantId: string, input: Readonly<{
   originalTransactionId: string; reversalTransactionId: string; operationId: string;
 }>): Promise<void> {
-  if (!await petTablesPresent(tx)) return;
+  if (!await petTablesPresent(tx, tenantId)) return;
   const given = await tx.execute(sql`
     SELECT pet_id, sum(amount)::text AS amount FROM pet_growth
     WHERE tenant_id=${tenantId} AND transaction_id=${input.originalTransactionId} AND source IN ('CARE', 'TASK')
     GROUP BY pet_id ORDER BY pet_id`);
   const rows = given.rows as Array<{ pet_id: string; amount: string }>;
-  const settings = rows.length ? await readPetSettings(tx, tenantId) : DEFAULT_PET_SETTINGS;
+  const settings = rows.length
+    ? await readGrowthTransactionValue(tx, tenantId, 'pet-settings', () => readPetSettings(tx, tenantId)) : DEFAULT_PET_SETTINGS;
   for (const row of rows) {
     const petResult = await tx.execute(sql`SELECT ${PET_COLUMNS} FROM pets WHERE tenant_id=${tenantId} AND pet_id=${row.pet_id} FOR UPDATE`);
     const pet = petResult.rows[0] as PetRow | undefined;
@@ -407,6 +448,17 @@ export function createPetCommands(dependencies: PetDependencies) {
     const now = clockNow();
     const clock = koreaClock(now);
     const goal = settings.goal;
+    const base = {
+      enabled: settings.enabled, goal, stageStarts: petStageStarts(goal), careGrowth: settings.careGrowth,
+      taskGrowth: settings.taskGrowth, feedPrice: settings.feedPrice, feedDailyLimit: settings.feedDailyLimit,
+      hoursEnabled: settings.hoursEnabled, hours: settings.hours, awake: petHoursOpen(settings, clock),
+      nextOpen: petNextOpen(settings, clock), rewardAmount: settings.rewardAmount,
+      shopEnabled: settings.shopEnabled, dex: [],
+    };
+    // A disabled card is hidden by existing clients. Do not fetch retained pets,
+    // care/decor history or reward products until the feature is enabled again.
+    if (!settings.enabled) return { ...base, pet: null, companions: [], warmedToday: false, feedsToday: 0,
+      lastFedAt: null, rewardItem: '', room: DEFAULT_PET_DECOR, owned: [], shop: [] };
     const pet = await readRaisingPet(tx, tenantId, studentId, false);
     let warmedToday = false, lastFedAt: string | null = null;
     // Feeding is for the whole room (the pet and the graduated pets with it): the limit and hunger count the
@@ -415,9 +467,10 @@ export function createPetCommands(dependencies: PetDependencies) {
       SELECT
         (SELECT count(*)::int FROM pet_cares WHERE tenant_id=${tenantId} AND student_id=${studentId} AND care_date=${KOREA_TODAY}
            AND kind='FEED') AS feeds,
-        (SELECT count(*)::int FROM pet_cares WHERE tenant_id=${tenantId} AND pet_id=${pet?.pet_id ?? ''} AND care_date=${KOREA_TODAY}
+        (SELECT count(*)::int FROM pet_cares WHERE tenant_id=${tenantId} AND student_id=${studentId} AND care_date=${KOREA_TODAY}
            AND kind='WARM') AS warms,
-        (SELECT max(created_at) FROM pet_cares WHERE tenant_id=${tenantId} AND student_id=${studentId} AND kind='FEED') AS fed`);
+        (SELECT created_at FROM pet_cares WHERE tenant_id=${tenantId} AND student_id=${studentId} AND kind='FEED'
+           ORDER BY created_at DESC LIMIT 1) AS fed`);
     const row = counts.rows[0] as { feeds: number; warms: number; fed: Date | string | null };
     const feedsToday = toNumber(row.feeds);
     if (pet) {
@@ -426,38 +479,17 @@ export function createPetCommands(dependencies: PetDependencies) {
     }
     const owned = await tx.execute(sql`
       SELECT item_key FROM pet_decor WHERE tenant_id=${tenantId} AND student_id=${studentId} AND revoked_at IS NULL ORDER BY item_key`);
-    const dex = await tx.execute(sql`
-      SELECT pet_id, species, color, name, graduated_at, accessory FROM pets
-      WHERE tenant_id=${tenantId} AND student_id=${studentId} AND status='GRADUATED' ORDER BY graduated_at, pet_id`);
     return {
-      enabled: settings.enabled,
-      goal,
-      stageStarts: petStageStarts(goal),
-      careGrowth: settings.careGrowth,
-      taskGrowth: settings.taskGrowth,
-      feedPrice: settings.feedPrice,
-      feedDailyLimit: settings.feedDailyLimit,
-      hoursEnabled: settings.hoursEnabled,
-      hours: settings.hours,
-      awake: petHoursOpen(settings, clock),
-      nextOpen: petNextOpen(settings, clock),
+      ...base,
       pet: pet ? petDto(pet) : null,
       companions: pet ? (await readCompanions(tx, tenantId, studentId)).map(petDto) : [],
       warmedToday,
       feedsToday,
       lastFedAt,
-      rewardAmount: settings.rewardAmount,
       rewardItem: await rewardItemTitle(tx, settings),
       room: await readRoom(tx, tenantId, studentId),
       owned: (owned.rows as Array<{ item_key: string }>).map((entry) => entry.item_key),
-      shopEnabled: settings.shopEnabled,
       shop: petShopForSale(settings).map(({ key, slot, id, name, price }) => ({ key, slot, id, name, price })),
-      dex: (dex.rows as Array<{ pet_id: string; species: string; color: string; name: string; graduated_at: Date | string; accessory: string | null }>)
-        .filter((entry) => isPetSpecies(entry.species))
-        .map((entry) => ({
-          petId: entry.pet_id, species: entry.species as PetSpecies, color: entry.color, name: entry.name, graduatedAt: iso(entry.graduated_at),
-          accessory: isPetAccessory(entry.accessory) ? entry.accessory : null,
-        })),
     };
   }
 
@@ -480,6 +512,37 @@ export function createPetCommands(dependencies: PetDependencies) {
     /** The pet screen for one student. */
     async studentView(studentId: string): Promise<PetStudentViewDto> {
       return runTenantTransaction(tenantId, (tx) => view(tx, studentId));
+    },
+
+    /** Graduated pets, newest first. Timestamp precision and ID ties survive every page. */
+    async dexPage(studentId: string, cursor?: unknown): Promise<PetDexPageDto> {
+      const after = dexCursor(cursor, tenantId, studentId);
+      return runTenantTransaction(tenantId, async (tx) => {
+        const settings = await readPetSettings(tx, tenantId);
+        if (!settings.enabled) return { entries: [], collection: [], nextCursor: null };
+        const page = await tx.execute(sql`
+          SELECT ${DEX_COLUMNS} FROM pets
+          WHERE tenant_id=${tenantId} AND student_id=${studentId} AND status='GRADUATED'
+            ${after ? sql`AND (graduated_at, pet_id) < (${after.at}::timestamptz, ${after.id})` : sql``}
+          ORDER BY graduated_at DESC, pet_id DESC LIMIT ${PET_DEX_PAGE_SIZE + 1}`);
+        // A fixed set of indexed probes, not DISTINCT over the entire history.
+        const wanted = Object.entries(PET_COLORS).flatMap(([species, colors]) => colors.map((color) => sql`(${species}, ${color.id})`));
+        const collection = await tx.execute(sql`
+          SELECT p.* FROM (VALUES ${sql.join(wanted, sql`, `)}) AS wanted(species, color)
+          CROSS JOIN LATERAL (
+            SELECT ${DEX_COLUMNS} FROM pets
+            WHERE tenant_id=${tenantId} AND student_id=${studentId} AND status='GRADUATED'
+              AND species=wanted.species AND color=wanted.color
+            ORDER BY graduated_at DESC, pet_id DESC LIMIT 1
+          ) p`);
+        const rows = page.rows as DexRow[];
+        const entries = rows.slice(0, PET_DEX_PAGE_SIZE);
+        const last = entries.at(-1);
+        return { entries: entries.map(dexDto), collection: (collection.rows as DexRow[]).map(dexDto),
+          nextCursor: rows.length > PET_DEX_PAGE_SIZE && last
+            ? Buffer.from(JSON.stringify({ v: 1, tenant: tenantId, student: studentId,
+              after: [last.graduated_cursor, last.pet_id] })).toString('base64url') : null };
+      });
     },
 
     /** The student picks an egg of a species and names it. */
@@ -539,7 +602,7 @@ export function createPetCommands(dependencies: PetDependencies) {
         }
         // Only the student's own feedings count toward the limit; food from completed tasks never does.
         const done = await tx.execute(kind === 'WARM'
-          ? sql`SELECT count(*)::int AS count FROM pet_cares WHERE tenant_id=${tenantId} AND pet_id=${pet.pet_id} AND kind='WARM' AND care_date=${today}::date`
+          ? sql`SELECT count(*)::int AS count FROM pet_cares WHERE tenant_id=${tenantId} AND student_id=${studentId} AND kind='WARM' AND care_date=${today}::date`
           : sql`SELECT count(*)::int AS count FROM pet_cares WHERE tenant_id=${tenantId} AND student_id=${studentId} AND kind='FEED' AND care_date=${today}::date`);
         const caresBefore = toNumber((done.rows[0] as { count: number }).count);
         if (caresBefore >= (kind === 'WARM' ? 1 : settings.feedDailyLimit)) {
@@ -849,9 +912,15 @@ export function createPetCommands(dependencies: PetDependencies) {
       const payloadHash = hashOf({ kind: 'PET_GROWTH_ADJUST', petId, amount, schemaVersion: 1 });
       await runTenantTransaction(tenantId, (tx) => runOperation(tx, tenantId, operationId, payloadHash, 'PET_GROWTH_ADJUSTED', async () => {
         const settings = await readPetSettings(tx, tenantId);
+        // The growth insert checks its student FK. Take the same student/account
+        // locks as care/reward writers before locking the pet, then revalidate it.
+        const owner = await tx.execute(sql`SELECT student_id FROM pets WHERE tenant_id=${tenantId} AND pet_id=${petId}`);
+        const studentId = (owner.rows[0] as { student_id: string } | undefined)?.student_id;
+        if (!studentId) throw new PetError('PET_NOT_FOUND', '키우는 중인 펫을 찾지 못했어요. 화면을 새로고침해 주세요.', 404);
+        await lockStudentAccount(tx, tenantId, studentId);
         const found = await tx.execute(sql`SELECT ${PET_COLUMNS} FROM pets WHERE tenant_id=${tenantId} AND pet_id=${petId} FOR UPDATE`);
         const pet = found.rows[0] as PetRow | undefined;
-        if (!pet || pet.status !== 'RAISING') throw new PetError('PET_NOT_FOUND', '키우는 중인 펫을 찾지 못했어요. 화면을 새로고침해 주세요.', 404);
+        if (!pet || pet.student_id !== studentId || pet.status !== 'RAISING') throw new PetError('PET_NOT_FOUND', '키우는 중인 펫을 찾지 못했어요. 화면을 새로고침해 주세요.', 404);
         const applied = amount > 0 ? amount : -Math.min(-amount, toNumber(pet.growth));
         if (applied === 0) throw new PetError('NOTHING_TO_REMOVE', '이 펫은 줄일 성장이 없어요.', 409);
         const after = await addGrowth(tx, tenantId, pet, settings, {

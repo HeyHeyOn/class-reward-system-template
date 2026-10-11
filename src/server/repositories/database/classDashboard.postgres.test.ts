@@ -3,10 +3,18 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createDisposablePostgres, type DisposablePostgres } from '@/server/db/testing/disposablePostgres';
 import { createClassDashboardRepository, createClassManagementCommand, type ClassManagementInput } from './classDashboard';
+import { createTeacherSessionStore } from '@/server/teacherSession';
+import { currentLegalRevision } from '@/lib/legalDocuments';
 vi.mock('server-only', () => ({}));
 const suite = process.env.RUN_REAL_POSTGRES === '1' ? describe : describe.skip;
 let db: DisposablePostgres;
 const schedule = { ruleVersion: 3, effectiveFrom: '2026-01-01T00:00:00.000Z', timeZone: 'Asia/Seoul', recurrence: { type: 'ONCE' }, resetCompletionOnCycle: false, resetAssignmentOnCycle: false };
+async function identity(subject:string) {
+  const store=createTeacherSessionStore(db.owner);
+  const value={subject,...await store.begin(subject,currentLegalRevision().version)};
+  await store.mutate(value,'AGREE',{version:currentLegalRevision().version});
+  return {accountGeneration:value.accountGeneration,sessionId:value.sessionId};
+}
 async function fixture(lifecycle = 'ACTIVE') {
   const tenant = randomUUID(), user = randomUUID(), admin = randomUUID(), subject = `owner-${user}`, slug = `class-${tenant}`;
   await db.owner.query(`INSERT INTO users(id,google_subject,canonical_email) VALUES($1,$2,$3),($4,$5,$6)`, [user,subject,`${user}@example.invalid`,admin,`admin-${admin}`,`${admin}@example.invalid`]);
@@ -22,7 +30,8 @@ async function fixture(lifecycle = 'ACTIVE') {
   await db.owner.query(`UPDATE tasks SET prerequisite_task_instance_id='task-a',pending_schedule=$2 WHERE tenant_id=$1 AND task_id='b'`, [tenant,{...schedule,ruleVersion:4,effectiveFrom:'2099-01-01T00:00:00Z'}]);
   await db.owner.query(`INSERT INTO task_allowed_students(tenant_id,task_instance_id,student_id) VALUES($1,'task-a','s1')`, [tenant]);
   await db.owner.query(`INSERT INTO operations(tenant_id,operation_id,operation_kind,payload_hash) VALUES($1,'old-operation','STUDENT_ADMIN',$2)`, [tenant,'a'.repeat(64)]);
-  return { tenant, subject, slug, adminSubject:`admin-${admin}`, input:(action:ClassManagementInput['action'],name='원본 학급',expectedVersion='1'):ClassManagementInput => ({operationId:randomUUID(),slug,subject,action,name,expectedVersion}) };
+  const binding=await identity(subject);
+  return { tenant, subject, slug, binding, adminSubject:`admin-${admin}`, input:(action:ClassManagementInput['action'],name='원본 학급',expectedVersion='1'):ClassManagementInput => ({operationId:randomUUID(),slug,subject,action,name,expectedVersion,...binding}) };
 }
 async function state(tenant:string) {
   const result:Record<string,unknown[]> = {};
@@ -34,7 +43,10 @@ async function state(tenant:string) {
 suite('class dashboard on native PostgreSQL', () => {
   beforeAll(async () => {
     expect(process.env.DATABASE_URL).toBeUndefined(); db=await createDisposablePostgres();
-    await db.owner.query(`GRANT EXECUTE ON FUNCTION platform_list_class_dashboard(text), platform_manage_class(uuid,text,text,text,text,bigint),platform_list_memberships_by_google_subject(text) TO app_runtime`);
+    await db.owner.query(`GRANT EXECUTE ON FUNCTION platform_list_class_dashboard(text),
+      platform_manage_class_authenticated(uuid,text,text,text,text,bigint,uuid,uuid,text),platform_list_memberships_by_google_subject(text),
+      platform_find_tenant_by_slug(text) TO app_runtime;
+      REVOKE ALL ON FUNCTION platform_manage_class(uuid,text,text,text,text,bigint) FROM app_runtime`);
   },60_000);
   afterAll(async () => { if(db) expect(await db.close()).toMatchObject({containerRemoved:true,scratchRemoved:true}); },60_000);
   it('copies live configuration with new identities, zero balances and paused work, preserving source', async () => {
@@ -70,11 +82,15 @@ suite('class dashboard on native PostgreSQL', () => {
   });
   it('denies non-owners and direct runtime receipt access without changing source', async () => {
     const f=await fixture(),before=await state(f.tenant),command=createClassManagementCommand(db.runtime);
-    for(const subject of [f.adminSubject,'foreign']) for(const action of ['RENAME','DUPLICATE','DELETE','RESTORE'] as const)
-      await expect(command.execute({...f.input(action),subject})).rejects.toMatchObject({code:'42501'});
+    for(const subject of [f.adminSubject,'foreign']) {
+      const binding=await identity(subject);
+      for(const action of ['RENAME','DUPLICATE','DELETE','RESTORE'] as const)
+        await expect(command.execute({...f.input(action),subject,...binding})).rejects.toMatchObject({code:'42501'});
+    }
     await expect(db.runtime.query('SELECT * FROM class_management_operations')).rejects.toMatchObject({code:'42501'});
     expect(await state(f.tenant)).toEqual(before);
     expect((await db.owner.query("SELECT has_function_privilege('public','platform_manage_class(uuid,text,text,text,text,bigint)','EXECUTE') AS allowed")).rows[0].allowed).toBe(false);
+    await expect(db.runtime.query('SELECT platform_manage_class($1,$2,$3,$4,$5,$6)',[randomUUID(),f.slug,f.subject,'RENAME','Forbidden',1])).rejects.toMatchObject({code:'42501'});
   });
   it.each(['ACTIVE','DRAFT'])('trashes and restores %s without changing balances or history', async lifecycle => {
     const f=await fixture(lifecycle),before=await state(f.tenant),command=createClassManagementCommand(db.runtime),input=f.input('DELETE');
@@ -125,4 +141,45 @@ suite('class dashboard on native PostgreSQL', () => {
       expect((await db.owner.query("SELECT balance FROM accounts WHERE tenant_id=$1 AND student_id='s1'",[f.tenant])).rows[0].balance).toBe('777');
     } finally { await writer.query('ROLLBACK'); writer.release(); manager.release(); }
   });
+  it('queues management behind withdrawal before taking a tenant lock, then rejects the stale session', async () => {
+    const f=await fixture(); const withdrawal=await db.owner.connect(); const manager=await db.runtime.connect();
+    try {
+      await withdrawal.query('BEGIN');
+      await createTeacherSessionStore(withdrawal).mutate({subject:f.subject,...f.binding},'WITHDRAW',{});
+      const pid=(await manager.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+      const result=createClassManagementCommand(manager).execute(f.input('DUPLICATE','Must not survive'))
+        .then(()=>({code:'accepted'}),error=>({code:error.code}));
+      let blocked=false;
+      for(let attempt=0;attempt<100&&!blocked;attempt++) {
+        blocked=(await db.owner.query('SELECT cardinality(pg_blocking_pids($1))>0 AS blocked',[pid])).rows[0].blocked;
+        if(!blocked) await new Promise(resolve=>setTimeout(resolve,10));
+      }
+      expect(blocked).toBe(true);
+      await withdrawal.query('COMMIT');
+      expect(await result).toEqual({code:'28000'});
+      expect((await db.owner.query("SELECT count(*)::int AS n FROM tenants WHERE display_name='Must not survive'")).rows[0].n).toBe(0);
+      expect((await db.owner.query('SELECT count(*)::int AS n FROM users WHERE google_subject=$1',[f.subject])).rows[0].n).toBe(0);
+    } finally { await withdrawal.query('ROLLBACK'); withdrawal.release(); manager.release(); }
+  },20_000);
+  it('lets an admitted copy commit before withdrawal, which then erases both owned classes', async () => {
+    const f=await fixture(); const manager=await db.runtime.connect(); const withdrawal=await db.owner.connect();
+    try {
+      await manager.query('BEGIN');
+      const copied=await createClassManagementCommand(manager).execute(f.input('DUPLICATE','Before withdrawal'));
+      const copiedId=(await manager.query('SELECT id FROM platform_find_tenant_by_slug($1)',[copied.slug])).rows[0].id;
+      const pid=(await withdrawal.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+      const result=createTeacherSessionStore(withdrawal).mutate({subject:f.subject,...f.binding},'WITHDRAW',{})
+        .then(value=>value,error=>({error:error.code}));
+      let blocked=false;
+      for(let attempt=0;attempt<100&&!blocked;attempt++) {
+        blocked=(await db.owner.query('SELECT cardinality(pg_blocking_pids($1))>0 AS blocked',[pid])).rows[0].blocked;
+        if(!blocked) await new Promise(resolve=>setTimeout(resolve,10));
+      }
+      expect(blocked).toBe(true);
+      await manager.query('COMMIT');
+      expect(await result).toEqual({closedClasses:2});
+      expect((await db.owner.query('SELECT lifecycle FROM tenants WHERE id=ANY($1::uuid[])',[[f.tenant,copiedId]])).rows)
+        .toEqual([{lifecycle:'SUSPENDED'},{lifecycle:'SUSPENDED'}]);
+    } finally { await manager.query('ROLLBACK'); manager.release(); withdrawal.release(); }
+  },20_000);
 });

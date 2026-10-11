@@ -3,13 +3,15 @@
  * Opt-in (RUN_REAL_POSTGRES=1): the self-service .xlsx import on a disposable native PostgreSQL,
  * through the real tenant route, auth, regular commands and read models. Synthetic data only.
  */
+import { issueTeacherTestSession, grantProductionTestRuntime } from '@/server/db/testing/teacherIdentity';
+import type { TeacherSessionBinding } from '@/server/teacherSession';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import { NextResponse } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDisposablePostgres, type DisposablePostgres } from '@/server/db/testing/disposablePostgres';
 import { createTenantTransactionRunner } from '@/server/db/transaction';
-import { GOOGLE_AUTH_COOKIE, setGoogleSessionCookie } from '@/server/googleOAuth';
+import { GOOGLE_AUTH_COOKIE, getGoogleSessionFromRequest, setGoogleSessionCookie } from '@/server/googleOAuth';
 import { createClassCreationCommand } from '@/server/repositories/database/classCreation';
 import { createClassStartRepository } from '@/server/repositories/database/classStart';
 import { createTaskLedgerReader } from '@/server/repositories/database/taskLedger/compatReader';
@@ -38,10 +40,11 @@ let slug: string;
 let tenantId: string;
 let xlsx: Buffer;
 let digest: string;
+const binding = () => { const s=getGoogleSessionFromRequest(new Request(origin,{headers:{cookie}}))!; return {accountGeneration:s.accountGeneration!,sessionId:s.sessionId!} as TeacherSessionBinding; };
 
-function sessionCookie(value = subject) {
+async function sessionCookie(value = subject) {
   const response = new NextResponse();
-  setGoogleSessionCookie(response, { subject: value, email: `${value}@example.invalid`, issuedAt: Date.now() });
+  setGoogleSessionCookie(response, await issueTeacherTestSession(db.owner,{ subject:value,email:`${value}@example.invalid` }));
   return `${GOOGLE_AUTH_COOKIE}=${response.cookies.get(GOOGLE_AUTH_COOKIE)!.value}`;
 }
 
@@ -89,8 +92,8 @@ async function stages() {
 }
 
 async function newClass() {
-  subject = `xlsx-import-${randomUUID()}`; cookie = sessionCookie();
-  const created = await createClassCreationCommand(db.runtime).create({ operationId: randomUUID(), subject,
+  subject = `xlsx-import-${randomUUID()}`; cookie = await sessionCookie();
+  const created = await createClassCreationCommand(db.runtime).create({ ...binding(),operationId: randomUUID(), subject,
     email: `${subject}@example.invalid`, displayName: '가져오기 학급' });
   slug = created.slug;
   tenantId = (await db.owner.query('SELECT id FROM tenants WHERE slug=$1', [slug])).rows[0].id;
@@ -100,14 +103,15 @@ suite('self-service CRS workbook import on native PostgreSQL', () => {
   let expected: ReturnType<typeof buildSyntheticCrsWorkbook>['expected'];
   beforeAll(async () => {
     expect(process.env.DATABASE_URL).toBeUndefined();
-    db = await createDisposablePostgres(); destination.pool = db.runtime;
+    db = await createDisposablePostgres(); await grantProductionTestRuntime(db.owner); destination.pool = db.runtime;
     vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
     vi.stubEnv('AUTH_SECRET', randomBytes(32).toString('hex'));
     destination.sheets.mockImplementation(() => { throw new Error('Sheets fallback forbidden.'); });
-    await db.owner.query(`GRANT EXECUTE ON FUNCTION public.platform_create_draft_class(uuid,text,text,text),
+    await db.owner.query(`GRANT EXECUTE ON FUNCTION public.platform_create_draft_class_authenticated(uuid,text,text,text,uuid,uuid,text),
+      public.platform_validate_teacher_session(text,uuid,uuid,boolean,text),
       public.platform_list_memberships_by_google_subject(text), public.platform_find_tenant_by_slug(text),
       public.platform_find_membership_by_tenant_and_google_subject(uuid,text),
-      public.platform_get_new_class_setup(text,text), public.platform_start_new_class(uuid,text,text) TO app_runtime`);
+      public.platform_get_new_class_setup(text,text), public.platform_start_new_class_authenticated(uuid,text,text,uuid,uuid,text) TO app_runtime`);
     const fixture = buildSyntheticCrsWorkbook(new Date());
     expected = fixture.expected;
     xlsx = await writeSyntheticXlsx(fixture.workbook);
@@ -181,7 +185,7 @@ suite('self-service CRS workbook import on native PostgreSQL', () => {
   }, 180_000);
 
   it('imports into an already started, still empty class (admin path)', async () => {
-    await createClassStartRepository(db.runtime).start({ operationId: randomUUID(), slug, subject });
+    await createClassStartRepository(db.runtime).start({ ...binding(),operationId: randomUUID(), slug, subject });
     const preview = await call('preview', xlsx);
     expect(preview.body).toMatchObject({ mode: 'import', canImport: true, blocked: null });
     const committed = await call('commit', xlsx, { operationId: randomUUID(), fileDigest: digest });
@@ -193,7 +197,7 @@ suite('self-service CRS workbook import on native PostgreSQL', () => {
     const plan = await buildXlsxImportPlan(await readXlsxWorkbookGrid(xlsx), { now: new Date().toISOString(), fileDigest: digest });
     const before = await snapshot();
     await expect(db.runTenantTransaction(tenantId, async tx => {
-      await executeXlsxImportPlan(tx, { tenantId, plan, operationId: randomUUID(), start: { slug, subject } });
+      await executeXlsxImportPlan(tx, { tenantId, plan, operationId: randomUUID(), start: { slug, subject,...binding() } });
       throw new Error('injected failure after the last step');
     })).rejects.toThrow('injected failure');
     expect(await snapshot()).toEqual(before);
@@ -203,7 +207,7 @@ suite('self-service CRS workbook import on native PostgreSQL', () => {
   it('refuses unauthenticated, foreign, cross-site, mismatched and invalid uploads without writes', async () => {
     const before = await snapshot();
     expect((await call('preview', xlsx, {}, { cookie: '' })).status).toBe(401);
-    expect((await call('commit', xlsx, { operationId: randomUUID(), fileDigest: digest }, { cookie: sessionCookie('someone-else') })).status).toBe(403);
+    expect((await call('commit', xlsx, { operationId: randomUUID(), fileDigest: digest }, { cookie: await sessionCookie('someone-else') })).status).toBe(403);
     expect((await call('commit', xlsx, { operationId: randomUUID(), fileDigest: digest }, { origin: 'https://foreign.example.invalid' })).status).toBe(403);
     expect(await call('commit', xlsx, { operationId: randomUUID(), fileDigest: 'e'.repeat(64) })).toMatchObject({ status: 409 });
     expect(await call('preview', Buffer.from('studentId,name\n'), {}, {}, 'students.csv')).toMatchObject({ status: 415 });

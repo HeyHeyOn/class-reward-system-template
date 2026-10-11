@@ -8,9 +8,10 @@ vi.mock('@/server/repositories/database/classDashboard',()=>({getProductionClass
 import { POST } from '@/app/api/classes/[slug]/manage/route';
 import { setGoogleSessionCookie, GOOGLE_AUTH_COOKIE } from './googleOAuth';
 const valid={operationId:randomUUID(),action:'DUPLICATE',name:'새 학급',expectedVersion:'1'};
+const binding={accountGeneration:randomUUID(),sessionId:randomUUID()};
 function request(body:unknown=valid,mode='valid') {
   vi.stubEnv('AUTH_SECRET',randomBytes(32).toString('hex'));
-  const res=new NextResponse(); setGoogleSessionCookie(res,{subject:'synthetic-owner',email:'owner@example.invalid',issuedAt:Date.now()});
+  const res=new NextResponse(); setGoogleSessionCookie(res,{subject:'synthetic-owner',email:'owner@example.invalid',issuedAt:Date.now(),...binding});
   const headers=new Headers({'content-type':'application/json',origin:'https://class.example','sec-fetch-site':'same-origin',cookie:`${GOOGLE_AUTH_COOKIE}=${res.cookies.get(GOOGLE_AUTH_COOKIE)!.value}`});
   if(mode==='missing')headers.delete('cookie');
   if(mode==='foreign-origin')headers.set('origin','https://foreign.example');
@@ -33,10 +34,10 @@ describe('class management HTTP boundary',()=>{
   it('binds decrypted subject and canonical route only',async()=>{
     execute.mockResolvedValue({slug:'new-class',action:'DUPLICATE',managementVersion:'1',replayed:false});
     expect((await call(request())).status).toBe(200);
-    expect(execute).toHaveBeenCalledExactlyOnceWith({...valid,subject:'synthetic-owner',slug:'my-class'});
+    expect(execute).toHaveBeenCalledExactlyOnceWith({...valid,...binding,subject:'synthetic-owner',slug:'my-class'});
     execute.mockClear();expect((await call(request(),'MY-CLASS')).status).toBe(400);expect(execute).not.toHaveBeenCalled();
   });
-  it.each([['42501',403],['23505',409],['22023',400],['08006',503]] as const)('sanitizes SQL error %s',async(code,status)=>{
+  it.each([['28000',401],['42501',403],['23505',409],['22023',400],['08006',503]] as const)('sanitizes SQL error %s',async(code,status)=>{
     execute.mockRejectedValue(Object.assign(new Error('private detail'),{code}));
     const res=await call(request());expect(res.status).toBe(status);expect(res.headers.get('cache-control')).toBe('no-store');expect(await res.text()).not.toContain('private detail');
   });

@@ -11,6 +11,7 @@ import { GET as tenantGet } from '@/app/api/c/[slug]/[...path]/route';
 import { GOOGLE_AUTH_COOKIE, getGoogleSessionFromRequest, setGoogleSessionCookie } from '@/server/googleOAuth';
 import { loadClassMembershipPage } from '@/server/classMembershipPageAccess';
 import { createClassMembershipRepository } from './classMemberships';
+import { issueTeacherTestSession } from '@/server/db/testing/teacherIdentity';
 import { createClassCreationCommand } from './classCreation';
 
 const destination = vi.hoisted(() => ({ pool: undefined as Pool | undefined, sheets: vi.fn() }));
@@ -32,9 +33,9 @@ let tableNames: string[];
 let subject: string;
 let email: string;
 
-function sessionCookie(identity = { subject, email }) {
+async function sessionCookie(identity = { subject, email }) {
   const response = new NextResponse();
-  setGoogleSessionCookie(response, { ...identity, issuedAt: Date.now() });
+  setGoogleSessionCookie(response, await issueTeacherTestSession(db.owner,identity));
   return `${GOOGLE_AUTH_COOKIE}=${response.cookies.get(GOOGLE_AUTH_COOKIE)!.value}`;
 }
 
@@ -72,7 +73,8 @@ suite('new class creation on native PostgreSQL (no activation or external OAuth)
     vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
     vi.stubEnv('AUTH_SECRET', randomBytes(32).toString('hex'));
     destination.sheets.mockImplementation(() => { throw new Error('Sheets fallback forbidden.'); });
-    await db.owner.query(`GRANT EXECUTE ON FUNCTION public.platform_create_draft_class(uuid,text,text,text),
+    await db.owner.query(`GRANT EXECUTE ON FUNCTION public.platform_create_draft_class_authenticated(uuid,text,text,text,uuid,uuid,text),
+      public.platform_validate_teacher_session(text,uuid,uuid,boolean,text),
       public.platform_list_memberships_by_google_subject(text), public.platform_find_tenant_by_slug(text),
       public.platform_find_membership_by_tenant_and_google_subject(uuid,text) TO app_runtime`);
     tableNames = (await db.owner.query<{ tablename: string }>(
@@ -85,7 +87,7 @@ suite('new class creation on native PostgreSQL (no activation or external OAuth)
     // immutable migration/evidence tables in the production schema.
     subject = `class-creation-${randomUUID()}`;
     email = `${subject}@example.invalid`;
-    cookie = sessionCookie();
+    cookie = await sessionCookie();
     destination.sheets.mockClear();
   });
 
@@ -129,7 +131,8 @@ suite('new class creation on native PostgreSQL (no activation or external OAuth)
     try {
       const pids = await Promise.all(clients.map(client => client.query('SELECT pg_backend_pid() AS pid')));
       expect(new Set(pids.map(result => result.rows[0].pid)).size).toBe(2);
-      const input = { operationId: randomUUID(), displayName: '동시 생성', subject, email };
+      const identity = getGoogleSessionFromRequest(new Request(origin,{headers:{cookie}}))!;
+      const input = { operationId: randomUUID(), displayName: '동시 생성', subject, email, accountGeneration:identity.accountGeneration!,sessionId:identity.sessionId! };
       const results = await Promise.all(clients.map(client => createClassCreationCommand(client).create(input)));
       expect(new Set(results.map(result => result.slug)).size).toBe(1);
       expect(results.map(result => result.replayed).sort()).toEqual([false, true]);
@@ -154,7 +157,7 @@ suite('new class creation on native PostgreSQL (no activation or external OAuth)
     expect((await POST(request(randomUUID(), '내 첫 학급'))).status).toBe(201);
     expect((await POST(request(randomUUID(), '내 두 번째 학급'))).status).toBe(201);
     expect((await POST(request(randomUUID(), '다른 계정 학급', {
-      cookie: sessionCookie({ subject: 'foreign-account', email: 'foreign@example.invalid' }),
+      cookie: await sessionCookie({ subject: 'foreign-account', email: 'foreign@example.invalid' }),
     }))).status).toBe(201);
     const before = await snapshot();
     const repository = createClassMembershipRepository(db.runtime);
@@ -179,15 +182,15 @@ suite('new class creation on native PostgreSQL (no activation or external OAuth)
 
   it('rejects another Google subject with the same email without merging identities', async () => {
     expect((await POST(request())).status).toBe(201);
+    const foreignCookie = await sessionCookie({ subject: 'foreign-account', email });
     const before = await snapshot();
-    const response = await POST(request(randomUUID(), '다른 계정', {
-      cookie: sessionCookie({ subject: 'foreign-account', email }),
-    }));
+    const response = await POST(request(randomUUID(), '다른 계정', { cookie:foreignCookie }));
     expect(response.status).toBe(409);
     expect(await snapshot()).toEqual(before);
   });
 
   it('rolls back all creation rows on a failure after user, tenant and membership inserts', async () => {
+    const rollbackCookie = await sessionCookie({ subject: 'rollback-owner', email: 'rollback@example.invalid' });
     const before = await snapshot();
     await db.owner.query(`CREATE FUNCTION public.reject_creation_test() RETURNS trigger LANGUAGE plpgsql AS $$
       BEGIN RAISE EXCEPTION 'synthetic late failure'; END; $$;
@@ -195,7 +198,7 @@ suite('new class creation on native PostgreSQL (no activation or external OAuth)
       FOR EACH ROW EXECUTE FUNCTION public.reject_creation_test()`);
     try {
       const response = await POST(request(randomUUID(), '롤백', {
-        cookie: sessionCookie({ subject: 'rollback-owner', email: 'rollback@example.invalid' }),
+        cookie: rollbackCookie,
       }));
       expect(response.status).toBe(503);
       expect(JSON.stringify(await response.json())).not.toContain('synthetic');

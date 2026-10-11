@@ -72,6 +72,7 @@ export const TENANT_ROUTE_INVENTORY: readonly TenantRouteInventoryEntry[] = [
   tenantMutation('/class-tree/feed', 'POST'),
   tenantMutation('/class-tree/harvest', 'POST'),
   tenantRead('/bank/me/pet'),
+  tenantRead('/bank/me/pet/dex'),
   tenantMutation('/bank/me/pet/adopt', 'POST'),
   tenantMutation('/bank/me/pet/care', 'POST'),
   tenantMutation('/bank/me/pet/graduate', 'POST'),

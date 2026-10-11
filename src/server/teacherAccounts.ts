@@ -100,6 +100,7 @@ export function resolveTeacherProfile(session: Pick<GoogleSession, 'subject' | '
 }
 
 export type LegalNotice = Readonly<{
+  expectedSessionId?: string;
   /** Set when the teacher must agree again before using the service. */
   required: Readonly<{ current: LegalRevision; changes: readonly LegalRevision[] }> | null;
   /** A revision announced for later, shown as a notice. */
@@ -107,12 +108,12 @@ export type LegalNotice = Readonly<{
 }>;
 
 /** What a signed-in teacher must be told: a revision to agree to now, and/or one coming later. */
-export function legalNoticeFor(session: Pick<GoogleSession, 'agreement'>, now: number = Date.now()): LegalNotice {
+export function legalNoticeFor(session: Pick<GoogleSession, 'agreement' | 'sessionId'>, now: number = Date.now()): LegalNotice {
   const current = currentLegalRevision(now);
   const required = session.agreement === current.version
     ? null
     : { current, changes: revisionsSince(session.agreement, now) };
-  return { required, upcoming: upcomingLegalRevision(now) };
+  return { required, upcoming: upcomingLegalRevision(now), ...(session.sessionId ? { expectedSessionId: session.sessionId } : {}) };
 }
 
 export type TeacherAccountView = Readonly<{ profile: TeacherProfile; notice: LegalNotice }>;

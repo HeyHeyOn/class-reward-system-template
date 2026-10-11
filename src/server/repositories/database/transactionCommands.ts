@@ -339,12 +339,6 @@ export function createDatabaseTransactionCommands(
           await revokeStoreCoupons(tx, dependencies.tenantId, state.original.transaction_id);
           await restoreCheckoutVouchers(tx, dependencies.tenantId, state.original.transaction_id);
         }
-        if (state.original.kind === 'GROWTH_SPEND' || state.original.kind === 'TASK_REWARD') {
-          await revokeTreeDropsForTransaction(tx, dependencies.tenantId, {
-            originalTransactionId: state.original.transaction_id, reversalTransactionId, operationId: input.operationId });
-          await revokePetForTransaction(tx, dependencies.tenantId, {
-            originalTransactionId: state.original.transaction_id, reversalTransactionId, operationId: input.operationId });
-        }
         const cancellationCompletionId = resetTaskCompletion
           ? cancellationTaskCompletionId(input.operationId)
           : null;
@@ -414,6 +408,14 @@ export function createDatabaseTransactionCommands(
               finished_at=${now}, updated_at=${now}
           WHERE tenant_id=${dependencies.tenantId} AND operation_id=${input.operationId}
         `);
+        // Keep the shared tree lock out of the cancellation bookkeeping. These
+        // effects remain atomic with the reversal, in the same tree→pet order.
+        if (state.original.kind === 'GROWTH_SPEND' || state.original.kind === 'TASK_REWARD') {
+          await revokeTreeDropsForTransaction(tx, dependencies.tenantId, {
+            originalTransactionId: state.original.transaction_id, reversalTransactionId, operationId: input.operationId });
+          await revokePetForTransaction(tx, dependencies.tenantId, {
+            originalTransactionId: state.original.transaction_id, reversalTransactionId, operationId: input.operationId });
+        }
         return result;
       });
     },

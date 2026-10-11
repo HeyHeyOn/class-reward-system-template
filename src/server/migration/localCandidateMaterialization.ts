@@ -5,7 +5,7 @@ import type { TenantTransaction } from '@/server/db/transaction';
 import { importLegacyNormalizationManifest, inspectLegacyImport } from './importer';
 import { readLocalFullCandidate } from './localFullGenerationStage';
 import type { LegacyNormalizationManifest } from './manifest';
-import type { OwnedSyntheticDatabaseLease } from './localMaterializationRunner';
+import { LOCAL_TASK_HISTORY_PROJECTIONS, type OwnedSyntheticDatabaseLease } from './localMaterializationRunner';
 import { canonicalJson, isHexDigest, sha256 } from './validators';
 import { deepFreeze } from './sensitiveRedaction';
 
@@ -376,6 +376,16 @@ async function verifyPreparedSourceInventory(tx:TenantTransaction,lease:OwnedSyn
     WHERE tenant_id=${binding.tenantId} AND job_id=${binding.migrationJobId}`)).rows,
     [{final_fingerprint:null,freeze_started_at:null,freeze_verified_at:null,completed_at:null}]);
   const {rows: tables} = await lease.queryOwner("SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname='public' ORDER BY tablename");
+  // The authoritative imported task/event rows were verified above. Their
+  // trigger-maintained history caches are scoped to those same tenant tasks;
+  // they are never imported input or authority. Foreign cache rows still fail
+  // the global owner counts below, and checkpoints remain forbidden pre-ledger.
+  for (const table of LOCAL_TASK_HISTORY_PROJECTIONS) {
+    if (tables.some(row => row.tablename === table)) {
+      await scopedCount(table,sql`tenant_id=${binding.tenantId} AND task_instance_id IN
+        (SELECT task_instance_id FROM tasks WHERE tenant_id=${binding.tenantId})`);
+    }
+  }
   // Catalog metadata remains visible even for owner-only tables. An incomplete
   // owner inventory must not silently hide a private table from the count pass.
   same(tables,(await tx.execute(sql`SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname='public' ORDER BY tablename`)).rows);
@@ -473,12 +483,15 @@ async function readback(tx: TenantTransaction): Promise<Readback> {
 // staging tables must be empty too. The trusted owner runner separately checks
 // foreign-tenant rows hidden by runtime RLS before entering this transaction.
 async function destinationTables(tx: TenantTransaction): Promise<string[]> {
-  const { rows } = await tx.execute(sql`SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname='public'
-    AND has_table_privilege(current_user, quote_ident(schemaname)||'.'||quote_ident(tablename), 'SELECT') ORDER BY tablename`);
+  const { rows } = await tx.execute(sql`SELECT tablename,
+    has_table_privilege(current_user, quote_ident(schemaname)||'.'||quote_ident(tablename), 'SELECT') AS readable
+    FROM pg_catalog.pg_tables WHERE schemaname='public' ORDER BY tablename`);
   return rows.map(row => {
     if (typeof row.tablename !== 'string') refused();
-    return row.tablename;
-  }).filter(table => !['migration_local_disposable_database','migration_local_materializations'].includes(table));
+    if (LOCAL_TASK_HISTORY_PROJECTIONS.some(table => table === row.tablename) && row.readable !== true) refused();
+    return row.readable === true ? row.tablename : null;
+  }).filter((table): table is string => table !== null
+    && !['migration_local_disposable_database','migration_local_materializations'].includes(table));
 }
 function same(actual: unknown[], expected: unknown[]) {
   const sorted = (rows: unknown[]) => canonicalJson(rows.map(row => canonicalJson(row)).sort());

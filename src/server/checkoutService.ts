@@ -47,6 +47,7 @@ export type ProcessCheckoutResult =
   | { ok: false; code: 'STUDENT_NOT_FOUND'; message: string }
   | { ok: false; code: 'STUDENT_INACTIVE'; message: string }
   | { ok: false; code: 'VOUCHER_UNAVAILABLE'; message: string }
+  | { ok: false; code: 'DIGITAL_ITEM_LIMIT'; message: string }
   | { ok: false; code: 'PRICE_CHANGED'; message: string; latestPricing: CartPricingPreviewSuccess };
 
 export type CheckoutCommandInput = ProcessCheckoutInput & {

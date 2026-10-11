@@ -8,6 +8,7 @@ import { SignupAgreementView } from './SignupAgreementView';
 
 const revision: LegalRevision = { version: '2026-10-08', effectiveAt: '2026-10-08T00:00:00+09:00', effectiveLabel: '2026년 10월 8일', changes: ['이용약관을 새로 마련했어요.'] };
 const upcoming: LegalRevision = { version: '2026-12-01', effectiveAt: '2026-12-01T00:00:00+09:00', effectiveLabel: '2026년 12월 1일', changes: ['과제 기록 보관 기간을 바꿔요.'] };
+const expectedSessionId = '22222222-2222-4222-8222-222222222222';
 const fetchMock = vi.fn();
 const assign = vi.fn();
 const reload = vi.fn();
@@ -36,7 +37,7 @@ afterEach(() => {
 describe('SignupAgreementView', () => {
   it('signs up only after the three required items, then goes where the sign-in was headed', async () => {
     fetchMock.mockReturnValueOnce(reply(200, { ok: true, redirectTo: '/c/alpha/admin' }));
-    render(<SignupAgreementView mode="signup" email="new@example.com" changes={[revision]} />);
+    render(<SignupAgreementView expectedSessionId={expectedSessionId} mode="signup" email="new@example.com" changes={[revision]} />);
     expect(screen.getByRole('heading', { name: '학급 보상 시스템 가입' })).toBeTruthy();
     const submit = screen.getByRole('button', { name: '동의하고 가입하기' }) as HTMLButtonElement;
     expect(submit.disabled).toBe(true);
@@ -52,12 +53,12 @@ describe('SignupAgreementView', () => {
 
     fireEvent.click(submit);
     await waitFor(() => expect(assign).toHaveBeenCalledWith('/c/alpha/admin'));
-    expect(fetchMock).toHaveBeenCalledWith('/api/account/agreement', expect.objectContaining({ method: 'POST', body: JSON.stringify({ age: true, terms: true, privacy: true }) }));
+    expect(fetchMock).toHaveBeenCalledWith('/api/account/agreement', expect.objectContaining({ method: 'POST', body: JSON.stringify({ age: true, terms: true, privacy: true, expectedSessionId }) }));
   });
 
   it('lets a new teacher leave without signing up', async () => {
     fetchMock.mockReturnValueOnce(reply(200, { ok: true }));
-    render(<SignupAgreementView mode="signup" email="new@example.com" changes={[]} />);
+    render(<SignupAgreementView expectedSessionId={expectedSessionId} mode="signup" email="new@example.com" changes={[]} />);
     fireEvent.click(screen.getByRole('button', { name: '가입하지 않고 돌아가기' }));
     await waitFor(() => expect(assign).toHaveBeenCalledWith('/classes'));
     expect(fetchMock).toHaveBeenCalledWith('/api/account/agreement', expect.objectContaining({ method: 'DELETE' }));
@@ -65,7 +66,7 @@ describe('SignupAgreementView', () => {
 
   it('shows an existing teacher what changed and offers withdrawal instead', async () => {
     fetchMock.mockReturnValueOnce(reply(200, { ok: true, redirectTo: '/classes?withdrawn=1' }));
-    render(<SignupAgreementView mode="update" email="kim@example.com" changes={[revision]} classNames={['6학년 3반']} />);
+    render(<SignupAgreementView expectedSessionId={expectedSessionId} mode="update" email="kim@example.com" changes={[revision]} classNames={['6학년 3반']} />);
     expect(screen.getByText('이용약관을 새로 마련했어요.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '동의하지 않아요' }));
     expect(screen.getByText(/내가 만든 학급 1개/)).toBeTruthy();
@@ -74,12 +75,12 @@ describe('SignupAgreementView', () => {
     fireEvent.click(screen.getByLabelText('위 내용을 확인했고, 탈퇴에 동의해요.'));
     fireEvent.click(withdraw);
     await waitFor(() => expect(assign).toHaveBeenCalledWith('/classes?withdrawn=1'));
-    expect(fetchMock).toHaveBeenCalledWith('/api/account/withdraw', expect.objectContaining({ body: JSON.stringify({ confirm: true }) }));
+    expect(fetchMock).toHaveBeenCalledWith('/api/account/withdraw', expect.objectContaining({ body: JSON.stringify({ confirm: true, expectedSessionId }) }));
   });
 
   it('explains an expired sign-up step', async () => {
     fetchMock.mockReturnValueOnce(reply(401, { error: 'x' }));
-    render(<SignupAgreementView mode="signup" email="new@example.com" changes={[]} />);
+    render(<SignupAgreementView expectedSessionId={expectedSessionId} mode="signup" email="new@example.com" changes={[]} />);
     agreeToEverything();
     fireEvent.click(screen.getByRole('button', { name: '동의하고 가입하기' }));
     expect(await screen.findByRole('alert')).toHaveProperty('textContent', '가입 시간이 지났어요. 메인 화면에서 Google 로그인을 다시 해 주세요.');
@@ -89,7 +90,7 @@ describe('SignupAgreementView', () => {
 describe('LegalAgreementGate', () => {
   it('asks for agreement with a dialog that cannot be dismissed, then reloads', async () => {
     fetchMock.mockReturnValueOnce(reply(200, { ok: true }));
-    render(<LegalAgreementGate notice={{ required: { current: revision, changes: [revision] }, upcoming: null }} />);
+    render(<LegalAgreementGate notice={{ required: { current: revision, changes: [revision] }, upcoming: null, expectedSessionId }} />);
     const dialog = screen.getByRole('dialog', { name: '약관 동의가 필요해요' });
     // Rendered outside any themed page, the dialog still has its own surface colours.
     expect(dialog.closest('[style*="--theme-surface"]')).not.toBeNull();
@@ -99,10 +100,11 @@ describe('LegalAgreementGate', () => {
     agreeToEverything();
     fireEvent.click(within(dialog).getByRole('button', { name: '동의하고 계속하기' }));
     await waitFor(() => expect(reload).toHaveBeenCalled());
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).expectedSessionId).toBe(expectedSessionId);
   });
 
   it('switches to withdrawal when the teacher does not agree, and back', () => {
-    render(<LegalAgreementGate notice={{ required: { current: revision, changes: [revision] }, upcoming: null }} />);
+    render(<LegalAgreementGate notice={{ required: { current: revision, changes: [revision] }, upcoming: null, expectedSessionId }} />);
     fireEvent.click(screen.getByRole('button', { name: '동의하지 않아요' }));
     expect(screen.getByRole('dialog', { name: '회원 탈퇴' })).toBeTruthy();
     expect(screen.getByText('내가 만든 학급이 모두 바로 닫혀요.', { exact: false })).toBeTruthy();
@@ -130,7 +132,7 @@ describe('ProfileView', () => {
     profile: { nickname: '김선생', avatar: AVATAR_PRESETS[0].config },
     agreement: { effectiveLabel: '2026년 10월 8일', agreedAtLabel: '2026년 10월 8일 12:00' },
     classNames: ['6학년 3반', '방과후반'],
-    notice: { required: null, upcoming: null },
+    notice: { required: null, upcoming: null, expectedSessionId },
   };
 
   it('saves the nickname and the avatar', async () => {
@@ -143,7 +145,7 @@ describe('ProfileView', () => {
     fireEvent.click(save);
     expect(await screen.findByText('프로필을 저장했어요.')).toBeTruthy();
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-    expect(body).toEqual({ nickname: '햇살쌤', avatar: AVATAR_PRESETS[2].config });
+    expect(body).toEqual({ nickname: '햇살쌤', avatar: AVATAR_PRESETS[2].config, expectedSessionId });
     expect(screen.getByRole('heading', { level: 1, name: '햇살쌤' })).toBeTruthy();
   });
 

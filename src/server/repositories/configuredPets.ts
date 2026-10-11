@@ -27,7 +27,7 @@ export function createPetRepositoryCreators(): RepositoryCreators<ConfiguredPets
   return {
     createPostgresql: (authority) => createPetCommands({ tenantId: authority.tenantId, runTenantTransaction: withTenantTransaction }),
     createSheets: () => ({
-      studentView: unsupported, adopt: unsupported, care: unsupported, graduate: unsupported, buyDecor: unsupported,
+      studentView: unsupported, dexPage: unsupported, adopt: unsupported, care: unsupported, graduate: unsupported, buyDecor: unsupported,
       placeDecor: unsupported, setCompanions: unsupported, taskGains: unsupported, adminBoard: unsupported, saveSettings: unsupported,
       adjustGrowth: unsupported, renamePet: unsupported,
     }),

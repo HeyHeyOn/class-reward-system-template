@@ -366,7 +366,7 @@ export async function readPersistedLocalGeneration(
           return { id: row.id, tenantId: row.tenant_id, userId: row.user_id, googleSubject: row.google_subject,
             role: row.role } as TenantMembership;
         },
-      });
+      }, { query });
       await query("SELECT set_config('app.tenant_id', $1, true)", [tenant.id]);
       const data = await query(GENERATION_SQL, [tenant.id, session.subject, selected.jobId,
         membership.id, membership.userId, tenant.slug, selected.generationId]);

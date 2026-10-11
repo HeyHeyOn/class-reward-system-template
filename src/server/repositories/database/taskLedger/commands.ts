@@ -18,6 +18,7 @@ import type {
 } from '@/lib/taskLedgerApi';
 import type { TenantTransaction } from '@/server/db/transaction';
 import { appendOperationAudit } from '../operationAudit';
+import { applyTaskGrowth, type TaskGrowthInput } from '../taskGrowth';
 import { ensureTaskLedger, type RunTenantTransaction } from './migration';
 import { writeTeacherPaidCompletion } from './reward';
 import { readCurrentLedgerStates } from './currentState';
@@ -65,6 +66,7 @@ type Context = {
   ledgerFrom: string;
   operationId: string;
   payloadHash: string;
+  growth: TaskGrowthInput[];
 };
 
 /** Why an event was written; shown in the history (the ID prefix keeps it). */
@@ -104,7 +106,8 @@ export function createTaskLedgerCommands(dependencies: TaskLedgerCommandDependen
       }
       const ledgerFrom = await readLedgerFrom(tx, tenantId);
       if (!ledgerFrom) throw new Error('Task ledger start is missing.');
-      const value = await body({ tx, tenantId, now, ledgerFrom, operationId, payloadHash });
+      const growth: TaskGrowthInput[] = [];
+      const value = await body({ tx, tenantId, now, ledgerFrom, operationId, payloadHash, growth });
       const finishedAt = await clockNow(tx);
       const details = summary(value);
       const taskIds = Array.isArray(details.taskIds) ? details.taskIds.map(String)
@@ -117,6 +120,7 @@ export function createTaskLedgerCommands(dependencies: TaskLedgerCommandDependen
         UPDATE operations SET status='SUCCEEDED', result_snapshot=${JSON.stringify({ kind, ...details })}::jsonb,
           finished_at=${finishedAt}::timestamptz, updated_at=${finishedAt}::timestamptz
         WHERE tenant_id=${tenantId} AND operation_id=${operationId}`);
+      for (const entry of growth) await applyTaskGrowth(tx, tenantId, entry);
       return { value, replayed: false };
     });
   }
@@ -189,6 +193,7 @@ export function createTaskLedgerCommands(dependencies: TaskLedgerCommandDependen
       const paid = await writeTeacherPaidCompletion(context.tx, tenantId, { adminOperationId: context.operationId, task: input.task,
         student: input.student, balance, events: input.events });
       input.balances.set(input.student.studentId, paid.balanceAfter);
+      context.growth.push(paid.growth);
       return { changed: true, paid: input.task.reward };
     }
     const assignment = latestEvent(input.events, (event): event is LedgerEventRow => event.table === 'A' && event.kind === 'STAGE' && event.stage !== 'UNASSIGNED');

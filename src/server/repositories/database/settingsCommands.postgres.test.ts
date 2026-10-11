@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { issueTeacherTestSession, grantProductionTestRuntime } from '@/server/db/testing/teacherIdentity';
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import { NextResponse } from 'next/server';
@@ -41,9 +42,10 @@ async function inspect() {
 suite('central settings on native PostgreSQL', () => {
   beforeAll(async () => {
     expect(process.env.DATABASE_URL).toBeUndefined();
-    db = await createDisposablePostgres(); destination.pool = db.runtime;
+    db = await createDisposablePostgres(); await grantProductionTestRuntime(db.owner); destination.pool = db.runtime;
     vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql'); vi.stubEnv('AUTH_SECRET', randomBytes(32).toString('hex'));
     destination.sheets.mockImplementation(() => { throw new Error('Sheets fallback forbidden.'); });
+    await db.owner.query('GRANT EXECUTE ON FUNCTION public.platform_validate_teacher_session(text,uuid,uuid,boolean,text) TO app_runtime');
     await db.owner.query(`GRANT EXECUTE ON FUNCTION public.platform_find_tenant_by_slug(text),
       public.platform_find_membership_by_tenant_and_google_subject(uuid,text) TO app_runtime`);
   }, 60_000);
@@ -56,7 +58,7 @@ suite('central settings on native PostgreSQL', () => {
     await db.owner.query("INSERT INTO tenant_memberships(tenant_id,user_id,role) VALUES($1,$2,'OWNER')", [tenantId, userId]);
     await db.owner.query(`INSERT INTO tenant_settings(tenant_id,settings) VALUES($1,$3::jsonb),($2,'{"currencyUnit":"다른 학급"}')`,
       [tenantId, otherId, JSON.stringify({ className: '설정 시험', padletApiKey: 'synthetic-private-key', googleSheetsId: 'synthetic-source', privateFutureKey: { keep: true } })]);
-    const response = new NextResponse(); setGoogleSessionCookie(response, { subject, email: `${subject}@example.invalid`, issuedAt: Date.now() });
+    const response = new NextResponse(); setGoogleSessionCookie(response, await issueTeacherTestSession(db.owner,{subject,email:`${subject}@example.invalid`}));
     cookie = `${GOOGLE_AUTH_COOKIE}=${response.cookies.get(GOOGLE_AUTH_COOKIE)!.value}`;
     destination.sheets.mockClear();
   });

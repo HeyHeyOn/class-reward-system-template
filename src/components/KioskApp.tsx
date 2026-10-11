@@ -7,6 +7,7 @@ import { applyCheckoutVouchers, createCartPricingPreview, removeCheckoutVouchers
 import { calculatePromotionPrice } from '@/domain/promotions';
 import type { CartItem, CheckoutLineSnapshot, Product, Promotion, Student } from '@/domain/types';
 import { checkoutPreviewMatchesCart, parseCheckoutPreviewResponse, parseCheckoutSuccessResponse, type CheckoutPreviewPayload, type CheckoutSuccessPayload } from '@/lib/checkoutSnapshotClient';
+import { checkoutIntentBody, checkoutRecoveryKey, clearCheckoutRecovery, readCheckoutRecovery, saveCheckoutRecovery, type CheckoutIntent } from '@/lib/checkoutRecovery';
 import { getFontFamilyCss, type FontFamily } from '@/lib/fontSettings';
 import { effectivePromotionsForProduct, parsePromotionListResponse, promotionBadgeLabel } from '@/lib/promotionClient';
 import { tenantFetch } from '@/lib/tenantApiPath';
@@ -23,11 +24,21 @@ type PaymentStep = 'checkout' | 'vouchers' | 'processing' | 'failure' | 'complet
 /** After the QR scan: the student's 교환권 that fit the cart, offered before paying. */
 type VoucherOffer = { qrValue: string; studentId: string; studentName: string; vouchers: CheckoutVoucherDto[] };
 
+/** The submitted bytes stay fixed until the server gives a conclusive outcome. */
+type SubmittedCheckout = Readonly<{
+  intent: CheckoutIntent;
+  body?: string;
+  qrValue?: string;
+  cartKey: string;
+  cartGeneration: number;
+}>;
+
 type PaymentResult = CheckoutSuccessPayload & {
   studentNumber?: number;
 };
 
 type ApiError = {
+  ok?: false;
   error?: string;
   message?: string;
   code?: string;
@@ -41,6 +52,7 @@ type FailureState = {
   message: string;
   detail?: string;
   uncertain?: boolean;
+  cannotRetry?: boolean;
 };
 
 type KioskSettings = { currencyUnit?: string; appTitle?: string; themeColor?: ThemeColor; fontFamily?: FontFamily; qrManualInputEnabled?: boolean };
@@ -52,6 +64,13 @@ const UNCERTAIN_FAILURE: FailureState = {
   message: '결제 응답을 받지 못해 처리 여부를 확인할 수 없습니다.',
   detail: '이미 처리되었을 수 있으니 거래 내역과 잔액을 먼저 확인하고, 별도의 새 결제를 하지 마세요.',
   uncertain: true,
+};
+
+const RECOVERY_BLOCKED_FAILURE: FailureState = {
+  title: '결제 상태 확인 필요',
+  message: '이전 결제의 복구 정보를 확인할 수 없습니다.',
+  detail: '선생님이 거래 내역과 잔액을 확인한 뒤 이 기기의 결제 복구 정보를 정리해 주세요. 확인 전에는 새 결제를 시작할 수 없습니다.',
+  uncertain: true, cannotRetry: true,
 };
 
 function isApiError(payload: unknown): payload is ApiError {
@@ -87,6 +106,7 @@ export function KioskApp() {
   const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
   const [completedCartDetails, setCompletedCartDetails] = useState<CheckoutLineSnapshot[]>([]);
   const [failure, setFailure] = useState<FailureState | null>(null);
+  const [hasPendingCheckout, setHasPendingCheckout] = useState(false);
   const [currencyUnit, setCurrencyUnit] = useState('원');
   const [appTitle, setAppTitle] = useState('학급 매점');
   const [themeColor, setThemeColor] = useState<ThemeColor>('white');
@@ -109,9 +129,13 @@ export function KioskApp() {
     cartItems: [],
   });
   const checkoutOperationRef = useRef<{ fingerprint: string; operationId: string } | null>(null);
+  const submittedCheckoutRef = useRef<SubmittedCheckout | null>(null);
   const checkoutInFlightRef = useRef(false);
+  const recoveryKeyRef = useRef<string | null>(null);
+  const recoveryBlockedRef = useRef(false);
 
   const loadProducts = useCallback(async (options: { shouldApply?: () => boolean } = {}) => {
+    if ((submittedCheckoutRef.current || recoveryBlockedRef.current) && !options.shouldApply) return;
     const generation = loadGenerationRef.current + 1;
     loadGenerationRef.current = generation;
     setIsLoadingProducts(true);
@@ -155,7 +179,7 @@ export function KioskApp() {
       setThemeColor(normalizeThemeColor(settings?.themeColor));
       setFontFamily(settings?.fontFamily ?? 'default');
       setQrManualInputEnabled(Boolean(settings?.qrManualInputEnabled));
-      setMessage('');
+      if (!submittedCheckoutRef.current && !recoveryBlockedRef.current) setMessage('');
     } catch (error) {
       if (mountedRef.current && loadGenerationRef.current === generation && options.shouldApply?.() !== false) {
         const nextError = error instanceof Error ? error.message : '상품 정보를 불러오지 못했습니다.';
@@ -171,7 +195,22 @@ export function KioskApp() {
     let ignore = false;
     mountedRef.current = true;
     void Promise.resolve().then(() => {
-      if (!ignore) return loadProducts({ shouldApply: () => !ignore });
+      if (ignore) return;
+      const key = checkoutRecoveryKey();
+      recoveryKeyRef.current = key;
+      const recovery = readCheckoutRecovery(key);
+      if (recovery.state === 'ready') {
+        submittedCheckoutRef.current = {
+          intent: recovery.intent, cartKey: JSON.stringify(recovery.intent.items), cartGeneration: -1,
+        };
+        setHasPendingCheckout(true);
+        setMessage('이전 결제의 처리 여부를 먼저 확인해 주세요. QR 결제를 누르면 같은 요청을 다시 확인합니다.');
+      } else if (recovery.state === 'blocked') {
+        recoveryBlockedRef.current = true;
+        setHasPendingCheckout(true);
+        setMessage(RECOVERY_BLOCKED_FAILURE.message);
+      }
+      return loadProducts({ shouldApply: () => !ignore });
     });
     const interval = window.setInterval(() => setRenderClock(new Date(Date.now() + serverClockOffsetRef.current)), 60_000);
     return () => {
@@ -257,6 +296,7 @@ export function KioskApp() {
   const quantityButtonClass = 'relative z-10 flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full bg-[var(--theme-surface)] text-[var(--theme-text)] shadow-[var(--crs-shadow-sm)] transition-colors hover:bg-[var(--theme-accent-soft)]';
 
   function addToCart(productId: string) {
+    if (submittedCheckoutRef.current || recoveryBlockedRef.current) return;
     cartGenerationRef.current += 1;
     setConfirmedServerPricing(null);
     setMessage('');
@@ -282,6 +322,7 @@ export function KioskApp() {
   }
 
   function removeFromCart(productId: string) {
+    if (submittedCheckoutRef.current || recoveryBlockedRef.current) return;
     cartGenerationRef.current += 1;
     setConfirmedServerPricing(null);
     setCartItems((currentItems) =>
@@ -294,6 +335,7 @@ export function KioskApp() {
   }
 
   function clearCart() {
+    if (submittedCheckoutRef.current || recoveryBlockedRef.current) return;
     cartGenerationRef.current += 1;
     checkoutOperationRef.current = null;
     setConfirmedServerPricing(null);
@@ -302,6 +344,16 @@ export function KioskApp() {
   }
 
   function openCheckout() {
+    if (recoveryBlockedRef.current) {
+      setFailure(RECOVERY_BLOCKED_FAILURE);
+      setPaymentStep('failure');
+      return;
+    }
+    if (submittedCheckoutRef.current) {
+      setFailure(UNCERTAIN_FAILURE);
+      setPaymentStep('failure');
+      return;
+    }
     if (cartItems.length === 0) {
       setMessage('장바구니가 비어 있습니다.');
       return;
@@ -318,23 +370,24 @@ export function KioskApp() {
   }
 
   async function completeCheckoutWithQrValue(qrValue: string) {
-    if (checkoutInFlightRef.current) return;
+    if (checkoutInFlightRef.current || recoveryBlockedRef.current) return;
 
     const studentId = qrValue.trim();
+    const submitted = submittedCheckoutRef.current;
 
     if (!studentId) {
-      setFailure({ title: '결제 실패', message: '잘못된 QR 코드입니다.' });
+      setFailure(submitted ? UNCERTAIN_FAILURE : { title: '결제 실패', message: '잘못된 QR 코드입니다.' });
       setPaymentStep('failure');
       return;
     }
 
-    if (cartItems.length === 0) {
+    if (!submitted && cartItems.length === 0) {
       setFailure({ title: '결제 실패', message: '장바구니가 비어 있습니다.' });
       setPaymentStep('failure');
       return;
     }
 
-    if (!currentPreview) {
+    if (!submitted && !currentPreview) {
       setFailure({ title: '결제 실패', message: '결제 금액을 계산하지 못했습니다.' });
       setPaymentStep('failure');
       return;
@@ -348,11 +401,18 @@ export function KioskApp() {
     let checkoutSubmitted = false;
 
     try {
+      // An exact re-scan needs no fresh student/voucher/price read: those may have changed
+      // because the first request already committed. The server replays its operation.
+      if (submitted && studentId === submitted.qrValue) {
+        checkoutSubmitted = true;
+        await sendSubmittedCheckout(submitted, true);
+        return;
+      }
       const studentResponse = await tenantFetch(`/api/students/${encodeURIComponent(studentId)}`, { cache: 'no-store' });
       const studentPayload = (await studentResponse.json()) as Student | ApiError;
 
       if (!studentResponse.ok || isApiError(studentPayload)) {
-        setFailure({
+        setFailure(submitted ? UNCERTAIN_FAILURE : {
           title: '결제 실패',
           message: isApiError(studentPayload) ? studentPayload.error || '잘못된 QR 코드입니다.' : '잘못된 QR 코드입니다.',
         });
@@ -360,9 +420,30 @@ export function KioskApp() {
         return;
       }
 
+      if (submitted) {
+        if (studentPayload.studentId !== submitted.intent.studentId) {
+          setFailure({ ...UNCERTAIN_FAILURE, message: '이전 결제의 학생 QR을 다시 확인해 주세요. 다른 학생의 새 결제는 아직 시작할 수 없습니다.' });
+          setPaymentStep('failure');
+          return;
+        }
+        const recovered = submitted.body ? submitted : {
+          ...submitted, body: checkoutIntentBody(submitted.intent, studentId), qrValue: studentId,
+        };
+        submittedCheckoutRef.current = recovered;
+        checkoutSubmitted = true;
+        await sendSubmittedCheckout(recovered, true);
+        return;
+      }
+      if (!currentPreview) return;
+
       // 교환권 that fit the cart (lines that still cost something) are offered before paying.
       const paidLines = new Set(currentPreview.items.filter((item) => item.finalTotal > 0).map((item) => item.productId));
       const offer = paidLines.size > 0 ? await fetchCheckoutVouchers(studentId, [...paidLines]) : null;
+      if (offer && !offer.ok) {
+        setFailure({ title: '결제 실패', message: '교환권을 확인하지 못했습니다. 결제는 요청되지 않았습니다. 다시 시도해 주세요.' });
+        setPaymentStep('failure');
+        return;
+      }
       const usable = offer?.ok ? offer.data.filter((voucher) => paidLines.has(voucher.productId)) : [];
       if (usable.length > 0) {
         setVoucherOffer({ qrValue: studentId, studentId: studentPayload.studentId, studentName: studentPayload.name, vouchers: usable });
@@ -373,7 +454,7 @@ export function KioskApp() {
       checkoutSubmitted = true;
       await submitCheckout(studentId, studentPayload.studentId, currentPreview, []);
     } catch {
-      setFailure(checkoutSubmitted ? UNCERTAIN_FAILURE : {
+      setFailure(checkoutSubmitted || submitted ? UNCERTAIN_FAILURE : {
         title: '결제 실패',
         message: '학생 정보를 확인하지 못했습니다. 결제는 요청되지 않았습니다.',
       });
@@ -403,8 +484,6 @@ export function KioskApp() {
   }
 
   async function submitCheckout(qrValue: string, resolvedStudentId: string, basePricing: CheckoutPreviewPayload, voucherItemIds: string[]) {
-    const checkoutCartGeneration = cartGenerationRef.current;
-    const checkoutCartKey = cartKey;
     let expectedPricing = basePricing;
     if (voucherItemIds.length > 0) {
       const chosen = new Set(voucherItemIds);
@@ -421,31 +500,62 @@ export function KioskApp() {
       expectedPricing = applied;
     }
 
-    const checkoutBody = JSON.stringify({
+    const intent: CheckoutIntent = {
       operationId: checkoutOperationId(resolvedStudentId, cartItems, expectedPricing, voucherItemIds),
-      studentId: qrValue,
-      items: cartItems,
-      expectedPricing,
-      ...(voucherItemIds.length > 0 ? { voucherItemIds } : {}),
-    });
+      studentId: resolvedStudentId, items: cartItems, expectedPricing, voucherItemIds,
+    };
+    if (!recoveryKeyRef.current || !saveCheckoutRecovery(recoveryKeyRef.current, intent)) {
+      setFailure({ title: '결제 실패', message: '결제 복구 정보를 저장하지 못했습니다. 결제는 요청되지 않았습니다. 이 기기의 저장 공간과 브라우저 설정을 확인해 주세요.' });
+      setPaymentStep('failure');
+      return;
+    }
+    const submitted: SubmittedCheckout = {
+      intent, body: checkoutIntentBody(intent, qrValue), qrValue,
+      cartGeneration: cartGenerationRef.current, cartKey,
+    };
+    submittedCheckoutRef.current = submitted;
+    setHasPendingCheckout(true);
+    await sendSubmittedCheckout(submitted);
+  }
+
+  function clearSubmittedCheckout() {
+    submittedCheckoutRef.current = null;
+    const cleared = recoveryKeyRef.current !== null && clearCheckoutRecovery(recoveryKeyRef.current);
+    recoveryBlockedRef.current = !cleared;
+    setHasPendingCheckout(!cleared);
+  }
+
+  async function sendSubmittedCheckout(submitted: SubmittedCheckout, replaying = false) {
+    if (!submitted.body) throw new Error('A matching QR scan is required to recover checkout.');
     const checkoutResponse = await tenantFetch('/api/checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: checkoutBody,
+      body: submitted.body,
     });
     const checkoutRaw: unknown = await checkoutResponse.json().catch(() => null);
     const checkoutPayload = checkoutResponse.ok ? parseCheckoutSuccessResponse(checkoutRaw) : null;
 
     if (!checkoutPayload) {
       const errorPayload = isApiError(checkoutRaw) ? checkoutRaw : {};
+      // A lost/malformed success, gateway error, or still-running operation cannot establish
+      // that nothing committed. Keep the exact request available across closing and re-scanning.
+      if (checkoutResponse.status >= 500 || checkoutResponse.ok
+        || checkoutResponse.status === 408 || checkoutResponse.status === 429
+        || errorPayload.code === 'OPERATION_PENDING' || errorPayload.code === 'OPERATION_CONFLICT'
+        || (replaying && (errorPayload.ok !== false || typeof errorPayload.code !== 'string'))) {
+        setFailure(UNCERTAIN_FAILURE);
+        setPaymentStep('failure');
+        return;
+      }
+      clearSubmittedCheckout();
       if (checkoutResponse.status === 409 && errorPayload.code === 'PRICE_CHANGED') {
         const parsedPricing = parseCheckoutPreviewResponse(errorPayload.latestPricing);
         // The server quote includes the 교환권; the kiosk keeps it without them and asks again.
         const latestPricing = parsedPricing ? removeCheckoutVouchers(parsedPricing) : null;
         const currentPricingContext = pricingContextRef.current;
         if (latestPricing
-          && cartGenerationRef.current === checkoutCartGeneration
-          && currentPricingContext.cartKey === checkoutCartKey
+          && cartGenerationRef.current === submitted.cartGeneration
+          && currentPricingContext.cartKey === submitted.cartKey
           && checkoutPreviewMatchesCart(latestPricing, currentPricingContext.cartItems)) {
           setConfirmedServerPricing({
             cartKey: currentPricingContext.cartKey,
@@ -471,12 +581,27 @@ export function KioskApp() {
       return;
     }
 
-    setProducts((currentProducts) =>
+    clearSubmittedCheckout();
+    if (submitted.cartGeneration !== -1) setProducts((currentProducts) =>
       currentProducts.map((product) => {
         const completedItem = checkoutPayload.items.find((item) => item.productId === product.productId);
         return completedItem ? { ...product, stock: product.stock - completedItem.totalQuantity } : product;
       }),
     );
+    // A restored page may already have loaded the committed stock; do not subtract twice.
+    // Refresh only product stock after replay, without closing the completion dialog.
+    if (replaying) {
+      const generation = loadGenerationRef.current;
+      void tenantFetch('/api/products', { cache: 'no-store' }).then(async (response) => {
+        const payload: unknown = response.ok ? await response.json() : null;
+        if (!mountedRef.current || generation !== loadGenerationRef.current || !Array.isArray(payload)) return;
+        const stockById = new Map<string, number>();
+        for (const row of payload) {
+          if (row && typeof row.productId === 'string' && Number.isSafeInteger(row.stock) && row.stock >= 0) stockById.set(row.productId, row.stock);
+        }
+        setProducts((current) => current.map((product) => stockById.has(product.productId) ? { ...product, stock: stockById.get(product.productId)! } : product));
+      }).catch(() => undefined);
+    }
     setPaymentResult(checkoutPayload);
     checkoutOperationRef.current = null;
     setCompletedCartDetails(checkoutPayload.items);
@@ -492,6 +617,7 @@ export function KioskApp() {
   }
 
   function resetToShop() {
+    if (submittedCheckoutRef.current) return;
     cartGenerationRef.current += 1;
     checkoutOperationRef.current = null;
     setVoucherOffer(null);
@@ -505,6 +631,7 @@ export function KioskApp() {
   }
 
   function retryPayment() {
+    if (recoveryBlockedRef.current) return;
     setFailure(null);
     setManualQrValue('');
     setVoucherOffer(null);
@@ -514,6 +641,7 @@ export function KioskApp() {
   function closePayment() {
     setVoucherOffer(null);
     setPaymentStep(null);
+    if (submittedCheckoutRef.current) setMessage('이전 결제의 처리 여부를 먼저 확인해 주세요. QR 결제를 누르면 같은 요청을 다시 확인합니다.');
   }
 
   function checkoutOperationId(
@@ -542,7 +670,7 @@ export function KioskApp() {
         <header className={`${styles.kioskHeader} flex items-center gap-3`}>
           <span aria-hidden="true" className={styles.brandMark} />
           <h1 data-testid="kiosk-title" className="min-w-0 flex-1 truncate text-[clamp(1.35rem,4.5vw,2.25rem)] font-black leading-tight tracking-[-0.035em]">{appTitle}</h1>
-          <button type="button" onClick={() => void loadProducts()} aria-label="새로고침"
+          <button type="button" onClick={() => void loadProducts()} aria-label="새로고침" disabled={hasPendingCheckout}
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--crs-line)] bg-[var(--theme-surface)] text-[var(--theme-muted-text)] shadow-[var(--crs-shadow-sm)] transition-colors hover:text-[var(--theme-text)]">
             <Icon name="refresh" size={19} />
           </button>
@@ -596,7 +724,7 @@ export function KioskApp() {
                     <button
                       key={product.productId}
                       onClick={() => addToCart(product.productId)}
-                      disabled={!product.isActive || isSoldOut || cardPricingFailed || Boolean(loadError)}
+                      disabled={hasPendingCheckout || !product.isActive || isSoldOut || cardPricingFailed || Boolean(loadError)}
                       aria-label={`${product.name} ${formatCurrency(displayPrice, currencyUnit)} 담기${promotionAccessibleSummary(cardPromotion?.effective ?? [], currencyUnit)}`}
                       data-testid="product-card"
                       className={`group relative flex min-w-0 flex-col rounded-[18px] border bg-[var(--theme-surface)] p-2 text-left shadow-[var(--crs-shadow-sm)] transition-[transform,box-shadow,border-color] duration-150 active:scale-[0.98] disabled:cursor-not-allowed sm:p-2.5 ${inCart ? 'border-[var(--theme-accent-text)] ring-2 ring-[color-mix(in_srgb,var(--theme-accent-text)_22%,transparent)]' : 'border-[var(--crs-line)] hover:-translate-y-0.5 hover:shadow-[var(--crs-shadow)]'} ${isSoldOut ? 'grayscale disabled:opacity-60' : 'disabled:opacity-50'}`}
@@ -652,7 +780,7 @@ export function KioskApp() {
               </h2>
               <button
                 onClick={clearCart}
-                disabled={cartItems.length === 0}
+                disabled={hasPendingCheckout || cartItems.length === 0}
                 className="rounded-full px-3 py-1.5 text-[13px] font-bold text-[var(--theme-muted-text)] transition-colors hover:bg-[var(--crs-subtle-hover)] hover:text-[var(--theme-text)] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 비우기
@@ -685,11 +813,11 @@ export function KioskApp() {
                           {snapshot ? <>{snapshot.totalDiscount > 0 ? <p className="text-xs font-semibold text-[var(--theme-muted-text)] line-through" aria-label={`정상 합계 ${formatCurrency(snapshot.regularTotal, currencyUnit)}`}>{formatCurrency(snapshot.regularTotal, currencyUnit)}</p> : null}<p className={snapshot.totalDiscount > 0 ? 'text-[var(--crs-danger-text)]' : ''}>{formatCurrency(snapshot.finalTotal, currencyUnit)}</p></> : <span aria-hidden="true">—</span>}
                         </div>
                         <div data-testid="cart-quantity-controls" className="relative z-10 flex w-fit items-center rounded-full bg-[var(--crs-subtle-hover)] p-0.5">
-                          <button aria-label={`${item.name} 수량 줄이기`} onClick={() => removeFromCart(item.productId)} className={quantityButtonClass}>
+                          <button aria-label={`${item.name} 수량 줄이기`} disabled={hasPendingCheckout} onClick={() => removeFromCart(item.productId)} className={quantityButtonClass}>
                             <Icon name="minus" size={16} strokeWidth={2.4} />
                           </button>
                           <span className="w-8 text-center text-[15px] font-black tabular-nums">{item.quantity}</span>
-                          <button aria-label={`${item.name} 수량 늘리기`} onClick={() => addToCart(item.productId)} className={quantityButtonClass}>
+                          <button aria-label={`${item.name} 수량 늘리기`} disabled={hasPendingCheckout} onClick={() => addToCart(item.productId)} className={quantityButtonClass}>
                             <Icon name="plus" size={16} strokeWidth={2.4} />
                           </button>
                         </div>
@@ -713,7 +841,7 @@ export function KioskApp() {
               <button
                 data-testid="checkout-button"
                 onClick={openCheckout}
-                disabled={cartItems.length === 0 || !currentPreview || pricingError || Boolean(loadError)}
+                disabled={!hasPendingCheckout && (cartItems.length === 0 || !currentPreview || pricingError || Boolean(loadError))}
                 className="inline-flex h-14 shrink-0 items-center justify-center gap-2 rounded-[16px] bg-[var(--theme-accent-solid)] px-6 text-[clamp(1.05rem,3vw,1.3rem)] font-black text-[var(--theme-accent-on-solid)] shadow-[var(--crs-shadow)] transition-colors hover:bg-[var(--theme-hover)] hover:text-[var(--theme-hover-text)] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
               >
                 <Icon name="qr" size={20} />
@@ -727,6 +855,7 @@ export function KioskApp() {
       {paymentStep ? (
         <PaymentModal
           step={paymentStep}
+          retryingSubmittedCheckout={hasPendingCheckout}
           cartDetails={currentPreview?.items ?? []}
           totalAmount={currentPreview?.totalAmount ?? 0}
           manualQrValue={manualQrValue}
@@ -767,6 +896,7 @@ function LoadingScreen({ title, message }: { title: string; message: string }) {
 
 type PaymentModalProps = {
   step: PaymentStep;
+  retryingSubmittedCheckout: boolean;
   cartDetails: CheckoutLineSnapshot[];
   totalAmount: number;
   manualQrValue: string;
@@ -793,6 +923,7 @@ type PaymentModalProps = {
 
 function PaymentModal({
   step,
+  retryingSubmittedCheckout,
   cartDetails,
   totalAmount,
   manualQrValue,
@@ -874,7 +1005,9 @@ function PaymentModal({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-[26px] font-black tracking-[-0.035em]">결제 확인</h2>
-                <p className="mt-1 text-sm text-[var(--theme-muted-text)]">학생 QR을 카메라에 비추면 바로 결제됩니다.</p>
+                <p className="mt-1 text-sm text-[var(--theme-muted-text)]">{retryingSubmittedCheckout
+                  ? '이전 결제의 학생 QR을 비추면 같은 결제의 처리 결과를 다시 확인합니다.'
+                  : '학생 QR을 카메라에 비추면 바로 결제됩니다.'}</p>
               </div>
               <button onClick={onCancel} aria-label="결제 창 닫기" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[var(--theme-muted-text)] hover:bg-[var(--crs-subtle-hover)]"><Icon name="close" size={20} /></button>
             </div>
@@ -883,9 +1016,11 @@ function PaymentModal({
                 <QrScanner onScan={onScan} />
               </div>
               <div className="flex min-w-0 flex-col">
-                <CartSummary cartDetails={cartDetails} totalAmount={totalAmount} accent="" theme={theme} currencyUnit={currencyUnit} />
+                {retryingSubmittedCheckout
+                  ? <p className="text-sm leading-relaxed text-[var(--theme-muted-text)]">이전 결제의 상품·금액·교환권을 그대로 확인합니다. 처리 결과를 확인한 뒤 다음 결제를 시작할 수 있습니다.</p>
+                  : <CartSummary cartDetails={cartDetails} totalAmount={totalAmount} accent="" theme={theme} currencyUnit={currencyUnit} />}
                 <button onClick={onCancel} className="mt-auto w-full rounded-[14px] border border-[var(--crs-line-strong)] py-3.5 text-[17px] font-bold text-[var(--theme-text)] transition-colors hover:bg-[var(--crs-subtle-hover)]">
-                  결제 취소
+                  {retryingSubmittedCheckout ? '닫기' : '결제 취소'}
                 </button>
               </div>
             </div>
@@ -934,9 +1069,9 @@ function PaymentModal({
               <button onClick={onCancel} className="h-14 flex-1 rounded-[16px] border border-[var(--crs-line-strong)] text-lg font-bold">
                 {failure?.uncertain ? '닫기' : '결제 취소'}
               </button>
-              <button onClick={onRetry} className="h-14 flex-1 rounded-[16px] bg-[var(--theme-accent-solid)] text-lg font-black text-[var(--theme-accent-on-solid)]">
+              {!failure?.cannotRetry ? <button onClick={onRetry} className="h-14 flex-1 rounded-[16px] bg-[var(--theme-accent-solid)] text-lg font-black text-[var(--theme-accent-on-solid)]">
                 다시 시도
-              </button>
+              </button> : null}
             </div>
           </div>
         ) : null}

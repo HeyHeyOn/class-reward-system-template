@@ -26,6 +26,15 @@ export type PetDexEntryDto = Readonly<{
   accessory: string | null;
 }>;
 
+export type PetDexPageDto = Readonly<{
+  entries: ReadonlyArray<PetDexEntryDto>;
+  /** One latest representative per collected species/color (at most 28). */
+  collection: ReadonlyArray<PetDexEntryDto>;
+  nextCursor: string | null;
+}>;
+
+export const PET_DEX_PAGE_SIZE = 24;
+
 export type PetShopItemDto = Readonly<{ key: string; slot: PetShopSlot; id: string; name: string; price: number }>;
 
 export type PetStageStartsDto = Readonly<{ hatch: number; young: number; adult: number }>;
@@ -48,7 +57,7 @@ export type PetStudentViewDto = Readonly<{
   pet: PetDto | null;
   /** Graduated pets called back to keep `pet` company (at most two). */
   companions: ReadonlyArray<PetDto>;
-  /** Whether the egg has been warmed today. */
+  /** Whether this student has warmed any egg today (shared across new pets). */
   warmedToday: boolean;
   /** The student's own feedings today, for the daily limit (food from completed tasks is not counted). */
   feedsToday: number;
@@ -62,6 +71,7 @@ export type PetStudentViewDto = Readonly<{
   owned: ReadonlyArray<string>;
   shopEnabled: boolean;
   shop: ReadonlyArray<PetShopItemDto>;
+  /** Compatibility field; current state leaves it empty. Load the dex page on demand. */
   dex: ReadonlyArray<PetDexEntryDto>;
 }>;
 
