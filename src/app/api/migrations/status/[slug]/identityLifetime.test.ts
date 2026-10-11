@@ -25,6 +25,7 @@ vi.mock('pg', async importOriginal => {
 });
 
 import { getGoogleSessionFromRequest, type GoogleSession } from '@/server/googleOAuth';
+import { currentLegalRevision } from '@/lib/legalDocuments';
 import * as route from './route';
 
 // N1: direct-handler contract, NOT live Google/PG/Next/browser evidence.
@@ -41,6 +42,8 @@ const SUBJECT = 'synthetic-private-subject';
 const JOB = 'synthetic-private-job';
 const SESSION: GoogleSession = Object.freeze({
   subject: SUBJECT, email: 'synthetic-private@example.test', issuedAt: NOW - MAX_AGE_MS + 1,
+  accountGeneration: '50000000-0000-4000-8000-000000000001', sessionId: '50000000-0000-4000-8000-000000000002',
+  agreement: currentLegalRevision(NOW).version,
 });
 const tenant = Object.freeze({
   id: TENANT, slug: 'alpha', display_name: 'synthetic-private-class', lifecycle: 'ACTIVE', timezone: 'Asia/Seoul',
@@ -49,6 +52,8 @@ const member = Object.freeze({ id: MEMBER, tenant_id: TENANT, user_id: USER, goo
 const job = Object.freeze({ status: 'ACTIVE', source: 'synthetic-private-source', access_token: 'synthetic-private-token' });
 const tenantSql = 'SELECT * FROM public.platform_find_tenant_by_slug($1)';
 const memberSql = 'SELECT * FROM public.platform_find_membership_by_tenant_and_google_subject($1, $2)';
+const sessionSql = 'SELECT public.platform_validate_teacher_session($1,$2::uuid,$3::uuid,$4,$5) AS valid';
+const sessionBinding = [SUBJECT, SESSION.accountGeneration, SESSION.sessionId, false, SESSION.agreement];
 const projected = {
   availability: 'AVAILABLE', readOnly: true, migrationStatus: 'ACTIVE', authority: 'UNKNOWN',
   reasonCode: 'OPERATIONAL_AUTHORITY_UNVERIFIED',
@@ -111,7 +116,7 @@ function expectPrivate(response: Response) {
   }
 }
 function expectAccessReads() {
-  expect(directoryQuery.mock.calls).toEqual([[tenantSql, ['alpha']], [memberSql, [TENANT, SUBJECT]]]);
+  expect(directoryQuery.mock.calls).toEqual([[tenantSql, ['alpha']], [sessionSql, sessionBinding], [memberSql, [TENANT, SUBJECT]]]);
 }
 function expectNoJobConnection() {
   expect(connect).not.toHaveBeenCalled();
@@ -181,6 +186,7 @@ beforeEach(() => {
     'GENERATOR_GOOGLE_CLIENT_ID', 'GENERATOR_GOOGLE_CLIENT_SECRET']) vi.stubEnv(name, undefined);
   vi.stubEnv('AUTH_SECRET', KEY);
   vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
+  vi.stubEnv('NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT', 'system');
   directoryQuery.mockImplementation(async (text, values) => {
     if (text === tenantSql) {
       expect(values).toEqual(['alpha']);
@@ -192,6 +198,11 @@ beforeEach(() => {
       sequence.push('membership');
       await waitAt('membership');
       return { rows: [{ ...member, role }] };
+    }
+    if (text === sessionSql) {
+      expect(values).toEqual(sessionBinding);
+      sequence.push('teacher session');
+      return { rows: [{ valid: true }] };
     }
     throw new Error('Unexpected directory SQL');
   });
@@ -224,7 +235,7 @@ afterEach(() => {
     expect(transport.forbidden).not.toHaveBeenCalled();
     expect(globalThis.fetch).toBe(transport.forbidden);
     expect(Object.keys(route).sort()).toEqual(['GET', 'dynamic', 'runtime']);
-    for (const [text] of directoryQuery.mock.calls) expect([tenantSql, memberSql]).toContain(text);
+    for (const [text] of directoryQuery.mock.calls) expect([tenantSql, sessionSql, memberSql]).toContain(text);
     for (const [config] of query.mock.calls) {
       expect(config.query_timeout).toBe(2000);
       expect(config.text.trimStart()).toMatch(/^(BEGIN ISOLATION LEVEL READ COMMITTED READ ONLY$|SET LOCAL |SELECT |ROLLBACK$)/);
@@ -247,7 +258,9 @@ async function completeAcross(point: Point, explicitJob: boolean, elapsedMs: 1 |
   let settled = false;
   const pending = get(request).then(response => { settled = true; return response; });
   try {
-    await pause.entered.promise;
+    await Promise.race([pause.entered.promise, pending.then(response => {
+      throw new Error(`Handler completed with status ${response.status} before reaching ${point}`);
+    })]);
     expect(settled).toBe(false);
     expect(getGoogleSessionFromRequest(request)).toEqual(SESSION);
     now = NOW + elapsedMs;

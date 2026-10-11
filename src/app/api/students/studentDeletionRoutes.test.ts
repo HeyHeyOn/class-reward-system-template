@@ -1,13 +1,16 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TenantAdminContextDependencies } from '@/server/tenantAuth';
+import { currentLegalRevision } from '@/lib/legalDocuments';
 
 const m = vi.hoisted(() => ({
   access: {} as TenantAdminContextDependencies,
   deletion: { delete: vi.fn(), deleteBatch: vi.fn() },
+  query: vi.fn(), sessionValid: true,
 }));
 vi.mock('server-only', () => ({}));
 vi.mock('@/server/tenantAccess', () => ({ getProductionTenantAccessDependencies: () => m.access }));
+vi.mock('@/server/db/client', () => ({ getDatabaseClient: () => ({ pool: { query: m.query } }) }));
 vi.mock('@/server/repositories/configuredStudentDeletion', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/server/repositories/configuredStudentDeletion')>(),
   createConfiguredStudentDeletion: vi.fn(async () => m.deletion),
@@ -18,17 +21,29 @@ import { StudentAdminConflictError, StudentAdminRefusalError } from '@/server/re
 
 const A = 'e1400000-0000-4000-8000-000000000001';
 const OPERATION = 'e1400000-0000-4000-8000-000000000011';
+const SESSION = { subject: 'teacher', email: 'teacher@example.test', issuedAt: Date.now(),
+  accountGeneration: 'e1400000-0000-4000-8000-000000000021', sessionId: 'e1400000-0000-4000-8000-000000000022',
+  agreement: currentLegalRevision().version };
+const VALIDATE_SESSION_SQL = 'SELECT public.platform_validate_teacher_session($1,$2::uuid,$3::uuid,$4,$5) AS valid';
+const SESSION_BINDING = [SESSION.subject, SESSION.accountGeneration, SESSION.sessionId, false, SESSION.agreement];
 const send = (path: string[], body?: unknown) => DELETE(new Request(`https://test.invalid/api/c/class-a/${path.join('/')}`, {
   method: 'DELETE', ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
 }), { params: Promise.resolve({ slug: 'class-a', path }) });
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   for (const key of ['ADMIN_PASSWORD', 'AUTH_SECRET', 'MIGRATION_READ_ONLY']) vi.stubEnv(key, '');
   vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
+  vi.stubEnv('NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT', 'system');
+  m.sessionValid = true;
+  m.query.mockImplementation(async (text: string, values: unknown[]) => {
+    expect(text).toBe(VALIDATE_SESSION_SQL);
+    expect(values).toEqual(SESSION_BINDING);
+    return { rows: [{ valid: m.sessionValid }] };
+  });
   Object.assign(m.access, {
     findBySlug: vi.fn(async () => ({ id: A, slug: 'class-a', displayName: 'A', lifecycle: 'ACTIVE', timezone: 'Asia/Seoul' })),
-    getSession: vi.fn(() => ({ subject: 'teacher', email: 'teacher@example.test', issuedAt: Date.now() })),
+    getSession: vi.fn(() => SESSION),
     findByTenantAndSubject: vi.fn(async () => ({ id: 'm', tenantId: A, userId: 'u', googleSubject: 'teacher', role: 'OWNER' })),
   });
   m.deletion.delete.mockImplementation(async (studentId: string) => ({ studentId }));
@@ -45,6 +60,7 @@ describe('student deletion for classes', () => {
     expect(await response.json()).toEqual({ studentIds: ['S1', 'S2'] });
     expect(m.deletion.deleteBatch).toHaveBeenCalledWith(body);
     expect(m.deletion.delete).not.toHaveBeenCalled();
+    expect(m.query).toHaveBeenCalledExactlyOnceWith(VALIDATE_SESSION_SQL, SESSION_BINDING);
   });
 
   it('deletes one student with the version on screen', async () => {
@@ -79,5 +95,16 @@ describe('student deletion for classes', () => {
     }), { params: Promise.resolve({ slug: 'class-a', path: ['students', 'S1'] }) });
     expect(response.status).toBe(400);
     expect(m.deletion.delete).not.toHaveBeenCalled();
+  });
+
+  it('refuses a revoked teacher session before membership lookup or deletion', async () => {
+    m.sessionValid = false;
+    const response = await send(['students', 'S1'], { operationId: OPERATION, expectedStudentVersion: 1 });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ code: 'UNAUTHENTICATED' });
+    expect(m.query).toHaveBeenCalledExactlyOnceWith(VALIDATE_SESSION_SQL, SESSION_BINDING);
+    expect(m.access.findByTenantAndSubject).not.toHaveBeenCalled();
+    expect(m.deletion.delete).not.toHaveBeenCalled();
+    expect(m.deletion.deleteBatch).not.toHaveBeenCalled();
   });
 });

@@ -30,6 +30,7 @@ vi.mock('@/app/api/migrations/status/readPreflightReport', { spy: true });
 import { readMigrationStatus } from '@/app/api/migrations/status/readStatus';
 import { readPreflightReport } from '@/app/api/migrations/status/readPreflightReport';
 import type { PreflightReportProjection } from '@/app/api/migrations/status/preflightReportProjection';
+import { currentLegalRevision } from '@/lib/legalDocuments';
 import StatusPage, { dynamic, metadata } from './page';
 import HistoryPage from '../history/page';
 
@@ -57,6 +58,15 @@ const JOB = 'archive/과거 job +%26?#';
 const ROW_HASH = 'e'.repeat(64);
 const LABEL = '선택한 과거 사전검사 보고서 보기';
 const ORIGIN = 'https://link.example.invalid';
+const AGREEMENT = currentLegalRevision(NOW).version;
+const SESSION_SQL = 'SELECT public.platform_validate_teacher_session($1,$2::uuid,$3::uuid,$4,$5) AS valid';
+function sessionBinding(subject: string) {
+  const uuid = (kind: string) => {
+    const hex = createHash('sha256').update(`${kind}:${subject}`).digest('hex');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+  };
+  return { accountGeneration: uuid('generation'), sessionId: uuid('session') };
+}
 const baseTenant = { id: TENANT, slug: 'alpha', display_name: CANARY, lifecycle: 'ACTIVE', timezone: 'Asia/Seoul' };
 const baseMember = { id: MEMBER, tenant_id: TENANT, user_id: USER, google_subject: SUBJECT, role: 'OWNER' };
 const CATEGORIES: Report['metrics'][number]['category'][] = [
@@ -97,7 +107,8 @@ function cookie(subject = SUBJECT, issuedAt = NOW) {
   // Fixed nonce is for synthetic fixtures only; this is not encryption guidance.
   const iv = Buffer.alloc(12, 7);
   const cipher = createCipheriv('aes-256-gcm', createHash('sha256').update(KEY).digest(), iv);
-  const encrypted = Buffer.concat([cipher.update(JSON.stringify({ subject, issuedAt, email: `${CANARY}@example.invalid` })), cipher.final()]);
+  const encrypted = Buffer.concat([cipher.update(JSON.stringify({ subject, issuedAt, email: `${CANARY}@example.invalid`,
+    ...sessionBinding(subject), agreement: AGREEMENT })), cipher.final()]);
   return `class_store_google_auth=v2.${iv.toString('base64url')}.${cipher.getAuthTag().toString('base64url')}.${encrypted.toString('base64url')}`;
 }
 const TENANT_FIELDS: [string, number][] = [['id', 2950], ['slug', 25], ['display_name', 25], ['lifecycle', 25], ['timezone', 25]];
@@ -119,8 +130,20 @@ let now: number;
 let beforeData: (() => void) | undefined;
 let afterMembership: (() => void) | undefined;
 let clients: ReturnType<typeof makeClient>[];
+const revokedSubjects = new Set<string>();
 const directoryQuery = vi.fn<(text: string, values?: unknown[]) => Promise<ReturnType<typeof reply>>>();
 const statusConnect = vi.fn();
+
+// Model only the existing pg transport: the real durable-session guard issues this exact SELECT.
+// Subject-specific IDs prevent one synthetic account's binding from authorizing another.
+function sessionReply(values: unknown[]) {
+  expect(values).toHaveLength(5);
+  expect(typeof values[0]).toBe('string');
+  const subject = values[0] as string;
+  const binding = sessionBinding(subject);
+  expect(values).toEqual([subject, binding.accountGeneration, binding.sessionId, false, AGREEMENT]);
+  return reply([{ valid: !revokedSubjects.has(subject) && now < NOW + MAX_AGE_MS }], [['valid', 16]]);
+}
 
 // This is a model of transport responses, not an independent SQL engine. Tests
 // separately assert the real statements' tenant/membership/selector predicates.
@@ -139,6 +162,7 @@ function discovery(kind: 'tenant' | 'member', values: unknown[]) {
 function makeClient(kind: 'status' | 'history') {
   return Object.assign(new EventEmitter(), { kind,
     query: vi.fn(async ({ text, values = [] }: Config) => {
+      if (text === SESSION_SQL) return sessionReply(values);
       if (text.includes('public.migration_jobs')) {
         beforeData?.();
         const historical = text.includes('public.audit_events');
@@ -222,6 +246,7 @@ beforeEach(() => {
   vi.stubEnv('ADMIN_PASSWORD', '');
   vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
   now = NOW;
+  revokedSubjects.clear();
   vi.spyOn(Date, 'now').mockImplementation(() => now);
   tenant = { ...baseTenant };
   member = { ...baseMember };
@@ -235,6 +260,7 @@ beforeEach(() => {
   transport.headers.mockReset().mockImplementation(async () => requestHeaders);
   transport.config.mockReset().mockReturnValue({ databaseUrl: 'postgresql://synthetic:unused@invalid.invalid/link_unit_only' });
   directoryQuery.mockReset().mockImplementation(async (text, values = []) => {
+    if (text === SESSION_SQL) return sessionReply(values);
     if (text === 'SELECT * FROM public.platform_find_tenant_by_slug($1)') return discovery('tenant', values);
     if (text === 'SELECT * FROM public.platform_find_membership_by_tenant_and_google_subject($1, $2)') return discovery('member', values);
     return transport.forbidden();
@@ -276,7 +302,9 @@ describe('manual historical link through real status and historical page/readers
     expect(screen.queryByRole('table')).toBeNull();
     expect(readMigrationStatus).toHaveBeenCalledWith('alpha', expect.any(Request), JOB);
     assertDataBinding('status');
-    expect(directoryQuery.mock.calls.map(([, values]) => values)).toEqual([['alpha'], [TENANT, SUBJECT]]);
+    expect(directoryQuery.mock.calls.map(([, values]) => values)).toEqual([
+      ['alpha'], [SUBJECT, sessionBinding(SUBJECT).accountGeneration, sessionBinding(SUBJECT).sessionId, false, AGREEMENT], [TENANT, SUBJECT],
+    ]);
     expect(clients[0].query).toHaveBeenCalledWith(expect.objectContaining({ text: 'ROLLBACK' }));
     expect(clients[0].release).toHaveBeenCalledWith();
     expect(dynamic).toBe('force-dynamic');
@@ -454,6 +482,21 @@ describe('manual historical link through real status and historical page/readers
     expect(readMigrationStatus).toHaveBeenCalledTimes(2);
     expect(statusConnect).toHaveBeenCalledTimes(1);
     noHistoryRead();
+  });
+
+  it('rejects a revoked durable session at both a new status render and the manually selected destination', async () => {
+    render(await page());
+    const href = expectLink();
+    cleanup();
+    revokedSubjects.add(SUBJECT);
+    await expect(page()).rejects.toThrow('not-found');
+    expect(statusConnect).toHaveBeenCalledTimes(1);
+    await follow(href);
+    expect(screen.getByRole('heading', { name: '접근할 수 없음' })).toBeTruthy();
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(dataCalls('history')).toHaveLength(0);
+    expect(clients[1].query.mock.calls.some(([config]) => config.text.includes('public.platform_find_membership'))).toBe(false);
+    expect(clients[1].query).toHaveBeenCalledWith(expect.objectContaining({ text: SESSION_SQL }));
   });
 
   it.each(['logout', 'expiry', 'revoked', 'foreign-tenant', 'different-subject', 'student', 'revoked-at-statement'])(

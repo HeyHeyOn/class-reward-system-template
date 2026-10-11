@@ -1,10 +1,13 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TenantAdminContextDependencies } from '@/server/tenantAuth';
+import { currentLegalRevision } from '@/lib/legalDocuments';
 
-const m = vi.hoisted(() => ({ access: {} as TenantAdminContextDependencies, ledger: {} as Record<string, ReturnType<typeof vi.fn>>, create: vi.fn() }));
+const m = vi.hoisted(() => ({ access: {} as TenantAdminContextDependencies, ledger: {} as Record<string, ReturnType<typeof vi.fn>>,
+  create: vi.fn(), query: vi.fn(), sessionValid: true }));
 vi.mock('server-only', () => ({}));
 vi.mock('@/server/tenantAccess', () => ({ getProductionTenantAccessDependencies: () => m.access }));
+vi.mock('@/server/db/client', () => ({ getDatabaseClient: () => ({ pool: { query: m.query } }) }));
 vi.mock('@/server/repositories/configuredTaskLedger', () => ({ createConfiguredTaskLedger: m.create }));
 
 import { GET, PATCH, POST } from '@/app/api/c/[slug]/[...path]/route';
@@ -12,6 +15,11 @@ import { TaskLedgerError } from '@/server/repositories/database/taskLedger/store
 
 const A = 'e1300000-0000-4000-8000-000000000001';
 const OPERATION = 'e1300000-0000-4000-8000-000000000011';
+const SESSION = { subject: 'teacher', email: 'teacher@example.test', issuedAt: Date.now(),
+  accountGeneration: 'e1300000-0000-4000-8000-000000000021', sessionId: 'e1300000-0000-4000-8000-000000000022',
+  agreement: currentLegalRevision().version };
+const VALIDATE_SESSION_SQL = 'SELECT public.platform_validate_teacher_session($1,$2::uuid,$3::uuid,$4,$5) AS valid';
+const SESSION_BINDING = [SESSION.subject, SESSION.accountGeneration, SESSION.sessionId, false, SESSION.agreement];
 const call = (method: 'GET' | 'POST' | 'PATCH', path: string[], body?: unknown, query = '') => {
   const handler = method === 'GET' ? GET : method === 'POST' ? POST : PATCH;
   const request = new Request(`https://test.invalid/api/c/class-a/${path.join('/')}${query}`, {
@@ -24,9 +32,16 @@ beforeEach(() => {
   vi.resetAllMocks();
   for (const key of ['ADMIN_PASSWORD', 'AUTH_SECRET', 'MIGRATION_READ_ONLY']) vi.stubEnv(key, '');
   vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
+  vi.stubEnv('NEXT_PUBLIC_CLASS_STORE_DEPLOYMENT', 'system');
+  m.sessionValid = true;
+  m.query.mockImplementation(async (text: string, values: unknown[]) => {
+    expect(text).toBe(VALIDATE_SESSION_SQL);
+    expect(values).toEqual(SESSION_BINDING);
+    return { rows: [{ valid: m.sessionValid }] };
+  });
   Object.assign(m.access, {
     findBySlug: vi.fn(async () => ({ id: A, slug: 'class-a', displayName: 'A', lifecycle: 'ACTIVE', timezone: 'Asia/Seoul' })),
-    getSession: vi.fn(() => ({ subject: 'teacher', email: 'teacher@example.test', issuedAt: Date.now() })),
+    getSession: vi.fn(() => SESSION),
     findByTenantAndSubject: vi.fn(async () => ({ id: 'm', tenantId: A, userId: 'u', googleSubject: 'teacher', role: 'OWNER' })),
   });
   m.ledger = {
@@ -45,6 +60,7 @@ describe('task ledger routes for classes', () => {
     expect(board.status).toBe(200);
     expect(await board.json()).toEqual({ now: '2026-10-06T00:00:00.000Z', tasks: [] });
     expect(board.headers.get('cache-control')).toBe('no-store');
+    expect(m.query).toHaveBeenCalledExactlyOnceWith(VALIDATE_SESSION_SQL, SESSION_BINDING);
     expect((await call('GET', ['task-ledger', 'tasks', 'T001', 'history'])).status).toBe(200);
     expect(m.ledger.history).toHaveBeenCalledWith('T001', { limit: 50, cursor: null, studentId: '' });
   });
@@ -84,6 +100,17 @@ describe('task ledger routes for classes', () => {
   it('requires the class administrator', async () => {
     vi.mocked(m.access.getSession).mockReturnValueOnce(null);
     expect((await call('GET', ['task-ledger'])).status).toBe(401);
+    expect(m.ledger.board).not.toHaveBeenCalled();
+  });
+
+  it('refuses a revoked teacher session before membership lookup or ledger storage', async () => {
+    m.sessionValid = false;
+    const response = await call('GET', ['task-ledger']);
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ code: 'UNAUTHENTICATED' });
+    expect(m.query).toHaveBeenCalledExactlyOnceWith(VALIDATE_SESSION_SQL, SESSION_BINDING);
+    expect(m.access.findByTenantAndSubject).not.toHaveBeenCalled();
+    expect(m.create).not.toHaveBeenCalled();
     expect(m.ledger.board).not.toHaveBeenCalled();
   });
 

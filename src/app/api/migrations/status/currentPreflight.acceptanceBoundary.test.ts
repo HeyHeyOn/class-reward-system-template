@@ -27,6 +27,7 @@ vi.mock('pg', async importOriginal => {
 vi.mock('googleapis', () => ({ google: new Proxy({}, { get() { return transport.forbidden(); } }) }));
 
 import { getGoogleSessionFromRequest, type GoogleSession } from '@/server/googleOAuth';
+import { currentLegalRevision } from '@/lib/legalDocuments';
 import * as statusReader from './readStatus';
 import * as historicalReader from './readPreflightReport';
 import * as downloadReader from './readHistoricalReportDownload';
@@ -54,7 +55,16 @@ const USER = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const MEMBER = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const REPLACEMENT = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 const JOB = 'historical/과거 job:%20';
-const SESSION: GoogleSession = { subject: SUBJECT, email: 'synthetic@example.test', issuedAt: NOW - MAX_AGE_MS + 1 };
+const AGREEMENT = currentLegalRevision(NOW).version;
+function sessionBinding(subject: string) {
+  const uuid = (kind: string) => {
+    const hex = createHash('sha256').update(`${kind}:${subject}`).digest('hex');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+  };
+  return { accountGeneration: uuid('generation'), sessionId: uuid('session') };
+}
+const SESSION: GoogleSession = { subject: SUBJECT, email: 'synthetic@example.test', issuedAt: NOW - MAX_AGE_MS + 1,
+  ...sessionBinding(SUBJECT), agreement: AGREEMENT };
 const baseTenant = { id: TENANT, slug: 'alpha', display_name: 'Synthetic class', lifecycle: 'ACTIVE', timezone: 'Asia/Seoul' };
 const baseMember = { id: MEMBER, tenant_id: TENANT, user_id: USER, google_subject: SUBJECT, role: 'OWNER' };
 const METRICS = [
@@ -90,7 +100,7 @@ function archive(tenantId = TENANT, digest = 'a'.repeat(64), instant = '2026-09-
 function cookie(session = SESSION) {
   const iv = Buffer.alloc(12, 23); // Fixed IV is synthetic-fixture-only, never production guidance.
   const cipher = createCipheriv('aes-256-gcm', createHash('sha256').update(KEY).digest(), iv);
-  const bytes = Buffer.concat([cipher.update(JSON.stringify(session)), cipher.final()]);
+  const bytes = Buffer.concat([cipher.update(JSON.stringify({ ...session, ...sessionBinding(session.subject) })), cipher.final()]);
   return `class_store_google_auth=v2.${iv.toString('base64url')}.${cipher.getAuthTag().toString('base64url')}.${bytes.toString('base64url')}`;
 }
 
@@ -102,6 +112,7 @@ const SURFACES: Surface[] = ['status', 'preflight', 'download'];
 const routes = { status: statusRoute, preflight: preflightRoute, download: downloadRoute };
 const TENANT_SQL = 'SELECT * FROM public.platform_find_tenant_by_slug($1)';
 const MEMBER_SQL = 'SELECT * FROM public.platform_find_membership_by_tenant_and_google_subject($1, $2)';
+const SESSION_SQL = 'SELECT public.platform_validate_teacher_session($1,$2::uuid,$3::uuid,$4,$5) AS valid';
 const TENANT_FIELDS: [string, number][] = [['id', 2950], ['slug', 25], ['display_name', 25], ['lifecycle', 25], ['timezone', 25]];
 const MEMBER_FIELDS: [string, number][] = [['id', 2950], ['tenant_id', 2950], ['user_id', 2950], ['google_subject', 25], ['role', 25]];
 const REPORT_FIELDS: [string, number][] = [['found', 16], ['oversized', 16], ['envelope_text', 25]];
@@ -121,9 +132,17 @@ let event: ReturnType<typeof archive>;
 let injectedEnvelope: ReturnType<typeof archive> | undefined;
 let onPoint: ((point: Point) => void) | undefined;
 let failRollback: boolean;
+let sessionRevoked: boolean;
 let clients: ReturnType<typeof makeClient>[];
 const directoryQuery = vi.fn<(text: string, values?: unknown[]) => Promise<Reply>>();
 const statusConnect = vi.fn();
+
+// Synthetic pg reply only; the real guard checks this exact SQL and all five bound parameters.
+// SQL admission occurs before the existing awaited membership/data/cleanup clock transitions.
+function sessionReply(values: unknown[]) {
+  expect(values).toEqual([SUBJECT, SESSION.accountGeneration, SESSION.sessionId, false, AGREEMENT]);
+  return reply([{ valid: !sessionRevoked && now < SESSION.issuedAt + MAX_AGE_MS }], [['valid', 16]]);
+}
 
 // This fixture models returned rows only. Separate assertions on every actual
 // data statement below pin the SQL predicates and parameter binding; these
@@ -149,6 +168,7 @@ function makeClient(kind: 'status' | 'archive') {
     query: vi.fn(async (config: Config): Promise<Reply> => {
       const text = config.text;
       const values = config.values ?? [];
+      if (text === SESSION_SQL) { sequence.push('session'); return sessionReply(values); }
       const historical = text.includes('public.audit_events');
       if (text.includes('public.migration_jobs')) {
         sequence.push('data');
@@ -284,7 +304,7 @@ beforeAll(() => {
 afterAll(() => { vi.unstubAllGlobals(); });
 beforeEach(() => {
   now = NOW; tenant = { ...baseTenant }; member = { ...baseMember }; event = archive();
-  clients = []; onPoint = undefined; injectedEnvelope = undefined; failRollback = false;
+  clients = []; onPoint = undefined; injectedEnvelope = undefined; failRollback = false; sessionRevoked = false;
   vi.spyOn(Date, 'now').mockImplementation(() => now);
   for (const name of ['GOOGLE_CLIENT_SECRET', 'ADMIN_PASSWORD', 'GOOGLE_CLIENT_ID', 'GOOGLE_REFRESH_TOKEN',
     'GENERATOR_GOOGLE_CLIENT_ID', 'GENERATOR_GOOGLE_CLIENT_SECRET', 'DATABASE_URL', 'DIRECT_DATABASE_URL']) {
@@ -293,6 +313,7 @@ beforeEach(() => {
   vi.stubEnv('AUTH_SECRET', KEY);
   vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
   directoryQuery.mockReset().mockImplementation(async (text, values = []) => {
+    if (text === SESSION_SQL) return sessionReply(values);
     if (text === TENANT_SQL) return discovery('tenant', values);
     if (text === MEMBER_SQL) return discovery('member', values);
     return transport.forbidden();
@@ -319,7 +340,7 @@ afterEach(() => {
       connectionString: 'postgresql://synthetic.invalid/fixture', max: 2,
       connectionTimeoutMillis: 2000, idleTimeoutMillis: 1000, allowExitOnIdle: true,
     });
-    for (const [text] of directoryQuery.mock.calls) expect([TENANT_SQL, MEMBER_SQL]).toContain(text);
+    for (const [text] of directoryQuery.mock.calls) expect([TENANT_SQL, SESSION_SQL, MEMBER_SQL]).toContain(text);
     for (const client of clients) {
       expect(client.release).toHaveBeenCalledTimes(1);
       expect(client.listenerCount('error')).toBe(0);
@@ -364,7 +385,8 @@ describe('existing status + historical routes cannot establish current-preflight
     expect(statusRead).toHaveBeenCalledExactlyOnceWith('alpha', requests[0], JOB);
     expect(reportRead.mock.calls).toEqual([['alpha', requests[1]], ['alpha', requests[2]]]);
     expect(downloadRead).toHaveBeenCalledExactlyOnceWith('alpha', requests[2]);
-    expect(directoryQuery.mock.calls).toEqual([[TENANT_SQL, ['alpha']], [MEMBER_SQL, [TENANT, SUBJECT]]]);
+    expect(directoryQuery.mock.calls).toEqual([[TENANT_SQL, ['alpha']],
+      [SESSION_SQL, [SUBJECT, SESSION.accountGeneration, SESSION.sessionId, false, AGREEMENT]], [MEMBER_SQL, [TENANT, SUBJECT]]]);
     expect(statusConnect).toHaveBeenCalledTimes(1); expect(transport.archiveConnect).toHaveBeenCalledTimes(2);
     expect(dataReads().map(config => config.values)).toEqual([
       [TENANT, SUBJECT, JOB, MEMBER, USER, 'alpha'],
@@ -405,7 +427,7 @@ describe('existing status + historical routes cannot establish current-preflight
       readOnly: true, migrationStatus: 'UNKNOWN', authority: 'UNKNOWN',
     });
     expect(clients).toHaveLength(connections); expect(dataReads()).toHaveLength(reads);
-    expect(directoryQuery.mock.calls).toHaveLength(4);
+    expect(directoryQuery.mock.calls).toHaveLength(6);
   });
 
   it.each(['preflight', 'download'] as const)('%s needs exact historical selectors, not an implicit latest/current report', async surface => {
@@ -457,6 +479,24 @@ describe('existing status + historical routes cannot establish current-preflight
 });
 
 describe.each(SURFACES)('%s real route/reader boundary with synthetic transport', surface => {
+  it('refuses a revoked durable session before membership and data reads', async () => {
+    sessionRevoked = true;
+    const req = request(surface);
+    expect(getGoogleSessionFromRequest(req)).toEqual(SESSION);
+    await failure(await get(surface, req), 403, 'ACCESS_DENIED');
+    expect(dataReads()).toHaveLength(0);
+    if (surface === 'status') {
+      expect(statusConnect).not.toHaveBeenCalled();
+      expect(directoryQuery.mock.calls).toEqual([[TENANT_SQL, ['alpha']],
+        [SESSION_SQL, [SUBJECT, SESSION.accountGeneration, SESSION.sessionId, false, AGREEMENT]]]);
+    } else {
+      expect(clients).toHaveLength(1);
+      expect(clients[0].sequence).toContain('session');
+      expect(clients[0].sequence).not.toContain('membership');
+      expectCleanup(clients[0]);
+    }
+  });
+
   it.each(['tenantId=ignored', 'role=OWNER', 'currentPreflight=VERIFIED', 'cutoverAllowed=true'])('rejects caller query authority hint %s before any lookup', async hint => {
     const req = request(surface);
     const changed = new Request(`${req.url}&${hint}`, { headers: req.headers });
