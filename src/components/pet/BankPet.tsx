@@ -124,8 +124,7 @@ type BankPetViewProps = Readonly<{
   onAnnounce: (message: string) => void;
 }>;
 
-type Readiness = Readonly<{ awake: number; ready: number; tired: number; bored: number; boredMinutes: number }>;
-type Status = Readonly<{ moods: ReadonlyArray<Readonly<{ id: string; mood: string }>>; food: number; awake: number; play: Readiness; sleepText: string }>;
+type Status = Readonly<{ moods: ReadonlyArray<Readonly<{ id: string; mood: string }>>; food: number; awake: number; sleepText: string }>;
 type Popup = Readonly<{ kind: 'shop' | 'dex'; opener: HTMLElement | null }> | null;
 type Preview = Readonly<{ slot: PetShopSlot; id: string }> | null;
 type Busy = 'warm' | 'feed' | 'adopt' | 'graduate' | 'decor' | 'company' | null;
@@ -272,7 +271,7 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
       sleepText = `쿨쿨 자고 있어요 · 약 ${minutes}분 뒤에 스스로 일어나요.`;
     }
     const next: Status = {
-      moods: engine.actions.moods(), food: engine.state.food, awake: engine.actions.awakeCount(), play: engine.actions.readiness(), sleepText,
+      moods: engine.actions.moods(), food: engine.state.food, awake: engine.actions.awakeCount(), sleepText,
     };
     setStatus((current) => (current && JSON.stringify(current) === JSON.stringify(next) ? current : next));
   }, [engine]);
@@ -331,11 +330,20 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
     onAnnounce('쓰다듬어 줬어요.');
   }
 
+  /**
+   * 놀아 주기 is never blocked: the ball is thrown and the animals answer (playing, a shrug, a yawn).
+   * When none of them plays, a notice at the top says why.
+   */
   function play() {
-    if (!engine) return;
-    engine.actions.play();
+    if (!engine || !view) return;
+    const before = engine.actions.readiness();
+    const out = engine.actions.play();
     setRedraw((n) => n + 1);
-    onAnnounce('공을 던져 줬어요.');
+    if (out.played > 0) { onAnnounce('공을 던져 줬어요.'); return; }
+    if (!view.awake) blocked(`이용 시간이 아니라 펫이 자고 있어요.${view.nextOpen ? ` ${view.nextOpen}에 일어나요.` : ''}`);
+    else if (out.bored > 0 && out.tired === 0) blocked(`공놀이에 조금 질렸나 봐요. 약 ${Math.max(1, before.boredMinutes)}분 뒤에 다시 놀 수 있어요.`);
+    else if (out.tired > 0) blocked('졸려서 놀 기운이 없대요. 조금 쉬게 해 주세요.');
+    else blocked('모두 쿨쿨 자고 있어서 공을 쳐다보지 않아요. 다 쉬면 스스로 일어나요.');
   }
 
   async function adopt() {
@@ -405,22 +413,16 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
   const grownUps = animals.filter((entry) => entry.stage > 0);
   // Why each button cannot be used right now ('' when it can). The buttons stay pressable to say why.
   const offText = view ? `이용 시간이 아니라 펫이 자고 있어요.${view.nextOpen ? ` ${view.nextOpen}에 일어나요.` : ''}` : '';
-  let warmBlock = '', feedBlock = '', patBlock = '', playBlock = '';
+  let warmBlock = '', feedBlock = '', patBlock = '';
   if (view && pet) {
-    if (!view.awake) warmBlock = feedBlock = patBlock = playBlock = offText;
+    if (!view.awake) warmBlock = feedBlock = patBlock = offText;
     else {
       if (view.warmedToday) warmBlock = '오늘은 알을 품어 줬어요. 내일 또 품어 줄 수 있어요.';
       if (view.feedDailyLimit === 0) feedBlock = '지금은 먹이 주기를 쉬고 있어요.';
       else if (view.feedsToday >= view.feedDailyLimit) feedBlock = '오늘 먹이는 다 줬어요. 내일 또 줄 수 있어요.';
       else if (balance < view.feedPrice) feedBlock = `잔액이 부족해서 먹이를 줄 수 없어요. 먹이 주기는 ${formatMoney(view.feedPrice, currencyUnit)}이에요.`;
       else if ((status?.food ?? 0) > 0) feedBlock = '먹이통에 아직 먹이가 남아 있어요. 다 먹은 뒤에 다시 줄 수 있어요.';
-      const ready = status?.play;
-      if (status && status.awake === 0) patBlock = playBlock = '모두 쿨쿨 자고 있어요. 다 쉬면 스스로 일어나요.';
-      else if (ready && ready.ready === 0 && ready.awake > 0) {
-        playBlock = ready.bored > 0 && ready.tired === 0
-          ? `공놀이에 조금 질렸나 봐요. 약 ${Math.max(1, ready.boredMinutes)}분 뒤에 다시 놀 수 있어요.`
-          : '졸려서 놀 기운이 없대요. 조금 쉬게 해 주세요.';
-      }
+      if (status && status.awake === 0) patBlock = '모두 쿨쿨 자고 있어요. 다 쉬면 스스로 일어나요.';
     }
   }
   const canFeed = grownUps.length > 0;
@@ -532,7 +534,7 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
                   onClick={() => (feedBlock ? blocked(feedBlock) : void care('FEED'))}
                   className={cx('col-span-2 sm:col-span-1', feedBlock && 'opacity-45')}>{feedLabel}</Button>
                 <Button icon="hand" {...soft(patBlock)} onClick={() => (patBlock ? blocked(patBlock) : pat())}>쓰다듬기</Button>
-                <Button icon="ball" {...soft(playBlock)} onClick={() => (playBlock ? blocked(playBlock) : play())}>놀아 주기</Button>
+                <Button icon="ball" onClick={play}>놀아 주기</Button>
               </>
             ) : null}
           </div>
