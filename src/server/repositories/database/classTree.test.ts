@@ -18,7 +18,7 @@ const ON: ClassTreeSettings = { ...DEFAULT_CLASS_TREE_SETTINGS, enabled: true, g
 beforeEach(async () => {
   harness = await createPgliteDatabaseHarness();
   for (const file of ['0044_class_tree.sql', '0045_student_bag.sql', '0046_vouchers.sql', '0047_tree_name.sql', '0048_pets.sql',
-    '0049_growth_goals_and_pet_company.sql']) {
+    '0049_growth_goals_and_pet_company.sql', '0050_teacher_growth_adjustments.sql']) {
     await harness.database.exec(await readFile(resolve(process.cwd(), 'src/server/db/migrations', file), 'utf8'));
   }
   await harness.database.exec('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_runtime');
@@ -134,6 +134,23 @@ describe('watering', () => {
   });
 });
 
+describe('the teacher\'s adjustment', () => {
+  it('adds drops for the class, takes drops away down to 0, and repeats the stored result', async () => {
+    await tree().saveSettings(ON);
+    await tree().classFeed({ operationId: op(), amount: 10, note: '칭찬' });
+    const operationId = op();
+    const removed = await tree().classFeed({ operationId, amount: -4, note: '' });
+    expect(removed).toMatchObject({ amount: -4, drops: 6 });
+    expect(await tree().classFeed({ operationId, amount: -4, note: '' })).toEqual(removed);
+    expect(await tree().classFeed({ operationId: op(), amount: -50, note: '' })).toMatchObject({ amount: -6, drops: 0 });
+    expect(await failure(tree().classFeed({ operationId: op(), amount: -1, note: '' }))).toBe('NOTHING_TO_REMOVE');
+    expect(await failure(tree().classFeed({ operationId: op(), amount: 0, note: '' }))).toBe('INVALID_INPUT');
+    const board = await tree().adminBoard();
+    expect(board.tree?.drops).toBe(0);
+    expect(board.classFeedTotal).toBe(0);
+  });
+});
+
 describe('classFeed and harvest', () => {
   it('fills the tree, stops watering when full, and pays every active student at the harvest', async () => {
     // An inactive physical product still works as a reward: it lands as its 교환권.
@@ -196,6 +213,19 @@ describe('task completions', () => {
     const board = await tree().adminBoard();
     expect(board.tree?.drops).toBe(0);
     expect(board.contributions.find((row) => row.studentId === 'S001')).toMatchObject({ task: 0, total: 0 });
+  });
+
+  it('counts a task reward as one of the day\'s waterings', async () => {
+    await tree().saveSettings({ ...ON, taskDrops: 3 });
+    await rewardTransaction('task-reward:c', 'TASK_REWARD');
+    await harness.runTenantTransaction(harness.tenantOneId, (tx) => addTaskTreeDrops(tx, harness.tenantOneId, { studentId: 'S001', transactionId: 'task-reward:c', operationId: op() }));
+    expect((await tree().studentView('S001')).myWaterToday).toBe(1);
+    await tree().water({ studentId: 'S001', operationId: op() });
+    expect(await failure(tree().water({ studentId: 'S001', operationId: op() }))).toBe('DAILY_LIMIT');
+    // A task past the limit still adds its drops.
+    await rewardTransaction('task-reward:d', 'TASK_REWARD');
+    await harness.runTenantTransaction(harness.tenantOneId, (tx) => addTaskTreeDrops(tx, harness.tenantOneId, { studentId: 'S001', transactionId: 'task-reward:d', operationId: op() }));
+    expect((await tree().studentView('S001'))).toMatchObject({ myWaterToday: 3, waterersToday: 1, tree: { drops: 7 } });
   });
 
   it('adds nothing while the tree is off or task drops are 0', async () => {

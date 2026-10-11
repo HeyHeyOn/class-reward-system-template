@@ -102,6 +102,7 @@ const ROUTES: readonly TenantApiRoute[] = [
   route('GET', 'pets', 'admin', async (r) => (await import('@/app/api/pets/route')).GET(r)),
   route('POST', 'pets/settings', 'admin', async (r) => (await import('@/app/api/pets/settings/route')).POST(r)),
   route('POST', 'pets/rename', 'admin', async (r) => (await import('@/app/api/pets/rename/route')).POST(r)),
+  route('POST', 'pets/growth', 'admin', async (r) => (await import('@/app/api/pets/growth/route')).POST(r)),
   // Student storage (보관함): digital products each student keeps; the teacher marks coupons used, gives or takes back.
   route('GET', 'bag/students/[studentId]', 'admin', async (r, c) => (await import('@/app/api/bag/students/[studentId]/route')).GET(r, c as never)),
   route('POST', 'bag/items/use', 'admin', async (r) => (await import('@/app/api/bag/items/use/route')).POST(r)),

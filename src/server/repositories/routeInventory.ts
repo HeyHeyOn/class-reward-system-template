@@ -81,6 +81,7 @@ export const TENANT_ROUTE_INVENTORY: readonly TenantRouteInventoryEntry[] = [
   tenantRead('/pets'),
   tenantMutation('/pets/settings', 'POST'),
   tenantMutation('/pets/rename', 'POST'),
+  tenantMutation('/pets/growth', 'POST'),
   // Student bags (PostgreSQL classes only).
   tenantRead('/bag/students/[studentId]'),
   tenantMutation('/bag/items/use', 'POST'),

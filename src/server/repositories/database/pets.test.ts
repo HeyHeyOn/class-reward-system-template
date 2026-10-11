@@ -22,7 +22,7 @@ let now = new Date('2026-10-12T03:00:00Z');
 beforeEach(async () => {
   harness = await createPgliteDatabaseHarness();
   for (const file of ['0044_class_tree.sql', '0045_student_bag.sql', '0046_vouchers.sql', '0047_tree_name.sql', '0048_pets.sql',
-    '0049_growth_goals_and_pet_company.sql']) {
+    '0049_growth_goals_and_pet_company.sql', '0050_teacher_growth_adjustments.sql']) {
     await harness.database.exec(await readFile(resolve(process.cwd(), 'src/server/db/migrations', file), 'utf8'));
   }
   await harness.database.exec('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_runtime');
@@ -181,6 +181,20 @@ describe('task rewards', () => {
     expect((await pets().studentView('S001')).pet).toMatchObject({ growth: 0, stage: 1 });
   });
 
+  it('counts a task reward as one of the day\'s feedings, and still adds it past the limit', async () => {
+    await pets().saveSettings({ ...ON, goal: 40 });
+    await pets().adopt({ studentId: 'S001', operationId: op(), species: 'dog', name: '초코' });
+    await harness.database.query(`UPDATE pets SET stage=1, color='brown', hatched_at=now(), growth=4 WHERE tenant_id=$1`, [harness.tenantOneId]);
+    await rewardTransaction('task-reward:c', 'TASK_REWARD');
+    await harness.runTenantTransaction(harness.tenantOneId, (tx) => addTaskPetGrowth(tx, harness.tenantOneId, { studentId: 'S001', transactionId: 'task-reward:c', operationId: op() }));
+    expect((await pets().studentView('S001')).feedsToday).toBe(1);
+    await pets().care({ studentId: 'S001', operationId: op(), kind: 'FEED' });
+    expect(await failure(pets().care({ studentId: 'S001', operationId: op(), kind: 'FEED' }))).toBe('DAILY_LIMIT');
+    await rewardTransaction('task-reward:d', 'TASK_REWARD');
+    await harness.runTenantTransaction(harness.tenantOneId, (tx) => addTaskPetGrowth(tx, harness.tenantOneId, { studentId: 'S001', transactionId: 'task-reward:d', operationId: op() }));
+    expect(await pets().studentView('S001')).toMatchObject({ feedsToday: 3, pet: { growth: 7 } });
+  });
+
   it('adds nothing while pets are off, without a pet, or with task growth 0', async () => {
     await rewardTransaction('task-reward:b', 'TASK_REWARD');
     await harness.runTenantTransaction(harness.tenantOneId, (tx) => addTaskPetGrowth(tx, harness.tenantOneId, { studentId: 'S001', transactionId: 'task-reward:b', operationId: op() }));
@@ -336,6 +350,30 @@ describe('company and accessories', () => {
     expect(await pets().taskGains('task-reward:g')).toEqual({ tree: 0, pet: 0 });
     await harness.runTenantTransaction(harness.tenantOneId, (tx) => addTaskPetGrowth(tx, harness.tenantOneId, { studentId: 'S001', transactionId: 'task-reward:g', operationId: op() }));
     expect(await pets().taskGains('task-reward:g')).toEqual({ tree: 0, pet: 2 });
+  });
+});
+
+describe('the teacher\'s growth adjustment', () => {
+  it('adds growth (hatching an egg), takes it away (the stage follows, a hatched pet stays hatched) and stops at 0', async () => {
+    await pets().saveSettings({ ...ON, goal: 40 });
+    await pets().adopt({ studentId: 'S001', operationId: op(), species: 'cat', name: '나비' });
+    const petId = (await pets().studentView('S001')).pet?.petId ?? '';
+    const operationId = op();
+    let board = await pets().adjustGrowth({ operationId, petId, amount: 20 });
+    expect(board.students[0].pet).toMatchObject({ growth: 20, stage: 2 });
+    expect(PET_COLORS.cat.map((color) => color.id)).toContain(board.students[0].pet?.color);
+    // The same operation again changes nothing.
+    board = await pets().adjustGrowth({ operationId, petId, amount: 20 });
+    expect(board.students[0].pet?.growth).toBe(20);
+    board = await pets().adjustGrowth({ operationId: op(), petId, amount: -5 });
+    expect(board.students[0].pet).toMatchObject({ growth: 15, stage: 1 });
+    board = await pets().adjustGrowth({ operationId: op(), petId, amount: -100 });
+    expect(board.students[0].pet).toMatchObject({ growth: 0, stage: 1 });
+    expect(await failure(pets().adjustGrowth({ operationId: op(), petId, amount: -1 }))).toBe('NOTHING_TO_REMOVE');
+    expect(await failure(pets().adjustGrowth({ operationId: op(), petId, amount: 0 }))).toBe('INVALID_INPUT');
+    expect(await failure(pets().adjustGrowth({ operationId: op(), petId: 'nope', amount: 1 }))).toBe('PET_NOT_FOUND');
+    // The day's feeding count is not touched by the teacher's growth.
+    expect((await pets().studentView('S001')).feedsToday).toBe(0);
   });
 });
 

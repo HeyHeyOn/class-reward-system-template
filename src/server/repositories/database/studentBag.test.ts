@@ -26,7 +26,7 @@ const op = () => `60000000-0000-4000-8000-${String(++sequence).padStart(12, '0')
 beforeEach(async () => {
   harness = await createPgliteDatabaseHarness();
   for (const file of ['0044_class_tree.sql', '0045_student_bag.sql', '0046_vouchers.sql', '0047_tree_name.sql', '0048_pets.sql',
-    '0049_growth_goals_and_pet_company.sql']) {
+    '0049_growth_goals_and_pet_company.sql', '0050_teacher_growth_adjustments.sql']) {
     await harness.database.exec(await readFile(resolve(process.cwd(), 'src/server/db/migrations', file), 'utf8'));
   }
   await harness.database.exec('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_runtime');

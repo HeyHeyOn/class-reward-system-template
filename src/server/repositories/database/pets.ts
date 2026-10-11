@@ -56,7 +56,7 @@ type RunTenantTransaction = <TResult>(
 export type PetErrorCode =
   | 'PET_OFF' | 'PET_ASLEEP' | 'NO_PET' | 'HAS_PET' | 'DAILY_LIMIT' | 'FEED_OFF' | 'NOT_ENOUGH_MONEY' | 'NOT_GROWN'
   | 'STUDENT_INVALID' | 'SHOP_CLOSED' | 'DECOR_UNAVAILABLE' | 'DECOR_OWNED' | 'DECOR_NOT_OWNED' | 'PET_NOT_FOUND'
-  | 'NO_COMPANY' | 'INVALID_INPUT' | 'OPERATION_CONFLICT' | 'OPERATION_PENDING' | 'UNSUPPORTED';
+  | 'NO_COMPANY' | 'NOTHING_TO_REMOVE' | 'INVALID_INPUT' | 'OPERATION_CONFLICT' | 'OPERATION_PENDING' | 'UNSUPPORTED';
 
 export class PetError extends Error {
   constructor(readonly code: PetErrorCode, message: string, readonly status: number) {
@@ -66,6 +66,9 @@ export class PetError extends Error {
 }
 
 const KOREA_TODAY = sql`(clock_timestamp() AT TIME ZONE 'Asia/Seoul')::date`;
+/** The start of today in Korea, for timestamps. */
+const KOREA_DAY_START = sql`(${KOREA_TODAY}::timestamp AT TIME ZONE 'Asia/Seoul')`;
+const PET_ADJUST_LIMIT = 100_000;
 const MAX_SAFE = Number.MAX_SAFE_INTEGER;
 
 type SettingsRow = {
@@ -206,11 +209,13 @@ async function pickColor(tx: TenantTransaction, tenantId: string, studentId: str
 
 /**
  * Adds a growth row and moves the pet on. The stage only ever rises (a cancelled growth never shrinks
- * a pet); an egg that reaches its hatching point gets its color. The pet row must be locked.
+ * a pet) — except when the teacher takes growth away on purpose (`follow`): then the stage follows the
+ * growth down, though a hatched pet never turns back into an egg. An egg that reaches its hatching
+ * point gets its color. The pet row must be locked.
  */
 async function addGrowth(tx: TenantTransaction, tenantId: string, pet: PetRow, settings: PetSettings, entry: Readonly<{
-  growthId: string; source: 'CARE' | 'TASK' | 'CANCEL'; amount: number; careDate: string | null;
-  transactionId: string | null; operationId: string | null;
+  growthId: string; source: 'CARE' | 'TASK' | 'CANCEL' | 'ADJUST'; amount: number; careDate: string | null;
+  transactionId: string | null; operationId: string | null; follow?: boolean;
 }>): Promise<PetRow> {
   const before = toNumber(pet.growth);
   const after = before + entry.amount;
@@ -219,7 +224,8 @@ async function addGrowth(tx: TenantTransaction, tenantId: string, pet: PetRow, s
     INSERT INTO pet_growth (tenant_id, growth_id, pet_id, source, student_id, amount, care_date, transaction_id, operation_id)
     VALUES (${tenantId}, ${entry.growthId}, ${pet.pet_id}, ${entry.source}, ${pet.student_id}, ${entry.amount},
             ${entry.careDate}::date, ${entry.transactionId}, ${entry.operationId})`);
-  const stage = Math.max(pet.stage, petStageFor(after, settings.goal));
+  const reached = petStageFor(after, settings.goal);
+  const stage = entry.follow ? Math.max(pet.stage > 0 ? 1 : 0, reached) : Math.max(pet.stage, reached);
   const hatching = pet.stage === 0 && stage > 0;
   const color = hatching && isPetSpecies(pet.species) ? await pickColor(tx, tenantId, pet.student_id, pet.species) : pet.color;
   const updated = await tx.execute(sql`
@@ -403,11 +409,14 @@ export function createPetCommands(dependencies: PetDependencies) {
     const goal = settings.goal;
     const pet = await readRaisingPet(tx, tenantId, studentId, false);
     let warmedToday = false, lastFedAt: string | null = null;
-    // Feeding is for the whole room (the pet and the graduated pets with it): the limit and hunger count the student's feedings.
+    // Feeding is for the whole room (the pet and the graduated pets with it): the limit and hunger count the
+    // student's feedings, and the limit also counts the food completed tasks gave.
     const counts = await tx.execute(sql`
       SELECT
         (SELECT count(*)::int FROM pet_cares WHERE tenant_id=${tenantId} AND student_id=${studentId} AND care_date=${KOREA_TODAY}
-           AND kind='FEED') AS feeds,
+           AND kind='FEED')
+          + (SELECT count(*)::int FROM pet_growth WHERE tenant_id=${tenantId} AND student_id=${studentId} AND source='TASK'
+           AND created_at >= ${KOREA_DAY_START}) AS feeds,
         (SELECT count(*)::int FROM pet_cares WHERE tenant_id=${tenantId} AND pet_id=${pet?.pet_id ?? ''} AND care_date=${KOREA_TODAY}
            AND kind='WARM') AS warms,
         (SELECT max(created_at) FROM pet_cares WHERE tenant_id=${tenantId} AND student_id=${studentId} AND kind='FEED') AS fed`);
@@ -530,12 +539,16 @@ export function createPetCommands(dependencies: PetDependencies) {
             throw new PetError('NO_COMPANY', '알은 먹이를 먹지 않아요. 알을 품어 주세요.', 409);
           }
         }
+        // A completed task's food counts as one of the day's feedings.
         const done = await tx.execute(kind === 'WARM'
           ? sql`SELECT count(*)::int AS count FROM pet_cares WHERE tenant_id=${tenantId} AND pet_id=${pet.pet_id} AND kind='WARM' AND care_date=${today}::date`
-          : sql`SELECT count(*)::int AS count FROM pet_cares WHERE tenant_id=${tenantId} AND student_id=${studentId} AND kind='FEED' AND care_date=${today}::date`);
+          : sql`SELECT (SELECT count(*)::int FROM pet_cares WHERE tenant_id=${tenantId} AND student_id=${studentId} AND kind='FEED' AND care_date=${today}::date)
+                 + (SELECT count(*)::int FROM pet_growth WHERE tenant_id=${tenantId} AND student_id=${studentId} AND source='TASK'
+                    AND created_at >= (${today}::date::timestamp AT TIME ZONE 'Asia/Seoul')) AS count`);
         const caresBefore = toNumber((done.rows[0] as { count: number }).count);
         if (caresBefore >= (kind === 'WARM' ? 1 : settings.feedDailyLimit)) {
-          throw new PetError('DAILY_LIMIT', kind === 'WARM' ? '오늘은 알을 품어 줬어요. 내일 또 품어 줄 수 있어요.' : '오늘 먹이는 다 줬어요. 내일 또 줄 수 있어요.', 409);
+          throw new PetError('DAILY_LIMIT', kind === 'WARM' ? '오늘은 알을 품어 줬어요. 내일 또 품어 줄 수 있어요.'
+            : '오늘 먹이는 다 줬어요. 과제를 완료해서 받은 먹이도 함께 세요. 내일 또 줄 수 있어요.', 409);
         }
         const price = kind === 'FEED' ? settings.feedPrice : 0;
         if (toNumber(account.balance) < price) throw new PetError('NOT_ENOUGH_MONEY', '잔액이 부족해서 먹이를 줄 수 없어요.', 409);
@@ -806,6 +819,38 @@ export function createPetCommands(dependencies: PetDependencies) {
             shop_enabled=EXCLUDED.shop_enabled, shop_prices=EXCLUDED.shop_prices,
             version=pet_settings.version+1, updated_at=clock_timestamp()`);
       });
+      return commands.adminBoard();
+    },
+
+    /**
+     * The teacher adds growth to a student's pet, or takes some away (`amount` below 0). Taking away
+     * stops at 0 and can lower the stage, but a hatched pet stays hatched.
+     */
+    async adjustGrowth(input: Readonly<{ operationId: unknown; petId: unknown; amount: unknown }>): Promise<PetAdminBoardDto> {
+      const operationId = requireOperationId(input.operationId);
+      if (typeof input.petId !== 'string' || !input.petId || input.petId.length > 200) {
+        throw new PetError('INVALID_INPUT', '성장을 조정할 펫을 다시 골라 주세요.', 400);
+      }
+      const amount = input.amount;
+      if (typeof amount !== 'number' || !Number.isSafeInteger(amount) || amount === 0 || Math.abs(amount) > PET_ADJUST_LIMIT) {
+        throw new PetError('INVALID_INPUT', `조정할 성장은 1~${PET_ADJUST_LIMIT.toLocaleString('ko-KR')}점 사이로 적어 주세요.`, 400);
+      }
+      const petId = input.petId;
+      const payloadHash = hashOf({ kind: 'PET_GROWTH_ADJUST', petId, amount, schemaVersion: 1 });
+      await runTenantTransaction(tenantId, (tx) => runOperation(tx, tenantId, operationId, payloadHash, 'PET_GROWTH_ADJUSTED', async () => {
+        const settings = await readPetSettings(tx, tenantId);
+        const found = await tx.execute(sql`SELECT ${PET_COLUMNS} FROM pets WHERE tenant_id=${tenantId} AND pet_id=${petId} FOR UPDATE`);
+        const pet = found.rows[0] as PetRow | undefined;
+        if (!pet || pet.status !== 'RAISING') throw new PetError('PET_NOT_FOUND', '키우는 중인 펫을 찾지 못했어요. 화면을 새로고침해 주세요.', 404);
+        const applied = amount > 0 ? amount : -Math.min(-amount, toNumber(pet.growth));
+        if (applied === 0) throw new PetError('NOTHING_TO_REMOVE', '이 펫은 줄일 성장이 없어요.', 409);
+        const after = await addGrowth(tx, tenantId, pet, settings, {
+          growthId: `pet-adjust:${operationId}`, source: 'ADJUST', amount: applied, careDate: null, transactionId: null, operationId,
+          follow: applied < 0,
+        });
+        const result = { ok: true, operationId, petId, amount: applied, growth: toNumber(after.growth), stage: asStage(after.stage) };
+        return { result, entityId: petId, details: { studentId: pet.student_id, amount: applied } };
+      }));
       return commands.adminBoard();
     },
 

@@ -52,6 +52,7 @@ export type PetRoom = Readonly<{
     moods(): ReadonlyArray<Readonly<{ id: string; mood: string }>>;
     sleepInfo(): Readonly<{ reason: 'tired' | 'off'; framesLeft: number | null }> | null;
     awakeCount(): number;
+    readiness(): Readonly<{ awake: number; ready: number; tired: number; bored: number; boredMinutes: number }>;
   }>;
   W: number;
   H: number;

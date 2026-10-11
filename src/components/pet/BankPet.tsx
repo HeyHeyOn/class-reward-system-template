@@ -15,6 +15,7 @@ import {
   petColorName,
   petDecorKey,
   petStageProgress,
+  petStageSpan,
   type PetShopSlot,
   type PetSpecies,
   type PetStage,
@@ -25,7 +26,9 @@ import PETS from '@/lib/pet/petSprites';
 import ROOM, { type PetRoom, type PetRoomPetInit } from '@/lib/pet/petRoom';
 import { isSessionRequired, type BankFailure } from '../bank/bankClient';
 import { formatMoney } from '../bank/format';
+import { NoticeDialog, type Notice } from '../bank/NoticeDialog';
 import { Button, Callout, Icon, IconButton, Input, Modal, SegmentedControl, Spinner, cx } from '../ui';
+import { GraduateConfirm, PetCelebration, type PetCelebrationMoment } from './PetMoments';
 import { PetPicture } from './PetPicture';
 import { DecorPreview, PetRoomCanvas } from './PetRoomCanvas';
 import { adoptPet, buyPetDecor, carePet, graduatePet, placePetDecor, setPetCompanions } from './petBankClient';
@@ -41,10 +44,14 @@ function petTitle(pet: Pick<PetDto, 'species' | 'stage'>): string {
   return pet.stage === 0 ? `${PET_SPECIES_NAMES[pet.species]} 알` : `${STAGE_WORDS[pet.stage]} ${PET_SPECIES_NAMES[pet.species]}`;
 }
 
-/** '어린 토끼': the stage after `stage`, as students read it; null once grown up. */
-function nextStageTitle(pet: Pick<PetDto, 'species' | 'stage' | 'growth'>, goal: number): { title: string | null; fraction: number } {
+/** The next stage as students read it ('어린 토끼', null once grown up), how far toward it, and the stage's points ('3/40'). */
+function nextStageTitle(pet: Pick<PetDto, 'species' | 'stage' | 'growth'>, goal: number): { title: string | null; fraction: number; points: string } {
   const progress = petStageProgress(pet.growth, goal, pet.stage);
-  return { title: progress.next === null ? null : petTitle({ species: pet.species, stage: progress.next as PetStage }), fraction: progress.fraction };
+  const span = petStageSpan(pet.growth, goal, pet.stage);
+  return {
+    title: progress.next === null ? null : petTitle({ species: pet.species, stage: progress.next as PetStage }),
+    fraction: progress.fraction, points: span ? `${span.done}/${span.need}` : '',
+  };
 }
 
 /** Hours since `iso` that fall on weekdays (Korea time): a pet does not get hungry over a weekend. */
@@ -69,20 +76,14 @@ function StageBar({ fraction, label, track = 'bg-[var(--theme-accent-soft)]' }: 
   );
 }
 
-function todayText(view: PetStudentViewDto, pet: PetDto): string {
-  if (!view.awake) return '자는 중이에요';
-  if (pet.stage === 3 && pet.growth >= view.goal) return '다 자랐어요! 졸업할 수 있어요';
-  if (pet.stage === 0) return view.warmedToday ? '오늘 알을 품어 줬어요' : '오늘 알을 품어 주세요';
-  return view.feedsToday > 0 ? `오늘 먹이 ${view.feedsToday}/${view.feedDailyLimit}번` : '오늘 먹이를 기다려요';
-}
-
-/** The pet on the bank home: a small picture, and how close it is to its next stage. Opens the pet screen. */
+/** The pet on the bank home: a small picture, its stage with the stage's points, and the way to the next stage. Opens the pet screen. */
 export function BankPetCard({ view, onOpen }: Readonly<{ view: PetStudentViewDto; onOpen: () => void }>) {
   if (!view.enabled) return null;
   const pet = view.pet;
   const next = pet ? nextStageTitle(pet, view.goal) : null;
   return (
-    <button type="button" onClick={onOpen} aria-label={pet ? `${pet.name}, ${petTitle(pet)}${next?.title ? `, 다음 단계 ${next.title}` : ''}` : '펫 키우기, 알을 골라 시작해요'}
+    <button type="button" onClick={onOpen}
+      aria-label={pet ? `${pet.name}, ${petTitle(pet)}${next?.points ? ` ${next.points}` : ''}${next?.title ? `, 다음 단계 ${next.title}` : ', 다 자랐어요'}` : '펫 키우기, 알을 골라 시작해요'}
       className="mt-4 flex w-full items-center gap-4 rounded-[22px] border border-[var(--crs-line)] bg-[var(--theme-surface)] p-4 text-left shadow-[var(--crs-shadow-sm)] transition-[transform,background-color] duration-150 hover:bg-[var(--crs-subtle-hover)] active:scale-[0.99]">
       <span aria-hidden="true" className="shrink-0 rounded-2xl bg-[var(--theme-accent-soft)] p-1">
         {pet ? <PetPicture species={pet.species} stage={pet.stage} color={pet.color} accessory={pet.accessory} size={80} animate={view.awake} />
@@ -90,15 +91,18 @@ export function BankPetCard({ view, onOpen }: Readonly<{ view: PetStudentViewDto
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[18px] font-black tracking-[-0.02em]">{pet ? pet.name : '펫 키우기'}</span>
-        <span className="mt-0.5 block text-[13px] font-semibold text-[var(--theme-muted-text)]">
-          {pet ? `${petTitle(pet)} · ${todayText(view, pet)}` : '알을 골라 나만의 펫을 키워 보세요'}
-        </span>
         {pet && next ? (
-          <span className="mt-2 block">
-            <StageBar fraction={next.fraction} label={next.title ? `${next.title}까지` : '다 자람'} />
-            <span className="mt-1 block text-[12px] font-bold text-[var(--theme-accent-text)]">{next.title ? `다음 단계: ${next.title}` : '다 자랐어요'}</span>
-          </span>
-        ) : null}
+          <>
+            <span className="mt-0.5 flex items-baseline justify-between gap-2 text-[13px] font-semibold text-[var(--theme-muted-text)]">
+              <span className="min-w-0 truncate">{petTitle(pet)}</span>
+              {next.points ? <span className="shrink-0 font-bold tabular-nums text-[var(--theme-text)]">{next.points}</span> : null}
+            </span>
+            <span className="mt-1.5 block">
+              <StageBar fraction={next.fraction} label={next.title ? `${next.title}까지` : '다 자람'} />
+              <span className="mt-1 block text-[12px] font-bold text-[var(--theme-accent-text)]">{next.title ? `다음 단계: ${next.title}` : '다 자랐어요! 졸업할 수 있어요'}</span>
+            </span>
+          </>
+        ) : <span className="mt-0.5 block text-[13px] font-semibold text-[var(--theme-muted-text)]">알을 골라 나만의 펫을 키워 보세요</span>}
       </span>
       <Icon name="chevronRight" size={20} className="shrink-0 text-[var(--theme-muted-text)]" />
     </button>
@@ -120,13 +124,16 @@ type BankPetViewProps = Readonly<{
   onAnnounce: (message: string) => void;
 }>;
 
-type Status = Readonly<{ moods: ReadonlyArray<Readonly<{ id: string; mood: string }>>; food: number; awake: number; sleepText: string }>;
+type Readiness = Readonly<{ awake: number; ready: number; tired: number; bored: number; boredMinutes: number }>;
+type Status = Readonly<{ moods: ReadonlyArray<Readonly<{ id: string; mood: string }>>; food: number; awake: number; play: Readiness; sleepText: string }>;
 type Popup = Readonly<{ kind: 'shop' | 'dex'; opener: HTMLElement | null }> | null;
 type Preview = Readonly<{ slot: PetShopSlot; id: string }> | null;
 type Busy = 'warm' | 'feed' | 'adopt' | 'graduate' | 'decor' | 'company' | null;
 
 const roomPet = (pet: PetDto): PetRoomPetInit => ({ id: pet.petId, species: pet.species, color: pet.color, stage: pet.stage, accessory: pet.accessory });
 const needsKey = (petId: string) => `crs-pet-needs:${petId}`;
+/** The stage the student last saw a pet at, to celebrate a hatch or a new stage once. */
+const seenKey = (petId: string) => `crs-pet-seen:${petId}`;
 
 /** The pet page: the room where the pet (and graduated friends) live, three care buttons, and the 꾸미기/상점 and 도감 popups — or the egg picker. */
 export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(function BankPetView(
@@ -142,7 +149,9 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
   const [shopSlot, setShopSlot] = useState<PetShopSlot>('wall');
   const [preview, setPreview] = useState<Preview>(null);
   const [wearer, setWearer] = useState<string | null>(null);
-  const [confirmGraduate, setConfirmGraduate] = useState(false);
+  const [graduateOpen, setGraduateOpen] = useState<HTMLElement | null>(null);
+  const [dialog, setDialog] = useState<Notice | null>(null);
+  const [celebrate, setCelebrate] = useState<PetCelebrationMoment | null>(null);
   const [pickSpecies, setPickSpecies] = useState<PetSpecies | null>(null);
   const [pickName, setPickName] = useState('');
   const [motion, setMotion] = useState(true);
@@ -229,6 +238,28 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
     return () => window.clearInterval(timer);
   }, [hoursEnabled]);
 
+  // A hatch or a new stage is celebrated once, whatever brought it (feeding, a task, the teacher):
+  // the stage the student last saw is kept per pet (in memory too, for a private window).
+  const seenStages = useRef(new Map<string, number>());
+  const watchedId = pet?.petId ?? null, watchedStage = pet?.stage ?? null;
+  const petRef = useRef(pet);
+  useEffect(() => { petRef.current = pet; });
+  useEffect(() => {
+    const current = petRef.current;
+    if (!current || watchedId === null || watchedStage === null) return;
+    let seen: number | undefined = seenStages.current.get(watchedId);
+    try {
+      const stored = window.localStorage.getItem(seenKey(watchedId));
+      if (stored !== null && /^[0-3]$/u.test(stored)) seen = Number(stored);
+    } catch { /* private window: the in-memory value is enough for this visit */ }
+    seenStages.current.set(watchedId, watchedStage);
+    try { window.localStorage.setItem(seenKey(watchedId), String(watchedStage)); } catch { /* see above */ }
+    if (seen !== undefined && watchedStage > seen) {
+      const from = seen as PetStage;
+      void Promise.resolve().then(() => setCelebrate({ kind: from === 0 ? 'hatch' : 'grow', pet: current, from }));
+    }
+  }, [watchedId, watchedStage]);
+
   const readStatus = useCallback(() => {
     if (!engine) return;
     const info = engine.actions.sleepInfo();
@@ -238,24 +269,36 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
       sleepText = `이용 시간이 아니라 자고 있어요${next ? ` · ${next}에 일어나요` : ''}. 그동안은 구경만 할 수 있어요.`;
     } else if (info) {
       const minutes = Math.max(1, Math.ceil((info.framesLeft ?? 0) / 12 / 60));
-      sleepText = `쿨쿨 자고 있어요 · 약 ${minutes}분 뒤에 스스로 일어나요. 먹이는 미리 줄 수 있어요.`;
+      sleepText = `쿨쿨 자고 있어요 · 약 ${minutes}분 뒤에 스스로 일어나요.`;
     }
-    const next: Status = { moods: engine.actions.moods(), food: engine.state.food, awake: engine.actions.awakeCount(), sleepText };
+    const next: Status = {
+      moods: engine.actions.moods(), food: engine.state.food, awake: engine.actions.awakeCount(), play: engine.actions.readiness(), sleepText,
+    };
     setStatus((current) => (current && JSON.stringify(current) === JSON.stringify(next) ? current : next));
   }, [engine]);
   useEffect(() => { void Promise.resolve().then(readStatus); }, [readStatus, redraw]);
 
+  /** What happened, for the popups that stay on the screen (꾸미기/상점, 도감) and for screen readers. */
   function say(message: string) {
     setNotice(message);
     onAnnounce(message);
   }
 
-  function fail(result: BankFailure, key: string, fallback: string) {
+  /** A refusal: inside the open popup, or in its own notice window on the pet screen. */
+  function fail(result: BankFailure, key: string, fallback: string, title = '잠깐만요') {
     if (isSessionRequired(result)) { onSessionExpired(); return; }
     // No answer: keep the operation ID so pressing again cannot pay twice.
     if (result.status !== 0) pending.current[key] = null;
-    setActionError(result.error ?? fallback);
+    const message = result.error ?? fallback;
+    if (popup) setActionError(message);
+    else { setDialog({ title, message, tone: 'danger' }); onAnnounce(message); }
     if (result.status === 409) onRefresh();
+  }
+
+  /** A button that cannot be used now still answers when pressed: its reason in a notice window. */
+  function blocked(title: string, message: string) {
+    setDialog({ title, message });
+    onAnnounce(message);
   }
 
   const operation = (key: string) => {
@@ -270,7 +313,7 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
     setBusy(key); setActionError(''); setNotice('');
     const result = await carePet(operation(key), kind);
     setBusy(null);
-    if (!result.ok) { fail(result, key, kind === 'WARM' ? '알을 품어 주지 못했어요. 다시 눌러 주세요.' : '먹이를 주지 못했어요. 다시 눌러 주세요.'); return; }
+    if (!result.ok) { fail(result, key, kind === 'WARM' ? '알을 품어 주지 못했어요. 다시 눌러 주세요.' : '먹이를 주지 못했어요. 다시 눌러 주세요.', kind === 'WARM' ? '알 품어 주기' : '먹이 주기'); return; }
     pending.current[key] = null;
     const outcome = result.data.result;
     onChanged(result.data.pet, result.data.balance);
@@ -278,34 +321,22 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
       if (outcome.kind === 'FEED') engine.actions.feed(); else engine.actions.warm();
       setRedraw((n) => n + 1);
     }
-    const after = outcome.pet;
-    if (outcome.stageBefore === 0 && after.stage > 0) {
-      say(`알이 부화했어요! ${petColorName(after.species, after.color)} ${withParticle(PET_SPECIES_NAMES[after.species], '이/가')} 나왔어요.`);
-    } else if (after.stage > outcome.stageBefore) {
-      say(after.stage === 3 ? `${withParticle(after.name, '이/가')} 다 자랐어요! 원할 때 졸업시킬 수 있어요.` : `${withParticle(after.name, '이/가')} 자랐어요! 지금은 ‘${petTitle(after)}’ 단계예요.`);
-    } else if (outcome.kind === 'WARM') {
-      say('알을 따뜻하게 품어 줬어요.');
-    } else {
-      say(outcome.grew > 0 ? '먹이를 줬어요. 냠냠 먹고 쑥쑥 자라요.' : '먹이를 줬어요. 함께 지내는 친구들이 먹으러 가요.');
-    }
+    // The animals answer on screen; a hatch or a new stage gets its own popup.
+    onAnnounce(outcome.kind === 'WARM' ? '알을 따뜻하게 품어 줬어요.' : '먹이를 줬어요.');
   }
 
   function pat() {
     if (!engine) return;
-    const out = engine.actions.pat();
+    engine.actions.pat();
     setRedraw((n) => n + 1);
-    setNotice('');
-    if (out.petted === 0) say('모두 자고 있어서 쓰다듬지 않았어요.');
+    onAnnounce('쓰다듬어 줬어요.');
   }
 
   function play() {
     if (!engine) return;
-    const out = engine.actions.play();
+    engine.actions.play();
     setRedraw((n) => n + 1);
-    if (out.played > 0) { setNotice(''); return; }
-    if (out.bored > 0) say('공놀이에 조금 질렸나 봐요. 잠시 뒤에 다시 놀아 주세요.');
-    else if (out.tired > 0) say('졸려서 놀고 싶지 않대요. 조금 쉬게 해 주세요.');
-    else say('모두 자고 있어서 공을 쳐다보지 않아요.');
+    onAnnounce('공을 던져 줬어요.');
   }
 
   async function adopt() {
@@ -314,25 +345,27 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
     setBusy('adopt'); setActionError(''); setNotice('');
     const result = await adoptPet({ operationId: operation('adopt'), species: pickSpecies, name });
     setBusy(null);
-    if (!result.ok) { fail(result, 'adopt', '알을 받지 못했어요. 다시 눌러 주세요.'); return; }
+    if (!result.ok) { fail(result, 'adopt', '알을 받지 못했어요. 다시 눌러 주세요.', '알 고르기'); return; }
     pending.current.adopt = null;
     setPickSpecies(null); setPickName('');
     onChanged(result.data.pet, result.data.balance);
-    say(`${PET_SPECIES_NAMES[result.data.result.pet.species]} 알을 받았어요! 하루 한 번 품어 주고 과제를 하면 부화해요.`);
+    onAnnounce(`${PET_SPECIES_NAMES[result.data.result.pet.species]} 알을 받았어요.`);
   }
 
   async function graduate() {
-    if (busy) return;
+    if (busy || !pet) return;
+    const graduating = pet;
     setBusy('graduate'); setActionError(''); setNotice('');
     const result = await graduatePet(operation('graduate'));
     setBusy(null);
-    setConfirmGraduate(false);
-    if (!result.ok) { fail(result, 'graduate', '졸업시키지 못했어요. 다시 눌러 주세요.'); return; }
+    setGraduateOpen(null);
+    if (!result.ok) { fail(result, 'graduate', '졸업시키지 못했어요. 다시 눌러 주세요.', '졸업하기'); return; }
     pending.current.graduate = null;
     const done = result.data.result;
     onChanged(result.data.pet, result.data.balance);
     const prize = [done.rewardAmount > 0 ? formatMoney(done.rewardAmount, currencyUnit) : '', done.rewardItem].filter(Boolean);
-    say(`${withParticle(done.name, '이/가')} 졸업했어요! 도감에 남았어요.${prize.length ? ` ${withParticle(prize.join(', '), '을/를')} 받았어요.` : ''} 새 알을 골라 주세요.`);
+    setCelebrate({ kind: 'graduate', pet: { ...graduating, name: done.name }, prize });
+    onAnnounce(`${withParticle(done.name, '이/가')} 졸업했어요.`);
   }
 
   async function decor(slot: PetShopSlot, id: string, mode: 'buy' | 'place', target: string | null) {
@@ -371,30 +404,33 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
 
   const egg = pet?.stage === 0;
   const grownUps = animals.filter((entry) => entry.stage > 0);
-  let warmBlock = '', feedBlock = '';
+  // Why each button cannot be used right now ('' when it can). The buttons stay pressable to say why.
+  const offText = view ? `이용 시간이 아니라 펫이 자고 있어요.${view.nextOpen ? ` ${view.nextOpen}에 일어나요.` : ''}` : '';
+  let warmBlock = '', feedBlock = '', patBlock = '', playBlock = '';
   if (view && pet) {
-    if (!view.awake) warmBlock = feedBlock = '이용 시간이 아니라 펫이 자고 있어요.';
+    if (!view.awake) warmBlock = feedBlock = patBlock = playBlock = offText;
     else {
       if (view.warmedToday) warmBlock = '오늘은 알을 품어 줬어요. 내일 또 품어 줄 수 있어요.';
       if (view.feedDailyLimit === 0) feedBlock = '지금은 먹이 주기를 쉬고 있어요.';
-      else if (view.feedsToday >= view.feedDailyLimit) feedBlock = '오늘 먹이는 다 줬어요. 내일 또 줄 수 있어요.';
-      else if (balance < view.feedPrice) feedBlock = '잔액이 부족해서 먹이를 줄 수 없어요.';
-      else if ((status?.food ?? 0) > 0) feedBlock = '먹이통에 아직 먹이가 남아 있어요.';
+      else if (view.feedsToday >= view.feedDailyLimit) feedBlock = '오늘 먹이는 다 줬어요. 과제를 완료해서 받은 먹이도 함께 세요. 내일 또 줄 수 있어요.';
+      else if (balance < view.feedPrice) feedBlock = `잔액이 부족해서 먹이를 줄 수 없어요. 먹이 주기는 ${formatMoney(view.feedPrice, currencyUnit)}이에요.`;
+      else if ((status?.food ?? 0) > 0) feedBlock = '먹이통에 아직 먹이가 남아 있어요. 다 먹은 뒤에 다시 줄 수 있어요.';
+      const ready = status?.play;
+      if (status && status.awake === 0) patBlock = playBlock = '모두 쿨쿨 자고 있어요. 다 쉬면 스스로 일어나요.';
+      else if (ready && ready.ready === 0 && ready.awake > 0) {
+        playBlock = ready.bored > 0 && ready.tired === 0
+          ? `공놀이에 조금 질렸나 봐요. 약 ${Math.max(1, ready.boredMinutes)}분 뒤에 다시 놀 수 있어요.`
+          : '졸려서 놀 기운이 없대요. 조금 쉬게 해 주세요.';
+      }
     }
   }
   const canFeed = grownUps.length > 0;
-  const canTouch = Boolean(view?.awake) && canFeed && (status?.awake ?? 1) > 0;
   const feedLabel = view && view.feedPrice > 0 ? `먹이 주기 · ${formatMoney(view.feedPrice, currencyUnit)}` : '먹이 주기';
   const canGraduate = Boolean(view && pet && pet.stage === 3 && pet.growth >= view.goal);
   const next = pet && view ? nextStageTitle(pet, view.goal) : null;
   const prize = view ? [view.rewardAmount > 0 ? formatMoney(view.rewardAmount, currencyUnit) : '', view.rewardItem].filter(Boolean) : [];
   const moodOf = new Map((status?.moods ?? []).map((entry) => [entry.id, entry.mood]));
-  let hint = '';
-  if (view && pet) {
-    if (egg) hint = warmBlock || (canFeed ? feedBlock : '') || '하루 한 번 알을 품어 주고 과제를 완료하면 부화해요.';
-    else hint = feedBlock || (canTouch ? '' : '모두 자고 있어요. 다 쉬면 스스로 일어나요.')
-      || `오늘 먹이 ${view.feedsToday}/${view.feedDailyLimit}번 · 먹이를 줄 때마다, 과제를 완료할 때마다 자라요.`;
-  }
+  const soft = (block: string) => (block ? { 'aria-disabled': true as const, className: 'opacity-45' } : {});
 
   return (
     <div className="pb-[max(2rem,calc(env(safe-area-inset-bottom)+1.5rem))] pt-[max(1rem,env(safe-area-inset-top))]">
@@ -406,7 +442,7 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
         <IconButton icon="refresh" label="펫 새로고침" onClick={onRefresh} disabled={loading} />
       </header>
 
-      {error || actionError ? <div role="alert" className="mt-4"><Callout tone="danger">{actionError || error}</Callout></div> : null}
+      {error ? <div role="alert" className="mt-4"><Callout tone="danger">{error}</Callout></div> : null}
       {!view && loading ? (
         <div role="status" className="mt-10 flex flex-col items-center gap-3 text-[15px] font-bold text-[var(--theme-muted-text)]">
           <Spinner size={26} className="text-[var(--theme-accent-text)]" />펫을 불러오는 중이에요.
@@ -416,7 +452,6 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
 
       {view?.enabled && !pet ? (
         <section aria-labelledby="pet-pick-title" className="mt-4 rounded-[26px] border border-[var(--crs-line)] bg-[var(--theme-surface)] p-4 shadow-[var(--crs-shadow-sm)] sm:p-5">
-          {notice ? <p role="status" className="mb-3 rounded-[14px] bg-[var(--theme-accent-soft)] px-3 py-2 text-[14px] font-bold text-[var(--theme-accent-text)]">{notice}</p> : null}
           <h3 id="pet-pick-title" className="text-[18px] font-black tracking-[-0.02em]">새 알 고르기</h3>
           <p className="mt-1 text-[13px] font-semibold text-[var(--theme-muted-text)]">키우고 싶은 동물의 알을 골라요. 털 색은 알이 부화할 때 정해지는데, 아직 도감에 없는 색이 먼저 나와요.</p>
           {!view.awake ? <div className="mt-3"><Callout tone="info">이용 시간이 아니라 지금은 알을 고를 수 없어요.{view.nextOpen ? ` ${view.nextOpen}에 다시 와 주세요.` : ''}</Callout></div> : null}
@@ -436,7 +471,7 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
           <p className="mt-1 text-[12px] font-semibold text-[var(--theme-muted-text)]">1~{PET_NAME_LENGTH}자로 지어요. 나중에 선생님이 고쳐 줄 수 있어요.</p>
           <Button className="mt-4" variant="primary" size="lg" block icon="paw" onClick={() => void adopt()} loading={busy === 'adopt'}
             disabled={!pickSpecies || !cleanPetName(pickName) || !view.awake || Boolean(busy)}>이 알로 시작하기</Button>
-          <Button className="mt-2" variant="ghost" block icon="package" onClick={(event) => setPopup({ kind: 'dex', opener: event.currentTarget })}>
+          <Button className="mt-2" variant="ghost" block icon="package" onClick={(event) => { setNotice(''); setActionError(''); setPopup({ kind: 'dex', opener: event.currentTarget }); }}>
             도감 보기 · {view.dex.length}마리
           </Button>
         </section>
@@ -468,39 +503,37 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
 
           {next ? (
             <div className="mt-3 rounded-[16px] bg-[var(--theme-accent-soft)] p-3">
-              <p className="text-[14px] font-bold">
-                {next.title ? <>다음 단계: <b className="font-black">{next.title}</b></> : `${withParticle(pet.name, '이/가')} 다 자랐어요!`}
-              </p>
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="min-w-0 truncate text-[16px] font-black tracking-[-0.02em]">{petTitle(pet)}</span>
+                {next.points ? <span className="shrink-0 text-[15px] font-black tabular-nums" aria-label={`이번 단계 성장 ${next.points}`}>{next.points}</span> : null}
+              </div>
               <div className="mt-2"><StageBar fraction={next.fraction} label={next.title ? `${next.title}까지` : '다 자람'} track="bg-[var(--theme-surface)]" /></div>
-            </div>
-          ) : null}
-
-          {canGraduate ? (
-            <div className="mt-3 rounded-[16px] border border-[var(--theme-accent-solid)] p-3">
-              <p className="text-[14px] font-semibold">
-                {withParticle(pet.name, '이/가')} 다 자랐어요. 원할 때 졸업시킬 수 있어요. 졸업하면 도감에 남고{prize.length ? ` ${withParticle(prize.join(', '), '을/를')} 받아요` : ''}. 그다음 새 알을 골라요. 졸업한 펫은 도감에서 다시 불러 함께 지낼 수 있어요.
-              </p>
-              {confirmGraduate ? (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <Button variant="primary" icon="gift" onClick={() => void graduate()} loading={busy === 'graduate'} disabled={Boolean(busy)}>졸업시키기</Button>
-                  <Button variant="ghost" onClick={() => setConfirmGraduate(false)} disabled={busy === 'graduate'}>아직 더 키울래요</Button>
+              {next.title ? <p className="mt-1.5 text-[13px] font-bold text-[var(--theme-accent-text)]">다음 단계: {next.title}</p> : (
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[14px] font-bold text-[var(--theme-accent-text)]">다 자랐어요!</span>
+                  {canGraduate ? (
+                    <Button variant="primary" size="sm" icon="gift" {...soft(view.awake ? '' : offText)}
+                      onClick={(event) => (view.awake ? setGraduateOpen(event.currentTarget) : blocked('졸업하기', offText))}>졸업하기</Button>
+                  ) : null}
                 </div>
-              ) : <Button className="mt-2" variant="primary" icon="gift" onClick={() => setConfirmGraduate(true)} disabled={!view.awake}>졸업하기</Button>}
+              )}
             </div>
           ) : null}
 
           {/* The only ways to reach the animals: phones get the paid feeding on its own row. */}
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 [&_svg]:shrink-0">
             {egg ? (
-              <Button variant="primary" icon="sparkle" onClick={() => void care('WARM')} loading={busy === 'warm'}
-                disabled={Boolean(warmBlock) || Boolean(busy)} className="col-span-2 sm:col-span-3">알 품어 주기</Button>
+              <Button variant="primary" icon="sparkle" loading={busy === 'warm'} disabled={Boolean(busy)} {...soft(warmBlock)}
+                onClick={() => (warmBlock ? blocked('알 품어 주기', warmBlock) : void care('WARM'))}
+                className={cx('col-span-2 sm:col-span-3', warmBlock && 'opacity-45')}>알 품어 주기</Button>
             ) : null}
             {canFeed ? (
               <>
-                <Button variant={egg ? 'secondary' : 'primary'} icon="bowl" onClick={() => void care('FEED')} loading={busy === 'feed'}
-                  disabled={Boolean(feedBlock) || Boolean(busy)} className="col-span-2 sm:col-span-1">{feedLabel}</Button>
-                <Button icon="hand" onClick={pat} disabled={!canTouch}>쓰다듬기</Button>
-                <Button icon="ball" onClick={play} disabled={!canTouch}>놀아 주기</Button>
+                <Button variant={egg ? 'secondary' : 'primary'} icon="bowl" loading={busy === 'feed'} disabled={Boolean(busy)} {...soft(feedBlock)}
+                  onClick={() => (feedBlock ? blocked('먹이 주기', feedBlock) : void care('FEED'))}
+                  className={cx('col-span-2 sm:col-span-1', feedBlock && 'opacity-45')}>{feedLabel}</Button>
+                <Button icon="hand" {...soft(patBlock)} onClick={() => (patBlock ? blocked('쓰다듬기', patBlock) : pat())}>쓰다듬기</Button>
+                <Button icon="ball" {...soft(playBlock)} onClick={() => (playBlock ? blocked('놀아 주기', playBlock) : play())}>놀아 주기</Button>
               </>
             ) : null}
           </div>
@@ -510,8 +543,6 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
             }}>꾸미기/상점</Button>
             <Button size="sm" variant="ghost" icon="package" aria-haspopup="dialog" onClick={(event) => { setNotice(''); setActionError(''); setPopup({ kind: 'dex', opener: event.currentTarget }); }}>도감</Button>
           </div>
-          <p className="mt-2 text-[13px] font-semibold text-[var(--theme-muted-text)]">{hint}</p>
-          {notice ? <p role="status" className="mt-1 text-[14px] font-bold text-[var(--theme-accent-text)]">{notice}</p> : null}
         </section>
       ) : null}
 
@@ -519,18 +550,22 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
         <PetShop view={view} room={engine} animals={animals} running={motion} balance={balance} currencyUnit={currencyUnit} slot={shopSlot}
           onSlot={(slot) => { setShopSlot(slot); setPreview(null); }} preview={preview} onPreview={setPreview}
           wearer={wearer} onWearer={(id) => { setWearer(id); setPreview(null); }} busy={busy === 'decor'}
-          notice={notice} error={actionError} opener={popup.opener} onClose={() => { setPopup(null); setPreview(null); }}
+          notice={notice} error={actionError} opener={popup.opener} onClose={() => { setPopup(null); setPreview(null); setActionError(''); }}
           onBuy={(slot, id) => void decor(slot, id, 'buy', wearer)} onPlace={(slot, id) => void decor(slot, id, 'place', wearer)} />
       ) : null}
       {popup?.kind === 'dex' && view ? (
-        <Modal title="도감" size="lg" opener={popup.opener} onClose={() => setPopup(null)} busy={busy === 'company'}
+        <Modal title="도감" size="lg" opener={popup.opener} onClose={() => { setPopup(null); setActionError(''); }} busy={busy === 'company'}
           description="다 키워 졸업한 펫이 남아요. 졸업한 펫은 방으로 불러 함께 지낼 수 있어요(키우는 펫까지 세 마리)."
-          footer={<Button variant="ghost" onClick={() => setPopup(null)}>닫기</Button>}>
-          {notice ? <p role="status" className="mb-2 text-[13.5px] font-bold text-[var(--theme-accent-text)]">{notice}</p> : null}
+          footer={<Button variant="ghost" onClick={() => { setPopup(null); setActionError(''); }}>닫기</Button>}>
           {actionError ? <div role="alert" className="mb-2"><Callout tone="danger">{actionError}</Callout></div> : null}
           <PetDex view={view} busy={busy === 'company'} onCompany={(petIds) => void company(petIds)} />
         </Modal>
       ) : null}
+      {graduateOpen && pet ? (
+        <GraduateConfirm pet={pet} prize={prize} busy={busy === 'graduate'} onConfirm={() => void graduate()} onClose={() => setGraduateOpen(null)} />
+      ) : null}
+      {celebrate && view && !popup && !graduateOpen ? <PetCelebration moment={celebrate} goal={view.goal} onClose={() => setCelebrate(null)} /> : null}
+      {dialog ? <NoticeDialog notice={dialog} onClose={() => setDialog(null)} /> : null}
     </div>
   );
 });

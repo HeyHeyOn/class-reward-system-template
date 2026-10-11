@@ -1,4 +1,4 @@
--- Apply after migrations 0001–0049 as the migration owner, in the same
+-- Apply after migrations 0001–0050 as the migration owner, in the same
 -- transaction as creation of crs_app_runtime LOGIN NOSUPERUSER NOBYPASSRLS
 -- NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION. Never grant role membership.
 -- Passwords and provider URLs belong to the provisioning runner, not this file.

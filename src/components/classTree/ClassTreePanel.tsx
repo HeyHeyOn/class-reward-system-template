@@ -15,7 +15,7 @@ import type { ClassTreeAdminBoardDto } from '@/lib/classTreeApi';
 import { schoolDaysEstimate } from '@/domain/schoolDays';
 import { withParticle } from '@/lib/koreanParticle';
 import { DIGITAL_KIND_LABELS } from '@/lib/studentBagApi';
-import { Button, Callout, Card, CardHeader, EmptyState, Field, Input, Modal, PageHeader, Select, Spinner, StatCard, Switch } from '../ui';
+import { Button, Callout, Card, CardHeader, EmptyState, Field, IconButton, Input, Modal, PageHeader, Select, Spinner, StatCard, Switch } from '../ui';
 import { TreeCanvas, treePercent, type TreePlay } from './TreeCanvas';
 import { fetchClassTreeBoard, giveClassFeed, harvestTree, saveClassTreeSettings } from './classTreeClient';
 
@@ -65,12 +65,12 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
   const [formError, setFormError] = useState('');
   const [feedAmount, setFeedAmount] = useState('');
   const [feedNote, setFeedNote] = useState('');
-  const [feedBusy, setFeedBusy] = useState(false);
+  const [feedBusy, setFeedBusy] = useState<'add' | 'remove' | null>(null);
   const [actionError, setActionError] = useState('');
   const [harvestOpen, setHarvestOpen] = useState<HTMLElement | null>(null);
   const [harvesting, setHarvesting] = useState(false);
   const [play, setPlay] = useState<TreePlay | null>(null);
-  const pendingFeed = useRef<string | null>(null);
+  const pendingFeed = useRef<{ key: string; id: string } | null>(null);
   const pendingHarvest = useRef<string | null>(null);
 
   const applyBoard = useCallback((next: ClassTreeAdminBoardDto, resetDraft: boolean) => {
@@ -105,25 +105,29 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
     notify(checked.settings.enabled && wasOff && result.data.tree ? `${withParticle(checked.settings.treeName, '을/를')} 심었어요. 학생 은행 화면에 나무가 보여요.` : '나무 키우기 설정을 저장했어요.');
   }
 
-  async function classFeed() {
+  /** 양분 조정: drops for the whole class (a class-wide praise), or drops taken away. */
+  async function classFeed(direction: 'add' | 'remove') {
     const amount = wholeOrNaN(feedAmount);
     if (!Number.isSafeInteger(amount) || amount < CLASS_TREE_LIMITS.classFeedDrops.min || amount > CLASS_TREE_LIMITS.classFeedDrops.max) {
-      setActionError(`반 전체에 줄 양분은 1~${fmt(CLASS_TREE_LIMITS.classFeedDrops.max)} 사이로 적어 주세요.`);
+      setActionError(`조정할 양분은 1~${fmt(CLASS_TREE_LIMITS.classFeedDrops.max)} 사이로 적어 주세요.`);
       return;
     }
-    const operationId = pendingFeed.current ?? crypto.randomUUID();
-    pendingFeed.current = operationId;
-    setFeedBusy(true);
+    const signed = direction === 'add' ? amount : -amount;
+    const key = `${signed}:${feedNote}`;
+    // A resend after a lost answer reuses the same operation, so it is never applied twice.
+    if (pendingFeed.current?.key !== key) pendingFeed.current = { key, id: crypto.randomUUID() };
+    setFeedBusy(direction);
     setActionError('');
     const before = board?.tree ? { drops: board.tree.drops, goal: board.tree.goal, apples: board.activeStudents } : null;
-    const result = await giveClassFeed({ operationId, amount, note: feedNote });
-    setFeedBusy(false);
+    const result = await giveClassFeed({ operationId: pendingFeed.current.id, amount: signed, note: feedNote });
+    setFeedBusy(null);
     if (result.ok) {
       pendingFeed.current = null;
-      if (before) setPlay({ key: Date.now(), kind: 'classFeed', before, amount });
+      const applied = result.data.result.amount;
+      if (before && applied > 0) setPlay({ key: Date.now(), kind: 'classFeed', before, amount: applied });
       applyBoard(result.data.board, false);
       setFeedNote('');
-      notify(`반 전체에 양분을 ${fmt(amount)}만큼 줬어요.`);
+      notify(applied > 0 ? `반 전체에 양분을 ${fmt(applied)}만큼 줬어요.` : `양분을 ${fmt(-applied)}만큼 뺐어요. 지금 ${fmt(result.data.result.drops)}이에요.`);
       return;
     }
     if (result.status !== 0) pendingFeed.current = null;
@@ -229,21 +233,10 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
                 <Button variant="primary" size="lg" block icon="gift" onClick={(event) => setHarvestOpen(event.currentTarget)} disabled={!settings.enabled}>수확하기</Button>
                 {!settings.enabled ? <p className="text-xs text-[var(--theme-muted-text)]">학급 나무를 켜야 수확할 수 있어요.</p> : null}
               </Card>
-            ) : (
-              <Card className="space-y-3">
-                <CardHeader title="반 전체 양분 주기" description="반 전체를 칭찬할 때 선생님이 양분을 한꺼번에 줘요." />
-                <div className="grid gap-3 sm:grid-cols-[8rem_minmax(0,1fr)]">
-                  <Field label="양분" htmlFor="tree-feed-amount">
-                    <Input id="tree-feed-amount" inputMode="numeric" value={feedAmount} onChange={(event) => setFeedAmount(event.target.value)} suffix="개" />
-                  </Field>
-                  <Field label="메모" htmlFor="tree-feed-note" optional>
-                    <Input id="tree-feed-note" value={feedNote} maxLength={CLASS_TREE_LIMITS.classFeedNoteLength} placeholder="예: 모둠 활동 칭찬" onChange={(event) => setFeedNote(event.target.value)} />
-                  </Field>
-                </div>
-                <Button variant="primary" icon="sprout" onClick={() => void classFeed()} loading={feedBusy} disabled={feedBusy || !settings.enabled}>양분 주기</Button>
-                {board.classFeedTotal > 0 ? <p className="text-xs text-[var(--theme-muted-text)]">이 나무에 선생님이 지금까지 준 양분은 {fmt(board.classFeedTotal)}이에요.</p> : null}
-              </Card>
-            )}
+            ) : null}
+            <TreeAdjustCard tree={tree} activeStudents={board.activeStudents} amount={feedAmount} note={feedNote} busy={feedBusy}
+              enabled={settings.enabled} adjustedTotal={board.classFeedTotal} onAmount={setFeedAmount} onNote={setFeedNote}
+              onApply={(direction) => void classFeed(direction)} />
           </div>
         </div>
       ) : null}
@@ -266,7 +259,7 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
           <Field label="양분 주기 가격" htmlFor="tree-price" hint="0으로 두면 무료로 줄 수 있어요.">
             <Input id="tree-price" inputMode="numeric" value={draft.waterPrice} onChange={(event) => set({ waterPrice: event.target.value })} suffix={unit} />
           </Field>
-          <Field label="하루에 양분 줄 수 있는 횟수" htmlFor="tree-limit" hint="학생 한 명 기준이에요.">
+          <Field label="하루에 양분 줄 수 있는 횟수" htmlFor="tree-limit" hint="학생 한 명 기준이고, 과제를 완료해서 받은 양분도 함께 세요.">
             <Select id="tree-limit" value={draft.waterDailyLimit} onChange={(event) => set({ waterDailyLimit: event.target.value })}>
               {Array.from({ length: 11 }, (_, i) => i).map((count) => <option key={count} value={count}>{count === 0 ? '양분 주기 끄기' : `${count}번`}</option>)}
             </Select>
@@ -395,9 +388,66 @@ function TreeEstimate({ draft, activeStudents, drops, onTasks }: Readonly<{
       <p className="text-[13px] text-[var(--theme-muted-text)]">
         {left !== null && drops !== null && drops > 0 ? `지금 자라는 나무는 평일 약 ${left}일 뒤에 다 익어요. ` : ''}
         학생 {activeStudents}명이 평일마다 양분을 하루 {Number.isSafeInteger(input.waterDailyLimit) ? input.waterDailyLimit : '?'}번(하루 최대)씩 주고,
-        과제를 일주일에 {Number.isSafeInteger(input.tasksPerWeek) ? input.tasksPerWeek : '?'}개 완료한다고 보고 계산했어요. 선생님이 반 전체에 주는 양분은 빼고 셌어요.
+        과제를 일주일에 {Number.isSafeInteger(input.tasksPerWeek) ? input.tasksPerWeek : '?'}개 완료한다고 보고 계산했어요. 과제로 받은 양분도 하루 횟수에 함께 세요. 선생님이 조정한 양분은 빼고 셌어요.
         과제 수는 이 계산에만 쓰여요.
       </p>
     </section>
+  );
+}
+
+/**
+ * 양분 조정: the teacher adds drops for the whole class (a class-wide praise) or takes drops away.
+ * The resulting drops and stage show before anything is saved.
+ */
+function TreeAdjustCard({ tree, activeStudents, amount, note, busy, enabled, adjustedTotal, onAmount, onNote, onApply }: Readonly<{
+  tree: NonNullable<ClassTreeAdminBoardDto['tree']>; activeStudents: number; amount: string; note: string; busy: 'add' | 'remove' | null;
+  enabled: boolean; adjustedTotal: number; onAmount: (value: string) => void; onNote: (value: string) => void; onApply: (direction: 'add' | 'remove') => void;
+}>) {
+  const value = wholeOrNaN(amount);
+  const { min, max } = CLASS_TREE_LIMITS.classFeedDrops;
+  const valid = Number.isSafeInteger(value) && value >= min && value <= max;
+  const full = tree.drops >= tree.goal;
+  const plus = valid ? tree.drops + value : tree.drops;
+  const minus = valid ? Math.max(0, tree.drops - value) : tree.drops;
+  const stageOf = (drops: number) => CLASS_TREE_STAGES[classTreeLook(drops, tree.goal, 0).stage];
+  const steps = [...new Set([1, 10, Math.max(1, activeStudents)])].sort((a, b) => a - b);
+  return (
+    <Card className="space-y-3">
+      <CardHeader title="양분 조정" description="반 전체를 칭찬할 때 양분을 더하고, 잘못 쌓인 양분은 뺄 수 있어요." />
+      <p className="text-sm font-semibold tabular-nums">지금 양분 {fmt(tree.drops)} / {fmt(tree.goal)} · {stageOf(tree.drops)}</p>
+      <Field label="바꿀 양분" htmlFor="tree-feed-amount">
+        <div className="flex items-center gap-2">
+          <IconButton icon="minus" label="1 줄이기" variant="secondary" disabled={!valid || value <= min} onClick={() => onAmount(String(Math.max(min, value - 1)))} />
+          <Input id="tree-feed-amount" inputMode="numeric" value={amount} className="w-[7rem] text-center" suffix="개" onChange={(event) => onAmount(event.target.value)} />
+          <IconButton icon="plus" label="1 늘리기" variant="secondary" disabled={valid && value >= max} onClick={() => onAmount(String(valid ? value + 1 : 1))} />
+        </div>
+      </Field>
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="자주 쓰는 값">
+        {steps.map((step) => (
+          <Button key={step} size="sm" variant={value === step ? 'primary' : 'ghost'} onClick={() => onAmount(String(step))}>
+            {step === activeStudents && step !== 1 && step !== 10 ? `학생 수 ${step}개` : `${step}개`}
+          </Button>
+        ))}
+      </div>
+      <Field label="메모" htmlFor="tree-feed-note" optional>
+        <Input id="tree-feed-note" value={note} maxLength={CLASS_TREE_LIMITS.classFeedNoteLength} placeholder="예: 모둠 활동 칭찬" onChange={(event) => onNote(event.target.value)} />
+      </Field>
+      {valid ? (
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 rounded-[14px] bg-[var(--crs-subtle-hover)] p-3 text-sm">
+          <dt className="font-bold">더하면</dt>
+          <dd className="tabular-nums">{full ? '이미 다 자라서 더할 수 없어요' : `${fmt(plus)} · ${plus >= tree.goal ? '열매가 다 익어요' : stageOf(plus)}`}</dd>
+          <dt className="font-bold">빼면</dt>
+          <dd className="tabular-nums">{fmt(minus)} · {stageOf(minus)}</dd>
+        </dl>
+      ) : <p className="text-sm font-semibold text-[var(--crs-danger-text)]">{min}~{fmt(max)} 사이의 숫자로 적어 주세요.</p>}
+      <div className="grid grid-cols-2 gap-2">
+        <Button variant="secondary" icon="minus" onClick={() => onApply('remove')} loading={busy === 'remove'}
+          disabled={!valid || busy !== null || !enabled || tree.drops === 0}>양분 빼기{valid ? ` −${fmt(value)}` : ''}</Button>
+        <Button variant="primary" icon="plus" onClick={() => onApply('add')} loading={busy === 'add'}
+          disabled={!valid || busy !== null || !enabled || full}>양분 더하기{valid ? ` +${fmt(value)}` : ''}</Button>
+      </div>
+      {adjustedTotal !== 0 ? <p className="text-xs text-[var(--theme-muted-text)]">이 나무에 선생님이 조정한 양분은 합쳐서 {adjustedTotal > 0 ? '+' : '−'}{fmt(Math.abs(adjustedTotal))}이에요.</p> : null}
+      {!enabled ? <p className="text-xs text-[var(--theme-muted-text)]">나무 키우기를 켜야 조정할 수 있어요.</p> : null}
+    </Card>
   );
 }

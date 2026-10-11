@@ -35,7 +35,7 @@ type RunTenantTransaction = <TResult>(
 
 export type ClassTreeErrorCode =
   | 'TREE_OFF' | 'TREE_BUSY' | 'TREE_READY' | 'TREE_NOT_READY' | 'WATER_OFF' | 'DAILY_LIMIT'
-  | 'NOT_ENOUGH_MONEY' | 'STUDENT_INVALID' | 'NO_STUDENTS' | 'VOUCHER_NOT_FOUND' | 'INVALID_INPUT'
+  | 'NOT_ENOUGH_MONEY' | 'STUDENT_INVALID' | 'NO_STUDENTS' | 'VOUCHER_NOT_FOUND' | 'NOTHING_TO_REMOVE' | 'INVALID_INPUT'
   | 'OPERATION_CONFLICT' | 'OPERATION_PENDING' | 'UNSUPPORTED';
 
 export class ClassTreeError extends Error {
@@ -142,7 +142,7 @@ function treeDto(row: TreeRow): ClassTreeDto {
 }
 
 async function addDrops(tx: TenantTransaction, tenantId: string, tree: TreeRow, drop: Readonly<{
-  dropId: string; source: 'WATER' | 'TASK' | 'SUN' | 'CANCEL'; studentId: string | null; amount: number;
+  dropId: string; source: 'WATER' | 'TASK' | 'SUN' | 'CANCEL' | 'ADJUST'; studentId: string | null; amount: number;
   transactionId: string | null; operationId: string | null; note: string | null;
 }>): Promise<number> {
   const after = toNumber(tree.drops) + drop.amount;
@@ -268,9 +268,9 @@ export function createClassTreeCommands(dependencies: ClassTreeDependencies) {
         const tree = settings.enabled ? await readGrowingTree(tx, tenantId, false) : undefined;
         const counts = await tx.execute(sql`
           SELECT
-            (SELECT count(*)::int FROM tree_drops WHERE tenant_id=${tenantId} AND source='WATER'
+            (SELECT count(*)::int FROM tree_drops WHERE tenant_id=${tenantId} AND source IN ('WATER', 'TASK')
                AND student_id=${studentId} AND created_at >= ${DAY_START}) AS mine,
-            (SELECT count(DISTINCT student_id)::int FROM tree_drops WHERE tenant_id=${tenantId} AND source='WATER'
+            (SELECT count(DISTINCT student_id)::int FROM tree_drops WHERE tenant_id=${tenantId} AND source IN ('WATER', 'TASK')
                AND created_at >= ${DAY_START}) AS waterers,
             (SELECT count(*)::int FROM class_trees WHERE tenant_id=${tenantId} AND status='HARVESTED') AS harvested`);
         const row = counts.rows[0] as { mine: number; waterers: number; harvested: number };
@@ -312,7 +312,7 @@ export function createClassTreeCommands(dependencies: ClassTreeDependencies) {
           ORDER BY s.student_id`);
         const sun = await tx.execute(sql`
           SELECT COALESCE(sum(amount), 0)::text AS total FROM tree_drops
-          WHERE tenant_id=${tenantId} AND tree_no=${tree?.tree_no ?? -1} AND source='SUN'`);
+          WHERE tenant_id=${tenantId} AND tree_no=${tree?.tree_no ?? -1} AND source IN ('SUN', 'ADJUST')`);
         const harvests = await tx.execute(sql`
           SELECT tree_no, goal::text AS goal, drops::text AS drops, started_at, harvested_at, harvest_recipients,
                  harvest_reward_amount::text AS harvest_reward_amount, harvest_coupon
@@ -402,12 +402,13 @@ export function createClassTreeCommands(dependencies: ClassTreeDependencies) {
         if (toNumber(tree.drops) >= toNumber(tree.goal)) {
           throw new ClassTreeError('TREE_READY', '나무가 다 자랐어요. 선생님이 수확할 때까지 기다려 주세요.', 409);
         }
+        // A completed task's drops count as one of the day's waterings.
         const today = await tx.execute(sql`
           SELECT count(*)::int AS count FROM tree_drops
-          WHERE tenant_id=${tenantId} AND source='WATER' AND student_id=${studentId} AND created_at >= ${DAY_START}`);
+          WHERE tenant_id=${tenantId} AND source IN ('WATER', 'TASK') AND student_id=${studentId} AND created_at >= ${DAY_START}`);
         const wateredToday = toNumber((today.rows[0] as { count: number }).count);
         if (wateredToday >= settings.waterDailyLimit) {
-          throw new ClassTreeError('DAILY_LIMIT', '오늘은 양분을 다 줬어요. 내일 또 줄 수 있어요.', 409);
+          throw new ClassTreeError('DAILY_LIMIT', '오늘은 양분을 다 줬어요. 과제를 완료해서 받은 양분도 함께 세요. 내일 또 줄 수 있어요.', 409);
         }
         const balance = toNumber(account.balance);
         const price = settings.waterPrice;
@@ -439,12 +440,15 @@ export function createClassTreeCommands(dependencies: ClassTreeDependencies) {
       }));
     },
 
-    /** The teacher's classFeed: drops for the whole class, e.g. after a class-wide praise. */
+    /**
+     * The teacher adjusts the growing tree: drops for the whole class (e.g. after a class-wide praise),
+     * or drops taken away (`amount` below 0, never below 0 drops).
+     */
     async classFeed(input: Readonly<{ operationId: string; amount: number; note: string }>): Promise<ClassTreeClassFeedResultDto> {
       const operationId = requireOperationId(input.operationId);
       const { min, max } = CLASS_TREE_LIMITS.classFeedDrops;
-      if (!Number.isSafeInteger(input.amount) || input.amount < min || input.amount > max) {
-        throw new ClassTreeError('INVALID_INPUT', `반 전체에 줄 양분은 ${min}~${max.toLocaleString('ko-KR')} 사이로 정해 주세요.`, 400);
+      if (!Number.isSafeInteger(input.amount) || Math.abs(input.amount) < min || Math.abs(input.amount) > max) {
+        throw new ClassTreeError('INVALID_INPUT', `조정할 양분은 ${min}~${max.toLocaleString('ko-KR')} 사이로 정해 주세요.`, 400);
       }
       const note = typeof input.note === 'string' ? input.note.trim().replace(/\s+/gu, ' ') : '';
       if ([...note].length > CLASS_TREE_LIMITS.classFeedNoteLength || /[\u0000-\u001f\u007f-\u009f]/u.test(note)) {
@@ -456,16 +460,19 @@ export function createClassTreeCommands(dependencies: ClassTreeDependencies) {
         if (!settings.enabled) throw new ClassTreeError('TREE_OFF', '학급 나무를 먼저 켜 주세요.', 409);
         const tree = await readGrowingTree(tx, tenantId, true);
         if (!tree) throw new ClassTreeError('TREE_BUSY', '자라는 나무가 없어요. 화면을 새로고침해 주세요.', 409);
-        if (toNumber(tree.drops) >= toNumber(tree.goal)) {
+        const current = toNumber(tree.drops);
+        if (input.amount > 0 && current >= toNumber(tree.goal)) {
           throw new ClassTreeError('TREE_READY', '나무가 이미 다 자랐어요. 수확해 주세요.', 409);
         }
+        const amount = input.amount > 0 ? input.amount : -Math.min(-input.amount, current);
+        if (amount === 0) throw new ClassTreeError('NOTHING_TO_REMOVE', '나무에 뺄 양분이 없어요.', 409);
         const drops = await addDrops(tx, tenantId, tree, {
-          dropId: `tree-class:${operationId}`, source: 'SUN', studentId: null, amount: input.amount, transactionId: null,
+          dropId: `tree-class:${operationId}`, source: amount > 0 ? 'SUN' : 'ADJUST', studentId: null, amount, transactionId: null,
           operationId, note: note || null,
         });
         const goal = toNumber(tree.goal);
-        const result: ClassTreeClassFeedResultDto = { ok: true, operationId, treeNo: tree.tree_no, amount: input.amount, drops, goal, ready: drops >= goal };
-        return { result, entityId: String(tree.tree_no), details: { amount: input.amount, drops } };
+        const result: ClassTreeClassFeedResultDto = { ok: true, operationId, treeNo: tree.tree_no, amount, drops, goal, ready: drops >= goal };
+        return { result, entityId: String(tree.tree_no), details: { amount, drops } };
       }));
     },
 

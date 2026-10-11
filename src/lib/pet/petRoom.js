@@ -555,6 +555,7 @@ const ROOM = (() => {
         s, tick, frame, mood, sleepNow, leaveWheel,
         set(o) {
           const reset = (o.stage !== undefined && o.stage !== s.stage) || (o.species && o.species !== s.species);
+          const grew = o.stage !== undefined && o.stage > s.stage;
           if (o.species !== undefined) s.species = o.species;
           if (o.color !== undefined) s.color = o.color;
           if (o.stage !== undefined) s.stage = o.stage;
@@ -562,6 +563,11 @@ const ROOM = (() => {
           if (reset) {
             s.x = 30 + s.slot * 14; s.y = 42 + (s.slot % 2) * 3; s.dir = -1; s.emote = null; later.length = 0; s.then = null; s.sleepReason = null; s.inWheel = false;
             start('idle', 24); if (R.offHours && s.stage > 0) sleepNow('off');
+            // 부화하거나 한 단계 자라면 그 자리에서 반짝이며 신나 한다
+            if (grew && s.stage > 0 && !R.offHours) {
+              for (let i = 0; i < 6; i++) after(i * 3, () => puff('spark', s.x + rnd(-9, 7), s.y - rnd(6, 18), { life: 14, vy: -0.25 }));
+              reactTo('excited');
+            }
           }
         },
         /* 먹이통이 찼을 때: 깨어 있으면 놀라서 먹으러 가고, 자는 펫은 깨면 간다 */
@@ -775,8 +781,21 @@ const ROOM = (() => {
         if (list.some((p) => p.s.action !== 'sleep')) return null;
         return { reason: 'tired', framesLeft: Math.min(...list.map((p) => p.sleepLeft() ?? 0)) };
       },
-      /* 깨어 있는 펫 수(쓰다듬기·놀아 주기를 할 수 있는지) */
+      /* 깨어 있는 펫 수(쓰다듬기를 할 수 있는지) */
       awakeCount() { return R.offHours ? 0 : hatched().filter((p) => p.s.action !== 'sleep').length; },
+      /* 공을 던져 주면 놀 수 있는 펫 수와, 못 노는 까닭별 수(졸림·공에 질림), 질린 펫이 다시 놀 때까지 남은 분 */
+      readiness() {
+        const now = Date.now(); const out = { awake: 0, ready: 0, tired: 0, bored: 0, boredMinutes: 0 };
+        if (R.offHours) return out;
+        for (const p of hatched()) {
+          if (p.s.action === 'sleep') continue;
+          out.awake += 1;
+          if (now < p.s.boredUntil) { out.bored += 1; out.boredMinutes = Math.max(out.boredMinutes, Math.ceil((p.s.boredUntil - now) / 60_000)); }
+          else if (p.s.needs.energy < 25) out.tired += 1;
+          else out.ready += 1;
+        }
+        return out;
+      },
     };
 
     return { state: R, pets, tick, render, actions, W, H };

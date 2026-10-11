@@ -48,3 +48,8 @@ export function savePetSettings(settings: PetSettings): Promise<PetAdminResult<P
 export function renamePet(petId: string, name: string): Promise<PetAdminResult<PetAdminBoardDto>> {
   return request('/api/pets/rename', post({ petId, name }));
 }
+
+/** Adds growth to a student's pet, or takes some away (`amount` below 0). */
+export function adjustPetGrowth(input: { operationId: string; petId: string; amount: number }): Promise<PetAdminResult<PetAdminBoardDto>> {
+  return request('/api/pets/growth', post(input));
+}

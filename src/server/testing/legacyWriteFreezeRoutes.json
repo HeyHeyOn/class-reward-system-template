@@ -121,6 +121,7 @@
   { "method": "GET", "route": "/pets", "effect": "postgres-read" },
   { "method": "POST", "route": "/pets/settings", "effect": "postgres-write" },
   { "method": "POST", "route": "/pets/rename", "effect": "postgres-write" },
+  { "method": "POST", "route": "/pets/growth", "effect": "postgres-write" },
   { "method": "GET", "route": "/bank/me/bag", "effect": "student-session-read" },
   { "method": "GET", "route": "/bag/students/[studentId]", "effect": "postgres-read" },
   { "method": "POST", "route": "/bag/items/use", "effect": "postgres-write" },

@@ -16,22 +16,23 @@ describe('class tree goal and estimate', () => {
   });
 
   it('estimates the school days from the waterings and the tasks a student completes a week', () => {
-    // 25 students × (2 waterings + 1 drop × 5 tasks / 5 days) = 75 drops a day
-    expect(classTreeEstimateDays({ goal: 1500, tasksPerWeek: 5, waterDailyLimit: 2, taskDrops: 1 }, 25)).toBe(20);
-    expect(classTreeEstimateDays({ goal: 1500, tasksPerWeek: 10, waterDailyLimit: 2, taskDrops: 1 }, 25)).toBe(15);
-    expect(classTreeEstimateDays({ goal: 1500, tasksPerWeek: 5, waterDailyLimit: 2, taskDrops: 1 }, 25, 1425)).toBe(1);
+    // A task a day takes one of the 2 waterings: 25 students × (1 watering + 1 task) = 50 drops a day
+    expect(classTreeEstimateDays({ goal: 1500, tasksPerWeek: 5, waterDailyLimit: 2, taskDrops: 1 }, 25)).toBe(30);
+    // Tasks give 3 drops each: 25 × (1 + 3) = 100 a day
+    expect(classTreeEstimateDays({ goal: 1500, tasksPerWeek: 5, waterDailyLimit: 2, taskDrops: 3 }, 25)).toBe(15);
+    // No tasks: 25 × 2 = 50 a day
+    expect(classTreeEstimateDays({ goal: 1500, tasksPerWeek: 0, waterDailyLimit: 2, taskDrops: 1 }, 25)).toBe(30);
+    expect(classTreeEstimateDays({ goal: 1500, tasksPerWeek: 5, waterDailyLimit: 2, taskDrops: 1 }, 25, 1475)).toBe(1);
     expect(classTreeEstimateDays({ goal: 100, tasksPerWeek: 0, waterDailyLimit: 0, taskDrops: 1 }, 25)).toBeNull();
     expect(classTreeEstimateDays({ goal: 100, tasksPerWeek: 5, waterDailyLimit: 1, taskDrops: 1 }, 0)).toBeNull();
   });
 
   it('shows students only the way to the next stage', () => {
-    expect(classTreeStageProgress(0, 100)).toEqual({ stage: 0, next: 1, fraction: 0 });
-    const sprout = classTreeStageProgress(10, 100);
-    expect([sprout.stage, sprout.next]).toEqual([1, 2]);
-    expect(sprout.fraction).toBeCloseTo(0.5);
-    const fruit = classTreeStageProgress(92, 100);
-    expect([fruit.stage, fruit.next]).toEqual([7, null]);
-    expect(fruit.fraction).toBeCloseTo(0.5);
+    expect(classTreeStageProgress(0, 100)).toEqual({ stage: 0, next: 1, fraction: 0, done: 0, need: 5 });
+    expect(classTreeStageProgress(10, 100)).toEqual({ stage: 1, next: 2, fraction: 0.5, done: 5, need: 10 });
+    expect(classTreeStageProgress(92, 100)).toEqual({ stage: 7, next: null, fraction: 0.5, done: 8, need: 16 });
+    // The stage's start is the same whole number classTreeLook uses (15% of 100 is 15, not 16).
+    expect(classTreeStageProgress(15, 100)).toMatchObject({ stage: 2, done: 0, need: 13 });
   });
 });
 

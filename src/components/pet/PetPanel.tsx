@@ -12,6 +12,7 @@ import {
   cleanPetName,
   parsePetSettings,
   petEstimateDays,
+  petStageFor,
   petStageStarts,
   type PetSettings,
   type PetShopSlot,
@@ -21,10 +22,10 @@ import PETS from '@/lib/pet/petSprites';
 import ROOM from '@/lib/pet/petRoom';
 import { schoolDaysEstimate } from '@/domain/schoolDays';
 import { DIGITAL_KIND_LABELS } from '@/lib/studentBagApi';
-import { Button, Callout, Card, Checkbox, EmptyState, Field, Icon, Input, PageHeader, SegmentedControl, Select, Spinner, StatCard, Switch, cx } from '../ui';
+import { Button, Callout, Card, Checkbox, EmptyState, Field, Icon, IconButton, Input, Modal, PageHeader, SegmentedControl, Select, Spinner, StatCard, Switch, cx } from '../ui';
 import { PetPicture } from './PetPicture';
 import { DecorPreview } from './PetRoomCanvas';
-import { fetchPetBoard, renamePet, savePetSettings } from './petAdminClient';
+import { adjustPetGrowth, fetchPetBoard, renamePet, savePetSettings } from './petAdminClient';
 
 type Draft = Readonly<{
   enabled: boolean; goal: string; tasksPerWeek: string; careGrowth: string; taskGrowth: string;
@@ -206,7 +207,10 @@ export function PetPanel({ unit, notify }: Readonly<{ unit: string; notify: (mes
         </div>
 
         <div id={`pet-panel-${tab}`} role="tabpanel" aria-labelledby={`pet-tab-${tab}`} tabIndex={0} className="outline-none">
-          {tab === 'list' ? <PetList board={board} onRenamed={(next, name) => { applyBoard(next, false); notify(`펫 이름을 '${name}'(으)로 고쳤어요.`); }} /> : null}
+          {tab === 'list' ? (
+            <PetList board={board} onRenamed={(next, name) => { applyBoard(next, false); notify(`펫 이름을 '${name}'(으)로 고쳤어요.`); }}
+              onAdjusted={(next, message) => { applyBoard(next, false); notify(message); }} />
+          ) : null}
 
           {tab === 'growth' ? (
             <div className="space-y-4">
@@ -241,8 +245,8 @@ export function PetPanel({ unit, notify }: Readonly<{ unit: string; notify: (mes
                 <p className="text-[13px] text-[var(--theme-muted-text)]">
                   {estimateReady && estimate !== null && hatchDays !== null ? `부화까지 평일 약 ${hatchDays}일. ` : ''}
                   학생이 평일마다 알을 품어 주고, 부화한 뒤에는 먹이를 하루 {Number.isSafeInteger(estimateInput.feedDailyLimit) ? estimateInput.feedDailyLimit : '?'}번(하루 최대)씩 주며,
-                  과제를 일주일에 {Number.isSafeInteger(estimateInput.tasksPerWeek) ? estimateInput.tasksPerWeek : '?'}개 완료한다고 보고 계산했어요. 실제로는 학생마다 달라요.
-                  과제 수는 이 계산에만 쓰여요.
+                  과제를 일주일에 {Number.isSafeInteger(estimateInput.tasksPerWeek) ? estimateInput.tasksPerWeek : '?'}개 완료한다고 보고 계산했어요. 과제로 받은 먹이도 하루 횟수에 함께 세요.
+                  실제로는 학생마다 달라요. 과제 수는 이 계산에만 쓰여요.
                 </p>
               </section>
             </div>
@@ -253,7 +257,7 @@ export function PetPanel({ unit, notify }: Readonly<{ unit: string; notify: (mes
               <Field label="먹이 주기 가격" htmlFor="pet-price" hint="0으로 두면 무료로 줄 수 있어요. 알 품어 주기는 항상 무료예요.">
                 <Input id="pet-price" inputMode="numeric" value={draft.feedPrice} onChange={(event) => set({ feedPrice: event.target.value })} suffix={unit} />
               </Field>
-              <Field label="하루에 먹이 줄 수 있는 횟수" htmlFor="pet-limit" hint="학생 한 명 기준이에요. 먹이를 줄 때마다 자라니, 하루에 한 번만 자라게 하려면 1번으로 정해 주세요.">
+              <Field label="하루에 먹이 줄 수 있는 횟수" htmlFor="pet-limit" hint="학생 한 명 기준이고, 과제를 완료해서 받은 먹이도 함께 세요. 먹이를 줄 때마다 자라니, 하루에 한 번만 자라게 하려면 1번으로 정해 주세요.">
                 <Select id="pet-limit" value={draft.feedDailyLimit} onChange={(event) => set({ feedDailyLimit: event.target.value })}>
                   {Array.from({ length: PET_LIMITS.feedDailyLimit.max + 1 }, (_, i) => i).map((count) => <option key={count} value={count}>{count === 0 ? '먹이 주기 끄기' : `${count}번`}</option>)}
                 </Select>
@@ -385,7 +389,10 @@ function withoutKey(record: Readonly<Record<string, string>>, key: string): Reco
 }
 
 /** 펫 목록: how every student's pet is doing, with name corrections. */
-function PetList({ board, onRenamed }: Readonly<{ board: PetAdminBoardDto; onRenamed: (board: PetAdminBoardDto, name: string) => void }>) {
+function PetList({ board, onRenamed, onAdjusted }: Readonly<{
+  board: PetAdminBoardDto; onRenamed: (board: PetAdminBoardDto, name: string) => void; onAdjusted: (board: PetAdminBoardDto, message: string) => void;
+}>) {
+  const [adjusting, setAdjusting] = useState<Readonly<{ studentId: string; opener: HTMLElement }> | null>(null);
   const [sort, setSort] = useState<Sort>('growth');
   const [names, setNames] = useState<Record<string, string>>({});
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -421,14 +428,20 @@ function PetList({ board, onRenamed }: Readonly<{ board: PetAdminBoardDto; onRen
     if (!pet) return null;
     const value = Math.min(pet.growth, goal);
     return (
-      <span className="grid min-w-[7.5rem] gap-1 text-xs tabular-nums">
-        <span>성장 {fmt(value)}/{fmt(goal)}{pet.stage === 3 && pet.growth >= goal ? <span className="ml-1.5 rounded-full border border-[var(--theme-accent-text)] px-1.5 text-[var(--theme-accent-text)]">졸업 기다림</span> : null}</span>
-        <span className="block h-1.5 overflow-hidden rounded-full bg-[var(--crs-subtle-hover)]">
-          <span className="block h-full rounded-full bg-[var(--theme-accent-text)]" style={{ width: `${Math.floor((value / goal) * 100)}%` }} />
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="grid min-w-[7.5rem] flex-1 gap-1 text-xs tabular-nums">
+          <span>성장 {fmt(pet.growth)}/{fmt(goal)}{pet.stage === 3 && pet.growth >= goal ? <span className="ml-1.5 rounded-full border border-[var(--theme-accent-text)] px-1.5 text-[var(--theme-accent-text)]">졸업 기다림</span> : null}</span>
+          <span className="block h-1.5 overflow-hidden rounded-full bg-[var(--crs-subtle-hover)]">
+            <span className="block h-full rounded-full bg-[var(--theme-accent-text)]" style={{ width: `${Math.floor((value / goal) * 100)}%` }} />
+          </span>
         </span>
+        <Button size="sm" variant="secondary" icon="sliders" className="shrink-0" aria-label={`${row.name}의 펫 성장 조정`}
+          onClick={(event) => setAdjusting({ studentId: row.studentId, opener: event.currentTarget })}>조정</Button>
       </span>
     );
   }
+
+  const adjustRow = adjusting ? board.students.find((row) => row.studentId === adjusting.studentId) ?? null : null;
 
   const todayLabel = (row: PetAdminStudentDto) => (!row.pet ? '—' : row.pet.stage === 0 ? (row.caresToday > 0 ? '알 품어 줌' : '아직 안 품음')
     : row.caresToday > 0 ? `먹이 ${row.caresToday}번` : '아직 안 줌');
@@ -528,7 +541,94 @@ function PetList({ board, onRenamed }: Readonly<{ board: PetAdminBoardDto; onRen
           </tbody>
         </table>
       </div>
+      {adjustRow?.pet && adjusting ? (
+        <PetGrowthDialog row={adjustRow} goal={goal} opener={adjusting.opener} onClose={() => setAdjusting(null)}
+          onDone={(next, message) => { setAdjusting(null); onAdjusted(next, message); }} />
+      ) : null}
       <p className="text-xs text-[var(--theme-muted-text)]">펫 이름은 학생이 알을 고를 때 지어요. 알맞지 않은 이름은 여기서 고칠 수 있어요(1~{PET_NAME_LENGTH}자). ‘최근 7일’은 먹이를 주거나 알을 품어 준 날 수예요.</p>
     </div>
+  );
+}
+
+const ADJUST_STEPS = [1, 5, 10] as const;
+
+/**
+ * 성장 조정: the teacher adds growth to one student's pet or takes some away. The new total and the
+ * stage it leads to show before anything is saved. A hatched pet never turns back into an egg.
+ */
+function PetGrowthDialog({ row, goal, opener, onClose, onDone }: Readonly<{
+  row: PetAdminStudentDto; goal: number; opener: HTMLElement; onClose: () => void; onDone: (board: PetAdminBoardDto, message: string) => void;
+}>) {
+  const pet = row.pet as NonNullable<PetAdminStudentDto['pet']>;
+  const [amountText, setAmountText] = useState('5');
+  const [busy, setBusy] = useState<'add' | 'remove' | null>(null);
+  const [error, setError] = useState('');
+  const pending = useRef<{ key: string; id: string } | null>(null);
+  const amount = /^\d+$/u.test(amountText.trim()) ? Number(amountText.trim()) : Number.NaN;
+  const valid = Number.isSafeInteger(amount) && amount >= 1 && amount <= 100_000;
+  const stageTitle = (stage: number) => petTitle({ ...pet, stage: stage as 0 | 1 | 2 | 3 });
+  const plus = valid ? pet.growth + amount : pet.growth;
+  const minus = valid ? Math.max(0, pet.growth - amount) : pet.growth;
+  const plusStage = Math.max(pet.stage, petStageFor(plus, goal));
+  const minusStage = Math.max(pet.stage > 0 ? 1 : 0, petStageFor(minus, goal));
+
+  async function apply(direction: 'add' | 'remove') {
+    if (!valid || busy) return;
+    const signed = direction === 'add' ? amount : -amount;
+    const key = `${pet.petId}:${signed}`;
+    // A resend after a lost answer reuses the same operation, so it is never applied twice.
+    if (pending.current?.key !== key) pending.current = { key, id: crypto.randomUUID() };
+    setBusy(direction); setError('');
+    const result = await adjustPetGrowth({ operationId: pending.current.id, petId: pet.petId, amount: signed });
+    setBusy(null);
+    if (!result.ok) { if (result.status !== 0) pending.current = null; setError(result.error); return; }
+    pending.current = null;
+    const after = result.data.students.find((entry) => entry.studentId === row.studentId)?.pet;
+    onDone(result.data, `${row.name}의 펫 '${pet.name}' 성장을 ${direction === 'add' ? `${fmt(amount)}점 더했어요` : `${fmt(pet.growth - (after?.growth ?? minus))}점 뺐어요`}. 지금 ${fmt(after?.growth ?? (direction === 'add' ? plus : minus))}점이에요.`);
+  }
+
+  return (
+    <Modal title="펫 성장 조정" size="sm" opener={opener} onClose={onClose} busy={busy !== null}
+      footer={<>
+        <Button variant="ghost" onClick={onClose} disabled={busy !== null}>닫기</Button>
+        <Button variant="secondary" icon="minus" onClick={() => void apply('remove')} loading={busy === 'remove'}
+          disabled={!valid || busy !== null || pet.growth === 0}>빼기{valid ? ` −${fmt(amount)}` : ''}</Button>
+        <Button variant="primary" icon="plus" onClick={() => void apply('add')} loading={busy === 'add'}
+          disabled={!valid || busy !== null}>더하기{valid ? ` +${fmt(amount)}` : ''}</Button>
+      </>}>
+      <div className="flex items-center gap-3">
+        <span className="shrink-0 rounded-[14px] bg-[var(--theme-accent-soft)] p-1">
+          <PetPicture species={pet.species} stage={pet.stage} color={pet.color} accessory={pet.accessory} size={56}
+            crop={pet.stage === 0 ? [6, 11, 12, 12] : [2, 4, 20, 20]} />
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-[15px] font-black">{pet.name} <span className="text-xs font-semibold text-[var(--theme-muted-text)]">{row.name}</span></p>
+          <p className="text-sm font-semibold tabular-nums text-[var(--theme-muted-text)]">{stageTitle(pet.stage)} · 성장 {fmt(pet.growth)}/{fmt(goal)}</p>
+        </div>
+      </div>
+      <Field label="바꿀 성장" htmlFor="pet-adjust-amount" className="mt-4">
+        <div className="flex items-center gap-2">
+          <IconButton icon="minus" label="1 줄이기" variant="secondary" disabled={!valid || amount <= 1} onClick={() => setAmountText(String(Math.max(1, amount - 1)))} />
+          <Input id="pet-adjust-amount" inputMode="numeric" value={amountText} className="w-[7rem] text-center" suffix="점"
+            onChange={(event) => setAmountText(event.target.value)} />
+          <IconButton icon="plus" label="1 늘리기" variant="secondary" disabled={valid && amount >= 100_000} onClick={() => setAmountText(String(valid ? amount + 1 : 1))} />
+        </div>
+      </Field>
+      <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label="자주 쓰는 값">
+        {ADJUST_STEPS.map((step) => (
+          <Button key={step} size="sm" variant={amount === step ? 'primary' : 'ghost'} onClick={() => setAmountText(String(step))}>{step}점</Button>
+        ))}
+      </div>
+      {valid ? (
+        <dl className="mt-4 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 rounded-[14px] bg-[var(--crs-subtle-hover)] p-3 text-sm">
+          <dt className="font-bold">더하면</dt>
+          <dd className="tabular-nums">{fmt(plus)}점 · {stageTitle(plusStage)}{plusStage > pet.stage ? ' (자라요)' : ''}</dd>
+          <dt className="font-bold">빼면</dt>
+          <dd className="tabular-nums">{fmt(minus)}점 · {stageTitle(minusStage)}{minusStage < pet.stage ? ' (단계가 내려가요)' : ''}</dd>
+        </dl>
+      ) : <p className="mt-3 text-sm font-semibold text-[var(--crs-danger-text)]">1~100,000 사이의 숫자로 적어 주세요.</p>}
+      <p className="mt-3 text-xs text-[var(--theme-muted-text)]">학생 화면에 바로 반영돼요. 0점 아래로는 줄지 않고, 부화한 펫은 알로 돌아가지 않아요.</p>
+      {error ? <p role="alert" className="mt-2 text-sm font-semibold text-[var(--crs-danger-text)]">{error}</p> : null}
+    </Modal>
   );
 }

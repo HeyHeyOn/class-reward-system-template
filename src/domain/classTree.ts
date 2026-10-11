@@ -11,7 +11,7 @@ export type ClassTreeSettings = Readonly<{
   treeName: string;
   /** Price of one watering, in the class currency. 0 makes watering free. */
   waterPrice: number;
-  /** Waterings per student per day (Korea time). 0 turns watering off. */
+  /** Waterings per student per day (Korea time); drops a completed task gives count as one. 0 turns watering off. */
   waterDailyLimit: number;
   /** Drops a completed task adds. 0 turns it off. */
   taskDrops: number;
@@ -67,13 +67,15 @@ export function classTreeSuggestedGoal(settings: Pick<ClassTreeSettings, 'waterD
 
 /**
  * School days the tree takes to ripen when every active student waters it as often as allowed on
- * every school day and completes `tasksPerWeek` tasks a week. Null when nothing adds drops, or when
- * it would take more than two school years. `from` drops are already there.
+ * every school day and completes `tasksPerWeek` tasks a week. A task's drops count as one of the
+ * day's waterings, so tasks only add on top once they pass the daily limit. Null when nothing adds
+ * drops, or when it would take more than two school years. `from` drops are already there.
  */
 export function classTreeEstimateDays(
   settings: Pick<ClassTreeSettings, 'goal' | 'tasksPerWeek' | 'waterDailyLimit' | 'taskDrops'>, activeStudents: number, from = 0,
 ): number | null {
-  const perDay = Math.max(0, activeStudents) * (settings.waterDailyLimit + (settings.taskDrops * settings.tasksPerWeek) / SCHOOL_DAYS_PER_WEEK);
+  const taskCount = settings.tasksPerWeek / SCHOOL_DAYS_PER_WEEK;
+  const perDay = Math.max(0, activeStudents) * (Math.max(0, settings.waterDailyLimit - taskCount) + settings.taskDrops * taskCount);
   const left = Math.max(0, settings.goal - from);
   if (left === 0) return 0;
   if (perDay <= 0) return null;
@@ -95,18 +97,26 @@ export type ClassTreeLook = Readonly<{
   ready: boolean;
 }>;
 
+/** The fewest drops at which stage `index` begins for `goal` (the same test classTreeLook uses). */
+function stageThreshold(goal: number, index: number): number {
+  if (index >= CLASS_TREE_STAGE_STARTS.length) return goal;
+  const start = CLASS_TREE_STAGE_STARTS[index];
+  let drops = Math.max(0, Math.ceil(goal * start) - 1);
+  while (drops / goal < start) drops += 1;
+  return drops;
+}
+
 /**
- * How far the tree is toward its next stage (0–1), and that stage's index (null for the harvest after
- * the last one). Students see only this, never the whole way to the goal.
+ * Where the tree is in its stage: the stage, the next one (null for the harvest after the last), how
+ * far it is (0–1), and the drops collected since the stage began out of all the stage takes ('3/40').
+ * Students see only this, never the whole way to the goal.
  */
-export function classTreeStageProgress(drops: number, goal: number): Readonly<{ stage: number; next: number | null; fraction: number }> {
-  const progress = goal > 0 ? Math.min(1, Math.max(0, drops / goal)) : 0;
-  let stage = 0;
-  CLASS_TREE_STAGE_STARTS.forEach((start, index) => { if (progress >= start) stage = index; });
-  const from = CLASS_TREE_STAGE_STARTS[stage];
-  const to = stage + 1 < CLASS_TREE_STAGE_STARTS.length ? CLASS_TREE_STAGE_STARTS[stage + 1] : 1;
-  const fraction = to > from ? Math.min(1, Math.max(0, (progress - from) / (to - from))) : 1;
-  return { stage, next: stage + 1 < CLASS_TREE_STAGES.length ? stage + 1 : null, fraction };
+export function classTreeStageProgress(drops: number, goal: number): Readonly<{ stage: number; next: number | null; fraction: number; done: number; need: number }> {
+  const { stage } = classTreeLook(drops, goal, 0);
+  const from = stageThreshold(goal, stage), to = stageThreshold(goal, stage + 1);
+  const need = Math.max(1, to - from);
+  const done = Math.min(need, Math.max(0, drops - from));
+  return { stage, next: stage + 1 < CLASS_TREE_STAGES.length ? stage + 1 : null, fraction: done / need, done, need };
 }
 
 /** How the tree looks with `drops` of `goal`, carrying `apples` (one per student). */
