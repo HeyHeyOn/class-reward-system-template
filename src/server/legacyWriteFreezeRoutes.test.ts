@@ -129,7 +129,7 @@ describe('exhaustive legacy side-effect inventory', () => {
       .flatMap(path => exportedMethods(readFileSync(resolve('src/server', path), 'utf8'))
         .map(method => `${method} ${path.replace('../app/api', '').replace('/route.ts', '')}`)).sort();
     expect(inventory.map(e => `${e.method} ${e.route}`).sort()).toEqual(discovered);
-    expect(discovered).toHaveLength(131);
+    expect(discovered).toHaveLength(132);
     expect(new Set(discovered).size).toBe(discovered.length);
     expect(inventory.find(e => e.route === '/internal/migrations/freezing-reacquisition')?.effect).toBe('companion-authenticated-read-candidate');
     expect(TENANT_ROUTE_INVENTORY.map(e => `${e.method} ${e.route}`).sort()).toEqual(discovered);
@@ -137,6 +137,7 @@ describe('exhaustive legacy side-effect inventory', () => {
     expect(writers.filter(entry => entry.effect !== 'postgres-write')).toHaveLength(29);
     expect(inventory.find(e => e.route === '/google/callback')?.effect).toBe('oauth-exchange');
     expect(inventory.find(e => e.route === '/admin/login')?.effect).toBe('auth-cookie');
+    expect(inventory.find(e => e.route === '/bank/me/pet/dex')?.effect).toBe('student-session-read');
   });
 
   it('classifies membership-gated migration status as a direct read, not a writer or scoped data route', () => {

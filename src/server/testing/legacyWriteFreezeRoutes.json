@@ -112,6 +112,7 @@
   { "method": "POST", "route": "/class-tree/feed", "effect": "postgres-write" },
   { "method": "POST", "route": "/class-tree/harvest", "effect": "postgres-write" },
   { "method": "GET", "route": "/bank/me/pet", "effect": "student-session-read" },
+  { "method": "GET", "route": "/bank/me/pet/dex", "effect": "student-session-read" },
   { "method": "POST", "route": "/bank/me/pet/adopt", "effect": "postgres-write" },
   { "method": "POST", "route": "/bank/me/pet/care", "effect": "postgres-write" },
   { "method": "POST", "route": "/bank/me/pet/graduate", "effect": "postgres-write" },
