@@ -10,6 +10,7 @@ import { google } from 'googleapis';
 import type { QueryResult, QueryResultRow } from 'pg';
 import { GOOGLE_AUTH_COOKIE, setGoogleSessionCookie } from '@/server/googleOAuth';
 import { createPgliteDatabaseHarness, type PgliteDatabaseHarness } from '@/server/db/testing/pglite';
+import { issueTeacherTestSession } from '@/server/db/testing/teacherIdentity';
 import { makeSupportedSheets } from './__fixtures__/normalization';
 import { createLegacyNormalizationManifest } from './manifest';
 import { importLegacyNormalizationManifest } from './importer';
@@ -33,6 +34,7 @@ vi.mock('@/server/db/client', () => ({ getDatabaseClient: () => ({ pool: {
     }, release: (discard?: boolean) => { if (discard) discarded++; c.release(discard); } };
   },
   query: async (text: string, values: unknown[]) => {
+    poolQueries++;
     const c = await h.runtimePool.connect(); await c.query('BEGIN');
     try { const r = await c.query(text, values); await c.query('COMMIT'); return r; }
     catch (e) { await c.query('ROLLBACK'); throw e; } finally { c.release(); }
@@ -51,9 +53,15 @@ let cookie: string, nonce: string, slug: string, sourceId: string, version: stri
 let active: number, disabledAt: number;
 let events: string[], providerCalls: string[];
 let bridgeUnknown: boolean;
-let loseStartAck = false, connections = 0, discarded = 0, lostAcks = 0;
+let loseStartAck = false, connections = 0, poolQueries = 0, discarded = 0, lostAcks = 0;
 let configuration: Record<string, unknown>;
 const clients: InstanceType<typeof OAuth2>[] = [];
+async function genuineLogin() {
+  const session=await issueTeacherTestSession({query:(text,values)=>h.database.query(text,values)},
+    {subject:'owner',email:'owner@example.invalid'});
+  const response=NextResponse.json({}); setGoogleSessionCookie(response,session);
+  return `${GOOGLE_AUTH_COOKIE}=${response.cookies.get(GOOGLE_AUTH_COOKIE)!.value}`;
+}
 function provider() {
   const client = new OAuth2(env.MIGRATION_GOOGLE_CLIENT_ID, env.MIGRATION_GOOGLE_CLIENT_SECRET, `${ORIGIN}/api/migrations/google-sheets/callback`);
   const sheets = makeSupportedSheets(3); const access = 'local-access-token';
@@ -93,15 +101,14 @@ beforeEach(async () => {
   const row = (await h.database.query<{ source_id: string; version: string; slug: string; external_source_id: string }>("SELECT s.source_id,j.state_version::text AS version,t.slug,s.external_source_id FROM migration_jobs j JOIN migration_sources s USING(tenant_id,job_id) JOIN tenants t ON t.id=j.tenant_id WHERE j.job_id=$1 AND s.provider='GOOGLE_SHEETS'", [JOB])).rows[0];
   sourceId = row.source_id; version = row.version; slug = row.slug;
   expect(row.external_source_id).toBe(hash('sheet-1')); expect(row.external_source_id).not.toBe('sheet-1');
-  await h.database.exec('GRANT EXECUTE ON FUNCTION public.platform_find_tenant_by_slug(text) TO app_runtime');
+  await h.database.exec('GRANT EXECUTE ON FUNCTION public.platform_find_tenant_by_slug(text), public.platform_validate_teacher_session(text,uuid,uuid,boolean,text) TO app_runtime');
   await h.database.exec('GRANT SELECT,INSERT ON migration_consent_challenges,migration_consent_confirmations,migration_consent_attempts,migration_consent_captures,migration_start_intents,migration_start_confirmations,migration_start_dispatches,migration_start_executions,migration_bridge_challenges,migration_bridge_consumptions TO app_runtime');
   for (const [k, v] of Object.entries(env)) vi.stubEnv(k, v);
   vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
   vi.stubEnv('MIGRATION_GOOGLE_SHEET_REGISTRATIONS', JSON.stringify([{ tenantId: h.tenantTwoId, sourceId, spreadsheetId: 'sheet-1' }]));
-  const r = NextResponse.json({}); setGoogleSessionCookie(r, { subject: 'owner', email: 'owner@example.invalid', issuedAt: Date.now() - 1000 });
-  cookie = `${GOOGLE_AUTH_COOKIE}=${r.cookies.get(GOOGLE_AUTH_COOKIE)!.value}`;
+  cookie = await genuineLogin();
   nonce = ''; active = 0; disabledAt = 0; events = []; providerCalls = []; clients.length = 0; bridgeUnknown = false;
-  loseStartAck = false; connections = 0; discarded = 0; lostAcks = 0;
+  loseStartAck = false; connections = 0; poolQueries = 0; discarded = 0; lostAcks = 0;
   vi.spyOn(google.auth, 'OAuth2').mockImplementation(function () { return provider(); } as never);
   const request = generateKeyPairSync('ed25519'), manifestKeys = generateKeyPairSync('ed25519'), writer = generateKeyPairSync('ed25519');
   configuration = { tenantId: h.tenantTwoId, sourceId, spreadsheetId: 'sheet-1', deploymentId: 'local-companion', registrationVersion: '1', endpoint: 'https://local.example/api/internal/migrations/final-bridge', approvedScope: 'DISABLE_LOCAL_WRITER_AND_START_FREEZING', requestKeyId: 'request-1', requestPublicKey: pem(request.publicKey), requestPrivateKey: pem(request.privateKey), manifestKeyId: 'manifest-1', manifestPublicKey: pem(manifestKeys.publicKey), writerKeyId: 'writer-1', writerPublicKey: pem(writer.publicKey), encryptionKey: Buffer.alloc(32, 4).toString('base64') };
@@ -187,8 +194,8 @@ it('real canonical production factory callback reaches authentic atomic FREEZING
   const archive = await call('GET', issued.challengeId, undefined, { 'x-start-intent-digest': issued.startIntentDigest }); expect(archive.status).toBe(200); expect(await archive.json()).toMatchObject({ status: 'STARTED', scope: 'ARCHIVAL_ONLY', exclusion: 'NOT_PROVEN' });
   expect((await call('GET', issued.challengeId, undefined, { 'x-start-intent-digest': '0'.repeat(64) })).status).toBe(403);
   const before = [...events]; expect((await fixed.GET(callback)).status).toBe(403); expect(events).toEqual(before);
-  const renewed = NextResponse.json({}); setGoogleSessionCookie(renewed, { subject: 'owner', email: 'owner@example.invalid', issuedAt: Date.now() });
-  expect((await call('GET', issued.challengeId, undefined, { 'x-start-intent-digest': issued.startIntentDigest, cookie: `${GOOGLE_AUTH_COOKIE}=${renewed.cookies.get(GOOGLE_AUTH_COOKIE)!.value}` })).status).toBe(403);
+  const renewed = await genuineLogin();
+  expect((await call('GET', issued.challengeId, undefined, { 'x-start-intent-digest': issued.startIntentDigest, cookie: renewed })).status).toBe(403);
   expect(providerCalls.filter(u => u.endsWith('/token'))).toHaveLength(1); expect(providerCalls.at(-1)).toContain('/revoke'); for (const c of clients) expect(c.credentials).toEqual({});
 });
 it('uncertain registered response retains durable dispatch and never retries or auto-enables', async () => {
@@ -289,12 +296,12 @@ it('unscoped concrete exports refuse even a real identity before SQL or effects'
   const challenge = await import('@/app/api/migrations/[jobId]/freezing/start/challenge/route');
   const begin = await import('@/app/api/migrations/[jobId]/freezing/start/route');
   const status = await import('@/app/api/migrations/[jobId]/freezing/start/[attemptId]/route');
-  const params = Promise.resolve({ jobId: JOB, attemptId: USER }); const before = connections;
+  const params = Promise.resolve({ jobId: JOB, attemptId: USER }); const before = connections, queriesBefore = poolQueries;
   for (const [method, suffix, handler] of [['GET', '/challenge', challenge.GET], ['POST', '', begin.POST], ['GET', `/${USER}`, status.GET]] as const) {
     const response = await handler(new Request(`${ORIGIN}/api/migrations/${JOB}/freezing/start${suffix}`, { method, headers: { cookie } }), { params });
     expect(response.status).toBe(403); expect(response.headers.get('cache-control')).toBe('no-store');
   }
-  expect(connections).toBe(before); expect(events).toEqual([]);
+  expect(connections).toBe(before); expect(poolQueries).toBe(queriesBefore); expect(events).toEqual([]);
 });
 it.each(['absent', 'false'])('canonical start body cap cancels overflow before SQL regardless of %s Content-Length', async mode => {
   const scoped = await import('@/app/api/c/[slug]/[...path]/route'); const path = ['migrations', JOB, 'freezing', 'start'];

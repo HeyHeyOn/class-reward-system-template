@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { GOOGLE_AUTH_COOKIE, setGoogleSessionCookie } from '@/server/googleOAuth';
 import { createPgliteDatabaseHarness, type PgliteDatabaseHarness } from '@/server/db/testing/pglite';
+import { issueTeacherTestSession } from '@/server/db/testing/teacherIdentity';
 import type { TenantImportTransactionRunner } from './importer';
 import * as handlers from './freezingConsentHandlers';
 import { createTenantApiDispatcher } from '@/server/tenantApiDispatcher';
@@ -39,10 +40,12 @@ beforeEach(async()=>{
   // Provision only if present, so the first RED asserts missing production relations.
   for(const t of tables)if((await h.database.query<{name:string|null}>('SELECT to_regclass($1) AS name',[t])).rows[0]?.name)await h.database.exec(`GRANT SELECT,INSERT ON ${t} TO app_runtime`);
   vi.stubEnv('AUTH_SECRET',env.AUTH_SECRET);
-  const r=NextResponse.json({});setGoogleSessionCookie(r,{subject:'owner',email:'Owner@Example.invalid',issuedAt:Date.now()-1000});
+  const session=await issueTeacherTestSession({query:(text,values)=>h.database.query(text,values)},
+    {subject:'owner',email:'Owner@Example.invalid'});
+  const r=NextResponse.json({});setGoogleSessionCookie(r,session);
   cookie=`${GOOGLE_AUTH_COOKIE}=${r.cookies.get(GOOGLE_AUTH_COOKIE)!.value}`;
   useProductionFactory=false;
-  await h.database.exec('GRANT EXECUTE ON FUNCTION public.platform_find_tenant_by_slug(text) TO app_runtime');
+  await h.database.exec('GRANT EXECUTE ON FUNCTION public.platform_find_tenant_by_slug(text), public.platform_validate_teacher_session(text,uuid,uuid,boolean,text) TO app_runtime');
   calls=[];active=0;nonce='';cleanupFail=false;extraTab='';blockedCapture=false;clients=[];providerHook=async()=>{};
   vi.stubGlobal('fetch',vi.fn(()=>{throw Error('live network forbidden');}));
 },60000);

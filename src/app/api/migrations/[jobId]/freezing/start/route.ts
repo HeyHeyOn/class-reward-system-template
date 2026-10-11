@@ -1,7 +1,12 @@
+import { getTeacherGoogleSessionFromRequest } from '@/server/teacherSession';
+import { getTrustedTenantRequestContext } from '@/server/trustedTenantRequestContext';
 import { getProductionStartFreezingHandlers } from '@/server/migration/startFreezingProduction';
 export const dynamic = 'force-dynamic';
 export async function POST(request: Request, context: { params: Promise<Record<string, string>> }) {
-  try { return await getProductionStartFreezingHandlers().begin(request, context); }
+  try {
+    getTrustedTenantRequestContext();
+    if (!await getTeacherGoogleSessionFromRequest(request)) throw new Error('Authentication required');
+    return await getProductionStartFreezingHandlers().begin(request, context); }
   catch { return Response.json({ error: 'Freezing consent refused.' }, { status: 403,
     headers: { 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' } }); }
 }

@@ -10,6 +10,7 @@ import { google } from 'googleapis';
 import type { QueryResult, QueryResultRow } from 'pg';
 import { GOOGLE_AUTH_COOKIE, setGoogleSessionCookie } from '@/server/googleOAuth';
 import { createPgliteDatabaseHarness, type PgliteDatabaseHarness } from '@/server/db/testing/pglite';
+import { issueTeacherTestSession } from '@/server/db/testing/teacherIdentity';
 import { makeSupportedSheets, finalizeSheetsSnapshot } from './__fixtures__/normalization';
 import { createLegacyNormalizationManifest } from './manifest';
 import { importLegacyNormalizationManifest } from './importer';
@@ -112,13 +113,12 @@ async function prepareFixture(taskName: string, peer = false) {
   const row = (await h.database.query<{ source_id: string; version: string; slug: string; external_source_id: string }>("SELECT s.source_id,j.state_version::text AS version,t.slug,s.external_source_id FROM migration_jobs j JOIN migration_sources s USING(tenant_id,job_id) JOIN tenants t ON t.id=j.tenant_id WHERE j.job_id=$1 AND s.provider='GOOGLE_SHEETS'", [JOB])).rows[0];
   sourceId = row.source_id; version = row.version; slug = row.slug;
   expect(row.external_source_id).toBe(hash(spreadsheetId)); expect(row.external_source_id).not.toBe(spreadsheetId);
-  await h.database.exec('GRANT EXECUTE ON FUNCTION public.platform_find_tenant_by_slug(text) TO app_runtime');
+  await h.database.exec('GRANT EXECUTE ON FUNCTION public.platform_find_tenant_by_slug(text), public.platform_validate_teacher_session(text,uuid,uuid,boolean,text) TO app_runtime');
   await h.database.exec('GRANT SELECT,INSERT ON migration_consent_challenges,migration_consent_confirmations,migration_consent_attempts,migration_consent_captures,migration_start_intents,migration_start_confirmations,migration_start_dispatches,migration_start_executions,migration_bridge_challenges,migration_bridge_consumptions TO app_runtime');
   for (const [k, v] of Object.entries(env)) vi.stubEnv(k, v);
   vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
   vi.stubEnv('MIGRATION_GOOGLE_SHEET_REGISTRATIONS', JSON.stringify([{ tenantId: fixtureTenant, sourceId, spreadsheetId }]));
-  const r = NextResponse.json({}); setGoogleSessionCookie(r, { subject: 'owner', email: 'owner@example.invalid', issuedAt: Date.now() - 1000 });
-  cookie = `${GOOGLE_AUTH_COOKIE}=${r.cookies.get(GOOGLE_AUTH_COOKIE)!.value}`;
+  cookie = await genuineLogin();
   nonce = ''; active = 0; disabledAt = 0; events = []; providerCalls = []; clients.length = 0; bridgeUnknown = false;
   loseStartAck = false; connections = 0; discarded = 0; lostAcks = 0; fault = undefined; expireAt = 0; oldNonce = ''; priorCandidateNonce = '';
   vi.spyOn(google.auth, 'OAuth2').mockImplementation(function () { return provider(); } as never);
@@ -311,7 +311,7 @@ it.each(['missing','duplicate','forged','session','token','origin','fetch-site',
     bootCookie=`${name}=${Buffer.from(JSON.stringify(data)).toString('base64url')}.${signature}`;
     headers.cookie=`${cookie}; ${bootCookie}`;
   }
-  if (mode==='session') { const r=NextResponse.json({}); setGoogleSessionCookie(r,{subject:'owner',email:'owner@example.invalid',issuedAt:Date.now()}); headers.cookie=`${GOOGLE_AUTH_COOKIE}=${r.cookies.get(GOOGLE_AUTH_COOKIE)!.value}; ${bootCookie}`; }
+  if (mode==='session') headers.cookie=`${await genuineLogin()}; ${bootCookie}`;
   if (mode==='token') headers['x-csrf-token']='0'.repeat(64);
   if (mode==='origin') headers.origin='https://store.example.evil.invalid';
   if (mode==='fetch-site') headers['sec-fetch-site']='cross-site';
@@ -341,7 +341,7 @@ it.each(['csrf','bootstrap-token','display','extra','origin','membership','sessi
   if(mode==='extra') body.endpoint='https://evil.invalid';
   if(mode==='origin') headers.origin='https://evil.invalid';
   if(mode==='membership') await h.database.query('DELETE FROM tenant_memberships');
-  if(mode==='session') { const r=NextResponse.json({}); setGoogleSessionCookie(r,{subject:'owner',email:'owner@example.invalid',issuedAt:Date.now()}); headers.cookie=`${GOOGLE_AUTH_COOKIE}=${r.cookies.get(GOOGLE_AUTH_COOKIE)!.value}`; }
+  if(mode==='session') headers.cookie=await genuineLogin();
   if(mode==='expired') vi.spyOn(Date,'now').mockReturnValue(issued.display.expiresAt);
   const before=[...events]; const result=await intake.confirm(request('POST','',body,headers)); expect(result.status).toBe(403);
   expect((await h.database.query('SELECT * FROM migration_reacquisition_dispatches')).rows).toHaveLength(0); expect(events).toEqual(before);
@@ -441,8 +441,8 @@ it('archival fact rejects wrong intent and renewed login without sends or capabi
   expect((await intake.confirm(request('POST','',{challengeId:issued.challengeId,display:issued.display},{'x-csrf-token':issued.csrfToken}))).status).toBe(200);
   const before=[...events];
   expect((await intake.status(request('GET',`/${issued.challengeId}`,undefined,{'x-reacquisition-intent-digest':'0'.repeat(64)}))).status).toBe(403);
-  const r=NextResponse.json({});setGoogleSessionCookie(r,{subject:'owner',email:'owner@example.invalid',issuedAt:Date.now()});
-  expect((await intake.status(request('GET',`/${issued.challengeId}`,undefined,{'x-reacquisition-intent-digest':issued.intentDigest,cookie:`${GOOGLE_AUTH_COOKIE}=${r.cookies.get(GOOGLE_AUTH_COOKIE)!.value}`}))).status).toBe(403);
+  const renewed=await genuineLogin();
+  expect((await intake.status(request('GET',`/${issued.challengeId}`,undefined,{'x-reacquisition-intent-digest':issued.intentDigest,cookie:renewed}))).status).toBe(403);
   await h.database.query('DELETE FROM tenant_memberships');
   expect((await intake.status(request('GET',`/${issued.challengeId}`,undefined,{'x-reacquisition-intent-digest':issued.intentDigest}))).status).toBe(403);
   expect(events).toEqual(before);
@@ -500,8 +500,13 @@ it.each(['semantic','acquisition','preflight-zero','preflight-two'].flatMap(kind
 type ChallengeFixture = Awaited<ReturnType<typeof candidateChallenge>>;
 const confirmation = (f: ChallengeFixture, login = cookie, issued = f.issued) => f.intake.confirm(f.request('POST','',
   {challengeId:issued.challengeId,display:issued.display},{cookie:login,'x-csrf-token':issued.csrfToken}));
-function genuineLogin(subject='owner', email='owner@example.invalid', issuedAt=Date.now()-1000) {
-  const r=NextResponse.json({}); setGoogleSessionCookie(r,{subject,email,issuedAt});
+async function genuineLogin(subject='owner', email='owner@example.invalid', issuedAt=Date.now()-1000) {
+  const session=await issueTeacherTestSession({query:(text,values)=>h.database.query(text,values)},{subject,email});
+  // Keep both durable and cookie lifetimes aligned for the thirty-day boundary cases.
+  await h.database.query(`UPDATE public.teacher_auth_sessions SET authenticated_at=to_timestamp($1::double precision/1000),
+    expires_at=to_timestamp($2::double precision/1000) WHERE session_id=$3`,
+  [issuedAt,issuedAt+30*24*60*60*1000,session.sessionId]);
+  const r=NextResponse.json({}); setGoogleSessionCookie(r,{...session,issuedAt});
   return `${GOOGLE_AUTH_COOKIE}=${r.cookies.get(GOOGLE_AUTH_COOKIE)!.value}`;
 }
 it.each(['bootstrap-to-confirmation','confirmation-to-bootstrap','cross-challenge-token','actor','original-session','registration'])(
@@ -512,9 +517,9 @@ it.each(['bootstrap-to-confirmation','confirmation-to-bootstrap','cross-challeng
       const actor='20000000-0000-4000-8000-000000000099';
       await h.database.query("INSERT INTO users(id,google_subject,canonical_email) VALUES($1,'other-owner','other@example.invalid')",[actor]);
       await h.database.query("INSERT INTO tenant_memberships(tenant_id,user_id,role) VALUES($1,$2,'OWNER')",[fixtureTenant,actor]);
-      cookie=genuineLogin('other-owner','other@example.invalid');
+      cookie=await genuineLogin('other-owner','other@example.invalid');
     }
-    if(mode==='original-session') cookie=genuineLogin();
+    if(mode==='original-session') cookie=await genuineLogin();
     if(['cross-challenge-token','actor','original-session'].includes(mode)) other=await candidateChallenge(f);
     if(mode==='registration') other=await candidateChallenge(await candidateFixture(false,true,'2'));
     if(mode==='actor') expect(other.issued.display.actorUserId).not.toBe(f.issued.display.actorUserId);
@@ -550,8 +555,8 @@ it.each(['bootstrap-tenant','bootstrap-job','bootstrap-purpose','bootstrap-actor
     const actor='20000000-0000-4000-8000-000000000099';
     await h.database.query("INSERT INTO users(id,google_subject,canonical_email) VALUES($1,'other-owner','other@example.invalid')",[actor]);
     await h.database.query("INSERT INTO tenant_memberships(tenant_id,user_id,role) VALUES($1,$2,'OWNER')",[fixtureTenant,actor]);
-    cookie=genuineLogin('other-owner','other@example.invalid'); donor=await candidateChallenge(target);
-  } else if(mode==='bootstrap-session') { cookie=genuineLogin(); donor=await candidateChallenge(target); }
+    cookie=await genuineLogin('other-owner','other@example.invalid'); donor=await candidateChallenge(target);
+  } else if(mode==='bootstrap-session') { cookie=await genuineLogin(); donor=await candidateChallenge(target); }
   const {createHmac}=await import('node:crypto');
   const [name,encoded]=target.bootCookie.split('='); const [originalBytes,originalMac]=encoded.split('.');
   const path=new URL(target.request('POST','/challenge').url).pathname.replace(/\/challenge$/,'');
@@ -622,8 +627,7 @@ it.each(['bootstrap','challenge','signed-envelope','registration-envelope','chal
 });
 it.each(['dispatch-expiry','nonce-expiry','candidate-expiry'])('isolated genuine thirty-day session expiry: %s',async mode=>{
   const start=Date.now(); const sessionIssuedAt=start-30*24*60*60*1000+20_000; const sessionExpiresAt=sessionIssuedAt+30*24*60*60*1000;
-  const login=NextResponse.json({}); setGoogleSessionCookie(login,{subject:'owner',email:'owner@example.invalid',issuedAt:sessionIssuedAt});
-  cookie=`${GOOGLE_AUTH_COOKIE}=${login.cookies.get(GOOGLE_AUTH_COOKIE)!.value}`;
+  cookie=await genuineLogin('owner','owner@example.invalid',sessionIssuedAt);
   const f=await candidateChallenge();
   const {readFreezingConsentSession}=await import('./freezingConsentSession');
   expect(readFreezingConsentSession(f.request('GET','/bootstrap'),ORIGIN,env).issuedAt).toBe(sessionIssuedAt);
