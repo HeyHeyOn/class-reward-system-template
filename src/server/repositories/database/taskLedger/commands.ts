@@ -20,7 +20,7 @@ import type {
 } from '@/lib/taskLedgerApi';
 import type { TenantTransaction } from '@/server/db/transaction';
 import { appendOperationAudit } from '../operationAudit';
-import { insertPadletUse, readPadletBoardSyncs, readPadletLinks, readPadletUses, recordPadletBoardSync, type PadletLinkRow } from '../padletStore';
+import { insertPadletUse, lockPadletBoardSyncAttempt, readPadletBoardSyncs, readPadletLinks, readPadletUses, recordPadletBoardSync, type PadletLinkRow } from '../padletStore';
 import { applyTaskGrowth, type TaskGrowthInput } from '../taskGrowth';
 import { ensureTaskLedger, type RunTenantTransaction } from './migration';
 import { writeTeacherPaidCompletion } from './reward';
@@ -165,7 +165,8 @@ export function createTaskLedgerCommands(dependencies: TaskLedgerCommandDependen
           return { ...buildAdminTaskDto(task, students, events.get(task.taskInstanceId), now),
             padlet: link ? { boardId: link.boardId, boardTitle: link.boardTitle, boardUrl: link.boardUrl,
               sectionId: link.sectionId, sectionTitle: link.sectionTitle,
-              lastReadAt: syncs.get(link.boardId)?.succeededAt ?? null, error: syncs.get(link.boardId)?.errorCode ?? null } : null };
+              lastReadAt: syncs.get(link.boardId)?.succeededAt ?? null, error: syncs.get(link.boardId)?.errorCode ?? null,
+              checking: syncs.get(link.boardId)?.checking ?? false, retryAt: syncs.get(link.boardId)?.retryAt ?? null } : null };
         })),
       };
     });
@@ -322,10 +323,16 @@ export function createTaskLedgerCommands(dependencies: TaskLedgerCommandDependen
     students: Map<string, LedgerStudent>;
     events: Awaited<ReturnType<typeof readCurrentLedgerStates>>;
   } | null> {
-    const links = await readPadletLinks(tx, tenantId, boardId);
+    let links = await readPadletLinks(tx, tenantId, boardId);
     if (links.length === 0) return null;
     const tasks = new Map((await readLedgerTasks(tx, tenantId, { taskInstanceIds: links.map((link) => link.taskInstanceId), lock }))
       .map((task) => [task.taskInstanceId, task]));
+    if (lock) {
+      // A relink/unlink may have committed while task locks were acquired. Only the links
+      // still protected by those task locks can participate in this attempt's allocation.
+      links = (await readPadletLinks(tx, tenantId, boardId)).filter((link) => tasks.has(link.taskInstanceId));
+      if (links.length === 0) return null;
+    }
     const students = new Map((await readLedgerStudents(tx, tenantId)).map((student) => [student.studentId, student]));
     const events = await readCurrentLedgerStates(tx, tenantId, now, { taskInstanceIds: [...tasks.keys()] });
     const uses = await readPadletUses(tx, tenantId, [...tasks.keys()]);
@@ -360,12 +367,18 @@ export function createTaskLedgerCommands(dependencies: TaskLedgerCommandDependen
      * Moves the students whose posts count to 완료 가능 (recomputed under the task locks, so two
      * reads of the same board never use a post twice) and keeps the board's summary.
      */
-    async applyPadletBoard(input: Readonly<{ operationId: string; boardId: string; posts: readonly PadletPost[] }>): Promise<{ moved: number }> {
-      const request = { boardId: input.boardId, posts: input.posts.map((post) => [post.id, post.createdAt, post.status, post.authorName, post.subject, post.sectionId]) };
+    async applyPadletBoard(input: Readonly<{ operationId: string; boardId: string; posts: readonly PadletPost[]; syncAttemptId?: string }>): Promise<{ moved: number }> {
+      const request = { boardId: input.boardId, ...(input.syncAttemptId ? { syncAttemptId: input.syncAttemptId } : {}),
+        posts: input.posts.map((post) => [post.id, post.createdAt, post.status, post.authorName, post.subject, post.sectionId]) };
       const result = await withOperation('padlet', input.operationId, request, async (context) => {
         context.now = await clockNow(context.tx);
         const plan = await planPadlet(context.tx, context.now, input.boardId, input.posts, true);
         if (!plan) return { moved: 0, taskIds: [] as string[] };
+        // The lock order matches unlink: task rows first, then the board sync row. Its token
+        // remains locked through stage changes, post uses and the final result write.
+        if (!await lockPadletBoardSyncAttempt(context.tx, tenantId, input.boardId, input.syncAttemptId)) {
+          return { moved: 0, taskIds: [] as string[] };
+        }
         const touched = new Set<string>();
         for (const move of plan.allocation.moves) {
           const task = plan.tasks.get(move.taskId)!;
@@ -377,7 +390,8 @@ export function createTaskLedgerCommands(dependencies: TaskLedgerCommandDependen
             studentId: student.studentId, postCreatedAt: move.postCreatedAt, operationId: context.operationId });
         }
         await bumpVersions(context, touched);
-        await recordPadletBoardSync(context.tx, tenantId, input.boardId, { ok: true, summary: plan.allocation.outcomes.slice(0, PADLET_SUMMARY_LIMIT) });
+        await recordPadletBoardSync(context.tx, tenantId, input.boardId,
+          { ok: true, summary: plan.allocation.outcomes.slice(0, PADLET_SUMMARY_LIMIT) }, input.syncAttemptId);
         return { moved: plan.allocation.moves.length, taskIds: [...touched].map((id) => plan.tasks.get(id)!.taskId).sort() };
       }, (value) => ({ taskIds: value.taskIds, boardId: input.boardId, moved: value.moved }));
       return { moved: result.value?.moved ?? 0 };

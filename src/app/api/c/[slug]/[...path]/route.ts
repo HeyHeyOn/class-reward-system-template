@@ -3,6 +3,8 @@ import { getProductionTenantAccessDependencies } from '@/server/tenantAccess';
 import { readBridgeBytes } from '@/server/migration/registeredBridgeProducer';
 
 export const dynamic = 'force-dynamic';
+// Includes bounded response-time Padlet work registered through Next.js after().
+export const maxDuration = 60;
 
 type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
 type Context = { params: Promise<Record<string, string>> };

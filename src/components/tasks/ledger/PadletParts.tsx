@@ -20,6 +20,15 @@ export function padletErrorText(code: string | null): string {
   return PADLET_ERROR_MESSAGES[code as PadletErrorCode] ?? PADLET_ERROR_MESSAGES.UNAVAILABLE;
 }
 
+export function padletErrorLabel(code: string): string {
+  const labels: Record<PadletErrorCode, string> = {
+    NO_KEY: 'API 키 필요', KEY_UNREADABLE: '저장된 키 확인 필요', INVALID_KEY: 'API 키 오류',
+    NOT_PAYING: '유료 계정 필요', NOT_ADMIN: '게시판 관리 권한 필요', NOT_FOUND: '게시판 찾을 수 없음',
+    RATE_LIMITED: '요청 제한', TIMEOUT: '응답 시간 초과', UNAVAILABLE: '연결 오류',
+  };
+  return labels[code as PadletErrorCode] ?? labels.UNAVAILABLE;
+}
+
 /** The class's Padlet key, linked boards and recent posts. Loaded when a Padlet screen opens. */
 export function usePadletStatus() {
   const [status, setStatus] = useState<PadletStatusDto | null>(null);
@@ -313,14 +322,23 @@ export function PadletPostList({ posts, taskId, now, stageOf, busyStudentId, onM
   );
 }
 
-/** A small line that tells when the board was last read, or why it could not be. */
-export function PadletReadState({ lastReadAt, error, now }: { lastReadAt: string | null; error: string | null; now: string }) {
-  if (error) {
-    return <p className="flex items-start gap-1.5 text-xs font-semibold text-[var(--crs-warning-text)]"><Icon name="alert" size={14} />{padletErrorText(error)}</p>;
-  }
+/** Keep the last successful read visible even while a later check is pending or failed. */
+export function PadletReadState({ lastReadAt, error, now, checking = false, retryAt }: {
+  lastReadAt: string | null; error: string | null; now: string; checking?: boolean; retryAt?: string | null;
+}) {
+  const waiting = error === 'RATE_LIMITED' && retryAt && Date.parse(retryAt) > Date.parse(now);
   return (
-    <p className="text-xs text-[var(--theme-muted-text)]">
-      {lastReadAt ? `마지막 확인 ${formatInstant(lastReadAt, now)}` : '아직 확인하지 않았어요.'}
-    </p>
+    <div className="space-y-1 text-xs" aria-live="polite">
+      {checking ? <p className="font-semibold text-[var(--theme-muted-text)]">패들렛 확인 중이에요. 결과를 기다려 주세요.</p> : null}
+      {error ? (
+        <p className="flex items-start gap-1.5 font-semibold text-[var(--crs-warning-text)]">
+          <Icon name="alert" size={14} /><span>{checking ? '이전 확인: ' : ''}{padletErrorText(error)}</span>
+        </p>
+      ) : null}
+      {waiting ? <p className="text-[var(--theme-muted-text)]">{formatInstant(retryAt, now)} 이후 다시 확인할 수 있어요.</p> : null}
+      <p className="text-[var(--theme-muted-text)]">
+        {lastReadAt ? `마지막 확인 성공 ${formatInstant(lastReadAt, now)}` : '아직 확인에 성공한 기록이 없어요.'}
+      </p>
+    </div>
   );
 }

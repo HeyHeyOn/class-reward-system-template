@@ -8,7 +8,7 @@ import { studentLabels, type LedgerStudent } from './LedgerParts';
 import { ledgerClient, newOperationId, padletClient } from './ledgerClient';
 import {
   PadletBoardPicker, PadletKeyBox, PadletLink, PadletPostList, PadletReadState, PadletRules, PadletSharingCallout,
-  usePadletStatus, type PickedBoard,
+  padletErrorText, usePadletStatus, type PickedBoard,
 } from './PadletParts';
 import { runWrite } from './useTaskBoard';
 import type { TaskLedger } from './useTaskLedger';
@@ -43,6 +43,11 @@ export function PadletTaskTab({ ledger, task, students, notify, busy, onBusy }: 
   const names = useMemo(() => studentLabels(students), [students]);
   const link = task.padlet ?? null;
   const boardStatus = link ? padlet.status?.boards.find((item) => item.boardId === link.boardId) ?? null : null;
+  // The open tab's status request and the regular task-board poll can finish at different times.
+  const statusIsNewer = padlet.status && (!board.now || Date.parse(padlet.status.now) >= Date.parse(board.now));
+  const readState = boardStatus && statusIsNewer
+    ? { lastReadAt: boardStatus.succeededAt, error: boardStatus.error, checking: boardStatus.checking, retryAt: boardStatus.retryAt }
+    : link;
   const key = padlet.status?.key ?? null;
   const keyReady = Boolean(key?.saved && key.readable);
   const sharing = picked
@@ -82,17 +87,27 @@ export function PadletTaskTab({ ledger, task, students, notify, busy, onBusy }: 
   async function syncNow() {
     if (busy) return;
     const before = task.counts.READY;
-    const result = await run('sync', () => runWrite(board, () => padletClient.sync()));
-    if (!result.ok) { setError(result.error); return; }
-    padlet.setStatus(result.data);
-    let after = before;
-    const fresh = await ledgerClient.board();
-    if (fresh.ok) {
-      board.applyTasks(fresh.data.tasks);
-      after = fresh.data.tasks.find((item) => item.taskId === task.taskId)?.counts.READY ?? before;
-    }
-    const failed = result.data.boards.find((item) => item.boardId === link?.boardId)?.error;
-    notify(failed ? '패들렛을 읽지 못했어요. 아래 안내를 확인해 주세요.' : `패들렛을 확인했어요.${movedText(before, after)}`);
+    await run('sync', () => runWrite(board, async () => {
+      const result = await padletClient.sync();
+      if (!result.ok) { setError(result.error); return result; }
+      let status = result.data;
+      let after = before;
+      const fresh = await ledgerClient.board();
+      if (fresh.ok) {
+        board.applyTasks(fresh.data.tasks);
+        after = fresh.data.tasks.find((item) => item.taskId === task.taskId)?.counts.READY ?? before;
+        status = { ...status, now: fresh.data.now, boards: status.boards.map((item) => {
+          const latest = fresh.data.tasks.find((candidate) => candidate.padlet?.boardId === item.boardId)?.padlet;
+          return latest ? { ...item, succeededAt: latest.lastReadAt, error: latest.error as typeof item.error,
+            checking: latest.checking, retryAt: latest.retryAt } : item;
+        }) };
+      }
+      padlet.setStatus(status);
+      const current = status.boards.find((item) => item.boardId === link?.boardId);
+      notify(current?.checking ? '패들렛을 확인 중이에요. 결과를 기다려 주세요.'
+        : current?.error ? padletErrorText(current.error) : `패들렛을 확인했어요.${movedText(before, after)}`);
+      return result;
+    }));
   }
 
   async function makeReady(studentId: string) {
@@ -118,7 +133,7 @@ export function PadletTaskTab({ ledger, task, students, notify, busy, onBusy }: 
     );
   }
 
-  const now = board.now ?? padlet.status.now;
+  const now = statusIsNewer ? padlet.status.now : board.now ?? padlet.status.now;
   const stageOf = (studentId: string) => task.students.find((row) => row.studentId === studentId)?.stage ?? 'UNASSIGNED';
 
   if (link && !changing) {
@@ -135,7 +150,8 @@ export function PadletTaskTab({ ledger, task, students, notify, busy, onBusy }: 
             </div>
             <PadletLink href={link.boardUrl} label={`${link.boardTitle || '게시판'} 패들렛 열기`} className="shrink-0 text-[13px]">열기</PadletLink>
           </div>
-          <PadletReadState lastReadAt={boardStatus?.succeededAt ?? link.lastReadAt} error={boardStatus ? boardStatus.error : link.error} now={now} />
+          <PadletReadState lastReadAt={readState?.lastReadAt ?? null} error={readState?.error ?? null}
+            checking={action === 'sync' || readState?.checking} retryAt={readState?.retryAt} now={now} />
           {key && !keyReady ? <PadletKeyBox keyStatus={key} onChange={padlet.setStatus} disabled={busy} /> : null}
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" icon="refresh" loading={action === 'sync'} disabled={busy} onClick={() => void syncNow()}>지금 확인</Button>
@@ -150,6 +166,7 @@ export function PadletTaskTab({ ledger, task, students, notify, busy, onBusy }: 
               <Button size="sm" variant="dangerGhost" className="ml-auto" disabled={busy} onClick={() => setConfirmUnlink(true)}>연결 끊기</Button>
             )}
           </div>
+          <p className="text-xs text-[var(--theme-muted-text)]">‘지금 확인’은 이 학급의 모든 연결 게시판을 확인해요. 이미 확인 중이거나 요청 제한을 기다리는 게시판은 중복 요청하지 않아요.</p>
         </section>
         <PadletSharingCallout tasks={sharing} />
         <PadletRules />

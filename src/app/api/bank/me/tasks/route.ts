@@ -12,6 +12,7 @@ import { projectStudentBankTasks } from '@/server/studentBankViews';
 import { buildStudentTaskProjection } from '@/server/studentTaskProjection';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 /** The logged-in student's own tasks from 미완료 upward (never 미부여). */
 export async function GET(request: Request) {
@@ -22,7 +23,7 @@ export async function GET(request: Request) {
     const checked = await confirmStudentBankStudent(auth, bankReader);
     if (!checked.ok) return checked.response;
     const studentId = checked.student.studentId;
-    // Posts written on linked Padlet boards since the last look count before the list is read.
+    // The authorized student's screen observes new Padlet stages on its next refresh.
     const padletBoards = await padletBoardsForStudent(request, { sync: legacyWriteFreezeResponse() === null });
     const now = new Date().toISOString();
     const taskReader = await createConfiguredTaskReader(request);

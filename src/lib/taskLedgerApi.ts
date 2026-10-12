@@ -54,6 +54,8 @@ export type TaskPadletLinkDto = Readonly<{
   lastReadAt: string | null;
   /** Why the last read failed (a PadletErrorCode), or null. */
   error: string | null;
+  checking?: boolean;
+  retryAt?: string | null;
 }>;
 
 export type AdminTaskDto = TaskDefinitionDto & Readonly<{

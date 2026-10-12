@@ -59,6 +59,7 @@ function readPadletLink(value: unknown): TaskPadletLinkDto | null {
     boardId: value.boardId, boardTitle: isText(value.boardTitle) ? value.boardTitle : '', boardUrl: value.boardUrl,
     sectionId: isText(value.sectionId) ? value.sectionId : null, sectionTitle: isText(value.sectionTitle) ? value.sectionTitle : null,
     lastReadAt: isText(value.lastReadAt) ? value.lastReadAt : null, error: isText(value.error) ? value.error : null,
+    checking: value.checking === true, retryAt: isText(value.retryAt) ? value.retryAt : null,
   };
 }
 
@@ -113,7 +114,8 @@ function readPadletStatus(value: unknown): PadletStatusDto | null {
     key: { saved: value.key.saved === true, hint: isText(value.key.hint) ? value.key.hint : null, readable: value.key.readable === true },
     boards: boards.map((board) => ({ ...board, title: isText(board.title) ? board.title : '', url: isText(board.url) ? board.url : '',
       checkedAt: isText(board.checkedAt) ? board.checkedAt : null, succeededAt: isText(board.succeededAt) ? board.succeededAt : null,
-      error: isText(board.error) ? board.error as PadletErrorCode : null })),
+      error: isText(board.error) ? board.error as PadletErrorCode : null,
+      checking: board.checking === true, retryAt: isText(board.retryAt) ? board.retryAt : null })),
   };
 }
 

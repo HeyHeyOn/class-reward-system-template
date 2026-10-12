@@ -10,6 +10,7 @@ import { StageCounts, type LedgerStudent } from './LedgerParts';
 import { formatInstant, holderCount, money, recurrenceSummary, resetStageSummary, sortTasks, taskStatus } from './ledgerFormat';
 import { NewTaskSheet } from './NewTaskSheet';
 import { BulkPadletDialog } from './PadletLinking';
+import { padletErrorLabel } from './PadletParts';
 import { QrStageDialog } from './QrStageDialog';
 import { TaskEditSheet } from './TaskEditSheet';
 import type { TaskLedger } from './useTaskLedger';
@@ -53,8 +54,15 @@ export function TaskLedgerPanel({ ledger, unit, notify }: { ledger: TaskLedger; 
       parts.push({ icon: 'lock', text: `먼저: ${prerequisite?.title ?? '삭제된 과제'}` });
     }
     if (task.padlet) {
-      parts.push(task.padlet.error ? { icon: 'alert', text: '패들렛을 읽지 못함', warn: true }
+      if (task.padlet.checking) parts.push({ icon: 'refresh', text: '패들렛 확인 중' });
+      parts.push(task.padlet.error ? { icon: 'alert', text: `패들렛${task.padlet.checking ? ' 이전 확인' : ''}: ${padletErrorLabel(task.padlet.error)}`, warn: true }
         : { icon: 'link', text: `패들렛: ${task.padlet.boardTitle || '게시판'}${task.padlet.sectionTitle ? ` · ${task.padlet.sectionTitle}` : ''}` });
+      if (task.padlet.error || task.padlet.checking) {
+        parts.push({ icon: 'link', text: task.padlet.lastReadAt ? `마지막 확인 성공 ${formatInstant(task.padlet.lastReadAt, board.now)}` : '아직 확인 성공 기록 없음' });
+      }
+      if (task.padlet.error === 'RATE_LIMITED' && task.padlet.retryAt && Date.parse(task.padlet.retryAt) > Date.parse(board.now ?? '')) {
+        parts.push({ icon: 'clock', text: `${formatInstant(task.padlet.retryAt, board.now)} 이후 재확인` });
+      }
     }
     return parts;
   }

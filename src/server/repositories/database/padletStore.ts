@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import type { PadletPostOutcome } from '@/domain/padlet';
 import type { TenantTransaction } from '@/server/db/transaction';
@@ -22,6 +23,8 @@ export type PadletBoardSyncRow = Readonly<{
   checkedAt: string | null;
   succeededAt: string | null;
   errorCode: string | null;
+  checking: boolean;
+  retryAt: string | null;
   summary: readonly PadletPostOutcome[];
 }>;
 
@@ -110,42 +113,81 @@ export async function insertPadletUse(tx: TenantTransaction, tenantId: string, u
 
 export async function readPadletBoardSyncs(tx: TenantTransaction, tenantId: string): Promise<PadletBoardSyncRow[]> {
   const result = await tx.execute(sql`
-    SELECT board_id, ${iso('checked_at')} AS checked_at, ${iso('succeeded_at')} AS succeeded_at, error_code, summary
+    SELECT board_id, ${iso('checked_at')} AS checked_at, ${iso('succeeded_at')} AS succeeded_at, error_code, summary,
+      coalesce(sync_attempt_id IS NOT NULL AND sync_lease_until > clock_timestamp(), false) AS checking,
+      CASE WHEN retry_after > clock_timestamp() THEN ${iso('retry_after')} ELSE NULL END AS retry_at
     FROM padlet_board_syncs WHERE tenant_id=${tenantId} ORDER BY board_id`);
   return (result.rows as Array<Record<string, unknown>>).map((row) => ({
     boardId: String(row.board_id), checkedAt: (row.checked_at as string | null) ?? null, succeededAt: (row.succeeded_at as string | null) ?? null,
     errorCode: (row.error_code as string | null) ?? null, summary: Array.isArray(row.summary) ? row.summary as PadletPostOutcome[] : [],
+    checking: row.checking === true, retryAt: (row.retry_at as string | null) ?? null,
   }));
 }
 
-/**
- * Takes the board's turn to be read: true when it was last checked more than `staleSeconds` ago
- * (or never). Concurrent requests see the fresh time and skip, so a busy class reads Padlet at most
- * once per period.
- */
-export async function claimPadletBoardSync(tx: TenantTransaction, tenantId: string, boardId: string, staleSeconds: number): Promise<boolean> {
-  await tx.execute(sql`INSERT INTO padlet_board_syncs (tenant_id, board_id) VALUES (${tenantId}, ${boardId}) ON CONFLICT DO NOTHING`);
+/** Serialize against deletion/withdrawal before taking task and sync locks. */
+async function lockActiveTenant(tx: TenantTransaction, tenantId: string): Promise<boolean> {
+  const result = await tx.execute(sql`SELECT id FROM tenants
+    WHERE id=${tenantId} AND lifecycle='ACTIVE' AND deleted_at IS NULL FOR SHARE`);
+  return result.rows.length > 0;
+}
+
+const liveLink = (tenantId: string, boardId: string) => sql`EXISTS (
+  SELECT 1 FROM task_padlet_links l JOIN tasks t
+    ON t.tenant_id=l.tenant_id AND t.task_instance_id=l.task_instance_id
+  WHERE l.tenant_id=${tenantId} AND l.board_id=${boardId} AND t.deleted_at IS NULL)`;
+
+/** Manual reads bypass freshness, but never an unfinished lease or a rate-limit cooldown. */
+export async function claimPadletBoardSync(tx: TenantTransaction, tenantId: string, boardId: string,
+  staleSeconds: number, manual = false): Promise<string | null> {
+  if (!await lockActiveTenant(tx, tenantId)) return null;
+  // Match unlink/apply ordering: tenant -> tasks -> sync. The second live-link check below
+  // uses a fresh statement snapshot after any concurrent task deletion/relink has finished.
+  const linked = await tx.execute(sql`SELECT t.task_instance_id FROM task_padlet_links l JOIN tasks t
+    ON t.tenant_id=l.tenant_id AND t.task_instance_id=l.task_instance_id
+    WHERE l.tenant_id=${tenantId} AND l.board_id=${boardId} AND t.deleted_at IS NULL
+    ORDER BY t.task_instance_id FOR SHARE OF t`);
+  if (linked.rows.length === 0) return null;
+  const attemptId = randomUUID();
   const result = await tx.execute(sql`
-    UPDATE padlet_board_syncs SET checked_at=clock_timestamp()
-    WHERE tenant_id=${tenantId} AND board_id=${boardId}
-      AND (checked_at IS NULL OR checked_at < clock_timestamp() - make_interval(secs => ${staleSeconds}))
-    RETURNING board_id`);
+    INSERT INTO padlet_board_syncs (tenant_id, board_id, checked_at, sync_attempt_id, sync_lease_until)
+    SELECT ${tenantId}, ${boardId}, clock_timestamp(), ${attemptId}::uuid, clock_timestamp() + interval '60 seconds'
+    WHERE ${liveLink(tenantId, boardId)}
+    ON CONFLICT (tenant_id, board_id) DO UPDATE SET checked_at=EXCLUDED.checked_at,
+      sync_attempt_id=EXCLUDED.sync_attempt_id, sync_lease_until=EXCLUDED.sync_lease_until, retry_after=NULL
+    WHERE (padlet_board_syncs.sync_lease_until IS NULL OR padlet_board_syncs.sync_lease_until <= clock_timestamp())
+      AND (padlet_board_syncs.retry_after IS NULL OR padlet_board_syncs.retry_after <= clock_timestamp())
+      AND (${manual} OR padlet_board_syncs.checked_at IS NULL
+        OR padlet_board_syncs.checked_at < clock_timestamp() - make_interval(secs => ${staleSeconds}))
+    RETURNING sync_attempt_id`);
+  return result.rows.length > 0 ? attemptId : null;
+}
+
+/** Hold this row lock until the same transaction commits all stage/use/result changes.
+ * An expired token remains eligible only until another request takes over. A completed token
+ * is never reusable. Legacy callers without a token cannot write over an unfinished attempt.
+ */
+export async function lockPadletBoardSyncAttempt(tx: TenantTransaction, tenantId: string, boardId: string,
+  attemptId?: string): Promise<boolean> {
+  if (!await lockActiveTenant(tx, tenantId)) return false;
+  const result = await tx.execute(sql`SELECT board_id FROM padlet_board_syncs
+    WHERE tenant_id=${tenantId} AND board_id=${boardId} AND ${liveLink(tenantId, boardId)}
+      AND ${attemptId ? sql`sync_attempt_id=${attemptId}::uuid AND sync_lease_until IS NOT NULL`
+        : sql`sync_lease_until IS NULL AND (retry_after IS NULL OR retry_after <= clock_timestamp())`}
+    FOR UPDATE`);
   return result.rows.length > 0;
 }
 
 export async function recordPadletBoardSync(tx: TenantTransaction, tenantId: string, boardId: string, outcome: Readonly<
   { ok: true; summary: readonly PadletPostOutcome[] } | { ok: false; errorCode: string }
->): Promise<void> {
-  if (outcome.ok) {
-    await tx.execute(sql`
-      INSERT INTO padlet_board_syncs (tenant_id, board_id, checked_at, succeeded_at, error_code, summary)
-      VALUES (${tenantId}, ${boardId}, clock_timestamp(), clock_timestamp(), NULL, ${JSON.stringify(outcome.summary)}::jsonb)
-      ON CONFLICT (tenant_id, board_id) DO UPDATE SET checked_at=EXCLUDED.checked_at, succeeded_at=EXCLUDED.succeeded_at,
-        error_code=NULL, summary=EXCLUDED.summary`);
-    return;
-  }
-  await tx.execute(sql`
-    INSERT INTO padlet_board_syncs (tenant_id, board_id, checked_at, error_code)
-    VALUES (${tenantId}, ${boardId}, clock_timestamp(), ${outcome.errorCode})
-    ON CONFLICT (tenant_id, board_id) DO UPDATE SET checked_at=EXCLUDED.checked_at, error_code=EXCLUDED.error_code`);
+>, attemptId?: string): Promise<boolean> {
+  if (!await lockPadletBoardSyncAttempt(tx, tenantId, boardId, attemptId)) return false;
+  // UPDATE only: a response arriving after unlink/delete must not resurrect a sync row.
+  const result = await tx.execute(sql`UPDATE padlet_board_syncs SET checked_at=clock_timestamp(), sync_lease_until=NULL,
+    succeeded_at=${outcome.ok ? sql`clock_timestamp()` : sql`succeeded_at`},
+    error_code=${outcome.ok ? null : outcome.errorCode},
+    summary=${outcome.ok ? sql`${JSON.stringify(outcome.summary)}::jsonb` : sql`summary`},
+    retry_after=${!outcome.ok && outcome.errorCode === 'RATE_LIMITED'
+      ? sql`greatest(retry_after, clock_timestamp() + interval '60 seconds')` : sql`NULL`}
+    WHERE tenant_id=${tenantId} AND board_id=${boardId} RETURNING board_id`);
+  return result.rows.length > 0;
 }

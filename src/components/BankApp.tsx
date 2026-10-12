@@ -38,6 +38,7 @@ import type { PetStudentViewDto } from '@/lib/petApi';
 import type { TreePlay } from './classTree/TreeCanvas';
 import { formatMoney } from './bank/format';
 import { useTaskCompletion, type CompletionOutcome, type CompletionSuccess } from './bank/useTaskCompletion';
+import { usePadletTaskRefresh } from './bank/usePadletTaskRefresh';
 
 const BankTreeView = dynamic(() => import('./bank/BankTree').then((module) => module.BankTreeView));
 const BankPetView = dynamic(() => import('./pet/BankPet').then((module) => module.BankPetView));
@@ -92,6 +93,7 @@ export function BankApp() {
   // prevent an older request (or a replaced current view) from winning by arriving last.
   const mutationVersion = useRef(0);
   const reads = useRef({ tasks: 0, tree: 0, pet: 0, bag: 0, profile: 0, transactions: 0 });
+  const taskReadsInFlight = useRef(new Set<{ generation: number }>());
   const historyPushed = useRef(false);
   const homeHeadingRef = useRef<HTMLHeadingElement>(null);
   const historyHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -133,18 +135,24 @@ export function BankApp() {
     setPhase('login');
   }, []);
 
-  const loadTasks = useCallback(async () => {
+  const loadTasks = useCallback(async (silent = false) => {
     const current = generation.current;
+    if (silent && [...taskReadsInFlight.current].some((read) => read.generation === current)) return;
     const ticket = ++reads.current.tasks;
-    setTasksLoading(true);
-    setTasksError('');
-    const result = await fetchTasks();
+    if (!silent) {
+      setTasksLoading(true);
+      setTasksError('');
+    }
+    const pendingRead = { generation: current };
+    taskReadsInFlight.current.add(pendingRead);
+    const result = await fetchTasks().finally(() => { taskReadsInFlight.current.delete(pendingRead); });
     if (current !== generation.current || ticket !== reads.current.tasks) return;
-    setTasksLoading(false);
-    if (result.ok) setTasks(result.data.tasks);
+    if (!silent) setTasksLoading(false);
+    if (result.ok) { setTasks(result.data.tasks); setTasksError(''); }
     else if (isSessionRequired(result)) expireSession();
-    else setTasksError(result.error ?? '과제를 불러오지 못했어요.');
+    else if (!silent) setTasksError(result.error ?? '과제를 불러오지 못했어요.');
   }, [expireSession]);
+  const refreshPadletTasks = useCallback(() => loadTasks(true), [loadTasks]);
 
   const loadTree = useCallback(async () => {
     const current = generation.current;
@@ -271,6 +279,8 @@ export function BankApp() {
       : result.message),
   });
   const { restore: restoreCompletion, reset: resetCompletion, reconcile: reconcileCompletion } = completion;
+  usePadletTaskRefresh(phase === 'home' && (view === 'home' || view === 'tasks')
+    && !completion.inFlight && !loggingOut && !!tasks?.some((task) => task.padlet), refreshPadletTasks);
   useEffect(() => {
     if (tasks) reconcileCompletion(tasks);
   }, [tasks, reconcileCompletion]);

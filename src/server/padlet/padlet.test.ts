@@ -68,6 +68,70 @@ describe('padlet board reply', () => {
       expect.objectContaining({ headers: expect.objectContaining({ 'X-Api-Key': 'key-123456' }) }));
     await expect(fetchPadletBoard({ boardId: 'no', apiKey: 'key-123456', fetchImpl: fetchImpl as never })).rejects.toBeInstanceOf(PadletApiError);
   });
+
+  it('ends a request at its full timeout even if the fetch implementation ignores abort', async () => {
+    vi.useFakeTimers();
+    try {
+      const metrics = vi.fn();
+      const fetchImpl = vi.fn(() => new Promise<Response>(() => undefined));
+      const pending = fetchPadletBoard({ boardId: BOARD.data.id, apiKey: 'synthetic-key', timeoutMs: 8_000,
+        fetchImpl, onComplete: metrics }).catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(7_999);
+      expect(metrics).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await pending).toMatchObject({ code: 'TIMEOUT' });
+      expect(metrics).toHaveBeenCalledExactlyOnceWith({ status: null, bytes: 0, elapsedMs: expect.any(Number), outcome: 'TIMEOUT' });
+      expect((fetchImpl.mock.calls[0] as unknown[])[1]).toMatchObject({ signal: expect.objectContaining({ aborted: true }) });
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('includes a stalled response body in the timeout and does not wait for cancellation', async () => {
+    vi.useFakeTimers();
+    try {
+      const cancel = vi.fn(() => new Promise<void>(() => undefined));
+      const body = new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(new TextEncoder().encode('{')); }, cancel });
+      const metrics = vi.fn();
+      const pending = fetchPadletBoard({ boardId: BOARD.data.id, apiKey: 'synthetic-key', timeoutMs: 8_000,
+        fetchImpl: vi.fn(async () => new Response(body)), onComplete: metrics }).catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(8_000);
+      expect(await pending).toMatchObject({ code: 'TIMEOUT' });
+      expect(cancel).toHaveBeenCalledTimes(1);
+      expect(metrics).toHaveBeenCalledExactlyOnceWith({ status: 200, bytes: 1, elapsedMs: expect.any(Number), outcome: 'TIMEOUT' });
+    } finally { vi.useRealTimers(); }
+  });
+
+  it.each(['declared', 'streamed'] as const)('rejects %s bodies over 8MB without waiting on cancellation', async (kind) => {
+    const cancel = vi.fn(() => new Promise<void>(() => undefined));
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) { if (kind === 'streamed') controller.enqueue(new Uint8Array(8_000_001)); }, cancel,
+    });
+    const metrics = vi.fn();
+    await expect(fetchPadletBoard({ boardId: BOARD.data.id, apiKey: 'synthetic-key', onComplete: metrics,
+      fetchImpl: vi.fn(async () => new Response(body, { headers: kind === 'declared' ? { 'content-length': '8000001' } : {} })) }))
+      .rejects.toMatchObject({ code: 'UNAVAILABLE' });
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(metrics).toHaveBeenCalledExactlyOnceWith({ status: 200, bytes: kind === 'streamed' ? 8_000_001 : 0,
+      elapsedMs: expect.any(Number), outcome: 'UNAVAILABLE' });
+  });
+
+  it('reports 429 immediately even when its body stalls, with only safe diagnostics', async () => {
+    const cancel = vi.fn(() => new Promise<void>(() => undefined));
+    const metrics = vi.fn();
+    await expect(fetchPadletBoard({ boardId: BOARD.data.id, apiKey: 'do-not-log-this-key', onComplete: metrics,
+      fetchImpl: vi.fn(async () => new Response(new ReadableStream({ cancel }), { status: 429 })) }))
+      .rejects.toMatchObject({ code: 'RATE_LIMITED' });
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(metrics).toHaveBeenCalledExactlyOnceWith({ status: 429, bytes: 0, elapsedMs: expect.any(Number), outcome: 'RATE_LIMITED' });
+    expect(JSON.stringify(metrics.mock.calls)).not.toMatch(/do-not-log|https:|qk3sab0nz9rcp0wv/);
+  });
+
+  it('reports successful bytes and ignores a diagnostics callback failure', async () => {
+    const text = JSON.stringify(BOARD);
+    const metrics = vi.fn(() => { throw new Error('diagnostics unavailable'); });
+    await expect(fetchPadletBoard({ boardId: BOARD.data.id, apiKey: 'synthetic-key', onComplete: metrics,
+      fetchImpl: vi.fn(async () => new Response(text)) })).resolves.toMatchObject({ id: BOARD.data.id });
+    expect(metrics).toHaveBeenCalledExactlyOnceWith({ status: 200, bytes: Buffer.byteLength(text), elapsedMs: expect.any(Number), outcome: 'SUCCESS' });
+  });
 });
 
 describe('padlet api key', () => {

@@ -69,7 +69,7 @@ describe('GET /api/bank/me/tasks', () => {
     expect(listTaskCycleProjections).toHaveBeenCalledWith(expect.objectContaining({ studentId: 'S001', includeInactive: true }));
   });
 
-  it('reads linked Padlet boards first and tells the student where to post', async () => {
+  it('schedules a Padlet refresh and tells the student where to post', async () => {
     vi.mocked(padletBoardsForStudent).mockResolvedValue(new Map([
       ['waiting', { title: '5학년 6반 칭찬 게시판', url: 'https://padlet.com/t/board-abc123def456', sectionTitle: '우리 반' }],
     ]));
@@ -93,6 +93,7 @@ describe('GET /api/bank/me/tasks', () => {
     const response = await call('https://example.test/api/bank/me/tasks?studentId=S001', null);
     expect(response.status).toBe(401);
     expect(createConfiguredTaskReader).not.toHaveBeenCalled();
+    expect(padletBoardsForStudent).not.toHaveBeenCalled();
   });
 
   it('logs out a deactivated student without reading tasks', async () => {
@@ -100,6 +101,7 @@ describe('GET /api/bank/me/tasks', () => {
     const response = await call();
     expect(response.status).toBe(401);
     expect(listTaskCycleProjections).not.toHaveBeenCalled();
+    expect(padletBoardsForStudent).not.toHaveBeenCalled();
   });
 
   it('returns a retryable error when tasks cannot be read', async () => {

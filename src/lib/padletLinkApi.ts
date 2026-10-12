@@ -13,8 +13,8 @@ export const PADLET_ERROR_MESSAGES: Readonly<Record<PadletErrorCode, string>> = 
   NOT_PAYING: 'Padlet API는 유료(Gold·Platinum) 계정의 키로만 쓸 수 있어요.',
   NOT_ADMIN: '이 게시판을 관리하는 계정의 API 키가 필요해요.',
   NOT_FOUND: '게시판을 찾지 못했어요. 주소를 다시 확인해 주세요.',
-  RATE_LIMITED: 'Padlet에 요청이 많아요. 1분 뒤에 다시 해 주세요.',
-  TIMEOUT: 'Padlet이 늦게 답해요. 잠시 뒤에 다시 해 주세요.',
+  RATE_LIMITED: 'Padlet 요청 한도에 걸렸어요. 대기 후 다시 확인해 주세요.',
+  TIMEOUT: 'Padlet 응답 시간이 초과됐어요. 잠시 뒤에 다시 확인해 주세요.',
   UNAVAILABLE: 'Padlet에 연결하지 못했어요. 잠시 뒤에 다시 해 주세요.',
 };
 
@@ -32,6 +32,10 @@ export type PadletBoardStatusDto = Readonly<{
   checkedAt: string | null;
   succeededAt: string | null;
   error: PadletErrorCode | null;
+  /** Another request is currently checking this board. */
+  checking?: boolean;
+  /** Earliest retry after an upstream rate limit; null when no wait remains. */
+  retryAt?: string | null;
   /** Recent posts, newest first. */
   posts: readonly PadletPostDto[];
 }>;

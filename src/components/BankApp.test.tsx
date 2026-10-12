@@ -16,6 +16,7 @@ const SECOND_OPERATION_ID = '20000000-0000-4000-8000-000000000002';
 type Task = {
   taskId: string; title: string; description: string; reward: number; stage: 'PENDING' | 'READY' | 'COMPLETED';
   completable: boolean; blockedReason?: string; dueAt?: string; recurrence?: unknown; prerequisiteTitle?: string;
+  padlet?: { title: string; url: string; sectionTitle: string | null };
 };
 
 const PROFILE = { student: { studentId: 'S001', name: '김민준', balance: 1200 }, session: { expiresAt: '2026-10-13T00:00:00.000Z' } };
@@ -135,6 +136,47 @@ afterEach(() => {
 });
 
 describe('BankApp login', () => {
+  it('observes a background Padlet result on focus without hiding the current task list', async () => {
+    state.tasks[2].padlet = { title: '우리 게시판', url: 'https://padlet.com/test/abc123def456', sectionTitle: null };
+    await renderTasks();
+    expect(readyCard('교실 청소').textContent).toContain('미완료');
+    let finish!: (response: Response) => void;
+    state.extra = (url) => url === '/api/bank/me/tasks'
+      ? new Promise<Response>((resolve) => { finish = resolve; }) : undefined;
+    fireEvent(window, new Event('focus'));
+    expect(readyCard('교실 청소')).toBeTruthy();
+    await act(async () => { finish(json({ tasks: state.tasks.map((task) => task.taskId === 'T3'
+      ? { ...task, stage: 'READY', completable: true } : task) })); });
+    expect(within(readyCard('교실 청소')).getByRole('button', { name: /완료하고/ })).toBeTruthy();
+  });
+
+  it('does not poll on focus for a class without linked Padlet tasks', async () => {
+    await renderLoggedIn();
+    const count = calls((url) => url === '/api/bank/me/tasks').length;
+    await act(async () => { window.dispatchEvent(new Event('focus')); });
+    expect(calls((url) => url === '/api/bank/me/tasks')).toHaveLength(count);
+  });
+
+  it('allows the new session to poll even while an old session read is unresolved', async () => {
+    state.tasks[2].padlet = { title: '우리 게시판', url: 'https://padlet.com/test/abc123def456', sectionTitle: null };
+    await renderLoggedIn();
+    let finishOld!: (response: Response) => void;
+    state.extra = (url) => url === '/api/bank/me/tasks'
+      ? new Promise<Response>((resolve) => { finishOld = resolve; }) : undefined;
+    fireEvent(window, new Event('focus'));
+    fireEvent.click(screen.getByRole('button', { name: '로그아웃' }));
+    await screen.findByRole('heading', { name: '내 QR 코드로 로그인해요' });
+    state.extra = undefined;
+    fireEvent.click(screen.getByRole('button', { name: 'QR 코드 찍기' }));
+    fireEvent.click(screen.getByRole('button', { name: '테스트 QR 스캔' }));
+    await tasksMenu();
+    const count = calls((url) => url === '/api/bank/me/tasks').length;
+    await act(async () => { window.dispatchEvent(new Event('focus')); });
+    expect(calls((url) => url === '/api/bank/me/tasks')).toHaveLength(count + 1);
+    await act(async () => { finishOld(json({ error: 'old session', code: 'BANK_SESSION_REQUIRED' }, 401)); });
+    expect(screen.getByTestId('bank-balance')).toBeTruthy();
+  });
+
   it('shows only the QR login page before login and loads no personal data', async () => {
     render(<BankApp />);
     expect(await screen.findByRole('heading', { name: '내 QR 코드로 로그인해요' })).toBeTruthy();

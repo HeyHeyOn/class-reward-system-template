@@ -32,6 +32,14 @@ export type PadletBoard = Readonly<{
   posts: readonly PadletPost[];
 }>;
 
+/** Diagnostics contain no URL, header, response body, or identifying board/student data. */
+export type PadletReadMetrics = Readonly<{
+  status: number | null;
+  bytes: number;
+  elapsedMs: number;
+  outcome: PadletApiErrorCode | 'SUCCESS';
+}>;
+
 const API = 'https://api.padlet.dev/v1';
 const MAX_BYTES = 8_000_000;
 const STATUSES: readonly PadletPostStatus[] = ['approved', 'pending_moderation', 'scheduled'];
@@ -41,20 +49,31 @@ export async function fetchPadletBoard(input: Readonly<{
   apiKey: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  onComplete?: (metrics: PadletReadMetrics) => void;
 }>): Promise<PadletBoard> {
   if (!isPadletBoardId(input.boardId)) throw new PadletApiError('NOT_FOUND');
   if (!input.apiKey.trim()) throw new PadletApiError('NO_KEY');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), input.timeoutMs ?? 8_000);
+  const started = performance.now();
+  let status: number | null = null;
+  let bytes = 0;
+  let outcome: PadletReadMetrics['outcome'] = 'UNAVAILABLE';
   try {
-    const response = await (input.fetchImpl ?? fetch)(`${API}/boards/${input.boardId}?include=posts,sections`, {
+    const response = await abortable((input.fetchImpl ?? fetch)(`${API}/boards/${input.boardId}?include=posts,sections`, {
       method: 'GET',
       redirect: 'error',
       cache: 'no-store',
       headers: { accept: 'application/vnd.api+json', 'X-Api-Key': input.apiKey.trim() },
       signal: controller.signal,
-    });
-    const text = await readBounded(response);
+    }), controller.signal);
+    status = response.status;
+    // A rate-limit response already gives the decision. Do not wait on an error body to cool down.
+    if (response.status === 429) {
+      void response.body?.cancel().catch(() => undefined);
+      throw new PadletApiError('RATE_LIMITED');
+    }
+    const text = await readBounded(response, controller.signal, (total) => { bytes = total; });
     let payload: unknown;
     try {
       payload = JSON.parse(text) as unknown;
@@ -62,12 +81,17 @@ export async function fetchPadletBoard(input: Readonly<{
       throw new PadletApiError(response.ok ? 'UNAVAILABLE' : errorFromStatus(response.status, null));
     }
     if (!response.ok) throw new PadletApiError(errorFromStatus(response.status, firstErrorCode(payload)));
-    return parseBoard(payload, input.boardId);
+    const board = parseBoard(payload, input.boardId);
+    outcome = 'SUCCESS';
+    return board;
   } catch (error) {
-    if (error instanceof PadletApiError) throw error;
-    throw new PadletApiError(controller.signal.aborted ? 'TIMEOUT' : 'UNAVAILABLE');
+    const failure = error instanceof PadletApiError ? error : new PadletApiError(controller.signal.aborted ? 'TIMEOUT' : 'UNAVAILABLE');
+    outcome = failure.code;
+    throw failure;
   } finally {
     clearTimeout(timeout);
+    try { input.onComplete?.({ status, bytes, elapsedMs: Math.max(0, Math.round(performance.now() - started)), outcome }); }
+    catch { /* Logging must not turn a successful read into an error. */ }
   }
 }
 
@@ -148,22 +172,41 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-async function readBounded(response: Response): Promise<string> {
+/** Bound the promise too: an injected/misbehaving reader may ignore AbortSignal. */
+async function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(new PadletApiError('TIMEOUT'));
+    if (signal.aborted) abort();
+    else signal.addEventListener('abort', abort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
+}
+
+async function readBounded(response: Response, signal: AbortSignal, onBytes: (total: number) => void): Promise<string> {
   const declared = response.headers.get('content-length');
-  if (declared !== null && Number(declared) > MAX_BYTES) throw new PadletApiError('UNAVAILABLE');
-  if (!response.body) return response.text();
+  if (declared !== null && Number(declared) > MAX_BYTES) {
+    void response.body?.cancel().catch(() => undefined);
+    throw new PadletApiError('UNAVAILABLE');
+  }
+  if (!response.body) return '';
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > MAX_BYTES) {
-      await reader.cancel();
-      throw new PadletApiError('UNAVAILABLE');
+  try {
+    for (;;) {
+      const { done, value } = await abortable(reader.read(), signal);
+      if (done) break;
+      total += value.byteLength;
+      onBytes(total);
+      if (total > MAX_BYTES) throw new PadletApiError('UNAVAILABLE');
+      chunks.push(value);
     }
-    chunks.push(value);
+    return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString('utf8');
+  } catch (error) {
+    // Cancellation may itself never settle. It cannot extend the read's deadline or byte limit.
+    void reader.cancel().catch(() => undefined);
+    throw error;
+  } finally {
+    reader.releaseLock();
   }
-  return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString('utf8');
 }

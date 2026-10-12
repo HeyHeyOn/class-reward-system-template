@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
+import type { PadletErrorCode, PadletStatusDto } from '@/lib/padletLinkApi';
 import { TaskLedgerOverlays, TaskLedgerPanel } from './TaskLedgerPanel';
 import { useTaskLedger } from './useTaskLedger';
-import { LedgerServer, makeTask, SLUG, STUDENTS } from './ledgerTestServer';
+import { LedgerServer, makeTask, NOW, SLUG, STUDENTS } from './ledgerTestServer';
 
 vi.mock('@/components/QrScanner', () => ({
   QrScanner: ({ onScan }: { onScan: (text: string) => void }) => <button type="button" onClick={() => onScan('qr-S4')}>가짜 카메라 스캔</button>,
@@ -431,6 +432,97 @@ describe('no request journal', () => {
 
 describe('Padlet links', () => {
   const ADDRESS = 'https://padlet.com/t/5-6-mvbij1byfal6f0ik';
+
+  function linkedWithError(error: PadletErrorCode, retryAt: string | null = null) {
+    server.padletKey = { saved: true, hint: '9876', readable: true };
+    server.set('task-1', (task) => ({ ...task, padlet: { boardId: 'mvbij1byfal6f0ik', boardTitle: '5-6 칭찬 게시판', boardUrl: ADDRESS,
+      sectionId: null, sectionTitle: null, lastReadAt: '2026-10-05T23:59:00.000Z', error, checking: false, retryAt } }));
+  }
+
+  function padletStatus(now = NOW): PadletStatusDto {
+    const link = server.tasks[0].padlet!;
+    return { now, key: server.padletKey, boards: [{ boardId: link.boardId, title: link.boardTitle, url: link.boardUrl,
+      taskIds: ['task-1'], checkedAt: now, succeededAt: link.lastReadAt, error: link.error as PadletErrorCode | null,
+      checking: link.checking, retryAt: link.retryAt, posts: [] }] };
+  }
+
+  function servePadletStatus() {
+    const handle = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation((input, init) => String(input).endsWith('/padlet')
+      ? Promise.resolve(Response.json(padletStatus())) : handle(input, init));
+  }
+
+  it('keeps the last successful check beside the timeout reason in the list and linked tab', async () => {
+    linkedWithError('TIMEOUT');
+    servePadletStatus();
+    await renderBoard();
+    const row = screen.getAllByTestId('task-row')[0];
+    expect(within(row).getByText('패들렛: 응답 시간 초과')).toBeTruthy();
+    expect(within(row).getByText('마지막 확인 성공 10월 6일(화) 오전 8:59')).toBeTruthy();
+    expect(within(row).queryByText('패들렛을 읽지 못함')).toBeNull();
+    const sheet = await openTask();
+    fireEvent.click(within(sheet).getByRole('tab', { name: '패들렛' }));
+    expect(await within(sheet).findByText('Padlet 응답 시간이 초과됐어요. 잠시 뒤에 다시 확인해 주세요.')).toBeTruthy();
+    expect(within(sheet).getByText('마지막 확인 성공 10월 6일(화) 오전 8:59')).toBeTruthy();
+    expect(within(sheet).getByText(/이 학급의 모든 연결 게시판을 확인해요/)).toBeTruthy();
+  });
+
+  it.each([
+    ['NOT_ADMIN', '게시판 관리 권한 필요', '이 게시판을 관리하는 계정의 API 키가 필요해요.'],
+    ['RATE_LIMITED', '요청 제한', 'Padlet 요청 한도에 걸렸어요. 대기 후 다시 확인해 주세요.'],
+  ] as const)('explains %s without hiding the last success or rate-limit wait', async (code, label, message) => {
+    linkedWithError(code, code === 'RATE_LIMITED' ? '2026-10-06T00:01:00.000Z' : null);
+    servePadletStatus();
+    await renderBoard();
+    expect(within(screen.getAllByTestId('task-row')[0]).getByText(`패들렛: ${label}`)).toBeTruthy();
+    const sheet = await openTask();
+    fireEvent.click(within(sheet).getByRole('tab', { name: '패들렛' }));
+    expect(await within(sheet).findByText(message)).toBeTruthy();
+    expect(within(sheet).getByText(/마지막 확인 성공/)).toBeTruthy();
+    if (code === 'RATE_LIMITED') {
+      expect(within(sheet).getByText('10월 6일(화) 오전 9:01 이후 다시 확인할 수 있어요.')).toBeTruthy();
+      expect(within(screen.getAllByTestId('task-row')[0]).getByText('10월 6일(화) 오전 9:01 이후 재확인')).toBeTruthy();
+    }
+  });
+
+  it('labels an old error while checking and lets a newer board poll clear the cached checking state', async () => {
+    linkedWithError('TIMEOUT');
+    const setInterval = vi.spyOn(window, 'setInterval');
+    const handle = vi.mocked(fetch).getMockImplementation()!;
+    let now = NOW;
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => { release = resolve; });
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const path = String(input);
+      if (path.endsWith('/padlet/sync')) {
+        await waiting;
+        server.set('task-1', (task) => ({ ...task, padlet: { ...task.padlet!, checking: true } }));
+        return Response.json(padletStatus(now));
+      }
+      if (path.endsWith('/padlet')) return Response.json(padletStatus(now));
+      if (path.endsWith('/task-ledger') && (!init?.method || init.method === 'GET')) return Response.json({ now, tasks: server.tasks });
+      return handle(input, init);
+    });
+    await renderBoard();
+    const sheet = await openTask();
+    fireEvent.click(within(sheet).getByRole('tab', { name: '패들렛' }));
+    await within(sheet).findByTestId('padlet-linked');
+    fireEvent.click(within(sheet).getByRole('button', { name: '지금 확인' }));
+    expect(within(sheet).getByText('패들렛 확인 중이에요. 결과를 기다려 주세요.')).toBeTruthy();
+    expect(within(sheet).getByText(/^이전 확인: Padlet 응답 시간이 초과/)).toBeTruthy();
+    await act(async () => release());
+    expect(await within(screen.getByTestId('notices')).findByText('패들렛을 확인 중이에요. 결과를 기다려 주세요.')).toBeTruthy();
+    expect(within(screen.getByTestId('notices')).queryByText(/^패들렛을 확인했어요/)).toBeNull();
+    expect(within(screen.getAllByTestId('task-row')[0]).getByText('패들렛 확인 중')).toBeTruthy();
+
+    now = '2026-10-06T00:00:20.000Z';
+    server.set('task-1', (task) => ({ ...task, padlet: { ...task.padlet!, checking: false, error: null, lastReadAt: now } }));
+    const tick = setInterval.mock.calls.find((call) => call[1] === 20_000)![0] as () => void;
+    act(() => tick());
+    await waitFor(() => expect(within(sheet).queryByText('패들렛 확인 중이에요. 결과를 기다려 주세요.')).toBeNull());
+    expect(within(sheet).queryByText(/^이전 확인:/)).toBeNull();
+    expect(within(sheet).getByText('마지막 확인 성공 10월 6일(화) 오전 9:00')).toBeTruthy();
+  });
 
   it('asks for the key, loads the board, links one task to a section and shows what posts did', async () => {
     server.padletMoves = ['S2'];
