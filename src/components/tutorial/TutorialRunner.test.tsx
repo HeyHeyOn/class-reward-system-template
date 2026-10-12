@@ -159,6 +159,28 @@ describe('TutorialRunner', () => {
     expect(onMenu).toHaveBeenCalledTimes(1);
   });
 
+  it('draws an arrow only on a step that asks the teacher to do something', async () => {
+    const arrow = (container: HTMLElement) => container.querySelector('path[d^="M6 18h20"]');
+    const mixed: Tutorial = { ...TUTORIAL, steps: [
+      { target: '#open', area: ['@target'], title: '누르기', text: '[열기]를 누르세요.' },
+      { target: '#open', area: ['@target'], look: true, title: '선택', text: '필요하면 열어요.' },
+      { target: '#name', peek: true, title: '보기', text: '이름 칸이에요.' },
+    ] };
+    const { container } = render(<><Page /><TutorialRunner tutorial={mixed} onNavigate={() => {}} onClose={() => {}} /></>);
+    await waitFor(() => expect(tour().getAttribute('data-tutorial-state')).toBe('shown'));
+    expect(arrow(container)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /다음/ }));
+    await waitFor(() => expect(stepOf()).toBe('9-9:2'));
+    await waitFor(() => expect(tour().getAttribute('data-tutorial-state')).toBe('shown'));
+    expect(arrow(container)).toBeNull();
+    // An option stays usable: nothing covers the lit unit.
+    expect(container.querySelector('svg rect[fill="rgb(0 0 0 / 0)"]')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /다음/ }));
+    await waitFor(() => expect(stepOf()).toBe('9-9:3'));
+    await waitFor(() => expect(container.querySelector('svg rect[fill="rgb(0 0 0 / 0)"]')).toBeTruthy());
+    expect(arrow(container)).toBeNull();
+  });
+
   it('only shows a step to look at, and nudges the box when the dimmed page is clicked', async () => {
     const look: Tutorial = { ...TUTORIAL, steps: [{ target: '#open', area: ['@target'], peek: true, title: '보기', text: '보기만 해요.' }, TUTORIAL.steps[0]] };
     const { container } = render(<><Page /><TutorialRunner tutorial={look} onNavigate={() => {}} onClose={() => {}} /></>);

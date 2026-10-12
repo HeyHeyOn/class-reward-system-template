@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } fr
 import type { AdminTab } from '../admin/adminTypes';
 import { Button, Icon, IconButton, cx } from '../ui';
 import { areaElements, boxOf, firstShown, inFixedLayer, place, unionBox, type ArrowSide, type Box } from './tutorialDom';
+import { ButtonChip } from './ButtonChip';
 import { clearQueuedTutorial, queueTutorial } from './tutorialQueue';
 import type { Tutorial } from './tutorials';
 
@@ -35,20 +36,15 @@ function menuWord(): string {
   return typeof window !== 'undefined' && window.matchMedia?.('(min-width: 1024px)').matches ? '왼쪽 메뉴' : '맨 위 메뉴';
 }
 
-/** **굵게** and [버튼] in the guide's words; `{menu}` is where the menu is on this screen. */
-export function TutorialText({ text }: { text: string }) {
+/** **굵게** and [버튼] in the guide's words; `{menu}` is where the menu is on this screen. A [버튼]
+ * looks like the real button (the one nearest `near`, the step's target). */
+export function TutorialText({ text, near }: { text: string; near?: Element | null }) {
   const parts = text.replaceAll('{menu}', menuWord()).split(/(\*\*[^*]+\*\*|\[[^\]]+\])/g).filter(Boolean);
   return (
     <>
       {parts.map((part, index) => {
         if (part.startsWith('**')) return <b key={index} className="font-extrabold text-[var(--theme-text)]">{part.slice(2, -2)}</b>;
-        if (part.startsWith('[')) {
-          return (
-            <span key={index} className="mx-0.5 inline-block whitespace-nowrap rounded-[7px] border border-[var(--crs-line-strong)] bg-[var(--theme-surface)] px-1.5 text-[0.93em] font-bold text-[var(--theme-text)] shadow-[0_1px_0_var(--crs-line-strong)]">
-              {part.slice(1, -1)}
-            </span>
-          );
-        }
+        if (part.startsWith('[')) return <ButtonChip key={index} label={part.slice(1, -1)} near={near} />;
         return <Fragment key={index}>{part}</Fragment>;
       })}
     </>
@@ -237,8 +233,9 @@ export function TutorialRunner({ tutorial, onNavigate, onClose, firstStep = 0, a
         .map((value) => (typeof value === 'number' ? Math.round(value) : value)).join(',');
       if (key === lastKey) return;
       lastKey = key;
-      // Arrow and box go where the teacher can see them: placed within the visible part.
-      const local = place(shift(area, -visible.x, -visible.y), shift(targetBox, -visible.x, -visible.y), size, visible.w, visible.h);
+      // Arrow and box go where the teacher can see them: placed within the visible part. An arrow
+      // means "press this", so a step only to look at (or an option) has none.
+      const local = place(shift(area, -visible.x, -visible.y), shift(targetBox, -visible.x, -visible.y), size, visible.w, visible.h, pointing(step));
       const placed = { arrow: { ...shift(local.arrow, visible.x, visible.y), side: local.arrow.side }, box: shift(local.box, visible.x, visible.y) };
       setView({ step: index, kind: 'shown', anchor, canvas, area: shift(area, dx, dy),
         arrow: { ...shift(placed.arrow, dx, dy), side: placed.arrow.side }, box: shift(placed.box, dx, dy) });
@@ -309,6 +306,8 @@ export function TutorialRunner({ tutorial, onNavigate, onClose, firstStep = 0, a
   const shown = current.kind === 'shown' ? current : null;
   const position = shown?.anchor === 'page' ? 'absolute' : 'fixed';
   const nudge = () => setNudges((count) => count + 1);
+  // Buttons named in the text are copied from the screen, nearest to what the step points at.
+  const near = shown ? firstShown(step.target) : null;
   const missingText = step.missing ?? '이 단계에서 가리킬 곳이 지금 화면에 없어요. 창을 닫았다면 [이전]으로 돌아가 다시 열거나, [다음]으로 넘어가세요.';
 
   return (
@@ -337,7 +336,7 @@ export function TutorialRunner({ tutorial, onNavigate, onClose, firstStep = 0, a
             <rect x={shown.area.x} y={shown.area.y} width={shown.area.w} height={shown.area.h} rx="14" fill="none"
               stroke="#FFD43B" strokeWidth="3" style={{ animation: 'crs-tour-pulse 1.6s ease-in-out infinite' }} />
           </svg>
-          <TutorialArrow side={shown.arrow.side} box={shown.arrow} position={position} />
+          {pointing(step) ? <TutorialArrow side={shown.arrow.side} box={shown.arrow} position={position} /> : null}
         </>
       ) : null}
       <div ref={boxRef} role="dialog" aria-modal="false" aria-label={`도움말 ${tutorial.id} ${tutorial.title}`}
@@ -357,7 +356,7 @@ export function TutorialRunner({ tutorial, onNavigate, onClose, firstStep = 0, a
         </div>
         <div aria-live="polite" className="space-y-1.5 px-4 py-3 text-[14px] leading-relaxed">
           {current.kind === 'missing' ? (
-            <p className="flex gap-2 text-[13px] text-[var(--theme-muted-text)]"><span className="mt-0.5 shrink-0"><Icon name="info" size={15} /></span><span><TutorialText text={missingText} /></span></p>
+            <p className="flex gap-2 text-[13px] text-[var(--theme-muted-text)]"><span className="mt-0.5 shrink-0"><Icon name="info" size={15} /></span><span><TutorialText text={missingText} near={near} /></span></p>
           ) : (
             <>
               {index === 0 ? (
@@ -365,11 +364,11 @@ export function TutorialRunner({ tutorial, onNavigate, onClose, firstStep = 0, a
                   [목표] {tutorial.goal}
                 </p>
               ) : null}
-              <p><TutorialText text={step.text} /></p>
-              {step.sub ? <p className="text-[12.5px] text-[var(--theme-muted-text)]"><TutorialText text={step.sub} /></p> : null}
+              <p><TutorialText text={step.text} near={near} /></p>
+              {step.sub ? <p className="text-[12.5px] text-[var(--theme-muted-text)]"><TutorialText text={step.sub} near={near} /></p> : null}
               {step.warn ? (
                 <p className="mt-1 flex gap-1.5 rounded-[10px] bg-[var(--crs-warning-bg)] px-2.5 py-2 text-[12.5px] font-semibold text-[var(--crs-warning-text)]">
-                  <span className="mt-0.5 shrink-0"><Icon name="alert" size={14} /></span><span><TutorialText text={step.warn} /></span>
+                  <span className="mt-0.5 shrink-0"><Icon name="alert" size={14} /></span><span><TutorialText text={step.warn} near={near} /></span>
                 </p>
               ) : null}
             </>
@@ -433,6 +432,11 @@ function roundedRect(box: Box, radius: number): string {
   const r = Math.min(radius, box.w / 2, box.h / 2);
   const { x, y, w, h } = box;
   return `M${x + r} ${y}H${x + w - r}A${r} ${r} 0 0 1 ${x + w} ${y + r}V${y + h - r}A${r} ${r} 0 0 1 ${x + w - r} ${y + h}H${x + r}A${r} ${r} 0 0 1 ${x} ${y + h - r}V${y + r}A${r} ${r} 0 0 1 ${x + r} ${y}Z`;
+}
+
+/** An arrow asks the teacher to press or fill in what it points at; explanations and options get none. */
+function pointing(step: Tutorial['steps'][number]): boolean {
+  return !step.peek && !step.look;
 }
 
 const ROTATE: Record<ArrowSide, number> = { left: 0, top: 90, right: 180, bottom: 270 };

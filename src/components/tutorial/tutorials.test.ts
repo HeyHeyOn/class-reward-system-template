@@ -42,6 +42,21 @@ describe('tutorials', () => {
     }
   });
 
+  it('points an arrow only where the step tells the teacher to do something', () => {
+    // An arrow reads as "press this": explanations (peek) and options (look) have none, and every
+    // step that keeps one says what to do (…세요).
+    for (const tutorial of TUTORIALS) {
+      for (const [index, step] of tutorial.steps.entries()) {
+        if (step.peek || step.look) continue;
+        expect(step.text, `${tutorial.id}:${index + 1} ${step.title}`).toMatch(/세요/);
+      }
+    }
+    // The first-time tour only shows: its arrows are on the menu items the teacher picks.
+    for (const step of TUTORIALS.find((tutorial) => tutorial.id === FIRST_TUTORIAL_ID)!.steps) {
+      if (!step.peek) expect(String(step.target)).toMatch(/^#admin-tab-/);
+    }
+  });
+
   it('goes on to the class list only from 1-1, and runs nothing there that needs the admin menu', () => {
     expect(TUTORIALS.filter((tutorial) => tutorial.steps.some((step) => step.opensPage)).map((tutorial) => tutorial.id)).toEqual(['1-1']);
     const steps = TUTORIALS.find((tutorial) => tutorial.id === '1-1')!.steps;

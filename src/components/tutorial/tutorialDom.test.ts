@@ -22,6 +22,23 @@ describe('tutorial geometry', () => {
     expect(box.x >= 8 && box.y >= 8 && box.x + box.w <= 1272 && box.y + box.h <= 852).toBe(true);
   });
 
+  it('puts the box right next to the lit unit when the step has no arrow', () => {
+    const area = { x: 300, y: 200, w: 400, h: 100 };
+    const target = { x: 320, y: 220, w: 120, h: 40 };
+    const looking = place(area, target, { w: 340, h: 150 }, 1280, 860, false);
+    expect(overlaps(looking.box, area)).toBe(false);
+    const gap = (box: { x: number; y: number; w: number; h: number }) => Math.max(box.y - (area.y + area.h), area.y - (box.y + box.h), box.x - (area.x + area.w), area.x - (box.x + box.w));
+    expect(gap(looking.box)).toBeLessThanOrEqual(12);
+    // A unit at the very top with its control at the bottom edge: the arrow would come from below,
+    // so a pointing box waits past it; with no arrow the box sits right under the unit.
+    const top = { x: 300, y: 8, w: 400, h: 100 }, button = { x: 320, y: 70, w: 120, h: 34 };
+    const withArrow = place(top, button, { w: 340, h: 150 }, 1280, 860);
+    const without = place(top, button, { w: 340, h: 150 }, 1280, 860, false);
+    expect(withArrow.arrow.side).toBe('bottom');
+    expect(without.box.y).toBeLessThan(withArrow.box.y);
+    expect(without.box.y - (top.y + top.h)).toBeLessThanOrEqual(12);
+  });
+
   it('keeps the message box right after the lit unit and its arrow, lined up with the control', () => {
     // A page header lit on a phone, the arrow under its button: the box goes under the arrow, not to a far corner.
     const area = { x: 8, y: 170, w: 374, h: 170 };

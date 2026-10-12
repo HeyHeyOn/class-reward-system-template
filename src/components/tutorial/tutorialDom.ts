@@ -72,7 +72,7 @@ const GAP = 10;
  * arrow, lined up with the target — never over the target, the arrow or (when there is room) the
  * unit — so the eye stays on one spot.
  */
-export function place(area: Box, target: Box, size: Readonly<{ w: number; h: number }>, vw: number, vh: number): Placement {
+export function place(area: Box, target: Box, size: Readonly<{ w: number; h: number }>, vw: number, vh: number, pointing = true): Placement {
   const cx = target.x + target.w / 2, cy = target.y + target.h / 2;
   const clampX = (x: number, w: number) => Math.max(8, Math.min(vw - w - 8, x));
   const clampY = (y: number, h: number) => Math.max(8, Math.min(vh - h - 8, y));
@@ -99,21 +99,24 @@ export function place(area: Box, target: Box, size: Readonly<{ w: number; h: num
 
   const sized = (x: number, y: number): Box => ({ x, y, w: size.w, h: size.h });
   const alignedX = clampX(cx - size.w / 2, size.w), alignedY = clampY(cy - size.h / 2, size.h);
+  // A step only to look at draws no arrow: the box goes right next to the unit.
+  const side = pointing ? arrow.side : null;
   // Just past the unit — and past the arrow when the arrow is on that side.
-  const below = Math.max(area.y + area.h, arrow.side === 'bottom' ? arrow.y + arrow.h : -Infinity) + GAP;
-  const above = Math.min(area.y, arrow.side === 'top' ? arrow.y : Infinity) - GAP - size.h;
-  const right = Math.max(area.x + area.w, arrow.side === 'right' ? arrow.x + arrow.w : -Infinity) + GAP;
-  const left = Math.min(area.x, arrow.side === 'left' ? arrow.x : Infinity) - GAP - size.w;
+  const below = Math.max(area.y + area.h, side === 'bottom' ? arrow.y + arrow.h : -Infinity) + GAP;
+  const above = Math.min(area.y, side === 'top' ? arrow.y : Infinity) - GAP - size.h;
+  const right = Math.max(area.x + area.w, side === 'right' ? arrow.x + arrow.w : -Infinity) + GAP;
+  const left = Math.min(area.x, side === 'left' ? arrow.x : Infinity) - GAP - size.w;
+  const clearOfArrow = (box: Box) => !pointing || !overlaps(box, arrow, 2);
   const nearest = (boxes: Box[]) => boxes.sort((a, b) => Math.hypot(a.x + a.w / 2 - cx, a.y + a.h / 2 - cy) - Math.hypot(b.x + b.w / 2 - cx, b.y + b.h / 2 - cy))[0];
   const around = [sized(alignedX, below), sized(alignedX, above), sized(right, alignedY), sized(left, alignedY)]
-    .filter((box) => inside(box) && !overlaps(box, area, 2) && !overlaps(box, arrow, 2));
+    .filter((box) => inside(box) && !overlaps(box, area, 2) && clearOfArrow(box));
   if (around.length) return { arrow, box: nearest(around) };
   // A unit too big to go around (a tall form): stay right by the control, over another part of the
   // unit but never over the control or the arrow.
   const byTarget = [
-    sized(alignedX, Math.max(target.y + target.h, arrow.side === 'bottom' ? arrow.y + arrow.h : -Infinity) + GAP),
-    sized(alignedX, Math.min(target.y, arrow.side === 'top' ? arrow.y : Infinity) - GAP - size.h),
-  ].filter((box) => inside(box) && !overlaps(box, target, 2) && !overlaps(box, arrow, 2));
+    sized(alignedX, Math.max(target.y + target.h, side === 'bottom' ? arrow.y + arrow.h : -Infinity) + GAP),
+    sized(alignedX, Math.min(target.y, side === 'top' ? arrow.y : Infinity) - GAP - size.h),
+  ].filter((box) => inside(box) && !overlaps(box, target, 2) && clearOfArrow(box));
   if (byTarget.length) return { arrow, box: nearest(byTarget) };
   return { arrow, box: sized(alignedX, clampY(below, size.h)) };
 }
