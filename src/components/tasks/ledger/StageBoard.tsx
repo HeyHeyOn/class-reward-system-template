@@ -38,7 +38,7 @@ export function StageBoard({ task, students, changes, onChange, disabled }: {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div data-tour="stage-counts" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {TASK_STAGES.map((stage) => <MiniStat key={stage} label={stageLabel(stage)} value={`${count(stage)}명`} tone={stage} />)}
       </div>
       <ul className="grid gap-1 rounded-[12px] bg-[var(--crs-subtle)] px-3.5 py-2.5 text-xs leading-relaxed text-[var(--theme-muted-text)]">
@@ -75,7 +75,7 @@ export function StageBoard({ task, students, changes, onChange, disabled }: {
           const selected = picked.includes(row.studentId);
           const inactive = statusById.get(row.studentId) === 'INACTIVE';
           return (
-            <div key={row.studentId} data-testid={`ledger-stage-row-${row.studentId}`}
+            <div key={row.studentId} data-testid={`ledger-stage-row-${row.studentId}`} data-tour="stage-row"
               className={cx('flex flex-wrap items-center gap-x-3 gap-y-2 px-3.5 py-2.5', selected && 'bg-[var(--crs-subtle)]', changed && 'bg-[var(--theme-accent-soft)]')}>
               <Checkbox aria-label={`${name} 선택`} checked={selected} disabled={disabled}
                 onChange={() => setPicked((current) => current.includes(row.studentId) ? current.filter((id) => id !== row.studentId) : [...current, row.studentId])} />

@@ -93,7 +93,7 @@ export function NewTaskSheet({ ledger, opener, students, unit, notify }: {
         footer={<>
           <Button variant="ghost" disabled={busy} onClick={() => close()}>취소</Button>
           <div className="ml-auto" />
-          <Button variant="primary" icon="check" loading={busy} disabled={busy} onClick={() => void create()}>과제 만들기</Button>
+          <Button variant="primary" icon="check" data-tour="task-create" loading={busy} disabled={busy} onClick={() => void create()}>과제 만들기</Button>
         </>}>
         <div className="space-y-5">
           <ErrorNote message={error} />
@@ -105,7 +105,7 @@ export function NewTaskSheet({ ledger, opener, students, unit, notify }: {
           ) : (
             <div className="space-y-4">
               <Callout tone="info">고른 학생에게 바로 과제를 줘요. 처음 단계는 학생마다 바꿀 수 있고, 고르지 않은 학생은 미부여예요.</Callout>
-              <div className="flex flex-wrap items-center gap-2 rounded-[12px] bg-[var(--crs-subtle)] px-3 py-2">
+              <div data-tour="task-targets-bar" className="flex flex-wrap items-center gap-2 rounded-[12px] bg-[var(--crs-subtle)] px-3 py-2">
                 <label className="flex items-center gap-2 text-[13px] font-bold">
                   <Checkbox aria-label="모든 학생 고르기" checked={allPicked}
                     onChange={(event) => pick(active.map((student) => student.studentId).filter((id) => event.target.checked ? !(id in picks) : true), event.target.checked ? DEFAULT_STARTING_STAGE : null)} />
@@ -124,7 +124,7 @@ export function NewTaskSheet({ ledger, opener, students, unit, notify }: {
                   const name = names.get(student.studentId) ?? student.studentId;
                   const stage = picks[student.studentId];
                   return (
-                    <div key={student.studentId} className={cx('flex flex-wrap items-center gap-3 px-3.5 py-2.5', stage && 'bg-[var(--theme-accent-soft)]')}>
+                    <div key={student.studentId} data-tour="task-target-row" className={cx('flex flex-wrap items-center gap-3 px-3.5 py-2.5', stage && 'bg-[var(--theme-accent-soft)]')}>
                       <Checkbox aria-label={`${name} 대상`} checked={Boolean(stage)} onChange={() => pick([student.studentId], stage ? null : DEFAULT_STARTING_STAGE)} />
                       <span className="flex min-w-0 flex-1 items-baseline gap-2">
                         <span className="truncate text-sm font-bold">{name}</span>

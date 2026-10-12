@@ -73,7 +73,7 @@ export function TaskLedgerPanel({ ledger, unit, notify }: { ledger: TaskLedger; 
         actions={<>
           <IconButton icon="refresh" label="과제 새로고침" variant="secondary" disabled={refreshing} onClick={() => void refresh()} />
           <Button icon="qr" onClick={(event) => ledger.open({ kind: 'qr', opener: event.currentTarget })}>QR로 단계 바꾸기</Button>
-          <Button variant="primary" icon="plus" onClick={(event) => ledger.open({ kind: 'new', opener: event.currentTarget })}>새 과제</Button>
+          <Button variant="primary" icon="plus" data-tour="task-new" onClick={(event) => ledger.open({ kind: 'new', opener: event.currentTarget })}>새 과제</Button>
         </>} />
 
       {board.status === 'loading' ? (
@@ -95,7 +95,7 @@ export function TaskLedgerPanel({ ledger, unit, notify }: { ledger: TaskLedger; 
           </div>
           {tasks.length === 0 ? (
             <EmptyState icon="task" title="첫 과제를 만들어 보세요" description="숙제, 청소 당번처럼 학생이 하고 보상을 받을 일을 과제로 등록해요."
-              action={<Button variant="primary" icon="plus" onClick={(event) => ledger.open({ kind: 'new', opener: event.currentTarget })}>새 과제</Button>} />
+              action={<Button variant="primary" icon="plus" data-tour="task-new" onClick={(event) => ledger.open({ kind: 'new', opener: event.currentTarget })}>새 과제</Button>} />
           ) : (
             <Card padded={false} className="overflow-hidden" data-testid="task-list-card">
               <div role="table" aria-label="과제 목록" className="divide-y divide-[var(--crs-line)]">

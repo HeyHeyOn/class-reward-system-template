@@ -47,6 +47,9 @@ import { SidebarLink, SidebarShortcut, SidebarButton, QuickAction, SheetLoading,
 import { ShareLinkDialog, sharePaths, type ShareTarget } from './admin/ShareLinkDialog';
 import { ParentConsentFormDialog } from './admin/ParentConsentFormDialog';
 import { AccountLink } from './account/AccountLink';
+import { TutorialHomeCard, TutorialMenu } from './tutorial/TutorialMenu';
+import { TutorialRunner } from './tutorial/TutorialRunner';
+import { tutorialById, type Tutorial } from './tutorial/tutorials';
 import type { AvatarConfig } from './profile/avatar';
 
 // Retain the existing public parser exports for callers outside the page.
@@ -164,6 +167,8 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
   const [bulkBalanceOpen, setBulkBalanceOpen] = useState(false);
   const [bulkGiveOpener, setBulkGiveOpener] = useState<HTMLElement | null>(null);
   const [shareState, setShareState] = useState<Readonly<{ target: ShareTarget; opener: HTMLElement }> | null>(null);
+  const [tutorialMenu, setTutorialMenu] = useState<Readonly<{ opener: HTMLElement | null }> | null>(null);
+  const [activeTutorial, setActiveTutorial] = useState<Tutorial | null>(null);
   const [consentFormOpener, setConsentFormOpener] = useState<HTMLElement | null>(null);
   // 디지털 상품: store products whose purchase goes into the buyer's 보관함, by type (PostgreSQL classes).
   const [digitalProducts, setDigitalProductMap] = useState<ReadonlyMap<string, DigitalProductDto>>(() => new Map());
@@ -2179,7 +2184,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
   const negativeStudents = students.filter((student) => student.balance < 0);
   const lowStockProducts = products.filter((product) => product.isActive && product.stock <= 3);
 
-  const overlayOpen = Boolean(taskHistory || taskDeleteConfirmation || productDeleteConfirmation || taskScheduleEditor || taskAssignmentEditor || taskResetConfirmation
+  const overlayOpen = Boolean(tutorialMenu || taskHistory || taskDeleteConfirmation || productDeleteConfirmation || taskScheduleEditor || taskAssignmentEditor || taskResetConfirmation
     || taskSheet || studentSheet || productSheet || confirmState || bulkBalanceOpen || bulkGiveOpener || qrPrintStudents || qrTaskPickerOpen || qrTaskScan || qrTaskResult
     || currencyScannerOpen || currencyResult || taskDescriptionEditor || taskLedger.overlayOpen || shareState || consentFormOpener);
   const ledgerTasks = ledgerTaskSummary(taskLedger);
@@ -2247,7 +2252,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                 );
               })}
             </nav>
-            <div className="mt-auto hidden space-y-1 px-3 pb-5 pt-6 lg:block">
+            <div data-tour="sidebar-shortcuts" className="mt-auto hidden space-y-1 px-3 pb-5 pt-6 lg:block">
               <p className="px-3 pb-1 text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--theme-muted-text)]">바로가기</p>
               <SidebarShortcut href={storeHref} icon="store" label="매점 열기" shareLabel="매점 공유" onShare={openShare('store')} />
               <SidebarShortcut href={bankHref} icon="bank" label="은행 열기" shareLabel="은행 공유" onShare={openShare('bank')} />
@@ -2281,6 +2286,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
             {activeTab === 'home' ? (
               <section id="admin-panel-home" role="tabpanel" aria-labelledby="admin-tab-home" aria-label="홈" className="space-y-6">
                 <PageHeader eyebrow={settings.className ?? settings.appTitle ?? '학급 매점'} title="오늘의 학급" description="학생, 매점, 과제 현황을 한눈에 확인하고 자주 쓰는 작업을 바로 시작하세요." />
+                <TutorialHomeCard onOpen={(event) => setTutorialMenu({ opener: event.currentTarget })} />
                 <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                   <StatCard label="학생" icon="users" value={`${summary.students}명`} hint={`비활성 ${students.filter((student) => student.status === 'INACTIVE').length}명`} />
                   <StatCard label="학생 잔액 합계" icon="wallet" value={money(totalBalance)} hint={negativeStudents.length ? `음수 잔액 ${negativeStudents.length}명` : '음수 잔액 없음'} />
@@ -2386,7 +2392,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                   actions={<>
                     <IconButton icon="refresh" label="학생 명단 새로고침" variant="secondary" onClick={refreshStudents} />
                     {tenantScoped ? <StudentBulkImport unit={unit} onImported={() => { void refreshStudents(); }} /> : null}
-                    <Button variant="primary" icon="plus" onClick={(event) => { setStudentSheet({ mode: 'new', opener: event.currentTarget }); }}>학생 추가</Button>
+                    <Button variant="primary" icon="plus" data-tour="student-add" onClick={(event) => { setStudentSheet({ mode: 'new', opener: event.currentTarget }); }}>학생 추가</Button>
                   </>} />
                 <Callout tone="warning" title="학생 실명은 학부모 동의를 받은 뒤에 입력해 주세요">
                   <p>
@@ -2404,7 +2410,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                 </div>
                 {students.length === 0 ? (
                   <EmptyState icon="users" title="첫 학생을 등록해 보세요" description="학생을 등록하면 QR 카드를 발급하고 화폐를 지급할 수 있습니다."
-                    action={<Button variant="primary" icon="plus" onClick={(event) => { setStudentSheet({ mode: 'new', opener: event.currentTarget }); }}>학생 추가</Button>} />
+                    action={<Button variant="primary" icon="plus" data-tour="student-add" onClick={(event) => { setStudentSheet({ mode: 'new', opener: event.currentTarget }); }}>학생 추가</Button>} />
                 ) : (
                   <Card padded={false} className="overflow-hidden">
                     <div data-testid="student-list" role="table" aria-label="학생 명단" className="divide-y divide-[var(--crs-line)]">
@@ -2443,7 +2449,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                 )}
                 <SelectionBar count={selectedStudentIds.length} label="명 선택됨" onClear={() => setSelectedStudentIds([])}>
                   <SelectionBarButton icon="coins" onClick={() => setBulkBalanceOpen(true)}>잔액 변경</SelectionBarButton>
-                  <SelectionBarButton icon="qr" onClick={() => setQrPrintStudents(students.filter((student) => selectedStudentIds.includes(student.studentId)))}>QR 카드 발급</SelectionBarButton>
+                  <SelectionBarButton icon="qr" data-tour="student-qr-bulk" onClick={() => setQrPrintStudents(students.filter((student) => selectedStudentIds.includes(student.studentId)))}>QR 카드 발급</SelectionBarButton>
                   {tenantScoped ? <SelectionBarButton icon="package" onClick={(event) => setBulkGiveOpener(event.currentTarget)}>보관함에 넣기</SelectionBarButton> : null}
                   <SelectionBarButton icon="trash" danger onClick={() => confirmDelete(`학생 ${selectedStudentIds.length}명을 삭제할까요?`, '삭제한 학생은 명단에서 사라집니다. 거래 기록은 그대로 남습니다.', deleteSelectedStudents)}>삭제</SelectionBarButton>
                 </SelectionBar>
@@ -2456,7 +2462,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                   actions={storeTab === 'inventory' ? <>
                     <IconButton icon="refresh" label="상품 · 재고 관리 새로고침" variant="secondary" onClick={refreshProducts} />
                     {tenantScoped ? <ProductBulkImport unit={unit} onImported={() => { void refreshProducts(); }} /> : null}
-                    <Button variant="primary" icon="plus" onClick={(event) => { setNewProduct((current) => current === EMPTY_PRODUCT ? { ...current, sortOrder: products.length + 1 } : current); setProductSheet({ mode: 'new', opener: event.currentTarget }); }}>상품 추가</Button>
+                    <Button variant="primary" icon="plus" data-tour="product-add" onClick={(event) => { setNewProduct((current) => current === EMPTY_PRODUCT ? { ...current, sortOrder: products.length + 1 } : current); setProductSheet({ mode: 'new', opener: event.currentTarget }); }}>상품 추가</Button>
                   </> : null} />
                 <div role="tablist" aria-label="매점 관리 메뉴" className="inline-flex gap-0.5 rounded-[12px] bg-[var(--crs-subtle-hover)] p-1">
                   {storeTabs.map((tab) => (
@@ -2476,7 +2482,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                   </div>
                   {products.length === 0 ? (
                     <EmptyState icon="store" title="첫 상품을 등록해 보세요" description="상품을 등록하면 학생들이 매점 화면에서 바로 살 수 있습니다."
-                      action={<Button variant="primary" icon="plus" onClick={(event) => { setNewProduct((current) => current === EMPTY_PRODUCT ? { ...current, sortOrder: products.length + 1 } : current); setProductSheet({ mode: 'new', opener: event.currentTarget }); }}>상품 추가</Button>} />
+                      action={<Button variant="primary" icon="plus" data-tour="product-add" onClick={(event) => { setNewProduct((current) => current === EMPTY_PRODUCT ? { ...current, sortOrder: products.length + 1 } : current); setProductSheet({ mode: 'new', opener: event.currentTarget }); }}>상품 추가</Button>} />
                   ) : (
                     <Card padded={false} className="overflow-hidden">
                       <div data-testid="product-list" role="table" aria-label="상품 목록" className="divide-y divide-[var(--crs-line)]">
@@ -2632,7 +2638,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                 <PageHeader title="화폐 지급·회수" description="금액을 정한 뒤 학생 QR을 찍으면 바로 지급하거나 회수합니다." />
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
                   <Card className="space-y-6">
-                    <div>
+                    <div data-tour="currency-mode">
                       <p className="mb-2 text-[13px] font-bold">무엇을 할까요?</p>
                       <div role="group" aria-label="지급 또는 회수" className="grid grid-cols-2 gap-2">
                         {(['add', 'subtract'] as const).map((mode) => {
@@ -2660,7 +2666,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                         <button type="button" onClick={() => setCurrencyAmount(0)} className="h-8 rounded-full px-3 text-[13px] font-bold text-[var(--theme-muted-text)] hover:bg-[var(--crs-subtle-hover)]">초기화</button>
                       </div>
                     </Field>
-                    <Button variant={currencyMode === 'add' ? 'primary' : 'danger'} size="lg" block icon="qr" disabled={!(currencyAmount > 0)}
+                    <Button variant={currencyMode === 'add' ? 'primary' : 'danger'} size="lg" block icon="qr" data-tour="currency-start" disabled={!(currencyAmount > 0)}
                       onClick={() => { setCurrencyResult(null); setCurrencyManualId(''); setCurrencyScannerOpen(true); }}>
                       QR 인식 시작
                     </Button>
@@ -2816,7 +2822,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
             <>
               <Button variant="ghost" onClick={() => closeStudentSheet()}>취소</Button>
               <div className="ml-auto" />
-              <Button variant="primary" icon="check" type="submit" form="student-sheet-form">새 학생 추가</Button>
+              <Button variant="primary" icon="check" type="submit" form="student-sheet-form" data-tour="student-create">새 학생 추가</Button>
             </>
           ) : sheetStudent ? (
             <>
@@ -2881,7 +2887,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
             <>
               <Button variant="ghost" onClick={() => closeProductSheet()}>취소</Button>
               <div className="ml-auto" />
-              <Button variant="primary" icon="check" type="submit" form="product-sheet-form">새 상품 추가</Button>
+              <Button variant="primary" icon="check" type="submit" form="product-sheet-form" data-tour="product-create">새 상품 추가</Button>
             </>
           ) : sheetProduct ? (
             <>
@@ -3163,6 +3169,14 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
           </>}>
           <div className="text-[13px] leading-relaxed text-[var(--theme-muted-text)]">{confirmState.description}</div>
         </Modal>
+      ) : null}
+
+      {tutorialMenu ? (
+        <TutorialMenu opener={tutorialMenu.opener} ledgerMode={ledgerMode} onClose={() => setTutorialMenu(null)}
+          onStart={(id) => { setTutorialMenu(null); setActiveTutorial(tutorialById(id)); }} />
+      ) : null}
+      {activeTutorial ? (
+        <TutorialRunner key={activeTutorial.id} tutorial={activeTutorial} onNavigate={(tab) => selectAdminTab(tab)} onClose={() => setActiveTutorial(null)} />
       ) : null}
 
       <div aria-live="polite" className="pointer-events-none fixed inset-x-0 top-4 z-[80] flex flex-col items-center gap-2 px-4">

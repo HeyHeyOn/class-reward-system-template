@@ -27,7 +27,7 @@ export function SheetTabs<T extends string>({ tabs, value, onChange }: { tabs: R
   return (
     <div role="tablist" aria-label="과제 편집 메뉴" className="flex gap-0.5 rounded-[12px] bg-[var(--crs-subtle-hover)] p-1">
       {tabs.map(([tab, label, dirty]) => (
-        <button key={tab} type="button" role="tab" aria-selected={value === tab} onClick={() => onChange(tab)}
+        <button key={tab} type="button" role="tab" data-tour={`sheet-tab-${tab}`} aria-selected={value === tab} onClick={() => onChange(tab)}
           className={cx('relative h-9 flex-1 rounded-[9px] text-[13px] font-bold transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)]',
             value === tab ? 'bg-[var(--theme-surface)] text-[var(--theme-text)] shadow-[var(--crs-shadow-sm)]' : 'text-[var(--theme-muted-text)] hover:text-[var(--theme-text)]')}>
           {label}{dirty ? <span aria-label="저장 안 됨" className="ml-1.5 inline-block h-1.5 w-1.5 -translate-y-0.5 rounded-full bg-[var(--crs-warning-text)]" /> : null}
@@ -197,7 +197,7 @@ export function TaskEditSheet({ ledger, taskId, initialTab, opener, students, un
           onClick={() => { setError('reset', ''); setNested('reset'); }}>지금 초기화…</Button>
         <div className="ml-auto" />
         <Button variant="ghost" disabled={!stagesDirty || Boolean(busy)} onClick={() => { setStageDraft(null); setError('stages', ''); }}>되돌리기</Button>
-        <Button variant="primary" icon="check" loading={busy === 'stages'} disabled={!stagesDirty || Boolean(busy)} onClick={() => void saveStages()}>
+        <Button variant="primary" icon="check" data-tour="task-stages-save" loading={busy === 'stages'} disabled={!stagesDirty || Boolean(busy)} onClick={() => void saveStages()}>
           {stagesDirty ? `${Object.keys(stageChanges).length}명 저장` : '저장'}
         </Button>
       </>

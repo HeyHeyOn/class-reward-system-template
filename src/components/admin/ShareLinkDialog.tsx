@@ -128,7 +128,7 @@ export function ShareLinkDialog({ initialTarget, paths, classLabel, titles, onCl
       footer={(
         <>
           {canShare ? <Button variant="ghost" icon="share" onClick={() => void sendToApp()} className="mr-auto">다른 앱으로 보내기</Button> : null}
-          <Button variant="secondary" icon="printer" loading={busy === 'pdf'} onClick={() => void save('pdf')} disabled={busy !== null}>PDF로 저장</Button>
+          <Button variant="secondary" icon="printer" data-tour="share-pdf" loading={busy === 'pdf'} onClick={() => void save('pdf')} disabled={busy !== null}>PDF로 저장</Button>
           <Button variant="primary" icon="download" loading={busy === 'png'} onClick={() => void save('png')} disabled={busy !== null}>이미지로 저장</Button>
         </>
       )}>
@@ -149,12 +149,12 @@ export function ShareLinkDialog({ initialTarget, paths, classLabel, titles, onCl
               : <p className="text-xs font-semibold text-slate-500">{qrSrc === null ? 'QR을 만들지 못했어요.' : 'QR 만드는 중…'}</p>}
           </div>
         </div>
-        <div>
+        <div data-tour="share-address">
           <label htmlFor="share-address" className="mb-1.5 block text-[13px] font-bold">주소</label>
           <div className="flex gap-2">
             <input id="share-address" ref={addressRef} readOnly value={url} onFocus={(event) => event.currentTarget.select()}
               className="h-10 min-w-0 flex-1 rounded-[11px] border border-[var(--crs-line-strong)] bg-[var(--crs-subtle)] px-3 text-[13px] font-semibold text-[var(--theme-text)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)]" />
-            <Button variant={copied ? 'soft' : 'secondary'} icon={copied ? 'check' : 'copy'} onClick={() => void copyAddress()}>
+            <Button variant={copied ? 'soft' : 'secondary'} icon={copied ? 'check' : 'copy'} data-tour="share-copy" onClick={() => void copyAddress()}>
               {copied ? '복사했어요' : '주소 복사'}
             </Button>
           </div>

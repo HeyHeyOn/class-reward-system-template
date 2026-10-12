@@ -80,7 +80,7 @@ export function CardHeader({ title, description, actions, className, titleAs: Ti
 
 export function PageHeader({ title, description, actions, eyebrow }: { title: ReactNode; description?: ReactNode; actions?: ReactNode; eyebrow?: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
+    <div data-page-header="" className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
       <div className="min-w-0">
         {eyebrow ? <p className="mb-1.5 text-[13px] font-semibold text-[var(--theme-muted-text)]">{eyebrow}</p> : null}
         <h2 className="text-[26px] font-black leading-tight tracking-[-0.035em] sm:text-[30px]">{title}</h2>
@@ -155,7 +155,7 @@ export function EmptyState({ icon = 'box', title, description, action }: { icon?
 
 export function Field({ label, hint, error, htmlFor, children, className, optional }: { label: ReactNode; hint?: ReactNode; error?: ReactNode; htmlFor?: string; children: ReactNode; className?: string; optional?: boolean }) {
   return (
-    <div className={cx('min-w-0', className)}>
+    <div data-field="" className={cx('min-w-0', className)}>
       <label htmlFor={htmlFor} className="mb-1.5 flex items-baseline gap-1.5 text-[13px] font-bold text-[var(--theme-text)]">
         {label}
         {optional ? <span className="text-xs font-medium text-[var(--theme-muted-text)]">선택</span> : null}
@@ -203,7 +203,7 @@ export function Switch({ checked, onChange, label, description, ariaLabel, disab
   );
   if (!label) return control;
   return (
-    <label htmlFor={id} className="flex cursor-pointer items-center justify-between gap-4 rounded-[var(--crs-radius)] border border-[var(--crs-line)] bg-[var(--theme-surface)] px-4 py-3">
+    <label htmlFor={id} data-field="" className="flex cursor-pointer items-center justify-between gap-4 rounded-[var(--crs-radius)] border border-[var(--crs-line)] bg-[var(--theme-surface)] px-4 py-3">
       <span className="min-w-0">
         <span className="block text-sm font-bold">{label}</span>
         {description ? <span className="mt-0.5 block text-xs leading-relaxed text-[var(--theme-muted-text)]">{description}</span> : null}
