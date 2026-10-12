@@ -340,20 +340,20 @@ export function TutorialRunner({ tutorial, onNavigate, onClose, firstStep = 0, a
           <TutorialArrow side={shown.arrow.side} box={shown.arrow} position={position} />
         </>
       ) : null}
-      <div ref={boxRef} role="dialog" aria-modal="false" aria-label={`튜토리얼 ${tutorial.id} ${tutorial.title}`}
+      <div ref={boxRef} role="dialog" aria-modal="false" aria-label={`도움말 ${tutorial.id} ${tutorial.title}`}
         style={{ ...(shown ? { position, left: shown.box.x, top: shown.box.y, width: shown.box.w } : { position: 'fixed' as const }),
           ...(nudges ? { animation: `crs-tour-shake-${nudges % 2} .4s ease-in-out` } : {}) }}
         className={cx('z-[78] w-[min(360px,calc(100vw-24px))] rounded-[18px] border border-[var(--crs-line)] bg-[var(--theme-surface)] text-[var(--theme-text)] shadow-[0_18px_48px_rgb(15_23_42/0.35)]',
           !shown && 'bottom-5 left-1/2 -translate-x-1/2', current.kind === 'searching' && step.skipUnless && 'invisible')}>
         <div className="flex items-start gap-2 border-b border-[var(--crs-line)] px-4 pb-2.5 pt-3">
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[11px] font-bold text-[var(--theme-muted-text)]">튜토리얼 {tutorial.id} {tutorial.title}</p>
+            <p className="truncate text-[11px] font-bold text-[var(--theme-muted-text)]">도움말 {tutorial.id} {tutorial.title}</p>
             <p className="mt-0.5 flex items-center gap-1.5 text-[15px] font-black tracking-[-0.02em]">
               <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--theme-accent-solid)] px-1.5 text-[11px] font-black text-[var(--theme-accent-on-solid)]">{index + 1}</span>
               {step.title}
             </p>
           </div>
-          <IconButton icon="close" label="튜토리얼 끝내기" size="sm" onClick={() => close.current()} />
+          <IconButton icon="close" label="도움말 끝내기" size="sm" onClick={() => close.current()} />
         </div>
         <div aria-live="polite" className="space-y-1.5 px-4 py-3 text-[14px] leading-relaxed">
           {current.kind === 'missing' ? (
@@ -398,29 +398,29 @@ function TutorialDone({ tutorial, next, onNext, onMenu, onClose }: {
 }) {
   return (
     <div data-testid="tutorial" data-tutorial-step={`${tutorial.id}:done`} data-tutorial-state="done" className="crs-tutorial">
-      <div role="dialog" aria-modal="false" aria-label={`튜토리얼 ${tutorial.id} 마침`}
+      <div role="dialog" aria-modal="false" aria-label={`도움말 ${tutorial.id} 마침`}
         className="fixed bottom-5 left-1/2 z-[78] w-[min(380px,calc(100vw-24px))] -translate-x-1/2 rounded-[18px] border border-[var(--crs-line)] bg-[var(--theme-surface)] text-[var(--theme-text)] shadow-[0_18px_48px_rgb(15_23_42/0.35)] [animation:crs-pop-in_.18s_ease-out]">
         <div className="flex items-start gap-3 px-4 pt-4">
           <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--crs-success-bg)] text-[var(--crs-success-text)]"><Icon name="check" size={18} /></span>
           <div className="min-w-0 flex-1">
             <p className="text-[15px] font-black tracking-[-0.02em]">다 했어요</p>
-            <p className="mt-0.5 text-[13px] leading-relaxed text-[var(--theme-muted-text)]"><b className="font-bold text-[var(--theme-text)]">{tutorial.id} {tutorial.title}</b> 튜토리얼을 마쳤어요.</p>
+            <p className="mt-0.5 text-[13px] leading-relaxed text-[var(--theme-muted-text)]"><b className="font-bold text-[var(--theme-text)]">{tutorial.id} {tutorial.title}</b> 도움말을 마쳤어요.</p>
           </div>
-          <IconButton icon="close" label="튜토리얼 닫기" size="sm" onClick={onClose} />
+          <IconButton icon="close" label="도움말 닫기" size="sm" onClick={onClose} />
         </div>
         <div className="space-y-2 px-4 pb-4 pt-3">
           {next ? (
             <button type="button" onClick={() => onNext(next.id)}
               className="flex w-full items-center gap-3 rounded-[12px] bg-[var(--theme-accent-solid)] px-3.5 py-2.5 text-left text-[var(--theme-accent-on-solid)] outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)]">
               <span className="min-w-0 flex-1">
-                <span className="block text-[11px] font-bold opacity-80">다음 튜토리얼</span>
+                <span className="block text-[11px] font-bold opacity-80">다음 도움말</span>
                 <span className="block text-[14px] font-extrabold leading-snug">{next.id} {next.title}</span>
               </span>
               <Icon name="chevronRight" size={18} />
             </button>
           ) : null}
           <div className="flex gap-2">
-            <Button variant="secondary" className="flex-1" onClick={onMenu}>튜토리얼 목록</Button>
+            <Button variant="secondary" className="flex-1" onClick={onMenu}>도움말 목록</Button>
             <Button variant="ghost" className="flex-1" onClick={onClose}>닫기</Button>
           </div>
         </div>

@@ -340,10 +340,10 @@ export async function buildXlsxImportPlan(grid: XlsxWorkbookGrid, options: Reado
   const issues = new Issues();
   const now = new Date(options.now).toISOString();
   const missing = REQUIRED_TABS.filter(tab => !grid.tabs[tab]);
-  for (const tab of missing) issues.error(tab, null, `'${label(tab)}' 시트가 없어요. 예전 CRS 구글 시트를 통째로 .xlsx로 저장했는지 확인해 주세요.`);
+  for (const tab of missing) issues.error(tab, null, `'${label(tab)}' 시트가 없어요. 예전 학급 보상 시스템 구글 시트를 통째로 .xlsx로 저장했는지 확인해 주세요.`);
   for (const name of grid.sheetNames) {
     if (!(DEFINITION_TABS as readonly string[]).includes(name) && !(HISTORY_TABS as readonly string[]).includes(name)) {
-      issues.warning(name, null, `'${name}' 시트는 CRS 시트가 아니라서 옮기지 않아요.`);
+      issues.warning(name, null, `'${name}' 시트는 학급 보상 시스템 시트가 아니라서 옮기지 않아요.`);
     }
   }
   const historyCounts = {
@@ -377,7 +377,7 @@ export async function buildXlsxImportPlan(grid: XlsxWorkbookGrid, options: Reado
     const known = new Set(KNOWN_HEADERS[tab]);
     table.headers.forEach((header, index) => {
       const name = header.trim();
-      if (name && !known.has(name)) issues.warning(tab, 1, `'${label(tab)}' 시트의 '${name}' 열은 새 CRS에서 쓰지 않아 옮기지 않아요.`);
+      if (name && !known.has(name)) issues.warning(tab, 1, `'${label(tab)}' 시트의 '${name}' 열은 새 학급 보상 시스템에서 쓰지 않아 옮기지 않아요.`);
       // Students column E may hold the old writer's exact duplicate of the status (handled below).
       const duplicateStatus = tab === 'Students' && index === 4 && headerIndexOf(table.headers, 'status') === 3
         && table.rows.every(row => !row.cells[4] || row.cells[4] === row.cells[3]);
@@ -612,7 +612,7 @@ export async function buildXlsxImportPlan(grid: XlsxWorkbookGrid, options: Reado
     }
     const maxCompletions = maxCompletionsIndex >= 0 && tableRow ? (tableRow.cells[maxCompletionsIndex] ?? '').trim() : '';
     if (maxCompletions && maxCompletions !== '1') {
-      issues.warning('Tasks', sourceRow, '새 CRS에서는 과제를 회차마다 한 번씩 완료할 수 있어요. (maxCompletionsPerStudent는 옮기지 않아요)');
+      issues.warning('Tasks', sourceRow, '새 학급 보상 시스템에서는 과제를 회차마다 한 번씩 완료할 수 있어요. (maxCompletionsPerStudent는 옮기지 않아요)');
     }
     const ready = new Set<string>(), completed = new Set<string>(), completedUnassigned = new Set<string>();
     const parsed = parsedTasks.get(taskId);

@@ -45,7 +45,7 @@ export function templateHeaderLabel(column: Pick<TemplateColumn, 'label' | 'requ
 
 export async function buildTemplateWorkbook(spec: TemplateSpec): Promise<Uint8Array> {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'CRS';
+  workbook.creator = '학급 보상 시스템';
   workbook.title = spec.sheetName;
 
   const sheet = workbook.addWorksheet(spec.sheetName, { views: [{ state: 'frozen', ySplit: 1 }] });

@@ -199,7 +199,7 @@ export function XlsxImportPanel({ slug, mode, navigate }: Readonly<{
       {phase === 'select' || phase === 'previewing' ? (
         <>
           <ol className="space-y-1.5 rounded-[var(--crs-radius)] bg-[var(--crs-subtle)] px-4 py-3 text-[13px] leading-relaxed text-[var(--theme-muted-text)]">
-            <li><span className="font-bold text-[var(--theme-text)]">1.</span> 예전 CRS 구글 시트를 열어요.</li>
+            <li><span className="font-bold text-[var(--theme-text)]">1.</span> 예전 학급 보상 시스템 구글 시트를 열어요.</li>
             <li><span className="font-bold text-[var(--theme-text)]">2.</span> [파일 → 다운로드 → Microsoft Excel(.xlsx)]로 저장해요.</li>
             <li><span className="font-bold text-[var(--theme-text)]">3.</span> 저장한 파일을 아래에 올리면 옮길 내용을 먼저 보여 드려요.</li>
           </ol>
@@ -210,7 +210,7 @@ export function XlsxImportPanel({ slug, mode, navigate }: Readonly<{
             <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[var(--crs-subtle-hover)] text-[var(--theme-muted-text)]"><Icon name="migrate" size={20} /></span>
             <span className="text-[14px] font-extrabold">{phase === 'previewing' ? '파일을 확인하는 중…' : '.xlsx 파일 선택'}</span>
             <span className="text-[12px] text-[var(--theme-muted-text)]">여기에 끌어다 놓아도 돼요 · 10MB 이하</span>
-            <input ref={inputRef} id={inputId} type="file" disabled={locked} aria-label="CRS 시트 파일(.xlsx) 선택"
+            <input ref={inputRef} id={inputId} type="file" disabled={locked} aria-label="학급 보상 시스템 시트 파일(.xlsx) 선택"
               accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="sr-only"
               onChange={event => { void choose(event.target.files?.[0]); }} />
           </label>

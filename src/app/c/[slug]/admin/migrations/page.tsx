@@ -52,12 +52,12 @@ export default async function TenantMigrationsPage({ params, searchParams }: Rea
           <p className="text-[13px] font-semibold text-[var(--theme-muted-text)]">{tenant.displayName}</p>
           <h1 className="mt-1 text-[28px] font-black leading-tight tracking-[-0.035em]">자료 가져오기</h1>
           <p className="mt-2 text-sm leading-relaxed text-[var(--theme-muted-text)]">
-            예전 CRS 구글 시트를 .xlsx 파일로 저장해 올리면 학생·잔액·상품·과제와 이번 회차 과제 상태를 이 학급으로 옮겨요.
+            예전 학급 보상 시스템 구글 시트를 .xlsx 파일로 저장해 올리면 학생·잔액·상품·과제와 이번 회차 과제 상태를 이 학급으로 옮겨요.
           </p>
           <div className="mt-6">
             {tenant.lifecycle === 'DRAFT' ? (
               <div className="space-y-4">
-                <Notice title="아직 사용을 시작하지 않은 학급이에요">학급 시작 화면에서 [기존 CRS 시트 파일(.xlsx)로 시작하기]를 고르면 시작과 함께 옮길 수 있어요.</Notice>
+                <Notice title="아직 사용을 시작하지 않은 학급이에요">학급 시작 화면에서 [기존 학급 보상 시스템 시트 파일(.xlsx)로 시작하기]를 고르면 시작과 함께 옮길 수 있어요.</Notice>
                 <a href={`/classes/${tenant.slug}/start`} className={buttonClass({ variant: 'primary', size: 'lg', block: true })}>학급 시작 화면 열기</a>
               </div>
             ) : tenant.lifecycle !== 'ACTIVE' ? (
@@ -68,7 +68,7 @@ export default async function TenantMigrationsPage({ params, searchParams }: Rea
               <div className="space-y-4">
                 <Notice title="이미 자료가 있는 학급이에요">
                   학생 {counts.students}명 · 상품 {counts.products}개 · 과제 {counts.tasks}개가 있어 겹치지 않도록 가져오기를 막았어요.
-                  예전 CRS 자료는 새 학급을 만들어 [기존 CRS 시트 파일(.xlsx)로 시작하기]로 옮겨 주세요.
+                  예전 학급 보상 시스템 자료는 새 학급을 만들어 [기존 학급 보상 시스템 시트 파일(.xlsx)로 시작하기]로 옮겨 주세요.
                 </Notice>
                 <a href="/classes/new" className={buttonClass({ variant: 'secondary', block: true })}>새 학급 만들기</a>
               </div>

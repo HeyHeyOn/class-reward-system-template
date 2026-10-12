@@ -26,7 +26,7 @@ function preview(overrides: Partial<XlsxImportPreview> = {}): XlsxImportPreview 
 const xlsxFile = () => new File([new Uint8Array([0x50, 0x4b, 3, 4])], 'crs.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 
 async function upload(file = xlsxFile()) {
-  fireEvent.change(screen.getByLabelText('CRS 시트 파일(.xlsx) 선택'), { target: { files: [file] } });
+  fireEvent.change(screen.getByLabelText('학급 보상 시스템 시트 파일(.xlsx) 선택'), { target: { files: [file] } });
 }
 
 describe('XlsxImportPanel', () => {
@@ -127,6 +127,6 @@ describe('XlsxImportPanel', () => {
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '가져오기' }));
     expect((await screen.findByRole('alert')).textContent).toContain('미리보기한 파일과 다른 파일이에요.');
     fireEvent.click(screen.getByRole('button', { name: '다른 파일 고르기' }));
-    expect(screen.getByLabelText('CRS 시트 파일(.xlsx) 선택')).toBeDefined();
+    expect(screen.getByLabelText('학급 보상 시스템 시트 파일(.xlsx) 선택')).toBeDefined();
   });
 });

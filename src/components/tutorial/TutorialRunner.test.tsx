@@ -153,9 +153,9 @@ describe('TutorialRunner', () => {
     await waitFor(() => expect(tour().getAttribute('data-tutorial-state')).toBe('done'));
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByText('다 했어요')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /다음 튜토리얼/ }));
+    fireEvent.click(screen.getByRole('button', { name: /다음 도움말/ }));
     expect(onNext).toHaveBeenCalledWith('9-10');
-    fireEvent.click(screen.getByRole('button', { name: '튜토리얼 목록' }));
+    fireEvent.click(screen.getByRole('button', { name: '도움말 목록' }));
     expect(onMenu).toHaveBeenCalledTimes(1);
   });
 
@@ -165,7 +165,7 @@ describe('TutorialRunner', () => {
     await waitFor(() => expect(tour().getAttribute('data-tutorial-state')).toBe('shown'));
     const cover = container.querySelector('svg rect[fill="rgb(0 0 0 / 0)"]');
     expect(cover).toBeTruthy();
-    const box = screen.getByRole('dialog', { name: /튜토리얼 9-9/ });
+    const box = screen.getByRole('dialog', { name: /도움말 9-9/ });
     expect(box.style.animation).toBe('');
     fireEvent.pointerDown(container.querySelector('svg path')!);
     expect(box.style.animation).toContain('crs-tour-shake-1');

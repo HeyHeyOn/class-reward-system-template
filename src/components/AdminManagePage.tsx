@@ -2225,7 +2225,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                 <a href={storeHref} target="_blank" rel="noopener noreferrer" aria-label="매점 열기 새 탭 열림" className={buttonClass({ variant: 'ghost', size: 'sm' })}><Icon name="store" size={16} /><span className="hidden sm:inline">매점</span></a>
                 <a href={bankHref} target="_blank" rel="noopener noreferrer" aria-label="은행 열기 새 탭 열림" className={buttonClass({ variant: 'ghost', size: 'sm' })}><Icon name="bank" size={16} /><span className="hidden sm:inline">은행</span></a>
                 <button type="button" aria-label="공유" onClick={openShare('store')} className={buttonClass({ variant: 'ghost', size: 'sm' })}><Icon name="share" size={16} /><span className="hidden sm:inline">공유</span></button>
-                <button type="button" aria-label="튜토리얼" onClick={(event) => setTutorialMenu({ opener: event.currentTarget })} className={buttonClass({ variant: 'ghost', size: 'sm' })}><Icon name="sparkle" size={16} /><span className="hidden sm:inline">튜토리얼</span></button>
+                <button type="button" aria-label="도움말" onClick={(event) => setTutorialMenu({ opener: event.currentTarget })} className={buttonClass({ variant: 'ghost', size: 'sm' })}><Icon name="help" size={16} /><span className="hidden sm:inline">도움말</span></button>
                 {account ? <AccountLink nickname={account.nickname} avatar={account.avatar} compact /> : null}
               </div>
             </div>
@@ -2259,10 +2259,11 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
               <SidebarShortcut href={storeHref} icon="store" label="매점 열기" shareLabel="매점 공유" onShare={openShare('store')} />
               <SidebarShortcut href={bankHref} icon="bank" label="은행 열기" shareLabel="은행 공유" onShare={openShare('bank')} />
               <SidebarButton icon="share" label="관리자 페이지 공유" onClick={openShare('admin')} />
-              <SidebarButton icon="sparkle" label="튜토리얼" onClick={(event) => setTutorialMenu({ opener: event.currentTarget })} />
               <SidebarLink href={tenantPagePath('/admin/student-qrs')} icon="qr" label="학생 QR 인쇄" external />
               {migrationsHref ? <SidebarLink href={migrationsHref} icon="migrate" label="자료 가져오기" external /> : null}
               {tenantScoped ? <SidebarLink href="/classes" icon="school" label="메인 화면으로" /> : null}
+              {/* Help comes last: where a teacher looks when stuck. */}
+              <SidebarButton icon="help" label="도움말" onClick={(event) => setTutorialMenu({ opener: event.currentTarget })} />
               {account ? (
                 <div className="mt-3 border-t border-[var(--crs-line)] pt-3">
                   <AccountLink nickname={account.nickname} avatar={account.avatar} className="w-full text-[13px]" />
