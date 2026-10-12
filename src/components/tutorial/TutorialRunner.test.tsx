@@ -31,8 +31,11 @@ beforeEach(() => {
   vi.stubGlobal('cancelAnimationFrame', (id: number) => window.clearTimeout(id));
   // jsdom lays nothing out: give every element a box so it counts as shown.
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function rect(this: HTMLElement) {
+    // The tutorial's own 0,0 marks are where they are placed.
+    if (this.style.visibility === 'hidden') return { x: 0, y: 0, left: 0, top: 0, width: 1, height: 1, right: 1, bottom: 1, toJSON: () => ({}) } as DOMRect;
     return { x: 100, y: 100, left: 100, top: 100, width: 200, height: 40, right: 300, bottom: 140, toJSON: () => ({}) } as DOMRect;
   });
+  Element.prototype.scrollIntoView = vi.fn();
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
@@ -81,6 +84,20 @@ describe('TutorialRunner', () => {
     await waitFor(() => expect(stepOf()).toBe('9-9:3'));
     act(() => { fireEvent.keyDown(window, { key: 'Escape' }); });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('draws the light where the target really is when the browser measures from a zoomed, moved screen', async () => {
+    // iPhone Safari after a tapped input zoomed in: its measurements start 30,80 further in than
+    // where positioned layers start. The marks at 0,0 show it, and the light lands on the target anyway.
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function rect(this: HTMLElement) {
+      if (this.style.visibility === 'hidden') return { x: -30, y: -80, left: -30, top: -80, width: 1, height: 1, right: -29, bottom: -79, toJSON: () => ({}) } as DOMRect;
+      return { x: 100, y: 100, left: 100, top: 100, width: 200, height: 40, right: 300, bottom: 140, toJSON: () => ({}) } as DOMRect;
+    });
+    render(<><Page /><TutorialRunner tutorial={TUTORIAL} onNavigate={() => {}} onClose={() => {}} /></>);
+    await waitFor(() => expect(tour().getAttribute('data-tutorial-state')).toBe('shown'));
+    const ring = document.querySelector('[data-testid="tutorial"] svg rect') as SVGRectElement;
+    // The unit (100,100 with 8 px room) drawn 30,80 further, so that on screen it sits on the target.
+    expect([ring.getAttribute('x'), ring.getAttribute('y')]).toEqual(['122', '172']);
   });
 
   it('says so when the step has nothing on screen, and still lets the teacher go on', async () => {

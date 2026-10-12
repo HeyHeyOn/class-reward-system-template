@@ -17,6 +17,8 @@ type View =
   | Readonly<{ step: number; kind: 'missing' }>
   | Readonly<{ step: number; kind: 'shown'; anchor: Anchor; area: Box; arrow: Box & { side: ArrowSide }; box: Box; canvas: Readonly<{ w: number; h: number }> }>;
 
+const BOX_WIDTH = 360;
+
 const MISSING_AFTER_MS = 2500;
 const WAIT_MS = 2500;
 const AREA_PAD = 8;
@@ -53,8 +55,20 @@ function waitFor(selector: string, ms: number): Promise<boolean> {
   });
 }
 
-function fullyVisible(box: Box, vw: number, vh: number): boolean {
-  return box.y >= 0 && box.x >= 0 && box.y + box.h <= vh && box.x + box.w <= vw;
+function fullyVisible(box: Box, visible: Box): boolean {
+  return box.y >= visible.y && box.x >= visible.x && box.y + box.h <= visible.y + visible.h && box.x + box.w <= visible.x + visible.w;
+}
+
+/**
+ * The part of the page the teacher can see, in the coordinates getBoundingClientRect uses. On a
+ * zoomed phone screen (iPhone Safari zooms in when a small input is tapped and stays zoomed after
+ * the keyboard closes) that is only part of the layout viewport, and Safari may measure from it.
+ * `fixedOrigin` is where a fixed element placed at 0,0 really is, measured the same way.
+ */
+function visibleRegion(fixedOrigin: DOMRect): Box {
+  const viewport = window.visualViewport;
+  if (!viewport) return { x: fixedOrigin.left, y: fixedOrigin.top, w: window.innerWidth, h: window.innerHeight };
+  return { x: viewport.offsetLeft + fixedOrigin.left, y: viewport.offsetTop + fixedOrigin.top, w: viewport.width, h: viewport.height };
 }
 
 /**
@@ -72,6 +86,10 @@ export function TutorialRunner({ tutorial, onNavigate, onClose }: {
   const [view, setView] = useState<View>({ step: 0, kind: 'searching' });
   const [moving, setMoving] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
+  // Invisible marks at 0,0 of the two layers the tutorial draws on (the screen and the page). Where
+  // they really are tells how to turn measured positions into drawn ones, whatever the browser does.
+  const fixedProbe = useRef<HTMLDivElement>(null);
+  const pageProbe = useRef<HTMLDivElement>(null);
   const navigate = useRef(onNavigate);
   const close = useRef(onClose);
   useEffect(() => { navigate.current = onNavigate; close.current = onClose; });
@@ -103,6 +121,10 @@ export function TutorialRunner({ tutorial, onNavigate, onClose }: {
       if (!alive) return;
       if (step.advanceWhen && !alreadyThere && firstShown(step.advanceWhen)) { moveTo(index, index + 1); return; }
       const target = firstShown(step.target);
+      const fixedOrigin = fixedProbe.current?.getBoundingClientRect();
+      const pageOrigin = pageProbe.current?.getBoundingClientRect();
+      if (!fixedOrigin || !pageOrigin) return;
+      const visible = visibleRegion(fixedOrigin);
       const vw = window.innerWidth, vh = window.innerHeight;
       if (!target) {
         if (performance.now() - startedAt > MISSING_AFTER_MS && lastKey !== 'missing') { lastKey = 'missing'; setView({ step: index, kind: 'missing' }); }
@@ -112,8 +134,8 @@ export function TutorialRunner({ tutorial, onNavigate, onClose }: {
       let area = unionBox(parts.map(boxOf), AREA_PAD);
       if (!revealed) {
         revealed = true;
-        if (!fullyVisible(area, vw, vh)) {
-          const big = area.h > vh * 0.8;
+        if (!fullyVisible(area, visible)) {
+          const big = area.h > visible.h * 0.8;
           (big ? target : parts[0]).scrollIntoView({ block: big ? 'center' : 'nearest', inline: 'nearest' });
           area = unionBox(parts.map(boxOf), AREA_PAD);
         }
@@ -123,22 +145,31 @@ export function TutorialRunner({ tutorial, onNavigate, onClose }: {
       const anchor = anchorOf.anchor;
       if (anchor === 'fixed') {
         // Keep the ring on screen (a footer button at the very bottom).
-        const x0 = Math.max(3, area.x), y0 = Math.max(3, area.y);
-        area = { x: x0, y: y0, w: Math.min(vw - 3, area.x + area.w) - x0, h: Math.min(vh - 3, area.y + area.h) - y0 };
+        const x0 = Math.max(visible.x + 3, area.x), y0 = Math.max(visible.y + 3, area.y);
+        area = { x: x0, y: y0, w: Math.min(visible.x + visible.w - 3, area.x + area.w) - x0, h: Math.min(visible.y + visible.h - 3, area.y + area.h) - y0 };
       }
       const targetBox = boxOf(target);
       const measured = boxRef.current?.getBoundingClientRect();
-      const size = measured && measured.width > 0 ? { w: Math.round(measured.width), h: Math.round(measured.height) } : { w: 360, h: 200 };
-      // Page coordinates do not change while the page scrolls, so scrolling alone redraws nothing.
-      const dx = anchor === 'page' ? window.scrollX : 0, dy = anchor === 'page' ? window.scrollY : 0;
+      // As wide as fits what the teacher sees (a zoomed phone screen shows fewer CSS pixels).
+      const width = Math.round(Math.min(BOX_WIDTH, visible.w - 16));
+      const size = { w: width, h: measured && measured.height > 0 ? Math.round(measured.height) : 200 };
+      // Measured → drawn: subtract where the layer's 0,0 really is. On the page that stays the same
+      // while the page scrolls, so scrolling alone redraws nothing.
+      const origin = anchor === 'page' ? pageOrigin : fixedOrigin;
+      const dx = -origin.left, dy = -origin.top;
       const canvas = anchor === 'page'
         ? { w: document.documentElement.scrollWidth, h: document.documentElement.scrollHeight }
         : { w: vw, h: vh };
+      // On the page, where the visible part is (scrolling) must not re-place anything: it all moves with the page.
+      const seen = anchor === 'page' ? [visible.w, visible.h] : [visible.x + dx, visible.y + dy, visible.w, visible.h];
       const key = [anchor, area.x + dx, area.y + dy, area.w, area.h, targetBox.x + dx, targetBox.y + dy, targetBox.w, targetBox.h,
-        vw, vh, canvas.w, canvas.h, size.w, size.h].map((value) => (typeof value === 'number' ? Math.round(value) : value)).join(',');
+        ...seen, canvas.w, canvas.h, size.w, size.h]
+        .map((value) => (typeof value === 'number' ? Math.round(value) : value)).join(',');
       if (key === lastKey) return;
       lastKey = key;
-      const placed = place(area, targetBox, size, vw, vh);
+      // Arrow and box go where the teacher can see them: placed within the visible part.
+      const local = place(shift(area, -visible.x, -visible.y), shift(targetBox, -visible.x, -visible.y), size, visible.w, visible.h);
+      const placed = { arrow: { ...shift(local.arrow, visible.x, visible.y), side: local.arrow.side }, box: shift(local.box, visible.x, visible.y) };
       setView({ step: index, kind: 'shown', anchor, canvas, area: shift(area, dx, dy),
         arrow: { ...shift(placed.arrow, dx, dy), side: placed.arrow.side }, box: shift(placed.box, dx, dy) });
     };
@@ -208,6 +239,8 @@ export function TutorialRunner({ tutorial, onNavigate, onClose }: {
 
   return (
     <div data-testid="tutorial" data-tutorial-step={`${tutorial.id}:${index + 1}`} data-tutorial-state={current.kind} className="crs-tutorial">
+      <div ref={fixedProbe} aria-hidden="true" style={{ position: 'fixed', left: 0, top: 0, width: 1, height: 1, visibility: 'hidden', pointerEvents: 'none' }} />
+      <div ref={pageProbe} aria-hidden="true" style={{ position: 'absolute', left: 0, top: 0, width: 1, height: 1, visibility: 'hidden', pointerEvents: 'none' }} />
       <style>{`
         @keyframes crs-tour-nudge-left { 0%, 100% { transform: translateX(0) } 50% { transform: translateX(7px) } }
         @keyframes crs-tour-nudge-right { 0%, 100% { transform: translateX(0) } 50% { transform: translateX(-7px) } }
@@ -229,7 +262,7 @@ export function TutorialRunner({ tutorial, onNavigate, onClose }: {
         </>
       ) : null}
       <div ref={boxRef} role="dialog" aria-modal="false" aria-label={`튜토리얼 ${tutorial.id} ${tutorial.title}`}
-        style={shown ? { position, left: shown.box.x, top: shown.box.y } : { position: 'fixed' }}
+        style={shown ? { position, left: shown.box.x, top: shown.box.y, width: shown.box.w } : { position: 'fixed' }}
         className={cx('z-[78] w-[min(360px,calc(100vw-24px))] rounded-[18px] border border-[var(--crs-line)] bg-[var(--theme-surface)] text-[var(--theme-text)] shadow-[0_18px_48px_rgb(15_23_42/0.35)]',
           !shown && 'bottom-5 left-1/2 -translate-x-1/2')}>
         <div className="flex items-start gap-2 border-b border-[var(--crs-line)] px-4 pb-2.5 pt-3">
