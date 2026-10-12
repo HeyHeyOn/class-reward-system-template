@@ -2,6 +2,7 @@
 
 import type { MouseEvent } from 'react';
 import { Button, Callout, Card, Icon, Modal, cx } from '../ui';
+import { TUTORIAL_PAGE_HREF, queueTutorial } from './PendingTutorial';
 import { TUTORIAL_CHAPTERS, tutorialById } from './tutorials';
 
 /** Home tab block: opens the tutorial list. */
@@ -23,9 +24,11 @@ export function TutorialHomeCard({ onOpen }: { onOpen: (event: MouseEvent<HTMLBu
 }
 
 /** The guide's table of contents; sections with a tutorial start it. */
-export function TutorialMenu({ opener, ledgerMode, onClose, onStart }: {
+export function TutorialMenu({ opener, ledgerMode, classList, onClose, onStart }: {
   opener: HTMLElement | null;
   ledgerMode: boolean;
+  /** This class is opened from the teacher's class list (where 1-1 runs). */
+  classList: boolean;
   onClose: () => void;
   onStart: (id: string) => void;
 }) {
@@ -44,16 +47,22 @@ export function TutorialMenu({ opener, ledgerMode, onClose, onStart }: {
               <ul className="mt-1.5 space-y-0.5">
                 {chapter.items.map(([no, title]) => {
                   const tutorial = tutorialById(no);
-                  const usable = Boolean(tutorial && (!tutorial.ledger || ledgerMode));
+                  const usable = Boolean(tutorial && (!tutorial.ledger || ledgerMode) && (tutorial.page !== 'classes' || classList));
+                  const itemClass = 'group flex w-full items-center gap-2.5 rounded-[10px] px-2 py-1.5 text-left text-[13.5px] font-bold outline-none transition-colors hover:bg-[var(--theme-accent-soft)] focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)]';
+                  const item = (
+                    <>
+                      <span className="w-8 shrink-0 tabular-nums text-[var(--theme-accent-text)]">{no}</span>
+                      <span className="min-w-0 flex-1">{title}</span>
+                      <span className="flex shrink-0 items-center gap-0.5 text-[12px] text-[var(--theme-accent-text)]">시작<Icon name="chevronRight" size={14} /></span>
+                    </>
+                  );
                   return (
                     <li key={no}>
-                      {usable ? (
-                        <button type="button" onClick={() => onStart(no)} aria-label={`${no} ${title} 튜토리얼 시작`}
-                          className="group flex w-full items-center gap-2.5 rounded-[10px] px-2 py-1.5 text-left text-[13.5px] font-bold outline-none transition-colors hover:bg-[var(--theme-accent-soft)] focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)]">
-                          <span className="w-8 shrink-0 tabular-nums text-[var(--theme-accent-text)]">{no}</span>
-                          <span className="min-w-0 flex-1">{title}</span>
-                          <span className="flex shrink-0 items-center gap-0.5 text-[12px] text-[var(--theme-accent-text)]">시작<Icon name="chevronRight" size={14} /></span>
-                        </button>
+                      {usable && tutorial?.page ? (
+                        // Runs on another page: the link goes there and the tutorial starts on arrival.
+                        <a href={TUTORIAL_PAGE_HREF[tutorial.page]} onClick={() => queueTutorial(no)} aria-label={`${no} ${title} 튜토리얼 시작`} className={itemClass}>{item}</a>
+                      ) : usable ? (
+                        <button type="button" onClick={() => onStart(no)} aria-label={`${no} ${title} 튜토리얼 시작`} className={itemClass}>{item}</button>
                       ) : (
                         <div className={cx('flex items-center gap-2.5 px-2 py-1.5 text-[13.5px] text-[var(--theme-muted-text)]')}>
                           <span className="w-8 shrink-0 tabular-nums opacity-70">{no}</span>

@@ -12,6 +12,7 @@ import { publicOrigin } from '@/lib/publicOrigin';
 import { AccountLink } from '@/components/account/AccountLink';
 import { LegalAgreementGate } from '@/components/account/LegalAgreementGate';
 import type { TeacherAccountView } from '@/server/teacherAccounts';
+import { PendingTutorial } from '@/components/tutorial/PendingTutorial';
 
 const theme = themeStyles('white');
 const subscribe = () => () => {};
@@ -128,6 +129,7 @@ export function ClassesSelectionView({ model, account, withdrawn = false }: Read
       </>}
       <SiteFooter className={styles.footer}/>
     </div>
+    {model.kind === 'MEMBERSHIPS' ? <PendingTutorial page="classes"/> : null}
     {dialog && <ClassManagementDialog key={`${dialog.item.slug}-${dialog.action}`} item={dialog.item} action={dialog.action} onClose={() => setDialog(null)} onSuccess={message => { setDialog(null); setNotice(message); router.refresh(); }}/> }
     {account ? <LegalAgreementGate notice={account.notice} classNames={memberships.filter((item) => item.roleLabel === '소유자').map((item) => item.displayName)} /> : null}
   </main>;

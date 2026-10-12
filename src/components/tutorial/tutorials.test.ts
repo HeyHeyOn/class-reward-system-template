@@ -16,14 +16,21 @@ const selectorsOf = (step: TutorialStep) => [
   ...(step.area ?? []).flatMap((part) => (typeof part === 'string' ? (part.startsWith('@') ? [] : [part]) : [part.closest])),
   ...(step.next ? [step.next.wait, ...(step.next.click ? [step.next.click] : [])] : []),
   ...(step.advanceWhen ? [step.advanceWhen] : []),
+  ...(step.skipUnless ? [step.skipUnless] : []),
+  ...(step.reveal ? [step.reveal] : []),
 ];
 
 describe('tutorials', () => {
-  it('lists every tutorial in the table of contents, and every listed section once', () => {
-    const listed = TUTORIAL_CHAPTERS.flatMap((chapter) => chapter.items.map(([no]) => no));
-    expect(new Set(listed).size).toBe(listed.length);
-    for (const tutorial of TUTORIALS) expect(listed).toContain(tutorial.id);
-    expect(TUTORIALS.map((tutorial) => tutorial.id)).toEqual(['2-1', '3-1', '3-5', '4-1', '5-1', '5-4', '6-1', '9-1']);
+  it('has a tutorial for every section of the table of contents, in its order and under its title', () => {
+    const listed = TUTORIAL_CHAPTERS.flatMap((chapter) => chapter.items);
+    expect(new Set(listed.map(([no]) => no)).size).toBe(listed.length);
+    expect(TUTORIALS.map((tutorial) => tutorial.id)).toEqual(listed.map(([no]) => no));
+    for (const [no, title] of listed) expect(TUTORIALS.find((tutorial) => tutorial.id === no)?.title).toBe(title);
+  });
+
+  it('opens the class list for the tutorial that runs there, and nothing else', () => {
+    expect(TUTORIALS.filter((tutorial) => tutorial.page).map((tutorial) => tutorial.id)).toEqual(['1-1']);
+    for (const step of TUTORIALS.find((tutorial) => tutorial.id === '1-1')!.steps) expect(step.tab).toBeUndefined();
   });
 
   it('gives every step something to point at and words to say', () => {
@@ -44,7 +51,8 @@ describe('tutorials', () => {
       .flatMap((selector) => [...selector.matchAll(/data-tour="([^"]+)"/g)].map((match) => match[1])));
     expect(hooks.size).toBeGreaterThan(10);
     for (const hook of hooks) {
-      const present = code.includes(`data-tour="${hook}"`) || (hook.startsWith('sheet-tab-') && code.includes('data-tour={`sheet-tab-${tab}`}'));
+      const present = code.includes(`data-tour="${hook}"`) || code.includes(`tour="${hook}"`)
+        || (hook.startsWith('sheet-tab-') && code.includes('data-tour={`sheet-tab-${tab}`}'));
       expect(present, hook).toBe(true);
     }
   });

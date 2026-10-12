@@ -21,6 +21,12 @@ const BOX_WIDTH = 360;
 
 const MISSING_AFTER_MS = 2500;
 const WAIT_MS = 2500;
+/** How long a step that only applies sometimes (`skipUnless`) waits for its sign before it is passed over. */
+const SKIP_AFTER_MS = 400;
+/** …not counting the time the screen is still loading (a spinner shows), up to this long. */
+const SKIP_LOADING_MAX_MS = 5000;
+/** How long a step waits before clicking `reveal` (its menu may still be switching). */
+const REVEAL_AFTER_MS = 150;
 const AREA_PAD = 8;
 
 /** **굵게** and [버튼] in the guide's words. */
@@ -92,16 +98,20 @@ export function TutorialRunner({ tutorial, onNavigate, onClose }: {
   const pageProbe = useRef<HTMLDivElement>(null);
   const navigate = useRef(onNavigate);
   const close = useRef(onClose);
+  // Which way the teacher is going, so a step that does not apply is passed over in that direction.
+  const direction = useRef<1 | -1>(1);
   useEffect(() => { navigate.current = onNavigate; close.current = onClose; });
 
   const steps = tutorial.steps;
   const step = steps[index];
-  const last = index === steps.length - 1;
+  // The last step, or every step after it applies only to something that is not on the screen.
+  const last = steps.slice(index + 1).every((later) => later.skipUnless !== undefined && !firstShown(later.skipUnless));
   const current = view.step === index ? view : { step: index, kind: 'searching' as const };
 
   /** Moves from `from` to `to` once (a click that already moved on is not counted twice). */
   const moveTo = useCallback((from: number, to: number) => {
     if (to >= steps.length) { close.current(); return; }
+    direction.current = to < from ? -1 : 1;
     setIndex((now) => (now === from ? Math.max(0, to) : now));
   }, [steps.length]);
 
@@ -112,6 +122,11 @@ export function TutorialRunner({ tutorial, onNavigate, onClose }: {
     let lastKey = '';
     let revealed = false;
     let anchorOf: { element: HTMLElement; anchor: Anchor } | null = null;
+    // A step that only applies sometimes is undecided until its sign shows up (or does not, in time).
+    let applies = !step.skipUnless;
+    let passedOver = false;
+    let settledAt = 0;
+    let revealClicked = false;
     if (step.tab) navigate.current(step.tab);
     const startedAt = performance.now();
     // Moving on by itself only counts what appears after the step began (not a dialog left open).
@@ -120,14 +135,35 @@ export function TutorialRunner({ tutorial, onNavigate, onClose }: {
     const measure = () => {
       if (!alive) return;
       if (step.advanceWhen && !alreadyThere && firstShown(step.advanceWhen)) { moveTo(index, index + 1); return; }
-      const target = firstShown(step.target);
+      const elapsed = performance.now() - startedAt;
+      if (!applies && step.skipUnless) {
+        if (firstShown(step.skipUnless)) applies = true;
+        else {
+          // The sign may still come while the screen is loading.
+          if (firstShown('.animate-spin') && elapsed < SKIP_LOADING_MAX_MS) settledAt = 0;
+          else if (!settledAt) settledAt = performance.now();
+          if (settledAt && performance.now() - settledAt > SKIP_AFTER_MS && !passedOver) {
+            passedOver = true;
+            const to = index + direction.current;
+            moveTo(index, to < 0 ? index + 1 : to);
+          }
+          return;
+        }
+      }
+      let target = firstShown(step.target);
+      // The target is behind a tab of its own (a sub-menu): open it, once.
+      if (!target && step.reveal && !revealClicked && elapsed > REVEAL_AFTER_MS) {
+        revealClicked = true;
+        firstShown(step.reveal)?.click();
+        target = firstShown(step.target);
+      }
       const fixedOrigin = fixedProbe.current?.getBoundingClientRect();
       const pageOrigin = pageProbe.current?.getBoundingClientRect();
       if (!fixedOrigin || !pageOrigin) return;
       const visible = visibleRegion(fixedOrigin);
       const vw = window.innerWidth, vh = window.innerHeight;
       if (!target) {
-        if (performance.now() - startedAt > MISSING_AFTER_MS && lastKey !== 'missing') { lastKey = 'missing'; setView({ step: index, kind: 'missing' }); }
+        if (elapsed > MISSING_AFTER_MS && lastKey !== 'missing') { lastKey = 'missing'; setView({ step: index, kind: 'missing' }); }
         return;
       }
       const parts = areaElements(step, target);
@@ -222,6 +258,7 @@ export function TutorialRunner({ tutorial, onNavigate, onClose }: {
 
   async function next() {
     if (moving) return;
+    if (last) { close.current(); return; }
     const from = index;
     if (step.next && !firstShown(step.next.wait)) {
       setMoving(true);
@@ -264,7 +301,7 @@ export function TutorialRunner({ tutorial, onNavigate, onClose }: {
       <div ref={boxRef} role="dialog" aria-modal="false" aria-label={`튜토리얼 ${tutorial.id} ${tutorial.title}`}
         style={shown ? { position, left: shown.box.x, top: shown.box.y, width: shown.box.w } : { position: 'fixed' }}
         className={cx('z-[78] w-[min(360px,calc(100vw-24px))] rounded-[18px] border border-[var(--crs-line)] bg-[var(--theme-surface)] text-[var(--theme-text)] shadow-[0_18px_48px_rgb(15_23_42/0.35)]',
-          !shown && 'bottom-5 left-1/2 -translate-x-1/2')}>
+          !shown && 'bottom-5 left-1/2 -translate-x-1/2', current.kind === 'searching' && step.skipUnless && 'invisible')}>
         <div className="flex items-start gap-2 border-b border-[var(--crs-line)] px-4 pb-2.5 pt-3">
           <div className="min-w-0 flex-1">
             <p className="truncate text-[11px] font-bold text-[var(--theme-muted-text)]">튜토리얼 · {tutorial.id} {tutorial.title}</p>

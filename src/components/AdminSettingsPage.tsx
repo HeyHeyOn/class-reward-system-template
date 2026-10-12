@@ -217,7 +217,7 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
               {FONT_FAMILY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </Select>
           </Field>
-          <p aria-hidden="true" className="mt-3 rounded-[12px] bg-[var(--crs-subtle)] px-4 py-3 text-lg" style={fontCss ? { fontFamily: fontCss } : undefined}>
+          <p aria-hidden="true" data-tour="settings-font-preview" className="mt-3 rounded-[12px] bg-[var(--crs-subtle)] px-4 py-3 text-lg" style={fontCss ? { fontFamily: fontCss } : undefined}>
             {appTitle || '학급 매점'} · 연필 100{currencyUnit || '원'}
           </p>
         </Card>

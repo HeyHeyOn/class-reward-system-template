@@ -333,14 +333,14 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
   return (
     <div className={cx('grid gap-5', embedded && 'pb-6')}>
       <section inert={confirmation !== null} aria-hidden={confirmation ? true : undefined} aria-label="거래 내역 목록" className="grid gap-5">
-        <div className="grid grid-cols-3 gap-3">
+        <div data-tour="tx-stats" className="grid grid-cols-3 gap-3">
           <StatCard label="수입" value={<span className="text-[var(--crs-success-text)]">+{formatCurrency(totals.income, currencyUnit)}</span>} hint={paged ? '검색 조건 기준 · 취소 제외' : '취소된 거래 제외'} />
           <StatCard label="지출" value={<span className="text-[var(--crs-danger-text)]">-{formatCurrency(totals.expense, currencyUnit)}</span>} hint={paged ? '검색 조건 기준 · 취소 제외' : '취소된 거래 제외'} />
           <StatCard label="거래 수" value={`${(paged ? pageTotals.count : transactions.length).toLocaleString('ko-KR')}건`} hint={paged ? `현재 ${transactions.length}건 표시` : filteredTransactions.length !== transactions.length ? `표시 ${filteredTransactions.length}건` : '전체'} />
         </div>
 
         <fieldset disabled={cancelingId !== null} className="contents">
-          <div className="flex flex-wrap items-center gap-3">
+          <div data-tour="tx-tools" className="flex flex-wrap items-center gap-3">
             <SearchInput value={query} onChange={(value) => setQuery(paged ? value.slice(0, 100) : value)} placeholder="학생 이름 또는 상품 검색" ariaLabel="거래 검색" className="w-full sm:w-72" />
             <TransactionFilterTabs value={transactionFilter} onChange={(direction) => {
               setTransactionFilter(direction);
@@ -349,7 +349,7 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
             <IconButton icon="refresh" label="거래 내역 새로고침" variant="secondary" disabled={loading || isRefreshing} onClick={refreshTransactions} className="ml-auto" />
           </div>
 
-          {paged ? <div className="flex flex-wrap items-end gap-3">
+          {paged ? <div data-tour="tx-range" className="flex flex-wrap items-end gap-3">
             <label className="text-xs font-semibold text-[var(--theme-muted-text)]">시작일
               <Input type="date" aria-label="거래 시작일" value={historyFilter.from} onChange={(event) => changeHistoryFilter({ from: event.target.value })} /></label>
             <label className="text-xs font-semibold text-[var(--theme-muted-text)]">종료일
@@ -467,7 +467,7 @@ function TransactionCancelDialog({ transaction, currencyUnit, opener, onClose, o
     <Modal size="sm" tone="danger" title="거래를 취소할까요?" ariaLabel="거래 취소 확인" opener={opener} onClose={onClose}
       footer={<>
         <Button variant="ghost" data-autofocus onClick={onClose}>돌아가기</Button>
-        <Button variant="danger" onClick={onConfirm}>거래 취소 확정</Button>
+        <Button variant="danger" data-tour="tx-cancel-confirm" onClick={onConfirm}>거래 취소 확정</Button>
       </>}>
       <div className="rounded-[var(--crs-radius)] bg-[var(--crs-subtle)] px-4 py-3">
         <p className="text-sm font-bold">{transaction.studentName} · {formatSignedStudentAmount(transaction, currencyUnit)}</p>

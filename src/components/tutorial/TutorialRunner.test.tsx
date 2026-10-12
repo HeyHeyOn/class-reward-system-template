@@ -108,4 +108,44 @@ describe('TutorialRunner', () => {
     fireEvent.click(screen.getByRole('button', { name: /다음/ }));
     await waitFor(() => expect(stepOf()).toBe('9-9:2'));
   });
+
+  it('passes over a step that does not apply, going either way, and ends when nothing after it applies', async () => {
+    const onClose = vi.fn();
+    const optional: Tutorial = { ...TUTORIAL, steps: [
+      TUTORIAL.steps[0],
+      { target: '#inside', skipUnless: '#inside', title: '창 안', text: '창이 열렸을 때만 보여요.' },
+      { target: '#open', area: ['@target'], title: '창 열기', text: '[열기]를 누르세요.' },
+      { target: '#inside', skipUnless: '#inside', title: '끝', text: '창이 열렸을 때만 보여요.' },
+    ] };
+    render(<><Page /><TutorialRunner tutorial={optional} onNavigate={() => {}} onClose={onClose} /></>);
+    await waitFor(() => expect(tour().getAttribute('data-tutorial-state')).toBe('shown'));
+    fireEvent.click(screen.getByRole('button', { name: /다음/ }));
+    await waitFor(() => expect(stepOf()).toBe('9-9:3'));
+    expect(screen.getByText('열기', { selector: 'span' })).toBeTruthy();
+    // Nothing after this step applies: it is the last one.
+    expect(screen.getByRole('button', { name: /마치기/ })).toBeTruthy();
+    await waitFor(() => expect((screen.getByRole('button', { name: /이전/ }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: /이전/ }));
+    await waitFor(() => expect(stepOf()).toBe('9-9:1'));
+    fireEvent.click(screen.getByRole('button', { name: /다음/ }));
+    await waitFor(() => expect(stepOf()).toBe('9-9:3'));
+    fireEvent.click(screen.getByRole('button', { name: /마치기/ }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it('opens the tab its target sits behind', async () => {
+    function Tabs() {
+      const [tab, setTab] = useState<'a' | 'b'>('a');
+      return (
+        <div>
+          <button id="tab-b" type="button" onClick={() => setTab('b')}>B</button>
+          {tab === 'b' ? <div data-field=""><input id="in-b" aria-label="B 칸" /></div> : null}
+        </div>
+      );
+    }
+    const behind: Tutorial = { ...TUTORIAL, steps: [{ target: '#in-b', reveal: '#tab-b', title: 'B 칸', text: '**B 칸**을 보세요.' }, TUTORIAL.steps[0]] };
+    render(<><Tabs /><Page /><TutorialRunner tutorial={behind} onNavigate={() => {}} onClose={() => {}} /></>);
+    await waitFor(() => expect(tour().getAttribute('data-tutorial-state')).toBe('shown'));
+    expect(document.getElementById('in-b')).toBeTruthy();
+  });
 });

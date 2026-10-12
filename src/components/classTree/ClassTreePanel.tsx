@@ -201,7 +201,7 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
 
       {tree && look ? (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <Card className="flex flex-col items-center gap-4">
+          <Card data-tour="tree-view" className="flex flex-col items-center gap-4">
             <div className="w-full rounded-[20px] bg-[var(--theme-accent-soft)] p-3">
               <div className="flex justify-center"><TreeCanvas drops={tree.drops} goal={tree.goal} apples={board.activeStudents} size={320} play={play} onPlayEnd={() => setPlay(null)} name={settings.treeName} /></div>
             </div>
@@ -219,13 +219,13 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
           </Card>
 
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
+            <div data-tour="tree-stats" className="grid grid-cols-2 gap-3">
               <StatCard label="양분" icon="sprout" value={fmt(tree.drops)} hint={`목표 ${fmt(tree.goal)}`} />
               <StatCard label="오늘 양분 준 학생" icon="users" value={`${board.waterersToday}명`} hint={`전체 ${board.activeStudents}명`} />
             </div>
 
             {look.ready ? (
-              <Card className="space-y-3">
+              <Card data-tour="tree-harvest" className="space-y-3">
                 <CardHeader title="열매가 다 익었어요!" description={`수확하면 학생 ${board.activeStudents}명 모두에게 보상을 주고 새 씨앗을 심어요.`} />
                 <p className="text-sm font-semibold">
                   보상: {settings.rewardAmount > 0 ? `${fmt(settings.rewardAmount)}${unit}` : '화폐 없음'}{rewardItem ? ` + ${rewardItem}` : ''}
@@ -244,7 +244,7 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
       <Card className="space-y-5">
         <CardHeader title="키우기 설정" description="목표 양분은 선생님이 정해요. 아래에서 예상 키우기 기간을 참고할 수 있어요. 보상은 수확할 때의 설정으로 줘요." />
         {tree || settings.enabled ? (
-          <Switch checked={draft.enabled} onChange={(enabled) => set({ enabled })} label="학생 화면에 학급 나무 보이기"
+          <Switch checked={draft.enabled} onChange={(enabled) => set({ enabled })} tour="tree-enable" label="학생 화면에 학급 나무 보이기"
             description="끄면 학생들은 나무를 볼 수 없고 양분도 쌓이지 않아요. 지금까지 쌓인 양분은 그대로 남아요." />
         ) : null}
         <div className="grid gap-4 sm:grid-cols-2">
@@ -289,18 +289,18 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
         </div>
         <TreeEstimate draft={draft} activeStudents={board.activeStudents} drops={tree?.drops ?? null} onTasks={(tasksPerWeek) => set({ tasksPerWeek })} />
         {formError ? <p role="alert" className="text-sm font-semibold text-[var(--crs-danger-text)]">{formError}</p> : null}
-        <div className="flex flex-wrap gap-2">
+        <div data-tour="tree-save-bar" className="flex flex-wrap gap-2">
           {tree || settings.enabled ? (
-            <Button variant="primary" icon="check" onClick={() => void save()} loading={saving} disabled={saving || !dirty}>설정 저장</Button>
+            <Button variant="primary" icon="check" data-tour="tree-save" onClick={() => void save()} loading={saving} disabled={saving || !dirty}>설정 저장</Button>
           ) : (
-            <Button variant="primary" icon="sprout" onClick={() => void save(true)} loading={saving} disabled={saving}>이 설정으로 시작하기</Button>
+            <Button variant="primary" icon="sprout" data-tour="tree-save" onClick={() => void save(true)} loading={saving} disabled={saving}>이 설정으로 시작하기</Button>
           )}
           {dirty ? <Button variant="ghost" onClick={() => { setDraft(toDraft(board.settings)); setFormError(''); }} disabled={saving}>되돌리기</Button> : null}
         </div>
       </Card>
 
       {tree ? (
-        <Card className="space-y-3">
+        <Card data-tour="tree-contrib" className="space-y-3">
           <CardHeader title="함께 키운 학생" description={`${settings.treeName}에 양분을 보탠 기록이에요. ‘오늘 양분’에는 과제를 완료해서 준 양분도 함께 세요(괄호 안은 그중 과제). 학생 화면에는 순위를 보여 주지 않아요.`} />
           <div className="overflow-x-auto">
             <table className="w-full min-w-[420px] text-sm">
@@ -414,7 +414,7 @@ function TreeAdjustCard({ tree, activeStudents, amount, note, busy, enabled, adj
   const stageOf = (drops: number) => CLASS_TREE_STAGES[classTreeLook(drops, tree.goal, 0).stage];
   const steps = [...new Set([1, 10, Math.max(1, activeStudents)])].sort((a, b) => a - b);
   return (
-    <Card className="space-y-3">
+    <Card data-tour="tree-adjust" className="space-y-3">
       <CardHeader title="양분 조정" description="반 전체를 칭찬할 때 양분을 더하고, 잘못 쌓인 양분은 뺄 수 있어요." />
       <p className="text-sm font-semibold tabular-nums">지금 양분 {fmt(tree.drops)} / {fmt(tree.goal)} · {stageOf(tree.drops)}</p>
       <Field label="바꿀 양분" htmlFor="tree-feed-amount">
@@ -442,7 +442,7 @@ function TreeAdjustCard({ tree, activeStudents, amount, note, busy, enabled, adj
           <dd className="tabular-nums">{fmt(minus)} · {stageOf(minus)}</dd>
         </dl>
       ) : <p className="text-sm font-semibold text-[var(--crs-danger-text)]">{min}~{fmt(max)} 사이의 숫자로 적어 주세요.</p>}
-      <div className="grid grid-cols-2 gap-2">
+      <div data-tour="tree-adjust-buttons" className="grid grid-cols-2 gap-2">
         <Button variant="secondary" icon="minus" onClick={() => onApply('remove')} loading={busy === 'remove'}
           disabled={!valid || busy !== null || !enabled || tree.drops === 0}>양분 빼기{valid ? ` −${fmt(value)}` : ''}</Button>
         <Button variant="primary" icon="plus" onClick={() => onApply('add')} loading={busy === 'add'}

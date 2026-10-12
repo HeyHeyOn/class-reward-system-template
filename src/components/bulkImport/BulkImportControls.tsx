@@ -285,7 +285,7 @@ export function BulkImportControls<TRow extends { rowNumber: number }, TItem>({
     const primary = failure?.retry === 'recheck'
       ? <Button variant="primary" icon="refresh" data-autofocus onClick={() => void checkFile(phase.file)}>파일 다시 확인</Button>
       : (
-        <Button variant="primary" icon="check" data-autofocus loading={phase.committing}
+        <Button variant="primary" icon="check" data-autofocus data-tour="bulk-import-commit" loading={phase.committing}
           disabled={count === 0 || phase.committing || failure?.retry === 'none'} onClick={() => void commit()}>
           {phase.committing ? '추가하는 중…' : failure?.retry === 'same' ? '다시 시도' : `${noun} ${config.countLabel(count)} 추가`}
         </Button>

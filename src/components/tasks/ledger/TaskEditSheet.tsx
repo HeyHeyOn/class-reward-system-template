@@ -187,7 +187,7 @@ export function TaskEditSheet({ ledger, taskId, initialTab, opener, students, un
       <>
         <div className="ml-auto" />
         <Button variant="ghost" disabled={!repeatDraft || Boolean(busy)} onClick={() => { setRepeatDraft(null); setError('repeat', ''); }}>되돌리기</Button>
-        <Button variant="primary" icon="check" loading={busy === 'repeat'} disabled={!repeatDirty || Boolean(busy)} onClick={() => void saveRepeat()}>저장</Button>
+        <Button variant="primary" icon="check" data-tour="task-repeat-save" loading={busy === 'repeat'} disabled={!repeatDirty || Boolean(busy)} onClick={() => void saveRepeat()}>저장</Button>
       </>
     ) : tab === 'padlet' ? (
       <Button variant="ghost" className="ml-auto" disabled={Boolean(busy)} onClick={() => close()}>닫기</Button>

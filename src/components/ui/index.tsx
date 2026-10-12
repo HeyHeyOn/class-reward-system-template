@@ -190,7 +190,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSel
   );
 });
 
-export function Switch({ checked, onChange, label, description, ariaLabel, disabled }: { checked: boolean; onChange: (checked: boolean) => void; label?: ReactNode; description?: ReactNode; ariaLabel?: string; disabled?: boolean }) {
+export function Switch({ checked, onChange, label, description, ariaLabel, disabled, tour }: { checked: boolean; onChange: (checked: boolean) => void; label?: ReactNode; description?: ReactNode; ariaLabel?: string; disabled?: boolean; /** Tutorial hook (`data-tour`). */ tour?: string }) {
   const id = useId();
   const control = (
     <span className="relative inline-flex h-6 w-11 shrink-0">
@@ -201,9 +201,9 @@ export function Switch({ checked, onChange, label, description, ariaLabel, disab
       <span aria-hidden="true" className="absolute left-[3px] top-[3px] h-[18px] w-[18px] rounded-full bg-white shadow-sm transition-transform duration-150 peer-checked:translate-x-5" />
     </span>
   );
-  if (!label) return control;
+  if (!label) return tour ? <span data-tour={tour} className="inline-flex">{control}</span> : control;
   return (
-    <label htmlFor={id} data-field="" className="flex cursor-pointer items-center justify-between gap-4 rounded-[var(--crs-radius)] border border-[var(--crs-line)] bg-[var(--theme-surface)] px-4 py-3">
+    <label htmlFor={id} data-field="" data-tour={tour} className="flex cursor-pointer items-center justify-between gap-4 rounded-[var(--crs-radius)] border border-[var(--crs-line)] bg-[var(--theme-surface)] px-4 py-3">
       <span className="min-w-0">
         <span className="block text-sm font-bold">{label}</span>
         {description ? <span className="mt-0.5 block text-xs leading-relaxed text-[var(--theme-muted-text)]">{description}</span> : null}

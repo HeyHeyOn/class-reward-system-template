@@ -88,7 +88,7 @@ export function PadletKeyBox({ keyStatus, onChange, disabled = false }: {
 
   if (!needsKey && !editing) {
     return (
-      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 rounded-[12px] bg-[var(--crs-subtle)] px-3.5 py-2 text-[13px]">
+      <div data-tour="padlet-key" className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 rounded-[12px] bg-[var(--crs-subtle)] px-3.5 py-2 text-[13px]">
         <span className="inline-flex items-center gap-1.5 font-bold"><Icon name="lock" size={14} />Padlet API 키</span>
         <span className="font-semibold tabular-nums text-[var(--theme-muted-text)]">끝자리 {keyStatus.hint}</span>
         <span className="ml-auto flex items-center gap-1">
@@ -111,7 +111,7 @@ export function PadletKeyBox({ keyStatus, onChange, disabled = false }: {
   }
 
   return (
-    <div className="space-y-3 rounded-[var(--crs-radius)] border border-[var(--crs-line)] p-4">
+    <div data-tour="padlet-key" className="space-y-3 rounded-[var(--crs-radius)] border border-[var(--crs-line)] p-4">
       <div className="space-y-1.5">
         <p className="flex items-center gap-1.5 text-[14px] font-extrabold"><Icon name="lock" size={15} />Padlet API 키 넣기</p>
         <p className="text-[13px] leading-relaxed text-[var(--theme-muted-text)]">
@@ -165,7 +165,7 @@ export function PadletBoardPicker({ picked, onPick, disabled = false, initialAdd
       <Field label="패들렛 게시판 주소" htmlFor={inputId} error={error}
         hint={error ? undefined : '게시판을 열고 주소창의 주소를 그대로 붙여 넣은 뒤 불러오기를 눌러 주세요.'}>
         <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); void load(); }}>
-          <Input id={inputId} inputMode="url" autoComplete="off" spellCheck={false} placeholder="https://padlet.com/…" value={address}
+          <Input id={inputId} data-tour="padlet-address" inputMode="url" autoComplete="off" spellCheck={false} placeholder="https://padlet.com/…" value={address}
             disabled={busy || disabled} className="min-w-0 flex-1"
             onChange={(event) => { setAddress(event.target.value); if (picked) onPick(null); }} />
           <Button type="submit" icon="download" loading={busy} disabled={!address.trim() || busy || disabled}>불러오기</Button>
@@ -229,7 +229,7 @@ export function PadletSharingCallout({ tasks }: { tasks: readonly AdminTaskDto[]
   const { chains, separate } = padletSharingNote(tasks);
   const groups = chains.length + separate.length;
   return (
-    <Callout tone="info" title={`이 게시판을 함께 쓰는 과제 ${tasks.length}개`}>
+    <div data-tour="padlet-sharing"><Callout tone="info" title={`이 게시판을 함께 쓰는 과제 ${tasks.length}개`}>
       <ul className="mt-0.5 space-y-1">
         {chains.map((chain) => (
           <li key={chain.join('→')}>
@@ -244,14 +244,14 @@ export function PadletSharingCallout({ tasks }: { tasks: readonly AdminTaskDto[]
           </li>
         ) : null}
       </ul>
-    </Callout>
+    </Callout></div>
   );
 }
 
 /** The rules, in the teacher's words. */
 export function PadletRules() {
   return (
-    <ul className="space-y-1 text-xs leading-relaxed text-[var(--theme-muted-text)]">
+    <ul data-tour="padlet-rules" className="space-y-1 text-xs leading-relaxed text-[var(--theme-muted-text)]">
       <li className="flex gap-1.5"><span aria-hidden="true">·</span>학생이 ‘미완료’가 된 뒤(과제를 받거나, 초기화·단계 변경으로 미완료가 된 뒤) 마감 전까지 올린 글만 세요. 그 전에 쓴 글은 세지 않아요.</li>
       <li className="flex gap-1.5"><span aria-hidden="true">·</span>글쓴이 이름에서 학생 이름을 찾고, 없으면 글 제목에서 찾아요. 로그인하지 않은 학생은 제목에 이름을 써 주세요.</li>
       <li className="flex gap-1.5"><span aria-hidden="true">·</span>이 과제가 ‘미완료’인 학생만 ‘완료 가능’으로 바뀌어요. 글 하나는 한 번만 세요.</li>

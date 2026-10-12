@@ -81,7 +81,7 @@ export function QrStageDialog({ ledger, opener, unit, manualInputEnabled }: {
   } else if (step.kind === 'stage') {
     footer = <>
       <Button variant="ghost" onClick={() => setStep({ kind: 'task' })}>과제 다시 고르기</Button>
-      <Button variant="primary" icon="qr" disabled={!task} onClick={() => { setLines([]); setManual(''); setStep({ kind: 'scan', taskId: step.taskId }); }}>QR 찍기 시작</Button>
+      <Button variant="primary" icon="qr" data-tour="task-qr-start" disabled={!task} onClick={() => { setLines([]); setManual(''); setStep({ kind: 'scan', taskId: step.taskId }); }}>QR 찍기 시작</Button>
     </>;
     body = (
       <div className="space-y-4">

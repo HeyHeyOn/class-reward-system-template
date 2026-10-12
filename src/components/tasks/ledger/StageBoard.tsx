@@ -41,7 +41,7 @@ export function StageBoard({ task, students, changes, onChange, disabled }: {
       <div data-tour="stage-counts" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {TASK_STAGES.map((stage) => <MiniStat key={stage} label={stageLabel(stage)} value={`${count(stage)}명`} tone={stage} />)}
       </div>
-      <ul className="grid gap-1 rounded-[12px] bg-[var(--crs-subtle)] px-3.5 py-2.5 text-xs leading-relaxed text-[var(--theme-muted-text)]">
+      <ul data-tour="stage-legend" className="grid gap-1 rounded-[12px] bg-[var(--crs-subtle)] px-3.5 py-2.5 text-xs leading-relaxed text-[var(--theme-muted-text)]">
         <li><b className="text-[var(--theme-text)]">미부여</b> 학생에게 보이지 않아요.</li>
         <li><b className="text-[var(--theme-text)]">미완료</b> 학생이 과제를 볼 수 있지만 아직 완료할 수 없어요.</li>
         <li><b className="text-[var(--theme-text)]">완료 가능</b> 학생이 은행에서 완료하고 보상을 받을 수 있어요.</li>
@@ -52,7 +52,7 @@ export function StageBoard({ task, students, changes, onChange, disabled }: {
       ) : null}
       <SegmentedControl<Filter> ariaLabel="학생 현황 필터" size="sm" value={filter} onChange={setFilter}
         options={[{ value: 'all', label: '전체', count: rows.length }, ...TASK_STAGES.map((stage) => ({ value: stage, label: stageLabel(stage), count: count(stage) }))]} />
-      <div className="flex flex-wrap items-center gap-2 rounded-[12px] bg-[var(--crs-subtle)] px-3 py-2">
+      <div data-tour="stage-pick-bar" className="flex flex-wrap items-center gap-2 rounded-[12px] bg-[var(--crs-subtle)] px-3 py-2">
         <label className="flex items-center gap-2 text-[13px] font-bold">
           <Checkbox aria-label="보이는 학생 모두 선택" checked={allShownPicked} disabled={disabled}
             onChange={(event) => setPicked(event.target.checked ? Array.from(new Set([...picked, ...shownIds])) : picked.filter((id) => !shownIds.includes(id)))} />

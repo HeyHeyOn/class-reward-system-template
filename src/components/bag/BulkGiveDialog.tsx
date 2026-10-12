@@ -32,12 +32,12 @@ export function BulkGiveDialog({ studentIds, options, opener, onClose, notify }:
   }
 
   return (
-    <Modal title="보관함에 한꺼번에 넣기" description={`선택한 학생 ${studentIds.length}명에게 같은 아이템을 넣어요. 실물 상품은 교환권으로 들어가요.`}
+    <Modal title="보관함에 한꺼번에 넣기" ariaLabel="보관함에 한꺼번에 넣기" description={`선택한 학생 ${studentIds.length}명에게 같은 아이템을 넣어요. 실물 상품은 교환권으로 들어가요.`}
       onClose={onClose} busy={busy} opener={opener ?? undefined}
       footer={(
         <>
           <Button variant="ghost" onClick={onClose} disabled={busy}>취소</Button>
-          <Button variant="primary" icon="package" loading={busy} disabled={busy || !option} onClick={() => void give()}>
+          <Button variant="primary" icon="package" data-tour="bulk-give-apply" loading={busy} disabled={busy || !option} onClick={() => void give()}>
             {studentIds.length}명에게 {count}개씩 넣기
           </Button>
         </>

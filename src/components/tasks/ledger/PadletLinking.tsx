@@ -140,7 +140,7 @@ export function PadletTaskTab({ ledger, task, students, notify, busy, onBusy }: 
     return (
       <div className="space-y-5" data-testid="padlet-linked">
         {error ? <Callout tone="danger">{error}</Callout> : null}
-        <section className="space-y-3 rounded-[var(--crs-radius)] border border-[var(--crs-line)] p-4">
+        <section data-tour="padlet-linked-board" className="space-y-3 rounded-[var(--crs-radius)] border border-[var(--crs-line)] p-4">
           <div className="flex items-start gap-3">
             <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-[var(--theme-accent-soft,var(--crs-subtle))] text-[var(--theme-accent-text)]"><Icon name="link" size={18} /></span>
             <div className="min-w-0 flex-1">
@@ -154,8 +154,8 @@ export function PadletTaskTab({ ledger, task, students, notify, busy, onBusy }: 
             checking={action === 'sync' || readState?.checking} retryAt={readState?.retryAt} now={now} />
           {key && !keyReady ? <PadletKeyBox keyStatus={key} onChange={padlet.setStatus} disabled={busy} /> : null}
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" icon="refresh" loading={action === 'sync'} disabled={busy} onClick={() => void syncNow()}>지금 확인</Button>
-            <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setChanging(true); setConfirmUnlink(false); }}>다른 게시판으로 바꾸기</Button>
+            <Button size="sm" icon="refresh" data-tour="padlet-sync" loading={action === 'sync'} disabled={busy} onClick={() => void syncNow()}>지금 확인</Button>
+            <Button size="sm" variant="ghost" data-tour="padlet-change" disabled={busy} onClick={() => { setChanging(true); setConfirmUnlink(false); }}>다른 게시판으로 바꾸기</Button>
             {confirmUnlink ? (
               <span className="ml-auto flex flex-wrap items-center gap-1.5">
                 <span className="text-xs font-semibold text-[var(--theme-muted-text)]">이미 바뀐 단계는 그대로 남아요.</span>
@@ -193,7 +193,7 @@ export function PadletTaskTab({ ledger, task, students, notify, busy, onBusy }: 
       <PadletRules />
       <div className="flex flex-wrap justify-end gap-2">
         {link ? <Button variant="ghost" disabled={busy} onClick={() => { setChanging(false); setPicked(null); setError(''); }}>취소</Button> : null}
-        <Button variant="primary" icon="link" loading={action === 'link'} disabled={!picked || !keyReady || busy} onClick={() => void connect()}>
+        <Button variant="primary" icon="link" data-tour="padlet-connect" loading={action === 'link'} disabled={!picked || !keyReady || busy} onClick={() => void connect()}>
           이 게시판에 연결
         </Button>
       </div>
@@ -256,7 +256,7 @@ export function BulkPadletDialog({ ledger, taskIds, opener, notify }: BulkProps)
           )
         ) : null}
         <Button variant="ghost" disabled={busy !== null} onClick={ledger.close}>취소</Button>
-        <Button variant="primary" icon="link" loading={busy === 'link'} disabled={!picked || !keyReady || busy !== null || tasks.length === 0}
+        <Button variant="primary" icon="link" data-tour="padlet-bulk-connect" loading={busy === 'link'} disabled={!picked || !keyReady || busy !== null || tasks.length === 0}
           onClick={() => void connect()}>{tasks.length}개 연결</Button>
       </>}>
       <div className="space-y-5">

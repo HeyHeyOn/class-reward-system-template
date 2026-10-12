@@ -72,7 +72,7 @@ export function TaskLedgerPanel({ ledger, unit, notify }: { ledger: TaskLedger; 
       <PageHeader title="과제" description="학생마다 미부여 → 미완료 → 완료 가능 → 완료 단계로 관리해요. 과제를 누르면 내용, 반복, 학생 현황을 고칠 수 있어요."
         actions={<>
           <IconButton icon="refresh" label="과제 새로고침" variant="secondary" disabled={refreshing} onClick={() => void refresh()} />
-          <Button icon="qr" onClick={(event) => ledger.open({ kind: 'qr', opener: event.currentTarget })}>QR로 단계 바꾸기</Button>
+          <Button icon="qr" data-tour="task-qr" onClick={(event) => ledger.open({ kind: 'qr', opener: event.currentTarget })}>QR로 단계 바꾸기</Button>
           <Button variant="primary" icon="plus" data-tour="task-new" onClick={(event) => ledger.open({ kind: 'new', opener: event.currentTarget })}>새 과제</Button>
         </>} />
 
@@ -110,7 +110,7 @@ export function TaskLedgerPanel({ ledger, unit, notify }: { ledger: TaskLedger; 
                 {visible.map((task) => {
                   const status = taskStatus(task, board.now);
                   return (
-                    <div role="row" data-testid="task-row" key={task.taskId}
+                    <div role="row" data-testid="task-row" key={task.taskId} data-padlet={task.padlet ? '' : undefined}
                       className="group relative grid grid-cols-[40px_minmax(0,1fr)_28px] items-center gap-3 px-4 py-3.5 transition-colors hover:bg-[var(--crs-subtle)] md:grid-cols-[40px_minmax(0,1fr)_88px_210px_76px_28px] md:px-5">
                       <span role="cell" className="relative z-10 flex"><Checkbox aria-label={`${task.title} 선택`} checked={selection.includes(task.taskId)} onChange={() => toggle(task.taskId)} /></span>
                       <span role="cell" className="min-w-0">
@@ -190,7 +190,7 @@ export function TaskLedgerHomeCard({ ledger, onShowAll, onOpenTask }: {
   const { board } = ledger;
   const active = sortTasks(board.tasks).filter((task) => task.isActive);
   return (
-    <Card>
+    <Card data-tour="home-progress">
       <CardHeader title="과제 진행 현황" description="과제를 받은 학생 중 완료한 학생 수예요." actions={<Button size="sm" variant="ghost" iconRight="chevronRight" onClick={onShowAll}>전체 보기</Button>} />
       <div className="mt-4 divide-y divide-[var(--crs-line)]">
         {board.status === 'loading' ? <p role="status" className="py-6 text-center text-[13px] text-[var(--theme-muted-text)]">과제를 불러오는 중이에요.</p> : null}

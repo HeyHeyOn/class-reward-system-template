@@ -822,11 +822,11 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
           {formError ? <p role="alert" className={alertClass}>{formError}</p> : null}
           {message ? <p role="status" className="rounded-[12px] bg-[var(--crs-success-bg)] px-3.5 py-2.5 text-[13px] font-semibold text-[var(--crs-success-text)]">{message}</p> : null}
           {saving && !editingId && !deleteTarget ? <p role="status" aria-label="행사 저장 중" className="text-[13px] font-semibold text-[var(--theme-muted-text)]">저장 중…</p> : null}
-          <button disabled={saving} className={buttonClass({ variant: 'primary', block: true, size: 'lg' })} type="submit">행사 추가</button>
+          <button disabled={saving} data-tour="promo-create" className={buttonClass({ variant: 'primary', block: true, size: 'lg' })} type="submit">행사 추가</button>
           </fieldset>
         </form>
 
-        <div className="mt-6 border-t border-[var(--crs-line)] pt-5">
+        <div data-tour="promo-preview" className="mt-6 border-t border-[var(--crs-line)] pt-5">
           <h3 className="text-sm font-extrabold">가격 미리보기</h3>
           <fieldset aria-label="가격 미리보기 입력" className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2" disabled={saving}>
             <label className={labelClass}>미리보기 상품<select aria-label="미리보기 상품" className={inputClass} value={previewProductId} onChange={(event) => setPreviewProductId(event.target.value)}><option value="">선택</option>{products.map((product) => <option key={product.productId} value={product.productId}>{product.name}</option>)}</select></label>
@@ -879,7 +879,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
             <DraftFields draft={editDraft} setDraft={(next) => setEditDraft(next)} products={products} timeZone={timeZone} labelPrefix="수정 " firstInputRef={(node) => { editNameRef.current = node; }} />
             {editError ? <p role="alert" className={alertClass}>{editError}</p> : null}
             {saving ? <p role="status" aria-label="행사 저장 중" className="text-[13px] font-semibold text-[var(--theme-muted-text)]">저장 중…</p> : null}
-            <div className="flex justify-end gap-2 border-t border-[var(--crs-line)] pt-4"><button type="button" disabled={saving} className={buttonClass({ variant: 'ghost' })} onClick={closeEdit}>편집 취소</button><button ref={editSaveRef} type="submit" disabled={saving} className={buttonClass({ variant: 'primary' })}>행사 수정 저장</button></div>
+            <div className="flex justify-end gap-2 border-t border-[var(--crs-line)] pt-4"><button type="button" disabled={saving} className={buttonClass({ variant: 'ghost' })} onClick={closeEdit}>편집 취소</button><button ref={editSaveRef} type="submit" data-tour="promo-edit-save" disabled={saving} className={buttonClass({ variant: 'primary' })}>행사 수정 저장</button></div>
           </fieldset></form>
         </div>
       </div> : null}
@@ -913,13 +913,13 @@ function DraftFields({ draft, setDraft, products, timeZone, labelPrefix = '', fi
     <TextField label={label('행사명')} value={draft.name} onChange={(value) => set('name', value)} inputRef={firstInputRef} />
     <label className="block text-[13px] font-bold">{label('행사 설명')}<textarea aria-label={label('행사 설명')} className={`${inputClass} h-auto min-h-20 py-2.5`} value={draft.description} onChange={(event) => set('description', event.target.value)} /></label>
     <label className="block text-[13px] font-bold">{label('행사 유형')}<select aria-label={label('행사 유형')} className={inputClass} value={draft.type} onChange={(event) => set('type', event.target.value as PromotionType)}>{Object.entries(TYPE_LABELS).map(([value, typeLabel]) => <option key={value} value={value}>{typeLabel}</option>)}</select></label>
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+    <div data-tour="promo-amounts" className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       {draft.type === 'N_PLUS_ONE' ? <><NumberField label={label('구매 수량')} value={draft.buyQuantity} min={1} onChange={(value) => set('buyQuantity', value)} /><NumberField label={label('무료 수량')} value={draft.freeQuantity} min={1} onChange={(value) => set('freeQuantity', value)} /></> : null}
       {draft.type === 'PROMOTIONAL_PRICE' ? <NumberField label={label('행사 단가')} value={draft.promotionalUnitPrice} min={0} onChange={(value) => set('promotionalUnitPrice', value)} /> : null}
       {draft.type === 'PERCENT_DISCOUNT' ? <NumberField label={label('할인율')} value={draft.percent} min={0} step="any" onChange={(value) => set('percent', value)} /> : null}
       {draft.type === 'FIXED_DISCOUNT' ? <NumberField label={label('유료 수량당 할인액')} value={draft.discountAmount} min={1} onChange={(value) => set('discountAmount', value)} /> : null}
     </div>
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><DateField label={label('시작 일시')} value={isoToZonedDatetimeLocal(draft.startsAt, timeZone)} onChange={(value) => changeDate('startsAt', value)} /><DateField label={label('종료 일시')} value={isoToZonedDatetimeLocal(draft.endsAt, timeZone)} onChange={(value) => changeDate('endsAt', value)} /></div>
+    <div data-tour="promo-dates" className="grid grid-cols-1 gap-3 sm:grid-cols-2"><DateField label={label('시작 일시')} value={isoToZonedDatetimeLocal(draft.startsAt, timeZone)} onChange={(value) => changeDate('startsAt', value)} /><DateField label={label('종료 일시')} value={isoToZonedDatetimeLocal(draft.endsAt, timeZone)} onChange={(value) => changeDate('endsAt', value)} /></div>
     <NumberField label={label('정렬 우선순위')} value={draft.sortOrder} onChange={(value) => set('sortOrder', value)} />
     <label className="flex items-center gap-2.5 rounded-[12px] border border-[var(--crs-line)] px-3.5 py-3 text-sm font-bold"><input className="h-[18px] w-[18px] accent-[var(--theme-accent-text)]" aria-label={label('행사 활성')} type="checkbox" checked={draft.isActive} onChange={(event) => set('isActive', event.target.checked)} />활성</label>
     <fieldset className="rounded-[14px] border border-[var(--crs-line)] p-3.5"><legend className="px-1.5 text-[13px] font-bold">{label('대상 상품')}</legend><div className="grid gap-1.5 sm:grid-cols-2">{products.map((product) => <label key={product.productId} className="flex items-center gap-2 rounded-[9px] px-1.5 py-1 text-[13px] hover:bg-[var(--crs-subtle)]"><input className="h-4 w-4 accent-[var(--theme-accent-text)]" aria-label={label(`${product.name} (${product.productId}) 대상`)} type="checkbox" checked={draft.productIds.includes(product.productId)} onChange={() => toggleProduct(product.productId)} />{product.name} ({product.productId})</label>)}</div></fieldset>

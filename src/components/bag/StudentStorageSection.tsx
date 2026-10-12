@@ -90,15 +90,15 @@ export function StudentStorageSection({ studentId, name, notify, giveOptions }: 
   const stacks = stackBagItems(tab === 'usable' ? usable : used);
 
   return (
-    <section aria-labelledby={`storage-${studentId}`} className="space-y-3 border-t border-[var(--crs-line)] pt-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <section aria-labelledby={`storage-${studentId}`} data-tour="storage" className="space-y-3 border-t border-[var(--crs-line)] pt-5">
+      <div data-tour="storage-head" className="flex flex-wrap items-center justify-between gap-2">
         <h3 id={`storage-${studentId}`} className="flex items-center gap-1.5 text-[15px] font-black tracking-[-0.02em]"><Icon name="package" size={18} />보관함</h3>
         {items ? (
           <SegmentedControl ariaLabel="보관함 보기" size="sm" value={tab} onChange={(value) => { setTab(value); setConfirmRevoke(''); }}
             options={[{ value: 'usable', label: '사용 가능', count: usable.length }, { value: 'used', label: '사용 완료', count: used.length }]} />
         ) : null}
       </div>
-      <p className="text-xs leading-relaxed text-[var(--theme-muted-text)]">
+      <p data-tour="storage-note" className="text-xs leading-relaxed text-[var(--theme-muted-text)]">
         {tab === 'usable'
           ? '학생이 소모품을 쓰면 \'사용함\'을 눌러 주세요. 교환권은 학생이 매점에서 결제할 때 직접 쓸 수도 있어요. 수집품은 모아 두는 아이템이에요.'
           : '쓴 아이템이에요. 잘못 사용 처리했다면 \'사용 취소\'로 되돌릴 수 있어요. 결제에 쓴 교환권은 그 결제를 취소하면 돌아와요.'}
@@ -140,9 +140,9 @@ export function StudentStorageSection({ studentId, name, notify, giveOptions }: 
                     </>
                   ) : tab === 'usable' ? (
                     <>
-                      <Button size="sm" variant="ghost" disabled={busy !== ''} onClick={() => setConfirmRevoke(stack.key)}>회수</Button>
+                      <Button size="sm" variant="ghost" data-tour="storage-revoke" disabled={busy !== ''} onClick={() => setConfirmRevoke(stack.key)}>회수</Button>
                       {item.kind === 'CONSUMABLE'
-                        ? <Button size="sm" loading={busy === stack.key} disabled={busy !== ''} onClick={() => void markUsed(stack, true)}>사용함</Button>
+                        ? <Button size="sm" data-tour="storage-use" loading={busy === stack.key} disabled={busy !== ''} onClick={() => void markUsed(stack, true)}>사용함</Button>
                         : null}
                     </>
                   ) : item.kind === 'CONSUMABLE' && stack.items.some((entry) => !entry.usedAtCheckout) ? (
@@ -155,7 +155,7 @@ export function StudentStorageSection({ studentId, name, notify, giveOptions }: 
         </ul>
       ) : null}
       {items && tab === 'usable' ? (
-        <div className="rounded-[var(--crs-radius)] border border-dashed border-[var(--crs-line)] p-3">
+        <div data-tour="storage-give" className="rounded-[var(--crs-radius)] border border-dashed border-[var(--crs-line)] p-3">
           {giveOptions.length === 0 ? (
             <p className="text-xs leading-relaxed text-[var(--theme-muted-text)]">매점에 상품을 등록하면 여기서 학생 보관함에 바로 넣을 수 있어요.</p>
           ) : (

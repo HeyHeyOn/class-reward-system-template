@@ -2220,7 +2220,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
               <div className="min-w-0 flex-1">
                 <h1 className="truncate text-[19px] font-black leading-tight tracking-[-0.03em] lg:text-[20px]" title={classLabel}>{classLabel}</h1>
               </div>
-              <div className="flex items-center gap-1 lg:hidden">
+              <div data-tour="header-shortcuts" className="flex items-center gap-1 lg:hidden">
                 <a href={storeHref} target="_blank" rel="noopener noreferrer" aria-label="매점 열기 새 탭 열림" className={buttonClass({ variant: 'ghost', size: 'sm' })}><Icon name="store" size={16} /><span className="hidden sm:inline">매점</span></a>
                 <a href={bankHref} target="_blank" rel="noopener noreferrer" aria-label="은행 열기 새 탭 열림" className={buttonClass({ variant: 'ghost', size: 'sm' })}><Icon name="bank" size={16} /><span className="hidden sm:inline">은행</span></a>
                 <button type="button" aria-label="공유" onClick={openShare('store')} className={buttonClass({ variant: 'ghost', size: 'sm' })}><Icon name="share" size={16} /><span className="hidden sm:inline">공유</span></button>
@@ -2287,13 +2287,13 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
               <section id="admin-panel-home" role="tabpanel" aria-labelledby="admin-tab-home" aria-label="홈" className="space-y-6">
                 <PageHeader eyebrow={settings.className ?? settings.appTitle ?? '학급 매점'} title="오늘의 학급" description="학생, 매점, 과제 현황을 한눈에 확인하고 자주 쓰는 작업을 바로 시작하세요." />
                 <TutorialHomeCard onOpen={(event) => setTutorialMenu({ opener: event.currentTarget })} />
-                <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <div data-tour="home-stats" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                   <StatCard label="학생" icon="users" value={`${summary.students}명`} hint={`비활성 ${students.filter((student) => student.status === 'INACTIVE').length}명`} />
                   <StatCard label="학생 잔액 합계" icon="wallet" value={money(totalBalance)} hint={negativeStudents.length ? `음수 잔액 ${negativeStudents.length}명` : '음수 잔액 없음'} />
                   <StatCard label="판매 중인 상품" icon="store" value={`${summary.activeProducts}개`} hint={`전체 재고 ${summary.totalStock.toLocaleString('ko-KR')}개`} />
                   <StatCard label="진행 중인 과제" icon="task" value={homeTaskCounts ? `${homeTaskCounts.active}개` : '-'} hint={homeTaskCounts ? `전체 ${homeTaskCounts.total}개` : '불러오는 중'} />
                 </div>
-                <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <div data-tour="home-quick" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                   <QuickAction icon="coins" title="화폐 지급·회수" description="QR로 학생에게 바로 지급" onClick={() => selectAdminTab('currency')} />
                   <QuickAction icon="qr" title="QR로 과제 부여" description="학생 QR을 찍어 과제 배정" onClick={() => {
                     selectAdminTab('tasks');
@@ -2304,7 +2304,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                   <QuickAction icon="bank" title="은행 열기" description="학생용 은행 화면" href={bankHref} />
                 </div>
                 {students.length === 0 || products.length === 0 || homeTaskCounts?.total === 0 ? (
-                  <Card>
+                  <Card data-tour="home-start">
                     <CardHeader title="학급 시작하기" description="세 가지만 등록하면 학생들이 매점과 은행을 바로 쓸 수 있습니다." />
                     <ol className="mt-5 grid gap-3 md:grid-cols-3">
                       {([
@@ -2334,7 +2334,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                   {ledgerMode ? (
                     <TaskLedgerHomeCard ledger={taskLedger} onShowAll={() => selectAdminTab('tasks')}
                       onOpenTask={(taskId) => { selectAdminTab('tasks'); taskLedger.open({ kind: 'task', taskId, tab: 'students', opener: null }); }} />
-                  ) : <Card>
+                  ) : <Card data-tour="home-progress">
                     <CardHeader title="과제 진행 현황" description="이번 회차 기준 완료한 학생 수입니다." actions={<Button size="sm" variant="ghost" iconRight="chevronRight" onClick={() => selectAdminTab('tasks')}>전체 보기</Button>} />
                     <div className="mt-4 divide-y divide-[var(--crs-line)]">
                       {tasks.filter((task) => task.isActive).slice(0, 6).map((task) => {
@@ -2353,7 +2353,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                       {tasks.filter((task) => task.isActive).length === 0 ? <p className="py-6 text-center text-[13px] text-[var(--theme-muted-text)]">진행 중인 과제가 없습니다.</p> : null}
                     </div>
                   </Card>}
-                  <Card>
+                  <Card data-tour="home-check">
                     <CardHeader title="확인이 필요한 항목" />
                     <div className="mt-4 space-y-2.5">
                       {negativeStudents.length ? (
@@ -2448,10 +2448,10 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                   </Card>
                 )}
                 <SelectionBar count={selectedStudentIds.length} label="명 선택됨" onClear={() => setSelectedStudentIds([])}>
-                  <SelectionBarButton icon="coins" onClick={() => setBulkBalanceOpen(true)}>잔액 변경</SelectionBarButton>
+                  <SelectionBarButton icon="coins" data-tour="student-bulk-balance" onClick={() => setBulkBalanceOpen(true)}>잔액 변경</SelectionBarButton>
                   <SelectionBarButton icon="qr" data-tour="student-qr-bulk" onClick={() => setQrPrintStudents(students.filter((student) => selectedStudentIds.includes(student.studentId)))}>QR 카드 발급</SelectionBarButton>
-                  {tenantScoped ? <SelectionBarButton icon="package" onClick={(event) => setBulkGiveOpener(event.currentTarget)}>보관함에 넣기</SelectionBarButton> : null}
-                  <SelectionBarButton icon="trash" danger onClick={() => confirmDelete(`학생 ${selectedStudentIds.length}명을 삭제할까요?`, '삭제한 학생은 명단에서 사라집니다. 거래 기록은 그대로 남습니다.', deleteSelectedStudents)}>삭제</SelectionBarButton>
+                  {tenantScoped ? <SelectionBarButton icon="package" data-tour="student-bulk-give" onClick={(event) => setBulkGiveOpener(event.currentTarget)}>보관함에 넣기</SelectionBarButton> : null}
+                  <SelectionBarButton icon="trash" danger data-tour="student-bulk-delete" onClick={() => confirmDelete(`학생 ${selectedStudentIds.length}명을 삭제할까요?`, '삭제한 학생은 명단에서 사라집니다. 거래 기록은 그대로 남습니다.', deleteSelectedStudents)}>삭제</SelectionBarButton>
                 </SelectionBar>
               </section>
             ) : null}
@@ -2520,7 +2520,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                     </Card>
                   )}
                   <SelectionBar count={storeTab === 'inventory' ? selectedProductIds.length : 0} onClear={() => setSelectedProductIds([])}>
-                    <SelectionBarButton icon="trash" danger onClick={() => confirmDelete(`상품 ${selectedProductIds.length}개를 삭제할까요?`, '삭제한 상품은 매점에서 바로 사라집니다. 지난 거래 기록은 그대로 남습니다.', deleteSelectedProducts)}>삭제</SelectionBarButton>
+                    <SelectionBarButton icon="trash" danger data-tour="product-bulk-delete" onClick={() => confirmDelete(`상품 ${selectedProductIds.length}개를 삭제할까요?`, '삭제한 상품은 매점에서 바로 사라집니다. 지난 거래 기록은 그대로 남습니다.', deleteSelectedProducts)}>삭제</SelectionBarButton>
                   </SelectionBar>
                 </div>
                 <section id="admin-store-panel-promotions" role="tabpanel" aria-labelledby="admin-store-tab-promotions" hidden={storeTab !== 'promotions'}>
@@ -2830,7 +2830,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                 onClick={() => confirmDelete(`${sheetStudent.name} 학생을 삭제할까요?`, '삭제한 학생은 명단에서 사라집니다. 거래 기록은 그대로 남습니다.', async () => { await deleteStudentRow(sheetStudent.studentId); setStudentSheet(null); })}>삭제</Button>
               <div className="ml-auto" />
               <Button variant="ghost" onClick={() => closeStudentSheet()}>취소</Button>
-              <Button variant="primary" icon="check" disabled={!studentDirty} onClick={async () => { if (await saveStudentRows([sheetStudent], '학생')) setStudentSheet(null); }}>저장</Button>
+              <Button variant="primary" icon="check" data-tour="student-save" disabled={!studentDirty} onClick={async () => { if (await saveStudentRows([sheetStudent], '학생')) setStudentSheet(null); }}>저장</Button>
             </>
           ) : null}
         >
@@ -2853,7 +2853,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                   <p className="text-xs font-semibold text-[var(--theme-muted-text)]">현재 잔액</p>
                   <p className={cx('mt-0.5 text-[26px] font-black tabular-nums tracking-[-0.03em]', studentSheet.snapshot.balance < 0 && 'text-[var(--crs-danger-text)]')}>{money(studentSheet.snapshot.balance)}</p>
                 </div>
-                <Button size="sm" icon="qr" onClick={() => setQrPrintStudents([sheetStudent])}>QR 카드</Button>
+                <Button size="sm" icon="qr" data-tour="student-qr" onClick={() => setQrPrintStudents([sheetStudent])}>QR 카드</Button>
               </div>
               <Field label="이름" htmlFor="student-sheet-name">
                 <Input id="student-sheet-name" aria-label={`${sheetStudent.studentId} 이름`} value={sheetStudent.name} onChange={(event) => updateStudent(sheetStudent.studentId, { name: event.target.value })} />
@@ -2894,7 +2894,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
               <Button variant="dangerGhost" icon="trash" aria-label={`${sheetProduct.productId} 상품 삭제`} onClick={(event) => requestProductDelete(sheetProduct, event.currentTarget)}>삭제</Button>
               <div className="ml-auto" />
               <Button variant="ghost" onClick={() => closeProductSheet()}>취소</Button>
-              <Button variant="primary" icon="check" disabled={!productDirty} onClick={() => void saveProductSheet(sheetProduct)}>저장</Button>
+              <Button variant="primary" icon="check" data-tour="product-save" disabled={!productDirty} onClick={() => void saveProductSheet(sheetProduct)}>저장</Button>
             </>
           ) : null}
         >
@@ -2952,10 +2952,10 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       ) : null}
 
       {bulkBalanceOpen ? (
-        <Modal title="잔액 한꺼번에 바꾸기" description={`선택한 학생 ${selectedStudentIds.length}명의 잔액을 바꿉니다.`} onClose={() => setBulkBalanceOpen(false)}
+        <Modal title="잔액 한꺼번에 바꾸기" ariaLabel="잔액 한꺼번에 바꾸기" description={`선택한 학생 ${selectedStudentIds.length}명의 잔액을 바꿉니다.`} onClose={() => setBulkBalanceOpen(false)}
           footer={<>
             <Button variant="ghost" onClick={() => setBulkBalanceOpen(false)}>취소</Button>
-            <Button variant="primary" icon="check" onClick={async () => { await applyBulkStudentBalance(); setBulkBalanceOpen(false); }}>{selectedStudentIds.length}명에게 적용</Button>
+            <Button variant="primary" icon="check" data-tour="bulk-balance-apply" onClick={async () => { await applyBulkStudentBalance(); setBulkBalanceOpen(false); }}>{selectedStudentIds.length}명에게 적용</Button>
           </>}>
           <div className="space-y-5">
             <div>
@@ -3172,7 +3172,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       ) : null}
 
       {tutorialMenu ? (
-        <TutorialMenu opener={tutorialMenu.opener} ledgerMode={ledgerMode} onClose={() => setTutorialMenu(null)}
+        <TutorialMenu opener={tutorialMenu.opener} ledgerMode={ledgerMode} classList={tenantScoped} onClose={() => setTutorialMenu(null)}
           onStart={(id) => { setTutorialMenu(null); setActiveTutorial(tutorialById(id)); }} />
       ) : null}
       {activeTutorial ? (

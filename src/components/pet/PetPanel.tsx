@@ -183,12 +183,12 @@ export function PetPanel({ unit, notify }: Readonly<{ unit: string; notify: (mes
         <Card>
           <EmptyState icon="paw" title="아직 펫 키우기를 열지 않았어요"
             description="아래 탭에서 성장 목표와 먹이, 이용 시간, 졸업 보상, 꾸미기/상점을 정하고 시작하면 학생들이 은행 화면에서 알을 골라 키워요."
-            action={<Button variant="primary" icon="paw" onClick={() => void save(true)} loading={saving} disabled={saving}>펫 키우기 시작하기</Button>} />
+            action={<Button variant="primary" icon="paw" data-tour="pet-start" onClick={() => void save(true)} loading={saving} disabled={saving}>펫 키우기 시작하기</Button>} />
         </Card>
       ) : null}
 
       <Card className="space-y-5">
-        <Switch checked={draft.enabled} onChange={(enabled) => set({ enabled })} label="학생 화면에 펫 키우기 보이기"
+        <Switch checked={draft.enabled} onChange={(enabled) => set({ enabled })} tour="pet-enable" label="학생 화면에 펫 키우기 보이기"
           description="끄면 학생들은 펫을 볼 수 없고 과제를 해도 자라지 않아요. 지금까지 키운 기록은 그대로 남아요." />
 
         <div role="tablist" aria-label="펫 키우기 설정" className="inline-flex max-w-full flex-wrap gap-0.5 rounded-[12px] bg-[var(--crs-subtle-hover)] p-1">
@@ -268,9 +268,9 @@ export function PetPanel({ unit, notify }: Readonly<{ unit: string; notify: (mes
 
           {tab === 'hours' ? (
             <div className="space-y-4">
-              <Switch checked={draft.hoursEnabled} label="이용 시간" description="이용 시간 외에는 펫이 잠들어 상호작용할 수 없어요."
+              <Switch checked={draft.hoursEnabled} tour="pet-hours" label="이용 시간" description="이용 시간 외에는 펫이 잠들어 상호작용할 수 없어요."
                 onChange={(hoursEnabled) => set({ hoursEnabled, hours: hoursEnabled && draft.hours.length === 0 ? [{ start: '', end: '' }] : draft.hours })} />
-              <div className="space-y-2">
+              <div data-tour="pet-hours-list" className="space-y-2">
                 {draft.hours.length === 0 ? <p className="text-sm text-[var(--theme-muted-text)]">넣은 시간대가 없어요.{draft.hoursEnabled ? '' : ' 이용 시간이 꺼져 있어서 언제든 펫과 놀 수 있어요.'}</p> : null}
                 {draft.hours.map((span, index) => (
                   <div key={index} className="flex flex-wrap items-center gap-2">
@@ -284,7 +284,7 @@ export function PetPanel({ unit, notify }: Readonly<{ unit: string; notify: (mes
                   </div>
                 ))}
               </div>
-              <Button size="sm" icon="plus" disabled={!draft.hoursEnabled || draft.hours.length >= PET_LIMITS.hourSpans}
+              <Button size="sm" icon="plus" data-tour="pet-hours-add" disabled={!draft.hoursEnabled || draft.hours.length >= PET_LIMITS.hourSpans}
                 onClick={() => set({ hours: [...draft.hours, { start: '', end: '' }] })}>시간대 더하기</Button>
               <p className="text-[13px] text-[var(--theme-muted-text)]">
                 {!draft.hoursEnabled ? '꺼 두면 시간 제한 없이 언제든 펫과 놀 수 있어요.'
@@ -322,7 +322,7 @@ export function PetPanel({ unit, notify }: Readonly<{ unit: string; notify: (mes
 
           {tab === 'shop' ? (
             <div className="space-y-5">
-              <Switch checked={draft.shopEnabled} onChange={(shopEnabled) => set({ shopEnabled })} label="상점 열기"
+              <Switch checked={draft.shopEnabled} onChange={(shopEnabled) => set({ shopEnabled })} tour="pet-shop" label="상점 열기"
                 description="끄면 학생은 새 물건을 살 수 없고, 가진 물건으로만 방과 펫을 꾸며요. 꾸미기/상점은 펫 화면 안에만 있고 매점 상품 목록이나 키오스크에는 나오지 않아요. 꾸미기는 성장에 영향을 주지 않아요." />
               <p className="text-[13px] text-[var(--theme-muted-text)]">
                 기본 물건은 모든 학생이 처음부터 가져요. 나머지는 정해 둔 값이 없어서, 물건마다 값을 넣어야 상점에 나와요(0을 넣으면 무료). 잠깐 팔지 않으려면 ‘팔기’만 끄면 돼요.
@@ -372,8 +372,8 @@ export function PetPanel({ unit, notify }: Readonly<{ unit: string; notify: (mes
         </div>
 
         {formError ? <p role="alert" className="text-sm font-semibold text-[var(--crs-danger-text)]">{formError}</p> : null}
-        <div className="flex flex-wrap gap-2 border-t border-[var(--crs-line)] pt-4">
-          <Button variant="primary" icon="check" onClick={() => void save()} loading={saving} disabled={saving || !dirty}>설정 저장</Button>
+        <div data-tour="pet-save-bar" className="flex flex-wrap gap-2 border-t border-[var(--crs-line)] pt-4">
+          <Button variant="primary" icon="check" data-tour="pet-save" onClick={() => void save()} loading={saving} disabled={saving || !dirty}>설정 저장</Button>
           {dirty ? <Button variant="ghost" onClick={() => { setDraft(toDraft(board.settings)); setFormError(''); }} disabled={saving}>되돌리기</Button> : null}
           {dirty ? <span className="self-center text-xs font-semibold text-[var(--theme-muted-text)]">저장하지 않은 바뀐 설정이 있어요.</span> : null}
         </div>
@@ -470,7 +470,7 @@ function PetList({ board, onRenamed, onAdjusted }: Readonly<{
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div data-tour="pet-stats" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="키우는 학생" icon="paw" value={`${raising.length}명`} hint={`전체 ${board.students.length}명 · 알 고르기 전 ${board.students.length - raising.length}명`} />
         <StatCard label="오늘 돌본 학생" icon="check" value={`${cared.length}명`} hint={`아직 안 돌봄 ${raising.length - cared.length}명`} />
         <StatCard label="졸업 기다리는 펫" icon="gift" value={`${waiting.length}마리`} hint="학생이 졸업시키면 돼요" />
@@ -594,12 +594,12 @@ function PetGrowthDialog({ row, goal, opener, onClose, onDone }: Readonly<{
   }
 
   return (
-    <Modal title="펫 성장 조정" size="sm" opener={opener} onClose={onClose} busy={busy !== null}
+    <Modal title="펫 성장 조정" ariaLabel="펫 성장 조정" size="sm" opener={opener} onClose={onClose} busy={busy !== null}
       footer={<>
         <Button variant="ghost" onClick={onClose} disabled={busy !== null}>닫기</Button>
         <Button variant="secondary" icon="minus" onClick={() => void apply('remove')} loading={busy === 'remove'}
           disabled={!valid || busy !== null || pet.growth === 0}>빼기{valid ? ` −${fmt(amount)}` : ''}</Button>
-        <Button variant="primary" icon="plus" onClick={() => void apply('add')} loading={busy === 'add'}
+        <Button variant="primary" icon="plus" data-tour="pet-adjust-add" onClick={() => void apply('add')} loading={busy === 'add'}
           disabled={!valid || busy !== null}>더하기{valid ? ` +${fmt(amount)}` : ''}</Button>
       </>}>
       <div className="flex items-center gap-3">

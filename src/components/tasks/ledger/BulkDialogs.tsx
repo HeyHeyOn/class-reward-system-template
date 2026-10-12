@@ -96,7 +96,7 @@ export function BulkStagesDialog({ ledger, taskIds, opener, notify, students, un
         footer={<>
           <span className="mr-auto text-[13px] font-semibold text-[var(--theme-muted-text)]">바뀌는 학생 {uniqueStudents}명{tasks.length > 1 ? ` · ${changes.length}건` : ''}</span>
           <Button variant="ghost" disabled={busy} onClick={ledger.close}>취소</Button>
-          <Button variant="primary" icon="check" loading={busy && !askReward} disabled={busy || changes.length === 0} onClick={() => void save()}>저장</Button>
+          <Button variant="primary" icon="check" data-tour="bulk-stages-save" loading={busy && !askReward} disabled={busy || changes.length === 0} onClick={() => void save()}>저장</Button>
         </>}>
         <div className="space-y-4">
           <div>
@@ -105,7 +105,7 @@ export function BulkStagesDialog({ ledger, taskIds, opener, notify, students, un
           </div>
           {stage !== 'COMPLETED' ? <p className="text-xs text-[var(--theme-muted-text)]">완료를 되돌려도 이미 받은 보상은 그대로 남아요. 필요하면 거래 내역에서 취소하세요.</p> : null}
           <ErrorNote message={error} />
-          <div className="flex items-center gap-2 rounded-[12px] bg-[var(--crs-subtle)] px-3 py-2">
+          <div data-tour="bulk-stage-bar" className="flex items-center gap-2 rounded-[12px] bg-[var(--crs-subtle)] px-3 py-2">
             <label className="flex items-center gap-2 text-[13px] font-bold">
               <Checkbox aria-label="모든 학생 고르기" checked={allPicked} disabled={busy} onChange={(event) => setPicked(event.target.checked ? active.map((student) => student.studentId) : [])} />
               모든 학생
