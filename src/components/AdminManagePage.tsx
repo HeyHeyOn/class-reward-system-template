@@ -49,7 +49,7 @@ import { ParentConsentFormDialog } from './admin/ParentConsentFormDialog';
 import { AccountLink } from './account/AccountLink';
 import { TutorialHomeCard, TutorialMenu } from './tutorial/TutorialMenu';
 import { TutorialRunner } from './tutorial/TutorialRunner';
-import { tutorialById, type Tutorial } from './tutorial/tutorials';
+import { FIRST_TUTORIAL_ID, tutorialAfter, tutorialById, type Tutorial } from './tutorial/tutorials';
 import type { AvatarConfig } from './profile/avatar';
 
 // Retain the existing public parser exports for callers outside the page.
@@ -2184,6 +2184,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
   const negativeStudents = students.filter((student) => student.balance < 0);
   const lowStockProducts = products.filter((product) => product.isActive && product.stock <= 3);
 
+  const tutorialPlace = { ledgerMode, classList: tenantScoped };
   const overlayOpen = Boolean(tutorialMenu || taskHistory || taskDeleteConfirmation || productDeleteConfirmation || taskScheduleEditor || taskAssignmentEditor || taskResetConfirmation
     || taskSheet || studentSheet || productSheet || confirmState || bulkBalanceOpen || bulkGiveOpener || qrPrintStudents || qrTaskPickerOpen || qrTaskScan || qrTaskResult
     || currencyScannerOpen || currencyResult || taskDescriptionEditor || taskLedger.overlayOpen || shareState || consentFormOpener);
@@ -2224,6 +2225,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                 <a href={storeHref} target="_blank" rel="noopener noreferrer" aria-label="매점 열기 새 탭 열림" className={buttonClass({ variant: 'ghost', size: 'sm' })}><Icon name="store" size={16} /><span className="hidden sm:inline">매점</span></a>
                 <a href={bankHref} target="_blank" rel="noopener noreferrer" aria-label="은행 열기 새 탭 열림" className={buttonClass({ variant: 'ghost', size: 'sm' })}><Icon name="bank" size={16} /><span className="hidden sm:inline">은행</span></a>
                 <button type="button" aria-label="공유" onClick={openShare('store')} className={buttonClass({ variant: 'ghost', size: 'sm' })}><Icon name="share" size={16} /><span className="hidden sm:inline">공유</span></button>
+                <button type="button" aria-label="튜토리얼" onClick={(event) => setTutorialMenu({ opener: event.currentTarget })} className={buttonClass({ variant: 'ghost', size: 'sm' })}><Icon name="sparkle" size={16} /><span className="hidden sm:inline">튜토리얼</span></button>
                 {account ? <AccountLink nickname={account.nickname} avatar={account.avatar} compact /> : null}
               </div>
             </div>
@@ -2257,6 +2259,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
               <SidebarShortcut href={storeHref} icon="store" label="매점 열기" shareLabel="매점 공유" onShare={openShare('store')} />
               <SidebarShortcut href={bankHref} icon="bank" label="은행 열기" shareLabel="은행 공유" onShare={openShare('bank')} />
               <SidebarButton icon="share" label="관리자 페이지 공유" onClick={openShare('admin')} />
+              <SidebarButton icon="sparkle" label="튜토리얼" onClick={(event) => setTutorialMenu({ opener: event.currentTarget })} />
               <SidebarLink href={tenantPagePath('/admin/student-qrs')} icon="qr" label="학생 QR 인쇄" external />
               {migrationsHref ? <SidebarLink href={migrationsHref} icon="migrate" label="자료 가져오기" external /> : null}
               {tenantScoped ? <SidebarLink href="/classes" icon="school" label="메인 화면으로" /> : null}
@@ -2286,7 +2289,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
             {activeTab === 'home' ? (
               <section id="admin-panel-home" role="tabpanel" aria-labelledby="admin-tab-home" aria-label="홈" className="space-y-6">
                 <PageHeader eyebrow={settings.className ?? settings.appTitle ?? '학급 매점'} title="오늘의 학급" description="학생, 매점, 과제 현황을 한눈에 확인하고 자주 쓰는 작업을 바로 시작하세요." />
-                <TutorialHomeCard onOpen={(event) => setTutorialMenu({ opener: event.currentTarget })} />
+                <TutorialHomeCard onFirst={() => setActiveTutorial(tutorialById(FIRST_TUTORIAL_ID))} onOpen={(event) => setTutorialMenu({ opener: event.currentTarget })} />
                 <div data-tour="home-stats" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                   <StatCard label="학생" icon="users" value={`${summary.students}명`} hint={`비활성 ${students.filter((student) => student.status === 'INACTIVE').length}명`} />
                   <StatCard label="학생 잔액 합계" icon="wallet" value={money(totalBalance)} hint={negativeStudents.length ? `음수 잔액 ${negativeStudents.length}명` : '음수 잔액 없음'} />
@@ -2543,7 +2546,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                   actions={<>
                     <IconButton icon="refresh" label="과제 설정 새로고침" variant="secondary" onClick={refreshTasks} />
                     <Button icon="qr" onClick={() => { setQrTaskResult(null); setQrTaskScan(null); setQrTaskPickerOpen(true); }}>QR로 부여</Button>
-                    <Button variant="primary" icon="plus" onClick={(event) => openNewTaskSheet(event.currentTarget)}>새 과제</Button>
+                    <Button variant="primary" icon="plus" data-tour="task-new" onClick={(event) => openNewTaskSheet(event.currentTarget)}>새 과제</Button>
                   </>} />
                 <div className="flex flex-wrap items-center gap-3">
                   <SearchInput value={taskQuery} onChange={setTaskQuery} placeholder="과제 검색" ariaLabel="과제 검색" className="w-full sm:w-72" />
@@ -3172,11 +3175,16 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       ) : null}
 
       {tutorialMenu ? (
-        <TutorialMenu opener={tutorialMenu.opener} ledgerMode={ledgerMode} classList={tenantScoped} onClose={() => setTutorialMenu(null)}
+        <TutorialMenu opener={tutorialMenu.opener} place={tutorialPlace} onClose={() => setTutorialMenu(null)}
           onStart={(id) => { setTutorialMenu(null); setActiveTutorial(tutorialById(id)); }} />
       ) : null}
       {activeTutorial ? (
-        <TutorialRunner key={activeTutorial.id} tutorial={activeTutorial} onNavigate={(tab) => selectAdminTab(tab)} onClose={() => setActiveTutorial(null)} />
+        <TutorialRunner key={activeTutorial.id} tutorial={activeTutorial} onNavigate={(tab) => selectAdminTab(tab)} onClose={() => setActiveTutorial(null)}
+          after={{
+            next: tutorialAfter(activeTutorial, tutorialPlace),
+            onNext: (id) => setActiveTutorial(tutorialById(id)),
+            onMenu: () => { setActiveTutorial(null); setTutorialMenu({ opener: null }); },
+          }} />
       ) : null}
 
       <div aria-live="polite" className="pointer-events-none fixed inset-x-0 top-4 z-[80] flex flex-col items-center gap-2 px-4">

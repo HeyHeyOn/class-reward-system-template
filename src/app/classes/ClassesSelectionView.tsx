@@ -129,7 +129,7 @@ export function ClassesSelectionView({ model, account, withdrawn = false }: Read
       </>}
       <SiteFooter className={styles.footer}/>
     </div>
-    {model.kind === 'MEMBERSHIPS' ? <PendingTutorial page="classes"/> : null}
+    {model.kind === 'MEMBERSHIPS' ? <PendingTutorial/> : null}
     {dialog && <ClassManagementDialog key={`${dialog.item.slug}-${dialog.action}`} item={dialog.item} action={dialog.action} onClose={() => setDialog(null)} onSuccess={message => { setDialog(null); setNotice(message); router.refresh(); }}/> }
     {account ? <LegalAgreementGate notice={account.notice} classNames={memberships.filter((item) => item.roleLabel === '소유자').map((item) => item.displayName)} /> : null}
   </main>;

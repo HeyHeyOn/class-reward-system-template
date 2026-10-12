@@ -83,11 +83,19 @@ export function place(area: Box, target: Box, size: Readonly<{ w: number; h: num
     { side: 'right', x: area.x + area.w + GAP, y: clampY(cy - ARROW / 2, ARROW), w: ARROW, h: ARROW },
   ];
   const inside = (box: Box) => box.x >= 4 && box.y >= 4 && box.x + box.w <= vw - 4 && box.y + box.h <= vh - 4;
-  // The side whose tip comes closest to the control (a wide lit bar: above the button, not at its far end).
+  // The side whose tip comes closest to the control's edge (a wide lit bar: above the button, not at
+  // its far end; a tall menu: beside the item, not above the first one).
   const tip = (arrow: Box & { side: ArrowSide }) => arrow.side === 'left' ? [arrow.x + arrow.w, arrow.y + arrow.h / 2]
     : arrow.side === 'right' ? [arrow.x, arrow.y + arrow.h / 2] : arrow.side === 'top' ? [arrow.x + arrow.w / 2, arrow.y + arrow.h] : [arrow.x + arrow.w / 2, arrow.y];
-  const distance = (arrow: Box & { side: ArrowSide }) => { const [px, py] = tip(arrow); return Math.hypot(px - cx, py - cy); };
-  const arrow = arrows.filter(inside).sort((a, b) => distance(a) - distance(b))[0] ?? { ...arrows[0], x: clampX(arrows[0].x, ARROW) };
+  const toEdge = (arrow: Box & { side: ArrowSide }) => {
+    const [px, py] = tip(arrow);
+    const dx = Math.max(target.x - px, 0, px - (target.x + target.w)), dy = Math.max(target.y - py, 0, py - (target.y + target.h));
+    return Math.hypot(dx, dy);
+  };
+  // Even (the control is the whole lit unit): the side nearest its middle — above or below a wide bar.
+  const toMiddle = (arrow: Box & { side: ArrowSide }) => { const [px, py] = tip(arrow); return Math.hypot(px - cx, py - cy); };
+  const arrow = arrows.filter(inside).sort((a, b) => (Math.abs(toEdge(a) - toEdge(b)) > 4 ? toEdge(a) - toEdge(b) : toMiddle(a) - toMiddle(b)))[0]
+    ?? { ...arrows[0], x: clampX(arrows[0].x, ARROW) };
 
   const sized = (x: number, y: number): Box => ({ x, y, w: size.w, h: size.h });
   const alignedX = clampX(cx - size.w / 2, size.w), alignedY = clampY(cy - size.h / 2, size.h);

@@ -7,12 +7,16 @@ describe('tutorial geometry', () => {
   });
 
   it('puts the arrow outside the lit unit, closest to the control, and the message box clear of both', () => {
-    // A wide lit bar with the button at its right end: the arrow comes from above the button.
+    // A wide lit bar with the button inside it: the arrow comes from above the button, not from the bar's far end.
     const area = { x: 300, y: 760, w: 900, h: 60 };
-    const button = { x: 1100, y: 770, w: 100, h: 40 };
+    const button = { x: 900, y: 770, w: 100, h: 40 };
     const { arrow, box } = place(area, button, { w: 360, h: 200 }, 1280, 860);
     expect(arrow.side).toBe('top');
-    expect(arrow.x + arrow.w / 2).toBeCloseTo(1150, 0);
+    expect(arrow.x + arrow.w / 2).toBeCloseTo(950, 0);
+    // A tall lit menu with the second item picked: the arrow comes from beside it, not from above the first item.
+    const menu = place({ x: 4, y: 76, w: 250, h: 408 }, { x: 12, y: 128, w: 224, h: 40 }, { w: 360, h: 180 }, 1280, 860);
+    expect(menu.arrow.side).toBe('right');
+    expect(menu.arrow.y + menu.arrow.h / 2).toBeCloseTo(148, 0);
     expect(overlaps(box, area, 4)).toBe(false);
     expect(overlaps(box, arrow, 4)).toBe(false);
     expect(box.x >= 8 && box.y >= 8 && box.x + box.w <= 1272 && box.y + box.h <= 852).toBe(true);

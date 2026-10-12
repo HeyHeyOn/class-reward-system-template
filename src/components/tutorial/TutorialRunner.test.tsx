@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { useState } from 'react';
 import { TutorialRunner } from './TutorialRunner';
 import type { Tutorial } from './tutorials';
+import { takeQueuedTutorial } from './tutorialQueue';
 
 const TUTORIAL: Tutorial = {
   id: '9-9',
@@ -36,6 +37,8 @@ beforeEach(() => {
     return { x: 100, y: 100, left: 100, top: 100, width: 200, height: 40, right: 300, bottom: 140, toJSON: () => ({}) } as DOMRect;
   });
   Element.prototype.scrollIntoView = vi.fn();
+  // A wide screen with a mouse.
+  vi.stubGlobal('matchMedia', (query: string) => ({ matches: /pointer: fine|min-width/.test(query), media: query, addEventListener() {}, removeEventListener() {} }));
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
@@ -131,6 +134,57 @@ describe('TutorialRunner', () => {
     await waitFor(() => expect(stepOf()).toBe('9-9:3'));
     fireEvent.click(screen.getByRole('button', { name: /마치기/ }));
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it('says where the menu is, shows the goal first, and offers what is next once it is done', async () => {
+    const onNext = vi.fn();
+    const onMenu = vi.fn();
+    const onClose = vi.fn();
+    const next: Tutorial = { ...TUTORIAL, id: '9-10', title: '다음 연습' };
+    const short: Tutorial = { ...TUTORIAL, steps: [{ target: '#name', title: '이름', text: '**{menu}**에서 고르세요.' }, TUTORIAL.steps[2]] };
+    render(<><Page /><TutorialRunner tutorial={short} onNavigate={() => {}} onClose={onClose} after={{ next, onNext, onMenu }} /></>);
+    await waitFor(() => expect(tour().getAttribute('data-tutorial-state')).toBe('shown'));
+    expect(screen.getByText('왼쪽 메뉴')).toBeTruthy();
+    expect(screen.getByText('이번에 할 일 · 시험용')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /다음/ }));
+    await waitFor(() => expect(stepOf()).toBe('9-9:2'));
+    expect(screen.queryByText(/이번에 할 일/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /마치기/ }));
+    await waitFor(() => expect(tour().getAttribute('data-tutorial-state')).toBe('done'));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText('다 했어요')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /다음 튜토리얼/ }));
+    expect(onNext).toHaveBeenCalledWith('9-10');
+    fireEvent.click(screen.getByRole('button', { name: '튜토리얼 목록' }));
+    expect(onMenu).toHaveBeenCalledTimes(1);
+  });
+
+  it('only shows a step to look at, and nudges the box when the dimmed page is clicked', async () => {
+    const look: Tutorial = { ...TUTORIAL, steps: [{ target: '#open', area: ['@target'], peek: true, title: '보기', text: '보기만 해요.' }, TUTORIAL.steps[0]] };
+    const { container } = render(<><Page /><TutorialRunner tutorial={look} onNavigate={() => {}} onClose={() => {}} /></>);
+    await waitFor(() => expect(tour().getAttribute('data-tutorial-state')).toBe('shown'));
+    const cover = container.querySelector('svg rect[fill="rgb(0 0 0 / 0)"]');
+    expect(cover).toBeTruthy();
+    const box = screen.getByRole('dialog', { name: /튜토리얼 9-9/ });
+    expect(box.style.animation).toBe('');
+    fireEvent.pointerDown(container.querySelector('svg path')!);
+    expect(box.style.animation).toContain('crs-tour-shake-1');
+    fireEvent.pointerDown(cover!);
+    expect(box.style.animation).toContain('crs-tour-shake-0');
+  });
+
+  it('hands the tutorial over to the page a step leads to, and goes on there from the next step', async () => {
+    const crossing: Tutorial = { ...TUTORIAL, steps: [{ target: '#open', area: ['@target'], opensPage: 'classes', title: '가기', text: '누르세요.' }, TUTORIAL.steps[0], TUTORIAL.steps[2]] };
+    const first = render(<><Page /><TutorialRunner tutorial={crossing} onNavigate={() => {}} onClose={() => {}} /></>);
+    await waitFor(() => expect(tour().getAttribute('data-tutorial-state')).toBe('shown'));
+    expect(window.sessionStorage.getItem('crs-tutorial-pending')).toBe(JSON.stringify({ id: '9-9', step: 1 }));
+    // Closing it (not leaving the page) forgets the hand-over.
+    first.unmount();
+    expect(takeQueuedTutorial()).toBeNull();
+
+    render(<><Page /><TutorialRunner tutorial={crossing} firstStep={1} onNavigate={() => {}} onClose={() => {}} /></>);
+    await waitFor(() => expect(stepOf()).toBe('9-9:2'));
+    expect((screen.getByRole('button', { name: /이전/ }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('opens the tab its target sits behind', async () => {

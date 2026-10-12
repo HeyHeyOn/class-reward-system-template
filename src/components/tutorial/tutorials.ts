@@ -44,6 +44,10 @@ export type TutorialStep = Readonly<{
   skipUnless?: string;
   /** The tab the target sits behind: clicked once when the target is not on the screen (going back, too). */
   reveal?: string;
+  /** Only to look at (a tour): the lit unit is shown but does not take clicks. */
+  peek?: boolean;
+  /** The target goes to another page; the tutorial goes on there from the next step. */
+  opensPage?: 'classes';
 }>;
 
 export type Tutorial = Readonly<{
@@ -52,8 +56,8 @@ export type Tutorial = Readonly<{
   goal: string;
   /** Needs the stage-ledger task screen (PostgreSQL classes). */
   ledger?: boolean;
-  /** Runs on another page than the admin screen (opened there when started). */
-  page?: 'classes';
+  /** The tutorial to offer when this one is done (default: the next one in the table of contents). */
+  then?: string;
   steps: readonly TutorialStep[];
 }>;
 
@@ -62,8 +66,29 @@ const TOOLBAR = '[role="toolbar"][aria-label="선택 항목 작업"]';
 const TASK_SHEET = '[role="dialog"][aria-label$=" 과제 편집"]';
 const STUDENT_SHEET = '[role="dialog"][aria-label$=" 학생 편집"]';
 const PRODUCT_SHEET = '[role="dialog"][aria-label$=" 상품 편집"]';
-const NO_STUDENTS = '먼저 학생을 등록해 주세요. 3-1 튜토리얼에서 볼 수 있어요.';
-const NO_TASKS = '먼저 과제를 만들어 주세요. 5-1 튜토리얼에서 볼 수 있어요.';
+const NO_STUDENTS = '먼저 학생을 등록해 주세요. 튜토리얼 3-1에서 따라 할 수 있어요.';
+const NO_TASKS = '먼저 과제를 만들어 주세요. 튜토리얼 5-1에서 따라 할 수 있어요.';
+
+/** The admin menu, as the teacher sees it: its word and the object particle that follows it. */
+const MENU: Readonly<Record<AdminTab, readonly [string, '을' | '를']>> = {
+  home: ['홈', '을'], students: ['학생', '을'], products: ['매점', '을'], tasks: ['과제', '를'], pets: ['펫 키우기', '를'],
+  tree: ['나무 키우기', '를'], currency: ['지급·회수', '를'], transactions: ['거래 내역', '을'], settings: ['설정', '을'],
+};
+
+/**
+ * Every tutorial starts by choosing its screen in the menu, so the teacher learns where it is.
+ * `{menu}` is said as 왼쪽 메뉴 or 맨 위 메뉴, by the screen width.
+ */
+const menuStep = (tab: AdminTab, text: string, sub = '이미 그 화면이 열려 있으면 [다음]을 누르세요.'): TutorialStep => ({
+  target: `#admin-tab-${tab}`, area: ['[data-testid="admin-tabs"]'], title: '메뉴 고르기', text, sub,
+  next: { click: `#admin-tab-${tab}`, wait: `#admin-panel-${tab}` }, advanceWhen: `#admin-panel-${tab}`,
+});
+
+/** `${what} 왼쪽 메뉴의 [학생]에서 해요. [학생]을 누르세요.` */
+const menu = (tab: AdminTab, what: string, verb = '해요'): TutorialStep => {
+  const [label, particle] = MENU[tab];
+  return menuStep(tab, `${what} **{menu}**의 [${label}]에서 ${verb}. [${label}]${particle} 누르세요.`);
+};
 
 /** Opens a student's editor from the 학생 list. */
 const openStudent = (text: string): TutorialStep => ({
@@ -115,21 +140,62 @@ const PADLET_RULES: TutorialStep = {
 
 export const TUTORIALS: readonly Tutorial[] = [
   {
+    id: '0-1',
+    title: 'CRS 한 바퀴 둘러보기',
+    goal: '처음 쓰는 선생님을 위해 꼭 필요한 화면을 메뉴에서 하나씩 찾아가며 둘러봐요. 둘러보기만 하니 아무것도 바뀌지 않아요.',
+    then: '2-1',
+    steps: [
+      { target: '[data-testid="admin-tabs"]', area: ['@target'], peek: true, title: '처음 오셨나요?',
+        text: '**CRS**는 학급 화폐로 교실 매점과 은행을 운영해요. 선생님은 이 **관리자 화면**에서 학생 · 상품 · 과제를 정하고, 학생은 **QR 카드**로 매점에서 사고 은행에서 잔액과 과제를 봐요.',
+        sub: '화면은 **{menu}**에서 골라요. 꼭 필요한 화면을 차례로 찾아가 볼게요.' },
+      menuStep('students', '먼저 **학생**을 등록해요. **{menu}**의 [학생]을 누르세요.'),
+      { tab: 'students', target: '[data-tour="student-add"]', area: ['@header'], peek: true, title: '학생 등록',
+        text: '[학생 추가]로 한 명씩, [엑셀로 일괄 추가]로 여러 명을 한꺼번에 등록해요.', sub: '번호는 QR 카드에 들어가는 학생 고유 번호예요. 따라 하기: 튜토리얼 3-1 · 3-2' },
+      { tab: 'students', target: ['[aria-label="전체 학생 선택"]', '[data-tour="student-add"]'], area: ['[data-testid="student-header-row"]'], peek: true, title: 'QR 카드',
+        text: '학생마다 **QR 카드**를 인쇄해 나눠 줘요. 매점에서 결제하고 은행에 들어가는 열쇠예요.', sub: '학생을 체크하면 화면 아래에 [QR 카드 발급]이 나와요. 따라 하기: 튜토리얼 3-5' },
+      menuStep('products', '다음은 매점에서 팔 **상품**이에요. **{menu}**의 [매점]을 누르세요.'),
+      { tab: 'products', reveal: '#admin-store-tab-inventory', target: '[data-tour="product-add"]', area: ['@header'], peek: true, title: '상품 등록',
+        text: '[상품 추가]로 매점에서 팔 상품을 올려요. 간식 · 학용품 같은 **실물 상품**이 대부분이에요.',
+        sub: '자리 바꾸기권처럼 실물이 없는 상품은 디지털 상품으로 만들 수 있어요. 할인 행사는 [행사 관리] 탭에서 만들어요. 따라 하기: 튜토리얼 4-1' },
+      menuStep('tasks', '학생이 하고 보상을 받을 일은 **과제**로 만들어요. **{menu}**의 [과제]를 누르세요.'),
+      { tab: 'tasks', target: '[data-tour="task-new"]', area: ['@header'], peek: true, title: '과제',
+        text: '[새 과제]로 숙제 · 청소 당번처럼 학생이 하고 **보상**을 받을 일을 만들어요.',
+        sub: '학생마다 **미부여 → 미완료 → 완료 가능 → 완료** 단계가 있어요. 해 온 학생을 ‘완료 가능’으로 바꿔 주면 학생이 은행에서 직접 완료하고 보상을 받아요. 따라 하기: 튜토리얼 5-0 · 5-1' },
+      menuStep('currency', '칭찬이나 벌금으로 화폐를 바로 주거나 거둘 때는 **{menu}**의 [지급·회수]를 누르세요.'),
+      { tab: 'currency', target: '[data-tour="currency-start"]', area: ['[data-tour="currency-mode"]', '@target'], peek: true, title: '지급 · 회수',
+        text: '[지급] 또는 [회수]와 금액을 정하고 [QR 인식 시작]을 눌러 학생 QR을 찍어요.', sub: '찍는 즉시 잔액이 바뀌고 거래 내역에 남아요. 따라 하기: 튜토리얼 6-1' },
+      menuStep('transactions', '돈이 오간 기록은 **{menu}**의 [거래 내역]에서 봐요. [거래 내역]을 누르세요.'),
+      { tab: 'transactions', target: '[data-tour="tx-stats"]', area: ['@target'], peek: true, title: '거래 내역',
+        text: '매점 결제 · 과제 보상 · 지급과 회수가 모두 **거래 내역**에 남아요.', sub: '잘못된 결제는 그 거래를 취소해 되돌려요. 따라 하기: 튜토리얼 6-2' },
+      { target: ['[data-tour="sidebar-shortcuts"]', '[data-tour="header-shortcuts"]'], area: ['@target'], peek: true, title: '학생 화면 열기',
+        text: '학생이 쓰는 화면은 둘이에요. **매점**은 교실 컴퓨터나 태블릿에 띄워 두고 학생이 QR 카드를 찍어 사요. **은행**은 학생이 QR로 들어가 잔액과 과제를 봐요.',
+        sub: '**바로가기**에서 매점 · 은행을 열고, 공유 버튼으로 주소와 QR 포스터를 받아요. 따라 하기: 튜토리얼 9-1' },
+      { target: '#admin-tab-pets', area: ['#admin-tab-pets', '#admin-tab-tree'], peek: true, title: '골라 쓰는 기능',
+        text: '**펫 키우기 · 나무 키우기**는 원할 때 켜는 기능이에요. 학생이 과제를 하면 펫이 자라고 반 나무에 양분이 쌓여요.', sub: '따라 하기: 튜토리얼 7-1 · 8-1' },
+      menuStep('home', '마지막으로 **{menu}**의 [홈]을 누르세요.', '홈에서는 학급 현황을 한눈에 보고 자주 쓰는 일을 바로 시작해요.'),
+      { tab: 'home', target: '[data-testid="tutorial-home-card"]', area: ['@target'], peek: true, title: '이제 해 볼 차례',
+        text: '기능마다 [튜토리얼 목록]에서 골라 실제 화면에서 따라 해요. 다른 화면에서는 바로가기의 [튜토리얼](휴대폰은 맨 위 ✦ 버튼)로 열어요.',
+        sub: '이 순서를 추천해요: 이름과 화폐 단위 정하기(2-1) → 학생 추가(3-1) → QR 카드 인쇄(3-5) → 상품 추가(4-1) → 과제 만들기(5-1)' },
+    ],
+  },
+  {
     id: '1-1',
     title: '내 학급 열기',
     goal: '‘내 학급’ 화면에서 학급을 골라 관리자 화면이나 매점·은행으로 들어가요.',
-    page: 'classes',
     steps: [
-      { target: 'a[aria-label="새 학급"]', area: [{ closest: 'section' }], title: '내 학급',
+      { target: 'a[aria-label="학급 목록으로"]', area: ['@parent'], opensPage: 'classes', title: '내 학급으로 가기',
+        text: '화면 왼쪽 위의 **로고**를 누르면 **내 학급** 목록으로 가요. 로고를 누르세요.', sub: '컴퓨터에서는 왼쪽 아래 [메인 화면으로]도 같은 곳으로 가요.',
+        next: { click: 'a[aria-label="학급 목록으로"]', wait: 'a[aria-label="새 학급"]' } },
+      { target: 'a[aria-label="새 학급"]', area: [{ closest: 'section' }], peek: true, title: '내 학급',
         text: '**내 학급**에는 내가 만들었거나 함께 관리하는 학급이 모여 있어요.', sub: '새 학급은 [새 학급 만들기]로 만들어요.' },
-      { target: 'section[aria-label="학급 현황"]', area: ['@target'], title: '학급 현황',
+      { target: 'section[aria-label="학급 현황"]', area: ['@target'], peek: true, title: '학급 현황',
         text: '**전체 학급 · 사용 중인 학급 · 등록된 학생** 수를 한눈에 봐요.' },
       { target: '[aria-label="학급 분류"]', area: ['@parent'], title: '학급 찾기',
         text: '[전체 · 사용 중 · 준비 중 · 휴지통]으로 나눠 보고, 이름으로 검색하거나 정렬해요.', sub: '삭제한 학급은 **휴지통**에서 복원할 수 있어요.' },
-      { target: '[aria-label$=" 이름 변경"]', area: ['@parent'], skipUnless: '[aria-label$=" 이름 변경"]', title: '학급 관리',
+      { target: '[aria-label$=" 이름 변경"]', area: ['@parent'], skipUnless: '[aria-label$=" 이름 변경"]', peek: true, title: '학급 관리',
         text: '학급 소유자는 [이름 변경] · [복제] · [삭제]를 쓸 수 있어요.',
         sub: '복제하면 설정·학생 명단·상품·과제·행사를 새 학급에 가져와요. 잔액은 0에서 시작하고, 과제와 행사는 꺼진 채로 복제돼요.' },
-      { target: 'a[aria-label$=" 학급으로 이동"]', area: ['@parent'], title: '학생 화면 열기',
+      { target: 'a[aria-label$=" 학급으로 이동"]', area: ['@parent'], peek: true, title: '학생 화면 열기',
         text: '[매점] · [은행]은 학생이 쓰는 화면을 이 기기에서 열어요.', sub: '카드 아래의 **학생 QR 출력** · **매점 주소 복사**도 여기서 해요.',
         missing: '사용 중인 학급이 없어요. [새 학급 만들기]로 먼저 학급을 만드세요.' },
       { target: 'a[aria-label$=" 관리자 페이지"]', area: [{ closest: 'li' }], title: '관리자 페이지로',
@@ -142,24 +208,24 @@ export const TUTORIALS: readonly Tutorial[] = [
     title: '관리자 화면 둘러보기',
     goal: '메뉴, 홈 화면의 현황 카드, 바로가기를 차례로 살펴봐요.',
     steps: [
-      { tab: 'home', target: '[data-testid="admin-tabs"]', area: ['@target'], title: '메뉴',
-        text: '**메뉴**에서 관리할 화면을 골라요.', sub: '홈 · 학생 · 매점 · 과제 · 펫 키우기 · 나무 키우기 · 지급·회수 · 거래 내역 · 설정. 좁은 화면에서는 맨 위에 가로로 있어요.' },
-      { tab: 'home', target: '[data-tour="home-stats"]', area: ['@target'], title: '오늘의 학급',
+      menuStep('home', '관리할 화면은 **{menu}**에서 골라요. 홈 화면을 보려면 [홈]을 누르세요.',
+        '메뉴에는 홈 · 학생 · 매점 · 과제 · 펫 키우기 · 나무 키우기 · 지급·회수 · 거래 내역 · 설정이 있어요. 이미 홈이면 [다음]을 누르세요.'),
+      { tab: 'home', target: '[data-tour="home-stats"]', area: ['@target'], peek: true, title: '오늘의 학급',
         text: '**학생 수 · 잔액 합계 · 판매 중인 상품 · 진행 중인 과제**를 한눈에 봐요.', sub: '카드 아래 작은 글씨로 비활성 학생, 음수 잔액, 전체 재고도 알려 줘요.' },
-      { tab: 'home', target: '[data-tour="home-quick"]', area: ['@target'], title: '자주 쓰는 일',
+      { tab: 'home', target: '[data-tour="home-quick"]', area: ['@target'], peek: true, title: '자주 쓰는 일',
         text: '[화폐 지급·회수] · [QR로 과제 부여]로 바로 시작하고, [매점 열기] · [은행 열기]로 학생 화면을 새 탭에 열어요.' },
-      { tab: 'home', target: '[data-tour="home-start"]', area: ['@target'], skipUnless: '[data-tour="home-start"]', title: '학급 시작하기',
+      { tab: 'home', target: '[data-tour="home-start"]', area: ['@target'], skipUnless: '[data-tour="home-start"]', peek: true, title: '학급 시작하기',
         text: '**학생 등록 → 상품 등록 → 과제 만들기**를 마치면 학생들이 매점과 은행을 쓸 수 있어요.', sub: '끝낸 일에는 ‘완료’가 붙고, 셋 다 끝내면 이 카드는 사라져요.' },
-      { tab: 'home', target: '[data-tour="home-progress"]', area: ['@target'], title: '과제 진행 현황',
+      { tab: 'home', target: '[data-tour="home-progress"]', area: ['@target'], peek: true, title: '과제 진행 현황',
         text: '과제마다 **완료한 학생 수**를 막대로 봐요.', sub: '과제를 누르면 그 과제의 학생 현황이 열려요.' },
-      { tab: 'home', target: '[data-tour="home-check"]', area: ['@target'], title: '확인이 필요한 항목',
+      { tab: 'home', target: '[data-tour="home-check"]', area: ['@target'], peek: true, title: '확인이 필요한 항목',
         text: '**잔액이 음수인 학생**과 **재고가 3개 이하인 상품**을 알려 줘요.' },
-      { target: ['[data-tour="sidebar-shortcuts"]', '[data-tour="header-shortcuts"]'], area: ['@target'], title: '바로가기',
-        text: '학생용 **매점 · 은행** 화면을 열거나 공유하고, 학생 QR 카드를 인쇄해요.', sub: '자세한 방법은 9-1 튜토리얼에서 볼 수 있어요.' },
-      { target: 'a[aria-label="학급 목록으로"]', area: ['@parent'], skipUnless: 'a[aria-label="학급 목록으로"]', title: '내 학급으로',
+      { target: ['[data-tour="sidebar-shortcuts"]', '[data-tour="header-shortcuts"]'], area: ['@target'], peek: true, title: '바로가기',
+        text: '학생용 **매점 · 은행** 화면을 열거나 공유하고, 학생 QR 카드를 인쇄해요.', sub: '컴퓨터에서는 메뉴 아래, 휴대폰에서는 화면 맨 위에 있어요. 따라 하기: 튜토리얼 9-1' },
+      { target: 'a[aria-label="학급 목록으로"]', area: ['@parent'], skipUnless: 'a[aria-label="학급 목록으로"]', peek: true, title: '내 학급으로',
         text: '왼쪽 위의 **로고**를 누르면 내 학급 목록으로 돌아가요.' },
-      { tab: 'home', target: '[data-testid="tutorial-home-card"] button', area: ['[data-testid="tutorial-home-card"]'], title: '튜토리얼',
-        text: '배우고 싶은 기능이 생기면 홈의 [튜토리얼 열기]로 언제든 다시 시작해요.' },
+      { tab: 'home', target: '[data-testid="tutorial-home-card"]', area: ['@target'], peek: true, title: '튜토리얼',
+        text: '배우고 싶은 기능이 생기면 홈의 [튜토리얼 목록]에서 언제든 골라 따라 해요.', sub: '다른 화면에서는 바로가기의 [튜토리얼](휴대폰은 맨 위 ✦ 버튼)로 열어요.' },
     ],
   },
   {
@@ -167,6 +233,7 @@ export const TUTORIALS: readonly Tutorial[] = [
     title: '매점·은행 이름과 화폐 단위 정하기',
     goal: '학생 화면 맨 위의 이름과, 학급에서 쓰는 돈의 단위를 바꿔요.',
     steps: [
+      menu('settings', '매점·은행 이름과 화폐 단위는'),
       { tab: 'settings', target: '#settings-app-title', focus: true, title: '매점 이름',
         text: '**매점 이름**을 적으세요. 매점 화면 맨 위에 보여요.', sub: '예: 6학년 3반 매점, 햇살 가게' },
       { tab: 'settings', target: '#settings-bank-title', focus: true, title: '은행 이름',
@@ -183,6 +250,7 @@ export const TUTORIALS: readonly Tutorial[] = [
     title: '화면 색과 글꼴 바꾸기',
     goal: '학생이 보는 매점·은행 화면의 테마 색과 글꼴을 정해요.',
     steps: [
+      menu('settings', '화면 색과 글꼴은'),
       { tab: 'settings', target: '[role="radiogroup"][aria-label="테마 색상"]', area: [{ closest: 'fieldset' }], title: '테마 색상',
         text: '**테마 색상**을 고르세요. 매점·은행 화면의 바탕과 버튼 색이 바뀌어요.', sub: '작은 그림으로 바뀐 화면을 미리 볼 수 있어요.' },
       { tab: 'settings', target: '#settings-font', area: ['@field', '[data-tour="settings-font-preview"]'], title: '글꼴',
@@ -196,6 +264,7 @@ export const TUTORIALS: readonly Tutorial[] = [
     title: '학생 한 명씩 추가하기',
     goal: '번호·이름·처음 잔액을 넣어 학생을 한 명 등록해요.',
     steps: [
+      menu('students', '학생 등록은'),
       { tab: 'students', target: '[data-tour="student-add"]', area: ['@header'], title: '추가 창 열기',
         text: '[학생 추가]를 누르세요. 오른쪽에 입력 창이 열려요.', next: { wait: '#new-student-id' }, advanceWhen: '#new-student-id' },
       { target: '#new-student-id', focus: true, title: '번호',
@@ -213,12 +282,13 @@ export const TUTORIALS: readonly Tutorial[] = [
     title: '엑셀로 여러 학생 한꺼번에 추가하기',
     goal: '양식 파일에 학생 명단을 채워 올리고, 미리 보기로 확인한 뒤 한꺼번에 추가해요.',
     steps: [
+      menu('students', '학생 등록은'),
       { tab: 'students', target: '[aria-label="학생 양식 다운로드"]', area: ['@header'], title: '양식 받기',
         text: '[양식 다운로드]를 눌러 엑셀 양식을 받으세요.', sub: '받은 ‘학생 명단 양식.xlsx’에 학생 번호 · 이름 · 처음 잔액을 한 줄에 한 명씩 채워 저장해요.',
-        missing: '이 학급에서는 엑셀로 추가할 수 없어요. 3-1 튜토리얼처럼 한 명씩 추가해 주세요.' },
+        missing: '이 학급에서는 엑셀로 추가할 수 없어요. 튜토리얼 3-1처럼 한 명씩 추가해 주세요.' },
       { tab: 'students', target: '[aria-label="학생 엑셀로 일괄 추가"]', area: ['@header'], title: '파일 올리기',
         text: '[엑셀로 일괄 추가]를 누르고 채운 파일을 고르세요.', sub: '고르면 바로 파일을 검사해 미리 보기 창을 열어요.',
-        advanceWhen: dialog('엑셀로 학생 추가'), missing: '이 학급에서는 엑셀로 추가할 수 없어요. 3-1 튜토리얼처럼 한 명씩 추가해 주세요.' },
+        advanceWhen: dialog('엑셀로 학생 추가'), missing: '이 학급에서는 엑셀로 추가할 수 없어요. 튜토리얼 3-1처럼 한 명씩 추가해 주세요.' },
       { target: `${dialog('엑셀로 학생 추가')} table`, area: [`${dialog('엑셀로 학생 추가')} > div`], title: '미리 보기',
         text: '추가할 학생을 **미리 보기** 표로 확인하세요.', sub: '오류가 있는 줄은 이유가 함께 나오고 추가되지 않아요. 고친 파일은 [다른 파일 선택]으로 다시 올려요.',
         missing: '파일을 고르면 미리 보기 창이 열려요. 창이 없으면 [이전]으로 돌아가 파일을 다시 고르세요.' },
@@ -232,6 +302,7 @@ export const TUTORIALS: readonly Tutorial[] = [
     title: '학생 정보 고치기 · 이용 멈추기 · 삭제하기',
     goal: '학생 편집 창에서 이름과 잔액을 고치고, 이용을 멈추거나 학생을 지워요.',
     steps: [
+      menu('students', '학생 정보 고치기는'),
       openStudent('고칠 학생의 **이름**을 누르세요. 오른쪽에 편집 창이 열려요.'),
       { target: '#student-sheet-name', focus: true, title: '이름', text: '**이름**을 고치세요.' },
       { target: '#student-sheet-balance', focus: true, title: '잔액',
@@ -251,12 +322,13 @@ export const TUTORIALS: readonly Tutorial[] = [
     title: '여러 학생을 골라 한꺼번에 처리하기',
     goal: '체크한 학생들의 잔액을 한꺼번에 바꾸고, QR 카드 인쇄 · 보관함 넣기 · 삭제도 한 번에 해요.',
     steps: [
+      menu('students', '학생 관리는'),
       pickRows('students', '[data-testid="student-row"]', '학생 줄 왼쪽 **체크 상자**로 학생을 고르세요.', NO_STUDENTS),
       { target: TOOLBAR, area: ['@target'], title: '작업 막대',
         text: '고르면 아래에 **작업 막대**가 나타나요. 고른 학생 모두에게 할 일을 골라요.',
-        sub: '[QR 카드 발급]은 고른 학생의 카드만 인쇄해요(3-5). 오른쪽 끝 ✕는 선택을 풀어요.', missing: '학생을 한 명 이상 고르면 작업 막대가 나와요.' },
+        sub: '[QR 카드 발급]은 고른 학생의 카드만 인쇄해요. 오른쪽 끝 ✕는 선택을 풀어요.', missing: '학생을 한 명 이상 고르면 작업 막대가 나와요.' },
       { target: '[data-tour="student-bulk-give"]', area: [TOOLBAR], skipUnless: '[data-tour="student-bulk-give"]', title: '보관함에 넣기',
-        text: '[보관함에 넣기]로 고른 학생 모두에게 같은 아이템을 넣어요.', sub: '디지털 상품은 그대로, 실물 상품은 교환권으로 들어가요(3-6).' },
+        text: '[보관함에 넣기]로 고른 학생 모두에게 같은 아이템을 넣어요.', sub: '디지털 상품은 그대로, 실물 상품은 교환권으로 들어가요. 따라 하기: 튜토리얼 3-6' },
       { target: '[data-tour="student-bulk-delete"]', area: [TOOLBAR], title: '삭제',
         text: '[삭제]는 고른 학생을 명단에서 지워요.', warn: '누르면 한 번 더 물어봐요. 지운 학생은 되돌릴 수 없어요.' },
       { target: '[data-tour="student-bulk-balance"]', area: [TOOLBAR], title: '잔액 바꾸기',
@@ -274,11 +346,12 @@ export const TUTORIALS: readonly Tutorial[] = [
     title: '학생 QR 카드 인쇄하기',
     goal: 'QR 카드는 학생의 결제 수단이자 은행 로그인 열쇠예요. 인쇄해서 잘라 나눠 줘요.',
     steps: [
-      { target: 'a[href$="/admin/student-qrs"]', area: ['[data-tour="sidebar-shortcuts"]'], title: '반 전체 인쇄',
-        text: '왼쪽 바로가기의 [학생 QR 인쇄]를 누르면 새 탭에 활성 학생 모두의 QR 카드가 나와요. 그 화면에서 [QR 카드 인쇄하기]를 누르세요.',
-        sub: '코팅하거나 카드 지갑에 넣어 쓰면 오래 써요.', missing: '[학생 QR 인쇄]는 넓은 화면(컴퓨터)의 왼쪽 바로가기에 있어요. [다음]으로 몇 명만 뽑는 방법을 볼 수 있어요.' },
-      { tab: 'students', target: '[data-testid="student-row"] input[type="checkbox"]', area: [{ closest: '[data-testid="student-row"]' }], title: '몇 명만 고르기',
-        text: '몇 명만 다시 뽑을 때는 학생 줄 왼쪽 **체크 상자**로 학생을 고르세요.', sub: '맨 위 체크 상자는 전체 선택이에요.',
+      menu('students', 'QR 카드 인쇄는'),
+      { target: 'a[href$="/admin/student-qrs"]', area: ['[data-tour="sidebar-shortcuts"]'], skipUnless: 'a[href$="/admin/student-qrs"]', title: '반 전체 인쇄',
+        text: '반 전체는 왼쪽 바로가기의 [학생 QR 인쇄]로 한 번에 뽑아요. 새 탭에 활성 학생 모두의 카드가 나오면 [QR 카드 인쇄하기]를 누르세요.',
+        sub: '코팅하거나 카드 지갑에 넣어 쓰면 오래 써요. [다음]을 누르면 학생을 골라 뽑는 방법을 보여 드려요.' },
+      { tab: 'students', target: '[data-testid="student-row"] input[type="checkbox"]', area: ['[data-testid="student-header-row"]', { closest: '[data-testid="student-row"]' }], title: '학생 고르기',
+        text: '인쇄할 학생을 줄 왼쪽 **체크 상자**로 고르세요. 맨 위 체크 상자를 누르면 반 전체를 골라요.', sub: '잃어버린 카드만 다시 뽑을 때도 이렇게 해요.',
         next: { wait: '[data-tour="student-qr-bulk"]' }, advanceWhen: '[data-tour="student-qr-bulk"]', missing: NO_STUDENTS },
       { target: '[data-tour="student-qr-bulk"]', area: [{ closest: '[role="toolbar"]' }], title: '고른 학생만 인쇄',
         text: '[QR 카드 발급]을 누르면 고른 학생의 카드만 나와요. 창에서 [인쇄]를 누르세요.',
@@ -290,6 +363,7 @@ export const TUTORIALS: readonly Tutorial[] = [
     title: '보관함에 아이템 넣기 · 사용 처리하기',
     goal: '학생 편집 창의 보관함에서 아이템을 넣어 주고, 학생이 쓴 쿠폰을 ‘사용함’으로 처리해요.',
     steps: [
+      menu('students', '학생 보관함 관리는'),
       openStudent('보관함을 볼 학생의 **이름**을 누르세요. 오른쪽에 편집 창이 열려요.'),
       { target: '[data-tour="storage-head"]', area: ['@target', '[data-tour="storage-note"]'], title: '보관함',
         text: '편집 창 아래 **보관함**에 이 학생이 가진 아이템이 보여요.',
@@ -310,6 +384,7 @@ export const TUTORIALS: readonly Tutorial[] = [
     title: '매점에 상품 추가하기',
     goal: '이름·가격·재고·분류를 넣어 매점에 새 상품을 올려요.',
     steps: [
+      menu('products', '상품 추가는'),
       { tab: 'products', reveal: '#admin-store-tab-inventory', target: '[data-tour="product-add"]', area: ['@header'], title: '추가 창 열기',
         text: '[상품 추가]를 누르세요. 오른쪽에 입력 창이 열려요.', next: { wait: '#new-product-name' }, advanceWhen: '#new-product-name' },
       { target: '#new-product-image', focus: true, title: '이미지 주소 (선택)',
@@ -326,7 +401,7 @@ export const TUTORIALS: readonly Tutorial[] = [
         sub: '켜면 학생이 산 물건이 실물 대신 학생 **보관함**에 들어가요. 자리 바꾸기권 · 숙제 면제 쿠폰 · 칭찬 배지처럼 손에 쥘 물건이 없는 상품에만 켜세요.' },
       { target: '#new-product-digital-kind', skipUnless: '#new-product-digital-kind', title: '디지털 상품 유형',
         text: '켰다면 **유형**을 고르세요. **소모품**은 쿠폰처럼 한 번 쓰면 없어지고, **수집품**은 배지 · 상장처럼 쓰지 않고 모아 두는 아이템이에요.',
-        sub: '학생이 소모품을 쓰면 학생 편집 창의 보관함에서 [사용함]을 눌러 처리해요(3-6).' },
+        sub: '학생이 소모품을 쓰면 학생 편집 창의 보관함에서 [사용함]을 눌러 처리해요. 따라 하기: 튜토리얼 3-6' },
       { target: '#new-product-digital-description', skipUnless: '#new-product-digital-description', focus: true, title: '보관함 설명 (선택)',
         text: '학생이 보관함에서 이 아이템을 누르면 보이는 **설명**이에요. 쓰는 방법을 적어 두세요.', sub: '예: 원하는 자리로 일주일 동안 옮길 수 있어요.' },
       { target: '[data-tour="product-create"]', area: ['@footer'], title: '추가하기',
@@ -338,10 +413,11 @@ export const TUTORIALS: readonly Tutorial[] = [
     title: '상품 고치기 · 판매 멈추기 · 지우기',
     goal: '상품 편집 창에서 가격·재고를 고치고, 판매를 잠시 멈추거나 상품을 지워요.',
     steps: [
+      menu('products', '상품 고치기는'),
       { tab: 'products', reveal: '#admin-store-tab-inventory', target: '[data-testid="product-row"] button[aria-label$=" 편집"]', area: [{ closest: '[data-testid="product-row"]' }],
         title: '상품 고르기', text: '고칠 **상품 이름**을 누르세요. 오른쪽에 편집 창이 열려요.',
         sub: '[다음]을 누르면 맨 위 상품으로 보여 드려요. 목록 위의 검색과 [전체 · 판매 중 · 판매 중지]로 찾을 수 있어요.',
-        next: { wait: PRODUCT_SHEET }, advanceWhen: PRODUCT_SHEET, missing: '먼저 상품을 등록해 주세요. 4-1 튜토리얼에서 볼 수 있어요.' },
+        next: { wait: PRODUCT_SHEET }, advanceWhen: PRODUCT_SHEET, missing: '먼저 상품을 등록해 주세요. 튜토리얼 4-1에서 따라 할 수 있어요.' },
       { target: '#product-sheet-price', focus: true, title: '가격', text: '**가격**을 고치세요.', sub: '이미 판 거래의 금액은 바뀌지 않아요.' },
       { target: '#product-sheet-stock', focus: true, title: '재고', text: '**재고**를 고치세요. 새로 들여온 만큼 더한 수를 적어요.', sub: '0이 되면 매점에서 살 수 없어요.' },
       { target: `${PRODUCT_SHEET} [aria-label$=" 판매중"]`, title: '판매 멈추기',
@@ -358,6 +434,7 @@ export const TUTORIALS: readonly Tutorial[] = [
     title: '할인 행사 만들기',
     goal: '1+1, 할인가 같은 매점 행사를 기간과 대상 상품을 정해 만들어요.',
     steps: [
+      menu('products', '할인 행사는'),
       { tab: 'products', target: '#admin-store-tab-promotions', area: [{ closest: '[role="tablist"]' }], title: '행사 관리 탭',
         text: '[행사 관리] 탭을 누르세요.', next: { click: '#admin-store-tab-promotions', wait: '[aria-label="행사명"]' }, advanceWhen: '[aria-label="행사명"]' },
       { reveal: '#admin-store-tab-promotions', target: '[aria-label="행사명"]', area: [{ closest: 'label' }], focus: true, title: '행사명',
@@ -375,7 +452,7 @@ export const TUTORIALS: readonly Tutorial[] = [
       { reveal: '#admin-store-tab-promotions', target: '[aria-label="행사 활성"]', area: [{ closest: 'label' }], title: '활성',
         text: '**활성**을 끄면 만들어 두기만 하고 적용하지 않아요.' },
       { reveal: '#admin-store-tab-promotions', target: '[aria-label$=" 대상"]', area: [{ closest: 'fieldset' }], title: '대상 상품',
-        text: '행사를 적용할 **대상 상품**을 체크하세요.', missing: '먼저 매점에 상품을 등록해 주세요. 4-1 튜토리얼에서 볼 수 있어요.' },
+        text: '행사를 적용할 **대상 상품**을 체크하세요.', missing: '먼저 매점에 상품을 등록해 주세요. 튜토리얼 4-1에서 따라 할 수 있어요.' },
       { reveal: '#admin-store-tab-promotions', target: '[aria-label="미리보기 상품"]', area: ['[data-tour="promo-preview"]'], title: '가격 미리보기',
         text: '**미리보기 상품**과 수량을 고르면 행사를 적용한 최종 합계를 보여 줘요.', sub: '추가하기 전에 계산이 맞는지 확인해요.' },
       { reveal: '#admin-store-tab-promotions', target: '[data-tour="promo-create"]', area: ['@target'], title: '추가하기',
@@ -387,19 +464,20 @@ export const TUTORIALS: readonly Tutorial[] = [
     title: '행사 고치기 · 끄기 · 지우기',
     goal: '행사 목록에서 행사를 고치고, 잠시 끄거나 지워요.',
     steps: [
+      menu('products', '할인 행사는'),
       { tab: 'products', target: '#admin-store-tab-promotions', area: [{ closest: '[role="tablist"]' }], title: '행사 관리 탭',
         text: '[행사 관리] 탭을 누르세요.', next: { click: '#admin-store-tab-promotions', wait: '[aria-label="행사명"]' }, advanceWhen: '[aria-label="행사명"]' },
       { reveal: '#admin-store-tab-promotions', target: '[data-testid="promotion-row"]', area: ['@target'], title: '행사 목록',
-        text: '**행사 목록**에서 진행 중인지와 할인 내용 · 대상 상품 · 기간을 봐요.', missing: '등록된 행사가 없어요. 4-3 튜토리얼로 먼저 만들어 주세요.' },
+        text: '**행사 목록**에서 진행 중인지와 할인 내용 · 대상 상품 · 기간을 봐요.', missing: '등록된 행사가 없어요. 튜토리얼 4-3으로 먼저 만들어 주세요.' },
       { reveal: '#admin-store-tab-promotions', target: ['[data-testid="promotion-row"] button[aria-label$=" 비활성화"]', '[data-testid="promotion-row"] button[aria-label$=" 재활성화"]'],
         area: [{ closest: '[data-testid="promotion-row"]' }], title: '끄기 · 다시 켜기',
         text: '[비활성화]를 누르면 행사를 지우지 않고 멈춰요. [재활성화]로 다시 켜요.', warn: '누르는 즉시 매점에 반영돼요.',
-        missing: '등록된 행사가 없어요. 4-3 튜토리얼로 먼저 만들어 주세요.' },
+        missing: '등록된 행사가 없어요. 튜토리얼 4-3으로 먼저 만들어 주세요.' },
       { reveal: '#admin-store-tab-promotions', target: '[data-testid="promotion-row"] button[aria-label$=" 삭제"]', area: [{ closest: '[data-testid="promotion-row"]' }], title: '지우기',
-        text: '[삭제]는 행사를 지워요.', warn: '한 번 더 물어본 뒤 지워요. 지운 행사는 되돌릴 수 없어요.', missing: '등록된 행사가 없어요. 4-3 튜토리얼로 먼저 만들어 주세요.' },
+        text: '[삭제]는 행사를 지워요.', warn: '한 번 더 물어본 뒤 지워요. 지운 행사는 되돌릴 수 없어요.', missing: '등록된 행사가 없어요. 튜토리얼 4-3으로 먼저 만들어 주세요.' },
       { reveal: '#admin-store-tab-promotions', target: '[data-testid="promotion-row"] button[aria-label$=" 편집"]', area: [{ closest: '[data-testid="promotion-row"]' }], title: '고치기',
         text: '[편집]을 누르세요.', next: { wait: '[aria-labelledby="promotion-edit-title"]' }, advanceWhen: '[aria-labelledby="promotion-edit-title"]',
-        missing: '등록된 행사가 없어요. 4-3 튜토리얼로 먼저 만들어 주세요.' },
+        missing: '등록된 행사가 없어요. 튜토리얼 4-3으로 먼저 만들어 주세요.' },
       { target: '[aria-labelledby="promotion-edit-title"] [aria-label="수정 행사명"]', area: [{ closest: 'label' }], title: '바꿀 곳 고치기',
         text: '만들 때와 같은 칸이 열려요. 기간 · 할인 내용 · 대상 상품 등 바꿀 곳을 고치세요.' },
       { target: '[data-tour="promo-edit-save"]', area: ['@parent'], title: '저장하기',
@@ -412,6 +490,7 @@ export const TUTORIALS: readonly Tutorial[] = [
     goal: '과제는 학생마다 미부여 → 미완료 → 완료 가능 → 완료 네 단계로 관리해요.',
     ledger: true,
     steps: [
+      menu('tasks', '과제 관리는'),
       { tab: 'tasks', target: '#admin-panel-tasks [data-page-header]', area: ['@target'], title: '네 단계',
         text: '과제는 학생마다 **미부여 → 미완료 → 완료 가능 → 완료** 단계로 관리해요.',
         sub: '선생님이 단계를 바꾸고, 학생은 ‘완료 가능’일 때 은행에서 직접 완료해 보상을 받아요.' },
@@ -424,7 +503,7 @@ export const TUTORIALS: readonly Tutorial[] = [
         sub: '**완료**는 끝낸 과제예요. 선생님이 직접 완료로 바꿀 때는 보상을 줄지 물어봐요.' },
       { reveal: taskTab('students'), target: '[data-tour="stage-counts"]', area: ['@target'], title: '흔한 흐름',
         text: '흔히 과제를 **미완료**로 내주고, 해 온 것을 확인한 학생을 **완료 가능**으로 바꿔 줘요.',
-        sub: '반복 과제는 정한 때가 되면 학생들이 고른 단계로 저절로 돌아가요(5-2). 패들렛을 연결하면 글을 올린 학생이 저절로 ‘완료 가능’이 돼요(5-7).' },
+        sub: '반복 과제는 정한 때가 되면 학생들이 고른 단계로 저절로 돌아가요(튜토리얼 5-2). 패들렛을 연결하면 글을 올린 학생이 저절로 ‘완료 가능’이 돼요(튜토리얼 5-7).' },
     ],
   },
   {
@@ -433,6 +512,7 @@ export const TUTORIALS: readonly Tutorial[] = [
     goal: '과제 이름·설명·보상과 기간을 정하고, 과제를 줄 학생을 골라요.',
     ledger: true,
     steps: [
+      menu('tasks', '과제 만들기는'),
       { tab: 'tasks', target: '[data-tour="task-new"]', area: ['@header'], title: '새 과제 창 열기',
         text: '[새 과제]를 누르세요. 오른쪽에 과제 창이 열려요.', next: { wait: dialog('새 과제') }, advanceWhen: dialog('새 과제') },
       { target: `${dialog('새 과제')} [role="tablist"]`, area: ['@target'], title: '탭 세 개',
@@ -463,6 +543,7 @@ export const TUTORIALS: readonly Tutorial[] = [
     goal: '매일 · 매주 · 매월 다시 하는 과제를 정해, 정한 때가 되면 학생 단계가 저절로 돌아가게 해요.',
     ledger: true,
     steps: [
+      menu('tasks', '반복 과제 설정은'),
       openTask('반복을 정할 **과제 이름**을 누르세요.'),
       openTaskTab('repeat', '반복', `${TASK_SHEET} [role="group"][aria-label="반복 주기"]`),
       { reveal: taskTab('repeat'), target: `${TASK_SHEET} [role="group"][aria-label="반복 주기"]`, area: ['@parent'], title: '반복 주기',
@@ -477,7 +558,7 @@ export const TUTORIALS: readonly Tutorial[] = [
         text: '초기화할 때 학생을 **어느 단계로** 돌릴지 고르세요.', sub: '흔히 **미완료**로 돌려 다시 하게 해요. 미부여인 학생은 그대로예요.' },
       { target: `${TASK_SHEET} [data-tour="task-repeat-save"]`, area: ['@footer'], title: '저장하기',
         text: '[저장]을 누르세요. 창 안의 파란 글씨로 **다음 초기화** 때를 확인해요.',
-        sub: '여러 과제에 같은 반복을 정하려면 과제 목록에서 체크한 뒤 [반복 설정]을 눌러요(5-6).', warn: '저장하면 그때부터 정한 시각마다 저절로 초기화돼요.' },
+        sub: '여러 과제에 같은 반복을 정하려면 과제 목록에서 체크한 뒤 [반복 설정]을 눌러요. 따라 하기: 튜토리얼 5-6', warn: '저장하면 그때부터 정한 시각마다 저절로 초기화돼요.' },
     ],
   },
   {
@@ -486,6 +567,7 @@ export const TUTORIALS: readonly Tutorial[] = [
     goal: '과제를 받지 않은(미부여) 학생을 골라 ‘미완료’로 바꾸면 학생 은행 화면에 과제가 생겨요.',
     ledger: true,
     steps: [
+      menu('tasks', '과제 내주기는'),
       openTask('내줄 **과제 이름**을 누르세요.'),
       openTaskTab('students', '학생 현황', '[data-tour="stage-pick-bar"]'),
       { reveal: taskTab('students'), target: `${TASK_SHEET} [aria-label="학생 현황 필터"]`, area: ['@target'], title: '미부여만 보기',
@@ -497,7 +579,7 @@ export const TUTORIALS: readonly Tutorial[] = [
         text: '‘선택한 학생을’ 옆의 [미완료]를 누르세요.', sub: '한 명씩은 학생 줄 오른쪽 단계 버튼으로 바꿔요. 숙제를 이미 확인했다면 바로 [완료 가능]으로 내도 돼요.',
         missing: '먼저 학생을 골라 주세요. [이전]으로 돌아가 체크 상자를 누르세요.' },
       { target: '[data-tour="task-stages-save"]', area: ['@footer'], title: '저장하기',
-        text: '[N명 저장]을 누르세요.', sub: '새 과제를 만들 때 [대상 학생] 탭에서 정하거나(5-1), 학생 QR을 찍어 내줄 수도 있어요(5-5).',
+        text: '[N명 저장]을 누르세요.', sub: '새 과제를 만들 때 [대상 학생] 탭에서 정하거나(튜토리얼 5-1), 학생 QR을 찍어 내줄 수도 있어요(튜토리얼 5-5).',
         warn: '저장하면 고른 학생의 은행 화면에 과제가 바로 보여요.' },
     ],
   },
@@ -507,6 +589,7 @@ export const TUTORIALS: readonly Tutorial[] = [
     goal: '과제의 ‘학생 현황’ 탭에서 학생마다 단계를 바꾸고 저장해요.',
     ledger: true,
     steps: [
+      menu('tasks', '학생 단계 바꾸기는'),
       openTask('단계를 바꿀 **과제 이름**을 누르세요.'),
       openTaskTab('students', '학생 현황', '[data-tour="stage-counts"]'),
       { reveal: taskTab('students'), target: '[data-tour="stage-counts"]', area: ['@target'], title: '단계별 학생 수', text: '맨 위 숫자로 **단계별 학생 수**를 봐요.',
@@ -525,6 +608,7 @@ export const TUTORIALS: readonly Tutorial[] = [
     goal: '과제와 단계를 고른 뒤 학생 QR을 찍으면, 찍은 학생의 단계가 바로 바뀌어요.',
     ledger: true,
     steps: [
+      menu('tasks', 'QR로 단계 바꾸기는'),
       { tab: 'tasks', target: '[data-tour="task-qr"]', area: ['@header'], title: 'QR 창 열기',
         text: '[QR로 단계 바꾸기]를 누르세요.', sub: '홈의 [QR로 과제 부여]도 같은 창을 열어요.',
         next: { wait: dialog('QR로 단계 바꾸기') }, advanceWhen: dialog('QR로 단계 바꾸기') },
@@ -546,9 +630,10 @@ export const TUTORIALS: readonly Tutorial[] = [
     goal: '과제를 체크해 반복 · 완료 단계 · 패들렛 · 지금 초기화 · 삭제를 한꺼번에 해요.',
     ledger: true,
     steps: [
+      menu('tasks', '여러 과제 처리는'),
       pickRows('tasks', '[data-testid="task-row"]', '과제 줄 왼쪽 **체크 상자**로 과제를 고르세요.', NO_TASKS),
       { target: TOOLBAR, area: ['@target'], title: '작업 막대',
-        text: '아래 **작업 막대**에서 고른 과제 모두에 한 번에 할 일을 골라요.', sub: '[반복 설정]은 같은 반복을(5-2), [패들렛]은 같은 게시판을(5-9) 정해요.',
+        text: '아래 **작업 막대**에서 고른 과제 모두에 한 번에 할 일을 골라요.', sub: '[반복 설정]은 같은 반복을, [패들렛]은 같은 게시판을 정해요. 따라 하기: 튜토리얼 5-2 · 5-9',
         missing: '과제를 하나 이상 고르면 작업 막대가 나와요.' },
       { target: '[aria-label="선택 과제 지금 초기화"]', area: [TOOLBAR], title: '지금 초기화',
         text: '[지금 초기화]는 반복 시각을 기다리지 않고 지금 바로 학생 단계를 돌려요.', sub: '누르면 돌릴 단계를 고르는 창이 먼저 열려요.' },
@@ -571,11 +656,12 @@ export const TUTORIALS: readonly Tutorial[] = [
     goal: '패들렛 게시판을 연결하면, 학생이 자기 이름으로 글을 올렸을 때 과제가 저절로 ‘완료 가능’이 돼요.',
     ledger: true,
     steps: [
+      menu('tasks', '패들렛 연결은'),
       openTask('패들렛에 연결할 **과제 이름**을 누르세요.'),
       openTaskTab('padlet', '패들렛', '[data-testid="padlet-link-form"], [data-testid="padlet-linked"]'),
       { target: '[data-tour="padlet-change"]', area: ['[data-tour="padlet-linked-board"]'], skipUnless: '[data-testid="padlet-linked"]', title: '이미 연결된 과제',
         text: '이 과제는 이미 게시판에 연결돼 있어요. 다른 게시판으로 바꾸려면 [다른 게시판으로 바꾸기]를 누르세요.',
-        sub: '그대로 두려면 튜토리얼을 끝내세요. 글이 어떻게 반영됐는지는 5-8 튜토리얼에서 볼 수 있어요.',
+        sub: '그대로 두려면 튜토리얼을 끝내세요. 글이 어떻게 반영됐는지는 튜토리얼 5-8에서 볼 수 있어요.',
         next: { wait: '[data-testid="padlet-link-form"]' }, advanceWhen: '[data-testid="padlet-link-form"]' },
       { reveal: taskTab('padlet'), target: '[data-tour="padlet-key"]', area: ['@target'], title: 'Padlet API 키',
         text: '게시판을 읽으려면 **Padlet API 키**가 있어야 해요. 한 번 넣으면 학급의 모든 과제가 함께 써요.',
@@ -597,9 +683,10 @@ export const TUTORIALS: readonly Tutorial[] = [
     goal: '연결된 과제의 패들렛 탭에서 마지막 확인 시각과 글마다 반영된 결과를 봐요.',
     ledger: true,
     steps: [
+      menu('tasks', '패들렛 글이 반영된 결과는', '봐요'),
       { tab: 'tasks', target: '[data-testid="task-row"][data-padlet] button[aria-label$=" 과제 편집"]', area: [{ closest: '[data-testid="task-row"]' }], title: '연결된 과제 고르기',
         text: '패들렛에 연결된 **과제 이름**을 누르세요.', sub: '연결된 과제는 이름 아래에 ‘패들렛: 게시판 이름’이 보여요.',
-        next: { wait: TASK_SHEET }, advanceWhen: TASK_SHEET, missing: '패들렛에 연결된 과제가 없어요. 5-7 튜토리얼로 먼저 연결해 주세요.' },
+        next: { wait: TASK_SHEET }, advanceWhen: TASK_SHEET, missing: '패들렛에 연결된 과제가 없어요. 튜토리얼 5-7로 먼저 연결해 주세요.' },
       openTaskTab('padlet', '패들렛', '[data-testid="padlet-linked"]'),
       { reveal: taskTab('padlet'), target: '[data-tour="padlet-linked-board"]', area: ['@target'], title: '연결 상태',
         text: '연결된 **게시판**과 세는 칸, **마지막 확인** 시각을 봐요.', sub: '확인에 실패하면 노란 글씨로 이유가 나와요.',
@@ -621,6 +708,7 @@ export const TUTORIALS: readonly Tutorial[] = [
     goal: '체크한 과제 모두를 같은 패들렛 게시판에 연결해요. 연계된 과제는 글 하나에 앞 과제부터 하나씩 완료 가능이 돼요.',
     ledger: true,
     steps: [
+      menu('tasks', '패들렛 연결은'),
       pickRows('tasks', '[data-testid="task-row"]', '한 게시판에 연결할 과제를 모두 **체크**하세요.', NO_TASKS),
       { target: '[aria-label="선택 과제 패들렛 연결"]', area: [TOOLBAR], title: '패들렛',
         text: '아래 작업 막대의 [패들렛]을 누르세요.', next: { wait: dialog('선택 과제 패들렛 연결') }, advanceWhen: dialog('선택 과제 패들렛 연결'),
@@ -636,7 +724,7 @@ export const TUTORIALS: readonly Tutorial[] = [
       { target: `${dialog('선택 과제 패들렛 연결')} [data-tour="padlet-sharing"]`, area: ['@target'], skipUnless: `${dialog('선택 과제 패들렛 연결')} [data-tour="padlet-sharing"]`,
         title: '글 하나가 어떻게 세지나요',
         text: '**연계된 과제**(먼저 끝내야 하는 과제로 이어진 과제)는 글을 하나 올릴 때마다 앞 과제부터 하나씩 완료 가능이 돼요.',
-        sub: '연계가 없는 과제끼리는 글 하나로 함께 완료 가능이 돼요. 차례대로 세게 하려면 과제마다 **먼저 끝내야 하는 과제**를 정하세요(5-1).' },
+        sub: '연계가 없는 과제끼리는 글 하나로 함께 완료 가능이 돼요. 차례대로 세게 하려면 과제마다 **먼저 끝내야 하는 과제**를 정하세요(튜토리얼 5-1).' },
       { target: `${dialog('선택 과제 패들렛 연결')} [data-tour="padlet-bulk-connect"]`, area: ['@footer'], title: '연결하기',
         text: '[N개 연결]을 누르세요.', sub: '이미 다른 게시판에 연결된 과제는 새 게시판으로 바뀌어요. [연결 끊기]는 고른 과제의 연결을 풀어요.',
         warn: '연결하면 바로 게시판을 읽어요. 이미 올라온 글로 학생이 곧바로 ‘완료 가능’이 될 수 있어요.' },
@@ -647,6 +735,7 @@ export const TUTORIALS: readonly Tutorial[] = [
     title: 'QR로 화폐 지급 · 회수하기',
     goal: '금액을 정하고 학생 QR을 찍으면 바로 주거나 거둬요. 모두 거래 내역에 남아요.',
     steps: [
+      menu('currency', '화폐 지급과 회수는'),
       { tab: 'currency', target: '[aria-label="지급 또는 회수"]', area: ['[data-tour="currency-mode"]'], title: '지급 또는 회수',
         text: '[지급] 또는 [회수]를 고르세요.' },
       { tab: 'currency', target: '#currency-amount', focus: true, title: '금액',
@@ -661,6 +750,7 @@ export const TUTORIALS: readonly Tutorial[] = [
     title: '거래 내역 확인하고 취소하기',
     goal: '매점 결제 · 과제 보상 · 지급·회수 기록을 찾아보고, 잘못된 거래를 취소해요.',
     steps: [
+      menu('transactions', '거래 기록은', '봐요'),
       { tab: 'transactions', target: '[data-tour="tx-stats"]', area: ['@target'], title: '합계',
         text: '**수입 · 지출 · 거래 수**를 봐요. 취소된 거래는 빼고 세요.' },
       { tab: 'transactions', target: '[aria-label="거래 검색"]', area: ['[data-tour="tx-tools"]'], title: '찾기',
@@ -683,6 +773,7 @@ export const TUTORIALS: readonly Tutorial[] = [
     title: '펫 키우기 켜고 성장 정하기',
     goal: '펫 키우기를 켜고, 다 자라는 데 필요한 성장 점수와 먹이·과제마다 오르는 점수를 정해요.',
     steps: [
+      menu('pets', '펫 키우기 설정은'),
       { tab: 'pets', target: '[data-tour="pet-enable"] [role="switch"]', title: '켜기',
         text: '**학생 화면에 펫 키우기 보이기**를 켜세요. 학생이 은행 화면에서 알을 골라 키워요.', sub: '끄면 학생은 펫을 볼 수 없고 자라지도 않아요. 키운 기록은 남아요.' },
       petTab('growth', '성장', '#pet-goal'),
@@ -702,6 +793,7 @@ export const TUTORIALS: readonly Tutorial[] = [
     title: '먹이와 이용 시간 정하기',
     goal: '먹이 가격과 하루 횟수, 펫과 놀 수 있는 시간을 정해요.',
     steps: [
+      menu('pets', '펫 키우기 설정은'),
       petTab('food', '먹이', '#pet-price'),
       { tab: 'pets', reveal: '#pet-tab-food', target: '#pet-price', focus: true, title: '먹이 주기 가격',
         text: '먹이 한 번의 **가격**을 적으세요. 0이면 무료예요.', sub: '알 품어 주기는 항상 무료예요.' },
@@ -721,6 +813,7 @@ export const TUTORIALS: readonly Tutorial[] = [
     title: '졸업 보상과 꾸미기 상점 정하기',
     goal: '다 자란 펫이 졸업할 때 줄 보상과, 펫 화면의 꾸미기 상점에서 팔 물건을 정해요.',
     steps: [
+      menu('pets', '펫 키우기 설정은'),
       petTab('grad', '졸업', '#pet-reward'),
       { tab: 'pets', reveal: '#pet-tab-grad', target: '#pet-reward', focus: true, title: '졸업 보상',
         text: '펫이 졸업할 때 학생에게 줄 **화폐**를 적으세요.', sub: '다 자라면 학생이 원할 때 ‘졸업하기’를 눌러요. 졸업한 펫은 도감에 남고 학생은 새 알을 골라요.' },
@@ -741,6 +834,7 @@ export const TUTORIALS: readonly Tutorial[] = [
     title: '학생 펫 살펴보고 성장 조정하기',
     goal: '펫 목록에서 학생들의 펫을 살펴보고, 이름을 고치거나 성장을 더하고 빼요.',
     steps: [
+      menu('pets', '학생 펫 관리는'),
       { tab: 'pets', reveal: '#pet-tab-list', target: '[data-tour="pet-stats"]', area: ['@target', '[role="tablist"][aria-label="펫 키우기 설정"]'], title: '펫 목록',
         text: '[펫 목록] 탭에서 **키우는 학생 · 오늘 돌본 학생 · 졸업 기다리는 펫 · 지금까지 졸업**을 봐요.' },
       { tab: 'pets', reveal: '#pet-tab-list', target: '#pet-sort', area: ['@parent'], title: '정렬',
@@ -761,6 +855,7 @@ export const TUTORIALS: readonly Tutorial[] = [
     title: '나무 키우기 켜고 목표 정하기',
     goal: '반 전체가 함께 키우는 학급 나무의 이름과 목표 양분, 양분 주는 방법을 정해요.',
     steps: [
+      menu('tree', '나무 키우기 설정은'),
       { tab: 'tree', target: '[data-tour="tree-enable"] [role="switch"]', skipUnless: '[data-tour="tree-enable"]', title: '켜기',
         text: '**학생 화면에 학급 나무 보이기**를 켜야 학생들이 양분을 줄 수 있어요.', sub: '끄면 나무가 숨겨지고 양분도 쌓이지 않아요. 쌓인 양분은 남아요.' },
       { tab: 'tree', target: '#tree-name', focus: true, title: '나무 이름', text: '**나무 이름**을 적으세요. 학생 은행 화면에 이 이름으로 보여요.' },
@@ -778,12 +873,13 @@ export const TUTORIALS: readonly Tutorial[] = [
     title: '수확 보상과 예상 기간 정하기',
     goal: '열매를 수확할 때 반 전체에게 줄 보상을 정하고, 다 익기까지 걸리는 기간을 가늠해요.',
     steps: [
+      menu('tree', '나무 키우기 설정은'),
       { tab: 'tree', target: '#tree-reward', focus: true, title: '수확 보상',
         text: '열매를 수확할 때 학생 한 명마다 줄 **화폐**를 적으세요.', sub: '보상은 수확할 때의 설정으로 줘요.' },
       { tab: 'tree', target: '#tree-reward-product', title: '수확 보상 아이템 (선택)',
         text: '함께 줄 **아이템**을 매점 상품에서 고르세요.', sub: '디지털 상품은 그대로, 다른 상품은 교환권으로 학생 보관함에 들어가요.' },
       { tab: 'tree', target: '#tree-tasks-week', area: ['section[aria-labelledby="tree-estimate"]'], title: '예상 기간',
-        text: '학생이 일주일에 과제를 몇 개쯤 하는지 적으면 **열매가 익기까지 걸리는 기간**을 계산해 줘요.', sub: '참고용이에요. 너무 길거나 짧으면 목표 양분을 조절하세요(8-1).' },
+        text: '학생이 일주일에 과제를 몇 개쯤 하는지 적으면 **열매가 익기까지 걸리는 기간**을 계산해 줘요.', sub: '참고용이에요. 너무 길거나 짧으면 목표 양분을 조절하세요(튜토리얼 8-1).' },
       TREE_SAVE,
       { tab: 'tree', target: '[data-tour="tree-harvest"]', area: ['@target'], skipUnless: '[data-tour="tree-harvest"]', title: '수확하기',
         text: '열매가 다 익었어요. [수확하기]를 누르면 학생 모두에게 보상을 주고 새 씨앗을 심어요.', warn: '한 번 더 물어본 뒤 보상을 바로 줘요.' },
@@ -794,13 +890,14 @@ export const TUTORIALS: readonly Tutorial[] = [
     title: '양분 조정하고 참여 살펴보기',
     goal: '반 전체를 칭찬할 때 양분을 더하고, 학생마다 보탠 양분을 살펴봐요.',
     steps: [
+      menu('tree', '나무 양분 조정은'),
       { tab: 'tree', target: '[data-tour="tree-view"]', area: ['@target'], title: '나무 보기',
-        text: '나무가 자란 **단계**와 목표까지의 **진행률**을 봐요.', missing: '아직 나무를 심지 않았어요. 8-1 튜토리얼로 먼저 시작해 주세요.' },
+        text: '나무가 자란 **단계**와 목표까지의 **진행률**을 봐요.', missing: '아직 나무를 심지 않았어요. 튜토리얼 8-1로 먼저 시작해 주세요.' },
       { tab: 'tree', target: '[data-tour="tree-stats"]', area: ['@target'], title: '양분과 오늘',
-        text: '쌓인 **양분**과 **오늘 양분 준 학생** 수를 봐요.', missing: '아직 나무를 심지 않았어요. 8-1 튜토리얼로 먼저 시작해 주세요.' },
+        text: '쌓인 **양분**과 **오늘 양분 준 학생** 수를 봐요.', missing: '아직 나무를 심지 않았어요. 튜토리얼 8-1로 먼저 시작해 주세요.' },
       { tab: 'tree', target: '#tree-feed-amount', area: ['@field', '[data-tour="tree-adjust"] [role="group"][aria-label="자주 쓰는 값"]'], focus: true, title: '양분 조정',
         text: '반 전체를 칭찬할 때 **양분**을 더하고, 잘못 쌓인 양분은 빼요. 바꿀 양을 적거나 아래 버튼으로 고르세요.',
-        missing: '아직 나무를 심지 않았어요. 8-1 튜토리얼로 먼저 시작해 주세요.' },
+        missing: '아직 나무를 심지 않았어요. 튜토리얼 8-1로 먼저 시작해 주세요.' },
       { tab: 'tree', target: '#tree-feed-note', focus: true, title: '메모 (선택)', text: '왜 조정하는지 **메모**를 남겨요.', sub: '예: 모둠 활동 칭찬' },
       { tab: 'tree', target: '[data-tour="tree-adjust-buttons"]', area: ['@target'], title: '더하기 · 빼기',
         text: '[양분 더하기] 또는 [양분 빼기]를 누르세요.', warn: '누르면 학생 화면의 나무에 바로 반영돼요.' },
@@ -813,9 +910,9 @@ export const TUTORIALS: readonly Tutorial[] = [
     title: '매점 · 은행 화면 열고 공유하기',
     goal: '바로가기에서 학생 화면을 새 탭으로 열거나, 주소·QR 포스터로 다른 기기에 보내요.',
     steps: [
-      { target: '[data-tour="sidebar-shortcuts"] a[href]', area: ['[data-tour="sidebar-shortcuts"]'], title: '바로가기',
-        text: '[매점 열기] · [은행 열기]는 이 컴퓨터에서 학생 화면을 새 탭으로 열어요. 오른쪽 공유 버튼은 다른 기기에서 열 수 있게 주소와 QR을 보여 줘요.',
-        missing: '바로가기는 넓은 화면(컴퓨터)의 왼쪽에 있어요. 좁은 화면에서는 맨 위의 [공유] 버튼을 쓰세요.' },
+      { target: ['[data-tour="sidebar-shortcuts"] a[href]', '[data-tour="header-shortcuts"] a[href]'], area: ['[data-tour="sidebar-shortcuts"]', '[data-tour="header-shortcuts"]'], title: '바로가기',
+        text: '학생이 쓰는 **매점 · 은행** 화면은 **바로가기**에서 열고 공유해요.',
+        sub: '컴퓨터에서는 메뉴 아래, 휴대폰에서는 화면 맨 위에 있어요. 매점 · 은행 버튼은 이 기기에서 학생 화면을 새 탭으로 열고, 공유 버튼은 다른 기기에서 열 수 있게 주소와 QR을 보여 줘요.' },
       { target: ['[aria-label="은행 공유"]', '[aria-label="공유"]'], area: [{ closest: '.flex' }], title: '공유 창 열기',
         text: '은행 옆 **공유** 버튼을 누르세요.', next: { wait: '[aria-label="공유할 페이지"]' }, advanceWhen: '[aria-label="공유할 페이지"]' },
       { target: '[aria-label="공유할 페이지"]', area: ['@target'], title: '공유할 화면', text: '공유할 화면을 고르세요: **매점 · 은행 · 관리자 페이지**',
@@ -829,8 +926,27 @@ export const TUTORIALS: readonly Tutorial[] = [
 
 export const tutorialById = (id: string) => TUTORIALS.find((tutorial) => tutorial.id === id) ?? null;
 
+/** The tutorial for a teacher who has never used CRS. */
+export const FIRST_TUTORIAL_ID = '0-1';
+
+export type TutorialPlace = Readonly<{ ledgerMode: boolean; classList: boolean }>;
+
+/** Whether this class can run the tutorial (the task ledger, the way to the class list). */
+export function tutorialUsable(tutorial: Tutorial, place: TutorialPlace): boolean {
+  return (!tutorial.ledger || place.ledgerMode) && (place.classList || !tutorial.steps.some((step) => step.opensPage));
+}
+
+/** What to offer when the tutorial is done: its own suggestion, or the next usable one. */
+export function tutorialAfter(tutorial: Tutorial, place: TutorialPlace): Tutorial | null {
+  const suggested = tutorial.then ? tutorialById(tutorial.then) : null;
+  if (suggested && tutorialUsable(suggested, place)) return suggested;
+  const at = TUTORIALS.indexOf(tutorial);
+  return TUTORIALS.slice(at + 1).find((candidate) => tutorialUsable(candidate, place)) ?? null;
+}
+
 /** The guide's table of contents (admin chapters); a section with a tutorial can be started. */
 export const TUTORIAL_CHAPTERS: ReadonlyArray<Readonly<{ no: number; title: string; items: ReadonlyArray<readonly [string, string]> }>> = [
+  { no: 0, title: '처음 시작하기', items: [['0-1', 'CRS 한 바퀴 둘러보기']] },
   { no: 1, title: '시작하기', items: [['1-1', '내 학급 열기'], ['1-2', '관리자 화면 둘러보기']] },
   { no: 2, title: '학급 설정', items: [['2-1', '매점·은행 이름과 화폐 단위 정하기'], ['2-2', '화면 색과 글꼴 바꾸기']] },
   { no: 3, title: '학생 관리', items: [['3-1', '학생 한 명씩 추가하기'], ['3-2', '엑셀로 여러 학생 한꺼번에 추가하기'], ['3-3', '학생 정보 고치기 · 이용 멈추기 · 삭제하기'],

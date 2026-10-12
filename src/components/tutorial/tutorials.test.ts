@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { TUTORIAL_CHAPTERS, TUTORIALS, type TutorialStep } from './tutorials';
+import { FIRST_TUTORIAL_ID, TUTORIAL_CHAPTERS, TUTORIALS, tutorialAfter, tutorialById, tutorialUsable, type TutorialStep } from './tutorials';
 
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -28,9 +28,34 @@ describe('tutorials', () => {
     for (const [no, title] of listed) expect(TUTORIALS.find((tutorial) => tutorial.id === no)?.title).toBe(title);
   });
 
-  it('opens the class list for the tutorial that runs there, and nothing else', () => {
-    expect(TUTORIALS.filter((tutorial) => tutorial.page).map((tutorial) => tutorial.id)).toEqual(['1-1']);
-    for (const step of TUTORIALS.find((tutorial) => tutorial.id === '1-1')!.steps) expect(step.tab).toBeUndefined();
+  it('starts every tutorial where the teacher finds the screen: the menu (or the class list logo, the shortcuts)', () => {
+    for (const tutorial of TUTORIALS) {
+      const first = tutorial.steps[0];
+      const targets = typeof first.target === 'string' ? [first.target] : first.target;
+      // The tour starts by showing the menu as a whole, then picks its first screen there.
+      const menuStep = tutorial.id === FIRST_TUTORIAL_ID ? tutorial.steps[1] : first;
+      const menuTargets = typeof menuStep.target === 'string' ? [menuStep.target] : menuStep.target;
+      const where = tutorial.id === '1-1' ? 'a[aria-label="학급 목록으로"]' : tutorial.id === '9-1' ? 'shortcuts' : '#admin-tab-';
+      expect(tutorial.id === '9-1' ? targets.some((target) => target.includes('shortcuts')) : menuTargets.some((target) => target.startsWith(where)), tutorial.id).toBe(true);
+      // The menu step is chosen by the teacher: it moves on once that screen is open.
+      if (where === '#admin-tab-') expect(menuStep.advanceWhen, tutorial.id).toMatch(/^#admin-panel-/);
+    }
+  });
+
+  it('goes on to the class list only from 1-1, and runs nothing there that needs the admin menu', () => {
+    expect(TUTORIALS.filter((tutorial) => tutorial.steps.some((step) => step.opensPage)).map((tutorial) => tutorial.id)).toEqual(['1-1']);
+    const steps = TUTORIALS.find((tutorial) => tutorial.id === '1-1')!.steps;
+    expect(steps[0].opensPage).toBe('classes');
+    for (const step of steps.slice(1)) expect(step.tab).toBeUndefined();
+  });
+
+  it('offers what to learn next: the tour suggests the setup, ledger tutorials only where the ledger is', () => {
+    const everywhere = { ledgerMode: true, classList: true };
+    expect(tutorialAfter(tutorialById(FIRST_TUTORIAL_ID)!, everywhere)?.id).toBe('2-1');
+    expect(tutorialAfter(tutorialById('4-4')!, everywhere)?.id).toBe('5-0');
+    expect(tutorialAfter(tutorialById('4-4')!, { ledgerMode: false, classList: true })?.id).toBe('6-1');
+    expect(tutorialAfter(tutorialById('9-1')!, everywhere)).toBeNull();
+    expect(tutorialUsable(tutorialById('1-1')!, { ledgerMode: true, classList: false })).toBe(false);
   });
 
   it('gives every step something to point at and words to say', () => {

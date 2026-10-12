@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } fr
 import type { AdminTab } from '../admin/adminTypes';
 import { Button, Icon, IconButton, cx } from '../ui';
 import { areaElements, boxOf, firstShown, inFixedLayer, place, unionBox, type ArrowSide, type Box } from './tutorialDom';
+import { clearQueuedTutorial, queueTutorial } from './tutorialQueue';
 import type { Tutorial } from './tutorials';
 
 /**
@@ -29,9 +30,14 @@ const SKIP_LOADING_MAX_MS = 5000;
 const REVEAL_AFTER_MS = 150;
 const AREA_PAD = 8;
 
-/** **굵게** and [버튼] in the guide's words. */
+/** Where the admin menu is: down the left on a wide screen, across the top on a narrow one (lg). */
+function menuWord(): string {
+  return typeof window !== 'undefined' && window.matchMedia?.('(min-width: 1024px)').matches ? '왼쪽 메뉴' : '맨 위 메뉴';
+}
+
+/** **굵게** and [버튼] in the guide's words; `{menu}` is where the menu is on this screen. */
 export function TutorialText({ text }: { text: string }) {
-  const parts = text.split(/(\*\*[^*]+\*\*|\[[^\]]+\])/g).filter(Boolean);
+  const parts = text.replaceAll('{menu}', menuWord()).split(/(\*\*[^*]+\*\*|\[[^\]]+\])/g).filter(Boolean);
   return (
     <>
       {parts.map((part, index) => {
@@ -83,14 +89,21 @@ function visibleRegion(fixedOrigin: DOMRect): Box {
  * explains it. 이전/다음 move freely; 끝내기 or Esc stops at any time. Nothing is saved for the
  * teacher — 다음 only ever opens a dialog or a tab.
  */
-export function TutorialRunner({ tutorial, onNavigate, onClose }: {
+export function TutorialRunner({ tutorial, onNavigate, onClose, firstStep = 0, after }: {
   tutorial: Tutorial;
   onNavigate: (tab: AdminTab) => void;
   onClose: () => void;
+  /** Where this run starts: a tutorial that went on from another page. */
+  firstStep?: number;
+  /** What to offer once it is done. Without it 마치기 just closes. */
+  after?: Readonly<{ next: Tutorial | null; onNext: (id: string) => void; onMenu: () => void }>;
 }) {
-  const [index, setIndex] = useState(0);
-  const [view, setView] = useState<View>({ step: 0, kind: 'searching' });
+  const [index, setIndex] = useState(firstStep);
+  const [view, setView] = useState<View>({ step: firstStep, kind: 'searching' });
   const [moving, setMoving] = useState(false);
+  const [done, setDone] = useState(false);
+  // Counts clicks on the dimmed page: each one nudges the box, so the teacher sees where to look.
+  const [nudges, setNudges] = useState(0);
   const boxRef = useRef<HTMLDivElement>(null);
   // Invisible marks at 0,0 of the two layers the tutorial draws on (the screen and the page). Where
   // they really are tells how to turn measured positions into drawn ones, whatever the browser does.
@@ -98,9 +111,14 @@ export function TutorialRunner({ tutorial, onNavigate, onClose }: {
   const pageProbe = useRef<HTMLDivElement>(null);
   const navigate = useRef(onNavigate);
   const close = useRef(onClose);
+  const finish = useRef<() => void>(() => onClose());
   // Which way the teacher is going, so a step that does not apply is passed over in that direction.
   const direction = useRef<1 | -1>(1);
-  useEffect(() => { navigate.current = onNavigate; close.current = onClose; });
+  useEffect(() => {
+    navigate.current = onNavigate;
+    close.current = onClose;
+    finish.current = after ? () => setDone(true) : onClose;
+  });
 
   const steps = tutorial.steps;
   const step = steps[index];
@@ -110,13 +128,21 @@ export function TutorialRunner({ tutorial, onNavigate, onClose }: {
 
   /** Moves from `from` to `to` once (a click that already moved on is not counted twice). */
   const moveTo = useCallback((from: number, to: number) => {
-    if (to >= steps.length) { close.current(); return; }
+    if (to >= steps.length) { finish.current(); return; }
     direction.current = to < from ? -1 : 1;
-    setIndex((now) => (now === from ? Math.max(0, to) : now));
-  }, [steps.length]);
+    setIndex((now) => (now === from ? Math.max(firstStep, to) : now));
+  }, [steps.length, firstStep]);
+
+  // A step that leaves for another page: if the teacher goes there, the tutorial goes on there.
+  useEffect(() => {
+    if (!step.opensPage || done) return;
+    queueTutorial({ id: tutorial.id, step: index + 1 });
+    return () => clearQueuedTutorial();
+  }, [step, index, tutorial.id, done]);
 
   // Each step: show its menu, find its target, keep the light on it as the page moves.
   useEffect(() => {
+    if (done) return;
     let alive = true;
     let frame = 0;
     let lastKey = '';
@@ -145,7 +171,7 @@ export function TutorialRunner({ tutorial, onNavigate, onClose }: {
           if (settledAt && performance.now() - settledAt > SKIP_AFTER_MS && !passedOver) {
             passedOver = true;
             const to = index + direction.current;
-            moveTo(index, to < 0 ? index + 1 : to);
+            moveTo(index, to < firstStep ? index + 1 : to);
           }
           return;
         }
@@ -175,7 +201,15 @@ export function TutorialRunner({ tutorial, onNavigate, onClose }: {
           (big ? target : parts[0]).scrollIntoView({ block: big ? 'center' : 'nearest', inline: 'nearest' });
           area = unionBox(parts.map(boxOf), AREA_PAD);
         }
-        if (step.focus) window.setTimeout(() => { if (alive) target.focus({ preventScroll: true }); }, 180);
+        // The target itself may still be out of sight inside a row that scrolls sideways (the phone menu).
+        if (!fullyVisible(boxOf(target), visible)) {
+          target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+          area = unionBox(parts.map(boxOf), AREA_PAD);
+        }
+        // Only with a mouse: on a touch screen a focused field pops up the keyboard (and zooms) uninvited.
+        if (step.focus && !step.peek && window.matchMedia?.('(pointer: fine)').matches) {
+          window.setTimeout(() => { if (alive) target.focus({ preventScroll: true }); }, 180);
+        }
       }
       if (anchorOf?.element !== target) anchorOf = { element: target, anchor: inFixedLayer(target) ? 'fixed' : 'page' };
       const anchor = anchorOf.anchor;
@@ -225,7 +259,7 @@ export function TutorialRunner({ tutorial, onNavigate, onClose }: {
       viewport?.removeEventListener('resize', measure);
       viewport?.removeEventListener('scroll', measure);
     };
-  }, [index, step, moveTo]);
+  }, [index, step, moveTo, done, firstStep]);
 
   // Over a layer that stays put, the dimmed page must not scroll underneath it.
   const dimRef = useRef<SVGPathElement>(null);
@@ -258,7 +292,7 @@ export function TutorialRunner({ tutorial, onNavigate, onClose }: {
 
   async function next() {
     if (moving) return;
-    if (last) { close.current(); return; }
+    if (last) { finish.current(); return; }
     const from = index;
     if (step.next && !firstShown(step.next.wait)) {
       setMoving(true);
@@ -270,8 +304,11 @@ export function TutorialRunner({ tutorial, onNavigate, onClose }: {
     moveTo(from, from + 1);
   }
 
+  if (done && after) return <TutorialDone tutorial={tutorial} next={after.next} onNext={after.onNext} onMenu={after.onMenu} onClose={() => close.current()} />;
+
   const shown = current.kind === 'shown' ? current : null;
   const position = shown?.anchor === 'page' ? 'absolute' : 'fixed';
+  const nudge = () => setNudges((count) => count + 1);
   const missingText = step.missing ?? '이 단계에서 가리킬 곳이 지금 화면에 없어요. 창을 닫았다면 [이전]으로 돌아가 다시 열거나, [다음]으로 넘어가세요.';
 
   return (
@@ -284,14 +321,19 @@ export function TutorialRunner({ tutorial, onNavigate, onClose }: {
         @keyframes crs-tour-nudge-top { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(7px) } }
         @keyframes crs-tour-nudge-bottom { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-7px) } }
         @keyframes crs-tour-pulse { 0%, 100% { opacity: .95 } 50% { opacity: .55 } }
+        @keyframes crs-tour-shake-0 { 0%, 100% { translate: 0 } 20%, 60% { translate: -7px 0 } 40%, 80% { translate: 7px 0 } }
+        @keyframes crs-tour-shake-1 { 0%, 100% { translate: 0 } 20%, 60% { translate: -7px 0 } 40%, 80% { translate: 7px 0 } }
       `}</style>
       {shown ? (
         <>
-          {/* The dimmed page: it takes the clicks; the hole over the lit unit lets them through. */}
+          {/* The dimmed page: it takes the clicks (and nudges the box); the hole over the lit unit lets them through. */}
           <svg aria-hidden="true" className="pointer-events-none z-[76]"
             style={{ position, left: 0, top: 0, width: shown.canvas.w, height: shown.canvas.h }}>
-            <path ref={dimRef} fillRule="evenodd" fill="rgb(15 23 42 / 0.62)" className="pointer-events-auto"
+            <path ref={dimRef} fillRule="evenodd" fill="rgb(15 23 42 / 0.62)" className="pointer-events-auto" onPointerDown={nudge}
               d={`M0 0H${shown.canvas.w}V${shown.canvas.h}H0Z ${roundedRect(shown.area, 14)}`} />
+            {/* A step only to look at: the lit unit is shown, not used. */}
+            {step.peek ? <rect x={shown.area.x} y={shown.area.y} width={shown.area.w} height={shown.area.h} rx="14" fill="rgb(0 0 0 / 0)"
+              className="pointer-events-auto" onPointerDown={nudge} /> : null}
             <rect x={shown.area.x} y={shown.area.y} width={shown.area.w} height={shown.area.h} rx="14" fill="none"
               stroke="#FFD43B" strokeWidth="3" style={{ animation: 'crs-tour-pulse 1.6s ease-in-out infinite' }} />
           </svg>
@@ -299,7 +341,8 @@ export function TutorialRunner({ tutorial, onNavigate, onClose }: {
         </>
       ) : null}
       <div ref={boxRef} role="dialog" aria-modal="false" aria-label={`튜토리얼 ${tutorial.id} ${tutorial.title}`}
-        style={shown ? { position, left: shown.box.x, top: shown.box.y, width: shown.box.w } : { position: 'fixed' }}
+        style={{ ...(shown ? { position, left: shown.box.x, top: shown.box.y, width: shown.box.w } : { position: 'fixed' as const }),
+          ...(nudges ? { animation: `crs-tour-shake-${nudges % 2} .4s ease-in-out` } : {}) }}
         className={cx('z-[78] w-[min(360px,calc(100vw-24px))] rounded-[18px] border border-[var(--crs-line)] bg-[var(--theme-surface)] text-[var(--theme-text)] shadow-[0_18px_48px_rgb(15_23_42/0.35)]',
           !shown && 'bottom-5 left-1/2 -translate-x-1/2', current.kind === 'searching' && step.skipUnless && 'invisible')}>
         <div className="flex items-start gap-2 border-b border-[var(--crs-line)] px-4 pb-2.5 pt-3">
@@ -317,6 +360,11 @@ export function TutorialRunner({ tutorial, onNavigate, onClose }: {
             <p className="flex gap-2 text-[13px] text-[var(--theme-muted-text)]"><span className="mt-0.5 shrink-0"><Icon name="info" size={15} /></span><span><TutorialText text={missingText} /></span></p>
           ) : (
             <>
+              {index === 0 ? (
+                <p className="mb-2 rounded-[10px] bg-[var(--theme-accent-soft)] px-2.5 py-1.5 text-[12.5px] font-semibold leading-snug text-[var(--theme-accent-text)]">
+                  이번에 할 일 · {tutorial.goal}
+                </p>
+              ) : null}
               <p><TutorialText text={step.text} /></p>
               {step.sub ? <p className="text-[12.5px] text-[var(--theme-muted-text)]"><TutorialText text={step.sub} /></p> : null}
               {step.warn ? (
@@ -331,9 +379,50 @@ export function TutorialRunner({ tutorial, onNavigate, onClose }: {
           <div className="flex flex-1 gap-1" aria-label={`${steps.length}단계 중 ${index + 1}단계`}>
             {steps.map((_, dot) => <span key={dot} className={cx('h-1.5 flex-1 rounded-full', dot <= index ? 'bg-[var(--theme-accent-text)]' : 'bg-[var(--crs-line-strong)]')} />)}
           </div>
-          <Button size="sm" variant="ghost" icon="chevronLeft" disabled={index === 0 || moving} onClick={() => moveTo(index, index - 1)}>이전</Button>
+          <Button size="sm" variant="ghost" icon="chevronLeft" disabled={index <= firstStep || moving} onClick={() => moveTo(index, index - 1)}>이전</Button>
           <Button size="sm" variant="primary" iconRight={last ? undefined : 'chevronRight'} icon={last ? 'check' : undefined} loading={moving} disabled={moving}
             onClick={() => void next()}>{last ? '마치기' : '다음'}</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Shown when the tutorial is done: what to learn next, the list, or close. */
+function TutorialDone({ tutorial, next, onNext, onMenu, onClose }: {
+  tutorial: Tutorial;
+  next: Tutorial | null;
+  onNext: (id: string) => void;
+  onMenu: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div data-testid="tutorial" data-tutorial-step={`${tutorial.id}:done`} data-tutorial-state="done" className="crs-tutorial">
+      <div role="dialog" aria-modal="false" aria-label={`튜토리얼 ${tutorial.id} 마침`}
+        className="fixed bottom-5 left-1/2 z-[78] w-[min(380px,calc(100vw-24px))] -translate-x-1/2 rounded-[18px] border border-[var(--crs-line)] bg-[var(--theme-surface)] text-[var(--theme-text)] shadow-[0_18px_48px_rgb(15_23_42/0.35)] [animation:crs-pop-in_.18s_ease-out]">
+        <div className="flex items-start gap-3 px-4 pt-4">
+          <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--crs-success-bg)] text-[var(--crs-success-text)]"><Icon name="check" size={18} /></span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[15px] font-black tracking-[-0.02em]">다 했어요</p>
+            <p className="mt-0.5 text-[13px] leading-relaxed text-[var(--theme-muted-text)]"><b className="font-bold text-[var(--theme-text)]">{tutorial.id} {tutorial.title}</b> 튜토리얼을 마쳤어요.</p>
+          </div>
+          <IconButton icon="close" label="튜토리얼 닫기" size="sm" onClick={onClose} />
+        </div>
+        <div className="space-y-2 px-4 pb-4 pt-3">
+          {next ? (
+            <button type="button" onClick={() => onNext(next.id)}
+              className="flex w-full items-center gap-3 rounded-[12px] bg-[var(--theme-accent-solid)] px-3.5 py-2.5 text-left text-[var(--theme-accent-on-solid)] outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)]">
+              <span className="min-w-0 flex-1">
+                <span className="block text-[11px] font-bold opacity-80">다음 튜토리얼</span>
+                <span className="block text-[14px] font-extrabold leading-snug">{next.id} {next.title}</span>
+              </span>
+              <Icon name="chevronRight" size={18} />
+            </button>
+          ) : null}
+          <div className="flex gap-2">
+            <Button variant="secondary" className="flex-1" onClick={onMenu}>튜토리얼 목록</Button>
+            <Button variant="ghost" className="flex-1" onClick={onClose}>닫기</Button>
+          </div>
         </div>
       </div>
     </div>
