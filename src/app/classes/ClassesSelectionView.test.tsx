@@ -23,6 +23,7 @@ describe('ClassesSelectionView', () => {
     fireEvent.change(screen.getByRole('textbox',{name:'학급 이름 검색'}),{target:{value:''}});
     fireEvent.click(screen.getByRole('button',{name:/휴지통\s*1/}));
     expect(screen.getByText('삭제 학급')).toBeTruthy();expect(screen.getByRole('button',{name:'학급 복원'})).toBeTruthy();expect(screen.queryByText('우리 반')).toBeNull();
+    expect(screen.getByRole('button',{name:'삭제 학급 완전히 삭제'})).toBeTruthy();
   });
   it.each([
     ['signed out', { kind: 'LOGIN_REQUIRED', loginHref: '/api/google/login?returnTo=%2Fclasses' }],

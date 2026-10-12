@@ -45,6 +45,7 @@ suite('class dashboard on native PostgreSQL', () => {
     expect(process.env.DATABASE_URL).toBeUndefined(); db=await createDisposablePostgres();
     await db.owner.query(`GRANT EXECUTE ON FUNCTION platform_list_class_dashboard(text),
       platform_manage_class_authenticated(uuid,text,text,text,text,bigint,uuid,uuid,text),platform_list_memberships_by_google_subject(text),
+      platform_purge_class_authenticated(uuid,text,text,text,bigint,uuid,uuid,text),
       platform_find_tenant_by_slug(text) TO app_runtime;
       REVOKE ALL ON FUNCTION platform_manage_class(uuid,text,text,text,text,bigint) FROM app_runtime`);
   },60_000);
@@ -116,6 +117,20 @@ suite('class dashboard on native PostgreSQL', () => {
     expect((await db.owner.query("SELECT settings->>'className' AS name FROM tenant_settings WHERE tenant_id=$1",[f.tenant])).rows[0].name).toBe('바뀐 이름');
     await expect(command.execute(f.input('DELETE','바뀐 이름'))).rejects.toMatchObject({code:'23505'});
     await expect(db.owner.query("UPDATE tenants SET deleted_at=now(),lifecycle='SUSPENDED' WHERE id=$1",[f.tenant])).rejects.toMatchObject({code:'23514'});
+  });
+  it('erases a class only from the trash, by its owner with the exact name, leaving it off every list', async () => {
+    const f=await fixture(),command=createClassManagementCommand(db.runtime);
+    await expect(command.execute(f.input('PURGE'))).rejects.toMatchObject({code:'23505'});
+    expect(await command.execute(f.input('DELETE','원본 학급','1'))).toMatchObject({managementVersion:'2'});
+    await expect(command.execute({...f.input('PURGE','원본 학급','2'),subject:f.adminSubject})).rejects.toMatchObject({code:'28000'});
+    await expect(command.execute(f.input('PURGE','틀린 이름','2'))).rejects.toMatchObject({code:'23505'});
+    const purge=f.input('PURGE','원본 학급','2');
+    expect(await command.execute(purge)).toMatchObject({slug:f.slug,action:'PURGE',lifecycle:'SUSPENDED',managementVersion:'3',replayed:false});
+    expect(await command.execute(purge)).toMatchObject({action:'PURGE',replayed:true});
+    for (const rows of Object.values(await state(f.tenant))) expect(rows).toEqual([]);
+    expect((await db.owner.query('SELECT slug,display_name FROM tenants WHERE id=$1',[f.tenant])).rows).toEqual([{slug:`purged-${f.tenant}`,display_name:'삭제된 학급'}]);
+    expect(await createClassDashboardRepository(db.runtime).listByGoogleSubject(f.subject)).toEqual([]);
+    expect(await createClassDashboardRepository(db.runtime).listByGoogleSubject(f.adminSubject)).toEqual([]);
   });
   it('rolls back a copy after a late failure instead of leaving a half-created class', async () => {
     const f=await fixture(); const before=(await db.owner.query('SELECT count(*) AS n FROM tenants')).rows;

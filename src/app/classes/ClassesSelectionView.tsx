@@ -104,28 +104,32 @@ export function ClassesSelectionView({ model, account, withdrawn = false }: Read
             </div>
             <div className={styles.searchRow}><label className={styles.search}><Icon name="search"/><span className="sr-only">학급 이름 검색</span><input value={query} onChange={e => setQuery(e.target.value)} placeholder="학급 이름으로 검색"/></label><select aria-label="학급 정렬" value={sort} onChange={e => setSort(e.target.value)}><option value="recent">최근 생성순</option><option value="name">이름순</option></select></div>
           </div>
-          {filter === 'TRASH' && <p className={styles.trashInfo}>삭제한 학급은 접속이 중지됩니다. 소유자가 복원하면 기존 기록과 함께 다시 사용할 수 있습니다.</p>}
+          {filter === 'TRASH' && <p className={styles.trashInfo}>삭제한 학급은 접속이 중지됩니다. 소유자가 복원하면 기존 기록과 함께 다시 사용할 수 있습니다. [완전히 삭제]를 누르면 학급의 모든 자료가 지워져 다시 복원할 수 없습니다.</p>}
           {visible.length === 0 ? <div className={styles.empty}><span className={styles.classIcon}><Icon name={filter === 'TRASH' ? 'trash' : 'school'}/></span>
             <h2>{query ? '검색 결과가 없습니다.' : filter === 'TRASH' ? '휴지통이 비어 있습니다.' : current.length ? '이 분류에 해당하는 학급이 없습니다.' : '아직 등록된 학급이 없습니다.'}</h2>
-            <p>{query ? '다른 학급 이름으로 검색해 보세요.' : filter === 'TRASH' ? '삭제한 학급은 이곳에서 복원할 수 있습니다.' : '새 학급을 만들거나 다른 분류를 선택해 주세요.'}</p>
+            <p>{query ? '다른 학급 이름으로 검색해 보세요.' : filter === 'TRASH' ? '삭제한 학급은 이곳에서 복원하거나 완전히 삭제할 수 있습니다.' : '새 학급을 만들거나 다른 분류를 선택해 주세요.'}</p>
             {!current.length && filter !== 'TRASH' && !query && <Link href="/classes/new" className={styles.primary}><Icon name="plus"/>첫 학급 만들기</Link>}
           </div> : <ul className={styles.grid}>{visible.map(item => {
             const deleted = Boolean(item.dashboard?.deletedAt);
             const owner = item.dashboard?.role === 'OWNER';
             const manageable = owner && (item.selectable || Boolean(item.setupHref));
             return <li key={item.slug} className={styles.card}><div className={styles.cardBody}>
-              <div className={styles.cardTop}><span className={styles.classIcon}><span aria-hidden="true" className={styles.crsMark}/></span><span className={`${styles.badge} ${item.selectable ? styles.activeBadge : ''}`}><i aria-hidden="true"/>{deleted ? '삭제됨' : item.lifecycleLabel}</span></div>
-              <h2>{item.displayName}</h2><p className={styles.cardMeta}>{item.roleLabel}{item.dashboard && <> · {dateLabel(item.dashboard.deletedAt ?? item.dashboard.createdAt)} {deleted ? '삭제' : '생성'}</>}</p>
+              <div className={styles.cardTop}><span className={styles.classIcon}><span aria-hidden="true" className={styles.crsMark}/></span>
+                <div className={styles.cardTitle}><h2>{item.displayName}</h2><p className={styles.cardMeta}>{item.roleLabel}{item.dashboard && <>, {dateLabel(item.dashboard.deletedAt ?? item.dashboard.createdAt)} {deleted ? '삭제' : '생성'}</>}</p></div>
+                <span className={`${styles.badge} ${item.selectable ? styles.activeBadge : ''}`}><i aria-hidden="true"/>{deleted ? '삭제됨' : item.lifecycleLabel}</span></div>
               <dl className={styles.cardStats}>{([['학생',item.dashboard?.studentCount,'명'],['상품',item.dashboard?.productCount,'개'],['과제',item.dashboard?.taskCount,'개']] as const).map(([label, count, unit]) => <div key={label}><dt>{label}</dt><dd>{count ?? '—'}<small>{unit}</small></dd></div>)}</dl>
               {item.selectable && item.href ? <div className={styles.destinations}><Link href={`${item.href}/admin`} aria-label={`${item.displayName} 관리자 페이지`} className={styles.primary}><Icon name="admin"/>관리자 페이지<Icon name="arrow"/></Link><Link href={item.href} aria-label={`${item.displayName} 학급으로 이동`} className={styles.outline}><Icon name="store"/>매점</Link><Link href={`${item.href}/bank`} aria-label={`${item.displayName} 은행 페이지`} className={styles.outline}><Icon name="bank"/>은행</Link></div>
-                : deleted && owner ? <button disabled={!ready} onClick={() => setDialog({ item, action: 'RESTORE' })} className={`${styles.outline} ${styles.full}`}><Icon name="restore"/>학급 복원</button>
+                : deleted && owner ? <div className={styles.trashActions}>
+                    <button disabled={!ready} onClick={() => setDialog({ item, action: 'RESTORE' })} className={styles.outline}><Icon name="restore"/>학급 복원</button>
+                    <button disabled={!ready} aria-label={`${item.displayName} 완전히 삭제`} onClick={() => setDialog({ item, action: 'PURGE' })} className={`${styles.outline} ${styles.dangerOutline}`}><Icon name="trash"/>완전히 삭제</button>
+                  </div>
                   : item.setupHref ? <Link href={item.setupHref} className={`${styles.primary} ${styles.full}`}>학급 준비 계속<Icon name="arrow"/></Link>
                     : <p className={styles.unavailable}>현재 선택할 수 없습니다.</p>}
               {item.selectable && <div className={styles.secondaryLinks}><Link href={`${item.href}/admin/student-qrs`}>학생 QR 출력</Link><button disabled={!ready} onClick={() => copyAddress(item)}>매점 주소 복사</button></div>}
             </div>{manageable && <div className={styles.cardActions}><button disabled={!ready} aria-label={`${item.displayName} 이름 변경`} onClick={() => setDialog({ item, action: 'RENAME' })}>이름 변경</button>{item.selectable && <button disabled={!ready} aria-label={`${item.displayName} 복제`} onClick={() => setDialog({ item, action: 'DUPLICATE' })}><Icon name="copy"/>복제</button>}<button disabled={!ready} aria-label={`${item.displayName} 삭제`} onClick={() => setDialog({ item, action: 'DELETE' })} className={styles.danger}><Icon name="trash"/>삭제</button></div>}</li>;
           })}</ul>}
         </section>
-        <aside className={styles.help}><details><summary>학급 복제와 삭제, 어떻게 동작하나요?</summary><p>복제하면 설정·학생 명단·상품과 재고·과제·할인 행사를 새 학급에 가져옵니다. 학생 잔액은 0으로 시작하고 거래·과제 완료·부여 내역은 가져오지 않습니다. 과제와 할인 행사는 확인 후 켤 수 있도록 비활성 상태로 복제합니다.</p><p>삭제한 학급은 휴지통에 보관되며, 기존 기록을 유지한 채 소유자가 복원할 수 있습니다. 이름 변경·복제·삭제·복원은 학급 소유자만 사용할 수 있습니다.</p></details></aside>
+        <aside className={styles.help}><details><summary>학급 복제와 삭제, 어떻게 동작하나요?</summary><p>복제하면 설정·학생 명단·상품과 재고·과제·할인 행사를 새 학급에 가져옵니다. 학생 잔액은 0으로 시작하고 거래·과제 완료·부여 내역은 가져오지 않습니다. 과제와 할인 행사는 확인 후 켤 수 있도록 비활성 상태로 복제합니다.</p><p>삭제한 학급은 휴지통에 보관되며, 기존 기록을 유지한 채 소유자가 복원할 수 있습니다. 휴지통에서 완전히 삭제하면 학생, 잔액, 거래, 과제 기록을 포함한 학급의 모든 자료를 지우며, 다시 복원할 수 없습니다. 이름 변경, 복제, 삭제, 복원, 완전히 삭제는 학급 소유자만 할 수 있습니다.</p></details></aside>
       </>}
       <SiteFooter className={styles.footer}/>
     </div>

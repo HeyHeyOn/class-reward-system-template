@@ -13,7 +13,7 @@ export async function handleClassManagement(request: Request, slug: unknown, com
   if (!hasTeacherSessionBinding(session)) return reply(401, { error: '로그인이 필요하거나 만료되었습니다. 다시 로그인해 주세요.' });
   if (Object.keys(body).length !== 4 || Object.keys(body).some(k => !['operationId','action','name','expectedVersion'].includes(k))
     || typeof body.operationId !== 'string' || !UUID_V4.test(body.operationId)
-    || !['RENAME','DUPLICATE','DELETE','RESTORE'].includes(String(body.action))
+    || !['RENAME','DUPLICATE','DELETE','RESTORE','PURGE'].includes(String(body.action))
     || typeof body.name !== 'string' || body.name !== body.name.trim() || body.name.length < 1 || body.name.length > 80
     || /[\p{Cc}\p{Cf}\p{Cs}]/u.test(body.name) || typeof body.expectedVersion !== 'string'
     || !/^[1-9][0-9]*$/.test(body.expectedVersion) || !Number.isSafeInteger(Number(body.expectedVersion))

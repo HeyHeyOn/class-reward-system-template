@@ -62,6 +62,7 @@ GRANT EXECUTE ON FUNCTION
   public.platform_revoke_tenant_session(text,integer),
   public.platform_list_class_dashboard(text),
   public.platform_manage_class_authenticated(uuid,text,text,text,text,bigint,uuid,uuid,text),
+  public.platform_purge_class_authenticated(uuid,text,text,text,bigint,uuid,uuid,text),
   public.platform_latest_user_agreement(text),
   public.platform_has_user_agreement(text,text),
   public.platform_get_user_profile(text),
@@ -77,8 +78,10 @@ REVOKE ALL ON FUNCTION public.platform_create_draft_class(uuid,text,text,text),
   public.platform_lock_teacher_session(text,uuid,uuid,text),
   public.platform_record_user_agreement(text,text),
   public.platform_save_user_profile(text,text,jsonb), public.platform_withdraw_user(text),
-  public.platform_purge_withdrawal(uuid), public.platform_withdrawal_erasure_allowed(uuid)
+  public.platform_purge_withdrawal(uuid), public.platform_withdrawal_erasure_allowed(uuid),
+  public.platform_purge_class(uuid,text,text,text,bigint), public.platform_class_erasure_tables()
   FROM crs_app_runtime;
 REVOKE ALL ON public.teacher_identity_generations, public.teacher_auth_sessions,
-  public.withdrawal_erasure_context, public.account_withdrawals, public.user_agreements,
+  public.withdrawal_erasure_context, public.class_erasure_context, public.class_purges,
+  public.account_withdrawals, public.user_agreements,
   public.user_profiles FROM crs_app_runtime;

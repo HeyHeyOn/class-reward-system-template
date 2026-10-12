@@ -36,15 +36,16 @@
 .grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); align-items:start; gap:20px; }
 .card { border:1px solid var(--theme-divider); border-radius:24px; overflow:hidden; background:var(--theme-surface); box-shadow:0 2px 6px #00000004; }
 .cardBody { padding:24px; }
-.cardTop { justify-content:space-between; gap:12px; margin-bottom:20px; }
-.classIcon { display:inline-flex; align-items:center; justify-content:center; width:48px; height:48px; border-radius:15px; background:var(--theme-surface-raised); }
+.cardTop { gap:12px; }
+.cardTitle { flex:1; min-width:0; }
+.classIcon { flex-shrink:0; display:inline-flex; align-items:center; justify-content:center; width:48px; height:48px; border-radius:15px; background:var(--theme-surface-raised); }
 .classIcon svg { width:25px; height:25px; }
 .crsMark { display:block; width:28px; height:28px; background:var(--theme-accent-text, currentColor); -webkit-mask:url('/class-reward-system-icon.png') center / contain no-repeat; mask:url('/class-reward-system-icon.png') center / contain no-repeat; }
-.badge { display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border-radius:20px; font-size:11px; font-weight:750; background:var(--theme-surface-raised); color:var(--theme-muted-text); }
+.badge { flex-shrink:0; display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border-radius:20px; font-size:11px; font-weight:750; background:var(--theme-surface-raised); color:var(--theme-muted-text); }
 .badge i { width:5px; height:5px; border-radius:50%; background:currentColor; }
 .activeBadge { background:#edf8f1; color:#22603b; }
-.card h2 { font-size:21px; font-weight:850; letter-spacing:-.5px; overflow-wrap:anywhere; line-height:1.4; }
-.cardMeta { margin-top:8px; color:var(--theme-muted-text); font-size:11px; }
+.card h2 { font-size:19px; font-weight:850; letter-spacing:-.4px; overflow-wrap:anywhere; line-height:1.3; }
+.cardMeta { margin-top:3px; color:var(--theme-muted-text); font-size:11px; }
 .cardStats { display:grid; grid-template-columns:repeat(3,1fr); padding:13px 6px; margin:20px 0; border-radius:14px; text-align:center; background:var(--theme-surface-raised); }
 .cardStats dt { font-size:11px; color:var(--theme-muted-text); }
 .cardStats dd { margin-top:4px; font-size:17px; font-weight:800; font-variant-numeric:tabular-nums; }
@@ -53,6 +54,9 @@
 .destinations>.primary { grid-column:span 2; justify-content:flex-start; }
 .destinations>.primary svg:last-child { margin-left:auto; width:17px; }
 .full { width:100%; }
+.trashActions { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.dangerOutline { color:#be123c; border-color:#f3c3cf; }
+.dangerOutline:hover { background:#fff1f3; }
 .secondaryLinks { justify-content:space-between; gap:8px; margin-top:10px; font-size:11px; font-weight:650; color:var(--theme-muted-text); }
 .secondaryLinks a,.secondaryLinks button { padding:8px 0; cursor:pointer; }
 .secondaryLinks a:hover,.secondaryLinks button:hover { text-decoration:underline; text-underline-offset:3px; }

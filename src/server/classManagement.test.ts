@@ -28,7 +28,7 @@ describe('class management HTTP boundary',()=>{
   it.each(['subject','tenantId','role','lifecycle','deletedAt'])('rejects browser authority %s',async key=>{
     expect((await call(request({...valid,[key]:'foreign'}))).status).toBe(400);expect(execute).not.toHaveBeenCalled();
   });
-  it.each([{name:' '},{name:'x'.repeat(81)},{name:'a\u202eb'},{name:'a\n'},{action:'PURGE'},{expectedVersion:'9007199254740992'},{expectedVersion:1},{operationId:'bad'}])('rejects invalid payload %j',async patch=>{
+  it.each([{name:' '},{name:'x'.repeat(81)},{name:'a\u202eb'},{name:'a\n'},{action:'DROP'},{action:'purge'},{expectedVersion:'9007199254740992'},{expectedVersion:1},{operationId:'bad'}])('rejects invalid payload %j',async patch=>{
     expect((await call(request({...valid,...patch}))).status).toBe(400);expect(execute).not.toHaveBeenCalled();
   });
   it('binds decrypted subject and canonical route only',async()=>{
@@ -36,6 +36,12 @@ describe('class management HTTP boundary',()=>{
     expect((await call(request())).status).toBe(200);
     expect(execute).toHaveBeenCalledExactlyOnceWith({...valid,...binding,subject:'synthetic-owner',slug:'my-class'});
     execute.mockClear();expect((await call(request(),'MY-CLASS')).status).toBe(400);expect(execute).not.toHaveBeenCalled();
+  });
+  it('passes an owner erase-for-good request (PURGE) to the same command, confirmed by name',async()=>{
+    const purge={...valid,action:'PURGE',name:'우리 반',expectedVersion:'2'};
+    execute.mockResolvedValue({slug:'my-class',displayName:'우리 반',lifecycle:'SUSPENDED',action:'PURGE',managementVersion:'3',replayed:false});
+    expect((await call(request(purge))).status).toBe(200);
+    expect(execute).toHaveBeenCalledExactlyOnceWith({...purge,...binding,subject:'synthetic-owner',slug:'my-class'});
   });
   it.each([['28000',401],['42501',403],['23505',409],['22023',400],['08006',503]] as const)('sanitizes SQL error %s',async(code,status)=>{
     execute.mockRejectedValue(Object.assign(new Error('private detail'),{code}));
