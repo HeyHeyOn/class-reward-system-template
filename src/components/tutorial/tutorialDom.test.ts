@@ -18,6 +18,20 @@ describe('tutorial geometry', () => {
     expect(box.x >= 8 && box.y >= 8 && box.x + box.w <= 1272 && box.y + box.h <= 852).toBe(true);
   });
 
+  it('keeps the message box right after the lit unit and its arrow, lined up with the control', () => {
+    // A page header lit on a phone, the arrow under its button: the box goes under the arrow, not to a far corner.
+    const area = { x: 8, y: 170, w: 374, h: 170 };
+    const button = { x: 16, y: 300, w: 100, h: 34 };
+    const { arrow, box } = place(area, button, { w: 340, h: 140 }, 390, 844);
+    expect(arrow.side).toBe('bottom');
+    expect(box.y).toBeGreaterThanOrEqual(arrow.y + arrow.h);
+    expect(box.y - (arrow.y + arrow.h)).toBeLessThan(20);
+    // A tall form with the control in the middle: the box stays by the control, never on it.
+    const tall = place({ x: 0, y: 20, w: 390, h: 800 }, { x: 20, y: 400, w: 350, h: 44 }, { w: 340, h: 140 }, 390, 844);
+    expect(overlaps(tall.box, { x: 20, y: 400, w: 350, h: 44 })).toBe(false);
+    expect(Math.min(Math.abs(tall.box.y - 444), Math.abs(tall.box.y + tall.box.h - 400))).toBeLessThan(70);
+  });
+
   it('keeps the message box on screen even when the lit unit fills it', () => {
     const area = { x: 0, y: 0, w: 1280, h: 860 };
     const { box } = place(area, { x: 600, y: 400, w: 80, h: 40 }, { w: 360, h: 200 }, 1280, 860);

@@ -67,8 +67,10 @@ const ARROW = 46;
 const GAP = 10;
 
 /**
- * Where the arrow (outside the lit area, pointing at the target) and the message box (beside the
- * area, never over it or the arrow) go, inside a viewport of `vw`×`vh`.
+ * Where the arrow (outside the lit area, pointing at the target from its nearest side) and the
+ * message box go, inside a viewport of `vw`×`vh`. The box sits right next to the lit unit and its
+ * arrow, lined up with the target — never over the target, the arrow or (when there is room) the
+ * unit — so the eye stays on one spot.
  */
 export function place(area: Box, target: Box, size: Readonly<{ w: number; h: number }>, vw: number, vh: number): Placement {
   const cx = target.x + target.w / 2, cy = target.y + target.h / 2;
@@ -86,16 +88,36 @@ export function place(area: Box, target: Box, size: Readonly<{ w: number; h: num
     : arrow.side === 'right' ? [arrow.x, arrow.y + arrow.h / 2] : arrow.side === 'top' ? [arrow.x + arrow.w / 2, arrow.y + arrow.h] : [arrow.x + arrow.w / 2, arrow.y];
   const distance = (arrow: Box & { side: ArrowSide }) => { const [px, py] = tip(arrow); return Math.hypot(px - cx, py - cy); };
   const arrow = arrows.filter(inside).sort((a, b) => distance(a) - distance(b))[0] ?? { ...arrows[0], x: clampX(arrows[0].x, ARROW) };
-  const boxes: Box[] = [
-    { x: clampX(area.x, size.w), y: area.y + area.h + GAP * 1.6, w: size.w, h: size.h },
-    { x: clampX(area.x, size.w), y: area.y - size.h - GAP * 1.6, w: size.w, h: size.h },
-    { x: area.x + area.w + GAP * 1.6, y: clampY(area.y, size.h), w: size.w, h: size.h },
-    { x: area.x - size.w - GAP * 1.6, y: clampY(area.y, size.h), w: size.w, h: size.h },
-  ];
-  const fits = (box: Box) => inside(box) && !overlaps(box, area, 4) && !overlaps(box, arrow, 4);
-  const box = boxes.find(fits)
-    ?? boxes.map((candidate) => ({ ...candidate, x: clampX(candidate.x, size.w), y: clampY(candidate.y, size.h) })).find(fits)
-    // A very large area: the corner farthest from the target, over the dimmed part if need be.
-    ?? { x: cx > vw / 2 ? 16 : vw - size.w - 16, y: cy > vh / 2 ? 16 : vh - size.h - 16, w: size.w, h: size.h };
-  return { arrow, box };
+
+  const sized = (x: number, y: number): Box => ({ x, y, w: size.w, h: size.h });
+  const alignedX = clampX(cx - size.w / 2, size.w), alignedY = clampY(cy - size.h / 2, size.h);
+  // Just past the unit — and past the arrow when the arrow is on that side.
+  const below = Math.max(area.y + area.h, arrow.side === 'bottom' ? arrow.y + arrow.h : -Infinity) + GAP;
+  const above = Math.min(area.y, arrow.side === 'top' ? arrow.y : Infinity) - GAP - size.h;
+  const right = Math.max(area.x + area.w, arrow.side === 'right' ? arrow.x + arrow.w : -Infinity) + GAP;
+  const left = Math.min(area.x, arrow.side === 'left' ? arrow.x : Infinity) - GAP - size.w;
+  const nearest = (boxes: Box[]) => boxes.sort((a, b) => Math.hypot(a.x + a.w / 2 - cx, a.y + a.h / 2 - cy) - Math.hypot(b.x + b.w / 2 - cx, b.y + b.h / 2 - cy))[0];
+  const around = [sized(alignedX, below), sized(alignedX, above), sized(right, alignedY), sized(left, alignedY)]
+    .filter((box) => inside(box) && !overlaps(box, area, 2) && !overlaps(box, arrow, 2));
+  if (around.length) return { arrow, box: nearest(around) };
+  // A unit too big to go around (a tall form): stay right by the control, over another part of the
+  // unit but never over the control or the arrow.
+  const byTarget = [
+    sized(alignedX, Math.max(target.y + target.h, arrow.side === 'bottom' ? arrow.y + arrow.h : -Infinity) + GAP),
+    sized(alignedX, Math.min(target.y, arrow.side === 'top' ? arrow.y : Infinity) - GAP - size.h),
+  ].filter((box) => inside(box) && !overlaps(box, target, 2) && !overlaps(box, arrow, 2));
+  if (byTarget.length) return { arrow, box: nearest(byTarget) };
+  return { arrow, box: sized(alignedX, clampY(below, size.h)) };
+}
+
+/**
+ * True when the element sits in a layer that stays put while the page scrolls (a dialog or panel,
+ * a sticky bar, the side menu). The tutorial then stays put with it; otherwise it scrolls with the page.
+ */
+export function inFixedLayer(element: Element): boolean {
+  for (let node: Element | null = element; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
+    const position = getComputedStyle(node).position;
+    if (position === 'fixed' || position === 'sticky') return true;
+  }
+  return false;
 }

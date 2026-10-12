@@ -3,13 +3,19 @@
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { AdminTab } from '../admin/adminTypes';
 import { Button, Icon, IconButton, cx } from '../ui';
-import { areaElements, boxOf, firstShown, place, unionBox, type ArrowSide, type Box } from './tutorialDom';
+import { areaElements, boxOf, firstShown, inFixedLayer, place, unionBox, type ArrowSide, type Box } from './tutorialDom';
 import type { Tutorial } from './tutorials';
 
+/**
+ * `fixed`: the target stays put while the page scrolls (in a dialog, a sticky bar) and so does the
+ * tutorial. `page`: the target scrolls with the page and the tutorial is laid on the page in page
+ * coordinates, so it moves with it by itself.
+ */
+type Anchor = 'fixed' | 'page';
 type View =
   | Readonly<{ step: number; kind: 'searching' }>
   | Readonly<{ step: number; kind: 'missing' }>
-  | Readonly<{ step: number; kind: 'shown'; area: Box; target: Box; vw: number; vh: number }>;
+  | Readonly<{ step: number; kind: 'shown'; anchor: Anchor; area: Box; arrow: Box & { side: ArrowSide }; box: Box; canvas: Readonly<{ w: number; h: number }> }>;
 
 const MISSING_AFTER_MS = 2500;
 const WAIT_MS = 2500;
@@ -64,7 +70,6 @@ export function TutorialRunner({ tutorial, onNavigate, onClose }: {
 }) {
   const [index, setIndex] = useState(0);
   const [view, setView] = useState<View>({ step: 0, kind: 'searching' });
-  const [boxSize, setBoxSize] = useState({ w: 360, h: 200 });
   const [moving, setMoving] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
   const navigate = useRef(onNavigate);
@@ -88,44 +93,89 @@ export function TutorialRunner({ tutorial, onNavigate, onClose }: {
     let frame = 0;
     let lastKey = '';
     let revealed = false;
+    let anchorOf: { element: HTMLElement; anchor: Anchor } | null = null;
     if (step.tab) navigate.current(step.tab);
     const startedAt = performance.now();
     // Moving on by itself only counts what appears after the step began (not a dialog left open).
     const alreadyThere = step.advanceWhen ? Boolean(firstShown(step.advanceWhen)) : true;
-    const tick = () => {
+    const shift = (box: Box, dx: number, dy: number): Box => ({ x: box.x + dx, y: box.y + dy, w: box.w, h: box.h });
+    const measure = () => {
       if (!alive) return;
       if (step.advanceWhen && !alreadyThere && firstShown(step.advanceWhen)) { moveTo(index, index + 1); return; }
       const target = firstShown(step.target);
       const vw = window.innerWidth, vh = window.innerHeight;
-      if (target) {
-        const parts = areaElements(step, target);
-        let area = unionBox(parts.map(boxOf), AREA_PAD);
-        if (!revealed) {
-          revealed = true;
-          if (!fullyVisible(area, vw, vh)) {
-            const big = area.h > vh * 0.8;
-            (big ? target : parts[0]).scrollIntoView({ block: big ? 'center' : 'nearest', inline: 'nearest' });
-            area = unionBox(parts.map(boxOf), AREA_PAD);
-          }
-          if (step.focus) window.setTimeout(() => { if (alive) target.focus({ preventScroll: true }); }, 180);
+      if (!target) {
+        if (performance.now() - startedAt > MISSING_AFTER_MS && lastKey !== 'missing') { lastKey = 'missing'; setView({ step: index, kind: 'missing' }); }
+        return;
+      }
+      const parts = areaElements(step, target);
+      let area = unionBox(parts.map(boxOf), AREA_PAD);
+      if (!revealed) {
+        revealed = true;
+        if (!fullyVisible(area, vw, vh)) {
+          const big = area.h > vh * 0.8;
+          (big ? target : parts[0]).scrollIntoView({ block: big ? 'center' : 'nearest', inline: 'nearest' });
+          area = unionBox(parts.map(boxOf), AREA_PAD);
         }
+        if (step.focus) window.setTimeout(() => { if (alive) target.focus({ preventScroll: true }); }, 180);
+      }
+      if (anchorOf?.element !== target) anchorOf = { element: target, anchor: inFixedLayer(target) ? 'fixed' : 'page' };
+      const anchor = anchorOf.anchor;
+      if (anchor === 'fixed') {
         // Keep the ring on screen (a footer button at the very bottom).
         const x0 = Math.max(3, area.x), y0 = Math.max(3, area.y);
         area = { x: x0, y: y0, w: Math.min(vw - 3, area.x + area.w) - x0, h: Math.min(vh - 3, area.y + area.h) - y0 };
-        const targetBox = boxOf(target);
-        const key = [area.x, area.y, area.w, area.h, targetBox.x, targetBox.y, targetBox.w, targetBox.h, vw, vh].map(Math.round).join(',');
-        if (key !== lastKey) { lastKey = key; setView({ step: index, kind: 'shown', area, target: targetBox, vw, vh }); }
-      } else if (performance.now() - startedAt > MISSING_AFTER_MS && lastKey !== 'missing') {
-        lastKey = 'missing';
-        setView({ step: index, kind: 'missing' });
       }
+      const targetBox = boxOf(target);
       const measured = boxRef.current?.getBoundingClientRect();
-      if (measured) setBoxSize((size) => (Math.abs(size.w - measured.width) > 1 || Math.abs(size.h - measured.height) > 1 ? { w: measured.width, h: measured.height } : size));
-      frame = requestAnimationFrame(tick);
+      const size = measured && measured.width > 0 ? { w: Math.round(measured.width), h: Math.round(measured.height) } : { w: 360, h: 200 };
+      // Page coordinates do not change while the page scrolls, so scrolling alone redraws nothing.
+      const dx = anchor === 'page' ? window.scrollX : 0, dy = anchor === 'page' ? window.scrollY : 0;
+      const canvas = anchor === 'page'
+        ? { w: document.documentElement.scrollWidth, h: document.documentElement.scrollHeight }
+        : { w: vw, h: vh };
+      const key = [anchor, area.x + dx, area.y + dy, area.w, area.h, targetBox.x + dx, targetBox.y + dy, targetBox.w, targetBox.h,
+        vw, vh, canvas.w, canvas.h, size.w, size.h].map((value) => (typeof value === 'number' ? Math.round(value) : value)).join(',');
+      if (key === lastKey) return;
+      lastKey = key;
+      const placed = place(area, targetBox, size, vw, vh);
+      setView({ step: index, kind: 'shown', anchor, canvas, area: shift(area, dx, dy),
+        arrow: { ...shift(placed.arrow, dx, dy), side: placed.arrow.side }, box: shift(placed.box, dx, dy) });
     };
-    frame = requestAnimationFrame(tick);
-    return () => { alive = false; cancelAnimationFrame(frame); };
+    const loop = () => { measure(); if (alive) frame = requestAnimationFrame(loop); };
+    frame = requestAnimationFrame(loop);
+    // Phones can pause animation frames while scrolling; scrolling itself measures too.
+    const viewport = window.visualViewport;
+    window.addEventListener('scroll', measure, true);
+    window.addEventListener('resize', measure);
+    viewport?.addEventListener('resize', measure);
+    viewport?.addEventListener('scroll', measure);
+    return () => {
+      alive = false;
+      cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', measure, true);
+      window.removeEventListener('resize', measure);
+      viewport?.removeEventListener('resize', measure);
+      viewport?.removeEventListener('scroll', measure);
+    };
   }, [index, step, moveTo]);
+
+  // Over a layer that stays put, the dimmed page must not scroll underneath it.
+  const dimRef = useRef<SVGPathElement>(null);
+  const shownAnchor = view.step === index && view.kind === 'shown' ? view.anchor : null;
+  useEffect(() => {
+    if (shownAnchor !== 'fixed') return;
+    // The dimmed part and the message box: neither scrolls, so a swipe on them must not scroll the page.
+    const layers = [dimRef.current, boxRef.current].filter((node): node is SVGPathElement | HTMLDivElement => node !== null);
+    const stop = (event: Event) => { if (event.cancelable) event.preventDefault(); };
+    for (const layer of layers) {
+      layer.addEventListener('wheel', stop, { passive: false });
+      layer.addEventListener('touchmove', stop, { passive: false });
+    }
+    return () => {
+      for (const layer of layers) { layer.removeEventListener('wheel', stop); layer.removeEventListener('touchmove', stop); }
+    };
+  }, [shownAnchor, index]);
 
   // Esc ends the tutorial (before a dialog under it would take Esc to close itself).
   useEffect(() => {
@@ -153,7 +203,7 @@ export function TutorialRunner({ tutorial, onNavigate, onClose }: {
   }
 
   const shown = current.kind === 'shown' ? current : null;
-  const placement = shown ? place(shown.area, shown.target, boxSize, shown.vw, shown.vh) : null;
+  const position = shown?.anchor === 'page' ? 'absolute' : 'fixed';
   const missingText = step.missing ?? '이 단계에서 가리킬 곳이 지금 화면에 없어요. 창을 닫았다면 [이전]으로 돌아가 다시 열거나, [다음]으로 넘어가세요.';
 
   return (
@@ -168,19 +218,20 @@ export function TutorialRunner({ tutorial, onNavigate, onClose }: {
       {shown ? (
         <>
           {/* The dimmed page: it takes the clicks; the hole over the lit unit lets them through. */}
-          <svg aria-hidden="true" className="pointer-events-none fixed inset-0 z-[76] h-full w-full">
-            <path fillRule="evenodd" fill="rgb(15 23 42 / 0.62)" className="pointer-events-auto"
-              d={`M0 0H${shown.vw}V${shown.vh}H0Z ${roundedRect(shown.area, 14)}`} />
+          <svg aria-hidden="true" className="pointer-events-none z-[76]"
+            style={{ position, left: 0, top: 0, width: shown.canvas.w, height: shown.canvas.h }}>
+            <path ref={dimRef} fillRule="evenodd" fill="rgb(15 23 42 / 0.62)" className="pointer-events-auto"
+              d={`M0 0H${shown.canvas.w}V${shown.canvas.h}H0Z ${roundedRect(shown.area, 14)}`} />
             <rect x={shown.area.x} y={shown.area.y} width={shown.area.w} height={shown.area.h} rx="14" fill="none"
               stroke="#FFD43B" strokeWidth="3" style={{ animation: 'crs-tour-pulse 1.6s ease-in-out infinite' }} />
           </svg>
-          {placement ? <TutorialArrow side={placement.arrow.side} box={placement.arrow} /> : null}
+          <TutorialArrow side={shown.arrow.side} box={shown.arrow} position={position} />
         </>
       ) : null}
       <div ref={boxRef} role="dialog" aria-modal="false" aria-label={`튜토리얼 ${tutorial.id} ${tutorial.title}`}
-        style={placement ? { left: placement.box.x, top: placement.box.y } : undefined}
-        className={cx('fixed z-[78] w-[min(360px,calc(100vw-24px))] rounded-[18px] border border-[var(--crs-line)] bg-[var(--theme-surface)] text-[var(--theme-text)] shadow-[0_18px_48px_rgb(15_23_42/0.35)]',
-          !placement && 'bottom-5 left-1/2 -translate-x-1/2')}>
+        style={shown ? { position, left: shown.box.x, top: shown.box.y } : { position: 'fixed' }}
+        className={cx('z-[78] w-[min(360px,calc(100vw-24px))] rounded-[18px] border border-[var(--crs-line)] bg-[var(--theme-surface)] text-[var(--theme-text)] shadow-[0_18px_48px_rgb(15_23_42/0.35)]',
+          !shown && 'bottom-5 left-1/2 -translate-x-1/2')}>
         <div className="flex items-start gap-2 border-b border-[var(--crs-line)] px-4 pb-2.5 pt-3">
           <div className="min-w-0 flex-1">
             <p className="truncate text-[11px] font-bold text-[var(--theme-muted-text)]">튜토리얼 · {tutorial.id} {tutorial.title}</p>
@@ -228,9 +279,9 @@ function roundedRect(box: Box, radius: number): string {
 const ROTATE: Record<ArrowSide, number> = { left: 0, top: 90, right: 180, bottom: 270 };
 
 /** A big arrow beside the lit unit, pointing at the control, gently nudging toward it. */
-function TutorialArrow({ side, box }: { side: ArrowSide; box: Box }): ReactNode {
+function TutorialArrow({ side, box, position }: { side: ArrowSide; box: Box; position: 'fixed' | 'absolute' }): ReactNode {
   return (
-    <div aria-hidden="true" className="pointer-events-none fixed z-[77]" style={{ left: box.x, top: box.y, width: box.w, height: box.h }}>
+    <div aria-hidden="true" className="pointer-events-none z-[77]" style={{ position, left: box.x, top: box.y, width: box.w, height: box.h }}>
       <div style={{ animation: `crs-tour-nudge-${side} 1s ease-in-out infinite` }}>
         <svg viewBox="0 0 48 48" width={box.w} height={box.h} style={{ transform: `rotate(${ROTATE[side]}deg)` }}>
           <path d="M6 18h20V8l18 16-18 16V30H6z" fill="#FFD43B" stroke="#1F2937" strokeWidth="2.5" strokeLinejoin="round" />
