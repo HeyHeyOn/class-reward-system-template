@@ -145,10 +145,10 @@ describe('TutorialRunner', () => {
     render(<><Page /><TutorialRunner tutorial={short} onNavigate={() => {}} onClose={onClose} after={{ next, onNext, onMenu }} /></>);
     await waitFor(() => expect(tour().getAttribute('data-tutorial-state')).toBe('shown'));
     expect(screen.getByText('왼쪽 메뉴')).toBeTruthy();
-    expect(screen.getByText('이번에 할 일 · 시험용')).toBeTruthy();
+    expect(screen.getByText('[목표] 시험용')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /다음/ }));
     await waitFor(() => expect(stepOf()).toBe('9-9:2'));
-    expect(screen.queryByText(/이번에 할 일/)).toBeNull();
+    expect(screen.queryByText(/\[목표\]/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /마치기/ }));
     await waitFor(() => expect(tour().getAttribute('data-tutorial-state')).toBe('done'));
     expect(onClose).not.toHaveBeenCalled();

@@ -347,7 +347,7 @@ export function TutorialRunner({ tutorial, onNavigate, onClose, firstStep = 0, a
           !shown && 'bottom-5 left-1/2 -translate-x-1/2', current.kind === 'searching' && step.skipUnless && 'invisible')}>
         <div className="flex items-start gap-2 border-b border-[var(--crs-line)] px-4 pb-2.5 pt-3">
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[11px] font-bold text-[var(--theme-muted-text)]">튜토리얼 · {tutorial.id} {tutorial.title}</p>
+            <p className="truncate text-[11px] font-bold text-[var(--theme-muted-text)]">튜토리얼 {tutorial.id} {tutorial.title}</p>
             <p className="mt-0.5 flex items-center gap-1.5 text-[15px] font-black tracking-[-0.02em]">
               <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--theme-accent-solid)] px-1.5 text-[11px] font-black text-[var(--theme-accent-on-solid)]">{index + 1}</span>
               {step.title}
@@ -362,7 +362,7 @@ export function TutorialRunner({ tutorial, onNavigate, onClose, firstStep = 0, a
             <>
               {index === 0 ? (
                 <p className="mb-2 rounded-[10px] bg-[var(--theme-accent-soft)] px-2.5 py-1.5 text-[12.5px] font-semibold leading-snug text-[var(--theme-accent-text)]">
-                  이번에 할 일 · {tutorial.goal}
+                  [목표] {tutorial.goal}
                 </p>
               ) : null}
               <p><TutorialText text={step.text} /></p>
