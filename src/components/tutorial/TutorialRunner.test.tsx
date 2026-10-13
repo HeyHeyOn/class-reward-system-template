@@ -159,6 +159,23 @@ describe('TutorialRunner', () => {
     expect(onMenu).toHaveBeenCalledTimes(1);
   });
 
+  it('moves on when the teacher presses a menu whose screen is open already', async () => {
+    function Menu() {
+      const [open, setOpen] = useState(true);
+      return <div><button id="menu" type="button" onClick={() => setOpen(true)}>학생</button>{open ? <section id="panel">명단</section> : null}</div>;
+    }
+    const menuFirst: Tutorial = { ...TUTORIAL, steps: [
+      { target: '#menu', area: ['@target'], title: '메뉴', text: '[학생]을 누르세요.', advanceWhen: '#panel', clickMovesOn: true }, TUTORIAL.steps[0],
+    ] };
+    render(<><Menu /><Page /><TutorialRunner tutorial={menuFirst} onNavigate={() => {}} onClose={() => {}} /></>);
+    await waitFor(() => expect(tour().getAttribute('data-tutorial-state')).toBe('shown'));
+    // The screen was open before the step began, so nothing new appears: the press itself counts.
+    await new Promise((done) => setTimeout(done, 200));
+    expect(stepOf()).toBe('9-9:1');
+    fireEvent.click(document.getElementById('menu')!);
+    await waitFor(() => expect(stepOf()).toBe('9-9:2'));
+  });
+
   it('draws an arrow only on a step that asks the teacher to do something', async () => {
     const arrow = (container: HTMLElement) => container.querySelector('path[d^="M6 18h20"]');
     const mixed: Tutorial = { ...TUTORIAL, steps: [

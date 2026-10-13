@@ -131,7 +131,7 @@ export function findButton(label: string, near: Element | null): HTMLElement | n
 }
 
 type Look = Readonly<{ variant?: 'primary' | 'secondary' | 'ghost' | 'soft' | 'danger' | 'dangerGhost'; size?: 'sm' | 'md' | 'lg';
-  icon?: IconName; iconRight?: IconName; bar?: boolean; style?: CSSProperties }>;
+  icon?: IconName; iconRight?: IconName; bar?: boolean; tab?: boolean; style?: CSSProperties }>;
 
 /** How buttons look that are often not on the screen when a step names them. */
 const KNOWN: Readonly<Record<string, Look>> = {
@@ -163,6 +163,8 @@ const KNOWN: Readonly<Record<string, Look>> = {
   '반복 설정': { bar: true, icon: 'repeat' },
   '완료 단계': { bar: true, icon: 'users' },
   '지금 초기화': { bar: true, icon: 'restore' },
+  // A tab of the new-task sheet, named from the task editor where it is not shown.
+  '대상 학생': { tab: true },
   // The class list's red-edged button (its own stylesheet).
   '완전히 삭제': { variant: 'secondary', icon: 'trash', style: { color: '#be123c', borderColor: '#f3c3cf', borderRadius: 12, boxShadow: 'none' } },
 };
@@ -173,6 +175,13 @@ function KnownButton({ label, look }: { label: string; look: Look }) {
   const iconSize = size === 'sm' ? 15 : 17;
   const scale = Math.min(1, Math.max(MIN_SCALE, CHIP_HEIGHT / (size === 'sm' ? 32 : size === 'lg' ? 48 : 40)));
   const words = label.replace(/\bN(?=[명개])/g, 'N');
+  if (look.tab) {
+    return (
+      <span data-chip="known" className="inline-flex rounded-[12px] bg-[var(--crs-subtle-hover)] p-1 align-middle" style={{ zoom: Math.max(MIN_SCALE, CHIP_HEIGHT / 44) } as CSSProperties}>
+        <span className="inline-flex h-9 items-center rounded-[9px] px-4 text-[13px] font-bold text-[var(--theme-muted-text)]">{words}</span>
+      </span>
+    );
+  }
   if (look.bar) {
     return (
       <span data-chip="known" className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-[9px] bg-[var(--theme-text)] px-3 align-middle text-[13px] font-bold text-[var(--theme-surface)]"
@@ -198,15 +207,26 @@ function PlainChip({ label }: { label: string }) {
   );
 }
 
+function describe(element: HTMLElement): string {
+  const where = element.closest('[role="dialog"]')?.getAttribute('aria-label')
+    ?? element.closest('[role="toolbar"], [role="tablist"], [role="group"], nav, aside, section[id], section[aria-label]')?.getAttribute('aria-label')
+    ?? element.closest('section[id]')?.id ?? '';
+  const name = element.getAttribute('aria-label') ?? element.getAttribute('data-tour') ?? element.id ?? '';
+  return [element.tagName.toLowerCase() + (element.getAttribute('role') ? `[${element.getAttribute('role')}]` : ''), name, where].filter(Boolean).join(' | ');
+}
+
 /** The help box's own buttons: never searched for on the page. */
 const OWN = new Set(['다음', '이전', '마치기']);
 
 /** [버튼 이름] in a help text: the real button's look when it can be found, retried while the step shows. */
 export function ButtonChip({ label, near }: { label: string; near?: Element | null }) {
   const host = useRef<HTMLSpanElement>(null);
-  const [copied, setCopied] = useState(false);
+  // Which name the copy shows: a chip reused for another name (the next step) must not keep the old picture.
+  const [copiedFor, setCopiedFor] = useState<string | null>(null);
+  const copied = copiedFor === label;
   const known = KNOWN[label];
   useEffect(() => {
+    host.current?.replaceChildren();
     if (OWN.has(label)) return;
     let alive = true;
     let timer = 0;
@@ -215,7 +235,9 @@ export function ButtonChip({ label, near }: { label: string; near?: Element | nu
       const real = findButton(label, near ?? null);
       if (real && host.current) {
         host.current.replaceChildren(copyOf(real));
-        setCopied(true);
+        // Which button was copied, for checking that each name shows the right one.
+        host.current.parentElement?.setAttribute('data-chip-from', describe(real));
+        setCopiedFor(label);
         return;
       }
       // It may still appear (a dialog opening, a row being picked).

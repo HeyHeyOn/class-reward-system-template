@@ -37,8 +37,12 @@ describe('tutorials', () => {
       const menuTargets = typeof menuStep.target === 'string' ? [menuStep.target] : menuStep.target;
       const where = tutorial.id === '1-1' ? 'a[aria-label="학급 목록으로"]' : tutorial.id === '9-1' ? 'shortcuts' : '#admin-tab-';
       expect(tutorial.id === '9-1' ? targets.some((target) => target.includes('shortcuts')) : menuTargets.some((target) => target.startsWith(where)), tutorial.id).toBe(true);
-      // The menu step is chosen by the teacher: it moves on once that screen is open.
-      if (where === '#admin-tab-') expect(menuStep.advanceWhen, tutorial.id).toMatch(/^#admin-panel-/);
+      // The menu step is chosen by the teacher: it moves on once that screen opens, or when the
+      // menu is pressed while it is open already (no "already open? press 다음" line needed).
+      if (where === '#admin-tab-') {
+        expect(menuStep.advanceWhen, tutorial.id).toMatch(/^#admin-panel-/);
+        expect(menuStep.clickMovesOn, tutorial.id).toBe(true);
+      }
     }
   });
 
@@ -54,6 +58,12 @@ describe('tutorials', () => {
     // The first-time tour only shows: its arrows are on the menu items the teacher picks.
     for (const step of TUTORIALS.find((tutorial) => tutorial.id === FIRST_TUTORIAL_ID)!.steps) {
       if (!step.peek) expect(String(step.target)).toMatch(/^#admin-tab-/);
+    }
+  });
+
+  it('never tells the teacher to press 다음 because a screen is open already', () => {
+    for (const tutorial of TUTORIALS) {
+      for (const step of tutorial.steps) expect(`${step.text} ${step.sub ?? ''}`, `${tutorial.id} ${step.title}`).not.toMatch(/이미 .*(열려|이면).*\[다음\]/);
     }
   });
 

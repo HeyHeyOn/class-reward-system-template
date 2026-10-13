@@ -27,6 +27,18 @@ describe('ButtonChip', () => {
     expect(chip.querySelector('.sr-only')?.textContent).toBe('학생 추가');
   });
 
+  it('shows the new name when a chip is reused for the next step, not the old button', async () => {
+    shown();
+    const page = <button type="button">행사 관리</button>;
+    const { container, rerender } = render(<>{page}<p><ButtonChip label="행사 관리" /></p></>);
+    await waitFor(() => expect(container.querySelector('[data-chip-label="행사 관리"]')?.getAttribute('data-chip-source')).toBe('live'));
+    rerender(<>{page}<p><ButtonChip label="다음" /></p></>);
+    const chip = container.querySelector('[data-chip-label="다음"]')!;
+    expect(chip.getAttribute('data-chip-source')).toBe('known');
+    expect(chip.querySelector('[inert]')?.childElementCount).toBe(0);
+    expect(chip.textContent).toBe('다음');
+  });
+
   it('finds a button by its count (전체 8, 3명 저장) and never inside the help box itself', () => {
     shown();
     render(<>

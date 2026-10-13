@@ -44,7 +44,8 @@ export function TutorialText({ text, near }: { text: string; near?: Element | nu
     <>
       {parts.map((part, index) => {
         if (part.startsWith('**')) return <b key={index} className="font-extrabold text-[var(--theme-text)]">{part.slice(2, -2)}</b>;
-        if (part.startsWith('[')) return <ButtonChip key={index} label={part.slice(1, -1)} near={near} />;
+        // Keyed by the name too: the next step's chip is a new chip, not this one renamed.
+        if (part.startsWith('[')) return <ButtonChip key={`${index}:${part}`} label={part.slice(1, -1)} near={near} />;
         return <Fragment key={index}>{part}</Fragment>;
       })}
     </>
@@ -240,6 +241,15 @@ export function TutorialRunner({ tutorial, onNavigate, onClose, firstStep = 0, a
       setView({ step: index, kind: 'shown', anchor, canvas, area: shift(area, dx, dy),
         arrow: { ...shift(placed.arrow, dx, dy), side: placed.arrow.side }, box: shift(placed.box, dx, dy) });
     };
+    // A menu or tab step: pressing it moves on even if its screen is open already (nothing new appears).
+    const onPress = (event: MouseEvent) => {
+      if (!step.clickMovesOn || !(event.target instanceof Node)) return;
+      const target = firstShown(step.target);
+      if (!target?.contains(event.target)) return;
+      // Let the press switch the screen first.
+      window.setTimeout(() => { if (alive) moveTo(index, index + 1); }, 120);
+    };
+    document.addEventListener('click', onPress, true);
     const loop = () => { measure(); if (alive) frame = requestAnimationFrame(loop); };
     frame = requestAnimationFrame(loop);
     // Phones can pause animation frames while scrolling; scrolling itself measures too.
@@ -251,6 +261,7 @@ export function TutorialRunner({ tutorial, onNavigate, onClose, firstStep = 0, a
     return () => {
       alive = false;
       cancelAnimationFrame(frame);
+      document.removeEventListener('click', onPress, true);
       window.removeEventListener('scroll', measure, true);
       window.removeEventListener('resize', measure);
       viewport?.removeEventListener('resize', measure);

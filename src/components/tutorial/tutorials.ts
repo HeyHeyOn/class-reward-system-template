@@ -38,6 +38,8 @@ export type TutorialStep = Readonly<{
   next?: Readonly<{ click?: string; wait: string }>;
   /** Moves on by itself once this appears after the step began (the teacher clicked). */
   advanceWhen?: string;
+  /** Pressing the target moves on, even when what it opens is open already (a menu, a tab). */
+  clickMovesOn?: boolean;
   /** Said when the target is not on the screen (a menu only on wide screens, …). */
   missing?: string;
   /** The step only applies when this is on the screen (a field shown by a switch); otherwise it is passed over. */
@@ -79,11 +81,12 @@ const MENU: Readonly<Record<AdminTab, readonly [string, '을' | '를']>> = {
 
 /**
  * Every tutorial starts by choosing its screen in the menu, so the teacher learns where it is.
- * `{menu}` is said as 왼쪽 메뉴 or 맨 위 메뉴, by the screen width.
+ * `{menu}` is said as 왼쪽 메뉴 or 맨 위 메뉴, by the screen width. Pressing it moves on even if
+ * that screen is open already.
  */
-const menuStep = (tab: AdminTab, text: string, sub = '이미 그 화면이 열려 있으면 [다음]을 누르세요.'): TutorialStep => ({
-  target: `#admin-tab-${tab}`, area: ['[data-testid="admin-tabs"]'], title: '메뉴 고르기', text, sub,
-  next: { click: `#admin-tab-${tab}`, wait: `#admin-panel-${tab}` }, advanceWhen: `#admin-panel-${tab}`,
+const menuStep = (tab: AdminTab, text: string, sub?: string): TutorialStep => ({
+  target: `#admin-tab-${tab}`, area: ['[data-testid="admin-tabs"]'], title: '메뉴 고르기', text, ...(sub ? { sub } : {}),
+  next: { click: `#admin-tab-${tab}`, wait: `#admin-panel-${tab}` }, advanceWhen: `#admin-panel-${tab}`, clickMovesOn: true,
 });
 
 /** `${what} 왼쪽 메뉴의 [학생]에서 해요. [학생]을 누르세요.` */
@@ -109,7 +112,7 @@ const taskTab = (tab: 'repeat' | 'students' | 'padlet') => `${TASK_SHEET} [data-
 /** Switches the open task editor to one of its tabs. */
 const openTaskTab = (tab: 'repeat' | 'students' | 'padlet', label: string, wait: string): TutorialStep => ({
   target: taskTab(tab), area: [{ closest: '[role="tablist"]' }], title: `${label} 탭`, text: `창 위의 [${label}] 탭을 누르세요.`,
-  next: { click: taskTab(tab), wait }, advanceWhen: wait,
+  next: { click: taskTab(tab), wait }, advanceWhen: wait, clickMovesOn: true,
 });
 
 /** Picks rows of a list by their check boxes, which brings up the selection bar. */
@@ -121,7 +124,7 @@ const pickRows = (tab: AdminTab, row: string, text: string, missing: string): Tu
 const petTab = (id: string, label: string, wait: string): TutorialStep => ({
   tab: 'pets', target: `#pet-tab-${id}`, area: [{ closest: '[role="tablist"]' }], title: `${label} 탭`,
   text: `[${label}] 탭을 누르세요.`, sub: '탭마다 정한 뒤 맨 아래 [설정 저장]으로 한꺼번에 저장해요.',
-  next: { click: `#pet-tab-${id}`, wait }, advanceWhen: wait,
+  next: { click: `#pet-tab-${id}`, wait }, advanceWhen: wait, clickMovesOn: true,
 });
 
 const PET_SAVE: TutorialStep = {
@@ -211,7 +214,7 @@ export const TUTORIALS: readonly Tutorial[] = [
     goal: '메뉴, 홈 화면의 현황 카드, 바로가기를 차례로 살펴봐요.',
     steps: [
       menuStep('home', '관리할 화면은 **{menu}**에서 골라요. 홈 화면을 보려면 [홈]을 누르세요.',
-        '메뉴에는 홈, 학생, 매점, 과제, 펫 키우기, 나무 키우기, 지급·회수, 거래 내역, 설정이 있어요. 이미 홈이면 [다음]을 누르세요.'),
+        '메뉴에는 홈, 학생, 매점, 과제, 펫 키우기, 나무 키우기, 지급·회수, 거래 내역, 설정이 있어요.'),
       { tab: 'home', target: '[data-tour="home-stats"]', area: ['@target'], peek: true, title: '오늘의 학급',
         text: '**학생 수, 잔액 합계, 판매 중인 상품, 진행 중인 과제**를 한눈에 봐요.', sub: '카드 아래 작은 글씨로 비활성 학생, 음수 잔액, 전체 재고도 알려 줘요.' },
       { tab: 'home', target: '[data-tour="home-quick"]', area: ['@target'], peek: true, title: '자주 쓰는 일',
@@ -438,7 +441,8 @@ export const TUTORIALS: readonly Tutorial[] = [
     steps: [
       menu('products', '할인 행사는'),
       { tab: 'products', target: '#admin-store-tab-promotions', area: [{ closest: '[role="tablist"]' }], title: '행사 관리 탭',
-        text: '[행사 관리] 탭을 누르세요.', next: { click: '#admin-store-tab-promotions', wait: '[aria-label="행사명"]' }, advanceWhen: '[aria-label="행사명"]' },
+        text: '[행사 관리] 탭을 누르세요.', next: { click: '#admin-store-tab-promotions', wait: '[aria-label="행사명"]' }, advanceWhen: '[aria-label="행사명"]',
+        clickMovesOn: true },
       { reveal: '#admin-store-tab-promotions', target: '[aria-label="행사명"]', area: [{ closest: 'label' }], focus: true, title: '행사명',
         text: '**행사명**을 적으세요.', sub: '예: 과자 1+1, 금요일 학용품 할인' },
       { reveal: '#admin-store-tab-promotions', target: '[aria-label="행사 설명"]', area: [{ closest: 'label' }], focus: true, title: '행사 설명',
@@ -469,7 +473,8 @@ export const TUTORIALS: readonly Tutorial[] = [
     steps: [
       menu('products', '할인 행사는'),
       { tab: 'products', target: '#admin-store-tab-promotions', area: [{ closest: '[role="tablist"]' }], title: '행사 관리 탭',
-        text: '[행사 관리] 탭을 누르세요.', next: { click: '#admin-store-tab-promotions', wait: '[aria-label="행사명"]' }, advanceWhen: '[aria-label="행사명"]' },
+        text: '[행사 관리] 탭을 누르세요.', next: { click: '#admin-store-tab-promotions', wait: '[aria-label="행사명"]' }, advanceWhen: '[aria-label="행사명"]',
+        clickMovesOn: true },
       { reveal: '#admin-store-tab-promotions', target: '[data-testid="promotion-row"]', area: ['@target'], peek: true, title: '행사 목록',
         text: '**행사 목록**에서 진행 중인지와 할인 내용, 대상 상품, 기간을 봐요.', missing: '등록된 행사가 없어요. 도움말 4-3으로 먼저 만들어 주세요.' },
       { reveal: '#admin-store-tab-promotions', target: ['[data-testid="promotion-row"] button[aria-label$=" 비활성화"]', '[data-testid="promotion-row"] button[aria-label$=" 재활성화"]'],
@@ -530,7 +535,7 @@ export const TUTORIALS: readonly Tutorial[] = [
         text: '고르면 그 과제를 완료한 학생만 이 과제를 완료할 수 있어요.' },
       { target: `${dialog('새 과제')} [data-tour="sheet-tab-students"]`, area: [{ closest: '[role="tablist"]' }], title: '대상 학생 탭',
         text: '[대상 학생] 탭을 누르세요.', next: { click: `${dialog('새 과제')} [data-tour="sheet-tab-students"]`, wait: '[data-tour="task-targets-bar"]' },
-        advanceWhen: '[data-tour="task-targets-bar"]' },
+        advanceWhen: '[data-tour="task-targets-bar"]', clickMovesOn: true },
       { reveal: `${dialog('새 과제')} [data-tour="sheet-tab-students"]`, target: '[aria-label="모든 학생 고르기"]', area: ['[data-tour="task-targets-bar"]'], title: '학생 고르기',
         text: '과제를 줄 학생을 체크하세요. **모든 학생**을 체크하면 반 전체를 골라요.',
         sub: '고른 뒤 **고른 학생 모두** 옆 버튼으로 처음 단계를 한꺼번에 정해요. 고르지 않은 학생은 미부여라 학생에게 보이지 않아요.' },
