@@ -93,6 +93,7 @@ const CONFIGURED_MUTATION_AUTHORITY = [
   ['bank/me/pet/decor/buy', 'POST', 'createConfiguredPets'],
   ['bank/me/pet/decor/place', 'POST', 'createConfiguredPets'],
   ['bank/me/pet/companions', 'POST', 'createConfiguredPets'],
+  ['bank/me/pet/rename', 'POST', 'createConfiguredPets'],
   ['pets/settings', 'POST', 'createConfiguredPets'],
   ['pets/rename', 'POST', 'createConfiguredPets'],
   ['pets/growth', 'POST', 'createConfiguredPets'],
@@ -195,7 +196,7 @@ describe('tenant mutation route PostgreSQL authority', () => {
       && entry.effect === 'mutation'
       && !configured.has(`${entry.method} ${entry.route}`));
 
-    expect(CONFIGURED_MUTATION_AUTHORITY).toHaveLength(53);
+    expect(CONFIGURED_MUTATION_AUTHORITY).toHaveLength(54);
     expect(sheetsMutations).toHaveLength(4);
     for (const entry of sheetsMutations) {
       const body = await exportedMethodBody(entry.route.replace(/^\//, ''), entry.method);

@@ -551,7 +551,7 @@ function PetList({ board, onRenamed, onAdjusted }: Readonly<{
         <PetGrowthDialog row={adjustRow} goal={goal} opener={adjusting.opener} onClose={() => setAdjusting(null)}
           onDone={(next, message) => { setAdjusting(null); onAdjusted(next, message); }} />
       ) : null}
-      <p className="text-xs text-[var(--theme-muted-text)]">펫 이름은 학생이 알을 고를 때 지어요. 알맞지 않은 이름은 여기서 고칠 수 있어요(1~{PET_NAME_LENGTH}자). ‘오늘’과 ‘최근 7일’에는 과제를 완료해서 준 먹이도 함께 세요(괄호 안은 그중 과제로 준 횟수). 하루 횟수 제한은 학생이 직접 주는 먹이에만 있어요.</p>
+      <p className="text-xs text-[var(--theme-muted-text)]">펫 이름은 학생이 알을 고를 때 짓고, 나중에 펫 화면에서 바꿀 수도 있어요. 알맞지 않은 이름은 여기서 고칠 수 있어요(1~{PET_NAME_LENGTH}자). ‘오늘’과 ‘최근 7일’에는 과제를 완료해서 준 먹이도 함께 세요(괄호 안은 그중 과제로 준 횟수). 하루 횟수 제한은 학생이 직접 주는 먹이에만 있어요.</p>
     </div>
   );
 }

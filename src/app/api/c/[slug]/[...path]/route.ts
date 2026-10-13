@@ -51,6 +51,7 @@ const ROUTES: readonly TenantApiRoute[] = [
   route('POST', 'bank/me/pet/decor/buy', 'public', async (r) => (await import('@/app/api/bank/me/pet/decor/buy/route')).POST(r)),
   route('POST', 'bank/me/pet/decor/place', 'public', async (r) => (await import('@/app/api/bank/me/pet/decor/place/route')).POST(r)),
   route('POST', 'bank/me/pet/companions', 'public', async (r) => (await import('@/app/api/bank/me/pet/companions/route')).POST(r)),
+  route('POST', 'bank/me/pet/rename', 'public', async (r) => (await import('@/app/api/bank/me/pet/rename/route')).POST(r)),
   route('POST', 'checkout', 'public', async (r) => (await import('@/app/api/checkout/route')).POST(r)),
   route('POST', 'checkout/preview', 'public', async (r) => (await import('@/app/api/checkout/preview/route')).POST(r)),
   route('POST', 'checkout/vouchers', 'public', async (r) => (await import('@/app/api/checkout/vouchers/route')).POST(r)),

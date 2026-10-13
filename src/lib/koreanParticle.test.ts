@@ -10,6 +10,10 @@ describe('Korean particles after a chosen word', () => {
     expect(withParticle('나무 3', '은/는')).toBe('나무 3은');
     expect(withParticle('Tree', '을/를')).toBe('Tree를');
     expect(withParticle('Apple Garden', '을/를')).toBe('Apple Garden을');
+    expect(withParticle('초코', '으로/로')).toBe('초코로');
+    expect(withParticle('콩떡', '으로/로')).toBe('콩떡으로');
+    expect(withParticle('별', '으로/로')).toBe('별로');
+    expect(withParticle('나비 1', '으로/로')).toBe('나비 1로');
   });
 
   it('ignores trailing symbols and handles words without letters', () => {

@@ -1,6 +1,6 @@
 /*
  * Korean particles after a word the teacher chose (a tree name, for example): 을/를, 이/가, 은/는, 과/와
- * depend on whether the word's last sound ends in a final consonant (받침).
+ * depend on whether the word's last sound ends in a final consonant (받침); 으로/로 also takes 로 after ㄹ.
  */
 
 const DIGIT_BATCHIM: Readonly<Record<string, boolean>> = {
@@ -19,10 +19,20 @@ export function endsWithBatchim(word: string): boolean {
   return LATIN_BATCHIM.has(last.toLowerCase());
 }
 
-export type ParticlePair = '을/를' | '이/가' | '은/는' | '과/와';
+/** Whether the word's last sound ends in ㄹ (발 → 발로, not 발으로). */
+function endsWithRieul(word: string): boolean {
+  const last = [...word.trim()].reverse().find((char) => /[\p{L}\p{N}]/u.test(char));
+  if (!last) return false;
+  const code = last.charCodeAt(0);
+  if (code >= 0xac00 && code <= 0xd7a3) return (code - 0xac00) % 28 === 8;
+  return last === '1' || last === '7' || last === '8' || last.toLowerCase() === 'l';
+}
+
+export type ParticlePair = '을/를' | '이/가' | '은/는' | '과/와' | '으로/로';
 
 /** The word followed by the particle that fits it, e.g. withParticle('햇살 나무', '을/를') → '햇살 나무를'. */
 export function withParticle(word: string, pair: ParticlePair): string {
   const [afterConsonant, afterVowel] = pair.split('/');
-  return `${word}${endsWithBatchim(word) ? afterConsonant : afterVowel}`;
+  const consonant = endsWithBatchim(word) && !(pair === '으로/로' && endsWithRieul(word));
+  return `${word}${consonant ? afterConsonant : afterVowel}`;
 }

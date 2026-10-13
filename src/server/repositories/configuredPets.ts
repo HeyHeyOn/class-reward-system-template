@@ -29,7 +29,7 @@ export function createPetRepositoryCreators(): RepositoryCreators<ConfiguredPets
     createSheets: () => ({
       studentView: unsupported, dexPage: unsupported, adopt: unsupported, care: unsupported, graduate: unsupported, buyDecor: unsupported,
       placeDecor: unsupported, setCompanions: unsupported, taskGains: unsupported, adminBoard: unsupported, saveSettings: unsupported,
-      adjustGrowth: unsupported, renamePet: unsupported,
+      adjustGrowth: unsupported, renamePet: unsupported, renameOwnPet: unsupported,
     }),
   };
 }

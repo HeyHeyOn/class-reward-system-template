@@ -414,3 +414,34 @@ describe('the teacher board', () => {
     expect(lastOp()).toMatch(/^60000000-/);
   });
 });
+
+describe('the student renames a pet', () => {
+  it('renames their own pets (raised or graduated) within the opening hours, and nobody else’s', async () => {
+    await pets().saveSettings(ON);
+    await pets().adopt({ studentId: 'S001', operationId: op(), species: 'cat', name: '나비' });
+    await pets().adopt({ studentId: 'S002', operationId: op(), species: 'dog', name: '보리' });
+    await harness.database.query(`INSERT INTO pets (tenant_id, pet_id, student_id, species, color, name, stage, growth, status, adopted_at, hatched_at,
+      graduated_at, graduate_operation_id, graduate_reward_amount, graduate_reward_item)
+      VALUES ($1, 'old-1', 'S001', 'rabbit', 'white', '옛 펫', 3, 4, 'GRADUATED', now() - interval '30 days', now() - interval '29 days', now() - interval '1 day', 'old-1', 0, '')`,
+    [harness.tenantOneId]);
+    const raising = (await pets().studentView('S001')).pet?.petId ?? '';
+    const other = (await pets().studentView('S002')).pet?.petId ?? '';
+
+    await pets().renameOwnPet({ studentId: 'S001', petId: raising, name: '  콩떡  ' });
+    await pets().renameOwnPet({ studentId: 'S001', petId: 'old-1', name: '하양' });
+    await pets().setCompanions({ studentId: 'S001', petIds: ['old-1'] });
+    const view = await pets().studentView('S001');
+    expect(view.pet?.name).toBe('콩떡');
+    expect(view.companions.map((pet) => pet.name)).toEqual(['하양']);
+
+    expect(await failure(pets().renameOwnPet({ studentId: 'S001', petId: other, name: '내 거' }))).toBe('PET_NOT_FOUND');
+    expect((await pets().studentView('S002')).pet?.name).toBe('보리');
+    expect(await failure(pets().renameOwnPet({ studentId: 'S001', petId: raising, name: '' }))).toBe('INVALID_INPUT');
+    expect(await failure(pets().renameOwnPet({ studentId: 'S001', petId: raising, name: '아홉글자이름이에요' }))).toBe('INVALID_INPUT');
+    expect(await failure(pets().renameOwnPet({ studentId: 'S001', petId: 7, name: '콩' }))).toBe('INVALID_INPUT');
+
+    await pets().saveSettings({ ...ON, hoursEnabled: true, hours: [] });
+    expect(await failure(pets().renameOwnPet({ studentId: 'S001', petId: raising, name: '콩' }))).toBe('PET_ASLEEP');
+    expect((await pets().studentView('S001')).pet?.name).toBe('콩떡');
+  });
+});

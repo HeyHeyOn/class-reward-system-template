@@ -49,7 +49,7 @@ export const BankTreeView = forwardRef<HTMLHeadingElement, BankTreeViewProps>(fu
       <header className="flex items-center gap-2">
         <IconButton icon="chevronLeft" label="홈으로 돌아가기" onClick={onBack} className="-ml-2" size="lg" />
         <h2 ref={headingRef} tabIndex={-1} className="min-w-0 flex-1 truncate text-[22px] font-black tracking-[-0.03em] outline-none">
-          {view?.treeName ?? '학급 나무'}
+          나무
         </h2>
         <IconButton icon="refresh" label="나무 새로고침" onClick={onRefresh} disabled={loading} />
       </header>
@@ -67,7 +67,8 @@ export const BankTreeView = forwardRef<HTMLHeadingElement, BankTreeViewProps>(fu
           <div className="flex justify-center rounded-[20px] bg-[var(--theme-accent-soft)] p-3">
             <TreeCanvas drops={tree.drops} goal={tree.goal} apples={view.apples} size={320} play={play} onPlayEnd={onPlayEnd} name={view.treeName} />
           </div>
-          <div className="mt-4 flex items-baseline justify-between gap-3">
+          <p className="mt-4 truncate text-[13px] font-bold text-[var(--theme-muted-text)]">{view.treeName}</p>
+          <div className="mt-0.5 flex items-baseline justify-between gap-3">
             <span className="text-[20px] font-black tracking-[-0.02em]">{CLASS_TREE_STAGES[look.stage]}</span>
             {look.ready ? null : <span className="text-[16px] font-black tabular-nums" aria-label={`이번 단계 양분 ${stagePoints(tree.drops, tree.goal)}`}>{stagePoints(tree.drops, tree.goal)}</span>}
           </div>

@@ -17,14 +17,14 @@ export function BankPetCard({ view, onOpen }: Readonly<{ view: PetStudentViewDto
   const next = pet ? nextStageTitle(pet, view.goal) : null;
   return (
     <button type="button" onClick={onOpen}
-      aria-label={pet ? `${pet.name}, ${petTitle(pet)}${next?.points ? ` ${next.points}` : ''}${next?.title ? `, 다음 단계 ${next.title}` : ', 다 자랐어요'}` : '펫 키우기, 알을 골라 시작해요'}
+      aria-label={pet ? `펫, ${pet.name} ${petTitle(pet)}${next?.points ? ` ${next.points}` : ''}${next?.title ? `, 다음 단계 ${next.title}` : ', 다 자랐어요'}` : '펫, 알을 골라 시작해요'}
       className="mt-4 flex w-full items-center gap-4 rounded-[22px] border border-[var(--crs-line)] bg-[var(--theme-surface)] p-4 text-left shadow-[var(--crs-shadow-sm)] transition-[transform,background-color] duration-150 hover:bg-[var(--crs-subtle-hover)] active:scale-[0.99]">
       <span aria-hidden="true" className="shrink-0 rounded-2xl bg-[var(--theme-accent-soft)] p-1">
         {pet ? <PetPicture species={pet.species} stage={pet.stage} color={pet.color} accessory={pet.accessory} size={80} animate={view.awake} />
           : <PetPicture species="dog" stage={0} color={null} size={80} crop={EGG_CROP} silhouette />}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[18px] font-black tracking-[-0.02em]">{pet ? pet.name : '펫 키우기'}</span>
+        <span className="block truncate text-[18px] font-black tracking-[-0.02em]">펫</span>
         {pet && next ? (
           <>
             <span className="mt-0.5 flex items-baseline justify-between gap-2 text-[13px] font-semibold text-[var(--theme-muted-text)]">

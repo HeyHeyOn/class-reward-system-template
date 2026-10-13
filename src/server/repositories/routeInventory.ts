@@ -79,6 +79,7 @@ export const TENANT_ROUTE_INVENTORY: readonly TenantRouteInventoryEntry[] = [
   tenantMutation('/bank/me/pet/decor/buy', 'POST'),
   tenantMutation('/bank/me/pet/decor/place', 'POST'),
   tenantMutation('/bank/me/pet/companions', 'POST'),
+  tenantMutation('/bank/me/pet/rename', 'POST'),
   tenantRead('/pets'),
   tenantMutation('/pets/settings', 'POST'),
   tenantMutation('/pets/rename', 'POST'),

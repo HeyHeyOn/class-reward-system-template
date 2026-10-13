@@ -787,6 +787,25 @@ export function createPetCommands(dependencies: PetDependencies) {
       });
     },
 
+    /** The student renames one of their own pets: the one being raised or a graduated one. */
+    async renameOwnPet(input: Readonly<{ studentId: string; petId: unknown; name: unknown }>): Promise<void> {
+      if (typeof input.petId !== 'string' || !input.petId || input.petId.length > 200) {
+        throw new PetError('INVALID_INPUT', '이름을 바꿀 펫을 다시 골라 주세요.', 400);
+      }
+      const name = cleanPetName(input.name);
+      if (name === null) throw new PetError('INVALID_INPUT', '이름은 1~8자로 적어 주세요.', 400);
+      const petId = input.petId;
+      await runTenantTransaction(tenantId, async (tx) => {
+        const settings = await readPetSettings(tx, tenantId);
+        requireAwake(settings, clockNow(), '이름을 바꿀');
+        await lockStudentAccount(tx, tenantId, input.studentId);
+        const updated = await tx.execute(sql`
+          UPDATE pets SET name=${name}, version=version+1
+          WHERE tenant_id=${tenantId} AND pet_id=${petId} AND student_id=${input.studentId} RETURNING pet_id`);
+        if (updated.rows.length === 0) throw new PetError('PET_NOT_FOUND', '펫을 찾지 못했어요. 화면을 새로고침해 주세요.', 404);
+      });
+    },
+
     /** The tree drops and pet growth a task reward added, for the completion message. */
     async taskGains(transactionId: string): Promise<PetTaskGainsDto> {
       return runTenantTransaction(tenantId, async (tx) => {

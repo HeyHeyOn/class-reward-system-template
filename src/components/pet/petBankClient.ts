@@ -94,3 +94,8 @@ export function placePetDecor(itemKey: string, petId?: string): Promise<BankResu
 export function setPetCompanions(petIds: ReadonlyArray<string>): Promise<BankResult<Command<{ ok: true }>>> {
   return bankRequest('/api/bank/me/pet/companions', post({ petIds }), isCommand<{ ok: true }>(() => true));
 }
+
+/** Renames one of the student's own pets (the one being raised or a graduated one). */
+export function renameMyPet(petId: string, name: string): Promise<BankResult<Command<{ ok: true }>>> {
+  return bankRequest('/api/bank/me/pet/rename', post({ petId, name }), isCommand<{ ok: true }>(() => true));
+}

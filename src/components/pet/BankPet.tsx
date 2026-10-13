@@ -22,13 +22,14 @@ import ROOM, { type PetRoom, type PetRoomPetInit } from '@/lib/pet/petRoom';
 import { isSessionRequired, type BankFailure } from '../bank/bankClient';
 import { formatMoney } from '../bank/format';
 import { NoticeToast, type Notice } from '../bank/NoticeToast';
-import { Button, Callout, IconButton, Input, Modal, SegmentedControl, Spinner, cx } from '../ui';
+import { Button, Callout, Icon, IconButton, Input, Modal, SegmentedControl, Spinner, cx } from '../ui';
 import { GraduateConfirm, PetCelebration, type PetCelebrationMoment } from './PetMoments';
 import { PetPicture } from './PetPicture';
 import { DecorPreview, PetRoomCanvas } from './PetRoomCanvas';
-import { adoptPet, buyPetDecor, carePet, graduatePet, placePetDecor, setPetCompanions } from './petBankClient';
+import { adoptPet, buyPetDecor, carePet, graduatePet, placePetDecor, renameMyPet, setPetCompanions } from './petBankClient';
 import { nextStageTitle, petTitle, StageBar } from './petProgress';
 import { PetDex } from './PetDex';
+import { PetGrowth, type DexPet } from './PetGrowth';
 export { BankPetCard } from './BankPetCard';
 
 const EGG_CROP = [6, 11, 12, 12] as const;
@@ -66,7 +67,9 @@ type BankPetViewProps = Readonly<{
 type Status = Readonly<{ moods: ReadonlyArray<Readonly<{ id: string; mood: string }>>; food: number; awake: number; sleepText: string }>;
 type Popup = Readonly<{ kind: 'shop' | 'dex'; opener: HTMLElement | null }> | null;
 type Preview = Readonly<{ slot: PetShopSlot; id: string }> | null;
-type Busy = 'warm' | 'feed' | 'adopt' | 'graduate' | 'decor' | 'company' | null;
+type Busy = 'warm' | 'feed' | 'adopt' | 'graduate' | 'decor' | 'company' | 'rename' | null;
+/** The pet whose name is being changed, and the pill that opened the popup. */
+type Renaming = Readonly<{ pet: PetDto; opener: HTMLElement }> | null;
 
 const roomPet = (pet: PetDto): PetRoomPetInit => ({ id: pet.petId, species: pet.species, color: pet.color, stage: pet.stage, accessory: pet.accessory });
 const needsKey = (petId: string) => `crs-pet-needs:${petId}`;
@@ -88,6 +91,9 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
   const [preview, setPreview] = useState<Preview>(null);
   const [wearer, setWearer] = useState<string | null>(null);
   const [graduateOpen, setGraduateOpen] = useState<HTMLElement | null>(null);
+  const [renaming, setRenaming] = useState<Renaming>(null);
+  /** A pet opened from the 도감, shown over it with how it grew. */
+  const [growth, setGrowth] = useState<Readonly<{ pet: DexPet; kind: boolean; opener: HTMLElement }> | null>(null);
   const [toast, setToast] = useState<Notice | null>(null);
   const [celebrate, setCelebrate] = useState<PetCelebrationMoment | null>(null);
   const [pickSpecies, setPickSpecies] = useState<PetSpecies | null>(null);
@@ -336,6 +342,22 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
     }
   }
 
+  async function rename(petId: string, name: string) {
+    if (busy) return;
+    setBusy('rename'); setActionError('');
+    const result = await renameMyPet(petId, name);
+    setBusy(null);
+    if (!result.ok) {
+      if (isSessionRequired(result)) { onSessionExpired(); return; }
+      setActionError(result.error ?? '이름을 바꾸지 못했어요. 다시 눌러 주세요.');
+      if (result.status === 409) onRefresh();
+      return;
+    }
+    setRenaming(null);
+    onChanged(result.data.pet, result.data.balance);
+    onAnnounce(`이름을 ${withParticle(name, '으로/로')} 바꿨어요.`);
+  }
+
   async function company(petIds: string[]) {
     if (busy) return;
     setBusy('company'); setActionError(''); setNotice('');
@@ -377,7 +399,7 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
       <header className="flex items-center gap-2">
         <IconButton icon="chevronLeft" label="홈으로 돌아가기" onClick={onBack} className="-ml-2" size="lg" />
         <h2 ref={headingRef} tabIndex={-1} className="min-w-0 flex-1 truncate text-[22px] font-black tracking-[-0.03em] outline-none">
-          {pet ? pet.name : '펫 키우기'}
+          펫
         </h2>
         <IconButton icon="refresh" label="펫 새로고침" onClick={onRefresh} disabled={loading} />
       </header>
@@ -408,7 +430,7 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
           <label htmlFor="pet-name" className="mt-4 block text-[14px] font-bold">이름</label>
           <Input id="pet-name" value={pickName} maxLength={PET_NAME_LENGTH} placeholder="예: 초코" autoComplete="off" className="mt-1 max-w-[16rem]"
             onChange={(event) => setPickName(event.target.value)} />
-          <p className="mt-1 text-[12px] font-semibold text-[var(--theme-muted-text)]">1~{PET_NAME_LENGTH}자로 지어요. 나중에 선생님이 고쳐 줄 수 있어요.</p>
+          <p className="mt-1 text-[12px] font-semibold text-[var(--theme-muted-text)]">1~{PET_NAME_LENGTH}자로 지어요. 이름은 나중에 바꿀 수 있어요.</p>
           <Button className="mt-4" variant="primary" size="lg" block icon="paw" onClick={() => void adopt()} loading={busy === 'adopt'}
             disabled={!pickSpecies || !cleanPetName(pickName) || !view.awake || Boolean(busy)}>이 알로 시작하기</Button>
           <Button className="mt-2" variant="ghost" block icon="package" onClick={(event) => { setNotice(''); setActionError(''); setPopup({ kind: 'dex', opener: event.currentTarget }); }}>
@@ -421,7 +443,7 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
         <section className="mt-4 rounded-[26px] border border-[var(--crs-line)] bg-[var(--theme-surface)] p-3 shadow-[var(--crs-shadow-sm)] sm:p-4">
           <div className="relative">
             <PetRoomCanvas room={engine} running={motion && popup?.kind !== 'shop'} redrawKey={redraw} onFrame={readStatus}
-              label={`${pet.name}의 방. ${animals.map((entry) => `${entry.name} ${moodOf.get(entry.petId) ?? ''}`).join(', ')}`} />
+              label={`펫 방. ${animals.map((entry) => `${entry.name} ${moodOf.get(entry.petId) ?? ''}`).join(', ')}`} />
             {status?.sleepText ? (
               <p className="absolute left-1/2 top-2.5 w-max max-w-[calc(100%-1.25rem)] -translate-x-1/2 rounded-[10px] bg-[rgba(38,30,24,0.84)] px-3 py-1.5 text-center text-[12.5px] font-semibold leading-snug text-[#fff8ef]">
                 {status.sleepText}
@@ -430,13 +452,22 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
           </div>
           {!motion ? <Button className="mt-2" size="sm" variant="ghost" icon="sparkle" onClick={() => setMotion(true)}>움직임 켜기</Button> : null}
 
+          {/* Each pet's name and mood; pressing one opens the popup to change its name. */}
           <ul aria-label="펫 기분" className="mt-3 flex flex-wrap gap-2">
             {animals.map((entry) => (
-              <li key={entry.petId} className="inline-flex min-w-0 items-center gap-1.5 rounded-full bg-[var(--theme-accent-soft)] py-1 pl-1 pr-3">
-                <PetPicture species={entry.species} stage={entry.stage} color={entry.color} accessory={entry.accessory} size={28}
-                  crop={entry.stage === 0 ? EGG_CROP : [2, 6, 18, 18]} />
-                <span className="max-w-[8rem] truncate text-[13px] font-bold">{entry.name}</span>
-                <span className="text-[13px] font-black text-[var(--theme-accent-text)]">{moodOf.get(entry.petId) ?? ''}</span>
+              <li key={entry.petId} className="min-w-0">
+                <button type="button" aria-haspopup="dialog" aria-label={`${entry.name} ${moodOf.get(entry.petId) ?? ''}, 이름 바꾸기`}
+                  onClick={(event) => {
+                    if (!view.awake) { blocked(`이용 시간이 아니라 지금은 이름을 바꿀 수 없어요.${view.nextOpen ? ` ${view.nextOpen}에 바꿀 수 있어요.` : ''}`); return; }
+                    setActionError(''); setRenaming({ pet: entry, opener: event.currentTarget });
+                  }}
+                  className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full bg-[var(--theme-accent-soft)] py-1 pl-1 pr-2.5 transition-[transform,filter] duration-150 hover:brightness-[0.97] active:scale-[0.97]">
+                  <PetPicture species={entry.species} stage={entry.stage} color={entry.color} accessory={entry.accessory} size={28}
+                    crop={entry.stage === 0 ? EGG_CROP : [2, 6, 18, 18]} />
+                  <span className="max-w-[8rem] truncate text-[13px] font-bold">{entry.name}</span>
+                  <span className="text-[13px] font-black text-[var(--theme-accent-text)]">{moodOf.get(entry.petId) ?? ''}</span>
+                  <Icon name="edit" size={13} className="shrink-0 text-[var(--theme-muted-text)]" />
+                </button>
               </li>
             ))}
           </ul>
@@ -494,21 +525,62 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
           onBuy={(slot, id) => void decor(slot, id, 'buy', wearer)} onPlace={(slot, id) => void decor(slot, id, 'place', wearer)} />
       ) : null}
       {popup?.kind === 'dex' && view ? (
-        <Modal title="도감" size="lg" opener={popup.opener} onClose={() => { setPopup(null); setActionError(''); }} busy={busy === 'company'}
-          description="다 키워 졸업한 펫이 남아요. 졸업한 펫은 방으로 불러 함께 지낼 수 있어요(키우는 펫까지 세 마리)."
-          footer={<Button variant="ghost" onClick={() => { setPopup(null); setActionError(''); }}>닫기</Button>}>
+        <Modal title="도감" size="lg" opener={popup.opener} onClose={() => { setPopup(null); setGrowth(null); setActionError(''); }} busy={busy === 'company'}
+          obscured={Boolean(growth)}
+          description="키우는 펫은 알에서 나오면, 다 키운 펫은 졸업하면 남아요. 졸업한 펫은 방으로 불러 함께 지낼 수 있어요(키우는 펫까지 세 마리)."
+          footer={<Button variant="ghost" onClick={() => { setPopup(null); setGrowth(null); setActionError(''); }}>닫기</Button>}>
           {actionError ? <div role="alert" className="mb-2"><Callout tone="danger">{actionError}</Callout></div> : null}
-          <PetDex view={view} busy={busy === 'company'} onCompany={(petIds) => void company(petIds)} onSessionExpired={onSessionExpired} />
+          <PetDex view={view} busy={busy === 'company'} onCompany={(petIds) => void company(petIds)} onSessionExpired={onSessionExpired}
+            onOpenPet={(entry, opener, kind = false) => setGrowth({ pet: entry, kind, opener })} />
         </Modal>
+      ) : null}
+      {growth && popup?.kind === 'dex' ? <PetGrowth pet={growth.pet} kind={growth.kind} opener={growth.opener} onClose={() => setGrowth(null)} /> : null}
+      {renaming ? (
+        <PetRename pet={renaming.pet} opener={renaming.opener} busy={busy === 'rename'} error={actionError}
+          onSave={(name) => void rename(renaming.pet.petId, name)} onClose={() => { setRenaming(null); setActionError(''); }} />
       ) : null}
       {graduateOpen && pet ? (
         <GraduateConfirm pet={pet} prize={prize} busy={busy === 'graduate'} onConfirm={() => void graduate()} onClose={() => setGraduateOpen(null)} />
       ) : null}
-      {celebrate && view && !popup && !graduateOpen ? <PetCelebration moment={celebrate} goal={view.goal} onClose={() => setCelebrate(null)} /> : null}
+      {celebrate && view && !popup && !graduateOpen && !renaming ? <PetCelebration moment={celebrate} goal={view.goal} onClose={() => setCelebrate(null)} /> : null}
       {toast ? <NoticeToast notice={toast} onClose={() => setToast(null)} /> : null}
     </div>
   );
 });
+
+/** The popup that changes one pet's name: the current name is ready in the box to edit. */
+function PetRename({ pet, opener, busy, error, onSave, onClose }: Readonly<{
+  pet: PetDto; opener: HTMLElement; busy: boolean; error: string; onSave: (name: string) => void; onClose: () => void;
+}>) {
+  const [typed, setTyped] = useState(pet.name);
+  const name = cleanPetName(typed);
+  const unchanged = name === pet.name;
+  return (
+    <Modal title="이름 바꾸기" size="sm" opener={opener} onClose={onClose} busy={busy}
+      description={`${petTitle(pet)}의 새 이름을 1~${PET_NAME_LENGTH}자로 지어요.`}
+      footer={(
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>취소</Button>
+          <Button variant="primary" icon="check" type="submit" form="pet-rename-form" loading={busy} disabled={busy || !name || unchanged}>저장</Button>
+        </>
+      )}>
+      <form id="pet-rename-form" noValidate onSubmit={(event) => { event.preventDefault(); if (name && !unchanged && !busy) onSave(name); }}>
+        <div className="flex items-center gap-3">
+          <span aria-hidden="true" className="shrink-0 rounded-2xl bg-[var(--theme-accent-soft)] p-1">
+            <PetPicture species={pet.species} stage={pet.stage} color={pet.color} accessory={pet.accessory} size={56}
+              crop={pet.stage === 0 ? EGG_CROP : [2, 6, 18, 18]} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <label htmlFor="pet-rename" className="block text-[14px] font-bold">이름</label>
+            <Input id="pet-rename" data-autofocus value={typed} maxLength={PET_NAME_LENGTH} autoComplete="off" className="mt-1"
+              onChange={(event) => setTyped(event.target.value)} />
+          </div>
+        </div>
+        {error ? <div role="alert" className="mt-3"><Callout tone="danger">{error}</Callout></div> : null}
+      </form>
+    </Modal>
+  );
+}
 
 /** The 꾸미기/상점 popup: the room on top (a tried-on item shows there), the items below, buying or placing in the footer. */
 function PetShop({ view, room, animals, running, balance, currencyUnit, slot, onSlot, preview, onPreview, wearer, onWearer, busy, notice, error, opener, onClose, onBuy, onPlace }: Readonly<{
