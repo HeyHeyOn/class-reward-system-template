@@ -170,7 +170,7 @@ function corrupted(): BulkImportFileError {
 }
 
 function tooLarge(): BulkImportFileError {
-  return new BulkImportFileError('FILE_TOO_LARGE', '파일 내용이 너무 커요. 양식에 학생·상품 목록만 남기고 다시 올려 주세요.');
+  return new BulkImportFileError('FILE_TOO_LARGE', '파일 내용이 너무 커요. 양식에 학생, 상품 목록만 남기고 다시 올려 주세요.');
 }
 
 function macroError(): BulkImportFileError {

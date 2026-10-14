@@ -37,8 +37,8 @@ export function WithdrawalConfirm({ classNames, expectedSessionId, onCancel, can
   return (
     <div className="space-y-3.5">
       <ul className="list-disc space-y-1.5 rounded-[14px] bg-[var(--crs-danger-bg)] py-3 pl-8 pr-4 text-[13px] leading-relaxed text-[var(--crs-danger-text)]">
-        <li>계정 정보, 닉네임·프로필 아이콘, 약관 동의 기록이 바로 삭제돼요.</li>
-        <li>{classes} 학생들도 더 이상 들어올 수 없고, 학생 정보·거래·과제·성장·보관함 기록과 이전 원본 자료가 함께 삭제돼요.</li>
+        <li>계정 정보, 닉네임과 프로필 아이콘, 약관 동의 기록이 바로 삭제돼요.</li>
+        <li>{classes} 학생들도 더 이상 들어올 수 없고, 학생 정보, 거래, 과제, 성장, 보관함 기록과 이전 원본 자료가 함께 삭제돼요.</li>
         <li>탈퇴한 뒤에는 학급과 기록을 되살릴 수 없어요.</li>
         <li>같은 Google 계정으로 다시 가입할 수 있지만, 처음부터 새로 시작해요.</li>
       </ul>

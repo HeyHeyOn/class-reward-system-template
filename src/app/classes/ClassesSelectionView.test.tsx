@@ -30,7 +30,7 @@ describe('ClassesSelectionView', () => {
     ['signed in', { kind: 'MEMBERSHIPS', accountLabel: 'Teacher', memberships: [] }],
   ] as const)('shows only the Korean title and a copyright footer with the privacy policy link when %s', (_label, model) => {
     render(<ClassesSelectionView model={model as never}/>);
-    expect(screen.getByText('학급 보상 시스템')).toBeTruthy();
+    expect(screen.getByText('딴쌤 클래스')).toBeTruthy();
     for (const removed of ['CLASS REWARD SYSTEM', '선생님의 학급 공간', '나의 교실, 하나의 공간', '함께 성장하는 우리 반']) {
       expect(screen.queryByText(removed, { exact: false })).toBeNull();
     }
@@ -65,7 +65,7 @@ describe('ClassesSelectionView', () => {
 
   it('confirms a finished withdrawal on the sign-in screen', () => {
     render(<ClassesSelectionView model={{ kind: 'LOGIN_REQUIRED', loginHref: '/api/google/login?returnTo=%2Fclasses' }} withdrawn />);
-    expect(screen.getByRole('status').textContent).toBe('회원 탈퇴가 끝났어요. 그동안 학급 보상 시스템을 이용해 주셔서 고마워요.');
+    expect(screen.getByRole('status').textContent).toBe('회원 탈퇴가 끝났어요. 그동안 딴쌤 클래스를 이용해 주셔서 고마워요.');
   });
 
   it('renders canonical active links and leaves suspended memberships non-navigable', () => {
@@ -89,7 +89,7 @@ describe('ClassesSelectionView', () => {
     expect(screen.getByText('소유자')).not.toBeNull();
     expect(screen.getByText('사용 중지')).not.toBeNull();
     expect(screen.queryByRole('link', { name: /중지 학급/ })).toBeNull();
-    expect(screen.getByText('현재 선택할 수 없습니다.')).not.toBeNull();
+    expect(screen.getByText('지금은 선택할 수 없어요.')).not.toBeNull();
     expect(screen.getByRole('link', { name: '새 학급' }).getAttribute('href')).toBe('/classes/new');
   });
 });

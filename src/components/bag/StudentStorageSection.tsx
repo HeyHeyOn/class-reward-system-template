@@ -51,7 +51,7 @@ export function StudentStorageSection({ studentId, name, notify, giveOptions }: 
     setBusy('');
     if (!result.ok) { setError(result.error); return; }
     setItems((current) => current?.map((entry) => (entry.itemId === item.itemId ? result.data : entry)) ?? current);
-    notify(used ? `${name} 학생의 '${item.title}' 1개를 사용함으로 저장했어요.` : `${name} 학생의 '${item.title}' 사용 표시를 1개 되돌려 저장했어요.`);
+    notify(used ? `${name} 학생의 '${item.title}' 1개를 사용 처리했어요.` : `${name} 학생의 '${item.title}' 1개의 사용을 취소했어요.`);
   }
 
   async function revoke(stack: BagItemStack) {
@@ -127,8 +127,8 @@ export function StudentStorageSection({ studentId, name, notify, giveOptions }: 
                     {count > 1 ? <span className="shrink-0 rounded-full bg-[var(--theme-accent-soft)] px-2 py-px text-xs font-black tabular-nums text-[var(--theme-accent-text)]">×{count}</span> : null}
                   </span>
                   <span className="block truncate text-xs text-[var(--theme-muted-text)]">
-                    {isVoucherItem(item) ? `교환권 (${item.voucherProductName ?? '상품'})` : DIGITAL_KIND_LABELS[item.kind]} · {bagStackOrigin(stack)}
-                    {latestUse?.usedAt ? ` · ${dateLabel(latestUse.usedAt)} ${latestUse.usedAtCheckout ? '결제에 사용' : '사용'}` : ` · ${dateLabel(item.issuedAt)}`}
+                    {isVoucherItem(item) ? `교환권 (${item.voucherProductName ?? '상품'})` : DIGITAL_KIND_LABELS[item.kind]}, {bagStackOrigin(stack)}
+                    {latestUse?.usedAt ? `, ${dateLabel(latestUse.usedAt)} ${latestUse.usedAtCheckout ? '결제에 사용' : '사용'}` : `, ${dateLabel(item.issuedAt)}`}
                   </span>
                 </span>
                 <span className="flex shrink-0 items-center gap-1.5">
@@ -160,7 +160,7 @@ export function StudentStorageSection({ studentId, name, notify, giveOptions }: 
             <p className="text-xs leading-relaxed text-[var(--theme-muted-text)]">매점에 상품을 등록하면 여기서 학생 보관함에 바로 넣을 수 있어요.</p>
           ) : (
             <div className="space-y-2">
-              <p className="text-xs font-bold">보관함에 넣기 <span className="font-medium text-[var(--theme-muted-text)]">· 실물 상품은 교환권으로 들어가요.</span></p>
+              <p className="text-xs font-bold">보관함에 넣기 <span className="ml-1 font-medium text-[var(--theme-muted-text)]">실물 상품은 교환권으로 들어가요.</span></p>
               <div className="flex flex-wrap items-end gap-2">
                 <div className="min-w-0 flex-1">
                   <GiveProductFields idPrefix={`give-${studentId}`} options={giveOptions} productId={giveProductId} count={giveCount}

@@ -125,6 +125,7 @@
   { "method": "POST", "route": "/bank/me/pet/decor/buy", "effect": "postgres-write" },
   { "method": "POST", "route": "/bank/me/pet/decor/place", "effect": "postgres-write" },
   { "method": "POST", "route": "/bank/me/pet/companions", "effect": "postgres-write" },
+  { "method": "POST", "route": "/bank/me/pet/rename", "effect": "postgres-write" },
   { "method": "GET", "route": "/pets", "effect": "postgres-read" },
   { "method": "POST", "route": "/pets/settings", "effect": "postgres-write" },
   { "method": "POST", "route": "/pets/rename", "effect": "postgres-write" },

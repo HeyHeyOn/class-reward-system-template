@@ -97,14 +97,14 @@ function parseSheetRecords<T>(
   const headerIndex = createHeaderIndex(headers);
   const required = requireColumns(headerIndex, requiredColumns);
   if (required.ok === false) {
-    throw new Error(`${sheetName} 시트에 필수 컬럼이 없습니다: ${required.missingColumns.join(', ')}`);
+    throw new Error(`${sheetName} 시트에 필수 컬럼이 없어요: ${required.missingColumns.join(', ')}`);
   }
 
   return dataRows.flatMap((row, index) => {
     if (row.every((cell) => !String(cell ?? '').trim())) return [];
     const record = parse(row, headerIndex, index + 2);
     if (!record) {
-      throw new Error(`${sheetName} 시트 ${index + 2}행이 올바르지 않습니다.`);
+      throw new Error(`${sheetName} 시트 ${index + 2}행이 올바르지 않아요.`);
     }
     return [record];
   });
@@ -120,7 +120,7 @@ function rejectDuplicateIds<T>(
   for (const record of records) {
     const id = getId(record);
     if (seen.has(id)) {
-      throw new Error(`${sheetName} 시트에 중복된 ${idColumn}가 있습니다: ${id}`);
+      throw new Error(`${sheetName} 시트에 중복된 ${idColumn}가 있어요: ${id}`);
     }
     seen.add(id);
   }

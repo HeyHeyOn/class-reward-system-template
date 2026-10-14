@@ -60,7 +60,7 @@ describe('TaskRecurrenceFields', () => {
     expect(screen.getByRole('button', { name: '매월' }).getAttribute('aria-pressed')).toBe('true');
     expect((screen.getByLabelText('반복 시간') as HTMLInputElement).value).toBe('08:30');
     expect((screen.getByLabelText('반복 날짜') as HTMLInputElement).value).toBe('31');
-    expect(screen.getByText(/29~31일이 없는 달은 그 달 마지막 날로 바뀝니다/)).toBeTruthy();
+    expect(screen.getByText(/29~31일이 없는 달은 그 달 마지막 날로 바뀌어요/)).toBeTruthy();
     expect(screen.getByText(/미리보기: 매월 31일 08:30/)).toBeTruthy();
     expect(screen.queryByLabelText('과제 시간대')).toBeNull();
 
@@ -118,7 +118,7 @@ describe('TaskRecurrenceFields', () => {
     expect(definitionFor(container, '현재 일정')).toBe('매주 화 09:00');
     expect(definitionFor(container, '현재 회차')).toContain('~');
     expect(definitionFor(container, '다음 회차 시작')).not.toMatch(/없음|정보 없음/);
-    expect(definitionFor(container, '새 회차 처리')).toBe('완료 지움 · 부여 유지');
+    expect(definitionFor(container, '새 회차 처리')).toBe('완료 지움, 부여 유지');
   });
 
   it('describes a permanent task without a next cycle', () => {
@@ -126,6 +126,6 @@ describe('TaskRecurrenceFields', () => {
     expect(definitionFor(container, '현재 일정')).toBe('반복 없음');
     expect(definitionFor(container, '현재 회차')).toBe('상시');
     expect(definitionFor(container, '다음 회차 시작')).toBe('없음 (상시 과제)');
-    expect(definitionFor(container, '새 회차 처리')).toBe('완료 유지 · 부여 유지');
+    expect(definitionFor(container, '새 회차 처리')).toBe('완료 유지, 부여 유지');
   });
 });

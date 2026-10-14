@@ -21,15 +21,15 @@ export async function GET(request: Request, context: RouteContext) {
     const student = await reader.getStudentById(resolved.studentId);
 
     if (!student) {
-      return Response.json({ error: '학생을 찾을 수 없습니다.' }, { status: 404 });
+      return Response.json({ error: '학생을 찾을 수 없어요.' }, { status: 404 });
     }
 
     return Response.json(student);
   } catch (error) {
     if (error instanceof StudentQrValidationError) {
-      return Response.json({ error: '학생을 찾을 수 없습니다.' }, { status: 404 });
+      return Response.json({ error: '학생을 찾을 수 없어요.' }, { status: 404 });
     }
-    const message = error instanceof Error ? error.message : '학생 정보를 불러오지 못했습니다.';
+    const message = error instanceof Error ? error.message : '학생 정보를 불러오지 못했어요.';
 
     return Response.json({ error: message }, { status: 500 });
   }
@@ -53,7 +53,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     return Response.json(student);
   } catch (error) {
-    const message = error instanceof Error ? error.message : '학생 정보를 저장하지 못했습니다.';
+    const message = error instanceof Error ? error.message : '학생 정보를 저장하지 못했어요.';
 
     return Response.json({ error: message }, { status: 400 });
   }

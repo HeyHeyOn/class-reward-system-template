@@ -66,7 +66,7 @@ export function buildParentConsentForm(input: ParentConsentFormInput): ConsentFo
   const blocks: DocumentBlock[] = [
     {
       kind: 'paragraph',
-      text: `${school} ${classLabel}에서는 학급 경제 활동(학급 화폐·매점·은행·과제)을 운영하기 위해 온라인 서비스 「학급 보상 시스템」을 사용합니다. 「개인정보 보호법」 제22조의2에 따라 만 14세 미만 학생의 개인정보를 처리하려면 법정대리인의 동의가 필요합니다. 아래 내용을 읽고 동의 여부를 표시한 뒤 서명해 주시기 바랍니다.`,
+      text: `${school} ${classLabel}에서는 학급 경제 활동(학급 화폐·매점·은행·과제)을 운영하기 위해 온라인 서비스 「딴쌤 클래스」를 사용합니다. 「개인정보 보호법」 제22조의2에 따라 만 14세 미만 학생의 개인정보를 처리하려면 법정대리인의 동의가 필요합니다. 아래 내용을 읽고 동의 여부를 표시한 뒤 서명해 주시기 바랍니다.`,
     },
   ];
   if (due) blocks.push({ kind: 'paragraph', text: `※ ${due}까지 담임교사에게 제출해 주세요.`, bold: true });
@@ -87,12 +87,12 @@ export function buildParentConsentForm(input: ParentConsentFormInput): ConsentFo
     { kind: 'consent', question: '위와 같이 개인정보를 수집·이용하는 데 동의하십니까?', options: AGREE_OPTIONS },
 
     { kind: 'heading', text: '2. 개인정보 처리 위탁 안내' },
-    { kind: 'paragraph', text: '담임교사는 서비스 제공을 위해 학급 보상 시스템 운영자에게 개인정보 처리를 맡기며, 운영자는 서버 운영을 위해 아래 업체에 다시 맡깁니다.' },
+    { kind: 'paragraph', text: '담임교사는 서비스 제공을 위해 딴쌤 클래스 운영자에게 개인정보 처리를 맡기며, 운영자는 서버 운영을 위해 아래 업체에 다시 맡깁니다.' },
     {
       kind: 'table',
       header: ['위탁받는 자', '위탁 업무'],
       rows: [
-        ['학급 보상 시스템 운영자(환잇쌤)', '서비스 운영, 학생 정보 저장·관리'],
+        ['딴쌤 클래스 운영자(환잇쌤)', '서비스 운영, 학생 정보 저장·관리'],
         ['Vercel Inc.', '웹 서비스 호스팅과 서버 운영'],
         ['Neon, LLC', '데이터베이스 저장과 운영'],
       ],
@@ -111,7 +111,7 @@ export function buildParentConsentForm(input: ParentConsentFormInput): ConsentFo
     { kind: 'consent', question: '위와 같이 개인정보를 국외로 이전하는 데 동의하십니까?', options: AGREE_OPTIONS },
 
     { kind: 'heading', text: '4. 법정대리인의 권리' },
-    { kind: 'paragraph', text: '법정대리인은 언제든지 담임교사에게 학생 개인정보의 열람·정정·삭제·처리 정지를 요구하거나 동의를 철회할 수 있습니다. 자세한 내용은 학급 보상 시스템 개인정보처리방침(https://class.schoolit.kr/privacy)에서 확인할 수 있습니다.' },
+    { kind: 'paragraph', text: '법정대리인은 언제든지 담임교사에게 학생 개인정보의 열람·정정·삭제·처리 정지를 요구하거나 동의를 철회할 수 있습니다. 자세한 내용은 딴쌤 클래스 개인정보처리방침(https://class.ddanssaem.com/privacy)에서 확인할 수 있습니다.' },
 
     {
       kind: 'signature',
@@ -125,7 +125,7 @@ export function buildParentConsentForm(input: ParentConsentFormInput): ConsentFo
   );
 
   return {
-    title: `「학급 보상 시스템」 이용을 위한 학생 ${CONSENT_FORM_TITLE}`,
+    title: `「딴쌤 클래스」 이용을 위한 학생 ${CONSENT_FORM_TITLE}`,
     subtitle: '(법정대리인용)',
     blocks,
   };

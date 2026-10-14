@@ -51,7 +51,7 @@ export function ClassCreationForm({ operationId, startOperationId }: Readonly<{ 
         const slug = data && typeof data === 'object' && 'slug' in data && typeof data.slug === 'string' ? data.slug : null;
         const lifecycle = data && typeof data === 'object' && 'lifecycle' in data ? data.lifecycle : null;
         if (startNow && slug && lifecycle === 'DRAFT') {
-          setMessage('학급을 만들었습니다. 사용을 시작하는 중입니다.');
+          setMessage('학급을 만들었어요. 사용을 시작하는 중이에요.');
           await startClass(slug);
           return;
         }
@@ -60,7 +60,7 @@ export function ClassCreationForm({ operationId, startOperationId }: Readonly<{ 
       }
       const data: unknown = await response.json();
       setMessage(data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
-        ? data.error : '결과를 확인하지 못했습니다. 내 학급 목록을 확인해 주세요.');
+        ? data.error : '결과를 확인하지 못했어요. 내 학급 목록을 확인해 주세요.');
       // Only definite pre-write input rejection is editable. Unknown commits,
       // auth failures and conflicts must never silently obtain a new operation.
       if (response.status === 400 || response.status === 413) {
@@ -68,12 +68,12 @@ export function ClassCreationForm({ operationId, startOperationId }: Readonly<{ 
         setLocked(false);
       }
     } catch {
-      setMessage('연결이 끊겨 생성 결과를 확인하지 못했습니다. 다시 만들지 말고 내 학급 목록을 확인해 주세요.');
+      setMessage('연결이 끊겨 생성 결과를 확인하지 못했어요. 다시 만들지 말고 내 학급 목록을 확인해 주세요.');
     }
   }
 
   const options: Array<{ value: StartMode; title: string; description: string }> = [
-    { value: 'now', title: '바로 사용 시작', description: '빈 학급을 만들고 바로 관리자 화면으로 이동합니다.' },
+    { value: 'now', title: '바로 사용 시작', description: '빈 학급을 만들고 바로 관리자 화면으로 이동해요.' },
     { value: 'later', title: '준비 중으로 두기', description: '기존 구글 시트 자료를 옮겨 올 학급이라면 선택하세요.' },
   ];
 

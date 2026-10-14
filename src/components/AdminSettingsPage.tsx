@@ -78,7 +78,7 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
     loadSettings().catch(() => {
       if (!ignore) {
         setLoadStatus('error');
-        setMessage('현재 설정을 불러오지 못했습니다.');
+        setMessage('현재 설정을 불러오지 못했어요.');
       }
     });
 
@@ -116,12 +116,12 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
           if (definite) saveAttempt.current = null;
           if (response.status === 409) setNeedsReload(true);
         }
-        setMessage('error' in payload ? payload.error : '설정을 저장하지 못했습니다.');
+        setMessage('error' in payload ? payload.error : '설정을 저장하지 못했어요.');
         return;
       }
 
       if (isDatabase && (payload.source !== 'database' || !Number.isSafeInteger(payload.settingsVersion))) {
-        throw new Error('저장 결과를 확인하지 못했습니다. 같은 요청으로 다시 확인해 주세요.');
+        throw new Error('저장 결과를 확인하지 못했어요. 같은 요청으로 다시 확인해 주세요.');
       }
       saveAttempt.current = null;
       setUncertain(false);
@@ -138,12 +138,12 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
         setAdminPassword('');
       }
       try { await onSettingsSaved?.(); }
-      catch { setMessage('설정은 저장했습니다. 관리자 목록은 새로고침해 주세요.'); return; }
-      setMessage(isDatabase ? '학급 설정을 저장했습니다.' : '시스템 설정을 저장했고, 관리자 목록도 같은 시트에서 다시 불러왔습니다.');
+      catch { setMessage('설정은 저장했어요. 관리자 목록은 새로고침해 주세요.'); return; }
+      setMessage(isDatabase ? '학급 설정을 저장했어요.' : '시스템 설정을 저장했고, 관리자 목록도 같은 시트에서 다시 불러왔어요.');
     } catch (error) {
       if (isDatabase) setUncertain(true);
-      setMessage(isDatabase ? '저장 결과를 확인하지 못했습니다. 같은 요청으로 다시 확인해 주세요.'
-        : error instanceof Error ? error.message : '설정을 저장하지 못했습니다.');
+      setMessage(isDatabase ? '저장 결과를 확인하지 못했어요. 같은 요청으로 다시 확인해 주세요.'
+        : error instanceof Error ? error.message : '설정을 저장하지 못했어요.');
     } finally {
       saveInFlight.current = false;
       setIsSaving(false);
@@ -162,16 +162,16 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
       <fieldset disabled={isSaving || loadStatus !== 'ready' || uncertain} className="space-y-5 disabled:opacity-70">
         {!isDatabase && (
           <Card>
-            <CardHeader title="Google Sheets 연결" description="이 학급이 사용하는 스프레드시트입니다." />
+            <CardHeader title="Google Sheets 연결" description="이 학급이 쓰는 스프레드시트예요." />
             <Field label="Google Sheets 주소 또는 시트 ID" htmlFor="settings-sheet" className="mt-5"
-              hint="개인 Sheets 배포는 Vercel 환경변수에 CLASS_STORE_STORAGE=sheets와 GOOGLE_SHEET_ID를 설정한 뒤 재배포해야 합니다. 시트 ID는 관리자 화면에서 영구 변경할 수 없습니다.">
+              hint="개인 Sheets 배포는 Vercel 환경변수에 CLASS_STORE_STORAGE=sheets와 GOOGLE_SHEET_ID를 설정한 뒤 재배포해야 해요. 시트 ID는 관리자 화면에서 영구 변경할 수 없어요.">
               <Input id="settings-sheet" value={spreadsheetIdOrUrl} onChange={(event) => setSpreadsheetIdOrUrl(event.target.value)} placeholder="https://docs.google.com/spreadsheets/d/.../edit" />
             </Field>
           </Card>
         )}
 
         <Card data-tour="settings-names">
-          <CardHeader title="이름과 화폐" description="매점과 은행 화면 맨 위에 보이는 이름, 학급에서 쓰는 화폐 단위입니다." />
+          <CardHeader title="이름과 화폐" description="매점과 은행 화면 맨 위에 보이는 이름, 학급에서 쓰는 화폐 단위예요." />
           <div className="mt-5 grid gap-5 sm:grid-cols-2">
             <Field label="매점 이름" htmlFor="settings-app-title">
               <Input id="settings-app-title" aria-label="매점 제목" value={appTitle} onChange={(event) => setAppTitle(event.target.value)} placeholder="학급 매점" />
@@ -186,7 +186,7 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
         </Card>
 
         <Card>
-          <CardHeader title="화면 모양" description="학생이 보는 매점과 은행 화면의 색상과 글꼴입니다." />
+          <CardHeader title="화면 모양" description="학생이 보는 매점과 은행 화면의 색상과 글꼴이에요." />
           <fieldset className="mt-5">
             <legend className="mb-2 text-[13px] font-bold">테마 색상</legend>
             <div role="radiogroup" aria-label="테마 색상" className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
@@ -218,17 +218,17 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
             </Select>
           </Field>
           <p aria-hidden="true" data-tour="settings-font-preview" className="mt-3 rounded-[12px] bg-[var(--crs-subtle)] px-4 py-3 text-lg" style={fontCss ? { fontFamily: fontCss } : undefined}>
-            {appTitle || '학급 매점'} · 연필 100{currencyUnit || '원'}
+            {appTitle || '학급 매점'}, 연필 100{currencyUnit || '원'}
           </p>
         </Card>
 
         <Card>
-          <CardHeader title="보안" description="학생이 다른 친구 번호로 결제하지 못하게 막는 설정입니다." />
+          <CardHeader title="보안" description="학생이 다른 친구 번호로 결제하지 못하게 막아요." />
           <div className="mt-5 space-y-3">
             <Switch checked={qrManualInputEnabled} onChange={setQrManualInputEnabled} ariaLabel="QR 값 직접 입력 허용"
-              label="QR 번호 직접 입력 허용" description="끄면 매점 결제와 은행에서 카메라로 QR을 찍어야만 합니다. 다른 학생 번호를 직접 입력하는 것을 막을 수 있습니다." />
+              label="QR 번호 직접 입력 허용" description="끄면 매점 결제와 은행에서 카메라로 QR을 찍어야만 해요." />
             {!isDatabase && (
-              <Field label="관리자 암호" htmlFor="settings-admin-password" hint="암호는 해시로 Settings 시트에 저장됩니다. QR은 저장 직후 이 화면에서만 표시됩니다.">
+              <Field label="관리자 암호" htmlFor="settings-admin-password" hint="암호는 해시로 Settings 시트에 저장돼요. QR은 저장 직후 이 화면에서만 보여요.">
                 <Input id="settings-admin-password" aria-label="관리자 암호 설정" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)}
                   placeholder={currentSettings?.adminPasswordConfigured ? '새 암호를 입력하면 변경됩니다' : '관리자 로그인 암호'} />
               </Field>
@@ -244,7 +244,7 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
                 ) : (
                   <p className="mt-3 text-sm text-[var(--theme-muted-text)]">QR 생성 중</p>
                 )}
-                <p className="mt-2 text-xs text-[var(--theme-muted-text)]">로그인 화면의 QR 로그인으로 찍으면 암호가 자동 입력됩니다.</p>
+                <p className="mt-2 text-xs text-[var(--theme-muted-text)]">로그인 화면의 QR 로그인으로 찍으면 암호가 자동 입력돼요.</p>
               </div>
             ) : null}
           </div>
@@ -253,8 +253,8 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
 
       <div data-tour="settings-save-bar" className="sticky bottom-4 z-40 flex flex-wrap items-center gap-3 rounded-[18px] border border-[var(--crs-line)] bg-[color-mix(in_srgb,var(--theme-surface)_92%,transparent)] px-4 py-3 shadow-[var(--crs-shadow)] backdrop-blur-md">
         <p role="status" className={cx('min-w-0 flex-1 text-[13px] font-semibold', message ? (success ? 'text-[var(--crs-success-text)]' : 'text-[var(--crs-warning-text)]') : 'text-[var(--theme-muted-text)]')}>
-          {message || (loadStatus === 'loading' ? '설정을 불러오는 중입니다.' : unchanged ? '모든 변경 사항이 저장되어 있습니다.' : '저장하지 않은 변경 사항이 있습니다.')}
-          {!isDatabase && loadStatus === 'ready' ? <span className="ml-2 font-medium text-[var(--theme-muted-text)]">학생 {linkedStudentCount ?? 0}명 · 상품 {linkedProductCount ?? 0}개 연결됨</span> : null}
+          {message || (loadStatus === 'loading' ? '설정을 불러오는 중이에요.' : unchanged ? '모든 변경 사항이 저장되어 있어요.' : '저장하지 않은 변경 사항이 있어요.')}
+          {!isDatabase && loadStatus === 'ready' ? <span className="ml-2 font-medium text-[var(--theme-muted-text)]">학생 {linkedStudentCount ?? 0}명, 상품 {linkedProductCount ?? 0}개 연결됨</span> : null}
         </p>
         {loadStatus === 'error' || needsReload ? (
           <Button size="md" icon="refresh" onClick={() => {

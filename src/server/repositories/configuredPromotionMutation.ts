@@ -19,7 +19,7 @@ import type { PromotionDefinitionInput } from '@/server/repositories/sheets/prom
 import type { AdditiveSchemaMigrationStore } from '@/server/storage/tabularStore';
 
 export const PROMOTION_MUTATION_TARGET_PARTIAL_FAILURE_MESSAGE =
-  '행사 정보는 저장되었을 수 있지만 대상 상품 수정에 실패했습니다. 새로고침 후 확인하고 다시 시도해 주세요.';
+  '행사 정보는 저장되었을 수 있지만 대상 상품을 바꾸지 못했어요. 새로고침해서 확인한 뒤 다시 시도해 주세요.';
 
 export class PromotionMutationTargetPartialFailure extends Error {
   constructor(options?: ErrorOptions) {

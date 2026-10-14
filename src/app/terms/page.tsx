@@ -9,7 +9,7 @@ export default function TermsOfServicePage() {
   return (
     <LegalPage title="이용약관" intro={(
       <p>
-        이 약관은 {OPERATOR}(이하 &lsquo;운영자&rsquo;)가 제공하는 학급 보상 시스템(이하 &lsquo;서비스&rsquo;)을 이용하는 조건과 절차,
+        이 약관은 {OPERATOR}(이하 &lsquo;운영자&rsquo;)가 제공하는 딴쌤 클래스(이하 &lsquo;서비스&rsquo;)를 이용하는 조건과 절차,
         운영자와 회원의 권리·의무와 책임을 정합니다.
       </p>
     )}>

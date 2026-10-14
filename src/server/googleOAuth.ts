@@ -108,7 +108,7 @@ export function createGoogleOAuthClient(origin: string, env: GoogleAuthEnv = pro
   const clientSecret = env.GOOGLE_CLIENT_SECRET?.trim();
 
   if (!clientId || !clientSecret) {
-    throw new Error('Google OAuth 환경변수가 없습니다. GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET를 설정해 주세요.');
+    throw new Error('Google OAuth 환경변수가 없어요. GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET를 설정해 주세요.');
   }
 
   return new google.auth.OAuth2(clientId, clientSecret, getGoogleRedirectUri(origin));
@@ -119,7 +119,7 @@ export function createGoogleOAuthClientWithoutRedirect(env: GoogleAuthEnv = proc
   const clientSecret = env.GOOGLE_CLIENT_SECRET?.trim();
 
   if (!clientId || !clientSecret) {
-    throw new Error('Google OAuth 환경변수가 없습니다. GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET를 설정해 주세요.');
+    throw new Error('Google OAuth 환경변수가 없어요. GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET를 설정해 주세요.');
   }
 
   return new google.auth.OAuth2(clientId, clientSecret);
@@ -128,7 +128,7 @@ export function createGoogleOAuthClientWithoutRedirect(env: GoogleAuthEnv = proc
 export function getGeneratorGoogleClientFingerprint(env: GoogleAuthEnv = process.env): string {
   const clientId = env.GENERATOR_GOOGLE_CLIENT_ID?.trim();
   if (!clientId || clientId.length > 1024) {
-    throw new Error('생성기 Google OAuth 환경변수가 없습니다. GENERATOR_GOOGLE_CLIENT_ID를 설정해 주세요.');
+    throw new Error('생성기 Google OAuth 환경변수가 없어요. GENERATOR_GOOGLE_CLIENT_ID를 설정해 주세요.');
   }
   return createHash('sha256').update(clientId).digest('hex');
 }
@@ -137,7 +137,7 @@ export function createGeneratorGoogleOAuthClient(origin: string, env: GoogleAuth
   const clientId = env.GENERATOR_GOOGLE_CLIENT_ID?.trim();
   const clientSecret = env.GENERATOR_GOOGLE_CLIENT_SECRET?.trim();
   if (!clientId || !clientSecret) {
-    throw new Error('생성기 Google OAuth 환경변수가 없습니다. GENERATOR_GOOGLE_CLIENT_ID, GENERATOR_GOOGLE_CLIENT_SECRET를 설정해 주세요.');
+    throw new Error('생성기 Google OAuth 환경변수가 없어요. GENERATOR_GOOGLE_CLIENT_ID, GENERATOR_GOOGLE_CLIENT_SECRET를 설정해 주세요.');
   }
   return new google.auth.OAuth2(clientId, clientSecret, getGoogleRedirectUri(origin));
 }
@@ -256,7 +256,7 @@ export function getGoogleSessionFromRequest(
 }
 
 export function setPendingAgreementCookie(response: NextResponse, pending: PendingAgreement) {
-  if (!isPendingAgreement(pending)) throw new Error('약관 동의 대기 정보가 올바르지 않습니다.');
+  if (!isPendingAgreement(pending)) throw new Error('약관 동의 대기 정보가 올바르지 않아요.');
   response.cookies.set(PENDING_AGREEMENT_COOKIE, sealPendingAgreement(pending), {
     httpOnly: true,
     sameSite: 'lax',
@@ -365,7 +365,7 @@ export async function exchangeGoogleCodeForGeneratorGrant(
 ): Promise<GeneratorGrant> {
   assertGeneratorConsentState(binding);
   if (!safeEqual(binding.clientFingerprint, getGeneratorGoogleClientFingerprint())) {
-    throw new Error('생성기 Google OAuth 클라이언트 구성이 변경되었습니다. 권한을 다시 승인해 주세요.');
+    throw new Error('생성기 Google OAuth 클라이언트 구성이 변경됐어요. 권한을 다시 승인해 주세요.');
   }
   const client = createGeneratorGoogleOAuthClient(origin);
   const { tokens } = await client.getToken(code);
@@ -373,11 +373,11 @@ export async function exchangeGoogleCodeForGeneratorGrant(
   try {
     const refreshToken = tokens.refresh_token?.trim();
     if (!refreshToken || refreshToken.length > 4096) {
-      throw new Error('Google refresh token을 받지 못했습니다. 권한 동의 화면에서 다시 승인해 주세요.');
+      throw new Error('Google refresh token을 받지 못했어요. 권한 동의 화면에서 다시 승인해 주세요.');
     }
     const profile = await fetchVerifiedGoogleProfile(client);
     if (!safeEqual(profile.subject, binding.subject) || !safeEqual(normalizeEmail(profile.email), normalizeEmail(binding.email))) {
-      throw new Error('로그인한 Google 계정과 시트 권한을 승인한 계정이 다릅니다. 같은 계정으로 다시 시도해 주세요.');
+      throw new Error('로그인한 Google 계정과 시트 권한을 승인한 계정이 달라요. 같은 계정으로 다시 시도해 주세요.');
     }
 
     const issuedAt = Date.now();
@@ -416,10 +416,10 @@ async function fetchVerifiedGoogleProfile(client: InstanceType<typeof google.aut
   const subject = profile.data.id?.trim();
   const email = profile.data.email?.trim();
   if (!subject || !email) {
-    throw new Error('Google 계정 식별자와 이메일을 확인하지 못했습니다.');
+    throw new Error('Google 계정 식별자와 이메일을 확인하지 못했어요.');
   }
   if (profile.data.verified_email !== true) {
-    throw new Error('확인되지 않은 Google 이메일은 사용할 수 없습니다.');
+    throw new Error('확인되지 않은 Google 이메일은 사용할 수 없어요.');
   }
   return { subject, email, name: profile.data.name ?? undefined };
 }
@@ -485,7 +485,7 @@ function decryptGeneratorPayload(value: string, kind: 'state' | 'grant', env: Go
 function getCookieKey(env: GoogleAuthEnv): Buffer {
   const secret = env.AUTH_SECRET || env.GOOGLE_CLIENT_SECRET || env.ADMIN_PASSWORD;
   if (!secret?.trim()) {
-    throw new Error('OAuth 쿠키 암호화를 위한 AUTH_SECRET 또는 GOOGLE_CLIENT_SECRET 환경변수가 필요합니다.');
+    throw new Error('OAuth 쿠키 암호화를 위한 AUTH_SECRET 또는 GOOGLE_CLIENT_SECRET 환경변수가 필요해요.');
   }
   return createHash('sha256').update(secret).digest();
 }
@@ -493,7 +493,7 @@ function getCookieKey(env: GoogleAuthEnv): Buffer {
 function getStrongGeneratorCookieKey(env: GoogleAuthEnv, kind: 'state' | 'grant'): Buffer {
   const secret = env.AUTH_SECRET?.trim();
   if (!secret || secret.length < 32 || secret.length > 1024) {
-    throw new Error('생성기 OAuth 보호를 위해 32자 이상의 강한 AUTH_SECRET 환경변수가 필요합니다.');
+    throw new Error('생성기 OAuth 보호를 위해 32자 이상의 강한 AUTH_SECRET 환경변수가 필요해요.');
   }
   return createHash('sha256').update(`class-store:${kind}:`).update(secret).digest();
 }
@@ -513,7 +513,7 @@ function validIdentityBinding(value: Record<string, unknown>): boolean {
 }
 
 function assertGeneratorConsentState(value: GeneratorConsentState): void {
-  if (!isGeneratorConsentState(value)) throw new Error('생성기 OAuth 상태값이 올바르지 않습니다.');
+  if (!isGeneratorConsentState(value)) throw new Error('생성기 OAuth 상태값이 올바르지 않아요.');
 }
 
 function isGeneratorConsentState(value: unknown): value is GeneratorConsentState {
@@ -527,7 +527,7 @@ function isGeneratorConsentState(value: unknown): value is GeneratorConsentState
 }
 
 function assertGeneratorGrant(value: GeneratorGrant): void {
-  if (!isGeneratorGrant(value)) throw new Error('생성기 Google 권한이 올바르지 않습니다.');
+  if (!isGeneratorGrant(value)) throw new Error('생성기 Google 권한이 올바르지 않아요.');
 }
 
 function isGeneratorGrant(value: unknown): value is GeneratorGrant {

@@ -52,9 +52,9 @@ const CANCELLATION_FAILURE_REASONS = new Map<string, string>([
 const CANCELLATION_FAILURE_PREFIX_REASONS: ReadonlyArray<readonly [string, string]> = [
   ['거래 상품을 찾을 수 없어 수동 조정이 필요합니다:', 'transaction-product-missing'],
   ['TaskCompletions 템플릿/스키마를 업데이트해 주세요. 필수 컬럼이 없습니다:', 'task-completions-schema-invalid'],
-  ['Transactions 시트에 필수 컬럼이 없습니다:', 'transactions-schema-invalid'],
-  ['Students 시트에 필수 컬럼이 없습니다:', 'students-schema-invalid'],
-  ['Products 시트에 필수 컬럼이 없습니다:', 'products-schema-invalid'],
+  ['Transactions 시트에 필수 컬럼이 없어요:', 'transactions-schema-invalid'],
+  ['Students 시트에 필수 컬럼이 없어요:', 'students-schema-invalid'],
+  ['Products 시트에 필수 컬럼이 없어요:', 'products-schema-invalid'],
 ];
 
 export async function POST(request: Request, context: RouteContext) {
@@ -64,7 +64,7 @@ export async function POST(request: Request, context: RouteContext) {
   if (!isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
 
   const body = await parseCancellationBody(request);
-  if (!body) return Response.json({ error: '올바른 취소 요청이 아닙니다.' }, { status: 400 });
+  if (!body) return Response.json({ error: '올바른 취소 요청이 아니에요.' }, { status: 400 });
 
   let transactionId = 'unknown';
   try {
@@ -85,7 +85,7 @@ export async function POST(request: Request, context: RouteContext) {
     if (error instanceof Error && (error as { code?: unknown }).code === 'COUPON_ALREADY_USED') {
       return Response.json({ error: error.message, code: 'COUPON_ALREADY_USED' }, { status: 409 });
     }
-    return Response.json({ error: '거래를 취소하지 못했습니다.' }, { status: 400 });
+    return Response.json({ error: '거래를 취소하지 못했어요.' }, { status: 400 });
   }
 }
 

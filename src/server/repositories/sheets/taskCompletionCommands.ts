@@ -64,11 +64,11 @@ export async function mutateTaskCompletionNow(mutation: TaskCompletionMutation):
     && preloadedBankCompletions?.some((event) => event.operationId === bankOperation.operationId));
   const studentRows = await store.getRows('Students');
   const studentHeaders = studentRows[0];
-  if (!studentHeaders) throw new Error('학생 정보를 찾을 수 없습니다.');
+  if (!studentHeaders) throw new Error('학생 정보를 찾을 수 없어요.');
   const studentIndex = createHeaderIndex(studentHeaders);
   const observed = studentRows.slice(1).map((row, index) => ({ student: parseStudentRow(row, studentIndex), rowNumber: index + 2 }))
     .find((record) => record.student?.studentId === mutation.student.studentId);
-  if (!observed?.student || (!hasStoredOperation && observed.student.status !== 'ACTIVE')) throw new Error('학생 정보를 찾을 수 없습니다.');
+  if (!observed?.student || (!hasStoredOperation && observed.student.status !== 'ACTIVE')) throw new Error('학생 정보를 찾을 수 없어요.');
   const student = observed.student;
   const studentRowNumber = observed.rowNumber;
   let assignments = await readTaskAssignmentsIfPresent(store);
@@ -83,7 +83,7 @@ export async function mutateTaskCompletionNow(mutation: TaskCompletionMutation):
         throw new TaskCompletionReconciliationError('TASK_COMPLETION_PENDING_CHECKPOINT_MISSING', storedOperationEvents);
       }
       const headers = (await store.getRows('TaskCompletions'))[0];
-      if (!headers) throw new Error('TaskCompletions 시트에 헤더가 없습니다.');
+      if (!headers) throw new Error('TaskCompletions 시트에 헤더가 없어요.');
       return finishBankOperation(store, task, studentRowNumber, headers, storedOperationEvents, pending);
     }
   }
@@ -115,8 +115,8 @@ export async function mutateTaskCompletionNow(mutation: TaskCompletionMutation):
     // snapshot, or an explicit stable legacy reference, and never creates an assignment.
     assignmentId = resetAssignmentId;
   } else {
-    if (state.assignedStudentIds.length === 0) throw new Error('부여된 학생이 없습니다.');
-    if (!(studentState?.assigned ?? false)) throw new Error('허가되지 않은 과제입니다.');
+    if (state.assignedStudentIds.length === 0) throw new Error('부여된 학생이 없어요.');
+    if (!(studentState?.assigned ?? false)) throw new Error('허가되지 않은 과제예요.');
 
     await mutateTaskAssignmentNow(store, {
       task,
@@ -143,12 +143,12 @@ export async function mutateTaskCompletionNow(mutation: TaskCompletionMutation):
       );
     }
     assignmentId = studentState?.assignmentEvent?.assignmentId ?? '';
-    if (!studentState?.assigned || !assignmentId) throw new Error('허가되지 않은 과제입니다.');
+    if (!studentState?.assigned || !assignmentId) throw new Error('허가되지 않은 과제예요.');
   }
 
   const schedule = resolveTaskSchedule({ currentSchedule: task.schedule, pendingSchedule: task.pendingSchedule ?? null, now });
   const headers = (await store.getRows('TaskCompletions'))[0];
-  if (!headers) throw new Error('TaskCompletions 시트에 헤더가 없습니다.');
+  if (!headers) throw new Error('TaskCompletions 시트에 헤더가 없어요.');
 
   if (!resetCompletionEvent
     && (studentState.completionOrigin === 'CARRY' || studentState.completionOrigin === 'LEGACY')
@@ -164,11 +164,11 @@ export async function mutateTaskCompletionNow(mutation: TaskCompletionMutation):
   }
 
   const effectiveCompleted = state.students[student.studentId]?.completed ?? false;
-  if (mutation.source === 'BANK' && effectiveCompleted) throw new Error('이미 완료한 과제입니다.');
+  if (mutation.source === 'BANK' && effectiveCompleted) throw new Error('이미 완료한 과제예요.');
   if (mutation.source === 'ADMIN' && effectiveCompleted === mutation.completed) {
     return { changed: false, completion: state.students[student.studentId]?.completionEvent ?? null, balanceAfter: student.balance };
   }
-  if (mutation.source === 'BANK' && !mutation.completed) throw new Error('과제 완료 요청 형식이 올바르지 않습니다.');
+  if (mutation.source === 'BANK' && !mutation.completed) throw new Error('과제 완료 요청 형식이 올바르지 않아요.');
 
   if (mutation.source === 'BANK' && bankOperation) {
     return completeBankOperation({

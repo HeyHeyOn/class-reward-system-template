@@ -16,7 +16,7 @@ export async function PATCH(request: Request) {
 
   const payload = await parseBulkBalanceBody(request);
   if (!payload) {
-    return Response.json({ error: '올바른 학생 재화 수정 요청이 아닙니다.' }, { status: 400 });
+    return Response.json({ error: '올바른 학생 재화 수정 요청이 아니에요.' }, { status: 400 });
   }
 
   try {
@@ -32,7 +32,7 @@ export async function PATCH(request: Request) {
       balance: balanceAfter,
     })));
   } catch {
-    return Response.json({ error: '학생 재화를 일괄 수정하지 못했습니다.' }, { status: 400 });
+    return Response.json({ error: '학생 재화를 일괄 수정하지 못했어요.' }, { status: 400 });
   }
 }
 

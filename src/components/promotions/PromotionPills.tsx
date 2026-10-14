@@ -32,7 +32,7 @@ export function PromotionPills({
   const pills = discounts.length === 0 ? nPlusOne : [...nPlusOne, {
     key: 'discounts:aggregate',
     label: '할인',
-    fullName: discounts.map((promotion) => promotion.name).join(' · '),
+    fullName: discounts.map((promotion) => promotion.name).join(', '),
   }];
 
   return (

@@ -331,7 +331,7 @@ export type TaskAssignmentMutationStatus = TaskAssignmentStatus & { legacyMirror
 
 export async function getTaskAssignmentStatus(reader: SheetsReader, taskId: string): Promise<TaskAssignmentStatus> {
   const task = await getTaskById(reader, taskId.trim());
-  if (!task) throw new Error('과제를 찾을 수 없습니다.');
+  if (!task) throw new Error('과제를 찾을 수 없어요.');
   const [students, cycleState] = await Promise.all([
     getStudents(reader),
     readTaskCycleState(reader, task, new Date().toISOString()),
@@ -364,7 +364,7 @@ export async function getTaskCycleState(
   now: string = new Date().toISOString(),
 ): Promise<TaskCycleState> {
   const task = await getTaskById(reader, taskId.trim());
-  if (!task) throw new Error('과제를 찾을 수 없습니다.');
+  if (!task) throw new Error('과제를 찾을 수 없어요.');
   return readTaskCycleState(reader, task, now);
 }
 
@@ -382,11 +382,11 @@ export async function updateTaskAssignmentStatus(
   update: TaskAssignmentStatusUpdate,
 ): Promise<TaskAssignmentMutationStatus> {
   const record = await getTaskRecordById(store, taskId.trim());
-  if (!record) throw new Error('과제를 찾을 수 없습니다.');
+  if (!record) throw new Error('과제를 찾을 수 없어요.');
   const student = await getStudentById(store, update.studentId.trim());
-  if (!student || student.status !== 'ACTIVE') throw new Error('학생 정보를 찾을 수 없습니다.');
+  if (!student || student.status !== 'ACTIVE') throw new Error('학생 정보를 찾을 수 없어요.');
   if (update.completed !== undefined && update.source !== 'ADMIN') {
-    throw new Error('QR 요청은 완료 상태를 변경할 수 없습니다.');
+    throw new Error('QR 요청은 완료 상태를 변경할 수 없어요.');
   }
   const studentRecord = update.completed !== undefined
     ? await getStudentRecordById(store, student.studentId)
@@ -447,7 +447,7 @@ async function createTaskNow(store: SheetsStore, create: TaskCreate): Promise<Cl
   validateTaskId(taskId);
   validateTaskUpdate(create);
   await ensureTaskSheet(store);
-  if (await getTaskById(store, taskId)) throw new Error('이미 존재하는 과제 ID입니다.');
+  if (await getTaskById(store, taskId)) throw new Error('이미 존재하는 과제 ID예요.');
   const existingTasks = await getTasks(store, { includeInactive: true });
   const availability = validateTaskAvailability(create);
   validateTaskPrerequisiteGraph([...existingTasks, { taskId, isActive: create.isActive, prerequisiteTaskId: create.prerequisiteTaskId?.trim() || undefined }]);
@@ -511,7 +511,7 @@ export async function updateTaskSchedule(
 ): Promise<ClassTask> {
   return enqueueTaskCommand(taskCommandQueueKey(taskId), async () => {
     const record = await getTaskRecordById(store, taskId);
-    if (!record) throw new Error('과제를 찾을 수 없습니다.');
+    if (!record) throw new Error('과제를 찾을 수 없어요.');
     return updateTaskDetailsNow(store, taskId, {
       title: record.task.title,
       description: record.task.description,
@@ -532,7 +532,7 @@ export async function updateTaskScheduleSettings(
 ): Promise<ClassTask> {
   return enqueueTaskCommand(taskCommandQueueKey(taskId), async () => {
     const record = await getTaskRecordById(store, taskId);
-    if (!record) throw new Error('과제를 찾을 수 없습니다.');
+    if (!record) throw new Error('과제를 찾을 수 없어요.');
     return updateTaskDetailsNow(store, taskId, {
       title: record.task.title,
       description: record.task.description,
@@ -554,7 +554,7 @@ async function updateTaskDetailsNow(
   validateTaskUpdate(update);
   await ensureTaskSheet(store);
   let record = await getTaskRecordById(store, taskId);
-  if (!record) throw new Error('과제를 찾을 수 없습니다.');
+  if (!record) throw new Error('과제를 찾을 수 없어요.');
   if (update.schedule !== undefined) assertPersistedScheduleIsEditable(record.task);
   const availability = validateTaskAvailability({
     availableFrom: Object.hasOwn(update, 'availableFrom') ? update.availableFrom : record.task.availableFrom,
@@ -574,7 +574,7 @@ async function updateTaskDetailsNow(
     // Migration can replace the legacy projection. Re-read only after every validation that
     // can reject the command has completed without writes.
     record = await getTaskRecordById(store, taskId);
-    if (!record) throw new Error('과제를 찾을 수 없습니다.');
+    if (!record) throw new Error('과제를 찾을 수 없어요.');
   }
   let scheduleState = null;
   if (update.schedule !== undefined) {
@@ -649,17 +649,17 @@ async function updateTaskDetailsBatchNow(
   updates: TaskBatchUpdate[],
   editedAt: string,
 ): Promise<ClassTask[]> {
-  if (!Array.isArray(updates) || updates.length === 0) throw new Error('저장할 과제가 없습니다.');
+  if (!Array.isArray(updates) || updates.length === 0) throw new Error('저장할 과제가 없어요.');
   const normalized = updates.map((update) => ({ ...update, taskId: update.taskId.trim() }));
   const duplicateIds = findDuplicates(normalized.map((update) => update.taskId));
-  if (duplicateIds.length > 0) throw new Error(`중복된 과제 ID가 있습니다: ${duplicateIds.join(', ')}`);
+  if (duplicateIds.length > 0) throw new Error(`중복된 과제 ID가 있어요: ${duplicateIds.join(', ')}`);
 
   const recordsById = new Map((await getTaskRecords(store)).map((record) => [record.task.taskId, record]));
   for (const update of normalized) {
     validateTaskId(update.taskId);
     validateTaskUpdate(update);
     const record = recordsById.get(update.taskId);
-    if (!record) throw new Error(`과제를 찾을 수 없습니다: ${update.taskId}`);
+    if (!record) throw new Error(`과제를 찾을 수 없어요: ${update.taskId}`);
     if (update.schedule !== undefined) assertPersistedScheduleIsEditable(record.task);
   }
   validateTaskPrerequisiteGraph(Array.from(recordsById.values(), ({ task }) => {
@@ -683,7 +683,7 @@ async function updateTaskDetailsBatchNow(
   for (const update of normalized) {
     if (update.schedule === undefined) continue;
     const record = currentRecordsById.get(update.taskId);
-    if (!record) throw new Error(`과제를 찾을 수 없습니다: ${update.taskId}`);
+    if (!record) throw new Error(`과제를 찾을 수 없어요: ${update.taskId}`);
     assertPersistedScheduleIsEditable(record.task);
     scheduleStates.set(update.taskId, prepareImmediateScheduleState(record.task, update.schedule, editedAt));
   }
@@ -696,7 +696,7 @@ async function updateTaskDetailsBatchNow(
 
   for (const update of normalized) {
     const record = currentRecordsById.get(update.taskId);
-    if (!record) throw new Error(`과제를 찾을 수 없습니다: ${update.taskId}`);
+    if (!record) throw new Error(`과제를 찾을 수 없어요: ${update.taskId}`);
 
     const title = update.title.trim();
     const description = update.description.trim();
@@ -763,12 +763,12 @@ export async function deleteTasksBatch(store: RecurringSchemaMigrationStore, tas
 
 async function deleteTasksBatchNow(store: RecurringSchemaMigrationStore, taskIds: string[]): Promise<{ taskIds: string[]; deletedTaskCount: number; deletedCompletionCount: number }> {
   const uniqueIds = normalizeUniqueIds(taskIds);
-  if (uniqueIds.length === 0) throw new Error('선택된 과제가 없습니다.');
-  if (!store.deleteRows) throw new Error('현재 Sheets 저장소가 여러 행 삭제를 지원하지 않습니다.');
+  if (uniqueIds.length === 0) throw new Error('선택된 과제가 없어요.');
+  if (!store.deleteRows) throw new Error('현재 Sheets 저장소가 여러 행 삭제를 지원하지 않아요.');
 
   const recordsById = new Map((await getTaskRecords(store)).map((record) => [record.task.taskId, record]));
   const missingIds = uniqueIds.filter((taskId) => !recordsById.has(taskId));
-  if (missingIds.length > 0) throw new Error(`과제를 찾을 수 없습니다: ${missingIds.join(', ')}`);
+  if (missingIds.length > 0) throw new Error(`과제를 찾을 수 없어요: ${missingIds.join(', ')}`);
   assertNoRemainingTaskReferences(recordsById, new Set(uniqueIds));
 
   await store.deleteRows('Tasks', uniqueIds.map((taskId) => recordsById.get(taskId)!.rowNumber));
@@ -782,7 +782,7 @@ export async function resetTaskCompletionsBatch(
   options: { operationId?: string } = {},
 ): Promise<{ taskIds: string[]; resetEventsAppended: number; deletedCount: number }> {
   const uniqueIds = normalizeUniqueIds(taskIds);
-  if (uniqueIds.length === 0) throw new Error('선택된 과제가 없습니다.');
+  if (uniqueIds.length === 0) throw new Error('선택된 과제가 없어요.');
   const operationId = options.operationId?.trim() || undefined;
   const canonicalTaskIds = [...uniqueIds].sort();
   const resultTaskIds = operationId ? canonicalTaskIds : uniqueIds;
@@ -803,7 +803,7 @@ export async function resetTaskCompletionsBatch(
         );
         if (replay) return replay;
       }
-      throw new Error(`과제를 찾을 수 없습니다: ${missingIds.join(', ')}`);
+      throw new Error(`과제를 찾을 수 없어요: ${missingIds.join(', ')}`);
     }
 
     await migrateRecurringSchemaIfNeeded(store);
@@ -829,7 +829,7 @@ export async function resetTaskCompletionsBatch(
     const recordsById = new Map(taskRecords.map((record) => [record.task.taskId, record]));
     const postMigrationMissingIds = uniqueIds.filter((taskId) => !recordsById.has(taskId));
     if (postMigrationMissingIds.length > 0) {
-      throw new Error(`과제를 찾을 수 없습니다: ${postMigrationMissingIds.join(', ')}`);
+      throw new Error(`과제를 찾을 수 없어요: ${postMigrationMissingIds.join(', ')}`);
     }
 
     const studentHeaders = studentRows[0] ?? [];
@@ -968,14 +968,14 @@ export async function resetTaskCompletionsBatch(
     }
 
     if (plannedCompletions.length > 250) {
-      throw new Error('한 번에 초기화할 수 있는 완료 내역은 250행까지입니다.');
+      throw new Error('한 번에 초기화할 수 있는 완료 내역은 250행까지예요.');
     }
     if (resetCount === 0) {
       if (!operationId || !operationPayloadHash) {
         return { taskIds: resultTaskIds, resetEventsAppended: 0, deletedCount: 0 };
       }
       if (!store.appendRows) {
-        throw new Error('현재 Sheets 저장소가 완료 내역 일괄 추가를 지원하지 않습니다.');
+        throw new Error('현재 Sheets 저장소가 완료 내역 일괄 추가를 지원하지 않아요.');
       }
       const marker = buildZeroResetOperationMarker(operationId, operationPayloadHash, canonicalTaskIds);
       const markerRow = buildResetOperationMarkerRow(settingsRows, marker.key, marker.value);
@@ -991,7 +991,7 @@ export async function resetTaskCompletionsBatch(
         } catch {
           // Provider and parse details are deliberately hidden by the stable contract below.
         }
-        throw new Error('과제 완료 초기화 저장 결과를 확인할 수 없습니다.');
+        throw new Error('과제 완료 초기화 저장 결과를 확인할 수 없어요.');
       }
       return { taskIds: resultTaskIds, resetEventsAppended: 0, deletedCount: 0 };
     }
@@ -1008,7 +1008,7 @@ export async function resetTaskCompletionsBatch(
       }
     }
     if (!store.appendRows) {
-      throw new Error('현재 Sheets 저장소가 완료 내역 일괄 추가를 지원하지 않습니다.');
+      throw new Error('현재 Sheets 저장소가 완료 내역 일괄 추가를 지원하지 않아요.');
     }
     const plannedRows = plannedCompletions.map((completion) =>
       buildTaskCompletionAppendRow(completionHeaders, completion));
@@ -1026,15 +1026,15 @@ export async function resetTaskCompletionsBatch(
       } catch {
         // Provider and parse details are deliberately hidden by the stable contract below.
       }
-      throw new Error('과제 완료 초기화 저장 결과를 확인할 수 없습니다.');
+      throw new Error('과제 완료 초기화 저장 결과를 확인할 수 없어요.');
     }
     // Keep the legacy property name while reporting appended reset events, never deletions.
     return { taskIds: resultTaskIds, resetEventsAppended: resetCount, deletedCount: resetCount };
   });
 }
 
-const RESET_INTEGRITY_ERROR = '과제 완료 초기화 데이터 무결성을 확인할 수 없습니다.';
-const RESET_OPERATION_CONFLICT_ERROR = '과제 완료 초기화 작업이 충돌하거나 손상되었습니다.';
+const RESET_INTEGRITY_ERROR = '과제 완료 초기화 데이터 무결성을 확인할 수 없어요.';
+const RESET_OPERATION_CONFLICT_ERROR = '과제 완료 초기화 작업이 충돌하거나 손상됐어요.';
 const RESET_OPERATION_ID_PATTERN = /^TC-RESET-([a-f0-9]{64})-([1-9]\d*)-([1-9]\d*)$/;
 
 function resetOperationPayloadHash(canonicalTaskIds: readonly string[]): string {
@@ -1288,8 +1288,8 @@ async function deleteTaskNow(store: RecurringSchemaMigrationStore, taskId: strin
   const records = await getTaskRecords(store);
   const recordsById = new Map(records.map((candidate) => [candidate.task.taskId, candidate]));
   const record = recordsById.get(taskId);
-  if (!record) throw new Error('과제를 찾을 수 없습니다.');
-  if (!store.deleteRow) throw new Error('현재 Sheets 저장소가 행 삭제를 지원하지 않습니다.');
+  if (!record) throw new Error('과제를 찾을 수 없어요.');
+  if (!store.deleteRow) throw new Error('현재 Sheets 저장소가 행 삭제를 지원하지 않아요.');
   assertNoRemainingTaskReferences(recordsById, new Set([taskId]));
   await store.deleteRow('Tasks', record.rowNumber);
   return { taskId, taskDefinitionDeleted: true, deletedCompletionCount: 0 };
@@ -1302,7 +1302,7 @@ function assertNoRemainingTaskReferences(
   const dependent = Array.from(recordsById.values()).find(({ task }) =>
     !deletingTaskIds.has(task.taskId)
       && Boolean(task.prerequisiteTaskId && deletingTaskIds.has(task.prerequisiteTaskId)));
-  if (dependent) throw new Error(`선행 과제로 참조 중인 과제는 삭제할 수 없습니다: ${dependent.task.title}`);
+  if (dependent) throw new Error(`선행 과제로 참조 중인 과제는 삭제할 수 없어요: ${dependent.task.title}`);
 }
 
 export async function completeTaskForStudent(
@@ -1328,16 +1328,16 @@ export async function completeTaskForStudent(
       ? (await readTaskCompletionsFresh(store)).some((event) => event.operationId === operation.operationId)
       : false;
     const record = await getTaskRecordById(store, taskId.trim());
-    if (!record || (!existingOperation && !record.task.isActive)) throw new Error('완료할 수 있는 과제가 아닙니다.');
+    if (!record || (!existingOperation && !record.task.isActive)) throw new Error('완료할 수 있는 과제가 아니에요.');
     const now = new Date().toISOString();
-    if (!existingOperation && !isTaskAvailable(record.task, now)) throw new Error('현재 완료할 수 있는 과제가 아닙니다.');
+    if (!existingOperation && !isTaskAvailable(record.task, now)) throw new Error('현재 완료할 수 있는 과제가 아니에요.');
     const studentRecord = await getStudentRecordById(store, studentId.trim());
-    if (!studentRecord || (!existingOperation && studentRecord.student.status !== 'ACTIVE')) throw new Error('학생 정보를 찾을 수 없습니다.');
+    if (!studentRecord || (!existingOperation && studentRecord.student.status !== 'ACTIVE')) throw new Error('학생 정보를 찾을 수 없어요.');
     if (!existingOperation && record.task.prerequisiteTaskId) {
       const prerequisite = await getTaskById(store, record.task.prerequisiteTaskId);
-      if (!prerequisite) throw new Error('선행 과제를 찾을 수 없습니다.');
+      if (!prerequisite) throw new Error('선행 과제를 찾을 수 없어요.');
       if (!prerequisite.isActive || !isTaskAvailable(prerequisite, now)) {
-        throw new Error(`선행 과제 '${prerequisite.title}'은(는) 현재 완료할 수 없습니다.`);
+        throw new Error(`선행 과제 '${prerequisite.title}'은(는) 현재 완료할 수 없어요.`);
       }
       const prerequisiteState = await readTaskCycleState(store, prerequisite, now);
       if (!(prerequisiteState.students[studentRecord.student.studentId]?.completed ?? false)) {
@@ -1359,7 +1359,7 @@ export async function completeTaskForStudent(
       } : {}),
       now,
     });
-    if (!mutation.completion) throw new Error('과제 완료 처리에 실패했습니다.');
+    if (!mutation.completion) throw new Error('과제 완료 처리에 실패했어요.');
     const baseResult = {
       task: operation ? { ...record.task, reward: mutation.completion.reward } : record.task,
       student: { ...studentRecord.student, balance: mutation.balanceAfter },
@@ -1368,7 +1368,7 @@ export async function completeTaskForStudent(
     if (!operation) return baseResult;
     const projectionStartedAt = Date.now();
     const tasks = await operation.buildSafeProjection(now);
-    if (!Array.isArray(tasks)) throw new Error('과제 projection을 확인할 수 없습니다.');
+    if (!Array.isArray(tasks)) throw new Error('과제 projection을 확인할 수 없어요.');
     emitOperationStage({
       requestId: operation.requestId,
       operationId: operation.operationId,
@@ -2069,7 +2069,7 @@ export async function upsertSheetSettings(
   const keyIndex = headerIndex.get('key');
   const valueIndex = headerIndex.get('value');
   if (keyIndex === undefined || valueIndex === undefined) {
-    throw new Error('Settings 시트에 필수 컬럼이 없습니다: key, value');
+    throw new Error('Settings 시트에 필수 컬럼이 없어요: key, value');
   }
 
   const updates: SheetCellUpdate[] = [];
@@ -2125,7 +2125,7 @@ export async function saveSheetSetting(store: SheetsStore, setting: SheetSetting
   const valueIndex = headerIndex.get('value');
 
   if (keyIndex === undefined || keyIndex < 0 || valueIndex === undefined || valueIndex < 0) {
-    throw new Error('Settings 시트에 필수 컬럼이 없습니다: key, value');
+    throw new Error('Settings 시트에 필수 컬럼이 없어요: key, value');
   }
 
   const existingIndex = dataRows.findIndex((row) => String(row[keyIndex] ?? '').trim() === key);
@@ -2166,7 +2166,7 @@ export async function createStudent(store: SheetsStore, create: StudentCreate): 
   validateStudentUpdate(create);
 
   if (await getStudentById(store, studentId)) {
-    throw new Error('이미 존재하는 학생 ID입니다.');
+    throw new Error('이미 존재하는 학생 ID예요.');
   }
 
   const student: Student = {
@@ -2192,7 +2192,7 @@ async function updateStudentDetailsNow(store: SheetsStore, studentId: string, up
   const record = await getStudentRecordById(store, studentId);
 
   if (!record) {
-    throw new Error('학생을 찾을 수 없습니다.');
+    throw new Error('학생을 찾을 수 없어요.');
   }
 
   validateStudentUpdate(update);
@@ -2210,13 +2210,13 @@ export async function updateStudentDetailsBatch(store: SheetsStore, updates: Stu
 }
 
 async function updateStudentDetailsBatchNow(store: SheetsStore, updates: StudentBatchUpdate[]): Promise<Student[]> {
-  if (!Array.isArray(updates) || updates.length === 0) throw new Error('저장할 학생이 없습니다.');
+  if (!Array.isArray(updates) || updates.length === 0) throw new Error('저장할 학생이 없어요.');
 
   const rows = await (store.getRowsFresh ? store.getRowsFresh('Students') : store.getRows('Students'));
   const recordsById = getStudentRecordsFromRows(rows);
   const normalized = updates.map((update) => ({ ...update, studentId: update.studentId.trim() }));
   const duplicateIds = findDuplicates(normalized.map((update) => update.studentId));
-  if (duplicateIds.length > 0) throw new Error(`중복된 학생 ID가 있습니다: ${duplicateIds.join(', ')}`);
+  if (duplicateIds.length > 0) throw new Error(`중복된 학생 ID가 있어요: ${duplicateIds.join(', ')}`);
 
   const cellUpdates: SheetCellUpdate[] = [];
   const students: Student[] = [];
@@ -2224,7 +2224,7 @@ async function updateStudentDetailsBatchNow(store: SheetsStore, updates: Student
     validateStudentId(update.studentId);
     validateStudentUpdate(update);
     const record = recordsById.get(update.studentId);
-    if (!record) throw new Error(`학생을 찾을 수 없습니다: ${update.studentId}`);
+    if (!record) throw new Error(`학생을 찾을 수 없어요: ${update.studentId}`);
 
     const name = update.name.trim();
     cellUpdates.push(
@@ -2254,12 +2254,12 @@ async function updateStudentDetailsBatchWithBalanceTransactionsNow(
   operationId: string,
 ): Promise<Student[]> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(operationId)) {
-    throw new Error('작업 ID 형식이 올바르지 않습니다.');
+    throw new Error('작업 ID 형식이 올바르지 않아요.');
   }
   if (!store.applyAtomicMutation) {
-    throw new Error('현재 Sheets 저장소가 원자적 학생 재화 수정을 지원하지 않습니다.');
+    throw new Error('현재 Sheets 저장소가 원자적 학생 재화 수정을 지원하지 않아요.');
   }
-  if (!Array.isArray(updates) || updates.length === 0) throw new Error('저장할 학생이 없습니다.');
+  if (!Array.isArray(updates) || updates.length === 0) throw new Error('저장할 학생이 없어요.');
 
   const read = (name: SheetName) => store.getRowsFresh ? store.getRowsFresh(name) : store.getRows(name);
   const [studentRows, transactionRows, settingsRows] = await Promise.all([
@@ -2272,12 +2272,12 @@ async function updateStudentDetailsBatchWithBalanceTransactionsNow(
     .map((update) => ({ ...update, studentId: update.studentId.trim(), name: update.name.trim() }))
     .sort((left, right) => left.studentId.localeCompare(right.studentId));
   const duplicateIds = findDuplicates(normalized.map((update) => update.studentId));
-  if (duplicateIds.length > 0) throw new Error(`중복된 학생 ID가 있습니다: ${duplicateIds.join(', ')}`);
+  if (duplicateIds.length > 0) throw new Error(`중복된 학생 ID가 있어요: ${duplicateIds.join(', ')}`);
 
   const students: Student[] = normalized.map((update) => {
     validateStudentId(update.studentId);
     const record = recordsById.get(update.studentId);
-    if (!record) throw new Error(`학생을 찾을 수 없습니다: ${update.studentId}`);
+    if (!record) throw new Error(`학생을 찾을 수 없어요: ${update.studentId}`);
     const balance = Object.hasOwn(update, 'balance') ? update.balance! : record.student.balance;
     validateStudentUpdate({ ...update, balance });
     return { studentId: update.studentId, name: update.name, balance, status: update.status };
@@ -2370,8 +2370,8 @@ async function updateStudentDetailsBatchWithBalanceTransactionsNow(
 
 export async function deleteStudent(store: SheetsStore, studentId: string): Promise<{ studentId: string }> {
   const record = await getStudentRecordById(store, studentId);
-  if (!record) throw new Error('학생을 찾을 수 없습니다.');
-  if (!store.deleteRow) throw new Error('현재 Sheets 저장소가 행 삭제를 지원하지 않습니다.');
+  if (!record) throw new Error('학생을 찾을 수 없어요.');
+  if (!store.deleteRow) throw new Error('현재 Sheets 저장소가 행 삭제를 지원하지 않아요.');
 
   await store.deleteRow('Students', record.rowNumber);
   return { studentId };
@@ -2379,13 +2379,13 @@ export async function deleteStudent(store: SheetsStore, studentId: string): Prom
 
 export async function deleteStudentsBatch(store: SheetsStore, studentIds: string[]): Promise<{ studentIds: string[] }> {
   const uniqueIds = normalizeUniqueIds(studentIds);
-  if (uniqueIds.length === 0) throw new Error('선택된 학생이 없습니다.');
-  if (!store.deleteRows) throw new Error('현재 Sheets 저장소가 여러 행 삭제를 지원하지 않습니다.');
+  if (uniqueIds.length === 0) throw new Error('선택된 학생이 없어요.');
+  if (!store.deleteRows) throw new Error('현재 Sheets 저장소가 여러 행 삭제를 지원하지 않아요.');
 
   const rows = await store.getRows('Students');
   const recordsById = getStudentRecordsFromRows(rows);
   const missingIds = uniqueIds.filter((studentId) => !recordsById.has(studentId));
-  if (missingIds.length > 0) throw new Error(`학생을 찾을 수 없습니다: ${missingIds.join(', ')}`);
+  if (missingIds.length > 0) throw new Error(`학생을 찾을 수 없어요: ${missingIds.join(', ')}`);
 
   await store.deleteRows('Students', uniqueIds.map((studentId) => recordsById.get(studentId)!.rowNumber));
   return { studentIds: uniqueIds };
@@ -2427,7 +2427,7 @@ async function bulkAdjustStudentBalancesNow(
   }
   const recordsById = getStudentRecordsFromRows(studentRows);
   const missingIds = studentIds.filter((studentId) => !recordsById.has(studentId));
-  if (missingIds.length > 0) throw new Error(`학생을 찾을 수 없습니다: ${missingIds.join(', ')}`);
+  if (missingIds.length > 0) throw new Error(`학생을 찾을 수 없어요: ${missingIds.join(', ')}`);
 
   const operationRows = getRawBulkOperationRows(transactionRows, operationPrefix);
   if (operationRows.length > 0) {
@@ -2449,7 +2449,7 @@ async function bulkAdjustStudentBalancesNow(
       ? update.amount
       : checkedSafeIntegerAddition(record.student.balance, update.mode === 'add' ? update.amount : -update.amount);
     if (!Number.isSafeInteger(record.student.balance) || !Number.isSafeInteger(balance)) {
-      throw new Error('학생 잔액은 안전한 정수 범위여야 합니다.');
+      throw new Error('학생 잔액은 안전한 정수 범위여야 해요.');
     }
     const transactionAmount = checkedSafeIntegerAddition(record.student.balance, -balance);
     return { record, balance, transactionAmount };
@@ -2512,11 +2512,11 @@ export async function createProduct(store: SheetsStore, create: ProductCreate): 
 
   const productRows = await store.getRows('Products');
   if (getProductRecordsFromRows(productRows).some(({ product }) => product.productId === productId)) {
-    throw new Error('이미 존재하는 상품 ID입니다.');
+    throw new Error('이미 존재하는 상품 ID예요.');
   }
 
   if (hasProductDeletionTombstone(await store.getRows('Settings'), productId)) {
-    throw new Error('삭제 이력이 있는 상품 ID는 다시 사용할 수 없습니다.');
+    throw new Error('삭제 이력이 있는 상품 ID는 다시 사용할 수 없어요.');
   }
 
   const imageUrl = create.imageUrl?.trim() || undefined;
@@ -2533,16 +2533,16 @@ export async function createProduct(store: SheetsStore, create: ProductCreate): 
   };
 
   if (!store.applyAtomicMutation) {
-    throw new Error('현재 Sheets 저장소가 원자적 상품 생성을 지원하지 않습니다.');
+    throw new Error('현재 Sheets 저장소가 원자적 상품 생성을 지원하지 않아요.');
   }
   const productHeaders = productRows[0] ?? [];
   const productHeaderIndex = createHeaderIndex(productHeaders);
   const productIdColumn = productHeaderIndex.get('productId');
-  if (productIdColumn === undefined) throw new Error('Products 시트에 productId 컬럼이 없습니다.');
+  if (productIdColumn === undefined) throw new Error('Products 시트에 productId 컬럼이 없어요.');
   const productValues = Array<string>(productHeaders.length).fill('');
   const setProductValue = (header: string, value: string) => {
     const index = productHeaderIndex.get(header);
-    if (index === undefined || index < 0) throw new Error(`Products 시트에 ${header} 컬럼이 없거나 중복되었습니다.`);
+    if (index === undefined || index < 0) throw new Error(`Products 시트에 ${header} 컬럼이 없거나 중복됐어요.`);
     productValues[index] = value;
   };
   setProductValue('productId', product.productId);
@@ -2574,7 +2574,7 @@ async function updateProductDetailsNow(store: SheetsStore, productId: string, up
   const record = (await getProductRecords(store)).find(({ product }) => product.productId === productId);
 
   if (!record) {
-    throw new Error('상품을 찾을 수 없습니다.');
+    throw new Error('상품을 찾을 수 없어요.');
   }
 
   validateProductUpdate(update);
@@ -2613,24 +2613,24 @@ export async function updateProductDetailsBatch(
 async function updateProductDetailsBatchNow(
   store: SheetsStore, updates: ProductEditorUpdate[], operationId?: string,
 ): Promise<Product[]> {
-  if (!Array.isArray(updates) || updates.length === 0) throw new Error('저장할 상품이 없습니다.');
+  if (!Array.isArray(updates) || updates.length === 0) throw new Error('저장할 상품이 없어요.');
 
   if (operationId !== undefined
     && (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(operationId)
-      || !store.applyAtomicMutation)) throw new Error('원자적 상품 저장을 지원하지 않거나 작업 ID가 올바르지 않습니다.');
+      || !store.applyAtomicMutation)) throw new Error('원자적 상품 저장을 지원하지 않거나 작업 ID가 올바르지 않아요.');
   const productRows = await (store.getRowsFresh ? store.getRowsFresh('Products') : store.getRows('Products'));
   const recordsById = new Map((await getProductRecords({ getRows: async () => productRows }))
     .map((record) => [record.product.productId, record]));
   const normalized = updates.map((update) => ({ ...update, productId: update.productId.trim() }));
   const duplicateIds = findDuplicates(normalized.map((update) => update.productId));
-  if (duplicateIds.length > 0) throw new Error(`중복된 상품 ID가 있습니다: ${duplicateIds.join(', ')}`);
+  if (duplicateIds.length > 0) throw new Error(`중복된 상품 ID가 있어요: ${duplicateIds.join(', ')}`);
 
   const cellUpdates: SheetCellUpdate[] = [];
   const products: Product[] = [];
   for (const update of normalized) {
     validateProductId(update.productId);
     const record = recordsById.get(update.productId);
-    if (!record) throw new Error(`상품을 찾을 수 없습니다: ${update.productId}`);
+    if (!record) throw new Error(`상품을 찾을 수 없어요: ${update.productId}`);
     const stock = Object.hasOwn(update, 'stock') ? update.stock! : record.product.stock;
     validateProductUpdate({ ...update, stock });
 
@@ -2671,13 +2671,13 @@ async function updateProductDetailsBatchNow(
     const receipts = studentListSaveOperationMarkerCandidates(settingsRows, marker.key);
     if (receipts.length > 0) {
       if (receipts.length !== 1 || receipts[0] !== marker.value) {
-        throw new Error('상품 저장 작업 ID가 다른 요청에 사용되었습니다. 새로고침해 주세요.');
+        throw new Error('상품 저장 작업 ID가 다른 요청에 사용됐어요. 새로고침해 주세요.');
       }
       return normalized.map(({ productId }) => recordsById.get(productId)!.product);
     }
     const headers = createHeaderIndex(productRows[0] ?? []);
     if (!requireColumns(headers, cellUpdates.map(({ columnName }) => columnName)).ok) {
-      throw new Error('상품 저장 열을 확인하지 못했습니다.');
+      throw new Error('상품 저장 열을 확인하지 못했어요.');
     }
     await store.applyAtomicMutation!({
       updates: cellUpdates.map(({ rowNumber, columnName, value }) => ({
@@ -2771,14 +2771,14 @@ async function deleteProductNow(
   }
   if (input.expectedProductVersion !== 1) throw new Error('Product version is stale.');
   if (!store.applyAtomicMutation) {
-    throw new Error('현재 Sheets 저장소가 원자적 상품 삭제를 지원하지 않습니다.');
+    throw new Error('현재 Sheets 저장소가 원자적 상품 삭제를 지원하지 않아요.');
   }
 
   const headers = productRows[0] ?? [];
   const headerIndex = createHeaderIndex(headers);
   const records = getProductRecordsFromRows(productRows);
   const matchingRecords = records.filter(({ product }) => product.productId === input.productId);
-  if (matchingRecords.length === 0) throw new Error('상품을 찾을 수 없습니다.');
+  if (matchingRecords.length === 0) throw new Error('상품을 찾을 수 없어요.');
   const productIdColumn = headerIndex.get('productId');
   if (productIdColumn === undefined) throw productDeletionReconciliationError();
   const matchingIdCells = productRows.slice(1)
@@ -2788,10 +2788,10 @@ async function deleteProductNow(
     throw productDeletionReconciliationError();
   }
   if (!store.getRowsWithFormulasFresh) {
-    throw new Error('현재 Sheets 저장소가 수식 인식 상품 삭제를 지원하지 않습니다.');
+    throw new Error('현재 Sheets 저장소가 수식 인식 상품 삭제를 지원하지 않아요.');
   }
   if (!store.hasAtomicClaim) {
-    throw new Error('현재 Sheets 저장소가 원자적 상품 ID 예약 확인을 지원하지 않습니다.');
+    throw new Error('현재 Sheets 저장소가 원자적 상품 ID 예약 확인을 지원하지 않아요.');
   }
   const formulaRows = await store.getRowsWithFormulasFresh('Products');
   const formulaProductIdColumn = createHeaderIndex(formulaRows[0] ?? []).get('productId');
@@ -2799,7 +2799,7 @@ async function deleteProductNow(
   if (formulaProductIdColumn === undefined
     || formulaRows.length !== productRows.length
     || formulaRows[targetRowNumber - 1]?.[formulaProductIdColumn] !== matchingIdCells[0]) {
-    throw new Error('상품 ID 수식 또는 삭제 스냅샷 무결성을 확인할 수 없습니다.');
+    throw new Error('상품 ID 수식 또는 삭제 스냅샷 무결성을 확인할 수 없어요.');
   }
   const identityClaim = productIdentityClaim(input.productId, productIdColumn + 1);
   const identityClaimExists = await store.hasAtomicClaim(identityClaim.name);
@@ -2961,17 +2961,17 @@ function getProductRecordsFromRows(rows: string[][]): ProductRecord[] {
 }
 
 function productDeletionReconciliationError(): Error {
-  return new Error('상품 삭제 작업 기록의 무결성이 일치하지 않아 수동 조정이 필요합니다.');
+  return new Error('상품 삭제 작업 기록의 무결성이 일치하지 않아 수동 조정이 필요해요.');
 }
 
 export async function deleteProductsBatch(store: SheetsStore, productIds: string[]): Promise<{ productIds: string[] }> {
   const uniqueIds = normalizeUniqueIds(productIds);
-  if (uniqueIds.length === 0) throw new Error('선택된 상품이 없습니다.');
-  if (!store.deleteRows) throw new Error('현재 Sheets 저장소가 여러 행 삭제를 지원하지 않습니다.');
+  if (uniqueIds.length === 0) throw new Error('선택된 상품이 없어요.');
+  if (!store.deleteRows) throw new Error('현재 Sheets 저장소가 여러 행 삭제를 지원하지 않아요.');
 
   const recordsById = new Map((await getProductRecords(store)).map((record) => [record.product.productId, record]));
   const missingIds = uniqueIds.filter((productId) => !recordsById.has(productId));
-  if (missingIds.length > 0) throw new Error(`상품을 찾을 수 없습니다: ${missingIds.join(', ')}`);
+  if (missingIds.length > 0) throw new Error(`상품을 찾을 수 없어요: ${missingIds.join(', ')}`);
 
   await store.deleteRows('Products', uniqueIds.map((productId) => recordsById.get(productId)!.rowNumber));
   return { productIds: uniqueIds };
@@ -2982,7 +2982,7 @@ type RawBulkOperationRow = { row: string[]; rowNumber: number };
 function getRawBulkOperationRows(rows: string[][], operationPrefix: string): RawBulkOperationRow[] {
   const headers = rows[0] ?? [];
   const transactionIdColumn = createHeaderIndex(headers).get('transactionId') ?? -1;
-  if (transactionIdColumn < 0) throw new Error('거래 기록의 무결성을 확인할 수 없어 수동 조정이 필요합니다.');
+  if (transactionIdColumn < 0) throw new Error('거래 기록의 무결성을 확인할 수 없어 수동 조정이 필요해요.');
   return rows.slice(1)
     .map((row, index) => ({ row, rowNumber: index + 2 }))
     .filter(({ row }) => row[transactionIdColumn]?.trim().startsWith(operationPrefix));
@@ -3063,7 +3063,7 @@ function validateBulkBalanceReplay(
 }
 
 function bulkReconciliationError(): Error {
-  return new Error('학생 재화 조정 기록의 무결성이 일치하지 않아 수동 조정이 필요합니다.');
+  return new Error('학생 재화 조정 기록의 무결성이 일치하지 않아 수동 조정이 필요해요.');
 }
 
 async function sha256Hex(value: string): Promise<string> {
@@ -3220,7 +3220,7 @@ function validateStudentListSaveReplay(
 }
 
 function studentListSaveReconciliationError(): Error {
-  return new Error('학생 명단 저장 거래의 무결성이 일치하지 않아 수동 조정이 필요합니다.');
+  return new Error('학생 명단 저장 거래의 무결성이 일치하지 않아 수동 조정이 필요해요.');
 }
 
 function buildBalanceAdjustmentTransactionRow(
@@ -3319,7 +3319,7 @@ function requireRecurringSchemaMigrationStore(store: SheetsStore): RecurringSche
     'verifyAndWriteHeaderCells',
   ];
   if (requiredCapabilities.some((capability) => typeof candidate[capability] !== 'function')) {
-    throw new Error('현재 Sheets 저장소가 반복 과제 스키마 준비를 지원하지 않습니다.');
+    throw new Error('현재 Sheets 저장소가 반복 과제 스키마 준비를 지원하지 않아요.');
   }
   return candidate as RecurringSchemaMigrationStore;
 }
@@ -3396,24 +3396,24 @@ function validateStudentId(studentId: string) {
 
 function validateStudentUpdate(update: StudentUpdate) {
   if (!update.name.trim()) throw new Error('학생 이름을 입력해 주세요.');
-  if (!Number.isInteger(update.balance)) throw new Error('잔액은 정수여야 합니다.');
-  if (update.status !== 'ACTIVE' && update.status !== 'INACTIVE') throw new Error('학생 상태가 올바르지 않습니다.');
+  if (!Number.isInteger(update.balance)) throw new Error('잔액은 정수여야 해요.');
+  if (update.status !== 'ACTIVE' && update.status !== 'INACTIVE') throw new Error('학생 상태가 올바르지 않아요.');
 }
 
 function validateStudentBulkBalanceUpdate(update: StudentBulkBalanceUpdate) {
-  if (!Array.isArray(update.studentIds) || update.studentIds.length === 0) throw new Error('선택된 학생이 없습니다.');
+  if (!Array.isArray(update.studentIds) || update.studentIds.length === 0) throw new Error('선택된 학생이 없어요.');
   const studentIds = update.studentIds.map((id) => typeof id === 'string' ? id.trim() : '');
   if (studentIds.some((id) => !id)) throw new Error('학생 ID를 입력해 주세요.');
   const duplicateIds = findDuplicates(studentIds);
-  if (duplicateIds.length > 0) throw new Error(`중복된 학생 ID가 있습니다: ${duplicateIds.join(', ')}`);
-  if (update.mode !== 'set' && update.mode !== 'add' && update.mode !== 'subtract') throw new Error('일괄 작업 방식이 올바르지 않습니다.');
+  if (duplicateIds.length > 0) throw new Error(`중복된 학생 ID가 있어요: ${duplicateIds.join(', ')}`);
+  if (update.mode !== 'set' && update.mode !== 'add' && update.mode !== 'subtract') throw new Error('일괄 작업 방식이 올바르지 않아요.');
   if (!Number.isSafeInteger(update.amount) || (update.mode !== 'set' && update.amount < 0)) {
     throw new Error(update.mode === 'set'
-      ? '목표 잔액은 안전한 정수여야 합니다.'
-      : '금액은 0 이상의 안전한 정수여야 합니다.');
+      ? '목표 잔액은 안전한 정수여야 해요.'
+      : '금액은 0 이상의 안전한 정수여야 해요.');
   }
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(update.operationId)) {
-    throw new Error('작업 ID 형식이 올바르지 않습니다.');
+    throw new Error('작업 ID 형식이 올바르지 않아요.');
   }
 }
 
@@ -3423,9 +3423,9 @@ function validateProductId(productId: string) {
 
 function validateProductUpdate(update: ProductUpdate) {
   if (!update.name.trim()) throw new Error('상품명을 입력해 주세요.');
-  if (!Number.isInteger(update.price) || update.price < 0) throw new Error('가격은 0 이상의 정수여야 합니다.');
-  if (!Number.isInteger(update.stock) || update.stock < 0) throw new Error('재고는 0 이상의 정수여야 합니다.');
-  if (!Number.isInteger(update.sortOrder)) throw new Error('정렬 순서는 정수여야 합니다.');
+  if (!Number.isInteger(update.price) || update.price < 0) throw new Error('가격은 0 이상의 정수여야 해요.');
+  if (!Number.isInteger(update.stock) || update.stock < 0) throw new Error('재고는 0 이상의 정수여야 해요.');
+  if (!Number.isInteger(update.sortOrder)) throw new Error('정렬 순서는 정수여야 해요.');
 }
 
 
@@ -3446,7 +3446,7 @@ async function ensureSheetHeaders(store: SheetsStore, sheetName: SheetName, requ
   const missingHeaders = requiredHeaders.filter((header) => !normalizedCurrent.includes(header));
   if (missingHeaders.length === 0) return;
   if (!store.updateHeaderRow) {
-    throw new Error(`${sheetName} 시트에 새 기능용 컬럼이 없습니다: ${missingHeaders.join(', ')}`);
+    throw new Error(`${sheetName} 시트에 새 기능용 컬럼이 없어요: ${missingHeaders.join(', ')}`);
   }
   await store.updateHeaderRow(sheetName, [...normalizedCurrent, ...missingHeaders]);
 }
@@ -3457,15 +3457,15 @@ function validateTaskId(taskId: string) {
 
 function validateTaskUpdate(update: TaskUpdate) {
   if (!update.title.trim()) throw new Error('과제명을 입력해 주세요.');
-  if (!Number.isInteger(update.reward) || update.reward < 0) throw new Error('보상은 0 이상의 정수여야 합니다.');
-  if (!Number.isInteger(update.sortOrder)) throw new Error('정렬 순서는 정수여야 합니다.');
+  if (!Number.isInteger(update.reward) || update.reward < 0) throw new Error('보상은 0 이상의 정수여야 해요.');
+  if (!Number.isInteger(update.sortOrder)) throw new Error('정렬 순서는 정수여야 해요.');
   validateTaskAvailability(update);
 }
 
 function assertPersistedScheduleIsEditable(task: ClassTask): void {
   const warning = task.scheduleReadWarnings?.[0];
   if (warning) {
-    throw new Error(`과제 일정 데이터가 손상되었습니다 (${warning}). 일정을 먼저 복구해 주세요.`);
+    throw new Error(`과제 일정 데이터가 손상됐어요 (${warning}). 일정을 먼저 복구해 주세요.`);
   }
 }
 
@@ -3481,7 +3481,7 @@ function assertVersionedTaskScheduleHeaders(headerIndex: ReadonlyMap<string, num
     .filter((header) => (headerIndex.get(header) ?? -1) >= 0)
     .length;
   if (observedCount > 0 && validCount < VERSIONED_TASK_SCHEDULE_HEADERS.length) {
-    throw new Error('Tasks 시트의 versioned schedule 헤더가 불완전합니다.');
+    throw new Error('Tasks 시트의 versioned schedule 헤더가 불완전해요.');
   }
   return validCount === VERSIONED_TASK_SCHEDULE_HEADERS.length;
 }
@@ -3503,6 +3503,6 @@ function assertRequiredColumns(
   const result = requireColumns(headerIndex, requiredColumns);
 
   if (result.ok === false) {
-    throw new Error(`${sheetName} 시트에 필수 컬럼이 없습니다: ${result.missingColumns.join(', ')}`);
+    throw new Error(`${sheetName} 시트에 필수 컬럼이 없어요: ${result.missingColumns.join(', ')}`);
   }
 }

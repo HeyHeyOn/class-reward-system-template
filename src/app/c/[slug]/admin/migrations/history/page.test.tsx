@@ -252,9 +252,9 @@ describe('standalone historical page through the real read/auth/projection bound
     expect(container.textContent).toContain('BLOCKED');
     expect(container.textContent).not.toMatch(/(?:NOT_PERSISTED|CURRENT_PREFLIGHT|ACTIVE)/);
     expectDownloadLink();
-    expect(container.textContent).toContain('원본 조회·사전검사 실행·동결·전환·재개·재시도를 실행하지 않습니다.');
-    expect(container.textContent).toContain('다운로드 요청 시 로그인과 접근 권한을 다시 확인합니다.');
-    expect(container.textContent).not.toContain('보고서 다운로드를 실행하지 않습니다.');
+    expect(container.textContent).toContain('원본 조회, 사전검사 실행, 동결, 전환, 재개, 재시도를 실행하지 않아요.');
+    expect(container.textContent).toContain('다운로드 요청 시 로그인과 접근 권한을 다시 확인해요.');
+    expect(container.textContent).not.toContain('보고서 다운로드를 실행하지 않아요.');
     expect(readPreflightReport).toHaveBeenCalledTimes(1);
     const [slug, request] = vi.mocked(readPreflightReport).mock.calls[0];
     expect(slug).toBe('alpha');
@@ -362,8 +362,8 @@ describe('standalone historical page through the real read/auth/projection bound
       diagnostics: [], omittedDiagnostics: 0 });
     const { container } = await view();
     expect(container.textContent).toContain('MATCHED_PREFLIGHT');
-    expect(container.textContent).toContain('현재 사전검사 통과나 전환·쓰기 권한을 뜻하지 않습니다.');
-    expect(container.textContent).toContain('보관된 진단 항목이 없습니다. 현재 검사 결과를 뜻하지 않습니다.');
+    expect(container.textContent).toContain('현재 사전검사 통과나 전환, 쓰기 권한을 뜻하지 않아요.');
+    expect(container.textContent).toContain('보관된 진단 항목이 없어요. 현재 검사 결과를 뜻하지 않아요.');
     expect(within(screen.getByRole('table', { name: '과거 비교 지표' })).getAllByRole('row')).toHaveLength(CATEGORIES.length + 1);
     expect(container.textContent).not.toContain('ACTIVE');
     const disclosure = container.querySelector('details')!;
@@ -399,7 +399,7 @@ describe('standalone historical page through the real read/auth/projection bound
     event.redacted_details.comparisonInstant = null;
     event.event_id = reportId(TENANT, JOB, event.redacted_details);
     const { container } = await view();
-    expect(container.textContent).toContain('보관된 비교 지표가 없습니다. 현재 비교 결과가 아닙니다.');
+    expect(container.textContent).toContain('보관된 비교 지표가 없어요. 현재 비교 결과가 아니에요.');
     expect(container.textContent).toContain('보관된 비교 시각 없음');
     expect(container.textContent).toContain('생략된 과거 진단 수: 0');
     expect(screen.queryByRole('table', { name: '과거 비교 지표' })).toBeNull();

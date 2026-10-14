@@ -70,7 +70,7 @@ export function QrStageDialog({ ledger, opener, unit, manualInputEnabled }: {
             className="flex w-full items-center gap-3 rounded-[var(--crs-radius)] border border-[var(--crs-line)] px-4 py-3 text-left transition-colors hover:bg-[var(--crs-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)]">
             <span className="min-w-0 flex-1">
               <span className="flex items-center gap-2"><span className="truncate text-[15px] font-bold">{candidate.title}</span>{candidate.isActive ? null : <Badge>숨김</Badge>}</span>
-              <span className="mt-0.5 block text-xs text-[var(--theme-muted-text)]">보상 {money(candidate.reward, unit)} · 받은 학생 {holderCount(candidate)}명</span>
+              <span className="mt-0.5 block text-xs text-[var(--theme-muted-text)]">보상 {money(candidate.reward, unit)}, 받은 학생 {holderCount(candidate)}명</span>
             </span>
             <Icon name="chevronRight" size={18} className="shrink-0 text-[var(--theme-muted-text)]" />
           </button>

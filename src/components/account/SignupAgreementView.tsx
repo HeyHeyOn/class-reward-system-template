@@ -52,9 +52,9 @@ export function SignupAgreementView({ mode, email, changes, classNames, expected
   return (
     <main style={theme.variables} className="flex min-h-screen flex-col items-center bg-[var(--theme-shell)] px-4 py-8 text-[var(--theme-text)] sm:py-14">
       <section className="w-full max-w-lg rounded-[26px] border border-[var(--crs-line)] bg-[var(--theme-surface)] p-6 shadow-[var(--crs-shadow)] sm:p-8">
-        <span role="img" aria-label="학급 보상 시스템 로고" className="block h-10 w-10 bg-[var(--theme-accent-text)] [mask-image:url('/class-reward-system-icon.png')] [mask-position:center] [mask-repeat:no-repeat] [mask-size:contain]" />
+        <span role="img" aria-label="딴쌤 클래스 로고" className="block h-10 w-10 bg-[var(--theme-accent-text)] [mask-image:url('/class-reward-system-icon.png')] [mask-position:center] [mask-repeat:no-repeat] [mask-size:contain]" />
         <h1 className="mt-4 text-[25px] font-black tracking-[-0.035em]">
-          {declining ? '회원 탈퇴' : signup ? '학급 보상 시스템 가입' : '약관 동의가 필요해요'}
+          {declining ? '회원 탈퇴' : signup ? '딴쌤 클래스 가입' : '약관 동의가 필요해요'}
         </h1>
         <p className="mt-2 text-[14px] leading-relaxed text-[var(--theme-muted-text)]">
           {declining

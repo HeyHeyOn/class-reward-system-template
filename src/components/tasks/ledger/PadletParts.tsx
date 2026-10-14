@@ -115,7 +115,7 @@ export function PadletKeyBox({ keyStatus, onChange, disabled = false }: {
       <div className="space-y-1.5">
         <p className="flex items-center gap-1.5 text-[14px] font-extrabold"><Icon name="lock" size={15} />Padlet API 키 넣기</p>
         <p className="text-[13px] leading-relaxed text-[var(--theme-muted-text)]">
-          게시판을 읽으려면 Padlet <b className="font-bold text-[var(--theme-text)]">유료(Gold·Platinum) 계정</b>의 API 키가 필요해요.
+          게시판을 읽으려면 Padlet <b className="font-bold text-[var(--theme-text)]">유료(Gold, Platinum) 계정</b>의 API 키가 필요해요.
           연결할 게시판을 만든 계정(또는 관리자로 초대된 계정)으로 로그인해서 키를 복사해 주세요. 키는 암호화해서 저장하고, 다시 보여 주지 않아요.
         </p>
         <PadletLink href={PADLET_KEY_PAGE} className="text-[13px]">Padlet에서 API 키 보기</PadletLink>
@@ -252,10 +252,10 @@ export function PadletSharingCallout({ tasks }: { tasks: readonly AdminTaskDto[]
 export function PadletRules() {
   return (
     <ul data-tour="padlet-rules" className="space-y-1 text-xs leading-relaxed text-[var(--theme-muted-text)]">
-      <li className="flex gap-1.5"><span aria-hidden="true">·</span>학생이 ‘미완료’가 된 뒤(과제를 받거나, 초기화·단계 변경으로 미완료가 된 뒤) 마감 전까지 올린 글만 세요. 그 전에 쓴 글은 세지 않아요.</li>
-      <li className="flex gap-1.5"><span aria-hidden="true">·</span>글쓴이 이름에서 학생 이름을 찾고, 없으면 글 제목에서 찾아요. 로그인하지 않은 학생은 제목에 이름을 써 주세요.</li>
-      <li className="flex gap-1.5"><span aria-hidden="true">·</span>이 과제가 ‘미완료’인 학생만 ‘완료 가능’으로 바뀌어요. 글 하나는 한 번만 세요.</li>
-      <li className="flex gap-1.5"><span aria-hidden="true">·</span>과제 화면이나 학생 화면을 열면 저절로 확인해요. 바로 확인하려면 ‘지금 확인’을 눌러 주세요.</li>
+      <li className="flex gap-1.5"><span aria-hidden="true">•</span>학생이 ‘미완료’가 된 뒤(과제를 받거나, 초기화나 단계 변경으로 미완료가 된 뒤) 마감 전까지 올린 글만 세요.</li>
+      <li className="flex gap-1.5"><span aria-hidden="true">•</span>글쓴이 이름에서 학생 이름을 찾고, 없으면 글 제목에서 찾아요. 로그인하지 않은 학생은 제목에 이름을 써 주세요.</li>
+      <li className="flex gap-1.5"><span aria-hidden="true">•</span>이 과제가 ‘미완료’인 학생만 ‘완료 가능’으로 바뀌어요. 글 하나는 한 번만 세요.</li>
+      <li className="flex gap-1.5"><span aria-hidden="true">•</span>과제 화면이나 학생 화면을 열면 저절로 확인해요. 바로 확인하려면 ‘지금 확인’을 눌러 주세요.</li>
     </ul>
   );
 }
@@ -264,10 +264,10 @@ const RESULT_BADGE: Record<string, { text: string; tone: Tone }> = {
   MOVED: { text: '완료 가능으로 바꿈', tone: 'success' },
   OTHER_TASK: { text: '연계된 다른 과제에 씀', tone: 'neutral' },
   NOT_ASSIGNED: { text: '과제 없는 학생(미부여)', tone: 'warning' },
-  DONE: { text: '이미 완료 가능·완료', tone: 'neutral' },
+  DONE: { text: '이미 완료 가능 또는 완료', tone: 'neutral' },
   EARLIER: { text: '미완료가 되기 전에 쓴 글', tone: 'neutral' },
   WAITING: { text: '연계된 앞 과제 차례', tone: 'neutral' },
-  OUTSIDE: { text: '세는 기간·칸 밖', tone: 'neutral' },
+  OUTSIDE: { text: '세는 기간이나 칸 밖', tone: 'neutral' },
 };
 
 const ISSUE_BADGE: Record<NonNullable<PadletPostDto['issue']>, { text: string; tone: Tone }> = {
@@ -300,13 +300,13 @@ export function PadletPostList({ posts, taskId, now, stageOf, busyStudentId, onM
         const badge = post.issue ? ISSUE_BADGE[post.issue] : result ? RESULT_BADGE[result] : null;
         const who = post.studentName ?? (post.author || post.subject || '(이름 없음)');
         // What the post itself says, when it adds to the student's name.
-        const written = [post.author !== post.studentName ? post.author : '', post.subject].filter(Boolean).join(' · ');
+        const written = [post.author !== post.studentName ? post.author : '', post.subject].filter(Boolean).join(', ');
         return (
           <li key={post.postId} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3.5 py-2.5" data-testid="padlet-post">
             <div className="min-w-0 flex-1">
               <p className="truncate text-[13px] font-bold">{who}</p>
               <p className="truncate text-[11px] text-[var(--theme-muted-text)]">
-                {formatInstant(post.at, now)}{post.studentName && written ? ` · ${written}` : ''}
+                {formatInstant(post.at, now)}{post.studentName && written ? `, ${written}` : ''}
               </p>
             </div>
             {badge ? <Badge tone={badge.tone}>{badge.text}</Badge> : null}

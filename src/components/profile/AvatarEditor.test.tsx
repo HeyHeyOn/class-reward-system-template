@@ -15,7 +15,7 @@ describe('AvatarEditor', () => {
   it('shows a labelled live preview, a preset row, and one labelled group per part', () => {
     render(<AvatarEditor value={bear} onChange={() => {}} />);
     expect(screen.getByRole('img', { name: '프로필 아이콘 미리보기' })).toBeTruthy();
-    expect(screen.getByText('노랑 배경 · 곰 · 기본 · 미소')).toBeTruthy();
+    expect(screen.getByText('노랑 배경, 곰, 기본, 미소')).toBeTruthy();
     expect(within(screen.getByRole('group', { name: '추천 조합' })).getAllByRole('button')).toHaveLength(AVATAR_PRESETS.length);
     for (const part of AVATAR_PART_KEYS) {
       const group = screen.getByRole('group', { name: AVATAR_PART_LABELS[part] });

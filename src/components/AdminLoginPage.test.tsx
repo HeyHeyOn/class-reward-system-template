@@ -32,7 +32,7 @@ describe('AdminLoginPage', () => {
     expect(screen.queryByRole('link', { name: 'Google 계정으로 로그인' })).toBeNull();
     expect(screen.getAllByText(/Recovery 탭의 recoveryCode/).length).toBeGreaterThan(0);
     expect(screen.getByText(/비밀번호가 틀리거나 기억나지 않으면/)).toBeTruthy();
-    expect(screen.getByText(/Google Drive에서 학급 보상 시스템 스프레드시트를 열고/)).toBeTruthy();
+    expect(screen.getByText(/Google Drive에서 이 학급의 스프레드시트를 열고/)).toBeTruthy();
     expect(screen.getByLabelText('관리자 비밀번호')).toHaveProperty('placeholder', '비밀번호 또는 복구 코드');
   });
 
@@ -51,7 +51,7 @@ describe('AdminLoginPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '적용' }));
 
     expect(await screen.findByRole('dialog', { name: '관리자 로그인 확인 중' })).toBeTruthy();
-    expect(document.body.textContent).toContain('QR을 인식했습니다. 관리자 권한을 확인하는 중입니다.');
+    expect(document.body.textContent).toContain('QR을 인식했어요. 관리자 권한을 확인하는 중이에요.');
     loginRequest.resolve();
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/admin/login', expect.objectContaining({ method: 'POST' })));
   });

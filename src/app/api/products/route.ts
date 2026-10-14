@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     const catalog = await createConfiguredCatalogReader();
     return Response.json(await catalog.getActiveProducts());
   } catch (error) {
-    const message = error instanceof Error ? error.message : '상품 목록을 불러오지 못했습니다.';
+    const message = error instanceof Error ? error.message : '상품 목록을 불러오지 못했어요.';
 
     return Response.json({ error: message }, { status: 500 });
   }
@@ -32,7 +32,7 @@ const REQUIRED_CREATE_KEYS = [
 ] as const;
 const OPTIONAL_CREATE_KEYS = ['category', 'imageUrl'] as const;
 const CREATE_KEYS = new Set<string>([...REQUIRED_CREATE_KEYS, ...OPTIONAL_CREATE_KEYS]);
-const CREATE_ERROR = '상품을 추가하지 못했습니다.';
+const CREATE_ERROR = '상품을 추가하지 못했어요.';
 
 export async function POST(request: Request) {
   const frozen = legacyWriteFreezeResponse();

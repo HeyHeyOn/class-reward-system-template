@@ -113,7 +113,7 @@ describe('tabular store port', () => {
     await expect(updateCellsAtomicallyAcrossSheets(adapter, [
       { sheetName: 'Settings', rowNumber: 2, columnNumber: 2, value: 'UTC' },
       { sheetName: 'Tasks', rowNumber: 2, columnNumber: 13, value: 'UTC' },
-    ])).rejects.toThrow('원자적 다중 시트 업데이트를 지원하지 않습니다');
+    ])).rejects.toThrow('원자적 다중 시트 업데이트를 지원하지 않아요');
     expect(adapter.updates).toEqual([]);
   });
 });

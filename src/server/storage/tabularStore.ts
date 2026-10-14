@@ -132,7 +132,7 @@ export async function updateCellsAtomicallyAcrossSheets(
   updates: CrossSheetCellUpdate[],
 ): Promise<void> {
   if (!store.updateCellsAtomicallyAcrossSheets) {
-    throw new Error('현재 Sheets 저장소가 원자적 다중 시트 업데이트를 지원하지 않습니다.');
+    throw new Error('현재 Sheets 저장소가 원자적 다중 시트 업데이트를 지원하지 않아요.');
   }
   await store.updateCellsAtomicallyAcrossSheets(updates);
 }

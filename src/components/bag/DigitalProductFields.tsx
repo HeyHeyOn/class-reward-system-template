@@ -39,7 +39,7 @@ export function DigitalProductFields({ idPrefix, ariaPrefix, value, onChange, di
   return (
     <div className="space-y-4">
       <Switch checked={value.enabled} disabled={disabled} ariaLabel={`${ariaPrefix} 디지털 상품`} onChange={(enabled) => onChange({ enabled })}
-        label="디지털 상품" description="이 상품을 디지털 상품으로 취급해요. 디지털 상품은 구입하면 개인 보관함에 저장돼요." />
+        label="디지털 상품" description="구입하면 개인 보관함에 저장돼요." />
       <p className="text-xs leading-relaxed text-[var(--theme-muted-text)]">
         교환권은 매점에서 팔지 않아요. 실물 상품의 교환권은 학생 정보의 보관함에서 넣어 주거나 학급 나무 수확 보상으로 줄 수 있어요.
       </p>

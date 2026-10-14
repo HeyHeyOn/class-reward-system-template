@@ -49,7 +49,7 @@ const KIND_STYLE: Record<TaskHistoryEntryKind, { icon: IconName; tone: ToneName 
 };
 
 const FILTER_LABELS: Record<TaskHistoryFilter, string> = {
-  all: '전체', assign: '부여', complete: '완료', reset: '초기화·취소',
+  all: '전체', assign: '부여', complete: '완료', reset: '초기화, 취소',
 };
 
 export function TaskHistoryDialog({
@@ -126,7 +126,7 @@ export function TaskHistoryDialog({
           <button ref={closeRef} type="button" onClick={onClose} className={`h-9 shrink-0 rounded-[10px] border ${semantic.border} ${semantic.surfaceRaised} px-3.5 text-sm font-bold ${semantic.text} focus:outline-none focus:ring-2 ${semantic.ring}`}>닫기</button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">
-          {history.loading ? <p role="status" aria-label="과제 기록 불러오는 중" className={`rounded-[14px] ${semantic.surfaceRaised} p-6 text-center text-sm font-semibold ${semantic.mutedText}`}>기록을 불러오는 중입니다.</p> : null}
+          {history.loading ? <p role="status" aria-label="과제 기록 불러오는 중" className={`rounded-[14px] ${semantic.surfaceRaised} p-6 text-center text-sm font-semibold ${semantic.mutedText}`}>기록을 불러오는 중이에요.</p> : null}
           {history.error ? <p role="alert" className={`rounded-[14px] border ${semantic.border} ${semantic.surfaceRaised} p-4 text-sm font-semibold ${semantic.text}`}>{history.error}</p> : null}
           {detail && view && detail.cumulativeHistory.eventCount === 0 ? (
             <div className="space-y-4">
@@ -174,7 +174,7 @@ function SummaryCard({ summary }: { summary: TaskHistorySummary }) {
     <section aria-label={`${summary.label} 요약`} className="rounded-[14px] bg-[var(--crs-subtle)] px-4 py-3">
       <p className="text-[13px] font-bold">
         {summary.label}
-        {summary.range ? <span className="font-semibold text-[var(--theme-muted-text)]"> · {summary.range}</span> : null}
+        {summary.range ? <span className="font-semibold text-[var(--theme-muted-text)]">, {summary.range}</span> : null}
       </p>
       <dl className="mt-2 flex flex-wrap gap-2">
         <SummaryStat label="부여" value={summary.assigned} />

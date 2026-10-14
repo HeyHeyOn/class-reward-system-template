@@ -49,7 +49,7 @@ export type PromotionCommandOptions = {
 };
 
 export const PROMOTION_DELETE_PARTIAL_FAILURE_MESSAGE =
-  '대상 상품 연결은 삭제되었지만 행사 삭제를 완료하지 못했습니다. 새로고침 후 재시도해 주세요.';
+  '대상 상품 연결은 삭제되었지만 행사 삭제를 완료하지 못했어요. 새로고침 후 재시도해 주세요.';
 
 /** Metadata remains after this command successfully removed one or more target links. */
 export class PromotionDeletePartialFailure extends Error {
@@ -95,7 +95,7 @@ export async function createPromotion(
     await assertWritablePromotionRows(store);
     const records = await getPromotionRecords(store);
     if (records.some(({ promotion }) => promotion.promotionId === promotionId)) {
-      throw new Error(`중복된 promotionId입니다: ${promotionId}`);
+      throw new Error(`중복된 promotionId예요: ${promotionId}`);
     }
     const rows = await store.getRows('Promotions');
     await store.appendRow('Promotions', buildPromotionAppendRow(requireHeader(rows, 'Promotions'), candidate));
@@ -189,7 +189,7 @@ export async function replacePromotionProducts(
       return clonePromotion({ ...promotionRecord.promotion, productIds: targets });
     }
     if (oldLinks.length > 0 && !store.deleteRows) {
-      throw new Error('현재 Sheets 저장소가 deleteRows를 지원하지 않습니다.');
+      throw new Error('현재 Sheets 저장소가 deleteRows를 지원하지 않아요.');
     }
 
     const rows = await store.getRows('PromotionProducts');
@@ -231,7 +231,7 @@ export async function deletePromotion(
       .filter(({ link }) => link.promotionId === id);
 
     if (!store.deleteRows) {
-      throw new Error('현재 Sheets 저장소가 deleteRows를 지원하지 않습니다.');
+      throw new Error('현재 Sheets 저장소가 deleteRows를 지원하지 않아요.');
     }
 
     if (links.length > 0) {
@@ -281,12 +281,12 @@ async function assertPhysicalRowsValid(
   const headerIndex = createHeaderIndex(header);
   const required = requireColumns(headerIndex, requiredColumns);
   if (required.ok === false) {
-    throw new Error(`${sheetName} 시트에 필수 컬럼이 없습니다: ${required.missingColumns.join(', ')}`);
+    throw new Error(`${sheetName} 시트에 필수 컬럼이 없어요: ${required.missingColumns.join(', ')}`);
   }
   rows.slice(1).forEach((row, index) => {
     if (row.every((cell) => !String(cell ?? '').trim())) return;
     if (!parse(row, headerIndex)) {
-      throw new Error(`${sheetName} 시트 ${index + 2}행이 올바르지 않습니다.`);
+      throw new Error(`${sheetName} 시트 ${index + 2}행이 올바르지 않아요.`);
     }
   });
 }
@@ -364,7 +364,7 @@ function requireHeader(rows: string[][], sheetName: string): string[] {
 
 function columnIndex(headers: string[], columnName: string): number {
   const matches = headers.flatMap((header, index) => header.trim() === columnName ? [index] : []);
-  if (matches.length !== 1) throw new Error(`Promotions 시트에 ${columnName} 컬럼이 없거나 중복되었습니다.`);
+  if (matches.length !== 1) throw new Error(`Promotions 시트에 ${columnName} 컬럼이 없거나 중복됐어요.`);
   return matches[0];
 }
 
@@ -383,7 +383,7 @@ function requirePromotion(
   promotionId: string,
 ) {
   const record = records.find(({ promotion }) => promotion.promotionId === promotionId);
-  if (!record) throw new Error(`Promotion을 찾을 수 없습니다: ${promotionId}`);
+  if (!record) throw new Error(`Promotion을 찾을 수 없어요: ${promotionId}`);
   return record;
 }
 
@@ -401,7 +401,7 @@ function rejectDuplicateGeneratedIds(
   const retainedIds = new Set(existing.map(({ link }) => link.promotionProductId).filter((id) => !removedIds.has(id)));
   for (const { promotionProductId } of links) {
     if (seen.has(promotionProductId) || retainedIds.has(promotionProductId)) {
-      throw new Error(`중복된 promotionProductId입니다: ${promotionProductId}`);
+      throw new Error(`중복된 promotionProductId예요: ${promotionProductId}`);
     }
     seen.add(promotionProductId);
   }

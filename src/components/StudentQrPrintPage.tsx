@@ -14,7 +14,7 @@ type LoadState = 'loading' | 'ready' | 'error';
 export function StudentQrPrintPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [loadState, setLoadState] = useState<LoadState>('loading');
-  const [message, setMessage] = useState('학생 목록을 불러오는 중입니다.');
+  const [message, setMessage] = useState('학생 목록을 불러오는 중이에요.');
   const [qrAttempt, setQrAttempt] = useState(0);
 
   useEffect(() => {
@@ -22,25 +22,25 @@ export function StudentQrPrintPage() {
 
     async function loadStudents() {
       setLoadState('loading');
-      setMessage('학생 목록을 불러오는 중입니다.');
+      setMessage('학생 목록을 불러오는 중이에요.');
 
       try {
         const response = await tenantFetch('/api/students');
         const payload = await response.json();
 
         if (!response.ok) {
-          throw new Error(payload.error ?? '학생 목록을 불러오지 못했습니다.');
+          throw new Error(payload.error ?? '학생 목록을 불러오지 못했어요.');
         }
 
         if (isMounted) {
           setStudents(payload);
           setLoadState('ready');
-          setMessage(payload.length === 0 ? '인쇄할 활성 학생이 없습니다.' : '');
+          setMessage(payload.length === 0 ? '인쇄할 활성 학생이 없어요.' : '');
         }
       } catch (error) {
         if (isMounted) {
           setLoadState('error');
-          setMessage(error instanceof Error ? error.message : '학생 목록을 불러오지 못했습니다.');
+          setMessage(error instanceof Error ? error.message : '학생 목록을 불러오지 못했어요.');
         }
       }
     }
@@ -74,7 +74,7 @@ export function StudentQrPrintPage() {
             <p className="text-[13px] font-semibold text-[var(--theme-muted-text)]">학급 관리자</p>
             <h1 className="mt-1 text-[28px] font-black tracking-[-0.035em]">학생 QR 카드 인쇄</h1>
             <p className="mt-1.5 text-sm text-[var(--theme-muted-text)]">
-              활성 학생 목록을 불러와 학생증/쿠폰처럼 잘라 쓸 수 있는 QR 카드를 만듭니다.
+              활성 학생의 QR 카드를 인쇄해 잘라 쓸 수 있어요.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -122,8 +122,8 @@ export function StudentQrPrintPage() {
                 {student.studentId}
               </p>
               <p className="mt-4 rounded-xl bg-slate-50 px-4 py-2.5 text-xs font-semibold leading-relaxed text-slate-600 print:bg-white print:p-0">
-                학급 은행 및 매점에서<br />
-                이 QR을 스캔해 주세요.
+                학급 은행과 매점에서<br />
+                이 QR을 찍어 주세요.
               </p>
             </article>
           ))}

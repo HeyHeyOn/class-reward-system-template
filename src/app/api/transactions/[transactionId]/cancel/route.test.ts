@@ -95,9 +95,9 @@ describe('POST /api/transactions/[transactionId]/cancel', () => {
       'task-completions-schema-invalid',
       'oauthTokenSecret',
     ],
-    ['Transactions 시트에 필수 컬럼이 없습니다: passwordHash', 'transactions-schema-invalid', 'passwordHash'],
-    ['Students 시트에 필수 컬럼이 없습니다: guardianAccessToken', 'students-schema-invalid', 'guardianAccessToken'],
-    ['Products 시트에 필수 컬럼이 없습니다: privateSupplierId', 'products-schema-invalid', 'privateSupplierId'],
+    ['Transactions 시트에 필수 컬럼이 없어요: passwordHash', 'transactions-schema-invalid', 'passwordHash'],
+    ['Students 시트에 필수 컬럼이 없어요: guardianAccessToken', 'students-schema-invalid', 'guardianAccessToken'],
+    ['Products 시트에 필수 컬럼이 없어요: privateSupplierId', 'products-schema-invalid', 'privateSupplierId'],
   ])('returns a safe error while logging a safe operator reason for %s', async (detail, reason, sensitiveSuffix) => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     vi.mocked(createConfiguredTransactionCancellation).mockResolvedValue({
@@ -112,7 +112,7 @@ describe('POST /api/transactions/[transactionId]/cancel', () => {
     const response = await POST(request, { params: Promise.resolve({ transactionId: 'TR-1' }) });
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: '거래를 취소하지 못했습니다.' });
+    await expect(response.json()).resolves.toEqual({ error: '거래를 취소하지 못했어요.' });
     expect(consoleError).toHaveBeenCalledWith('transaction_cancellation_failed', { reason });
     const logged = JSON.stringify(consoleError.mock.calls);
     expect(logged).not.toContain('TR-1');
@@ -130,7 +130,7 @@ describe('POST /api/transactions/[transactionId]/cancel', () => {
     const request = new Request('http://localhost/api/transactions/TR-1/cancel', { method: 'POST', ...init });
     const response = await POST(request, { params: Promise.resolve({ transactionId: 'TR-1' }) });
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: '올바른 취소 요청이 아닙니다.' });
+    await expect(response.json()).resolves.toEqual({ error: '올바른 취소 요청이 아니에요.' });
     expect(createConfiguredTransactionCancellation).not.toHaveBeenCalled();
   });
 });

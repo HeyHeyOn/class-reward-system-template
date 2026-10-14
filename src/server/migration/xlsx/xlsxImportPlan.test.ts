@@ -54,8 +54,8 @@ describe('buildXlsxImportPlan', () => {
       totalStock: 10, promotions: 1, tasks: 4, activeTasks: 3, readyAssignments: 5, completedAssignments: 4,
       history: { transactions: 1, adjustments: 0, taskAssignments: 10, taskCompletions: 5 } });
     const warnings = messages(result, 'warning').map(([, , message]) => message);
-    expect(warnings).toContain('잔액은 그대로 옮기고, 이전 거래·과제 기록은 옮기지 않아요. 이전 기록은 올린 원본 파일에 그대로 남아 있어요.');
-    expect(warnings).toContain("'메모' 시트는 학급 보상 시스템 시트가 아니라서 옮기지 않아요.");
+    expect(warnings).toContain('잔액은 그대로 옮기고, 이전 거래, 과제 기록은 옮기지 않아요. 이전 기록은 올린 원본 파일에 그대로 남아 있어요.');
+    expect(warnings).toContain("'메모' 시트는 구글 시트 버전의 시트가 아니라서 옮기지 않아요.");
     expect(messages(result, 'warning')).toContainEqual(['PromotionProducts', 3,
       "상품 'P9' 또는 행사 'PR1'를 찾을 수 없어 이 행사 연결은 옮기지 않아요."]);
     expect(messages(result, 'warning')).toContainEqual(['Tasks', 5, "'availableFrom' 칸의 날짜를 한국 시간 2030-03-02 09:00로 읽었어요."]);

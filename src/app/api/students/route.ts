@@ -18,7 +18,7 @@ export async function GET(request?: Request) {
 
     return Response.json(students);
   } catch (error) {
-    const message = error instanceof Error ? error.message : '학생 목록을 불러오지 못했습니다.';
+    const message = error instanceof Error ? error.message : '학생 목록을 불러오지 못했어요.';
 
     return Response.json({ error: message }, { status: 500 });
   }
@@ -27,7 +27,7 @@ export async function GET(request?: Request) {
 const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const CREATE_KEYS = ['operationId', 'studentId', 'name', 'balance', 'status'] as const;
 const CREATE_KEY_SET = new Set<string>(CREATE_KEYS);
-const CREATE_ERROR = '학생을 추가하지 못했습니다.';
+const CREATE_ERROR = '학생을 추가하지 못했어요.';
 
 export async function POST(request: Request) {
   const frozen = legacyWriteFreezeResponse();

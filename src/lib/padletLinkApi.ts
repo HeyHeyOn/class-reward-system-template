@@ -10,7 +10,7 @@ export const PADLET_ERROR_MESSAGES: Readonly<Record<PadletErrorCode, string>> = 
   NO_KEY: 'Padlet API 키를 먼저 넣어 주세요.',
   KEY_UNREADABLE: '저장된 Padlet API 키를 읽을 수 없어요. 키를 다시 넣어 주세요.',
   INVALID_KEY: 'Padlet이 이 API 키를 받지 않아요. 키를 다시 확인해 주세요.',
-  NOT_PAYING: 'Padlet API는 유료(Gold·Platinum) 계정의 키로만 쓸 수 있어요.',
+  NOT_PAYING: 'Padlet API는 유료(Gold, Platinum) 계정의 키로만 쓸 수 있어요.',
   NOT_ADMIN: '이 게시판을 관리하는 계정의 API 키가 필요해요.',
   NOT_FOUND: '게시판을 찾지 못했어요. 주소를 다시 확인해 주세요.',
   RATE_LIMITED: 'Padlet 요청 한도에 걸렸어요. 대기 후 다시 확인해 주세요.',
@@ -55,12 +55,12 @@ export type PadletTasksDto = Readonly<{ tasks: readonly AdminTaskDto[] }>;
 function fail(message: string): never { throw new TaskLedgerRequestError(message); }
 
 function record(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) fail('요청 형식이 올바르지 않습니다.');
+  if (!value || typeof value !== 'object' || Array.isArray(value)) fail('요청 형식이 올바르지 않아요.');
   return value as Record<string, unknown>;
 }
 
 function only(value: Record<string, unknown>, keys: readonly string[]): void {
-  for (const key of Object.keys(value)) if (!keys.includes(key)) fail(`알 수 없는 항목(${key})이 있습니다.`);
+  for (const key of Object.keys(value)) if (!keys.includes(key)) fail(`알 수 없는 항목(${key})이 있어요.`);
 }
 
 function address(value: unknown): string {
@@ -86,7 +86,7 @@ export function parsePadletLinkRequest(value: unknown): { taskIds: string[]; add
   const raw = record(value);
   only(raw, ['taskIds', 'address', 'sectionId']);
   const sectionId = raw.sectionId ?? null;
-  if (sectionId !== null && (typeof sectionId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(sectionId))) fail('섹션이 올바르지 않습니다.');
+  if (sectionId !== null && (typeof sectionId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(sectionId))) fail('섹션이 올바르지 않아요.');
   return { taskIds: parseTaskIds(raw.taskIds), address: address(raw.address), sectionId };
 }
 

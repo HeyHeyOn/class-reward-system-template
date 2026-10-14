@@ -57,12 +57,12 @@ const sessionBinding = [SUBJECT, SESSION.accountGeneration, SESSION.sessionId, f
 const projected = {
   availability: 'AVAILABLE', readOnly: true, migrationStatus: 'ACTIVE', authority: 'UNKNOWN',
   reasonCode: 'OPERATIONAL_AUTHORITY_UNVERIFIED',
-  reason: '저장된 작업 상태만 표시합니다. 실제 운영 권한은 확인되지 않았습니다.',
+  reason: '저장된 작업 상태만 표시해요. 실제 운영 권한은 확인되지 않았어요.',
 };
 const blocked = {
   availability: 'BLOCKED', readOnly: true, migrationStatus: 'UNKNOWN', authority: 'UNKNOWN',
   reasonCode: 'TRUSTED_STATUS_READER_UNAVAILABLE',
-  reason: '검증된 이전 상태 조회가 연결되지 않아 진행 상태와 운영 권한을 확인할 수 없습니다.',
+  reason: '검증된 이전 상태 조회가 연결되지 않아 진행 상태와 운영 권한을 확인할 수 없어요.',
 };
 
 type Reply = { rows: unknown[] };

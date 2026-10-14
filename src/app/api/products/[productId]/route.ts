@@ -32,7 +32,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     return Response.json(product);
   } catch (error) {
-    const message = error instanceof Error ? error.message : '상품 정보를 저장하지 못했습니다.';
+    const message = error instanceof Error ? error.message : '상품 정보를 저장하지 못했어요.';
 
     return Response.json({ error: message }, { status: 400 });
   }
@@ -47,18 +47,18 @@ export async function DELETE(request: Request, context: RouteContext) {
 
   const mediaType = request.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();
   if (mediaType !== 'application/json') {
-    return productDeletionErrorResponse(400, '상품 삭제 요청 형식이 올바르지 않습니다.');
+    return productDeletionErrorResponse(400, '상품 삭제 요청 형식이 올바르지 않아요.');
   }
 
   let payload: { operationId: string; expectedProductVersion: number };
   try {
     const candidate: unknown = await request.json();
     if (!isDeleteProductPayload(candidate)) {
-      return productDeletionErrorResponse(400, '상품 삭제 요청 형식이 올바르지 않습니다.');
+      return productDeletionErrorResponse(400, '상품 삭제 요청 형식이 올바르지 않아요.');
     }
     payload = candidate;
   } catch {
-    return productDeletionErrorResponse(400, '상품 삭제 요청 형식이 올바르지 않습니다.');
+    return productDeletionErrorResponse(400, '상품 삭제 요청 형식이 올바르지 않아요.');
   }
 
   try {
@@ -71,7 +71,7 @@ export async function DELETE(request: Request, context: RouteContext) {
     }), productId);
     return Response.json(deleted);
   } catch {
-    return productDeletionErrorResponse(500, '상품을 삭제하지 못했습니다.');
+    return productDeletionErrorResponse(500, '상품을 삭제하지 못했어요.');
   }
 }
 

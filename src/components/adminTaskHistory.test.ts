@@ -188,7 +188,7 @@ describe('buildTaskHistoryView', () => {
       ['이번 회차', '10월 5일(월) ~ 10월 11일(일)', true, true],
       ['지난 회차', '9월 28일(월) ~ 10월 4일(일)', false, false],
     ]);
-    expect(cycles[0].days.map((day) => day.label)).toEqual(['오늘 · 10월 6일(화)', '어제 · 10월 5일(월)']);
+    expect(cycles[0].days.map((day) => day.label)).toEqual(['오늘, 10월 6일(화)', '어제, 10월 5일(월)']);
     expect(cycles[0].days[0].entries.map((entry) => entry.time)).toEqual(['오후 1:30', '오전 9:12']);
     expect(view.summary).toEqual({
       label: '이번 회차', range: '10월 5일(월) ~ 10월 11일(일)', assigned: 3, completed: 1, pending: 1,

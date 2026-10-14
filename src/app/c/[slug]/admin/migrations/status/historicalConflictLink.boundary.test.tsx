@@ -296,8 +296,8 @@ describe('manual historical link through real status and historical page/readers
     expect(screen.getByRole('status').textContent).toContain('저장된 작업 상태');
     expect(container.textContent).toContain('ACTIVE');
     expect(container.textContent).toContain('확인 불가 (UNKNOWN)');
-    expect(container.textContent).toContain('과거 기록만 조회합니다. 현재 충돌·사전검사 통과·전환 권한을 뜻하지 않습니다.');
-    expect(container.textContent).toContain('이동 시 로그인과 접근 권한을 다시 확인합니다.');
+    expect(container.textContent).toContain('과거 기록만 조회해요. 현재 충돌, 사전검사 통과, 전환 권한을 뜻하지 않아요.');
+    expect(container.textContent).toContain('이동 시 로그인과 접근 권한을 다시 확인해요.');
     expect(container.textContent).not.toMatch(/ROW_MISMATCH|HISTORICAL_ONLY|충돌 확인됨/);
     expect(screen.queryByRole('table')).toBeNull();
     expect(readMigrationStatus).toHaveBeenCalledWith('alpha', expect.any(Request), JOB);

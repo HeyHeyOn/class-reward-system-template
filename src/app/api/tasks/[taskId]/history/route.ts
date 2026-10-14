@@ -2,7 +2,7 @@ import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/ap
 import { createConfiguredTaskReader } from '@/server/repositories/configuredTasks';
 
 type RouteContext = { params: Promise<{ taskId: string }> };
-const INVALID_HISTORY_QUERY = '과제 기록 조회 요청 형식이 올바르지 않습니다.';
+const INVALID_HISTORY_QUERY = '과제 기록 조회 요청 형식이 올바르지 않아요.';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,11 +29,11 @@ export async function GET(request: Request, context: RouteContext) {
     };
     const detail = await reader.getTaskHistoryDetail(filter);
     if (!detail.currentLifecycle.taskDefinitionExists && detail.cumulativeHistory.eventCount === 0) {
-      return Response.json({ error: '과제를 찾을 수 없습니다.' }, { status: 404 });
+      return Response.json({ error: '과제를 찾을 수 없어요.' }, { status: 404 });
     }
     return Response.json(detail);
   } catch (error) {
-    const message = error instanceof Error ? error.message : '과제 기록을 불러오지 못했습니다.';
+    const message = error instanceof Error ? error.message : '과제 기록을 불러오지 못했어요.';
     return Response.json({ error: message }, { status: 500 });
   }
 }

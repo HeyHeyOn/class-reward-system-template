@@ -96,7 +96,7 @@ describe('GET /api/tasks/[taskId]', () => {
     const response = await GET(new Request(url), { params: Promise.resolve({ taskId: 'T1' }) });
     expect(response.status).toBe(400);
     expect(createConfiguredSheetsReader).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toEqual({ error: '과제 조회 요청 형식이 올바르지 않습니다.' });
+    await expect(response.json()).resolves.toEqual({ error: '과제 조회 요청 형식이 올바르지 않아요.' });
   });
 
   it.each([

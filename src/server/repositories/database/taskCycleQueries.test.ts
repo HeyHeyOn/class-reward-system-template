@@ -344,7 +344,7 @@ describe('database task cycle queries', () => {
 
   it('preserves the Sheets missing-task error for current cycle state', async () => {
     await expect(queries().getTaskCycleState('MISSING', '2026-08-10T00:00:00.000Z'))
-      .rejects.toThrow('과제를 찾을 수 없습니다.');
+      .rejects.toThrow('과제를 찾을 수 없어요.');
   });
 
   it('projects assignment-first task history from the strict database ledger snapshot', async () => {

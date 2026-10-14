@@ -175,7 +175,7 @@ describe('POST /api/checkout/preview', () => {
     const body = await response.json();
 
     expect(response.status).toBe(500);
-    expect(body).toEqual({ error: '결제 예상 금액을 계산하지 못했습니다.' });
+    expect(body).toEqual({ error: '결제 예상 금액을 계산하지 못했어요.' });
     expect(JSON.stringify(body)).not.toContain('secret');
     expect(JSON.stringify(body)).not.toContain('SECRET');
     expect(consoleError).toHaveBeenCalledWith('Checkout preview domain failure', failure);
@@ -195,19 +195,19 @@ describe('POST /api/checkout/preview', () => {
     const body = await response.json();
 
     expect(response.status).toBe(500);
-    expect(body).toEqual({ error: '결제 예상 금액을 계산하지 못했습니다.' });
+    expect(body).toEqual({ error: '결제 예상 금액을 계산하지 못했어요.' });
     expect(JSON.stringify(body)).not.toContain('secret');
     expect(JSON.stringify(body)).not.toContain('SECRET');
     expect(consoleError).toHaveBeenCalledWith('Checkout preview domain failure', failure);
   });
 
   it.each([
-    [{ ok: false as const, code: 'PRODUCT_NOT_FOUND' as const, message: '상품을 찾을 수 없습니다.', productId: 'P404' }],
+    [{ ok: false as const, code: 'PRODUCT_NOT_FOUND' as const, message: '상품을 찾을 수 없어요.', productId: 'P404' }],
     [{ ok: false as const, code: 'PRODUCT_INACTIVE' as const, message: '판매 중지된 상품입니다.', productId: 'P001' }],
-    [{ ok: false as const, code: 'INSUFFICIENT_STOCK' as const, message: '재고가 부족합니다.', productId: 'P001', requestedQuantity: 2, currentStock: 1 }],
-    [{ ok: false as const, code: 'INVALID_QUANTITY' as const, message: '상품 수량은 1개 이상이어야 합니다.', productId: 'P001' }],
-    [{ ok: false as const, code: 'EMPTY_CART' as const, message: '장바구니가 비어 있습니다.' }],
-    [{ ok: false as const, code: 'INVALID_CART' as const, message: '장바구니가 올바르지 않습니다.' }],
+    [{ ok: false as const, code: 'INSUFFICIENT_STOCK' as const, message: '재고가 부족해요.', productId: 'P001', requestedQuantity: 2, currentStock: 1 }],
+    [{ ok: false as const, code: 'INVALID_QUANTITY' as const, message: '상품 수량은 1개 이상이어야 해요.', productId: 'P001' }],
+    [{ ok: false as const, code: 'EMPTY_CART' as const, message: '장바구니가 비어 있어요.' }],
+    [{ ok: false as const, code: 'INVALID_CART' as const, message: '장바구니가 올바르지 않아요.' }],
   ])('preserves client or stale-cart %s failures as structured 400 responses', async (failure) => {
     const store = new FakeSheetsStore(sourceRows());
     vi.mocked(createConfiguredSheetsStore).mockResolvedValue(store as never);
@@ -232,7 +232,7 @@ describe('POST /api/checkout/preview', () => {
     const body = await response.json();
 
     expect(response.status).toBe(500);
-    expect(body).toEqual({ error: '결제 예상 금액을 계산하지 못했습니다.' });
+    expect(body).toEqual({ error: '결제 예상 금액을 계산하지 못했어요.' });
     expect(JSON.stringify(body)).not.toContain('private provider credential');
     expect(consoleError).toHaveBeenCalledWith('Failed to preview checkout', error);
   });
@@ -247,7 +247,7 @@ describe('POST /api/checkout/preview', () => {
     const response = await previewCheckout(request({ items: [{ productId: 'P001', quantity: 1 }] }));
 
     expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toEqual({ error: '결제 예상 금액을 계산하지 못했습니다.' });
+    await expect(response.json()).resolves.toEqual({ error: '결제 예상 금액을 계산하지 못했어요.' });
     expect(store.updates).toEqual([]);
     expect(store.appends).toEqual([]);
   });

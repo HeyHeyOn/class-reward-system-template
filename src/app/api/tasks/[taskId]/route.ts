@@ -26,17 +26,17 @@ export async function GET(request: Request, context: RouteContext) {
     if (keys.some((key) => key !== 'studentId')
       || studentIds.length > 1
       || (studentIds.length === 1 && !studentIds[0].trim())) {
-      return Response.json({ error: '과제 조회 요청 형식이 올바르지 않습니다.' }, { status: 400 });
+      return Response.json({ error: '과제 조회 요청 형식이 올바르지 않아요.' }, { status: 400 });
     }
     const { taskId } = await context.params;
     const reader = await createConfiguredTaskReader(request);
     const task = await reader.getTaskCycleProjection(decodeURIComponent(taskId), {
       ...(studentIds.length === 1 ? { studentId: studentIds[0].trim() } : {}),
     });
-    if (!task || !task.isActive) return Response.json({ error: '과제를 찾을 수 없습니다.' }, { status: 404 });
+    if (!task || !task.isActive) return Response.json({ error: '과제를 찾을 수 없어요.' }, { status: 404 });
     return Response.json(task);
   } catch (error) {
-    const message = error instanceof Error ? error.message : '과제를 불러오지 못했습니다.';
+    const message = error instanceof Error ? error.message : '과제를 불러오지 못했어요.';
     return Response.json({ error: message }, { status: 500 });
   }
 }
@@ -54,7 +54,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     const decodedTaskId = decodeURIComponent(taskId);
     const payload: unknown = await request.json();
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-      throw new Error('과제 저장 요청 형식이 올바르지 않습니다.');
+      throw new Error('과제 저장 요청 형식이 올바르지 않아요.');
     }
     const input = payload as Record<string, unknown>;
     const keys = Object.keys(input);
@@ -65,7 +65,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     const isFullEdit = FULL_EDIT_REQUIRED_KEYS.every((key) => Object.hasOwn(input, key))
       && keys.every((key) => FULL_EDIT_ALLOWED_KEYS.has(key));
     if (!isScheduleSettings && !isFullEdit) {
-      throw new Error('과제 저장 요청 형식이 올바르지 않습니다.');
+      throw new Error('과제 저장 요청 형식이 올바르지 않아요.');
     }
     const schedule = parseOptionalTaskScheduleEdit(input.schedule);
     const store = await createConfiguredSheetsStore(request);
@@ -76,7 +76,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (isScheduleSettings) {
       const optional = (key: 'availableFrom' | 'dueAt' | 'prerequisiteTaskId') => {
         const value = input[key];
-        if (value !== null && typeof value !== 'string') throw new Error('과제 저장 요청 형식이 올바르지 않습니다.');
+        if (value !== null && typeof value !== 'string') throw new Error('과제 저장 요청 형식이 올바르지 않아요.');
         return value === null ? undefined : value;
       };
       const task = await updateTaskScheduleSettings(store, decodedTaskId, {
@@ -95,7 +95,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     const task = await updateTaskDetails(store, decodedTaskId, update);
     return Response.json(task);
   } catch (error) {
-    const message = error instanceof Error ? error.message : '과제를 저장하지 못했습니다.';
+    const message = error instanceof Error ? error.message : '과제를 저장하지 못했어요.';
     return Response.json({ error: message }, { status: 400 });
   }
 }
@@ -114,7 +114,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
     const result = await deleteTask(store, decodeURIComponent(taskId));
     return Response.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : '과제를 삭제하지 못했습니다.';
+    const message = error instanceof Error ? error.message : '과제를 삭제하지 못했어요.';
     return Response.json({ error: message }, { status: 400 });
   }
 }

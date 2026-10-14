@@ -146,39 +146,39 @@ export class TaskLedgerRequestError extends Error {
 function fail(message: string): never { throw new TaskLedgerRequestError(message); }
 
 function record(value: unknown, label: string): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) fail(`${label} 형식이 올바르지 않습니다.`);
+  if (!value || typeof value !== 'object' || Array.isArray(value)) fail(`${label} 형식이 올바르지 않아요.`);
   return value as Record<string, unknown>;
 }
 
 function onlyKeys(value: Record<string, unknown>, allowed: readonly string[], label: string): void {
-  for (const key of Object.keys(value)) if (!allowed.includes(key)) fail(`${label}에 알 수 없는 항목(${key})이 있습니다.`);
+  for (const key of Object.keys(value)) if (!allowed.includes(key)) fail(`${label}에 알 수 없는 항목(${key})이 있어요.`);
 }
 
 export function parseOperationId(value: unknown): string {
-  if (typeof value !== 'string' || !UUID.test(value)) fail('요청 번호가 올바르지 않습니다.');
+  if (typeof value !== 'string' || !UUID.test(value)) fail('요청 번호가 올바르지 않아요.');
   return value;
 }
 
 export function parseId(value: unknown, label: string): string {
-  if (typeof value !== 'string' || value !== value.trim() || !ID.test(value)) fail(`${label}가 올바르지 않습니다.`);
+  if (typeof value !== 'string' || value !== value.trim() || !ID.test(value)) fail(`${label}가 올바르지 않아요.`);
   return value;
 }
 
 export function parseStage(value: unknown): TaskStage {
-  if (typeof value !== 'string' || !(TASK_STAGES as readonly string[]).includes(value)) fail('단계가 올바르지 않습니다.');
+  if (typeof value !== 'string' || !(TASK_STAGES as readonly string[]).includes(value)) fail('단계가 올바르지 않아요.');
   return value as TaskStage;
 }
 
 function parseInstantOrNull(value: unknown, label: string): string | null {
   if (value === null || value === undefined || value === '') return null;
-  if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) fail(`${label}이 올바르지 않습니다.`);
+  if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) fail(`${label}이 올바르지 않아요.`);
   return new Date(value).toISOString();
 }
 
 export function parseRecurrence(value: unknown): TaskRecurrence {
   const raw = record(value, '반복');
   if (raw.type === 'NONE') { onlyKeys(raw, ['type'], '반복'); return { type: 'NONE' }; }
-  if (typeof raw.time !== 'string' || !TIME.test(raw.time)) fail('반복 시각이 올바르지 않습니다.');
+  if (typeof raw.time !== 'string' || !TIME.test(raw.time)) fail('반복 시각이 올바르지 않아요.');
   if (raw.type === 'DAILY') { onlyKeys(raw, ['type', 'time'], '반복'); return { type: 'DAILY', time: raw.time }; }
   if (raw.type === 'WEEKLY') {
     onlyKeys(raw, ['type', 'time', 'weekdays'], '반복');
@@ -191,10 +191,10 @@ export function parseRecurrence(value: unknown): TaskRecurrence {
   }
   if (raw.type === 'MONTHLY') {
     onlyKeys(raw, ['type', 'time', 'dayOfMonth'], '반복');
-    if (!Number.isInteger(raw.dayOfMonth) || (raw.dayOfMonth as number) < 1 || (raw.dayOfMonth as number) > 31) fail('반복 날짜가 올바르지 않습니다.');
+    if (!Number.isInteger(raw.dayOfMonth) || (raw.dayOfMonth as number) < 1 || (raw.dayOfMonth as number) > 31) fail('반복 날짜가 올바르지 않아요.');
     return { type: 'MONTHLY', time: raw.time, dayOfMonth: raw.dayOfMonth as Extract<TaskRecurrence, { type: 'MONTHLY' }>['dayOfMonth'] };
   }
-  return fail('반복 종류가 올바르지 않습니다.');
+  return fail('반복 종류가 올바르지 않아요.');
 }
 
 export function parseRepeatSetting(value: unknown): TaskRepeatSettingDto {
@@ -211,16 +211,16 @@ export function parseTaskDefinition(value: unknown): TaskDefinitionDto {
   onlyKeys(raw, ['title', 'description', 'reward', 'isActive', 'sortOrder', 'availableFrom', 'dueAt', 'prerequisiteTaskId'], '과제');
   const title = typeof raw.title === 'string' ? raw.title.trim() : '';
   if (!title) fail('과제 이름을 입력해 주세요.');
-  if (title.length > 100) fail('과제 이름은 100자까지 쓸 수 있습니다.');
+  if (title.length > 100) fail('과제 이름은 100자까지 쓸 수 있어요.');
   const description = typeof raw.description === 'string' ? raw.description.trim() : '';
-  if (description.length > 2000) fail('설명은 2000자까지 쓸 수 있습니다.');
-  if (!Number.isSafeInteger(raw.reward) || (raw.reward as number) < 0) fail('보상은 0 이상의 정수여야 합니다.');
-  if (typeof raw.isActive !== 'boolean') fail('공개 여부가 올바르지 않습니다.');
+  if (description.length > 2000) fail('설명은 2000자까지 쓸 수 있어요.');
+  if (!Number.isSafeInteger(raw.reward) || (raw.reward as number) < 0) fail('보상은 0 이상의 정수여야 해요.');
+  if (typeof raw.isActive !== 'boolean') fail('공개 여부가 올바르지 않아요.');
   const sortOrder = raw.sortOrder === undefined ? 0 : raw.sortOrder;
-  if (!Number.isSafeInteger(sortOrder) || Math.abs(sortOrder as number) > 1_000_000) fail('목록 순서는 정수여야 합니다.');
+  if (!Number.isSafeInteger(sortOrder) || Math.abs(sortOrder as number) > 1_000_000) fail('목록 순서는 정수여야 해요.');
   const availableFrom = parseInstantOrNull(raw.availableFrom, '시작 시각');
   const dueAt = parseInstantOrNull(raw.dueAt, '기한');
-  if (availableFrom && dueAt && Date.parse(availableFrom) >= Date.parse(dueAt)) fail('시작 시각은 기한보다 빨라야 합니다.');
+  if (availableFrom && dueAt && Date.parse(availableFrom) >= Date.parse(dueAt)) fail('시작 시각은 기한보다 빨라야 해요.');
   const prerequisiteTaskId = raw.prerequisiteTaskId === null || raw.prerequisiteTaskId === undefined || raw.prerequisiteTaskId === ''
     ? null : parseId(raw.prerequisiteTaskId, '선행 과제');
   return { title, description, reward: raw.reward as number, isActive: raw.isActive, sortOrder: sortOrder as number,
@@ -230,7 +230,7 @@ export function parseTaskDefinition(value: unknown): TaskDefinitionDto {
 export function parseTaskIds(value: unknown): string[] {
   if (!Array.isArray(value) || value.length < 1 || value.length > MAX_TASK_IDS) fail('과제를 하나 이상 골라 주세요.');
   const ids = value.map((id) => parseId(id, '과제 번호'));
-  if (new Set(ids).size !== ids.length) fail('같은 과제가 두 번 들어 있습니다.');
+  if (new Set(ids).size !== ids.length) fail('같은 과제가 두 번 들어 있어요.');
   return ids;
 }
 
@@ -238,13 +238,13 @@ export function parseCreateTaskRequest(value: unknown): CreateTaskRequest {
   const raw = record(value, '요청');
   onlyKeys(raw, ['operationId', 'task', 'repeat', 'students'], '요청');
   const students = raw.students === undefined ? [] : raw.students;
-  if (!Array.isArray(students) || students.length > 1000) fail('학생 목록이 올바르지 않습니다.');
+  if (!Array.isArray(students) || students.length > 1000) fail('학생 목록이 올바르지 않아요.');
   const parsedStudents = students.map((entry) => {
     const item = record(entry, '학생');
     onlyKeys(item, ['studentId', 'stage'], '학생');
     return { studentId: parseId(item.studentId, '학생 번호'), stage: item.stage === undefined ? 'READY' as const : parseStage(item.stage) };
   });
-  if (new Set(parsedStudents.map((entry) => entry.studentId)).size !== parsedStudents.length) fail('같은 학생이 두 번 들어 있습니다.');
+  if (new Set(parsedStudents.map((entry) => entry.studentId)).size !== parsedStudents.length) fail('같은 학생이 두 번 들어 있어요.');
   return { operationId: parseOperationId(raw.operationId), task: parseTaskDefinition(raw.task), repeat: parseRepeatSetting(raw.repeat),
     students: parsedStudents };
 }
@@ -272,10 +272,10 @@ export function parseSetStagesRequest(value: unknown): SetStagesRequest {
     const taskId = parseId(item.taskId, '과제 번호');
     const studentId = parseId(item.studentId, '학생 번호');
     const stage = parseStage(item.stage);
-    if (item.withReward !== undefined && typeof item.withReward !== 'boolean') fail('보상 지급 여부가 올바르지 않습니다.');
-    if (item.withReward === true && stage !== 'COMPLETED') fail('보상은 완료로 바꿀 때만 지급할 수 있습니다.');
+    if (item.withReward !== undefined && typeof item.withReward !== 'boolean') fail('보상 지급 여부가 올바르지 않아요.');
+    if (item.withReward === true && stage !== 'COMPLETED') fail('보상은 완료로 바꿀 때만 지급할 수 있어요.');
     const key = JSON.stringify([taskId, studentId]);
-    if (seen.has(key)) fail('같은 과제의 같은 학생이 두 번 들어 있습니다.');
+    if (seen.has(key)) fail('같은 과제의 같은 학생이 두 번 들어 있어요.');
     seen.add(key);
     return { taskId, studentId, stage, ...(item.withReward === true ? { withReward: true } : {}) };
   });
@@ -297,10 +297,10 @@ export function parseSetRepeatRequest(value: unknown): SetRepeatRequest {
 export function parseQrStageRequest(value: unknown): QrStageRequest {
   const raw = record(value, '요청');
   onlyKeys(raw, ['operationId', 'taskId', 'studentQr', 'stage', 'withReward'], '요청');
-  if (typeof raw.studentQr !== 'string' || !raw.studentQr.trim() || raw.studentQr.length > 512) fail('QR 값이 올바르지 않습니다.');
+  if (typeof raw.studentQr !== 'string' || !raw.studentQr.trim() || raw.studentQr.length > 512) fail('QR 값이 올바르지 않아요.');
   const stage = parseStage(raw.stage);
-  if (raw.withReward !== undefined && typeof raw.withReward !== 'boolean') fail('보상 지급 여부가 올바르지 않습니다.');
-  if (raw.withReward === true && stage !== 'COMPLETED') fail('보상은 완료로 바꿀 때만 지급할 수 있습니다.');
+  if (raw.withReward !== undefined && typeof raw.withReward !== 'boolean') fail('보상 지급 여부가 올바르지 않아요.');
+  if (raw.withReward === true && stage !== 'COMPLETED') fail('보상은 완료로 바꿀 때만 지급할 수 있어요.');
   return { operationId: parseOperationId(raw.operationId), taskId: parseId(raw.taskId, '과제 번호'), studentQr: raw.studentQr.trim(), stage,
     ...(raw.withReward === true ? { withReward: true } : {}) };
 }

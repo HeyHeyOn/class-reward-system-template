@@ -37,7 +37,7 @@ it('refuses to import into a class that already has data', async () => {
   const html = await render();
   expect(html).not.toContain('업로드');
   expect(html).toContain('이미 자료가 있는 학급이에요');
-  expect(html).toContain('학생 3명 · 상품 0개 · 과제 1개');
+  expect(html).toContain('학생 3명, 상품 0개, 과제 1개');
 });
 
 it('sends a new class to its start page and opens the operator controls on an OAuth return', async () => {

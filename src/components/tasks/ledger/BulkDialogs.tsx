@@ -94,7 +94,7 @@ export function BulkStagesDialog({ ledger, taskIds, opener, notify, students, un
       <Modal title="선택한 과제의 완료 단계" ariaLabel="선택 과제 완료 단계" description={`대상: ${targetText(tasks)}`} size="lg" opener={opener} busy={busy}
         obscured={askReward} onClose={ledger.close}
         footer={<>
-          <span className="mr-auto text-[13px] font-semibold text-[var(--theme-muted-text)]">바뀌는 학생 {uniqueStudents}명{tasks.length > 1 ? ` · ${changes.length}건` : ''}</span>
+          <span className="mr-auto text-[13px] font-semibold text-[var(--theme-muted-text)]">바뀌는 학생 {uniqueStudents}명{tasks.length > 1 ? `, ${changes.length}건` : ''}</span>
           <Button variant="ghost" disabled={busy} onClick={ledger.close}>취소</Button>
           <Button variant="primary" icon="check" data-tour="bulk-stages-save" loading={busy && !askReward} disabled={busy || changes.length === 0} onClick={() => void save()}>저장</Button>
         </>}>
@@ -150,7 +150,7 @@ export function BulkResetDialog({ ledger, taskIds, notify }: BulkProps) {
     if (!result.ok) { setError(result.error); return; }
     ledger.board.applyTasks(result.data);
     ledger.close();
-    notify('지금 초기화 완료');
+    notify('지금 초기화했어요.');
   }
 
   return <ResetDialog tasks={tasks} initialStage={shared ?? DEFAULT_RESET_STAGE} busy={busy} error={error} onCancel={ledger.close} onConfirm={(stage) => void reset(stage)} />;
@@ -171,7 +171,7 @@ export function BulkDeleteDialog({ ledger, taskIds, notify }: BulkProps) {
     ledger.setSelection((current) => current.filter((id) => !result.data.includes(id)));
     void ledger.board.reload();
     ledger.close();
-    notify(`과제 ${result.data.length}개 삭제 완료`);
+    notify(`과제 ${result.data.length}개를 삭제했어요.`);
   }
 
   return <DeleteDialog tasks={tasks} busy={busy} error={error} onCancel={ledger.close} onConfirm={() => void remove()} />;

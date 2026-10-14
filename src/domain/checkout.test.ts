@@ -102,7 +102,7 @@ describe('createCheckoutPreview', () => {
     expect(result).toEqual({
       ok: false,
       code: 'INSUFFICIENT_BALANCE',
-      message: '잔액이 부족합니다.',
+      message: '잔액이 부족해요.',
       currentBalance: 500,
       requiredAmount: 600,
     });
@@ -118,7 +118,7 @@ describe('createCheckoutPreview', () => {
     expect(result).toEqual({
       ok: false,
       code: 'INSUFFICIENT_BALANCE',
-      message: '잔액이 부족합니다.',
+      message: '잔액이 부족해요.',
       currentBalance: -1,
       requiredAmount: 300,
     });
@@ -134,7 +134,7 @@ describe('createCheckoutPreview', () => {
     expect(result).toEqual({
       ok: false,
       code: 'INSUFFICIENT_STOCK',
-      message: '재고가 부족합니다.',
+      message: '재고가 부족해요.',
       productId: 'P002',
       requestedQuantity: 2,
       currentStock: 1,
@@ -209,7 +209,7 @@ describe('createCheckoutPreview', () => {
     });
 
     expect(result).toEqual({
-      ok: false, code: 'INSUFFICIENT_STOCK', message: '재고가 부족합니다.',
+      ok: false, code: 'INSUFFICIENT_STOCK', message: '재고가 부족해요.',
       productId: 'P001', requestedQuantity: 3, currentStock: 2,
     });
   });
@@ -247,7 +247,7 @@ describe('createCheckoutPreview', () => {
       code: 'PRICING_FAILED',
       productId: 'P001',
       pricingCode: 'INVALID_PROMOTION',
-      message: '행사 설정이 올바르지 않습니다.',
+      message: '행사 설정이 올바르지 않아요.',
       promotionId: 'PERCENT-10',
     });
   });
@@ -257,7 +257,7 @@ describe('createCheckoutPreview', () => {
       student: activeStudent, products,
       cartItems: [{ productId: 'P001', quantity }],
     })).toEqual({
-      ok: false, code: 'INVALID_QUANTITY', message: '상품 수량은 1개 이상이어야 합니다.', productId: 'P001',
+      ok: false, code: 'INVALID_QUANTITY', message: '상품 수량은 1개 이상이어야 해요.', productId: 'P001',
     });
   });
 
@@ -269,28 +269,28 @@ describe('createCheckoutPreview', () => {
         { productId: 'P001', quantity: 1 },
       ],
     })).toEqual({
-      ok: false, code: 'ARITHMETIC_OVERFLOW', message: '결제 금액 계산 범위를 초과했습니다.', productId: 'P001',
+      ok: false, code: 'ARITHMETIC_OVERFLOW', message: '결제 금액이 계산할 수 있는 범위를 넘었어요.', productId: 'P001',
     });
   });
 
   it('rejects an empty or malformed cart explicitly', () => {
     expect(createCheckoutPreview({ student: activeStudent, products, cartItems: [] })).toEqual({
-      ok: false, code: 'EMPTY_CART', message: '장바구니가 비어 있습니다.',
+      ok: false, code: 'EMPTY_CART', message: '장바구니가 비어 있어요.',
     });
     expect(createCheckoutPreview({
       student: activeStudent, products, cartItems: null as unknown as [],
-    })).toEqual({ ok: false, code: 'INVALID_CART', message: '장바구니가 올바르지 않습니다.' });
+    })).toEqual({ ok: false, code: 'INVALID_CART', message: '장바구니가 올바르지 않아요.' });
   });
 
   it('rejects malformed runtime student and product records without throwing', () => {
     expect(createCheckoutPreview({
       student: null as unknown as Student, products,
       cartItems: [{ productId: 'P001', quantity: 1 }],
-    })).toEqual({ ok: false, code: 'INVALID_STUDENT', message: '학생 정보가 올바르지 않습니다.' });
+    })).toEqual({ ok: false, code: 'INVALID_STUDENT', message: '학생 정보가 올바르지 않아요.' });
     expect(createCheckoutPreview({
       student: { ...activeStudent, studentId: ' ', name: ' ' }, products,
       cartItems: [{ productId: 'P001', quantity: 1 }],
-    })).toEqual({ ok: false, code: 'INVALID_STUDENT', message: '학생 정보가 올바르지 않습니다.' });
+    })).toEqual({ ok: false, code: 'INVALID_STUDENT', message: '학생 정보가 올바르지 않아요.' });
 
     for (const malformedProducts of [
       [null],
@@ -304,7 +304,7 @@ describe('createCheckoutPreview', () => {
         student: activeStudent,
         products: malformedProducts as Product[],
         cartItems: [{ productId: 'P001', quantity: 1 }],
-      })).toEqual({ ok: false, code: 'INVALID_PRODUCTS', message: '상품 목록이 올바르지 않습니다.' });
+      })).toEqual({ ok: false, code: 'INVALID_PRODUCTS', message: '상품 목록이 올바르지 않아요.' });
     }
   });
 
@@ -315,14 +315,14 @@ describe('createCheckoutPreview', () => {
       now: 'not-a-date' as unknown as Date,
     })).toEqual({
       ok: false, code: 'PRICING_FAILED', productId: 'P001', pricingCode: 'INVALID_NOW',
-      message: '가격 계산 시각이 올바르지 않습니다.',
+      message: '가격 계산 시각이 올바르지 않아요.',
     });
 
     expect(createCheckoutPreview({
       student: activeStudent, products,
       cartItems: [{ productId: 'P001', quantity: 1 }],
       promotions: [null as unknown as Promotion],
-    })).toEqual({ ok: false, code: 'INVALID_PROMOTIONS', message: '행사 목록이 올바르지 않습니다.' });
+    })).toEqual({ ok: false, code: 'INVALID_PROMOTIONS', message: '행사 목록이 올바르지 않아요.' });
   });
 
   it('returns immutable snapshots detached from promotion inputs', () => {

@@ -161,11 +161,11 @@ export type CheckoutPreviewResult = CheckoutPreviewSuccess | CheckoutPreviewFail
 
 export function createCheckoutPreview(input: CheckoutPreviewInput): CheckoutPreviewResult {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
-    return { ok: false, code: 'INVALID_CART', message: '장바구니가 올바르지 않습니다.' };
+    return { ok: false, code: 'INVALID_CART', message: '장바구니가 올바르지 않아요.' };
   }
   const { student, products, cartItems, promotions = [], vouchers, now = new Date() } = input;
   if (!isValidStudent(student)) {
-    return { ok: false, code: 'INVALID_STUDENT', message: '학생 정보가 올바르지 않습니다.' };
+    return { ok: false, code: 'INVALID_STUDENT', message: '학생 정보가 올바르지 않아요.' };
   }
 
   const pricing = createCartPricingPreview({ products, cartItems, promotions, vouchers, now });
@@ -176,7 +176,7 @@ export function createCheckoutPreview(input: CheckoutPreviewInput): CheckoutPrev
     return {
       ok: false,
       code: 'INSUFFICIENT_BALANCE',
-      message: '잔액이 부족합니다.',
+      message: '잔액이 부족해요.',
       currentBalance: student.balance,
       requiredAmount: pricing.totalAmount,
     };
@@ -196,29 +196,29 @@ export function createCheckoutPreview(input: CheckoutPreviewInput): CheckoutPrev
 
 export function createCartPricingPreview(input: CartPricingPreviewInput): CartPricingPreviewResult {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
-    return { ok: false, code: 'INVALID_CART', message: '장바구니가 올바르지 않습니다.' };
+    return { ok: false, code: 'INVALID_CART', message: '장바구니가 올바르지 않아요.' };
   }
   const { products, cartItems, promotions = [], vouchers = {}, now = new Date() } = input;
   if (!Array.isArray(cartItems)) {
-    return { ok: false, code: 'INVALID_CART', message: '장바구니가 올바르지 않습니다.' };
+    return { ok: false, code: 'INVALID_CART', message: '장바구니가 올바르지 않아요.' };
   }
   if (cartItems.length === 0) {
-    return { ok: false, code: 'EMPTY_CART', message: '장바구니가 비어 있습니다.' };
+    return { ok: false, code: 'EMPTY_CART', message: '장바구니가 비어 있어요.' };
   }
   if (!isValidProductList(products)) {
-    return { ok: false, code: 'INVALID_PRODUCTS', message: '상품 목록이 올바르지 않습니다.' };
+    return { ok: false, code: 'INVALID_PRODUCTS', message: '상품 목록이 올바르지 않아요.' };
   }
   if (!Array.isArray(promotions) || promotions.some((promotion) => (
     !promotion || typeof promotion !== 'object' || Array.isArray(promotion)
   ))) {
-    return { ok: false, code: 'INVALID_PROMOTIONS', message: '행사 목록이 올바르지 않습니다.' };
+    return { ok: false, code: 'INVALID_PROMOTIONS', message: '행사 목록이 올바르지 않아요.' };
   }
 
   const normalizedItems = normalizeCartItems(cartItems);
   if (!normalizedItems.ok) return normalizedItems;
   const voucherCounts = normalizeVouchers(vouchers, normalizedItems.items);
   if (!voucherCounts) {
-    return { ok: false, code: 'INVALID_VOUCHERS', message: '교환권은 장바구니에 담은 상품 개수만큼만 쓸 수 있습니다.' };
+    return { ok: false, code: 'INVALID_VOUCHERS', message: '교환권은 장바구니에 담은 상품 개수만큼만 쓸 수 있어요.' };
   }
 
   const productMap = new Map(products.map((product) => [product.productId, product]));
@@ -232,7 +232,7 @@ export function createCartPricingPreview(input: CartPricingPreviewInput): CartPr
       return {
         ok: false,
         code: 'PRODUCT_NOT_FOUND',
-        message: '상품을 찾을 수 없습니다.',
+        message: '상품을 찾을 수 없어요.',
         productId: cartItem.productId,
       };
     }
@@ -250,7 +250,7 @@ export function createCartPricingPreview(input: CartPricingPreviewInput): CartPr
       return {
         ok: false,
         code: 'INSUFFICIENT_STOCK',
-        message: '재고가 부족합니다.',
+        message: '재고가 부족해요.',
         productId: product.productId,
         requestedQuantity: cartItem.quantity,
         currentStock: product.stock,
@@ -318,7 +318,7 @@ export function applyCheckoutVouchers(
 ): CartPricingPreviewResult {
   const counts = normalizeVouchers(vouchers, pricing.items.map((item) => ({ productId: item.productId, quantity: item.totalQuantity })));
   if (!counts || pricing.items.some((item) => counts.has(item.productId) && item.adjustments.some((adjustment) => adjustment.type === 'VOUCHER'))) {
-    return { ok: false, code: 'INVALID_VOUCHERS', message: '교환권은 장바구니에 담은 상품 개수만큼만 쓸 수 있습니다.' };
+    return { ok: false, code: 'INVALID_VOUCHERS', message: '교환권은 장바구니에 담은 상품 개수만큼만 쓸 수 있어요.' };
   }
   let totalAmount = 0;
   const items: CheckoutLineSnapshot[] = [];
@@ -379,13 +379,13 @@ function normalizeCartItems(cartItems: CartItem[]):
 
   for (const cartItem of cartItems) {
     if (!cartItem || typeof cartItem !== 'object' || typeof cartItem.productId !== 'string' || cartItem.productId.length === 0) {
-      return { ok: false, code: 'INVALID_CART', message: '장바구니가 올바르지 않습니다.' };
+      return { ok: false, code: 'INVALID_CART', message: '장바구니가 올바르지 않아요.' };
     }
     if (!Number.isSafeInteger(cartItem.quantity) || cartItem.quantity < 1) {
       return {
         ok: false,
         code: 'INVALID_QUANTITY',
-        message: '상품 수량은 1개 이상이어야 합니다.',
+        message: '상품 수량은 1개 이상이어야 해요.',
         productId: cartItem.productId,
       };
     }
@@ -460,7 +460,7 @@ function arithmeticOverflow(productId?: string): Extract<CheckoutPreviewFailure,
   return {
     ok: false,
     code: 'ARITHMETIC_OVERFLOW',
-    message: '결제 금액 계산 범위를 초과했습니다.',
+    message: '결제 금액이 계산할 수 있는 범위를 넘었어요.',
     ...(productId === undefined ? {} : { productId }),
   };
 }

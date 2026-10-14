@@ -20,9 +20,9 @@ export async function PATCH(request: Request) {
     return Response.json(result);
   } catch (error) {
     if (error instanceof StudentAdminConflictError) {
-      return Response.json({ code: error.code, error: '학생 정보 또는 저장 요청이 변경되었습니다. 새로고침 후 다시 편집해 주세요.' }, { status: 409 });
+      return Response.json({ code: error.code, error: '학생 정보 또는 저장 요청이 변경됐어요. 새로고침 후 다시 편집해 주세요.' }, { status: 409 });
     }
-    const message = error instanceof Error ? error.message : '학생 명단을 일괄 저장하지 못했습니다.';
+    const message = error instanceof Error ? error.message : '학생 명단을 일괄 저장하지 못했어요.';
 
     return Response.json({ error: message }, { status: 400 });
   }

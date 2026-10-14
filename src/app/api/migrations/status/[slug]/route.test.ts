@@ -36,7 +36,7 @@ const getCompatibilitySession = vi.fn(async () => ({ tenantId }));
 const blocked = {
   availability: 'BLOCKED',
   reasonCode: 'TRUSTED_STATUS_READER_UNAVAILABLE',
-  reason: '검증된 이전 상태 조회가 연결되지 않아 진행 상태와 운영 권한을 확인할 수 없습니다.',
+  reason: '검증된 이전 상태 조회가 연결되지 않아 진행 상태와 운영 권한을 확인할 수 없어요.',
   readOnly: true,
   migrationStatus: 'UNKNOWN',
   authority: 'UNKNOWN',

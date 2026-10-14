@@ -13,7 +13,7 @@ import { isStatusJobId, readJobStatus, type JobReadResult } from './readJobStatu
 const blockedStatus = Object.freeze({
   availability: 'BLOCKED' as const,
   reasonCode: 'TRUSTED_STATUS_READER_UNAVAILABLE' as const,
-  reason: '검증된 이전 상태 조회가 연결되지 않아 진행 상태와 운영 권한을 확인할 수 없습니다.',
+  reason: '검증된 이전 상태 조회가 연결되지 않아 진행 상태와 운영 권한을 확인할 수 없어요.',
   readOnly: true as const,
   migrationStatus: 'UNKNOWN' as const,
   authority: 'UNKNOWN' as const,

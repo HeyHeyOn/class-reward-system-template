@@ -369,7 +369,7 @@ export function BulkImportControls<TRow extends { rowNumber: number }, TItem>({
 
         {count && !failure ? (
           <p className="text-[13px] leading-relaxed text-[var(--theme-muted-text)]">
-            확인을 누르기 전에는 아무것도 추가되지 않아요. 전부 한꺼번에 추가되고, 중간에 문제가 생기면 하나도 추가되지 않아요.
+            전부 한꺼번에 추가돼요. 중간에 문제가 생기면 하나도 추가되지 않아요.
           </p>
         ) : null}
       </div>

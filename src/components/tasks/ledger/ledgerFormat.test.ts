@@ -29,9 +29,9 @@ describe('Korean wording', () => {
 
   it('writes history entries as sentences', () => {
     expect(historySentence({ id: '1', at: '2026-10-06T00:00:00.000Z', studentId: 'S1', studentName: '김민준', stage: 'COMPLETED', previousStage: 'READY', cause: 'BANK', reward: 120 }, '원'))
-      .toBe('김민준 · 완료 가능 → 완료 · 은행에서 완료 (+120원)');
+      .toBe('김민준, 완료 가능 → 완료, 은행에서 완료 (+120원)');
     expect(historySentence({ id: '2', at: '2026-10-06T00:00:00.000Z', studentId: 'S2', studentName: '', stage: 'READY', previousStage: null, cause: 'AUTO_RESET', reward: null }, '원'))
-      .toBe('S2 · 완료 가능 · 자동 초기화');
+      .toBe('S2, 완료 가능, 자동 초기화');
   });
 });
 
@@ -56,8 +56,8 @@ describe('forms', () => {
     expect(form.availableFrom).toBe('2026-10-07T08:00');
     expect(definitionFromForm(form)).toEqual({ ok: true, value: { title: task.title, description: task.description, reward: 120, isActive: true, sortOrder: 1,
       availableFrom: '2026-10-06T23:00:00.000Z', dueAt: '2026-10-10T08:59:00.000Z', prerequisiteTaskId: null } });
-    expect(definitionFromForm({ ...form, reward: '' })).toEqual({ ok: false, error: '보상은 0 이상의 정수여야 합니다.' });
-    expect(definitionFromForm({ ...form, dueAt: '2026-10-07T07:00' })).toEqual({ ok: false, error: '시작 시각은 기한보다 빨라야 합니다.' });
+    expect(definitionFromForm({ ...form, reward: '' })).toEqual({ ok: false, error: '보상은 0 이상의 정수여야 해요.' });
+    expect(definitionFromForm({ ...form, dueAt: '2026-10-07T07:00' })).toEqual({ ok: false, error: '시작 시각은 기한보다 빨라야 해요.' });
   });
 });
 

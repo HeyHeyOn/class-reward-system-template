@@ -80,7 +80,7 @@ async function readJson(response: Response, signal: AbortSignal): Promise<unknow
     return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
   } finally { signal.removeEventListener('abort', cancel); cancel(); }
 }
-const unknownMessage = 'UNKNOWN — 실행되었을 수 있어 다시 보내지 않습니다. 원래 참조로 보관 상태만 수동 조회하세요. 기록이 없어도 미실행을 뜻하지 않습니다.';
+const unknownMessage = 'UNKNOWN — 실행됐을 수 있어 다시 보내지 않아요. 원래 참조로 보관 상태만 수동 조회하세요. 기록이 없어도 미실행을 뜻하지 않아요.';
 
 /** Parent keys this component by exact job; its enclosing form is independently
  * keyed by canonical tenant/login. Ref state is consumed before any await. */
@@ -121,7 +121,7 @@ export function MigrationReacquisition({ slug, tenantId, jobId }: Props) {
   const expiresAt = approval?.display.expiresAt ?? bootstrap?.expiresAt;
   useEffect(() => {
     if (!expiresAt) return;
-    const timer = window.setTimeout(() => discard('확인 시간이 만료되었습니다. 자동 재발급하지 않습니다. ' + unknownMessage), Math.max(0, expiresAt - Date.now()));
+    const timer = window.setTimeout(() => discard('확인 시간이 만료됐어요. 자동 재발급하지 않아요. ' + unknownMessage), Math.max(0, expiresAt - Date.now()));
     return () => window.clearTimeout(timer);
   }, [expiresAt]);
 
@@ -132,7 +132,7 @@ export function MigrationReacquisition({ slug, tenantId, jobId }: Props) {
     if ((kind === 'bootstrap' && g.phase !== 'idle') || (kind === 'challenge' && (g.phase !== 'bootstrap' || !b))
       || (kind === 'confirm' && (g.phase !== 'approval' || !a || !checked)) || (kind === 'status' && (g.phase !== 'terminal' || !ref))) return;
     try { if (kind === 'challenge') fresh(b!.expiresAt); if (kind === 'confirm') fresh(a!.display.expiresAt); }
-    catch { discard('확인 시간이 만료되었습니다. ' + unknownMessage); return; }
+    catch { discard('확인 시간이 만료됐어요. ' + unknownMessage); return; }
     // Irreversible one-shot consumption precedes React rendering and fetch.
     g.pending = true; g.phase = kind === 'status' ? 'terminal' : `${kind}-pending`;
     g.bootstrap = null; g.approval = null; setBootstrap(null); setApproval(null); setChecked(false); setPhase(g.phase);
@@ -166,7 +166,7 @@ export function MigrationReacquisition({ slug, tenantId, jobId }: Props) {
         } else if (data && typeof data === 'object' && 'status' in data && data.status === 'UNKNOWN') {
           const r = exact(data, ['scope', 'status', 'automaticRetry', 'automaticEnable']);
           if (reply.status !== 200 || r.scope !== 'ARCHIVAL_ONLY' || r.automaticRetry !== false || r.automaticEnable !== false) throw Error();
-          setArchiveResult('ARCHIVAL_ONLY · ' + unknownMessage);
+          setArchiveResult('ARCHIVAL_ONLY, ' + unknownMessage);
         } else {
           if (reply.status !== 200) throw Error(); setArchiveResult(JSON.stringify(parseFact(data, tenantId, ref!, true), null, 2));
         }
@@ -174,7 +174,7 @@ export function MigrationReacquisition({ slug, tenantId, jobId }: Props) {
       setPhase(g.phase);
     } catch {
       if (g.alive && g.generation === version) discard(kind === 'bootstrap' || kind === 'challenge'
-        ? '준비 또는 확인 정보 발급에 실패했습니다. 자동 재발급하지 않습니다. ' + unknownMessage : unknownMessage);
+        ? '준비 또는 확인 정보 발급에 실패했어요. 자동 재발급하지 않아요. ' + unknownMessage : unknownMessage);
     } finally {
       window.clearTimeout(timer); controller.signal.removeEventListener('abort', rejectAbort);
       if (g.alive && g.generation === version) { g.pending = false; setReading(false); }
@@ -183,21 +183,21 @@ export function MigrationReacquisition({ slug, tenantId, jobId }: Props) {
   const busy = phase.endsWith('-pending');
   return <section aria-label="진단용 다시 읽기" className="space-y-3 rounded-lg border border-slate-300 p-4">
     <h2 className="text-lg font-semibold">FREEZING 진단용 다시 읽기</h2>
-    <p>진단 전용입니다. 시작 작업과 달리 등록된 자료를 다시 읽어 진단 기록만 보관합니다. 전체 쓰기 차단을 증명하지 않으며 최종 가져오기·서비스 활성화를 하지 않습니다. 최종 작업의 별도 Google 동의를 대신하지 않습니다.</p>
-    <p>입력한 작업 UUID가 이미 FREEZING 상태여야 합니다. 자동 실행·재시도는 없습니다.</p>
+    <p>진단 전용이에요. 시작 작업과 달리 등록된 자료를 다시 읽어 진단 기록만 보관해요. 전체 쓰기 차단을 증명하지 않고, 최종 가져오기나 서비스 활성화를 하지 않아요. 최종 작업의 별도 Google 동의를 대신하지 않아요.</p>
+    <p>입력한 작업 UUID가 이미 FREEZING 상태여야 해요. 자동 실행이나 재시도는 없어요.</p>
     <button type="button" className={button} disabled={!valid || phase !== 'idle'} onClick={() => void request('bootstrap')}>진단 준비</button>
-    {bootstrap && <div className="space-y-2"><p>준비되었습니다. 다음 버튼은 서버에 이번 진단의 확인 기록을 만듭니다.</p><button type="button" className={button} onClick={() => void request('challenge')}>진단 확인 정보 받기</button></div>}
-    {busy && <p role="status">진단 요청 처리 중… 다시 보내지 않습니다.</p>}
+    {bootstrap && <div className="space-y-2"><p>준비됐어요. 다음 버튼은 서버에 이번 진단의 확인 기록을 만들어요.</p><button type="button" className={button} onClick={() => void request('challenge')}>진단 확인 정보 받기</button></div>}
+    {busy && <p role="status">진단 요청 처리 중… 다시 보내지 않아요.</p>}
     {approval && <div className="space-y-3">
-      <p>대상 학급·작업·원본 자료와 유효 시간을 확인하세요. NONAUTHORITY · NOT_PROVEN · finalImportEligible: false — 진단 기록은 최종 작업 권한이 아닙니다.</p>
+      <p>대상 학급, 작업, 원본 자료와 유효 시간을 확인하세요. NONAUTHORITY, NOT_PROVEN, finalImportEligible: false — 진단 기록은 최종 작업 권한이 아니에요.</p>
       <details open><summary>서버가 보낸 원본 확인 정보</summary><pre aria-label="진단 서버 원본" className="overflow-auto whitespace-pre-wrap break-all rounded bg-slate-50 p-3">{JSON.stringify(approval.display, null, 2)}</pre></details>
-      <label className="block"><input type="checkbox" checked={checked} onChange={e => setChecked(e.target.checked)} />위 대상의 진단용 읽기에 동의합니다.</label>
+      <label className="block"><input type="checkbox" checked={checked} onChange={e => setChecked(e.target.checked)} />위 대상의 진단용 읽기에 동의해요.</label>
       <button type="button" className={button} disabled={!checked} onClick={() => void request('confirm')}>진단용 읽기 실행</button>
     </div>}
     {error && <p role="alert" className="text-red-700">{error}</p>}
-    {result && <div><p>진단 기록 응답을 받았습니다. 최종 가져오기 승인이 아닙니다.</p><pre aria-label="진단 결과" className="whitespace-pre-wrap break-all">{result}</pre></div>}
+    {result && <div><p>진단 기록 응답을 받았어요. 최종 가져오기 승인이 아니에요.</p><pre aria-label="진단 결과" className="whitespace-pre-wrap break-all">{result}</pre></div>}
     {reference && <div className="space-y-2 rounded border p-3">
-      <p>원래 진단의 보관 조회 참조입니다. 이 화면 메모리에만 남으며 새로고침하면 참조를 잃을 수 있습니다. 같은 로그인 세션에서만 조회할 수 있고 조회로 실행 권한이 복원되지 않습니다.</p>
+      <p>원래 진단의 보관 조회 참조예요. 이 화면 메모리에만 남아서 새로고침하면 참조를 잃을 수 있어요. 같은 로그인 세션에서만 조회할 수 있고, 조회해도 실행 권한은 복원되지 않아요.</p>
       <pre aria-label="진단 보관 참조" className="whitespace-pre-wrap break-all">{JSON.stringify({ jobId, challengeId: reference.challengeId, intentDigest: reference.intentDigest }, null, 2)}</pre>
       {phase === 'terminal' && <button type="button" className={button} disabled={reading} onClick={() => void request('status')}>진단 보관 상태 조회</button>}
       {archiveResult && <pre aria-label="진단 보관 결과" className="whitespace-pre-wrap break-all">{archiveResult}</pre>}

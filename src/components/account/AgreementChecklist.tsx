@@ -66,7 +66,7 @@ export function AgreementChecklist({ value, onChange }: Readonly<{ value: Agreem
           ) : null}
         </div>
         <p className="rounded-[12px] bg-[var(--crs-subtle)] px-3 py-2.5 text-[12.5px] leading-relaxed text-[var(--theme-muted-text)]">
-          서비스 운영을 위해 개인정보가 싱가포르·미국에 있는 서버 업체(Vercel, Neon)에 맡겨져 보관돼요. 자세한 내용은{' '}
+          서비스 운영을 위해 개인정보가 싱가포르와 미국에 있는 서버 업체(Vercel, Neon)에 맡겨져 보관돼요. 자세한 내용은{' '}
           <a href="/privacy" target="_blank" rel="noopener noreferrer" className="font-semibold text-[var(--theme-accent-text)] underline underline-offset-2">개인정보처리방침</a>에서 확인할 수 있어요.
         </p>
       </div>

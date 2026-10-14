@@ -83,7 +83,7 @@ describe('TaskHistoryDialog', () => {
     const { dialog, onClose } = renderDetail();
 
     const summary = within(dialog).getByRole('region', { name: '이번 회차 요약' });
-    expect(summary.textContent).toContain('이번 회차 · 10월 5일(월) ~ 10월 11일(일)');
+    expect(summary.textContent).toContain('이번 회차, 10월 5일(월) ~ 10월 11일(일)');
     expect(summary.textContent).toContain('부여5명');
     expect(summary.textContent).toContain('완료1명');
     expect(summary.textContent).toContain('미완료3명');
@@ -98,8 +98,8 @@ describe('TaskHistoryDialog', () => {
       '이서연 학생을 완료 가능으로 바꿨어요',
       '이서연, 박도윤, 최하은 학생 외 1명에게 과제를 미완료로 부여했어요',
     ]);
-    expect(within(dialog).getByText('오늘 · 10월 6일(화)')).toBeTruthy();
-    expect(within(dialog).getByText('어제 · 10월 5일(월)')).toBeTruthy();
+    expect(within(dialog).getByText('오늘, 10월 6일(화)')).toBeTruthy();
+    expect(within(dialog).getByText('어제, 10월 5일(월)')).toBeTruthy();
     expect(within(dialog).getAllByText('오전 9:12').length).toBe(2);
     expect(within(dialog).getByText('지난 회차에서 이어진 학생 1명')).toBeTruthy();
 
@@ -139,7 +139,7 @@ describe('TaskHistoryDialog', () => {
     const filters = within(dialog).getByRole('group', { name: '기록 종류' });
     expect(within(filters).getByRole('button', { name: /^전체/ }).getAttribute('aria-pressed')).toBe('true');
 
-    fireEvent.click(within(filters).getByRole('button', { name: /^초기화·취소/ }));
+    fireEvent.click(within(filters).getByRole('button', { name: /^초기화, 취소/ }));
     expect(entryTexts(dialog)).toEqual(['박도윤 학생의 완료 기록을 초기화했어요']);
     expect(within(dialog).queryByText(/이어진 학생/)).toBeNull();
 

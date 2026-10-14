@@ -34,7 +34,7 @@ function ItemDetail({ stack, onClose }: Readonly<{ stack: BagItemStack; onClose:
   const picture = bagStackImage(stack);
   return (
     <Modal title={item.title} onClose={onClose} size="sm"
-      description={`${isVoucherItem(item) ? '교환권' : DIGITAL_KIND_LABELS[item.kind]}${count > 1 ? ` · ${count}개 가지고 있어요` : ''}`}>
+      description={`${isVoucherItem(item) ? '교환권' : DIGITAL_KIND_LABELS[item.kind]}${count > 1 ? `, ${count}개 가지고 있어요` : ''}`}>
       <div className="space-y-4">
         <div className="mx-auto flex aspect-square w-full max-w-[280px] items-center justify-center overflow-hidden rounded-[22px] border border-[var(--crs-line)] bg-[var(--crs-subtle)]">
           {picture
@@ -45,7 +45,7 @@ function ItemDetail({ stack, onClose }: Readonly<{ stack: BagItemStack; onClose:
         <p className="rounded-[14px] bg-[var(--crs-subtle)] px-4 py-3 text-[14px] font-semibold leading-relaxed text-[var(--theme-muted-text)]">{bagItemUse(item)}</p>
         <ul className="space-y-1 text-[13px] text-[var(--theme-muted-text)]">
           {stack.items.slice(0, 20).map((entry) => (
-            <li key={entry.itemId}>{bagItemOrigin(entry)} · {formatSeoulDateTime(entry.issuedAt)}</li>
+            <li key={entry.itemId}>{bagItemOrigin(entry)}, {formatSeoulDateTime(entry.issuedAt)}</li>
           ))}
           {count > 20 ? <li>그 밖에 {count - 20}개</li> : null}
         </ul>

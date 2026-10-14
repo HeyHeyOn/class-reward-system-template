@@ -26,11 +26,11 @@ function edits(value: unknown): Editable {
   for (const key of ['currencyUnit', 'appTitle', 'bankTitle'] as const) {
     const text = value[key];
     if (typeof text !== 'string' || !text || text !== text.trim() || text.length > (key === 'currencyUnit' ? 20 : 80)
-      || /[\p{Cc}\p{Cf}\p{Cs}]/u.test(text)) throw new SettingsInputError('화폐 단위와 제목의 길이·공백을 확인해 주세요.');
+      || /[\p{Cc}\p{Cf}\p{Cs}]/u.test(text)) throw new SettingsInputError('화폐 단위와 제목의 길이, 공백을 확인해 주세요.');
   }
   if (!themes.includes(value.themeColor as Editable['themeColor'])
     || !FONT_FAMILY_OPTIONS.some(option => option.value === value.fontFamily)
-    || typeof value.qrManualInputEnabled !== 'boolean') throw new SettingsInputError('테마·글꼴·QR 설정을 확인해 주세요.');
+    || typeof value.qrManualInputEnabled !== 'boolean') throw new SettingsInputError('테마, 글꼴, QR 설정을 확인해 주세요.');
   return Object.fromEntries(editKeys.map(key => [key, value[key]])) as Editable;
 }
 function parseInput(value: unknown): SaveInput {
@@ -38,7 +38,7 @@ function parseInput(value: unknown): SaveInput {
     || Object.keys(value).some(key => ![...editKeys, 'operationId', 'expectedSettingsVersion'].includes(key))
     || typeof value.operationId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value.operationId)
     || !Number.isSafeInteger(value.expectedSettingsVersion) || Number(value.expectedSettingsVersion) < 0
-    || Number(value.expectedSettingsVersion) >= Number.MAX_SAFE_INTEGER) throw new SettingsInputError('올바른 설정 저장 요청이 아닙니다. 다시 불러와 주세요.');
+    || Number(value.expectedSettingsVersion) >= Number.MAX_SAFE_INTEGER) throw new SettingsInputError('올바른 설정 저장 요청이 아니에요. 다시 불러와 주세요.');
   return { operationId: value.operationId, expectedSettingsVersion: Number(value.expectedSettingsVersion), ...edits(value) };
 }
 function project(settings: unknown, version: unknown, schemaVersion: unknown): PublicDatabaseSettings {
@@ -71,7 +71,7 @@ export function createDatabaseSettingsCommands(dependencies: Dependencies) {
       const payloadHash = createHash('sha256').update(JSON.stringify({ expectedSettingsVersion: input.expectedSettingsVersion, ...update })).digest('hex');
       return dependencies.runTenantTransaction(dependencies.tenantId, async tx => {
         const tenant = await tx.execute(sql`SELECT lifecycle FROM tenants WHERE id=${dependencies.tenantId} FOR SHARE`);
-        if (tenant.rows.length !== 1 || tenant.rows[0].lifecycle !== 'ACTIVE') throw new SettingsConflictError('학급이 사용 중 상태가 아닙니다.');
+        if (tenant.rows.length !== 1 || tenant.rows[0].lifecycle !== 'ACTIVE') throw new SettingsConflictError('학급이 사용 중 상태가 아니에요.');
         const now = new Date();
         const inserted = await tx.execute(sql`INSERT INTO operations
           (tenant_id, operation_id, operation_kind, payload_hash, status, started_at, created_at, updated_at)
@@ -82,7 +82,7 @@ export function createDatabaseSettingsCommands(dependencies: Dependencies) {
             WHERE tenant_id=${dependencies.tenantId} AND operation_id=${input.operationId} FOR UPDATE`);
           const row = existing.rows[0];
           if (!row || row.operation_kind !== 'SETTINGS_ADMIN' || row.payload_hash !== payloadHash || row.status !== 'SUCCEEDED'
-            || !record(row.result_snapshot)) throw new SettingsConflictError('저장 요청이 충돌했습니다.');
+            || !record(row.result_snapshot)) throw new SettingsConflictError('저장 요청이 충돌했어요.');
           const snapshot = row.result_snapshot;
           const result = project(snapshot, snapshot.settingsVersion, 1);
           if (result.settingsVersion !== input.expectedSettingsVersion + 1
@@ -96,7 +96,7 @@ export function createDatabaseSettingsCommands(dependencies: Dependencies) {
           WHERE tenant_id=${dependencies.tenantId} FOR UPDATE`);
         const row = current.rows[0];
         const version = row ? safeInteger(row.version, 'Settings version') : 0;
-        if (version !== input.expectedSettingsVersion) throw new SettingsConflictError('다른 화면에서 설정을 변경했습니다. 다시 불러온 뒤 저장해 주세요.');
+        if (version !== input.expectedSettingsVersion) throw new SettingsConflictError('다른 화면에서 설정을 변경했어요. 다시 불러온 뒤 저장해 주세요.');
         if (row && (![1, 2, 3, 4].includes(safeInteger(row.schema_version, 'Settings schema')) || !record(row.settings))) throw new Error('Invalid settings schema.');
         const merged = { ...(row?.settings as Record<string, unknown> ?? {}), ...update };
         const result = project(merged, version + 1, 1);

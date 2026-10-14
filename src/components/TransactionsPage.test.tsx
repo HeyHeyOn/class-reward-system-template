@@ -133,7 +133,7 @@ describe('TransactionsPage', () => {
     render(<TransactionsPage />);
     fireEvent.click(await screen.findByRole('button', { name: 'T002 거래 취소' }));
     const dialog = screen.getByRole('dialog', { name: '거래 취소 확인' });
-    expect(within(dialog).getByText('지급한 화폐 보상만 현재 잔액에서 회수합니다. 나무 수확·펫 졸업 기록과 함께 받은 보관함 물품·교환권은 그대로 남습니다.')).toBeTruthy();
+    expect(within(dialog).getByText('지급한 화폐 보상만 현재 잔액에서 회수해요. 나무 수확이나 펫 졸업 기록, 함께 받은 보관함 물품과 교환권은 그대로 남아요.')).toBeTruthy();
     expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/cancel'))).toBe(false);
   });
 
@@ -147,7 +147,7 @@ describe('TransactionsPage', () => {
     const { container } = render(<TransactionsPage />);
 
     expect(await screen.findByRole('heading', { name: '거래 내역' })).toBeTruthy();
-    expect(screen.getByText('거래 내역을 불러오는 중입니다.')).toBeTruthy();
+    expect(screen.getByText('거래 내역을 불러오는 중이에요.')).toBeTruthy();
     expect(container.querySelector('main')?.getAttribute('style')).toContain('--theme-shell');
     queueMicrotask(readinessGate.resolve);
     await waitFor(() => expect(rowCount()).toBe(4));
@@ -247,13 +247,13 @@ describe('TransactionsPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'T001 거래 취소' }));
     fireEvent.click(screen.getByRole('button', { name: '거래 취소 확정' }));
     expect(await screen.findByRole('dialog', { name: '거래 취소 중' })).toBeTruthy();
-    expect(screen.getByText('거래를 취소하는 중입니다.')).toBeTruthy();
+    expect(screen.getByText('거래를 취소하는 중이에요.')).toBeTruthy();
     cancelDeferred.resolve();
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '거래 취소 중' })).toBeNull());
 
     fireEvent.click(screen.getByRole('button', { name: '거래 내역 새로고침' }));
     expect(await screen.findByRole('dialog', { name: '새로고침 중' })).toBeTruthy();
-    expect(screen.getByText('최신 거래 내역을 불러오는 중입니다.')).toBeTruthy();
+    expect(screen.getByText('최신 거래 내역을 불러오는 중이에요.')).toBeTruthy();
     refreshDeferred.resolve();
     await waitFor(() => expect(rowCount()).toBe(1));
     expect(screen.getByTestId('transaction-row-T002')).toBeTruthy();
@@ -287,12 +287,12 @@ describe('TransactionsPage', () => {
     const opener = await screen.findByRole('button', { name: 'T002 거래 취소' });
     opener.focus(); fireEvent.click(opener);
     const dialog = screen.getByRole('dialog', { name: '거래 취소 확인' });
-    expect(dialog.textContent).toContain('이서연 · +500별');
+    expect(dialog.textContent).toContain('이서연 +500별');
     expect(dialog.textContent).toContain('T002');
     expect(dialog.textContent).toContain('보상만큼 현재 잔액에서 회수');
     expect(dialog.textContent).toContain('과제 완료도 취소');
     expect(dialog.textContent).toContain('초기화 후 새로 완료한 기록은 그대로');
-    expect(dialog.textContent).toContain('잔액이 음수가 될 수 있습니다');
+    expect(dialog.textContent).toContain('잔액이 음수가 될 수 있어요');
     expect(vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
     // The safe 돌아가기 action receives initial focus; Tab is trapped between the header close button and the confirm button.
     expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: '돌아가기' }));
@@ -328,7 +328,7 @@ describe('TransactionsPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'T002 거래 취소' }));
     fireEvent.click(screen.getByRole('button', { name: '거래 취소 확정' }));
     expect(await screen.findByText('과제 완료 기록 무결성을 확인할 수 없어 취소하지 않았습니다.')).toBeTruthy();
-    expect(screen.queryByText('거래를 취소하지 못했습니다.')).toBeNull();
+    expect(screen.queryByText('거래를 취소하지 못했어요.')).toBeNull();
   });
 
   it('globally suppresses a second row cancellation while another destructive request is pending', async () => {
@@ -388,7 +388,7 @@ describe('TransactionsPage', () => {
     render(<TransactionsPage />);
     fireEvent.click(await screen.findByRole('button', { name: 'T001 거래 취소' }));
     fireEvent.click(screen.getByRole('button', { name: '거래 취소 확정' }));
-    expect(await screen.findByText('거래를 취소하지 못했습니다.')).toBeTruthy();
+    expect(await screen.findByText('거래를 취소하지 못했어요.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'T001 거래 취소' })).toBeTruthy();
     expect(screen.queryByTestId('transaction-row-CANCEL-T001')).toBeNull();
 
@@ -427,7 +427,7 @@ describe('TransactionsPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'T001 거래 취소' }));
     fireEvent.click(screen.getByRole('button', { name: '거래 취소 확정' }));
 
-    expect(await screen.findByText('거래를 취소하지 못했습니다.')).toBeTruthy();
+    expect(await screen.findByText('거래를 취소하지 못했어요.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'T001 거래 취소' })).toBeTruthy();
     expect(screen.queryByTestId('transaction-row-CANCEL-T001')).toBeNull();
     expect(screen.getByTestId('transaction-row-T001')).toBeTruthy();

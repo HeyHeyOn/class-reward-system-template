@@ -5,7 +5,7 @@ import { CLASS_TREE_STAGES, classTreeLook } from '@/domain/classTree';
 import { TreeCanvas, type TreePlay } from '../classTree/TreeCanvas';
 import { Button, Callout, IconButton, Spinner } from '../ui';
 import type { ClassTreeStudentViewDto } from './bankClient';
-import { formatMoney } from './format';
+import { formatMoney, moneyIs } from './format';
 import { NoticeToast, type Notice } from './NoticeToast';
 
 import { StageBar, nextStageText, stagePoints } from './treeProgress';
@@ -37,12 +37,12 @@ export const BankTreeView = forwardRef<HTMLHeadingElement, BankTreeViewProps>(fu
   const look = tree && view ? classTreeLook(tree.drops, tree.goal, view.apples) : null;
   const doneToday = view ? view.myWaterToday >= view.waterDailyLimit : false;
   const tooPoor = view ? balance < view.waterPrice : false;
-  const waterLabel = view && view.waterPrice > 0 ? `양분 주기 · ${formatMoney(view.waterPrice, currencyUnit)}` : '양분 주기';
+  const waterLabel = view && view.waterPrice > 0 ? `양분 주기 (${formatMoney(view.waterPrice, currencyUnit)})` : '양분 주기';
   let blocked = '';
   if (look?.ready) blocked = '열매가 다 익었어요! 선생님이 수확할 때까지 기다려요.';
   else if (view && view.waterDailyLimit === 0) blocked = '지금은 양분 주기를 쉬고 있어요.';
   else if (doneToday) blocked = '오늘은 양분을 다 줬어요. 내일 또 줄 수 있어요.';
-  else if (tooPoor) blocked = `잔액이 부족해서 양분을 줄 수 없어요. 양분 주기는 ${formatMoney(view?.waterPrice ?? 0, currencyUnit)}이에요.`;
+  else if (tooPoor) blocked = `잔액이 부족해서 양분을 줄 수 없어요. 양분 주기는 ${moneyIs(formatMoney(view?.waterPrice ?? 0, currencyUnit))}.`;
 
   return (
     <div className="pb-[max(2rem,calc(env(safe-area-inset-bottom)+1.5rem))] pt-[max(1rem,env(safe-area-inset-top))]">
@@ -76,7 +76,7 @@ export const BankTreeView = forwardRef<HTMLHeadingElement, BankTreeViewProps>(fu
           <p className="mt-1.5 text-[13px] font-bold text-[var(--theme-accent-text)]">{look.ready ? '열매가 다 익었어요!' : nextStageText(tree.drops, tree.goal)}</p>
           <p className="mt-2 text-[13px] font-semibold text-[var(--theme-muted-text)]">
             {look.stage === 7 ? `사과 ${view.apples}개 중 ${look.ripe}개가 빨갛게 익었어요. ` : ''}
-            오늘 양분 준 친구 {view.waterersToday}명{view.harvestedTrees > 0 ? ` · 지금까지 수확한 나무 ${view.harvestedTrees}그루` : ''}
+            오늘 양분 준 친구 {view.waterersToday}명{view.harvestedTrees > 0 ? `, 지금까지 수확한 나무 ${view.harvestedTrees}그루` : ''}
           </p>
 
           <div className="mt-4">

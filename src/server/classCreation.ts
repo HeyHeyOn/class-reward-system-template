@@ -22,8 +22,8 @@ export async function handleClassCreation(request: Request, command: ClassCreati
   } catch (error) {
     const code = error && typeof error === 'object' && 'code' in error ? error.code : null;
     if (code === '28000') return reply(401, { error: '로그인이 만료되었거나 약관 동의가 필요해요. 다시 로그인해 주세요.' });
-    if (code === '23505') return reply(409, { error: '계정 또는 생성 요청이 충돌했습니다. 내 학급 목록을 확인해 주세요.' });
+    if (code === '23505') return reply(409, { error: '계정 또는 생성 요청이 충돌했어요. 내 학급 목록을 확인해 주세요.' });
     // The transaction may have committed even if its response was lost.
-    return reply(503, { error: '생성 결과를 확인하지 못했습니다. 다시 만들지 말고 내 학급 목록을 먼저 확인해 주세요.' });
+    return reply(503, { error: '생성 결과를 확인하지 못했어요. 다시 만들지 말고 내 학급 목록을 먼저 확인해 주세요.' });
   }
 }

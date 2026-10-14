@@ -7,7 +7,7 @@ import { legacyTaskWriterRefusal } from '@/server/legacyTaskWriters';
 
 const MAX_BATCH_TASKS = 20;
 const ROOT_KEYS = new Set(['taskIds', 'schedule', 'availableFrom', 'dueAt']);
-const INVALID_REQUEST = '과제 일정 일괄 요청 형식이 올바르지 않습니다.';
+const INVALID_REQUEST = '과제 일정 일괄 요청 형식이 올바르지 않아요.';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,13 +54,13 @@ export async function POST(request: Request) {
   try {
     store = await createConfiguredSheetsStore(request);
   } catch {
-    return Response.json({ error: '과제 저장소에 연결할 수 없습니다.' }, { status: 503 });
+    return Response.json({ error: '과제 저장소에 연결할 수 없어요.' }, { status: 503 });
   }
 
   try {
     return Response.json(await updateTaskSchedulesBatch(store, taskIds, schedule, availability));
   } catch {
-    return Response.json({ error: '과제 일정 일괄 처리에 실패했습니다.' }, { status: 500 });
+    return Response.json({ error: '과제 일정 일괄 처리에 실패했어요.' }, { status: 500 });
   }
 }
 

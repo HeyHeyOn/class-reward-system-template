@@ -4,9 +4,9 @@ import { resolveStudentQrForCurrentTenant, StudentQrValidationError } from '@/se
 export const dynamic = 'force-dynamic';
 
 const invalidQueryError = { error: '올바른 학생 ID를 입력해 주세요.' };
-const missingStudentError = { error: '학생 정보를 찾을 수 없습니다.', code: 'STUDENT_NOT_FOUND' };
+const missingStudentError = { error: '학생 정보를 찾을 수 없어요.', code: 'STUDENT_NOT_FOUND' };
 const unavailableError = {
-  error: '학생 정보를 일시적으로 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
+  error: '학생 정보를 일시적으로 불러오지 못했어요. 잠시 후 다시 시도해 주세요.',
   code: 'STUDENT_DATA_UNAVAILABLE',
 };
 

@@ -137,14 +137,14 @@ export function createDatabaseCheckoutCommand(
               return {
                 ok: false,
                 code: 'OPERATION_FAILED',
-                message: '이 작업 ID의 결제는 이미 실패로 종료되었습니다.',
+                message: '이 작업 ID의 결제는 이미 실패로 종료됐어요.',
                 ...(operation.failure_code ? { failureCode: operation.failure_code } : {}),
               };
             }
             return {
               ok: false,
               code: 'OPERATION_PENDING',
-              message: '동일한 결제 작업이 이미 처리 중입니다.',
+              message: '동일한 결제 작업이 이미 처리 중이에요.',
             };
           }
 
@@ -175,9 +175,9 @@ async function executeClaimedCheckout(
     FOR UPDATE OF s, a
   `);
   const account = accountResult.rows[0] as StudentAccountRow | undefined;
-  if (!account) fail({ ok: false, code: 'STUDENT_NOT_FOUND', message: '학생을 찾을 수 없습니다.' });
+  if (!account) fail({ ok: false, code: 'STUDENT_NOT_FOUND', message: '학생을 찾을 수 없어요.' });
   if (account.status !== 'ACTIVE') {
-    fail({ ok: false, code: 'STUDENT_INACTIVE', message: '현재 이용할 수 없는 학생입니다.' });
+    fail({ ok: false, code: 'STUDENT_INACTIVE', message: '현재 이용할 수 없는 학생이에요.' });
   }
 
   const productResult = await tx.execute(sql`
@@ -219,7 +219,7 @@ async function executeClaimedCheckout(
     fail({
       ok: false,
       code: 'PRICE_CHANGED',
-      message: '상품 가격 또는 행사가 변경되었습니다. 최신 금액을 확인해 주세요.',
+      message: '상품 가격 또는 행사가 변경됐어요. 최신 금액을 확인해 주세요.',
       latestPricing: authoritativePricing,
     });
   }
@@ -520,7 +520,7 @@ function operationConflict(): CheckoutCommandResult {
   return {
     ok: false,
     code: 'OPERATION_CONFLICT',
-    message: '동일한 작업 ID가 다른 결제 요청에 사용되었습니다.',
+    message: '동일한 작업 ID가 다른 결제 요청에 사용됐어요.',
   };
 }
 

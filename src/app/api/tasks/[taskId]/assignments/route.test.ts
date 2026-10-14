@@ -95,7 +95,7 @@ describe('PATCH /api/tasks/[taskId]/assignments', () => {
     }), { params: Promise.resolve({ taskId: 'T1' }) });
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: '과제 부여 요청 형식이 올바르지 않습니다.' });
+    await expect(response.json()).resolves.toEqual({ error: '과제 부여 요청 형식이 올바르지 않아요.' });
     expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
     expect(updateTaskAssignmentStatus).not.toHaveBeenCalled();
   });

@@ -13,7 +13,7 @@ import {
 } from '@/domain/classTree';
 import type { ClassTreeAdminBoardDto } from '@/lib/classTreeApi';
 import { schoolDaysEstimate } from '@/domain/schoolDays';
-import { withParticle } from '@/lib/koreanParticle';
+import { endsWithBatchim, withParticle } from '@/lib/koreanParticle';
 import { DIGITAL_KIND_LABELS } from '@/lib/studentBagApi';
 import { Button, Callout, Card, CardHeader, EmptyState, Field, IconButton, Input, Modal, PageHeader, Select, Spinner, StatCard, Switch } from '../ui';
 import { TreeCanvas, treePercent, type TreePlay } from './TreeCanvas';
@@ -53,6 +53,8 @@ function fromDraft(draft: Draft, enabled = draft.enabled) {
 }
 
 const fmt = (value: number) => value.toLocaleString('ko-KR');
+/** '12예요', '30이에요'. */
+const fmtIs = (value: string) => `${value}${endsWithBatchim(value) ? '이에요' : '예요'}`;
 const dateLabel = (iso: string) => new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'long', day: 'numeric' }).format(new Date(iso));
 
 /** The teacher's class apple tree: settings, classFeed, harvest, who helped, and the coupons given out. */
@@ -127,7 +129,7 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
       if (before && applied > 0) setPlay({ key: Date.now(), kind: 'classFeed', before, amount: applied });
       applyBoard(result.data.board, false);
       setFeedNote('');
-      notify(applied > 0 ? `반 전체에 양분을 ${fmt(applied)}만큼 줬어요.` : `양분을 ${fmt(-applied)}만큼 뺐어요. 지금 ${fmt(result.data.result.drops)}이에요.`);
+      notify(applied > 0 ? `반 전체에 양분을 ${fmt(applied)}만큼 줬어요.` : `양분을 ${fmt(-applied)}만큼 뺐어요. 지금 ${fmtIs(fmt(result.data.result.drops))}.`);
       return;
     }
     if (result.status !== 0) pendingFeed.current = null;
@@ -207,7 +209,7 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
             </div>
             <div className="w-full">
               <div className="flex items-baseline justify-between gap-3">
-                <span className="text-[20px] font-black tracking-[-0.02em]">{settings.treeName} · {CLASS_TREE_STAGES[look.stage]}</span>
+                <span className="text-[20px] font-black tracking-[-0.02em]">{settings.treeName} ({CLASS_TREE_STAGES[look.stage]})</span>
                 <span className="text-sm font-bold tabular-nums text-[var(--theme-muted-text)]">{treePercent(tree.drops, tree.goal)}%</span>
               </div>
               <span role="progressbar" aria-label="양분 진행" aria-valuemin={0} aria-valuemax={tree.goal} aria-valuenow={Math.min(tree.drops, tree.goal)}
@@ -242,7 +244,7 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
       ) : null}
 
       <Card className="space-y-5">
-        <CardHeader title="키우기 설정" description="목표 양분은 선생님이 정해요. 아래에서 예상 키우기 기간을 참고할 수 있어요. 보상은 수확할 때의 설정으로 줘요." />
+        <CardHeader title="키우기 설정" description="보상은 수확할 때의 설정으로 줘요." />
         {tree || settings.enabled ? (
           <Switch checked={draft.enabled} onChange={(enabled) => set({ enabled })} tour="tree-enable" label="학생 화면에 학급 나무 보이기"
             description="끄면 학생들은 나무를 볼 수 없고 양분도 쌓이지 않아요. 지금까지 쌓인 양분은 그대로 남아요." />
@@ -281,7 +283,7 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
               <option value="">없음</option>
               {board.rewardProducts.map((product) => (
                 <option key={product.productId} value={product.productId}>
-                  {product.name}{product.digitalKind ? ` (디지털 ${DIGITAL_KIND_LABELS[product.digitalKind]})` : ' (교환권으로)'}{product.isActive ? '' : ' · 판매 중지'}
+                  {product.name}{product.digitalKind ? ` (디지털 ${DIGITAL_KIND_LABELS[product.digitalKind]})` : ' (교환권으로)'}{product.isActive ? '' : ', 판매 중지'}
                 </option>
               ))}
             </Select>
@@ -336,7 +338,7 @@ export function ClassTreePanel({ unit, notify }: Readonly<{ unit: string; notify
               <li key={harvest.treeNo} className="flex flex-wrap items-baseline justify-between gap-2 py-2.5 text-sm">
                 <span className="font-bold">{dateLabel(harvest.harvestedAt)} 수확</span>
                 <span className="text-[var(--theme-muted-text)]">
-                  {dateLabel(harvest.startedAt)}부터 키움 · 학생 {harvest.recipients}명 ·
+                  {dateLabel(harvest.startedAt)}부터 키움, 학생 {harvest.recipients}명,
                   {harvest.rewardAmount > 0 ? ` ${fmt(harvest.rewardAmount)}${unit}` : ' 화폐 없음'}{harvest.rewardItem ? ` + ${harvest.rewardItem}` : ''}
                 </span>
               </li>
@@ -379,7 +381,7 @@ function TreeEstimate({ draft, activeStudents, drops, onTasks }: Readonly<{
   const left = ready && drops !== null ? classTreeEstimateDays(input, activeStudents, drops) : null;
   return (
     <section aria-labelledby="tree-estimate" className="space-y-3 rounded-[16px] bg-[var(--theme-accent-soft)] p-4">
-      <h3 id="tree-estimate" className="text-sm font-black">예상 키우기 기간 <span className="text-xs font-semibold text-[var(--theme-muted-text)]">· 참고용</span></h3>
+      <h3 id="tree-estimate" className="text-sm font-black">예상 키우기 기간 <span className="text-xs font-semibold text-[var(--theme-muted-text)]">(참고용)</span></h3>
       <div className="flex flex-wrap items-center gap-2">
         <label htmlFor="tree-tasks-week" className="text-sm font-semibold">학생 한 명당 일주일에 과제를 몇 개 정도 완료하나요?</label>
         <Input id="tree-tasks-week" inputMode="numeric" value={draft.tasksPerWeek} className="w-[6.5rem]" suffix="개" onChange={(event) => onTasks(event.target.value)} />
@@ -416,7 +418,7 @@ function TreeAdjustCard({ tree, activeStudents, amount, note, busy, enabled, adj
   return (
     <Card data-tour="tree-adjust" className="space-y-3">
       <CardHeader title="양분 조정" description="반 전체를 칭찬할 때 양분을 더하고, 잘못 쌓인 양분은 뺄 수 있어요." />
-      <p className="text-sm font-semibold tabular-nums">지금 양분 {fmt(tree.drops)} / {fmt(tree.goal)} · {stageOf(tree.drops)}</p>
+      <p className="text-sm font-semibold tabular-nums">지금 양분 {fmt(tree.drops)} / {fmt(tree.goal)}, {stageOf(tree.drops)}</p>
       <Field label="바꿀 양분" htmlFor="tree-feed-amount">
         <div className="flex items-center gap-2">
           <IconButton icon="minus" label="1 줄이기" variant="secondary" disabled={!valid || value <= min} onClick={() => onAmount(String(Math.max(min, value - 1)))} />
@@ -437,9 +439,9 @@ function TreeAdjustCard({ tree, activeStudents, amount, note, busy, enabled, adj
       {valid ? (
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 rounded-[14px] bg-[var(--crs-subtle-hover)] p-3 text-sm">
           <dt className="font-bold">더하면</dt>
-          <dd className="tabular-nums">{full ? '이미 다 자라서 더할 수 없어요' : `${fmt(plus)} · ${plus >= tree.goal ? '열매가 다 익어요' : stageOf(plus)}`}</dd>
+          <dd className="tabular-nums">{full ? '이미 다 자라서 더할 수 없어요' : `${fmt(plus)}, ${plus >= tree.goal ? '열매가 다 익어요' : stageOf(plus)}`}</dd>
           <dt className="font-bold">빼면</dt>
-          <dd className="tabular-nums">{fmt(minus)} · {stageOf(minus)}</dd>
+          <dd className="tabular-nums">{fmt(minus)}, {stageOf(minus)}</dd>
         </dl>
       ) : <p className="text-sm font-semibold text-[var(--crs-danger-text)]">{min}~{fmt(max)} 사이의 숫자로 적어 주세요.</p>}
       <div data-tour="tree-adjust-buttons" className="grid grid-cols-2 gap-2">
@@ -448,7 +450,7 @@ function TreeAdjustCard({ tree, activeStudents, amount, note, busy, enabled, adj
         <Button variant="primary" icon="plus" onClick={() => onApply('add')} loading={busy === 'add'}
           disabled={!valid || busy !== null || !enabled || full}>양분 더하기{valid ? ` +${fmt(value)}` : ''}</Button>
       </div>
-      {adjustedTotal !== 0 ? <p className="text-xs text-[var(--theme-muted-text)]">이 나무에 선생님이 조정한 양분은 합쳐서 {adjustedTotal > 0 ? '+' : '−'}{fmt(Math.abs(adjustedTotal))}이에요.</p> : null}
+      {adjustedTotal !== 0 ? <p className="text-xs text-[var(--theme-muted-text)]">이 나무에 선생님이 조정한 양분은 합쳐서 {adjustedTotal > 0 ? '+' : '−'}{fmtIs(fmt(Math.abs(adjustedTotal)))}.</p> : null}
       {!enabled ? <p className="text-xs text-[var(--theme-muted-text)]">나무 키우기를 켜야 조정할 수 있어요.</p> : null}
     </Card>
   );

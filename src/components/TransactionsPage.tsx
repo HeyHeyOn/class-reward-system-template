@@ -107,9 +107,9 @@ export function TransactionsPage({ adminHref = '/admin' }: { adminHref?: string 
       <section className="mx-auto flex w-full max-w-[1000px] flex-col gap-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-[13px] font-semibold text-[var(--theme-muted-text)]">학급 보상 시스템 · 관리자</p>
+            <p className="text-[13px] font-semibold text-[var(--theme-muted-text)]">딴쌤 클래스 관리자</p>
             <h1 className="mt-1 text-[28px] font-black tracking-[-0.035em]">거래 내역</h1>
-            <p className="mt-1.5 text-sm text-[var(--theme-muted-text)]">학급에 기록된 수입과 지출을 최신순으로 확인합니다.</p>
+            <p className="mt-1.5 text-sm text-[var(--theme-muted-text)]">학급에 기록된 수입과 지출을 최신순으로 확인해요.</p>
           </div>
           <Link className={buttonClass({ variant: 'secondary' })} href={adminHref}><Icon name="chevronLeft" size={17} />관리자 화면으로</Link>
         </div>
@@ -151,7 +151,7 @@ function timeLabel(value: string) {
 export function TransactionsPanel({ embedded = false }: { embedded?: boolean; summaryToneClass?: string; summaryAccentClass?: string }) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [currencyUnit, setCurrencyUnit] = useState('원');
-  const [message, setMessage] = useState('거래 내역을 불러오는 중입니다.');
+  const [message, setMessage] = useState('거래 내역을 불러오는 중이에요.');
   const [loading, setLoading] = useState(true);
   const [cancelingId, setCancelingId] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<{ transaction: Transaction; opener: HTMLButtonElement } | null>(null);
@@ -205,7 +205,7 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
       const settingsPayload = (await settingsResponse.json().catch(() => null)) as SettingsResponse | null;
 
       if (!transactionsResponse.ok || (paged ? !isTransactionPage(transactionsPayload) : !Array.isArray(transactionsPayload))) {
-        throw new Error(isRecord(transactionsPayload) && typeof transactionsPayload.error === 'string' ? transactionsPayload.error : '거래 내역을 불러오지 못했습니다.');
+        throw new Error(isRecord(transactionsPayload) && typeof transactionsPayload.error === 'string' ? transactionsPayload.error : '거래 내역을 불러오지 못했어요.');
       }
 
       if (!shouldApply() || epoch !== readEpoch.current) return;
@@ -237,7 +237,7 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
         return loadTransactions({ shouldApply: () => !ignore });
       })
       .catch((error) => {
-        if (!ignore) { setMessage(error instanceof Error ? error.message : '거래 내역을 불러오지 못했습니다.'); setLoading(false); }
+        if (!ignore) { setMessage(error instanceof Error ? error.message : '거래 내역을 불러오지 못했어요.'); setLoading(false); }
       });
 
     return () => {
@@ -283,7 +283,7 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
     try {
       await loadTransactions();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '거래 내역을 불러오지 못했습니다.');
+      setMessage(error instanceof Error ? error.message : '거래 내역을 불러오지 못했어요.');
     } finally {
       setIsRefreshing(false);
     }
@@ -308,10 +308,10 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
       });
       const payload = (await response.json()) as CancelTransactionResponse | ApiError;
       if (!response.ok || 'error' in payload) {
-        throw new Error('error' in payload && payload.error ? payload.error : '거래를 취소하지 못했습니다.');
+        throw new Error('error' in payload && payload.error ? payload.error : '거래를 취소하지 못했어요.');
       }
       if (!isCancelTransactionResponse(payload, transaction.transactionId)) {
-        throw new Error('거래를 취소하지 못했습니다.');
+        throw new Error('거래를 취소하지 못했어요.');
       }
       const { cancelledTransaction, reversalTransaction } = payload;
       setTransactions((current) => {
@@ -323,7 +323,7 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
       // that may belong on another page or outside the selected date/direction.
       if (paged) await latestLoader.current();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '거래를 취소하지 못했습니다.');
+      setMessage(error instanceof Error ? error.message : '거래를 취소하지 못했어요.');
     } finally {
       cancellationInFlightRef.current.delete(transaction.transactionId);
       setCancelingId(null);
@@ -334,8 +334,8 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
     <div className={cx('grid gap-5', embedded && 'pb-6')}>
       <section inert={confirmation !== null} aria-hidden={confirmation ? true : undefined} aria-label="거래 내역 목록" className="grid gap-5">
         <div data-tour="tx-stats" className="grid grid-cols-3 gap-3">
-          <StatCard label="수입" value={<span className="text-[var(--crs-success-text)]">+{formatCurrency(totals.income, currencyUnit)}</span>} hint={paged ? '검색 조건 기준 · 취소 제외' : '취소된 거래 제외'} />
-          <StatCard label="지출" value={<span className="text-[var(--crs-danger-text)]">-{formatCurrency(totals.expense, currencyUnit)}</span>} hint={paged ? '검색 조건 기준 · 취소 제외' : '취소된 거래 제외'} />
+          <StatCard label="수입" value={<span className="text-[var(--crs-success-text)]">+{formatCurrency(totals.income, currencyUnit)}</span>} hint={paged ? '검색 조건 기준, 취소 제외' : '취소된 거래 제외'} />
+          <StatCard label="지출" value={<span className="text-[var(--crs-danger-text)]">-{formatCurrency(totals.expense, currencyUnit)}</span>} hint={paged ? '검색 조건 기준, 취소 제외' : '취소된 거래 제외'} />
           <StatCard label="거래 수" value={`${(paged ? pageTotals.count : transactions.length).toLocaleString('ko-KR')}건`} hint={paged ? `현재 ${transactions.length}건 표시` : filteredTransactions.length !== transactions.length ? `표시 ${filteredTransactions.length}건` : '전체'} />
         </div>
 
@@ -357,15 +357,15 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
             <label className="text-xs font-semibold text-[var(--theme-muted-text)]">학생 번호
               <Input aria-label="거래 학생 번호" placeholder="전체 학생" maxLength={100} value={historyFilter.studentId}
                 onChange={(event) => changeHistoryFilter({ studentId: event.target.value.trim() })} /></label>
-            {loading ? <span role="status" className="text-xs text-[var(--theme-muted-text)]">거래 내역을 불러오는 중입니다.</span> : null}
+            {loading ? <span role="status" className="text-xs text-[var(--theme-muted-text)]">거래 내역을 불러오는 중이에요.</span> : null}
           </div> : null}
         </fieldset>
 
         {message ? <Callout tone={loading ? 'neutral' : 'warning'}>{message}</Callout> : null}
 
         {filteredTransactions.length === 0 && !message && !loading ? (
-          <EmptyState icon="receipt" title={transactions.length || hasHistoryFilters ? '조건에 맞는 거래가 없습니다' : '아직 거래가 없습니다'}
-            description={transactions.length || hasHistoryFilters ? '검색어나 필터를 바꿔 보세요.' : '학생이 매점에서 사거나 과제 보상을 받으면 여기에 기록됩니다.'} />
+          <EmptyState icon="receipt" title={transactions.length || hasHistoryFilters ? '조건에 맞는 거래가 없어요' : '아직 거래가 없어요'}
+            description={transactions.length || hasHistoryFilters ? '검색어나 필터를 바꿔 보세요.' : '학생이 매점에서 사거나 과제 보상을 받으면 여기에 기록돼요.'} />
         ) : null}
 
         {groups.map(([day, rows]) => (
@@ -396,11 +396,11 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
                         {isCancelled ? <span data-testid={`transaction-cancelled-label-${transaction.transactionId}`}><Badge>취소됨</Badge></span> : null}
                       </p>
                       <p className="mt-0.5 truncate text-[13px] text-[var(--theme-muted-text)]">
-                        {timeLabel(transaction.timestamp)}{itemsText ? ` · ${itemsText}` : ''}
+                        {timeLabel(transaction.timestamp)}{itemsText ? `, ${itemsText}` : ''}
                       </p>
-                      <p className="mt-0.5 truncate text-[11px] text-[color-mix(in_srgb,var(--theme-muted-text)_75%,transparent)]" title={`${transaction.transactionId} · ${transaction.status} · ${transaction.operator}`}>
+                      <p className="mt-0.5 truncate text-[11px] text-[color-mix(in_srgb,var(--theme-muted-text)_75%,transparent)]" title={`${transaction.transactionId}, ${transaction.status}, ${transaction.operator}`}>
                         잔액 {formatCurrency(transaction.balanceBefore, currencyUnit)} → {formatCurrency(transaction.balanceAfter, currencyUnit)}
-                        {transaction.cancelledAt ? ` · 취소 일시: ${formatTimestamp(transaction.cancelledAt)}` : ''}
+                        {transaction.cancelledAt ? `, 취소 일시: ${formatTimestamp(transaction.cancelledAt)}` : ''}
                       </p>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1.5">
@@ -442,8 +442,8 @@ export function TransactionsPanel({ embedded = false }: { embedded?: boolean; su
       {confirmation ? <TransactionCancelDialog transaction={confirmation.transaction} currencyUnit={currencyUnit}
         opener={confirmation.opener} onClose={() => setConfirmation(null)}
         onConfirm={() => void cancelTransaction(confirmation.transaction)} /> : null}
-      {cancelingId ? <LoadingOverlay title="거래 취소 중" message="거래를 취소하는 중입니다." /> : null}
-      {isRefreshing ? <LoadingOverlay title="새로고침 중" message="최신 거래 내역을 불러오는 중입니다." /> : null}
+      {cancelingId ? <LoadingOverlay title="거래 취소 중" message="거래를 취소하는 중이에요." /> : null}
+      {isRefreshing ? <LoadingOverlay title="새로고침 중" message="최신 거래 내역을 불러오는 중이에요." /> : null}
     </div>
   );
 }
@@ -453,16 +453,16 @@ function TransactionCancelDialog({ transaction, currencyUnit, opener, onClose, o
   onClose: () => void; onConfirm: () => void;
 }) {
   const detail = transaction.status === 'TASK_REWARD'
-    ? '지급한 보상만큼 현재 잔액에서 회수하고, 이 과제 완료도 취소합니다. 초기화 후 새로 완료한 기록은 그대로 둡니다. 학급 나무가 아직 자라는 중이면 이 과제로 준 양분도, 펫이 자라는 중이면 이 과제로 오른 성장도 뺍니다.'
+    ? '지급한 보상만큼 현재 잔액에서 회수하고, 이 과제 완료도 취소해요. 초기화 후 새로 완료한 기록은 그대로 둬요. 학급 나무가 아직 자라는 중이면 이 과제로 준 양분도, 펫이 자라는 중이면 이 과제로 오른 성장도 빼요.'
     : transaction.status === 'TREE_HARVEST' || transaction.status === 'PET_GRADUATE'
-      ? '지급한 화폐 보상만 현재 잔액에서 회수합니다. 나무 수확·펫 졸업 기록과 함께 받은 보관함 물품·교환권은 그대로 남습니다.'
+      ? '지급한 화폐 보상만 현재 잔액에서 회수해요. 나무 수확이나 펫 졸업 기록, 함께 받은 보관함 물품과 교환권은 그대로 남아요.'
       : transaction.status === 'TREE_WATER'
-        ? '양분 주기에 쓴 돈을 돌려주고, 학급 나무가 아직 자라는 중이면 그 양분도 뺍니다.'
+        ? '양분 주기에 쓴 돈을 돌려주고, 학급 나무가 아직 자라는 중이면 그 양분도 빼요.'
         : transaction.status === 'PET_FEED'
-          ? '먹이 주기에 쓴 돈을 돌려주고, 펫이 아직 자라는 중이면 그 먹이로 오른 성장도 뺍니다.'
+          ? '먹이 주기에 쓴 돈을 돌려주고, 펫이 아직 자라는 중이면 그 먹이로 오른 성장도 빼요.'
           : transaction.status === 'PET_DECOR'
-            ? '산 돈을 돌려주고, 그 꾸미기 물건을 거둬들입니다. 방에 놓여 있었다면 기본 물건으로 바뀝니다.'
-            : '이 거래를 되돌리는 반대 거래를 현재 잔액에 적용합니다.';
+            ? '산 돈을 돌려주고, 그 꾸미기 물건을 거둬들여요. 방에 놓여 있었다면 기본 물건으로 바뀌어요.'
+            : '이 거래를 되돌리는 반대 거래를 현재 잔액에 적용해요.';
   return (
     <Modal size="sm" tone="danger" title="거래를 취소할까요?" ariaLabel="거래 취소 확인" opener={opener} onClose={onClose}
       footer={<>
@@ -470,12 +470,12 @@ function TransactionCancelDialog({ transaction, currencyUnit, opener, onClose, o
         <Button variant="danger" data-tour="tx-cancel-confirm" onClick={onConfirm}>거래 취소 확정</Button>
       </>}>
       <div className="rounded-[var(--crs-radius)] bg-[var(--crs-subtle)] px-4 py-3">
-        <p className="text-sm font-bold">{transaction.studentName} · {formatSignedStudentAmount(transaction, currencyUnit)}</p>
+        <p className="text-sm font-bold">{transaction.studentName} {formatSignedStudentAmount(transaction, currencyUnit)}</p>
         <p className="mt-0.5 break-all text-[11px] text-[var(--theme-muted-text)]">{transaction.transactionId}</p>
       </div>
       <p className="mt-3 text-[13px] leading-relaxed text-[var(--theme-muted-text)]">{detail}</p>
       {transaction.balanceAfter > transaction.balanceBefore ? (
-        <p className="mt-2 text-[13px] leading-relaxed text-[var(--crs-warning-text)]">회수할 금액이 현재 잔액보다 크면 잔액이 음수가 될 수 있습니다.</p>
+        <p className="mt-2 text-[13px] leading-relaxed text-[var(--crs-warning-text)]">회수할 금액이 현재 잔액보다 크면 잔액이 음수가 될 수 있어요.</p>
       ) : null}
     </Modal>
   );

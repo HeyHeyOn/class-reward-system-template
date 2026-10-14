@@ -130,7 +130,7 @@ function FreezingForm({ slug, tenantId }: MigrationFreezingProps) {
         if (r.scope !== 'ARCHIVAL_ONLY') throw Error();
         if (r.status === 'ABSENT') {
           exact(r, ['scope', 'status']);
-          setStatus('ARCHIVAL_ONLY · ABSENT · UNKNOWN — 시작 기록 없음. 외부 writer 상태나 미실행을 증명하지 않습니다.');
+          setStatus('ARCHIVAL_ONLY, ABSENT, UNKNOWN — 시작 기록 없음. 외부 writer 상태나 미실행을 증명하지 않아요.');
         } else {
           exact(r, ['scope', 'status', 'jobStatus', 'ceremonyId', 'migrationJobId', 'executionDigest', 'exclusion']);
           if (r.status !== 'STARTED' || r.ceremonyId !== reference.attemptId || r.migrationJobId !== reference.jobId || r.exclusion !== 'NOT_PROVEN' || !hash.test(String(r.executionDigest)) || typeof r.jobStatus !== 'string') throw Error();
@@ -140,7 +140,7 @@ function FreezingForm({ slug, tenantId }: MigrationFreezingProps) {
     } catch {
       if (version === generation.current) {
         setChallenge(null); setConfirmed(false); launch.current = null; setLink('');
-        setError(kind === 'challenge' ? '확인 정보 발급 거부/실패. 세션과 작업을 확인하세요. 자동 재발급하지 않습니다.' : 'UNKNOWN — 세션 만료·거부·통신 실패일 수 있습니다. writer가 비활성 상태로 남을 수 있습니다. 자동 재시도/활성화하지 않습니다.');
+        setError(kind === 'challenge' ? '확인 정보 발급 거부/실패. 세션과 작업을 확인하세요. 자동 재발급하지 않아요.' : 'UNKNOWN — 세션 만료, 거부, 통신 실패일 수 있어요. writer가 비활성 상태로 남을 수 있어요. 자동 재시도/활성화하지 않아요.');
       }
     } finally {
       window.clearTimeout(timer);
@@ -150,15 +150,15 @@ function FreezingForm({ slug, tenantId }: MigrationFreezingProps) {
   return <main className="mx-auto max-w-3xl space-y-4 p-5 text-sm text-slate-800">
     <a className="underline" href={`/c/${slug}/admin`}>관리자로 돌아가기</a>
     <h1 className="text-xl font-bold">마이그레이션 FREEZING</h1>
-    <p className="rounded-lg border border-amber-300 bg-amber-50 p-3">DISABLE_LOCAL_WRITER_AND_START_FREEZING: 등록된 배포의 로컬 writer를 비활성화합니다. 실패해도 writer가 비활성 상태로 남을 수 있습니다. 자동 재시도·자동 활성화 없음. NOT_PROVEN은 전체 쓰기 동결·최종 import·ACTIVATE 완료가 아닙니다.</p>
-    <p>현재 대상 tenant: <code>{tenantId}</code> / <code>{slug}</code>. 정확한 jobId를 입력하세요. 확인 정보 발급도 서버에 기록을 생성합니다.</p>
+    <p className="rounded-lg border border-amber-300 bg-amber-50 p-3">DISABLE_LOCAL_WRITER_AND_START_FREEZING: 등록된 배포의 로컬 writer를 비활성화해요. 실패해도 writer가 비활성 상태로 남을 수 있어요. 자동 재시도, 자동 활성화는 없어요. NOT_PROVEN은 전체 쓰기 동결, 최종 import, ACTIVATE 완료가 아니에요.</p>
+    <p>현재 대상 tenant: <code>{tenantId}</code> / <code>{slug}</code>. 정확한 jobId를 입력하세요. 확인 정보 발급도 서버에 기록을 만들어요.</p>
     <label className="block">jobId<input className="ml-2 rounded border p-2" value={jobId} onChange={e => { clearTransient(); setArchive(null); setStatus(''); setError(''); setJobId(e.target.value); }} /></label>
     <button className={button} disabled={busy || !validJob || !!archive} onClick={() => void request('challenge')}>확인 정보 발급</button>
-    {busy && <p role="status">처리 중… 자동 재시도하지 않습니다.</p>}
+    {busy && <p role="status">처리 중… 자동 재시도하지 않아요.</p>}
     {challenge && <section className="space-y-3">
-      <h2 className="font-semibold">서버 원본 확인 — raw Sheet ID / tenant / job·version·source / semantic·acquisition / PREFLIGHT / deployment·registration</h2>
+      <h2 className="font-semibold">서버 원본 확인 — raw Sheet ID / tenant / job, version, source / semantic, acquisition / PREFLIGHT / deployment, registration</h2>
       <pre aria-label="서버 확인 정보" className="overflow-auto whitespace-pre-wrap break-all rounded border bg-slate-50 p-3">{JSON.stringify(challenge.startDisplay, null, 2)}</pre>
-      <label className="block"><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} /> 위 원본 대상과 로컬 writer 비활성화 위험을 확인하고 이 작업에 동의합니다.</label>
+      <label className="block"><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} /> 위 원본 대상과 로컬 writer 비활성화 위험을 확인하고 이 작업에 동의해요.</label>
       <button className={button} disabled={!confirmed || busy} onClick={() => void request('start')}>확인한 작업 시작</button>
     </section>}
     {error && <p role="alert" className="text-red-700">{error}</p>}
@@ -173,7 +173,7 @@ function FreezingForm({ slug, tenantId }: MigrationFreezingProps) {
     {archive && <section className="space-y-3 rounded-lg border p-3">
       <h2 className="font-semibold">보관 조회 참조 (실행 권한 아님)</h2>
       <pre className="whitespace-pre-wrap break-all">{JSON.stringify(archive, null, 2)}</pre>
-      <p>팝업이 열리지 않아도 자동 재시도·재발급하지 않습니다. 열린 탭 여부를 확인하고 아래 보관 상태를 수동 조회하세요. Google 동의 후 새 탭은 JSON STARTED/UNKNOWN을 표시합니다. 이 탭으로 돌아와 원래 로그인 세션으로 수동 조회하세요. 조회는 시작·재발급·재시도·writer 활성화를 하지 않습니다. 참조는 이 화면 메모리에만 남습니다. 페이지를 닫거나 새로고침하지 마세요.</p>
+      <p>팝업이 열리지 않아도 자동 재시도나 재발급은 하지 않아요. 열린 탭이 있는지 확인하고 아래 보관 상태를 수동 조회하세요. Google 동의 후 새 탭에는 JSON STARTED/UNKNOWN이 표시돼요. 이 탭으로 돌아와 원래 로그인 세션으로 수동 조회하세요. 조회는 시작, 재발급, 재시도, writer 활성화를 하지 않아요. 참조는 이 화면 메모리에만 남아요. 페이지를 닫거나 새로고침하지 마세요.</p>
       <button className={button} disabled={busy} onClick={() => void request('status')}>보관 상태 조회</button>
       {status && <pre aria-label="보관 상태" className="whitespace-pre-wrap break-all">{status}</pre>}
     </section>}

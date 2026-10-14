@@ -11,7 +11,7 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('Failed to get active promotions', error);
     return Response.json(
-      { error: '진행 중인 행사를 불러오지 못했습니다.' },
+      { error: '진행 중인 행사를 불러오지 못했어요.' },
       { status: 500 },
     );
   }

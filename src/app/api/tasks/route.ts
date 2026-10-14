@@ -19,7 +19,7 @@ export async function GET(request: Request) {
     if (keys.some((key) => key !== 'studentId' && key !== 'includeInactive')
       || studentIds.length > 1
       || (studentIds.length === 1 && (!studentIds[0].trim() || searchParams.has('includeInactive')))) {
-      return Response.json({ error: '과제 조회 요청 형식이 올바르지 않습니다.' }, { status: 400 });
+      return Response.json({ error: '과제 조회 요청 형식이 올바르지 않아요.' }, { status: 400 });
     }
     const qrValue = studentIds.length === 1 ? studentIds[0].trim() : null;
     const studentId = qrValue ? resolveStudentQrForCurrentTenant(qrValue).studentId : null;
@@ -37,10 +37,10 @@ export async function GET(request: Request) {
   } catch (error) {
     if (new URL(request.url).searchParams.has('studentId')) {
       return error instanceof StudentQrValidationError
-        ? Response.json({ error: '학생 정보를 찾을 수 없습니다.' }, { status: 404 })
-        : Response.json({ error: '과제 목록을 불러오지 못했습니다.' }, { status: 500 });
+        ? Response.json({ error: '학생 정보를 찾을 수 없어요.' }, { status: 404 })
+        : Response.json({ error: '과제 목록을 불러오지 못했어요.' }, { status: 500 });
     }
-    const message = error instanceof Error ? error.message : '과제 목록을 불러오지 못했습니다.';
+    const message = error instanceof Error ? error.message : '과제 목록을 불러오지 못했어요.';
     return Response.json({ error: message }, { status: 500 });
   }
 }
@@ -55,13 +55,13 @@ export async function POST(request: Request) {
 
   try {
     const mediaType = request.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();
-    if (mediaType !== 'application/json') throw new Error('과제 저장 요청 형식이 올바르지 않습니다.');
+    if (mediaType !== 'application/json') throw new Error('과제 저장 요청 형식이 올바르지 않아요.');
     const payload: unknown = await request.json();
     const fields = parseStrictTaskCreate(payload);
     const input = payload as Record<string, unknown>;
     if (input.schedule && typeof input.schedule === 'object' && !Array.isArray(input.schedule)
       && (input.schedule as Record<string, unknown>).timeZone !== 'Asia/Seoul') {
-      throw new Error('과제 저장 요청 형식이 올바르지 않습니다.');
+      throw new Error('과제 저장 요청 형식이 올바르지 않아요.');
     }
     const schedule = parseOptionalTaskScheduleEdit(input.schedule);
     const command = await createConfiguredTaskCreation(request);
@@ -71,7 +71,7 @@ export async function POST(request: Request) {
     });
     return Response.json(task, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : '과제를 추가하지 못했습니다.';
+    const message = error instanceof Error ? error.message : '과제를 추가하지 못했어요.';
     return Response.json({ error: message }, { status: 400 });
   }
 }

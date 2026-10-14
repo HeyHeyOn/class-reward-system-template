@@ -23,7 +23,7 @@ export function DefinitionFields({ form, onChange, tasks, selfTaskId, unit, labe
         <Input id={`${id}-title`} aria-label={`${labelPrefix} 과제 이름`} data-autofocus placeholder="수학 익힘책 42~45쪽" value={form.title}
           onChange={(event) => onChange({ title: event.target.value })} />
       </Field>
-      <Field label="설명" htmlFor={`${id}-description`} optional hint="미완료·완료 가능 단계의 학생이 은행에서 볼 수 있어요.">
+      <Field label="설명" htmlFor={`${id}-description`} optional hint="미완료, 완료 가능 단계의 학생이 은행에서 볼 수 있어요.">
         <Textarea id={`${id}-description`} aria-label={`${labelPrefix} 설명`} placeholder="풀고 채점까지 끝내기" value={form.description}
           onChange={(event) => onChange({ description: event.target.value })} />
       </Field>

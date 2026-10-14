@@ -11,7 +11,7 @@ export async function logoutAdministrator(request: Request): Promise<NextRespons
     try {
       await endRequestTeacherSessions(request);
     } catch {
-      return NextResponse.json({ error: '로그아웃하지 못했습니다. 다시 시도해 주세요.' }, {
+      return NextResponse.json({ error: '로그아웃하지 못했어요. 다시 시도해 주세요.' }, {
         status: 503, headers: { 'cache-control': 'no-store' },
       });
     }
@@ -23,7 +23,7 @@ export async function logoutAdministrator(request: Request): Promise<NextRespons
     } catch {
       // Preserve the bearer cookie for a retry; never report a successful
       // logout while its server-side revocation is unconfirmed.
-      return NextResponse.json({ error: '로그아웃하지 못했습니다. 다시 시도해 주세요.' }, {
+      return NextResponse.json({ error: '로그아웃하지 못했어요. 다시 시도해 주세요.' }, {
         status: 503, headers: { 'cache-control': 'no-store' },
       });
     }

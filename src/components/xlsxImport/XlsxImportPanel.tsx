@@ -64,7 +64,7 @@ function IssueList({ issues, tone, title }: { issues: Issue[]; tone: 'danger' | 
       <ul className="mt-1 max-h-64 space-y-1 overflow-y-auto pr-1">
         {issues.map((issue, index) => (
           <li key={index} className="leading-relaxed">
-            {where(issue) ? <span className="font-bold">{where(issue)} · </span> : null}{issue.message}
+            {where(issue) ? <span className="font-bold">{where(issue)}: </span> : null}{issue.message}
           </li>
         ))}
       </ul>
@@ -199,7 +199,7 @@ export function XlsxImportPanel({ slug, mode, navigate }: Readonly<{
       {phase === 'select' || phase === 'previewing' ? (
         <>
           <ol className="space-y-1.5 rounded-[var(--crs-radius)] bg-[var(--crs-subtle)] px-4 py-3 text-[13px] leading-relaxed text-[var(--theme-muted-text)]">
-            <li><span className="font-bold text-[var(--theme-text)]">1.</span> 예전 학급 보상 시스템 구글 시트를 열어요.</li>
+            <li><span className="font-bold text-[var(--theme-text)]">1.</span> 예전 구글 시트 버전의 시트를 열어요.</li>
             <li><span className="font-bold text-[var(--theme-text)]">2.</span> [파일 → 다운로드 → Microsoft Excel(.xlsx)]로 저장해요.</li>
             <li><span className="font-bold text-[var(--theme-text)]">3.</span> 저장한 파일을 아래에 올리면 옮길 내용을 먼저 보여 드려요.</li>
           </ol>
@@ -209,8 +209,8 @@ export function XlsxImportPanel({ slug, mode, navigate }: Readonly<{
               locked && 'pointer-events-none opacity-60')}>
             <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[var(--crs-subtle-hover)] text-[var(--theme-muted-text)]"><Icon name="migrate" size={20} /></span>
             <span className="text-[14px] font-extrabold">{phase === 'previewing' ? '파일을 확인하는 중…' : '.xlsx 파일 선택'}</span>
-            <span className="text-[12px] text-[var(--theme-muted-text)]">여기에 끌어다 놓아도 돼요 · 10MB 이하</span>
-            <input ref={inputRef} id={inputId} type="file" disabled={locked} aria-label="학급 보상 시스템 시트 파일(.xlsx) 선택"
+            <span className="text-[12px] text-[var(--theme-muted-text)]">여기에 끌어다 놓아도 돼요 (10MB 이하)</span>
+            <input ref={inputRef} id={inputId} type="file" disabled={locked} aria-label="구글 시트 버전 파일(.xlsx) 선택"
               accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="sr-only"
               onChange={event => { void choose(event.target.files?.[0]); }} />
           </label>
@@ -227,12 +227,12 @@ export function XlsxImportPanel({ slug, mode, navigate }: Readonly<{
           <div className="grid grid-cols-2 gap-2">
             <Stat label="학생" value={`${number(summary.students)}명`} hint={summary.students !== summary.activeStudents ? `사용 중 ${number(summary.activeStudents)}명` : undefined} />
             <Stat label="총 잔액" value={`${number(summary.totalBalance)}${unit}`} hint="학생별 잔액 그대로" />
-            <Stat label="상품" value={`${number(summary.products)}개`} hint={`판매 중 ${number(summary.activeProducts)}개 · 재고 ${number(summary.totalStock)}개`} />
-            <Stat label="과제" value={`${number(summary.tasks)}개`} hint={`완료 가능 ${number(summary.readyAssignments)} · 완료 ${number(summary.completedAssignments)}`} />
+            <Stat label="상품" value={`${number(summary.products)}개`} hint={`판매 중 ${number(summary.activeProducts)}개, 재고 ${number(summary.totalStock)}개`} />
+            <Stat label="과제" value={`${number(summary.tasks)}개`} hint={`완료 가능 ${number(summary.readyAssignments)}, 완료 ${number(summary.completedAssignments)}`} />
           </div>
           <p className="text-[12.5px] leading-relaxed text-[var(--theme-muted-text)]">
-            매점 이름 <b className="text-[var(--theme-text)]">{summary.settings.appTitle}</b> · 은행 이름 <b className="text-[var(--theme-text)]">{summary.settings.bankTitle}</b>
-            {summary.promotions ? <> · 행사 {number(summary.promotions)}개</> : null}
+            매점 이름 <b className="text-[var(--theme-text)]">{summary.settings.appTitle}</b>, 은행 이름 <b className="text-[var(--theme-text)]">{summary.settings.bankTitle}</b>
+            {summary.promotions ? <>, 행사 {number(summary.promotions)}개</> : null}
           </p>
           <IssueList issues={errors} tone="danger" title={`고쳐야 할 내용 ${errors.length}건`} />
           <IssueList issues={warnings} tone="warning" title={`확인할 내용 ${warnings.length}건`} />
@@ -255,7 +255,7 @@ export function XlsxImportPanel({ slug, mode, navigate }: Readonly<{
                 {preview.products.map(product => (
                   <li key={product.productId} className="flex items-center justify-between gap-3 py-1.5">
                     <span className="min-w-0 truncate">{product.name}{!product.isActive ? <Badge className="ml-1.5">판매 중지</Badge> : null}</span>
-                    <span className="shrink-0 tabular-nums text-[var(--theme-muted-text)]">{number(product.price)}{unit} · 재고 {number(product.stock)}</span>
+                    <span className="shrink-0 tabular-nums text-[var(--theme-muted-text)]">{number(product.price)}{unit}, 재고 {number(product.stock)}</span>
                   </li>
                 ))}
               </ul>
@@ -268,10 +268,10 @@ export function XlsxImportPanel({ slug, mode, navigate }: Readonly<{
                   <li key={task.taskId} className="py-1.5">
                     <p className="flex items-center gap-1.5 font-semibold"><span className="min-w-0 truncate">{task.title}</span>
                       {!task.isActive ? <Badge>숨김</Badge> : null}</p>
-                    <p className="text-[12px] text-[var(--theme-muted-text)]">보상 {number(task.reward)}{unit} · {task.schedule} · 완료 가능 {task.ready}명 · 완료 {task.completed}명</p>
+                    <p className="text-[12px] text-[var(--theme-muted-text)]">보상 {number(task.reward)}{unit}, {task.schedule}, 완료 가능 {task.ready}명, 완료 {task.completed}명</p>
                     {task.availableFrom || task.dueAt ? (
                       <p className="text-[12px] text-[var(--theme-muted-text)]">
-                        {task.availableFrom ? `시작 ${when(task.availableFrom)}` : ''}{task.availableFrom && task.dueAt ? ' · ' : ''}{task.dueAt ? `기한 ${when(task.dueAt)}` : ''}
+                        {task.availableFrom ? `시작 ${when(task.availableFrom)}` : ''}{task.availableFrom && task.dueAt ? ', ' : ''}{task.dueAt ? `기한 ${when(task.dueAt)}` : ''}
                       </p>
                     ) : null}
                   </li>
@@ -304,7 +304,7 @@ export function XlsxImportPanel({ slug, mode, navigate }: Readonly<{
             <li>학생 {number(summary.students)}명과 각자의 잔액(총 {number(summary.totalBalance)}{unit})</li>
             <li>상품 {number(summary.products)}개와 재고{summary.promotions ? `, 행사 ${number(summary.promotions)}개` : ''}</li>
             <li>과제 {number(summary.tasks)}개와 이번 회차 상태(완료 가능 {number(summary.readyAssignments)}건, 완료 {number(summary.completedAssignments)}건 — 보상은 다시 주지 않아요)</li>
-            <li>이전 거래·과제 기록은 옮기지 않아요. 원본 파일에 그대로 남아 있어요.</li>
+            <li>이전 거래 기록과 과제 기록은 옮기지 않아요. 원본 파일에 그대로 남아 있어요.</li>
           </ul>
           <p className="mt-3 text-[12.5px] text-[var(--theme-muted-text)]">중간에 문제가 생기면 아무것도 바뀌지 않아요.</p>
         </Modal>

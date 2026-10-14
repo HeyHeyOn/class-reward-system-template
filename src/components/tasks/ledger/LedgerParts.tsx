@@ -127,7 +127,7 @@ export function RewardConfirmDialog({ count, reward, unit, multipleTasks, busy, 
       </>}>
       <p className="text-sm font-bold">완료로 바꾼 학생 {count}명에게 보상({amount})도 줄까요?</p>
       <p className="mt-2 text-[13px] leading-relaxed text-[var(--theme-muted-text)]">
-        보상을 주면 은행에서 완료한 것처럼 학생 잔액이 늘어나요.{multipleTasks ? ' 과제마다 그 과제의 보상을 줍니다.' : ''}
+        보상을 주면 은행에서 완료한 것처럼 학생 잔액이 늘어나요.{multipleTasks ? ' 과제마다 그 과제의 보상을 줘요.' : ''}
       </p>
     </Modal>
   );

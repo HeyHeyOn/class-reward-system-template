@@ -101,7 +101,7 @@ export function validateSpreadsheetId(value: string): ValidationResult {
   const spreadsheetId = extractSpreadsheetId(value);
 
   if (!spreadsheetId) {
-    return { ok: false, message: '올바른 Google Sheets 주소 또는 시트 ID가 아닙니다.' };
+    return { ok: false, message: '올바른 Google Sheets 주소 또는 시트 ID가 아니에요.' };
   }
 
   return { ok: true, spreadsheetId };
@@ -174,11 +174,11 @@ export async function saveAppSettings(options: SaveSettingsOptions): Promise<Leg
   }
 
   if (!configuredSpreadsheetId) {
-    throw new Error('GOOGLE_SHEET_ID 환경변수가 설정되지 않았습니다. Vercel 환경변수에 기본 시트 ID를 등록해 주세요.');
+    throw new Error('GOOGLE_SHEET_ID 환경변수가 설정되지 않았어요. Vercel 환경변수에 기본 시트 ID를 등록해 주세요.');
   }
 
   if (validation.spreadsheetId !== configuredSpreadsheetId) {
-    throw new Error('Vercel 배포판에서는 시트 ID를 관리자 화면에서 영구 변경할 수 없습니다. Vercel의 GOOGLE_SHEET_ID 환경변수를 변경한 뒤 재배포해 주세요.');
+    throw new Error('Vercel 배포판에서는 시트 ID를 관리자 화면에서 영구 변경할 수 없어요. Vercel의 GOOGLE_SHEET_ID 환경변수를 변경한 뒤 재배포해 주세요.');
   }
 
   const currencyUnit = normalizeCurrencyUnit(options.currencyUnit);

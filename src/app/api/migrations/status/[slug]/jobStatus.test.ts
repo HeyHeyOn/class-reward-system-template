@@ -22,7 +22,7 @@ let fetchSpy: ReturnType<typeof vi.spyOn>;
 const jobId = 'job-explicit-1';
 const projected = {
   availability: 'AVAILABLE', reasonCode: 'OPERATIONAL_AUTHORITY_UNVERIFIED',
-  reason: '저장된 작업 상태만 표시합니다. 실제 운영 권한은 확인되지 않았습니다.',
+  reason: '저장된 작업 상태만 표시해요. 실제 운영 권한은 확인되지 않았어요.',
   readOnly: true, migrationStatus: 'ACTIVE', authority: 'UNKNOWN',
 };
 const jobCalls = () => query.mock.calls.filter(([config]) => config.text.includes('public.migration_jobs'));

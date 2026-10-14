@@ -69,7 +69,7 @@ describe('student by-id GET read authority', () => {
     const response = await GET(request, context);
 
     expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({ error: '학생을 찾을 수 없습니다.' });
+    expect(await response.json()).toEqual({ error: '학생을 찾을 수 없어요.' });
     expect(mocks.createConfiguredSheetsReader).not.toHaveBeenCalled();
   });
 

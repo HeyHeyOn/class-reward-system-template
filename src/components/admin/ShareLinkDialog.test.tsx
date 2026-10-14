@@ -99,7 +99,7 @@ describe('ShareLinkDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: '이미지로 저장' }));
     await waitFor(() => expect(card.download).toHaveBeenCalledTimes(1));
     expect(card.png).toHaveBeenCalledWith(expect.objectContaining({
-      url: `${origin}/c/class-a/admin`, title: '관리자 페이지', classLabel: '5학년 2반', caution: '선생님 전용 · Google 로그인 필요',
+      url: `${origin}/c/class-a/admin`, title: '관리자 페이지', classLabel: '5학년 2반', caution: '선생님 전용, Google 로그인 필요',
     }));
     expect(card.download).toHaveBeenLastCalledWith(expect.any(Blob), '5학년 2반-관리자 페이지-QR.png');
     expect(screen.getByRole('status').textContent).toBe('이미지 파일을 내려받았어요.');

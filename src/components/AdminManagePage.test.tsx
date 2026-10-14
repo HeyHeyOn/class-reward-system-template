@@ -425,7 +425,7 @@ describe('AdminManagePage', () => {
     expect(await screen.findByRole('tabpanel', { name: '행사 관리' })).toBeTruthy();
     expect(await screen.findByRole('heading', { name: '행사 만들기' })).toBeTruthy();
     expect(screen.getByLabelText('연필 (P001) 대상')).toBeTruthy();
-    expect(screen.getByText('등록된 행사가 없습니다.')).toBeTruthy();
+    expect(screen.getByText('등록된 행사가 없어요.')).toBeTruthy();
     expect(fetch).toHaveBeenCalledWith('/api/promotions', { cache: 'no-store' });
   });
 
@@ -582,11 +582,11 @@ describe('AdminManagePage', () => {
 
     const dialog = await screen.findByRole('dialog', { name: '책 읽기 과제 삭제 확인' });
     await waitFor(() => {
-      expect(within(dialog).getByText(/삭제 응답을 확인하지 못했습니다\./)).toBeTruthy();
+      expect(within(dialog).getByText(/삭제 응답을 확인하지 못했어요\./)).toBeTruthy();
       expect(dialog.textContent).not.toContain('삭제 서버 오류');
       expect(within(dialog).getByRole('button', { name: '과제 삭제 확인' })).toHaveProperty('disabled', false);
     });
-    expect((await findNotice('삭제 응답을 확인하지 못했습니다.')).textContent).not.toContain('삭제 서버 오류');
+    expect((await findNotice('삭제 응답을 확인하지 못했어요.')).textContent).not.toContain('삭제 서버 오류');
     expect(screen.getByRole('button', { name: '책 읽기 과제 편집', hidden: true })).toBeTruthy();
     fireEvent.click(within(dialog).getByRole('button', { name: '과제 삭제 확인' }));
     await waitFor(() => expect(fetchCalls('/api/tasks/T001', 'DELETE')).toHaveLength(2));
@@ -776,7 +776,7 @@ describe('AdminManagePage', () => {
 
     const editor = await openNewTaskEditor();
     fireEvent.click(within(editor).getByRole('tab', { name: /^대상 학생/ }));
-    expect(within(editor).getByText(/고른 학생만 은행에서 이 과제를 보고 완료할 수 있습니다/)).toBeTruthy();
+    expect(within(editor).getByText(/고른 학생만 은행에서 이 과제를 보고 완료할 수 있어요/)).toBeTruthy();
     expect(within(editor).getByLabelText('전체 학생 행 선택')).toBeTruthy();
     fireEvent.click(within(editor).getByLabelText('S001 김민준 부여 상태'));
     fireEvent.click(within(editor).getByRole('tab', { name: /^기본 정보/ }));
@@ -858,7 +858,7 @@ describe('AdminManagePage', () => {
     fireEvent.change(screen.getByLabelText('과제 부여 학생 QR 직접 입력'), { target: { value: 'S002' } });
     fireEvent.click(screen.getByRole('button', { name: '직접 입력 적용' }));
     expect(await screen.findByRole('dialog', { name: 'QR 과제 부여 실패' })).toBeTruthy();
-    expect(screen.getByText('이미 이 과제가 부여된 학생입니다.')).toBeTruthy();
+    expect(screen.getByText('이미 이 과제가 부여된 학생이에요.')).toBeTruthy();
   });
 
   it('sends one canonical reset operation ID and reuses it when the open confirmation retries after failure', async () => {
@@ -978,7 +978,7 @@ describe('AdminManagePage', () => {
     fireEvent.click(within(panel).getByRole('button', { name: 'S002 이서연 완료 상태' }));
     fireEvent.click(within(panel).getByRole('button', { name: '저장' }));
 
-    await findNotice('과제 부여 저장 결과를 확인하지 못했습니다.');
+    await findNotice('과제 부여 저장 결과를 확인하지 못했어요.');
     expect(noticeTexts().join(' ')).not.toContain('private');
     expect(assignmentGetCount).toBe(1);
     const current = taskEditorPanel('책 읽기');
@@ -1043,7 +1043,7 @@ describe('AdminManagePage', () => {
     fireEvent.click(within(panel).getByRole('button', { name: 'S002 이서연 완료 상태' }));
     fireEvent.click(within(panel).getByRole('button', { name: '저장' }));
 
-    expect((await findNotice('과제 부여 일부 저장 실패')).textContent).toContain('책 읽기 (T001) · 이서연 (S002): 작업 실패');
+    expect((await findNotice('과제 부여 일부 저장 실패')).textContent).toContain('책 읽기 (T001) 이서연 (S002): 작업 실패');
     expect(noticeTexts().join(' ')).not.toContain('provider stack detail');
     expect(assignmentGetCount).toBe(2);
     const current = taskEditorPanel('책 읽기');
@@ -1092,7 +1092,7 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByRole('button', { name: '책 읽기 과제 선택' }));
     fireEvent.change(screen.getByLabelText('과제 부여 학생 QR 직접 입력'), { target: { value: 'S002' } });
     fireEvent.click(screen.getByRole('button', { name: '직접 입력 적용' }));
-    expect(await screen.findByText('이미 이 과제가 부여된 학생입니다.')).toBeTruthy();
+    expect(await screen.findByText('이미 이 과제가 부여된 학생이에요.')).toBeTruthy();
   });
 
   it('assigns a selected task to a scanned student QR, saves it immediately, and shows saving progress', async () => {
@@ -1135,9 +1135,9 @@ describe('AdminManagePage', () => {
 
     // The lookup overlay can close before the next assertion on a loaded machine; check the found element itself.
     const recognizing = await screen.findByRole('dialog', { name: 'QR 인식 중' });
-    expect(within(recognizing).getByText('QR을 인식했습니다. 과제를 부여하는 중입니다.')).toBeTruthy();
+    expect(within(recognizing).getByText('QR을 인식했어요. 과제를 부여하는 중이에요.')).toBeTruthy();
     expect(await screen.findByRole('dialog', { name: '변경 사항 저장 중' })).toBeTruthy();
-    expect(screen.getByText('변경 사항을 저장하는 중입니다.')).toBeTruthy();
+    expect(screen.getByText('변경 사항을 저장하는 중이에요.')).toBeTruthy();
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/tasks/T002/assignments', expect.objectContaining({
       method: 'PATCH',
       body: JSON.stringify({ studentId: 'S002', assigned: true, source: 'QR' }),
@@ -1147,7 +1147,7 @@ describe('AdminManagePage', () => {
     qrTaskSave.resolve();
 
     expect(await screen.findByRole('dialog', { name: 'QR 과제 부여 성공' })).toBeTruthy();
-    expect(screen.getByText('과제가 부여되었습니다.')).toBeTruthy();
+    expect(screen.getByText('과제를 부여했어요.')).toBeTruthy();
     expect(screen.getByRole('button', { name: '다시 찍기' })).toBeTruthy();
     fireEvent.keyDown(screen.getByRole('dialog', { name: 'QR 과제 부여 성공' }), { key: 'Escape' });
     fireEvent.keyDown(await screen.findByRole('dialog', { name: 'QR로 과제 부여' }), { key: 'Escape' });
@@ -1165,7 +1165,7 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByRole('button', { name: '직접 입력 적용' }));
 
     expect(await screen.findByRole('dialog', { name: 'QR 과제 부여 실패' })).toBeTruthy();
-    expect(screen.getByText('이미 이 과제가 부여된 학생입니다.')).toBeTruthy();
+    expect(screen.getByText('이미 이 과제가 부여된 학생이에요.')).toBeTruthy();
     expect(screen.getByRole('button', { name: '다시 시도' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '취소' })).toBeTruthy();
 
@@ -1174,7 +1174,7 @@ describe('AdminManagePage', () => {
     fireEvent.click(screen.getByRole('button', { name: '직접 입력 적용' }));
 
     expect(await screen.findByRole('dialog', { name: 'QR 과제 부여 실패' })).toBeTruthy();
-    expect(screen.getByText('잘못된 QR입니다.')).toBeTruthy();
+    expect(screen.getByText('잘못된 QR이에요.')).toBeTruthy();
   });
 
   it('shows loading popups while saving student, product, and task panel changes', async () => {
@@ -1201,7 +1201,7 @@ describe('AdminManagePage', () => {
     fireEvent.change(within(studentPanel).getByLabelText('S001 이름'), { target: { value: '김민준 수정' } });
     fireEvent.click(within(studentPanel).getByRole('button', { name: '저장' }));
     expect(await screen.findByRole('dialog', { name: '변경 사항 저장 중' })).toBeTruthy();
-    expect(screen.getByText('변경 사항을 저장하는 중입니다.')).toBeTruthy();
+    expect(screen.getByText('변경 사항을 저장하는 중이에요.')).toBeTruthy();
     studentSave.resolve();
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '변경 사항 저장 중' })).toBeNull());
     await findNotice('학생 1명 저장 완료');
@@ -1260,7 +1260,7 @@ describe('AdminManagePage', () => {
     await openAdminMenu('학생');
     fireEvent.click(screen.getByRole('button', { name: '학생 명단 새로고침' }));
     expect(await screen.findByRole('dialog', { name: '새로고침 중' })).toBeTruthy();
-    expect(screen.getByText('최신 목록을 불러오는 중입니다.')).toBeTruthy();
+    expect(screen.getByText('최신 목록을 불러오는 중이에요.')).toBeTruthy();
     studentRefresh.resolve();
     await screen.findByRole('button', { name: 'S001 김민준 새로고침 편집' });
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '새로고침 중' })).toBeNull());
@@ -1441,7 +1441,7 @@ describe('AdminManagePage', () => {
       render(<AdminManagePage />);
       const { dialog } = await openProductDelete();
       fireEvent.click(within(dialog).getByRole('button', { name: '상품 삭제 확인' }));
-      expect(await within(dialog).findByText(/삭제 요청을 만들지 못했습니다/)).toBeTruthy();
+      expect(await within(dialog).findByText(/삭제 요청을 만들지 못했어요/)).toBeTruthy();
       expect(deleteCalls()).toHaveLength(0);
       expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
     });
@@ -1475,7 +1475,7 @@ describe('AdminManagePage', () => {
       fireEvent.click(within(panel).getByRole('button', { name: 'P001 상품 삭제' }));
       fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
       const dialog = await screen.findByRole('dialog', { name: /상품 삭제 확인/ });
-      const error = await within(dialog).findByText(/상품 삭제 결과를 확인하지 못했습니다/);
+      const error = await within(dialog).findByText(/상품 삭제 결과를 확인하지 못했어요/);
       fireEvent.click(within(dialog).getByRole('button', { name: '상품 삭제 확인' }));
       await waitFor(() => expect(deleteCalls()).toHaveLength(2));
       expect(deleteCalls()[0][1]).toEqual(deleteCalls()[1][1]);
@@ -1499,7 +1499,7 @@ describe('AdminManagePage', () => {
       const { opener } = await openProductDelete();
       fireEvent.click(screen.getByRole('button', { name: '상품 삭제 확인' }));
       const failedDialog = await screen.findByRole('dialog', { name: /상품 삭제 확인/ });
-      await within(failedDialog).findByText(/상품 삭제 결과를 확인하지 못했습니다/);
+      await within(failedDialog).findByText(/상품 삭제 결과를 확인하지 못했어요/);
       fireEvent.keyDown(failedDialog, { key: 'Escape' });
       expect(screen.queryByRole('dialog', { name: /상품 삭제 확인/ })).toBeNull();
       await waitFor(() => expect(document.activeElement).toBe(opener));
@@ -1531,7 +1531,7 @@ describe('AdminManagePage', () => {
       render(<AdminManagePage />);
       const { dialog } = await openProductDelete();
       fireEvent.click(within(dialog).getByRole('button', { name: '상품 삭제 확인' }));
-      await within(dialog).findByText(/상품 삭제 결과를 확인하지 못했습니다/);
+      await within(dialog).findByText(/상품 삭제 결과를 확인하지 못했어요/);
       fireEvent.click(screen.getByRole('button', { name: '상품 · 재고 관리 새로고침', hidden: true }));
       await screen.findByDisplayValue('서버 연필');
       expect(screen.getByRole('dialog', { name: /상품 삭제 확인/ })).toBeTruthy();
@@ -1561,7 +1561,7 @@ describe('AdminManagePage', () => {
       render(<AdminManagePage />);
       const { dialog } = await openProductDelete();
       fireEvent.click(within(dialog).getByRole('button', { name: '상품 삭제 확인' }));
-      await within(dialog).findByText(/상품 삭제 결과를 확인하지 못했습니다/);
+      await within(dialog).findByText(/상품 삭제 결과를 확인하지 못했어요/);
       fireEvent.click(screen.getByRole('button', { name: '상품 · 재고 관리 새로고침', hidden: true }));
       await waitFor(() => expect(screen.queryByRole('dialog', { name: /상품 삭제 확인/ })).toBeNull());
       await waitFor(() => expect(screen.queryByRole('dialog', { name: 'P001 상품 편집' })).toBeNull());
@@ -1610,7 +1610,7 @@ describe('AdminManagePage', () => {
       vi.mocked(crypto.randomUUID).mockReturnValue('10000000-0000-4000-8000-000000000001');
       render(<AdminManagePage />);
       await openAdminMenu('설정');
-      await screen.findByText('학생 2명 · 상품 2개 연결됨');
+      await screen.findByText('학생 2명, 상품 2개 연결됨');
       fireEvent.change(screen.getByLabelText('Google Sheets 주소 또는 시트 ID'), { target: { value: 'sheet-new' } });
       fireEvent.click(screen.getByRole('button', { name: '설정 저장' }));
       await waitFor(() => expect(productGets).toBe(2));
@@ -1689,7 +1689,7 @@ describe('AdminManagePage', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: '학급 매점' })).toBeTruthy();
     expect(screen.queryByText('Class Reward System')).toBeNull();
-    const logo = screen.getByRole('img', { name: '학급 보상 시스템 로고' });
+    const logo = screen.getByRole('img', { name: '딴쌤 클래스 로고' });
     expect(logo.className).toContain('bg-[var(--theme-accent-text)]');
     expect(logo.className).toContain("[mask-image:url('/class-reward-system-icon.png')]");
     expect(logo.className).not.toContain('bg-white');
@@ -1715,7 +1715,7 @@ describe('AdminManagePage', () => {
     expect(shell.getAttribute('style')).toContain('SchoolSafeBoardMarker');
 
     await openAdminMenu('설정');
-    expect(await screen.findByText('학생 2명 · 상품 2개 연결됨')).toBeTruthy();
+    expect(await screen.findByText('학생 2명, 상품 2개 연결됨')).toBeTruthy();
     expect(await screen.findByDisplayValue('별')).toBeTruthy();
     expect(screen.getByDisplayValue('학급 매점')).toBeTruthy();
     expect(screen.getByDisplayValue('학급 은행')).toBeTruthy();
@@ -1754,8 +1754,8 @@ describe('AdminManagePage', () => {
     expect(screen.queryByRole('heading', { name: '최근 거래 (1)' })).toBeNull();
 
     await openAdminMenu('지급·회수');
-    expect(screen.getByText('학생 QR을 찍을 때마다 같은 금액이 한 번씩 처리됩니다.')).toBeTruthy();
-    expect(screen.getByText(/회수할 금액이 잔액보다 크면 잔액이 음수가 됩니다/)).toBeTruthy();
+    expect(screen.getByText('학생 QR을 찍을 때마다 같은 금액이 한 번씩 처리돼요.')).toBeTruthy();
+    expect(screen.getByText(/회수할 금액이 잔액보다 크면 잔액이 음수가 돼요/)).toBeTruthy();
 
     await openAdminMenu('매점');
     const panel = await openProductEditor('P001', '연필');
@@ -1780,7 +1780,7 @@ describe('AdminManagePage', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: '학급 매점' })).toBeTruthy();
     await openAdminMenu('설정');
-    await screen.findByText('학생 2명 · 상품 2개 연결됨');
+    await screen.findByText('학생 2명, 상품 2개 연결됨');
     expect(screen.getByRole('button', { name: '설정 저장' })).toHaveProperty('disabled', true);
     fireEvent.change(screen.getByLabelText('글꼴'), { target: { value: 'school-safe-poster' } });
     expect(screen.getByRole('button', { name: '설정 저장' })).toHaveProperty('disabled', false);
@@ -1848,7 +1848,7 @@ describe('AdminManagePage', () => {
     expect(await screen.findByRole('heading', { level: 1, name: '학급 매점' })).toBeTruthy();
     expect((container.querySelector('[data-testid="admin-shell"]') as HTMLElement).style.getPropertyValue('--theme-shell')).toBe(THEME_PALETTES.navy.shell);
     expect(screen.getByRole('tab', { name: '홈' }).className).toContain('bg-[var(--theme-accent-solid)]');
-    expect(screen.getByRole('img', { name: '학급 보상 시스템 로고' }).className).toContain('bg-[var(--theme-accent-text)]');
+    expect(screen.getByRole('img', { name: '딴쌤 클래스 로고' }).className).toContain('bg-[var(--theme-accent-text)]');
     expect(container.querySelector('[data-testid="admin-shell"]')?.className).not.toContain('bg-[#8F97CF]');
   });
 
@@ -1873,7 +1873,7 @@ describe('AdminManagePage', () => {
     render(<AdminManagePage />);
     await screen.findByRole('heading', { level: 1, name: '학급 매점' });
     await openAdminMenu('설정');
-    await screen.findByText('학생 2명 · 상품 2개 연결됨');
+    await screen.findByText('학생 2명, 상품 2개 연결됨');
     fireEvent.change(screen.getByLabelText('관리자 암호 설정'), { target: { value: 'new-admin-pass' } });
     fireEvent.click(screen.getByRole('button', { name: '설정 저장' }));
 
@@ -1966,7 +1966,7 @@ describe('AdminManagePage', () => {
     render(<AdminManagePage />);
 
     await openAdminMenu('설정');
-    await screen.findByText('학생 2명 · 상품 2개 연결됨');
+    await screen.findByText('학생 2명, 상품 2개 연결됨');
     fireEvent.change(screen.getByLabelText('Google Sheets 주소 또는 시트 ID'), { target: { value: 'sheet-new' } });
     fireEvent.change(screen.getByLabelText('매점 제목'), { target: { value: '햇살반 매점' } });
     fireEvent.change(screen.getByLabelText('은행 제목'), { target: { value: '햇살반 은행' } });
@@ -1982,7 +1982,7 @@ describe('AdminManagePage', () => {
       expect(fetch).toHaveBeenCalledWith('/api/products?includeInactive=1', { cache: 'no-store' });
     });
 
-    expect(await screen.findByText('시스템 설정을 저장했고, 관리자 목록도 같은 시트에서 다시 불러왔습니다.')).toBeTruthy();
+    expect(await screen.findByText('시스템 설정을 저장했고, 관리자 목록도 같은 시트에서 다시 불러왔어요.')).toBeTruthy();
   });
 
   it('edits one student and one product in their panels and saves exactly that row', async () => {
@@ -2232,7 +2232,7 @@ describe('AdminManagePage', () => {
     fireEvent.change(within(editor).getByLabelText('새 과제명'), { target: { value: '영어 단어' } });
     fireEvent.click(create);
     malformed.resolve();
-    await findNotice('과제를 추가하지 못했습니다.');
+    await findNotice('과제를 추가하지 못했어요.');
     expect(screen.queryByRole('button', { name: '영어 단어 과제 편집', hidden: true })).toBeNull();
     fireEvent.click(create);
     valid.resolve();
@@ -2317,7 +2317,7 @@ describe('AdminManagePage', () => {
     const body = lastBody('/api/tasks', 'POST');
     expect(body.allowedStudentIds).toEqual(['S001', 'S002']);
     expect(body.schedule.recurrence).toMatchObject({ type: 'WEEKLY', weekdays: [1, 5] });
-    await findNotice('과제를 추가하지 못했습니다.');
+    await findNotice('과제를 추가하지 못했어요.');
     expect(screen.queryByRole('button', { name: '순서 과제 과제 편집', hidden: true })).toBeNull();
   });
 
@@ -2391,7 +2391,7 @@ describe('AdminManagePage', () => {
     fireEvent.change(within(editor).getByLabelText('새 학생 ID'), { target: { value: 'S003' } });
     fireEvent.click(create);
     malformed.resolve();
-    await findNotice('학생을 추가하지 못했습니다.');
+    await findNotice('학생을 추가하지 못했어요.');
     expect(within(editor).getByLabelText('새 학생 ID')).toHaveProperty('value', 'S003');
     expect(screen.queryByRole('button', { name: 'S003 박도윤 편집', hidden: true })).toBeNull();
 
@@ -2519,7 +2519,7 @@ describe('AdminManagePage', () => {
     fireEvent.change(within(editor).getByLabelText('새 상품 재고'), { target: { value: '5' } });
 
     fireEvent.click(create);
-    await findNotice('상품을 추가하지 못했습니다.');
+    await findNotice('상품을 추가하지 못했어요.');
     expect(name).toHaveProperty('value', '간식쿠폰');
     expect(screen.getByRole('dialog', { name: '상품 추가' })).toBe(editor);
 
@@ -2597,7 +2597,7 @@ describe('AdminManagePage', () => {
     fireEvent.click(within(scanner).getByRole('button', { name: '직접 입력 적용' }));
 
     expect(await screen.findByRole('dialog', { name: '화폐 지급 처리 중' })).toBeTruthy();
-    expect(document.body.textContent).toContain('QR을 인식했습니다. 화폐를 지급하는 중입니다.');
+    expect(document.body.textContent).toContain('QR을 인식했어요. 화폐를 지급하는 중이에요.');
     currencyRequest.resolve();
     expect(await screen.findByRole('dialog', { name: '화폐 지급 성공' })).toBeTruthy();
   });
@@ -2956,7 +2956,7 @@ describe('AdminManagePage', () => {
     const panel = await openTaskEditor('책 읽기', '반복');
     await within(panel).findByRole('group', { name: '반복 주기' });
     expect(projectionValue(panel, '현재 일정')).toBe('매주 금 16:30');
-    expect(projectionValue(panel, '새 회차 처리')).toBe('완료 지움 · 부여 지움');
+    expect(projectionValue(panel, '새 회차 처리')).toBe('완료 지움, 부여 지움');
     expect(recurrenceType(panel, '매주').getAttribute('aria-pressed')).toBe('true');
     expect(within(panel).getByLabelText('반복 시간')).toHaveProperty('value', '16:30');
     expect(within(panel).getByRole('button', { name: '금요일' }).getAttribute('aria-pressed')).toBe('true');
@@ -3024,7 +3024,7 @@ describe('AdminManagePage', () => {
     await createDailyTask();
 
     await findNotice('T003 과제 추가 완료');
-    await findNotice('과제는 추가되었지만 회차 정보를 새로고침하지 못했습니다: projection unavailable');
+    await findNotice('과제는 추가했지만 회차 정보를 새로고침하지 못했어요: projection unavailable');
     expect(await findTaskRow('영어 단어')).toBeTruthy();
   });
 
@@ -3048,7 +3048,7 @@ describe('AdminManagePage', () => {
 
     await waitFor(() => expect(taskGetCount).toBe(2));
     expect(await findTaskRow('영어 단어')).toBeTruthy();
-    await findNotice('과제는 추가되었지만 회차 정보를 새로고침하지 못했습니다');
+    await findNotice('과제는 추가했지만 회차 정보를 새로고침하지 못했어요');
     expect(fetchCalls('/api/tasks', 'POST')).toHaveLength(1);
   });
 
@@ -3084,7 +3084,7 @@ describe('AdminManagePage', () => {
 
     await waitFor(() => expect(taskGetCount).toBe(2));
     expect(await findTaskRow('영어 단어')).toBeTruthy();
-    await findNotice('과제는 추가되었지만 회차 정보를 새로고침하지 못했습니다');
+    await findNotice('과제는 추가했지만 회차 정보를 새로고침하지 못했어요');
     expect(fetchCalls('/api/tasks', 'POST')).toHaveLength(1);
   });
 
@@ -3244,7 +3244,7 @@ describe('AdminManagePage', () => {
     fireEvent.click(recurrenceType(panel, '매월'));
     fireEvent.change(within(panel).getByLabelText('반복 시간'), { target: { value: '17:45' } });
     fireEvent.change(within(panel).getByLabelText('반복 날짜'), { target: { value: '31' } });
-    expect(within(panel).getByText('29~31일이 없는 달은 그 달 마지막 날로 바뀝니다.')).toBeTruthy();
+    expect(within(panel).getByText('29~31일이 없는 달은 그 달 마지막 날로 바뀌어요.')).toBeTruthy();
     fireEvent.click(within(panel).getByRole('button', { name: '반복 설정 저장' }));
 
     await waitFor(() => expect(taskGetCount).toBe(2));
@@ -3276,8 +3276,8 @@ describe('AdminManagePage', () => {
     const panel = await openAssignmentPanel();
     fireEvent.click(within(panel).getByRole('button', { name: '완료 기록 초기화' }));
     const confirmation = screen.getByRole('dialog', { name: '완료 기록 초기화 확인' });
-    expect(within(confirmation).getByText(/이미 지급한 보상은 회수되지 않습니다/)).toBeTruthy();
-    expect(within(confirmation).getByText(/같은 회차에서 학생이 은행에서 다시 완료하면 보상을 또 받을 수 있습니다/)).toBeTruthy();
+    expect(within(confirmation).getByText(/이미 지급한 보상은 회수되지 않아요/)).toBeTruthy();
+    expect(within(confirmation).getByText(/같은 회차에서 학생이 은행에서 다시 완료하면 보상을 또 받을 수 있어요/)).toBeTruthy();
     expect(fetchCalls('/api/tasks/completions/reset', 'POST')).toHaveLength(0);
     fireEvent.click(within(confirmation).getByRole('button', { name: '완료 기록 초기화 확인' }));
     expect(confirm).not.toHaveBeenCalled();
@@ -3312,7 +3312,7 @@ describe('AdminManagePage', () => {
     expect(projectionValue(panel, '현재 일정')).toBe('매주 화 09:00');
     expect(projectionValue(panel, '현재 회차')).toContain('~');
     expect(projectionValue(panel, '다음 회차 시작')).not.toBe('없음 (상시 과제)');
-    expect(projectionValue(panel, '새 회차 처리')).toBe('완료 지움 · 부여 유지');
+    expect(projectionValue(panel, '새 회차 처리')).toBe('완료 지움, 부여 유지');
     expect(within(panel).queryByLabelText('과제 시간대')).toBeNull();
     expect(panel.innerHTML).not.toContain('violet-');
     expect(panel.innerHTML).toContain('var(--crs-line)');
@@ -3328,7 +3328,7 @@ describe('AdminManagePage', () => {
     const panel = await openTaskEditor('책 읽기', '학생 현황');
     await within(panel).findByRole('status', { name: '과제 부여 상태 불러오는 중' });
     expect(within(panel).getByRole('button', { name: '저장' })).toHaveProperty('disabled', true);
-    expect(within(panel).getByText(/여기서 완료로 표시하면 보상은 지급되지 않습니다/)).toBeTruthy();
+    expect(within(panel).getByText(/여기서 완료로 표시하면 보상은 지급되지 않아요/)).toBeTruthy();
     pending.resolve();
     await waitFor(() => expect(within(panel).getByRole('button', { name: '저장' })).toHaveProperty('disabled', false));
   });
@@ -3343,7 +3343,7 @@ describe('AdminManagePage', () => {
     const dialog = await openBulkRecurrence();
 
     expect(within(dialog).getByText('대상: 책 읽기, 수학 학습지')).toBeTruthy();
-    expect(within(dialog).getByText(/선택한 모든 과제에 같은 반복 규칙을 적용합니다/)).toBeTruthy();
+    expect(within(dialog).getByText(/선택한 모든 과제에 같은 반복 규칙을 적용해요/)).toBeTruthy();
     for (const type of ['반복 없음', '매일', '매주', '매월'] as const) expect(recurrenceType(dialog, type).getAttribute('aria-pressed')).toBe('false');
     expect(within(dialog).queryByLabelText('반복 시간')).toBeNull();
     expect(within(dialog).queryByRole('group', { name: '반복 요일' })).toBeNull();
@@ -3414,8 +3414,8 @@ describe('AdminManagePage', () => {
     const dialog = await openBulkAssignment();
 
     expect(within(dialog).getByText('대상: 책 읽기, 수학 학습지')).toBeTruthy();
-    expect(within(dialog).getByText(/선택한 모든 과제에 같은 변경을 적용합니다/)).toBeTruthy();
-    expect(within(dialog).getByText(/고르지 않은 학생은 그대로 둡니다/)).toBeTruthy();
+    expect(within(dialog).getByText(/선택한 모든 과제에 같은 변경을 적용해요/)).toBeTruthy();
+    expect(within(dialog).getByText(/고르지 않은 학생은 그대로예요/)).toBeTruthy();
     expect(within(dialog).getByLabelText('S001 김민준 부여 작업')).toHaveProperty('value', '');
     expect(within(dialog).getAllByRole('option', { name: '부여 그대로', hidden: true })).toHaveLength(2);
     expect(within(dialog).getByRole('button', { name: '저장' })).toHaveProperty('disabled', true);
@@ -3661,8 +3661,8 @@ describe('AdminManagePage', () => {
     const opener = within(panel).getByRole('button', { name: '완료 기록 초기화' });
     fireEvent.click(opener);
     const confirmation = screen.getByRole('dialog', { name: '완료 기록 초기화 확인' });
-    expect(within(confirmation).getByText(/이미 지급한 보상은 회수되지 않습니다/)).toBeTruthy();
-    expect(within(confirmation).getByText(/다시 완료하면 보상을 또 받을 수 있습니다/)).toBeTruthy();
+    expect(within(confirmation).getByText(/이미 지급한 보상은 회수되지 않아요/)).toBeTruthy();
+    expect(within(confirmation).getByText(/다시 완료하면 보상을 또 받을 수 있어요/)).toBeTruthy();
     expect(fetchCalls('/api/tasks/completions/reset')).toHaveLength(0);
     const confirmReset = within(confirmation).getByRole('button', { name: '완료 기록 초기화 확인' });
     fireEvent.click(confirmReset);

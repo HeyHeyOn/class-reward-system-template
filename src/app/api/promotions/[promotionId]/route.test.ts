@@ -26,7 +26,7 @@ vi.mock('@/server/repositories/configuredPromotionDeletion', () => ({
 vi.mock('@/server/repositories/configuredPromotionMutation', () => ({
   createConfiguredPromotionMutation: vi.fn(),
   PROMOTION_MUTATION_TARGET_PARTIAL_FAILURE_MESSAGE:
-    '행사 정보는 저장되었을 수 있지만 대상 상품 수정에 실패했습니다. 새로고침 후 확인하고 다시 시도해 주세요.',
+    '행사 정보는 저장되었을 수 있지만 대상 상품을 바꾸지 못했어요. 새로고침해서 확인한 뒤 다시 시도해 주세요.',
   PromotionMutationTargetPartialFailure: class PromotionMutationTargetPartialFailure extends Error {},
 }));
 vi.mock('@/server/repositories/sheets/promotionCommands', async (importOriginal) => ({
@@ -117,7 +117,7 @@ describe('PATCH /api/promotions/[promotionId]', () => {
       const params = { then } as unknown as Promise<{ promotionId: string }>;
       const result = await patch('{', 'PROMO-1', contentType, params).response;
       expect(result.status).toBe(400);
-      await expect(result.json()).resolves.toEqual({ error: '행사 요청 형식이 올바르지 않습니다.' });
+      await expect(result.json()).resolves.toEqual({ error: '행사 요청 형식이 올바르지 않아요.' });
       expect(then).not.toHaveBeenCalled();
       expect(createConfiguredPromotionMutation).not.toHaveBeenCalled();
     },
@@ -187,7 +187,7 @@ describe('PATCH /api/promotions/[promotionId]', () => {
     const params = { then } as unknown as Promise<{ promotionId: string }>;
     const result = await patch(body, 'PROMO-1', 'application/json', params).response;
     expect(result.status).toBe(400);
-    await expect(result.json()).resolves.toEqual({ error: '행사 요청 형식이 올바르지 않습니다.' });
+    await expect(result.json()).resolves.toEqual({ error: '행사 요청 형식이 올바르지 않아요.' });
     expect(then).not.toHaveBeenCalled();
     expect(createConfiguredPromotionMutation).not.toHaveBeenCalled();
   });
@@ -224,7 +224,7 @@ describe('PATCH /api/promotions/[promotionId]', () => {
 
     expect(result.status).toBe(500);
     expect(hook).not.toHaveBeenCalled();
-    await expect(result.json()).resolves.toEqual({ error: '행사를 수정하지 못했습니다.' });
+    await expect(result.json()).resolves.toEqual({ error: '행사를 수정하지 못했어요.' });
   });
 
   it('rejects decorated configured acknowledgements', async () => {
@@ -238,7 +238,7 @@ describe('PATCH /api/promotions/[promotionId]', () => {
     const result = await patch().response;
 
     expect(result.status).toBe(500);
-    await expect(result.json()).resolves.toEqual({ error: '행사를 수정하지 못했습니다.' });
+    await expect(result.json()).resolves.toEqual({ error: '행사를 수정하지 못했어요.' });
   });
 
   it.each(['root', 'command', 'result'])(
@@ -249,7 +249,7 @@ describe('PATCH /api/promotions/[promotionId]', () => {
     else patchCommand.mockResolvedValue({ promotionId: 'OTHER', mutationPrecondition: { promotionId: 'OTHER', expectedVersion: 5 } });
     const result = await patch().response;
     expect(result.status).toBe(500);
-    await expect(result.json()).resolves.toEqual({ error: '행사를 수정하지 못했습니다.' });
+    await expect(result.json()).resolves.toEqual({ error: '행사를 수정하지 못했어요.' });
   });
 
   it('maps only the typed target partial failure to the existing Korean warning', async () => {
@@ -258,7 +258,7 @@ describe('PATCH /api/promotions/[promotionId]', () => {
     const result = await patch().response;
     expect(result.status).toBe(500);
     await expect(result.json()).resolves.toEqual({
-      error: '행사 정보는 저장되었을 수 있지만 대상 상품 수정에 실패했습니다. 새로고침 후 확인하고 다시 시도해 주세요.',
+      error: '행사 정보는 저장되었을 수 있지만 대상 상품을 바꾸지 못했어요. 새로고침해서 확인한 뒤 다시 시도해 주세요.',
     });
   });
 });
@@ -340,7 +340,7 @@ describe('DELETE /api/promotions/[promotionId]', () => {
       const params = { then } as unknown as Promise<{ promotionId: string }>;
       const result = await remove('{', 'PROMO-1', contentType, params).response;
       expect(result.status).toBe(400);
-      await expect(result.json()).resolves.toEqual({ error: '행사 삭제 요청 형식이 올바르지 않습니다.' });
+      await expect(result.json()).resolves.toEqual({ error: '행사 삭제 요청 형식이 올바르지 않아요.' });
       expect(then).not.toHaveBeenCalled();
       expect(createConfiguredPromotionDeletion).not.toHaveBeenCalled();
       expect(removeCommand).not.toHaveBeenCalled();
@@ -372,7 +372,7 @@ describe('DELETE /api/promotions/[promotionId]', () => {
     const params = { then } as unknown as Promise<{ promotionId: string }>;
     const result = await remove(body, 'PROMO-1', 'application/json', params).response;
     expect(result.status).toBe(400);
-    await expect(result.json()).resolves.toEqual({ error: '행사 삭제 요청 형식이 올바르지 않습니다.' });
+    await expect(result.json()).resolves.toEqual({ error: '행사 삭제 요청 형식이 올바르지 않아요.' });
     expect(then).not.toHaveBeenCalled();
     expect(createConfiguredPromotionDeletion).not.toHaveBeenCalled();
     expect(removeCommand).not.toHaveBeenCalled();
@@ -392,7 +392,7 @@ describe('DELETE /api/promotions/[promotionId]', () => {
     const result = await remove().response;
 
     expect(result.status).toBe(500);
-    await expect(result.json()).resolves.toEqual({ error: '행사를 삭제하지 못했습니다.' });
+    await expect(result.json()).resolves.toEqual({ error: '행사를 삭제하지 못했어요.' });
   });
 
   it('returns the distinct safe partial-failure contract without provider details', async () => {
@@ -403,7 +403,7 @@ describe('DELETE /api/promotions/[promotionId]', () => {
 
     expect(result.status).toBe(500);
     await expect(result.json()).resolves.toEqual({
-      error: '대상 상품 연결은 삭제되었지만 행사 삭제를 완료하지 못했습니다. 새로고침 후 재시도해 주세요.',
+      error: '대상 상품 연결은 삭제되었지만 행사 삭제를 완료하지 못했어요. 새로고침 후 재시도해 주세요.',
     });
   });
 });

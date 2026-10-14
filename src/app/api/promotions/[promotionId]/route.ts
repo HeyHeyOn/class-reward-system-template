@@ -29,7 +29,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
   const mediaType = request.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();
   if (mediaType !== 'application/json') {
-    return safeErrorResponse(400, '행사 요청 형식이 올바르지 않습니다.');
+    return safeErrorResponse(400, '행사 요청 형식이 올바르지 않아요.');
   }
 
   let payload: ReturnType<typeof parsePatchPromotionPayload>;
@@ -37,10 +37,10 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     payload = parsePatchPromotionPayload(await request.json());
   } catch (error) {
     if (error instanceof PromotionPayloadError || error instanceof SyntaxError) {
-      return safeErrorResponse(400, '행사 요청 형식이 올바르지 않습니다.');
+      return safeErrorResponse(400, '행사 요청 형식이 올바르지 않아요.');
     }
     console.error('Unexpected promotion payload parsing failure', error);
-    return safeErrorResponse(500, '행사를 수정하지 못했습니다.');
+    return safeErrorResponse(500, '행사를 수정하지 못했어요.');
   }
 
   try {
@@ -59,7 +59,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     if (error instanceof PromotionMutationTargetPartialFailure) {
       return safeErrorResponse(500, PROMOTION_MUTATION_TARGET_PARTIAL_FAILURE_MESSAGE);
     }
-    return safeErrorResponse(500, '행사를 수정하지 못했습니다.');
+    return safeErrorResponse(500, '행사를 수정하지 못했어요.');
   }
 }
 
@@ -107,22 +107,22 @@ export async function DELETE(request: Request, { params }: RouteContext) {
 
   const mediaType = request.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();
   if (mediaType !== 'application/json') {
-    return safeErrorResponse(400, '행사 삭제 요청 형식이 올바르지 않습니다.');
+    return safeErrorResponse(400, '행사 삭제 요청 형식이 올바르지 않아요.');
   }
 
   let payload: { operationId: string; expectedPromotionVersion: number };
   try {
     const candidate: unknown = await request.json();
     if (!isDeletePromotionPayload(candidate)) {
-      return safeErrorResponse(400, '행사 삭제 요청 형식이 올바르지 않습니다.');
+      return safeErrorResponse(400, '행사 삭제 요청 형식이 올바르지 않아요.');
     }
     payload = candidate;
   } catch (error) {
     if (error instanceof SyntaxError) {
-      return safeErrorResponse(400, '행사 삭제 요청 형식이 올바르지 않습니다.');
+      return safeErrorResponse(400, '행사 삭제 요청 형식이 올바르지 않아요.');
     }
     console.error('Unexpected promotion deletion payload parsing failure', error);
-    return safeErrorResponse(500, '행사를 삭제하지 못했습니다.');
+    return safeErrorResponse(500, '행사를 삭제하지 못했어요.');
   }
 
   try {
@@ -139,7 +139,7 @@ export async function DELETE(request: Request, { params }: RouteContext) {
     if (error instanceof PromotionDeletePartialFailure) {
       return safeErrorResponse(500, PROMOTION_DELETE_PARTIAL_FAILURE_MESSAGE);
     }
-    return safeErrorResponse(500, '행사를 삭제하지 못했습니다.');
+    return safeErrorResponse(500, '행사를 삭제하지 못했어요.');
   }
 }
 

@@ -18,7 +18,7 @@ export function GiveProductFields({ idPrefix, options, productId, count, onProdu
 }>) {
   const digital = options.filter((option) => option.kind !== null);
   const physical = options.filter((option) => option.kind === null);
-  const label = (option: GiveOption) => `${option.kind === null ? giveOptionItemName(option) : `${option.name} (${DIGITAL_KIND_LABELS[option.kind]})`}${option.isActive ? '' : ' · 판매 중지'}`;
+  const label = (option: GiveOption) => `${option.kind === null ? giveOptionItemName(option) : `${option.name} (${DIGITAL_KIND_LABELS[option.kind]})`}${option.isActive ? '' : ', 판매 중지'}`;
   return (
     <div className="flex flex-wrap items-end gap-2">
       <Field label="넣을 아이템" htmlFor={`${idPrefix}-product`} className="min-w-[180px] flex-1">

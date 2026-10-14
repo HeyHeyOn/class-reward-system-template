@@ -34,7 +34,7 @@ export function LegalChanges({ changes }: Readonly<{ changes: readonly LegalRevi
       ))}
       <p className="text-[12.5px] text-[var(--theme-muted-text)]">
         전문:{' '}
-        <a href="/terms" target="_blank" rel="noopener noreferrer" className="font-semibold text-[var(--theme-accent-text)] underline underline-offset-2">이용약관</a>{' · '}
+        <a href="/terms" target="_blank" rel="noopener noreferrer" className="font-semibold text-[var(--theme-accent-text)] underline underline-offset-2">이용약관</a>{', '}
         <a href="/privacy" target="_blank" rel="noopener noreferrer" className="font-semibold text-[var(--theme-accent-text)] underline underline-offset-2">개인정보처리방침</a>
       </p>
     </div>
@@ -77,7 +77,7 @@ export function LegalAgreementGate({ notice, classNames }: Readonly<{ notice: Le
       <span className="mt-0.5 shrink-0 text-[var(--theme-accent-text)]"><Icon name="info" size={17} /></span>
       <div className="min-w-0 flex-1">
         <p>
-          <strong className="font-bold">{notice.upcoming.effectiveLabel}</strong>부터 이용약관·개인정보처리방침이 바뀌어요. {notice.upcoming.changes[0]}
+          <strong className="font-bold">{notice.upcoming.effectiveLabel}</strong>부터 이용약관과 개인정보처리방침이 바뀌어요. {notice.upcoming.changes[0]}
         </p>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px]">
           <a href="/terms" className={linkClass}>이용약관</a>

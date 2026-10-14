@@ -12,14 +12,14 @@ export const dynamic = 'force-dynamic';
 
 const OPERATION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SAFE_COMPLETION_ERRORS = new Set([
-  '완료할 수 있는 과제가 아닙니다.',
-  '현재 완료할 수 있는 과제가 아닙니다.',
-  '학생 정보를 찾을 수 없습니다.',
-  '선행 과제를 찾을 수 없습니다.',
-  '부여된 학생이 없습니다.',
-  '허가되지 않은 과제입니다.',
-  '이미 완료한 과제입니다.',
-  '과제 완료 요청 형식이 올바르지 않습니다.',
+  '완료할 수 있는 과제가 아니에요.',
+  '현재 완료할 수 있는 과제가 아니에요.',
+  '학생 정보를 찾을 수 없어요.',
+  '선행 과제를 찾을 수 없어요.',
+  '부여된 학생이 없어요.',
+  '허가되지 않은 과제예요.',
+  '이미 완료한 과제예요.',
+  '과제 완료 요청 형식이 올바르지 않아요.',
 ]);
 const LEGACY_OPERATION_CONFLICTS = new Set([
   'TASK_COMPLETION_OPERATION_PAYLOAD_CONFLICT',
@@ -38,7 +38,7 @@ function qrFailure(): Response {
 function isSafeCompletionError(message: string): boolean {
   return SAFE_COMPLETION_ERRORS.has(message)
     || (message.startsWith("선행 과제 '")
-      && (message.endsWith('을(를) 먼저 완료해 주세요.') || message.endsWith('은(는) 현재 완료할 수 없습니다.')));
+      && (message.endsWith('을(를) 먼저 완료해 주세요.') || message.endsWith('은(는) 현재 완료할 수 없어요.')));
 }
 
 function exactDataRecord(value: unknown, keys: readonly string[]): value is Record<string, unknown> {
@@ -59,7 +59,7 @@ function dataValue(value: Record<string, unknown>, key: string): unknown {
 
 function operationConflict(operationId: string): Response {
   return Response.json({
-    error: '같은 완료 요청의 내용이 일치하지 않습니다.',
+    error: '같은 완료 요청의 내용이 일치하지 않아요.',
     code: 'COMPLETION_OPERATION_CONFLICT',
     operationId,
   }, { status: 409 });
@@ -67,7 +67,7 @@ function operationConflict(operationId: string): Response {
 
 function statusUnknown(operationId: string): Response {
   return Response.json({
-    error: '완료 상태를 확인하고 있습니다.',
+    error: '완료 상태를 확인하고 있어요.',
     code: 'COMPLETION_STATUS_UNKNOWN',
     operationId,
     retryable: true,
@@ -115,8 +115,8 @@ export async function POST(request: Request, context: RouteContext) {
       if (error.code === 'POLICY' || error.code === 'SUBMISSION_REQUIRED') {
         return Response.json({
           error: error.code === 'SUBMISSION_REQUIRED'
-            ? '과제 제출물을 찾을 수 없습니다.'
-            : '완료할 수 있는 과제가 아닙니다.',
+            ? '과제 제출물을 찾을 수 없어요.'
+            : '완료할 수 있는 과제가 아니에요.',
           code: 'POLICY_FAILURE',
           operationId,
         }, { status: 400 });
@@ -141,7 +141,7 @@ export async function POST(request: Request, context: RouteContext) {
       && error.name === 'TaskCompletionReconciliationError'
       && RECONCILIATION_ERRORS.has(message)) {
       return Response.json({
-        error: '완료 상태를 자동으로 확인할 수 없습니다. 관리자에게 문의해 주세요.',
+        error: '완료 상태를 자동으로 확인할 수 없어요. 관리자에게 문의해 주세요.',
         code: 'COMPLETION_RECONCILIATION_REQUIRED',
         operationId,
         retryable: false,

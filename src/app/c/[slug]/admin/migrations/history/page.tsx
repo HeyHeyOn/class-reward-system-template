@@ -10,7 +10,7 @@ import { readPreflightReport, type PreflightReportReadResult } from '@/app/api/m
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const metadata: Metadata = {
-  title: '과거 사전검사 보고서 · 학급 보상 시스템',
+  title: '과거 사전검사 보고서 - 딴쌤 클래스',
   referrer: 'no-referrer',
   robots: { index: false, follow: false },
 };
@@ -93,7 +93,7 @@ export default async function MigrationHistoryPage(props: PageProps) {
     <main className="mx-auto max-w-4xl space-y-4 p-5 text-sm text-slate-800">
       <header className="space-y-2">
         <h1 className="text-xl font-semibold">과거 사전검사 보고서 — 현재 상태/전환 승인 아님</h1>
-        <p className="text-slate-600">읽기 전용 · 명시적으로 선택한 보관 보고서만 표시합니다.</p>
+        <p className="text-slate-600">읽기 전용이에요. 명시적으로 선택한 보관 보고서만 표시해요.</p>
       </header>
       <section aria-label="조회 범위와 권한 한계" className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-4">
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
@@ -102,14 +102,14 @@ export default async function MigrationHistoryPage(props: PageProps) {
           <dt className="font-medium">현재 운영 권한</dt><dd>UNKNOWN</dd>
           <dt className="font-medium">전환 허용</dt><dd>cutoverAllowed: false</dd>
         </dl>
-        <p>보관된 MATCHED_PREFLIGHT도 현재 사전검사 통과나 전환·쓰기 권한을 뜻하지 않습니다.</p>
-        <p>보고서의 내용 일치는 원본 출처의 진위나 현재성을 증명하지 않습니다. 이 화면은 현재 상태를 평가하지 않습니다.</p>
-        <p>원본 조회·사전검사 실행·동결·전환·재개·재시도를 실행하지 않습니다.</p>
+        <p>보관된 MATCHED_PREFLIGHT도 현재 사전검사 통과나 전환, 쓰기 권한을 뜻하지 않아요.</p>
+        <p>보고서의 내용 일치는 원본 출처의 진위나 현재성을 증명하지 않아요. 이 화면은 현재 상태를 평가하지 않아요.</p>
+        <p>원본 조회, 사전검사 실행, 동결, 전환, 재개, 재시도를 실행하지 않아요.</p>
       </section>
       {!projection || !report ? (
         <section role="status" className="space-y-2 rounded-lg border border-slate-200 p-4">
           <h2 className="font-semibold">{failureTitle(result.kind)}</h2>
-          <p>선택한 과거 보고서를 표시할 수 없습니다. 현재 작업 상태나 운영 권한을 추정하지 않습니다.</p>
+          <p>선택한 과거 보고서를 표시할 수 없어요. 현재 작업 상태나 운영 권한을 추정하지 않아요.</p>
         </section>
       ) : (
         <>
@@ -125,8 +125,8 @@ export default async function MigrationHistoryPage(props: PageProps) {
                 <a href={result.downloadHref} referrerPolicy="no-referrer" className="text-blue-700 underline underline-offset-2">
                   과거 보고서 JSON 다운로드
                 </a>
-                <p className="text-slate-600">선택한 과거 보고서만 수동으로 내려받습니다. 다운로드 요청 시 로그인과 접근 권한을 다시 확인합니다.</p>
-                <p className="text-slate-600">로그인 만료·권한 변경·보고서 없음·일시적 오류로 다운로드가 거부될 수 있습니다.</p>
+                <p className="text-slate-600">선택한 과거 보고서만 수동으로 내려받아요. 다운로드 요청 시 로그인과 접근 권한을 다시 확인해요.</p>
+                <p className="text-slate-600">로그인 만료, 권한 변경, 보고서 없음, 일시적 오류로 다운로드가 거부될 수 있어요.</p>
               </div>
             )}
           </section>
@@ -134,7 +134,7 @@ export default async function MigrationHistoryPage(props: PageProps) {
               or new authority check. Every value comes from the same admitted archive. */}
           <details className="space-y-3 rounded-lg border border-slate-200 p-4">
             <summary className="cursor-pointer font-semibold">과거 스냅샷 식별 정보 확인 (읽기 전용)</summary>
-            <p>아래 값은 선택한 과거 보고서에 보관된 값입니다. 현재 원본이나 현재 스냅샷을 조회한 결과가 아닙니다.</p>
+            <p>아래 값은 선택한 과거 보고서에 보관된 값이에요. 현재 원본이나 현재 스냅샷을 조회한 결과가 아니에요.</p>
             <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
               <dt className="font-medium">과거 보고서 ID</dt>
               <dd className="break-all font-mono">{projection.reportId}</dd>
@@ -149,11 +149,11 @@ export default async function MigrationHistoryPage(props: PageProps) {
               <dt className="font-medium">검증 범위</dt><dd>{projection.verification}</dd>
               <dt className="font-medium">보관 내용 무결성</dt><dd>{projection.eventIntegrity}</dd>
             </dl>
-            <p>해시 일치는 보관 내용의 무결성만 확인합니다. 원본 출처·현재성·전환 권한은 증명하지 않습니다.</p>
+            <p>해시 일치는 보관 내용의 무결성만 확인해요. 원본 출처, 현재성, 전환 권한은 증명하지 않아요.</p>
           </details>
           <section aria-label="보관된 비교 내역" className="space-y-2">
             {report.metrics.length === 0 ? (
-              <p>보관된 비교 지표가 없습니다. 현재 비교 결과가 아닙니다.</p>
+              <p>보관된 비교 지표가 없어요. 현재 비교 결과가 아니에요.</p>
             ) : (
               <div className="overflow-x-auto rounded-lg border border-slate-200">
                 <table className="w-full border-collapse text-left">
@@ -184,7 +184,7 @@ export default async function MigrationHistoryPage(props: PageProps) {
           </section>
           <section aria-label="보관된 진단 내역" className="space-y-2">
             {report.diagnostics.length === 0 ? (
-              <p>보관된 진단 항목이 없습니다. 현재 검사 결과를 뜻하지 않습니다.</p>
+              <p>보관된 진단 항목이 없어요. 현재 검사 결과를 뜻하지 않아요.</p>
             ) : (
               <div className="overflow-x-auto rounded-lg border border-slate-200">
                 <table className="w-full border-collapse text-left">

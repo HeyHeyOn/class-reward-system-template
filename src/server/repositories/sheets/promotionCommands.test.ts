@@ -494,7 +494,7 @@ describe('promotion Sheets commands', () => {
       PromotionProducts: [[...PROMOTION_PRODUCTS_HEADERS], linkRow('L-1', 'A')],
     });
 
-    await expect(deletePromotion(store, 'UNKNOWN')).rejects.toThrow(/UNKNOWN|찾을 수 없습니다/);
+    await expect(deletePromotion(store, 'UNKNOWN')).rejects.toThrow(/UNKNOWN|찾을 수 없어요/);
     expect(store.deleted).toEqual([]);
   });
 
@@ -545,7 +545,7 @@ describe('promotion Sheets commands', () => {
     const failure = await deletePromotion(store, 'P-1').catch((error: unknown) => error);
 
     expect(failure).toBeInstanceOf(PromotionDeletePartialFailure);
-    expect((failure as Error).message).toContain('대상 상품 연결은 삭제되었지만 행사 삭제를 완료하지 못했습니다');
+    expect((failure as Error).message).toContain('대상 상품 연결은 삭제되었지만 행사 삭제를 완료하지 못했어요');
     expect(store.rows.PromotionProducts).toHaveLength(1);
     expect(store.rows.Promotions).toHaveLength(2);
   });

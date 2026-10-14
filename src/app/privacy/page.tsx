@@ -13,7 +13,7 @@ export default function PrivacyPolicyPage() {
   return (
     <LegalPage title="개인정보처리방침" intro={(
       <p>
-        {OPERATOR}(이하 &lsquo;운영자&rsquo;)는 학급 보상 시스템(이하 &lsquo;서비스&rsquo;)을 운영하면서 「개인정보 보호법」에 따라 이용자의 개인정보를 보호하고,
+        {OPERATOR}(이하 &lsquo;운영자&rsquo;)는 딴쌤 클래스(이하 &lsquo;서비스&rsquo;)를 운영하면서 「개인정보 보호법」에 따라 이용자의 개인정보를 보호하고,
         관련 고충을 신속하게 처리하기 위해 다음과 같이 개인정보처리방침을 정합니다.
       </p>
     )}>

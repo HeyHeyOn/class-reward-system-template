@@ -458,15 +458,15 @@ export function formatTime(instant: string, timeZone = DEFAULT_TIME_ZONE): strin
   return `${parts.hour < 12 ? '오전' : '오후'} ${hour}:${String(parts.minute).padStart(2, '0')}`;
 }
 
-/** "오늘 · 10월 6일(화)", "어제 · 10월 5일(월)", "10월 3일(토)" */
+/** "오늘, 10월 6일(화)", "어제, 10월 5일(월)", "10월 3일(토)" */
 export function formatDayLabel(instant: string, timeZone: string, now: string): string {
   const parts = dateParts(instant, timeZone);
   if (!parts) return instant;
   const today = dateParts(now, timeZone);
   const label = formatDate(parts, today);
-  if (dayKey(instant, timeZone) === dayKey(now, timeZone)) return `오늘 · ${label}`;
+  if (dayKey(instant, timeZone) === dayKey(now, timeZone)) return `오늘, ${label}`;
   const yesterday = new Date(new Date(now).getTime() - 24 * 60 * 60 * 1000).toISOString();
-  if (dayKey(instant, timeZone) === dayKey(yesterday, timeZone)) return `어제 · ${label}`;
+  if (dayKey(instant, timeZone) === dayKey(yesterday, timeZone)) return `어제, ${label}`;
   return label;
 }
 

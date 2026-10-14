@@ -188,7 +188,7 @@ describe('POST /api/tasks/[taskId]/complete', () => {
   });
 
   it.each([
-    ['완료할 수 있는 과제가 아닙니다.'],
+    ['완료할 수 있는 과제가 아니에요.'],
     ["선행 과제 '먼저 할 일'을(를) 먼저 완료해 주세요."],
   ])('preserves legacy safe policy errors: %s', async (message) => {
     execute.mockRejectedValue(new Error(message));
@@ -210,7 +210,7 @@ describe('POST /api/tasks/[taskId]/complete', () => {
 
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toEqual({
-      error: '같은 완료 요청의 내용이 일치하지 않습니다.',
+      error: '같은 완료 요청의 내용이 일치하지 않아요.',
       code: 'COMPLETION_OPERATION_CONFLICT',
       operationId,
     });
@@ -226,7 +226,7 @@ describe('POST /api/tasks/[taskId]/complete', () => {
 
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toEqual({
-      error: '완료 상태를 자동으로 확인할 수 없습니다. 관리자에게 문의해 주세요.',
+      error: '완료 상태를 자동으로 확인할 수 없어요. 관리자에게 문의해 주세요.',
       code: 'COMPLETION_RECONCILIATION_REQUIRED',
       operationId,
       retryable: false,
@@ -234,13 +234,13 @@ describe('POST /api/tasks/[taskId]/complete', () => {
   });
 
   it.each<[TaskRewardCommandErrorCode, number, string, string, boolean | undefined]>([
-    ['POLICY', 400, '완료할 수 있는 과제가 아닙니다.', 'POLICY_FAILURE', undefined],
-    ['SUBMISSION_REQUIRED', 400, '과제 제출물을 찾을 수 없습니다.', 'POLICY_FAILURE', undefined],
-    ['OPERATION_CONFLICT', 409, '같은 완료 요청의 내용이 일치하지 않습니다.', 'COMPLETION_OPERATION_CONFLICT', undefined],
-    ['CONFLICT', 503, '완료 상태를 확인하고 있습니다.', 'COMPLETION_STATUS_UNKNOWN', true],
-    ['OPERATION_PENDING', 503, '완료 상태를 확인하고 있습니다.', 'COMPLETION_STATUS_UNKNOWN', true],
-    ['PROVIDER_UNAVAILABLE', 503, '완료 상태를 확인하고 있습니다.', 'COMPLETION_STATUS_UNKNOWN', true],
-    ['EVIDENCE_CONFLICT', 503, '완료 상태를 확인하고 있습니다.', 'COMPLETION_STATUS_UNKNOWN', true],
+    ['POLICY', 400, '완료할 수 있는 과제가 아니에요.', 'POLICY_FAILURE', undefined],
+    ['SUBMISSION_REQUIRED', 400, '과제 제출물을 찾을 수 없어요.', 'POLICY_FAILURE', undefined],
+    ['OPERATION_CONFLICT', 409, '같은 완료 요청의 내용이 일치하지 않아요.', 'COMPLETION_OPERATION_CONFLICT', undefined],
+    ['CONFLICT', 503, '완료 상태를 확인하고 있어요.', 'COMPLETION_STATUS_UNKNOWN', true],
+    ['OPERATION_PENDING', 503, '완료 상태를 확인하고 있어요.', 'COMPLETION_STATUS_UNKNOWN', true],
+    ['PROVIDER_UNAVAILABLE', 503, '완료 상태를 확인하고 있어요.', 'COMPLETION_STATUS_UNKNOWN', true],
+    ['EVIDENCE_CONFLICT', 503, '완료 상태를 확인하고 있어요.', 'COMPLETION_STATUS_UNKNOWN', true],
   ])('maps DB command error %s without leaking its message', async (code, status, error, responseCode, retryable) => {
     const thrown = new TaskRewardCommandError(code);
     Object.defineProperty(thrown, 'message', { value: `DB secret for ${code}` });
@@ -266,7 +266,7 @@ describe('POST /api/tasks/[taskId]/complete', () => {
 
     expect(response.status).toBe(503);
     expect(body).toEqual({
-      error: '완료 상태를 확인하고 있습니다.', code: 'COMPLETION_STATUS_UNKNOWN', operationId, retryable: true,
+      error: '완료 상태를 확인하고 있어요.', code: 'COMPLETION_STATUS_UNKNOWN', operationId, retryable: true,
     });
     expect(JSON.stringify(body)).not.toContain(secret);
     expect(createConfiguredTaskCompletion).toHaveBeenCalledTimes(1);

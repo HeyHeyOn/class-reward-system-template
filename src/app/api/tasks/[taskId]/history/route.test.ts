@@ -76,7 +76,7 @@ describe('GET /api/tasks/[taskId]/history', () => {
     const response = await GET(new Request(url), { params: Promise.resolve({ taskId: 'T1' }) });
     expect(response.status).toBe(400);
     expect(createConfiguredSheetsReader).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toEqual({ error: '과제 기록 조회 요청 형식이 올바르지 않습니다.' });
+    await expect(response.json()).resolves.toEqual({ error: '과제 기록 조회 요청 형식이 올바르지 않아요.' });
   });
 
   it('returns 404 only when neither a definition nor ledger events exist', async () => {
@@ -103,6 +103,6 @@ describe('GET /api/tasks/[taskId]/history', () => {
       params: Promise.resolve({ taskId: 'T1' }),
     });
     expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toEqual({ error: '과제 기록을 불러오지 못했습니다.' });
+    await expect(response.json()).resolves.toEqual({ error: '과제 기록을 불러오지 못했어요.' });
   });
 });

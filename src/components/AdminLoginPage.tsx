@@ -45,7 +45,7 @@ export function AdminLoginPage({
         <section className="mx-auto max-w-md rounded-[2rem] bg-white p-8 shadow-[0_20px_60px_rgba(37,49,63,0.15)]">
           <p className="text-sm font-bold uppercase tracking-[0.3em] text-[#4f8fba]">Class Store Admin</p>
           <h1 className="mt-3 text-3xl font-black">학급 관리자 로그인</h1>
-          <p className="mt-3 text-sm text-[#627184]">Google 계정으로 로그인한 뒤 관리자 권한이 있는 학급을 선택합니다.</p>
+          <p className="mt-3 text-sm text-[#627184]">Google 계정으로 로그인한 뒤 관리자 권한이 있는 학급을 선택해요.</p>
           <a className="mt-8 flex w-full items-center justify-center rounded-2xl bg-[#4285f4] px-5 py-3 text-center font-black text-white shadow-[0_10px_30px_rgba(66,133,244,0.25)]" href="/api/google/login?returnTo=%2Fclasses">
             Google 계정으로 로그인
           </a>
@@ -60,7 +60,7 @@ export function AdminLoginPage({
     return (
       <main style={themeStyles('white').variables} className="flex min-h-screen items-center justify-center bg-[var(--theme-shell)] px-4 py-10 text-[var(--theme-text)]">
         <section className="w-full max-w-md rounded-[26px] border border-[var(--crs-line)] bg-[var(--theme-surface)] p-7 shadow-[var(--crs-shadow)] sm:p-9">
-          <span role="img" aria-label="학급 보상 시스템 로고" className="block h-11 w-11 bg-[var(--theme-accent-text)] [mask-image:url('/class-reward-system-icon.png')] [mask-position:center] [mask-repeat:no-repeat] [mask-size:contain]" />
+          <span role="img" aria-label="딴쌤 클래스 로고" className="block h-11 w-11 bg-[var(--theme-accent-text)] [mask-image:url('/class-reward-system-icon.png')] [mask-position:center] [mask-repeat:no-repeat] [mask-size:contain]" />
           <h1 className="mt-5 text-[28px] font-black tracking-[-0.035em]">관리자 로그인</h1>
           <p className="mt-2 text-sm leading-relaxed text-[var(--theme-muted-text)]">이 학급을 만든 Google 계정으로 로그인해 주세요.</p>
           <a className={buttonClass({ variant: 'primary', size: 'lg', block: true, className: 'mt-7' })}
@@ -87,11 +87,11 @@ export function AdminLoginPage({
       });
       const body = (await response.json()) as { error?: string };
 
-      if (!response.ok) throw new Error(body.error ?? '로그인하지 못했습니다.');
+      if (!response.ok) throw new Error(body.error ?? '로그인하지 못했어요.');
       router.replace(searchParams.get('next') || tenantPagePath('/admin'));
       router.refresh();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '로그인하지 못했습니다.');
+      setMessage(error instanceof Error ? error.message : '로그인하지 못했어요.');
     } finally {
       setIsSubmitting(false);
     }
@@ -105,7 +105,7 @@ export function AdminLoginPage({
   async function startScan() {
     setMessage('');
     if (!window.BarcodeDetector) {
-      setMessage('이 브라우저는 QR 카메라 인식을 지원하지 않습니다. QR 내용을 아래 입력칸에 붙여넣어 주세요.');
+      setMessage('이 브라우저는 QR 카메라 인식을 지원하지 않아요. QR 내용을 아래 칸에 붙여넣어 주세요.');
       return;
     }
     try {
@@ -131,7 +131,7 @@ export function AdminLoginPage({
       };
       scan();
     } catch {
-      setMessage('카메라를 열지 못했습니다. 브라우저 권한을 확인하거나 QR 내용을 붙여넣어 주세요.');
+      setMessage('카메라를 열지 못했어요. 브라우저 권한을 확인하거나 QR 내용을 붙여넣어 주세요.');
       stopScan();
     }
   }
@@ -156,13 +156,13 @@ export function AdminLoginPage({
       {isSubmitting ? (
         <LoadingOverlay
           title="관리자 로그인 확인 중"
-          message={submittingFromQr ? 'QR을 인식했습니다. 관리자 권한을 확인하는 중입니다.' : '관리자 권한을 확인하는 중입니다.'}
+          message={submittingFromQr ? 'QR을 인식했어요. 관리자 권한을 확인하는 중이에요.' : '관리자 권한을 확인하는 중이에요.'}
         />
       ) : null}
       <section className="w-full max-w-md rounded-[26px] border border-[var(--crs-line)] bg-[var(--theme-surface)] p-7 shadow-[var(--crs-shadow)] sm:p-9">
-        <span role="img" aria-label="학급 보상 시스템 로고" className="block h-11 w-11 bg-[var(--theme-accent-text)] [mask-image:url('/class-reward-system-icon.png')] [mask-position:center] [mask-repeat:no-repeat] [mask-size:contain]" />
+        <span role="img" aria-label="딴쌤 클래스 로고" className="block h-11 w-11 bg-[var(--theme-accent-text)] [mask-image:url('/class-reward-system-icon.png')] [mask-position:center] [mask-repeat:no-repeat] [mask-size:contain]" />
         <h1 className="mt-5 text-[28px] font-black tracking-[-0.035em]">관리자 로그인</h1>
-        <p className="mt-2 text-sm leading-relaxed text-[var(--theme-muted-text)]">{googleLoginEnabled ? 'Google 계정, 관리자 암호, 관리자 QR 중 편한 방법으로 로그인합니다.' : '관리자 암호, 관리자 QR, Recovery 탭의 recoveryCode로 로그인합니다.'}</p>
+        <p className="mt-2 text-sm leading-relaxed text-[var(--theme-muted-text)]">{googleLoginEnabled ? 'Google 계정, 관리자 암호, 관리자 QR 중 편한 방법으로 로그인해요.' : '관리자 암호, 관리자 QR, Recovery 탭의 recoveryCode로 로그인해요.'}</p>
 
         {googleLoginEnabled ? (
           <>
@@ -173,8 +173,8 @@ export function AdminLoginPage({
           </>
         ) : (
           <div className="mt-6 space-y-2 rounded-[14px] bg-[var(--crs-subtle-hover)] px-4 py-3 text-[13px] leading-relaxed text-[var(--theme-muted-text)]">
-            <p>이 배포 앱은 생성 시 연결된 Google Sheets 권한으로 동작합니다. 관리자 화면 접속은 관리자 비밀번호, 관리자 QR, 또는 스프레드시트 Recovery 탭의 recoveryCode를 사용하세요.</p>
-            <p>비밀번호가 틀리거나 기억나지 않으면 Google Drive에서 학급 보상 시스템 스프레드시트를 열고 Recovery 탭의 recoveryCode 값을 아래 칸에 그대로 입력하면 복구 로그인할 수 있습니다.</p>
+            <p>이 배포 앱은 만들 때 연결한 Google Sheets 권한으로 동작해요.</p>
+            <p>비밀번호가 틀리거나 기억나지 않으면 Google Drive에서 이 학급의 스프레드시트를 열고 Recovery 탭의 recoveryCode 값을 아래 칸에 그대로 입력해 복구 로그인할 수 있어요.</p>
           </div>
         )}
 

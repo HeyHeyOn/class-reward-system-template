@@ -113,7 +113,7 @@ export function ProfileView({ model }: Readonly<{ model: ProfileViewModel }>) {
               <dt className="font-bold">약관 동의</dt>
               <dd className="text-[var(--theme-muted-text)]">
                 {model.agreement
-                  ? <>{model.agreement.effectiveLabel} 시행 이용약관·개인정보처리방침 ({model.agreement.agreedAtLabel} 동의)</>
+                  ? <>{model.agreement.effectiveLabel} 시행 이용약관과 개인정보처리방침 ({model.agreement.agreedAtLabel} 동의)</>
                   : '동의 기록이 없어요.'}
                 <span className="mt-1 flex gap-3 text-[13px]">
                   <a href="/terms" className="font-semibold text-[var(--theme-accent-text)] underline underline-offset-2">이용약관</a>

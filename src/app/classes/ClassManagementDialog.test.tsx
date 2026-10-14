@@ -19,11 +19,11 @@ describe('class management dialog',()=>{
     const fetcher=vi.fn().mockResolvedValue(new Response(JSON.stringify({action:'PURGE',slug:'my-class',managementVersion:'3',lifecycle:'SUSPENDED',displayName:'우리 반',replayed:false}),{status:200}));vi.stubGlobal('fetch',fetcher);const success=vi.fn();
     render(<ClassManagementDialog item={trashed} action="PURGE" onClose={()=>{}} onSuccess={success}/>);
     expect(screen.getByRole('heading',{name:'학급 완전히 삭제'})).toBeTruthy();
-    expect(screen.getByText(/되돌리거나 복원할 수 없습니다/)).toBeTruthy();
+    expect(screen.getByText(/되돌릴 수 없어요/)).toBeTruthy();
     const button=screen.getByRole('button',{name:'완전히 삭제'}) as HTMLButtonElement;expect(button.disabled).toBe(true);
     fireEvent.change(screen.getByRole('textbox'),{target:{value:'우리'}});expect(button.disabled).toBe(true);
     fireEvent.change(screen.getByRole('textbox'),{target:{value:'우리 반'}});fireEvent.click(button);
-    await waitFor(()=>expect(success).toHaveBeenCalledWith('학급을 완전히 삭제했습니다. 이 학급의 자료는 다시 복원할 수 없습니다.'));
+    await waitFor(()=>expect(success).toHaveBeenCalledWith('학급을 완전히 삭제했어요. 이 학급의 자료는 복원할 수 없어요.'));
     expect(JSON.parse(fetcher.mock.calls[0][1].body)).toMatchObject({action:'PURGE',name:'우리 반',expectedVersion:'2'});
   });
   it('retries an unknown outcome with the same operation and blocks double submission',async()=>{

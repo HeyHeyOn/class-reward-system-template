@@ -35,7 +35,7 @@ async function prepare(data = issued()) {
   click('진단 준비'); await screen.findByRole('button', { name: '진단 확인 정보 받기' });
   click('진단 확인 정보 받기'); await screen.findByLabelText('진단 서버 원본');
 }
-function confirm() { fireEvent.click(screen.getByLabelText('위 대상의 진단용 읽기에 동의합니다.')); click('진단용 읽기 실행'); }
+function confirm() { fireEvent.click(screen.getByLabelText('위 대상의 진단용 읽기에 동의해요.')); click('진단용 읽기 실행'); }
 function hide() { Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' }); fireEvent(document, new Event('visibilitychange')); }
 function deferred() { let resolve!: (r: Response) => void; const promise = new Promise<Response>(r => { resolve = r; }); return { promise, resolve }; }
 beforeEach(() => { transport.mockReset(); vi.stubGlobal('fetch', transport); Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' }); });
@@ -75,7 +75,7 @@ describe('manual diagnostic reacquisition — actual UI, synthetic canonical tra
     expect(transport).toHaveBeenCalledTimes(1); await act(async () => first.resolve(response(bootstrap())));
     const second = deferred(); transport.mockReturnValueOnce(second.promise); const issue = screen.getByRole('button', { name: '진단 확인 정보 받기' });
     act(() => { fireEvent.click(issue, { detail }); fireEvent.click(issue, { detail }); }); expect(transport).toHaveBeenCalledTimes(2);
-    await act(async () => second.resolve(response(issued()))); fireEvent.click(screen.getByLabelText('위 대상의 진단용 읽기에 동의합니다.'));
+    await act(async () => second.resolve(response(issued()))); fireEvent.click(screen.getByLabelText('위 대상의 진단용 읽기에 동의해요.'));
     const third = deferred(); transport.mockReturnValueOnce(third.promise); const send = screen.getByRole('button', { name: '진단용 읽기 실행' });
     act(() => { fireEvent.click(send, { detail }); fireEvent.click(send, { detail }); }); expect(transport).toHaveBeenCalledTimes(3);
     await act(async () => third.resolve(response(candidate()))); expect(screen.queryByRole('button', { name: '진단용 읽기 실행' })).toBeNull();

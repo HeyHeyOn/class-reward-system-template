@@ -6,7 +6,7 @@ const settings = { source: 'database', settingsVersion: 1, currencyUnit: '원', 
   bankTitle: '학급 은행', themeColor: 'white', fontFamily: 'default', qrManualInputEnabled: false };
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-const SAVED_STATUS = '모든 변경 사항이 저장되어 있습니다.';
+const SAVED_STATUS = '모든 변경 사항이 저장되어 있어요.';
 const saveButton = () => screen.getByRole('button', { name: '설정 저장' }) as HTMLButtonElement;
 
 it('saves central display settings without asking for Sheets or administrator passwords', async () => {
@@ -23,10 +23,10 @@ it('saves central display settings without asking for Sheets or administrator pa
   fireEvent.click(screen.getByRole('radio', { name: '남색' }));
   fireEvent.click(screen.getByRole('switch', { name: 'QR 값 직접 입력 허용' }));
   expect((screen.getByRole('radio', { name: '남색' }) as HTMLInputElement).checked).toBe(true);
-  expect(screen.getByText('저장하지 않은 변경 사항이 있습니다.')).toBeTruthy();
+  expect(screen.getByText('저장하지 않은 변경 사항이 있어요.')).toBeTruthy();
   expect(saveButton().disabled).toBe(false);
   fireEvent.click(saveButton());
-  await screen.findByText('학급 설정을 저장했습니다.');
+  await screen.findByText('학급 설정을 저장했어요.');
   const input = JSON.parse(String(fetcher.mock.calls.find(([, init]) => init?.method === 'POST')![1]!.body));
   expect(input).toEqual({ operationId: expect.any(String), expectedSettingsVersion: 1, currencyUnit: '별',
     appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'navy', fontFamily: 'default', qrManualInputEnabled: true });
@@ -47,7 +47,7 @@ it('locks edits after an uncertain response and resends the exact request', asyn
   expect(screen.getByLabelText('학급 화폐 단위').closest('fieldset')!.disabled).toBe(true);
   expect((screen.getByRole('button', { name: '같은 요청으로 다시 확인' }) as HTMLButtonElement).disabled).toBe(false);
   fireEvent.click(screen.getByRole('button', { name: '같은 요청으로 다시 확인' }));
-  await screen.findByText('학급 설정을 저장했습니다.');
+  await screen.findByText('학급 설정을 저장했어요.');
   const calls = fetcher.mock.calls.filter(([, init]) => init?.method === 'POST');
   expect(calls).toHaveLength(2); expect(calls[0]).toEqual(calls[1]);
   expect(JSON.parse(String(calls[0][1]!.body))).toMatchObject({ expectedSettingsVersion: 1, bankTitle: '우리 은행' });

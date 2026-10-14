@@ -264,7 +264,7 @@ function parsePatchAcknowledgement(value: unknown, targetId: string): number | n
 
 const UNKNOWN_PRODUCT_LABEL = '알 수 없는 상품';
 const PROMOTION_MUTATION_TARGET_PARTIAL_FAILURE_MESSAGE =
-  '행사 정보는 저장되었을 수 있지만 대상 상품 수정에 실패했습니다. 새로고침 후 확인하고 다시 시도해 주세요.';
+  '행사 정보는 저장되었을 수 있지만 대상 상품을 바꾸지 못했어요. 새로고침해서 확인한 뒤 다시 시도해 주세요.';
 
 function summarizeProductTargets(productIds: string[], productNames: Map<string, string>) {
   const labels = [...new Set(productIds.map((productId) => productNames.get(productId) ?? UNKNOWN_PRODUCT_LABEL))];
@@ -345,16 +345,16 @@ function draftPromotion(draft: Draft, promotionId: string): Promotion {
 function validateDraft(draft: Draft): string | null {
   if (!draft.name.trim()) return '행사명을 입력해 주세요.';
   if (!draft.startsAt || !draft.endsAt) return '시작 일시와 종료 일시를 입력해 주세요.';
-  if (!isCanonicalIso(draft.startsAt) || !isCanonicalIso(draft.endsAt)) return '행사 기간이 올바르지 않습니다.';
+  if (!isCanonicalIso(draft.startsAt) || !isCanonicalIso(draft.endsAt)) return '행사 기간이 올바르지 않아요.';
   const starts = Date.parse(draft.startsAt);
   const ends = Date.parse(draft.endsAt);
-  if (starts >= ends) return '시작 일시는 종료 일시보다 빨라야 합니다.';
-  if (!Number.isSafeInteger(draft.sortOrder)) return '정렬 우선순위는 정수여야 합니다.';
+  if (starts >= ends) return '시작 일시는 종료 일시보다 빨라야 해요.';
+  if (!Number.isSafeInteger(draft.sortOrder)) return '정렬 우선순위는 정수여야 해요.';
   if (draft.productIds.length === 0) return '대상 상품을 하나 이상 선택해 주세요.';
-  if (draft.type === 'N_PLUS_ONE' && (!Number.isSafeInteger(draft.buyQuantity) || draft.buyQuantity < 1 || !Number.isSafeInteger(draft.freeQuantity) || draft.freeQuantity < 1)) return '구매/무료 수량은 1 이상의 정수여야 합니다.';
-  if (draft.type === 'PROMOTIONAL_PRICE' && (!Number.isSafeInteger(draft.promotionalUnitPrice) || draft.promotionalUnitPrice < 0)) return '행사 단가는 0 이상의 정수여야 합니다.';
-  if (draft.type === 'PERCENT_DISCOUNT' && (!Number.isFinite(draft.percent) || draft.percent <= 0 || draft.percent > 100)) return '할인율은 0 초과 100 이하여야 합니다.';
-  if (draft.type === 'FIXED_DISCOUNT' && (!Number.isSafeInteger(draft.discountAmount) || draft.discountAmount < 1)) return '할인액은 1 이상의 정수여야 합니다.';
+  if (draft.type === 'N_PLUS_ONE' && (!Number.isSafeInteger(draft.buyQuantity) || draft.buyQuantity < 1 || !Number.isSafeInteger(draft.freeQuantity) || draft.freeQuantity < 1)) return '구매 수량과 무료 수량은 1 이상의 정수여야 해요.';
+  if (draft.type === 'PROMOTIONAL_PRICE' && (!Number.isSafeInteger(draft.promotionalUnitPrice) || draft.promotionalUnitPrice < 0)) return '행사 단가는 0 이상의 정수여야 해요.';
+  if (draft.type === 'PERCENT_DISCOUNT' && (!Number.isFinite(draft.percent) || draft.percent <= 0 || draft.percent > 100)) return '할인율은 0보다 크고 100 이하여야 해요.';
+  if (draft.type === 'FIXED_DISCOUNT' && (!Number.isSafeInteger(draft.discountAmount) || draft.discountAmount < 1)) return '할인액은 1 이상의 정수여야 해요.';
   return null;
 }
 
@@ -405,9 +405,9 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
     try {
       const response = await tenantFetch('/api/promotions', { cache: 'no-store' });
       const payload: unknown = await response.json();
-      if (!response.ok) throw new Error(readError(payload, '행사 목록을 불러오지 못했습니다.'));
+      if (!response.ok) throw new Error(readError(payload, '행사 목록을 불러오지 못했어요.'));
       const parsed = parsePromotionAdminEnvelope(payload);
-      if (!parsed) throw new Error('행사 목록 형식이 올바르지 않습니다.');
+      if (!parsed) throw new Error('행사 목록 형식이 올바르지 않아요.');
       if (mountedRef.current && loadGenerationRef.current === generation) {
         const ordered = canonicalPromotionOrder(parsed.promotions);
         promotionsRef.current = ordered;
@@ -416,7 +416,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
       }
     } catch (error) {
       if (mountedRef.current && loadGenerationRef.current === generation) {
-        setLoadError(error instanceof Error ? error.message : '행사 목록을 불러오지 못했습니다.');
+        setLoadError(error instanceof Error ? error.message : '행사 목록을 불러오지 못했어요.');
       }
     } finally {
       if (mountedRef.current && loadGenerationRef.current === generation) setLoading(false);
@@ -462,7 +462,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
   const preview = useMemo(() => {
     if (!previewProductId) return null;
     const product = products.find((item) => item.productId === previewProductId);
-    if (!product) return { ok: false as const, message: '미리보기 상품을 찾을 수 없습니다.' };
+    if (!product) return { ok: false as const, message: '미리보기 상품을 찾을 수 없어요.' };
     const error = validateDraft(draft);
     if (error) return { ok: false as const, message: error };
     const combined = [...promotions, draftPromotion(draft, DRAFT_ID)];
@@ -523,14 +523,14 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
         body: JSON.stringify({ operationId, ...createPayload }),
       });
       const payload: unknown = await response.json();
-      if (!response.ok) throw new Error(readError(payload, '행사를 추가하지 못했습니다.'));
+      if (!response.ok) throw new Error(readError(payload, '행사를 추가하지 못했어요.'));
       const returned = parsePromotionResponse(payload);
-      if (!returned) throw new Error('행사 응답 형식이 올바르지 않습니다.');
+      if (!returned) throw new Error('행사 응답 형식이 올바르지 않아요.');
       if (returned.promotionId !== `PROMO-${operationId}`) {
-        throw new Error('행사 응답 ID가 올바르지 않습니다.');
+        throw new Error('행사 응답 ID가 올바르지 않아요.');
       }
       if (promotionsRef.current.some((promotion) => promotion.promotionId === returned.promotionId)) {
-        throw new Error('행사 응답 ID가 올바르지 않습니다.');
+        throw new Error('행사 응답 ID가 올바르지 않아요.');
       }
       if (!mountedRef.current || mutationGenerationRef.current !== mutationGeneration) return;
       const nextPromotions = canonicalPromotionOrder([...promotionsRef.current, returned]);
@@ -539,12 +539,12 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
       setPromotions(nextPromotions);
       setLoading(false);
       setLoadError('');
-      setMessage('행사를 추가했습니다.');
+      setMessage('행사를 추가했어요.');
       setDraft(EMPTY_DRAFT);
       creationAttemptRef.current = null;
     } catch (caught) {
       if (mountedRef.current && mutationGenerationRef.current === mutationGeneration) {
-        setFormError(caught instanceof Error ? caught.message : '행사를 저장하지 못했습니다.');
+        setFormError(caught instanceof Error ? caught.message : '행사를 저장하지 못했어요.');
       }
     } finally {
       if (mutationGenerationRef.current === mutationGeneration) {
@@ -568,7 +568,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
     const expectedVersion = promotionPreconditionsRef.current.get(id);
     if (expectedVersion === undefined) {
       editAttemptRef.current = null;
-      setEditError('수정 전제 조건을 확인할 수 없습니다. 행사 목록을 새로고침한 후 다시 시도해 주세요.');
+      setEditError('수정할 행사 정보를 확인할 수 없어요. 행사 목록을 새로고침한 뒤 다시 시도해 주세요.');
       return;
     }
     const editPayload = canonicalEditPayload(draftToSave);
@@ -591,7 +591,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
       });
       const payload: unknown = await response.json();
       if (!response.ok) {
-        const safeMessage = readError(payload, '행사를 수정하지 못했습니다.');
+        const safeMessage = readError(payload, '행사를 수정하지 못했어요.');
         if (safeMessage === PROMOTION_MUTATION_TARGET_PARTIAL_FAILURE_MESSAGE) {
           if (mountedRef.current && mutationGenerationRef.current === mutationGeneration
             && editGenerationRef.current === editGeneration) {
@@ -603,7 +603,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
         throw new Error(safeMessage);
       }
       const acknowledgedVersion = parsePatchAcknowledgement(payload, id);
-      if (acknowledgedVersion === null) throw new Error('행사 수정 응답 형식이 올바르지 않습니다.');
+      if (acknowledgedVersion === null) throw new Error('행사 수정 응답 형식이 올바르지 않아요.');
       if (!mountedRef.current || mutationGenerationRef.current !== mutationGeneration || editGenerationRef.current !== editGeneration) return;
 
       const refreshGeneration = loadGenerationRef.current + 1;
@@ -619,7 +619,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
           || !promotionMatchesEditPayload(refreshed, editPayload)) throw new Error();
         parsed = candidate;
       } catch {
-        throw new Error('수정은 확인되었지만 행사 목록을 새로고침하지 못했습니다. 목록을 새로고침한 후 다시 확인해 주세요.');
+        throw new Error('수정은 저장됐지만 행사 목록을 새로고침하지 못했어요. 목록을 새로고침해 확인해 주세요.');
       }
       if (!mountedRef.current || mutationGenerationRef.current !== mutationGeneration
         || editGenerationRef.current !== editGeneration || loadGenerationRef.current !== refreshGeneration) return;
@@ -630,12 +630,12 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
       setLoading(false);
       setLoadError('');
       editAttemptRef.current = null;
-      setMessage('행사를 수정했습니다.');
+      setMessage('행사를 수정했어요.');
       setEditingId(null);
       setEditDraft(null);
     } catch (caught) {
       if (mountedRef.current && mutationGenerationRef.current === mutationGeneration && editGenerationRef.current === editGeneration) {
-        setEditError(caught instanceof Error ? caught.message : '행사를 수정하지 못했습니다.');
+        setEditError(caught instanceof Error ? caught.message : '행사를 수정하지 못했어요.');
       }
     } finally {
       if (mutationGenerationRef.current === mutationGeneration) {
@@ -667,7 +667,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
     const expectedVersion = promotionPreconditionsRef.current.get(target.promotionId);
     if (expectedVersion === undefined) {
       deletionAttemptRef.current = null;
-      setDeleteError('삭제 전제 조건을 확인할 수 없습니다. 행사 목록을 새로고침한 후 다시 시도해 주세요.');
+      setDeleteError('삭제할 행사 정보를 확인할 수 없어요. 행사 목록을 새로고침한 뒤 다시 시도해 주세요.');
       return;
     }
     const semanticKey = JSON.stringify([target.promotionId, expectedVersion]);
@@ -688,7 +688,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
       });
       const payload: unknown = await response.json();
       if (!response.ok) {
-        const safeMessage = readError(payload, '행사를 삭제하지 못했습니다.');
+        const safeMessage = readError(payload, '행사를 삭제하지 못했어요.');
         if (mountedRef.current && mutationGenerationRef.current === mutationGeneration) {
           setDeleteError(safeMessage);
           if (safeMessage.includes('대상 상품 연결은 삭제되었지만')) void loadPromotions();
@@ -696,7 +696,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
         return;
       }
       if (!parseDeleteSuccess(payload, target.promotionId)) {
-        throw new Error('행사 삭제 응답 형식이 올바르지 않습니다.');
+        throw new Error('행사 삭제 응답 형식이 올바르지 않아요.');
       }
       if (!mountedRef.current || mutationGenerationRef.current !== mutationGeneration) return;
       const nextPromotions = promotionsRef.current.filter((promotion) => promotion.promotionId !== target.promotionId);
@@ -707,10 +707,10 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
       deletionAttemptRef.current = null;
       setDeleteTarget(null);
       setDeleteError('');
-      setMessage('행사를 삭제했습니다.');
+      setMessage('행사를 삭제했어요.');
     } catch (caught) {
       if (mountedRef.current && mutationGenerationRef.current === mutationGeneration) {
-        setDeleteError(caught instanceof Error ? caught.message : '행사를 삭제하지 못했습니다.');
+        setDeleteError(caught instanceof Error ? caught.message : '행사를 삭제하지 못했어요.');
       }
     } finally {
       if (mutationGenerationRef.current === mutationGeneration) {
@@ -730,7 +730,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
     const expectedVersion = promotionPreconditionsRef.current.get(promotion.promotionId);
     if (expectedVersion === undefined) {
       activationAttemptRef.current = null;
-      setFormError('활성 상태 변경 전제 조건을 확인할 수 없습니다. 행사 목록을 새로고침한 후 다시 시도해 주세요.');
+      setFormError('상태를 바꿀 행사 정보를 확인할 수 없어요. 행사 목록을 새로고침한 뒤 다시 시도해 주세요.');
       return;
     }
     const semanticKey = JSON.stringify(['activation', promotion.promotionId, expectedVersion, next]);
@@ -750,10 +750,10 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
         body: JSON.stringify({ operationId: attempt.operationId, expectedPromotionVersion: attempt.expectedVersion, isActive: next }),
       });
       const payload: unknown = await response.json();
-      if (!response.ok) throw new Error(readError(payload, '행사 활성 상태를 변경하지 못했습니다.'));
+      if (!response.ok) throw new Error(readError(payload, '행사 활성 상태를 바꾸지 못했어요.'));
       const acknowledgedVersion = parsePatchAcknowledgement(payload, promotion.promotionId);
       if (acknowledgedVersion === null) {
-        throw new Error('행사 활성 상태 변경 응답 형식이 올바르지 않습니다.');
+        throw new Error('행사 활성 상태 변경 응답 형식이 올바르지 않아요.');
       }
       if (!mountedRef.current || mutationGenerationRef.current !== mutationGeneration) return;
 
@@ -770,7 +770,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
           || refreshed.isActive !== next) throw new Error();
         parsed = candidate;
       } catch {
-        throw new Error('활성 상태 변경은 확인되었지만 행사 목록을 새로고침하지 못했습니다. 목록을 새로고침한 후 다시 확인해 주세요.');
+        throw new Error('활성 상태는 바뀌었지만 행사 목록을 새로고침하지 못했어요. 목록을 새로고침해 확인해 주세요.');
       }
       if (!mountedRef.current || mutationGenerationRef.current !== mutationGeneration || loadGenerationRef.current !== refreshGeneration) return;
       const nextPromotions = canonicalPromotionOrder(parsed.promotions);
@@ -780,10 +780,10 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
       setLoading(false);
       setLoadError('');
       activationAttemptRef.current = null;
-      setMessage(next ? '행사를 재활성화했습니다.' : '행사를 비활성화했습니다.');
+      setMessage(next ? '행사를 재활성화했어요.' : '행사를 비활성화했어요.');
     } catch (caught) {
       if (mountedRef.current && mutationGenerationRef.current === mutationGeneration) {
-        setFormError(caught instanceof Error ? caught.message : '행사 활성 상태를 변경하지 못했습니다.');
+        setFormError(caught instanceof Error ? caught.message : '행사 활성 상태를 바꾸지 못했어요.');
       }
     } finally {
       if (mutationGenerationRef.current === mutationGeneration) {
@@ -815,7 +815,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
       >
       <div className={panelClass}>
         <h2 className="text-[17px] font-extrabold tracking-[-0.02em]">행사 만들기</h2>
-        <p className="mt-1 text-[13px] text-[var(--theme-muted-text)]">1+1, 할인가 같은 매점 행사를 정합니다.</p>
+        <p className="mt-1 text-[13px] text-[var(--theme-muted-text)]">1+1, 할인가 같은 매점 행사를 정해요.</p>
         <form className="mt-5" onSubmit={submitCreate}>
           <fieldset aria-label="행사 편집 입력" className="space-y-4" disabled={saving}>
           <DraftFields draft={draft} setDraft={(next) => setDraft(next)} products={products} timeZone={timeZone} />
@@ -832,7 +832,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
             <label className={labelClass}>미리보기 상품<select aria-label="미리보기 상품" className={inputClass} value={previewProductId} onChange={(event) => setPreviewProductId(event.target.value)}><option value="">선택</option>{products.map((product) => <option key={product.productId} value={product.productId}>{product.name}</option>)}</select></label>
             <NumberField label="총 수령 수량" value={previewQuantity} min={1} onChange={setPreviewQuantity} />
           </fieldset>
-          {preview ? <PreviewResult preview={preview} names={promotionNames} currencyUnit={currencyUnit} /> : <p className="mt-2 text-xs text-[var(--theme-muted-text)]">상품과 행사 설정을 입력하면 예상 가격을 계산합니다.</p>}
+          {preview ? <PreviewResult preview={preview} names={promotionNames} currencyUnit={currencyUnit} /> : <p className="mt-2 text-xs text-[var(--theme-muted-text)]">상품과 행사 설정을 입력하면 예상 가격을 계산해요.</p>}
         </div>
       </div>
 
@@ -841,9 +841,9 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
           <h2 className="text-[17px] font-extrabold tracking-[-0.02em]">행사 목록 <span className="ml-1 text-sm font-semibold text-[var(--theme-muted-text)]">{promotions.length}</span></h2>
           <button ref={refreshButtonRef} type="button" aria-label="행사 목록 새로고침" className={buttonClass({ variant: 'secondary', size: 'sm' })} onClick={() => void loadPromotions()}><Icon name="refresh" size={15} />새로고침</button>
         </div>
-        {loading ? <p role="status" aria-label="행사 목록 불러오는 중" className="mt-4 text-[13px] text-[var(--theme-muted-text)]">행사 목록을 불러오는 중입니다.</p> : null}
+        {loading ? <p role="status" aria-label="행사 목록 불러오는 중" className="mt-4 text-[13px] text-[var(--theme-muted-text)]">행사 목록을 불러오는 중이에요.</p> : null}
         {!loading && loadError ? <div role="alert" className={`mt-4 ${alertClass}`}><p>{loadError}</p><button type="button" className={buttonClass({ variant: 'secondary', size: 'sm', className: 'mt-2' })} onClick={() => void loadPromotions()}>다시 시도</button></div> : null}
-        {!loading && !loadError && promotions.length === 0 ? <p className="mt-4 rounded-[14px] border border-dashed border-[var(--crs-line-strong)] px-4 py-10 text-center text-[13px] text-[var(--theme-muted-text)]">등록된 행사가 없습니다.</p> : null}
+        {!loading && !loadError && promotions.length === 0 ? <p className="mt-4 rounded-[14px] border border-dashed border-[var(--crs-line-strong)] px-4 py-10 text-center text-[13px] text-[var(--theme-muted-text)]">등록된 행사가 없어요.</p> : null}
         {!loading && !loadError ? <div className="mt-4 space-y-2.5">{promotions.map((promotion) => {
           const productTargets = summarizeProductTargets(promotion.productIds, productNames);
           return <article data-testid="promotion-row" key={promotion.promotionId} className={`rounded-[16px] border border-[var(--crs-line)] p-4 text-sm ${promotion.isActive ? '' : 'opacity-70'}`}>
@@ -885,7 +885,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
       </div> : null}
 
       {deleteTarget ? <div ref={deleteDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="promotion-delete-title" className={overlayClass} onMouseDown={(event) => { if (event.target === event.currentTarget) closeDelete(); }} onKeyDown={(event) => { if (event.key === 'Tab' && !event.shiftKey && event.target === deleteConfirmRef.current) { event.preventDefault(); deleteCancelRef.current?.focus(); } else if (event.key === 'Tab' && event.shiftKey && event.target === deleteCancelRef.current) { event.preventDefault(); deleteConfirmRef.current?.focus(); } else trapDialogFocus(event); if (event.key === 'Escape') closeDelete(); }}>
-        <div className={`${dialogClass} max-w-md`}><h2 id="promotion-delete-title" className="text-lg font-black tracking-[-0.02em]">{deleteTarget.name} 행사 삭제</h2><p className="mt-2 text-[13px] leading-relaxed text-[var(--theme-muted-text)]">이 행사를 삭제할까요? 삭제 후에는 되돌릴 수 없습니다.</p>{deleteError ? <p role="alert" className={`mt-3 ${alertClass}`}>{deleteError}</p> : null}{saving ? <p role="status" className="mt-2 text-[13px] font-semibold">삭제 중…</p> : null}<div className="mt-5 flex justify-end gap-2"><button ref={deleteCancelRef} type="button" disabled={saving} className={buttonClass({ variant: 'ghost' })} onClick={closeDelete}>취소</button><button ref={deleteConfirmRef} type="button" disabled={saving} className={buttonClass({ variant: 'danger' })} onClick={() => void confirmDelete()}>삭제 확인</button></div></div>
+        <div className={`${dialogClass} max-w-md`}><h2 id="promotion-delete-title" className="text-lg font-black tracking-[-0.02em]">{deleteTarget.name} 행사 삭제</h2><p className="mt-2 text-[13px] leading-relaxed text-[var(--theme-muted-text)]">이 행사를 삭제할까요? 삭제하면 되돌릴 수 없어요.</p>{deleteError ? <p role="alert" className={`mt-3 ${alertClass}`}>{deleteError}</p> : null}{saving ? <p role="status" className="mt-2 text-[13px] font-semibold">삭제 중…</p> : null}<div className="mt-5 flex justify-end gap-2"><button ref={deleteCancelRef} type="button" disabled={saving} className={buttonClass({ variant: 'ghost' })} onClick={closeDelete}>취소</button><button ref={deleteConfirmRef} type="button" disabled={saving} className={buttonClass({ variant: 'danger' })} onClick={() => void confirmDelete()}>삭제 확인</button></div></div>
       </div> : null}
     </section>
   );
@@ -899,7 +899,7 @@ const labelClass = 'block text-[13px] font-bold';
 
 function PreviewResult({ preview, names, currencyUnit }: { preview: ReturnType<typeof calculatePromotionPrice> | { ok: false; message: string }; names: Map<string, string>; currencyUnit: string }) {
   if (!preview.ok) return <div role="region" aria-label="가격 미리보기 결과" className="mt-3 rounded-[12px] bg-[var(--crs-danger-bg)] px-3.5 py-2.5 text-[13px] text-[var(--crs-danger-text)]"><p role="alert">가격 계산 오류: {preview.message}</p></div>;
-  return <div role="region" aria-label="가격 미리보기 결과" className="mt-3 rounded-[12px] bg-[var(--crs-subtle)] px-3.5 py-3 text-xs leading-relaxed"><p className="text-[var(--theme-muted-text)]">정상 합계 {money(preview.regularTotal, currencyUnit)}</p><p className="text-sm font-black">최종 합계 {money(preview.finalAmount, currencyUnit)}</p><p>유료 {preview.paidQuantity}개 · 무료 {preview.freeQuantity}개 · 할인 합계 {money(preview.totalDiscount, currencyUnit)}</p><ol className="mt-1 list-decimal pl-4">{preview.adjustments.map((adjustment) => <li data-testid="preview-adjustment" key={`${adjustment.promotionId}-${adjustment.type}`}>{names.get(adjustment.promotionId) ?? adjustment.promotionId} ({TYPE_LABELS[adjustment.type]}): {money(adjustment.beforeAmount, currencyUnit)} → {money(adjustment.afterAmount, currencyUnit)}{adjustment.freeQuantity ? ` · 무료 ${adjustment.freeQuantity}개` : ''}</li>)}</ol></div>;
+  return <div role="region" aria-label="가격 미리보기 결과" className="mt-3 rounded-[12px] bg-[var(--crs-subtle)] px-3.5 py-3 text-xs leading-relaxed"><p className="text-[var(--theme-muted-text)]">정상 합계 {money(preview.regularTotal, currencyUnit)}</p><p className="text-sm font-black">최종 합계 {money(preview.finalAmount, currencyUnit)}</p><p>유료 {preview.paidQuantity}개, 무료 {preview.freeQuantity}개, 할인 합계 {money(preview.totalDiscount, currencyUnit)}</p><ol className="mt-1 list-decimal pl-4">{preview.adjustments.map((adjustment) => <li data-testid="preview-adjustment" key={`${adjustment.promotionId}-${adjustment.type}`}>{names.get(adjustment.promotionId) ?? adjustment.promotionId} ({TYPE_LABELS[adjustment.type]}): {money(adjustment.beforeAmount, currencyUnit)} → {money(adjustment.afterAmount, currencyUnit)}{adjustment.freeQuantity ? `, 무료 ${adjustment.freeQuantity}개` : ''}</li>)}</ol></div>;
 }
 
 const inputClass = 'mt-1.5 block h-11 w-full min-w-0 rounded-[11px] border border-[var(--crs-line-strong)] bg-[var(--theme-input)] px-3.5 text-[15px] font-medium text-[var(--theme-text)] outline-none transition focus:border-[var(--theme-focus-ring)] focus:ring-[3px] focus:ring-[color-mix(in_srgb,var(--theme-focus-ring)_18%,transparent)]';

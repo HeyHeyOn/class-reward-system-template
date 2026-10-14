@@ -19,21 +19,21 @@ export async function PATCH(request: Request) {
   try {
     const payload: unknown = await request.json();
     if (!isPlainObject(payload) || Object.keys(payload).length !== 1 || !Object.hasOwn(payload, 'tasks')
-      || !Array.isArray(payload.tasks)) throw new Error('과제 저장 요청 형식이 올바르지 않습니다.');
+      || !Array.isArray(payload.tasks)) throw new Error('과제 저장 요청 형식이 올바르지 않아요.');
     const tasks = payload.tasks.map((task) => parseBatchTask(task));
     const store = await createConfiguredSheetsStore(request);
     const result = await updateTaskDetailsBatch(store, tasks);
 
     return Response.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : '과제 목록을 일괄 저장하지 못했습니다.';
+    const message = error instanceof Error ? error.message : '과제 목록을 일괄 저장하지 못했어요.';
 
     return Response.json({ error: message }, { status: 400 });
   }
 }
 
 function parseBatchTask(value: unknown) {
-  if (!isPlainObject(value)) throw new Error('과제 저장 요청 형식이 올바르지 않습니다.');
+  if (!isPlainObject(value)) throw new Error('과제 저장 요청 형식이 올바르지 않아요.');
   const task = value;
   const fields = parseStrictBatchTaskFields(task);
   return { ...fields, taskId: fields.taskId!, ...parseScheduleProperty(task) };
@@ -66,7 +66,7 @@ export async function DELETE(request: Request) {
 
     return Response.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : '과제를 일괄 삭제하지 못했습니다.';
+    const message = error instanceof Error ? error.message : '과제를 일괄 삭제하지 못했어요.';
 
     return Response.json({ error: message }, { status: 400 });
   }

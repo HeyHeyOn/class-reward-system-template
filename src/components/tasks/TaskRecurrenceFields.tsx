@@ -25,7 +25,7 @@ export function TaskRecurrenceFields({ form, onChange, allowUnset = false }: { f
         <p id="task-recurrence-type-label" className="mb-1.5 text-[13px] font-bold">반복 주기</p>
         <SegmentedControl ariaLabel="반복 주기" value={type} options={TYPE_OPTIONS}
           onChange={(next) => onChange({ ...form, type: next, ...(next === 'WEEKLY' && form.weekdays.length === 0 ? { weekdays: ['1'] } : {}), ...(next === 'MONTHLY' && !form.dayOfMonth ? { dayOfMonth: '1' } : {}), ...(next !== 'NONE' && !form.time ? { time: '09:00' } : {}) })} />
-        {allowUnset && !type ? <p className="mt-2 text-xs text-[var(--theme-muted-text)]">선택한 과제 모두에 같은 반복 규칙을 적용합니다. 주기를 골라 주세요.</p> : null}
+        {allowUnset && !type ? <p className="mt-2 text-xs text-[var(--theme-muted-text)]">선택한 과제 모두에 같은 반복 규칙을 적용해요. 주기를 골라 주세요.</p> : null}
       </div>
 
       {type === 'WEEKLY' ? (
@@ -55,11 +55,11 @@ export function TaskRecurrenceFields({ form, onChange, allowUnset = false }: { f
       {repeating ? (
         <div className="grid gap-4 sm:grid-cols-2">
           {type === 'MONTHLY' ? (
-            <Field label="날짜" htmlFor="task-recurrence-day" hint="29~31일이 없는 달은 그 달 마지막 날로 바뀝니다.">
+            <Field label="날짜" htmlFor="task-recurrence-day" hint="29~31일이 없는 달은 그 달 마지막 날로 바뀌어요.">
               <Input id="task-recurrence-day" aria-label="반복 날짜" type="number" min="1" max="31" inputMode="numeric" suffix="일" value={form.dayOfMonth ?? ''} onChange={(event) => onChange({ ...form, dayOfMonth: event.target.value })} />
             </Field>
           ) : null}
-          <Field label="새 회차 시작 시각" htmlFor="task-recurrence-time" hint="이 시각에 새 회차가 시작됩니다.">
+          <Field label="새 회차 시작 시각" htmlFor="task-recurrence-time">
             <Input id="task-recurrence-time" aria-label="반복 시간" type="time" value={form.time ?? ''} onChange={(event) => onChange({ ...form, time: event.target.value })} />
           </Field>
         </div>
@@ -70,14 +70,14 @@ export function TaskRecurrenceFields({ form, onChange, allowUnset = false }: { f
           <p className="text-[13px] font-bold">새 회차가 시작되면</p>
           <Switch checked={Boolean(form.resetCompletionOnCycle)} ariaLabel="회차마다 완료 초기화"
             onChange={(checked) => onChange({ ...form, resetCompletionOnCycle: checked })}
-            label="완료 기록 지우기" description="학생이 이 과제를 다시 완료하고 보상을 또 받을 수 있습니다." />
+            label="완료 기록 지우기" description="학생이 이 과제를 다시 완료하고 보상을 또 받을 수 있어요." />
           <Switch checked={Boolean(form.resetAssignmentOnCycle)} ariaLabel="회차마다 부여 초기화"
             onChange={(checked) => onChange({ ...form, resetAssignmentOnCycle: checked })}
-            label="부여 지우기" description="회차마다 과제를 받을 학생을 새로 정해야 합니다." />
+            label="부여 지우기" description="회차마다 과제를 받을 학생을 새로 정해야 해요." />
         </div>
       ) : type === 'NONE' ? (
         <p className="rounded-[var(--crs-radius)] bg-[var(--crs-subtle)] px-4 py-3 text-[13px] leading-relaxed text-[var(--theme-muted-text)]">
-          한 번 완료하면 끝나는 과제입니다. 매주 하는 숙제처럼 되풀이되는 과제라면 주기를 골라 주세요.
+          한 번 완료하면 끝나는 과제예요. 되풀이되는 과제라면 주기를 골라 주세요.
         </p>
       ) : null}
 
@@ -99,8 +99,8 @@ export function TaskScheduleProjection({ task, className = '' }: { task: { sched
     ? '없음 (상시 과제)'
     : cycle?.endsAt ? formatAdminHistoryDate(cycle.endsAt, timeZone) : '정보 없음';
   const resetTargets = schedule
-    ? [schedule.resetCompletionOnCycle ? '완료 지움' : '완료 유지', schedule.resetAssignmentOnCycle ? '부여 지움' : '부여 유지'].join(' · ')
-    : '완료 유지 · 부여 유지';
+    ? [schedule.resetCompletionOnCycle ? '완료 지움' : '완료 유지', schedule.resetAssignmentOnCycle ? '부여 지움' : '부여 유지'].join(', ')
+    : '완료 유지, 부여 유지';
   const cycleRange = permanent
     ? '상시'
     : cycle ? `${formatAdminHistoryDate(cycle.startsAt, timeZone)} ~ ${cycle.endsAt ? formatAdminHistoryDate(cycle.endsAt, timeZone) : '계속'}` : '정보 없음';

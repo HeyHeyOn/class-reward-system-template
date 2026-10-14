@@ -14,9 +14,9 @@ const MAX_BATCH_TOTAL_OPERATIONS = 100;
 const ROOT_KEYS = new Set(['targets']);
 const TARGET_KEYS = new Set(['taskId', 'operations']);
 const OPERATION_KEYS = new Set(['studentId', 'assigned', 'completed', 'source']);
-const INVALID_REQUEST = '과제 부여 일괄 요청 형식이 올바르지 않습니다.';
-const STORE_UNAVAILABLE = '과제 저장소에 연결할 수 없습니다.';
-const COMMAND_FAILED = '과제 부여 일괄 처리에 실패했습니다.';
+const INVALID_REQUEST = '과제 부여 일괄 요청 형식이 올바르지 않아요.';
+const STORE_UNAVAILABLE = '과제 저장소에 연결할 수 없어요.';
+const COMMAND_FAILED = '과제 부여 일괄 처리에 실패했어요.';
 
 export const dynamic = 'force-dynamic';
 

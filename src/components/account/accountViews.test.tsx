@@ -42,7 +42,7 @@ describe('SignupAgreementView', () => {
   it('signs up only after the three required items, then goes where the sign-in was headed', async () => {
     fetchMock.mockReturnValueOnce(reply(200, { ok: true, redirectTo: '/c/alpha/admin' }));
     render(<SignupAgreementView expectedSessionId={expectedSessionId} mode="signup" email="new@example.com" changes={[revision]} />);
-    expect(screen.getByRole('heading', { name: '학급 보상 시스템 가입' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '딴쌤 클래스 가입' })).toBeTruthy();
     const submit = screen.getByRole('button', { name: '동의하고 가입하기' }) as HTMLButtonElement;
     expect(submit.disabled).toBe(true);
     fireEvent.click(screen.getByLabelText(/만 14세 이상이에요/));
@@ -119,7 +119,7 @@ describe('LegalAgreementGate', () => {
   it('announces a coming revision without blocking, and shows nothing when all is agreed', () => {
     const { rerender } = render(<LegalAgreementGate notice={{ required: null, upcoming }} />);
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(screen.getByRole('status').textContent).toContain('2026년 12월 1일부터 이용약관·개인정보처리방침이 바뀌어요.');
+    expect(screen.getByRole('status').textContent).toContain('2026년 12월 1일부터 이용약관과 개인정보처리방침이 바뀌어요.');
     fireEvent.click(screen.getByRole('button', { name: '안내 닫기' }));
     expect(screen.queryByRole('status')).toBeNull();
     rerender(<LegalAgreementGate notice={{ required: null, upcoming: null }} />);
@@ -192,7 +192,7 @@ describe('ProfileView', () => {
   it('shows the agreement record and withdraws from a confirmation dialog listing the classes', async () => {
     fetchMock.mockReturnValueOnce(reply(200, { ok: true, redirectTo: '/classes?withdrawn=1' }));
     render(<ProfileView model={model} />);
-    expect(screen.getByText(/2026년 10월 8일 시행 이용약관·개인정보처리방침/)).toBeTruthy();
+    expect(screen.getByText(/2026년 10월 8일 시행 이용약관과 개인정보처리방침/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '탈퇴하기' }));
     const dialog = screen.getByRole('dialog', { name: '정말 탈퇴할까요?' });
     expect(within(dialog).getByText('6학년 3반, 방과후반')).toBeTruthy();

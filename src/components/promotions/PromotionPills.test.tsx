@@ -25,7 +25,7 @@ describe('PromotionPills', () => {
     expect(screen.getAllByText('할인')).toHaveLength(1);
     expect(screen.queryByText('-10%')).toBeNull();
     expect(screen.getByTitle('행사').className).toContain('bg-theme');
-    expect(screen.getByTitle('행사 · 행사 · 행사')).toBeTruthy();
+    expect(screen.getByTitle('행사, 행사, 행사')).toBeTruthy();
   });
 
   it('sorts N+1 pills deterministically before the single discount pill', () => {
@@ -39,7 +39,7 @@ describe('PromotionPills', () => {
     const list = screen.getByRole('list', { name: '연필 행사' });
     expect(screen.getAllByRole('listitem')).toHaveLength(2);
     expect(within(list).getByRole('listitem', { name: '2+1: 행사' })).toBeTruthy();
-    expect(within(list).getByRole('listitem', { name: '할인: 행사 · 행사 · 행사' })).toBeTruthy();
+    expect(within(list).getByRole('listitem', { name: '할인: 행사, 행사, 행사' })).toBeTruthy();
   });
 
   it('namespaces React keys when a promotion id is discounts', () => {

@@ -115,7 +115,7 @@ describe('GET /api/promotions', () => {
     const response = await GET(new Request('http://localhost/api/promotions'));
 
     expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toEqual({ error: '행사 목록을 불러오지 못했습니다.' });
+    await expect(response.json()).resolves.toEqual({ error: '행사 목록을 불러오지 못했어요.' });
   });
 });
 
@@ -241,7 +241,7 @@ describe('POST /api/promotions', () => {
     const response = await POST(request(body, contentType));
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: '행사 요청 형식이 올바르지 않습니다.' });
+    await expect(response.json()).resolves.toEqual({ error: '행사 요청 형식이 올바르지 않아요.' });
     expect(createConfiguredPromotionCreation).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
     expect(createConfiguredSheetsStore).not.toHaveBeenCalled();
@@ -272,7 +272,7 @@ describe('POST /api/promotions', () => {
 
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({
-      error: '행사 정보는 저장되었을 수 있지만 대상 상품 저장에 실패했습니다. 새로고침 후 확인하고 다시 시도해 주세요.',
+      error: '행사 정보는 저장되었을 수 있지만 대상 상품 저장에 실패했어요. 새로고침 후 확인하고 다시 시도해 주세요.',
     });
   });
 
@@ -290,6 +290,6 @@ describe('POST /api/promotions', () => {
     const response = await POST(request(validBody()));
 
     expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toEqual({ error: '행사를 추가하지 못했습니다.' });
+    await expect(response.json()).resolves.toEqual({ error: '행사를 추가하지 못했어요.' });
   });
 });

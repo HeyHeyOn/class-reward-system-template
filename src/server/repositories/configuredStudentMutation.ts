@@ -46,7 +46,7 @@ export async function createConfiguredStudentMutation(request?: Request): Promis
 function validateBatch(input: unknown, storage: 'postgresql' | 'sheets'): asserts input is {
   operationId: string; students: Record<string, unknown>[];
 } {
-  const invalid = () => new Error('올바른 학생 명단 저장 요청이 아닙니다.');
+  const invalid = () => new Error('올바른 학생 명단 저장 요청이 아니에요.');
   if (!isRecord(input) || Object.keys(input).sort().join('|') !== 'operationId|students'
     || typeof input.operationId !== 'string' || !UUID.test(input.operationId) || !Array.isArray(input.students)) throw invalid();
   const allowed = storage === 'postgresql' ? [...KEYS, ...VERSIONS] : KEYS;

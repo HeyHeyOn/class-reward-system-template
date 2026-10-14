@@ -94,7 +94,7 @@ export function studentDeletionFailure(error: unknown): Response {
   }
   if (!getOptionalTrustedTenantRequestContext()) {
     // Sheets keeps its own messages, as before.
-    return Response.json({ error: error instanceof Error ? error.message : '학생을 삭제하지 못했습니다.' }, { status: 400 });
+    return Response.json({ error: error instanceof Error ? error.message : '학생을 삭제하지 못했어요.' }, { status: 400 });
   }
   console.error('[student-deletion] unexpected failure', error instanceof Error ? error.message : 'unknown');
   return Response.json({ error: '학생을 삭제하지 못했어요. 잠시 뒤 다시 시도해 주세요.' }, { status: 500 });

@@ -6,7 +6,7 @@ import { getOptionalTrustedTenantRequestContext } from '@/server/trustedTenantRe
 
 export const dynamic = 'force-dynamic';
 
-const GENERATION_ERROR = 'QR 코드를 생성하지 못했습니다.';
+const GENERATION_ERROR = 'QR 코드를 생성하지 못했어요.';
 const STUDENT_ID_MAX_BYTES = 128;
 const ADMIN_PASSWORD_MAX_BYTES = 512;
 

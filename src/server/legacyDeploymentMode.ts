@@ -39,6 +39,6 @@ export function legacyWriteFreezeResponse(kind?: 'generator-sheets'): Response |
   }
   return Response.json({
     code: 'MIGRATION_READ_ONLY',
-    error: '이전 서비스는 이전 작업으로 읽기 전용입니다.',
+    error: '이전 서비스는 이전 작업으로 읽기 전용이에요.',
   }, { status: 503, headers: { 'Cache-Control': 'no-store' } });
 }

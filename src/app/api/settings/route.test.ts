@@ -49,7 +49,7 @@ describe('/api/settings Seoul-only policy', () => {
 
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toEqual({
-      error: '설정을 일시적으로 불러오지 못했습니다.',
+      error: '설정을 일시적으로 불러오지 못했어요.',
       code: 'SETTINGS_UNAVAILABLE',
       retryable: true,
     });
@@ -113,6 +113,6 @@ describe('/api/settings Seoul-only policy', () => {
       method: 'POST', body: JSON.stringify({ spreadsheetIdOrUrl: 'env-sheet-id' }),
     }));
     expect(failed.status).toBe(500);
-    await expect(failed.json()).resolves.toEqual({ error: '설정을 저장하지 못했습니다.' });
+    await expect(failed.json()).resolves.toEqual({ error: '설정을 저장하지 못했어요.' });
   });
 });

@@ -21,6 +21,7 @@ import type { PetAdminBoardDto, PetAdminStudentDto } from '@/lib/petApi';
 import PETS from '@/lib/pet/petSprites';
 import ROOM from '@/lib/pet/petRoom';
 import { schoolDaysEstimate } from '@/domain/schoolDays';
+import { withParticle } from '@/lib/koreanParticle';
 import { DIGITAL_KIND_LABELS } from '@/lib/studentBagApi';
 import { Button, Callout, Card, Checkbox, EmptyState, Field, Icon, IconButton, Input, Modal, PageHeader, SegmentedControl, Select, Spinner, StatCard, Switch, cx } from '../ui';
 import { PetPicture } from './PetPicture';
@@ -208,7 +209,7 @@ export function PetPanel({ unit, notify }: Readonly<{ unit: string; notify: (mes
 
         <div id={`pet-panel-${tab}`} role="tabpanel" aria-labelledby={`pet-tab-${tab}`} tabIndex={0} className="outline-none">
           {tab === 'list' ? (
-            <PetList board={board} onRenamed={(next, name) => { applyBoard(next, false); notify(`펫 이름을 '${name}'(으)로 고쳤어요.`); }}
+            <PetList board={board} onRenamed={(next, name) => { applyBoard(next, false); notify(`펫 이름을 ${withParticle(`'${name}'`, '으로/로')} 고쳤어요.`); }}
               onAdjusted={(next, message) => { applyBoard(next, false); notify(message); }} />
           ) : null}
 
@@ -233,7 +234,7 @@ export function PetPanel({ unit, notify }: Readonly<{ unit: string; notify: (mes
                 알은 {fmt(starts.hatch)}점에 부화하고, {fmt(starts.young)}점에 어린 단계가 되고, {fmt(shownGoal)}점에 다 자라요. 학생 화면에는 다음 단계까지의 게이지만 보여요.
               </p>
               <section aria-labelledby="pet-estimate" className="space-y-3 rounded-[16px] bg-[var(--theme-accent-soft)] p-4">
-                <h3 id="pet-estimate" className="text-sm font-black">예상 키우기 기간 <span className="text-xs font-semibold text-[var(--theme-muted-text)]">· 참고용</span></h3>
+                <h3 id="pet-estimate" className="text-sm font-black">예상 키우기 기간 <span className="text-xs font-semibold text-[var(--theme-muted-text)]">(참고용)</span></h3>
                 <div className="flex flex-wrap items-center gap-2">
                   <label htmlFor="pet-tasks-week" className="text-sm font-semibold">학생 한 명당 일주일에 과제를 몇 개 정도 완료하나요?</label>
                   <Input id="pet-tasks-week" inputMode="numeric" value={draft.tasksPerWeek} className="w-[6.5rem]" suffix="개"
@@ -246,7 +247,7 @@ export function PetPanel({ unit, notify }: Readonly<{ unit: string; notify: (mes
                   {estimateReady && estimate !== null && hatchDays !== null ? `부화까지 평일 약 ${hatchDays}일. ` : ''}
                   학생이 평일마다 알을 품어 주고, 부화한 뒤에는 먹이를 하루 {Number.isSafeInteger(estimateInput.feedDailyLimit) ? estimateInput.feedDailyLimit : '?'}번(하루 최대)씩 주며,
                   과제를 일주일에 {Number.isSafeInteger(estimateInput.tasksPerWeek) ? estimateInput.tasksPerWeek : '?'}개 완료한다고 보고 계산했어요. 과제로 받는 먹이는 하루 횟수와 상관없이 더해져요.
-                  실제로는 학생마다 달라요. 과제 수는 이 계산에만 쓰여요.
+                  과제 수는 이 계산에만 쓰여요.
                 </p>
               </section>
             </div>
@@ -271,7 +272,7 @@ export function PetPanel({ unit, notify }: Readonly<{ unit: string; notify: (mes
               <Switch checked={draft.hoursEnabled} tour="pet-hours" label="이용 시간" description="이용 시간 외에는 펫이 잠들어 상호작용할 수 없어요."
                 onChange={(hoursEnabled) => set({ hoursEnabled, hours: hoursEnabled && draft.hours.length === 0 ? [{ start: '', end: '' }] : draft.hours })} />
               <div data-tour="pet-hours-list" className="space-y-2">
-                {draft.hours.length === 0 ? <p className="text-sm text-[var(--theme-muted-text)]">넣은 시간대가 없어요.{draft.hoursEnabled ? '' : ' 이용 시간이 꺼져 있어서 언제든 펫과 놀 수 있어요.'}</p> : null}
+                {draft.hours.length === 0 ? <p className="text-sm text-[var(--theme-muted-text)]">넣은 시간대가 없어요.</p> : null}
                 {draft.hours.map((span, index) => (
                   <div key={index} className="flex flex-wrap items-center gap-2">
                     <Input type="time" aria-label={`이용 시간 ${index + 1} 시작`} value={span.start} disabled={!draft.hoursEnabled} className="w-[9rem]"
@@ -289,7 +290,7 @@ export function PetPanel({ unit, notify }: Readonly<{ unit: string; notify: (mes
               <p className="text-[13px] text-[var(--theme-muted-text)]">
                 {!draft.hoursEnabled ? '꺼 두면 시간 제한 없이 언제든 펫과 놀 수 있어요.'
                   : draft.hours.some((span) => span.start && span.end)
-                    ? `학생은 ${draft.hours.filter((span) => span.start && span.end).map((span) => `${span.start}~${span.end}`).join(', ')}에만 펫과 놀 수 있어요. 시간대는 여러 개 넣을 수 있어요.`
+                    ? `학생은 ${draft.hours.filter((span) => span.start && span.end).map((span) => `${span.start}~${span.end}`).join(', ')}에만 펫과 놀 수 있어요.`
                     : '켜 두고 시간대를 하나도 넣지 않으면 학생이 아무 때도 펫과 놀 수 없어요. 시간대를 넣어 주세요.'}
               </p>
             </div>
@@ -310,7 +311,7 @@ export function PetPanel({ unit, notify }: Readonly<{ unit: string; notify: (mes
                     <option value="">없음</option>
                     {board.rewardProducts.map((product) => (
                       <option key={product.productId} value={product.productId}>
-                        {product.name}{product.digitalKind ? ` (디지털 ${DIGITAL_KIND_LABELS[product.digitalKind]})` : ' (교환권으로)'}{product.isActive ? '' : ' · 판매 중지'}
+                        {product.name}{product.digitalKind ? ` (디지털 ${DIGITAL_KIND_LABELS[product.digitalKind]})` : ' (교환권으로)'}{product.isActive ? '' : ', 판매 중지'}
                       </option>
                     ))}
                   </Select>
@@ -349,7 +350,7 @@ export function PetPanel({ unit, notify }: Readonly<{ unit: string; notify: (mes
                           </span>
                           <div className="min-w-0 flex-1 space-y-1.5">
                             <p className="truncate text-sm font-bold">{decor.name}</p>
-                            {decor.base ? <p className="text-xs font-semibold text-[var(--theme-muted-text)]">기본 물건 · 모든 학생이 가져요</p> : (
+                            {decor.base ? <p className="text-xs font-semibold text-[var(--theme-muted-text)]">기본 물건이라 모든 학생이 가져요</p> : (
                               <>
                                 <Input inputMode="numeric" aria-label={`${decor.name} 가격`} placeholder="값 없음" value={entry.price} disabled={!draft.shopEnabled}
                                   suffix={unit} onChange={(event) => update({ price: event.target.value, sell: entry.price.trim() === '' && event.target.value.trim() !== '' ? true : entry.sell })} />
@@ -447,7 +448,7 @@ function PetList({ board, onRenamed, onAdjusted }: Readonly<{
   const todayLabel = (row: PetAdminStudentDto) => {
     if (!row.pet) return '—';
     const tasks = row.taskFeedsToday > 0 ? `과제 ${row.taskFeedsToday}` : '';
-    if (row.pet.stage === 0) return `${row.warmedToday ? '알 품어 줌' : '아직 안 품음'}${tasks ? ` · ${tasks}번` : ''}`;
+    if (row.pet.stage === 0) return `${row.warmedToday ? '알 품어 줌' : '아직 안 품음'}${tasks ? `, ${tasks}번` : ''}`;
     const feeds = row.feedsToday + row.taskFeedsToday;
     return feeds > 0 ? `먹이 ${feeds}번${tasks ? ` (${tasks})` : ''}` : '아직 안 줌';
   };
@@ -471,7 +472,7 @@ function PetList({ board, onRenamed, onAdjusted }: Readonly<{
   return (
     <div className="space-y-4">
       <div data-tour="pet-stats" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="키우는 학생" icon="paw" value={`${raising.length}명`} hint={`전체 ${board.students.length}명 · 알 고르기 전 ${board.students.length - raising.length}명`} />
+        <StatCard label="키우는 학생" icon="paw" value={`${raising.length}명`} hint={`전체 ${board.students.length}명, 알 고르기 전 ${board.students.length - raising.length}명`} />
         <StatCard label="오늘 돌본 학생" icon="check" value={`${cared.length}명`} hint={`아직 안 돌봄 ${raising.length - cared.length}명`} />
         <StatCard label="졸업 기다리는 펫" icon="gift" value={`${waiting.length}마리`} hint="학생이 졸업시키면 돼요" />
         <StatCard label="지금까지 졸업" icon="package" value={`${graduated}마리`} hint="도감에 남은 펫" />
@@ -497,7 +498,7 @@ function PetList({ board, onRenamed, onAdjusted }: Readonly<{
                   : <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[var(--crs-subtle-hover)] text-[var(--theme-muted-text)]"><Icon name="paw" size={20} /></span>}
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold">{row.name}<span className="ml-1.5 text-xs font-normal text-[var(--theme-muted-text)]">{row.studentId}</span></p>
-                  <p className="truncate text-xs font-semibold text-[var(--theme-muted-text)]">{pet ? petTitle(pet) : '알 고르기 전'} · 졸업 {row.graduations}마리</p>
+                  <p className="truncate text-xs font-semibold text-[var(--theme-muted-text)]">{pet ? petTitle(pet) : '알 고르기 전'}, 졸업 {row.graduations}마리</p>
                 </div>
               </div>
               {pet ? (
@@ -505,7 +506,7 @@ function PetList({ board, onRenamed, onAdjusted }: Readonly<{
                   {nameField(row, 'w-full')}
                   {growthCell(row)}
                   <p className={cx('text-xs font-semibold', row.caresToday === 0 ? 'text-[var(--theme-accent-text)]' : 'text-[var(--theme-muted-text)]')}>
-                    오늘 {todayLabel(row)} · 최근 7일 {row.caredDays7}일
+                    오늘 {todayLabel(row)}, 최근 7일 {row.caredDays7}일
                   </p>
                 </div>
               ) : null}
@@ -609,7 +610,7 @@ function PetGrowthDialog({ row, goal, opener, onClose, onDone }: Readonly<{
         </span>
         <div className="min-w-0">
           <p className="truncate text-[15px] font-black">{pet.name} <span className="text-xs font-semibold text-[var(--theme-muted-text)]">{row.name}</span></p>
-          <p className="text-sm font-semibold tabular-nums text-[var(--theme-muted-text)]">{stageTitle(pet.stage)} · 성장 {fmt(pet.growth)}/{fmt(goal)}</p>
+          <p className="text-sm font-semibold tabular-nums text-[var(--theme-muted-text)]">{stageTitle(pet.stage)}, 성장 {fmt(pet.growth)}/{fmt(goal)}</p>
         </div>
       </div>
       <Field label="바꿀 성장" htmlFor="pet-adjust-amount" className="mt-4">
@@ -628,9 +629,9 @@ function PetGrowthDialog({ row, goal, opener, onClose, onDone }: Readonly<{
       {valid ? (
         <dl className="mt-4 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 rounded-[14px] bg-[var(--crs-subtle-hover)] p-3 text-sm">
           <dt className="font-bold">더하면</dt>
-          <dd className="tabular-nums">{fmt(plus)}점 · {stageTitle(plusStage)}{plusStage > pet.stage ? ' (자라요)' : ''}</dd>
+          <dd className="tabular-nums">{fmt(plus)}점, {stageTitle(plusStage)}{plusStage > pet.stage ? ' (자라요)' : ''}</dd>
           <dt className="font-bold">빼면</dt>
-          <dd className="tabular-nums">{fmt(minus)}점 · {stageTitle(minusStage)}{minusStage < pet.stage ? ' (단계가 내려가요)' : ''}</dd>
+          <dd className="tabular-nums">{fmt(minus)}점, {stageTitle(minusStage)}{minusStage < pet.stage ? ' (단계가 내려가요)' : ''}</dd>
         </dl>
       ) : <p className="mt-3 text-sm font-semibold text-[var(--crs-danger-text)]">1~100,000 사이의 숫자로 적어 주세요.</p>}
       <p className="mt-3 text-xs text-[var(--theme-muted-text)]">학생 화면에 바로 반영돼요. 0점 아래로는 줄지 않고, 부화한 펫은 알로 돌아가지 않아요.</p>

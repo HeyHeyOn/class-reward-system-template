@@ -82,7 +82,7 @@ describe('task cycle sheet queries', () => {
     };
 
     await expect(readTaskCycleState(reader, task, '2026-08-24T12:00:00Z'))
-      .rejects.toThrow('TaskAssignments 시트에 필수 컬럼이 없습니다: status');
+      .rejects.toThrow('TaskAssignments 시트에 필수 컬럼이 없어요: status');
   });
 
   it('accepts unknown trailing TaskAssignments columns', async () => {
@@ -114,7 +114,7 @@ describe('task cycle sheet queries', () => {
     };
 
     await expect(readTaskCycleState(reader, task, '2026-08-24T12:00:00Z'))
-      .rejects.toThrow('TaskCompletions 시트에 필수 컬럼이 없습니다: status');
+      .rejects.toThrow('TaskCompletions 시트에 필수 컬럼이 없어요: status');
   });
 
   it('accepts unknown trailing TaskCompletions columns', async () => {

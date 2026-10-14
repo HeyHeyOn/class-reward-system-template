@@ -7,8 +7,8 @@ import { ClassStartForm } from './ClassStartForm';
 
 type Choice = 'empty' | 'xlsx';
 const OPTIONS: readonly { value: Choice; title: string; description: string; icon: IconName }[] = [
-  { value: 'empty', title: '새로 시작하기', description: '학생·상품·과제를 직접 등록해요.', icon: 'sparkle' },
-  { value: 'xlsx', title: '기존 학급 보상 시스템 시트 파일(.xlsx)로 시작하기', description: '예전 구글 시트를 .xlsx로 저장해 올리면 학생·잔액·상품·과제를 옮겨요.', icon: 'migrate' },
+  { value: 'empty', title: '새로 시작하기', description: '학생, 상품, 과제를 직접 등록해요.', icon: 'sparkle' },
+  { value: 'xlsx', title: '구글 시트 버전 파일(.xlsx)로 시작하기', description: '예전 구글 시트를 .xlsx로 저장해 올리면 학생, 잔액, 상품, 과제를 옮겨요.', icon: 'migrate' },
 ];
 
 /** The two ways to start a new, empty class: from scratch or from a saved CRS workbook. */

@@ -77,7 +77,7 @@ describe('POST /api/checkout', () => {
     const response = await POST(checkoutRequest({ studentId: 'csq1.wrong-tenant' }));
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: '학생 정보를 찾을 수 없습니다.' });
+    await expect(response.json()).resolves.toEqual({ error: '학생 정보를 찾을 수 없어요.' });
     expect(createConfiguredCheckoutCommand).not.toHaveBeenCalled();
     expect(createCheckoutPayloadHash).not.toHaveBeenCalled();
   });
@@ -91,7 +91,7 @@ describe('POST /api/checkout', () => {
     const body = await response.json();
 
     expect(response.status).toBe(500);
-    expect(body).toEqual({ error: '결제를 처리하지 못했습니다.' });
+    expect(body).toEqual({ error: '결제를 처리하지 못했어요.' });
     expect(JSON.stringify(body)).not.toContain(error.message);
     expect(consoleError).toHaveBeenCalledWith('checkout_failed');
     expect(JSON.stringify(consoleError.mock.calls)).not.toContain(error.message);
@@ -101,7 +101,7 @@ describe('POST /api/checkout', () => {
     const failure = {
       ok: false as const,
       code: 'INSUFFICIENT_STOCK' as const,
-      message: '재고가 부족합니다.',
+      message: '재고가 부족해요.',
       productId: 'P001', requestedQuantity: 2, currentStock: 1,
     };
     executeCheckout.mockResolvedValue(failure);
@@ -129,7 +129,7 @@ describe('POST /api/checkout', () => {
     }));
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: '장바구니 형식이 올바르지 않습니다.' });
+    await expect(response.json()).resolves.toEqual({ error: '장바구니 형식이 올바르지 않아요.' });
     expect(createCheckoutPayloadHash).not.toHaveBeenCalled();
     expect(createConfiguredCheckoutCommand).not.toHaveBeenCalled();
   });
@@ -138,7 +138,7 @@ describe('POST /api/checkout', () => {
     const response = await POST(checkoutRequest({ expectedPricing: undefined }));
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: '예상 결제 금액 형식이 올바르지 않습니다.' });
+    await expect(response.json()).resolves.toEqual({ error: '예상 결제 금액 형식이 올바르지 않아요.' });
     expect(createConfiguredCheckoutCommand).not.toHaveBeenCalled();
     expect(executeCheckout).not.toHaveBeenCalled();
   });
@@ -149,7 +149,7 @@ describe('POST /api/checkout', () => {
       const response = await POST(checkoutRequest({ operationId }));
 
       expect(response.status).toBe(400);
-      await expect(response.json()).resolves.toEqual({ error: '결제 작업 ID 형식이 올바르지 않습니다.' });
+      await expect(response.json()).resolves.toEqual({ error: '결제 작업 ID 형식이 올바르지 않아요.' });
       expect(createConfiguredCheckoutCommand).not.toHaveBeenCalled();
       expect(executeCheckout).not.toHaveBeenCalled();
     },

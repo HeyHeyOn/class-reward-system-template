@@ -327,7 +327,7 @@ describe('database checkout command', () => {
     expect(conflict).toEqual({
       ok: false,
       code: 'OPERATION_CONFLICT',
-      message: '동일한 작업 ID가 다른 결제 요청에 사용되었습니다.',
+      message: '동일한 작업 ID가 다른 결제 요청에 사용됐어요.',
     });
     const state = await snapshot();
     expect(state.account).toEqual([{ balance: '3200', version: '2' }]);

@@ -139,7 +139,7 @@ suite('E-01 native PostgreSQL checkout API concurrency', () => {
       checkout({ slug: 'e01-b', identityTenant: A, extra: { tenantId: B, studentTenantId: B } }),
     ]);
     expect(replies.map(reply => reply.status)).toEqual([400, 400, 400]);
-    expect(replies.map(reply => reply.body)).toEqual(Array(3).fill({ error: '학생 정보를 찾을 수 없습니다.' }));
+    expect(replies.map(reply => reply.body)).toEqual(Array(3).fill({ error: '학생 정보를 찾을 수 없어요.' }));
     // The real runtime role also cannot read/write B with transaction tenant A.
     const rls = await withTenantTransaction(A, async tx => {
       const identity = (await tx.execute(sql`SELECT current_user,current_setting('app.tenant_id') AS tenant`)).rows;

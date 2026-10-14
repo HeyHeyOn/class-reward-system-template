@@ -127,7 +127,7 @@ export type PreviewCheckoutCartInput = {
 };
 
 const NO_VOUCHERS = {
-  ok: false, code: 'INVALID_VOUCHERS', message: '교환권은 새 방식(PostgreSQL) 학급에서만 쓸 수 있습니다.',
+  ok: false, code: 'INVALID_VOUCHERS', message: '교환권은 새 방식(PostgreSQL) 학급에서만 쓸 수 있어요.',
 } as const;
 const hasVouchers = (vouchers: Readonly<Record<string, number>> | readonly string[] | undefined) =>
   vouchers !== undefined && Object.keys(vouchers).length > 0;
@@ -160,11 +160,11 @@ export async function processCheckout(
   const studentRecord = await getStudentRecordById(store, input.studentId);
 
   if (!studentRecord) {
-    return { ok: false, code: 'STUDENT_NOT_FOUND', message: '학생을 찾을 수 없습니다.' };
+    return { ok: false, code: 'STUDENT_NOT_FOUND', message: '학생을 찾을 수 없어요.' };
   }
 
   if (studentRecord.student.status !== 'ACTIVE') {
-    return { ok: false, code: 'STUDENT_INACTIVE', message: '현재 이용할 수 없는 학생입니다.' };
+    return { ok: false, code: 'STUDENT_INACTIVE', message: '현재 이용할 수 없는 학생이에요.' };
   }
 
   const productRecords = await getProductRecords(store);
@@ -184,7 +184,7 @@ export async function processCheckout(
     return {
       ok: false,
       code: 'PRICE_CHANGED',
-      message: '상품 가격 또는 행사가 변경되었습니다. 최신 금액을 확인해 주세요.',
+      message: '상품 가격 또는 행사가 변경됐어요. 최신 금액을 확인해 주세요.',
       latestPricing: authoritativePricing,
     };
   }

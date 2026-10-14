@@ -22,14 +22,14 @@ const POLICY_MESSAGES: Record<StudentBankCompletionPolicyReason, string> = {
 
 // Legacy (Sheets) completion messages that are safe to show; same allowlist as the old route.
 const LEGACY_POLICY_MESSAGES = new Set([
-  '완료할 수 있는 과제가 아닙니다.',
-  '현재 완료할 수 있는 과제가 아닙니다.',
-  '학생 정보를 찾을 수 없습니다.',
-  '선행 과제를 찾을 수 없습니다.',
-  '부여된 학생이 없습니다.',
-  '허가되지 않은 과제입니다.',
-  '이미 완료한 과제입니다.',
-  '과제 완료 요청 형식이 올바르지 않습니다.',
+  '완료할 수 있는 과제가 아니에요.',
+  '현재 완료할 수 있는 과제가 아니에요.',
+  '학생 정보를 찾을 수 없어요.',
+  '선행 과제를 찾을 수 없어요.',
+  '부여된 학생이 없어요.',
+  '허가되지 않은 과제예요.',
+  '이미 완료한 과제예요.',
+  '과제 완료 요청 형식이 올바르지 않아요.',
 ]);
 const LEGACY_OPERATION_CONFLICTS = new Set([
   'TASK_COMPLETION_OPERATION_PAYLOAD_CONFLICT',
@@ -74,10 +74,10 @@ export function studentBankCompletionErrorResponse(error: unknown, operationId: 
   }
 
   const message = error instanceof Error ? error.message : '';
-  if (message === '이미 완료한 과제입니다.') return studentBankCompletionPolicy(operationId, 'ALREADY_COMPLETED');
+  if (message === '이미 완료한 과제예요.') return studentBankCompletionPolicy(operationId, 'ALREADY_COMPLETED');
   if (LEGACY_POLICY_MESSAGES.has(message)
     || (message.startsWith("선행 과제 '")
-      && (message.endsWith('을(를) 먼저 완료해 주세요.') || message.endsWith('은(는) 현재 완료할 수 없습니다.')))) {
+      && (message.endsWith('을(를) 먼저 완료해 주세요.') || message.endsWith('은(는) 현재 완료할 수 없어요.')))) {
     return studentBankCompletionPolicy(operationId, 'NOT_ALLOWED', message);
   }
   if (LEGACY_OPERATION_CONFLICTS.has(message)) return operationConflict(operationId);

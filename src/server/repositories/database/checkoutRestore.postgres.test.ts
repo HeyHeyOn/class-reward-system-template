@@ -284,7 +284,7 @@ suite('E-02 isolated native PostgreSQL checkout backup restoration', () => {
     expect(await checkout(B, operationId)).toEqual(second);
     expect(await witness(target.owner)).toEqual(beforeReplay);
     const denials = [await checkout(A, randomUUID(), 1, B), await checkout(B, randomUUID(), 1, A)];
-    expect(denials).toEqual(Array(2).fill({ status: 400, body: { error: '학생 정보를 찾을 수 없습니다.' } }));
+    expect(denials).toEqual(Array(2).fill({ status: 400, body: { error: '학생 정보를 찾을 수 없어요.' } }));
     expect(await witness(target.owner)).toEqual(beforeReplay);
     event('post_restore_replay_and_denial', { replies: [first, second], denials, all_tables_and_sequences_unchanged: true, business });
   }, 180_000);

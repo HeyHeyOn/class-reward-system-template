@@ -129,11 +129,11 @@ describe('exhaustive legacy side-effect inventory', () => {
       .flatMap(path => exportedMethods(readFileSync(resolve('src/server', path), 'utf8'))
         .map(method => `${method} ${path.replace('../app/api', '').replace('/route.ts', '')}`)).sort();
     expect(inventory.map(e => `${e.method} ${e.route}`).sort()).toEqual(discovered);
-    expect(discovered).toHaveLength(138);
+    expect(discovered).toHaveLength(139);
     expect(new Set(discovered).size).toBe(discovered.length);
     expect(inventory.find(e => e.route === '/internal/migrations/freezing-reacquisition')?.effect).toBe('companion-authenticated-read-candidate');
     expect(TENANT_ROUTE_INVENTORY.map(e => `${e.method} ${e.route}`).sort()).toEqual(discovered);
-    expect(writers).toHaveLength(62);
+    expect(writers).toHaveLength(63);
     expect(writers.filter(entry => entry.effect !== 'postgres-write')).toHaveLength(29);
     expect(inventory.find(e => e.route === '/google/callback')?.effect).toBe('oauth-exchange');
     expect(inventory.find(e => e.route === '/admin/login')?.effect).toBe('auth-cookie');
@@ -264,7 +264,7 @@ describe('exhaustive legacy side-effect inventory', () => {
     const json = vi.spyOn(request, 'json').mockRejectedValue(new Error('Body must not be consumed'));
     const response = await run(request, { params: Promise.resolve({ taskId: 't1', studentId: 's1', productId: 'p1', promotionId: 'p1', transactionId: 'tx1' }) });
     expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ code: 'MIGRATION_READ_ONLY', error: '이전 서비스는 이전 작업으로 읽기 전용입니다.' });
+    expect(await response.json()).toEqual({ code: 'MIGRATION_READ_ONLY', error: '이전 서비스는 이전 작업으로 읽기 전용이에요.' });
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(response.headers.get('location')).toBeNull();
     expect(response.headers.get('set-cookie')).toBeNull();

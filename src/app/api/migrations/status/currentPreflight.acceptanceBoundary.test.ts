@@ -280,7 +280,7 @@ async function statusSuccess(response: Response, stored = 'ACTIVE') {
   expect(JSON.parse(text)).toEqual({
     availability: 'AVAILABLE', readOnly: true, migrationStatus: stored, authority: 'UNKNOWN',
     reasonCode: 'OPERATIONAL_AUTHORITY_UNVERIFIED',
-    reason: '저장된 작업 상태만 표시합니다. 실제 운영 권한은 확인되지 않았습니다.',
+    reason: '저장된 작업 상태만 표시해요. 실제 운영 권한은 확인되지 않았어요.',
   });
 }
 function expectCleanup(client: ReturnType<typeof makeClient>, discarded = false) {
@@ -423,7 +423,7 @@ describe('existing status + historical routes cannot establish current-preflight
     expectPrivate(response); expect(response.status).toBe(503);
     expect(await response.json()).toEqual({
       availability: 'BLOCKED', reasonCode: 'TRUSTED_STATUS_READER_UNAVAILABLE',
-      reason: '검증된 이전 상태 조회가 연결되지 않아 진행 상태와 운영 권한을 확인할 수 없습니다.',
+      reason: '검증된 이전 상태 조회가 연결되지 않아 진행 상태와 운영 권한을 확인할 수 없어요.',
       readOnly: true, migrationStatus: 'UNKNOWN', authority: 'UNKNOWN',
     });
     expect(clients).toHaveLength(connections); expect(dataReads()).toHaveLength(reads);

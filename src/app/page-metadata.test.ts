@@ -14,12 +14,12 @@ describe('browser tab metadata', () => {
     const expectedTitles: Array<[string, string]> = [
       ['page.tsx', '학급 매점'],
       [join('bank', 'page.tsx'), '학급 은행'],
-      [join('admin', 'login', 'page.tsx'), '학급 보상 시스템'],
-      [join('admin', 'page.tsx'), '학급 보상 시스템'],
-      [join('admin', 'manage', 'page.tsx'), '학급 보상 시스템'],
-      [join('admin', 'settings', 'page.tsx'), '학급 보상 시스템'],
-      [join('admin', 'student-qrs', 'page.tsx'), '학급 보상 시스템'],
-      [join('admin', 'transactions', 'page.tsx'), '학급 보상 시스템'],
+      [join('admin', 'login', 'page.tsx'), '딴쌤 클래스'],
+      [join('admin', 'page.tsx'), '딴쌤 클래스'],
+      [join('admin', 'manage', 'page.tsx'), '딴쌤 클래스'],
+      [join('admin', 'settings', 'page.tsx'), '딴쌤 클래스'],
+      [join('admin', 'student-qrs', 'page.tsx'), '딴쌤 클래스'],
+      [join('admin', 'transactions', 'page.tsx'), '딴쌤 클래스'],
       [join('admin', 'generator', 'page.tsx'), '학급 보상 시스템'],
     ];
 

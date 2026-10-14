@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     return Response.json(await catalog.getPromotionsForAdminMutation());
   } catch (error) {
     console.error('Failed to get promotions', error);
-    return safeErrorResponse(500, '행사 목록을 불러오지 못했습니다.');
+    return safeErrorResponse(500, '행사 목록을 불러오지 못했어요.');
   }
 }
 
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
 
   const mediaType = request.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();
   if (mediaType !== 'application/json') {
-    return safeErrorResponse(400, '행사 요청 형식이 올바르지 않습니다.');
+    return safeErrorResponse(400, '행사 요청 형식이 올바르지 않아요.');
   }
 
   let payload: ReturnType<typeof parseCreatePromotionPayload>;
@@ -40,10 +40,10 @@ export async function POST(request: Request) {
     payload = parseCreatePromotionPayload(await request.json());
   } catch (error) {
     if (error instanceof PromotionPayloadError || error instanceof SyntaxError) {
-      return safeErrorResponse(400, '행사 요청 형식이 올바르지 않습니다.');
+      return safeErrorResponse(400, '행사 요청 형식이 올바르지 않아요.');
     }
     console.error('Unexpected promotion payload parsing failure', error);
-    return safeErrorResponse(500, '행사를 추가하지 못했습니다.');
+    return safeErrorResponse(500, '행사를 추가하지 못했어요.');
   }
 
   const promotionId = payload.promotionId ?? `PROMO-${payload.operationId}`;
@@ -61,10 +61,10 @@ export async function POST(request: Request) {
     if (error instanceof PromotionCreationTargetPartialFailure) {
       return safeErrorResponse(
         500,
-        '행사 정보는 저장되었을 수 있지만 대상 상품 저장에 실패했습니다. 새로고침 후 확인하고 다시 시도해 주세요.',
+        '행사 정보는 저장되었을 수 있지만 대상 상품 저장에 실패했어요. 새로고침 후 확인하고 다시 시도해 주세요.',
       );
     }
-    return safeErrorResponse(500, '행사를 추가하지 못했습니다.');
+    return safeErrorResponse(500, '행사를 추가하지 못했어요.');
   }
 }
 

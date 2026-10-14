@@ -55,12 +55,12 @@ export function seoulDayKey(instant: string): string {
   return parts ? `${parts.year}-${parts.month}-${parts.day}` : instant.slice(0, 10);
 }
 
-/** "오늘 · 10월 6일(화)", "어제 · 10월 5일(월)", "10월 3일(토)" */
+/** "오늘, 10월 6일(화)", "어제, 10월 5일(월)", "10월 3일(토)" */
 export function formatDayHeading(instant: string, now: string): string {
   const label = formatDay(instant, now);
-  if (seoulDayKey(instant) === seoulDayKey(now)) return `오늘 · ${label}`;
+  if (seoulDayKey(instant) === seoulDayKey(now)) return `오늘, ${label}`;
   const yesterday = new Date(new Date(now).getTime() - 24 * 60 * 60 * 1000).toISOString();
-  if (seoulDayKey(instant) === seoulDayKey(yesterday)) return `어제 · ${label}`;
+  if (seoulDayKey(instant) === seoulDayKey(yesterday)) return `어제, ${label}`;
   return label;
 }
 
@@ -129,7 +129,7 @@ export function recurrenceSummary(recurrence: TaskRecurrence): string {
   if (recurrence.type === 'NONE') return '반복 없음';
   const clock = formatClock(recurrence.time);
   if (recurrence.type === 'DAILY') return `매일 ${clock}`;
-  if (recurrence.type === 'WEEKLY') return `매주 ${[...recurrence.weekdays].sort((a, b) => a - b).map((day) => WEEKDAY_NAMES[day - 1]).join('·')} ${clock}`;
+  if (recurrence.type === 'WEEKLY') return `매주 ${[...recurrence.weekdays].sort((a, b) => a - b).map((day) => WEEKDAY_NAMES[day - 1]).join(', ')} ${clock}`;
   return `매월 ${recurrence.dayOfMonth}일 ${clock}`;
 }
 
@@ -288,12 +288,12 @@ export const CAUSE_LABELS: Record<TaskHistoryCause, string> = {
   IMPORTED: '옮겨 온 기록',
 };
 
-/** "김민준 · 완료 가능 → 완료 · 은행에서 완료 (+120원)" */
+/** "김민준, 완료 가능 → 완료, 은행에서 완료 (+120원)" */
 export function historySentence(entry: TaskHistoryEntryDto, unit: string): string {
   const name = entry.studentName || entry.studentId;
   const change = entry.previousStage && entry.previousStage !== entry.stage
     ? `${stageLabel(entry.previousStage)} → ${stageLabel(entry.stage)}`
     : stageLabel(entry.stage);
   const reward = entry.reward ? ` (${entry.reward > 0 ? '+' : ''}${money(entry.reward, unit)})` : '';
-  return `${name} · ${change} · ${CAUSE_LABELS[entry.cause] ?? entry.cause}${reward}`;
+  return `${name}, ${change}, ${CAUSE_LABELS[entry.cause] ?? entry.cause}${reward}`;
 }

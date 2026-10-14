@@ -392,7 +392,7 @@ describe('GoogleSheetsStore auth and recurring ranges', () => {
   it('fails safely when the provider rejects a batch because a required sheet is missing', async () => {
     googleMocks.sheetsValuesBatchGet.mockRejectedValue(new Error('Unable to parse range: Products!1:1'));
 
-    await expect(verifySpreadsheetAccess(new GoogleSheetsStore('env-sheet-id'))).rejects.toThrow(/접근하지 못했습니다/);
+    await expect(verifySpreadsheetAccess(new GoogleSheetsStore('env-sheet-id'))).rejects.toThrow(/접근하지 못했어요/);
     expect(googleMocks.sheetsValuesBatchGet).toHaveBeenCalledTimes(1);
     expect(googleMocks.sheetsValuesGet).not.toHaveBeenCalled();
   });
@@ -518,7 +518,7 @@ describe('GoogleSheetsStore auth and recurring ranges', () => {
     const store = new GoogleSheetsStore('sheet-123', undefined, { sleep, maxReadAttempts: 2 });
 
     await expect(store.getRows('Students')).rejects.toMatchObject({
-      name: 'SheetProviderError', reason: 'QUOTA_EXCEEDED', message: 'Google Sheets 읽기 할당량을 초과했습니다. 잠시 후 다시 시도해 주세요.',
+      name: 'SheetProviderError', reason: 'QUOTA_EXCEEDED', message: 'Google Sheets 읽기 할당량을 초과했어요. 잠시 후 다시 시도해 주세요.',
     });
     expect(googleMocks.sheetsValuesGet).toHaveBeenCalledTimes(2);
     expect(sleep).toHaveBeenCalledWith(1000);

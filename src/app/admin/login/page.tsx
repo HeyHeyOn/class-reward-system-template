@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import { AdminLoginPage } from '@/components/AdminLoginPage';
 
-export const metadata = { title: '학급 보상 시스템' };
+export const metadata = { title: '딴쌤 클래스' };
 import { isGeneratorDeployment } from '@/server/deploymentMode';
 
 export default function AdminLoginRoute() {

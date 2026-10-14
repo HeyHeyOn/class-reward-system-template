@@ -3,7 +3,7 @@ import { LegalAgreementGate } from '@/components/account/LegalAgreementGate';
 import { requireTenantAdminPage } from '@/server/tenantAdminPageAccess';
 import { loadTeacherAccountView, teacherAccountsEnabled } from '@/server/teacherAccounts';
 
-export const metadata = { title: '학급 보상 시스템' };
+export const metadata = { title: '딴쌤 클래스' };
 
 export default async function TenantAdminPage({
   params,

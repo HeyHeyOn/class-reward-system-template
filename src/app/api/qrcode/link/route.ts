@@ -3,7 +3,7 @@ import * as QRCode from 'qrcode';
 export const dynamic = 'force-dynamic';
 
 const MAX_URL_BYTES = 2048;
-const ERROR = 'QR 코드를 생성하지 못했습니다.';
+const ERROR = 'QR 코드를 생성하지 못했어요.';
 
 export async function POST(request: Request) {
   if (new URL(request.url).search !== '') {

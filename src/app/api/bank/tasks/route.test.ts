@@ -124,6 +124,6 @@ describe('GET /api/bank/tasks', () => {
     vi.mocked(createConfiguredTaskReader).mockRejectedValue(new Error('Google range Tasks!A:ZZ credential secret'));
     const response = await GET(new Request('http://localhost/api/bank/tasks'));
     expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toEqual({ error: '과제 목록을 불러오지 못했습니다.' });
+    await expect(response.json()).resolves.toEqual({ error: '과제 목록을 불러오지 못했어요.' });
   });
 });

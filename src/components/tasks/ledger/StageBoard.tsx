@@ -88,7 +88,7 @@ export function StageBoard({ task, students, changes, onChange, disabled }: {
                 </span>
                 <span className="mt-0.5 block text-[11px] text-[var(--theme-muted-text)]">
                   {changed ? `${stageLabel(row.stage)} → ${stageLabel(stage)} (저장 전)`
-                    : [row.since ? formatSince(row.since) : '', row.byReset ? '자동 초기화' : ''].filter(Boolean).join(' · ')}
+                    : [row.since ? formatSince(row.since) : '', row.byReset ? '자동 초기화' : ''].filter(Boolean).join(', ')}
                 </span>
               </span>
               <StagePicker label={name} value={stage} disabled={disabled} onChange={(next) => onChange([row.studentId], next)} />

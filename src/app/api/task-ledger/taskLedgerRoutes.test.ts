@@ -93,7 +93,7 @@ describe('task ledger routes for classes', () => {
     expect(m.ledger.setStages).toHaveBeenCalledWith(body);
     const invalid = await call('POST', ['task-ledger', 'stages'], { operationId: OPERATION, changes: [{ taskId: 'T001', studentId: 'S1', stage: 'READY', withReward: true }] });
     expect(invalid.status).toBe(400);
-    expect(await invalid.json()).toEqual({ error: '보상은 완료로 바꿀 때만 지급할 수 있습니다.', code: 'INVALID_REQUEST' });
+    expect(await invalid.json()).toEqual({ error: '보상은 완료로 바꿀 때만 지급할 수 있어요.', code: 'INVALID_REQUEST' });
     expect(m.ledger.setStages).toHaveBeenCalledTimes(1);
   });
 
@@ -135,10 +135,10 @@ describe('task ledger routes for classes', () => {
   });
 
   it('passes Padlet refusals through with their code', async () => {
-    m.padlet.link.mockRejectedValueOnce(new TaskLedgerError('PADLET_NOT_PAYING', 'Padlet API는 유료(Gold·Platinum) 계정의 키로만 쓸 수 있어요.', 409));
+    m.padlet.link.mockRejectedValueOnce(new TaskLedgerError('PADLET_NOT_PAYING', 'Padlet API는 유료(Gold, Platinum) 계정의 키로만 쓸 수 있어요.', 409));
     const refused = await call('POST', ['task-ledger', 'padlet', 'links'], { taskIds: ['T001'], address: 'https://padlet.com/a/b-mvbij1byfal6f0ik', sectionId: null });
     expect(refused.status).toBe(409);
-    expect(await refused.json()).toEqual({ error: 'Padlet API는 유료(Gold·Platinum) 계정의 키로만 쓸 수 있어요.', code: 'PADLET_NOT_PAYING' });
+    expect(await refused.json()).toEqual({ error: 'Padlet API는 유료(Gold, Platinum) 계정의 키로만 쓸 수 있어요.', code: 'PADLET_NOT_PAYING' });
   });
 
   it('requires the class administrator', async () => {

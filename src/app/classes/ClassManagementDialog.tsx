@@ -4,7 +4,7 @@ import type { ClassMembershipPageItem } from '@/server/classMembershipPageAccess
 import type { ClassManagementAction } from '@/server/repositories/database/classDashboard';
 const titles = { RENAME: '학급 이름 변경', DUPLICATE: '학급 복제', DELETE: '학급 삭제', RESTORE: '학급 복원', PURGE: '학급 완전히 삭제' };
 const labels = { RENAME: '이름 저장', DUPLICATE: '새 학급으로 복제', DELETE: '휴지통으로 이동', RESTORE: '학급 복원', PURGE: '완전히 삭제' };
-const completed = { RENAME: '학급 이름을 변경했습니다.', DUPLICATE: '새 학급으로 복제했습니다. 관리자 페이지에서 복제된 내용을 확인해 주세요.', DELETE: '휴지통으로 이동했습니다. 휴지통에서 다시 복원할 수 있습니다.', RESTORE: '학급을 복원했습니다.', PURGE: '학급을 완전히 삭제했습니다. 이 학급의 자료는 다시 복원할 수 없습니다.' };
+const completed = { RENAME: '학급 이름을 바꿨어요.', DUPLICATE: '새 학급으로 복제했어요. 관리자 페이지에서 복제된 내용을 확인해 주세요.', DELETE: '휴지통으로 옮겼어요. 휴지통에서 복원할 수 있어요.', RESTORE: '학급을 복원했어요.', PURGE: '학급을 완전히 삭제했어요. 이 학급의 자료는 복원할 수 없어요.' };
 /** Typing the class name again confirms these. */
 const confirmByName = (action: ClassManagementAction) => action === 'DELETE' || action === 'PURGE';
 export function ClassManagementDialog({ item, action, onClose, onSuccess }: {
@@ -35,10 +35,10 @@ export function ClassManagementDialog({ item, action, onClose, onSuccess }: {
           || !/^[1-9][0-9]*$/.test(result.managementVersion)) throw new Error('Unconfirmed result');
         onSuccess(completed[action]); return;
       }
-      setMessage(result && typeof result === 'object' && 'error' in result && typeof result.error === 'string' ? result.error : '요청 결과를 확인하지 못했습니다.');
+      setMessage(result && typeof result === 'object' && 'error' in result && typeof result.error === 'string' ? result.error : '요청 결과를 확인하지 못했어요.');
       if (response.status === 400 || response.status === 413) { attempt.current = null; setUncertain(false); }
       else setUncertain(true);
-    } catch { setUncertain(true); setMessage('연결이 끊겨 처리 결과를 확인하지 못했습니다. 같은 요청으로 다시 확인하거나 목록을 새로고침해 주세요.'); }
+    } catch { setUncertain(true); setMessage('연결이 끊겨 처리 결과를 확인하지 못했어요. 같은 요청으로 다시 확인하거나 목록을 새로고침해 주세요.'); }
     finally { inFlight.current = false; setBusy(false); }
   }
   return <dialog ref={dialog} aria-labelledby="class-management-title" aria-describedby="class-management-description"
@@ -47,11 +47,11 @@ export function ClassManagementDialog({ item, action, onClose, onSuccess }: {
     <form onSubmit={submit} className="p-6 sm:p-8">
       <p className="mb-2 break-words text-sm font-medium text-[var(--theme-muted-text)]">{item.displayName}</p><h2 id="class-management-title" className="text-2xl font-black tracking-tight">{titles[action]}</h2>
       <div id="class-management-description" className="mt-4 text-sm leading-6 text-[var(--theme-muted-text)]">
-        {action === 'RENAME' && <p>학급 목록에 표시할 이름을 변경합니다. 학급 주소와 기존 기록은 유지됩니다.</p>}
-        {action === 'DUPLICATE' && <><p>현재 학급의 구성을 새 학급에 가져옵니다.</p><ul className="mt-3 list-disc space-y-1 rounded-2xl bg-[var(--theme-surface-raised)] py-4 pl-8 pr-4"><li>설정·학생 명단·상품과 재고를 복사합니다.</li><li>과제·할인 행사는 비활성 상태로 복사합니다.</li><li>학생 잔액은 0으로 시작합니다.</li><li>거래·완료·부여 내역, 공동 관리자, 외부 연동과 예약 변경은 복사하지 않습니다.</li></ul><p className="mt-3">관리자 페이지에서 내용을 확인하고 학생 QR을 새로 출력해 주세요.</p></>}
-        {action === 'DELETE' && <><p>휴지통으로 이동하면 관리자, 매점, 은행 접속이 중지됩니다. 학생과 거래 기록은 보관되며 나중에 복원할 수 있습니다. 자료를 완전히 지우려면 휴지통에서 [완전히 삭제]를 누르세요.</p><p className="mt-3 font-semibold text-[var(--theme-text)]">확인을 위해 학급 이름을 그대로 입력해 주세요.</p></>}
-        {action === 'PURGE' && <><p>이 학급의 모든 자료를 지웁니다. 학생 명단과 잔액, 상품, 과제, 거래 기록, 펫과 나무 기록, 보관함, 연결해 둔 패들렛 정보까지 모두 지워집니다.</p><p className="mt-3 rounded-2xl bg-rose-50 p-4 font-semibold text-rose-800">지운 뒤에는 되돌리거나 복원할 수 없습니다. 함께 관리하던 선생님도 더 이상 이 학급을 볼 수 없습니다.</p><p className="mt-3 font-semibold text-[var(--theme-text)]">확인을 위해 학급 이름을 그대로 입력해 주세요.</p></>}
-        {action === 'RESTORE' && <p>삭제 전 상태로 학급을 복원합니다. 기존 학생·잔액·상품·거래 기록을 그대로 다시 사용할 수 있습니다.</p>}
+        {action === 'RENAME' && <p>학급 목록에 보이는 이름을 바꿔요. 학급 주소와 기존 기록은 그대로예요.</p>}
+        {action === 'DUPLICATE' && <><p>지금 학급의 구성을 새 학급으로 가져와요.</p><ul className="mt-3 list-disc space-y-1 rounded-2xl bg-[var(--theme-surface-raised)] py-4 pl-8 pr-4"><li>설정, 학생 명단, 상품과 재고를 복사해요.</li><li>과제와 할인 행사는 꺼진 채로 복사해요.</li><li>학생 잔액은 0에서 시작해요.</li><li>거래, 완료, 부여 내역과 공동 관리자, 외부 연동, 예약 변경은 복사하지 않아요.</li></ul><p className="mt-3">관리자 페이지에서 내용을 확인하고 학생 QR을 새로 출력해 주세요.</p></>}
+        {action === 'DELETE' && <><p>휴지통으로 옮기면 관리자, 매점, 은행 접속이 중지돼요. 학생과 거래 기록은 보관되고 나중에 복원할 수 있어요. 자료를 완전히 지우려면 휴지통에서 [완전히 삭제]를 누르세요.</p><p className="mt-3 font-semibold text-[var(--theme-text)]">확인을 위해 학급 이름을 그대로 입력해 주세요.</p></>}
+        {action === 'PURGE' && <><p>학생 명단과 잔액, 상품, 과제, 거래 기록, 펫과 나무 기록, 보관함, 연결해 둔 패들렛 정보까지 이 학급의 모든 자료를 지워요.</p><p className="mt-3 rounded-2xl bg-rose-50 p-4 font-semibold text-rose-800">지운 뒤에는 되돌릴 수 없어요. 함께 관리하던 선생님도 더 이상 이 학급을 볼 수 없어요.</p><p className="mt-3 font-semibold text-[var(--theme-text)]">확인을 위해 학급 이름을 그대로 입력해 주세요.</p></>}
+        {action === 'RESTORE' && <p>삭제 전 상태로 학급을 복원해요. 기존 학생, 잔액, 상품, 거래 기록을 그대로 다시 쓸 수 있어요.</p>}
       </div>
       {action !== 'RESTORE' && <label className="mt-5 block text-sm font-bold">{action === 'DUPLICATE' ? '새 학급 이름' : '학급 이름'}<input autoFocus value={name} onChange={e => setName(e.target.value)} maxLength={80} required disabled={busy || uncertain} autoComplete="off" className="mt-2 w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-input)] px-3 py-3 font-normal outline-offset-2 disabled:bg-[var(--theme-surface-raised)]"/></label>}
       {message && <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-3 text-sm leading-6 text-rose-800">{message}</p>}

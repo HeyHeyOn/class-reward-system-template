@@ -53,7 +53,7 @@ export function ParentConsentFormDialog({ classLabel, onClose, opener }: {
       )}>
       <div ref={bodyRef} className="space-y-4">
         <p className="text-[13px] leading-relaxed text-[var(--theme-muted-text)]">
-          만 14세 미만 학생의 실명과 학년·반·번호를 입력하려면 법정대리인(학부모)의 동의가 필요해요.
+          만 14세 미만 학생의 실명과 학년, 반, 번호를 입력하려면 법정대리인(학부모)의 동의가 필요해요.
           이 동의서를 인쇄해 가정에 보내 서명을 받고, 받은 동의서는 선생님이 보관해 주세요.
         </p>
         <Callout tone="info">동의를 받지 않은 학생은 실명 대신 별명과 임의 번호로 등록해 주세요.</Callout>

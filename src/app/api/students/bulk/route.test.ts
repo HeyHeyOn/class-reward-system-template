@@ -88,7 +88,7 @@ describe('PATCH /api/students/bulk', () => {
   ])('rejects %s before configured authority', async (_label, body, headers) => {
     const response = await PATCH(request(body, headers));
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: '올바른 학생 재화 수정 요청이 아닙니다.' });
+    await expect(response.json()).resolves.toEqual({ error: '올바른 학생 재화 수정 요청이 아니에요.' });
     expect(createConfiguredAdminAdjustmentCommand).not.toHaveBeenCalled();
   });
 
@@ -100,6 +100,6 @@ describe('PATCH /api/students/bulk', () => {
     const response = await PATCH(request({ studentIds: ['S001'], mode: 'set', amount: 0, operationId }));
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: '학생 재화를 일괄 수정하지 못했습니다.' });
+    await expect(response.json()).resolves.toEqual({ error: '학생 재화를 일괄 수정하지 못했어요.' });
   });
 });

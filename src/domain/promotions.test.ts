@@ -71,7 +71,7 @@ describe('calculatePromotionPrice', () => {
     })).toEqual({
       ok: false,
       code: 'INVALID_NOW',
-      message: '가격 계산 시각이 올바르지 않습니다.',
+      message: '가격 계산 시각이 올바르지 않아요.',
     });
   });
 
@@ -85,7 +85,7 @@ describe('calculatePromotionPrice', () => {
     })).toEqual({
       ok: false,
       code: 'INVALID_QUANTITY',
-      message: '상품 수량은 1개 이상이어야 합니다.',
+      message: '상품 수량은 1개 이상이어야 해요.',
     });
   });
 
@@ -99,7 +99,7 @@ describe('calculatePromotionPrice', () => {
     })).toEqual({
       ok: false,
       code: 'INVALID_REGULAR_PRICE',
-      message: '정상 단가는 0원 이상의 정수여야 합니다.',
+      message: '정상 단가는 0원 이상의 정수여야 해요.',
     });
   });
 
@@ -129,7 +129,7 @@ describe('calculatePromotionPrice', () => {
     })).toEqual({
       ok: false,
       code: 'ARITHMETIC_OVERFLOW',
-      message: '행사 가격 계산 범위를 초과했습니다.',
+      message: '행사 가격이 계산할 수 있는 범위를 넘었어요.',
     });
   });
 
@@ -148,7 +148,7 @@ describe('calculatePromotionPrice', () => {
     })).toEqual({
       ok: false,
       code: 'INVALID_PROMOTION',
-      message: '행사 설정이 올바르지 않습니다.',
+      message: '행사 설정이 올바르지 않아요.',
       promotionId: 'PROMO-2PLUS1',
     });
   });
@@ -168,7 +168,7 @@ describe('calculatePromotionPrice', () => {
     })).toEqual({
       ok: false,
       code: 'INVALID_PROMOTION',
-      message: '행사 설정이 올바르지 않습니다.',
+      message: '행사 설정이 올바르지 않아요.',
       promotionId: null,
     });
   });
@@ -189,7 +189,7 @@ describe('calculatePromotionPrice', () => {
     })).toEqual({
       ok: false,
       code: 'INVALID_PROMOTION',
-      message: '행사 설정이 올바르지 않습니다.',
+      message: '행사 설정이 올바르지 않아요.',
       promotionId: 'BAD-PERCENT',
     });
   });
@@ -202,7 +202,7 @@ describe('calculatePromotionPrice', () => {
     })).toEqual({
       ok: false,
       code: 'DUPLICATE_PROMOTION_ID',
-      message: '중복된 행사 ID가 있습니다.',
+      message: '중복된 행사 ID가 있어요.',
       promotionId: 'PROMO-2PLUS1',
     });
   });
@@ -220,7 +220,7 @@ describe('calculatePromotionPrice', () => {
     })).toEqual({
       ok: false,
       code: 'INVALID_PROMOTION',
-      message: '행사 설정이 올바르지 않습니다.',
+      message: '행사 설정이 올바르지 않아요.',
       promotionId: 'PRICE-HIGH',
     });
   });

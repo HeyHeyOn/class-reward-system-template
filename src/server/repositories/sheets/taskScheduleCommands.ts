@@ -39,15 +39,15 @@ export async function updateTaskSchedulesBatch(
   options: BatchTaskScheduleOptions = {},
 ): Promise<{ updatedTaskIds: string[] }> {
   validateExactTaskIds(taskIds);
-  if (schedule?.timeZone !== 'Asia/Seoul') throw new Error('과제 일정 시간대는 Asia/Seoul이어야 합니다.');
+  if (schedule?.timeZone !== 'Asia/Seoul') throw new Error('과제 일정 시간대는 Asia/Seoul이어야 해요.');
   validateScheduleEdit(schedule);
   const ownsAvailability = Object.hasOwn(options, 'availableFrom') || Object.hasOwn(options, 'dueAt');
   const availability = validateTaskAvailability(options);
   if (!store.updateCells) {
-    throw new Error('현재 Sheets 저장소가 Tasks 일괄 셀 업데이트를 지원하지 않습니다.');
+    throw new Error('현재 Sheets 저장소가 Tasks 일괄 셀 업데이트를 지원하지 않아요.');
   }
   if (!store.getRowsFresh) {
-    throw new Error('현재 Sheets 저장소가 최신 Tasks 읽기를 지원하지 않습니다.');
+    throw new Error('현재 Sheets 저장소가 최신 Tasks 읽기를 지원하지 않아요.');
   }
 
   return enqueueTaskCommand(taskCommandQueueKey(''), async () => {
@@ -62,7 +62,7 @@ export async function updateTaskSchedulesBatch(
       const recordsById = new Map(records.map((record) => [record.task.taskId, record]));
       const targets = taskIds.map((taskId) => {
         const record = recordsById.get(taskId);
-        if (!record) throw new Error(`과제를 찾을 수 없습니다: ${taskId}`);
+        if (!record) throw new Error(`과제를 찾을 수 없어요: ${taskId}`);
         assertScheduleEditable(record.task, true);
         return record;
       });
@@ -79,20 +79,20 @@ export async function updateTaskSchedulesBatch(
     const changedTargets = targets.filter(({ task }) => !hasDesiredSchedule(task, schedule, editedAt));
     const states = changedTargets.map(({ task }) => prepareImmediateTaskScheduleState(task, schedule, editedAt, true));
     const headers = freshTaskRows[0] ?? [];
-    if (!headers.includes('updatedAt')) throw new Error('Tasks 시트에 updatedAt 컬럼이 없습니다.');
+    if (!headers.includes('updatedAt')) throw new Error('Tasks 시트에 updatedAt 컬럼이 없어요.');
 
     const updates: SheetCellUpdate[] = [];
     for (let index = 0; index < changedTargets.length; index += 1) {
       const cells = serializeTaskScheduleCells(states[index]);
       for (const [columnName, value] of Object.entries(cells)) {
-        if (!headers.includes(columnName)) throw new Error(`Tasks 시트에 ${columnName} 컬럼이 없습니다.`);
+        if (!headers.includes(columnName)) throw new Error(`Tasks 시트에 ${columnName} 컬럼이 없어요.`);
         updates.push({ rowNumber: changedTargets[index].rowNumber, columnName, value });
       }
       updates.push({ rowNumber: changedTargets[index].rowNumber, columnName: 'updatedAt', value: editedAt });
     }
     for (const target of ownsAvailability ? targets : []) {
       if (!headers.includes('availableFrom') || !headers.includes('dueAt')) {
-        throw new Error('Tasks 시트에 기한 컬럼이 없습니다.');
+        throw new Error('Tasks 시트에 기한 컬럼이 없어요.');
       }
       updates.push(
         { rowNumber: target.rowNumber, columnName: 'availableFrom', value: availability.availableFrom ?? '' },
@@ -126,7 +126,7 @@ export function prepareImmediateTaskScheduleState(
 ) {
   assertScheduleEditable(task, allowLegacyProjection);
   if (!task.taskInstanceId || !task.schedule) {
-    throw new Error('과제 반복 일정 정보를 불러오지 못했습니다.');
+    throw new Error('과제 반복 일정 정보를 불러오지 못했어요.');
   }
   validateScheduleEdit(edit);
   const effectiveSchedule = resolveTaskSchedule({
@@ -154,7 +154,7 @@ function validateExactTaskIds(taskIds: string[]): void {
   if (!Array.isArray(taskIds) || taskIds.length === 0 || taskIds.length > MAX_BATCH_TASKS
     || taskIds.some((taskId) => typeof taskId !== 'string' || !taskId || taskId !== taskId.trim())
     || new Set(taskIds).size !== taskIds.length) {
-    throw new Error('과제 ID 목록이 올바르지 않습니다.');
+    throw new Error('과제 ID 목록이 올바르지 않아요.');
   }
 }
 
@@ -165,7 +165,7 @@ function validateScheduleEdit(edit: TaskScheduleEdit): void {
       'recurrence', 'timeZone', 'resetCompletionOnCycle', 'resetAssignmentOnCycle',
     ].includes(key))
     || typeof edit.timeZone !== 'string') {
-    throw new Error('과제 일정 형식이 올바르지 않습니다.');
+    throw new Error('과제 일정 형식이 올바르지 않아요.');
   }
   validateTaskSchedule({
     ruleVersion: 1,
@@ -181,7 +181,7 @@ function assertScheduleEditable(task: ClassTask, allowLegacyProjection = false):
   const warning = task.scheduleReadWarnings?.find((candidate) =>
     !allowLegacyProjection || !task.taskInstanceId?.startsWith('legacy:')
       || candidate !== 'INVALID_CURRENT_SCHEDULE');
-  if (warning) throw new Error(`과제 일정 데이터가 손상되었습니다 (${warning}). 일정을 먼저 복구해 주세요.`);
+  if (warning) throw new Error(`과제 일정 데이터가 손상됐어요 (${warning}). 일정을 먼저 복구해 주세요.`);
 }
 
 /**
@@ -199,7 +199,7 @@ export async function changeClassTimeZone(
   }
   // Capability validation must precede migration, because migration may write schema.
   if (!store.updateCellsAtomicallyAcrossSheets) {
-    throw new Error('현재 Sheets 저장소가 원자적 다중 시트 업데이트를 지원하지 않습니다.');
+    throw new Error('현재 Sheets 저장소가 원자적 다중 시트 업데이트를 지원하지 않아요.');
   }
 
   return enqueueTaskCommand(taskCommandQueueKey(''), async () => {
@@ -230,11 +230,11 @@ export async function changeClassTimeZone(
     for (const record of taskRecords) {
       const task = record.task;
       if (task.scheduleReadWarnings?.length) {
-        throw new Error(`과제 일정 데이터가 손상되었습니다 (${task.scheduleReadWarnings[0]}). 일정을 먼저 복구해 주세요.`);
+        throw new Error(`과제 일정 데이터가 손상됐어요 (${task.scheduleReadWarnings[0]}). 일정을 먼저 복구해 주세요.`);
       }
       if (!task.schedule) continue;
       if (Date.parse(changedAt) < Date.parse(task.schedule.effectiveFrom)) {
-        throw new Error('시간대 변경 시각은 과제 일정의 effectiveFrom보다 이를 수 없습니다. 변경 순서를 확인해 주세요.');
+        throw new Error('시간대 변경 시각은 과제 일정의 effectiveFrom보다 이를 수 없어요. 변경 순서를 확인해 주세요.');
       }
       if (!task.taskInstanceId) continue;
       const effectiveSchedule = resolveTaskSchedule({
@@ -264,7 +264,7 @@ export async function changeClassTimeZone(
       });
       for (const [columnName, cellValue] of Object.entries(cells)) {
         const columnNumber = taskColumnNumbers.get(columnName);
-        if (!columnNumber) throw new Error(`Tasks 시트에 ${columnName} 컬럼이 없습니다.`);
+        if (!columnNumber) throw new Error(`Tasks 시트에 ${columnName} 컬럼이 없어요.`);
         taskUpdates.push({ sheetName: 'Tasks', rowNumber: record.rowNumber, columnNumber, value: cellValue });
       }
       const updatedAtColumn = taskColumnNumbers.get('updatedAt');
@@ -312,7 +312,7 @@ function prepareSettingUpdates(rows: string[][], classTimeZone: string): CrossSh
   const keyIndex = normalized.indexOf('key');
   const valueIndex = normalized.indexOf('value');
   if (keyIndex < 0 || valueIndex < 0) {
-    throw new Error('Settings 시트에 필수 컬럼이 없습니다: key, value');
+    throw new Error('Settings 시트에 필수 컬럼이 없어요: key, value');
   }
   const existingIndexes = dataRows
     .map((row, index) => String(row[keyIndex] ?? '').trim() === 'classTimeZone' ? index : -1)

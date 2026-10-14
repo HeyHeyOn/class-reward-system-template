@@ -85,11 +85,11 @@ export function RepeatFields({ form, onChange, now, idPrefix = 'ledger-repeat', 
           <p className="mb-1.5 text-[13px] font-bold">초기화하면</p>
           {/* A repeat that resets nothing (kept only from old Sheets data) shows no stage until one is chosen. */}
           <StageChoice label="초기화하면" value={form.resetStage === 'NONE' ? null : form.resetStage} onChange={(resetStage) => onChange({ ...form, resetStage })} />
-          <p className="mt-1.5 text-xs text-[var(--theme-muted-text)]">이 과제를 가진 학생(미부여가 아닌 학생)이 모두 고른 단계로 바뀌어요. 미부여인 학생은 그대로예요.</p>
+          <p className="mt-1.5 text-xs text-[var(--theme-muted-text)]">이 과제를 받은 학생이 모두 고른 단계로 바뀌어요. 미부여인 학생은 그대로예요.</p>
         </div>
       ) : form.type === 'NONE' ? (
         <p className="rounded-[var(--crs-radius)] bg-[var(--crs-subtle)] px-4 py-3 text-[13px] leading-relaxed text-[var(--theme-muted-text)]">
-          저절로 초기화되지 않아요. 매주 하는 숙제처럼 다시 해야 하는 과제라면 주기를 골라 주세요.
+          저절로 초기화되지 않아요. 다시 해야 하는 과제라면 주기를 골라 주세요.
         </p>
       ) : null}
 
@@ -98,7 +98,7 @@ export function RepeatFields({ form, onChange, now, idPrefix = 'ledger-repeat', 
           <Icon name="repeat" size={15} className="mt-0.5 shrink-0" />
           <span>
             {recurrenceSummary(checked.value.recurrence)}
-            {checked.value.recurrence.type !== 'NONE' ? ` · ${resetStageSummary(checked.value.resetStage)}` : ''}
+            {checked.value.recurrence.type !== 'NONE' ? `, ${resetStageSummary(checked.value.resetStage)}` : ''}
             {next ? <span className="block text-xs font-medium text-[var(--theme-muted-text)]">저장하면 다음 초기화: {formatInstant(next, now)}</span> : null}
           </span>
         </p>

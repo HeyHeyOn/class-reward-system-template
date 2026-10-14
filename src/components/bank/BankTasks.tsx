@@ -2,6 +2,7 @@
 
 import { useId, useState, type ReactNode } from 'react';
 import { formatStudentTaskDue, formatStudentTaskRecurrence } from '@/domain/taskStudentDisplay';
+import { withParticle } from '@/lib/koreanParticle';
 import { Badge, Button, Callout, Icon, Spinner, cx } from '../ui';
 import type { PendingCompletion, StudentBankTaskDto } from './bankClient';
 import { formatMoney } from './format';
@@ -36,7 +37,7 @@ export function BankTasks({ tasks, loading, error, currencyUnit, pending, busy, 
       {pending ? (
         <div className="mt-3">
           <Callout tone="warning" title="확인 중인 과제 완료가 있어요">
-            <p>&lsquo;{pending.taskTitle}&rsquo;을(를) 완료했는지 아직 확인하지 못했어요. [다시 확인]을 눌러 주세요. 다른 과제는 그대로 완료할 수 있어요.</p>
+            <p>{withParticle(`‘${pending.taskTitle}’`, '을/를')} 완료했는지 아직 확인하지 못했어요. [다시 확인]을 눌러 주세요. 다른 과제는 그대로 완료할 수 있어요.</p>
             <Button variant="secondary" size="sm" icon="refresh" className="mt-2" onClick={onRecheck} disabled={busy}>다시 확인</Button>
           </Callout>
         </div>

@@ -14,7 +14,7 @@ beforeEach(() => {
   mocks.reader.mockResolvedValue({ kind: 'JOB_AVAILABLE', status: {
     availability: 'AVAILABLE', migrationStatus: 'ACTIVE', authority: 'UNKNOWN', readOnly: true,
     reasonCode: 'OPERATIONAL_AUTHORITY_UNVERIFIED',
-    reason: '저장된 작업 상태만 표시합니다. 실제 운영 권한은 확인되지 않았습니다.',
+    reason: '저장된 작업 상태만 표시해요. 실제 운영 권한은 확인되지 않았어요.',
   } });
 });
 afterEach(cleanup);
@@ -31,7 +31,7 @@ describe('explicit job status page', () => {
     expect(container.textContent).toContain('ACTIVE');
     expect(container.textContent).toContain('현재 운영 권한');
     expect(container.textContent).toContain('확인 불가 (UNKNOWN)');
-    expect(container.textContent).toContain('실제 운영 권한은 확인되지 않았습니다.');
+    expect(container.textContent).toContain('실제 운영 권한은 확인되지 않았어요.');
     expect(container.querySelectorAll('form, button, input, select, textarea, script')).toHaveLength(0);
     expect(container.innerHTML).not.toContain('job-explicit-1');
     expect(container.innerHTML).not.toContain('private');

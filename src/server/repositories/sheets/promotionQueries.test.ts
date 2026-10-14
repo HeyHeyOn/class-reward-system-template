@@ -128,13 +128,13 @@ describe('promotion sheet read queries', () => {
       sheetName: 'Promotions' as const,
       rows: [promotionHeaders, [], promotionRow({ promotionId: 'P-BAD', name: '' })],
       read: (reader: TabularReader) => getPromotionRecords(reader),
-      message: 'Promotions 시트 3행이 올바르지 않습니다.',
+      message: 'Promotions 시트 3행이 올바르지 않아요.',
     },
     {
       sheetName: 'PromotionProducts' as const,
       rows: [promotionProductHeaders, [], promotionProductRow({ promotionProductId: '', productId: 'BAD' })],
       read: (reader: TabularReader) => getPromotionProductRecords(reader),
-      message: 'PromotionProducts 시트 3행이 올바르지 않습니다.',
+      message: 'PromotionProducts 시트 3행이 올바르지 않아요.',
     },
   ])('fails closed on a nonblank malformed $sheetName row', async ({ sheetName, rows, read, message }) => {
     await expect(read(readerWith({ [sheetName]: rows }))).rejects.toThrow(message);
@@ -215,7 +215,7 @@ describe('promotion sheet read queries', () => {
     });
 
     await expect(getPromotionRecords(reader))
-      .rejects.toThrow('Promotions 시트에 중복된 promotionId가 있습니다: DUP');
+      .rejects.toThrow('Promotions 시트에 중복된 promotionId가 있어요: DUP');
   });
 
   it('rejects duplicate valid promotion-product IDs deterministically', async () => {
@@ -228,7 +228,7 @@ describe('promotion sheet read queries', () => {
     });
 
     await expect(getPromotionProductRecords(reader))
-      .rejects.toThrow('PromotionProducts 시트에 중복된 promotionProductId가 있습니다: DUP-LINK');
+      .rejects.toThrow('PromotionProducts 시트에 중복된 promotionProductId가 있어요: DUP-LINK');
   });
 
   it.each([
@@ -236,13 +236,13 @@ describe('promotion sheet read queries', () => {
       sheetName: 'Promotions' as const,
       rows: [[...promotionHeaders.filter((header) => !['name', 'startsAt'].includes(header))]],
       read: (reader: TabularReader) => getPromotionRecords(reader),
-      message: 'Promotions 시트에 필수 컬럼이 없습니다: name, startsAt',
+      message: 'Promotions 시트에 필수 컬럼이 없어요: name, startsAt',
     },
     {
       sheetName: 'PromotionProducts' as const,
       rows: [[...promotionProductHeaders, ' productId ']],
       read: (reader: TabularReader) => getPromotionProductRecords(reader),
-      message: 'PromotionProducts 시트에 필수 컬럼이 없습니다: productId',
+      message: 'PromotionProducts 시트에 필수 컬럼이 없어요: productId',
     },
   ])('rejects structurally invalid $sheetName headers', async ({ sheetName, rows, read, message }) => {
     await expect(read(readerWith({ [sheetName]: rows }))).rejects.toThrow(message);

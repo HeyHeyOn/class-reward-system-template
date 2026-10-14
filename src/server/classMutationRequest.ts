@@ -31,7 +31,7 @@ export async function readClassMutationRequest(request: Request): Promise<Respon
   session: GoogleSession; body: Record<string, unknown>;
 }> {
   const session = await getTeacherGoogleSessionFromRequest(request);
-  if (!session) return classMutationReply(401, { error: '로그인이 필요하거나 만료되었습니다. 다시 로그인해 주세요.' });
+  if (!session) return classMutationReply(401, { error: '로그인이 필요하거나 만료됐어요. 다시 로그인해 주세요.' });
   const url = new URL(request.url);
   if (request.method !== 'POST' || url.search || !hasSameOrigin(request, url)
     || request.headers.get('sec-fetch-site') !== 'same-origin'
@@ -40,13 +40,13 @@ export async function readClassMutationRequest(request: Request): Promise<Respon
   }
   const length = request.headers.get('content-length');
   if (length !== null && (!/^\d+$/.test(length) || Number(length) > MAX_BYTES)) {
-    return classMutationReply(413, { error: '입력이 너무 큽니다.' });
+    return classMutationReply(413, { error: '입력이 너무 커요.' });
   }
   let body: unknown;
   try {
     body = JSON.parse(await readBoundedRequestText(request, MAX_BYTES));
   } catch (error) {
-    if (error instanceof RequestBodyError && error.status === 413) return classMutationReply(413, { error: '입력이 너무 큽니다.' });
+    if (error instanceof RequestBodyError && error.status === 413) return classMutationReply(413, { error: '입력이 너무 커요.' });
     return classMutationReply(400, { error: '입력을 확인해 주세요.' });
   }
   if (!body || typeof body !== 'object' || Array.isArray(body)) return classMutationReply(400, { error: '입력을 확인해 주세요.' });

@@ -20,7 +20,7 @@ export async function GET(request: Request) {
   } catch (error) {
     if (error instanceof TransactionPageRequestError) return Response.json({ error: error.message }, { status: 400 });
     return Response.json(
-      { error: error instanceof Error ? error.message : '결제 내역을 불러오지 못했습니다.' },
+      { error: error instanceof Error ? error.message : '결제 내역을 불러오지 못했어요.' },
       { status: 500 },
     );
   }

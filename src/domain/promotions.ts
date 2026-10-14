@@ -27,7 +27,7 @@ export function calculatePromotionPrice({
     return {
       ok: false as const,
       code: 'INVALID_NOW' as const,
-      message: '가격 계산 시각이 올바르지 않습니다.',
+      message: '가격 계산 시각이 올바르지 않아요.',
     };
   }
 
@@ -35,7 +35,7 @@ export function calculatePromotionPrice({
     return {
       ok: false as const,
       code: 'INVALID_QUANTITY' as const,
-      message: '상품 수량은 1개 이상이어야 합니다.',
+      message: '상품 수량은 1개 이상이어야 해요.',
     };
   }
 
@@ -43,7 +43,7 @@ export function calculatePromotionPrice({
     return {
       ok: false as const,
       code: 'INVALID_REGULAR_PRICE' as const,
-      message: '정상 단가는 0원 이상의 정수여야 합니다.',
+      message: '정상 단가는 0원 이상의 정수여야 해요.',
     };
   }
 
@@ -86,7 +86,7 @@ export function calculatePromotionPrice({
     return {
       ok: false as const,
       code: 'DUPLICATE_PROMOTION_ID' as const,
-      message: '중복된 행사 ID가 있습니다.',
+      message: '중복된 행사 ID가 있어요.',
       promotionId: duplicatePromotionId,
     };
   }
@@ -167,7 +167,7 @@ function invalidPromotionResult(promotionId: unknown) {
   return {
     ok: false as const,
     code: 'INVALID_PROMOTION' as const,
-    message: '행사 설정이 올바르지 않습니다.',
+    message: '행사 설정이 올바르지 않아요.',
     promotionId: typeof promotionId === 'string' && promotionId.length > 0 ? promotionId : null,
   };
 }
@@ -176,7 +176,7 @@ function arithmeticOverflowResult() {
   return {
     ok: false as const,
     code: 'ARITHMETIC_OVERFLOW' as const,
-    message: '행사 가격 계산 범위를 초과했습니다.',
+    message: '행사 가격이 계산할 수 있는 범위를 넘었어요.',
   };
 }
 

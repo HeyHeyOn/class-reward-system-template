@@ -108,7 +108,7 @@ export function createDatabaseTaskCycleQueries(
           { activeOnly: false, taskId });
         if (tasks.length > 1) throw new Error('Task query returned duplicate tasks.');
         const task = tasks[0];
-        if (!task) throw new Error('과제를 찾을 수 없습니다.');
+        if (!task) throw new Error('과제를 찾을 수 없어요.');
         const [snapshot, students] = await Promise.all([
           readLedgerSnapshot(transaction, dependencies.tenantId, 'ledger'),
           readDatabaseActiveStudentIdentities(transaction, dependencies.tenantId),
@@ -158,7 +158,7 @@ export function createDatabaseTaskCycleQueries(
           });
           if (tasks.length > 1) throw new Error('Task query returned duplicate tasks.');
           const task = tasks[0];
-          if (!task) throw new Error('과제를 찾을 수 없습니다.');
+          if (!task) throw new Error('과제를 찾을 수 없어요.');
           const snapshot = await readLedgerSnapshot(transaction, dependencies.tenantId, 'ledger');
           return projectTaskCycleState({ task, now: projectionNow, ...snapshot });
         },

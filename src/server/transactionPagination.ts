@@ -6,7 +6,7 @@ import { ADMIN_TRANSACTION_PAGE_SIZE, type TransactionPage, type TransactionPage
 export class TransactionPageRequestError extends Error {}
 
 function invalid(): never {
-  throw new TransactionPageRequestError('거래 조회 조건이 올바르지 않습니다.');
+  throw new TransactionPageRequestError('거래 조회 조건이 올바르지 않아요.');
 }
 
 function validDate(value: string): boolean {

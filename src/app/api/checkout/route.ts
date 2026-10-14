@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   try {
     const rawBody: unknown = await request.json();
     if (!rawBody || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
-      return Response.json({ error: '결제 요청 형식이 올바르지 않습니다.' }, { status: 400 });
+      return Response.json({ error: '결제 요청 형식이 올바르지 않아요.' }, { status: 400 });
     }
     const body = rawBody as CheckoutRequestBody;
     const validation = validateCheckoutBody(body);
@@ -60,10 +60,10 @@ export async function POST(request: Request) {
     return Response.json(result);
   } catch (error) {
     if (error instanceof StudentQrValidationError) {
-      return Response.json({ error: '학생 정보를 찾을 수 없습니다.' }, { status: 400 });
+      return Response.json({ error: '학생 정보를 찾을 수 없어요.' }, { status: 400 });
     }
     console.error('checkout_failed');
-    return Response.json({ error: '결제를 처리하지 못했습니다.' }, { status: 500 });
+    return Response.json({ error: '결제를 처리하지 못했어요.' }, { status: 500 });
   }
 }
 
@@ -73,35 +73,35 @@ type CheckoutBodyValidation =
 
 function validateCheckoutBody(body: CheckoutRequestBody): CheckoutBodyValidation {
   if (typeof body.operationId !== 'string' || !OPERATION_ID.test(body.operationId)) {
-    return { ok: false, message: '결제 작업 ID 형식이 올바르지 않습니다.' };
+    return { ok: false, message: '결제 작업 ID 형식이 올바르지 않아요.' };
   }
 
   if (typeof body.studentId !== 'string' || !body.studentId.trim()) {
-    return { ok: false, message: '학생 ID가 필요합니다.' };
+    return { ok: false, message: '학생 ID가 필요해요.' };
   }
 
   if (!Array.isArray(body.items) || body.items.length === 0) {
-    return { ok: false, message: '장바구니가 비어 있습니다.' };
+    return { ok: false, message: '장바구니가 비어 있어요.' };
   }
 
   const items: CartItem[] = [];
   for (const item of body.items) {
     if (!isCartItemLike(item)) {
-      return { ok: false, message: '장바구니 형식이 올바르지 않습니다.' };
+      return { ok: false, message: '장바구니 형식이 올바르지 않아요.' };
     }
     items.push({ productId: item.productId.trim(), quantity: item.quantity });
   }
 
   const expectedPricing = parseCheckoutPreviewResponse(body.expectedPricing);
   if (!expectedPricing || !checkoutPreviewMatchesCart(expectedPricing, items)) {
-    return { ok: false, message: '예상 결제 금액 형식이 올바르지 않습니다.' };
+    return { ok: false, message: '예상 결제 금액 형식이 올바르지 않아요.' };
   }
 
   const voucherItemIds = body.voucherItemIds ?? [];
   if (!Array.isArray(voucherItemIds) || voucherItemIds.length > MAX_VOUCHERS
     || voucherItemIds.some((id) => typeof id !== 'string' || !id.trim() || id.length > 200)
     || new Set(voucherItemIds).size !== voucherItemIds.length) {
-    return { ok: false, message: '교환권 형식이 올바르지 않습니다.' };
+    return { ok: false, message: '교환권 형식이 올바르지 않아요.' };
   }
 
   return {

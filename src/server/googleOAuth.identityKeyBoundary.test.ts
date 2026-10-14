@@ -42,7 +42,7 @@ const SESSION: GoogleSession = {
   name: 'Synthetic Teacher',
   issuedAt: NOW,
 };
-const KEY_ERROR = 'OAuth 쿠키 암호화를 위한 AUTH_SECRET 또는 GOOGLE_CLIENT_SECRET 환경변수가 필요합니다.';
+const KEY_ERROR = 'OAuth 쿠키 암호화를 위한 AUTH_SECRET 또는 GOOGLE_CLIENT_SECRET 환경변수가 필요해요.';
 const ENV_KEYS = [
   'AUTH_SECRET',
   'GOOGLE_CLIENT_SECRET',

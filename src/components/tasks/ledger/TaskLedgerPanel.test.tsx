@@ -246,7 +246,7 @@ describe('task details', () => {
     expect(server.writes('POST /repeat')[0].body).toEqual({ operationId: expect.stringMatching(UUID), taskIds: ['task-1'],
       repeat: { recurrence: { type: 'WEEKLY', time: '08:30', weekdays: [1, 3] }, resetStage: 'PENDING' } });
     await waitFor(() => expect((within(sheet).getByRole('button', { name: '저장' }) as HTMLButtonElement).disabled).toBe(true));
-    expect(within(sheet).getAllByText('매주 월·수 오전 8:30 · 미완료로 초기화').length).toBeGreaterThan(0);
+    expect(within(sheet).getAllByText('매주 월, 수 오전 8:30, 미완료로 초기화').length).toBeGreaterThan(0);
     expect(within(sheet).queryByText(/저장하면 다음 초기화/)).toBeNull();
   });
 
@@ -260,12 +260,12 @@ describe('task details', () => {
     const sheet = await openTask();
     fireEvent.click(within(sheet).getByRole('button', { name: '수학 익힘책 기록 보기' }));
     const dialog = await screen.findByRole('dialog', { name: '과제 기록' });
-    expect(await within(dialog).findByText('김민준 · 완료 가능 → 완료 · 은행에서 완료 (+120원)')).toBeTruthy();
-    expect(await within(dialog).findByText('이서연 · 미부여 → 미완료 · QR')).toBeTruthy();
-    expect(within(dialog).getAllByRole('heading', { level: 3 }).map((node) => node.textContent)).toEqual(['오늘 · 10월 6일(화)', '10월 4일(일)']);
+    expect(await within(dialog).findByText('김민준, 완료 가능 → 완료, 은행에서 완료 (+120원)')).toBeTruthy();
+    expect(await within(dialog).findByText('이서연, 미부여 → 미완료, QR')).toBeTruthy();
+    expect(within(dialog).getAllByRole('heading', { level: 3 }).map((node) => node.textContent)).toEqual(['오늘, 10월 6일(화)', '10월 4일(일)']);
     fireEvent.change(within(dialog).getByLabelText('기록 학생 고르기'), { target: { value: 'S2' } });
-    expect(within(dialog).queryByText(/^김민준 ·/)).toBeNull();
-    expect(await within(dialog).findByText('이서연 · 미부여 → 미완료 · QR')).toBeTruthy();
+    expect(within(dialog).queryByText(/^김민준,/)).toBeNull();
+    expect(await within(dialog).findByText('이서연, 미부여 → 미완료, QR')).toBeTruthy();
     expect(server.calls.some((call) => call.method === 'GET' && call.path === '/tasks/task-1/history')).toBe(true);
   });
 });
@@ -547,7 +547,7 @@ describe('Padlet links', () => {
     expect(server.writes('POST /padlet/links')[0].body).toEqual({ taskIds: ['task-1'], address: ADDRESS, sectionId: 'sec_class' });
     expect(screen.getByText('패들렛 ‘5-6 칭찬 게시판’에 연결했어요. 이미 올라온 글로 1명이 완료 가능이 됐어요.')).toBeTruthy();
     expect(within(sheet).getByText('‘우리 반’ 칸에 올린 글만 세요.')).toBeTruthy();
-    expect(within(screen.getAllByTestId('task-row')[0]).getByText('패들렛: 5-6 칭찬 게시판 · 우리 반')).toBeTruthy();
+    expect(within(screen.getAllByTestId('task-row')[0]).getByText('패들렛: 5-6 칭찬 게시판, 우리 반')).toBeTruthy();
   });
 
   it('lists recent posts and gives a task to a student who posted without having it', async () => {

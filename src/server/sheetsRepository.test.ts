@@ -1746,7 +1746,7 @@ describe('sheets repository', () => {
     await expect(updateStudentDetailsBatchWithBalanceTransactions(store, [
       { ...updates[0], name: '충돌 이름' },
       updates[1],
-    ], operationId)).rejects.toThrow('학생 명단 저장 거래의 무결성이 일치하지 않아 수동 조정이 필요합니다.');
+    ], operationId)).rejects.toThrow('학생 명단 저장 거래의 무결성이 일치하지 않아 수동 조정이 필요해요.');
     expect(writes).toHaveLength(1);
   });
 
@@ -1806,7 +1806,7 @@ describe('sheets repository', () => {
     }
 
     await expect(updateStudentDetailsBatchWithBalanceTransactions(store, updates, operationId))
-      .rejects.toThrow('학생 명단 저장 거래의 무결성이 일치하지 않아 수동 조정이 필요합니다.');
+      .rejects.toThrow('학생 명단 저장 거래의 무결성이 일치하지 않아 수동 조정이 필요해요.');
   });
 
   it('batch updates students through one store call', async () => {
@@ -2143,7 +2143,7 @@ describe('sheets repository', () => {
       operationId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
       productId: 'P999',
       expectedProductVersion: 1,
-    })).rejects.toThrow('상품을 찾을 수 없습니다.');
+    })).rejects.toThrow('상품을 찾을 수 없어요.');
     expect(store.applyAtomicMutation).not.toHaveBeenCalled();
   });
 
@@ -2923,7 +2923,7 @@ describe('sheets repository', () => {
         return sheetRows[sheetName];
       },
     };
-    await expect(getTasks(badHeader)).rejects.toThrow('Settings 시트에 필수 컬럼이 없습니다');
+    await expect(getTasks(badHeader)).rejects.toThrow('Settings 시트에 필수 컬럼이 없어요');
   });
 
   it('creates task headers and appends a new task row', async () => {
@@ -2964,7 +2964,7 @@ describe('sheets repository', () => {
     const rejected = results.filter((result) => result.status === 'rejected');
     expect(rejected).toHaveLength(1);
     expect((rejected[0] as PromiseRejectedResult).reason).toEqual(expect.objectContaining({
-      message: '이미 존재하는 과제 ID입니다.',
+      message: '이미 존재하는 과제 ID예요.',
     }));
     expect(rows.filter((row) => row[0] === 'taskId')).toHaveLength(1);
     expect(rows.filter((row) => row[0] === 'T-RACE')).toHaveLength(1);
@@ -3015,7 +3015,7 @@ describe('sheets repository', () => {
     await expect(createTask(store as never, {
       taskId: 'B', title: 'B', description: '', reward: 1, isActive: true, sortOrder: 2,
       prerequisiteTaskId: 'MISSING',
-    })).rejects.toThrow('찾을 수 없습니다');
+    })).rejects.toThrow('찾을 수 없어요');
     expect(migrationWrite).not.toHaveBeenCalled();
     expect(store.appendRow).not.toHaveBeenCalled();
   });
@@ -3026,7 +3026,7 @@ describe('sheets repository', () => {
       title: 'A', description: '', reward: 1, isActive: true, sortOrder: 1, allowedStudentIds: [],
       prerequisiteTaskId: 'MISSING',
       schedule: { timeZone: 'Asia/Seoul', recurrence: { type: 'DAILY', time: '09:00' }, resetCompletionOnCycle: true, resetAssignmentOnCycle: false },
-    })).rejects.toThrow('찾을 수 없습니다');
+    })).rejects.toThrow('찾을 수 없어요');
     expect(migrationWrite).not.toHaveBeenCalled();
     expect(store.updateCells).not.toHaveBeenCalled();
   });
@@ -3216,7 +3216,7 @@ describe('sheets repository', () => {
 
     await expect(createTask(store, {
       taskId: 'T-PARTIAL', title: '불완전 헤더', description: '', reward: 1, isActive: true, sortOrder: 1,
-    })).rejects.toThrow('Tasks 시트의 versioned schedule 헤더가 불완전합니다.');
+    })).rejects.toThrow('Tasks 시트의 versioned schedule 헤더가 불완전해요.');
     expect(appends).toBe(0);
   });
 
@@ -3232,7 +3232,7 @@ describe('sheets repository', () => {
       },
     };
 
-    await expect(getTasks(reader)).rejects.toThrow('Tasks 시트의 versioned schedule 헤더가 불완전합니다.');
+    await expect(getTasks(reader)).rejects.toThrow('Tasks 시트의 versioned schedule 헤더가 불완전해요.');
   });
 
   it('fails closed when the only normalized versioned schedule header is duplicated', async () => {
@@ -3244,7 +3244,7 @@ describe('sheets repository', () => {
       },
     };
 
-    await expect(getTasks(reader)).rejects.toThrow('Tasks 시트의 versioned schedule 헤더가 불완전합니다.');
+    await expect(getTasks(reader)).rejects.toThrow('Tasks 시트의 versioned schedule 헤더가 불완전해요.');
   });
 
   it('recognizes a complete whitespace-padded versioned header and writes values in its live order', async () => {
@@ -3321,9 +3321,9 @@ describe('sheets repository', () => {
       async appendRow(_sheetName: string, values: string[]) { appends.push(values); },
     };
 
-    await expect(getSheetSettings(store)).rejects.toThrow('Settings 시트에 필수 컬럼이 없습니다');
+    await expect(getSheetSettings(store)).rejects.toThrow('Settings 시트에 필수 컬럼이 없어요');
     await expect(saveSheetSetting(store, { key: 'existing', value: 'updated' }))
-      .rejects.toThrow('Settings 시트에 필수 컬럼이 없습니다');
+      .rejects.toThrow('Settings 시트에 필수 컬럼이 없어요');
     expect(appends).toEqual([]);
   });
 
@@ -3612,7 +3612,7 @@ describe('sheets repository', () => {
       'T-SERIAL',
       scheduleUpdate({ type: 'DAILY', time: '09:00' }),
       '2026-08-25T09:00:00.000Z',
-    )).rejects.toThrow(`과제 일정 데이터가 손상되었습니다 (${warningCode}). 일정을 먼저 복구해 주세요.`);
+    )).rejects.toThrow(`과제 일정 데이터가 손상됐어요 (${warningCode}). 일정을 먼저 복구해 주세요.`);
     expect(migrationWrite).not.toHaveBeenCalled();
     expect(taskWrite).not.toHaveBeenCalled();
     expect(store.updateCell).not.toHaveBeenCalled();
@@ -3634,28 +3634,28 @@ describe('sheets repository', () => {
     });
     const duplicate = legacyRecurringStore(['T1']);
     await expect(updateTaskDetailsBatch(duplicate.store as never, [scheduled('T1'), scheduled('T1')]))
-      .rejects.toThrow('중복된 과제 ID가 있습니다: T1');
+      .rejects.toThrow('중복된 과제 ID가 있어요: T1');
     expect(duplicate.migrationWrite).not.toHaveBeenCalled();
 
     const missing = legacyRecurringStore(['T1']);
     await expect(updateTaskDetailsBatch(missing.store as never, [scheduled('missing')]))
-      .rejects.toThrow('과제를 찾을 수 없습니다: missing');
+      .rejects.toThrow('과제를 찾을 수 없어요: missing');
     expect(missing.migrationWrite).not.toHaveBeenCalled();
   });
 
   it('validates reset and delete targets before recurring migration writes', async () => {
     const reset = legacyRecurringStore(['T1']);
     await expect(resetTaskCompletionsBatch(reset.store as never, ['missing']))
-      .rejects.toThrow('과제를 찾을 수 없습니다: missing');
+      .rejects.toThrow('과제를 찾을 수 없어요: missing');
     expect(reset.migrationWrite).not.toHaveBeenCalled();
 
     const singleDelete = legacyRecurringStore(['T1']);
-    await expect(deleteTask(singleDelete.store as never, 'missing')).rejects.toThrow('과제를 찾을 수 없습니다.');
+    await expect(deleteTask(singleDelete.store as never, 'missing')).rejects.toThrow('과제를 찾을 수 없어요.');
     expect(singleDelete.migrationWrite).not.toHaveBeenCalled();
 
     const batchDelete = legacyRecurringStore(['T1']);
     await expect(deleteTasksBatch(batchDelete.store as never, ['missing']))
-      .rejects.toThrow('과제를 찾을 수 없습니다: missing');
+      .rejects.toThrow('과제를 찾을 수 없어요: missing');
     expect(batchDelete.migrationWrite).not.toHaveBeenCalled();
   });
 
@@ -4024,7 +4024,7 @@ describe('sheets repository', () => {
 
     await expect(resetTaskCompletionsBatch(
       collisionFixture.store as never, collisionFixture.taskIds, { operationId },
-    )).rejects.toThrow('과제 완료 초기화 작업이 충돌하거나 손상되었습니다.');
+    )).rejects.toThrow('과제 완료 초기화 작업이 충돌하거나 손상됐어요.');
     expect(collisionFixture.appendRows).not.toHaveBeenCalled();
   });
 
@@ -4167,7 +4167,7 @@ describe('sheets repository', () => {
     fixture.appendRows.mockClear();
 
     await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId }))
-      .rejects.toThrow('과제 완료 초기화 작업이 충돌하거나 손상되었습니다.');
+      .rejects.toThrow('과제 완료 초기화 작업이 충돌하거나 손상됐어요.');
     expect(fixture.appendRows).not.toHaveBeenCalled();
   });
 
@@ -4177,7 +4177,7 @@ describe('sheets repository', () => {
     await resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId });
 
     await expect(resetTaskCompletionsBatch(fixture.store as never, [fixture.taskIds[0]], { operationId }))
-      .rejects.toThrow('과제 완료 초기화 작업이 충돌하거나 손상되었습니다.');
+      .rejects.toThrow('과제 완료 초기화 작업이 충돌하거나 손상됐어요.');
     expect(fixture.appendRows).toHaveBeenCalledTimes(1);
   });
 
@@ -4203,7 +4203,7 @@ describe('sheets repository', () => {
     fixture.appendRows.mockClear();
 
     await expect(resetTaskCompletionsBatch(fixture.store as never, [fixture.taskIds[0]], { operationId }))
-      .rejects.toThrow('과제 완료 초기화 작업이 충돌하거나 손상되었습니다.');
+      .rejects.toThrow('과제 완료 초기화 작업이 충돌하거나 손상됐어요.');
     expect(fixture.appendRows).not.toHaveBeenCalled();
   });
 
@@ -4231,7 +4231,7 @@ describe('sheets repository', () => {
     corrupt(fixture.rows.TaskCompletions, fixture.rows.TaskCompletions[0]);
 
     await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId }))
-      .rejects.toThrow('과제 완료 초기화 작업이 충돌하거나 손상되었습니다.');
+      .rejects.toThrow('과제 완료 초기화 작업이 충돌하거나 손상됐어요.');
     expect(fixture.appendRows).toHaveBeenCalledTimes(1);
   });
 
@@ -4277,7 +4277,7 @@ describe('sheets repository', () => {
     await resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId });
 
     await expect(resetTaskCompletionsBatch(fixture.store as never, [fixture.taskIds[0]], { operationId }))
-      .rejects.toThrow('과제 완료 초기화 작업이 충돌하거나 손상되었습니다.');
+      .rejects.toThrow('과제 완료 초기화 작업이 충돌하거나 손상됐어요.');
     expect(fixture.appendRows).toHaveBeenCalledTimes(1);
   });
 
@@ -4314,7 +4314,7 @@ describe('sheets repository', () => {
     fixture.appendRows.mockClear();
 
     await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId }))
-      .rejects.toThrow('과제 완료 초기화 작업이 충돌하거나 손상되었습니다.');
+      .rejects.toThrow('과제 완료 초기화 작업이 충돌하거나 손상됐어요.');
     expect(fixture.appendRows).not.toHaveBeenCalled();
   });
 
@@ -4328,7 +4328,7 @@ describe('sheets repository', () => {
     fixture.appendRows.mockClear();
 
     await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds, { operationId }))
-      .rejects.toThrow('과제 완료 초기화 작업이 충돌하거나 손상되었습니다.');
+      .rejects.toThrow('과제 완료 초기화 작업이 충돌하거나 손상됐어요.');
     expect(fixture.appendRows).not.toHaveBeenCalled();
   });
 
@@ -4387,7 +4387,7 @@ describe('sheets repository', () => {
     fixture.rows[sheetName][1][header.indexOf(columnName)] = 'malformed';
 
     await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds))
-      .rejects.toThrow('과제 완료 초기화 데이터 무결성을 확인할 수 없습니다.');
+      .rejects.toThrow('과제 완료 초기화 데이터 무결성을 확인할 수 없어요.');
     expect(fixture.appendRows).not.toHaveBeenCalled();
   });
 
@@ -4396,7 +4396,7 @@ describe('sheets repository', () => {
     fixture.rows.Students.splice(1, 1);
 
     await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds))
-      .rejects.toThrow('과제 완료 초기화 데이터 무결성을 확인할 수 없습니다.');
+      .rejects.toThrow('과제 완료 초기화 데이터 무결성을 확인할 수 없어요.');
     expect(fixture.appendRows).not.toHaveBeenCalled();
   });
 
@@ -4443,7 +4443,7 @@ describe('sheets repository', () => {
     fixture.rows.Tasks[1][taskHeader.indexOf('recurrenceTime')] = '00:00';
 
     await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds))
-      .rejects.toThrow('한 번에 초기화할 수 있는 완료 내역은 250행까지입니다.');
+      .rejects.toThrow('한 번에 초기화할 수 있는 완료 내역은 250행까지예요.');
     expect(fixture.appendRows).not.toHaveBeenCalled();
   });
 
@@ -4468,7 +4468,7 @@ describe('sheets repository', () => {
     const uuid = vi.spyOn(crypto, 'randomUUID').mockReturnValue('collision' as never);
 
     await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds))
-      .rejects.toThrow('과제 완료 초기화 데이터 무결성을 확인할 수 없습니다.');
+      .rejects.toThrow('과제 완료 초기화 데이터 무결성을 확인할 수 없어요.');
     expect(fixture.appendRows).not.toHaveBeenCalled();
     expect(uuid).toHaveBeenCalledTimes(8);
     uuid.mockRestore();
@@ -4482,7 +4482,7 @@ describe('sheets repository', () => {
       .mockReturnValueOnce('new-id' as never);
 
     await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds))
-      .rejects.toThrow('과제 완료 초기화 저장 결과를 확인할 수 없습니다.');
+      .rejects.toThrow('과제 완료 초기화 저장 결과를 확인할 수 없어요.');
     expect(fixture.appendRows.mock.calls[0][1][0][0]).toBe('TC-new-id');
     uuid.mockRestore();
   });
@@ -4526,14 +4526,14 @@ describe('sheets repository', () => {
     });
 
     await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds))
-      .rejects.toThrow('과제 완료 초기화 저장 결과를 확인할 수 없습니다.');
+      .rejects.toThrow('과제 완료 초기화 저장 결과를 확인할 수 없어요.');
   });
 
   it('fails closed when response-loss reconciliation observes the planned ID with a different payload', async () => {
     const fixture = resetBatchStore({ taskCount: 1, studentsPerTask: 1, appendOutcome: 'wrong-payload-error' });
 
     const operation = resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds);
-    await expect(operation).rejects.toThrow('과제 완료 초기화 저장 결과를 확인할 수 없습니다.');
+    await expect(operation).rejects.toThrow('과제 완료 초기화 저장 결과를 확인할 수 없어요.');
     await expect(operation).rejects.not.toThrow(/provider|range|TaskCompletions!/i);
     expect(fixture.getRowsFresh).toHaveBeenCalledTimes(1);
   });
@@ -4544,7 +4544,7 @@ describe('sheets repository', () => {
       const fixture = resetBatchStore({ appendOutcome });
 
       const operation = resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds);
-      await expect(operation).rejects.toThrow('과제 완료 초기화 저장 결과를 확인할 수 없습니다.');
+      await expect(operation).rejects.toThrow('과제 완료 초기화 저장 결과를 확인할 수 없어요.');
       await expect(operation).rejects.not.toThrow(/provider|range|TaskCompletions!/i);
       expect(fixture.appendRows).toHaveBeenCalledTimes(1);
       expect(fixture.getRowsFresh).toHaveBeenCalledTimes(1);
@@ -4557,7 +4557,7 @@ describe('sheets repository', () => {
     const fixture = resetBatchStore({ appendOutcome: 'missing' });
 
     await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds))
-      .rejects.toThrow('현재 Sheets 저장소가 완료 내역 일괄 추가를 지원하지 않습니다.');
+      .rejects.toThrow('현재 Sheets 저장소가 완료 내역 일괄 추가를 지원하지 않아요.');
     expect(fixture.appendRows).not.toHaveBeenCalled();
     expect(fixture.appendRow).not.toHaveBeenCalled();
     expect(fixture.store.updateCell).not.toHaveBeenCalled();
@@ -4567,7 +4567,7 @@ describe('sheets repository', () => {
     const fixture = resetBatchStore({ taskCount: 1, studentsPerTask: 251 });
 
     await expect(resetTaskCompletionsBatch(fixture.store as never, fixture.taskIds))
-      .rejects.toThrow('한 번에 초기화할 수 있는 완료 내역은 250행까지입니다.');
+      .rejects.toThrow('한 번에 초기화할 수 있는 완료 내역은 250행까지예요.');
     expect(fixture.appendRows).not.toHaveBeenCalled();
     expect(fixture.appendRow).not.toHaveBeenCalled();
     expect(fixture.store.updateCell).not.toHaveBeenCalled();
@@ -4616,7 +4616,7 @@ describe('sheets repository', () => {
     ]);
     expect(cellUpdates).toContainEqual({ rowNumber: 2, columnName: 'allowedStudentIds', value: 'S001' });
 
-    await expect(completeTaskForStudent(withRecurringMigration(store) as never, 'T010', 'S002')).rejects.toThrow('허가되지 않은 과제입니다.');
+    await expect(completeTaskForStudent(withRecurringMigration(store) as never, 'T010', 'S002')).rejects.toThrow('허가되지 않은 과제예요.');
     expect(appended.some((row) => row.sheetName === 'TaskCompletions')).toBe(false);
   });
 
@@ -4754,7 +4754,7 @@ describe('sheets repository', () => {
       async appendRow(sheetName: string, values: string[]) { appended.push({ sheetName, values }); },
     };
 
-    await expect(completeTaskForStudent(withRecurringMigration(store) as never, 'T010', 'S002')).rejects.toThrow('허가되지 않은 과제입니다.');
+    await expect(completeTaskForStudent(withRecurringMigration(store) as never, 'T010', 'S002')).rejects.toThrow('허가되지 않은 과제예요.');
     await expect(completeTaskForStudent(withRecurringMigration(store) as never, 'T010', 'S001')).resolves.toMatchObject({ student: { studentId: 'S001' } });
     expect(appended.some((row) => row.sheetName === 'TaskCompletions')).toBe(true);
   });
@@ -4774,7 +4774,7 @@ describe('sheets repository', () => {
       async appendRow() {},
     };
 
-    await expect(completeTaskForStudent(withRecurringMigration(fakeStore) as never, 'T099', 'S001')).rejects.toThrow('부여된 학생이 없습니다.');
+    await expect(completeTaskForStudent(withRecurringMigration(fakeStore) as never, 'T099', 'S001')).rejects.toThrow('부여된 학생이 없어요.');
   });
 
   it('rejects expired completion before any balance or ledger mutation', async () => {
@@ -4885,7 +4885,7 @@ describe('sheets repository', () => {
       updateCell: writes, updateCells: writes, appendRow: writes,
     };
 
-    await expect(completeTaskForStudent(withRecurringMigration(store as never) as never, 'MAIN', 'S001')).rejects.toThrow("선행 과제 '먼저'은(는) 현재 완료할 수 없습니다");
+    await expect(completeTaskForStudent(withRecurringMigration(store as never) as never, 'MAIN', 'S001')).rejects.toThrow("선행 과제 '먼저'은(는) 현재 완료할 수 없어요");
     expect(writes).not.toHaveBeenCalled();
   });
 
@@ -5015,7 +5015,7 @@ describe('sheets repository', () => {
       async updateHeaderRow() {},
       async appendRow() {},
     };
-    await expect(completeTaskForStudent(withRecurringMigration(fakeStore) as never, 'T001', 'S001')).rejects.toThrow('이미 완료한 과제입니다.');
+    await expect(completeTaskForStudent(withRecurringMigration(fakeStore) as never, 'T001', 'S001')).rejects.toThrow('이미 완료한 과제예요.');
   });
 
 });

@@ -334,7 +334,7 @@ export function formatAssignmentFailures(
     const reason = failure.code === 'OPERATION_FAILED'
       ? '작업 실패'
       : failure.code === 'NOT_ATTEMPTED' ? '미처리' : `작업 실패 (${failure.code ?? 'UNKNOWN'})`;
-    return `${taskLabel} · ${studentLabel}: ${reason}`;
+    return `${taskLabel} ${studentLabel}: ${reason}`;
   }).join(', ');
 }
 

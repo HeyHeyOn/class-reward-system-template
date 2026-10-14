@@ -90,7 +90,7 @@ describe('DELETE /api/products/[productId]', () => {
       const result = await DELETE(request, { params });
 
       expect(result.status).toBe(400);
-      await expect(result.json()).resolves.toEqual({ error: '상품 삭제 요청 형식이 올바르지 않습니다.' });
+      await expect(result.json()).resolves.toEqual({ error: '상품 삭제 요청 형식이 올바르지 않아요.' });
       expect(json).not.toHaveBeenCalled();
       expect(then).not.toHaveBeenCalled();
       expect(createConfiguredProductDeletion).not.toHaveBeenCalled();
@@ -149,7 +149,7 @@ describe('DELETE /api/products/[productId]', () => {
     const params = { then } as unknown as Promise<{ productId: string }>;
     const result = await remove(body, 'P-1', 'application/json', params).response;
     expect(result.status).toBe(400);
-    await expect(result.json()).resolves.toEqual({ error: '상품 삭제 요청 형식이 올바르지 않습니다.' });
+    await expect(result.json()).resolves.toEqual({ error: '상품 삭제 요청 형식이 올바르지 않아요.' });
     expect(then).not.toHaveBeenCalled();
     expect(createConfiguredProductDeletion).not.toHaveBeenCalled();
     expect(removeCommand).not.toHaveBeenCalled();
@@ -186,7 +186,7 @@ describe('DELETE /api/products/[productId]', () => {
     const result = await DELETE(request, { params });
 
     expect(result.status).toBe(400);
-    await expect(result.json()).resolves.toEqual({ error: '상품 삭제 요청 형식이 올바르지 않습니다.' });
+    await expect(result.json()).resolves.toEqual({ error: '상품 삭제 요청 형식이 올바르지 않아요.' });
     expect(then).not.toHaveBeenCalled();
     expect(createConfiguredProductDeletion).not.toHaveBeenCalled();
   });
@@ -203,7 +203,7 @@ describe('DELETE /api/products/[productId]', () => {
       const result = await remove(undefined, 'P-1', 'application/json', params).response;
 
       expect(result.status).toBe(500);
-      await expect(result.json()).resolves.toEqual({ error: '상품을 삭제하지 못했습니다.' });
+      await expect(result.json()).resolves.toEqual({ error: '상품을 삭제하지 못했어요.' });
       expect(errorLog).not.toHaveBeenCalled();
     },
   );
@@ -217,7 +217,7 @@ describe('DELETE /api/products/[productId]', () => {
       removeCommand.mockResolvedValueOnce(commandResult);
       const result = await remove().response;
       expect(result.status).toBe(500);
-      await expect(result.json()).resolves.toEqual({ error: '상품을 삭제하지 못했습니다.' });
+      await expect(result.json()).resolves.toEqual({ error: '상품을 삭제하지 못했어요.' });
     }
     expect(hook).not.toHaveBeenCalled();
   });

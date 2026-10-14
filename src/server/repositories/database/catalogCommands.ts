@@ -70,14 +70,14 @@ export type DeactivateProductsAdminBatchInput = Readonly<{
 
 export class ProductBatchDeletionInputError extends Error {
   constructor() {
-    super('올바른 상품 삭제 요청이 아닙니다. 새로고침해 주세요.');
+    super('올바른 상품 삭제 요청이 아니에요. 새로고침해 주세요.');
     this.name = 'ProductBatchDeletionInputError';
   }
 }
 
 export class ProductBatchDeletionError extends Error {
   constructor(readonly code: 'PRODUCT_NOT_FOUND' | 'PRODUCT_DELETED') {
-    super('상품 목록이 변경되었습니다. 새로고침해 주세요.');
+    super('상품 목록이 변경됐어요. 새로고침해 주세요.');
     this.name = 'ProductBatchDeletionError';
   }
 }

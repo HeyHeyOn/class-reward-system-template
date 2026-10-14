@@ -159,7 +159,7 @@ export function TaskEditSheet({ ledger, taskId, initialTab, opener, students, un
     if (!result.ok) { setError('reset', result.error); return; }
     board.applyTasks(result.data);
     setNested(null);
-    notify('지금 초기화 완료');
+    notify('지금 초기화했어요.');
   }
 
   async function deleteTask() {
@@ -172,7 +172,7 @@ export function TaskEditSheet({ ledger, taskId, initialTab, opener, students, un
     ledger.setSelection((current) => current.filter((id) => !result.data.includes(id)));
     void board.reload();
     ledger.close();
-    notify('과제 삭제 완료');
+    notify('과제를 삭제했어요.');
   }
 
   const footer = !live ? <Button variant="ghost" className="ml-auto" onClick={() => ledger.close()}>닫기</Button>
@@ -223,7 +223,7 @@ export function TaskEditSheet({ ledger, taskId, initialTab, opener, students, un
           <div className="space-y-6">
             <ErrorNote message={errors.repeat} />
             <dl className="divide-y divide-[var(--crs-line)] rounded-[var(--crs-radius)] border border-[var(--crs-line)] px-4">
-              <MetaRow label="지금 설정">{recurrenceSummary(live.repeat.recurrence)}{live.repeat.recurrence.type !== 'NONE' ? ` · ${resetStageSummary(live.repeat.resetStage)}` : ''}</MetaRow>
+              <MetaRow label="지금 설정">{recurrenceSummary(live.repeat.recurrence)}{live.repeat.recurrence.type !== 'NONE' ? `, ${resetStageSummary(live.repeat.resetStage)}` : ''}</MetaRow>
               <MetaRow label="다음 초기화">{live.repeat.nextResetAt ? formatInstant(live.repeat.nextResetAt, board.now) : '없음'}</MetaRow>
               {live.repeat.lastResetAt ? <MetaRow label="마지막 초기화">{formatInstant(live.repeat.lastResetAt, board.now)}</MetaRow> : null}
             </dl>

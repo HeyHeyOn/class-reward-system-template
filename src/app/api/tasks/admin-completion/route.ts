@@ -11,5 +11,5 @@ export async function POST() {
   if (frozen) return frozen;
   const unsupported = legacyTaskWriterRefusal();
   if (unsupported) return unsupported;
-  return Response.json({ code: 'ADMIN_REQUIRED', error: '학급 관리자 로그인이 필요합니다.' }, { status: 401 });
+  return Response.json({ code: 'ADMIN_REQUIRED', error: '학급 관리자 로그인이 필요해요.' }, { status: 401 });
 }

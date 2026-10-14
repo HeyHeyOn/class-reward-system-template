@@ -149,12 +149,12 @@ export function avatarOptionLabel(part: AvatarPartKey, id: string): string | und
   return AVATAR_PARTS[part].find((option) => option.id === id)?.label;
 }
 
-/** Short Korean summary, e.g. "보라 배경 · 고양이 · 반짝 눈 · 활짝 · 왕관". */
+/** Short Korean summary, e.g. "보라 배경, 고양이, 반짝 눈, 활짝, 왕관". */
 export function describeAvatar(config: AvatarConfig): string {
   const label = (part: AvatarPartKey) => avatarOptionLabel(part, config[part]) ?? '';
   const parts = [`${label('background')} 배경`, label('face'), label('eyes'), label('mouth')];
   if (config.accessory !== 'none') parts.push(label('accessory'));
-  return parts.filter(Boolean).join(' · ');
+  return parts.filter(Boolean).join(', ');
 }
 
 /** Stable default for a new user: FNV-1a hash of the seed picks a preset. */

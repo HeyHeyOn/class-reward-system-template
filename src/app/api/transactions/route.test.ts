@@ -60,7 +60,7 @@ describe('GET /api/transactions configured authority', () => {
     vi.mocked(createConfiguredTransactionReader).mockRejectedValueOnce('failure');
     const genericResponse = await GET(new Request('https://example.test/api/transactions'));
     expect(genericResponse.status).toBe(500);
-    await expect(genericResponse.json()).resolves.toEqual({ error: '결제 내역을 불러오지 못했습니다.' });
+    await expect(genericResponse.json()).resolves.toEqual({ error: '결제 내역을 불러오지 못했어요.' });
   });
 
   it('uses the bounded reader only for the explicit page contract', async () => {

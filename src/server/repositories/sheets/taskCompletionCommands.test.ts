@@ -347,7 +347,7 @@ describe('cycle-aware completion command', () => {
     const retry = await mutateTaskCompletion({ ...input, completed: true, source: 'ADMIN' });
     const reset = await mutateTaskCompletion({ ...input, completed: false, source: 'ADMIN' });
     const bank = await mutateTaskCompletion({ ...input, completed: true, source: 'BANK' });
-    await expect(mutateTaskCompletion({ ...input, completed: true, source: 'BANK' })).rejects.toThrow('이미 완료한 과제입니다.');
+    await expect(mutateTaskCompletion({ ...input, completed: true, source: 'BANK' })).rejects.toThrow('이미 완료한 과제예요.');
     expect(admin).toMatchObject({ changed: true, completion: { source: 'ADMIN', reward: 0, balanceBefore: 10, balanceAfter: 10 } });
     expect(retry).toMatchObject({ changed: false });
     expect(reset).toMatchObject({ changed: true, completion: { source: 'ADMIN_RESET', reward: 0 } });
@@ -360,10 +360,10 @@ describe('cycle-aware completion command', () => {
     const store = new Store();
     const input = { store: store as never, task, taskRowNumber: 2, student, studentRowNumber: 2, now: NOW };
     await mutateTaskCompletion({ ...input, completed: true, source: 'BANK' });
-    await expect(mutateTaskCompletion({ ...input, completed: true, source: 'BANK' })).rejects.toThrow('이미 완료한 과제입니다.');
+    await expect(mutateTaskCompletion({ ...input, completed: true, source: 'BANK' })).rejects.toThrow('이미 완료한 과제예요.');
     await mutateTaskCompletion({ ...input, completed: false, source: 'ADMIN' });
     const second = await mutateTaskCompletion({ ...input, completed: true, source: 'BANK' });
-    await expect(mutateTaskCompletion({ ...input, completed: true, source: 'BANK' })).rejects.toThrow('이미 완료한 과제입니다.');
+    await expect(mutateTaskCompletion({ ...input, completed: true, source: 'BANK' })).rejects.toThrow('이미 완료한 과제예요.');
     expect(second).toMatchObject({ balanceAfter: 20, completion: { balanceBefore: 15, balanceAfter: 20, reward: 5 } });
     expect(store.rows.Students[1][2]).toBe('20');
     expect(store.rows.Transactions).toHaveLength(3);
@@ -383,7 +383,7 @@ describe('cycle-aware completion command', () => {
     const store = new Store(carryTask);
     const input = { store: store as never, task: carryTask, taskRowNumber: 2, student, studentRowNumber: 2 };
     await mutateTaskCompletion({ ...input, completed: true, source: 'BANK', now: NOW });
-    await expect(mutateTaskCompletion({ ...input, completed: true, source: 'BANK', now: NEXT })).rejects.toThrow('이미 완료한 과제입니다.');
+    await expect(mutateTaskCompletion({ ...input, completed: true, source: 'BANK', now: NEXT })).rejects.toThrow('이미 완료한 과제예요.');
     expect(completionRecords(store).at(-1)).toMatchObject({ source: 'CARRY_FORWARD', reward: 0, balanceBefore: 15, balanceAfter: 15, status: 'SUCCESS' });
     expect(store.rows.Students[1][2]).toBe('15');
     expect(store.rows.Transactions).toHaveLength(2);
@@ -400,7 +400,7 @@ describe('cycle-aware completion command', () => {
     const store = new Store(changedTask);
     const input = { store: store as never, task: changedTask, taskRowNumber: 2, student, studentRowNumber: 2 };
     await mutateTaskCompletion({ ...input, completed: true, source: 'BANK', now: NOW });
-    await expect(mutateTaskCompletion({ ...input, completed: true, source: 'BANK', now: '2026-08-26T00:00:00.000Z' })).rejects.toThrow('이미 완료한 과제입니다.');
+    await expect(mutateTaskCompletion({ ...input, completed: true, source: 'BANK', now: '2026-08-26T00:00:00.000Z' })).rejects.toThrow('이미 완료한 과제예요.');
     expect(completionRecords(store).at(-1)).toMatchObject({ source: 'CARRY_FORWARD', reward: 0, ruleVersion: 2, timeZone: 'Asia/Seoul' });
     expect(store.rows.Transactions).toHaveLength(2);
   });
@@ -412,7 +412,7 @@ describe('cycle-aware completion command', () => {
     };
     const store = new Store(permanentTask);
     store.rows.TaskCompletions.push(completionRow({ completionId: 'OLD', timestamp: '2026-08-21T00:00:00.000Z', taskId: 'T1', studentId: 'S1', studentName: 'Kim', reward: 5, balanceBefore: 5, balanceAfter: 10, status: 'SUCCESS', note: '' }));
-    await expect(mutateTaskCompletion({ store: store as never, task: permanentTask, taskRowNumber: 2, student, studentRowNumber: 2, completed: true, source: 'BANK', now: NOW })).rejects.toThrow('이미 완료한 과제입니다.');
+    await expect(mutateTaskCompletion({ store: store as never, task: permanentTask, taskRowNumber: 2, student, studentRowNumber: 2, completed: true, source: 'BANK', now: NOW })).rejects.toThrow('이미 완료한 과제예요.');
     expect(completionRecords(store).at(-1)).toMatchObject({ source: 'CARRY_FORWARD', reward: 0, balanceBefore: 10, balanceAfter: 10, status: 'SUCCESS' });
     expect(store.rows.Transactions).toHaveLength(1);
   });
@@ -430,7 +430,7 @@ describe('cycle-aware completion command', () => {
   it('requires a current assignment before mutating', async () => {
     const store = new Store();
     store.rows.TaskAssignments = [[...TASK_ASSIGNMENT_HEADERS]];
-    await expect(mutateTaskCompletion({ store: store as never, task: { ...task, allowedStudentIds: [] }, taskRowNumber: 2, student, studentRowNumber: 2, completed: true, source: 'BANK', now: NOW })).rejects.toThrow('부여된 학생이 없습니다.');
+    await expect(mutateTaskCompletion({ store: store as never, task: { ...task, allowedStudentIds: [] }, taskRowNumber: 2, student, studentRowNumber: 2, completed: true, source: 'BANK', now: NOW })).rejects.toThrow('부여된 학생이 없어요.');
     expect(store.updateCell).not.toHaveBeenCalled();
   });
 
@@ -474,7 +474,7 @@ describe('cycle-aware completion command', () => {
     await expect(mutateTaskCompletion({
       store: firstStore as never, task, taskRowNumber: 2, student, studentRowNumber: 2,
       completed: true, source: 'BANK', now: NOW,
-    })).rejects.toThrow('이미 완료한 과제입니다.');
+    })).rejects.toThrow('이미 완료한 과제예요.');
   });
 
   it('compensates the reward balance when the canonical completion append fails, then rewards exactly once on retry', async () => {
@@ -621,8 +621,8 @@ describe('cycle-aware completion command', () => {
     const store = completedThenUnassignedStore();
     const base = { store: store as never, task, taskRowNumber: 2, student, studentRowNumber: 2, completed: true as const, now: NOW };
 
-    await expect(mutateTaskCompletion({ ...base, source: 'BANK' })).rejects.toThrow('부여된 학생이 없습니다.');
-    await expect(mutateTaskCompletion({ ...base, source: 'ADMIN' })).rejects.toThrow('부여된 학생이 없습니다.');
+    await expect(mutateTaskCompletion({ ...base, source: 'BANK' })).rejects.toThrow('부여된 학생이 없어요.');
+    await expect(mutateTaskCompletion({ ...base, source: 'ADMIN' })).rejects.toThrow('부여된 학생이 없어요.');
     expect(store.rows.TaskAssignments).toHaveLength(3);
   });
 

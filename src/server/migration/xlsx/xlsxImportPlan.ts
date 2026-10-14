@@ -202,7 +202,7 @@ function describeRowProblems(tab: string, headers: readonly string[], cells: rea
   const instant = (name: string, what: string, optional: boolean) => {
     const value = cell(name);
     if (optional && !value) return;
-    if (!isCanonicalInstant(value)) problems.push(`${what}(${name})의 날짜·시간 형식을 읽지 못했어요`);
+    if (!isCanonicalInstant(value)) problems.push(`${what}(${name})의 날짜, 시간 형식을 읽지 못했어요`);
   };
   if (tab === 'Students') {
     id('studentId', '학생 ID');
@@ -326,7 +326,7 @@ function scheduleText(schedule: TaskSchedule): string {
   const recurrence = schedule.recurrence;
   if (recurrence.type === 'NONE') return '반복 없음';
   if (recurrence.type === 'DAILY') return `매일 ${recurrence.time}`;
-  if (recurrence.type === 'WEEKLY') return `매주 ${recurrence.weekdays.map(day => '월화수목금토일'[day - 1]).join('·')} ${recurrence.time}`;
+  if (recurrence.type === 'WEEKLY') return `매주 ${recurrence.weekdays.map(day => '월화수목금토일'[day - 1]).join(', ')} ${recurrence.time}`;
   return `매월 ${recurrence.dayOfMonth}일 ${recurrence.time}`;
 }
 
@@ -340,10 +340,10 @@ export async function buildXlsxImportPlan(grid: XlsxWorkbookGrid, options: Reado
   const issues = new Issues();
   const now = new Date(options.now).toISOString();
   const missing = REQUIRED_TABS.filter(tab => !grid.tabs[tab]);
-  for (const tab of missing) issues.error(tab, null, `'${label(tab)}' 시트가 없어요. 예전 학급 보상 시스템 구글 시트를 통째로 .xlsx로 저장했는지 확인해 주세요.`);
+  for (const tab of missing) issues.error(tab, null, `'${label(tab)}' 시트가 없어요. 예전 구글 시트 버전의 시트를 통째로 .xlsx로 저장했는지 확인해 주세요.`);
   for (const name of grid.sheetNames) {
     if (!(DEFINITION_TABS as readonly string[]).includes(name) && !(HISTORY_TABS as readonly string[]).includes(name)) {
-      issues.warning(name, null, `'${name}' 시트는 학급 보상 시스템 시트가 아니라서 옮기지 않아요.`);
+      issues.warning(name, null, `'${name}' 시트는 구글 시트 버전의 시트가 아니라서 옮기지 않아요.`);
     }
   }
   const historyCounts = {
@@ -377,7 +377,7 @@ export async function buildXlsxImportPlan(grid: XlsxWorkbookGrid, options: Reado
     const known = new Set(KNOWN_HEADERS[tab]);
     table.headers.forEach((header, index) => {
       const name = header.trim();
-      if (name && !known.has(name)) issues.warning(tab, 1, `'${label(tab)}' 시트의 '${name}' 열은 새 학급 보상 시스템에서 쓰지 않아 옮기지 않아요.`);
+      if (name && !known.has(name)) issues.warning(tab, 1, `'${label(tab)}' 시트의 '${name}' 열은 딴쌤 클래스에서 쓰지 않아 옮기지 않아요.`);
       // Students column E may hold the old writer's exact duplicate of the status (handled below).
       const duplicateStatus = tab === 'Students' && index === 4 && headerIndexOf(table.headers, 'status') === 3
         && table.rows.every(row => !row.cells[4] || row.cells[4] === row.cells[3]);
@@ -480,8 +480,8 @@ export async function buildXlsxImportPlan(grid: XlsxWorkbookGrid, options: Reado
     issues.error(null, null, /schema version/i.test(message)
       ? "설정 시트의 schemaVersion 값은 1~4 중 하나여야 해요."
       : /exceeds|oversized|limit/i.test(message)
-        ? '학생·상품·과제 시트의 내용이 너무 많아요.'
-        : '학생·상품·설정·과제 시트의 형식을 읽지 못했어요. 첫 줄의 열 이름을 확인해 주세요.');
+        ? '학생, 상품, 과제 시트의 내용이 너무 많아요.'
+        : '학생, 상품, 설정, 과제 시트의 형식을 읽지 못했어요. 첫 줄의 열 이름을 확인해 주세요.');
     return emptyPlan();
   }
 
@@ -542,7 +542,7 @@ export async function buildXlsxImportPlan(grid: XlsxWorkbookGrid, options: Reado
     const promotionId = String(promotion.promotionId);
     const definition = promotionDefinition(promotion);
     if (!definition) {
-      issues.error('Promotions', rowOf(promotionsTable, 'promotionId', promotionId), '행사 이름·기간(시작이 끝보다 빨라야 해요)·할인 값을 확인해 주세요.');
+      issues.error('Promotions', rowOf(promotionsTable, 'promotionId', promotionId), '행사 이름, 기간(시작이 끝보다 빨라야 해요), 할인 값을 확인해 주세요.');
       continue;
     }
     promotionPlans.push({ promotionId, definition,
@@ -612,7 +612,7 @@ export async function buildXlsxImportPlan(grid: XlsxWorkbookGrid, options: Reado
     }
     const maxCompletions = maxCompletionsIndex >= 0 && tableRow ? (tableRow.cells[maxCompletionsIndex] ?? '').trim() : '';
     if (maxCompletions && maxCompletions !== '1') {
-      issues.warning('Tasks', sourceRow, '새 학급 보상 시스템에서는 과제를 회차마다 한 번씩 완료할 수 있어요. (maxCompletionsPerStudent는 옮기지 않아요)');
+      issues.warning('Tasks', sourceRow, '딴쌤 클래스에서는 과제를 회차마다 한 번씩 완료할 수 있어요. (maxCompletionsPerStudent는 옮기지 않아요)');
     }
     const ready = new Set<string>(), completed = new Set<string>(), completedUnassigned = new Set<string>();
     const parsed = parsedTasks.get(taskId);
@@ -680,7 +680,7 @@ export async function buildXlsxImportPlan(grid: XlsxWorkbookGrid, options: Reado
   if (!studentPlans.length && !issues.hasErrors) issues.error('Students', null, "학생 시트에 학생이 한 명도 없어요.");
   const historyRows = historyCounts.transactions + historyCounts.adjustments + historyCounts.taskAssignments + historyCounts.taskCompletions;
   if (historyRows) {
-    issues.warning(null, null, '잔액은 그대로 옮기고, 이전 거래·과제 기록은 옮기지 않아요. 이전 기록은 올린 원본 파일에 그대로 남아 있어요.');
+    issues.warning(null, null, '잔액은 그대로 옮기고, 이전 거래, 과제 기록은 옮기지 않아요. 이전 기록은 올린 원본 파일에 그대로 남아 있어요.');
   }
   return {
     fileDigest: options.fileDigest, settings, students: studentPlans, products: productPlans, promotions: promotionPlans,

@@ -25,7 +25,7 @@ const MAX_REQUEST_BYTES = XLSX_MAX_BYTES + 256 * 1024;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const PREVIEW_LIST_LIMIT = 500;
-const NOT_EMPTY_MESSAGE = '이미 학생·상품·과제가 있는 학급이라 가져올 수 없어요. 새 학급을 만들어 그곳에서 가져와 주세요.';
+const NOT_EMPTY_MESSAGE = '이미 학생, 상품, 과제가 있는 학급이라 가져올 수 없어요. 새 학급을 만들어 그곳에서 가져와 주세요.';
 const UNCERTAIN_MESSAGE = '가져오기 결과를 확인하지 못했어요. 같은 파일로 [가져오기]를 다시 누르면 이어서 확인해요.';
 
 function reply(status: number, body: unknown): Response {
@@ -123,7 +123,7 @@ function scheduleLabel(task: XlsxImportPlan['tasks'][number]): string {
   const recurrence = task.schedule.recurrence;
   if (recurrence.type === 'NONE') return '반복 없음';
   if (recurrence.type === 'DAILY') return `매일 ${recurrence.time}`;
-  if (recurrence.type === 'WEEKLY') return `매주 ${recurrence.weekdays.map(day => '월화수목금토일'[day - 1]).join('·')} ${recurrence.time}`;
+  if (recurrence.type === 'WEEKLY') return `매주 ${recurrence.weekdays.map(day => '월화수목금토일'[day - 1]).join(', ')} ${recurrence.time}`;
   return `매월 ${recurrence.dayOfMonth}일 ${recurrence.time}`;
 }
 

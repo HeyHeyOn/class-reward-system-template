@@ -146,12 +146,12 @@ const PADLET_RULES: TutorialStep = {
 export const TUTORIALS: readonly Tutorial[] = [
   {
     id: '0-1',
-    title: '학급 보상 시스템 한 바퀴 둘러보기',
+    title: '딴쌤 클래스 한 바퀴 둘러보기',
     goal: '처음 쓰는 선생님을 위해 꼭 필요한 화면을 메뉴에서 하나씩 찾아가며 둘러봐요. 둘러보기만 하니 아무것도 바뀌지 않아요.',
     then: '2-1',
     steps: [
       { target: '[data-testid="admin-tabs"]', area: ['@target'], peek: true, title: '처음 오셨나요?',
-        text: '**학급 보상 시스템**은 학급 화폐로 교실 매점과 은행을 운영해요. 선생님은 이 **관리자 화면**에서 학생, 상품, 과제를 정하고, 학생은 **QR 카드**로 매점에서 사고 은행에서 잔액과 과제를 봐요.',
+        text: '**딴쌤 클래스**는 학급 화폐로 교실 매점과 은행을 운영해요. 선생님은 이 **관리자 화면**에서 학생, 상품, 과제를 정하고, 학생은 **QR 카드**로 매점에서 사고 은행에서 잔액과 과제를 봐요.',
         sub: '화면은 **{menu}**에서 골라요. 꼭 필요한 화면을 차례로 찾아가 볼게요.' },
       menuStep('students', '먼저 **학생**을 등록해요. **{menu}**의 [학생]을 누르세요.'),
       { tab: 'students', target: '[data-tour="student-add"]', area: ['@header'], peek: true, title: '학생 등록',
@@ -246,7 +246,7 @@ export const TUTORIALS: readonly Tutorial[] = [
       { tab: 'settings', target: '#settings-currency', focus: true, title: '화폐 단위',
         text: '**화폐 단위**를 적으세요. 모든 금액 뒤에 붙어요.', sub: '예: 원, 별, 포인트 — 1,000원이 1,000별로 바뀌어요.' },
       { tab: 'settings', target: '[data-tour="settings-save"]', area: ['[data-tour="settings-save-bar"]'], title: '저장하기',
-        text: '[설정 저장]을 누르세요.', sub: '‘저장하지 않은 변경 사항이 있습니다’가 보이면 아직 저장 전이에요. 바꾼 것이 없으면 버튼이 흐려요.',
+        text: '[설정 저장]을 누르세요.', sub: '‘저장하지 않은 변경 사항이 있어요’가 보이면 아직 저장 전이에요. 바꾼 것이 없으면 버튼이 흐려요.',
         warn: '저장하면 매점, 은행 화면에 바로 반영돼요.' },
     ],
   },
@@ -954,7 +954,7 @@ export function tutorialAfter(tutorial: Tutorial, place: TutorialPlace): Tutoria
 
 /** The guide's table of contents (admin chapters); a section with a tutorial can be started. */
 export const TUTORIAL_CHAPTERS: ReadonlyArray<Readonly<{ no: number; title: string; items: ReadonlyArray<readonly [string, string]> }>> = [
-  { no: 0, title: '처음 시작하기', items: [['0-1', '학급 보상 시스템 한 바퀴 둘러보기']] },
+  { no: 0, title: '처음 시작하기', items: [['0-1', '딴쌤 클래스 한 바퀴 둘러보기']] },
   { no: 1, title: '시작하기', items: [['1-1', '내 학급 열기'], ['1-2', '관리자 화면 둘러보기']] },
   { no: 2, title: '학급 설정', items: [['2-1', '매점, 은행 이름과 화폐 단위 정하기'], ['2-2', '화면 색과 글꼴 바꾸기']] },
   { no: 3, title: '학생 관리', items: [['3-1', '학생 한 명씩 추가하기'], ['3-2', '엑셀로 여러 학생 한꺼번에 추가하기'], ['3-3', '학생 정보 고치기, 이용 멈추기, 삭제하기'],

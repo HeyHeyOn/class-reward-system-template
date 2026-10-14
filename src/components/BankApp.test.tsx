@@ -333,7 +333,7 @@ describe('BankApp home and history', () => {
 
   it('shows only a 내 과제 menu with a stage summary on home and opens the list from it', async () => {
     await renderLoggedIn();
-    const menu = screen.getByRole('button', { name: '내 과제, 완료 가능 1개 · 미완료 2개 · 완료 1개' });
+    const menu = screen.getByRole('button', { name: '내 과제, 완료 가능 1개, 미완료 2개, 완료 1개' });
     expect(menu.textContent).toContain('지금 완료하고 보상을 받을 수 있는 과제가 1개 있어요!');
     expect(screen.queryByRole('heading', { name: '책 10분 읽기' })).toBeNull();
 
@@ -382,7 +382,7 @@ describe('BankApp 내 과제', () => {
     state.tasks = [];
     state.loggedIn = true;
     render(<BankApp />);
-    fireEvent.click(await screen.findByRole('button', { name: '내 과제, 완료 가능 0개 · 미완료 0개 · 완료 0개' }));
+    fireEvent.click(await screen.findByRole('button', { name: '내 과제, 완료 가능 0개, 미완료 0개, 완료 0개' }));
     expect(await screen.findByText('지금 완료할 수 있는 과제가 없어요.')).toBeTruthy();
     expect(screen.getByText('기다리는 과제가 없어요.')).toBeTruthy();
     expect(screen.getByText('아직 완료한 과제가 없어요.')).toBeTruthy();
@@ -406,7 +406,7 @@ describe('BankApp 내 과제', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '홈으로 돌아가기' }));
     expect((await screen.findByTestId('bank-balance')).textContent).toBe('1,205원');
-    expect(screen.getByRole('button', { name: '내 과제, 완료 가능 1개 · 미완료 1개 · 완료 2개' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '내 과제, 완료 가능 1개, 미완료 1개, 완료 2개' })).toBeTruthy();
   });
 
   it('sends one request while a completion is still pending', async () => {

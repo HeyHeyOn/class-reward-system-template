@@ -15,7 +15,7 @@ const TARGETS: Record<ShareTarget, Readonly<{ option: string; title: string; des
 };
 const TARGET_ORDER: ShareTarget[] = ['store', 'bank', 'admin'];
 const HINT = '휴대폰 카메라로 QR을 비추면 바로 열려요.';
-const ADMIN_CAUTION = '선생님 전용 · Google 로그인 필요';
+const ADMIN_CAUTION = '선생님 전용, Google 로그인 필요';
 
 type Busy = 'png' | 'pdf' | null;
 

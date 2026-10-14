@@ -66,7 +66,7 @@ export async function readTaskAssignmentsIfPresent(reader: TabularReader): Promi
   const headerIndex = createHeaderIndex(headers);
   const requiredColumns = requireColumns(headerIndex, REQUIRED_TASK_ASSIGNMENT_COLUMNS);
   if (requiredColumns.ok === false) {
-    throw new Error(`TaskAssignments 시트에 필수 컬럼이 없습니다: ${requiredColumns.missingColumns.join(', ')}`);
+    throw new Error(`TaskAssignments 시트에 필수 컬럼이 없어요: ${requiredColumns.missingColumns.join(', ')}`);
   }
   return parseTaskAssignmentRows(dataRows, headerIndex);
 }
@@ -89,7 +89,7 @@ function parseTaskCompletionRows(rows: string[][]): TaskCompletion[] {
   const headerIndex = createHeaderIndex(headers);
   const requiredColumns = requireColumns(headerIndex, REQUIRED_TASK_COMPLETION_COLUMNS);
   if (requiredColumns.ok === false) {
-    throw new Error(`TaskCompletions 시트에 필수 컬럼이 없습니다: ${requiredColumns.missingColumns.join(', ')}`);
+    throw new Error(`TaskCompletions 시트에 필수 컬럼이 없어요: ${requiredColumns.missingColumns.join(', ')}`);
   }
   return dataRows
     .map((row) => parseTaskCompletionRow(row, headerIndex))

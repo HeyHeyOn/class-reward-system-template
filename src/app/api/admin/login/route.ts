@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   const reader = await createConfiguredSheetsReader().catch(() => undefined);
 
   if (!(await verifyAdminPasswordWithSettings(password, reader))) {
-    return Response.json({ error: '관리자 비밀번호가 올바르지 않습니다.' }, { status: 401 });
+    return Response.json({ error: '관리자 비밀번호가 올바르지 않아요.' }, { status: 401 });
   }
 
   const response = NextResponse.json({ ok: true });

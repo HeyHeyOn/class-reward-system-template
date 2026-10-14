@@ -48,16 +48,16 @@ export function ProductFields({ idPrefix, labelPrefix, values, categories, unit,
         </Field>
       </div>
       <div className="grid grid-cols-2 gap-4">
-        <Field label="분류" htmlFor={`${idPrefix}-category`} optional hint="매점 화면의 분류 탭이 됩니다.">
+        <Field label="분류" htmlFor={`${idPrefix}-category`} optional hint="매점 화면의 분류 탭이 돼요.">
           <Input id={`${idPrefix}-category`} aria-label={label('카테고리')} list={`${idPrefix}-categories`} placeholder="간식" value={values.category} onChange={(event) => onChange({ category: event.target.value })} />
           <datalist id={`${idPrefix}-categories`}>{categories.map((category) => <option key={category} value={category} />)}</datalist>
         </Field>
-        <Field label="목록 순서" htmlFor={`${idPrefix}-order`} hint="작은 숫자가 앞에 보입니다.">
+        <Field label="목록 순서" htmlFor={`${idPrefix}-order`} hint="작은 숫자가 앞에 보여요.">
           <Input id={`${idPrefix}-order`} aria-label={label('정렬')} type="number" inputMode="numeric" value={Number.isFinite(values.sortOrder) ? values.sortOrder : 0} onChange={(event) => onChange({ sortOrder: Number(event.target.value) })} />
         </Field>
       </div>
       <Switch checked={Boolean(values.isActive)} ariaLabel={isNew ? '새 상품 판매중' : `${labelPrefix} 판매중`} onChange={(checked) => onChange({ isActive: checked })}
-        label="판매 중" description="끄면 매점 화면에서 이 상품이 숨겨집니다." />
+        label="판매 중" description="끄면 매점 화면에서 이 상품이 숨겨져요." />
       {digital ?? null}
     </div>
   );

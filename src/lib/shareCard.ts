@@ -102,7 +102,7 @@ export async function drawShareCard(content: ShareCardContent): Promise<HTMLCanv
 
   context.fillStyle = '#9AA0A6';
   context.font = font(600, 30);
-  context.fillText('학급 보상 시스템', center, height - 70);
+  context.fillText('딴쌤 클래스', center, height - 70);
   return canvas;
 }
 

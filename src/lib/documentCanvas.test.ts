@@ -237,7 +237,7 @@ describe('renderDocumentPages and parentConsentFormPdf', () => {
 
     expect(canvases.length).toBeGreaterThanOrEqual(1);
     for (const canvas of canvases) expect([canvas.width, canvas.height]).toEqual([1654, 2339]);
-    expect(calls.fillText[0]).toBe('「학급 보상 시스템」 이용을 위한 학생 개인정보 수집·이용 동의서');
+    expect(calls.fillText[0]).toBe('「딴쌤 클래스」 이용을 위한 학생 개인정보 수집·이용 동의서');
     expect(calls.fillText.some((text) => text.includes('__'))).toBe(false);
     // "__________ __________에서는 …": the words after the blanks are drawn on their own.
     expect(calls.fillText.some((text) => text.startsWith('에서는 학급 경제 활동'))).toBe(true);

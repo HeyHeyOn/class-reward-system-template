@@ -84,7 +84,7 @@ export function PetCelebration({ moment, goal, onClose }: Readonly<{ moment: Pet
       lines.push(`${petStageTitle(pet.species, moment.from)} → ${petStageTitle(pet.species, pet.stage)}`);
     }
     const span = petStageSpan(moment.pet.growth, goal, pet.stage);
-    next = span ? `다음 단계: ${petStageTitle(pet.species, (pet.stage + 1) as PetStage)} · ${span.done}/${span.need}` : '다 자랐어요! 원할 때 졸업시킬 수 있어요.';
+    next = span ? `다음 단계: ${petStageTitle(pet.species, (pet.stage + 1) as PetStage)} (${span.done}/${span.need})` : '다 자랐어요! 원할 때 졸업시킬 수 있어요.';
   }
   return (
     <Modal size="sm" title={title} onClose={onClose}
@@ -115,7 +115,7 @@ export function GraduateConfirm({ pet, prize, busy, onConfirm, onClose }: Readon
         <span className="shrink-0 rounded-[16px] bg-[var(--theme-accent-soft)] p-1">
           <PetMomentPicture pet={pet} from={3} kind="still" size={64} />
         </span>
-        <p className="min-w-0 text-[15px] font-black">{pet.name} · {petStageTitle(pet.species, pet.stage)}</p>
+        <p className="min-w-0 text-[15px] font-black">{pet.name} ({petStageTitle(pet.species, pet.stage)})</p>
       </div>
       <ul className="mt-3 space-y-2 text-[14.5px] font-semibold leading-relaxed">
         {prize.length ? <li className="flex gap-2"><span aria-hidden="true">•</span><span>졸업시키면 {withParticle(prize.join(', '), '을/를')} 보상으로 받아요.</span></li> : null}

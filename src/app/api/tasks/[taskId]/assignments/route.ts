@@ -6,7 +6,7 @@ import { createConfiguredTaskReader } from '@/server/repositories/configuredTask
 import { legacyTaskWriterRefusal } from '@/server/legacyTaskWriters';
 
 type RouteContext = { params: Promise<{ taskId: string }> };
-const INVALID_ASSIGNMENT_REQUEST = '과제 부여 요청 형식이 올바르지 않습니다.';
+const INVALID_ASSIGNMENT_REQUEST = '과제 부여 요청 형식이 올바르지 않아요.';
 const ASSIGNMENT_KEYS = new Set(['studentId', 'assigned', 'completed', 'source']);
 
 export const dynamic = 'force-dynamic';
@@ -20,7 +20,7 @@ export async function GET(request: Request, context: RouteContext) {
     const status = await reader.getTaskAssignmentStatus(decodeURIComponent(taskId));
     return Response.json(status);
   } catch (error) {
-    const message = error instanceof Error ? error.message : '과제 부여 상태를 불러오지 못했습니다.';
+    const message = error instanceof Error ? error.message : '과제 부여 상태를 불러오지 못했어요.';
     return Response.json({ error: message }, { status: 400 });
   }
 }
@@ -60,7 +60,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     });
     return Response.json(status);
   } catch (error) {
-    const message = error instanceof Error ? error.message : '과제 부여 상태를 저장하지 못했습니다.';
+    const message = error instanceof Error ? error.message : '과제 부여 상태를 저장하지 못했어요.';
     return Response.json({ error: message }, { status: 400 });
   }
 }

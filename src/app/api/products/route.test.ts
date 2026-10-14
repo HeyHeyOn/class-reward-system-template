@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   createProduct: vi.fn(),
   isAuthorizedAdminRequest: vi.fn(() => true),
   unauthorizedAdminResponse: vi.fn(() => Response.json(
-    { error: '관리자 로그인이 필요합니다.' }, { status: 401 },
+    { error: '관리자 로그인이 필요해요.' }, { status: 401 },
   )),
 }));
 
@@ -149,7 +149,7 @@ describe('products POST configured mutation authority', () => {
     const response = await POST(request);
 
     expect(response.status).toBe(401);
-    expect(await response.json()).toEqual({ error: '관리자 로그인이 필요합니다.' });
+    expect(await response.json()).toEqual({ error: '관리자 로그인이 필요해요.' });
     expect(mocks.unauthorizedAdminResponse).toHaveBeenCalledOnce();
     expect(mocks.createConfiguredProductCreation).not.toHaveBeenCalled();
   });
@@ -197,7 +197,7 @@ describe('products POST configured mutation authority', () => {
     const response = await POST(productPost(body, contentType));
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: '상품을 추가하지 못했습니다.' });
+    expect(await response.json()).toEqual({ error: '상품을 추가하지 못했어요.' });
     expect(mocks.createConfiguredProductCreation).not.toHaveBeenCalled();
   });
 
@@ -225,6 +225,6 @@ describe('products POST configured mutation authority', () => {
     expect(configuredError.status).toBe(400);
     expect(await configuredError.json()).toEqual({ error: 'configured unavailable' });
     expect(fallbackError.status).toBe(400);
-    expect(await fallbackError.json()).toEqual({ error: '상품을 추가하지 못했습니다.' });
+    expect(await fallbackError.json()).toEqual({ error: '상품을 추가하지 못했어요.' });
   });
 });

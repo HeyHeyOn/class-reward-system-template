@@ -21,7 +21,7 @@ export async function POST(request: Request) {
   const { studentId: qr, productIds } = record;
   if (typeof qr !== 'string' || !qr.trim() || !Array.isArray(productIds) || productIds.length === 0 || productIds.length > MAX_PRODUCTS
     || productIds.some((id) => typeof id !== 'string' || !id.trim() || id.length > 200)) {
-    return studentBagJson({ error: '결제 요청 형식이 올바르지 않습니다.', code: 'INVALID_INPUT' }, 400);
+    return studentBagJson({ error: '결제 요청 형식이 올바르지 않아요.', code: 'INVALID_INPUT' }, 400);
   }
   try {
     const { studentId } = resolveStudentQrForCurrentTenant(qr.trim());
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     return studentBagJson({ vouchers: await bag.checkoutVouchers(studentId, (productIds as string[]).map((id) => id.trim())) });
   } catch (error) {
     if (error instanceof StudentQrValidationError) {
-      return studentBagJson({ error: '학생 정보를 찾을 수 없습니다.', code: 'STUDENT_NOT_FOUND' }, 400);
+      return studentBagJson({ error: '학생 정보를 찾을 수 없어요.', code: 'STUDENT_NOT_FOUND' }, 400);
     }
     return studentBagFailure(error, 'checkout-vouchers');
   }

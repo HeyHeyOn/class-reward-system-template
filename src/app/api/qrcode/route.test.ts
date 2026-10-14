@@ -65,7 +65,7 @@ describe('POST /api/qrcode', () => {
     vi.mocked(createConfiguredStudentReader).mockResolvedValue(reader as never);
     const response = await runWithTrustedTenantRequestContext({ tenant }, () => POST(post({ kind: 'student', studentId: 'S001' })));
     expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toEqual({ error: 'QR 코드를 생성하지 못했습니다.' });
+    await expect(response.json()).resolves.toEqual({ error: 'QR 코드를 생성하지 못했어요.' });
     expect(QRCode.toString).not.toHaveBeenCalled();
   });
 

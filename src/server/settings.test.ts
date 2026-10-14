@@ -22,7 +22,7 @@ describe('settings', () => {
     expect(validateSpreadsheetId('')).toEqual({ ok: false, message: '시트 ID를 입력해 주세요.' });
     expect(validateSpreadsheetId('https://example.com/not-a-sheet')).toEqual({
       ok: false,
-      message: '올바른 Google Sheets 주소 또는 시트 ID가 아닙니다.',
+      message: '올바른 Google Sheets 주소 또는 시트 ID가 아니에요.',
     });
   });
 
@@ -199,7 +199,7 @@ describe('settings', () => {
         currencyUnit: '별',
         env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
       }),
-    ).rejects.toThrow('Vercel 배포판에서는 시트 ID를 관리자 화면에서 영구 변경할 수 없습니다.');
+    ).rejects.toThrow('Vercel 배포판에서는 시트 ID를 관리자 화면에서 영구 변경할 수 없어요.');
   });
 
   it('preserves an existing class time zone when an older settings route omits it', async () => {

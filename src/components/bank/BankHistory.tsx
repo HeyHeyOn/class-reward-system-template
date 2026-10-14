@@ -132,8 +132,8 @@ function TransactionRow({ transaction, currencyUnit }: { transaction: StudentBan
         </p>
         <p className="mt-0.5 truncate text-xs text-[var(--theme-muted-text)]">
           <time dateTime={transaction.occurredAt}>{formatSeoulTime(transaction.occurredAt)}</time>
-          {transaction.detail ? ` · ${transaction.detail}` : ''}
-          {transaction.cancelled && transaction.cancelledAt ? ` · ${formatSeoulDateTime(transaction.cancelledAt)} 취소` : ''}
+          {transaction.detail ? `, ${transaction.detail}` : ''}
+          {transaction.cancelled && transaction.cancelledAt ? `, ${formatSeoulDateTime(transaction.cancelledAt)} 취소` : ''}
         </p>
       </div>
       <div className="shrink-0 text-right">

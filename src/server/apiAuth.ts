@@ -34,7 +34,7 @@ export function isAuthorizedAdminRequest(request: Request, env: ApiAuthEnv = pro
 }
 
 export function unauthorizedAdminResponse(): Response {
-  return Response.json({ error: '관리자 로그인이 필요합니다.' }, { status: 401 });
+  return Response.json({ error: '관리자 로그인이 필요해요.' }, { status: 401 });
 }
 
 function parseCookieHeader(header: string): Map<string, string> {

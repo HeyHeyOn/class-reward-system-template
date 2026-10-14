@@ -75,7 +75,7 @@ export function buildStudentTaskProjection(
     const prerequisiteMessage = prerequisiteStatus === 'REQUIRED'
       ? `선행 과제 '${prerequisiteTitle}'을(를) 먼저 완료해 주세요.`
       : prerequisiteStatus === 'UNAVAILABLE'
-        ? `선행 과제 '${prerequisiteTitle}'을(를) 완료할 수 없습니다. 교사에게 문의해 주세요.`
+        ? `선행 과제 '${prerequisiteTitle}'을(를) 완료할 수 없어요. 교사에게 문의해 주세요.`
         : undefined;
 
     return {

@@ -22,7 +22,7 @@ export async function POST(request: Request) {
 
     return Response.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : '과제 완료 기록을 초기화하지 못했습니다.';
+    const message = error instanceof Error ? error.message : '과제 완료 기록을 초기화하지 못했어요.';
 
     return Response.json({ error: message }, { status: 400 });
   }

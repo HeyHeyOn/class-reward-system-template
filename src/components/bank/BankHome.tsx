@@ -56,7 +56,7 @@ export const BankHome = forwardRef<HTMLHeadingElement, BankHomeProps>(function B
 export function BankTasksMenu({ completable, waiting, completed, loading, attention, onOpen }: Readonly<{
   completable: number; waiting: number; completed: number; loading: boolean; attention: boolean; onOpen: () => void;
 }>) {
-  const summary = loading ? '과제를 불러오는 중이에요' : `완료 가능 ${completable}개 · 미완료 ${waiting}개 · 완료 ${completed}개`;
+  const summary = loading ? '과제를 불러오는 중이에요' : `완료 가능 ${completable}개, 미완료 ${waiting}개, 완료 ${completed}개`;
   return (
     <button type="button" onClick={onOpen} aria-label={`내 과제, ${summary}`}
       className="mt-4 flex w-full items-center gap-4 rounded-[22px] border border-[var(--crs-line)] bg-[var(--theme-surface)] p-5 text-left shadow-[var(--crs-shadow-sm)] transition-[transform,background-color] duration-150 hover:bg-[var(--crs-subtle-hover)] active:scale-[0.99]">

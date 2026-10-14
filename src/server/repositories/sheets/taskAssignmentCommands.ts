@@ -89,7 +89,7 @@ export async function updateTaskAssignmentsBatch(
       store.getRowsFresh ? store.getRowsFresh('TaskCompletions') : store.getRows('TaskCompletions'),
     ]);
     const [studentHeaders, ...studentDataRows] = studentRows;
-    if (!studentHeaders) throw new Error('학생 정보를 찾을 수 없습니다.');
+    if (!studentHeaders) throw new Error('학생 정보를 찾을 수 없어요.');
     const studentIndex = createHeaderIndex(studentHeaders);
     const studentsById = new Map<string, { student: Student; rowNumber: number }>();
     studentDataRows.forEach((row, index) => {
@@ -98,20 +98,20 @@ export async function updateTaskAssignmentsBatch(
     });
 
     const [assignmentHeaders, ...assignmentDataRows] = assignmentRows;
-    if (!assignmentHeaders) throw new Error('TaskAssignments 시트에 헤더가 없습니다.');
+    if (!assignmentHeaders) throw new Error('TaskAssignments 시트에 헤더가 없어요.');
     const assignmentIndex = createHeaderIndex(assignmentHeaders);
     const requiredAssignments = requireColumns(assignmentIndex, REQUIRED_TASK_ASSIGNMENT_COLUMNS);
     if (requiredAssignments.ok === false) {
-      throw new Error(`TaskAssignments 시트에 필수 컬럼이 없습니다: ${requiredAssignments.missingColumns.join(', ')}`);
+      throw new Error(`TaskAssignments 시트에 필수 컬럼이 없어요: ${requiredAssignments.missingColumns.join(', ')}`);
     }
     const assignments = parseTaskAssignmentRows(assignmentDataRows, assignmentIndex);
 
     const [completionHeaders, ...completionDataRows] = completionRows;
-    if (!completionHeaders) throw new Error('TaskCompletions 시트에 헤더가 없습니다.');
+    if (!completionHeaders) throw new Error('TaskCompletions 시트에 헤더가 없어요.');
     const completionIndex = createHeaderIndex(completionHeaders);
     const requiredCompletions = requireColumns(completionIndex, REQUIRED_TASK_COMPLETION_COLUMNS);
     if (requiredCompletions.ok === false) {
-      throw new Error(`TaskCompletions 시트에 필수 컬럼이 없습니다: ${requiredCompletions.missingColumns.join(', ')}`);
+      throw new Error(`TaskCompletions 시트에 필수 컬럼이 없어요: ${requiredCompletions.missingColumns.join(', ')}`);
     }
     const completions = completionDataRows
       .map((row) => parseTaskCompletionRow(row, completionIndex))
@@ -120,16 +120,16 @@ export async function updateTaskAssignmentsBatch(
     const recordsById = new Map(records.map((record) => [record.task.taskId, record]));
     const targets = requestedTargets.map((target) => {
       const record = recordsById.get(target.taskId);
-      if (!record) throw new Error(`과제를 찾을 수 없습니다: ${target.taskId}`);
+      if (!record) throw new Error(`과제를 찾을 수 없어요: ${target.taskId}`);
       if (!record.task.taskInstanceId || !record.task.schedule || record.task.scheduleReadWarnings?.length) {
-        throw new Error(`과제 일정 데이터가 손상되었습니다: ${target.taskId}`);
+        throw new Error(`과제 일정 데이터가 손상됐어요: ${target.taskId}`);
       }
       return { record, operations: target.operations };
     });
     for (const target of requestedTargets) {
       for (const operation of target.operations) {
         if (!studentsById.has(operation.studentId)) {
-          throw new Error(`학생 정보를 찾을 수 없습니다: ${operation.studentId}`);
+          throw new Error(`학생 정보를 찾을 수 없어요: ${operation.studentId}`);
         }
       }
     }
@@ -401,8 +401,8 @@ function planBatchCompletion(
       )
       : null;
     if (!studentState?.assigned && !recoveryAssignment) {
-      if (state.assignedStudentIds.length === 0) throw new Error('부여된 학생이 없습니다.');
-      throw new Error('허가되지 않은 과제입니다.');
+      if (state.assignedStudentIds.length === 0) throw new Error('부여된 학생이 없어요.');
+      throw new Error('허가되지 않은 과제예요.');
     }
     if (recoveryAssignment) {
       assignmentId = recoveryAssignment.assignmentId;
@@ -410,7 +410,7 @@ function planBatchCompletion(
       state = materializeBatchAssignments(context, task);
       studentState = state.students[student.studentId];
       assignmentId = studentState?.assignmentEvent?.assignmentId ?? '';
-      if (!studentState?.assigned || !assignmentId) throw new Error('허가되지 않은 과제입니다.');
+      if (!studentState?.assigned || !assignmentId) throw new Error('허가되지 않은 과제예요.');
     }
   }
   const schedule = resolveTaskSchedule({
@@ -581,7 +581,7 @@ function legacyCompletionReference(completionId: string): string {
 
 function validateBatchInput(targets: TaskBatchAssignmentTarget[]): void {
   if (!Array.isArray(targets) || targets.length === 0 || targets.length > MAX_BATCH_TASKS) {
-    throw new Error('과제 ID 목록이 올바르지 않습니다.');
+    throw new Error('과제 ID 목록이 올바르지 않아요.');
   }
   const taskIds = new Set<string>();
   let operationCount = 0;
@@ -592,7 +592,7 @@ function validateBatchInput(targets: TaskBatchAssignmentTarget[]): void {
       || taskIds.has(target.taskId)
       || !Array.isArray(target.operations) || target.operations.length === 0
       || target.operations.length > MAX_BATCH_OPERATIONS) {
-      throw new Error('과제 부여 작업 목록이 올바르지 않습니다.');
+      throw new Error('과제 부여 작업 목록이 올바르지 않아요.');
     }
     taskIds.add(target.taskId);
     operationCount += target.operations.length;
@@ -607,12 +607,12 @@ function validateBatchInput(targets: TaskBatchAssignmentTarget[]): void {
         || (operation.completed !== undefined && typeof operation.completed !== 'boolean')
         || (operation.assigned === undefined && operation.completed === undefined)
         || studentIds.has(operation.studentId)) {
-        throw new Error('과제 부여 작업 목록이 올바르지 않습니다.');
+        throw new Error('과제 부여 작업 목록이 올바르지 않아요.');
       }
       studentIds.add(operation.studentId);
     }
   }
-  if (operationCount > MAX_BATCH_TOTAL_OPERATIONS) throw new Error('과제 부여 작업 목록이 올바르지 않습니다.');
+  if (operationCount > MAX_BATCH_TOTAL_OPERATIONS) throw new Error('과제 부여 작업 목록이 올바르지 않아요.');
 }
 
 const LEGACY_MIRROR_WARNING = 'LEGACY_MIRROR_UPDATE_FAILED';
@@ -651,14 +651,14 @@ export async function mutateTaskAssignmentNow(
     ? await store.getRowsFresh('TaskAssignments')
     : await store.getRows('TaskAssignments');
   const [assignmentHeaders, ...assignmentDataRows] = assignmentRows;
-  if (!assignmentHeaders) throw new Error('TaskAssignments 시트에 헤더가 없습니다.');
+  if (!assignmentHeaders) throw new Error('TaskAssignments 시트에 헤더가 없어요.');
   const assignmentHeaderIndex = createHeaderIndex(assignmentHeaders);
   const requiredAssignmentColumns = requireColumns(
     assignmentHeaderIndex,
     REQUIRED_TASK_ASSIGNMENT_COLUMNS,
   );
   if (requiredAssignmentColumns.ok === false) {
-    throw new Error(`TaskAssignments 시트에 필수 컬럼이 없습니다: ${requiredAssignmentColumns.missingColumns.join(', ')}`);
+    throw new Error(`TaskAssignments 시트에 필수 컬럼이 없어요: ${requiredAssignmentColumns.missingColumns.join(', ')}`);
   }
   const assignments = parseTaskAssignmentRows(assignmentDataRows, assignmentHeaderIndex);
   const completions = await readTaskCompletions(store);
@@ -825,7 +825,7 @@ async function readFreshTaskAssignments(store: RecurringSchemaMigrationStore): P
   const index = createHeaderIndex(headers);
   const required = requireColumns(index, REQUIRED_TASK_ASSIGNMENT_COLUMNS);
   if (!required.ok) {
-    throw new Error(`TaskAssignments 시트에 필수 컬럼이 없습니다: ${required.missingColumns.join(', ')}`);
+    throw new Error(`TaskAssignments 시트에 필수 컬럼이 없어요: ${required.missingColumns.join(', ')}`);
   }
   return parseTaskAssignmentRows(dataRows, index);
 }

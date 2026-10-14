@@ -269,7 +269,7 @@ describe('D-02 real local Sheets route/repository stale editor regression', () =
     renameRow(panel, kind, id);
     responseOverride = [];
     fireEvent.click(within(panel).getByRole('button', { name: '저장' }));
-    await findNotice(/저장 결과를 확인하지 못했습니다.*새로고침/);
+    await findNotice(/저장 결과를 확인하지 못했어요.*새로고침/);
     expect(successNoticeShown()).toBe(false);
   });
 

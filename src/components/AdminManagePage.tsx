@@ -103,7 +103,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
   const productBatchDeleteInFlight = useRef(false);
   const [productBatchDeleteNeedsRefresh, setProductBatchDeleteNeedsRefresh] = useState(false);
   const productSaveInFlight = useRef(false);
-  const [message, setMessage] = useState('학생/상품 목록을 불러오는 중입니다.');
+  const [message, setMessage] = useState('학생/상품 목록을 불러오는 중이에요.');
   const [newStudent, setNewStudent] = useState<NewStudentDraft>(EMPTY_STUDENT);
   const studentCreationAttempt = useRef<{ semanticKey: string; operationId: string } | null>(null);
   const studentCreationInFlight = useRef(false);
@@ -208,7 +208,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
 
     if (!options.silent && shouldApply()) {
       setIsInitialLoading(true);
-      setMessage('학생/상품 목록을 불러오는 중입니다.');
+      setMessage('학생/상품 목록을 불러오는 중이에요.');
     }
 
     try {
@@ -220,9 +220,9 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       ]);
       const [studentPayload, productPayload, taskPayload, settingsPayload] = await Promise.all([studentResponse.json(), productResponse.json(), taskResponse ? taskResponse.json() : [], settingsResponse.json().catch(() => null)]);
 
-      if (!studentResponse.ok) throw new Error(studentPayload.error ?? '학생 목록을 불러오지 못했습니다.');
-      if (!productResponse.ok) throw new Error(productPayload.error ?? '상품 목록을 불러오지 못했습니다.');
-      if (taskResponse && !taskResponse.ok) throw new Error(taskPayload.error ?? '과제 목록을 불러오지 못했습니다.');
+      if (!studentResponse.ok) throw new Error(studentPayload.error ?? '학생 목록을 불러오지 못했어요.');
+      if (!productResponse.ok) throw new Error(productPayload.error ?? '상품 목록을 불러오지 못했어요.');
+      if (taskResponse && !taskResponse.ok) throw new Error(taskPayload.error ?? '과제 목록을 불러오지 못했어요.');
       const parsedProducts = parseProductAdminEnvelope(productPayload as unknown);
       const studentSnapshot = studentEditorSnapshot(studentPayload);
 
@@ -266,7 +266,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       if (!shouldApply()) return;
       setStudents([]);
       setTasks([]);
-      setMessage(error instanceof Error ? error.message : '목록을 불러오지 못했습니다.');
+      setMessage(error instanceof Error ? error.message : '목록을 불러오지 못했어요.');
       setIsInitialLoading(false);
     }
   }, []);
@@ -393,7 +393,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
         });
         const payload = await response.json().catch(() => ({}));
         if (!isCurrentSession()) return;
-        if (!response.ok) throw new Error(payload.error ?? '반복 설정을 저장하지 못했습니다.');
+        if (!response.ok) throw new Error(payload.error ?? '반복 설정을 저장하지 못했어요.');
         try {
           const taskResponse = await tenantFetch('/api/tasks?includeInactive=1', { cache: 'no-store' });
           const taskPayload = await taskResponse.json().catch(() => null);
@@ -409,7 +409,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
           notify('반복 설정 저장은 완료됐지만 목록 새로고침 실패. 과제 설정의 새로고침 버튼을 눌러 주세요.');
         }
       } catch (error) {
-        if (isCurrentSession()) notify(error instanceof Error ? error.message : '반복 설정을 저장하지 못했습니다.');
+        if (isCurrentSession()) notify(error instanceof Error ? error.message : '반복 설정을 저장하지 못했어요.');
       } finally {
         if (isCurrentSession()) setIsSavingTaskSchedule(false);
       }
@@ -417,7 +417,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
     }
     if (taskScheduleEditor.taskId) {
       const task = tasks.find((item) => item.taskId === taskScheduleEditor.taskId);
-      if (!task) return notify('과제를 찾을 수 없습니다.');
+      if (!task) return notify('과제를 찾을 수 없어요.');
       setIsSavingTaskSchedule(true);
       try {
         const response = await tenantFetch(`/api/tasks/${encodeURIComponent(task.taskId)}`, {
@@ -431,7 +431,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
           }),
         });
         const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error ?? '반복 설정을 저장하지 못했습니다.');
+        if (!response.ok) throw new Error(payload.error ?? '반복 설정을 저장하지 못했어요.');
         try {
           const taskResponse = await tenantFetch('/api/tasks?includeInactive=1', { cache: 'no-store' });
           const taskPayload = await taskResponse.json().catch(() => null);
@@ -448,7 +448,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
           notify('반복 설정 저장은 완료됐지만 목록 새로고침 실패. 과제 설정의 새로고침 버튼을 눌러 주세요.');
         }
       } catch (error) {
-        if (isCurrentSession()) notify(error instanceof Error ? error.message : '반복 설정을 저장하지 못했습니다.');
+        if (isCurrentSession()) notify(error instanceof Error ? error.message : '반복 설정을 저장하지 못했어요.');
       } finally {
         if (isCurrentSession()) setIsSavingTaskSchedule(false);
       }
@@ -474,12 +474,12 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
     try {
       const response = await tenantFetch(`/api/tasks/${encodeURIComponent(task.taskId)}/history`, { cache: 'no-store' });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? '과제 기록을 불러오지 못했습니다.');
+      if (!response.ok) throw new Error(payload.error ?? '과제 기록을 불러오지 못했어요.');
       if (historyRequestId.current !== requestId) return;
       setTaskHistory({ taskId: task.taskId, title: task.title, loading: false, error: '', detail: payload });
     } catch (error) {
       if (historyRequestId.current !== requestId) return;
-      setTaskHistory({ taskId: task.taskId, title: task.title, loading: false, error: error instanceof Error ? error.message : '과제 기록을 불러오지 못했습니다.', detail: null });
+      setTaskHistory({ taskId: task.taskId, title: task.title, loading: false, error: error instanceof Error ? error.message : '과제 기록을 불러오지 못했어요.', detail: null });
     }
   }
 
@@ -490,7 +490,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
 
   function requestTaskDelete(task: TaskDraft, opener: HTMLElement) {
     if (taskSingleDeleteInFlight.current || taskDeleteConfirmation) return;
-    if (taskBatchDeleteInFlight.current) return notify('선택 삭제 요청이 남아 있습니다. 기존 요청을 다시 시도하거나 거절된 요청을 새로고침해 주세요.');
+    if (taskBatchDeleteInFlight.current) return notify('선택 삭제 요청이 남아 있어요. 기존 요청을 다시 시도하거나 거절된 요청을 새로고침해 주세요.');
     closeTaskHistory();
     setTaskDeleteConfirmation({ taskId: task.taskId, title: task.title, opener, deleting: false, error: '' });
   }
@@ -534,7 +534,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
         tenantFetch('/api/settings', { cache: 'no-store' }),
       ]);
       const [studentPayload, settingsPayload] = await Promise.all([studentResponse.json(), settingsResponse.json().catch(() => null)]);
-      if (!studentResponse.ok) throw new Error(studentPayload.error ?? '학생 목록을 불러오지 못했습니다.');
+      if (!studentResponse.ok) throw new Error(studentPayload.error ?? '학생 목록을 불러오지 못했어요.');
       const snapshot = studentEditorSnapshot(studentPayload);
       setStudents(snapshot.students);
       studentStorage.current = snapshot.storage;
@@ -551,7 +551,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       });
       setMessage('');
     } catch (error) {
-      notify(error instanceof Error ? error.message : '학생 목록을 불러오지 못했습니다.');
+      notify(error instanceof Error ? error.message : '학생 목록을 불러오지 못했어요.');
     } finally {
       setIsRefreshingLists(false);
     }
@@ -566,7 +566,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
         tenantFetch('/api/settings', { cache: 'no-store' }),
       ]);
       const [productPayload, settingsPayload] = await Promise.all([productResponse.json(), settingsResponse.json().catch(() => null)]);
-      if (!productResponse.ok) throw new Error(productPayload.error ?? '상품 목록을 불러오지 못했습니다.');
+      if (!productResponse.ok) throw new Error(productPayload.error ?? '상품 목록을 불러오지 못했어요.');
       const parsedProducts = parseProductAdminEnvelope(productPayload as unknown);
       if (productMutationEpoch.current === productEpochAtStart) {
         setProductAdminState(parsedProducts);
@@ -596,7 +596,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       });
       setMessage('');
     } catch (error) {
-      notify(error instanceof Error ? error.message : '상품 목록을 불러오지 못했습니다.');
+      notify(error instanceof Error ? error.message : '상품 목록을 불러오지 못했어요.');
     } finally {
       setIsRefreshingLists(false);
     }
@@ -637,7 +637,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
         tenantFetch('/api/settings', { cache: 'no-store' }),
       ]);
       const [taskPayload, settingsPayload] = await Promise.all([taskResponse.json(), settingsResponse.json().catch(() => null)]);
-      if (!taskResponse.ok) throw new Error(taskPayload.error ?? '과제 목록을 불러오지 못했습니다.');
+      if (!taskResponse.ok) throw new Error(taskPayload.error ?? '과제 목록을 불러오지 못했어요.');
       applyServerTasks((taskPayload as TaskDraft[]).map(normalizeAdminTask));
       setTaskDeleteConfirmation(null);
       setSettings({
@@ -651,7 +651,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       });
       setMessage('');
     } catch (error) {
-      notify(error instanceof Error ? error.message : '과제 목록을 불러오지 못했습니다.');
+      notify(error instanceof Error ? error.message : '과제 목록을 불러오지 못했어요.');
     } finally {
       setIsRefreshingLists(false);
     }
@@ -676,7 +676,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
   async function loadTaskAssignmentStatus(taskId: string) {
     const response = await tenantFetch(`/api/tasks/${encodeURIComponent(taskId)}/assignments`, { cache: 'no-store' });
     const payload = await response.json() as TaskAssignmentStatus & { error?: string };
-    if (!response.ok) throw new Error(payload.error ?? '과제 부여 상태를 불러오지 못했습니다.');
+    if (!response.ok) throw new Error(payload.error ?? '과제 부여 상태를 불러오지 못했어요.');
     return normalizeTaskAssignmentStatus(payload);
   }
 
@@ -722,7 +722,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       })
       .catch((error) => {
         if (assignmentRequest.current.id !== requestId || assignmentRequest.current.taskId !== taskId) return;
-        notify(error instanceof Error ? error.message : '과제 부여 상태를 불러오지 못했습니다.');
+        notify(error instanceof Error ? error.message : '과제 부여 상태를 불러오지 못했어요.');
         setTaskAssignmentEditor((current) => current?.taskId === taskId ? { ...current, isLoading: false } : current);
       });
   }
@@ -842,7 +842,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
         });
         const payload = await response.json().catch(() => ({}));
         if (!isCurrentSession()) return;
-        if (!response.ok) throw new Error(payload.error ?? '과제 부여 내용을 저장하지 못했습니다.');
+        if (!response.ok) throw new Error(payload.error ?? '과제 부여 내용을 저장하지 못했어요.');
         const failures = Array.isArray(payload.failures) ? payload.failures as Array<{ taskId?: string; studentId?: string; code?: string }> : [];
         const notAttempted = Array.isArray(payload.notAttempted) ? payload.notAttempted as Array<{ taskId?: string; studentId?: string }> : [];
         const warnings = Array.isArray(payload.warnings) ? payload.warnings as Array<{ taskId?: string; code?: string }> : [];
@@ -857,7 +857,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
             setIsSavingChanges(false);
             closeTaskAssignmentEditor();
             if (warnings.length > 0) {
-              notify(`과제 부여 저장은 완료됐지만 기존 호환 목록 반영에 실패했습니다 (${formatTaskWarnings(warnings, tasks)}). 새로고침 후 확인해 주세요.`);
+              notify(`과제 부여 저장은 완료됐지만 기존 호환 목록 반영에 실패했어요 (${formatTaskWarnings(warnings, tasks)}). 새로고침 후 확인해 주세요.`);
             } else {
               notify('과제 부여 저장 완료');
             }
@@ -885,9 +885,9 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
           ...notAttempted.map((item) => ({ ...item, code: 'NOT_ATTEMPTED' })),
         ];
         const warningText = warnings.length > 0 ? ` 기존 호환 목록 반영 실패: ${formatTaskWarnings(warnings, tasks)}.` : '';
-        notify(`${aborted ? '과제 부여 처리가 중단되었습니다. ' : '과제 부여 일부 저장 실패. '}다시 시도 대상: ${formatAssignmentFailures(retryItems, tasks, students)}.${warningText}`);
+        notify(`${aborted ? '과제 부여 처리가 중단됐어요. ' : '과제 부여 일부 저장 실패. '}다시 시도 대상: ${formatAssignmentFailures(retryItems, tasks, students)}.${warningText}`);
       } catch (error) {
-        if (isCurrentSession()) notify(error instanceof Error ? error.message : '과제 부여 내용을 저장하지 못했습니다.');
+        if (isCurrentSession()) notify(error instanceof Error ? error.message : '과제 부여 내용을 저장하지 못했어요.');
       } finally {
         if (isCurrentSession()) setIsSavingChanges(false);
       }
@@ -902,7 +902,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
     const taskId = taskAssignmentEditor.taskId;
     const task = tasks.find((item) => item.taskId === taskId);
     if (!task) {
-      notify('과제를 찾을 수 없습니다.');
+      notify('과제를 찾을 수 없어요.');
       closeTaskAssignmentEditor();
       return;
     }
@@ -950,13 +950,13 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       if (!response.ok) {
         const errorMessage = isRecord(rawPayload) && typeof rawPayload.error === 'string'
           ? rawPayload.error
-          : '과제 부여 내용을 저장하지 못했습니다.';
+          : '과제 부여 내용을 저장하지 못했어요.';
         throw new Error(errorMessage);
       }
       const result = parseAssignmentBatchResult(
         rawPayload, taskId, new Set(commands.map((command) => command.studentId)), commands.length,
       );
-      if (!result) throw new Error('과제 부여 저장 결과를 확인하지 못했습니다.');
+      if (!result) throw new Error('과제 부여 저장 결과를 확인하지 못했어요.');
       const { aborted, failures, notAttempted, warnings } = result;
       if (failures.length === 0 && notAttempted.length === 0 && !aborted) {
         setTasks((current) => current.map((item) => item.taskId === taskId
@@ -965,7 +965,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
         setIsSavingChanges(false);
         closeTaskAssignmentEditor();
         if (warnings.length > 0) {
-          notify(`과제 부여 저장은 완료됐지만 기존 호환 목록 반영에 실패했습니다 (${formatTaskWarnings(warnings, tasks)}). 새로고침 후 확인해 주세요.`);
+          notify(`과제 부여 저장은 완료됐지만 기존 호환 목록 반영에 실패했어요 (${formatTaskWarnings(warnings, tasks)}). 새로고침 후 확인해 주세요.`);
         } else {
           notify('과제 부여 저장 완료');
         }
@@ -988,7 +988,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
         if (!isCurrentSession()) return;
         reconciliationFailureMessage = error instanceof Error
           ? `, 최신 부여 상태 확인 실패: ${error.message}`
-          : ', 최신 부여 상태를 확인하지 못했습니다.';
+          : ', 최신 부여 상태를 확인하지 못했어요.';
       }
 
       let retryAssignedIds = [...authoritativeAssignedIds];
@@ -1018,9 +1018,9 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
         ...notAttempted.map((item) => ({ ...item, code: 'NOT_ATTEMPTED' })),
       ];
       const warningText = warnings.length > 0 ? ` 기존 호환 목록 반영 실패: ${formatTaskWarnings(warnings, tasks)}.` : '';
-      notify(`${aborted ? '과제 부여 처리가 중단되었습니다. ' : '과제 부여 일부 저장 실패. '}다시 시도 대상: ${formatAssignmentFailures(retryItems, tasks, students)}.${warningText}${reconciliationFailureMessage}`);
+      notify(`${aborted ? '과제 부여 처리가 중단됐어요. ' : '과제 부여 일부 저장 실패. '}다시 시도 대상: ${formatAssignmentFailures(retryItems, tasks, students)}.${warningText}${reconciliationFailureMessage}`);
     } catch (error) {
-      if (isCurrentSession()) notify(error instanceof Error ? error.message : '과제 부여 내용을 저장하지 못했습니다.');
+      if (isCurrentSession()) notify(error instanceof Error ? error.message : '과제 부여 내용을 저장하지 못했어요.');
     } finally {
       if (isCurrentSession()) setIsSavingChanges(false);
     }
@@ -1043,10 +1043,10 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
     const response = await tenantFetch(`/api/bank/student?studentId=${encodeURIComponent(qrValue)}`, { cache: 'no-store' });
     const payload: unknown = await response.json().catch(() => null);
     if (!response.ok || !isRecord(payload) || typeof payload.studentId !== 'string') {
-      throw new Error('잘못된 QR입니다.');
+      throw new Error('잘못된 QR이에요.');
     }
     const student = students.find((item) => item.studentId === payload.studentId && item.status === 'ACTIVE');
-    if (!student) throw new Error('잘못된 QR입니다.');
+    if (!student) throw new Error('잘못된 QR이에요.');
     return student;
   }
 
@@ -1060,7 +1060,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
 
     const task = tasks.find((item) => item.taskId === taskId);
     if (!task) {
-      setQrTaskResult({ status: 'failure', taskId, message: '과제를 찾을 수 없습니다.' });
+      setQrTaskResult({ status: 'failure', taskId, message: '과제를 찾을 수 없어요.' });
       setQrTaskLoading(false);
       return;
     }
@@ -1068,12 +1068,12 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
     try {
       student = await resolveScannedStudent(qrValue);
     } catch {
-      setQrTaskResult({ status: 'failure', taskId, message: '잘못된 QR입니다.' });
+      setQrTaskResult({ status: 'failure', taskId, message: '잘못된 QR이에요.' });
       setQrTaskLoading(false);
       return;
     }
     if ((task.allowedStudentIds ?? []).includes(student.studentId)) {
-      setQrTaskResult({ status: 'failure', taskId, message: '이미 이 과제가 부여된 학생입니다.' });
+      setQrTaskResult({ status: 'failure', taskId, message: '이미 이 과제가 부여된 학생이에요.' });
       setQrTaskLoading(false);
       return;
     }
@@ -1089,15 +1089,15 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
         body: JSON.stringify({ studentId: student.studentId, assigned: true, source: 'QR' }),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? '과제 부여 내용을 저장하지 못했습니다.');
+      if (!response.ok) throw new Error(payload.error ?? '과제 부여 내용을 저장하지 못했어요.');
       const assignedStudentIds = Array.isArray(payload.students)
         ? payload.students.filter((row: { assigned?: boolean }) => row.assigned).map((row: { studentId: string }) => row.studentId)
         : fallbackAssignedIds;
       if (Array.isArray(payload.students)) setTasks((current) => reconcileTaskAssignmentProjection(current, task.taskId, normalizeTaskAssignmentStatus(payload as TaskAssignmentStatus)));
       else setTasks((current) => current.map((item) => item.taskId === task.taskId ? { ...item, allowedStudentIds: assignedStudentIds } : item));
-      setQrTaskResult({ status: 'success', taskId, message: '과제가 부여되었습니다.' });
+      setQrTaskResult({ status: 'success', taskId, message: '과제를 부여했어요.' });
     } catch (error) {
-      setQrTaskResult({ status: 'failure', taskId, message: error instanceof Error ? error.message : '과제 부여 내용을 저장하지 못했습니다.' });
+      setQrTaskResult({ status: 'failure', taskId, message: error instanceof Error ? error.message : '과제 부여 내용을 저장하지 못했어요.' });
     } finally {
       setIsSavingChanges(false);
     }
@@ -1152,7 +1152,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
     if (studentSaveInFlight.current) return false;
     const postgres = studentStorage.current === 'postgresql';
     if (postgres && rows.some((row) => !Number.isSafeInteger(row.studentVersion) || !Number.isSafeInteger(row.accountVersion))) {
-      notify('학생 버전을 확인할 수 없습니다. 새로고침 후 다시 편집해 주세요.');
+      notify('학생 버전을 확인할 수 없어요. 새로고침 후 다시 편집해 주세요.');
       return false;
     }
     const studentPayload = buildStudentPayload(rows);
@@ -1170,7 +1170,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
         body: JSON.stringify({ operationId, students: studentPayload }),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? '학생 명단을 저장하지 못했습니다.');
+      if (!response.ok) throw new Error(payload.error ?? '학생 명단을 저장하지 못했어요.');
       if (!Array.isArray(payload) || payload.length !== rows.length
         || new Set(payload.map((student) => student?.studentId)).size !== rows.length
         || !payload.every((student) => student && typeof student === 'object'
@@ -1179,7 +1179,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
           && (student.status === 'ACTIVE' || student.status === 'INACTIVE')
           && (!postgres || (Number.isSafeInteger(student.studentVersion) && student.studentVersion > 0
             && Number.isSafeInteger(student.accountVersion) && student.accountVersion > 0)))) {
-        throw new Error('학생 저장 결과를 확인하지 못했습니다.');
+        throw new Error('학생 저장 결과를 확인하지 못했어요.');
       }
       const savedStudents = payload as StudentDraft[];
       const savedMap = new Map(savedStudents.map((student) => [student.studentId, student]));
@@ -1197,7 +1197,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       notify(`${label} ${rows.length}명 저장 완료`);
       return true;
     } catch (error) {
-      notify(`${error instanceof Error ? error.message : '학생 명단을 저장하지 못했습니다.'} 새로고침으로 최신 목록을 확인해 주세요.`);
+      notify(`${error instanceof Error ? error.message : '학생 명단을 저장하지 못했어요.'} 새로고침으로 최신 목록을 확인해 주세요.`);
     } finally {
       studentSaveInFlight.current = false;
       setIsSavingChanges(false);
@@ -1209,7 +1209,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
     if (productSaveInFlight.current) return false;
     const postgres = tenantApiPath('/api/products') !== '/api/products';
     if (postgres && rows.some((row) => !Number.isSafeInteger(productAdminState.mutationPreconditions.get(row.productId)))) {
-      notify('상품 버전을 확인할 수 없습니다. 새로고침 후 다시 편집해 주세요.');
+      notify('상품 버전을 확인할 수 없어요. 새로고침 후 다시 편집해 주세요.');
       return false;
     }
     const productPayload = buildProductPayload(rows);
@@ -1228,7 +1228,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
         body: JSON.stringify({ operationId, products: productPayload }),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? '매점 목록을 저장하지 못했습니다.');
+      if (!response.ok) throw new Error(payload.error ?? '매점 목록을 저장하지 못했어요.');
       if (!Array.isArray(payload) || payload.length !== rows.length
         || new Set(payload.map((product) => product?.productId)).size !== rows.length
         || !payload.every((product) => product && typeof product === 'object'
@@ -1236,7 +1236,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
           && Number.isSafeInteger(product.stock) && product.stock >= 0
           && typeof product.name === 'string' && typeof product.isActive === 'boolean'
           && (!postgres || (Number.isSafeInteger(product.productVersion) && product.productVersion > 0)))) {
-        throw new Error('상품 저장 결과를 확인하지 못했습니다.');
+        throw new Error('상품 저장 결과를 확인하지 못했어요.');
       }
       const savedProducts = payload as Array<ProductDraft & { productVersion?: number }>;
       const savedMap = new Map(savedProducts.map((product) => [product.productId, product]));
@@ -1261,7 +1261,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       notify(`${label} ${rows.length}개 저장 완료`);
       return true;
     } catch (error) {
-      notify(`${error instanceof Error ? error.message : '매점 목록을 저장하지 못했습니다.'} 새로고침으로 최신 목록을 확인해 주세요.`);
+      notify(`${error instanceof Error ? error.message : '매점 목록을 저장하지 못했어요.'} 새로고침으로 최신 목록을 확인해 주세요.`);
     } finally {
       productSaveInFlight.current = false;
       if (postgres) productMutationEpoch.current += 1;
@@ -1279,7 +1279,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
         body: JSON.stringify({ tasks: buildTaskPayload(rows) }),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? '과제 목록을 저장하지 못했습니다.');
+      if (!response.ok) throw new Error(payload.error ?? '과제 목록을 저장하지 못했어요.');
       const savedTasks = payload as TaskDraft[];
       const savedMap = new Map(savedTasks.map((task) => [task.taskId, task]));
       setTasks((current) => current.map((task) => savedMap.has(task.taskId) ? { ...task, ...savedMap.get(task.taskId) } : task).sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title)));
@@ -1287,7 +1287,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       notify(`${label} ${rows.length}개 저장 완료`);
       return true;
     } catch (error) {
-      notify(error instanceof Error ? error.message : '과제 목록을 저장하지 못했습니다.');
+      notify(error instanceof Error ? error.message : '과제 목록을 저장하지 못했어요.');
     } finally {
       setIsSavingChanges(false);
     }
@@ -1323,18 +1323,18 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         if (postgres && (response.status === 404 || response.status === 409)) void refreshStudents();
-        throw new Error(payload.error ?? '학생을 삭제하지 못했습니다.');
+        throw new Error(payload.error ?? '학생을 삭제하지 못했어요.');
       }
       setStudents((current) => current.filter((student) => student.studentId !== studentId));
       setSelectedStudentIds((current) => current.filter((id) => id !== studentId));
       if (!options.silent) notify(`${studentId} 삭제 완료`);
     } catch (error) {
-      notify(error instanceof Error ? error.message : '학생을 삭제하지 못했습니다.');
+      notify(error instanceof Error ? error.message : '학생을 삭제하지 못했어요.');
     }
   }
 
   async function deleteSelectedStudents() {
-    if (selectedStudentIds.length === 0) return notify('선택된 학생이 없습니다.');
+    if (selectedStudentIds.length === 0) return notify('선택된 학생이 없어요.');
     const idsToDelete = [...selectedStudentIds];
     const postgres = studentStorage.current === 'postgresql';
     const versioned = postgres ? versionedStudentDeletion(idsToDelete) : null;
@@ -1354,20 +1354,20 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         if (postgres && (response.status === 404 || response.status === 409)) void refreshStudents();
-        throw new Error(payload.error ?? '학생을 삭제하지 못했습니다.');
+        throw new Error(payload.error ?? '학생을 삭제하지 못했어요.');
       }
       const deletedIds = Array.isArray(payload.studentIds) ? payload.studentIds : idsToDelete;
       setStudents((current) => current.filter((student) => !deletedIds.includes(student.studentId)));
       setSelectedStudentIds((current) => current.filter((id) => !deletedIds.includes(id)));
       notify(`선택 학생 ${deletedIds.length}명 삭제 완료`);
     } catch (error) {
-      notify(error instanceof Error ? error.message : '학생을 삭제하지 못했습니다.');
+      notify(error instanceof Error ? error.message : '학생을 삭제하지 못했어요.');
     }
   }
 
   async function applyBulkStudentBalance() {
     if (selectedStudentIds.length === 0) {
-      notify('선택된 학생이 없습니다.');
+      notify('선택된 학생이 없어요.');
       return;
     }
     if (bulkBalanceInFlight.current) return;
@@ -1385,13 +1385,13 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
         body: JSON.stringify({ studentIds, mode: bulkMode, amount: bulkAmount, operationId }),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? '선택 학생 재화를 수정하지 못했습니다.');
+      if (!response.ok) throw new Error(payload.error ?? '선택 학생 잔액을 수정하지 못했어요.');
       const balanceMap = new Map((payload as Array<{ studentId: string; balance: number }>).map((item) => [item.studentId, item.balance]));
       setStudents((current) => current.map((student) => balanceMap.has(student.studentId) ? { ...student, balance: balanceMap.get(student.studentId)!, balanceEditRevision: 0 } : student));
       bulkBalanceAttempt.current = null;
       notify(`선택 학생 ${payload.length}명 수정 완료`);
     } catch (error) {
-      notify(error instanceof Error ? error.message : '선택 학생 재화를 수정하지 못했습니다.');
+      notify(error instanceof Error ? error.message : '선택 학생 잔액을 수정하지 못했어요.');
     } finally {
       bulkBalanceInFlight.current = false;
     }
@@ -1415,7 +1415,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       if (!isCanonicalOperationId(operationId)) {
         productDeleteAttempt.current = null;
         setProductDeleteConfirmation((current) => current?.productId === productId
-          ? { ...current, error: '안전한 상품 삭제 요청을 만들지 못했습니다. 다시 시도해 주세요.' }
+          ? { ...current, error: '안전한 상품 삭제 요청을 만들지 못했어요. 다시 시도해 주세요.' }
           : current);
         return;
       }
@@ -1459,14 +1459,14 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       if (productDeleteAttempt.current !== attempt) return;
       productDeleteInFlight.current = false;
       setProductDeleteConfirmation((current) => current?.productId === productId
-        ? { ...current, deleting: false, error: '상품 삭제 결과를 확인하지 못했습니다. 같은 창에서 다시 시도해 주세요.' }
+        ? { ...current, deleting: false, error: '상품 삭제 결과를 확인하지 못했어요. 같은 창에서 다시 시도해 주세요.' }
         : current);
     }
   }
 
   async function deleteSelectedProducts() {
     if (isSavingChanges || productBatchDeleteInFlight.current) return;
-    if (selectedProductIds.length === 0) return notify('선택된 상품이 없습니다.');
+    if (selectedProductIds.length === 0) return notify('선택된 상품이 없어요.');
     const idsToDelete = [...selectedProductIds];
     const postgres = tenantApiPath('/api/products') !== '/api/products';
     let body = JSON.stringify({ productIds: idsToDelete });
@@ -1478,12 +1478,12 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       }));
       if (new Set(idsToDelete).size !== idsToDelete.length
         || products.some((product) => product.expectedProductVersion === undefined)) {
-        return notify('상품 정보가 변경되었습니다. 새로고침 후 다시 선택해 주세요.');
+        return notify('상품 정보가 바뀌었어요. 새로고침 후 다시 선택해 주세요.');
       }
       const semanticKey = JSON.stringify(products);
       if (productBatchDeleteAttempt.current?.semanticKey !== semanticKey) {
         const id = crypto.randomUUID();
-        if (!isCanonicalOperationId(id)) return notify('안전한 상품 삭제 요청을 만들지 못했습니다. 새로고침 후 다시 시도해 주세요.');
+        if (!isCanonicalOperationId(id)) return notify('안전한 상품 삭제 요청을 만들지 못했어요. 새로고침 후 다시 시도해 주세요.');
         productBatchDeleteAttempt.current = { semanticKey, operationId: id, body: JSON.stringify({ operationId: id, products }) };
       }
       ({ body, operationId } = productBatchDeleteAttempt.current);
@@ -1501,16 +1501,16 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       if (!response.ok) {
         if (postgres && (response.status === 409 || response.status === 404)) {
           setProductBatchDeleteNeedsRefresh(true);
-          throw new Error('상품 목록 또는 삭제 요청이 변경되었습니다. 새로고침 후 다시 선택해 주세요.');
+          throw new Error('상품 목록이나 삭제 요청이 바뀌었어요. 새로고침 후 다시 선택해 주세요.');
         }
-        throw new Error(postgres ? '상품을 삭제하지 못했습니다. 같은 요청으로 다시 시도하거나 새로고침해 주세요.' : payload.error ?? '상품을 삭제하지 못했습니다.');
+        throw new Error(postgres ? '상품을 삭제하지 못했어요. 같은 요청으로 다시 시도하거나 새로고침해 주세요.' : payload.error ?? '상품을 삭제하지 못했어요.');
       }
       if (postgres && (!isRecord(payload) || payload.operationId !== operationId
         || !Array.isArray(payload.productIds) || payload.productIds.length !== idsToDelete.length
         || new Set(payload.productIds).size !== idsToDelete.length
         || payload.productIds.some((id: unknown) => typeof id !== 'string' || !idsToDelete.includes(id)))) {
         setProductBatchDeleteNeedsRefresh(true);
-        throw new Error('삭제 확인을 검증하지 못했습니다. 새로고침 후 다시 선택해 주세요.');
+        throw new Error('삭제 확인을 검증하지 못했어요. 새로고침 후 다시 선택해 주세요.');
       }
       const deletedIds = Array.isArray(payload.productIds) ? payload.productIds : idsToDelete;
       setProductAdminState((current) => {
@@ -1526,8 +1526,8 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       notify(`선택 상품 ${deletedIds.length}개 삭제 완료`);
     } catch (error) {
       notify(postgres
-        ? `${error instanceof Error ? error.message : '상품을 삭제하지 못했습니다.'} 새로고침으로 최신 목록을 확인해 주세요.`
-        : error instanceof Error ? error.message : '상품을 삭제하지 못했습니다.');
+        ? `${error instanceof Error ? error.message : '상품을 삭제하지 못했어요.'} 새로고침으로 최신 목록을 확인해 주세요.`
+        : error instanceof Error ? error.message : '상품을 삭제하지 못했어요.');
     } finally {
       productBatchDeleteInFlight.current = false;
       if (postgres) productMutationEpoch.current += 1;
@@ -1559,9 +1559,9 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       const payload: unknown = await response.json().catch(() => null);
       if (!response.ok) {
         throw new Error(isRecord(payload) && typeof payload.error === 'string'
-          ? payload.error : '과제를 추가하지 못했습니다.');
+          ? payload.error : '과제를 추가하지 못했어요.');
       }
-      if (!isCreatedTask(payload, canonicalBody)) throw new Error('과제를 추가하지 못했습니다.');
+      if (!isCreatedTask(payload, canonicalBody)) throw new Error('과제를 추가하지 못했어요.');
       const createdTask = normalizeAdminTask(payload);
       setTasks((current) => [...current.filter((task) => task.taskId !== createdTask.taskId), createdTask]
         .sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title)));
@@ -1576,12 +1576,12 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
           const taskPayload: unknown = await taskResponse.json().catch(() => null);
           if (!taskResponse.ok || !Array.isArray(taskPayload)) {
             throw new Error(isRecord(taskPayload) && typeof taskPayload.error === 'string'
-              ? taskPayload.error : '최신 과제 회차를 불러오지 못했습니다.');
+              ? taskPayload.error : '최신 과제 회차를 불러오지 못했어요.');
           }
           const matchingTasks = taskPayload.filter((task) => isRecord(task) && task.taskId === createdTask.taskId);
           if (matchingTasks.length !== 1 || !isCompleteTaskProjection(matchingTasks[0], createdTask.taskId)
             || matchingTasks[0].taskInstanceId !== createdTask.taskInstanceId) {
-            throw new Error('생성한 과제의 최신 회차가 아직 조회되지 않습니다.');
+            throw new Error('만든 과제의 최신 회차가 아직 조회되지 않아요.');
           }
           const refreshedTask = normalizeAdminTask(matchingTasks[0] as TaskDraft);
           setTasks((current) => {
@@ -1591,11 +1591,11 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
             return next.sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title));
           });
         } catch (error) {
-          notify(`${createdTask.taskId} 과제는 추가되었지만 회차 정보를 새로고침하지 못했습니다: ${error instanceof Error ? error.message : '최신 과제 회차를 불러오지 못했습니다.'}`);
+          notify(`${createdTask.taskId} 과제는 추가했지만 회차 정보를 새로고침하지 못했어요: ${error instanceof Error ? error.message : '최신 과제 회차를 불러오지 못했어요.'}`);
         }
       }
     } catch (error) {
-      notify(error instanceof Error ? error.message : '과제를 추가하지 못했습니다.');
+      notify(error instanceof Error ? error.message : '과제를 추가하지 못했어요.');
     } finally {
       taskCreationInFlight.current = false;
     }
@@ -1610,13 +1610,13 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
     try {
       const response = await tenantFetch(`/api/tasks/${encodeURIComponent(taskId)}`, { method: 'DELETE' });
       await response.json().catch(() => null);
-      if (!response.ok) throw new Error('삭제 응답을 확인하지 못했습니다.');
+      if (!response.ok) throw new Error('삭제 응답을 확인하지 못했어요.');
       setTasks((current) => current.filter((task) => task.taskId !== taskId));
       setSelectedTaskIds((current) => current.filter((id) => id !== taskId));
       setTaskDeleteConfirmation(null);
       notify(`${taskId} 과제 삭제 완료`);
     } catch (error) {
-      const messageText = error instanceof Error ? error.message : '과제를 삭제하지 못했습니다.';
+      const messageText = error instanceof Error ? error.message : '과제를 삭제하지 못했어요.';
       setTaskDeleteConfirmation((current) => current?.taskId === taskId ? { ...current, deleting: false, error: messageText } : current);
       notify(messageText);
     } finally {
@@ -1625,8 +1625,8 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
   }
 
   async function deleteSelectedTasks() {
-    if (taskSingleDeleteInFlight.current) return notify('개별 삭제 요청이 남아 있습니다. 원래 과제의 같은 요청을 다시 시도하거나 거절된 요청을 새로고침해 주세요.');
-    if (selectedTaskIds.length === 0) return notify('선택된 과제가 없습니다.');
+    if (taskSingleDeleteInFlight.current) return notify('개별 삭제 요청이 남아 있어요. 원래 과제의 같은 요청을 다시 시도하거나 거절된 요청을 새로고침해 주세요.');
+    if (selectedTaskIds.length === 0) return notify('선택된 과제가 없어요.');
     if (taskBatchDeleteInFlight.current) return;
     const idsToDelete = [...selectedTaskIds];
     try {
@@ -1638,20 +1638,20 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       });
       const payload: unknown = await response.json().catch(() => null);
       const result = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload as Record<string, unknown> : {};
-      if (!response.ok) throw new Error(typeof result.error === 'string' ? result.error : '과제를 삭제하지 못했습니다.');
+      if (!response.ok) throw new Error(typeof result.error === 'string' ? result.error : '과제를 삭제하지 못했어요.');
       const deletedIds: string[] = Array.isArray(result.taskIds) ? result.taskIds : idsToDelete;
       setTasks((current) => current.filter((task) => !deletedIds.includes(task.taskId)));
       setSelectedTaskIds((current) => current.filter((id) => !deletedIds.includes(id)));
       notify(`선택 과제 ${deletedIds.length}개 삭제 완료`);
     } catch (error) {
-      notify(error instanceof Error ? error.message : '과제를 삭제하지 못했습니다.');
+      notify(error instanceof Error ? error.message : '과제를 삭제하지 못했어요.');
     } finally {
       taskBatchDeleteInFlight.current = false;
     }
   }
 
   function requestTaskCompletionReset(target: TaskDialogTarget, opener: HTMLElement) {
-    if (target.tasks.length === 0) return notify('선택된 과제가 없습니다.');
+    if (target.tasks.length === 0) return notify('선택된 과제가 없어요.');
     setTaskResetConfirmation({ target, opener, operationId: crypto.randomUUID(), resetting: false, error: '' });
   }
 
@@ -1667,7 +1667,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
         body: JSON.stringify({ taskIds, operationId }),
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error ?? '과제 완료 기록을 초기화하지 못했습니다.');
+      if (!response.ok) throw new Error(payload.error ?? '과제 완료 기록을 초기화하지 못했어요.');
       let taskPayload: unknown;
       try {
         const taskResponse = await tenantFetch('/api/tasks?includeInactive=1', { cache: 'no-store' });
@@ -1700,7 +1700,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       setTaskResetConfirmation(null);
       notify(`완료 기록 ${Number(payload.deletedCount ?? 0)}건 초기화 완료`);
     } catch (error) {
-      const errorText = error instanceof Error ? error.message : '과제 완료 기록을 초기화하지 못했습니다.';
+      const errorText = error instanceof Error ? error.message : '과제 완료 기록을 초기화하지 못했어요.';
       setTaskResetConfirmation((current) => current ? { ...current, resetting: false, error: errorText } : current);
       notify(errorText);
     }
@@ -1733,10 +1733,10 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       if (!response.ok) {
         throw new Error(isRecord(payload) && typeof payload.error === 'string'
           ? payload.error
-          : '학생을 추가하지 못했습니다.');
+          : '학생을 추가하지 못했어요.');
       }
       if (!isCreatedStudent(payload, semanticBody)) {
-        throw new Error('학생을 추가하지 못했습니다.');
+        throw new Error('학생을 추가하지 못했어요.');
       }
       let createdStudent: StudentDraft = payload;
       let refreshWarning = '';
@@ -1748,7 +1748,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
           const matches = snapshot.students.filter(student => student.studentId === payload.studentId);
           if (snapshot.storage !== 'postgresql' || matches.length !== 1) throw new Error('학생 조회 실패');
           createdStudent = matches[0];
-        } catch { refreshWarning = ' 학생은 등록되었지만 편집 정보를 불러오지 못했습니다. 명단을 새로고침한 뒤 편집해 주세요.'; }
+        } catch { refreshWarning = ' 학생은 등록했지만 편집 정보를 불러오지 못했어요. 명단을 새로고침한 뒤 편집해 주세요.'; }
       }
       // Merge the complete fetched row with its versions, never attach fresh
       // versions to an old balance or replace other unsaved rows.
@@ -1762,7 +1762,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       notify(`${payload.studentId} 추가 완료${refreshWarning}`);
       succeeded = true;
     } catch (error) {
-      notify(error instanceof Error ? error.message : '학생을 추가하지 못했습니다.');
+      notify(error instanceof Error ? error.message : '학생을 추가하지 못했어요.');
     } finally {
       studentCreationInFlight.current = false;
     }
@@ -1801,10 +1801,10 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       if (!response.ok) {
         throw new Error(isRecord(payload) && typeof payload.error === 'string'
           ? payload.error
-          : '상품을 추가하지 못했습니다.');
+          : '상품을 추가하지 못했어요.');
       }
       if (!isCreatedProduct(payload, body.productId)) {
-        throw new Error('상품을 추가하지 못했습니다.');
+        throw new Error('상품을 추가하지 못했어요.');
       }
       let createdProduct: Product = payload;
       let createdVersion: number | undefined;
@@ -1818,7 +1818,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
           if (matches.length !== 1) throw new Error('상품 조회 실패');
           createdProduct = matches[0];
           createdVersion = snapshot.mutationPreconditions.get(payload.productId);
-        } catch { refreshWarning = ' 상품은 등록되었지만 편집 정보를 불러오지 못했습니다. 목록을 새로고침한 뒤 편집해 주세요.'; }
+        } catch { refreshWarning = ' 상품은 등록했지만 편집 정보를 불러오지 못했어요. 목록을 새로고침한 뒤 편집해 주세요.'; }
         productMutationEpoch.current += 1;
       }
       setProductAdminState((current) => {
@@ -1851,7 +1851,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       notify(`${payload.productId} 추가 완료${refreshWarning}`);
       succeeded = true;
     } catch (error) {
-      notify(error instanceof Error ? error.message : '상품을 추가하지 못했습니다.');
+      notify(error instanceof Error ? error.message : '상품을 추가하지 못했어요.');
     } finally {
       productCreationInFlight.current = false;
     }
@@ -1881,7 +1881,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
         body: JSON.stringify({ studentIds: [studentId], mode, amount, operationId }),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? '화폐를 조정하지 못했습니다.');
+      if (!response.ok) throw new Error(payload.error ?? '화폐를 조정하지 못했어요.');
       const updatedBalance = Array.isArray(payload) ? payload.find((item: { studentId: string }) => item.studentId === studentId)?.balance : undefined;
       if (typeof updatedBalance === 'number') {
         updateStudent(studentId, { balance: updatedBalance });
@@ -1900,7 +1900,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
         mode,
         studentId,
         amount,
-        message: error instanceof Error ? error.message : '화폐를 조정하지 못했습니다.',
+        message: error instanceof Error ? error.message : '화폐를 조정하지 못했어요.',
       });
     } finally {
       currencyInFlight.current = false;
@@ -1974,7 +1974,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
   }));
   const digitalLabel = (productId: string) => {
     const digital = digitalProducts.get(productId);
-    return digital ? ` · 디지털 ${DIGITAL_KIND_LABELS[digital.kind]}` : '';
+    return digital ? `, 디지털 ${DIGITAL_KIND_LABELS[digital.kind]}` : '';
   };
   const money = (value: number) => `${value.toLocaleString('ko-KR')}${unit}`;
 
@@ -2021,8 +2021,8 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
     if (!taskSheet) return;
     if (!force && (taskBasicDirty || taskScheduleDirty || taskAssignmentDirty)) {
       setConfirmState({
-        title: '저장하지 않은 변경 사항이 있습니다',
-        description: '닫으면 이 과제에서 바꾼 내용이 사라집니다.',
+        title: '저장하지 않은 변경 사항이 있어요',
+        description: '닫으면 이 과제에서 바꾼 내용이 사라져요.',
         confirmLabel: '저장하지 않고 닫기',
         tone: 'warning',
         onConfirm: () => { setConfirmState(null); closeTaskSheet(true); },
@@ -2129,8 +2129,8 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
 
   function confirmDiscard(close: () => void) {
     setConfirmState({
-      title: '저장하지 않은 변경 사항이 있습니다',
-      description: '닫으면 바꾼 내용이 사라집니다.',
+      title: '저장하지 않은 변경 사항이 있어요',
+      description: '닫으면 바꾼 내용이 사라져요.',
       confirmLabel: '저장하지 않고 닫기',
       tone: 'warning',
       onConfirm: () => { setConfirmState(null); close(); },
@@ -2194,7 +2194,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
   const nestedOverTaskSheet = Boolean(taskHistory || taskDeleteConfirmation || taskResetConfirmation || confirmState || isSavingChanges || isSavingTaskSchedule);
 
   if (isInitialLoading) {
-    return <LoadingScreen title="학급 정보 불러오는 중" message="관리자 데이터와 테마 설정을 불러오는 중입니다." />;
+    return <LoadingScreen title="학급 정보 불러오는 중" message="관리자 데이터와 테마 설정을 불러오는 중이에요." />;
   }
 
   const storeHref = tenantPagePath('/');
@@ -2216,7 +2216,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                   <span aria-hidden="true" className="block h-9 w-9 bg-[var(--theme-accent-text)] [mask-image:url('/class-reward-system-icon.png')] [mask-position:center] [mask-repeat:no-repeat] [mask-size:contain]" />
                 </a>
               ) : (
-                <span role="img" aria-label="학급 보상 시스템 로고" className="h-9 w-9 shrink-0 bg-[var(--theme-accent-text)] [mask-image:url('/class-reward-system-icon.png')] [mask-position:center] [mask-repeat:no-repeat] [mask-size:contain]" />
+                <span role="img" aria-label="딴쌤 클래스 로고" className="h-9 w-9 shrink-0 bg-[var(--theme-accent-text)] [mask-image:url('/class-reward-system-icon.png')] [mask-position:center] [mask-repeat:no-repeat] [mask-size:contain]" />
               )}
               <div className="min-w-0 flex-1">
                 <h1 className="truncate text-[19px] font-black leading-tight tracking-[-0.03em] lg:text-[20px]" title={classLabel}>{classLabel}</h1>
@@ -2309,12 +2309,12 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                 </div>
                 {students.length === 0 || products.length === 0 || homeTaskCounts?.total === 0 ? (
                   <Card data-tour="home-start">
-                    <CardHeader title="학급 시작하기" description="세 가지만 등록하면 학생들이 매점과 은행을 바로 쓸 수 있습니다." />
+                    <CardHeader title="학급 시작하기" description="세 가지만 등록하면 학생들이 매점과 은행을 바로 쓸 수 있어요." />
                     <ol className="mt-5 grid gap-3 md:grid-cols-3">
                       {([
-                        { done: students.length > 0, icon: 'users', title: '학생 등록', description: '번호와 이름을 등록하면 QR 카드를 인쇄할 수 있습니다.', action: '학생 추가', onClick: (event: React.MouseEvent<HTMLButtonElement>) => { selectAdminTab('students'); setStudentSheet({ mode: 'new', opener: event.currentTarget }); } },
-                        { done: products.length > 0, icon: 'store', title: '상품 등록', description: '학생이 매점에서 살 수 있는 물건이나 특권입니다.', action: '상품 추가', onClick: (event: React.MouseEvent<HTMLButtonElement>) => { selectAdminTab('products'); setProductSheet({ mode: 'new', opener: event.currentTarget }); } },
-                        { done: homeTaskCounts?.total !== 0, icon: 'task', title: '과제 만들기', description: '학생이 은행에서 완료하고 보상을 받는 일입니다.', action: '과제 만들기', onClick: (event: React.MouseEvent<HTMLButtonElement>) => {
+                        { done: students.length > 0, icon: 'users', title: '학생 등록', description: '번호와 이름을 등록하면 QR 카드를 인쇄할 수 있어요.', action: '학생 추가', onClick: (event: React.MouseEvent<HTMLButtonElement>) => { selectAdminTab('students'); setStudentSheet({ mode: 'new', opener: event.currentTarget }); } },
+                        { done: products.length > 0, icon: 'store', title: '상품 등록', description: '학생이 매점에서 살 수 있는 물건이나 특권이에요.', action: '상품 추가', onClick: (event: React.MouseEvent<HTMLButtonElement>) => { selectAdminTab('products'); setProductSheet({ mode: 'new', opener: event.currentTarget }); } },
+                        { done: homeTaskCounts?.total !== 0, icon: 'task', title: '과제 만들기', description: '학생이 은행에서 완료하고 보상을 받는 일이에요.', action: '과제 만들기', onClick: (event: React.MouseEvent<HTMLButtonElement>) => {
                           selectAdminTab('tasks');
                           if (ledgerMode) taskLedger.open({ kind: 'new', opener: event.currentTarget });
                           else openNewTaskSheet(event.currentTarget);
@@ -2339,7 +2339,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                     <TaskLedgerHomeCard ledger={taskLedger} onShowAll={() => selectAdminTab('tasks')}
                       onOpenTask={(taskId) => { selectAdminTab('tasks'); taskLedger.open({ kind: 'task', taskId, tab: 'students', opener: null }); }} />
                   ) : <Card data-tour="home-progress">
-                    <CardHeader title="과제 진행 현황" description="이번 회차 기준 완료한 학생 수입니다." actions={<Button size="sm" variant="ghost" iconRight="chevronRight" onClick={() => selectAdminTab('tasks')}>전체 보기</Button>} />
+                    <CardHeader title="과제 진행 현황" description="이번 회차에 완료한 학생 수예요." actions={<Button size="sm" variant="ghost" iconRight="chevronRight" onClick={() => selectAdminTab('tasks')}>전체 보기</Button>} />
                     <div className="mt-4 divide-y divide-[var(--crs-line)]">
                       {tasks.filter((task) => task.isActive).slice(0, 6).map((task) => {
                         const progress = taskProgress(task);
@@ -2354,7 +2354,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                           </button>
                         );
                       })}
-                      {tasks.filter((task) => task.isActive).length === 0 ? <p className="py-6 text-center text-[13px] text-[var(--theme-muted-text)]">진행 중인 과제가 없습니다.</p> : null}
+                      {tasks.filter((task) => task.isActive).length === 0 ? <p className="py-6 text-center text-[13px] text-[var(--theme-muted-text)]">진행 중인 과제가 없어요.</p> : null}
                     </div>
                   </Card>}
                   <Card data-tour="home-check">
@@ -2371,7 +2371,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                         </Callout>
                       ) : null}
                       {!negativeStudents.length && !lowStockProducts.length ? (
-                        <div className="flex items-center gap-3 rounded-[var(--crs-radius)] bg-[var(--crs-success-bg)] px-4 py-3 text-[13px] font-semibold text-[var(--crs-success-text)]"><Icon name="check" size={17} /> 지금은 확인할 항목이 없습니다.</div>
+                        <div className="flex items-center gap-3 rounded-[var(--crs-radius)] bg-[var(--crs-success-bg)] px-4 py-3 text-[13px] font-semibold text-[var(--crs-success-text)]"><Icon name="check" size={17} /> 지금은 확인할 항목이 없어요.</div>
                       ) : null}
                     </div>
                   </Card>
@@ -2381,7 +2381,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
 
             {activeTab === 'settings' ? (
               <section id="admin-panel-settings" role="tabpanel" aria-labelledby="admin-tab-settings" aria-label="설정" className="space-y-6">
-                <PageHeader title="설정" description="매점·은행 화면의 이름, 화폐 단위, 테마와 글꼴을 정합니다." />
+                <PageHeader title="설정" description="매점과 은행 화면의 이름, 화폐 단위, 테마와 글꼴을 정해요." />
                 <SettingsForm
                   linkedStudentCount={students.length}
                   linkedProductCount={products.length}
@@ -2392,7 +2392,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
 
             {activeTab === 'students' ? (
               <section id="admin-panel-students" role="tabpanel" aria-labelledby="admin-tab-students" aria-label="학생" className="space-y-5">
-                <PageHeader title="학생" description="학생 명단과 잔액을 관리합니다. 학생을 누르면 정보를 고칠 수 있습니다."
+                <PageHeader title="학생" description="학생 명단과 잔액을 관리해요. 학생을 누르면 정보를 고칠 수 있어요."
                   actions={<>
                     <IconButton icon="refresh" label="학생 명단 새로고침" variant="secondary" onClick={refreshStudents} />
                     {tenantScoped ? <StudentBulkImport unit={unit} onImported={() => { void refreshStudents(); }} /> : null}
@@ -2400,7 +2400,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                   </>} />
                 <Callout tone="warning" title="학생 실명은 학부모 동의를 받은 뒤에 입력해 주세요">
                   <p>
-                    만 14세 미만 학생의 이름과 실제 학년·반·번호를 쓰려면 법정대리인(학부모)의 개인정보 수집·이용 동의가 필요해요.
+                    만 14세 미만 학생의 이름과 실제 학년, 반, 번호를 쓰려면 법정대리인(학부모)의 개인정보 수집·이용 동의가 필요해요.
                     동의를 받지 않은 학생은 실명이나 실제 번호 대신 별명과 임의 번호로 등록해 주세요.
                   </p>
                   <Button variant="secondary" size="sm" icon="printer" className="mt-2.5" onClick={(event) => setConsentFormOpener(event.currentTarget)}>
@@ -2413,7 +2413,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                     options={[{ value: 'all', label: '전체', count: students.length }, { value: 'ACTIVE', label: '활성', count: students.filter((student) => (student.status ?? 'ACTIVE') === 'ACTIVE').length }, { value: 'INACTIVE', label: '비활성', count: students.filter((student) => student.status === 'INACTIVE').length }]} />
                 </div>
                 {students.length === 0 ? (
-                  <EmptyState icon="users" title="첫 학생을 등록해 보세요" description="학생을 등록하면 QR 카드를 발급하고 화폐를 지급할 수 있습니다."
+                  <EmptyState icon="users" title="첫 학생을 등록해 보세요" description="학생을 등록하면 QR 카드를 발급하고 화폐를 지급할 수 있어요."
                     action={<Button variant="primary" icon="plus" data-tour="student-add" onClick={(event) => { setStudentSheet({ mode: 'new', opener: event.currentTarget }); }}>학생 추가</Button>} />
                 ) : (
                   <Card padded={false} className="overflow-hidden">
@@ -2439,7 +2439,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                                 className="block max-w-full truncate text-left text-[15px] font-bold outline-none after:absolute after:inset-0 after:content-[''] focus-visible:underline">
                                 {student.name}
                               </button>
-                              <span className="block text-xs text-[var(--theme-muted-text)] sm:hidden">{student.studentId}{inactive ? ' · 비활성' : ''}</span>
+                              <span className="block text-xs text-[var(--theme-muted-text)] sm:hidden">{student.studentId}{inactive ? ', 비활성' : ''}</span>
                             </span>
                             <span role="cell" className={cx('text-right text-[15px] font-extrabold tabular-nums', student.balance < 0 && 'text-[var(--crs-danger-text)]')}>{money(student.balance)}</span>
                             <span role="cell" className="hidden sm:block">{inactive ? <Badge>비활성</Badge> : <Badge tone="success" dot>활성</Badge>}</span>
@@ -2447,7 +2447,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                           </div>
                         );
                       })}
-                      {visibleStudents.length === 0 ? <p className="px-5 py-10 text-center text-[13px] text-[var(--theme-muted-text)]">검색 결과가 없습니다.</p> : null}
+                      {visibleStudents.length === 0 ? <p className="px-5 py-10 text-center text-[13px] text-[var(--theme-muted-text)]">검색 결과가 없어요.</p> : null}
                     </div>
                   </Card>
                 )}
@@ -2455,14 +2455,14 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                   <SelectionBarButton icon="coins" data-tour="student-bulk-balance" onClick={() => setBulkBalanceOpen(true)}>잔액 변경</SelectionBarButton>
                   <SelectionBarButton icon="qr" data-tour="student-qr-bulk" onClick={() => setQrPrintStudents(students.filter((student) => selectedStudentIds.includes(student.studentId)))}>QR 카드 발급</SelectionBarButton>
                   {tenantScoped ? <SelectionBarButton icon="package" data-tour="student-bulk-give" onClick={(event) => setBulkGiveOpener(event.currentTarget)}>보관함에 넣기</SelectionBarButton> : null}
-                  <SelectionBarButton icon="trash" danger data-tour="student-bulk-delete" onClick={() => confirmDelete(`학생 ${selectedStudentIds.length}명을 삭제할까요?`, '삭제한 학생은 명단에서 사라집니다. 거래 기록은 그대로 남습니다.', deleteSelectedStudents)}>삭제</SelectionBarButton>
+                  <SelectionBarButton icon="trash" danger data-tour="student-bulk-delete" onClick={() => confirmDelete(`학생 ${selectedStudentIds.length}명을 삭제할까요?`, '삭제한 학생은 명단에서 사라져요. 거래 기록은 그대로 남아요.', deleteSelectedStudents)}>삭제</SelectionBarButton>
                 </SelectionBar>
               </section>
             ) : null}
 
             {activeTab === 'products' ? (
               <section id="admin-panel-products" role="tabpanel" aria-labelledby="admin-tab-products" aria-label="매점" className="space-y-5">
-                <PageHeader title="매점" description="학생이 매점에서 살 수 있는 상품과 할인 행사를 관리합니다."
+                <PageHeader title="매점" description="학생이 매점에서 살 수 있는 상품과 할인 행사를 관리해요."
                   actions={storeTab === 'inventory' ? <>
                     <IconButton icon="refresh" label="상품 · 재고 관리 새로고침" variant="secondary" onClick={refreshProducts} />
                     {tenantScoped ? <ProductBulkImport unit={unit} onImported={() => { void refreshProducts(); }} /> : null}
@@ -2485,7 +2485,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                       options={[{ value: 'all', label: '전체', count: products.length }, { value: 'active', label: '판매 중', count: products.filter((product) => product.isActive).length }, { value: 'inactive', label: '판매 중지', count: products.filter((product) => !product.isActive).length }]} />
                   </div>
                   {products.length === 0 ? (
-                    <EmptyState icon="store" title="첫 상품을 등록해 보세요" description="상품을 등록하면 학생들이 매점 화면에서 바로 살 수 있습니다."
+                    <EmptyState icon="store" title="첫 상품을 등록해 보세요" description="상품을 등록하면 학생들이 매점 화면에서 바로 살 수 있어요."
                       action={<Button variant="primary" icon="plus" data-tour="product-add" onClick={(event) => { setNewProduct((current) => current === EMPTY_PRODUCT ? { ...current, sortOrder: products.length + 1 } : current); setProductSheet({ mode: 'new', opener: event.currentTarget }); }}>상품 추가</Button>} />
                   ) : (
                     <Card padded={false} className="overflow-hidden">
@@ -2510,7 +2510,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                                   className="block max-w-full truncate text-left text-[15px] font-bold outline-none after:absolute after:inset-0 after:content-[''] focus-visible:underline">
                                   {product.name}
                                 </button>
-                                <span className="block truncate text-xs text-[var(--theme-muted-text)]">{product.category || '분류 없음'}{digitalLabel(product.productId)}<span className="sm:hidden"> · 재고 {product.stock}개</span></span>
+                                <span className="block truncate text-xs text-[var(--theme-muted-text)]">{product.category || '분류 없음'}{digitalLabel(product.productId)}<span className="sm:hidden">, 재고 {product.stock}개</span></span>
                               </span>
                             </span>
                             <span role="cell" className="text-right text-[15px] font-extrabold tabular-nums">{money(product.price)}</span>
@@ -2519,12 +2519,12 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                             <span role="cell" aria-hidden="true" className="text-[var(--theme-muted-text)] opacity-0 transition-opacity group-hover:opacity-100"><Icon name="chevronRight" size={18} /></span>
                           </div>
                         ))}
-                        {visibleProducts.length === 0 ? <p className="px-5 py-10 text-center text-[13px] text-[var(--theme-muted-text)]">검색 결과가 없습니다.</p> : null}
+                        {visibleProducts.length === 0 ? <p className="px-5 py-10 text-center text-[13px] text-[var(--theme-muted-text)]">검색 결과가 없어요.</p> : null}
                       </div>
                     </Card>
                   )}
                   <SelectionBar count={storeTab === 'inventory' ? selectedProductIds.length : 0} onClear={() => setSelectedProductIds([])}>
-                    <SelectionBarButton icon="trash" danger data-tour="product-bulk-delete" onClick={() => confirmDelete(`상품 ${selectedProductIds.length}개를 삭제할까요?`, '삭제한 상품은 매점에서 바로 사라집니다. 지난 거래 기록은 그대로 남습니다.', deleteSelectedProducts)}>삭제</SelectionBarButton>
+                    <SelectionBarButton icon="trash" danger data-tour="product-bulk-delete" onClick={() => confirmDelete(`상품 ${selectedProductIds.length}개를 삭제할까요?`, '삭제한 상품은 매점에서 바로 사라져요. 지난 거래 기록은 그대로 남아요.', deleteSelectedProducts)}>삭제</SelectionBarButton>
                   </SelectionBar>
                 </div>
                 <section id="admin-store-panel-promotions" role="tabpanel" aria-labelledby="admin-store-tab-promotions" hidden={storeTab !== 'promotions'}>
@@ -2543,7 +2543,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
             {activeTab === 'tasks' && ledgerMode ? <TaskLedgerPanel ledger={taskLedger} unit={unit} notify={notify} /> : null}
             {activeTab === 'tasks' && !ledgerMode ? (
               <section id="admin-panel-tasks" data-testid="task-panel" role="tabpanel" aria-labelledby="admin-tab-tasks" aria-label="과제" className="space-y-5">
-                <PageHeader title="과제" description="학생이 은행에서 완료하고 보상을 받는 과제입니다. 과제를 누르면 내용, 반복, 학생별 현황을 관리할 수 있습니다."
+                <PageHeader title="과제" description="학생이 은행에서 완료하고 보상을 받는 과제예요. 과제를 누르면 내용, 반복, 학생별 현황을 관리할 수 있어요."
                   actions={<>
                     <IconButton icon="refresh" label="과제 설정 새로고침" variant="secondary" onClick={refreshTasks} />
                     <Button icon="qr" onClick={() => { setQrTaskResult(null); setQrTaskScan(null); setQrTaskPickerOpen(true); }}>QR로 부여</Button>
@@ -2555,7 +2555,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                     options={[{ value: 'all', label: '전체', count: tasks.length }, { value: 'active', label: '공개', count: tasks.filter((task) => task.isActive).length }, { value: 'hidden', label: '숨김', count: tasks.filter((task) => !task.isActive).length }]} />
                 </div>
                 {tasks.length === 0 ? (
-                  <EmptyState icon="task" title="첫 과제를 만들어 보세요" description="숙제, 청소 당번처럼 학생이 하고 보상을 받을 일을 과제로 등록합니다."
+                  <EmptyState icon="task" title="첫 과제를 만들어 보세요" description="숙제, 청소 당번처럼 학생이 하고 보상을 받을 일을 과제로 등록해요."
                     action={<Button variant="primary" icon="plus" onClick={(event) => openNewTaskSheet(event.currentTarget)}>새 과제</Button>} />
                 ) : (
                   <Card padded={false} className="overflow-hidden" data-testid="task-list-card">
@@ -2586,7 +2586,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                                 {meta.map((item) => <span key={item.text} className="inline-flex items-center gap-1"><Icon name={item.icon} size={13} />{item.text}</span>)}
                                 <span className="inline-flex items-center gap-1"><Icon name="users" size={13} />{progress.assigned}명 부여
                                   {progress.pending !== null && progress.ready !== null && progress.assigned > 0
-                                    ? <span className="text-[var(--theme-muted-text)]">(미완료 {progress.pending} · 완료 가능 {progress.ready})</span> : null}</span>
+                                    ? <span className="text-[var(--theme-muted-text)]">(미완료 {progress.pending}, 완료 가능 {progress.ready})</span> : null}</span>
                                 <span className="md:hidden"><Badge tone={status.tone}>{status.label}</Badge></span>
                               </span>
                             </span>
@@ -2604,14 +2604,14 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                           </div>
                         );
                       })}
-                      {visibleTasks.length === 0 ? <p className="px-5 py-10 text-center text-[13px] text-[var(--theme-muted-text)]">검색 결과가 없습니다.</p> : null}
+                      {visibleTasks.length === 0 ? <p className="px-5 py-10 text-center text-[13px] text-[var(--theme-muted-text)]">검색 결과가 없어요.</p> : null}
                     </div>
                   </Card>
                 )}
                 <SelectionBar count={selectedTaskIds.length} onClear={() => setSelectedTaskIds([])}>
                   <SelectionBarButton icon="repeat" aria-label="선택 과제 반복 설정" onClick={(event) => openBulkTaskScheduleEditor(event.currentTarget)}>반복 설정</SelectionBarButton>
                   <SelectionBarButton icon="users" aria-label="선택 과제 학생 부여" onClick={(event) => openBulkTaskAssignmentEditor(event.currentTarget)}>학생 부여</SelectionBarButton>
-                  <SelectionBarButton icon="trash" danger onClick={() => confirmDelete(`과제 ${selectedTaskIds.length}개를 삭제할까요?`, '삭제한 과제는 학생 은행 화면에서 사라집니다. 이미 지급한 보상은 그대로 남습니다.', deleteSelectedTasks)}>삭제</SelectionBarButton>
+                  <SelectionBarButton icon="trash" danger onClick={() => confirmDelete(`과제 ${selectedTaskIds.length}개를 삭제할까요?`, '삭제한 과제는 학생 은행 화면에서 사라져요. 이미 지급한 보상은 그대로 남아요.', deleteSelectedTasks)}>삭제</SelectionBarButton>
                 </SelectionBar>
               </section>
             ) : null}
@@ -2631,7 +2631,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
             <section id="admin-panel-transactions" role="tabpanel" aria-labelledby="admin-tab-transactions" aria-label="거래 내역" hidden={activeTab !== 'transactions'} className="space-y-6">
               {hasOpenedTransactions ? (
                 <>
-                  <PageHeader title="거래 내역" description="매점 결제, 과제 보상, 지급·회수 기록을 확인하고 필요하면 결제를 취소합니다." />
+                  <PageHeader title="거래 내역" description="매점 결제, 과제 보상, 지급·회수 기록을 확인하고 필요하면 결제를 취소해요." />
                   <TransactionsPanel embedded />
                 </>
               ) : null}
@@ -2639,7 +2639,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
 
             {activeTab === 'currency' ? (
               <section id="admin-panel-currency" role="tabpanel" aria-labelledby="admin-tab-currency" aria-label="지급·회수" className="space-y-6">
-                <PageHeader title="화폐 지급·회수" description="금액을 정한 뒤 학생 QR을 찍으면 바로 지급하거나 회수합니다." />
+                <PageHeader title="화폐 지급·회수" description="금액을 정한 뒤 학생 QR을 찍으면 바로 지급하거나 회수해요." />
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
                   <Card className="space-y-6">
                     <div data-tour="currency-mode">
@@ -2678,9 +2678,9 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                   <Card>
                     <CardHeader title="알아 두세요" titleAs="h3" />
                     <ul className="mt-3 space-y-3 text-[13px] leading-relaxed text-[var(--theme-muted-text)]">
-                      <li className="flex gap-2.5"><Icon name="qr" size={16} className="mt-0.5 shrink-0" />학생 QR을 찍을 때마다 같은 금액이 한 번씩 처리됩니다.</li>
-                      <li className="flex gap-2.5"><Icon name="alert" size={16} className="mt-0.5 shrink-0" />회수할 금액이 잔액보다 크면 잔액이 음수가 됩니다. 예: 잔액 10에서 15를 회수하면 -5</li>
-                      <li className="flex gap-2.5"><Icon name="receipt" size={16} className="mt-0.5 shrink-0" />모든 지급·회수는 거래 내역에 기록됩니다.</li>
+                      <li className="flex gap-2.5"><Icon name="qr" size={16} className="mt-0.5 shrink-0" />학생 QR을 찍을 때마다 같은 금액이 한 번씩 처리돼요.</li>
+                      <li className="flex gap-2.5"><Icon name="alert" size={16} className="mt-0.5 shrink-0" />회수할 금액이 잔액보다 크면 잔액이 음수가 돼요. 예: 잔액 10에서 15를 회수하면 -5</li>
+                      <li className="flex gap-2.5"><Icon name="receipt" size={16} className="mt-0.5 shrink-0" />모든 지급과 회수는 거래 내역에 기록돼요.</li>
                     </ul>
                   </Card>
                 </div>
@@ -2701,7 +2701,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       {taskSheet ? (
         <Sheet
           title={taskSheet.mode === 'new' ? '새 과제' : sheetTask?.title || '과제'}
-          eyebrow={taskSheet.mode === 'new' ? '과제 만들기' : `과제 편집 · ${taskSheet.taskId}`}
+          eyebrow={taskSheet.mode === 'new' ? '과제 만들기' : `과제 편집 ${taskSheet.taskId}`}
           ariaLabel={taskSheet.mode === 'new' ? '새 과제' : `${sheetTask?.title || taskSheet.taskId} 과제 편집`}
           opener={taskSheet.opener}
           onClose={() => closeTaskSheet()}
@@ -2775,10 +2775,10 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                 <TaskScheduleProjection task={sheetTask} />
                 <TaskRecurrenceFields form={sheetScheduleEditor.form}
                   onChange={(form) => setTaskScheduleEditor((current) => current ? { ...current, form, explicit: true } : current)} />
-                <p className="text-xs leading-relaxed text-[var(--theme-muted-text)]">반복 규칙을 바꾸면 바로 적용됩니다. 지금 회차의 완료 상태는 보상 없이 새 규칙으로 이어지고, 기록 지우기는 다음 회차부터 적용됩니다.</p>
+                <p className="text-xs leading-relaxed text-[var(--theme-muted-text)]">반복 규칙을 바꾸면 바로 적용돼요. 지금 회차의 완료 상태는 보상 없이 새 규칙으로 이어지고, 기록 지우기는 다음 회차부터 적용돼요.</p>
               </div>
             ) : taskScheduleEditor && taskSheet.mode === 'edit' ? (
-              <Callout tone="warning" title="다른 반복 설정 창이 열려 있습니다">먼저 열린 반복 설정을 저장하거나 닫아 주세요.</Callout>
+              <Callout tone="warning" title="다른 반복 설정 창이 열려 있어요">먼저 열린 반복 설정을 저장하거나 닫아 주세요.</Callout>
             ) : <SheetLoading label="반복 설정 불러오는 중" />
           ) : null}
 
@@ -2801,7 +2801,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                 onBulkCompleted={setSelectedTaskAssignmentCompletion}
               />
             ) : taskAssignmentEditor && taskSheet.mode === 'edit' ? (
-              <Callout tone="warning" title="다른 과제의 부여 창이 열려 있습니다">먼저 열린 부여 창을 저장하거나 닫아 주세요.</Callout>
+              <Callout tone="warning" title="다른 과제의 부여 창이 열려 있어요">먼저 열린 부여 창을 저장하거나 닫아 주세요.</Callout>
             ) : (
               <div className="space-y-3">
                 <SheetLoading label="학생 현황 불러오는 중" />
@@ -2816,7 +2816,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       {studentSheet ? (
         <Sheet
           title={studentSheet.mode === 'new' ? '학생 추가' : sheetStudent?.name || '학생'}
-          eyebrow={studentSheet.mode === 'new' ? '새 학생' : `학생 편집 · ${studentSheet.id}`}
+          eyebrow={studentSheet.mode === 'new' ? '새 학생' : `학생 편집 ${studentSheet.id}`}
           ariaLabel={studentSheet.mode === 'new' ? '학생 추가' : `${studentSheet.id} 학생 편집`}
           opener={studentSheet.opener}
           width="max-w-[460px]"
@@ -2831,7 +2831,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
           ) : sheetStudent ? (
             <>
               <Button variant="dangerGhost" icon="trash" aria-label={`${sheetStudent.studentId} 학생 삭제`}
-                onClick={() => confirmDelete(`${sheetStudent.name} 학생을 삭제할까요?`, '삭제한 학생은 명단에서 사라집니다. 거래 기록은 그대로 남습니다.', async () => { await deleteStudentRow(sheetStudent.studentId); setStudentSheet(null); })}>삭제</Button>
+                onClick={() => confirmDelete(`${sheetStudent.name} 학생을 삭제할까요?`, '삭제한 학생은 명단에서 사라져요. 거래 기록은 그대로 남아요.', async () => { await deleteStudentRow(sheetStudent.studentId); setStudentSheet(null); })}>삭제</Button>
               <div className="ml-auto" />
               <Button variant="ghost" onClick={() => closeStudentSheet()}>취소</Button>
               <Button variant="primary" icon="check" data-tour="student-save" disabled={!studentDirty} onClick={async () => { if (await saveStudentRows([sheetStudent], '학생')) setStudentSheet(null); }}>저장</Button>
@@ -2840,13 +2840,13 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
         >
           {studentSheet.mode === 'new' ? (
             <form id="student-sheet-form" onSubmit={async (event) => { event.preventDefault(); if (await createNewStudent()) setStudentSheet(null); }} className="space-y-5">
-              <Field label="번호" htmlFor="new-student-id" hint="QR 카드에 들어가는 학생 고유 번호입니다. 예: 01, S001">
+              <Field label="번호" htmlFor="new-student-id" hint="QR 카드에 들어가는 학생 고유 번호예요. 예: 01, S001">
                 <Input id="new-student-id" aria-label="새 학생 ID" data-autofocus required value={newStudent.studentId} onChange={(event) => setNewStudent((current) => ({ ...current, studentId: event.target.value }))} />
               </Field>
               <Field label="이름" htmlFor="new-student-name">
                 <Input id="new-student-name" aria-label="새 학생 이름" required value={newStudent.name} onChange={(event) => setNewStudent((current) => ({ ...current, name: event.target.value }))} />
               </Field>
-              <Field label="처음 잔액" htmlFor="new-student-balance" hint="음수로도 시작할 수 있습니다.">
+              <Field label="처음 잔액" htmlFor="new-student-balance" hint="음수로도 시작할 수 있어요.">
                 <Input id="new-student-balance" aria-label="새 학생 잔액" type="number" inputMode="numeric" suffix={unit} value={Number.isFinite(newStudent.balance) ? newStudent.balance : 0} onChange={(event) => setNewStudent((current) => ({ ...current, balance: Number(event.target.value) }))} />
               </Field>
             </form>
@@ -2862,12 +2862,12 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
               <Field label="이름" htmlFor="student-sheet-name">
                 <Input id="student-sheet-name" aria-label={`${sheetStudent.studentId} 이름`} value={sheetStudent.name} onChange={(event) => updateStudent(sheetStudent.studentId, { name: event.target.value })} />
               </Field>
-              <Field label="잔액" htmlFor="student-sheet-balance" hint="직접 고치면 거래 내역 없이 잔액이 바뀝니다. 보상이나 벌금은 지급·회수 메뉴를 쓰세요.">
+              <Field label="잔액" htmlFor="student-sheet-balance" hint="직접 고치면 거래 내역 없이 잔액이 바뀌어요. 보상이나 벌금은 지급·회수 메뉴를 쓰세요.">
                 <Input id="student-sheet-balance" aria-label={`${sheetStudent.studentId} 잔액`} type="number" inputMode="numeric" suffix={unit} value={Number.isFinite(sheetStudent.balance) ? sheetStudent.balance : 0} onChange={(event) => updateStudent(sheetStudent.studentId, { balance: Number(event.target.value) })} />
               </Field>
               <Switch checked={(sheetStudent.status ?? 'ACTIVE') === 'ACTIVE'} ariaLabel={`${sheetStudent.studentId} 활성`}
                 onChange={(checked) => updateStudent(sheetStudent.studentId, { status: checked ? 'ACTIVE' : 'INACTIVE' })}
-                label="활성 학생" description="끄면 이 학생은 매점과 은행을 쓸 수 없습니다. 전학 간 학생 등에 사용하세요." />
+                label="활성 학생" description="끄면 이 학생은 매점과 은행을 쓸 수 없어요. 전학 간 학생 등에 쓰세요." />
               {tenantScoped ? (
                 <StudentStorageSection key={sheetStudent.studentId} studentId={sheetStudent.studentId} name={sheetStudent.name} notify={notify}
                   giveOptions={giveOptions} />
@@ -2881,7 +2881,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       {productSheet ? (
         <Sheet
           title={productSheet.mode === 'new' ? '상품 추가' : sheetProduct?.name || '상품'}
-          eyebrow={productSheet.mode === 'new' ? '새 상품' : `상품 편집 · ${productSheet.id}`}
+          eyebrow={productSheet.mode === 'new' ? '새 상품' : `상품 편집 ${productSheet.id}`}
           ariaLabel={productSheet.mode === 'new' ? '상품 추가' : `${productSheet.id} 상품 편집`}
           opener={productSheet.opener}
           width="max-w-[480px]"
@@ -2934,10 +2934,10 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
         </Sheet>
       ) : null}
 
-      {isSavingChanges ? <LoadingOverlay title="변경 사항 저장 중" message="변경 사항을 저장하는 중입니다." /> : null}
-      {isSavingTaskSchedule ? <LoadingOverlay title="반복 설정 저장 중" message="반복 설정을 저장하고 있습니다." /> : null}
-      {taskResetConfirmation?.resetting ? <LoadingOverlay title="완료 기록 초기화 중" message="완료 기록을 초기화하고 최신 과제 목록을 불러오는 중입니다." restoreFocus={false} /> : null}
-      {isRefreshingLists ? <LoadingOverlay title="새로고침 중" message="최신 목록을 불러오는 중입니다." /> : null}
+      {isSavingChanges ? <LoadingOverlay title="변경 사항 저장 중" message="변경 사항을 저장하는 중이에요." /> : null}
+      {isSavingTaskSchedule ? <LoadingOverlay title="반복 설정 저장 중" message="반복 설정을 저장하는 중이에요." /> : null}
+      {taskResetConfirmation?.resetting ? <LoadingOverlay title="완료 기록 초기화 중" message="완료 기록을 초기화하고 최신 과제 목록을 불러오는 중이에요." restoreFocus={false} /> : null}
+      {isRefreshingLists ? <LoadingOverlay title="새로고침 중" message="최신 목록을 불러오는 중이에요." /> : null}
 
 
       {consentFormOpener ? (
@@ -2956,7 +2956,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       ) : null}
 
       {bulkBalanceOpen ? (
-        <Modal title="잔액 한꺼번에 바꾸기" ariaLabel="잔액 한꺼번에 바꾸기" description={`선택한 학생 ${selectedStudentIds.length}명의 잔액을 바꿉니다.`} onClose={() => setBulkBalanceOpen(false)}
+        <Modal title="잔액 한꺼번에 바꾸기" ariaLabel="잔액 한꺼번에 바꾸기" description={`선택한 학생 ${selectedStudentIds.length}명의 잔액을 바꿔요.`} onClose={() => setBulkBalanceOpen(false)}
           footer={<>
             <Button variant="ghost" onClick={() => setBulkBalanceOpen(false)}>취소</Button>
             <Button variant="primary" icon="check" data-tour="bulk-balance-apply" onClick={async () => { await applyBulkStudentBalance(); setBulkBalanceOpen(false); }}>{selectedStudentIds.length}명에게 적용</Button>
@@ -2967,7 +2967,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
               <SegmentedControl ariaLabel="선택 학생 작업" value={bulkMode} onChange={setBulkMode}
                 options={[{ value: 'add', label: '더하기' }, { value: 'subtract', label: '빼기' }, { value: 'set', label: '이 금액으로 맞추기' }]} />
             </div>
-            <Field label="금액" htmlFor="bulk-balance-amount" hint={bulkMode === 'subtract' ? '잔액보다 많이 빼면 음수가 됩니다.' : undefined}>
+            <Field label="금액" htmlFor="bulk-balance-amount" hint={bulkMode === 'subtract' ? '잔액보다 많이 빼면 음수가 돼요.' : undefined}>
               <Input id="bulk-balance-amount" aria-label="선택 학생 금액" type="number" inputMode="numeric" suffix={unit} value={bulkAmount} onChange={(event) => setBulkAmount(Number(event.target.value))} />
             </Field>
           </div>
@@ -2975,7 +2975,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       ) : null}
 
       {qrPrintStudents ? (
-        <Modal title="학생 QR 카드" ariaLabel="선택 학생 QR 발급" description={`선택한 학생 ${qrPrintStudents.length}명의 QR 카드를 인쇄합니다.`} size="xl" className="print:hidden" onClose={() => setQrPrintStudents(null)}
+        <Modal title="학생 QR 카드" ariaLabel="선택 학생 QR 발급" description={`선택한 학생 ${qrPrintStudents.length}명의 QR 카드를 인쇄해요.`} size="xl" className="print:hidden" onClose={() => setQrPrintStudents(null)}
           footer={<>
             <Button variant="ghost" onClick={() => setQrPrintStudents(null)}>닫기</Button>
             <Button variant="primary" icon="printer" disabled={!allQrPrintUrlsReady} onClick={() => window.print()}>인쇄</Button>
@@ -2994,7 +2994,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       ) : null}
 
       {qrTaskPickerOpen ? (
-        <Modal title="QR로 과제 부여" description="부여할 과제를 고른 뒤 학생 QR을 찍으면 그 학생에게 과제가 부여됩니다." onClose={() => setQrTaskPickerOpen(false)}
+        <Modal title="QR로 과제 부여" description="부여할 과제를 고른 뒤 학생 QR을 찍으면 그 학생에게 과제가 부여돼요." onClose={() => setQrTaskPickerOpen(false)}
           footer={<Button variant="ghost" onClick={() => setQrTaskPickerOpen(false)}>닫기</Button>}>
           <div className="space-y-2">
             {tasks.map((task) => (
@@ -3002,7 +3002,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                 className="flex w-full items-center gap-3 rounded-[var(--crs-radius)] border border-[var(--crs-line)] px-4 py-3 text-left transition-colors hover:bg-[var(--crs-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)]">
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[15px] font-bold">{task.title}</span>
-                  <span className="mt-0.5 block text-xs text-[var(--theme-muted-text)]">보상 {money(task.reward)} · 부여 {taskProgress(task).assigned}명</span>
+                  <span className="mt-0.5 block text-xs text-[var(--theme-muted-text)]">보상 {money(task.reward)}, 부여 {taskProgress(task).assigned}명</span>
                 </span>
                 <Icon name="chevronRight" size={18} className="shrink-0 text-[var(--theme-muted-text)]" />
               </button>
@@ -3013,7 +3013,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       ) : null}
       {qrTaskScan ? (
         <Modal title="학생 QR 인식" ariaLabel={`${tasks.find((task) => task.taskId === qrTaskScan.taskId)?.title ?? '과제'} QR 과제 부여`}
-          description={<><strong className="text-[var(--theme-text)]">{tasks.find((task) => task.taskId === qrTaskScan.taskId)?.title ?? '선택한 과제'}</strong> 과제를 부여합니다.</>}
+          description={<><strong className="text-[var(--theme-text)]">{tasks.find((task) => task.taskId === qrTaskScan.taskId)?.title ?? '선택한 과제'}</strong> 과제를 부여해요.</>}
           onClose={returnToQrTaskPicker}
           footer={<>
             <Button variant="ghost" onClick={returnToQrTaskPicker}>취소</Button>
@@ -3025,7 +3025,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
           </Field>
         </Modal>
       ) : null}
-      {qrTaskLoading ? <LoadingOverlay title="QR 인식 중" message="QR을 인식했습니다. 과제를 부여하는 중입니다." /> : null}
+      {qrTaskLoading ? <LoadingOverlay title="QR 인식 중" message="QR을 인식했어요. 과제를 부여하는 중이에요." /> : null}
       {qrTaskResult ? (
         <Modal size="sm" tone={qrTaskResult.status === 'success' ? 'success' : 'danger'}
           title={`QR 과제 부여 ${qrTaskResult.status === 'success' ? '성공' : '실패'}`}
@@ -3049,7 +3049,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
               onClick={() => void applyTaskScheduleEditor()}>반복 설정 저장</Button>
           </>}>
           <div className="space-y-5">
-            {taskScheduleEditor.target.kind === 'bulk' ? <Callout tone="info">선택한 모든 과제에 같은 반복 규칙을 적용합니다. 기존 규칙은 덮어씁니다.</Callout> : null}
+            {taskScheduleEditor.target.kind === 'bulk' ? <Callout tone="info">선택한 모든 과제에 같은 반복 규칙을 적용해요. 기존 규칙은 덮어써요.</Callout> : null}
             {taskScheduleEditor.taskId ? <TaskScheduleProjection task={tasks.find((task) => task.taskId === taskScheduleEditor.taskId) ?? {}} /> : null}
             <TaskRecurrenceFields form={taskScheduleEditor.form} allowUnset={taskScheduleEditor.target.kind === 'bulk'}
               onChange={(form) => setTaskScheduleEditor((current) => current ? { ...current, form, explicit: current.target.kind === 'bulk' ? Boolean(form.type) : true } : current)} />
@@ -3138,7 +3138,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
         </Modal>
       ) : null}
       {currencyLoading ? (
-        <LoadingOverlay title={`화폐 ${currencyActionLabel} 처리 중`} message={`QR을 인식했습니다. 화폐를 ${currencyActionLabel}하는 중입니다.`} />
+        <LoadingOverlay title={`화폐 ${currencyActionLabel} 처리 중`} message={`QR을 인식했어요. 화폐를 ${currencyActionLabel}하는 중이에요.`} />
       ) : null}
       {currencyScannerOpen ? (
         <Modal title="학생 QR 인식" description={<><strong className="text-[var(--theme-text)]">{money(currencyAmount)}</strong>을 {currencyActionLabel}할 학생의 QR을 찍어 주세요.</>}

@@ -35,7 +35,7 @@ import { DELETE as cancelAgreement, POST as agree } from './agreement/route';
 import { POST as saveProfile } from './profile/route';
 import { POST as withdraw } from './withdraw/route';
 
-const ORIGIN = 'https://class.schoolit.kr';
+const ORIGIN = 'https://class.ddanssaem.com';
 const version = currentLegalRevision().version;
 const avatar = AVATAR_PRESETS[1].config;
 const binding = { accountGeneration: '11111111-1111-4111-8111-111111111111', sessionId: '22222222-2222-4222-8222-222222222222' };
@@ -56,7 +56,7 @@ function pendingCookie(pending: Partial<PendingAgreement> = {}) {
   return `${PENDING_AGREEMENT_COOKIE}=${cookieOf(response, PENDING_AGREEMENT_COOKIE)}`;
 }
 function request(path: string, init: { method?: string; body?: unknown; cookie?: string; origin?: string } = {}) {
-  const headers = new Headers({ host: 'class.schoolit.kr', origin: init.origin ?? ORIGIN, 'sec-fetch-site': 'same-origin' });
+  const headers = new Headers({ host: 'class.ddanssaem.com', origin: init.origin ?? ORIGIN, 'sec-fetch-site': 'same-origin' });
   if (init.body !== undefined) headers.set('content-type', 'application/json');
   if (init.cookie) headers.set('cookie', init.cookie);
   return new Request(`${ORIGIN}${path}`, { method: init.method ?? 'POST', headers, body: init.body === undefined ? undefined : JSON.stringify(init.body) });

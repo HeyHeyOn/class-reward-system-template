@@ -19,7 +19,7 @@ export function TutorialHomeCard({ onFirst, onOpen }: {
       <div className="min-w-0 flex-1 basis-60">
         <h2 className="text-[17px] font-black tracking-[-0.02em]">도움말</h2>
         <p className="mt-0.5 text-[13px] leading-relaxed text-[var(--theme-muted-text)]">
-          학급 보상 시스템이 처음이라면 <b className="font-bold text-[var(--theme-text)]">처음 시작하기</b>로 꼭 필요한 화면을 한 바퀴 둘러보세요.
+          딴쌤 클래스가 처음이라면 <b className="font-bold text-[var(--theme-text)]">처음 시작하기</b>로 꼭 필요한 화면을 한 바퀴 둘러보세요.
           기능마다 도움말을 고르면 이 화면에서 누를 곳과 적을 곳을 한 단계씩 짚어 드려요.
         </p>
       </div>

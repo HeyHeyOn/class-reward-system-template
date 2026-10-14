@@ -103,7 +103,7 @@ describe('KioskApp', () => {
     expect(screen.getByRole('heading', { name: '상품 목록' })).toBeTruthy();
     expect(screen.getByText('연필')).toBeTruthy();
     expect(screen.getByRole('button', { name: '새로고침' })).toHaveProperty('disabled', false);
-    expect(screen.queryByRole('dialog', { name: '시트 정보 불러오는 중' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: '매점 정보 불러오는 중' })).toBeNull();
     const endpoints = ['/api/products', '/api/settings', '/api/promotions/active'];
     endpoints.forEach((endpoint) => {
       expect(fetch).toHaveBeenCalledWith(endpoint, { cache: 'no-store' });
@@ -124,7 +124,7 @@ describe('KioskApp', () => {
     const fallbackLogo = screen.getByRole('img', { name: '지우개 기본 이미지' });
     expect(fallbackLogo.getAttribute('src')).toBe('/class-reward-system-icon.png');
     expect(screen.queryByText('▵')).toBeNull();
-    expect(screen.getByText('선택한 상품이 없습니다.')).toBeTruthy();
+    expect(screen.getByText('선택한 상품이 없어요.')).toBeTruthy();
     expect(screen.getByRole('button', { name: '새로고침' })).toBeTruthy();
     expect(screen.queryByText('시트 연동')).toBeNull();
 
@@ -283,7 +283,7 @@ describe('KioskApp', () => {
     render(<KioskApp />);
 
     fireEvent.click(await screen.findByRole('button', { name: '행사' }));
-    expect(screen.getByText('진행 중인 행사 상품이 없습니다.')).toBeTruthy();
+    expect(screen.getByText('진행 중인 행사 상품이 없어요.')).toBeTruthy();
     expect(screen.queryByText('연필')).toBeNull();
   });
 
@@ -301,7 +301,7 @@ describe('KioskApp', () => {
 
     const { container } = render(<KioskApp />);
 
-    expect(screen.getByRole('dialog', { name: '시트 정보 불러오는 중' })).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: '매점 정보 불러오는 중' })).toBeTruthy();
     expect(screen.queryByRole('heading', { name: '상품 목록' })).toBeNull();
     resolveProducts();
     expect(await screen.findByRole('heading', { name: '학급 매점' })).toBeTruthy();
@@ -454,7 +454,7 @@ describe('KioskApp', () => {
     fireEvent.click(screen.getByRole('button', { name: 'QR 결제' }));
     expect(await screen.findByRole('dialog', { name: '결제 확인' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '상품 목록', hidden: true })).toBeTruthy();
-    expect(screen.getByText('학생 QR을 카메라에 비추면 바로 결제됩니다.')).toBeTruthy();
+    expect(screen.getByText('학생 QR을 카메라에 비추면 바로 결제돼요.')).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
     fireEvent.click(screen.getByRole('button', { name: 'QR 값으로 결제하기' }));
@@ -471,7 +471,7 @@ describe('KioskApp', () => {
 
     const completeDialog = await screen.findByRole('dialog', { name: '결제 완료' });
     expect(completeDialog).toBeTruthy();
-    expect(screen.getByText('결제가 완료되었습니다.')).toBeTruthy();
+    expect(screen.getByText('결제가 완료됐어요.')).toBeTruthy();
     expect(screen.getByText('결제자: 김민준')).toBeTruthy();
     expect(within(completeDialog).getAllByText('총 결제 금액')).toHaveLength(1);
     expectPageText('결제 후 잔액3,200별');
@@ -601,7 +601,7 @@ describe('KioskApp', () => {
 
     expect(await screen.findByRole('dialog', { name: '결제 실패' })).toBeTruthy();
     expect(screen.queryByRole('dialog', { name: '결제 중' })).toBeNull();
-    expect(screen.getByText('학생 정보를 확인하지 못했습니다. 결제는 요청되지 않았습니다.')).toBeTruthy();
+    expect(screen.getByText('학생 정보를 확인하지 못했어요. 결제는 되지 않았어요.')).toBeTruthy();
     expect(screen.queryByRole('dialog', { name: '결제 상태 확인 필요' })).toBeNull();
     expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/checkout')).toHaveLength(0);
   });
@@ -627,8 +627,8 @@ describe('KioskApp', () => {
 
     const uncertain = await screen.findByRole('dialog', { name: '결제 상태 확인 필요' });
     expect(within(uncertain).getByRole('heading', { name: '결제 상태 확인 필요' })).toBeTruthy();
-    expect(within(uncertain).getByText('결제 응답을 받지 못해 처리 여부를 확인할 수 없습니다.')).toBeTruthy();
-    expect(within(uncertain).getByText('이미 처리되었을 수 있으니 거래 내역과 잔액을 먼저 확인하고, 별도의 새 결제를 하지 마세요.')).toBeTruthy();
+    expect(within(uncertain).getByText('결제 응답을 받지 못해 처리 여부를 확인할 수 없어요.')).toBeTruthy();
+    expect(within(uncertain).getByText('이미 처리됐을 수 있어요. 거래 내역과 잔액을 먼저 확인하고, 새로 결제하지 마세요.')).toBeTruthy();
     expect(screen.queryByText('잘못된 QR 코드입니다.')).toBeNull();
     expect(screen.queryByText('결제 실패')).toBeNull();
     expect(screen.queryByRole('dialog', { name: '결제 완료' })).toBeNull();
@@ -649,7 +649,7 @@ describe('KioskApp', () => {
 
   it.each([
     { status: 404, payload: { error: '잘못된 QR 코드입니다.' } },
-    { status: 400, payload: { error: '잔액이 부족합니다.', currentBalance: 100 } },
+    { status: 400, payload: { error: '잔액이 부족해요.', currentBalance: 100 } },
   ])('preserves explicit checkout refusal $status instead of calling it uncertain', async ({ status, payload }) => {
     const base = vi.mocked(fetch).getMockImplementation()!;
     vi.mocked(fetch).mockImplementation(async (input, init) => {
@@ -851,7 +851,7 @@ describe('KioskApp', () => {
 
     const card = await screen.findByRole('button', { name: /연필 270별 담기/ });
     expectSemanticMuted(within(card).getByLabelText('정상 가격 300별'), palette.surface);
-    expectSemanticMuted(screen.getByText('선택한 상품이 없습니다.'), palette.surface);
+    expectSemanticMuted(screen.getByText('선택한 상품이 없어요.'), palette.surface);
     expectSemanticMuted(within(screen.getByTestId('checkout-total-bar')).getByText('0별'), palette.surface);
 
     fireEvent.click(card);
@@ -864,7 +864,7 @@ describe('KioskApp', () => {
     fireEvent.change(within(checkoutDialog).getByLabelText('QR 값 직접 입력'), { target: { value: 'S001' } });
     fireEvent.click(within(checkoutDialog).getByRole('button', { name: 'QR 값으로 결제하기' }));
     const processingDialog = await screen.findByRole('dialog', { name: '결제 중' });
-    expectSemanticMuted(within(processingDialog).getByText('학급 화폐 잔액과 재고를 확인하고 있습니다.'), palette.surface);
+    expectSemanticMuted(within(processingDialog).getByText('학급 화폐 잔액과 재고를 확인하고 있어요.'), palette.surface);
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain(`--theme-muted-text: ${palette.mutedText}`);
     resolveStudent();
   });
@@ -879,7 +879,7 @@ describe('KioskApp', () => {
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
     render(<KioskApp />);
-    expect((await screen.findByRole('alert')).textContent).toContain('행사 정보를 불러오지 못했습니다.');
+    expect((await screen.findByRole('alert')).textContent).toContain('행사 정보를 불러오지 못했어요.');
     expect(screen.getByRole('button', { name: 'QR 결제' })).toHaveProperty('disabled', true);
   });
 

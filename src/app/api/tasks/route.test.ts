@@ -111,7 +111,7 @@ describe('GET /api/tasks', () => {
     const response = await GET(new Request('http://localhost/api/tasks?studentId=csq1.wrong-tenant'));
 
     expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toEqual({ error: '학생 정보를 찾을 수 없습니다.' });
+    await expect(response.json()).resolves.toEqual({ error: '학생 정보를 찾을 수 없어요.' });
     expect(createConfiguredTaskReader).not.toHaveBeenCalled();
   });
 
@@ -302,7 +302,7 @@ describe('GET /api/tasks', () => {
     expect(dependent).toMatchObject({
       prerequisiteTitle: '비활성 선행 과제',
       prerequisiteStatus: 'UNAVAILABLE',
-      prerequisiteMessage: "선행 과제 '비활성 선행 과제'을(를) 완료할 수 없습니다. 교사에게 문의해 주세요.",
+      prerequisiteMessage: "선행 과제 '비활성 선행 과제'을(를) 완료할 수 없어요. 교사에게 문의해 주세요.",
     });
   });
 
@@ -322,7 +322,7 @@ describe('GET /api/tasks', () => {
     expect(response.status).toBe(400);
     expect(createConfiguredSheetsReader).not.toHaveBeenCalled();
     expect(listTaskCycleProjections).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toEqual({ error: '과제 조회 요청 형식이 올바르지 않습니다.' });
+    await expect(response.json()).resolves.toEqual({ error: '과제 조회 요청 형식이 올바르지 않아요.' });
   });
 
   it.each([
@@ -333,14 +333,14 @@ describe('GET /api/tasks', () => {
     const response = await GET(new Request(url));
     expect(response.status).toBe(400);
     expect(createConfiguredSheetsReader).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toEqual({ error: '과제 조회 요청 형식이 올바르지 않습니다.' });
+    await expect(response.json()).resolves.toEqual({ error: '과제 조회 요청 형식이 올바르지 않아요.' });
   });
 
   it('does not expose provider errors to unauthenticated student callers', async () => {
     vi.mocked(createConfiguredTaskReader).mockRejectedValue(new Error('Tasks!A:ZZ credential secret'));
     const response = await GET(new Request('http://localhost/api/tasks?studentId=S1'));
     expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toEqual({ error: '과제 목록을 불러오지 못했습니다.' });
+    await expect(response.json()).resolves.toEqual({ error: '과제 목록을 불러오지 못했어요.' });
   });
 });
 

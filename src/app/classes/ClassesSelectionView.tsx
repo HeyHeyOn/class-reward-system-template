@@ -65,17 +65,17 @@ export function ClassesSelectionView({ model, account, withdrawn = false }: Read
       const response = await fetch('/api/google/logout', { method: 'POST', credentials: 'same-origin', cache: 'no-store', redirect: 'error' });
       if (!response.ok) throw new Error();
       window.location.replace('/classes');
-    } catch { setNotice('로그아웃하지 못했습니다. 연결을 확인하고 다시 시도해 주세요.'); setLogoutPending(false); }
+    } catch { setNotice('로그아웃하지 못했어요. 연결을 확인하고 다시 시도해 주세요.'); setLogoutPending(false); }
   }
   async function copyAddress(item: ClassMembershipPageItem) {
-    try { await navigator.clipboard.writeText(`${publicOrigin()}/c/${item.slug}`); setNotice(`${item.displayName}의 매점 주소를 복사했습니다.`); }
-    catch { setNotice('주소를 복사하지 못했습니다. 매점을 연 뒤 주소창의 주소를 복사해 주세요.'); }
+    try { await navigator.clipboard.writeText(`${publicOrigin()}/c/${item.slug}`); setNotice(`${item.displayName}의 매점 주소를 복사했어요.`); }
+    catch { setNotice('주소를 복사하지 못했어요. 매점을 연 뒤 주소창의 주소를 복사해 주세요.'); }
   }
   return <main style={theme.variables} className={styles.shell}>
     <div className={styles.container}>
       <header className={styles.header}>
-        <Link href="/classes" aria-label="학급 보상 시스템 내 학급" className={styles.brand}>
-          <span aria-hidden="true" className={styles.logo}/><span>학급 보상 시스템</span>
+        <Link href="/classes" aria-label="딴쌤 클래스 내 학급" className={styles.brand}>
+          <span aria-hidden="true" className={styles.logo}/><span>딴쌤 클래스</span>
         </Link>
         {model.kind === 'MEMBERSHIPS' && <div className={styles.account}>
           {account
@@ -84,10 +84,10 @@ export function ClassesSelectionView({ model, account, withdrawn = false }: Read
           <button onClick={logout} disabled={!ready || logoutPending} className={styles.outline}><Icon name="logout"/>{logoutPending ? '로그아웃 중…' : '로그아웃'}</button>
         </div>}
       </header>
-      {model.kind === 'LOGIN_REQUIRED' && withdrawn ? <p role="status" className={styles.notice}>회원 탈퇴가 끝났어요. 그동안 학급 보상 시스템을 이용해 주셔서 고마워요.</p> : null}
+      {model.kind === 'LOGIN_REQUIRED' && withdrawn ? <p role="status" className={styles.notice}>회원 탈퇴가 끝났어요. 그동안 딴쌤 클래스를 이용해 주셔서 고마워요.</p> : null}
       {model.kind === 'LOGIN_REQUIRED' ? <section className={styles.welcome}>
-        <div><h1>우리 반의 성장과<br/>보상을 함께 관리해요.</h1><p className={styles.intro}>학급마다 매점과 은행을 운영하고,<br/>학생들의 작은 도전을 보상으로 연결하세요.</p><div className={styles.features}>{['여러 학급 관리','학급 매점 · 은행','과제와 보상'].map(s => <span key={s}>{s}</span>)}</div></div>
-        <div className={styles.loginCard}><span className={styles.classIcon}><Icon name="school"/></span><h2>내 학급으로 시작하기</h2><p>Google 계정으로 로그인하면 내 학급을 확인하거나 새로운 학급을 만들 수 있습니다.</p><a href={model.loginHref} className={styles.primary}>Google 계정으로 로그인<Icon name="arrow"/></a><small>이미 만든 학급이 있다면<br/>그 학급을 만든 Google 계정으로 로그인해 주세요.</small></div>
+        <div><h1>우리 반의 성장과<br/>보상을 함께 관리해요.</h1><p className={styles.intro}>학급마다 매점과 은행을 운영하고,<br/>학생들의 작은 도전을 보상으로 연결하세요.</p><div className={styles.features}>{['여러 학급 관리','학급 매점과 은행','과제와 보상'].map(s => <span key={s}>{s}</span>)}</div></div>
+        <div className={styles.loginCard}><span className={styles.classIcon}><Icon name="school"/></span><h2>내 학급으로 시작하기</h2><p>Google 계정으로 로그인하면 내 학급을 확인하거나 새 학급을 만들 수 있어요.</p><a href={model.loginHref} className={styles.primary}>Google 계정으로 로그인<Icon name="arrow"/></a><small>이미 만든 학급이 있다면<br/>그 학급을 만든 Google 계정으로 로그인해 주세요.</small></div>
       </section> : <>
         <section className={styles.hero}><div><h1>내 학급</h1><p>학급을 선택하고 오늘의 활동을 시작하세요.</p></div><Link href="/classes/new" aria-label="새 학급" className={styles.primary}><Icon name="plus"/>새 학급 만들기</Link></section>
         <section aria-label="학급 현황" className={styles.stats}>
@@ -104,10 +104,10 @@ export function ClassesSelectionView({ model, account, withdrawn = false }: Read
             </div>
             <div className={styles.searchRow}><label className={styles.search}><Icon name="search"/><span className="sr-only">학급 이름 검색</span><input value={query} onChange={e => setQuery(e.target.value)} placeholder="학급 이름으로 검색"/></label><select aria-label="학급 정렬" value={sort} onChange={e => setSort(e.target.value)}><option value="recent">최근 생성순</option><option value="name">이름순</option></select></div>
           </div>
-          {filter === 'TRASH' && <p className={styles.trashInfo}>삭제한 학급은 접속이 중지됩니다. 소유자가 복원하면 기존 기록과 함께 다시 사용할 수 있습니다. [완전히 삭제]를 누르면 학급의 모든 자료가 지워져 다시 복원할 수 없습니다.</p>}
+          {filter === 'TRASH' && <p className={styles.trashInfo}>삭제한 학급은 접속이 중지돼요. 소유자가 복원하면 기존 기록과 함께 다시 쓸 수 있어요. [완전히 삭제]를 누르면 학급의 모든 자료가 지워져 복원할 수 없어요.</p>}
           {visible.length === 0 ? <div className={styles.empty}><span className={styles.classIcon}><Icon name={filter === 'TRASH' ? 'trash' : 'school'}/></span>
-            <h2>{query ? '검색 결과가 없습니다.' : filter === 'TRASH' ? '휴지통이 비어 있습니다.' : current.length ? '이 분류에 해당하는 학급이 없습니다.' : '아직 등록된 학급이 없습니다.'}</h2>
-            <p>{query ? '다른 학급 이름으로 검색해 보세요.' : filter === 'TRASH' ? '삭제한 학급은 이곳에서 복원하거나 완전히 삭제할 수 있습니다.' : '새 학급을 만들거나 다른 분류를 선택해 주세요.'}</p>
+            <h2>{query ? '검색 결과가 없어요.' : filter === 'TRASH' ? '휴지통이 비어 있어요.' : current.length ? '이 분류에 해당하는 학급이 없어요.' : '아직 등록된 학급이 없어요.'}</h2>
+            <p>{query ? '다른 학급 이름으로 검색해 보세요.' : filter === 'TRASH' ? '삭제한 학급은 여기서 복원하거나 완전히 삭제할 수 있어요.' : '새 학급을 만들거나 다른 분류를 선택해 주세요.'}</p>
             {!current.length && filter !== 'TRASH' && !query && <Link href="/classes/new" className={styles.primary}><Icon name="plus"/>첫 학급 만들기</Link>}
           </div> : <ul className={styles.grid}>{visible.map(item => {
             const deleted = Boolean(item.dashboard?.deletedAt);
@@ -124,12 +124,12 @@ export function ClassesSelectionView({ model, account, withdrawn = false }: Read
                     <button disabled={!ready} aria-label={`${item.displayName} 완전히 삭제`} onClick={() => setDialog({ item, action: 'PURGE' })} className={`${styles.outline} ${styles.dangerOutline}`}><Icon name="trash"/>완전히 삭제</button>
                   </div>
                   : item.setupHref ? <Link href={item.setupHref} className={`${styles.primary} ${styles.full}`}>학급 준비 계속<Icon name="arrow"/></Link>
-                    : <p className={styles.unavailable}>현재 선택할 수 없습니다.</p>}
+                    : <p className={styles.unavailable}>지금은 선택할 수 없어요.</p>}
               {item.selectable && <div className={styles.secondaryLinks}><Link href={`${item.href}/admin/student-qrs`}>학생 QR 출력</Link><button disabled={!ready} onClick={() => copyAddress(item)}>매점 주소 복사</button></div>}
             </div>{manageable && <div className={styles.cardActions}><button disabled={!ready} aria-label={`${item.displayName} 이름 변경`} onClick={() => setDialog({ item, action: 'RENAME' })}>이름 변경</button>{item.selectable && <button disabled={!ready} aria-label={`${item.displayName} 복제`} onClick={() => setDialog({ item, action: 'DUPLICATE' })}><Icon name="copy"/>복제</button>}<button disabled={!ready} aria-label={`${item.displayName} 삭제`} onClick={() => setDialog({ item, action: 'DELETE' })} className={styles.danger}><Icon name="trash"/>삭제</button></div>}</li>;
           })}</ul>}
         </section>
-        <aside className={styles.help}><details><summary>학급 복제와 삭제, 어떻게 동작하나요?</summary><p>복제하면 설정·학생 명단·상품과 재고·과제·할인 행사를 새 학급에 가져옵니다. 학생 잔액은 0으로 시작하고 거래·과제 완료·부여 내역은 가져오지 않습니다. 과제와 할인 행사는 확인 후 켤 수 있도록 비활성 상태로 복제합니다.</p><p>삭제한 학급은 휴지통에 보관되며, 기존 기록을 유지한 채 소유자가 복원할 수 있습니다. 휴지통에서 완전히 삭제하면 학생, 잔액, 거래, 과제 기록을 포함한 학급의 모든 자료를 지우며, 다시 복원할 수 없습니다. 이름 변경, 복제, 삭제, 복원, 완전히 삭제는 학급 소유자만 할 수 있습니다.</p></details></aside>
+        <aside className={styles.help}><details><summary>학급 복제와 삭제, 어떻게 동작하나요?</summary><p>복제하면 설정, 학생 명단, 상품과 재고, 과제, 할인 행사를 새 학급에 가져와요. 학생 잔액은 0에서 시작하고 거래, 과제 완료, 부여 내역은 가져오지 않아요. 과제와 할인 행사는 확인한 뒤 켤 수 있게 꺼진 채로 복제돼요.</p><p>삭제한 학급은 휴지통에 보관되고, 소유자가 기존 기록 그대로 복원할 수 있어요. 휴지통에서 완전히 삭제하면 학생, 잔액, 거래, 과제 기록을 포함한 학급의 모든 자료가 지워지고 복원할 수 없어요. 이름 변경, 복제, 삭제, 복원, 완전히 삭제는 학급 소유자만 할 수 있어요.</p></details></aside>
       </>}
       <SiteFooter className={styles.footer}/>
     </div>

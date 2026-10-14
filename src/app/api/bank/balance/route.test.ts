@@ -66,7 +66,7 @@ describe('GET /api/bank/balance', () => {
     const response = await GET(new Request('http://localhost/api/bank/balance?studentId=csq1.wrong-tenant'));
 
     expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toEqual({ error: '학생 정보를 찾을 수 없습니다.' });
+    await expect(response.json()).resolves.toEqual({ error: '학생 정보를 찾을 수 없어요.' });
     expect(createConfiguredBankReader).not.toHaveBeenCalled();
   });
 
@@ -76,7 +76,7 @@ describe('GET /api/bank/balance', () => {
     getBalance.mockResolvedValue({ student: studentResult, transactions: [] });
     const response = await GET(new Request('http://localhost/api/bank/balance?studentId=S1'));
     expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toEqual({ error: '학생 정보를 찾을 수 없습니다.' });
+    await expect(response.json()).resolves.toEqual({ error: '학생 정보를 찾을 수 없어요.' });
   });
 
   it('preserves the existing provider error response without fallback', async () => {

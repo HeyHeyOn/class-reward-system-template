@@ -53,7 +53,7 @@ function strictArrayValues(value: unknown): unknown[] | null {
 }
 
 function invalidProductEnvelope(): never {
-  throw new Error('상품 관리자 응답 형식이 올바르지 않습니다.');
+  throw new Error('상품 관리자 응답 형식이 올바르지 않아요.');
 }
 
 export function parseProductAdminEnvelope(value: unknown): ProductAdminState {

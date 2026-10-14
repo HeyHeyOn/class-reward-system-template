@@ -35,15 +35,15 @@ export async function GET(request: Request) {
   let identityReturnTo: GoogleIdentityReturnTo | undefined;
 
   try {
-    if (!code) throw new Error(url.searchParams.get('error_description') || url.searchParams.get('error') || 'Google 인증 코드가 없습니다.');
+    if (!code) throw new Error(url.searchParams.get('error_description') || url.searchParams.get('error') || 'Google 인증 코드가 없어요.');
 
     if (isGeneratorConsent) {
-      if (!isGeneratorDeployment()) throw new Error('생성기 Google 권한 콜백이 올바르지 않습니다.');
+      if (!isGeneratorDeployment()) throw new Error('생성기 Google 권한 콜백이 올바르지 않아요.');
       const binding = consumeGeneratorConsentStateCookie(request, response, state);
-      if (!binding) throw new Error('Google 생성기 권한 상태값이 올바르지 않습니다. 다시 시도해 주세요.');
+      if (!binding) throw new Error('Google 생성기 권한 상태값이 올바르지 않아요. 다시 시도해 주세요.');
       const session = getGoogleSessionFromRequest(request);
       if (!session || session.subject !== binding.subject || session.email.toLowerCase() !== binding.email.toLowerCase()) {
-        throw new Error('Google 로그인 세션이 변경되었습니다. 같은 계정으로 다시 로그인해 주세요.');
+        throw new Error('Google 로그인 세션이 변경됐어요. 같은 계정으로 다시 로그인해 주세요.');
       }
       issuedGeneratorGrant = await exchangeGoogleCodeForGeneratorGrant(url.origin, code, binding);
       setGeneratorGrantCookie(response, issuedGeneratorGrant);
@@ -51,7 +51,7 @@ export async function GET(request: Request) {
     }
 
     const identityState = consumeGoogleStateCookie(request, response, state);
-    if (!identityState) throw new Error('Google 로그인 상태값이 올바르지 않습니다. 다시 로그인해 주세요.');
+    if (!identityState) throw new Error('Google 로그인 상태값이 올바르지 않아요. 다시 로그인해 주세요.');
     identityReturnTo = identityState.returnTo;
     const session = await exchangeGoogleCodeForSession(url.origin, code);
     if (teacherAccountsEnabled()) {
@@ -97,7 +97,7 @@ export async function GET(request: Request) {
       const failedIdentityState = consumeGoogleStateCookie(request, response, state);
       identityReturnTo = failedIdentityState?.returnTo;
     }
-    const message = encodeURIComponent(error instanceof Error ? error.message : 'Google 로그인에 실패했습니다.');
+    const message = encodeURIComponent(error instanceof Error ? error.message : 'Google 로그인에 실패했어요.');
     const errorPath = isGeneratorDeployment()
       ? `/admin/generator?error=${message}`
       : `${googleIdentityLoginPath(identityReturnTo ?? (postgresIdentity ? '/classes' : undefined))}?error=${message}`;

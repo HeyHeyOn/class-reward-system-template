@@ -147,7 +147,7 @@ describe('helpers', () => {
   it('compares and describes configs', () => {
     expect(isSameAvatar(sample, { ...sample })).toBe(true);
     expect(isSameAvatar(sample, { ...sample, eyes: 'wink' })).toBe(false);
-    expect(describeAvatar(sample)).toBe('보라 배경 · 고양이 · 반짝 눈 · 활짝 · 왕관');
-    expect(describeAvatar({ ...sample, accessory: 'none' })).toBe('보라 배경 · 고양이 · 반짝 눈 · 활짝');
+    expect(describeAvatar(sample)).toBe('보라 배경, 고양이, 반짝 눈, 활짝, 왕관');
+    expect(describeAvatar({ ...sample, accessory: 'none' })).toBe('보라 배경, 고양이, 반짝 눈, 활짝');
   });
 });

@@ -8,7 +8,7 @@ export type StudentAdminSnapshot =
 export function parseStudentAdminSnapshot(value: unknown): StudentAdminSnapshot {
   if (!value || typeof value !== 'object' || !('storage' in value) || !('students' in value)
     || (value.storage !== 'postgresql' && value.storage !== 'sheets') || !Array.isArray(value.students)) {
-    throw new Error('학생 관리자 응답 형식이 올바르지 않습니다.');
+    throw new Error('학생 관리자 응답 형식이 올바르지 않아요.');
   }
   const seen = new Set<string>();
   for (const row of value.students) {
@@ -17,7 +17,7 @@ export function parseStudentAdminSnapshot(value: unknown): StudentAdminSnapshot 
       || !Number.isSafeInteger(row.balance) || !['ACTIVE', 'INACTIVE'].includes(row.status)
       || (value.storage === 'postgresql' && (!Number.isSafeInteger(row.studentVersion) || row.studentVersion < 1
         || !Number.isSafeInteger(row.accountVersion) || row.accountVersion < 1))) {
-      throw new Error('학생 관리자 응답 형식이 올바르지 않습니다.');
+      throw new Error('학생 관리자 응답 형식이 올바르지 않아요.');
     }
     seen.add(row.studentId);
   }

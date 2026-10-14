@@ -133,7 +133,7 @@ it('does not submit a payment after voucher lookup failure and offers the vouche
   failVouchers = true;
   await start();
   const failure = await screen.findByRole('dialog',{name:'결제 실패'});
-  expect(within(failure).getByText('교환권을 확인하지 못했습니다. 결제는 요청되지 않았습니다. 다시 시도해 주세요.')).toBeTruthy();
+  expect(within(failure).getByText('교환권을 확인하지 못했어요. 결제는 되지 않았어요. 다시 시도해 주세요.')).toBeTruthy();
   expect(requests).toHaveLength(0);
   failVouchers = false;
   fireEvent.click(within(failure).getByRole('button',{name:'다시 시도'}));

@@ -4,7 +4,7 @@ export type TaskAvailability = { availableFrom?: string; dueAt?: string };
 export type TaskAvailabilityState = 'UPCOMING' | 'AVAILABLE' | 'EXPIRED';
 
 function instant(value: string, label: string): Temporal.Instant {
-  try { return Temporal.Instant.from(value); } catch { throw new Error(`${label}은 ISO 시각이어야 합니다.`); }
+  try { return Temporal.Instant.from(value); } catch { throw new Error(`${label}은 ISO 시각이어야 해요.`); }
 }
 
 export function validateTaskAvailability(value: TaskAvailability): TaskAvailability {
@@ -12,7 +12,7 @@ export function validateTaskAvailability(value: TaskAvailability): TaskAvailabil
   const dueAt = value.dueAt?.trim() || undefined;
   const start = availableFrom ? instant(availableFrom, '시작 시각') : null;
   const due = dueAt ? instant(dueAt, '기한') : null;
-  if (start && due && Temporal.Instant.compare(start, due) >= 0) throw new Error('시작 시각은 기한보다 빨라야 합니다.');
+  if (start && due && Temporal.Instant.compare(start, due) >= 0) throw new Error('시작 시각은 기한보다 빨라야 해요.');
   return { ...(start ? { availableFrom: start.toString() } : {}), ...(due ? { dueAt: due.toString() } : {}) };
 }
 

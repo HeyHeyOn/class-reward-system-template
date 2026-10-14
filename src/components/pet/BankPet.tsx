@@ -20,7 +20,7 @@ import type { PetDto, PetStudentViewDto } from '@/lib/petApi';
 import PETS from '@/lib/pet/petSprites';
 import ROOM, { type PetRoom, type PetRoomPetInit } from '@/lib/pet/petRoom';
 import { isSessionRequired, type BankFailure } from '../bank/bankClient';
-import { formatMoney } from '../bank/format';
+import { formatMoney, moneyIs } from '../bank/format';
 import { NoticeToast, type Notice } from '../bank/NoticeToast';
 import { Button, Callout, Icon, IconButton, Input, Modal, SegmentedControl, Spinner, cx } from '../ui';
 import { GraduateConfirm, PetCelebration, type PetCelebrationMoment } from './PetMoments';
@@ -210,10 +210,10 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
     let sleepText = '';
     if (info?.reason === 'off') {
       const next = viewRef.current?.nextOpen;
-      sleepText = `이용 시간이 아니라 자고 있어요${next ? ` · ${next}에 일어나요` : ''}. 그동안은 구경만 할 수 있어요.`;
+      sleepText = `이용 시간이 아니라 자고 있어요.${next ? ` ${next}에 일어나요.` : ''} 그동안은 구경만 할 수 있어요.`;
     } else if (info) {
       const minutes = Math.max(1, Math.ceil((info.framesLeft ?? 0) / 12 / 60));
-      sleepText = `쿨쿨 자고 있어요 · 약 ${minutes}분 뒤에 스스로 일어나요.`;
+      sleepText = `쿨쿨 자고 있어요. 약 ${minutes}분 뒤에 스스로 일어나요.`;
     }
     const next: Status = {
       moods: engine.actions.moods(), food: engine.state.food, awake: engine.actions.awakeCount(), sleepText,
@@ -381,13 +381,13 @@ export const BankPetView = forwardRef<HTMLHeadingElement, BankPetViewProps>(func
       if (view.warmedToday) warmBlock = '오늘은 알을 품어 줬어요. 내일 또 품어 줄 수 있어요.';
       if (view.feedDailyLimit === 0) feedBlock = '지금은 먹이 주기를 쉬고 있어요.';
       else if (view.feedsToday >= view.feedDailyLimit) feedBlock = '오늘 먹이는 다 줬어요. 내일 또 줄 수 있어요.';
-      else if (balance < view.feedPrice) feedBlock = `잔액이 부족해서 먹이를 줄 수 없어요. 먹이 주기는 ${formatMoney(view.feedPrice, currencyUnit)}이에요.`;
+      else if (balance < view.feedPrice) feedBlock = `잔액이 부족해서 먹이를 줄 수 없어요. 먹이 주기는 ${moneyIs(formatMoney(view.feedPrice, currencyUnit))}.`;
       else if ((status?.food ?? 0) > 0) feedBlock = '먹이통에 아직 먹이가 남아 있어요. 다 먹은 뒤에 다시 줄 수 있어요.';
       if (status && status.awake === 0) patBlock = '모두 쿨쿨 자고 있어요. 다 쉬면 스스로 일어나요.';
     }
   }
   const canFeed = grownUps.length > 0;
-  const feedLabel = view && view.feedPrice > 0 ? `먹이 주기 · ${formatMoney(view.feedPrice, currencyUnit)}` : '먹이 주기';
+  const feedLabel = view && view.feedPrice > 0 ? `먹이 주기 (${formatMoney(view.feedPrice, currencyUnit)})` : '먹이 주기';
   const canGraduate = Boolean(view && pet && pet.stage === 3 && pet.growth >= view.goal);
   const next = pet && view ? nextStageTitle(pet, view.goal) : null;
   const prize = view ? [view.rewardAmount > 0 ? formatMoney(view.rewardAmount, currencyUnit) : '', view.rewardItem].filter(Boolean) : [];
@@ -607,7 +607,7 @@ function PetShop({ view, room, animals, running, balance, currencyUnit, slot, on
   const placeLabel = slot === 'acc' ? (chosen?.id === 'none' ? '장식 빼기' : '해 주기') : '방에 놓기';
   return (
     <Modal title="꾸미기/상점" size="lg" opener={opener} onClose={onClose} busy={busy}
-      description={`내 돈 ${formatMoney(balance, currencyUnit)} · 가진 물건으로 방과 펫을 꾸미고, 새 물건은 여기서 사요. 산 물건은 펫이 졸업해도 그대로 남아요.`}
+      description={`내 돈은 ${moneyIs(formatMoney(balance, currencyUnit))}. 가진 물건으로 방과 펫을 꾸미고, 새 물건은 여기서 사요. 산 물건은 펫이 졸업해도 그대로 남아요.`}
       footer={chosen ? (
         <>
           <span className="mr-auto min-w-0 truncate text-[13px] font-bold">{chosen.name}</span>
@@ -616,7 +616,7 @@ function PetShop({ view, room, animals, running, balance, currencyUnit, slot, on
             : has ? <Button variant="primary" onClick={() => onPlace(slot, chosen.id)} loading={busy} disabled={busy || !view.awake || needsPet}>{placeLabel}</Button>
               : <Button variant="primary" icon="coins" onClick={() => onBuy(slot, chosen.id)} loading={busy}
                 disabled={busy || !view.awake || !view.shopEnabled || price === undefined || balance < price}>
-                {price !== undefined && balance < price ? `돈이 모자라요 · ${formatMoney(price, currencyUnit)}` : `사기 · ${formatMoney(price ?? 0, currencyUnit)}`}
+                {price !== undefined && balance < price ? `돈이 모자라요 (${formatMoney(price, currencyUnit)})` : `사기 (${formatMoney(price ?? 0, currencyUnit)})`}
               </Button>}
         </>
       ) : <Button variant="ghost" onClick={onClose}>닫기</Button>}>
@@ -625,7 +625,7 @@ function PetShop({ view, room, animals, running, balance, currencyUnit, slot, on
           <PetRoomCanvas room={room} running={running} previewDecor={previewDecor} previewAccessories={previewAccessories}
             label={chosen ? `${withParticle(chosen.name, '을/를')} 해 본 미리 보기` : '지금 방'} />
           <p className="absolute bottom-2 left-2 rounded-[8px] bg-[rgba(38,30,24,0.78)] px-2 py-0.5 text-[12px] font-bold text-[#fff8ef]">
-            {chosen ? `미리 보기 · ${chosen.name}` : '지금 방'}
+            {chosen ? `${chosen.name} 미리 보기` : '지금 방'}
           </p>
         </div>
       </div>

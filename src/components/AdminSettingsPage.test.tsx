@@ -20,7 +20,7 @@ describe('AdminSettingsPage Seoul-only policy', () => {
   it('does not treat a failed settings response as an empty sheet and can retry before saving', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(response({ error: '설정을 일시적으로 불러오지 못했습니다.', code: 'SETTINGS_UNAVAILABLE' }, 503));
     render(<AdminSettingsPage />);
-    await screen.findByText('현재 설정을 불러오지 못했습니다.');
+    await screen.findByText('현재 설정을 불러오지 못했어요.');
     expect(screen.queryByText('미설정')).toBeNull();
     const save = screen.getByRole('button', { name: '설정 저장' }) as HTMLButtonElement;
     expect(save.disabled).toBe(true);

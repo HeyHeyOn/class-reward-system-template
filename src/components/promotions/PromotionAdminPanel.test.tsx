@@ -181,7 +181,7 @@ describe('PromotionAdminPanel', () => {
 
     render(<StrictMode><PromotionAdminPanel products={products} currencyUnit="별" timeZone="Asia/Seoul" /></StrictMode>);
 
-    await screen.findByText('등록된 행사가 없습니다.');
+    await screen.findByText('등록된 행사가 없어요.');
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith('/api/promotions', { cache: 'no-store' });
   });
@@ -196,7 +196,7 @@ describe('PromotionAdminPanel', () => {
 
     fillCommon();
     fireEvent.click(screen.getByRole('button', { name: '행사 추가' }));
-    expect(await screen.findByText('행사를 추가했습니다.')).toBeTruthy();
+    expect(await screen.findByText('행사를 추가했어요.')).toBeTruthy();
 
     initial.resolve(response([]));
     await waitFor(() => expect(screen.queryByRole('status', { name: '행사 목록 불러오는 중' })).toBeNull());
@@ -224,7 +224,7 @@ describe('PromotionAdminPanel', () => {
     fireEvent.change(within(dialog).getByLabelText('수정 행사명'), { target: { value: '수정 할인' } });
     fireEvent.change(within(dialog).getByLabelText('수정 할인율'), { target: { value: '15' } });
     fireEvent.click(within(dialog).getByRole('button', { name: '행사 수정 저장' }));
-    expect(await screen.findByText('행사를 수정했습니다.')).toBeTruthy();
+    expect(await screen.findByText('행사를 수정했어요.')).toBeTruthy();
 
     await waitFor(() => expect(screen.queryByRole('status', { name: '행사 목록 불러오는 중' })).toBeNull());
     expect(screen.getByText('수정 할인')).toBeTruthy();
@@ -238,7 +238,7 @@ describe('PromotionAdminPanel', () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(response([])).mockReturnValueOnce(mutation.promise);
     vi.stubGlobal('fetch', fetchMock);
     const view = renderPanel();
-    await screen.findByText('등록된 행사가 없습니다.');
+    await screen.findByText('등록된 행사가 없어요.');
     fillCommon();
     fireEvent.click(screen.getByRole('button', { name: '행사 추가' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
@@ -278,7 +278,7 @@ describe('PromotionAdminPanel', () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(response([])).mockReturnValue(mutation.promise);
     vi.stubGlobal('fetch', fetchMock);
     renderPanel();
-    await screen.findByText('등록된 행사가 없습니다.');
+    await screen.findByText('등록된 행사가 없어요.');
     fillCommon();
     const form = screen.getByRole('button', { name: '행사 추가' }).closest('form');
     expect(form).toBeTruthy();
@@ -349,7 +349,7 @@ describe('PromotionAdminPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '행사 목록 새로고침' }));
     expect((await screen.findByRole('alert')).textContent).toContain('<script>bad</script>');
     fireEvent.click(screen.getByRole('button', { name: '다시 시도' }));
-    expect(await screen.findByText('등록된 행사가 없습니다.')).toBeTruthy();
+    expect(await screen.findByText('등록된 행사가 없어요.')).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledWith('/api/promotions', { cache: 'no-store' });
   });
 
@@ -357,7 +357,7 @@ describe('PromotionAdminPanel', () => {
     vi.stubGlobal('fetch', vi.fn(async () => response([percent, { ...percent, name: '중복 ID 행사' }])));
     renderPanel();
 
-    expect((await screen.findByRole('alert')).textContent).toContain('행사 목록 형식이 올바르지 않습니다.');
+    expect((await screen.findByRole('alert')).textContent).toContain('행사 목록 형식이 올바르지 않아요.');
     expect(screen.queryAllByTestId('promotion-row')).toHaveLength(0);
   });
 
@@ -365,7 +365,7 @@ describe('PromotionAdminPanel', () => {
     const malformedInactive = { ...percent, promotionId: 'BROKEN', isActive: false, schemaVersion: 1 };
     vi.stubGlobal('fetch', vi.fn(async () => response([percent, malformedInactive])));
     renderPanel();
-    expect((await screen.findByRole('alert')).textContent).toContain('행사 목록 형식이 올바르지 않습니다.');
+    expect((await screen.findByRole('alert')).textContent).toContain('행사 목록 형식이 올바르지 않아요.');
     expect(screen.queryAllByTestId('promotion-row')).toHaveLength(0);
   });
 
@@ -392,12 +392,12 @@ describe('PromotionAdminPanel', () => {
       .mockResolvedValueOnce(response(created, 201));
     vi.stubGlobal('fetch', fetchMock);
     renderPanel();
-    await screen.findByText('등록된 행사가 없습니다.');
+    await screen.findByText('등록된 행사가 없어요.');
     fillCommon();
     fireEvent.change(screen.getByLabelText('행사 유형'), { target: { value: 'FIXED_DISCOUNT' } });
     fireEvent.change(screen.getByLabelText('유료 수량당 할인액'), { target: { value: '100' } });
     fireEvent.click(screen.getByRole('button', { name: '행사 추가' }));
-    await screen.findByText('행사를 추가했습니다.');
+    await screen.findByText('행사를 추가했어요.');
     const request = fetchMock.mock.calls[1];
     expect(request[0]).toBe('/api/promotions');
     expect(request[1]).toMatchObject({ method: 'POST', headers: { 'Content-Type': 'application/json' } });
@@ -419,13 +419,13 @@ describe('PromotionAdminPanel', () => {
       .mockResolvedValueOnce(response(created, 201));
     vi.stubGlobal('fetch', fetchMock);
     renderPanel();
-    await screen.findByText('등록된 행사가 없습니다.');
+    await screen.findByText('등록된 행사가 없어요.');
     fillCommon('재시도 행사');
 
     fireEvent.click(screen.getByRole('button', { name: '행사 추가' }));
-    expect((await screen.findByRole('alert')).textContent).toContain('행사 응답 형식이 올바르지 않습니다.');
+    expect((await screen.findByRole('alert')).textContent).toContain('행사 응답 형식이 올바르지 않아요.');
     fireEvent.click(screen.getByRole('button', { name: '행사 추가' }));
-    await screen.findByText('행사를 추가했습니다.');
+    await screen.findByText('행사를 추가했어요.');
 
     const bodies = fetchMock.mock.calls.slice(1).map((call) => JSON.parse(String(call[1]?.body)));
     expect(bodies).toHaveLength(2);
@@ -443,7 +443,7 @@ describe('PromotionAdminPanel', () => {
       .mockResolvedValue(response({ error: 'temporary' }, 500));
     vi.stubGlobal('fetch', fetchMock);
     renderPanel();
-    await screen.findByText('등록된 행사가 없습니다.');
+    await screen.findByText('등록된 행사가 없어요.');
     fillCommon('첫 행사');
 
     fireEvent.click(screen.getByRole('button', { name: '행사 추가' }));
@@ -480,7 +480,7 @@ describe('PromotionAdminPanel', () => {
     fireEvent.change(within(dialog).getByLabelText('수정 행사명'), { target: { value: '수정 할인' } });
     fireEvent.change(within(dialog).getByLabelText('수정 할인율'), { target: { value: '15' } });
     fireEvent.click(within(dialog).getByRole('button', { name: '행사 수정 저장' }));
-    await screen.findByText('행사를 수정했습니다.');
+    await screen.findByText('행사를 수정했어요.');
     expect(fetchMock.mock.calls[1][0]).toBe('/api/promotions/PROMO-PCT');
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
       operationId: DEFAULT_OPERATION_ID, expectedPromotionVersion: 1,
@@ -488,11 +488,11 @@ describe('PromotionAdminPanel', () => {
       sortOrder: 1, type: 'PERCENT_DISCOUNT', percent: 15, productIds: ['P001'],
     });
     fireEvent.click(screen.getByRole('button', { name: '수정 할인 비활성화' }));
-    await screen.findByText('행사를 비활성화했습니다.');
+    await screen.findByText('행사를 비활성화했어요.');
     expect(confirm).toHaveBeenCalled();
     expect(JSON.parse(String(fetchMock.mock.calls[3][1]?.body))).toEqual({ operationId: DEFAULT_OPERATION_ID, expectedPromotionVersion: 2, isActive: false });
     fireEvent.click(screen.getByRole('button', { name: '수정 할인 재활성화' }));
-    await screen.findByText('행사를 재활성화했습니다.');
+    await screen.findByText('행사를 재활성화했어요.');
     expect(JSON.parse(String(fetchMock.mock.calls[5][1]?.body))).toEqual({ operationId: DEFAULT_OPERATION_ID, expectedPromotionVersion: 3, isActive: true });
   });
 
@@ -501,14 +501,14 @@ describe('PromotionAdminPanel', () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(response([])).mockResolvedValueOnce(response(created, 201));
     vi.stubGlobal('fetch', fetchMock);
     renderPanel();
-    await screen.findByText('등록된 행사가 없습니다.');
+    await screen.findByText('등록된 행사가 없어요.');
     fillCommon('12.5 할인');
     fireEvent.change(screen.getByLabelText('행사 유형'), { target: { value: 'PERCENT_DISCOUNT' } });
     const percentInput = screen.getByLabelText('할인율');
     expect(percentInput.getAttribute('step')).toBe('any');
     fireEvent.change(percentInput, { target: { value: '12.5' } });
     fireEvent.click(screen.getByRole('button', { name: '행사 추가' }));
-    await screen.findByText('행사를 추가했습니다.');
+    await screen.findByText('행사를 추가했어요.');
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toMatchObject({ type: 'PERCENT_DISCOUNT', percent: 12.5 });
   });
 
@@ -525,7 +525,7 @@ describe('PromotionAdminPanel', () => {
 
     fillCommon('잘못된 생성 응답');
     fireEvent.click(screen.getByRole('button', { name: '행사 추가' }));
-    expect((await screen.findByRole('alert')).textContent).toContain('행사 응답 형식이 올바르지 않습니다.');
+    expect((await screen.findByRole('alert')).textContent).toContain('행사 응답 형식이 올바르지 않아요.');
     expect(screen.queryByText('잘못된 생성 응답')).toBeNull();
     expect(screen.getAllByTestId('promotion-row')).toHaveLength(1);
 
@@ -533,7 +533,7 @@ describe('PromotionAdminPanel', () => {
     const dialog = screen.getByRole('dialog');
     fireEvent.change(within(dialog).getByLabelText('수정 행사명'), { target: { value: '수정 시도' } });
     fireEvent.click(within(dialog).getByRole('button', { name: '행사 수정 저장' }));
-    expect((await within(dialog).findByRole('alert')).textContent).toContain('행사 수정 응답 형식이 올바르지 않습니다.');
+    expect((await within(dialog).findByRole('alert')).textContent).toContain('행사 수정 응답 형식이 올바르지 않아요.');
     expect(screen.getByText('기존 10% 할인')).toBeTruthy();
     expect(screen.queryByText('망가진 수정')).toBeNull();
   });
@@ -543,12 +543,12 @@ describe('PromotionAdminPanel', () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(response([])).mockResolvedValueOnce(response(mismatched, 201));
     vi.stubGlobal('fetch', fetchMock);
     renderPanel();
-    await screen.findByText('등록된 행사가 없습니다.');
+    await screen.findByText('등록된 행사가 없어요.');
 
     fillCommon('새 행사 시도');
     fireEvent.click(screen.getByRole('button', { name: '행사 추가' }));
 
-    expect((await screen.findByRole('alert')).textContent).toContain('행사 응답 ID가 올바르지 않습니다.');
+    expect((await screen.findByRole('alert')).textContent).toContain('행사 응답 ID가 올바르지 않아요.');
     expect(screen.queryByText('교차 응답')).toBeNull();
     expect(screen.getByLabelText('행사명')).toHaveProperty('value', '새 행사 시도');
   });
@@ -563,7 +563,7 @@ describe('PromotionAdminPanel', () => {
     fillCommon('새 행사 시도');
     fireEvent.click(screen.getByRole('button', { name: '행사 추가' }));
 
-    expect((await screen.findByRole('alert')).textContent).toContain('행사 응답 ID가 올바르지 않습니다.');
+    expect((await screen.findByRole('alert')).textContent).toContain('행사 응답 ID가 올바르지 않아요.');
     expect(screen.getAllByTestId('promotion-row')).toHaveLength(1);
     expect(screen.getByText('기존 10% 할인')).toBeTruthy();
     expect(screen.queryByText('중복 생성 응답')).toBeNull();
@@ -581,7 +581,7 @@ describe('PromotionAdminPanel', () => {
     fireEvent.change(within(dialog).getByLabelText('수정 행사명'), { target: { value: '수정 시도' } });
     fireEvent.click(within(dialog).getByRole('button', { name: '행사 수정 저장' }));
 
-    expect((await within(dialog).findByRole('alert')).textContent).toContain('행사 수정 응답 형식이 올바르지 않습니다.');
+    expect((await within(dialog).findByRole('alert')).textContent).toContain('행사 수정 응답 형식이 올바르지 않아요.');
     expect(screen.getAllByTestId('promotion-row')).toHaveLength(1);
     expect(screen.getByText('기존 10% 할인')).toBeTruthy();
     expect(screen.queryByText('잘못 바뀐 행사')).toBeNull();
@@ -598,7 +598,7 @@ describe('PromotionAdminPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '기존 10% 할인 비활성화' }));
 
-    expect((await screen.findByRole('alert')).textContent).toContain('행사 활성 상태 변경 응답 형식이 올바르지 않습니다.');
+    expect((await screen.findByRole('alert')).textContent).toContain('행사 활성 상태 변경 응답 형식이 올바르지 않아요.');
     expect(screen.getAllByTestId('promotion-row')).toHaveLength(1);
     expect(screen.getByRole('button', { name: '기존 10% 할인 비활성화' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: '연필 2+1 재활성화' })).toBeNull();
@@ -619,7 +619,7 @@ describe('PromotionAdminPanel', () => {
     fillCommon('먼저 행사');
     fireEvent.change(screen.getByLabelText('정렬 우선순위'), { target: { value: '0' } });
     fireEvent.click(screen.getByRole('button', { name: '행사 추가' }));
-    await screen.findByText('행사를 추가했습니다.');
+    await screen.findByText('행사를 추가했어요.');
     expect(screen.getAllByTestId('promotion-row').map((row) => row.textContent)).toEqual([
       expect.stringContaining('먼저 행사'), expect.stringContaining('나중 행사'),
     ]);
@@ -628,7 +628,7 @@ describe('PromotionAdminPanel', () => {
     const dialog = screen.getByRole('dialog');
     fireEvent.change(within(dialog).getByLabelText('수정 정렬 우선순위'), { target: { value: '-1' } });
     fireEvent.click(within(dialog).getByRole('button', { name: '행사 수정 저장' }));
-    await screen.findByText('행사를 수정했습니다.');
+    await screen.findByText('행사를 수정했어요.');
     expect(screen.getAllByTestId('promotion-row').map((row) => row.textContent)).toEqual([
       expect.stringContaining('나중 행사'), expect.stringContaining('먼저 행사'),
     ]);
@@ -640,7 +640,7 @@ describe('PromotionAdminPanel', () => {
     fireEvent.change(screen.getByLabelText('시작 일시'), { target: { value: '2026-08-20T18:00' } });
     fireEvent.change(screen.getByLabelText('종료 일시'), { target: { value: '2026-08-20T18:00' } });
     fireEvent.click(screen.getByRole('button', { name: '행사 추가' }));
-    expect((await screen.findByRole('alert')).textContent).toContain('시작 일시는 종료 일시보다 빨라야 합니다.');
+    expect((await screen.findByRole('alert')).textContent).toContain('시작 일시는 종료 일시보다 빨라야 해요.');
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -713,7 +713,7 @@ describe('PromotionAdminPanel', () => {
     expect(editB.disabled).toBe(true);
     expect(cancel.disabled).toBe(true);
     authoritativeRefresh.resolve(response(promotionEnvelope([updated, nPlusOne], [2, 2])));
-    expect(await screen.findByText('행사를 수정했습니다.')).toBeTruthy();
+    expect(await screen.findByText('행사를 수정했어요.')).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
@@ -723,7 +723,7 @@ describe('PromotionAdminPanel', () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(response([])).mockReturnValueOnce(saving);
     vi.stubGlobal('fetch', fetchMock);
     renderPanel();
-    await screen.findByText('등록된 행사가 없습니다.');
+    await screen.findByText('등록된 행사가 없어요.');
     fillCommon();
     const save = screen.getByRole('button', { name: '행사 추가' });
     fireEvent.click(save);
@@ -811,7 +811,7 @@ describe('PromotionAdminPanel', () => {
     const dialog = screen.getByRole('dialog');
     for (const secretId of secretProductIds) expect(dialog.outerHTML).not.toContain(secretId);
     fireEvent.click(within(dialog).getByRole('button', { name: '행사 수정 저장' }));
-    await screen.findByText('행사를 수정했습니다.');
+    await screen.findByText('행사를 수정했어요.');
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body)).productIds).toEqual(['P001', ...secretProductIds]);
   });
 
@@ -892,7 +892,7 @@ describe('PromotionAdminPanel', () => {
     expect(screen.getByRole('dialog')).toBe(dialog);
 
     pending.resolve(response({ promotionId: percent.promotionId }));
-    await screen.findByText('행사를 삭제했습니다.');
+    await screen.findByText('행사를 삭제했어요.');
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(document.activeElement).toBe(screen.getByRole('button', { name: '행사 목록 새로고침' }));
   });
@@ -947,7 +947,7 @@ describe('PromotionAdminPanel', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     authoritativeRefresh.resolve(response(promotionEnvelope([updated, nPlusOne], [2, 2])));
 
-    expect(await screen.findByText('행사를 수정했습니다.')).toBeTruthy();
+    expect(await screen.findByText('행사를 수정했어요.')).toBeTruthy();
     expect(screen.getByText('저장된 수정')).toBeTruthy();
     expect(screen.getByLabelText('행사명')).toHaveProperty('value', '생성 초안 유지');
     expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -965,7 +965,7 @@ describe('PromotionAdminPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: `${encoded.name} 삭제` }));
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '삭제 확인' }));
-    expect(await screen.findByText('행사를 삭제했습니다.')).toBeTruthy();
+    expect(await screen.findByText('행사를 삭제했어요.')).toBeTruthy();
     expect(fetchMock.mock.calls[1][0]).toBe('/api/promotions/PROMO%20%2F%20%ED%95%9C%EA%B8%80');
     expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ operationId: DEFAULT_OPERATION_ID, expectedPromotionVersion: 23 });
@@ -988,7 +988,7 @@ describe('PromotionAdminPanel', () => {
     expect((await within(screen.getByRole('dialog')).findByRole('alert')).textContent).toContain('temporary');
     expect(screen.getByTestId('promotion-row')).toBeTruthy();
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '삭제 확인' }));
-    await screen.findByText('행사를 삭제했습니다.');
+    await screen.findByText('행사를 삭제했어요.');
 
     const bodies = fetchMock.mock.calls.slice(1).map((call) => JSON.parse(String(call[1]?.body)));
     expect(bodies).toEqual([
@@ -1016,7 +1016,7 @@ describe('PromotionAdminPanel', () => {
     expect((await within(screen.getByRole('dialog')).findByRole('alert')).textContent).toContain('행사 삭제 응답');
     expect(screen.getByTestId('promotion-row')).toBeTruthy();
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '삭제 확인' }));
-    await screen.findByText('행사를 삭제했습니다.');
+    await screen.findByText('행사를 삭제했어요.');
     expect(fetchMock.mock.calls[2][1]?.body).toBe(fetchMock.mock.calls[1][1]?.body);
     expect(randomUUID).toHaveBeenCalledOnce();
   });
@@ -1061,10 +1061,10 @@ describe('PromotionAdminPanel', () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(response([])).mockResolvedValueOnce(response(created, 201));
     vi.stubGlobal('fetch', fetchMock);
     renderPanel();
-    await screen.findByText('등록된 행사가 없습니다.');
+    await screen.findByText('등록된 행사가 없어요.');
     fillCommon(created.name);
     fireEvent.click(screen.getByRole('button', { name: '행사 추가' }));
-    await screen.findByText('행사를 추가했습니다.');
+    await screen.findByText('행사를 추가했어요.');
     fireEvent.click(screen.getByRole('button', { name: `${created.name} 삭제` }));
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '삭제 확인' }));
     expect((await within(screen.getByRole('dialog')).findByRole('alert')).textContent).toContain('새로고침');
@@ -1118,7 +1118,7 @@ describe('PromotionAdminPanel', () => {
       fireEvent.click(within(dialog).getByLabelText('수정 연필 (P001) 대상'));
       fireEvent.click(within(dialog).getByLabelText('수정 연필 (P001) 대상'));
       fireEvent.click(within(dialog).getByRole('button', { name: '행사 수정 저장' }));
-      await screen.findByText('행사를 수정했습니다.');
+      await screen.findByText('행사를 수정했어요.');
 
       expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
         operationId: '60000000-0000-4000-8000-000000000041', expectedPromotionVersion: 7,
@@ -1128,7 +1128,7 @@ describe('PromotionAdminPanel', () => {
       expect(fetchMock.mock.calls[2]).toEqual(['/api/promotions', { cache: 'no-store' }]);
 
       fireEvent.click(screen.getByRole('button', { name: '수정 할인 비활성화' }));
-      await screen.findByText('행사를 비활성화했습니다.');
+      await screen.findByText('행사를 비활성화했어요.');
       expect(JSON.parse(String(fetchMock.mock.calls[3][1]?.body))).toEqual({
         operationId: '60000000-0000-4000-8000-000000000042', expectedPromotionVersion: 8, isActive: false,
       });
@@ -1164,7 +1164,7 @@ describe('PromotionAdminPanel', () => {
       fireEvent.click(within(dialog).getByLabelText('수정 연필 (P001) 대상'));
       fireEvent.click(within(dialog).getByLabelText('수정 연필 (P001) 대상'));
       fireEvent.click(within(dialog).getByRole('button', { name: '행사 수정 저장' }));
-      await screen.findByText('행사를 수정했습니다.');
+      await screen.findByText('행사를 수정했어요.');
 
       const patchBodies = fetchMock.mock.calls.filter((call) => call[1]?.method === 'PATCH').map((call) => call[1]?.body);
       expect(patchBodies).toHaveLength(2);
@@ -1197,7 +1197,7 @@ describe('PromotionAdminPanel', () => {
       fireEvent.click(within(dialog).getByLabelText('수정 지우개 (P002) 대상'));
       fireEvent.click(within(dialog).getByLabelText('수정 지우개 (P002) 대상'));
       fireEvent.click(within(dialog).getByRole('button', { name: '행사 수정 저장' }));
-      await screen.findByText('행사를 수정했습니다.');
+      await screen.findByText('행사를 수정했어요.');
 
       const bodies = fetchMock.mock.calls.filter((call) => call[1]?.method === 'PATCH').map((call) => call[1]?.body);
       expect(bodies).toHaveLength(2);
@@ -1207,7 +1207,7 @@ describe('PromotionAdminPanel', () => {
     });
 
     it('refreshes once without replay after a target partial failure and retains edit intent and attempt', async () => {
-      const partial = '행사 정보는 저장되었을 수 있지만 대상 상품 수정에 실패했습니다. 새로고침 후 확인하고 다시 시도해 주세요.';
+      const partial = '행사 정보는 저장되었을 수 있지만 대상 상품을 바꾸지 못했어요. 새로고침해서 확인한 뒤 다시 시도해 주세요.';
       const randomUUID = vi.fn(() => '60000000-0000-4000-8000-000000000053');
       vi.stubGlobal('crypto', { randomUUID });
       const edited: Promotion = { ...percent, name: '부분 실패 수정', productIds: ['P001', 'P002'] };
@@ -1233,7 +1233,7 @@ describe('PromotionAdminPanel', () => {
       expect(within(dialog).getByLabelText('수정 행사명')).toHaveProperty('value', edited.name);
 
       fireEvent.click(within(dialog).getByRole('button', { name: '행사 수정 저장' }));
-      await screen.findByText('행사를 수정했습니다.');
+      await screen.findByText('행사를 수정했어요.');
       const bodies = fetchMock.mock.calls.filter((call) => call[1]?.method === 'PATCH').map((call) => call[1]?.body);
       expect(bodies).toHaveLength(2);
       expect(bodies[1]).toBe(bodies[0]);
@@ -1253,18 +1253,18 @@ describe('PromotionAdminPanel', () => {
         .mockResolvedValueOnce(response(created, 201));
       vi.stubGlobal('fetch', fetchMock);
       renderPanel();
-      await screen.findByText('등록된 행사가 없습니다.');
+      await screen.findByText('등록된 행사가 없어요.');
       fillCommon(created.name);
       fireEvent.click(screen.getByRole('button', { name: '행사 추가' }));
-      await screen.findByText('행사를 추가했습니다.');
+      await screen.findByText('행사를 추가했어요.');
 
       fireEvent.click(screen.getByRole('button', { name: `${created.name} 편집` }));
       const dialog = screen.getByRole('dialog');
       fireEvent.click(within(dialog).getByRole('button', { name: '행사 수정 저장' }));
-      expect((await within(dialog).findByRole('alert')).textContent).toContain('수정 전제 조건');
+      expect((await within(dialog).findByRole('alert')).textContent).toContain('수정할 행사 정보를 확인할 수 없어요');
       fireEvent.click(within(dialog).getByRole('button', { name: '편집 취소' }));
       fireEvent.click(screen.getByRole('button', { name: `${created.name} 비활성화` }));
-      expect((await screen.findByRole('alert')).textContent).toContain('활성 상태 변경 전제 조건');
+      expect((await screen.findByRole('alert')).textContent).toContain('상태를 바꿀 행사 정보를 확인할 수 없어요');
       expect(fetchMock.mock.calls.filter((call) => call[1]?.method === 'PATCH')).toHaveLength(0);
       expect(fetchMock).toHaveBeenCalledTimes(2);
       expect(randomUUID).toHaveBeenCalledOnce();
@@ -1289,7 +1289,7 @@ describe('PromotionAdminPanel', () => {
       pending.reject(new Error('offline'));
       expect((await screen.findByRole('alert')).textContent).toContain('offline');
       fireEvent.click(screen.getByRole('button', { name: `${percent.name} 비활성화` }));
-      await screen.findByText('행사를 비활성화했습니다.');
+      await screen.findByText('행사를 비활성화했어요.');
       const bodies = fetchMock.mock.calls.filter((call) => call[1]?.method === 'PATCH').map((call) => JSON.parse(String(call[1]?.body)));
       expect(bodies).toEqual([
         { operationId: '60000000-0000-4000-8000-000000000061', expectedPromotionVersion: 6, isActive: false },
@@ -1322,7 +1322,7 @@ describe('PromotionAdminPanel', () => {
       fireEvent.click(toggle);
       expect(fetchMock.mock.calls.filter((call) => call[1]?.method === 'PATCH')).toHaveLength(1);
       fireEvent.click(toggle);
-      await screen.findByText('행사를 비활성화했습니다.');
+      await screen.findByText('행사를 비활성화했어요.');
 
       const bodies = fetchMock.mock.calls.filter((call) => call[1]?.method === 'PATCH')
         .map((call) => JSON.parse(String(call[1]?.body)));
@@ -1374,12 +1374,12 @@ describe('PromotionAdminPanel', () => {
 
       fireEvent.click(within(dialog).getByRole('button', { name: '행사 수정 저장' }));
       expect((await within(dialog).findByRole('alert')).textContent).toContain('새로고침');
-      expect(screen.queryByText('행사를 수정했습니다.')).toBeNull();
+      expect(screen.queryByText('행사를 수정했어요.')).toBeNull();
 
       fireEvent.click(within(dialog).getByRole('button', { name: '행사 수정 저장' }));
       await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
       expect(within(dialog).getByRole('alert').textContent).toContain('새로고침');
-      expect(screen.queryByText('행사를 수정했습니다.')).toBeNull();
+      expect(screen.queryByText('행사를 수정했어요.')).toBeNull();
       const bodies = fetchMock.mock.calls.filter((call) => call[1]?.method === 'PATCH').map((call) => call[1]?.body);
       expect(bodies).toHaveLength(2);
       expect(bodies[1]).toBe(bodies[0]);
@@ -1399,7 +1399,7 @@ describe('PromotionAdminPanel', () => {
       fireEvent.click(screen.getByRole('button', { name: `${percent.name} 비활성화` }));
 
       expect((await screen.findByRole('alert')).textContent).toContain('새로고침');
-      expect(screen.queryByText('행사를 비활성화했습니다.')).toBeNull();
+      expect(screen.queryByText('행사를 비활성화했어요.')).toBeNull();
       expect(screen.getByRole('button', { name: `${percent.name} 비활성화` })).toBeTruthy();
       expect(fetchMock.mock.calls.filter((call) => call[1]?.method === 'PATCH')).toHaveLength(1);
     });

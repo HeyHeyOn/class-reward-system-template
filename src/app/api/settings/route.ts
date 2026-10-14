@@ -10,7 +10,7 @@ import { getOptionalTrustedTenantRequestContext } from '@/server/trustedTenantRe
 
 export const dynamic = 'force-dynamic';
 
-const SAVE_SETTINGS_ERROR = '설정을 저장하지 못했습니다.';
+const SAVE_SETTINGS_ERROR = '설정을 저장하지 못했어요.';
 const INVALID_JSON_ERROR = '올바른 요청 내용을 입력해 주세요.';
 
 async function parseRequestJson(request: Request): Promise<{ ok: true; body: Record<string, unknown> } | { ok: false }> {
@@ -41,7 +41,7 @@ export async function GET(request: Request) {
     return Response.json(settings);
   } catch {
     return Response.json({
-      error: '설정을 일시적으로 불러오지 못했습니다.',
+      error: '설정을 일시적으로 불러오지 못했어요.',
       code: 'SETTINGS_UNAVAILABLE',
       retryable: true,
     }, { status: 503 });
@@ -51,7 +51,7 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   void request;
   return Response.json(
-    { error: '지원하지 않는 요청 방식입니다.' },
+    { error: '지원하지 않는 요청 방식이에요.' },
     { status: 405, headers: { Allow: 'GET, POST' } },
   );
 }
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
       for (;;) {
         const { done, value } = await reader.read(); if (done) break;
         size += value.byteLength;
-        if (size > 8192) { await reader.cancel(); return reply({ error: '입력이 너무 큽니다.' }, 413); }
+        if (size > 8192) { await reader.cancel(); return reply({ error: '입력이 너무 커요.' }, 413); }
         parts.push(value);
       }
       body = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(parts)));
@@ -93,7 +93,7 @@ export async function POST(request: Request) {
     } catch (error) {
       if (error instanceof SettingsInputError) return reply({ error: error.message }, 400);
       if (error instanceof SettingsConflictError) return reply({ error: error.message, code: 'SETTINGS_CONFLICT' }, 409);
-      return reply({ error: '설정 저장 결과를 확인하지 못했습니다. 같은 요청으로 다시 확인해 주세요.', retryable: true }, 503);
+      return reply({ error: '설정 저장 결과를 확인하지 못했어요. 같은 요청으로 다시 확인해 주세요.', retryable: true }, 503);
     }
   }
 

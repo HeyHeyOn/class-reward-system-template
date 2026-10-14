@@ -364,7 +364,7 @@ describe('processCheckout', () => {
     expect(result).toEqual({
       ok: false,
       code: 'INSUFFICIENT_BALANCE',
-      message: '잔액이 부족합니다.',
+      message: '잔액이 부족해요.',
       currentBalance: 500,
       requiredAmount: 600,
     });
@@ -387,7 +387,7 @@ describe('processCheckout', () => {
 
     expect(result).toEqual({
       ok: false, code: 'PRICE_CHANGED',
-      message: '상품 가격 또는 행사가 변경되었습니다. 최신 금액을 확인해 주세요.',
+      message: '상품 가격 또는 행사가 변경됐어요. 최신 금액을 확인해 주세요.',
       latestPricing: { ok: true, totalAmount: 300, items: [noPromotionSnapshot('P001', '연필', 300, 1)] },
     });
     expect(store.updates).toEqual([]);
@@ -406,7 +406,7 @@ describe('processCheckout', () => {
     expect(result).toEqual({
       ok: false,
       code: 'PRICE_CHANGED',
-      message: '상품 가격 또는 행사가 변경되었습니다. 최신 금액을 확인해 주세요.',
+      message: '상품 가격 또는 행사가 변경됐어요. 최신 금액을 확인해 주세요.',
       latestPricing: noPromotionQuote(noPromotionSnapshot('P001', '연필', 300, 1)),
     });
     expect(store.updates).toEqual([]);

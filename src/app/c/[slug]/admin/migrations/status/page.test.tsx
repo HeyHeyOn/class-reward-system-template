@@ -63,11 +63,11 @@ describe('independent read-only migration status page', () => {
     const { container } = render(await page());
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('마이그레이션 상태');
     expect(screen.getByRole('status').textContent).toContain('상태 조회 차단');
-    expect(container.textContent).toContain('검증된 이전 상태 조회가 연결되지 않아 진행 상태와 운영 권한을 확인할 수 없습니다.');
+    expect(container.textContent).toContain('검증된 이전 상태 조회가 연결되지 않아 진행 상태와 운영 권한을 확인할 수 없어요.');
     expect(container.textContent).toContain('UNKNOWN');
     expect(container.textContent).toContain('TRUSTED_STATUS_READER_UNAVAILABLE');
     expect(container.textContent).toContain('읽기 전용');
-    expect(container.textContent).toContain('원본 조회·사전검사·동결·전환·재개·보고서 다운로드를 실행하지 않습니다.');
+    expect(container.textContent).toContain('원본 조회, 사전검사, 동결, 전환, 재개, 보고서 다운로드를 실행하지 않아요.');
     expect(container.querySelectorAll('form, button, input, select, textarea, iframe, script')).toHaveLength(0);
     for (const link of container.querySelectorAll('a')) {
       expect(link.getAttribute('href')).toBe('/c/alpha/admin');
@@ -138,7 +138,7 @@ describe('independent read-only migration status page', () => {
     if (point === 'membership') findByTenantAndSubject.mockRejectedValueOnce(error);
     const { container } = render(await page());
     expect(screen.getByRole('status').textContent).toContain('접근 권한 확인 불가');
-    expect(container.textContent).toContain('상태 정보를 표시하지 않습니다.');
+    expect(container.textContent).toContain('상태 정보를 표시하지 않아요.');
     expect(container.innerHTML).not.toContain('private-');
     expect(container.textContent).not.toContain('TRUSTED_STATUS_READER_UNAVAILABLE');
     expect(container.querySelectorAll('form, button, input, script')).toHaveLength(0);

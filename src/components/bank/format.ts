@@ -1,7 +1,14 @@
+import { endsWithBatchim } from '@/lib/koreanParticle';
+
 const SEOUL = 'Asia/Seoul';
 
 export function formatMoney(value: number, unit: string): string {
   return `${value.toLocaleString('ko-KR')}${unit}`;
+}
+
+/** '100원이에요', '50포인트예요': the amount with the ending that fits its unit. */
+export function moneyIs(money: string): string {
+  return `${money}${endsWithBatchim(money) ? '이에요' : '예요'}`;
 }
 
 export function formatSignedMoney(value: number, unit: string): string {

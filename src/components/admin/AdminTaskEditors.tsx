@@ -19,29 +19,29 @@ export function TaskBasicFields({ values, tasks, selfTaskId, unit, onChange }: {
       <Field label="과제 이름" htmlFor="task-sheet-title">
         <Input id="task-sheet-title" aria-label={selfTaskId ? `${prefix} 과제명` : '새 과제명'} data-autofocus placeholder="수학 익힘책 42~45쪽" value={values.title} onChange={(event) => onChange({ title: event.target.value })} />
       </Field>
-      <Field label="설명" htmlFor="task-sheet-description" optional hint="학생이 은행에서 과제를 누르면 보이는 안내입니다.">
+      <Field label="설명" htmlFor="task-sheet-description" optional hint="학생이 은행에서 과제를 누르면 보이는 안내예요.">
         <Textarea id="task-sheet-description" aria-label={selfTaskId ? `${prefix} 과제 설명` : '새 과제 설명'} placeholder="풀고 채점까지 끝내기" value={values.description} onChange={(event) => onChange({ description: event.target.value })} />
       </Field>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="보상" htmlFor="task-sheet-reward" hint="학생이 은행에서 완료하면 받습니다.">
+        <Field label="보상" htmlFor="task-sheet-reward" hint="학생이 은행에서 완료하면 받아요.">
           <Input id="task-sheet-reward" aria-label={selfTaskId ? `${prefix} 보상` : '새 과제 보상'} type="number" inputMode="numeric" min="0" suffix={unit} value={Number.isFinite(values.reward) ? values.reward : 0} onChange={(event) => onChange({ reward: Number(event.target.value) })} />
         </Field>
-        <Field label="목록 순서" htmlFor="task-sheet-order" hint="작은 숫자가 위에 보입니다.">
+        <Field label="목록 순서" htmlFor="task-sheet-order" hint="작은 숫자가 위에 보여요.">
           <Input id="task-sheet-order" aria-label={selfTaskId ? `${prefix} 정렬` : '새 과제 정렬'} type="number" inputMode="numeric" value={Number.isFinite(values.sortOrder) ? values.sortOrder : 0} onChange={(event) => onChange({ sortOrder: Number(event.target.value) })} />
         </Field>
       </div>
       <Switch checked={Boolean(values.isActive)} ariaLabel={selfTaskId ? `${prefix} 활성` : '새 과제 활성'} onChange={(checked) => onChange({ isActive: checked })}
-        label="학생에게 보이기" description="끄면 은행 화면에서 이 과제가 숨겨집니다." />
+        label="학생에게 보이기" description="끄면 은행 화면에서 이 과제가 숨겨져요." />
       <fieldset className="rounded-[var(--crs-radius-lg)] border border-[var(--crs-line)] p-4">
         <legend className="flex items-center gap-1.5 px-1.5 text-[13px] font-bold"><Icon name="calendar" size={15} />기간 <span className="font-medium text-[var(--theme-muted-text)]">선택</span></legend>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="시작" htmlFor="task-sheet-from" hint={availableFrom ? undefined : '비워 두면 바로 시작합니다.'}>
+          <Field label="시작" htmlFor="task-sheet-from" hint={availableFrom ? undefined : '비워 두면 바로 시작해요.'}>
             <div className="flex gap-1.5">
               <Input id="task-sheet-from" aria-label="시작 시각" type="datetime-local" value={availableFrom} onChange={(event) => onChange({ availableFrom: seoulLocalToIso(event.target.value) || undefined })} />
               {availableFrom ? <IconButton icon="close" size="md" label="시작 시각 지우기" onClick={() => onChange({ availableFrom: undefined })} /> : null}
             </div>
           </Field>
-          <Field label="마감" htmlFor="task-sheet-due" hint={dueAt ? undefined : '비워 두면 마감이 없습니다.'}>
+          <Field label="마감" htmlFor="task-sheet-due" hint={dueAt ? undefined : '비워 두면 마감이 없어요.'}>
             <div className="flex gap-1.5">
               <Input id="task-sheet-due" aria-label="기한" type="datetime-local" value={dueAt} onChange={(event) => onChange({ dueAt: seoulLocalToIso(event.target.value) || undefined })} />
               {dueAt ? <IconButton icon="close" size="md" label="기한 지우기" onClick={() => onChange({ dueAt: undefined })} /> : null}
@@ -49,7 +49,7 @@ export function TaskBasicFields({ values, tasks, selfTaskId, unit, onChange }: {
           </Field>
         </div>
       </fieldset>
-      <Field label="먼저 끝내야 하는 과제" htmlFor="task-sheet-prerequisite" optional hint="고르면 그 과제를 완료한 학생만 이 과제를 할 수 있습니다.">
+      <Field label="먼저 끝내야 하는 과제" htmlFor="task-sheet-prerequisite" optional hint="고르면 그 과제를 완료한 학생만 이 과제를 할 수 있어요.">
         <Select id="task-sheet-prerequisite" aria-label="선행 과제" value={values.prerequisiteTaskId ?? ''} onChange={(event) => onChange({ prerequisiteTaskId: event.target.value || undefined })}>
           <option value="">없음</option>
           {tasks.filter((task) => task.isActive && task.taskId !== selfTaskId).map((task) => <option key={task.taskId} value={task.taskId}>{task.title}</option>)}
@@ -63,7 +63,7 @@ export function NewTaskStudentPicker({ students, selectedIds, onChange }: { stud
   const all = students.length > 0 && selectedIds.length === students.length;
   return (
     <div className="space-y-4">
-      <Callout tone="info">고른 학생만 은행에서 이 과제를 보고 완료할 수 있습니다. 나중에 학생 현황 탭이나 QR로 더 부여할 수 있습니다.</Callout>
+      <Callout tone="info">고른 학생만 은행에서 이 과제를 보고 완료할 수 있어요. 나중에 학생 현황 탭이나 QR로 더 부여할 수 있어요.</Callout>
       <div className="flex items-center justify-between gap-3">
         <label className="flex items-center gap-2.5 text-sm font-bold">
           <Checkbox aria-label="전체 학생 행 선택" checked={all} onChange={(event) => onChange(event.target.checked ? students.map((student) => student.studentId) : [])} />
@@ -124,10 +124,10 @@ export function TaskAssignmentBoard({ editor, task, students, filter, onFilterCh
         <MiniStat label="남은 학생" value={`${Math.max(0, assignedCount - editor.completedIds.filter((id) => editor.assignedIds.includes(id)).length)}명`} />
       </div>
       {cycle && !permanent ? (
-        <p className="flex items-center gap-1.5 text-xs font-semibold text-[var(--theme-muted-text)]"><Icon name="repeat" size={14} />이번 회차 · {formatShortDate(cycle.startsAt)}{cycle.endsAt ? ` ~ ${formatShortDate(cycle.endsAt)}` : ''}</p>
+        <p className="flex items-center gap-1.5 text-xs font-semibold text-[var(--theme-muted-text)]"><Icon name="repeat" size={14} />이번 회차 {formatShortDate(cycle.startsAt)}{cycle.endsAt ? ` ~ ${formatShortDate(cycle.endsAt)}` : ''}</p>
       ) : null}
       <p className="text-xs leading-relaxed text-[var(--theme-muted-text)]">
-        부여한 학생만 은행에서 이 과제를 완료할 수 있습니다. 여기서 완료로 표시하면 보상은 지급되지 않습니다.
+        부여한 학생만 은행에서 이 과제를 완료할 수 있어요. 여기서 완료로 표시하면 보상은 지급되지 않아요.
       </p>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <SegmentedControl ariaLabel="학생 현황 필터" size="sm" value={filter} onChange={onFilterChange}
@@ -151,7 +151,7 @@ export function TaskAssignmentBoard({ editor, task, students, filter, onFilterCh
       <div className="relative divide-y divide-[var(--crs-line)] rounded-[var(--crs-radius-lg)] border border-[var(--crs-line)]">
         {editor.isLoading ? (
           <div role="status" aria-label="과제 부여 상태 불러오는 중" className="absolute inset-0 z-10 flex items-center justify-center rounded-[var(--crs-radius-lg)] bg-[color-mix(in_srgb,var(--theme-surface)_85%,transparent)] text-[13px] font-bold text-[var(--theme-muted-text)]">
-            학생별 상태를 불러오는 중입니다.
+            학생별 상태를 불러오는 중이에요.
           </div>
         ) : null}
         {rows.map((student) => {
@@ -172,7 +172,7 @@ export function TaskAssignmentBoard({ editor, task, students, filter, onFilterCh
             </div>
           );
         })}
-        {rows.length === 0 ? <p className="px-4 py-8 text-center text-[13px] text-[var(--theme-muted-text)]">해당하는 학생이 없습니다.</p> : null}
+        {rows.length === 0 ? <p className="px-4 py-8 text-center text-[13px] text-[var(--theme-muted-text)]">해당하는 학생이 없어요.</p> : null}
       </div>
     </div>
   );
@@ -190,7 +190,7 @@ export function BulkAssignmentBoard({ editor, students, onToggleRow, onSelectRow
   const all = students.length > 0 && editor.selectedIds.length === students.length;
   return (
     <div className="space-y-4">
-      <Callout tone="info">선택한 모든 과제에 같은 변경을 적용합니다. 바꾸고 싶은 학생만 고르세요. 고르지 않은 학생은 그대로 둡니다.</Callout>
+      <Callout tone="info">선택한 모든 과제에 같은 변경을 적용해요. 바꿀 학생만 고르세요. 고르지 않은 학생은 그대로예요.</Callout>
       <div className="flex flex-wrap items-center gap-2 rounded-[12px] bg-[var(--crs-subtle)] px-3 py-2">
         <label className="flex items-center gap-2 text-[13px] font-bold">
           <Checkbox aria-label="전체 학생 행 선택" checked={all} onChange={(event) => onSelectRows(event.target.checked ? students.map((student) => student.studentId) : [])} />

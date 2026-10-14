@@ -58,7 +58,7 @@ export function createTaskLedgerReader(dependencies: Readonly<{
     async getTaskAssignmentStatus(taskId): Promise<TaskAssignmentStatus> {
       const { rows, students } = await project({ taskId, includeInactive: true });
       const row = rows[0];
-      if (!row) throw new Error('과제를 찾을 수 없습니다.');
+      if (!row) throw new Error('과제를 찾을 수 없어요.');
       const names = new Map(students.map((student) => [student.studentId, student.name]));
       return {
         taskId,

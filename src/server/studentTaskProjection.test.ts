@@ -126,7 +126,7 @@ describe('buildStudentTaskProjection', () => {
     expect(result.find(({ taskId }) => taskId === 'D')).not.toHaveProperty('prerequisiteTaskId');
     expect(result.find(({ taskId }) => taskId === 'F')).toMatchObject({
       prerequisiteTitle: '비활성 선행', prerequisiteStatus: 'UNAVAILABLE',
-      prerequisiteMessage: "선행 과제 '비활성 선행'을(를) 완료할 수 없습니다. 교사에게 문의해 주세요.",
+      prerequisiteMessage: "선행 과제 '비활성 선행'을(를) 완료할 수 없어요. 교사에게 문의해 주세요.",
     });
     expect(result.find(({ taskId }) => taskId === 'F')).not.toHaveProperty('prerequisiteTaskId');
   });

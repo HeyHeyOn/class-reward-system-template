@@ -10,7 +10,7 @@ function blocksOf<K extends DocumentBlock['kind']>(kind: K, input = {}) {
 describe('buildParentConsentForm', () => {
   it('titles the form for the legal representative', () => {
     const doc = buildParentConsentForm({});
-    expect(doc.title).toBe('「학급 보상 시스템」 이용을 위한 학생 개인정보 수집·이용 동의서');
+    expect(doc.title).toBe('「딴쌤 클래스」 이용을 위한 학생 개인정보 수집·이용 동의서');
     expect(doc.subtitle).toBe('(법정대리인용)');
   });
 
@@ -26,7 +26,7 @@ describe('buildParentConsentForm', () => {
       '동의 거부 권리와 불이익 | 동의를 거부할 수 있습니다.',
       '위와 같이 개인정보를 수집·이용하는 데 동의하십니까?   □ 동의합니다   □ 동의하지 않습니다',
       '2. 개인정보 처리 위탁 안내',
-      '학급 보상 시스템 운영자(환잇쌤) | 서비스 운영, 학생 정보 저장·관리',
+      '딴쌤 클래스 운영자(환잇쌤) | 서비스 운영, 학생 정보 저장·관리',
       'Vercel Inc. | 웹 서비스 호스팅과 서버 운영',
       'Neon, LLC | 데이터베이스 저장과 운영',
       '3. 개인정보 국외 이전 (「개인정보 보호법」 제28조의8)',
@@ -36,7 +36,7 @@ describe('buildParentConsentForm', () => {
       '국외 이전을 거부할 수 있으며, 거부하면 학생은 실명 대신 별명과 임의 번호로 참여하고 불이익은 없습니다.',
       '위와 같이 개인정보를 국외로 이전하는 데 동의하십니까?   □ 동의합니다   □ 동의하지 않습니다',
       '4. 법정대리인의 권리',
-      '학급 보상 시스템 개인정보처리방침(https://class.schoolit.kr/privacy)에서 확인할 수 있습니다.',
+      '딴쌤 클래스 개인정보처리방침(https://class.ddanssaem.com/privacy)에서 확인할 수 있습니다.',
       '학생   ____학년 ____반 ____번   이름 ____________',
       '법정대리인   이름 ____________   (학생과의 관계: ________)   서명 ____________',
       '20____년 ____월 ____일',
@@ -55,7 +55,7 @@ describe('buildParentConsentForm', () => {
   it('fills in the school, class, teacher and due date', () => {
     const doc = buildParentConsentForm(FILLED);
     const text = documentPlainText(doc);
-    expect(text).toContain('햇살초등학교 5학년 2반에서는 학급 경제 활동(학급 화폐·매점·은행·과제)을 운영하기 위해 온라인 서비스 「학급 보상 시스템」을 사용합니다.');
+    expect(text).toContain('햇살초등학교 5학년 2반에서는 학급 경제 활동(학급 화폐·매점·은행·과제)을 운영하기 위해 온라인 서비스 「딴쌤 클래스」를 사용합니다.');
     expect(text).toContain('※ 3월 15일까지 담임교사에게 제출해 주세요.');
     expect(doc.blocks.find((block) => block.kind === 'signature')).toMatchObject({ addressee: '햇살초등학교 5학년 2반 담임교사 김하늘 귀하' });
     expect(text.split('\n').filter((line) => line.includes(BLANK))).toEqual([

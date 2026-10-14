@@ -49,7 +49,7 @@ export async function createConfiguredProductMutation(request?: Request): Promis
 function validateBatch(input: unknown, storage: 'postgresql' | 'sheets'): asserts input is {
   operationId: string; products: Record<string, unknown>[];
 } {
-  const invalid = () => new Error('올바른 상품 저장 요청이 아닙니다. 새로고침해 주세요.');
+  const invalid = () => new Error('올바른 상품 저장 요청이 아니에요. 새로고침해 주세요.');
   if (!isRecord(input) || Object.keys(input).sort().join('|') !== 'operationId|products'
     || typeof input.operationId !== 'string' || !UUID.test(input.operationId) || !Array.isArray(input.products)) throw invalid();
   const allowed = storage === 'postgresql' ? [...KEYS, 'expectedProductVersion'] : KEYS;

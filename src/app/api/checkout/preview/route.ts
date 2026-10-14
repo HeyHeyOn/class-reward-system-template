@@ -45,7 +45,7 @@ export async function POST(request: Request) {
 
 function checkoutPreviewFailureResponse(): Response {
   return Response.json(
-    { error: '결제 예상 금액을 계산하지 못했습니다.' },
+    { error: '결제 예상 금액을 계산하지 못했어요.' },
     { status: 500 },
   );
 }
@@ -100,5 +100,5 @@ function isExactObject<T extends string>(
 }
 
 function invalidCartResponse(): Response {
-  return Response.json({ error: '장바구니 요청 형식이 올바르지 않습니다.' }, { status: 400 });
+  return Response.json({ error: '장바구니 요청 형식이 올바르지 않아요.' }, { status: 400 });
 }

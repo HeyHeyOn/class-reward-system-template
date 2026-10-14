@@ -158,7 +158,7 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
       const columnIndex = headers.indexOf(update.columnName);
 
       if (columnIndex === -1) {
-        throw new Error(`${sheetName} 시트에 ${update.columnName} 컬럼이 없습니다.`);
+        throw new Error(`${sheetName} 시트에 ${update.columnName} 컬럼이 없어요.`);
       }
 
       return {
@@ -262,7 +262,7 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
       }
     }
     for (const sheetName of requiredNames) {
-      if (!sheetInfo.has(sheetName)) throw new Error(`${sheetName} 시트를 찾을 수 없거나 grid 정보를 확인할 수 없습니다.`);
+      if (!sheetInfo.has(sheetName)) throw new Error(`${sheetName} 시트를 찾을 수 없거나 grid 정보를 확인할 수 없어요.`);
     }
     for (const update of updates) {
       const info = sheetInfo.get(update.sheetName)!;
@@ -394,7 +394,7 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
 
   async deleteRows(sheetName: OperationalSheetName, rowNumbers: number[]): Promise<void> {
     const uniqueRows = Array.from(new Set(rowNumbers)).sort((a, b) => b - a);
-    if (uniqueRows.some((rowNumber) => rowNumber <= 1)) throw new Error('헤더 행은 삭제할 수 없습니다.');
+    if (uniqueRows.some((rowNumber) => rowNumber <= 1)) throw new Error('헤더 행은 삭제할 수 없어요.');
     if (uniqueRows.length === 0) return;
 
     const sheets = await this.getSheetsClient();
@@ -549,7 +549,7 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
 
   private async getSheetId(sheetName: OperationalSheetName): Promise<number> {
     const lookup = await this.lookupSheet(sheetName);
-    if (!lookup.found) throw new Error(`${sheetName} 시트를 찾을 수 없습니다.`);
+    if (!lookup.found) throw new Error(`${sheetName} 시트를 찾을 수 없어요.`);
     return lookup.info.sheetId;
   }
 
@@ -622,12 +622,12 @@ export class GoogleSheetsStore implements TabularStore, AdditiveSchemaMigrationS
           if (isQuotaError(error)) {
             throw new SheetProviderError(
               'QUOTA_EXCEEDED',
-              'Google Sheets 읽기 할당량을 초과했습니다. 잠시 후 다시 시도해 주세요.',
+              'Google Sheets 읽기 할당량을 초과했어요. 잠시 후 다시 시도해 주세요.',
             );
           }
           throw new SheetProviderError(
             'TRANSIENT_UNAVAILABLE',
-            'Google Sheets 읽기가 일시적으로 실패했습니다. 잠시 후 다시 시도해 주세요.',
+            'Google Sheets 읽기가 일시적으로 실패했어요. 잠시 후 다시 시도해 주세요.',
           );
         }
         await this.sleep(retryDelayMilliseconds(error, attempt));
@@ -654,7 +654,7 @@ export async function createConfiguredSheetsStore(request?: Request): Promise<Go
   const spreadsheetId = getEnvSpreadsheetId();
 
   if (!spreadsheetId) {
-    throw new Error('Google Sheets ID가 설정되지 않았습니다. GOOGLE_SHEET_ID 환경변수를 설정해 주세요.');
+    throw new Error('Google Sheets ID가 설정되지 않았어요. GOOGLE_SHEET_ID 환경변수를 설정해 주세요.');
   }
 
   return new GoogleSheetsStore(spreadsheetId, request);
@@ -666,7 +666,7 @@ export async function verifySpreadsheetAccess(reader: SheetsReader): Promise<voi
     await verifyRequiredOperationalSheetHeaders(reader);
   } catch (error) {
     const detail = error instanceof Error ? error.message : '알 수 없는 오류';
-    throw new Error(`해당 Google Sheets에 접근하지 못했습니다. OAuth refresh token 또는 서비스 계정 권한, Students/Products 시트 이름을 확인해 주세요. (${detail})`);
+    throw new Error(`해당 Google Sheets에 접근하지 못했어요. OAuth refresh token 또는 서비스 계정 권한, Students/Products 시트 이름을 확인해 주세요. (${detail})`);
   }
 }
 
@@ -685,7 +685,7 @@ async function createSheetsClient(_request?: Request) {
   const privateKey = process.env.GOOGLE_PRIVATE_KEY?.split(String.raw`\n`).join('\n');
 
   if (!email || !privateKey) {
-    throw new Error('Google Sheets 인증 환경변수가 없습니다. OAuth 방식은 GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN을 설정하고, 서비스 계정 방식은 GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_PRIVATE_KEY를 설정해 주세요.');
+    throw new Error('Google Sheets 인증 환경변수가 없어요. OAuth 방식은 GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN을 설정하고, 서비스 계정 방식은 GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_PRIVATE_KEY를 설정해 주세요.');
   }
 
   const auth = new google.auth.JWT({

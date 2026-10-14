@@ -93,10 +93,10 @@ it('new product edits use refreshed stock and its matching version', async () =>
 it('a successful creation with failed refresh stays registered and refuses unversioned edits', async () => {
   await open('학생'); refreshFails = true;
   const notice = await addStudent();
-  expect(notice.textContent).toContain('등록되었지만 편집 정보를 불러오지 못했습니다');
+  expect(notice.textContent).toContain('등록했지만 편집 정보를 불러오지 못했어요');
   const panel = await openStudentEditor('S001', '등록 학생');
   expect(value(panel, 'S001 이름')).toBe('등록 학생');
   edit(panel, 'S001 이름', '바뀐 이름'); save(panel);
-  await findNotice('학생 버전을 확인할 수 없습니다');
+  await findNotice('학생 버전을 확인할 수 없어요');
   expect(mutations).toHaveLength(0);
 });

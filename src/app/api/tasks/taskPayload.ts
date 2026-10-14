@@ -31,7 +31,7 @@ const INT32_MIN = -2147483648;
 const INT32_MAX = 2147483647;
 
 function invalidTaskPayload(): Error {
-  return new Error('과제 저장 요청 형식이 올바르지 않습니다.');
+  return new Error('과제 저장 요청 형식이 올바르지 않아요.');
 }
 
 export function parseStrictTaskCreate(value: unknown): ParsedTaskCreate {
@@ -100,25 +100,25 @@ export function parseStrictBatchTaskFields(value: unknown): ParsedTaskFields & {
 }
 
 function parseTaskFields(value: unknown, mode: TaskPayloadMode): ParsedTaskFields {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('과제 저장 요청 형식이 올바르지 않습니다.');
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('과제 저장 요청 형식이 올바르지 않아요.');
   const input = value as Record<string, unknown>;
   const required = mode === 'create' ? ['taskId', ...COMMON_REQUIRED_KEYS] : [...COMMON_REQUIRED_KEYS];
   const allowed = new Set([...required, ...OPTIONAL_KEYS, 'schedule']);
   if (!required.every((key) => Object.hasOwn(input, key)) || Object.keys(input).some((key) => !allowed.has(key))) {
-    throw new Error('과제 저장 요청 형식이 올바르지 않습니다.');
+    throw new Error('과제 저장 요청 형식이 올바르지 않아요.');
   }
   for (const key of ['title', 'description', ...(mode === 'create' ? ['taskId'] : [])]) {
-    if (typeof input[key] !== 'string') throw new Error('과제 저장 요청 형식이 올바르지 않습니다.');
+    if (typeof input[key] !== 'string') throw new Error('과제 저장 요청 형식이 올바르지 않아요.');
   }
   if (typeof input.reward !== 'number' || !Number.isSafeInteger(input.reward)
     || typeof input.sortOrder !== 'number' || !Number.isSafeInteger(input.sortOrder)
     || typeof input.isActive !== 'boolean'
     || !Array.isArray(input.allowedStudentIds) || input.allowedStudentIds.some((id) => typeof id !== 'string')) {
-    throw new Error('과제 저장 요청 형식이 올바르지 않습니다.');
+    throw new Error('과제 저장 요청 형식이 올바르지 않아요.');
   }
   for (const key of OPTIONAL_KEYS) {
     if (Object.hasOwn(input, key) && input[key] !== null && typeof input[key] !== 'string') {
-      throw new Error('과제 저장 요청 형식이 올바르지 않습니다.');
+      throw new Error('과제 저장 요청 형식이 올바르지 않아요.');
     }
   }
   return {

@@ -8,7 +8,7 @@ import { TransactionsPage } from '@/components/TransactionsPage';
 import { tenantPagePath } from '@/lib/tenantApiPath';
 import { requireTenantAdminPage } from '@/server/tenantAdminPageAccess';
 
-export const metadata = { title: '학급 보상 시스템' };
+export const metadata = { title: '딴쌤 클래스' };
 
 export default async function TenantAdminSubroute({
   params,
