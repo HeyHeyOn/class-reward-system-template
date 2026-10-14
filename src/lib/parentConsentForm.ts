@@ -111,7 +111,7 @@ export function buildParentConsentForm(input: ParentConsentFormInput): ConsentFo
     { kind: 'consent', question: '위와 같이 개인정보를 국외로 이전하는 데 동의하십니까?', options: AGREE_OPTIONS },
 
     { kind: 'heading', text: '4. 법정대리인의 권리' },
-    { kind: 'paragraph', text: '법정대리인은 언제든지 담임교사에게 학생 개인정보의 열람·정정·삭제·처리 정지를 요구하거나 동의를 철회할 수 있습니다. 자세한 내용은 학급 보상 시스템 개인정보처리방침(https://crs.hwanit.com/privacy)에서 확인할 수 있습니다.' },
+    { kind: 'paragraph', text: '법정대리인은 언제든지 담임교사에게 학생 개인정보의 열람·정정·삭제·처리 정지를 요구하거나 동의를 철회할 수 있습니다. 자세한 내용은 학급 보상 시스템 개인정보처리방침(https://class.schoolit.kr/privacy)에서 확인할 수 있습니다.' },
 
     {
       kind: 'signature',

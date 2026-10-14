@@ -4,10 +4,12 @@ import { CANONICAL_ORIGIN, publicOrigin } from './publicOrigin';
 const at = (origin: string) => ({ origin, hostname: new URL(origin).hostname });
 
 describe('publicOrigin', () => {
-  it('gives crs.hwanit.com for the production project’s Vercel addresses', () => {
+  it('gives class.schoolit.kr for the production project’s Vercel addresses and the old address', () => {
     expect(publicOrigin(at('https://crs-postgresql.vercel.app'))).toBe(CANONICAL_ORIGIN);
     expect(publicOrigin(at('https://crs-postgresql-hq5nfhg7r-hey-hey-on-s-projects.vercel.app'))).toBe(CANONICAL_ORIGIN);
-    expect(publicOrigin(at('https://crs.hwanit.com'))).toBe('https://crs.hwanit.com');
+    expect(publicOrigin(at('https://crs.hwanit.com'))).toBe('https://class.schoolit.kr');
+    expect(publicOrigin(at('https://class.schoolit.kr'))).toBe('https://class.schoolit.kr');
+    expect(CANONICAL_ORIGIN).toBe('https://class.schoolit.kr');
   });
 
   it('keeps any other address as it is', () => {
