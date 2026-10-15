@@ -4,6 +4,7 @@ import { getTeacherGoogleSessionFromRequest } from '@/server/teacherSession';
 import { getProductionClassStartRepository } from '@/server/repositories/database/classStart';
 import { parseTenantSlug } from '@/server/tenantContext';
 import { buttonClass } from '@/components/ui/classes';
+import { GoogleLoginButton } from '@/components/brand/GoogleLoginButton';
 import { ClassPageShell } from '../../ClassPageShell';
 import { ClassStartChoice } from './ClassStartChoice';
 
@@ -15,7 +16,7 @@ export default async function ClassStartPage({ params }: { params: Promise<{ slu
   const session = await getTeacherGoogleSessionFromRequest(new Request('http://classes.internal/classes', { headers: await headers() }));
   if (!session) return (
     <ClassPageShell eyebrow="학급 준비" title="로그인이 필요해요">
-      <a href="/api/google/login?returnTo=%2Fclasses" className={buttonClass({ variant: 'primary', size: 'lg', block: true })}>Google 계정으로 로그인</a>
+      <GoogleLoginButton href="/api/google/login?returnTo=%2Fclasses" block />
     </ClassPageShell>
   );
   let setup;

@@ -1,6 +1,7 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { ProfileView } from '@/components/account/ProfileView';
+import { TeacherHeader } from '@/components/brand/TeacherHeader';
 import { LEGAL_REVISIONS } from '@/lib/legalDocuments';
 import { getTeacherGoogleSessionFromRequest } from '@/server/teacherSession';
 import { getProductionClassDashboardRepository } from '@/server/repositories/database/classDashboard';
@@ -28,13 +29,17 @@ export default async function ProfilePage() {
     getProductionClassDashboardRepository().listByGoogleSubject(session.subject),
   ]);
   const effectiveLabel = LEGAL_REVISIONS.find((revision) => revision.version === agreement?.version)?.effectiveLabel ?? agreement?.version;
+  const profile = resolveTeacherProfile(session, stored);
   return (
+    <>
+    <TeacherHeader account={{ nickname: profile.nickname, avatar: profile.avatar }} />
     <ProfileView model={{
       email: session.email,
-      profile: resolveTeacherProfile(session, stored),
+      profile,
       agreement: agreement && effectiveLabel ? { effectiveLabel, agreedAtLabel: seoulDateTime(agreement.agreedAt) } : null,
       classNames: memberships.filter((membership) => membership.role === 'OWNER').map((membership) => membership.displayName),
       notice: legalNoticeFor(session),
     }} />
+    </>
   );
 }

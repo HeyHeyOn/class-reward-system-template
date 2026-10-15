@@ -28,9 +28,10 @@ describe('ClassesSelectionView', () => {
   it.each([
     ['signed out', { kind: 'LOGIN_REQUIRED', loginHref: '/api/google/login?returnTo=%2Fclasses' }],
     ['signed in', { kind: 'MEMBERSHIPS', accountLabel: 'Teacher', memberships: [] }],
-  ] as const)('shows only the Korean title and a copyright footer with the privacy policy link when %s', (_label, model) => {
+  ] as const)('shows the 딴쌤 header and a copyright footer with the privacy policy link when %s', (_label, model) => {
     render(<ClassesSelectionView model={model as never}/>);
-    expect(screen.getByText('딴쌤 클래스')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '딴쌤 홈' }).getAttribute('href')).toBe('/classes');
+    expect(screen.getByRole('navigation', { name: '딴쌤 메뉴' })).toBeTruthy();
     for (const removed of ['CLASS REWARD SYSTEM', '선생님의 학급 공간', '나의 교실, 하나의 공간', '함께 성장하는 우리 반']) {
       expect(screen.queryByText(removed, { exact: false })).toBeNull();
     }
@@ -40,15 +41,16 @@ describe('ClassesSelectionView', () => {
   it('reports logout failure and allows another attempt', async () => {
     const fetcher=vi.fn().mockRejectedValue(new Error('offline'));vi.stubGlobal('fetch',fetcher);
     render(<ClassesSelectionView model={{kind:'MEMBERSHIPS',accountLabel:'Teacher',memberships:[]}}/>);
+    fireEvent.click(screen.getByRole('button',{name:'계정 메뉴'}));
     fireEvent.click(screen.getByRole('button',{name:'로그아웃'}));
-    expect(await screen.findByRole('status')).toBeTruthy();
+    expect(await screen.findByRole('alert')).toBeTruthy();
     expect(fetcher).toHaveBeenCalledWith('/api/google/logout',expect.objectContaining({method:'POST'}));
     expect((screen.getByRole('button',{name:'로그아웃'}) as HTMLButtonElement).disabled).toBe(false);
   });
   it('offers only the scoped Google login action when unauthenticated', () => {
     render(<ClassesSelectionView model={{ kind: 'LOGIN_REQUIRED', loginHref: '/api/google/login?returnTo=%2Fclasses' }} />);
 
-    expect(screen.getByRole('link', { name: 'Google 계정으로 로그인' }).getAttribute('href'))
+    expect(screen.getByRole('link', { name: 'Google로 로그인' }).getAttribute('href'))
       .toBe('/api/google/login?returnTo=%2Fclasses');
     expect(screen.queryByRole('link', { name: /학급으로 이동/ })).toBeNull();
     expect(screen.queryByRole('link', { name: '새 학급' })).toBeNull();
@@ -59,7 +61,9 @@ describe('ClassesSelectionView', () => {
     const avatar = { v: 1 as const, background: 'sky', face: 'bear', eyes: 'smile', mouth: 'smile', accessory: 'none' };
     render(<ClassesSelectionView model={{ kind: 'MEMBERSHIPS', accountLabel: 'Teacher', memberships: [] }}
       account={{ profile: { nickname: '햇살쌤', avatar }, notice: { required: { current: revision, changes: [revision] }, upcoming: null } }} />);
-    expect(screen.getByRole('link', { name: '내 프로필: 햇살쌤' }).getAttribute('href')).toBe('/profile');
+    fireEvent.click(screen.getByRole('button', { name: '계정 메뉴' }));
+    expect(screen.getByText('햇살쌤', { selector: 'p' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: '내 프로필' }).getAttribute('href')).toBe('/profile');
     expect(screen.getByRole('dialog', { name: '약관 동의가 필요해요' })).toBeTruthy();
   });
 

@@ -15,7 +15,7 @@ describe('AdminLoginPage tenant mode', () => {
     vi.stubGlobal('fetch', fetchMock);
     render(<AdminLoginPage tenantSlug="alpha-class" />);
 
-    const google = screen.getByRole('link', { name: 'Google 계정으로 로그인' });
+    const google = screen.getByRole('link', { name: 'Google로 로그인' });
     expect(google.getAttribute('href')).toBe(`/api/google/login?returnTo=${encodeURIComponent('/c/alpha-class/admin')}`);
     expect(screen.getByText('이 학급을 만든 Google 계정으로 로그인해 주세요.')).toBeTruthy();
     expect(screen.queryByLabelText('QR 로그인 값')).toBeNull();

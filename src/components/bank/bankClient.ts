@@ -18,13 +18,15 @@ export type BankSettings = {
   currencyUnit: string;
   /** Display title: the class bank title, or "{store title} 은행". */
   bankTitle: string;
+  /** The class name shown in the header ('' when the class has none). */
+  className: string;
   themeColor: string;
   fontFamily: FontFamily;
   qrManualInputEnabled: boolean;
 };
 
 export const DEFAULT_BANK_SETTINGS: BankSettings = {
-  currencyUnit: '원', bankTitle: '학급 은행', themeColor: 'white', fontFamily: 'default', qrManualInputEnabled: false,
+  currencyUnit: '원', bankTitle: '학급 은행', className: '', themeColor: 'white', fontFamily: 'default', qrManualInputEnabled: false,
 };
 
 export type BankFailure = Readonly<{
@@ -148,6 +150,7 @@ export async function fetchBankSettings(): Promise<BankSettings> {
   return {
     currencyUnit: text('currencyUnit', DEFAULT_BANK_SETTINGS.currencyUnit) || DEFAULT_BANK_SETTINGS.currencyUnit,
     bankTitle: text('bankTitle', '').trim() || `${text('appTitle', '').trim() || '학급 매점'} 은행`,
+    className: text('className', '').trim(),
     themeColor: text('themeColor', DEFAULT_BANK_SETTINGS.themeColor),
     fontFamily: normalizeFontFamily(payload.fontFamily),
     qrManualInputEnabled: payload.qrManualInputEnabled === true,

@@ -12,6 +12,8 @@ vi.mock('@/components/AdminManagePage', () => ({ AdminManagePage: () => null }))
 vi.mock('@/components/StudentQrPrintPage', () => ({ StudentQrPrintPage: () => null }));
 vi.mock('@/components/TransactionsPage', () => ({ TransactionsPage: () => null }));
 vi.mock('@/components/MigrationFreezingPage', () => ({ MigrationFreezingPage: () => null }));
+vi.mock('@/components/brand/TeacherHeader', () => ({ TeacherHeader: () => null }));
+vi.mock('@/server/teacherAccounts', () => ({ teacherAccountsEnabled: () => false, loadTeacherAccountView: vi.fn() }));
 import TenantAdminSubroute from '@/app/c/[slug]/admin/[...path]/page';
 
 it('server-renders the actual scoped login route with its class return path before hydration', async () => {

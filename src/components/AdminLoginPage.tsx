@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { tenantFetch, tenantPagePath } from '@/lib/tenantApiPath';
 import { themeStyles } from './uiTheme';
 import { LoadingOverlay, buttonClass, controlClass } from './ui';
+import { GoogleLoginButton } from './brand/GoogleLoginButton';
 
 type BarcodeDetectorCtor = new (options?: { formats?: string[] }) => {
   detect(source: CanvasImageSource): Promise<Array<{ rawValue: string }>>;
@@ -46,9 +47,7 @@ export function AdminLoginPage({
           <p className="text-sm font-bold uppercase tracking-[0.3em] text-[#4f8fba]">Class Store Admin</p>
           <h1 className="mt-3 text-3xl font-black">학급 관리자 로그인</h1>
           <p className="mt-3 text-sm text-[#627184]">Google 계정으로 로그인한 뒤 관리자 권한이 있는 학급을 선택해요.</p>
-          <a className="mt-8 flex w-full items-center justify-center rounded-2xl bg-[#4285f4] px-5 py-3 text-center font-black text-white shadow-[0_10px_30px_rgba(66,133,244,0.25)]" href="/api/google/login?returnTo=%2Fclasses">
-            Google 계정으로 로그인
-          </a>
+          <GoogleLoginButton href="/api/google/login?returnTo=%2Fclasses" block className="mt-8" />
         </section>
       </main>
     );
@@ -58,15 +57,11 @@ export function AdminLoginPage({
     // A class is administered by its Google accounts only (the membership of that class); the password
     // and QR logins below belong to the Google Sheets edition, which had no social login.
     return (
-      <main style={themeStyles('white').variables} className="flex min-h-screen items-center justify-center bg-[var(--theme-shell)] px-4 py-10 text-[var(--theme-text)]">
+      <main style={themeStyles('white').variables} className="flex min-h-[calc(100vh-65px)] items-center justify-center bg-[var(--theme-shell)] px-4 py-10 text-[var(--theme-text)]">
         <section className="w-full max-w-md rounded-[26px] border border-[var(--crs-line)] bg-[var(--theme-surface)] p-7 shadow-[var(--crs-shadow)] sm:p-9">
-          <span role="img" aria-label="딴쌤 클래스 로고" className="block h-11 w-11 bg-[var(--theme-accent-text)] [mask-image:url('/class-reward-system-icon.png')] [mask-position:center] [mask-repeat:no-repeat] [mask-size:contain]" />
-          <h1 className="mt-5 text-[28px] font-black tracking-[-0.035em]">관리자 로그인</h1>
+          <h1 className="text-[28px] font-black tracking-[-0.035em]">관리자 로그인</h1>
           <p className="mt-2 text-sm leading-relaxed text-[var(--theme-muted-text)]">이 학급을 만든 Google 계정으로 로그인해 주세요.</p>
-          <a className={buttonClass({ variant: 'primary', size: 'lg', block: true, className: 'mt-7' })}
-            href={`/api/google/login?returnTo=${encodeURIComponent(`/c/${tenantSlug}/admin`)}`}>
-            Google 계정으로 로그인
-          </a>
+          <GoogleLoginButton href={`/api/google/login?returnTo=${encodeURIComponent(`/c/${tenantSlug}/admin`)}`} block className="mt-7" />
           {message ? <p role="alert" className="mt-4 rounded-[12px] bg-[var(--crs-danger-bg)] px-4 py-3 text-[13px] font-semibold text-[var(--crs-danger-text)]">{message}</p> : null}
           <a className={buttonClass({ variant: 'ghost', size: 'md', block: true, className: 'mt-3' })} href="/classes">메인 화면으로</a>
         </section>
@@ -160,15 +155,12 @@ export function AdminLoginPage({
         />
       ) : null}
       <section className="w-full max-w-md rounded-[26px] border border-[var(--crs-line)] bg-[var(--theme-surface)] p-7 shadow-[var(--crs-shadow)] sm:p-9">
-        <span role="img" aria-label="딴쌤 클래스 로고" className="block h-11 w-11 bg-[var(--theme-accent-text)] [mask-image:url('/class-reward-system-icon.png')] [mask-position:center] [mask-repeat:no-repeat] [mask-size:contain]" />
-        <h1 className="mt-5 text-[28px] font-black tracking-[-0.035em]">관리자 로그인</h1>
+        <h1 className="text-[28px] font-black tracking-[-0.035em]">관리자 로그인</h1>
         <p className="mt-2 text-sm leading-relaxed text-[var(--theme-muted-text)]">{googleLoginEnabled ? 'Google 계정, 관리자 암호, 관리자 QR 중 편한 방법으로 로그인해요.' : '관리자 암호, 관리자 QR, Recovery 탭의 recoveryCode로 로그인해요.'}</p>
 
         {googleLoginEnabled ? (
           <>
-            <a className={buttonClass({ variant: 'primary', size: 'lg', block: true, className: 'mt-7' })} href={tenantSlug ? `/api/google/login?returnTo=${encodeURIComponent(`/c/${tenantSlug}/admin`)}` : '/api/google/login'}>
-              Google 계정으로 로그인
-            </a>
+            <GoogleLoginButton href={tenantSlug ? `/api/google/login?returnTo=${encodeURIComponent(`/c/${tenantSlug}/admin`)}` : '/api/google/login'} block className="mt-7" />
             {divider}
           </>
         ) : (

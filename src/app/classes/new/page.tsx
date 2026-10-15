@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { headers } from 'next/headers';
 import { getTeacherGoogleSessionFromRequest } from '@/server/teacherSession';
-import { buttonClass } from '@/components/ui/classes';
+import { GoogleLoginButton } from '@/components/brand/GoogleLoginButton';
 import { ClassPageShell } from '../ClassPageShell';
 import { ClassCreationForm } from './ClassCreationForm';
 
@@ -15,7 +15,7 @@ export default async function NewClassPage() {
       {session ? <ClassCreationForm operationId={randomUUID()} startOperationId={randomUUID()} /> : (
         <div className="space-y-4">
           <p className="text-sm">새 학급을 만들려면 Google 계정으로 로그인해 주세요.</p>
-          <a href="/api/google/login?returnTo=%2Fclasses" className={buttonClass({ variant: 'primary', size: 'lg', block: true })}>Google 계정으로 로그인</a>
+          <GoogleLoginButton href="/api/google/login?returnTo=%2Fclasses" block />
         </div>
       )}
     </ClassPageShell>

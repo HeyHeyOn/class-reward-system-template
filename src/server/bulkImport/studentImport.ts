@@ -28,7 +28,7 @@ const COLUMNS: ReadonlyArray<ImportColumn<StudentField> & TemplateColumn> = [
   {
     field: 'studentId', label: LABEL.studentId, required: true, width: 17, text: true,
     aliases: ['번호', '학번', '학생ID', '학생 아이디', 'ID', '아이디', '출석 번호', 'studentId'],
-    description: 'QR 카드와 은행에서 쓰는 학생 고유 번호예요. 반 안에서 겹치면 안 되고, 이미 등록된 번호나 '
+    description: '학생을 구분하는 고유 번호예요. 반 안에서 겹치면 안 되고, 이미 등록된 번호나 '
       + `삭제한 학생이 쓰던 번호는 쓸 수 없어요. ${BULK_IMPORT_TEXT_LIMITS.studentId}자까지 적을 수 있어요. `
       + "이 열은 텍스트 서식이라 '01'처럼 앞자리 0이 그대로 남아요.",
     examples: ['01', '02'],

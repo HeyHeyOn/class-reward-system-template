@@ -1689,10 +1689,8 @@ describe('AdminManagePage', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: '학급 매점' })).toBeTruthy();
     expect(screen.queryByText('Class Reward System')).toBeNull();
-    const logo = screen.getByRole('img', { name: '딴쌤 클래스 로고' });
-    expect(logo.className).toContain('bg-[var(--theme-accent-text)]');
-    expect(logo.className).toContain("[mask-image:url('/class-reward-system-icon.png')]");
-    expect(logo.className).not.toContain('bg-white');
+    // The brand lives in the 딴쌤 header now; the old mark is gone from the menu column.
+    expect(container.innerHTML).not.toContain('class-reward-system-icon');
     const adminTabs = screen.getByRole('tablist', { name: '관리자 메뉴' });
     expect(adminTabs).toBe(screen.getByTestId('admin-tabs'));
     expect(within(adminTabs).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['홈', '학생', '매점', '과제', '펫 키우기', '나무 키우기', '지급·회수', '거래 내역', '설정']);
@@ -1848,7 +1846,6 @@ describe('AdminManagePage', () => {
     expect(await screen.findByRole('heading', { level: 1, name: '학급 매점' })).toBeTruthy();
     expect((container.querySelector('[data-testid="admin-shell"]') as HTMLElement).style.getPropertyValue('--theme-shell')).toBe(THEME_PALETTES.navy.shell);
     expect(screen.getByRole('tab', { name: '홈' }).className).toContain('bg-[var(--theme-accent-solid)]');
-    expect(screen.getByRole('img', { name: '딴쌤 클래스 로고' }).className).toContain('bg-[var(--theme-accent-text)]');
     expect(container.querySelector('[data-testid="admin-shell"]')?.className).not.toContain('bg-[#8F97CF]');
   });
 

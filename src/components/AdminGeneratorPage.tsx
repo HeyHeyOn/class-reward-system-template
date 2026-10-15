@@ -61,6 +61,25 @@ export function AdminGeneratorPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState('');
   const [createResult, setCreateResult] = useState<GeneratorCreateResult | null>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState('');
+
+  // The logout route takes POST only (like every other screen); on success the wizard starts over.
+  async function logout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    setLogoutError('');
+    try {
+      const response = await fetch('/api/google/logout', { method: 'POST', credentials: 'same-origin', cache: 'no-store', redirect: 'error' });
+      if (!response.ok) throw new Error('logout failed');
+      setSession({ loading: false, enabled: true, authenticated: false, generatorGranted: false });
+      setStep('choose');
+    } catch {
+      setLogoutError('로그아웃하지 못했어요. 다시 눌러 주세요.');
+    } finally {
+      setLoggingOut(false);
+    }
+  }
 
   useEffect(() => {
     if (step !== 'google') return;
@@ -143,7 +162,10 @@ export function AdminGeneratorPage() {
           {session.authenticated ? (
             <div className="mt-4 flex flex-wrap items-center gap-2 text-sm font-black">
               <span className="rounded-full bg-emerald-50 px-3 py-2 text-emerald-700">Google 로그인됨: {session.email ?? session.name}</span>
-              <Link href="/api/google/logout" className="rounded-full bg-slate-100 px-3 py-2 text-slate-600 hover:bg-slate-200">로그아웃</Link>
+              <button type="button" onClick={() => void logout()} disabled={loggingOut} className="rounded-full bg-slate-100 px-3 py-2 text-slate-600 hover:bg-slate-200 disabled:opacity-60">
+                {loggingOut ? '로그아웃 중…' : '로그아웃'}
+              </button>
+              {logoutError ? <span role="alert" className="text-rose-700">{logoutError}</span> : null}
             </div>
           ) : null}
         </header>

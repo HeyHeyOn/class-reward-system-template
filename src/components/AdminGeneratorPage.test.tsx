@@ -48,6 +48,9 @@ function stubGeneratorFetch(options?: { authenticated?: boolean; generatorGrante
         }),
       };
     }
+    if (url === '/api/google/logout' && init?.method === 'POST') {
+      return { ok: true, json: async () => ({ ok: true }) };
+    }
     if (url === '/api/qrcode/link' && init?.method === 'POST') {
       return new Response('<svg/>', { headers: { 'Content-Type': 'image/svg+xml' } });
     }
@@ -91,6 +94,19 @@ describe('AdminGeneratorPage', () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+  });
+
+  it('signs out with POST (the only method the logout route takes) and starts the wizard over', async () => {
+    const fetchSpy = stubGeneratorFetch();
+    render(<AdminGeneratorPage />);
+    await goToCreateNotice();
+    await passNotice();
+    await waitFor(() => expect(screen.getByText(/Google 로그인됨: teacher@example.com/)).toBeTruthy());
+    expect(screen.queryByRole('link', { name: '로그아웃' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '로그아웃' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '새 시스템 생성하기' })).toBeTruthy());
+    expect(fetchSpy).toHaveBeenCalledWith('/api/google/logout', expect.objectContaining({ method: 'POST' }));
+    expect(screen.queryByText(/Google 로그인됨/)).toBeNull();
   });
 
   it('starts with the system explanation and create-or-update choice before Google login', async () => {

@@ -47,11 +47,11 @@ import { SidebarLink, SidebarShortcut, SidebarButton, QuickAction, SheetLoading,
 import { StudentQrReissueNotice, useStudentQrReissue } from './admin/StudentQrReissue';
 import { ShareLinkDialog, sharePaths, type ShareTarget } from './admin/ShareLinkDialog';
 import { ParentConsentFormDialog } from './admin/ParentConsentFormDialog';
-import { AccountLink } from './account/AccountLink';
 import { TutorialHomeCard, TutorialMenu } from './tutorial/TutorialMenu';
 import { TutorialRunner } from './tutorial/TutorialRunner';
 import { FIRST_TUTORIAL_ID, tutorialAfter, tutorialById, type Tutorial } from './tutorial/tutorials';
 import type { AvatarConfig } from './profile/avatar';
+import { GlobalHeader } from './brand/GlobalHeader';
 
 // Retain the existing public parser exports for callers outside the page.
 export { parseProductAdminEnvelope, getProductExpectedVersion, type ProductAdminState } from './admin/productAdminResponse';
@@ -2210,19 +2210,18 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
 
   return (
     <main data-testid="admin-shell" style={rootStyle} className={cx(styles.admin, 'min-h-screen bg-[var(--theme-shell)] text-[15px] text-[var(--theme-text)] antialiased')}>
+      {/* The 딴쌤 header (logo back to the class list, the account) sits on top; on wide screens it stays
+          in view and the menu column starts under it. */}
+      {tenantScoped ? (
+        <div inert={overlayOpen ? true : undefined} aria-hidden={overlayOpen ? true : undefined} className="lg:sticky lg:top-0 lg:z-40">
+          <GlobalHeader audience="teacher" account={account ?? null} />
+        </div>
+      ) : null}
       <div data-testid="admin-background" inert={overlayOpen ? true : undefined} aria-hidden={overlayOpen ? true : undefined} className="lg:grid lg:grid-cols-[248px_minmax(0,1fr)]">
-        <aside className="sticky top-0 z-30 border-b border-[var(--crs-line)] bg-[color-mix(in_srgb,var(--theme-surface)_88%,transparent)] backdrop-blur-md lg:h-screen lg:border-b-0 lg:border-r lg:bg-[var(--theme-surface)] lg:backdrop-blur-0">
+        <aside className={cx('sticky top-0 z-30 border-b border-[var(--crs-line)] bg-[color-mix(in_srgb,var(--theme-surface)_88%,transparent)] backdrop-blur-md lg:border-b-0 lg:border-r lg:bg-[var(--theme-surface)] lg:backdrop-blur-0',
+          tenantScoped ? 'lg:top-[65px] lg:h-[calc(100vh-65px)]' : 'lg:h-screen')}>
           <div className="flex h-full flex-col">
             <div className="flex items-center gap-3 px-4 pb-2 pt-3 sm:px-6 lg:px-5 lg:pb-5 lg:pt-6">
-              {/* The CRS mark goes back to the class list; next to it, the class being managed. */}
-              {tenantScoped ? (
-                <a href="/classes" aria-label="학급 목록으로" title="학급 목록으로"
-                  className="shrink-0 rounded-[10px] p-0.5 outline-none transition-colors hover:bg-[var(--crs-subtle-hover)] focus-visible:ring-2 focus-visible:ring-[var(--theme-focus-ring)]">
-                  <span aria-hidden="true" className="block h-9 w-9 bg-[var(--theme-accent-text)] [mask-image:url('/class-reward-system-icon.png')] [mask-position:center] [mask-repeat:no-repeat] [mask-size:contain]" />
-                </a>
-              ) : (
-                <span role="img" aria-label="딴쌤 클래스 로고" className="h-9 w-9 shrink-0 bg-[var(--theme-accent-text)] [mask-image:url('/class-reward-system-icon.png')] [mask-position:center] [mask-repeat:no-repeat] [mask-size:contain]" />
-              )}
               <div className="min-w-0 flex-1">
                 <h1 className="truncate text-[19px] font-black leading-tight tracking-[-0.03em] lg:text-[20px]" title={classLabel}>{classLabel}</h1>
               </div>
@@ -2231,7 +2230,6 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                 <a href={bankHref} target="_blank" rel="noopener noreferrer" aria-label="은행 열기 새 탭 열림" className={buttonClass({ variant: 'ghost', size: 'sm' })}><Icon name="bank" size={16} /><span className="hidden sm:inline">은행</span></a>
                 <button type="button" aria-label="공유" onClick={openShare('store')} className={buttonClass({ variant: 'ghost', size: 'sm' })}><Icon name="share" size={16} /><span className="hidden sm:inline">공유</span></button>
                 <button type="button" aria-label="도움말" onClick={(event) => setTutorialMenu({ opener: event.currentTarget })} className={buttonClass({ variant: 'ghost', size: 'sm' })}><Icon name="help" size={16} /><span className="hidden sm:inline">도움말</span></button>
-                {account ? <AccountLink nickname={account.nickname} avatar={account.avatar} compact /> : null}
               </div>
             </div>
             <nav data-testid="admin-tabs" role="tablist" aria-label="관리자 메뉴" aria-orientation="vertical"
@@ -2269,11 +2267,6 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
               {tenantScoped ? <SidebarLink href="/classes" icon="school" label="메인 화면으로" /> : null}
               {/* Help comes last: where a teacher looks when stuck. */}
               <SidebarButton icon="help" label="도움말" onClick={(event) => setTutorialMenu({ opener: event.currentTarget })} />
-              {account ? (
-                <div className="mt-3 border-t border-[var(--crs-line)] pt-3">
-                  <AccountLink nickname={account.nickname} avatar={account.avatar} className="w-full text-[13px]" />
-                </div>
-              ) : null}
             </div>
           </div>
         </aside>
@@ -2845,7 +2838,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
         >
           {studentSheet.mode === 'new' ? (
             <form id="student-sheet-form" onSubmit={async (event) => { event.preventDefault(); if (await createNewStudent()) setStudentSheet(null); }} className="space-y-5">
-              <Field label="번호" htmlFor="new-student-id" hint="QR 카드에 들어가는 학생 고유 번호예요. 예: 01, S001">
+              <Field label="번호" htmlFor="new-student-id" hint="학생을 구분하는 고유 번호예요. 예: 01, S001">
                 <Input id="new-student-id" aria-label="새 학생 ID" data-autofocus required value={newStudent.studentId} onChange={(event) => setNewStudent((current) => ({ ...current, studentId: event.target.value }))} />
               </Field>
               <Field label="이름" htmlFor="new-student-name">

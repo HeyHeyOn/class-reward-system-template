@@ -1,0 +1,211 @@
+/* The 딴쌤 common header (brand README, 'GlobalHeader' artboard). Fixed brand colors: it looks the
+   same on every class theme and in the board app. Wide from 768px; below it, the phone layout. */
+.header {
+  position: relative;
+  z-index: 40;
+  box-sizing: border-box;
+  width: 100%;
+  background: #FFFFFF;
+  border-bottom: 1px solid #E6E7EA;
+  color: #2B2D31;
+  font-family: var(--font-pretendard), 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  letter-spacing: -0.2px;
+}
+.header *, .header *::before, .header *::after { box-sizing: border-box; }
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 24px;
+  padding: 10px 24px;
+}
+
+.left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.home {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  border-radius: 10px;
+  color: #2B2D31;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+.slash { font-size: 20px; font-weight: 300; color: #C4C8CF; line-height: 1; }
+.section {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  min-width: 0;
+  color: #2B2D31;
+  text-decoration: none;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nav { flex: 1 1 auto; display: flex; justify-content: center; gap: 2px; }
+.navLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  color: #2B2D31;
+  text-decoration: none;
+  font-size: 15px;
+  font-weight: 600;
+}
+.navLink:hover { background: #F7F7F8; }
+.navLink[aria-current='page'] { background: #F2F3F5; font-weight: 800; }
+
+.right { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.login {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: 12px;
+  background: #2B6DE8;
+  color: #FFFFFF;
+  text-decoration: none;
+  font-size: 15px;
+  font-weight: 700;
+}
+.login:hover { background: #1D58C6; }
+
+.account { position: relative; }
+.accountButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  max-width: 280px;
+  padding: 0 12px 0 6px;
+  border-radius: 999px;
+  border: 1px solid #E6E7EA;
+  background: #FFFFFF;
+  color: #2B2D31;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.accountButton:hover { background: #F7F7F8; }
+.accountName { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: #EAF1FD;
+  color: #1D58C6;
+  font-size: 14px;
+  font-weight: 800;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.menuButton {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: #2B2D31;
+  cursor: pointer;
+}
+.menuButton:hover { background: #F7F7F8; }
+
+.popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 180px;
+  padding: 6px;
+  border-radius: 14px;
+  border: 1px solid #E6E7EA;
+  background: #FFFFFF;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.popoverItem {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: #2B2D31;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.popoverItem:hover { background: #F2F3F5; }
+.popoverItem[aria-current='page'] { background: #F2F3F5; font-weight: 800; }
+.popoverItem:disabled { cursor: default; color: #5C6370; }
+.popoverNote { padding: 8px 12px 6px; font-size: 13px; color: #5C6370; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.student {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  min-width: 0;
+  color: #4B5260;
+  font-size: 14px;
+  font-weight: 700;
+}
+.studentIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: #F2F3F5;
+  color: #4B5260;
+  flex-shrink: 0;
+}
+.studentName { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.header a:focus-visible, .header button:focus-visible { outline: 2px solid #2B6DE8; outline-offset: 2px; }
+
+.logoWide { display: inline-flex; }
+.logoCompact { display: none; }
+.avatar svg { width: 100%; height: 100%; }
+
+@media (max-width: 767px) {
+  .bar { padding: 8px 8px 8px 16px; gap: 8px; }
+  .home { gap: 7px; }
+  .slash { font-size: 18px; }
+  .section { font-size: 16px; }
+  .nav { display: none; }
+  .menuButton { display: inline-flex; }
+  .login { padding: 0 16px; font-size: 14px; }
+  .accountButton { width: 44px; height: 44px; padding: 0; border: none; background: transparent; justify-content: center; }
+  .accountButton .avatar { width: 34px; height: 34px; }
+  .wideOnly { display: none; }
+  .logoWide { display: none; }
+  .logoCompact { display: inline-flex; }
+  .studentIcon { display: none; }
+  .student { font-size: 13px; padding: 0 8px; }
+}
+
+@media print {
+  .header { display: none; }
+}

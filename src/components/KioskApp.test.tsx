@@ -121,8 +121,9 @@ describe('KioskApp', () => {
     expect(screen.getByRole('heading', { name: /^장바구니\s*\(0\)$/ })).toBeTruthy();
     expect(screen.getByText('연필')).toBeTruthy();
     expect(screen.getByRole('img', { name: '연필 이미지' }).getAttribute('src')).toBe('https://example.com/pencil.png');
-    const fallbackLogo = screen.getByRole('img', { name: '지우개 기본 이미지' });
-    expect(fallbackLogo.getAttribute('src')).toBe('/class-reward-system-icon.png');
+    const fallbackPicture = screen.getByRole('img', { name: '지우개 기본 이미지' });
+    expect(fallbackPicture.hasAttribute('data-placeholder')).toBe(true);
+    expect(fallbackPicture.getAttribute('src')).toBeNull();
     expect(screen.queryByText('▵')).toBeNull();
     expect(screen.getByText('선택한 상품이 없어요.')).toBeTruthy();
     expect(screen.getByRole('button', { name: '새로고침' })).toBeTruthy();
@@ -677,7 +678,7 @@ describe('KioskApp', () => {
     expect(shell?.getAttribute('data-theme')).toBe('pink');
     expect(shell?.getAttribute('style')).toContain(`--theme-shell: ${THEME_PALETTES.pink.shell}`);
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('overflow-hidden');
-    expect(container.querySelector('[data-testid="kiosk-content"]')?.className).toContain('h-full');
+    expect(container.querySelector('[data-testid="kiosk-content"]')?.className).toContain('flex-1');
     expect(container.querySelector('[data-testid="kiosk-content"]')?.className).toMatch(/sm:p-\d/);
     expect(container.querySelector('[data-testid="kiosk-title"]')?.className).toContain('text-[clamp(');
     expect(container.querySelector('[data-testid="kiosk-title"]')?.className).toContain('truncate');

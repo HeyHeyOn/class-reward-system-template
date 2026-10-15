@@ -76,7 +76,7 @@ export function ProfileView({ model }: Readonly<{ model: ProfileViewModel }>) {
   }
 
   return (
-    <main style={theme.variables} className="min-h-screen bg-[var(--theme-shell)] px-4 py-6 text-[var(--theme-text)] sm:px-6 sm:py-10">
+    <main style={theme.variables} className="min-h-[calc(100vh-65px)] bg-[var(--theme-shell)] px-4 py-6 text-[var(--theme-text)] sm:px-6 sm:py-10">
       <div className="mx-auto w-full max-w-3xl">
         <a href="/classes" className="inline-flex items-center gap-1.5 rounded-[10px] px-2 py-1.5 text-[13px] font-semibold text-[var(--theme-muted-text)] transition-colors hover:bg-[var(--crs-subtle-hover)] hover:text-[var(--theme-text)]">
           <Icon name="chevronLeft" size={16} />메인 화면으로

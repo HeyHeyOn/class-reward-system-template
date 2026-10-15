@@ -35,7 +35,7 @@ describe('tutorials', () => {
       // The tour starts by showing the menu as a whole, then picks its first screen there.
       const menuStep = tutorial.id === FIRST_TUTORIAL_ID ? tutorial.steps[1] : first;
       const menuTargets = typeof menuStep.target === 'string' ? [menuStep.target] : menuStep.target;
-      const where = tutorial.id === '1-1' ? 'a[aria-label="학급 목록으로"]' : tutorial.id === '9-1' ? 'shortcuts' : '#admin-tab-';
+      const where = tutorial.id === '1-1' ? 'a[aria-label="딴쌤 홈"]' : tutorial.id === '9-1' ? 'shortcuts' : '#admin-tab-';
       expect(tutorial.id === '9-1' ? targets.some((target) => target.includes('shortcuts')) : menuTargets.some((target) => target.startsWith(where)), tutorial.id).toBe(true);
       // The menu step is chosen by the teacher: it moves on once that screen opens, or when the
       // menu is pressed while it is open already (no "already open? press 다음" line needed).

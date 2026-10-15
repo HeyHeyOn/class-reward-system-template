@@ -18,6 +18,7 @@ import { QrScanner } from './QrScanner';
 import { PromotionPills } from './promotions/PromotionPills';
 import { normalizeThemeColor, themeStyles, type ThemeColor, type ThemeStyles } from './uiTheme';
 import { Icon } from './ui';
+import { GlobalHeader } from './brand/GlobalHeader';
 
 type PaymentStep = 'checkout' | 'vouchers' | 'processing' | 'failure' | 'complete';
 
@@ -55,7 +56,7 @@ type FailureState = {
   cannotRetry?: boolean;
 };
 
-type KioskSettings = { currencyUnit?: string; appTitle?: string; themeColor?: ThemeColor; fontFamily?: FontFamily; qrManualInputEnabled?: boolean };
+type KioskSettings = { currencyUnit?: string; appTitle?: string; className?: string; themeColor?: ThemeColor; fontFamily?: FontFamily; qrManualInputEnabled?: boolean };
 
 type ProductFilter = { kind: 'all' } | { kind: 'promotion' } | { kind: 'category'; category: string };
 
@@ -109,6 +110,7 @@ export function KioskApp() {
   const [hasPendingCheckout, setHasPendingCheckout] = useState(false);
   const [currencyUnit, setCurrencyUnit] = useState('원');
   const [appTitle, setAppTitle] = useState('학급 매점');
+  const [className, setClassName] = useState('');
   const [themeColor, setThemeColor] = useState<ThemeColor>('white');
   const [fontFamily, setFontFamily] = useState<FontFamily>('default');
   const [qrManualInputEnabled, setQrManualInputEnabled] = useState(false);
@@ -176,6 +178,7 @@ export function KioskApp() {
         : { kind: 'all' });
       if (settings?.currencyUnit) setCurrencyUnit(settings.currencyUnit);
       if (settings?.appTitle) setAppTitle(settings.appTitle);
+      if (typeof settings?.className === 'string') setClassName(settings.className);
       setThemeColor(normalizeThemeColor(settings?.themeColor));
       setFontFamily(settings?.fontFamily ?? 'default');
       setQrManualInputEnabled(Boolean(settings?.qrManualInputEnabled));
@@ -660,15 +663,17 @@ export function KioskApp() {
   }
 
   return (
-    <main data-testid="kiosk-shell" data-theme={themeColor} style={{ ...theme.variables, ...fontFamilyStyle }} className={`${styles.kiosk} h-[100dvh] overflow-hidden bg-[var(--theme-shell)] text-[var(--theme-text)]`}>
+    <main data-testid="kiosk-shell" data-theme={themeColor} style={{ ...theme.variables, ...fontFamilyStyle }} className={`${styles.kiosk} flex h-[100dvh] flex-col overflow-hidden bg-[var(--theme-shell)] text-[var(--theme-text)]`}>
+      <div aria-hidden={paymentStep ? true : undefined} inert={paymentStep ? true : undefined}>
+        <GlobalHeader audience="student" place={className.trim() || appTitle} />
+      </div>
       <section
         data-testid="kiosk-content"
         aria-hidden={paymentStep ? true : undefined}
         inert={paymentStep ? true : undefined}
-        className="mx-auto grid h-full w-full max-w-[1320px] grid-rows-[auto_minmax(0,1fr)] gap-3 p-3 sm:gap-4 sm:p-5"
+        className="mx-auto grid min-h-0 w-full max-w-[1320px] flex-1 grid-rows-[auto_minmax(0,1fr)] gap-3 p-3 sm:gap-4 sm:p-5"
       >
         <header className={`${styles.kioskHeader} flex items-center gap-3`}>
-          <span aria-hidden="true" className={styles.brandMark} />
           <h1 data-testid="kiosk-title" className="min-w-0 flex-1 truncate text-[clamp(1.35rem,4.5vw,2.25rem)] font-black leading-tight tracking-[-0.035em]">{appTitle}</h1>
           <button type="button" onClick={() => void loadProducts()} aria-label="새로고침" disabled={hasPendingCheckout}
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--crs-line)] bg-[var(--theme-surface)] text-[var(--theme-muted-text)] shadow-[var(--crs-shadow-sm)] transition-colors hover:text-[var(--theme-text)]">
@@ -734,8 +739,9 @@ export function KioskApp() {
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={product.imageUrl} loading="lazy" decoding="async" alt={`${product.name} 이미지`} className="h-full w-full object-cover" />
                         ) : (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src="/class-reward-system-icon.png" data-placeholder="" alt={`${product.name} 기본 이미지`} className="h-full w-full object-contain p-[24%]" />
+                          <span role="img" data-placeholder="" aria-label={`${product.name} 기본 이미지`} className="flex h-full w-full items-center justify-center p-[24%] opacity-25">
+                            <Icon name="box" size={48} />
+                          </span>
                         )}
                         <PromotionPills
                           promotions={cardPromotion?.effective ?? []}

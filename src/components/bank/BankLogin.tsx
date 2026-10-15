@@ -46,9 +46,8 @@ export function BankLogin({ title, manualInputEnabled, busy, error, notice, onLo
   }
 
   return (
-    <div className="flex min-h-[100dvh] flex-col gap-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))]">
+    <div className="flex min-h-[calc(100dvh-65px)] flex-col gap-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))]">
       <header className={`${styles.bankHeader} flex items-center gap-3`}>
-        <span aria-hidden="true" className={styles.brandMark} />
         <h1 className="min-w-0 truncate text-[clamp(1.35rem,5vw,1.75rem)] font-black leading-tight tracking-[-0.035em]">{title}</h1>
       </header>
 

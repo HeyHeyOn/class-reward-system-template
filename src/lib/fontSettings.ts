@@ -10,7 +10,7 @@ export type FontFamily =
   | 'school-safe-space';
 
 export const FONT_FAMILY_OPTIONS: Array<{ value: FontFamily; label: string; cssFamily: string }> = [
-  { value: 'default', label: '기본 글꼴', cssFamily: 'Arial, Helvetica, sans-serif' },
+  { value: 'default', label: '기본 글꼴', cssFamily: "var(--font-pretendard), 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif" },
   { value: 'nanum-barun-gothic', label: '나눔바른고딕', cssFamily: 'NanumBarunGothic, Arial, Helvetica, sans-serif' },
   { value: 'school-safe-board-marker', label: '학교안심 보드마카', cssFamily: 'SchoolSafeBoardMarker, Arial, Helvetica, sans-serif' },
   { value: 'school-safe-notice', label: '학교안심 알림장', cssFamily: 'SchoolSafeNotice, Arial, Helvetica, sans-serif' },

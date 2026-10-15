@@ -29,7 +29,7 @@ describe('AdminLoginPage', () => {
   it('hides Google login when the deployed app already uses a stored Sheets refresh token', () => {
     render(<AdminLoginPage googleLoginEnabled={false} />);
 
-    expect(screen.queryByRole('link', { name: 'Google 계정으로 로그인' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Google로 로그인' })).toBeNull();
     expect(screen.getAllByText(/Recovery 탭의 recoveryCode/).length).toBeGreaterThan(0);
     expect(screen.getByText(/비밀번호가 틀리거나 기억나지 않으면/)).toBeTruthy();
     expect(screen.getByText(/Google Drive에서 이 학급의 스프레드시트를 열고/)).toBeTruthy();
@@ -39,7 +39,7 @@ describe('AdminLoginPage', () => {
   it('shows Google login when explicit Google login is enabled', () => {
     render(<AdminLoginPage googleLoginEnabled />);
 
-    expect(screen.getByRole('link', { name: 'Google 계정으로 로그인' }).getAttribute('href')).toBe('/api/google/login');
+    expect(screen.getByRole('link', { name: 'Google로 로그인' }).getAttribute('href')).toBe('/api/google/login');
   });
 
   it('shows a loading dialog after applying a pasted admin QR login value', async () => {

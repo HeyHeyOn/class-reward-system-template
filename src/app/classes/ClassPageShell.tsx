@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { TeacherHeader } from '@/components/brand/TeacherHeader';
 import { themeStyles } from '@/components/uiTheme';
 
 const theme = themeStyles('white');
@@ -6,7 +7,9 @@ const theme = themeStyles('white');
 /** Centered single-task layout shared by the class creation and start pages. */
 export function ClassPageShell({ eyebrow, title, description, children }: Readonly<{ eyebrow: string; title: ReactNode; description?: ReactNode; children: ReactNode }>) {
   return (
-    <main style={theme.variables} className="min-h-screen bg-[var(--theme-shell)] px-4 py-6 text-[var(--theme-text)] sm:px-6 sm:py-10">
+    <>
+    <TeacherHeader />
+    <main style={theme.variables} className="min-h-[calc(100vh-65px)] bg-[var(--theme-shell)] px-4 py-6 text-[var(--theme-text)] sm:px-6 sm:py-10">
       <div className="mx-auto w-full max-w-xl">
         <a href="/classes" className="inline-flex items-center gap-1.5 rounded-[10px] px-2 py-1.5 text-[13px] font-semibold text-[var(--theme-muted-text)] transition-colors hover:bg-[var(--crs-subtle-hover)] hover:text-[var(--theme-text)]">
           <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6" /></svg>
@@ -20,5 +23,6 @@ export function ClassPageShell({ eyebrow, title, description, children }: Readon
         </section>
       </div>
     </main>
+    </>
   );
 }

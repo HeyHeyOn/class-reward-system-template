@@ -7,6 +7,8 @@ import { StudentQrPrintPage } from '@/components/StudentQrPrintPage';
 import { TransactionsPage } from '@/components/TransactionsPage';
 import { tenantPagePath } from '@/lib/tenantApiPath';
 import { requireTenantAdminPage } from '@/server/tenantAdminPageAccess';
+import { TeacherHeader } from '@/components/brand/TeacherHeader';
+import { loadTeacherAccountView, teacherAccountsEnabled } from '@/server/teacherAccounts';
 
 export const metadata = { title: '딴쌤 클래스' };
 
@@ -21,21 +23,27 @@ export default async function TenantAdminSubroute({
   switch (path[0]) {
     case 'login':
       return (
-        <Suspense fallback={null}>
-          <AdminLoginPage googleLoginEnabled tenantSlug={slug} />
-        </Suspense>
+        <>
+          <TeacherHeader showLogin={false} />
+          <Suspense fallback={null}>
+            <AdminLoginPage googleLoginEnabled tenantSlug={slug} />
+          </Suspense>
+        </>
       );
     case 'migrations':
       if (!access?.membership || !['OWNER', 'ADMIN'].includes(access.membership.role) || !access.session || access.needsRedirect || access.tenant.slug !== slug) notFound();
       return <MigrationFreezingPage slug={access.tenant.slug} tenantId={access.tenant.id} sessionKey={JSON.stringify([access.session.subject, access.session.email, access.session.issuedAt])} />;
-    case 'manage':
-      return <AdminManagePage migrationsHref={access?.membership ? `/c/${access.tenant.slug}/admin/migrations` : undefined} />;
+    case 'manage': {
+      const session = teacherAccountsEnabled() ? access?.session : null;
+      const account = session ? await loadTeacherAccountView(session) : undefined;
+      return <AdminManagePage migrationsHref={access?.membership ? `/c/${access.tenant.slug}/admin/migrations` : undefined} account={account?.profile} />;
+    }
     case 'settings':
       redirect(`/c/${slug}/admin`);
     case 'student-qrs':
-      return <StudentQrPrintPage />;
+      return <><TeacherHeader /><StudentQrPrintPage /></>;
     case 'transactions':
-      return <TransactionsPage adminHref={tenantPagePath('/admin', `/c/${slug}/admin/transactions`)} />;
+      return <><TeacherHeader /><TransactionsPage adminHref={tenantPagePath('/admin', `/c/${slug}/admin/transactions`)} /></>;
     default:
       notFound();
   }

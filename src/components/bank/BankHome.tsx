@@ -25,7 +25,6 @@ export const BankHome = forwardRef<HTMLHeadingElement, BankHomeProps>(function B
   return (
     <div className="pb-[max(2rem,calc(env(safe-area-inset-bottom)+1.5rem))] pt-[max(1rem,env(safe-area-inset-top))]">
       <header className={`${styles.bankHeader} flex items-center gap-2.5`}>
-        <span aria-hidden="true" className={styles.brandMark} />
         <h1 className="min-w-0 flex-1 truncate text-[clamp(1.2rem,4.8vw,1.5rem)] font-black tracking-[-0.035em]">{title}</h1>
         <IconButton icon="refresh" label="잔액과 과제 새로고침" onClick={onRefresh} disabled={refreshing} />
         <Button variant="secondary" size="sm" icon="logout" onClick={onLogout} disabled={loggingOut} loading={loggingOut}>로그아웃</Button>

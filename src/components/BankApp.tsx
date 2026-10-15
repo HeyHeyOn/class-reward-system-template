@@ -29,6 +29,7 @@ import {
 import { BankHistory } from './bank/BankHistory';
 import { BankHome, BankTasksMenu } from './bank/BankHome';
 import { BankLogin } from './bank/BankLogin';
+import { GlobalHeader } from './brand/GlobalHeader';
 import { BankTasks } from './bank/BankTasks';
 import { BankBagMenu, BankBagView } from './bank/BankBag';
 import { BankTreeCard } from './bank/BankTreeCard';
@@ -467,6 +468,8 @@ export function BankApp() {
   return (
     <main data-testid="bank-shell" data-theme={themeColor} style={shellStyle}
       className={`${styles.bank} min-h-[100dvh] bg-[var(--theme-shell)] text-[var(--theme-text)]`}>
+      <GlobalHeader audience="student" place={settings.className || settings.bankTitle}
+        studentName={phase === 'home' && profile ? profile.student.name : null} />
       <div className="mx-auto w-full max-w-[640px] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] sm:px-6">
         {settingsFailed ? (
           <div role="status" className="flex items-center justify-between gap-2 pt-[max(0.75rem,env(safe-area-inset-top))] text-[13px] font-semibold text-[var(--crs-warning-text)]">

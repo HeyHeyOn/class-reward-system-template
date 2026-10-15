@@ -10,6 +10,7 @@ vi.mock('@/components/AdminLoginPage', () => ({ AdminLoginPage: () => null }));
 vi.mock('@/server/teacherAccounts', () => ({ teacherAccountsEnabled: () => false, loadTeacherAccountView: vi.fn() }));
 vi.mock('@/components/StudentQrPrintPage', () => ({ StudentQrPrintPage: () => null }));
 vi.mock('@/components/TransactionsPage', () => ({ TransactionsPage: () => null }));
+vi.mock('@/components/brand/TeacherHeader', () => ({ TeacherHeader: () => null }));
 import Page from './[...path]/page';
 import Admin from './page';
 const tenant = { id: '20000000-0000-4000-8000-000000000001', slug: 'alpha' };

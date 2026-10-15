@@ -11,16 +11,6 @@
     outline-offset: 3px;
   }
   .kioskHeader, .bankHeader { padding: 0; }
-  .brandMark {
-    display: block;
-    flex-shrink: 0;
-    width: 40px;
-    height: 40px;
-    background: var(--theme-accent-text);
-    mask: url('/class-reward-system-icon.png') center / contain no-repeat;
-  }
-  .kiosk img[data-placeholder] { opacity: .2; filter: brightness(0); }
-  .kiosk:is([data-theme="black"], [data-theme="navy"]) img[data-placeholder] { filter: brightness(0) invert(1); opacity: .3; }
   .bank [data-testid="task-carousel-scroller"] { scrollbar-width: none; }
   .bank [data-testid="task-carousel-scroller"]::-webkit-scrollbar { display: none; }
   .taskCard, .taskChain { -webkit-tap-highlight-color: transparent; }

@@ -1,10 +1,9 @@
-.shell { min-height:100vh; background:var(--theme-shell); color:var(--theme-text); padding:24px 32px; }
+.shell { min-height:calc(100vh - 65px); background:var(--theme-shell); color:var(--theme-text); padding:24px 32px; }
 .container { max-width:1280px; margin:auto; }
 .header,.brand,.account,.hero,.toolbar,.searchRow,.cardTop,.secondaryLinks,.cardActions { display:flex; align-items:center; }
 .header { justify-content:space-between; gap:20px; border-bottom:1px solid var(--theme-divider); padding-bottom:22px; flex-wrap:wrap; }
 .brand { gap:12px; font-size:18px; font-weight:900; letter-spacing:-.5px; }
 
-.logo { width:44px; height:44px; flex-shrink:0; background:var(--theme-accent-text); mask:url('/class-reward-system-icon.png') center/contain no-repeat; }
 .account { gap:12px; font-size:14px; font-weight:600; }
 .accountName { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .avatar { display:grid; place-items:center; width:36px; height:36px; border-radius:50%; background:var(--theme-surface-raised); }
@@ -40,7 +39,6 @@
 .cardTitle { flex:1; min-width:0; }
 .classIcon { flex-shrink:0; display:inline-flex; align-items:center; justify-content:center; width:48px; height:48px; border-radius:15px; background:var(--theme-surface-raised); }
 .classIcon svg { width:25px; height:25px; }
-.crsMark { display:block; width:28px; height:28px; background:var(--theme-accent-text, currentColor); -webkit-mask:url('/class-reward-system-icon.png') center / contain no-repeat; mask:url('/class-reward-system-icon.png') center / contain no-repeat; }
 .badge { flex-shrink:0; display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border-radius:20px; font-size:11px; font-weight:750; background:var(--theme-surface-raised); color:var(--theme-muted-text); }
 .badge i { width:5px; height:5px; border-radius:50%; background:currentColor; }
 .activeBadge { background:#edf8f1; color:#22603b; }
@@ -85,7 +83,7 @@
 .loginCard { border:1px solid var(--theme-divider); border-radius:28px; background:white; padding:38px; box-shadow:0 4px 18px #00000005; }
 .loginCard h2 { margin-top:24px; font-size:24px; font-weight:850; }
 .loginCard p { margin-top:12px; font-size:14px; line-height:1.8; color:var(--theme-muted-text); }
-.loginCard a { margin-top:26px; width:100%; padding:16px; }
+.loginCard .googleLogin { margin-top:26px; }
 .loginCard small { display:block; text-align:center; font-size:11px; line-height:1.8; margin-top:18px; color:var(--theme-muted-text); }
 @media(max-width:1050px) { .grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .welcome { gap:32px; } .welcome h1 { font-size:35px; } }
 @media(max-width:650px) { .shell { padding:20px 16px; } .header { gap:18px; } .brand { font-size:16px; } .account { width:100%; } .account>.outline { margin-left:auto; padding:8px 12px; font-size:12px; } .hero { padding-top:30px; } .hero h1 { font-size:30px; } .hero>.primary { width:100%; } .stats { gap:8px; margin-bottom:24px; } .stats>div { padding:14px 12px; border-radius:14px; } .stats span { font-size:11px; } .stats strong { font-size:27px; } .stats small { display:none; } .filters { width:100%; justify-content:space-between; } .filters button { padding:9px 10px; font-size:12px; } .searchRow { width:100%; } .search { flex:1; min-width:0; } .search input { width:100%; } .searchRow select { max-width:112px; padding:11px 7px; } .grid { grid-template-columns:minmax(0,1fr); } .cardBody { padding:22px; } .welcome { grid-template-columns:1fr; padding:45px 0; gap:36px; } .welcome h1 { font-size:34px; } .loginCard { padding:28px; } }

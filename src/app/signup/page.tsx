@@ -1,6 +1,7 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { SignupAgreementView } from '@/components/account/SignupAgreementView';
+import { TeacherHeader } from '@/components/brand/TeacherHeader';
 import { revisionsSince } from '@/lib/legalDocuments';
 import { readAccountIdentity } from '@/server/accountRequest';
 import { getProductionClassMembershipRepository } from '@/server/repositories/database/classMemberships';
@@ -21,6 +22,8 @@ export default async function SignupPage() {
       .catch(() => undefined);
   }
   return (
+    <>
+    <TeacherHeader account={null} showLogin={false} />
     <SignupAgreementView
       mode={pending.mode}
       email={pending.email}
@@ -28,5 +31,6 @@ export default async function SignupPage() {
       changes={revisionsSince(pending.agreedVersion)}
       classNames={classNames}
     />
+    </>
   );
 }

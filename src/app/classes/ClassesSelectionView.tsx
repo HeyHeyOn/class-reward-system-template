@@ -9,7 +9,8 @@ import { ClassManagementDialog } from './ClassManagementDialog';
 import styles from './dashboard.module.css';
 import { SiteFooter } from '@/components/SiteFooter';
 import { publicOrigin } from '@/lib/publicOrigin';
-import { AccountLink } from '@/components/account/AccountLink';
+import { GlobalHeader } from '@/components/brand/GlobalHeader';
+import { GoogleLoginButton } from '@/components/brand/GoogleLoginButton';
 import { LegalAgreementGate } from '@/components/account/LegalAgreementGate';
 import type { TeacherAccountView } from '@/server/teacherAccounts';
 import { PendingTutorial } from '@/components/tutorial/PendingTutorial';
@@ -24,7 +25,7 @@ const paths = {
   bank: 'M3 8 12 3 21 8H3z M3 21h18 M5 11v7 M12 11v7 M19 11v7',
   search: 'M16 16 21 21 M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0',
   copy: 'M8 8h12v13H8z M16 8V3H3v13h5', trash: 'M3 6h18 M9 6V3h6v3 M5 6l1 15h12l1-15 M10 10v7 M14 10v7',
-  restore: 'M3 5v6h6 M3 11a9 9 0 1 1 2 7 M12 7v6l4 2', logout: 'M9 3H4v18h5 M8 12h13 M16 7l5 5-5 5',
+  restore: 'M3 5v6h6 M3 11a9 9 0 1 1 2 7 M12 7v6l4 2',
   arrow: 'M5 12h14 M13 6l6 6-6 6',
 };
 function Icon({ name }: { name: keyof typeof paths }) {
@@ -44,7 +45,6 @@ export function ClassesSelectionView({ model, account, withdrawn = false }: Read
   const [filter, setFilter] = useState('ALL');
   const [sort, setSort] = useState('recent');
   const [notice, setNotice] = useState('');
-  const [logoutPending, setLogoutPending] = useState(false);
   const [dialog, setDialog] = useState<{ item: ClassMembershipPageItem; action: ClassManagementAction } | null>(null);
   const memberships = model.kind === 'MEMBERSHIPS' ? model.memberships : empty;
   const current = memberships.filter(m => !m.dashboard?.deletedAt);
@@ -58,36 +58,20 @@ export function ClassesSelectionView({ model, account, withdrawn = false }: Read
   }).sort((a, b) => sort === 'name' ? a.displayName.localeCompare(b.displayName, 'ko')
     : (b.dashboard?.createdAt ?? '').localeCompare(a.dashboard?.createdAt ?? '') || a.slug.localeCompare(b.slug)), [memberships, query, filter, sort]);
 
-  async function logout() {
-    if (logoutPending || !ready) return;
-    setLogoutPending(true); setNotice('');
-    try {
-      const response = await fetch('/api/google/logout', { method: 'POST', credentials: 'same-origin', cache: 'no-store', redirect: 'error' });
-      if (!response.ok) throw new Error();
-      window.location.replace('/classes');
-    } catch { setNotice('로그아웃하지 못했어요. 연결을 확인하고 다시 시도해 주세요.'); setLogoutPending(false); }
-  }
   async function copyAddress(item: ClassMembershipPageItem) {
     try { await navigator.clipboard.writeText(`${publicOrigin()}/c/${item.slug}`); setNotice(`${item.displayName}의 매점 주소를 복사했어요.`); }
     catch { setNotice('주소를 복사하지 못했어요. 매점을 연 뒤 주소창의 주소를 복사해 주세요.'); }
   }
-  return <main style={theme.variables} className={styles.shell}>
+  return <>
+  <GlobalHeader audience="teacher"
+    account={model.kind === 'MEMBERSHIPS' ? (account ? { nickname: account.profile.nickname, avatar: account.profile.avatar } : { nickname: model.accountLabel }) : null}
+    loginHref={model.kind === 'LOGIN_REQUIRED' ? model.loginHref : undefined} />
+  <main style={theme.variables} className={styles.shell}>
     <div className={styles.container}>
-      <header className={styles.header}>
-        <Link href="/classes" aria-label="딴쌤 클래스 내 학급" className={styles.brand}>
-          <span aria-hidden="true" className={styles.logo}/><span>딴쌤 클래스</span>
-        </Link>
-        {model.kind === 'MEMBERSHIPS' && <div className={styles.account}>
-          {account
-            ? <AccountLink nickname={account.profile.nickname} avatar={account.profile.avatar} />
-            : <><span className={styles.avatar} aria-hidden="true">{Array.from(model.accountLabel)[0]}</span><span className={styles.accountName}>{model.accountLabel}</span></>}
-          <button onClick={logout} disabled={!ready || logoutPending} className={styles.outline}><Icon name="logout"/>{logoutPending ? '로그아웃 중…' : '로그아웃'}</button>
-        </div>}
-      </header>
       {model.kind === 'LOGIN_REQUIRED' && withdrawn ? <p role="status" className={styles.notice}>회원 탈퇴가 끝났어요. 그동안 딴쌤 클래스를 이용해 주셔서 고마워요.</p> : null}
       {model.kind === 'LOGIN_REQUIRED' ? <section className={styles.welcome}>
         <div><h1>우리 반의 성장과<br/>보상을 함께 관리해요.</h1><p className={styles.intro}>학급마다 매점과 은행을 운영하고,<br/>학생들의 작은 도전을 보상으로 연결하세요.</p><div className={styles.features}>{['여러 학급 관리','학급 매점과 은행','과제와 보상'].map(s => <span key={s}>{s}</span>)}</div></div>
-        <div className={styles.loginCard}><span className={styles.classIcon}><Icon name="school"/></span><h2>내 학급으로 시작하기</h2><p>Google 계정으로 로그인하면 내 학급을 확인하거나 새 학급을 만들 수 있어요.</p><a href={model.loginHref} className={styles.primary}>Google 계정으로 로그인<Icon name="arrow"/></a><small>이미 만든 학급이 있다면<br/>그 학급을 만든 Google 계정으로 로그인해 주세요.</small></div>
+        <div className={styles.loginCard}><span className={styles.classIcon}><Icon name="school"/></span><h2>내 학급으로 시작하기</h2><p>Google 계정으로 로그인하면 내 학급을 확인하거나 새 학급을 만들 수 있어요.</p><GoogleLoginButton href={model.loginHref} block className={styles.googleLogin} /><small>이미 만든 학급이 있다면<br/>그 학급을 만든 Google 계정으로 로그인해 주세요.</small></div>
       </section> : <>
         <section className={styles.hero}><div><h1>내 학급</h1><p>학급을 선택하고 오늘의 활동을 시작하세요.</p></div><Link href="/classes/new" aria-label="새 학급" className={styles.primary}><Icon name="plus"/>새 학급 만들기</Link></section>
         <section aria-label="학급 현황" className={styles.stats}>
@@ -114,7 +98,7 @@ export function ClassesSelectionView({ model, account, withdrawn = false }: Read
             const owner = item.dashboard?.role === 'OWNER';
             const manageable = owner && (item.selectable || Boolean(item.setupHref));
             return <li key={item.slug} className={styles.card}><div className={styles.cardBody}>
-              <div className={styles.cardTop}><span className={styles.classIcon}><span aria-hidden="true" className={styles.crsMark}/></span>
+              <div className={styles.cardTop}><span className={styles.classIcon}><Icon name="school"/></span>
                 <div className={styles.cardTitle}><h2>{item.displayName}</h2><p className={styles.cardMeta}>{item.roleLabel}{item.dashboard && <>, {dateLabel(item.dashboard.deletedAt ?? item.dashboard.createdAt)} {deleted ? '삭제' : '생성'}</>}</p></div>
                 <span className={`${styles.badge} ${item.selectable ? styles.activeBadge : ''}`}><i aria-hidden="true"/>{deleted ? '삭제됨' : item.lifecycleLabel}</span></div>
               <dl className={styles.cardStats}>{([['학생',item.dashboard?.studentCount,'명'],['상품',item.dashboard?.productCount,'개'],['과제',item.dashboard?.taskCount,'개']] as const).map(([label, count, unit]) => <div key={label}><dt>{label}</dt><dd>{count ?? '—'}<small>{unit}</small></dd></div>)}</dl>
@@ -136,5 +120,6 @@ export function ClassesSelectionView({ model, account, withdrawn = false }: Read
     {model.kind === 'MEMBERSHIPS' ? <PendingTutorial/> : null}
     {dialog && <ClassManagementDialog key={`${dialog.item.slug}-${dialog.action}`} item={dialog.item} action={dialog.action} onClose={() => setDialog(null)} onSuccess={message => { setDialog(null); setNotice(message); router.refresh(); }}/> }
     {account ? <LegalAgreementGate notice={account.notice} classNames={memberships.filter((item) => item.roleLabel === '소유자').map((item) => item.displayName)} /> : null}
-  </main>;
+  </main>
+  </>;
 }
