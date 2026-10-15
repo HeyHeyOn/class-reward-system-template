@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     return studentBagJson({ error: '결제 요청 형식이 올바르지 않아요.', code: 'INVALID_INPUT' }, 400);
   }
   try {
-    const { studentId } = resolveStudentQrForCurrentTenant(qr.trim());
+    const { studentId } = await resolveStudentQrForCurrentTenant(qr.trim());
     const bag = await createConfiguredStudentBag(request);
     return studentBagJson({ vouchers: await bag.checkoutVouchers(studentId, (productIds as string[]).map((id) => id.trim())) });
   } catch (error) {

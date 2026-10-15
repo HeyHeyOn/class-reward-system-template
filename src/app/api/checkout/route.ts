@@ -35,7 +35,7 @@ export async function POST(request: Request) {
       return Response.json({ error: validation.message }, { status: 400 });
     }
 
-    const { studentId } = resolveStudentQrForCurrentTenant(validation.studentId);
+    const { studentId } = await resolveStudentQrForCurrentTenant(validation.studentId);
     const command = await createConfiguredCheckoutCommand(request);
     const checkoutInput = {
       operationId: validation.operationId,

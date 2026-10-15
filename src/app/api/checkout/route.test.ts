@@ -43,7 +43,7 @@ function checkoutRequest(overrides: Record<string, unknown> = {}): Request {
 describe('POST /api/checkout', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(resolveStudentQrForCurrentTenant).mockReturnValue({ studentId: 'S001', format: 'SIGNED' });
+    vi.mocked(resolveStudentQrForCurrentTenant).mockResolvedValue({ studentId: 'S001', format: 'SIGNED' });
     vi.mocked(createConfiguredCheckoutCommand).mockResolvedValue({ execute: executeCheckout });
   });
 

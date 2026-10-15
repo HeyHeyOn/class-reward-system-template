@@ -37,8 +37,8 @@ const projected = [{
 describe('GET /api/tasks', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(resolveStudentQrForCurrentTenant).mockImplementation((value) => ({
-      studentId: String(value).trim(), format: 'LEGACY',
+    vi.mocked(resolveStudentQrForCurrentTenant).mockImplementation(async (value) => ({
+      studentId: String(value).trim(), format: 'LEGACY' as const,
     }));
     vi.mocked(isAuthorizedAdminRequest).mockReturnValue(true);
     vi.mocked(createConfiguredTaskReader).mockResolvedValue({
@@ -96,7 +96,7 @@ describe('GET /api/tasks', () => {
   });
 
   it('resolves a signed QR inside the trusted tenant before reading student task state', async () => {
-    vi.mocked(resolveStudentQrForCurrentTenant).mockReturnValue({ studentId: 'S1', format: 'SIGNED' });
+    vi.mocked(resolveStudentQrForCurrentTenant).mockResolvedValue({ studentId: 'S1', format: 'SIGNED' });
     vi.mocked(listTaskCycleProjections).mockResolvedValue(projected as never);
     const response = await GET(new Request('http://localhost/api/tasks?studentId=csq1.signed-token'));
 

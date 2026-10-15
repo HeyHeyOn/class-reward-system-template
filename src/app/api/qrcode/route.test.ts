@@ -2,7 +2,8 @@ import * as QRCode from 'qrcode';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { isAuthorizedAdminRequest } from '@/server/apiAuth';
 import { createConfiguredStudentReader } from '@/server/repositories/configuredStudents';
-import { resolveStudentQr } from '@/server/studentQr';
+import { createTenantStudentQrCodes } from '@/server/repositories/database/studentQrCodes';
+import { parseStudentQrCode } from '@/server/studentQr';
 import { runWithTrustedTenantRequestContext } from '@/server/trustedTenantRequestContext';
 import { GET, POST } from './route';
 
@@ -12,6 +13,7 @@ vi.mock('@/server/apiAuth', () => ({
   unauthorizedAdminResponse: () => Response.json({ error: 'unauthorized' }, { status: 401 }),
 }));
 vi.mock('@/server/repositories/configuredStudents', () => ({ createConfiguredStudentReader: vi.fn() }));
+vi.mock('@/server/repositories/database/studentQrCodes', () => ({ createTenantStudentQrCodes: vi.fn() }));
 
 const tenant = {
   id: '11111111-1111-4111-8111-111111111111', slug: 'alpha', displayName: 'Alpha',
@@ -32,6 +34,7 @@ describe('POST /api/qrcode', () => {
     process.env.STUDENT_QR_SIGNING_KEYS = JSON.stringify({ current: Buffer.alloc(32, 7).toString('base64url') });
     vi.mocked(isAuthorizedAdminRequest).mockReturnValue(true);
     vi.mocked(QRCode.toString as unknown as () => Promise<string>).mockResolvedValue('<svg>QR</svg>');
+    vi.mocked(createTenantStudentQrCodes).mockReturnValue({ codeFor: vi.fn(async () => '0123456789AB') } as never);
   });
 
   it('rejects GET entirely so QR values can never enter a query string', async () => {
@@ -40,7 +43,7 @@ describe('POST /api/qrcode', () => {
     expect(QRCode.toString).not.toHaveBeenCalled();
   });
 
-  it('authenticates and resolves an active student before signing in current tenant context', async () => {
+  it('authenticates and resolves an active student before printing their short code in current tenant context', async () => {
     const reader = { getStudentById: vi.fn(async () => activeStudent) };
     vi.mocked(createConfiguredStudentReader).mockResolvedValue(reader as never);
     const request = post({ kind: 'student', studentId: 'S001' });
@@ -51,10 +54,19 @@ describe('POST /api/qrcode', () => {
     expect(createConfiguredStudentReader).toHaveBeenCalledOnce();
     expect(reader.getStudentById).toHaveBeenCalledExactlyOnceWith('S001');
     expect(response.status).toBe(200);
-    const encoded = vi.mocked(QRCode.toString).mock.calls[0][0] as string;
-    expect(encoded).toMatch(/^csq1\.current\./);
-    expect(encoded).not.toContain('S001');
-    expect(resolveStudentQr(encoded, tenant.id)).toEqual({ studentId: 'S001', format: 'SIGNED' });
+    const [encoded, options] = vi.mocked(QRCode.toString).mock.calls[0] as unknown as [string, Record<string, unknown>];
+    expect(encoded).toBe('DS1:0123456789AB');
+    expect(parseStudentQrCode(encoded)).toBe('0123456789AB');
+    expect(options).toMatchObject({ errorCorrectionLevel: 'Q', margin: 4 });
+    expect(createTenantStudentQrCodes).toHaveBeenCalledWith(tenant.id);
+  });
+
+  it('prints nothing for a student without a current code', async () => {
+    vi.mocked(createConfiguredStudentReader).mockResolvedValue({ getStudentById: vi.fn(async () => activeStudent) } as never);
+    vi.mocked(createTenantStudentQrCodes).mockReturnValue({ codeFor: vi.fn(async () => null) } as never);
+    const response = await runWithTrustedTenantRequestContext({ tenant }, () => POST(post({ kind: 'student', studentId: 'S001' })));
+    expect(response.status).toBe(404);
+    expect(QRCode.toString).not.toHaveBeenCalled();
   });
 
   it.each([

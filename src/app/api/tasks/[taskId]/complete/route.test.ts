@@ -57,7 +57,7 @@ async function responseFor(body: unknown = { studentId: ' S1 ', operationId }) {
 describe('POST /api/tasks/[taskId]/complete', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(resolveStudentQrForCurrentTenant).mockReturnValue({ studentId: 'S1', format: 'SIGNED' });
+    vi.mocked(resolveStudentQrForCurrentTenant).mockResolvedValue({ studentId: 'S1', format: 'SIGNED' });
     execute.mockResolvedValue(safeResult);
     vi.mocked(createConfiguredTaskCompletion).mockResolvedValue({ execute });
   });

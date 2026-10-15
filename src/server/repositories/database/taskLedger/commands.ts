@@ -60,7 +60,7 @@ export type TaskLedgerCommandDependencies = Readonly<{
   runTenantTransaction: RunTenantTransaction;
   runTenantSnapshot?: RunTenantTransaction;
   /** Resolves a scanned student QR to a student ID of this class, or throws. */
-  resolveStudentQr?: (value: string) => string;
+  resolveStudentQr?: (value: string) => string | Promise<string>;
 }>;
 
 type Context = {
@@ -554,7 +554,7 @@ export function createTaskLedgerCommands(dependencies: TaskLedgerCommandDependen
       if (!dependencies.resolveStudentQr) throw new TaskLedgerError('QR_UNAVAILABLE', 'QR을 확인할 수 없어요.', 503);
       let studentId: string;
       try {
-        studentId = dependencies.resolveStudentQr(request.studentQr);
+        studentId = await dependencies.resolveStudentQr(request.studentQr);
       } catch (error) {
         if (error instanceof TaskLedgerError) throw error;
         throw new TaskLedgerError('STUDENT_NOT_FOUND', '등록된 학생 QR이 아니에요. 다시 찍어 주세요.', 404);

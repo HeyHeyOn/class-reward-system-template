@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Student } from '@/domain/types';
 import { useQrObjectUrls } from '@/lib/qrCodeClient';
 import { tenantApiPath, tenantFetch } from '@/lib/tenantApiPath';
+import { StudentQrReissueNotice, useStudentQrReissue } from './admin/StudentQrReissue';
 import { themeStyles } from './uiTheme';
 import { buttonClass } from './ui';
 
@@ -16,6 +17,7 @@ export function StudentQrPrintPage() {
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [message, setMessage] = useState('학생 목록을 불러오는 중이에요.');
   const [qrAttempt, setQrAttempt] = useState(0);
+  const reissue = useStudentQrReissue(() => setQrAttempt((current) => current + 1));
 
   useEffect(() => {
     let isMounted = true;
@@ -74,7 +76,7 @@ export function StudentQrPrintPage() {
             <p className="text-[13px] font-semibold text-[var(--theme-muted-text)]">학급 관리자</p>
             <h1 className="mt-1 text-[28px] font-black tracking-[-0.035em]">학생 QR 카드 인쇄</h1>
             <p className="mt-1.5 text-sm text-[var(--theme-muted-text)]">
-              활성 학생의 QR 카드를 인쇄해 잘라 쓸 수 있어요.
+              활성 학생의 QR 카드를 인쇄해 잘라 쓸 수 있어요. 그대로 인쇄하면 지금 쓰는 카드도 계속 쓸 수 있어요.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -84,11 +86,18 @@ export function StudentQrPrintPage() {
                 QR 생성 다시 시도
               </button>
             ) : null}
-            <button className={buttonClass({ variant: 'primary' })} disabled={!allQrsReady} onClick={() => window.print()} type="button">
+            <button className={buttonClass({ variant: 'secondary' })} data-tour="student-qr-reissue-all" disabled={students.length === 0 || reissue.state.pending || reissue.state.confirming}
+              onClick={reissue.ask} type="button">
+              새로 발급
+            </button>
+            <button className={buttonClass({ variant: 'primary' })} disabled={!allQrsReady || reissue.state.confirming} onClick={() => window.print()} type="button">
               QR 카드 인쇄하기
             </button>
           </div>
         </header>
+
+        <StudentQrReissueNotice state={reissue.state} count={students.length} onCancel={reissue.cancel}
+          onConfirm={() => void reissue.confirm(students.map((student) => student.studentId))} />
 
         {message ? (
           <p className={`mb-6 rounded-[14px] px-4 py-3 text-[13px] font-semibold print:hidden ${

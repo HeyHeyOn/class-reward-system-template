@@ -52,7 +52,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv('AUTH_SECRET', 'route-test-secret-that-is-long-enough-123');
   vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
-  vi.mocked(resolveStudentQrForCurrentTenant).mockReturnValue({ studentId: 'S001', format: 'SIGNED' });
+  vi.mocked(resolveStudentQrForCurrentTenant).mockResolvedValue({ studentId: 'S001', format: 'SIGNED' });
   confirmStudent.mockResolvedValue({ status: 'FOUND', student: ACTIVE });
   vi.mocked(createConfiguredStudentBankReader).mockResolvedValue({ confirmStudent, getTransactions });
 });

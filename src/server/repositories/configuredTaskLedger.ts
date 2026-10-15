@@ -40,7 +40,7 @@ export function createTaskLedgerRepositoryCreators(): RepositoryCreators<Configu
         tenantId: authority.tenantId,
         runTenantTransaction: withTenantTransaction,
         runTenantSnapshot: withTenantSnapshot,
-        resolveStudentQr: (value: string) => resolveStudentQrForCurrentTenant(value).studentId,
+        resolveStudentQr: async (value: string) => (await resolveStudentQrForCurrentTenant(value)).studentId,
       };
       const commands = createTaskLedgerCommands(dependencies);
       return {

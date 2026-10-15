@@ -32,7 +32,7 @@ export async function POST(request: Request) {
 async function readBalance(qrValue: string, createReader: () => Promise<BankReader>) {
   try {
     if (!qrValue) return Response.json({ error: '학생 QR을 인식해 주세요.' }, { status: 400 });
-    const { studentId } = resolveStudentQrForCurrentTenant(qrValue);
+    const { studentId } = await resolveStudentQrForCurrentTenant(qrValue);
 
     const reader = await createReader();
     const { student, transactions: allTransactions } = await reader.getBalance(studentId);

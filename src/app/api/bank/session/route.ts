@@ -68,7 +68,7 @@ export async function POST(request: Request) {
 
   let studentId: string;
   try {
-    studentId = resolveStudentQrForCurrentTenant(qrValue).studentId;
+    studentId = (await resolveStudentQrForCurrentTenant(qrValue)).studentId;
   } catch (error) {
     if (error instanceof StudentQrConfigurationError) {
       // The problem code names the failed check only; it never contains key material.

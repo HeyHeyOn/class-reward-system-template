@@ -22,7 +22,7 @@ export async function GET(request: Request) {
       return Response.json({ error: '과제 조회 요청 형식이 올바르지 않아요.' }, { status: 400 });
     }
     const qrValue = studentIds.length === 1 ? studentIds[0].trim() : null;
-    const studentId = qrValue ? resolveStudentQrForCurrentTenant(qrValue).studentId : null;
+    const studentId = qrValue ? (await resolveStudentQrForCurrentTenant(qrValue)).studentId : null;
     if (!studentId && !isAuthorizedAdminRequest(request)) return unauthorizedAdminResponse();
     const reader = await createConfiguredTaskReader(request);
     const includeInactive = searchParams.get('includeInactive') === '1';

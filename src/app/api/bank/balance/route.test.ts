@@ -21,7 +21,7 @@ describe('GET /api/bank/balance', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(resolveStudentQrForCurrentTenant).mockReturnValue({ studentId: 'S1', format: 'SIGNED' });
+    vi.mocked(resolveStudentQrForCurrentTenant).mockResolvedValue({ studentId: 'S1', format: 'SIGNED' });
     vi.mocked(createConfiguredBankReader).mockResolvedValue({ getBalance, confirmStudent: vi.fn() });
   });
 

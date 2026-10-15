@@ -77,6 +77,7 @@ const ROUTES: readonly TenantApiRoute[] = [
   route('GET', 'students/[studentId]', 'public', async (r, c) => (await import('@/app/api/students/[studentId]/route')).GET(r, c as never)),
   route('PATCH', 'students/batch', 'admin', async (r) => (await import('@/app/api/students/batch/route')).PATCH(r)),
   route('PATCH', 'students/bulk', 'admin', async (r) => (await import('@/app/api/students/bulk/route')).PATCH(r)),
+  route('POST', 'students/qr-reissue', 'admin', async (r) => (await import('@/app/api/students/qr-reissue/route')).POST(r)),
   route('PATCH', 'students/[studentId]', 'admin', async (r, c) => (await import('@/app/api/students/[studentId]/route')).PATCH(r, c as never)),
   route('DELETE', 'students/[studentId]', 'admin', async (r, c) => (await import('@/app/api/students/[studentId]/route')).DELETE(r, c as never)),
   route('DELETE', 'students/batch', 'admin', async (r) => (await import('@/app/api/students/batch/route')).DELETE(r)),

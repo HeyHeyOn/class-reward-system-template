@@ -1,7 +1,8 @@
 import * as QRCode from 'qrcode';
 import { isAuthorizedAdminRequest, unauthorizedAdminResponse } from '@/server/apiAuth';
 import { createConfiguredStudentReader } from '@/server/repositories/configuredStudents';
-import { createSignedStudentQr, StudentQrConfigurationError, StudentQrValidationError } from '@/server/studentQr';
+import { createTenantStudentQrCodes } from '@/server/repositories/database/studentQrCodes';
+import { StudentQrConfigurationError, StudentQrValidationError, studentQrCodeValue } from '@/server/studentQr';
 import { getOptionalTrustedTenantRequestContext } from '@/server/trustedTenantRequestContext';
 
 export const dynamic = 'force-dynamic';
@@ -27,9 +28,11 @@ export async function POST(request: Request) {
 
   try {
     let value: string;
+    let studentCard = false;
     if (body.kind === 'admin') {
       value = `class-store-admin:${body.password}`;
     } else {
+      studentCard = true;
       const reader = await createConfiguredStudentReader();
       let student;
       try {
@@ -41,14 +44,20 @@ export async function POST(request: Request) {
         return Response.json({ error: GENERATION_ERROR }, { status: 404 });
       }
       const trustedTenant = getOptionalTrustedTenantRequestContext();
-      value = trustedTenant
-        ? createSignedStudentQr({ tenantId: trustedTenant.tenant.id, studentId: student.studentId })
-        : student.studentId;
+      if (trustedTenant) {
+        const code = await createTenantStudentQrCodes(trustedTenant.tenant.id).codeFor(student.studentId);
+        if (!code) return Response.json({ error: GENERATION_ERROR }, { status: 404 });
+        value = studentQrCodeValue(code);
+      } else {
+        value = student.studentId;
+      }
     }
 
-    const svg = await QRCode.toString(value, {
-      type: 'svg', errorCorrectionLevel: 'M', margin: 2, width: 256,
-    });
+    // A student card is short (16 alphanumeric characters), so it takes error correction Q (about a
+    // quarter of the code may be lost) and the standard four-module quiet zone and still stays 21x21.
+    const svg = await QRCode.toString(value, studentCard
+      ? { type: 'svg', errorCorrectionLevel: 'Q', margin: 4, width: 256 }
+      : { type: 'svg', errorCorrectionLevel: 'M', margin: 2, width: 256 });
     return new Response(svg, {
       headers: {
         'Content-Type': 'image/svg+xml; charset=utf-8',

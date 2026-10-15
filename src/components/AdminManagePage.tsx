@@ -44,6 +44,7 @@ import { DigitalProductFields, EMPTY_DIGITAL_DRAFT, digitalDraftOf, digitalSetti
 import { DIGITAL_KIND_LABELS, type DigitalProductDto } from '@/lib/studentBagApi';
 import { TaskResetConfirmDialog, TaskDeleteConfirmDialog, ProductDeleteConfirmDialog } from './admin/AdminConfirmDialogs';
 import { SidebarLink, SidebarShortcut, SidebarButton, QuickAction, SheetLoading, LoadingScreen, StudentQrCard } from './admin/AdminPresentation';
+import { StudentQrReissueNotice, useStudentQrReissue } from './admin/StudentQrReissue';
 import { ShareLinkDialog, sharePaths, type ShareTarget } from './admin/ShareLinkDialog';
 import { ParentConsentFormDialog } from './admin/ParentConsentFormDialog';
 import { AccountLink } from './account/AccountLink';
@@ -134,14 +135,18 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
   const [taskAssignmentEditor, setTaskAssignmentEditor] = useState<TaskAssignmentDraft | null>(null);
   const [taskResetConfirmation, setTaskResetConfirmation] = useState<{ target: TaskDialogTarget; opener: HTMLElement | null; operationId: string; resetting: boolean; error: string } | null>(null);
   const [qrPrintStudents, setQrPrintStudents] = useState<StudentDraft[] | null>(null);
+  const [qrPrintIssue, setQrPrintIssue] = useState(0);
+  const qrReissue = useStudentQrReissue(() => setQrPrintIssue((current) => current + 1));
   const qrPrintRequests = useMemo(() => (qrPrintStudents ?? []).map((student) => ({
-    key: student.studentId,
+    key: `${qrPrintIssue}:${student.studentId}`,
     endpoint: tenantApiPath('/api/qrcode'),
     body: { kind: 'student' as const, studentId: student.studentId },
-  })), [qrPrintStudents]);
+  })), [qrPrintIssue, qrPrintStudents]);
   const qrPrintUrls = useQrObjectUrls(qrPrintRequests);
+  const qrPrintUrlFor = (studentId: string) => qrPrintUrls[`${qrPrintIssue}:${studentId}`];
   const allQrPrintUrlsReady = Boolean(qrPrintStudents?.length)
-    && qrPrintStudents!.every((student) => Boolean(qrPrintUrls[student.studentId]));
+    && qrPrintStudents!.every((student) => Boolean(qrPrintUrlFor(student.studentId)));
+  const closeQrPrint = () => { setQrPrintStudents(null); qrReissue.reset(); };
   const [currencyMode, setCurrencyMode] = useState<CurrencyMode>('add');
   const [currencyAmount, setCurrencyAmount] = useState(0);
   const [currencyScannerOpen, setCurrencyScannerOpen] = useState(false);
@@ -2975,20 +2980,24 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       ) : null}
 
       {qrPrintStudents ? (
-        <Modal title="학생 QR 카드" ariaLabel="선택 학생 QR 발급" description={`선택한 학생 ${qrPrintStudents.length}명의 QR 카드를 인쇄해요.`} size="xl" className="print:hidden" onClose={() => setQrPrintStudents(null)}
+        <Modal title="학생 QR 카드" ariaLabel="선택 학생 QR 발급" description={`선택한 학생 ${qrPrintStudents.length}명의 QR 카드예요. 그대로 인쇄하면 지금 쓰는 카드도 계속 쓸 수 있어요.`} size="xl" className="print:hidden"
+          busy={qrReissue.state.pending} onClose={closeQrPrint}
           footer={<>
-            <Button variant="ghost" onClick={() => setQrPrintStudents(null)}>닫기</Button>
-            <Button variant="primary" icon="printer" disabled={!allQrPrintUrlsReady} onClick={() => window.print()}>인쇄</Button>
+            <Button variant="ghost" disabled={qrReissue.state.pending} onClick={closeQrPrint}>닫기</Button>
+            <Button icon="refresh" data-tour="student-qr-reissue" disabled={qrReissue.state.pending || qrReissue.state.confirming} onClick={qrReissue.ask}>새로 발급</Button>
+            <Button variant="primary" icon="printer" disabled={!allQrPrintUrlsReady || qrReissue.state.confirming} onClick={() => window.print()}>인쇄</Button>
           </>}>
+          <StudentQrReissueNotice state={qrReissue.state} count={qrPrintStudents.length} onCancel={qrReissue.cancel}
+            onConfirm={() => void qrReissue.confirm(qrPrintStudents.map((student) => student.studentId))} />
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {qrPrintStudents.map((student) => <StudentQrCard key={student.studentId} student={student} qrUrl={qrPrintUrls[student.studentId]} />)}
+            {qrPrintStudents.map((student) => <StudentQrCard key={student.studentId} student={student} qrUrl={qrPrintUrlFor(student.studentId)} />)}
           </div>
         </Modal>
       ) : null}
       {qrPrintStudents ? (
         <section data-qr-print-document aria-label="선택 학생 QR 인쇄 영역">
           <div data-qr-print-grid className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 print:grid-cols-3 print:gap-3">
-            {qrPrintStudents.map((student) => <StudentQrCard key={`print-${student.studentId}`} student={student} qrUrl={qrPrintUrls[student.studentId]} />)}
+            {qrPrintStudents.map((student) => <StudentQrCard key={`print-${student.studentId}`} student={student} qrUrl={qrPrintUrlFor(student.studentId)} />)}
           </div>
         </section>
       ) : null}

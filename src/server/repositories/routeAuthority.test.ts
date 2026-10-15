@@ -65,6 +65,7 @@ const CONFIGURED_MUTATION_AUTHORITY = [
   ['students', 'POST', 'createConfiguredStudentCreation'],
   ['students/batch', 'PATCH', 'createConfiguredStudentMutation'],
   ['students/batch', 'DELETE', 'createConfiguredStudentDeletion'],
+  ['students/qr-reissue', 'POST', 'createConfiguredStudentQrCodes'],
   ['students/[studentId]', 'DELETE', 'createConfiguredStudentDeletion'],
   ['students/bulk', 'PATCH', 'createConfiguredAdminAdjustmentCommand'],
   ['students/import/commit', 'POST', 'createConfiguredStudentImport'],
@@ -196,7 +197,7 @@ describe('tenant mutation route PostgreSQL authority', () => {
       && entry.effect === 'mutation'
       && !configured.has(`${entry.method} ${entry.route}`));
 
-    expect(CONFIGURED_MUTATION_AUTHORITY).toHaveLength(54);
+    expect(CONFIGURED_MUTATION_AUTHORITY).toHaveLength(55);
     expect(sheetsMutations).toHaveLength(4);
     for (const entry of sheetsMutations) {
       const body = await exportedMethodBody(entry.route.replace(/^\//, ''), entry.method);

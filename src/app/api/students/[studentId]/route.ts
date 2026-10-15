@@ -16,7 +16,7 @@ export async function GET(request: Request, context: RouteContext) {
   try {
     const { studentId } = await context.params;
     const qrValue = decodeURIComponent(studentId);
-    const resolved = resolveStudentQrForCurrentTenant(qrValue);
+    const resolved = await resolveStudentQrForCurrentTenant(qrValue);
     const reader = await createConfiguredStudentReader();
     const student = await reader.getStudentById(resolved.studentId);
 

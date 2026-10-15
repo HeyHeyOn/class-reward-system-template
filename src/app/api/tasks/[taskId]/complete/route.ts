@@ -99,7 +99,7 @@ export async function POST(request: Request, context: RouteContext) {
     const qrValue = rawStudentId.trim();
     operationId = rawOperationId;
     if (!taskId || !qrValue || !OPERATION_ID_PATTERN.test(operationId)) return qrFailure();
-    studentId = resolveStudentQrForCurrentTenant(qrValue).studentId;
+    studentId = (await resolveStudentQrForCurrentTenant(qrValue)).studentId;
   } catch {
     return qrFailure();
   }

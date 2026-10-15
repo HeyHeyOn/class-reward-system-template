@@ -21,7 +21,7 @@ const unavailableError = {
 describe('GET /api/bank/student', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(resolveStudentQrForCurrentTenant).mockReturnValue({ studentId: '001-A', format: 'SIGNED' });
+    vi.mocked(resolveStudentQrForCurrentTenant).mockResolvedValue({ studentId: '001-A', format: 'SIGNED' });
     vi.mocked(createConfiguredBankReader).mockResolvedValue({ confirmStudent } as never);
   });
 

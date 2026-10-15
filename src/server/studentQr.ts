@@ -2,6 +2,9 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { getOptionalTrustedTenantRequestContext } from '@/server/trustedTenantRequestContext';
 
 const TOKEN_VERSION = 'csq1';
+/** A printed card since migration 0057: 'DS1:' and the student's 12-hex-digit code (QR alphanumeric mode). */
+export const STUDENT_QR_CODE_PREFIX = 'DS1:';
+const STUDENT_QR_CODE = /^DS1:([0-9A-F]{12})$/;
 const TENANT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const KEY_ID = /^[A-Za-z0-9_-]{1,24}$/;
 const BASE64URL = /^[A-Za-z0-9_-]+$/;
@@ -53,33 +56,71 @@ export function createSignedStudentQr(
   return `${signedValue}.${sign(signedValue, key)}`;
 }
 
-export function resolveStudentQr(
+export type StudentQrFormat = 'CODE' | 'SIGNED' | 'LEGACY';
+
+/** What the class's students say about a scanned card: whose code it is, and whether old signed cards still work. */
+export type StudentQrLookup = Readonly<{
+  studentIdForCode: (code: string) => Promise<string | null>;
+  signedQrAccepted: (studentId: string) => Promise<boolean>;
+}>;
+
+/** The value a student's card carries for the code. */
+export function studentQrCodeValue(code: string): string {
+  return `${STUDENT_QR_CODE_PREFIX}${code}`;
+}
+
+/** The code in a scanned or typed card value ('DS1:…', any letter case), or null when it is not one. */
+export function parseStudentQrCode(value: string): string | null {
+  return STUDENT_QR_CODE.exec(value.trim().toUpperCase())?.[1] ?? null;
+}
+
+export async function resolveStudentQr(
   value: unknown,
   trustedTenantId: string | undefined,
+  lookup: StudentQrLookup,
   env: StudentQrEnv = process.env,
-): Readonly<{ studentId: string; format: 'SIGNED' | 'LEGACY' }> {
+): Promise<Readonly<{ studentId: string; format: StudentQrFormat }>> {
   if (typeof value !== 'string' || !trustedTenantId || !TENANT_ID.test(trustedTenantId)) {
     throw new StudentQrValidationError();
   }
   const trimmed = value.trim();
+  const code = parseStudentQrCode(trimmed);
+  if (code) {
+    const studentId = await lookup.studentIdForCode(code);
+    if (!studentId) throw new StudentQrValidationError();
+    return { studentId, format: 'CODE' };
+  }
+  if (/^ds\d+:/i.test(trimmed)) throw new StudentQrValidationError();
   if (trimmed.startsWith(`${TOKEN_VERSION}.`)) {
-    return { studentId: verifySignedStudentQr(trimmed, trustedTenantId, env), format: 'SIGNED' };
+    const studentId = verifySignedStudentQr(trimmed, trustedTenantId, env);
+    // A card printed before the teacher issued a new code no longer works.
+    if (!await lookup.signedQrAccepted(studentId)) throw new StudentQrValidationError();
+    return { studentId, format: 'SIGNED' };
   }
   if (/^csq\d+(?:\.|$)/.test(trimmed)) throw new StudentQrValidationError();
   return { studentId: validateStudentId(trimmed, false), format: 'LEGACY' };
 }
 
-export function resolveStudentQrForCurrentTenant(
+/** The class's students as the card lookup, read in a snapshot of the class (loaded only when a card is read). */
+export function databaseStudentQrLookup(tenantId: string): StudentQrLookup {
+  const codes = import('@/server/repositories/database/studentQrCodes').then((module) => module.createTenantStudentQrCodes(tenantId));
+  return {
+    studentIdForCode: async (code) => (await codes).studentIdForCode(code),
+    signedQrAccepted: async (studentId) => (await codes).signedQrAccepted(studentId),
+  };
+}
+
+export async function resolveStudentQrForCurrentTenant(
   value: unknown,
   env: StudentQrEnv & Readonly<{ CLASS_STORE_STORAGE?: string }> = process.env,
-): Readonly<{ studentId: string; format: 'SIGNED' | 'LEGACY' }> {
+): Promise<Readonly<{ studentId: string; format: StudentQrFormat }>> {
   const context = getOptionalTrustedTenantRequestContext();
-  if (context) return resolveStudentQr(value, context.tenant.id, env);
+  if (context) return resolveStudentQr(value, context.tenant.id, databaseStudentQrLookup(context.tenant.id), env);
 
   // A single-deployment Sheets install is itself the selected compatibility scope.
-  // Signed values and PostgreSQL requests always require URL-derived trusted context.
+  // Signed values, short codes and PostgreSQL requests always require URL-derived trusted context.
   if (env.CLASS_STORE_STORAGE === 'postgresql' || typeof value !== 'string'
-    || /^csq\d+(?:\.|$)/.test(value.trim())) {
+    || /^csq\d+(?:\.|$)/.test(value.trim()) || /^ds\d+:/i.test(value.trim())) {
     throw new StudentQrValidationError();
   }
   return { studentId: validateStudentId(value.trim(), false), format: 'LEGACY' };

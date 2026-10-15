@@ -19,7 +19,7 @@ export async function GET(request: Request) {
 
     const qrValue = query[0][1].trim();
     if (!qrValue) return Response.json(invalidQueryError, { status: 400 });
-    const { studentId } = resolveStudentQrForCurrentTenant(qrValue);
+    const { studentId } = await resolveStudentQrForCurrentTenant(qrValue);
 
     const reader = await createConfiguredBankReader(request);
     const lookup = await reader.confirmStudent(studentId);
