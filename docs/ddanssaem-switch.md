@@ -113,7 +113,7 @@
    - Google Cloud 프로젝트 `CRS-generator`(로그인 클라이언트 포함)
    - 운영 환경 변수 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
    - 세션 쿠키 키는 `AUTH_SECRET`에서 나오므로 Google 값을 지워도 세션은 그대로다. 그래도 코드 정리보다 먼저 지우면 로그인이 깨진다.
-3. 클래스 `/terms`, `/privacy`를 허브 통합 문서로 옮기거나 링크로 바꾼다(허브 대화와 정함).
+3. ~~클래스 `/terms`, `/privacy`를 허브 통합 문서로 옮긴다.~~ 2026-10-16 끝남: 두 주소는 허브로 308 이동하고, 앱 안의 링크도 모두 허브 주소다. 남은 `src/lib/legalDocuments.ts`는 1번 코드 정리 때 함께 지운다.
 4. 미리보기 정리
    - `crs_preview` DB와 역할 `crs_preview_runtime`은 시험이 더 필요 없으면 지운다(사용자 확인).
    - Vercel 미리보기 환경 변수도 함께 지운다.
