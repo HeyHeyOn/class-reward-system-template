@@ -11,6 +11,7 @@ const CAUSE_STYLE: Record<TaskHistoryEntryDto['cause'], { icon: IconName; tone: 
   TEACHER: { icon: 'user', tone: 'bg-[var(--theme-accent-soft)] text-[var(--theme-accent-text)]' },
   QR: { icon: 'qr', tone: 'bg-[var(--theme-accent-soft)] text-[var(--theme-accent-text)]' },
   PADLET: { icon: 'link', tone: 'bg-[var(--theme-accent-soft)] text-[var(--theme-accent-text)]' },
+  BOARD: { icon: 'link', tone: 'bg-[var(--theme-accent-soft)] text-[var(--theme-accent-text)]' },
   BANK: { icon: 'bank', tone: 'bg-[var(--crs-success-bg)] text-[var(--crs-success-text)]' },
   RESET: { icon: 'restore', tone: 'bg-[var(--crs-warning-bg)] text-[var(--crs-warning-text)]' },
   AUTO_RESET: { icon: 'repeat', tone: 'bg-[var(--crs-warning-bg)] text-[var(--crs-warning-text)]' },

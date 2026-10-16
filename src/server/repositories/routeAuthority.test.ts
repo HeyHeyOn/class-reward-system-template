@@ -36,6 +36,8 @@ const READ_AUTHORITY = [
   ['task-ledger', 'GET', 'createConfiguredTaskLedger'],
   ['task-ledger/tasks/[taskId]/history', 'GET', 'createConfiguredTaskLedger'],
   ['task-ledger/padlet', 'GET', 'createConfiguredPadlet'],
+  ['task-ledger/board', 'GET', 'requestBoardLinks'],
+  ['bank/me/board-ticket', 'POST', 'requestBoardLinks'],
   ['task-ledger/padlet/preview', 'GET', 'createConfiguredPadlet'],
   ['bank/me/tree', 'GET', 'createConfiguredClassTree'],
   ['class-tree', 'GET', 'createConfiguredClassTree'],
@@ -56,6 +58,8 @@ const CONFIGURED_MUTATION_AUTHORITY = [
   ['migrations/[jobId]/freezing/consent', 'POST', 'getProductionFreezingConsentHandlers'],
   ['bank/session', 'POST', 'createConfiguredStudentBankReader'],
   ['bank/me/tasks/[taskId]/complete', 'POST', 'createConfiguredTaskCompletion'],
+  ['task-ledger/board/links', 'POST', 'requestBoardLinks'],
+  ['task-ledger/board/unlink', 'POST', 'requestBoardLinks'],
   ['checkout', 'POST', 'createConfiguredCheckoutCommand'],
   ['products', 'POST', 'createConfiguredProductCreation'],
   ['products/batch', 'PATCH', 'createConfiguredProductMutation'],
@@ -154,7 +158,7 @@ describe('tenant read route PostgreSQL authority', () => {
       .sort((left, right) => `${left[0]}:${left[1]}`.localeCompare(`${right[0]}:${right[1]}`));
     const authority = READ_AUTHORITY.map(([route, method]) => [route, method] as string[])
       .sort((left, right) => `${left[0]}:${left[1]}`.localeCompare(`${right[0]}:${right[1]}`));
-    expect(inventory).toHaveLength(40);
+    expect(inventory).toHaveLength(42);
     expect(authority).toEqual(inventory);
   });
 
@@ -199,7 +203,7 @@ describe('tenant mutation route PostgreSQL authority', () => {
       && entry.effect === 'mutation'
       && !configured.has(`${entry.method} ${entry.route}`));
 
-    expect(CONFIGURED_MUTATION_AUTHORITY).toHaveLength(56);
+    expect(CONFIGURED_MUTATION_AUTHORITY).toHaveLength(58);
     expect(sheetsMutations).toHaveLength(4);
     for (const entry of sheetsMutations) {
       const body = await exportedMethodBody(entry.route.replace(/^\//, ''), entry.method);

@@ -58,9 +58,12 @@ export type StudentBankTaskDto = Readonly<{
   prerequisiteTitle?: string;
   /** The Padlet board whose post (in the student's name) makes the task 완료 가능. */
   padlet?: StudentBankPadletDto;
+  /** The 딴쌤 board whose post (or submission) makes the task 완료 가능; the bank opens it with a ticket. */
+  board?: StudentBankBoardDto;
 }>;
 
 export type StudentBankPadletDto = Readonly<{ title: string; url: string; sectionTitle?: string }>;
+export type StudentBankBoardDto = Readonly<{ title: string; format: 'mini' | 'group' | 'quiz' | 'survey'; groupName: string | null }>;
 
 export function projectStudentBankTransactions(
   transactions: readonly Transaction[],
@@ -126,6 +129,7 @@ export function projectStudentBankTasks(
   projection: readonly StudentTaskProjectionDto[],
   now: string,
   padletBoards: ReadonlyMap<string, StudentBankPadletDto> = new Map(),
+  boards: ReadonlyMap<string, StudentBankBoardDto> = new Map(),
 ): StudentBankTaskDto[] {
   return projection
     .flatMap((task) => {
@@ -144,6 +148,7 @@ export function projectStudentBankTasks(
         ...(task.recurrence ? { recurrence: task.recurrence } : {}),
         ...(task.prerequisiteTitle ? { prerequisiteTitle: task.prerequisiteTitle } : {}),
         ...(padletBoards.has(task.taskId) ? { padlet: padletBoards.get(task.taskId) } : {}),
+        ...(boards.has(task.taskId) ? { board: boards.get(task.taskId) } : {}),
       };
       return [{ dto, sortOrder: task.sortOrder }];
     })

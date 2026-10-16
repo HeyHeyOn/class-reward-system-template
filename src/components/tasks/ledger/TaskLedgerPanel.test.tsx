@@ -461,7 +461,7 @@ describe('Padlet links', () => {
     expect(within(row).getByText('마지막 확인 성공 10월 6일(화) 오전 8:59')).toBeTruthy();
     expect(within(row).queryByText('패들렛을 읽지 못함')).toBeNull();
     const sheet = await openTask();
-    fireEvent.click(within(sheet).getByRole('tab', { name: '패들렛' }));
+    fireEvent.click(within(sheet).getByRole('tab', { name: '연결' }));
     expect(await within(sheet).findByText('Padlet 응답 시간이 초과됐어요. 잠시 뒤에 다시 확인해 주세요.')).toBeTruthy();
     expect(within(sheet).getByText('마지막 확인 성공 10월 6일(화) 오전 8:59')).toBeTruthy();
     expect(within(sheet).getByText(/이 학급의 모든 연결 게시판을 확인해요/)).toBeTruthy();
@@ -476,7 +476,7 @@ describe('Padlet links', () => {
     await renderBoard();
     expect(within(screen.getAllByTestId('task-row')[0]).getByText(`패들렛: ${label}`)).toBeTruthy();
     const sheet = await openTask();
-    fireEvent.click(within(sheet).getByRole('tab', { name: '패들렛' }));
+    fireEvent.click(within(sheet).getByRole('tab', { name: '연결' }));
     expect(await within(sheet).findByText(message)).toBeTruthy();
     expect(within(sheet).getByText(/마지막 확인 성공/)).toBeTruthy();
     if (code === 'RATE_LIMITED') {
@@ -505,7 +505,7 @@ describe('Padlet links', () => {
     });
     await renderBoard();
     const sheet = await openTask();
-    fireEvent.click(within(sheet).getByRole('tab', { name: '패들렛' }));
+    fireEvent.click(within(sheet).getByRole('tab', { name: '연결' }));
     await within(sheet).findByTestId('padlet-linked');
     fireEvent.click(within(sheet).getByRole('button', { name: '지금 확인' }));
     expect(within(sheet).getByText('패들렛 확인 중이에요. 결과를 기다려 주세요.')).toBeTruthy();
@@ -528,7 +528,7 @@ describe('Padlet links', () => {
     server.padletMoves = ['S2'];
     await renderBoard();
     const sheet = await openTask();
-    fireEvent.click(within(sheet).getByRole('tab', { name: '패들렛' }));
+    fireEvent.click(within(sheet).getByRole('tab', { name: '연결' }));
     const keyInput = await within(sheet).findByLabelText('Padlet API 키');
     expect(keyInput.getAttribute('type')).toBe('password');
     expect(within(sheet).getByRole('link', { name: /Padlet에서 API 키 보기/ }).getAttribute('href')).toBe('https://padlet.com/dashboard/settings/developers');
@@ -561,7 +561,7 @@ describe('Padlet links', () => {
     ];
     await renderBoard();
     const sheet = await openTask();
-    fireEvent.click(within(sheet).getByRole('tab', { name: '패들렛' }));
+    fireEvent.click(within(sheet).getByRole('tab', { name: '연결' }));
     const posts = await within(sheet).findAllByTestId('padlet-post');
     expect(posts.map((post) => post.textContent)).toEqual([
       expect.stringContaining('과제 없는 학생(미부여)'), expect.stringContaining('학생 이름을 못 찾음'), expect.stringContaining('완료 가능으로 바꿈'),
@@ -584,15 +584,64 @@ describe('Padlet links', () => {
     await renderBoard();
     fireEvent.click(screen.getByRole('checkbox', { name: '수학 익힘책 선택' }));
     fireEvent.click(screen.getByRole('checkbox', { name: '독서 기록 선택' }));
-    fireEvent.click(within(screen.getByRole('toolbar', { name: '선택 항목 작업' })).getByRole('button', { name: '선택 과제 패들렛 연결' }));
-    const dialog = await screen.findByRole('dialog', { name: '선택 과제 패들렛 연결' });
+    fireEvent.click(within(screen.getByRole('toolbar', { name: '선택 항목 작업' })).getByRole('button', { name: '선택 과제 연결' }));
+    const dialog = await screen.findByRole('dialog', { name: '선택 과제 연결' });
     expect(within(dialog).getByText(/수학 익힘책 → 독서 기록/)).toBeTruthy();
     fireEvent.change(await within(dialog).findByLabelText('패들렛 게시판 주소'), { target: { value: ADDRESS } });
     fireEvent.click(within(dialog).getByRole('button', { name: '불러오기' }));
     await within(dialog).findByTestId('padlet-board-preview');
     fireEvent.click(within(dialog).getByRole('button', { name: '2개 연결' }));
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '선택 과제 패들렛 연결' })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '선택 과제 연결' })).toBeNull());
     expect(server.writes('POST /padlet/links')[0].body).toEqual({ taskIds: ['task-1', 'task-2'], address: ADDRESS, sectionId: null });
     expect(screen.getAllByText(/^패들렛: 5-6 칭찬 게시판$/)).toHaveLength(2);
+  });
+});
+
+describe('딴쌤 보드 in a task\'s 연결 tab', () => {
+  const BOARDS = { enabled: true, boards: [
+    { id: 'b1', code: 'f48ggq', title: '점검 그룹', format: 'group', groups: [{ id: 'g1', name: '그룹 1' }], linkedClassId: null, linkedHere: false, selectable: true },
+    { id: 'b2', code: 'other1', title: '다른 반 보드', format: 'mini', groups: [], linkedClassId: 'other-class', linkedHere: false, selectable: false },
+  ] };
+
+  function serveBoards(sent: unknown[]) {
+    const handle = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const path = String(input);
+      if (path.endsWith('/task-ledger/board')) return Response.json(BOARDS);
+      if (path.endsWith('/task-ledger/board/links')) {
+        sent.push(JSON.parse(String(init?.body)));
+        server.set('task-1', (task) => ({ ...task, padlet: null, board: { boardId: 'b1', boardCode: 'f48ggq', boardTitle: '점검 그룹', boardFormat: 'group',
+          groupId: 'g1', groupName: '그룹 1', lastReadAt: null, error: null } }));
+        return Response.json({ tasks: [server.tasks.find((task) => task.taskId === 'task-1')] });
+      }
+      return handle(input, init);
+    });
+  }
+
+  it('picks one of the teacher\'s boards (another class\'s greyed out), a group, and links its roster to the class', async () => {
+    const sent: unknown[] = [];
+    serveBoards(sent);
+    await renderBoard();
+    const sheet = await openTask();
+    fireEvent.click(within(sheet).getByRole('tab', { name: '연결' }));
+    await within(sheet).findByTestId('board-link-form');
+    expect((within(sheet).getByRole('radio', { name: /다른 반 보드/ }) as HTMLInputElement).disabled).toBe(true);
+    fireEvent.click(within(sheet).getByRole('radio', { name: /점검 그룹/ }));
+    fireEvent.change(within(sheet).getByLabelText('글을 셀 그룹'), { target: { value: 'g1' } });
+    expect(within(sheet).getByText('이 보드 명단을 이 학급과 연결해요')).toBeTruthy();
+    fireEvent.click(within(sheet).getByRole('button', { name: '이 보드에 연결' }));
+    await within(sheet).findByTestId('board-linked');
+    expect(sent).toEqual([{ taskIds: ['task-1'], boardId: 'b1', groupId: 'g1' }]);
+    expect(within(sheet).getByText('‘그룹 1’ 그룹에서 학생이 글을 올리면 완료 가능이 돼요.')).toBeTruthy();
+    expect(within(screen.getAllByTestId('task-row')[0]).getByText('딴쌤 보드: 점검 그룹, 그룹 1')).toBeTruthy();
+    expect(await within(screen.getByTestId('notices')).findByText('딴쌤 보드 ‘점검 그룹’에 연결했어요.')).toBeTruthy();
+  });
+
+  it('keeps the Padlet way when the class cannot link boards', async () => {
+    await renderBoard();
+    const sheet = await openTask();
+    fireEvent.click(within(sheet).getByRole('tab', { name: '연결' }));
+    await within(sheet).findByTestId('padlet-link-form');
+    expect(within(sheet).queryByRole('radiogroup', { name: '연결할 곳' })).toBeNull();
   });
 });

@@ -7,6 +7,7 @@ import {
   type TaskHistoryEntryDto, type TaskHistoryPageRequest, type TaskPadletLinkDto, type UpdateTaskRequest,
 } from '@/lib/taskLedgerApi';
 import type { TaskStage } from '@/domain/taskStage';
+import type { BoardChoiceDto, BoardLinkStatusDto } from '@/lib/boardLinkApi';
 
 /*
  * Calls for the stage-ledger task API (PostgreSQL classes). Nothing here is remembered between
@@ -191,3 +192,21 @@ export const padletClient = {
   unlink: (taskIds: readonly string[]) => call('/api/task-ledger/padlet/unlink', send('POST', { taskIds }), readTasksEnvelope, SAVE_FAILED),
   sync: () => call('/api/task-ledger/padlet/sync', send('POST', {}), readPadletStatus, PADLET_LOAD_FAILED),
 };
+
+function readBoardLinkStatus(value: unknown): BoardLinkStatusDto | null {
+  if (!isRecord(value) || typeof value.enabled !== 'boolean' || !Array.isArray(value.boards)) return null;
+  const boards = value.boards.filter((board): board is BoardChoiceDto => isRecord(board) && isText(board.id) && isText(board.code)
+    && isText(board.title) && isText(board.format) && Array.isArray(board.groups) && typeof board.selectable === 'boolean');
+  return boards.length === value.boards.length ? { enabled: value.enabled, boards } : null;
+}
+
+export const BOARD_LOAD_FAILED = '딴쌤 보드 목록을 불러오지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.';
+
+/** 딴쌤 board links (PostgreSQL classes signed in with 딴쌤). Linking also reads the board, so it can take a few seconds. */
+export const boardLinkClient = {
+  status: () => call('/api/task-ledger/board', get(), readBoardLinkStatus, BOARD_LOAD_FAILED),
+  link: (body: { taskIds: readonly string[]; boardId: string; groupId: string | null }) =>
+    call('/api/task-ledger/board/links', send('POST', body), readTasksEnvelope, SAVE_FAILED),
+  unlink: (taskIds: readonly string[]) => call('/api/task-ledger/board/unlink', send('POST', { taskIds }), readTasksEnvelope, SAVE_FAILED),
+};
+

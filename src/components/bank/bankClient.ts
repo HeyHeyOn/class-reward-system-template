@@ -172,6 +172,16 @@ export function logout(): Promise<BankResult<{ ok: true }>> {
   return bankRequest('/api/bank/session', { method: 'DELETE' }, isOk);
 }
 
+const isBoardTicket = (value: unknown): value is { url: string } =>
+  isRecord(value) && typeof value.url === 'string' && /^https?:\/\//.test(value.url);
+
+/** A 60-second way into the 딴쌤 board the task links to, as this student (app links 8-3). */
+export function fetchBoardTicket(taskId: string): Promise<BankResult<{ url: string }>> {
+  return bankRequest('/api/bank/me/board-ticket', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ taskId }),
+  }, isBoardTicket);
+}
+
 export function fetchTasks(): Promise<BankResult<TasksPayload>> {
   return bankRequest('/api/bank/me/tasks', { method: 'GET' }, isTasksPayload);
 }

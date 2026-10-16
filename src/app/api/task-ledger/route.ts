@@ -1,5 +1,6 @@
 import { isAuthorizedAdminRequest } from '@/server/apiAuth';
 import { legacyWriteFreezeResponse } from '@/server/legacyDeploymentMode';
+import { scheduleBoardLinkSync } from '@/server/repositories/configuredBoardLinks';
 import { syncPadletBoardsIfStale } from '@/server/repositories/configuredPadlet';
 import { createConfiguredTaskLedger } from '@/server/repositories/configuredTaskLedger';
 import { taskLedgerAdminRequired, taskLedgerFailure, taskLedgerJson } from '@/server/taskLedgerHttp';
@@ -12,7 +13,10 @@ export async function GET(request: Request) {
   if (!isAuthorizedAdminRequest(request)) return taskLedgerAdminRequired();
   try {
     // Return stored stages promptly; a later screen refresh observes the background Padlet read.
-    if (legacyWriteFreezeResponse() === null) await syncPadletBoardsIfStale(request);
+    if (legacyWriteFreezeResponse() === null) {
+      await syncPadletBoardsIfStale(request);
+      scheduleBoardLinkSync();
+    }
     const ledger = await createConfiguredTaskLedger(request);
     return taskLedgerJson(await ledger.board());
   } catch (error) {

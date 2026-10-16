@@ -6,7 +6,7 @@ import type { AdminTaskDto } from '@/lib/taskLedgerApi';
 import { Button, Callout, IconButton, MetaRow, Modal, Sheet, cx } from '../../ui';
 import { DefinitionFields } from './DefinitionFields';
 import { LedgerHistoryDialog } from './LedgerHistoryDialog';
-import { PadletTaskTab } from './PadletLinking';
+import { TaskLinkTab } from './TaskLinkTab';
 import { DeleteDialog, ErrorNote, ResetDialog, RewardConfirmDialog, type LedgerStudent } from './LedgerParts';
 import { ledgerClient, newOperationId } from './ledgerClient';
 import {
@@ -209,7 +209,7 @@ export function TaskEditSheet({ ledger, taskId, initialTab, opener, students, un
         busy={Boolean(busy)} obscured={nested !== null}
         headerActions={live ? <IconButton icon="history" label={`${title} 기록 보기`} onClick={(event) => { setHistoryOpener(event.currentTarget); setNested('history'); }} /> : null}
         toolbar={live ? <SheetTabs<TaskSheetTab> value={tab} onChange={setTab}
-          tabs={[['basic', '기본 정보', basicDirty], ['repeat', '반복', repeatDirty], ['students', '학생 현황', stagesDirty], ['padlet', '패들렛', false]]} /> : undefined}
+          tabs={[['basic', '기본 정보', basicDirty], ['repeat', '반복', repeatDirty], ['students', '학생 현황', stagesDirty], ['padlet', '연결', false]]} /> : undefined}
         footer={footer}>
         {!live ? (
           <Callout tone="warning" title="이 과제를 찾을 수 없어요">다른 곳에서 삭제됐을 수 있어요. 닫고 목록을 확인해 주세요.</Callout>
@@ -236,7 +236,7 @@ export function TaskEditSheet({ ledger, taskId, initialTab, opener, students, un
             <StageBoard task={stageTask} students={students} changes={stageChanges} onChange={changeStages} disabled={busy === 'stages'} />
           </div>
         ) : tab === 'padlet' ? (
-          <PadletTaskTab ledger={ledger} task={live} students={students} notify={notify} busy={Boolean(busy)}
+          <TaskLinkTab ledger={ledger} task={live} students={students} notify={notify} busy={Boolean(busy)}
             onBusy={(next) => setBusy(next ? 'padlet' : null)} />
         ) : null}
       </Sheet>

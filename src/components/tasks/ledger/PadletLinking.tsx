@@ -5,11 +5,12 @@ import type { AdminTaskDto } from '@/lib/taskLedgerApi';
 import { Button, Callout, Icon, Modal } from '../../ui';
 import { selectedTasks, targetText, type BulkProps } from './BulkDialogs';
 import { studentLabels, type LedgerStudent } from './LedgerParts';
-import { ledgerClient, newOperationId, padletClient } from './ledgerClient';
+import { boardLinkClient, ledgerClient, newOperationId, padletClient } from './ledgerClient';
 import {
   PadletBoardPicker, PadletKeyBox, PadletLink, PadletPostList, PadletReadState, PadletRules, PadletSharingCallout,
   padletErrorText, usePadletStatus, type PickedBoard,
 } from './PadletParts';
+import { BoardList, BoardRules, boardMovedText, LinkProviderChoice, useBoardLinkStatus, type BoardPick, type LinkProvider } from './BoardLinking';
 import { runWrite } from './useTaskBoard';
 import type { TaskLedger } from './useTaskLedger';
 
@@ -201,8 +202,90 @@ export function PadletTaskTab({ ledger, task, students, notify, busy, onBusy }: 
   );
 }
 
-/** 패들렛 for the selected tasks: link them all to one board, or unlink the linked ones. */
-export function BulkPadletDialog({ ledger, taskIds, opener, notify }: BulkProps) {
+/** 연결 for the selected tasks: link them all to one 딴쌤 board or one Padlet board, or unlink the linked ones. */
+export function BulkPadletDialog(props: BulkProps) {
+  const boards = useBoardLinkStatus();
+  const [chosen, setChosen] = useState<LinkProvider | null>(null);
+  const enabled = boards.status?.enabled === true;
+  const provider: LinkProvider = enabled ? chosen ?? 'board' : 'padlet';
+  return provider === 'board'
+    ? <BulkBoardDialog {...props} boards={boards} onProvider={setChosen} />
+    : <BulkPadletOnlyDialog {...props} providerChoice={enabled ? <LinkProviderChoice value="padlet" onChange={setChosen} /> : null} />;
+}
+
+/** 딴쌤 보드 for the selected tasks. */
+function BulkBoardDialog({ ledger, taskIds, opener, notify, boards, onProvider }: BulkProps & {
+  boards: ReturnType<typeof useBoardLinkStatus>; onProvider: (provider: LinkProvider) => void;
+}) {
+  const { board } = ledger;
+  const tasks = selectedTasks(ledger, taskIds);
+  const [pick, setPick] = useState<BoardPick | null>(null);
+  const [busy, setBusy] = useState<'link' | 'unlink' | null>(null);
+  const [confirmUnlink, setConfirmUnlink] = useState(false);
+  const [error, setError] = useState('');
+  const linked = tasks.filter((task) => task.board);
+  const moving = tasks.filter((task) => task.padlet || (task.board && pick && (task.board.boardId !== pick.boardId || task.board.groupId !== pick.groupId)));
+  const chosen = pick ? boards.status?.boards.find((item) => item.id === pick.boardId) : undefined;
+
+  async function connect() {
+    if (!pick || busy || tasks.length === 0) return;
+    const before = readyCount(tasks);
+    setBusy('link'); setError('');
+    const result = await runWrite(board, () => boardLinkClient.link({ taskIds: tasks.map((task) => task.taskId), boardId: pick.boardId, groupId: pick.groupId }));
+    setBusy(null);
+    if (!result.ok) { setError(result.error); return; }
+    board.applyTasks(result.data);
+    ledger.close();
+    notify(`과제 ${result.data.length}개를 딴쌤 보드 ‘${chosen?.title || '보드'}’에 연결했어요.${boardMovedText(before, readyCount(result.data))}`);
+  }
+
+  async function unlink() {
+    if (busy || linked.length === 0) return;
+    setBusy('unlink'); setError('');
+    const result = await runWrite(board, () => boardLinkClient.unlink(linked.map((task) => task.taskId)));
+    setBusy(null);
+    if (!result.ok) { setError(result.error); setConfirmUnlink(false); return; }
+    board.applyTasks(result.data);
+    ledger.close();
+    notify(`과제 ${linked.length}개의 딴쌤 보드 연결을 끊었어요. 이미 바뀐 단계는 그대로예요.`);
+  }
+
+  return (
+    <Modal title="선택한 과제 연결" ariaLabel="선택 과제 연결" description={`대상: ${targetText(tasks)}`} size="lg" opener={opener}
+      busy={busy !== null} onClose={ledger.close}
+      footer={<>
+        {linked.length > 0 ? (
+          confirmUnlink ? (
+            <span className="mr-auto flex items-center gap-1.5">
+              <Button variant="ghost" disabled={busy !== null} onClick={() => setConfirmUnlink(false)}>그대로 두기</Button>
+              <Button variant="danger" loading={busy === 'unlink'} disabled={busy !== null} onClick={() => void unlink()}>{linked.length}개 연결 끊기</Button>
+            </span>
+          ) : (
+            <Button variant="dangerGhost" className="mr-auto" disabled={busy !== null} onClick={() => setConfirmUnlink(true)}>연결 끊기({linked.length}개)</Button>
+          )
+        ) : null}
+        <Button variant="ghost" disabled={busy !== null} onClick={ledger.close}>취소</Button>
+        <Button variant="primary" icon="link" data-tour="board-bulk-connect" loading={busy === 'link'} disabled={!pick || busy !== null || tasks.length === 0}
+          onClick={() => void connect()}>{tasks.length}개 연결</Button>
+      </>}>
+      <div className="space-y-5">
+        <LinkProviderChoice value="board" onChange={onProvider} disabled={busy !== null} />
+        <p className="text-[13px] leading-relaxed text-[var(--theme-muted-text)]">학생이 딴쌤 보드에 글을 올리거나 제출하면 과제가 저절로 ‘완료 가능’이 돼요. 고른 과제를 모두 같은 보드에 연결해요.</p>
+        {error ? <Callout tone="danger">{error}</Callout> : null}
+        <BoardList status={boards} pick={pick} onPick={setPick} disabled={busy !== null} />
+        {moving.length > 0 ? (
+          <Callout tone="warning" title={`이미 다른 곳에 연결된 과제 ${moving.length}개`}>
+            연결하면 이 보드로 바뀌어요: {moving.map((task) => task.title).join(', ')}
+          </Callout>
+        ) : null}
+        <BoardRules />
+      </div>
+    </Modal>
+  );
+}
+
+/** 패들렛 for the selected tasks. */
+function BulkPadletOnlyDialog({ ledger, taskIds, opener, notify, providerChoice }: BulkProps & { providerChoice: React.ReactNode }) {
   const { board } = ledger;
   const tasks = selectedTasks(ledger, taskIds);
   const padlet = usePadletStatus();
@@ -211,7 +294,7 @@ export function BulkPadletDialog({ ledger, taskIds, opener, notify }: BulkProps)
   const [confirmUnlink, setConfirmUnlink] = useState(false);
   const [error, setError] = useState('');
   const linked = tasks.filter((task) => task.padlet);
-  const moving = picked ? linked.filter((task) => task.padlet?.boardId !== picked.preview.boardId) : linked;
+  const moving = (picked ? linked.filter((task) => task.padlet?.boardId !== picked.preview.boardId) : linked).concat(tasks.filter((task) => task.board));
   const key = padlet.status?.key ?? null;
   const keyReady = Boolean(key?.saved && key.readable);
   const sharing = picked
@@ -242,7 +325,7 @@ export function BulkPadletDialog({ ledger, taskIds, opener, notify }: BulkProps)
   }
 
   return (
-    <Modal title="선택한 과제 패들렛 연결" ariaLabel="선택 과제 패들렛 연결" description={`대상: ${targetText(tasks)}`} size="lg" opener={opener}
+    <Modal title="선택한 과제 연결" ariaLabel="선택 과제 연결" description={`대상: ${targetText(tasks)}`} size="lg" opener={opener}
       busy={busy !== null} onClose={ledger.close}
       footer={<>
         {linked.length > 0 ? (
@@ -260,6 +343,7 @@ export function BulkPadletDialog({ ledger, taskIds, opener, notify }: BulkProps)
           onClick={() => void connect()}>{tasks.length}개 연결</Button>
       </>}>
       <div className="space-y-5">
+        {providerChoice}
         <p className="text-[13px] leading-relaxed text-[var(--theme-muted-text)]">{INTRO} 고른 과제를 모두 같은 게시판에 연결해요.</p>
         {error ? <Callout tone="danger">{error}</Callout> : null}
         {!padlet.status ? (

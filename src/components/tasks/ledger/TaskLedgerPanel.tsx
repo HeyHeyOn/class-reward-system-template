@@ -14,6 +14,7 @@ import { padletErrorLabel } from './PadletParts';
 import { QrStageDialog } from './QrStageDialog';
 import { TaskEditSheet } from './TaskEditSheet';
 import type { TaskLedger } from './useTaskLedger';
+import { boardErrorText } from './BoardLinking';
 
 type Filter = 'all' | 'active' | 'hidden';
 
@@ -64,6 +65,10 @@ export function TaskLedgerPanel({ ledger, unit, notify }: { ledger: TaskLedger; 
         parts.push({ icon: 'clock', text: `${formatInstant(task.padlet.retryAt, board.now)} 이후 재확인` });
       }
     }
+    if (task.board) {
+      parts.push(task.board.error ? { icon: 'alert', text: `딴쌤 보드: ${boardErrorText(task.board.error)}`, warn: true }
+        : { icon: 'link', text: `딴쌤 보드: ${task.board.boardTitle || '보드'}${task.board.groupName ? `, ${task.board.groupName}` : ''}` });
+    }
     return parts;
   }
 
@@ -110,7 +115,7 @@ export function TaskLedgerPanel({ ledger, unit, notify }: { ledger: TaskLedger; 
                 {visible.map((task) => {
                   const status = taskStatus(task, board.now);
                   return (
-                    <div role="row" data-testid="task-row" key={task.taskId} data-padlet={task.padlet ? '' : undefined}
+                    <div role="row" data-testid="task-row" key={task.taskId} data-padlet={task.padlet ? '' : undefined} data-board={task.board ? '' : undefined}
                       className="group relative grid grid-cols-[40px_minmax(0,1fr)_28px] items-center gap-3 px-4 py-3.5 transition-colors hover:bg-[var(--crs-subtle)] md:grid-cols-[40px_minmax(0,1fr)_88px_210px_76px_28px] md:px-5">
                       <span role="cell" className="relative z-10 flex"><Checkbox aria-label={`${task.title} 선택`} checked={selection.includes(task.taskId)} onChange={() => toggle(task.taskId)} /></span>
                       <span role="cell" className="min-w-0">
@@ -141,7 +146,7 @@ export function TaskLedgerPanel({ ledger, unit, notify }: { ledger: TaskLedger; 
       <SelectionBar count={selection.length} onClear={() => ledger.setSelection([])}>
         <SelectionBarButton icon="repeat" aria-label="선택 과제 반복 설정" onClick={(event) => ledger.open({ kind: 'bulk-repeat', taskIds: selection, opener: event.currentTarget })}>반복 설정</SelectionBarButton>
         <SelectionBarButton icon="users" aria-label="선택 과제 완료 단계" onClick={(event) => ledger.open({ kind: 'bulk-stages', taskIds: selection, opener: event.currentTarget })}>완료 단계</SelectionBarButton>
-        <SelectionBarButton icon="link" aria-label="선택 과제 패들렛 연결" onClick={(event) => ledger.open({ kind: 'bulk-padlet', taskIds: selection, opener: event.currentTarget })}>패들렛</SelectionBarButton>
+        <SelectionBarButton icon="link" aria-label="선택 과제 연결" onClick={(event) => ledger.open({ kind: 'bulk-padlet', taskIds: selection, opener: event.currentTarget })}>연결</SelectionBarButton>
         <SelectionBarButton icon="restore" aria-label="선택 과제 지금 초기화" onClick={(event) => ledger.open({ kind: 'reset', taskIds: selection, opener: event.currentTarget })}>지금 초기화</SelectionBarButton>
         <SelectionBarButton icon="trash" danger aria-label="선택 과제 삭제" onClick={(event) => ledger.open({ kind: 'delete', taskIds: selection, opener: event.currentTarget })}>삭제</SelectionBarButton>
       </SelectionBar>

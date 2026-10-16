@@ -58,6 +58,21 @@ export type TaskPadletLinkDto = Readonly<{
   retryAt?: string | null;
 }>;
 
+/** The 딴쌤 board a task is linked to (ddanssaem-hub/docs/app-links.md 8). */
+export type TaskBoardLinkDto = Readonly<{
+  boardId: string;
+  boardCode: string;
+  boardTitle: string;
+  boardFormat: 'mini' | 'group' | 'quiz' | 'survey';
+  /** Only this group's posts count (group boards); null = the whole board. */
+  groupId: string | null;
+  groupName: string | null;
+  lastReadAt: string | null;
+  /** Why the last read failed (a BoardLinkErrorCode), or null. */
+  error: string | null;
+  checking?: boolean;
+}>;
+
 export type AdminTaskDto = TaskDefinitionDto & Readonly<{
   taskId: string;
   taskInstanceId: string;
@@ -71,6 +86,8 @@ export type AdminTaskDto = TaskDefinitionDto & Readonly<{
   counts: Readonly<Record<TaskStage, number>>;
   /** The linked Padlet board; absent or null when not linked. */
   padlet?: TaskPadletLinkDto | null;
+  /** The linked 딴쌤 board; absent or null when not linked. A task links to a board or a Padlet, not both. */
+  board?: TaskBoardLinkDto | null;
 }>;
 
 export type TaskBoardDto = Readonly<{ now: string; tasks: readonly AdminTaskDto[] }>;
@@ -83,7 +100,7 @@ export type TaskStageChangeDto = Readonly<{
   withReward?: boolean;
 }>;
 
-export type TaskHistoryCause = 'TEACHER' | 'QR' | 'PADLET' | 'BANK' | 'RESET' | 'AUTO_RESET' | 'CANCELLED' | 'IMPORTED';
+export type TaskHistoryCause = 'TEACHER' | 'QR' | 'PADLET' | 'BOARD' | 'BANK' | 'RESET' | 'AUTO_RESET' | 'CANCELLED' | 'IMPORTED';
 
 export type TaskHistoryEntryDto = Readonly<{
   id: string;

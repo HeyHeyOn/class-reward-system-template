@@ -59,6 +59,7 @@ export const TENANT_ROUTE_INVENTORY: readonly TenantRouteInventoryEntry[] = [
   tenantMutation('/bank/session', 'DELETE'),
   tenantRead('/bank/me/transactions'),
   tenantRead('/bank/me/tasks'),
+  tenantRead('/bank/me/board-ticket', 'POST'),
   tenantMutation('/bank/me/tasks/[taskId]/complete', 'POST'),
   tenantRead('/bank/me/tree'),
   tenantMutation('/bank/me/tree/water', 'POST'),
@@ -188,6 +189,9 @@ export const TENANT_ROUTE_INVENTORY: readonly TenantRouteInventoryEntry[] = [
   tenantMutation('/task-ledger/padlet/links', 'POST'),
   tenantMutation('/task-ledger/padlet/unlink', 'POST'),
   tenantMutation('/task-ledger/padlet/sync', 'POST'),
+  tenantRead('/task-ledger/board'),
+  tenantMutation('/task-ledger/board/links', 'POST'),
+  tenantMutation('/task-ledger/board/unlink', 'POST'),
   tenantMutation('/transactions/[transactionId]/cancel', 'POST'),
   tenantRead('/transactions'),
   // Self-service CRS workbook (.xlsx) import: POST preview validates only; commit writes.

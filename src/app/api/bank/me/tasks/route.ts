@@ -1,4 +1,5 @@
 import { legacyWriteFreezeResponse } from '@/server/legacyDeploymentMode';
+import { boardsForStudent } from '@/server/repositories/configuredBoardLinks';
 import { padletBoardsForStudent } from '@/server/repositories/configuredPadlet';
 import { createConfiguredStudentBankReader } from '@/server/repositories/configuredStudentBank';
 import { createConfiguredTaskReader } from '@/server/repositories/configuredTasks';
@@ -25,10 +26,11 @@ export async function GET(request: Request) {
     const studentId = checked.student.studentId;
     // The authorized student's screen observes new Padlet stages on its next refresh.
     const padletBoards = await padletBoardsForStudent(request, { sync: legacyWriteFreezeResponse() === null });
+    const boards = await boardsForStudent({ sync: legacyWriteFreezeResponse() === null });
     const now = new Date().toISOString();
     const taskReader = await createConfiguredTaskReader(request);
     const cycles = await taskReader.listTaskCycleProjections({ includeInactive: true, studentId, now });
-    return studentBankJson({ tasks: projectStudentBankTasks(buildStudentTaskProjection(cycles, studentId, now), now, padletBoards) });
+    return studentBankJson({ tasks: projectStudentBankTasks(buildStudentTaskProjection(cycles, studentId, now), now, padletBoards, boards) });
   } catch {
     return studentBankUnavailable();
   }

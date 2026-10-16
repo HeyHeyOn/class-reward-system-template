@@ -19,6 +19,7 @@ import {
   claimPadletBoardSync, deletePadletLinks, readPadletBoardSyncs, readPadletKey, readPadletLinks, recordPadletBoardSync,
   writePadletKey, writePadletLinks,
 } from '@/server/repositories/database/padletStore';
+import { deleteBoardLinks } from '@/server/repositories/database/boardStore';
 import { createTaskLedgerCommands } from '@/server/repositories/database/taskLedger/commands';
 import { ensureTaskLedger, type RunTenantTransaction } from '@/server/repositories/database/taskLedger/migration';
 import { readLedgerStudents, readLedgerTasks, TaskLedgerError } from '@/server/repositories/database/taskLedger/store';
@@ -253,6 +254,8 @@ export function createPadletService(dependencies: Dependencies): ConfiguredPadle
         const tasks = await readLedgerTasks(tx, tenantId, { taskIds: request.taskIds, lock: true });
         if (tasks.length !== request.taskIds.length) throw new TaskLedgerError('TASK_NOT_FOUND', '없거나 삭제된 과제가 있어요. 목록을 새로 불러와 주세요.', 404);
         const ids = tasks.map((task) => task.taskInstanceId);
+        // A task has one link: a 딴쌤 board linked before gives way.
+        await deleteBoardLinks(tx, tenantId, ids);
         await writePadletLinks(tx, tenantId, ids, { boardId, boardTitle: board.title, boardUrl: board.url,
           sectionId: section?.id ?? null, sectionTitle: section?.title ?? null });
         // A board picked the old way (checked only when the student pressed 완료) gives way to the link.

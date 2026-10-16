@@ -159,7 +159,7 @@ describe('withdrawal erasure: complete payload removal with isolated immutable g
       child.relname AS child,parent.relname AS parent,c.conname AS name
       FROM pg_constraint c JOIN pg_class child ON child.oid=c.conrelid JOIN pg_class parent ON parent.oid=c.confrelid
       WHERE c.contype='f' AND child.relnamespace='public'::regnamespace AND parent.relnamespace='public'::regnamespace`)).rows;
-    expect(manifest).toHaveLength(90);
+    expect(manifest).toHaveLength(93);
     for (const fk of foreignKeys) {
       if (!order.has(fk.parent) || fk.child === fk.parent) continue;
       expect(order.has(fk.child), `${fk.name}: omitted child ${fk.child}`).toBe(true);

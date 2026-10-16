@@ -281,7 +281,7 @@ export function BankApp() {
   });
   const { restore: restoreCompletion, reset: resetCompletion, reconcile: reconcileCompletion } = completion;
   usePadletTaskRefresh(phase === 'home' && (view === 'home' || view === 'tasks')
-    && !completion.inFlight && !loggingOut && !!tasks?.some((task) => task.padlet), refreshPadletTasks);
+    && !completion.inFlight && !loggingOut && !!tasks?.some((task) => task.padlet || task.board), refreshPadletTasks);
   useEffect(() => {
     if (tasks) reconcileCompletion(tasks);
   }, [tasks, reconcileCompletion]);

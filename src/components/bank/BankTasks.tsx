@@ -2,9 +2,10 @@
 
 import { useId, useState, type ReactNode } from 'react';
 import { formatStudentTaskDue, formatStudentTaskRecurrence } from '@/domain/taskStudentDisplay';
+import { boardActionText } from '@/lib/boardLinkApi';
 import { withParticle } from '@/lib/koreanParticle';
 import { Badge, Button, Callout, Icon, Spinner, cx } from '../ui';
-import type { PendingCompletion, StudentBankTaskDto } from './bankClient';
+import { fetchBoardTicket, type PendingCompletion, type StudentBankTaskDto } from './bankClient';
 import { formatMoney } from './format';
 
 type BankTasksProps = Readonly<{
@@ -154,7 +155,7 @@ function PendingTaskCard({ task, currencyUnit }: { task: StudentBankTaskDto; cur
       <TaskTitle id={titleId} title={task.title} />
       <TaskDescription text={task.description} />
       <TaskMeta task={task} />
-      {task.padlet ? <PadletHint padlet={task.padlet} title={task.title} /> : (
+      {task.board ? <BoardHint board={task.board} task={task} /> : task.padlet ? <PadletHint padlet={task.padlet} title={task.title} /> : (
         <p className="mt-3 flex items-start gap-2 rounded-[var(--crs-radius)] bg-[var(--crs-subtle)] px-3.5 py-2.5 text-[13px] font-semibold leading-relaxed text-[var(--theme-muted-text)]">
           <span className="mt-0.5 shrink-0"><Icon name="clock" size={15} /></span>
           <span>선생님이 확인하면 완료할 수 있어요. 조금만 기다려 주세요.</span>
@@ -179,6 +180,39 @@ function PadletHint({ padlet, title }: { padlet: NonNullable<StudentBankTaskDto[
           패들렛 열기<Icon name="external" size={14} />
         </a>
       ) : null}
+    </div>
+  );
+}
+
+/** A task linked to a 딴쌤 board: the student's post (or submission) there makes it 완료 가능; [보드 열기] lets them in. */
+function BoardHint({ board, task }: { board: NonNullable<StudentBankTaskDto['board']>; task: StudentBankTaskDto }) {
+  const [opening, setOpening] = useState(false);
+  const [error, setError] = useState('');
+  async function open() {
+    if (opening) return;
+    setOpening(true); setError('');
+    // Opened at once, so the browser keeps it as the student's own click; the ticket fills it in.
+    const tab = window.open('', '_blank');
+    const result = await fetchBoardTicket(task.taskId);
+    setOpening(false);
+    if (result.ok) {
+      if (tab) { tab.opener = null; tab.location.href = result.data.url; } else window.location.href = result.data.url;
+      return;
+    }
+    tab?.close();
+    setError(result.error || '보드를 열지 못했어요. 잠시 뒤 다시 눌러 주세요.');
+  }
+  return (
+    <div className="mt-3 rounded-[var(--crs-radius)] bg-[var(--crs-subtle)] px-3.5 py-3 text-[13px] font-semibold leading-relaxed text-[var(--theme-muted-text)]">
+      <p className="flex items-start gap-2">
+        <span className="mt-0.5 shrink-0"><Icon name="link" size={15} /></span>
+        <span>딴쌤 보드 <b className="font-extrabold text-[var(--theme-text)]">{board.title || '보드'}</b>{board.groupName ? `의 ‘${board.groupName}’ 그룹` : ''}에 {boardActionText(board.format)} 완료할 수 있어요.</span>
+      </p>
+      <button type="button" onClick={() => void open()} disabled={opening} aria-label={`${task.title} 보드 열기`}
+        className="mt-2.5 inline-flex h-10 items-center gap-1.5 rounded-full border border-[var(--crs-line-strong)] bg-[var(--theme-surface)] px-4 text-[14px] font-bold text-[var(--theme-text)] hover:border-[var(--theme-accent-text)] disabled:opacity-60">
+        보드 열기<Icon name="external" size={14} />
+      </button>
+      {error ? <p role="alert" className="mt-2 text-[13px] font-semibold text-[var(--crs-danger-text)]">{error}</p> : null}
     </div>
   );
 }

@@ -39,6 +39,7 @@ const ROUTES: readonly TenantApiRoute[] = [
   route('DELETE', 'bank/session', 'public', async (r) => (await import('@/app/api/bank/session/route')).DELETE(r)),
   route('GET', 'bank/me/transactions', 'public', async (r) => (await import('@/app/api/bank/me/transactions/route')).GET(r)),
   route('GET', 'bank/me/tasks', 'public', async (r) => (await import('@/app/api/bank/me/tasks/route')).GET(r)),
+  route('POST', 'bank/me/board-ticket', 'public', async (r) => (await import('@/app/api/bank/me/board-ticket/route')).POST(r)),
   route('POST', 'bank/me/tasks/[taskId]/complete', 'public', async (r, c) => (await import('@/app/api/bank/me/tasks/[taskId]/complete/route')).POST(r, c as never)),
   route('GET', 'bank/me/tree', 'public', async (r) => (await import('@/app/api/bank/me/tree/route')).GET(r)),
   route('POST', 'bank/me/tree/water', 'public', async (r) => (await import('@/app/api/bank/me/tree/water/route')).POST(r)),
@@ -106,6 +107,9 @@ const ROUTES: readonly TenantApiRoute[] = [
   route('POST', 'task-ledger/padlet/links', 'admin', async (r) => (await import('@/app/api/task-ledger/padlet/links/route')).POST(r)),
   route('POST', 'task-ledger/padlet/unlink', 'admin', async (r) => (await import('@/app/api/task-ledger/padlet/unlink/route')).POST(r)),
   route('POST', 'task-ledger/padlet/sync', 'admin', async (r) => (await import('@/app/api/task-ledger/padlet/sync/route')).POST(r)),
+  route('GET', 'task-ledger/board', 'admin', async (r) => (await import('@/app/api/task-ledger/board/route')).GET(r)),
+  route('POST', 'task-ledger/board/links', 'admin', async (r) => (await import('@/app/api/task-ledger/board/links/route')).POST(r)),
+  route('POST', 'task-ledger/board/unlink', 'admin', async (r) => (await import('@/app/api/task-ledger/board/unlink/route')).POST(r)),
   // Class apple tree (PostgreSQL classes): the teacher's board, settings, classFeed, harvest and coupons.
   route('GET', 'class-tree', 'admin', async (r) => (await import('@/app/api/class-tree/route')).GET(r)),
   route('POST', 'class-tree/settings', 'admin', async (r) => (await import('@/app/api/class-tree/settings/route')).POST(r)),

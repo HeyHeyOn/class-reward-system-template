@@ -17,6 +17,11 @@ export type PadletPost = Readonly<{
   subject: string;
   sectionId: string | null;
   url: string | null;
+  /**
+   * The student who wrote it, when the source already knows (a 딴쌤 board answers for one student at a
+   * time); the name is then not matched.
+   */
+  studentId?: string;
 }>;
 
 export type PadletSection = Readonly<{ id: string; title: string }>;
@@ -255,7 +260,9 @@ export function allocatePadletPosts(input: Readonly<{
       if (post.status === 'pending_moderation') outcomes.push({ ...base, studentId: null, match: null, issue: 'AWAITING_APPROVAL', results: {} });
       continue;
     }
-    const match = matchPadletStudent(post, allStudents);
+    const match: PadletMatch = post.studentId !== undefined
+      ? (allStudents.some((student) => student.studentId === post.studentId) ? { studentId: post.studentId, by: 'AUTHOR' } : { studentId: null, issue: 'UNKNOWN' })
+      : matchPadletStudent(post, allStudents);
     if (match.studentId === null) {
       outcomes.push({ ...base, studentId: null, match: null, issue: match.issue, results: {} });
       continue;
