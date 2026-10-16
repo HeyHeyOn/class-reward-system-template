@@ -243,7 +243,7 @@ export function BoardList({ status, pick, onPick, disabled }: Readonly<{
 export function BoardRules() {
   return (
     <ul data-tour="board-rules" className="list-disc space-y-1 pl-5 text-xs leading-relaxed text-[var(--theme-muted-text)]">
-      <li>과제가 열린 뒤 학생이 보드에 올린 공개된 글만 세요. 승인 대기 글은 승인되면 그때 세요.</li>
+      <li>과제를 받은 뒤 학생이 보드에 올린 공개된 글만 세요. 승인 대기 글은 승인되면 그때 세요.</li>
       <li>퀴즈와 설문 보드는 제출을 세요. 글이나 제출 하나는 과제 하나에만 한 번 쓰여요.</li>
       <li>학생은 은행의 과제에서 [보드 열기]를 누르면 따로 입장하지 않고 들어가요.</li>
     </ul>
