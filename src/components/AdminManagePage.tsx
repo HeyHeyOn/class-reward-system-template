@@ -20,7 +20,7 @@ import { normalizeTaskAssignmentStatus, reconcileTaskAssignmentProjection } from
 import { normalizeThemeColor, themeStyles } from './uiTheme';
 import {
   Badge, Button, Callout, Card, CardHeader, Checkbox, EmptyState, Field, Icon, IconButton, Input, LoadingOverlay, Modal,
-  PageHeader, ProgressBar, SearchInput, SegmentedControl, SelectionBar, SelectionBarButton, Sheet, StatCard, Switch,
+  PageHeader, ProgressBar, SearchInput, SegmentedControl, Select, SelectionBar, SelectionBarButton, Sheet, StatCard, Switch,
   Textarea, buttonClass, cx, type IconName,
 } from './ui';
 import { classifyTaskAvailability } from '@/domain/taskAvailability';
@@ -52,6 +52,7 @@ import { TutorialRunner } from './tutorial/TutorialRunner';
 import { FIRST_TUTORIAL_ID, tutorialAfter, tutorialById, type Tutorial } from './tutorial/tutorials';
 import type { AvatarConfig } from './profile/avatar';
 import { GlobalHeader } from './brand/GlobalHeader';
+import { StudentGroupAssignDialog, StudentGroupManagerDialog, useStudentGroups } from './admin/StudentGroups';
 
 // Retain the existing public parser exports for callers outside the page.
 export { parseProductAdminEnvelope, getProductExpectedVersion, type ProductAdminState } from './admin/productAdminResponse';
@@ -194,6 +195,10 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
   const [taskFilter, setTaskFilter] = useState<'all' | 'active' | 'hidden'>('all');
   const [studentQuery, setStudentQuery] = useState('');
   const [studentFilter, setStudentFilter] = useState<'all' | 'ACTIVE' | 'INACTIVE'>('all');
+  // 모둠: 'all', 'none' or a group id.
+  const [studentGroupFilter, setStudentGroupFilter] = useState('all');
+  const [groupManagerOpener, setGroupManagerOpener] = useState<HTMLElement | null>(null);
+  const [groupAssignOpener, setGroupAssignOpener] = useState<HTMLElement | null>(null);
   const [productQuery, setProductQuery] = useState('');
   const [productFilter, setProductFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [newTaskRecurrence, setNewTaskRecurrence] = useState<TaskRecurrenceForm>(() => scheduleDtoToForm());
@@ -1973,6 +1978,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
   const rootStyle = { ...semantic.variables, ...(fontFamilyCss ? { fontFamily: fontFamilyCss } : {}) };
   const unit = settings.currencyUnit ?? '원';
   const tenantScoped = tenantApiPath('/api/tasks') !== '/api/tasks';
+  const studentGroups = useStudentGroups(tenantScoped, students.map((student) => `${student.studentId}:${student.status ?? 'ACTIVE'}`).join(','));
   // Store products the teacher can put into a 보관함 (a physical product goes in as its 교환권).
   const giveOptions = products.map((product) => ({
     productId: product.productId, name: product.name, kind: digitalProducts.get(product.productId)?.kind ?? null, isActive: product.isActive,
@@ -2180,7 +2186,10 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
   const visibleTasks = tasks.filter((task) => (taskFilter === 'all' || (taskFilter === 'active' ? task.isActive : !task.isActive))
     && (!normalizedTaskQuery || `${task.title} ${task.description} ${task.taskId}`.toLowerCase().includes(normalizedTaskQuery)));
   const normalizedStudentQuery = studentQuery.trim().toLowerCase();
+  const groupFilter = studentGroupFilter === 'all' || studentGroupFilter === 'none' || studentGroups.groups.some((group) => group.id === studentGroupFilter)
+    ? studentGroupFilter : 'all';
   const visibleStudents = students.filter((student) => (studentFilter === 'all' || (student.status ?? 'ACTIVE') === studentFilter)
+    && (groupFilter === 'all' || (groupFilter === 'none' ? !studentGroups.groupOf.has(student.studentId) : studentGroups.groupOf.get(student.studentId)?.id === groupFilter))
     && (!normalizedStudentQuery || `${student.studentId} ${student.name}`.toLowerCase().includes(normalizedStudentQuery)));
   const normalizedProductQuery = productQuery.trim().toLowerCase();
   const visibleProducts = products.filter((product) => (productFilter === 'all' || (productFilter === 'active' ? product.isActive : !product.isActive))
@@ -2394,6 +2403,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                   actions={<>
                     <IconButton icon="refresh" label="학생 명단 새로고침" variant="secondary" onClick={refreshStudents} />
                     {tenantScoped ? <StudentBulkImport unit={unit} onImported={() => { void refreshStudents(); }} /> : null}
+                    {tenantScoped ? <Button variant="secondary" icon="users" data-tour="student-groups" onClick={(event) => setGroupManagerOpener(event.currentTarget)}>모둠</Button> : null}
                     <Button variant="primary" icon="plus" data-tour="student-add" onClick={(event) => { setStudentSheet({ mode: 'new', opener: event.currentTarget }); }}>학생 추가</Button>
                   </>} />
                 <Callout tone="warning" title="학생 실명은 학부모 동의를 받은 뒤에 입력해 주세요">
@@ -2409,6 +2419,13 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                   <SearchInput value={studentQuery} onChange={setStudentQuery} placeholder="이름 또는 번호 검색" ariaLabel="학생 검색" className="w-full sm:w-72" />
                   <SegmentedControl ariaLabel="학생 상태 필터" value={studentFilter} onChange={setStudentFilter}
                     options={[{ value: 'all', label: '전체', count: students.length }, { value: 'ACTIVE', label: '활성', count: students.filter((student) => (student.status ?? 'ACTIVE') === 'ACTIVE').length }, { value: 'INACTIVE', label: '비활성', count: students.filter((student) => student.status === 'INACTIVE').length }]} />
+                  {tenantScoped && studentGroups.groups.length > 0 ? (
+                    <Select aria-label="모둠 거르기" value={groupFilter} onChange={(event) => setStudentGroupFilter(event.target.value)} className="w-auto min-w-32">
+                      <option value="all">모든 모둠</option>
+                      {studentGroups.groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+                      <option value="none">모둠 없음</option>
+                    </Select>
+                  ) : null}
                 </div>
                 {students.length === 0 ? (
                   <EmptyState icon="users" title="첫 학생을 등록해 보세요" description="학생을 등록하면 QR 카드를 발급하고 화폐를 지급할 수 있어요."
@@ -2437,7 +2454,8 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                                 className="block max-w-full truncate text-left text-[15px] font-bold outline-none after:absolute after:inset-0 after:content-[''] focus-visible:underline">
                                 {student.name}
                               </button>
-                              <span className="block text-xs text-[var(--theme-muted-text)] sm:hidden">{student.studentId}{inactive ? ', 비활성' : ''}</span>
+                              <span className="block text-xs text-[var(--theme-muted-text)] sm:hidden">{student.studentId}{inactive ? ', 비활성' : ''}{studentGroups.groupOf.has(student.studentId) ? `, ${studentGroups.groupOf.get(student.studentId)!.name}` : ''}</span>
+                              {studentGroups.groupOf.has(student.studentId) ? <span data-testid="student-group" className="hidden truncate text-xs font-semibold text-[var(--theme-accent-text)] sm:block">{studentGroups.groupOf.get(student.studentId)!.name}</span> : null}
                             </span>
                             <span role="cell" className={cx('text-right text-[15px] font-extrabold tabular-nums', student.balance < 0 && 'text-[var(--crs-danger-text)]')}>{money(student.balance)}</span>
                             <span role="cell" className="hidden sm:block">{inactive ? <Badge>비활성</Badge> : <Badge tone="success" dot>활성</Badge>}</span>
@@ -2453,6 +2471,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                   <SelectionBarButton icon="coins" data-tour="student-bulk-balance" onClick={() => setBulkBalanceOpen(true)}>잔액 변경</SelectionBarButton>
                   <SelectionBarButton icon="qr" data-tour="student-qr-bulk" onClick={() => setQrPrintStudents(students.filter((student) => selectedStudentIds.includes(student.studentId)))}>QR 카드 발급</SelectionBarButton>
                   {tenantScoped ? <SelectionBarButton icon="package" data-tour="student-bulk-give" onClick={(event) => setBulkGiveOpener(event.currentTarget)}>보관함에 넣기</SelectionBarButton> : null}
+                  {tenantScoped ? <SelectionBarButton icon="users" data-tour="student-bulk-group" onClick={(event) => setGroupAssignOpener(event.currentTarget)}>모둠 지정</SelectionBarButton> : null}
                   <SelectionBarButton icon="trash" danger data-tour="student-bulk-delete" onClick={() => confirmDelete(`학생 ${selectedStudentIds.length}명을 삭제할까요?`, '삭제한 학생은 명단에서 사라져요. 거래 기록은 그대로 남아요.', deleteSelectedStudents)}>삭제</SelectionBarButton>
                 </SelectionBar>
               </section>
@@ -2951,6 +2970,17 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       {bulkGiveOpener ? (
         <BulkGiveDialog studentIds={selectedStudentIds} options={giveOptions} opener={bulkGiveOpener}
           onClose={() => setBulkGiveOpener(null)} notify={notify} />
+      ) : null}
+
+      {groupManagerOpener ? (
+        <StudentGroupManagerDialog groups={studentGroups.groups} change={studentGroups.change} opener={groupManagerOpener}
+          onClose={() => setGroupManagerOpener(null)} />
+      ) : null}
+
+      {groupAssignOpener && !groupManagerOpener ? (
+        <StudentGroupAssignDialog groups={studentGroups.groups} studentIds={selectedStudentIds} change={studentGroups.change} opener={groupAssignOpener}
+          onClose={() => setGroupAssignOpener(null)} onManage={(opener) => setGroupManagerOpener(opener)}
+          onDone={(message) => { setGroupAssignOpener(null); notify(message); }} />
       ) : null}
 
       {bulkBalanceOpen ? (

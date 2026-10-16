@@ -50,6 +50,8 @@ GRANT UPDATE (revoked_at) ON pet_decor TO crs_app_runtime;
 GRANT USAGE ON SEQUENCE pet_growth_event_sequence_seq TO crs_app_runtime;
 -- Padlet links (0054): the key, links and board summaries change in place; a used post is append-only.
 GRANT SELECT, INSERT, UPDATE, DELETE ON padlet_settings, task_padlet_links, padlet_board_syncs TO crs_app_runtime;
+-- 모둠 (0060): the teacher creates, renames and deletes groups; students.group_id is part of the students grant.
+GRANT SELECT, INSERT, UPDATE, DELETE ON student_groups TO crs_app_runtime;
 GRANT SELECT, INSERT ON padlet_post_uses TO crs_app_runtime;
 GRANT EXECUTE ON FUNCTION
   public.platform_find_tenant_by_slug(text),

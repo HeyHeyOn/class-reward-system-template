@@ -136,6 +136,8 @@ export const TENANT_ROUTE_INVENTORY: readonly TenantRouteInventoryEntry[] = [
   tenantMutation('/students/batch', 'DELETE'),
   tenantMutation('/students/batch', 'PATCH'),
   tenantMutation('/students/qr-reissue', 'POST'),
+  tenantRead('/student-groups'),
+  tenantMutation('/student-groups', 'POST'),
   tenantMutation('/students/bulk', 'PATCH'),
   tenantRead('/students/import/template'),
   tenantRead('/students/import/preview', 'POST'),

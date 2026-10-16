@@ -1,9 +1,9 @@
 // @vitest-environment node
 import { createHmac } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createPgliteDatabaseHarness, type PgliteDatabaseHarness } from '@/server/db/testing/pglite';
+import { installStudentGroups } from '@/server/db/testing/studentGroups';
+import { createStudentGroups } from '@/server/repositories/database/studentGroups';
 import { createStudentQrCodes } from '@/server/repositories/database/studentQrCodes';
 import { resolveStudentQr } from '@/server/studentQr';
 import { createLinkStore, parseLinkRequest, rosterVersion, studentNumber, verifyLinkSignature } from './links';
@@ -73,7 +73,7 @@ describe('the class answers for its own teacher only', () => {
 
   beforeAll(async () => {
     harness = await createPgliteDatabaseHarness();
-    await harness.database.exec(await readFile(resolve('src/server/db/migrations/0057_student_qr_codes.sql'), 'utf8'));
+    await installStudentGroups(harness);
     SLUGS.one = harness.tenantOneId;
     SLUGS.two = harness.tenantTwoId;
     await addStudent(harness.tenantOneId, '01', '가람');
@@ -103,6 +103,20 @@ describe('the class answers for its own teacher only', () => {
     const renamed = await store().roster(TEACHER, harness.tenantOneId);
     expect(renamed?.version).not.toBe(roster?.version);
     await harness.database.query("UPDATE students SET name='가람' WHERE tenant_id=$1 AND student_id='01'", [harness.tenantOneId]);
+  });
+
+  it('gives the class\'s 모둠 with the students in use, and a new version when a group changes', async () => {
+    const groups = createStudentGroups({ tenantId: harness.tenantOneId, runTenantTransaction: harness.runTenantTransaction, runTenantSnapshot: harness.runTenantTransaction });
+    const before = await store().roster(TEACHER, harness.tenantOneId);
+    const one = await groups.create('1모둠');
+    await groups.assign(one.id, ['01']);
+    const after = await store().roster(TEACHER, harness.tenantOneId);
+    expect(after?.groups).toEqual([{ id: one.id, name: '1모둠', students: ['01'] }]);
+    expect(after?.version).not.toBe(before?.version);
+    await groups.rename(one.id, '별빛');
+    expect((await store().roster(TEACHER, harness.tenantOneId))?.version).not.toBe(after?.version);
+    await groups.remove(one.id);
+    expect((await store().roster(TEACHER, harness.tenantOneId))?.version).toBe(before?.version);
   });
 
   it('checks a card by the store and bank rule: the current code of a student in use, in that class', async () => {

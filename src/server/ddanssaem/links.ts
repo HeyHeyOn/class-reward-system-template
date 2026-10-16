@@ -3,6 +3,7 @@ import 'server-only';
 import { createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import type { TenantTransaction } from '@/server/db/transaction';
+import { listStudentGroups, type StudentGroup } from '@/server/repositories/database/studentGroups';
 import { verifyBodySignature } from './hub';
 
 // App links (ddanssaem-hub/docs/app-links.md): the 딴쌤 board server asks the class server for a teacher's
@@ -65,11 +66,14 @@ export function studentNumber(studentId: string): number | null {
   return /^\d{1,9}$/.test(studentId) ? Number(studentId) : null;
 }
 
-/** Changes whenever a student is added, renamed, renumbered or rested: the board knows to read again. */
-export function rosterVersion(students: readonly LinkStudent[]): string {
-  const rows = [...students].sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
-    .map((student) => [student.id, student.number, student.name]);
-  return createHash('sha256').update(JSON.stringify(rows)).digest('hex').slice(0, 32);
+const byText = (left: string, right: string) => (left < right ? -1 : left > right ? 1 : 0);
+
+/** Changes whenever a student is added, renamed, renumbered or rested, or a 모둠 changes: the board reads again. */
+export function rosterVersion(students: readonly LinkStudent[], groups: readonly StudentGroup[] = []): string {
+  const rows = [...students].sort((left, right) => byText(left.id, right.id)).map((student) => [student.id, student.number, student.name]);
+  const groupRows = [...groups].sort((left, right) => byText(left.id, right.id))
+    .map((group) => [group.id, group.name, [...group.students].sort(byText)]);
+  return createHash('sha256').update(JSON.stringify(groupRows.length ? [rows, groupRows] : rows)).digest('hex').slice(0, 32);
 }
 
 type Membership = Readonly<{ slug: string; displayName: string; role: string; dashboard?: Readonly<{ deletedAt: string | null }> }>;
@@ -110,12 +114,13 @@ export function createLinkStore(dependencies: LinkStoreDependencies) {
       const classes = await teacherClasses(sub);
       return Promise.all(classes.map(async (item) => ({ ...item, students: (await activeStudents(item.id)).length })));
     },
-    /** The class and its students in use, or null when it is not this teacher's class (404). */
+    /** The class, its students in use and its 모둠 (app-links 5), or null when it is not this teacher's class (404). */
     async roster(sub: string, classId: string) {
       const found = await teacherClass(sub, classId);
       if (!found) return null;
       const students = await activeStudents(found.id);
-      return { class: found, students, groups: [] as const, version: rosterVersion(students) };
+      const groups = await dependencies.runTenantSnapshot(found.id, (tx) => listStudentGroups(tx, found.id));
+      return { class: found, students, groups, version: rosterVersion(students, groups) };
     },
     /** The student in use whose card this is (the store and bank rule), or null (404). */
     async cardStudent(sub: string, classId: string, card: string,
