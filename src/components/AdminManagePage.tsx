@@ -3240,6 +3240,6 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
 /* Presentational pieces                                               */
 /* ------------------------------------------------------------------ */
 
-function isSuccessNotice(text: string) {
-  return /완료|저장했|추가했|심었어요|줬어요|수확했어요|넣었어요|회수했어요/.test(text) && !/실패|못했|불확실|거절|확인해 주세요|미저장|새로고침/.test(text);
+export function isSuccessNotice(text: string) {
+  return /완료|저장했|추가했|심었어요|줬어요|수확했어요|넣었어요|회수했어요|연결했어요|연결을 끊었어요/.test(text) && !/실패|못했|불확실|거절|확인해 주세요|미저장|새로고침/.test(text);
 }

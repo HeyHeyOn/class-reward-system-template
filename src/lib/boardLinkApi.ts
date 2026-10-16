@@ -13,7 +13,7 @@ export type BoardChoiceDto = Readonly<{
 
 export type BoardLinkStatusDto = Readonly<{ enabled: boolean; boards: readonly BoardChoiceDto[] }>;
 
-export const BOARD_FORMAT_LABELS: Readonly<Record<BoardFormat, string>> = { mini: '담벼락', group: '그룹', quiz: '퀴즈', survey: '설문' };
+export const BOARD_FORMAT_LABELS: Readonly<Record<BoardFormat, string>> = { mini: '미니 보드', group: '그룹 보드', quiz: '퀴즈', survey: '설문' };
 
 /** What a student does on the board for the task to count: a post, or a submission on a quiz or survey. */
 export function boardActionText(format: BoardFormat): string {

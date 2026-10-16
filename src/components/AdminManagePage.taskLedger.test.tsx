@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { AdminManagePage } from './AdminManagePage';
+import { AdminManagePage, isSuccessNotice } from './AdminManagePage';
 import { openAdminMenu } from './testing/adminUi';
 import { LedgerServer, makeTask, SLUG, STUDENTS } from './tasks/ledger/ledgerTestServer';
 
@@ -105,5 +105,14 @@ describe('tenant task screen gating', () => {
     expect(await screen.findByText('학생 1명의 단계를 저장했어요.')).toBeTruthy();
     expect(setItem).not.toHaveBeenCalled();
     expect(legacyTaskRequests()).toEqual([]);
+  });
+});
+
+describe('notice tone', () => {
+  it('shows linking and unlinking a board as done, and a failure as a warning', () => {
+    expect(isSuccessNotice('딴쌤 보드 ‘점검 그룹’에 연결했어요.')).toBe(true);
+    expect(isSuccessNotice('과제 2개를 패들렛 ‘칭찬 게시판’에 연결했어요.')).toBe(true);
+    expect(isSuccessNotice('딴쌤 보드 연결을 끊었어요. 이미 바뀐 단계는 그대로예요.')).toBe(true);
+    expect(isSuccessNotice('딴쌤 보드에 연결하지 못했어요. 조금 뒤에 다시 확인해요.')).toBe(false);
   });
 });
