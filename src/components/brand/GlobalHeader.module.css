@@ -159,6 +159,9 @@
 .popoverItem[aria-current='page'] { background: #F2F3F5; font-weight: 800; }
 .popoverItem:disabled { cursor: default; color: #5C6370; }
 .popoverNote { padding: 8px 12px 6px; font-size: 13px; color: #5C6370; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.popoverWho { padding: 8px 12px 8px; margin-bottom: 2px; border-bottom: 1px solid #E6E7EA; max-width: 260px; }
+.popoverName { font-size: 14px; font-weight: 800; color: #2B2D31; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.popoverEmail { margin-top: 2px; font-size: 13px; color: #5C6370; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .student {
   display: inline-flex;
@@ -187,7 +190,7 @@
 
 .logoWide { display: inline-flex; }
 .logoCompact { display: none; }
-.avatar svg { width: 100%; height: 100%; }
+.avatarImage { display: block; width: 100%; height: 100%; object-fit: cover; }
 
 @media (max-width: 767px) {
   .bar { padding: 8px 8px 8px 16px; gap: 8px; }

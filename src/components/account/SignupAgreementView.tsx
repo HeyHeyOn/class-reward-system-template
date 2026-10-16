@@ -80,7 +80,7 @@ export function SignupAgreementView({ mode, email, changes, classNames, expected
           )}
         </div>
       </section>
-      <SiteFooter className="mt-6 w-full max-w-lg px-1 text-[11px] text-[var(--theme-muted-text)]" />
+      <SiteFooter className="mt-6 w-full" />
     </main>
   );
 }

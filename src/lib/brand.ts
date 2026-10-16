@@ -13,3 +13,7 @@ export const TOOLS_URL = `${HUB_URL}/#tools`;
 /** The terms and privacy policy are the 딴쌤 hub's, one for every 딴쌤 app (in force from 2026-10-16). */
 export const TERMS_URL = `${HUB_URL}/terms`;
 export const PRIVACY_URL = `${HUB_URL}/privacy`;
+
+/** The footer, as the hub's: the operator and where to write (ddanssaem-brand README '공통 부품'). */
+export const OPERATOR_NAME = '환잇쌤';
+export const CONTACT_EMAIL = 'hwanit1105@gmail.com';

@@ -43,7 +43,7 @@ async function state(tenant:string) {
 suite('class dashboard on native PostgreSQL', () => {
   beforeAll(async () => {
     expect(process.env.DATABASE_URL).toBeUndefined(); db=await createDisposablePostgres();
-    await db.owner.query(`GRANT EXECUTE ON FUNCTION platform_list_class_dashboard(text),
+    await db.owner.query(`GRANT EXECUTE ON FUNCTION platform_list_class_dashboard(text),platform_list_class_dashboard_v2(text),
       platform_manage_class_authenticated(uuid,text,text,text,text,bigint,uuid,uuid,text),platform_list_memberships_by_google_subject(text),
       platform_purge_class_authenticated(uuid,text,text,text,bigint,uuid,uuid,text),
       platform_find_tenant_by_slug(text) TO app_runtime;

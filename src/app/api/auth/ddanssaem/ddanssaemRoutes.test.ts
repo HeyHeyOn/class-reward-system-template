@@ -6,7 +6,7 @@ import type { ClassMembership } from '@/server/repositories/database/classMember
 vi.mock('server-only', () => ({}));
 
 const mocks = vi.hoisted(() => ({
-  store: { begin: vi.fn(), endSessions: vi.fn(), accountDeleted: vi.fn() },
+  store: { begin: vi.fn(), endSessions: vi.fn(), accountDeleted: vi.fn(), profile: vi.fn(), profileUpdated: vi.fn() },
   listByGoogleSubject: vi.fn(),
   endRequestTeacherSessions: vi.fn(),
 }));
@@ -25,6 +25,7 @@ vi.mock('@/server/teacherSession', async (importOriginal) => ({
 import { NextResponse } from 'next/server';
 import { GOOGLE_AUTH_COOKIE, getGoogleSessionFromRequest, setGoogleSessionCookie } from '@/server/googleOAuth';
 import { HUB_LOGIN_COOKIE } from '@/server/ddanssaem/hub';
+import { defaultAvatarFor } from '@/components/profile/avatar';
 import { hubSummary } from '@/server/ddanssaem/hubAccounts';
 import { GET as start } from './start/route';
 import { GET as callback } from './callback/route';
@@ -63,13 +64,15 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock);
   vi.spyOn(console, 'error').mockImplementation(() => undefined);
   mocks.store.begin.mockResolvedValue(BINDING);
+  mocks.store.profile.mockResolvedValue(null);
 });
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   fetchMock.mockReset();
-  for (const mock of [mocks.store.begin, mocks.store.endSessions, mocks.store.accountDeleted, mocks.listByGoogleSubject, mocks.endRequestTeacherSessions]) mock.mockReset();
+  for (const mock of [mocks.store.begin, mocks.store.endSessions, mocks.store.accountDeleted, mocks.store.profile, mocks.store.profileUpdated,
+    mocks.listByGoogleSubject, mocks.endRequestTeacherSessions]) mock.mockReset();
 });
 
 async function startLogin(next = '/c/alpha/admin') {
@@ -112,11 +115,50 @@ describe('딴쌤 sign-in routes', () => {
     expect(response.status).toBe(307);
     expect(response.headers.get('location')).toBe(`${ORIGIN}/c/alpha/admin`);
     expect(mocks.endRequestTeacherSessions).toHaveBeenCalledOnce();
-    expect(mocks.store.begin).toHaveBeenCalledWith({ sub: '1234567890', email: 'teacher@example.com', name: '별빛쌤', termsVersion: '2026-12-05', sid: 'hub-sid-1' });
+    const fallback = defaultAvatarFor('1234567890');
+    expect(mocks.store.begin).toHaveBeenCalledWith({ sub: '1234567890', email: 'teacher@example.com', name: '별빛쌤', termsVersion: '2026-12-05', sid: 'hub-sid-1', icon: null },
+      { avatar: fallback, avatarUrl: `https://beta.ddanssaem.com/api/avatar/${[fallback.background, fallback.face, fallback.eyes, fallback.mouth, fallback.accessory].join('.')}.svg`, fromHub: false });
     expect(cookieFrom(response, HUB_LOGIN_COOKIE)).toBe('');
     const session = getGoogleSessionFromRequest(new Request(ORIGIN, { headers: { cookie: `${GOOGLE_AUTH_COOKIE}=${cookieFrom(response, GOOGLE_AUTH_COOKIE)}` } }));
     expect(session).toMatchObject({ subject: '1234567890', email: 'teacher@example.com', name: '별빛쌤', agreement: 'hub', ...BINDING, hubSid: 'hub-sid-1' });
     expect(response.headers.getSetCookie().some((line) => /^class_store_dd_tried=;.*Max-Age=0/i.test(line))).toBe(true);
+  });
+
+  it('keeps the 딴쌤 account icon, handing an icon picked in the class to the hub once first (9-3, 9-4)', async () => {
+    const hubIcon = { v: 1, background: 'mint', face: 'cat', eyes: 'basic', mouth: 'smile', accessory: 'none' };
+    const picked = { v: 1 as const, background: 'yellow', face: 'bear', eyes: 'basic', mouth: 'smile', accessory: 'glasses' };
+    const withIcon = { ...PROFILE, avatar: JSON.stringify(hubIcon), avatar_url: 'https://beta.ddanssaem.com/api/avatar/mint.cat.basic.smile.none.svg' };
+    // A teacher whose icon already follows the hub: the hub's icon, nothing sent.
+    mocks.store.profile.mockResolvedValueOnce({ nickname: '별빛쌤', avatar: picked, avatarUrl: 'https://x.example/a.svg', avatarFromHub: true });
+    let login = await startLogin();
+    fetchMock.mockResolvedValueOnce(Response.json(withIcon));
+    await back(`code=c1&state=${login.state}`, login.cookie);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(mocks.store.begin.mock.calls[0][1]).toEqual({ avatar: hubIcon, avatarUrl: withIcon.avatar_url, fromHub: true });
+    // An icon picked in the class that has not reached the hub: sent signed, and kept when the hub stored it.
+    mocks.store.profile.mockResolvedValueOnce({ nickname: '별빛쌤', avatar: picked, avatarUrl: null, avatarFromHub: false });
+    login = await startLogin();
+    fetchMock.mockResolvedValueOnce(Response.json(withIcon)).mockResolvedValueOnce(Response.json({ stored: true }));
+    await back(`code=c2&state=${login.state}`, login.cookie);
+    const [url, init] = fetchMock.mock.calls[2] as [string, RequestInit & { headers: Record<string, string> }];
+    expect(url).toBe('https://beta.ddanssaem.com/api/ddanssaem/avatar-import');
+    expect(init.headers['x-ddanssaem-client']).toBe('class');
+    expect(init.headers['x-ddanssaem-signature']).toBe(createHmac('sha256', SECRET).update(String(init.body)).digest('hex'));
+    expect(JSON.parse(String(init.body))).toMatchObject({ sub: '1234567890', avatar: JSON.stringify(picked), iat: expect.any(Number) });
+    expect(mocks.store.begin.mock.calls[1][1]).toEqual({ avatar: picked,
+      avatarUrl: 'https://beta.ddanssaem.com/api/avatar/yellow.bear.basic.smile.glasses.svg', fromHub: true });
+    // The hub already had its own icon: that one wins. The hub unreachable: the class's stays, to send next time.
+    mocks.store.profile.mockResolvedValueOnce({ nickname: '별빛쌤', avatar: picked, avatarUrl: null, avatarFromHub: false });
+    login = await startLogin();
+    fetchMock.mockResolvedValueOnce(Response.json(withIcon)).mockResolvedValueOnce(Response.json({ stored: false }));
+    await back(`code=c3&state=${login.state}`, login.cookie);
+    expect(mocks.store.begin.mock.calls[2][1]).toEqual({ avatar: hubIcon, avatarUrl: withIcon.avatar_url, fromHub: true });
+    mocks.store.profile.mockResolvedValueOnce({ nickname: '별빛쌤', avatar: picked, avatarUrl: null, avatarFromHub: false });
+    login = await startLogin();
+    fetchMock.mockResolvedValueOnce(Response.json(withIcon)).mockResolvedValueOnce(new Response('', { status: 503 }));
+    const response = await back(`code=c4&state=${login.state}`, login.cookie);
+    expect(response.headers.get('location')).toBe(`${ORIGIN}/c/alpha/admin`);
+    expect(mocks.store.begin.mock.calls[3][1]).toMatchObject({ avatar: picked, fromHub: false });
   });
 
   it('asks the hub quietly with prompt=none, and once with a prompt when the hub answers that it cannot', async () => {
@@ -179,6 +221,20 @@ describe('the hub signed events', () => {
     const response = await events(signed('/api/auth/ddanssaem/events', { type: 'account_deleted', sub: '1234567890', iat: iat() }));
     expect(await response.json()).toEqual({ ok: true, closedClasses: 1 });
     expect(mocks.store.accountDeleted).toHaveBeenCalledWith('1234567890');
+  });
+
+  it('take the new name and icon of a 딴쌤 account the class keeps (9-3)', async () => {
+    const icon = { v: 1, background: 'mint', face: 'cat', eyes: 'basic', mouth: 'smile', accessory: 'none' };
+    const event = { type: 'profile_updated', sub: '1234567890', name: '새이름쌤', avatar: JSON.stringify(icon),
+      avatar_url: 'https://beta.ddanssaem.com/api/avatar/mint.cat.basic.smile.none.svg', iat: iat() };
+    mocks.store.profile.mockResolvedValueOnce(null);
+    expect(await (await events(signed('/api/auth/ddanssaem/events', event))).json()).toEqual({ ok: true, updated: false });
+    expect(mocks.store.profileUpdated).not.toHaveBeenCalled();
+    mocks.store.profile.mockResolvedValueOnce({ nickname: '별빛쌤', avatar: icon, avatarUrl: null, avatarFromHub: true });
+    mocks.store.profileUpdated.mockResolvedValueOnce(true);
+    expect(await (await events(signed('/api/auth/ddanssaem/events', event))).json()).toEqual({ ok: true, updated: true });
+    expect(mocks.store.profileUpdated).toHaveBeenCalledWith('1234567890', '새이름쌤', { avatar: icon, avatarUrl: event.avatar_url, fromHub: true });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('refuse unsigned, stale or unknown events, and ask the hub to retry when the database fails', async () => {

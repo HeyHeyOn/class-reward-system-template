@@ -39,7 +39,7 @@ export default async function TenantAdminSubroute({
     case 'manage': {
       const session = teacherAccountsEnabled() ? access?.session : null;
       const account = session ? await loadTeacherAccountView(session) : undefined;
-      return <AdminManagePage migrationsHref={access?.membership ? `/c/${access.tenant.slug}/admin/migrations` : undefined} account={account?.profile} />;
+      return <AdminManagePage migrationsHref={access?.membership ? `/c/${access.tenant.slug}/admin/migrations` : undefined} account={account?.header} />;
     }
     case 'settings':
       redirect(`/c/${slug}/admin`);

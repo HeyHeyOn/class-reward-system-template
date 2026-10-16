@@ -8,6 +8,7 @@ import {
 import { Icon, type IconName } from './icons';
 
 export { Icon, type IconName } from './icons';
+export { MoreMenu, type MoreMenuItem } from './MoreMenu';
 
 /* ------------------------------------------------------------------ */
 /* Class helpers                                                       */

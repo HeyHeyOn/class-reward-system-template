@@ -34,7 +34,7 @@ function count(value: unknown) {
 }
 export function createClassDashboardRepository(db: Queryable): ClassMembershipRepository {
   return { async listByGoogleSubject(subject) {
-    const { rows } = await db.query('SELECT * FROM public.platform_list_class_dashboard($1)', [subject]);
+    const { rows } = await db.query('SELECT * FROM public.platform_list_class_dashboard_v2($1)', [subject]);
     return rows.map(row => {
       const slug = parseTenantSlug(row.slug);
       if (slug.needsRedirect || typeof row.display_name !== 'string' || !row.display_name.trim()
@@ -44,6 +44,7 @@ export function createClassDashboardRepository(db: Queryable): ClassMembershipRe
         lifecycle: row.lifecycle as TenantLifecycle, dashboard: {
           deletedAt: row.deleted_at === null ? null : instant(row.deleted_at),
           managementVersion: row.management_version, createdAt: instant(row.created_at),
+          ...(row.last_activity_at == null ? {} : { lastActivityAt: instant(row.last_activity_at) }),
           studentCount: count(row.student_count), productCount: count(row.product_count), taskCount: count(row.task_count),
         } };
     });

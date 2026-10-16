@@ -47,6 +47,19 @@ describe('GlobalHeader', () => {
     expect(button.getAttribute('aria-expanded')).toBe('false');
   });
 
+  it('draws the 딴쌤 account icon and offers the name, the e-mail, 딴쌤 계정 and sign-out', () => {
+    render(<GlobalHeader audience="teacher" account={{ nickname: '햇살쌤', email: 'sun@example.test',
+      avatarUrl: 'https://ddanssaem.com/api/avatar/sky.bear.smile.smile.none.svg', accountUrl: 'https://ddanssaem.com/account' }} />);
+    const button = screen.getByRole('button', { name: '계정 메뉴' });
+    expect(button.querySelector('img')?.getAttribute('src')).toBe('https://ddanssaem.com/api/avatar/sky.bear.smile.smile.none.svg');
+    fireEvent.click(button);
+    expect(screen.getByText('햇살쌤', { selector: 'p' })).toBeTruthy();
+    expect(screen.getByText('sun@example.test')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '딴쌤 계정' }).getAttribute('href')).toBe('https://ddanssaem.com/account');
+    expect(screen.queryByRole('link', { name: '내 프로필' })).toBeNull();
+    expect(screen.getByRole('button', { name: '로그아웃' })).toBeTruthy();
+  });
+
   it('puts the menu behind ☰ on a phone', () => {
     render(<GlobalHeader audience="teacher" account={null} />);
     fireEvent.click(screen.getByRole('button', { name: '메뉴' }));

@@ -26,9 +26,8 @@ async function currentTeacher(): Promise<HeaderAccount | null> {
   try {
     const session = await getTeacherGoogleSessionFromRequest(new Request('http://classes.internal/', { headers: await headers() }));
     if (!session) return null;
-    if (!teacherAccountsEnabled()) return { nickname: session.name || session.email };
-    const { profile } = await loadTeacherAccountView(session);
-    return { nickname: profile.nickname, avatar: profile.avatar };
+    if (!teacherAccountsEnabled()) return { nickname: session.name || session.email, email: session.email };
+    return (await loadTeacherAccountView(session)).header;
   } catch (error) {
     // The header never breaks the page under it; it shows the signed-out state instead.
     console.error('[header] teacher could not be read', error instanceof Error ? error.message : 'unknown');

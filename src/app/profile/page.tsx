@@ -7,7 +7,7 @@ import { followHubSignIn } from '@/server/ddanssaem/teacherGate';
 import { LEGAL_REVISIONS } from '@/lib/legalDocuments';
 import { getTeacherGoogleSessionFromRequest } from '@/server/teacherSession';
 import { getProductionClassDashboardRepository } from '@/server/repositories/database/classDashboard';
-import { getProductionTeacherAccountStore, legalNoticeFor, resolveTeacherProfile, teacherAccountsEnabled } from '@/server/teacherAccounts';
+import { getProductionTeacherAccountStore, headerAccountFor, legalNoticeFor, resolveTeacherProfile, teacherAccountsEnabled } from '@/server/teacherAccounts';
 
 export const metadata = { title: '내 프로필' };
 export const dynamic = 'force-dynamic';
@@ -26,6 +26,8 @@ export default async function ProfilePage() {
   const session = await getTeacherGoogleSessionFromRequest(new Request('http://classes.internal/profile', { headers: requestHeaders }), { requireAgreement: false });
   followHubSignIn('/profile', session, requestHeaders.get('cookie'));
   if (!session) redirect('/classes');
+  // With the 딴쌤 hub the name, icon, terms and withdrawal all live on the hub's '내 계정' (account-protocol 9).
+  if (hubLoginEnabled()) redirect(hubAccountUrl());
   const accounts = getProductionTeacherAccountStore();
   const [stored, agreement, memberships] = await Promise.all([
     accounts.getProfile(session.subject),
@@ -36,14 +38,13 @@ export default async function ProfilePage() {
   const profile = resolveTeacherProfile(session, stored);
   return (
     <>
-    <TeacherHeader account={{ nickname: profile.nickname, avatar: profile.avatar }} />
+    <TeacherHeader account={headerAccountFor(session, profile)} />
     <ProfileView model={{
       email: session.email,
       profile,
       agreement: agreement && effectiveLabel ? { effectiveLabel, agreedAtLabel: seoulDateTime(agreement.agreedAt) } : null,
       classNames: memberships.filter((membership) => membership.role === 'OWNER').map((membership) => membership.displayName),
       notice: legalNoticeFor(session),
-      ...(hubLoginEnabled() ? { hubAccountUrl: hubAccountUrl() } : {}),
     }} />
     </>
   );

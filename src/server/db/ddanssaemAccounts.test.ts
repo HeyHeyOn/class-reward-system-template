@@ -131,3 +131,39 @@ describe('딴쌤 accounts (0058)', () => {
     await expect(call("UPDATE teacher_auth_sessions SET hub_sid='x'", [])).rejects.toThrow();
   });
 });
+
+describe('딴쌤 account name and icon, and the class list activity (0062)', () => {
+  const URL_A = 'https://ddanssaem.com/api/avatar/sky.bear.smile.smile.none.svg';
+  const URL_B = 'https://ddanssaem.com/api/avatar/mint.cat.basic.smile.none.svg';
+  const profile = async (subject: string) => call('SELECT * FROM platform_get_hub_profile($1)', [subject]);
+
+  it('keeps the hub name, icon and picture at each sign-in and takes profile_updated, for a teacher it keeps only', async () => {
+    const subject = `hub-${randomUUID()}`;
+    const session = (await call<Session>('SELECT * FROM platform_begin_hub_teacher_session($1,$2,$3,$4,$5::jsonb,$6,$7)',
+      [subject, '2026-12-05', 'sid-icon', '별빛쌤', AVATAR, URL_A, false]))[0];
+    expect(await valid(subject, session)).toBe(true);
+    expect(await profile(subject)).toEqual([{ nickname: '별빛쌤', avatar: JSON.parse(AVATAR), avatar_url: URL_A, avatar_from_hub: false }]);
+    await call('SELECT * FROM platform_begin_hub_teacher_session($1,$2,$3,$4,$5::jsonb,$6,$7)', [subject, '2026-12-05', 'sid-icon-2', '달빛쌤', '{"face":"cat"}', URL_B, true]);
+    expect(await profile(subject)).toEqual([{ nickname: '달빛쌤', avatar: { face: 'cat' }, avatar_url: URL_B, avatar_from_hub: true }]);
+    const updated = (sub: string) => call<{ updated: boolean }>('SELECT platform_hub_profile_updated($1,$2,$3::jsonb,$4,$5) AS updated',
+      [sub, '햇살쌤', AVATAR, URL_A, true]);
+    expect((await updated(subject))[0].updated).toBe(true);
+    expect(await profile(subject)).toEqual([{ nickname: '햇살쌤', avatar: JSON.parse(AVATAR), avatar_url: URL_A, avatar_from_hub: true }]);
+    expect((await updated(`hub-${randomUUID()}`))[0].updated).toBe(false);
+    await expect(call('SELECT platform_hub_profile_updated($1,$2,$3::jsonb,$4,$5)', [subject, '햇살쌤', AVATAR, 'javascript:alert(1)', true]))
+      .rejects.toThrow(/user_profiles_avatar_url_check/);
+    // The 5-argument sign-in of the build being replaced still works and keeps the icon.
+    await begin(subject, 'sid-old');
+    expect(await profile(subject)).toEqual([{ nickname: '별빛쌤', avatar: JSON.parse(AVATAR), avatar_url: URL_A, avatar_from_hub: true }]);
+  });
+
+  it('lists the teacher\'s classes with when each was last active', async () => {
+    const subject = `hub-${randomUUID()}`;
+    const session = await begin(subject, 'sid-list');
+    await call('SELECT * FROM platform_create_draft_class_authenticated($1,$2,$3,$4,$5,$6,$7)',
+      [randomUUID(), subject, `${session.session_id}@example.test`, '활동 학급', session.generation, session.session_id, 'hub']);
+    const rows = await call<{ display_name: string; created_at: Date; last_activity_at: Date }>('SELECT * FROM platform_list_class_dashboard_v2($1)', [subject]);
+    expect(rows.map((row) => row.display_name)).toEqual(['활동 학급']);
+    expect(new Date(rows[0].last_activity_at).getTime()).toBeGreaterThanOrEqual(new Date(rows[0].created_at).getTime());
+  });
+});

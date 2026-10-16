@@ -11,6 +11,8 @@ export type ClassMembership = Readonly<{
   lifecycle: TenantLifecycle;
   dashboard?: Readonly<{
     deletedAt: string | null; managementVersion: string; createdAt: string;
+    /** The latest of creation, the class's own changes, its transactions and operations (최근 활동순). */
+    lastActivityAt?: string;
     studentCount: number; productCount: number; taskCount: number;
   }>;
 }>;

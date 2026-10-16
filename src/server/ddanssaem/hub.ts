@@ -1,10 +1,11 @@
 import 'server-only';
 
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { AVATAR_PART_KEYS, parseAvatarJson, type AvatarConfig } from '@/components/profile/avatar';
 
 // The 딴쌤 hub protocol (ddanssaem-hub/docs/account-protocol.md) from the class's side: sign-in through the
 // hub with a one-time code and PKCE (1), the hub's signed logout and account-deleted events (2, 3) and the
-// summary of a teacher's classes (4). DDANSSAEM_HUB_URL and DDANSSAEM_CLIENT_SECRET answer the hub's calls (2, 3, 4);
+// summary of a teacher's classes (4), and the 딴쌤 account's name and icon (9). DDANSSAEM_HUB_URL and DDANSSAEM_CLIENT_SECRET answer the hub's calls (2, 3, 4);
 // DDANSSAEM_LOGIN=1 then moves sign-in to the hub (1). Until then the Google sign-in stays.
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -111,7 +112,27 @@ export function openHubLogin(cookie: string | undefined, env: Env = process.env,
 }
 
 /** What the hub tells the class about the teacher who signed in (1-3). */
-export type HubProfile = Readonly<{ sub: string; email: string; name: string; termsVersion: string; sid: string }>;
+/** 9-1: the 딴쌤 account icon, its value and the hub's picture address for it. */
+export type HubIcon = Readonly<{ avatar: AvatarConfig; avatarUrl: string }>;
+export type HubProfile = Readonly<{ sub: string; email: string; name: string; termsVersion: string; sid: string; icon: HubIcon | null }>;
+
+const AVATAR_URL = /^https?:\/\/[^\s"'<>]+$/;
+
+/** 9-1, 9-2: the icon a sign-in or an event carries (`avatar` is the value's JSON text), or null. */
+export function parseHubIcon(avatar: unknown, avatarUrl: unknown): HubIcon | null {
+  const config = parseAvatarJson(avatar);
+  if (!config || typeof avatarUrl !== 'string' || avatarUrl.length > 400 || !AVATAR_URL.test(avatarUrl)) return null;
+  return { avatar: config, avatarUrl };
+}
+
+/** 9-2: the hub's picture for an icon value, for an icon the hub has not sent an address for. Null without a hub. */
+export function hubAvatarUrl(config: AvatarConfig, env: Env = process.env): string | null {
+  try {
+    return `${hubOrigin(env)}/api/avatar/${AVATAR_PART_KEYS.map((part) => encodeURIComponent(config[part])).join('.')}.svg`;
+  } catch {
+    return null;
+  }
+}
 
 function text(value: unknown, max: number): string | null {
   return typeof value === 'string' && value === value.trim() && value.length >= 1 && value.length <= max ? value : null;
@@ -126,7 +147,7 @@ export function parseHubProfile(value: unknown): HubProfile | null {
   const termsVersion = typeof body.terms_version === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.terms_version) ? body.terms_version : null;
   const sid = text(body.sid, 200);
   if (!sub || sub.startsWith('withdrawn:') || !email || !email.includes('@') || !termsVersion || !sid) return null;
-  return { sub, email, name, termsVersion, sid };
+  return { sub, email, name, termsVersion, sid, icon: parseHubIcon(body.avatar, body.avatar_url) };
 }
 
 /** 1-3: the server trades the one-time code (with the PKCE verifier) for the teacher's profile. */
@@ -181,9 +202,10 @@ function parseObject(body: string): Record<string, unknown> | null {
   }
 }
 
-export type HubEvent = Readonly<{ type: 'logout'; sid: string }> | Readonly<{ type: 'account_deleted'; sub: string }>;
+export type HubEvent = Readonly<{ type: 'logout'; sid: string }> | Readonly<{ type: 'account_deleted'; sub: string }>
+  | Readonly<{ type: 'profile_updated'; sub: string; name: string; icon: HubIcon | null }>;
 
-/** 2-2, 3: a signed event less than five minutes old. */
+/** 2-2, 3, 9-3: a signed event less than five minutes old. */
 export function parseHubEvent(body: string, now = Date.now()): HubEvent | null {
   const event = parseObject(body);
   if (!event || !recent(event.iat, now)) return null;
@@ -195,7 +217,38 @@ export function parseHubEvent(body: string, now = Date.now()): HubEvent | null {
     const sub = text(event.sub, 255);
     return sub && !sub.startsWith('withdrawn:') ? { type: 'account_deleted', sub } : null;
   }
+  if (event.type === 'profile_updated') {
+    const sub = text(event.sub, 255);
+    const name = typeof event.name === 'string' ? event.name.trim().slice(0, 100) : '';
+    return sub && !sub.startsWith('withdrawn:') ? { type: 'profile_updated', sub, name, icon: parseHubIcon(event.avatar, event.avatar_url) } : null;
+  }
   return null;
+}
+
+export const HUB_AVATAR_IMPORT_TIMEOUT_MS = 3_000;
+export type AvatarImportResult = 'stored' | 'kept' | 'unknown';
+
+/**
+ * 9-4: hand an icon the teacher picked in the class to the hub, once. The hub keeps it only when the account has
+ * none of its own ('stored'); 'kept' when it has one, 'unknown' for no such account. Throws when the hub cannot answer.
+ */
+export async function importHubAvatar(sub: string, avatar: AvatarConfig, env: Env = process.env, fetchImpl: typeof fetch = fetch,
+  now = Date.now()): Promise<AvatarImportResult> {
+  const body = JSON.stringify({ iat: Math.floor(now / 1000), sub, avatar: JSON.stringify(avatar) });
+  const response = await fetchImpl(new URL('/api/ddanssaem/avatar-import', hubOrigin(env)).toString(), {
+    method: 'POST', body, cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(HUB_AVATAR_IMPORT_TIMEOUT_MS),
+    headers: {
+      'content-type': 'application/json', 'x-ddanssaem-client': HUB_CLIENT_ID,
+      [HUB_SIGNATURE_HEADER]: createHmac('sha256', clientSecret(env)).update(body, 'utf8').digest('hex'),
+    },
+  });
+  if (response.status === 404) return 'unknown';
+  if (!response.ok) throw new HubError('UNAVAILABLE', `The hub answered ${response.status} to the icon import.`);
+  const reply: unknown = await response.json().catch(() => null);
+  if (!reply || typeof reply !== 'object' || typeof (reply as { stored?: unknown }).stored !== 'boolean') {
+    throw new HubError('UNAVAILABLE', 'The hub answered the icon import without a result.');
+  }
+  return (reply as { stored: boolean }).stored ? 'stored' : 'kept';
 }
 
 /** 4: whose classes the hub asks about. */

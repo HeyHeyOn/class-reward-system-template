@@ -123,7 +123,7 @@ export function TaskHistoryDialog({
       <section ref={dialogRef} role="dialog" aria-modal="true" aria-label="과제 기록" onKeyDown={handleKeyDown} style={semantic.variables} className={`flex max-h-[92dvh] w-full max-w-2xl flex-col rounded-t-[22px] border ${semantic.border} ${semantic.surface} ${semantic.text} shadow-[var(--crs-shadow-lg)] sm:rounded-[22px]`}>
         <div className="flex items-start justify-between gap-3 border-b border-[var(--crs-line)] px-4 pb-4 pt-5 sm:px-6">
           <div className="min-w-0"><h2 className="text-lg font-black tracking-[-0.025em]">과제 기록</h2><p className={`mt-0.5 truncate text-[13px] ${semantic.mutedText}`}>{history.title} ({history.taskId})</p></div>
-          <button ref={closeRef} type="button" onClick={onClose} className={`h-9 shrink-0 rounded-[10px] border ${semantic.border} ${semantic.surfaceRaised} px-3.5 text-sm font-bold ${semantic.text} focus:outline-none focus:ring-2 ${semantic.ring}`}>닫기</button>
+          <button ref={closeRef} type="button" aria-label="닫기" onClick={onClose} className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] ${semantic.mutedText} hover:bg-[var(--crs-subtle)] focus:outline-none focus:ring-2 ${semantic.ring}`}><Icon name="close" size={18} /></button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">
           {history.loading ? <p role="status" aria-label="과제 기록 불러오는 중" className={`rounded-[14px] ${semantic.surfaceRaised} p-6 text-center text-sm font-semibold ${semantic.mutedText}`}>기록을 불러오는 중이에요.</p> : null}

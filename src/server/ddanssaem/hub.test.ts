@@ -13,6 +13,7 @@ import {
   safeNextPath,
   startHubLogin,
   verifyHubSignature,
+  hubAvatarUrl, parseHubIcon,
 } from './hub';
 
 vi.mock('server-only', () => ({}));
@@ -65,7 +66,7 @@ describe('signing in through the hub', () => {
   it('trades the code server to server with the secret and the verifier, and reads the teacher', async () => {
     const fetchImpl = vi.fn(async () => Response.json(profile));
     await expect(exchangeHubCode({ origin, code: 'code-1', verifier: 'verifier-1' }, env, fetchImpl as never)).resolves.toEqual({
-      sub: '1234567890', email: 'teacher@example.com', name: '별빛쌤', termsVersion: '2026-12-05', sid: 'hub-sid-1',
+      sub: '1234567890', email: 'teacher@example.com', name: '별빛쌤', termsVersion: '2026-12-05', sid: 'hub-sid-1', icon: null,
     });
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe('https://beta.ddanssaem.com/api/token');
@@ -121,5 +122,21 @@ describe('the hub signed calls', () => {
   it('reads whose summary is asked for', () => {
     expect(parseSummaryRequest(JSON.stringify({ sub: '1234567890', iat }), now)).toEqual({ sub: '1234567890' });
     expect(parseSummaryRequest(JSON.stringify({ sub: '1234567890', iat: iat + 400 }), now)).toBeNull();
+  });
+});
+
+describe('the 딴쌤 account icon (9)', () => {
+  const icon = { v: 1, background: 'mint', face: 'cat', eyes: 'basic', mouth: 'smile', accessory: 'none' };
+  it('reads the icon value and its picture address, and refuses anything else', () => {
+    const url = 'https://ddanssaem.com/api/avatar/mint.cat.basic.smile.none.svg';
+    expect(parseHubIcon(JSON.stringify(icon), url)).toEqual({ avatar: icon, avatarUrl: url });
+    expect(parseHubIcon(JSON.stringify({ ...icon, face: 'dragon' }), url)).toBeNull();
+    expect(parseHubIcon(JSON.stringify(icon), 'javascript:alert(1)')).toBeNull();
+    expect(parseHubIcon(JSON.stringify(icon), 'https://x.example/"onerror="a.svg')).toBeNull();
+    expect(parseHubIcon(icon, url)).toBeNull();
+  });
+  it('builds the hub picture address for an icon the hub sent none for, or none without a hub', () => {
+    expect(hubAvatarUrl(icon as never, { DDANSSAEM_HUB_URL: 'https://beta.ddanssaem.com/' })).toBe('https://beta.ddanssaem.com/api/avatar/mint.cat.basic.smile.none.svg');
+    expect(hubAvatarUrl(icon as never, {})).toBeNull();
   });
 });

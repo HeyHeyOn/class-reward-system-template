@@ -69,6 +69,6 @@ export async function isCurrentTeacherSession(session: Pick<GoogleSession, 'subj
     && await (queryable ? createTeacherSessionStore(queryable) : getProductionTeacherSessionStore()).valid(session, false, version);
 }
 
-export async function saveTeacherProfile(identity: Identity, profile: TeacherProfile) {
+export async function saveTeacherProfile(identity: Identity, profile: Pick<TeacherProfile, 'nickname' | 'avatar'>) {
   return getProductionTeacherSessionStore().mutate(identity, 'PROFILE', { ...profile, version: requiredAgreementVersion() });
 }

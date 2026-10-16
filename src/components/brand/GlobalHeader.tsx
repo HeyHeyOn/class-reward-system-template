@@ -1,8 +1,6 @@
 'use client';
 
 import { useEffect, useId, useRef, useState } from 'react';
-import type { AvatarConfig } from '../profile/avatar';
-import { UserAvatar } from '../profile/UserAvatar';
 import { BOARD_URL, CLASS_HOME, HUB_READY, HUB_URL, TOOLS_READY, TOOLS_URL } from '@/lib/brand';
 import { DdanssaemLockup } from './DdanssaemLogo';
 import styles from './GlobalHeader.module.css';
@@ -17,7 +15,9 @@ const MENU = [
   ...(HUB_READY && TOOLS_READY ? [{ key: 'tools', label: '수업 도구', href: TOOLS_URL }] : []),
 ];
 
-export type HeaderAccount = Readonly<{ nickname: string; avatar?: AvatarConfig }>;
+/** The signed-in teacher: the 딴쌤 account's name, e-mail and icon picture (account-protocol 9-2), and where the account
+ *  is managed (the hub's '내 계정'; without the hub, the class's own profile page). */
+export type HeaderAccount = Readonly<{ nickname: string; email?: string; avatarUrl?: string | null; accountUrl?: string }>;
 
 type TeacherProps = Readonly<{
   audience: 'teacher';
@@ -94,15 +94,21 @@ function AccountMenu({ account }: Readonly<{ account: HeaderAccount }>) {
       <button ref={buttonRef} type="button" aria-label="계정 메뉴" aria-expanded={open} aria-controls={id}
         className={styles.accountButton} onClick={() => setOpen(!open)}>
         <span aria-hidden="true" className={styles.avatar}>
-          {account.avatar ? <UserAvatar config={account.avatar} size={34} title="" /> : initial}
+          {/* eslint-disable-next-line @next/next/no-img-element -- the hub's fixed SVG, drawn as given (9-2) */}
+          {account.avatarUrl ? <img src={account.avatarUrl} alt="" width={34} height={34} className={styles.avatarImage} /> : initial}
         </span>
         <span className={`${styles.accountName} ${styles.wideOnly}`}>{label}</span>
         <svg className={styles.wideOnly} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
       </button>
       {open ? (
         <div id={id} className={styles.popover}>
-          <p className={styles.popoverNote}>{label}</p>
-          <a href="/profile" className={styles.popoverItem}>내 프로필</a>
+          <div className={styles.popoverWho}>
+            <p className={styles.popoverName}>{label}</p>
+            {account.email ? <p className={styles.popoverEmail}>{account.email}</p> : null}
+          </div>
+          {account.accountUrl
+            ? <a href={account.accountUrl} className={styles.popoverItem}>딴쌤 계정</a>
+            : <a href="/profile" className={styles.popoverItem}>내 프로필</a>}
           <button type="button" className={styles.popoverItem} disabled={leaving} onClick={() => void logout()}>
             {leaving ? '로그아웃 중…' : '로그아웃'}
           </button>
@@ -163,7 +169,7 @@ export function GlobalHeader(props: TeacherProps | StudentProps) {
         <div className={styles.left}>
           <Logo linked />
           <span aria-hidden="true" className={styles.slash}>/</span>
-          <a href={CLASS_HOME} className={styles.section}>클래스</a>
+          <a href={CLASS_HOME} data-tour="header-class" className={styles.section}>클래스</a>
         </div>
         <nav aria-label="딴쌤 메뉴" className={styles.nav}>
           {MENU.map((item) => (

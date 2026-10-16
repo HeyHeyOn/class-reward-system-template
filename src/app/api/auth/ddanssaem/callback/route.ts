@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { clearPendingAgreementCookie, setGoogleSessionCookie } from '@/server/googleOAuth';
 import { exchangeHubCode, HUB_AGREEMENT, HUB_CALLBACK_PATH, HUB_LOGIN_COOKIE, hubLoginEnabled, openHubLogin } from '@/server/ddanssaem/hub';
-import { getProductionHubAccountStore } from '@/server/ddanssaem/hubAccounts';
+import { getProductionHubAccountStore, settleHubIcon } from '@/server/ddanssaem/hubAccounts';
 import { HUB_TRIED_COOKIE, hubStartPath } from '@/server/ddanssaem/teacherGate';
 import { teacherAccountsEnabled } from '@/server/teacherAccounts';
 import { endRequestTeacherSessions } from '@/server/teacherSession';
@@ -16,7 +16,7 @@ function cookieValue(request: Request, name: string): string | undefined {
   return undefined;
 }
 
-/** 1-3, 1-4: back from the hub. Check the state, trade the code for the teacher, start the class session. */
+/** 1-3, 1-4, 9: back from the hub. Check the state, trade the code for the teacher, start the class session. */
 export async function GET(request: Request) {
   if (!hubLoginEnabled() || !teacherAccountsEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const url = new URL(request.url);
@@ -38,8 +38,11 @@ export async function GET(request: Request) {
   }
   try {
     const profile = await exchangeHubCode({ origin: url.origin, code, verifier: login.verifier });
+    const accounts = getProductionHubAccountStore();
+    // 9-3, 9-4: the account's name and icon each sign-in; an icon picked here before goes to the hub first.
+    const icon = await settleHubIcon({ sub: profile.sub, stored: await accounts.profile(profile.sub), hub: profile.icon });
     await endRequestTeacherSessions(request);
-    const binding = await getProductionHubAccountStore().begin(profile);
+    const binding = await accounts.begin(profile, icon);
     const response = finish(login.next);
     setGoogleSessionCookie(response, {
       subject: profile.sub, email: profile.email, ...(profile.name ? { name: profile.name } : {}),

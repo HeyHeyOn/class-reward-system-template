@@ -66,6 +66,7 @@ GRANT EXECUTE ON FUNCTION
   public.platform_consume_tenant_login_attempt(uuid),
   public.platform_revoke_tenant_session(text,integer),
   public.platform_list_class_dashboard(text),
+  public.platform_list_class_dashboard_v2(text),
   public.platform_manage_class_authenticated(uuid,text,text,text,text,bigint,uuid,uuid,text),
   public.platform_purge_class_authenticated(uuid,text,text,text,bigint,uuid,uuid,text),
   public.platform_latest_user_agreement(text),
@@ -76,6 +77,9 @@ GRANT EXECUTE ON FUNCTION
   public.platform_mutate_teacher_account(text,text,uuid,uuid,jsonb),
   public.platform_end_teacher_session(text,uuid,uuid),
   public.platform_begin_hub_teacher_session(text,text,text,text,jsonb),
+  public.platform_get_hub_profile(text),
+  public.platform_begin_hub_teacher_session(text,text,text,text,jsonb,text,boolean),
+  public.platform_hub_profile_updated(text,text,jsonb,text,boolean),
   public.platform_end_hub_teacher_sessions(text),
   public.platform_hub_account_deleted(text),
   public.platform_expire_withdrawal_records() TO crs_app_runtime;

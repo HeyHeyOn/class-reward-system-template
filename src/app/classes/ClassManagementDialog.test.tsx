@@ -9,7 +9,7 @@ describe('class management dialog',()=>{
   it('requires exact class name before moving to trash',async()=>{
     const fetcher=vi.fn().mockResolvedValue(new Response(JSON.stringify({action:'DELETE',slug:'my-class',managementVersion:'2',lifecycle:'SUSPENDED',displayName:'우리 반',replayed:false}),{status:200}));vi.stubGlobal('fetch',fetcher);const success=vi.fn();
     render(<ClassManagementDialog item={item} action="DELETE" onClose={()=>{}} onSuccess={success}/>);
-    const button=screen.getByRole('button',{name:'휴지통으로 이동'}) as HTMLButtonElement;expect(button.disabled).toBe(true);
+    const button=screen.getByRole('button',{name:'휴지통으로'}) as HTMLButtonElement;expect(button.disabled).toBe(true);
     fireEvent.change(screen.getByRole('textbox'),{target:{value:'다른 반'}});expect(button.disabled).toBe(true);
     fireEvent.change(screen.getByRole('textbox'),{target:{value:'우리 반'}});fireEvent.click(button);
     await waitFor(()=>expect(success).toHaveBeenCalledOnce());expect(JSON.parse(fetcher.mock.calls[0][1].body)).toMatchObject({action:'DELETE',name:'우리 반',expectedVersion:'1'});

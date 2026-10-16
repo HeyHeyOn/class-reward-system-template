@@ -2,11 +2,9 @@
 
 import { useState } from 'react';
 import { SiteFooter } from '../SiteFooter';
-import { AvatarEditor } from '../profile/AvatarEditor';
-import { isSameAvatar, type AvatarConfig } from '../profile/avatar';
-import { UserAvatar } from '../profile/UserAvatar';
+import type { AvatarConfig } from '../profile/avatar';
 import { Button, Modal } from '../ui';
-import { buttonClass, controlClass, cx } from '../ui/classes';
+import { controlClass, cx } from '../ui/classes';
 import { Icon } from '../ui/icons';
 import { themeStyles } from '../uiTheme';
 import { accountRequest } from './accountApi';
@@ -18,13 +16,11 @@ const theme = themeStyles('white');
 
 export type ProfileViewModel = Readonly<{
   email: string;
-  profile: Readonly<{ nickname: string; avatar: AvatarConfig }>;
+  profile: Readonly<{ nickname: string; avatar: AvatarConfig; avatarUrl: string | null }>;
   /** `agreedAtLabel` is formatted on the server, so the page renders the same text in the browser. */
   agreement: Readonly<{ effectiveLabel: string; agreedAtLabel: string }> | null;
   classNames: readonly string[];
   notice: LegalNoticeView;
-  /** Set when teachers sign in with a 딴쌤 account: its name, terms and withdrawal live there. */
-  hubAccountUrl?: string;
 }>;
 
 function Section({ title, description, children, tone }: Readonly<{ title: string; description?: string; children: React.ReactNode; tone?: 'danger' }>) {
@@ -41,7 +37,6 @@ function Section({ title, description, children, tone }: Readonly<{ title: strin
 export function ProfileView({ model }: Readonly<{ model: ProfileViewModel }>) {
   const [saved, setSaved] = useState(model.profile);
   const [nickname, setNickname] = useState(model.profile.nickname);
-  const [avatar, setAvatar] = useState(model.profile.avatar);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
@@ -49,19 +44,19 @@ export function ProfileView({ model }: Readonly<{ model: ProfileViewModel }>) {
   const [logoutBusy, setLogoutBusy] = useState(false);
   const trimmed = nickname.trim().replace(/\s+/g, ' ');
   const nicknameValid = trimmed.length > 0 && [...trimmed].length <= 20;
-  const changed = trimmed !== saved.nickname || !isSameAvatar(avatar, saved.avatar);
+  const changed = trimmed !== saved.nickname;
 
   async function save() {
     setBusy(true);
     setStatus('');
     setError('');
-    const reply = await accountRequest('/api/account/profile', 'POST', { nickname: trimmed, avatar, expectedSessionId: model.notice.expectedSessionId });
+    const reply = await accountRequest('/api/account/profile', 'POST', { nickname: trimmed, avatar: saved.avatar, expectedSessionId: model.notice.expectedSessionId });
     setBusy(false);
     if (!reply.ok) {
       setError(reply.error ?? '프로필을 저장하지 못했어요. 잠시 뒤 다시 시도해 주세요.');
       return;
     }
-    setSaved({ nickname: trimmed, avatar });
+    setSaved({ ...saved, nickname: trimmed });
     setNickname(trimmed);
     setStatus('프로필을 저장했어요.');
   }
@@ -87,7 +82,8 @@ export function ProfileView({ model }: Readonly<{ model: ProfileViewModel }>) {
           <Icon name="chevronLeft" size={16} />메인 화면으로
         </a>
         <header className="mt-4 flex items-center gap-4">
-          <UserAvatar config={saved.avatar} size={64} title={`${saved.nickname}의 프로필 아이콘`} />
+          {/* eslint-disable-next-line @next/next/no-img-element -- the 딴쌤 hub's fixed SVG (account-protocol 9-2) */}
+          {saved.avatarUrl ? <img src={saved.avatarUrl} alt="" width={64} height={64} className="h-16 w-16 shrink-0 rounded-full" /> : null}
           <div className="min-w-0">
             <h1 className="truncate text-[26px] font-black tracking-[-0.035em]">{saved.nickname}</h1>
             <p className="truncate text-[13px] text-[var(--theme-muted-text)]">{model.email}</p>
@@ -95,21 +91,13 @@ export function ProfileView({ model }: Readonly<{ model: ProfileViewModel }>) {
         </header>
 
         <div className="mt-6 space-y-5">
-          <Section title="프로필" description="학급 화면과 메인 화면에 보이는 이름과 아이콘이에요.">
+          <Section title="프로필" description="학급 화면과 메인 화면에 보이는 이름이에요.">
             <label htmlFor="profile-nickname" className="mb-1.5 block text-[13px] font-bold">닉네임</label>
             <input id="profile-nickname" value={nickname} maxLength={20} onChange={(event) => setNickname(event.target.value)}
-              readOnly={Boolean(model.hubAccountUrl)} aria-invalid={!nicknameValid} className={cx(controlClass, 'h-11 max-w-sm text-[15px]')} />
-            {model.hubAccountUrl ? (
-              <p className="mt-1.5 text-[12px] text-[var(--theme-muted-text)]">
-                딴쌤 계정 이름이에요. <a href={model.hubAccountUrl} className="font-semibold text-[var(--theme-accent-text)] underline underline-offset-2">딴쌤 계정에서 바꾸기</a>
-              </p>
-            ) : (
-              <p className={cx('mt-1.5 text-[12px]', nicknameValid ? 'text-[var(--theme-muted-text)]' : 'text-[var(--crs-danger-text)]')}>
-                {nicknameValid ? `1~20자 (${[...trimmed].length}/20)` : '닉네임은 1~20자로 써 주세요.'}
-              </p>
-            )}
-            <h3 className="mb-2 mt-5 text-[13px] font-bold">프로필 아이콘</h3>
-            <AvatarEditor value={avatar} onChange={setAvatar} />
+              aria-invalid={!nicknameValid} className={cx(controlClass, 'h-11 max-w-sm text-[15px]')} />
+            <p className={cx('mt-1.5 text-[12px]', nicknameValid ? 'text-[var(--theme-muted-text)]' : 'text-[var(--crs-danger-text)]')}>
+              {nicknameValid ? `1~20자 (${[...trimmed].length}/20)` : '닉네임은 1~20자로 써 주세요.'}
+            </p>
             <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
               <p role="status" className="mr-auto text-[13px] font-semibold text-[var(--theme-muted-text)]">{status}</p>
               {error ? <p role="alert" className="text-[13px] font-semibold text-[var(--crs-danger-text)]">{error}</p> : null}
@@ -120,14 +108,12 @@ export function ProfileView({ model }: Readonly<{ model: ProfileViewModel }>) {
           <Section title="계정">
             <dl className="grid gap-y-3 text-[14px] sm:grid-cols-[140px_minmax(0,1fr)]">
               <dt className="font-bold">로그인 계정</dt>
-              <dd className="min-w-0 break-all text-[var(--theme-muted-text)]">{model.email} ({model.hubAccountUrl ? '딴쌤 계정' : 'Google'})</dd>
+              <dd className="min-w-0 break-all text-[var(--theme-muted-text)]">{model.email} (Google)</dd>
               <dt className="font-bold">약관 동의</dt>
               <dd className="text-[var(--theme-muted-text)]">
-                {model.hubAccountUrl
-                  ? <>딴쌤 계정에서 동의했어요.</>
-                  : model.agreement
-                    ? <>{model.agreement.effectiveLabel} 시행 이용약관과 개인정보처리방침 ({model.agreement.agreedAtLabel} 동의)</>
-                    : '동의 기록이 없어요.'}
+                {model.agreement
+                  ? <>{model.agreement.effectiveLabel} 시행 이용약관과 개인정보처리방침 ({model.agreement.agreedAtLabel} 동의)</>
+                  : '동의 기록이 없어요.'}
                 <span className="mt-1 flex gap-3 text-[13px]">
                   <a href={TERMS_URL} className="font-semibold text-[var(--theme-accent-text)] underline underline-offset-2">이용약관</a>
                   <a href={PRIVACY_URL} className="font-semibold text-[var(--theme-accent-text)] underline underline-offset-2">개인정보처리방침</a>
@@ -139,17 +125,11 @@ export function ProfileView({ model }: Readonly<{ model: ProfileViewModel }>) {
             </div>
           </Section>
 
-          {model.hubAccountUrl ? (
-            <Section title="회원 탈퇴" tone="danger" description="탈퇴는 딴쌤 계정에서 해요. 클래스와 보드의 기록이 함께 정리되고, 되살릴 수 없어요.">
-              <a href={model.hubAccountUrl} className={buttonClass({ variant: 'dangerGhost' })}>딴쌤 계정 열기</a>
-            </Section>
-          ) : (
-            <Section title="회원 탈퇴" tone="danger" description="탈퇴하면 계정과 내가 만든 학급이 모두 정리되고, 되살릴 수 없어요.">
-              <Button variant="dangerGhost" icon="alert" onClick={() => setWithdrawOpen(true)}>탈퇴하기</Button>
-            </Section>
-          )}
+          <Section title="회원 탈퇴" tone="danger" description="탈퇴하면 계정과 내가 만든 학급이 모두 정리되고, 되살릴 수 없어요.">
+            <Button variant="dangerGhost" icon="alert" onClick={() => setWithdrawOpen(true)}>탈퇴하기</Button>
+          </Section>
         </div>
-        <SiteFooter className="mt-8 border-t border-[var(--crs-line)] px-1 pt-6 pb-3 text-[11px] text-[var(--theme-muted-text)]" />
+        <SiteFooter className="mt-8" />
       </div>
 
       {withdrawOpen ? (

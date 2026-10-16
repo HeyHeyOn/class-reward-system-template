@@ -16,7 +16,7 @@ export default async function TenantAdminPage({
     <>
       <AdminManagePage
         migrationsHref={access.membership ? `/c/${access.tenant.slug}/admin/migrations` : undefined}
-        account={account?.profile}
+        account={account?.header}
       />
       {account ? <LegalAgreementGate notice={account.notice} /> : null}
     </>

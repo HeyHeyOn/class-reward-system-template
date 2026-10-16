@@ -182,11 +182,12 @@ describe('with the 딴쌤 hub (DDANSSAEM_LOGIN=1)', () => {
     expect(store.withdraw).not.toHaveBeenCalled();
   });
 
-  it('changes only the icon: the nickname stays the 딴쌤 account name', async () => {
+  it('changes neither the name nor the icon here: both belong to the 딴쌤 account (account-protocol 9)', async () => {
     const cookie = sessionCookie({ subject: 'google-1', email: 'kim@example.com', issuedAt: Date.now(), agreement: 'hub' });
     const response = await saveProfile(request('/api/account/profile', { body: { nickname: '다른이름', avatar, expectedSessionId: binding.sessionId }, cookie }));
-    expect(response.status).toBe(200);
-    expect(store.saveProfile).toHaveBeenCalledWith('google-1', { nickname: '별빛쌤', avatar });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: 'HUB_ACCOUNT' });
+    expect(store.saveProfile).not.toHaveBeenCalled();
     const classAgreed = sessionCookie({ subject: 'google-1', email: 'kim@example.com', issuedAt: Date.now(), agreement: version });
     expect((await saveProfile(request('/api/account/profile', { body: { nickname: '다른이름', avatar, expectedSessionId: binding.sessionId }, cookie: classAgreed }))).status).toBe(403);
   });

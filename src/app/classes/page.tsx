@@ -31,5 +31,5 @@ export default async function ClassesPage({ searchParams }: Readonly<{ searchPar
   const session = model.kind === 'MEMBERSHIPS' && teacherAccountsEnabled() ? await getSession(request) : null;
   const account = session ? await loadTeacherAccountView(session) : undefined;
   const withdrawn = params.withdrawn === '1';
-  return <ClassesSelectionView model={model} account={account} withdrawn={withdrawn} loginFailed={loginFailed} />;
+  return <ClassesSelectionView model={model} account={account} header={account?.header} withdrawn={withdrawn} loginFailed={loginFailed} />;
 }

@@ -8,7 +8,7 @@ import {
   parsePromotionResponse,
 } from '@/lib/promotionClient';
 import { tenantFetch } from '@/lib/tenantApiPath';
-import { Icon, buttonClass } from '../ui';
+import { Button, Icon, Modal, buttonClass } from '../ui';
 import { normalizeThemeColor, themeStyles, type ThemeColor } from '../uiTheme';
 
 export { parsePromotionResponse } from '@/lib/promotionClient';
@@ -363,6 +363,7 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
+  const [deactivating, setDeactivating] = useState<Promotion | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<Draft | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Promotion | null>(null);
@@ -720,13 +721,21 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
     }
   }
 
-  async function toggleActivation(promotion: Promotion) {
+  /** A declined deactivation forgets the attempt kept for a retry. */
+  function cancelDeactivation() {
+    activationAttemptRef.current = null;
+    setDeactivating(null);
+  }
+
+  async function toggleActivation(promotion: Promotion, confirmed = false) {
     if (!mountedRef.current || mutationInFlightRef.current) return;
     const next = !promotion.isActive;
-    if (!next && !window.confirm(`${promotion.name} 행사를 비활성화할까요?`)) {
-      activationAttemptRef.current = null;
+    // Turning a promotion off asks first, in the app's own window (no browser confirm).
+    if (!next && !confirmed) {
+      setDeactivating(promotion);
       return;
     }
+    setDeactivating(null);
     const expectedVersion = promotionPreconditionsRef.current.get(promotion.promotionId);
     if (expectedVersion === undefined) {
       activationAttemptRef.current = null;
@@ -874,7 +883,8 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
 
       {editingId && editDraft ? <div ref={editDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="promotion-edit-title" className={overlayClass} onMouseDown={(event) => { if (event.target === event.currentTarget) closeEdit(); }} onKeyDown={(event) => { if (event.key === 'Tab' && !event.shiftKey && event.target === editSaveRef.current) { event.preventDefault(); editNameRef.current?.focus(); } else if (event.key === 'Tab' && event.shiftKey && event.target === editNameRef.current) { event.preventDefault(); editSaveRef.current?.focus(); } else trapDialogFocus(event); if (event.key === 'Escape') closeEdit(); }}>
         <div className={`${dialogClass} max-h-[90vh] max-w-2xl overflow-y-auto`}>
-          <h2 id="promotion-edit-title" className="text-lg font-black tracking-[-0.02em]">{promotions.find((item) => item.promotionId === editingId)?.name ?? editDraft.name} 행사 편집</h2>
+          <CloseButton disabled={saving} onClose={closeEdit} />
+          <h2 id="promotion-edit-title" className="pr-10 text-lg font-black tracking-[-0.02em]">{promotions.find((item) => item.promotionId === editingId)?.name ?? editDraft.name} 행사 편집</h2>
           <form className="mt-4" onSubmit={submitEdit}><fieldset className="space-y-4" disabled={saving}>
             <DraftFields draft={editDraft} setDraft={(next) => setEditDraft(next)} products={products} timeZone={timeZone} labelPrefix="수정 " firstInputRef={(node) => { editNameRef.current = node; }} />
             {editError ? <p role="alert" className={alertClass}>{editError}</p> : null}
@@ -885,16 +895,28 @@ export function PromotionAdminPanel({ products, currencyUnit, timeZone, themeCol
       </div> : null}
 
       {deleteTarget ? <div ref={deleteDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="promotion-delete-title" className={overlayClass} onMouseDown={(event) => { if (event.target === event.currentTarget) closeDelete(); }} onKeyDown={(event) => { if (event.key === 'Tab' && !event.shiftKey && event.target === deleteConfirmRef.current) { event.preventDefault(); deleteCancelRef.current?.focus(); } else if (event.key === 'Tab' && event.shiftKey && event.target === deleteCancelRef.current) { event.preventDefault(); deleteConfirmRef.current?.focus(); } else trapDialogFocus(event); if (event.key === 'Escape') closeDelete(); }}>
-        <div className={`${dialogClass} max-w-md`}><h2 id="promotion-delete-title" className="text-lg font-black tracking-[-0.02em]">{deleteTarget.name} 행사 삭제</h2><p className="mt-2 text-[13px] leading-relaxed text-[var(--theme-muted-text)]">이 행사를 삭제할까요? 삭제하면 되돌릴 수 없어요.</p>{deleteError ? <p role="alert" className={`mt-3 ${alertClass}`}>{deleteError}</p> : null}{saving ? <p role="status" className="mt-2 text-[13px] font-semibold">삭제 중…</p> : null}<div className="mt-5 flex justify-end gap-2"><button ref={deleteCancelRef} type="button" disabled={saving} className={buttonClass({ variant: 'ghost' })} onClick={closeDelete}>취소</button><button ref={deleteConfirmRef} type="button" disabled={saving} className={buttonClass({ variant: 'danger' })} onClick={() => void confirmDelete()}>삭제 확인</button></div></div>
+        <div className={`${dialogClass} max-w-md`}><CloseButton disabled={saving} onClose={closeDelete} /><h2 id="promotion-delete-title" className="pr-10 text-lg font-black tracking-[-0.02em]">{deleteTarget.name} 행사 삭제</h2><p className="mt-2 text-[13px] leading-relaxed text-[var(--theme-muted-text)]">이 행사를 삭제할까요? 삭제하면 되돌릴 수 없어요.</p>{deleteError ? <p role="alert" className={`mt-3 ${alertClass}`}>{deleteError}</p> : null}{saving ? <p role="status" className="mt-2 text-[13px] font-semibold">삭제 중…</p> : null}<div className="mt-5 flex justify-end gap-2"><button ref={deleteCancelRef} type="button" disabled={saving} className={buttonClass({ variant: 'ghost' })} onClick={closeDelete}>취소</button><button ref={deleteConfirmRef} type="button" disabled={saving} className={buttonClass({ variant: 'danger' })} onClick={() => void confirmDelete()}>삭제 확인</button></div></div>
       </div> : null}
+
+      {deactivating ? <Modal title="행사 비활성화" size="sm" onClose={cancelDeactivation}
+        footer={<><Button variant="ghost" onClick={cancelDeactivation}>취소</Button>
+          <Button variant="primary" onClick={() => void toggleActivation(deactivating, true)}>비활성화</Button></>}>
+        <p className="text-[14px] leading-relaxed">{deactivating.name} 행사를 비활성화할까요?</p>
+      </Modal> : null}
     </section>
   );
+}
+
+/** 창 닫기 (ddanssaem-brand README '공통 부품'): the X on a window's top right. */
+function CloseButton({ onClose, disabled }: { onClose: () => void; disabled?: boolean }) {
+  return <button type="button" aria-label="닫기" disabled={disabled} onClick={onClose}
+    className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-[10px] text-[var(--theme-muted-text)] hover:bg-[var(--crs-subtle)] hover:text-[var(--theme-text)] disabled:opacity-40"><Icon name="close" size={18} /></button>;
 }
 
 const panelClass = 'min-w-0 rounded-[var(--crs-radius-lg)] border border-[var(--crs-line)] bg-[var(--theme-surface)] p-5 shadow-[var(--crs-shadow-sm)] sm:p-6';
 const alertClass = 'rounded-[12px] bg-[var(--crs-danger-bg)] px-3.5 py-2.5 text-[13px] font-semibold text-[var(--crs-danger-text)]';
 const overlayClass = 'fixed inset-0 z-50 flex items-center justify-center bg-[rgb(15_23_42/0.42)] p-4 text-[var(--theme-text)] backdrop-blur-[2px]';
-const dialogClass = 'w-full rounded-[22px] border border-[var(--crs-line)] bg-[var(--theme-surface)] p-6 shadow-[var(--crs-shadow-lg)]';
+const dialogClass = 'relative w-full rounded-[22px] border border-[var(--crs-line)] bg-[var(--theme-surface)] p-6 shadow-[var(--crs-shadow-lg)]';
 const labelClass = 'block text-[13px] font-bold';
 
 function PreviewResult({ preview, names, currencyUnit }: { preview: ReturnType<typeof calculatePromotionPrice> | { ok: false; message: string }; names: Map<string, string>; currencyUnit: string }) {

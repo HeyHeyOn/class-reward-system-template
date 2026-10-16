@@ -5,18 +5,22 @@ import { isSystemDeployment } from '@/server/deploymentMode';
 import type { GoogleSession } from '@/server/googleOAuth';
 import { AVATAR_JSON_MAX_LENGTH, defaultAvatarFor, normalizeAvatar, type AvatarConfig } from '@/components/profile/avatar';
 import { currentLegalRevision, LEGAL_VERSION_PATTERN, revisionsSince, upcomingLegalRevision, type LegalRevision } from '@/lib/legalDocuments';
+import type { HeaderAccount } from '@/components/brand/GlobalHeader';
+import { hubAccountUrl, hubAvatarUrl, hubLoginEnabled } from '@/server/ddanssaem/hub';
 
 type Queryable = Readonly<{ query(text: string, values: unknown[]): Promise<{ rows: unknown[] }> }>;
 
 export type AgreementRecord = Readonly<{ version: string; agreedAt: string }>;
-export type TeacherProfile = Readonly<{ nickname: string; avatar: AvatarConfig }>;
+/** `avatarUrl` is the 딴쌤 hub's picture of the icon (account-protocol 9-2); null when no hub is set. */
+export type TeacherProfile = Readonly<{ nickname: string; avatar: AvatarConfig; avatarUrl: string | null }>;
+type StoredProfile = Readonly<{ nickname: string; avatar: unknown; avatarUrl?: string | null; avatarFromHub?: boolean }>;
 
 export type TeacherAccountStore = Readonly<{
   latestAgreement(subject: string): Promise<AgreementRecord | null>;
   hasAgreement(subject: string, version: string): Promise<boolean>;
   recordAgreement(subject: string, version: string): Promise<string>;
-  getProfile(subject: string): Promise<Readonly<{ nickname: string; avatar: unknown }> | null>;
-  saveProfile(subject: string, profile: TeacherProfile): Promise<void>;
+  getProfile(subject: string): Promise<StoredProfile | null>;
+  saveProfile(subject: string, profile: Pick<TeacherProfile, 'nickname' | 'avatar'>): Promise<void>;
   /** Returns how many classes were closed. */
   withdraw(subject: string): Promise<number>;
 }>;
@@ -50,10 +54,11 @@ export function createTeacherAccountStore(queryable: Queryable): TeacherAccountS
       return iso((rows[0] as { agreed_at?: unknown } | undefined)?.agreed_at);
     },
     async getProfile(subject) {
-      const { rows } = await queryable.query('SELECT nickname, avatar FROM public.platform_get_user_profile($1)', [subject]);
-      const row = rows[0] as { nickname?: unknown; avatar?: unknown } | undefined;
+      const { rows } = await queryable.query('SELECT nickname, avatar, avatar_url, avatar_from_hub FROM public.platform_get_hub_profile($1)', [subject]);
+      const row = rows[0] as { nickname?: unknown; avatar?: unknown; avatar_url?: unknown; avatar_from_hub?: unknown } | undefined;
       if (!row || typeof row.nickname !== 'string') return null;
-      return { nickname: row.nickname, avatar: row.avatar };
+      return { nickname: row.nickname, avatar: row.avatar, avatarUrl: typeof row.avatar_url === 'string' ? row.avatar_url : null,
+        avatarFromHub: row.avatar_from_hub === true };
     },
     async saveProfile(subject, profile) {
       await queryable.query('SELECT public.platform_save_user_profile($1, $2, $3::jsonb)', [subject, profile.nickname, JSON.stringify(profile.avatar)]);
@@ -77,7 +82,7 @@ export function normalizeNickname(value: unknown): string | null {
   return nickname;
 }
 
-export function parseProfileInput(value: unknown): TeacherProfile | null {
+export function parseProfileInput(value: unknown): Pick<TeacherProfile, 'nickname' | 'avatar'> | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   if (Object.keys(record).some((key) => key !== 'nickname' && key !== 'avatar')) return null;
@@ -92,10 +97,14 @@ export function defaultNickname(session: Pick<GoogleSession, 'name' | 'email'>):
   return normalizeNickname(session.name?.slice(0, 20)) ?? normalizeNickname(session.email.split('@')[0].slice(0, 20)) ?? '선생님';
 }
 
-export function resolveTeacherProfile(session: Pick<GoogleSession, 'subject' | 'name' | 'email'>, stored: Readonly<{ nickname: string; avatar: unknown }> | null): TeacherProfile {
+export function resolveTeacherProfile(session: Pick<GoogleSession, 'subject' | 'name' | 'email'>, stored: StoredProfile | null,
+  env: Readonly<Record<string, string | undefined>> = process.env): TeacherProfile {
+  const avatar = normalizeAvatar(stored?.avatar) ?? defaultAvatarFor(session.subject);
   return {
     nickname: normalizeNickname(stored?.nickname) ?? defaultNickname(session),
-    avatar: normalizeAvatar(stored?.avatar) ?? defaultAvatarFor(session.subject),
+    avatar,
+    // The hub's address for an icon that follows the hub; otherwise the hub's picture of the icon kept here.
+    avatarUrl: stored?.avatarFromHub && stored.avatarUrl ? stored.avatarUrl : hubAvatarUrl(avatar, env),
   };
 }
 
@@ -118,7 +127,14 @@ export function legalNoticeFor(session: Pick<GoogleSession, 'agreement' | 'sessi
   return { required, upcoming: upcomingLegalRevision(now), ...(session.sessionId ? { expectedSessionId: session.sessionId } : {}) };
 }
 
-export type TeacherAccountView = Readonly<{ profile: TeacherProfile; notice: LegalNotice }>;
+export type TeacherAccountView = Readonly<{ profile: TeacherProfile; notice: LegalNotice; header: HeaderAccount }>;
+
+/** The account button of the header: the name, the e-mail, the icon and where the account is managed (the 딴쌤 hub). */
+export function headerAccountFor(session: Pick<GoogleSession, 'email'>, profile: Pick<TeacherProfile, 'nickname' | 'avatarUrl'>,
+  env: Readonly<Record<string, string | undefined>> = process.env): HeaderAccount {
+  return { nickname: profile.nickname, email: session.email, avatarUrl: profile.avatarUrl,
+    ...(hubLoginEnabled(env) ? { accountUrl: hubAccountUrl(env) } : {}) };
+}
 
 /** The header profile and the legal notice for a signed-in teacher; the profile falls back to defaults. */
 export async function loadTeacherAccountView(session: GoogleSession, store: TeacherAccountStore = getProductionTeacherAccountStore()): Promise<TeacherAccountView> {
@@ -126,5 +142,6 @@ export async function loadTeacherAccountView(session: GoogleSession, store: Teac
     console.error('[account] profile could not be read', error instanceof Error ? error.message : 'unknown');
     return null;
   });
-  return { profile: resolveTeacherProfile(session, stored), notice: legalNoticeFor(session) };
+  const profile = resolveTeacherProfile(session, stored);
+  return { profile, notice: legalNoticeFor(session), header: headerAccountFor(session, profile) };
 }

@@ -39,9 +39,18 @@ describe('teacher accounts', () => {
   it('starts from the Google name and a stable preset avatar until the teacher saves a profile', () => {
     expect(defaultNickname(session)).toBe('김선생');
     expect(defaultNickname({ email: 'teacher.long-address@example.com' })).toBe('teacher.long-address');
-    expect(resolveTeacherProfile(session, null)).toEqual({ nickname: '김선생', avatar: defaultAvatarFor('google-1') });
-    expect(resolveTeacherProfile(session, { nickname: '햇살쌤', avatar })).toEqual({ nickname: '햇살쌤', avatar });
+    expect(resolveTeacherProfile(session, null, {})).toEqual({ nickname: '김선생', avatar: defaultAvatarFor('google-1'), avatarUrl: null });
+    expect(resolveTeacherProfile(session, { nickname: '햇살쌤', avatar }, {})).toEqual({ nickname: '햇살쌤', avatar, avatarUrl: null });
     expect(resolveTeacherProfile(session, { nickname: '햇살쌤', avatar: { broken: true } }).avatar).toEqual(defaultAvatarFor('google-1'));
+  });
+
+  it('draws the icon from the 딴쌤 hub: its own address once the icon follows the hub, else the hub picture of the kept icon', () => {
+    const hub = { DDANSSAEM_HUB_URL: 'https://ddanssaem.com' };
+    const kept = `https://ddanssaem.com/api/avatar/${[avatar.background, avatar.face, avatar.eyes, avatar.mouth, avatar.accessory].join('.')}.svg`;
+    expect(resolveTeacherProfile(session, { nickname: '햇살쌤', avatar, avatarUrl: 'https://ddanssaem.com/api/avatar/x.svg', avatarFromHub: true }, hub).avatarUrl)
+      .toBe('https://ddanssaem.com/api/avatar/x.svg');
+    expect(resolveTeacherProfile(session, { nickname: '햇살쌤', avatar, avatarUrl: 'https://ddanssaem.com/api/avatar/x.svg', avatarFromHub: false }, hub).avatarUrl).toBe(kept);
+    expect(resolveTeacherProfile(session, { nickname: '햇살쌤', avatar }, hub).avatarUrl).toBe(kept);
   });
 
   it('requires agreement when the session has not agreed to the version in force', () => {
@@ -57,7 +66,7 @@ describe('teacher accounts', () => {
       if (text.includes('platform_latest_user_agreement')) return { rows: [{ agreement_version: '2026-10-08', agreed_at: new Date('2026-10-08T03:00:00Z') }] };
       if (text.includes('platform_has_user_agreement')) return { rows: [{ agreed: true }] };
       if (text.includes('platform_record_user_agreement')) return { rows: [{ agreed_at: new Date('2026-10-08T03:00:00Z') }] };
-      if (text.includes('platform_get_user_profile')) return { rows: [{ nickname: '햇살쌤', avatar }] };
+      if (text.includes('platform_get_hub_profile')) return { rows: [{ nickname: '햇살쌤', avatar, avatar_url: null, avatar_from_hub: false }] };
       if (text.includes('platform_withdraw_user')) return { rows: [{ closed: 2 }] };
       return { rows: [] };
     });
@@ -65,7 +74,7 @@ describe('teacher accounts', () => {
     expect(await store.latestAgreement('google-1')).toEqual({ version: '2026-10-08', agreedAt: '2026-10-08T03:00:00.000Z' });
     expect(await store.hasAgreement('google-1', '2026-10-08')).toBe(true);
     expect(await store.recordAgreement('google-1', '2026-10-08')).toBe('2026-10-08T03:00:00.000Z');
-    expect(await store.getProfile('google-1')).toEqual({ nickname: '햇살쌤', avatar });
+    expect(await store.getProfile('google-1')).toEqual({ nickname: '햇살쌤', avatar, avatarUrl: null, avatarFromHub: false });
     await store.saveProfile('google-1', { nickname: '햇살쌤', avatar });
     expect(query).toHaveBeenCalledWith(expect.stringContaining('platform_save_user_profile'), ['google-1', '햇살쌤', JSON.stringify(avatar)]);
     expect(await store.withdraw('google-1')).toBe(2);

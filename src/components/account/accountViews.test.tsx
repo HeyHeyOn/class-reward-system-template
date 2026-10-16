@@ -162,23 +162,23 @@ describe('LegalAgreementGate', () => {
 describe('ProfileView', () => {
   const model: ProfileViewModel = {
     email: 'kim@example.com',
-    profile: { nickname: '김선생', avatar: AVATAR_PRESETS[0].config },
+    profile: { nickname: '김선생', avatar: AVATAR_PRESETS[0].config, avatarUrl: null },
     agreement: { effectiveLabel: '2026년 10월 8일', agreedAtLabel: '2026년 10월 8일 12:00' },
     classNames: ['6학년 3반', '방과후반'],
     notice: { required: null, upcoming: null, expectedSessionId },
   };
 
-  it('saves the nickname and the avatar', async () => {
+  it('saves the nickname, keeping the icon (chosen only on the 딴쌤 hub)', async () => {
     fetchMock.mockReturnValueOnce(reply(200, { ok: true }));
     render(<ProfileView model={model} />);
     const save = screen.getByRole('button', { name: '저장하기' }) as HTMLButtonElement;
     expect(save.disabled).toBe(true);
+    expect(screen.queryByText('프로필 아이콘')).toBeNull();
     fireEvent.change(screen.getByLabelText('닉네임'), { target: { value: ' 햇살쌤 ' } });
-    fireEvent.click(screen.getByRole('button', { name: `추천 조합: ${AVATAR_PRESETS[2].label}` }));
     fireEvent.click(save);
     expect(await screen.findByText('프로필을 저장했어요.')).toBeTruthy();
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-    expect(body).toEqual({ nickname: '햇살쌤', avatar: AVATAR_PRESETS[2].config, expectedSessionId });
+    expect(body).toEqual({ nickname: '햇살쌤', avatar: AVATAR_PRESETS[0].config, expectedSessionId });
     expect(screen.getByRole('heading', { level: 1, name: '햇살쌤' })).toBeTruthy();
   });
 

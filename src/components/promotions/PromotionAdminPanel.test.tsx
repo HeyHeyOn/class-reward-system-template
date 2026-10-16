@@ -70,6 +70,13 @@ function fillCommon(name = '새 행사') {
 beforeEach(() => { vi.stubGlobal('crypto', { randomUUID: vi.fn(() => DEFAULT_OPERATION_ID) }); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
+
+/** Answers the app's own '행사 비활성화' window (no browser confirm). */
+function answerDeactivation(yes = true) {
+  const dialog = screen.getByRole('dialog', { name: '행사 비활성화' });
+  fireEvent.click(within(dialog).getByRole('button', { name: yes ? '비활성화' : '취소' }));
+}
+
 describe('datetime-local helpers', () => {
   it('converts an Asia/Seoul wall clock to the corresponding instant and back', () => {
     expect(zonedDatetimeLocalToIso('2026-08-10T09:30', 'Asia/Seoul')).toBe('2026-08-10T00:30:00.000Z');
@@ -258,10 +265,10 @@ describe('PromotionAdminPanel', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const fetchMock = vi.fn().mockResolvedValueOnce(response([percent])).mockReturnValueOnce(mutation.promise);
     vi.stubGlobal('fetch', fetchMock);
-    vi.stubGlobal('confirm', vi.fn(() => true));
     const view = renderPanel();
     await screen.findByText('기존 10% 할인');
     fireEvent.click(screen.getByRole('button', { name: '기존 10% 할인 비활성화' }));
+    answerDeactivation();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 
     view.unmount();
@@ -470,7 +477,6 @@ describe('PromotionAdminPanel', () => {
       .mockResolvedValueOnce(response(patchAck(percent.promotionId, 4)))
       .mockResolvedValueOnce(response(promotionEnvelope([updated], [4])));
     vi.stubGlobal('fetch', fetchMock);
-    vi.stubGlobal('confirm', vi.fn(() => true));
     renderPanel();
     await screen.findByText('기존 10% 할인');
     fireEvent.click(screen.getByRole('button', { name: '기존 10% 할인 편집' }));
@@ -488,8 +494,8 @@ describe('PromotionAdminPanel', () => {
       sortOrder: 1, type: 'PERCENT_DISCOUNT', percent: 15, productIds: ['P001'],
     });
     fireEvent.click(screen.getByRole('button', { name: '수정 할인 비활성화' }));
+    answerDeactivation();
     await screen.findByText('행사를 비활성화했어요.');
-    expect(confirm).toHaveBeenCalled();
     expect(JSON.parse(String(fetchMock.mock.calls[3][1]?.body))).toEqual({ operationId: DEFAULT_OPERATION_ID, expectedPromotionVersion: 2, isActive: false });
     fireEvent.click(screen.getByRole('button', { name: '수정 할인 재활성화' }));
     await screen.findByText('행사를 재활성화했어요.');
@@ -592,11 +598,11 @@ describe('PromotionAdminPanel', () => {
       .mockResolvedValueOnce(response([percent]))
       .mockResolvedValueOnce(response(patchAck(nPlusOne.promotionId, 2)));
     vi.stubGlobal('fetch', fetchMock);
-    vi.stubGlobal('confirm', vi.fn(() => true));
     renderPanel();
     await screen.findByText('기존 10% 할인');
 
     fireEvent.click(screen.getByRole('button', { name: '기존 10% 할인 비활성화' }));
+    answerDeactivation();
 
     expect((await screen.findByRole('alert')).textContent).toContain('행사 활성 상태 변경 응답 형식이 올바르지 않아요.');
     expect(screen.getAllByTestId('promotion-row')).toHaveLength(1);
@@ -1106,8 +1112,7 @@ describe('PromotionAdminPanel', () => {
         .mockResolvedValueOnce(response(patchAck(percent.promotionId, 9)))
         .mockResolvedValueOnce(response(promotionEnvelope([inactive], [9])));
       vi.stubGlobal('fetch', fetchMock);
-      vi.stubGlobal('confirm', vi.fn(() => true));
-      renderPanel();
+        renderPanel();
       await screen.findByText(percent.name);
 
       fireEvent.click(screen.getByRole('button', { name: `${percent.name} 편집` }));
@@ -1128,6 +1133,7 @@ describe('PromotionAdminPanel', () => {
       expect(fetchMock.mock.calls[2]).toEqual(['/api/promotions', { cache: 'no-store' }]);
 
       fireEvent.click(screen.getByRole('button', { name: '수정 할인 비활성화' }));
+      answerDeactivation();
       await screen.findByText('행사를 비활성화했어요.');
       expect(JSON.parse(String(fetchMock.mock.calls[3][1]?.body))).toEqual({
         operationId: '60000000-0000-4000-8000-000000000042', expectedPromotionVersion: 8, isActive: false,
@@ -1244,8 +1250,7 @@ describe('PromotionAdminPanel', () => {
       const operationId = '60000000-0000-4000-8000-000000000062';
       const randomUUID = vi.fn(() => operationId);
       vi.stubGlobal('crypto', { randomUUID });
-      vi.stubGlobal('confirm', vi.fn(() => true));
-      const created: Promotion = {
+        const created: Promotion = {
         ...nPlusOne, promotionId: `PROMO-${operationId}`, name: '버전 없는 행사', description: '새 설명', sortOrder: 7,
       };
       const fetchMock = vi.fn()
@@ -1264,6 +1269,7 @@ describe('PromotionAdminPanel', () => {
       expect((await within(dialog).findByRole('alert')).textContent).toContain('수정할 행사 정보를 확인할 수 없어요');
       fireEvent.click(within(dialog).getByRole('button', { name: '편집 취소' }));
       fireEvent.click(screen.getByRole('button', { name: `${created.name} 비활성화` }));
+      answerDeactivation();
       expect((await screen.findByRole('alert')).textContent).toContain('상태를 바꿀 행사 정보를 확인할 수 없어요');
       expect(fetchMock.mock.calls.filter((call) => call[1]?.method === 'PATCH')).toHaveLength(0);
       expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -1274,7 +1280,6 @@ describe('PromotionAdminPanel', () => {
       const pending = deferred<Response>();
       const randomUUID = vi.fn(() => '60000000-0000-4000-8000-000000000061');
       vi.stubGlobal('crypto', { randomUUID });
-      vi.stubGlobal('confirm', vi.fn(() => true));
       const fetchMock = vi.fn()
         .mockResolvedValueOnce(response(promotionEnvelope([percent], [6])))
         .mockReturnValueOnce(pending.promise)
@@ -1283,12 +1288,14 @@ describe('PromotionAdminPanel', () => {
       vi.stubGlobal('fetch', fetchMock);
       renderPanel();
       await screen.findByText(percent.name);
-      const toggle = screen.getByRole('button', { name: `${percent.name} 비활성화` });
-      act(() => { toggle.dispatchEvent(new MouseEvent('click', { bubbles: true })); toggle.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+      fireEvent.click(screen.getByRole('button', { name: `${percent.name} 비활성화` }));
+      const yes = within(screen.getByRole('dialog', { name: '행사 비활성화' })).getByRole('button', { name: '비활성화' });
+      act(() => { yes.dispatchEvent(new MouseEvent('click', { bubbles: true })); yes.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
       expect(fetchMock.mock.calls.filter((call) => call[1]?.method === 'PATCH')).toHaveLength(1);
       pending.reject(new Error('offline'));
       expect((await screen.findByRole('alert')).textContent).toContain('offline');
       fireEvent.click(screen.getByRole('button', { name: `${percent.name} 비활성화` }));
+      answerDeactivation();
       await screen.findByText('행사를 비활성화했어요.');
       const bodies = fetchMock.mock.calls.filter((call) => call[1]?.method === 'PATCH').map((call) => JSON.parse(String(call[1]?.body)));
       expect(bodies).toEqual([
@@ -1303,10 +1310,6 @@ describe('PromotionAdminPanel', () => {
         .mockReturnValueOnce('60000000-0000-4000-8000-000000000071')
         .mockReturnValueOnce('60000000-0000-4000-8000-000000000072');
       vi.stubGlobal('crypto', { randomUUID });
-      vi.stubGlobal('confirm', vi.fn()
-        .mockReturnValueOnce(true)
-        .mockReturnValueOnce(false)
-        .mockReturnValueOnce(true));
       const fetchMock = vi.fn()
         .mockResolvedValueOnce(response(promotionEnvelope([percent], [6])))
         .mockRejectedValueOnce(new Error('offline'))
@@ -1318,10 +1321,14 @@ describe('PromotionAdminPanel', () => {
       const toggle = screen.getByRole('button', { name: `${percent.name} 비활성화` });
 
       fireEvent.click(toggle);
+      answerDeactivation();
       expect((await screen.findByRole('alert')).textContent).toContain('offline');
       fireEvent.click(toggle);
+      answerDeactivation(false);
+      expect(screen.queryByRole('dialog', { name: '행사 비활성화' })).toBeNull();
       expect(fetchMock.mock.calls.filter((call) => call[1]?.method === 'PATCH')).toHaveLength(1);
       fireEvent.click(toggle);
+      answerDeactivation();
       await screen.findByText('행사를 비활성화했어요.');
 
       const bodies = fetchMock.mock.calls.filter((call) => call[1]?.method === 'PATCH')
@@ -1387,8 +1394,7 @@ describe('PromotionAdminPanel', () => {
     });
 
     it('rejects an activation refresh that does not reflect the requested state', async () => {
-      vi.stubGlobal('confirm', vi.fn(() => true));
-      const fetchMock = vi.fn()
+        const fetchMock = vi.fn()
         .mockResolvedValueOnce(response(promotionEnvelope([percent], [3])))
         .mockResolvedValueOnce(response(patchAck(percent.promotionId, 4)))
         .mockResolvedValueOnce(response(promotionEnvelope([percent], [4])));
@@ -1397,6 +1403,7 @@ describe('PromotionAdminPanel', () => {
       await screen.findByText(percent.name);
 
       fireEvent.click(screen.getByRole('button', { name: `${percent.name} 비활성화` }));
+      answerDeactivation();
 
       expect((await screen.findByRole('alert')).textContent).toContain('새로고침');
       expect(screen.queryByText('행사를 비활성화했어요.')).toBeNull();

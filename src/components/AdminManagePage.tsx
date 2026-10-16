@@ -50,8 +50,7 @@ import { ParentConsentFormDialog } from './admin/ParentConsentFormDialog';
 import { TutorialHomeCard, TutorialMenu } from './tutorial/TutorialMenu';
 import { TutorialRunner } from './tutorial/TutorialRunner';
 import { FIRST_TUTORIAL_ID, tutorialAfter, tutorialById, type Tutorial } from './tutorial/tutorials';
-import type { AvatarConfig } from './profile/avatar';
-import { GlobalHeader } from './brand/GlobalHeader';
+import { GlobalHeader, type HeaderAccount } from './brand/GlobalHeader';
 import { StudentGroupAssignDialog, StudentGroupManagerDialog, useStudentGroups } from './admin/StudentGroups';
 
 // Retain the existing public parser exports for callers outside the page.
@@ -81,7 +80,7 @@ const EMPTY_STUDENT: NewStudentDraft = { studentId: '', name: '', balance: 0, st
 const EMPTY_PRODUCT: NewProductDraft = { name: '', price: 0, stock: 0, isActive: true, imageUrl: '', category: '', sortOrder: 1 };
 const EMPTY_TASK: Omit<TaskDraft, 'taskId'> = { title: '', description: '', reward: 0, isActive: true, sortOrder: 1, allowedStudentIds: [] };
 
-export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: string; account?: Readonly<{ nickname: string; avatar: AvatarConfig }> } = {}) {
+export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: string; account?: HeaderAccount } = {}) {
   const { activeTab, storeTab, adminTabRefs, storeTabRefs, hasOpenedPromotions, hasOpenedTransactions, selectAdminTab, selectStoreTab, handleAdminTabKeyDown, handleStoreTabKeyDown } = useAdminNavigation();
   const [students, setStudents] = useState<StudentDraft[]>([]);
   const [productAdminState, setProductAdminState] = useState<ProductAdminState>({
@@ -204,7 +203,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
   const [newTaskRecurrence, setNewTaskRecurrence] = useState<TaskRecurrenceForm>(() => scheduleDtoToForm());
   const [assignmentFilter, setAssignmentFilter] = useState<AssignmentFilter>('all');
   const sheetEditorRequest = useRef('');
-  const [toasts, setToasts] = useState<Array<{ id: number; text: string; tone: 'success' | 'warning' }>>([]);
+  const [toasts, setToasts] = useState<Array<{ id: number; text: string; tone: 'success' | 'danger' }>>([]);
   const toastSeq = useRef(0);
   // PostgreSQL classes (/c/{slug}) use the stage-ledger task screen (src/components/tasks/ledger).
   // There the old task list below never loads; it serves Google Sheets classes only.
@@ -530,7 +529,8 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
   }
 
   function notify(messageText: string) {
-    const tone = isSuccessNotice(messageText) ? 'success' : 'warning';
+    // 알림 (ddanssaem-brand README '공통 부품'): a check when it worked, red when it did not.
+    const tone = isSuccessNotice(messageText) ? 'success' : 'danger';
     const id = ++toastSeq.current;
     setToasts((current) => [...current.filter((toast) => toast.text !== messageText).slice(-2), { id, text: messageText, tone }]);
     if (tone === 'success') window.setTimeout(() => setToasts((current) => current.filter((toast) => toast.id !== id)), 4000);
@@ -2216,7 +2216,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
   const bankHref = tenantPagePath('/bank');
   const classLabel = settings.className ?? settings.appTitle ?? '학급 매점';
   const openShare = (target: ShareTarget) => (event: React.MouseEvent<HTMLElement>) => setShareState({ target, opener: event.currentTarget });
-  const messageTone = isSuccessNotice(message) ? 'success' : 'warning';
+  const messageTone = isSuccessNotice(message) ? 'success' : 'danger';
 
   return (
     <main data-testid="admin-shell" style={rootStyle} className={cx(styles.admin, 'min-h-screen bg-[var(--theme-shell)] text-[15px] text-[var(--theme-text)] antialiased')}>
@@ -2285,8 +2285,8 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
           <header data-testid="admin-header" className="mx-auto w-full max-w-[1200px] px-4 pt-5 sm:px-6 lg:px-10 lg:pt-8">
             {message ? (
               <div role="status" className={cx('flex items-start gap-3 rounded-[var(--crs-radius)] px-4 py-3 text-[13px] font-semibold leading-relaxed [animation:crs-pop-in_.18s_ease-out]',
-                messageTone === 'success' ? 'bg-[var(--crs-success-bg)] text-[var(--crs-success-text)]' : 'bg-[var(--crs-warning-bg)] text-[var(--crs-warning-text)]')}>
-                <span className="mt-[1px] shrink-0"><Icon name={messageTone === 'success' ? 'check' : 'info'} size={17} /></span>
+                messageTone === 'success' ? 'bg-[var(--crs-success-bg)] text-[var(--crs-success-text)]' : 'bg-[var(--crs-danger-bg)] text-[var(--crs-danger-text)]')}>
+                <span className="mt-[1px] shrink-0"><Icon name={messageTone === 'success' ? 'check' : 'alert'} size={17} /></span>
                 <p className="min-w-0 flex-1">{message}</p>
                 <button type="button" aria-label="알림 닫기" onClick={() => setMessage('')} className="-mr-1 shrink-0 rounded-md p-0.5 opacity-70 hover:opacity-100"><Icon name="close" size={16} /></button>
               </div>
@@ -3225,8 +3225,8 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
         {toasts.map((toast) => (
           <div key={toast.id} role={toast.tone === 'success' ? 'status' : 'alert'}
             className={cx('pointer-events-auto flex w-full max-w-md items-start gap-3 rounded-[14px] border px-4 py-3 text-[13px] font-semibold leading-relaxed shadow-[var(--crs-shadow-lg)] [animation:crs-pop-in_.18s_ease-out]',
-              toast.tone === 'success' ? 'border-[color-mix(in_srgb,var(--crs-success-text)_25%,transparent)] bg-[var(--theme-surface)] text-[var(--theme-text)]' : 'border-[color-mix(in_srgb,var(--crs-warning-text)_25%,transparent)] bg-[var(--theme-surface)] text-[var(--theme-text)]')}>
-            <span className={cx('mt-[1px] shrink-0', toast.tone === 'success' ? 'text-[var(--crs-success-text)]' : 'text-[var(--crs-warning-text)]')}><Icon name={toast.tone === 'success' ? 'check' : 'alert'} size={17} /></span>
+              toast.tone === 'success' ? 'border-[color-mix(in_srgb,var(--crs-success-text)_25%,transparent)] bg-[var(--theme-surface)] text-[var(--theme-text)]' : 'border-[color-mix(in_srgb,var(--crs-danger-text)_30%,transparent)] bg-[var(--theme-surface)] text-[var(--crs-danger-text)]')}>
+            <span className={cx('mt-[1px] shrink-0', toast.tone === 'success' ? 'text-[var(--crs-success-text)]' : 'text-[var(--crs-danger-text)]')}><Icon name={toast.tone === 'success' ? 'check' : 'alert'} size={17} /></span>
             <p className="min-w-0 flex-1">{toast.text}</p>
             <button type="button" aria-label="알림 닫기" onClick={() => setToasts((current) => current.filter((item) => item.id !== toast.id))} className="-mr-1 shrink-0 rounded-md p-0.5 opacity-60 hover:opacity-100"><Icon name="close" size={15} /></button>
           </div>

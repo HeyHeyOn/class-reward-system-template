@@ -1,11 +1,11 @@
 import 'server-only';
 
-import { defaultAvatarFor } from '@/components/profile/avatar';
+import { defaultAvatarFor, isSameAvatar, normalizeAvatar, type AvatarConfig } from '@/components/profile/avatar';
 import { getDatabaseClient } from '@/server/db/client';
 import type { ClassMembership } from '@/server/repositories/database/classMemberships';
 import { defaultNickname, normalizeNickname } from '@/server/teacherAccounts';
 import { hasTeacherSessionBinding, type TeacherSessionBinding } from '@/server/teacherSession';
-import type { HubProfile } from './hub';
+import { hubAvatarUrl, importHubAvatar, type AvatarImportResult, type HubIcon, type HubProfile } from './hub';
 
 type Queryable = Readonly<{ query(text: string, values: unknown[]): Promise<{ rows: unknown[] }> }>;
 
@@ -14,16 +14,64 @@ export function hubNickname(profile: Pick<HubProfile, 'name' | 'email'>): string
   return normalizeNickname(Array.from(profile.name.trim()).slice(0, 20).join('')) ?? defaultNickname({ name: undefined, email: profile.email });
 }
 
+/** The name and icon the class keeps for a teacher (user_profiles). */
+export type StoredHubProfile = Readonly<{ nickname: string; avatar: AvatarConfig | null; avatarUrl: string | null; avatarFromHub: boolean }>;
+/** The icon to keep: the hub's, or (until it reaches the hub) one the teacher picked in the class. */
+export type SettledIcon = Readonly<{ avatar: AvatarConfig; avatarUrl: string | null; fromHub: boolean }>;
+
+/**
+ * 9-3, 9-4: an icon the teacher picked in the class (not the class's default) that has not reached the hub goes
+ * there once. The hub keeps it when the account has no icon of its own; otherwise the hub's icon is the one.
+ * When the hub cannot be asked, the class's icon stays and is offered again next time.
+ */
+export async function settleHubIcon(input: Readonly<{
+  sub: string;
+  stored: StoredHubProfile | null;
+  hub: HubIcon | null;
+  importAvatar?: (sub: string, avatar: AvatarConfig) => Promise<AvatarImportResult>;
+  env?: Readonly<Record<string, string | undefined>>;
+}>): Promise<SettledIcon> {
+  const { sub, stored, hub, env = process.env } = input;
+  const picked = stored && !stored.avatarFromHub && stored.avatar && !isSameAvatar(stored.avatar, defaultAvatarFor(sub)) ? stored.avatar : null;
+  if (picked) {
+    try {
+      const result = await (input.importAvatar ?? ((s, a) => importHubAvatar(s, a, env)))(sub, picked);
+      if (result === 'stored') return { avatar: picked, avatarUrl: hubAvatarUrl(picked, env), fromHub: true };
+      if (result === 'kept' && hub) return { ...hub, fromHub: true };
+    } catch (error) {
+      console.error('[ddanssaem] icon import failed', error instanceof Error ? error.message : 'unknown');
+    }
+    return { avatar: picked, avatarUrl: hubAvatarUrl(picked, env), fromHub: false };
+  }
+  if (hub) return { ...hub, fromHub: true };
+  const avatar = stored?.avatar ?? defaultAvatarFor(sub);
+  return { avatar, avatarUrl: stored?.avatarUrl ?? hubAvatarUrl(avatar, env), fromHub: stored?.avatarFromHub ?? false };
+}
+
 export function createHubAccountStore(db: Queryable) {
   return {
-    /** 1-4: a class session for the teacher the hub vouched for, bound to the hub session. */
-    async begin(profile: HubProfile): Promise<TeacherSessionBinding> {
-      const { rows } = await db.query('SELECT * FROM public.platform_begin_hub_teacher_session($1,$2,$3,$4,$5::jsonb)',
-        [profile.sub, profile.termsVersion, profile.sid, hubNickname(profile), JSON.stringify(defaultAvatarFor(profile.sub))]);
+    /** The name and icon kept for this teacher, or null when the class has no profile for them. */
+    async profile(sub: string): Promise<StoredHubProfile | null> {
+      const { rows } = await db.query('SELECT nickname, avatar, avatar_url, avatar_from_hub FROM public.platform_get_hub_profile($1)', [sub]);
+      const row = rows[0] as { nickname?: unknown; avatar?: unknown; avatar_url?: unknown; avatar_from_hub?: unknown } | undefined;
+      if (!row || typeof row.nickname !== 'string') return null;
+      return { nickname: row.nickname, avatar: normalizeAvatar(row.avatar), avatarUrl: typeof row.avatar_url === 'string' ? row.avatar_url : null,
+        avatarFromHub: row.avatar_from_hub === true };
+    },
+    /** 1-4: a class session for the teacher the hub vouched for, bound to the hub session, with the account's name and icon. */
+    async begin(profile: HubProfile, icon: SettledIcon): Promise<TeacherSessionBinding> {
+      const { rows } = await db.query('SELECT * FROM public.platform_begin_hub_teacher_session($1,$2,$3,$4,$5::jsonb,$6,$7)',
+        [profile.sub, profile.termsVersion, profile.sid, hubNickname(profile), JSON.stringify(icon.avatar), icon.avatarUrl, icon.fromHub]);
       const row = rows[0] as { generation?: unknown; session_id?: unknown } | undefined;
       const binding = { accountGeneration: row?.generation, sessionId: row?.session_id };
       if (rows.length !== 1 || !hasTeacherSessionBinding(binding as TeacherSessionBinding)) throw new Error('Invalid hub teacher session.');
       return binding as TeacherSessionBinding;
+    },
+    /** 9-3: the name or icon changed on the hub; false when the class keeps no profile for this teacher. */
+    async profileUpdated(sub: string, nickname: string, icon: SettledIcon): Promise<boolean> {
+      const { rows } = await db.query('SELECT public.platform_hub_profile_updated($1,$2,$3::jsonb,$4,$5) AS updated',
+        [sub, nickname, JSON.stringify(icon.avatar), icon.avatarUrl, icon.fromHub]);
+      return (rows[0] as { updated?: unknown } | undefined)?.updated === true;
     },
     /** 2-2: the class sessions made from this hub session end; returns how many. */
     async endSessions(sid: string): Promise<number> {
