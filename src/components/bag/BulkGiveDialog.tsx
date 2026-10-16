@@ -6,9 +6,11 @@ import { giveBagItemsToStudents } from './bagClient';
 import { GiveProductFields, giveOptionItemName, type GiveOption } from './GiveProductFields';
 
 /** Puts one store product into the 보관함 of every selected student (a physical product as its 교환권). */
-export function BulkGiveDialog({ studentIds, options, opener, onClose, notify }: Readonly<{
+export function BulkGiveDialog({ studentIds, options, opener, onClose, notify, onDone }: Readonly<{
   studentIds: readonly string[]; options: readonly GiveOption[]; opener?: HTMLElement | null;
   onClose: () => void; notify: (message: string) => void;
+  /** After the items went in (the selection is done with). */
+  onDone?: () => void;
 }>) {
   const [productId, setProductId] = useState('');
   const [count, setCount] = useState(1);
@@ -28,6 +30,7 @@ export function BulkGiveDialog({ studentIds, options, opener, onClose, notify }:
     setBusy(false);
     if (!result.ok) { setError(result.error); return; }
     notify(`학생 ${studentIds.length}명의 보관함에 '${giveOptionItemName(option)}' ${count}개씩 넣었어요.`);
+    onDone?.();
     onClose();
   }
 

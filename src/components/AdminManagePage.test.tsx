@@ -2112,7 +2112,10 @@ describe('AdminManagePage', () => {
     });
     await findNotice('선택 학생 2명 수정 완료');
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '잔액 한꺼번에 바꾸기' })).toBeNull());
+    // A finished bulk change clears the selection, so the next one starts from nothing.
+    expect(screen.queryByRole('toolbar', { name: '선택 항목 작업' })).toBeNull();
 
+    fireEvent.click(screen.getByLabelText('전체 학생 선택'));
     fireEvent.click(within(selectionBar()).getByRole('button', { name: '삭제' }));
     await confirmDialog('삭제');
     await waitFor(() => {

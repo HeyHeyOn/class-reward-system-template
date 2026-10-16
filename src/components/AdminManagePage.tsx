@@ -1399,6 +1399,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       const balanceMap = new Map((payload as Array<{ studentId: string; balance: number }>).map((item) => [item.studentId, item.balance]));
       setStudents((current) => current.map((student) => balanceMap.has(student.studentId) ? { ...student, balance: balanceMap.get(student.studentId)!, balanceEditRevision: 0 } : student));
       bulkBalanceAttempt.current = null;
+      setSelectedStudentIds([]);
       notify(`선택 학생 ${payload.length}명 수정 완료`);
     } catch (error) {
       notify(error instanceof Error ? error.message : '선택 학생 잔액을 수정하지 못했어요.');
@@ -2969,7 +2970,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
 
       {bulkGiveOpener ? (
         <BulkGiveDialog studentIds={selectedStudentIds} options={giveOptions} opener={bulkGiveOpener}
-          onClose={() => setBulkGiveOpener(null)} notify={notify} />
+          onClose={() => setBulkGiveOpener(null)} notify={notify} onDone={() => setSelectedStudentIds([])} />
       ) : null}
 
       {groupManagerOpener ? (
@@ -2980,7 +2981,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
       {groupAssignOpener && !groupManagerOpener ? (
         <StudentGroupAssignDialog groups={studentGroups.groups} studentIds={selectedStudentIds} change={studentGroups.change} opener={groupAssignOpener}
           onClose={() => setGroupAssignOpener(null)} onManage={(opener) => setGroupManagerOpener(opener)}
-          onDone={(message) => { setGroupAssignOpener(null); notify(message); }} />
+          onDone={(message) => { setGroupAssignOpener(null); setSelectedStudentIds([]); notify(message); }} />
       ) : null}
 
       {bulkBalanceOpen ? (

@@ -188,7 +188,8 @@ export function StudentGroupAssignDialog({ groups, studentIds, change, onClose, 
         {[...groups.map((group) => ({ id: group.id, label: group.name, hint: `학생 ${group.students.length}명` })), { id: 'none', label: '모둠 없음', hint: '모둠에서 빼요' }].map((option) => (
           <label key={option.id} className={cx('flex cursor-pointer items-center gap-3 rounded-[12px] border px-3.5 py-2.5',
             choice === option.id ? 'border-[var(--theme-accent-text)] bg-[var(--theme-accent-soft)]' : 'border-[var(--crs-line)] hover:border-[var(--crs-line-strong)]')}>
-            <input type="radio" name={name} value={option.id} checked={choice === option.id} onChange={() => setChoice(option.id)} className="accent-[var(--theme-accent-solid)]" />
+            <input type="radio" name={name} value={option.id} checked={choice === option.id} onChange={() => setChoice(option.id)}
+              aria-label={option.id === 'none' ? option.label : `${option.label}, ${option.hint}`} className="accent-[var(--theme-accent-solid)]" />
             <span className="min-w-0 flex-1 truncate text-[14px] font-bold">{option.label}</span>
             <span className="text-xs text-[var(--theme-muted-text)]">{option.hint}</span>
           </label>
