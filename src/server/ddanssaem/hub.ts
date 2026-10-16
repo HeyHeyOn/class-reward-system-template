@@ -157,8 +157,13 @@ export async function exchangeHubCode(input: Readonly<{ origin: string; code: st
 
 /** 2-2, 4: the hub signs each server call with hex(HMAC-SHA256(client_secret, body bytes)). */
 export function verifyHubSignature(body: string, signature: string | null, env: Env = process.env): boolean {
+  return verifyBodySignature(body, signature, clientSecret(env));
+}
+
+/** hex(HMAC-SHA256(secret, body bytes)), compared in constant time (also the app-links calls). */
+export function verifyBodySignature(body: string, signature: string | null, secret: string): boolean {
   if (!signature || !/^[0-9a-f]{64}$/i.test(signature)) return false;
-  const expected = createHmac('sha256', clientSecret(env)).update(body, 'utf8').digest();
+  const expected = createHmac('sha256', secret).update(body, 'utf8').digest();
   const given = Buffer.from(signature, 'hex');
   return given.length === expected.length && timingSafeEqual(given, expected);
 }

@@ -129,7 +129,7 @@ describe('exhaustive legacy side-effect inventory', () => {
       .flatMap(path => exportedMethods(readFileSync(resolve('src/server', path), 'utf8'))
         .map(method => `${method} ${path.replace('../app/api', '').replace('/route.ts', '')}`)).sort();
     expect(inventory.map(e => `${e.method} ${e.route}`).sort()).toEqual(discovered);
-    expect(discovered).toHaveLength(145);
+    expect(discovered).toHaveLength(148);
     expect(new Set(discovered).size).toBe(discovered.length);
     expect(inventory.find(e => e.route === '/internal/migrations/freezing-reacquisition')?.effect).toBe('companion-authenticated-read-candidate');
     expect(TENANT_ROUTE_INVENTORY.map(e => `${e.method} ${e.route}`).sort()).toEqual(discovered);
