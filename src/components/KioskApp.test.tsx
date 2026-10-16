@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StrictMode } from 'react';
 import { KioskApp } from './KioskApp';
-import { contrastRatio, THEME_PALETTES, type ThemeColor } from './uiTheme';
+import { contrastRatio, THEME_PALETTES } from './uiTheme';
 
 const products = [
   { productId: 'P001', name: '연필', price: 300, stock: 20, isActive: true, imageUrl: 'https://example.com/pencil.png', category: '문구', sortOrder: 1 },
@@ -133,8 +133,8 @@ describe('KioskApp', () => {
     const shell = container.querySelector('[data-testid="kiosk-shell"]');
     expect(shell?.className).toContain('h-[100dvh]');
     expect(shell?.className).toContain('bg-[var(--theme-shell)]');
-    expect(shell?.getAttribute('data-theme')).toBe('pink');
-    expect(shell?.getAttribute('style')).toContain(`--theme-shell: ${THEME_PALETTES.pink.shell}`);
+    expect(shell?.getAttribute('data-theme')).toBe('white');
+    expect(shell?.getAttribute('style')).toContain(`--theme-shell: ${THEME_PALETTES.white.shell}`);
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain('SchoolSafeNotice');
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('overflow-hidden');
     // Portrait stacks products above the cart; landscape places the cart beside the products.
@@ -317,22 +317,22 @@ describe('KioskApp', () => {
     const { container } = render(<KioskApp />);
 
     expect(await screen.findByRole('heading', { name: '남색 매점' })).toBeTruthy();
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain(`--theme-shell: ${THEME_PALETTES.navy.shell}`);
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('data-theme')).toBe('navy');
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain(`--theme-surface: ${THEME_PALETTES.navy.surface}`);
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain(`--theme-shell: ${THEME_PALETTES.white.shell}`);
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('data-theme')).toBe('white');
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain(`--theme-surface: ${THEME_PALETTES.white.surface}`);
     expect(container.querySelector('[data-testid="cart-panel"]')?.className).toContain('bg-[var(--theme-surface)]');
     expect(screen.getByRole('button', { name: '전체' }).className).toContain('bg-[var(--theme-accent-solid)]');
     expect(screen.getByRole('button', { name: '전체' }).className).toContain('text-[var(--theme-accent-on-solid)]');
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('bg-[var(--theme-shell)]');
   });
 
-  it('keeps black kiosk theme cart action buttons readable on dark local backgrounds', async () => {
+  it('keeps cart action buttons readable for a class saved with the earlier black theme', async () => {
     vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse(products));
     vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse({ spreadsheetId: 'sheet-123', currencyUnit: '별', appTitle: '검정 매점', themeColor: 'black', qrManualInputEnabled: true, source: 'runtime' }));
     const { container } = render(<KioskApp />);
 
     expect(await screen.findByRole('heading', { name: '검정 매점' })).toBeTruthy();
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain(`--theme-surface: ${THEME_PALETTES.black.surface}`);
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain(`--theme-surface: ${THEME_PALETTES.white.surface}`);
     fireEvent.click(screen.getByRole('button', { name: '연필 300별 담기' }));
     expect(screen.getByRole('button', { name: '비우기' }).className).toContain('text-[var(--theme-muted-text)]');
     expect(screen.getByRole('button', { name: '비우기' }).className).toContain('hover:text-[var(--theme-text)]');
@@ -347,7 +347,7 @@ describe('KioskApp', () => {
       expect(button.className).toContain('bg-[var(--theme-surface)]');
       expect(button.className).toContain('text-[var(--theme-text)]');
     }
-    const palette = THEME_PALETTES.black;
+    const palette = THEME_PALETTES.white;
     expect(contrastRatio(palette.text, palette.surface)).toBeGreaterThanOrEqual(4.5);
     expect(contrastRatio(palette.mutedText, palette.surface)).toBeGreaterThanOrEqual(4.5);
     expect(contrastRatio(palette.accentOnSolid, palette.accentSolid)).toBeGreaterThanOrEqual(4.5);
@@ -379,7 +379,7 @@ describe('KioskApp', () => {
     const { container } = render(<KioskApp />);
 
     expect(await screen.findByRole('heading', { name: '분홍 매점' })).toBeTruthy();
-    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain(`--theme-shell: ${THEME_PALETTES.pink.shell}`);
+    expect(container.querySelector('[data-testid="kiosk-shell"]')?.getAttribute('style')).toContain(`--theme-shell: ${THEME_PALETTES.white.shell}`);
     expect(screen.getByRole('button', { name: '전체' }).className).toContain('bg-[var(--theme-accent-solid)]');
     expect(screen.getByRole('button', { name: '전체' }).className).not.toContain('bg-pink-500');
   });
@@ -400,11 +400,11 @@ describe('KioskApp', () => {
     }
   });
 
-  it('uses a soft yellow, balanced green, and darker black kiosk shell when selected', async () => {
+  it('shows the one theme for classes saved with the earlier yellow, green and black themes', async () => {
     for (const [themeColor, expectedShell, rejectedShell] of [
-      ['yellow', THEME_PALETTES.yellow.shell, 'bg-yellow-100'],
-      ['green', THEME_PALETTES.green.shell, 'bg-green-50'],
-      ['black', THEME_PALETTES.black.shell, 'bg-slate-100'],
+      ['yellow', THEME_PALETTES.white.shell, 'bg-yellow-100'],
+      ['green', THEME_PALETTES.white.shell, 'bg-green-50'],
+      ['black', THEME_PALETTES.white.shell, 'bg-slate-100'],
     ] as const) {
       cleanup();
       vi.mocked(fetch).mockReset();
@@ -675,8 +675,8 @@ describe('KioskApp', () => {
     const shell = container.querySelector('[data-testid="kiosk-shell"]');
     expect(shell?.className).toContain('h-[100dvh]');
     expect(shell?.className).toContain('bg-[var(--theme-shell)]');
-    expect(shell?.getAttribute('data-theme')).toBe('pink');
-    expect(shell?.getAttribute('style')).toContain(`--theme-shell: ${THEME_PALETTES.pink.shell}`);
+    expect(shell?.getAttribute('data-theme')).toBe('white');
+    expect(shell?.getAttribute('style')).toContain(`--theme-shell: ${THEME_PALETTES.white.shell}`);
     expect(container.querySelector('[data-testid="kiosk-shell"]')?.className).toContain('overflow-hidden');
     expect(container.querySelector('[data-testid="kiosk-content"]')?.className).toContain('flex-1');
     expect(container.querySelector('[data-testid="kiosk-content"]')?.className).toMatch(/sm:p-\d/);
@@ -830,7 +830,7 @@ describe('KioskApp', () => {
     vi.useRealTimers();
   });
 
-  it.each(['black', 'navy'] as const)('renders muted %s-theme kiosk and modal text with semantic AA colors', async (themeColor) => {
+  it.each(['black', 'navy'] as const)('renders muted kiosk and modal text with AA colors for a class saved with the earlier %s theme', async (themeColor) => {
     let resolveStudent!: () => void;
     const studentGate = new Promise<void>((resolve) => { resolveStudent = resolve; });
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
@@ -843,7 +843,7 @@ describe('KioskApp', () => {
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
     const { container } = render(<KioskApp />);
-    const palette = THEME_PALETTES[themeColor as ThemeColor];
+    const palette = THEME_PALETTES.white;
     const expectSemanticMuted = (element: HTMLElement, background: string) => {
       expect(element.className).toContain('text-[var(--theme-muted-text)]');
       expect(element.className).not.toMatch(/text-slate-(500|600|700)/);

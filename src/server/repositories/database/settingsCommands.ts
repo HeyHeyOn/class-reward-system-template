@@ -7,7 +7,9 @@ import { safeInteger } from './queryProjection';
 import { appendOperationAudit } from './operationAudit';
 import { storedQrManualInputEnabled } from './settingsBoolean';
 
-const themes = ['blue', 'pink', 'yellow', 'green', 'purple', 'white', 'black', 'navy'] as const;
+// One theme now; the earlier names are still accepted (an open admin page, migrated classes) and read as it.
+const themes = ['white'] as const;
+const retiredThemes = ['blue', 'pink', 'yellow', 'green', 'purple', 'black', 'navy'];
 const editKeys = ['currencyUnit', 'appTitle', 'bankTitle', 'themeColor', 'fontFamily', 'qrManualInputEnabled'] as const;
 type Editable = { currencyUnit: string; appTitle: string; bankTitle: string; themeColor: typeof themes[number]; fontFamily: FontFamily; qrManualInputEnabled: boolean };
 export type PublicDatabaseSettings = Editable & { source: 'database'; className: string; classTimeZone: 'Asia/Seoul'; settingsVersion: number };
@@ -28,10 +30,10 @@ function edits(value: unknown): Editable {
     if (typeof text !== 'string' || !text || text !== text.trim() || text.length > (key === 'currencyUnit' ? 20 : 80)
       || /[\p{Cc}\p{Cf}\p{Cs}]/u.test(text)) throw new SettingsInputError('화폐 단위와 제목의 길이, 공백을 확인해 주세요.');
   }
-  if (!themes.includes(value.themeColor as Editable['themeColor'])
+  if (!themes.includes(value.themeColor as Editable['themeColor']) && !retiredThemes.includes(value.themeColor as string)
     || !FONT_FAMILY_OPTIONS.some(option => option.value === value.fontFamily)
     || typeof value.qrManualInputEnabled !== 'boolean') throw new SettingsInputError('테마, 글꼴, QR 설정을 확인해 주세요.');
-  return Object.fromEntries(editKeys.map(key => [key, value[key]])) as Editable;
+  return { ...Object.fromEntries(editKeys.map(key => [key, value[key]])), themeColor: 'white' } as Editable;
 }
 function parseInput(value: unknown): SaveInput {
   if (!record(value) || Object.keys(value).length !== editKeys.length + 2

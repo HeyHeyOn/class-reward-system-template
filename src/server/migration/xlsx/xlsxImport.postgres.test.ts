@@ -156,7 +156,7 @@ suite('self-service CRS workbook import on native PostgreSQL', () => {
       ['TA', true, null, 'NONE'], ['TB', true, null, 'WEEKLY'], ['TC', false, 'TA', 'NONE'], ['TD', true, null, 'NONE']]);
     expect(new Date(state.tasks[3].available_from).toISOString()).toBe('2030-03-02T00:00:00.000Z');
     expect(state.settings).toMatchObject({ className: '가져오기 학급', appTitle: '시험 매점', bankTitle: '시험 은행', currencyUnit: '점',
-      themeColor: 'blue', fontFamily: 'default', qrManualInputEnabled: true });
+      themeColor: 'white', fontFamily: 'default', qrManualInputEnabled: true });
     expect(JSON.stringify(state.settings)).not.toContain('a'.repeat(64));
     // Completed students are marked by the administrator command: no reward, no ledger row.
     expect(state.completions.every(row => row.source === 'ADMIN' && row.reward === 0)).toBe(true);

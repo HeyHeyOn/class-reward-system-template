@@ -261,10 +261,10 @@ describe('BankApp home and history', () => {
   it('applies the class theme, font and title to the bank shell', async () => {
     const { container } = await renderLoggedIn();
     const shell = container.querySelector('[data-testid="bank-shell"]');
-    expect(shell?.getAttribute('data-theme')).toBe('green');
+    expect(shell?.getAttribute('data-theme')).toBe('white');
     const style = shell?.getAttribute('style') ?? '';
-    expect(style).toContain(`--theme-shell: ${THEME_PALETTES.green.shell}`);
-    expect(style).toContain(`--theme-accent-solid: ${THEME_PALETTES.green.accentSolid}`);
+    expect(style).toContain(`--theme-shell: ${THEME_PALETTES.white.shell}`);
+    expect(style).toContain(`--theme-accent-solid: ${THEME_PALETTES.white.accentSolid}`);
     expect(style).toContain('NanumBarunGothic');
     expect(shell?.className).toContain('bg-[var(--theme-shell)]');
     expect(screen.getByRole('heading', { name: '별빛 은행' })).toBeTruthy();
@@ -274,7 +274,7 @@ describe('BankApp home and history', () => {
   });
 
   it.each(Object.keys(THEME_PALETTES) as ThemeColor[])('keeps the %s balance card readable', (themeColor) => {
-    const palette = THEME_PALETTES[themeColor];
+    const palette = THEME_PALETTES.white;
     expect(contrastRatio(palette.accentOnSolid, palette.accentSolid)).toBeGreaterThanOrEqual(4.5);
     expect(contrastRatio(palette.mutedText, palette.surface)).toBeGreaterThanOrEqual(4.5);
   });

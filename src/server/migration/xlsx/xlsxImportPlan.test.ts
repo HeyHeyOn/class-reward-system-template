@@ -22,7 +22,7 @@ describe('buildXlsxImportPlan', () => {
     const result = await plan(workbook);
     expect(messages(result, 'error')).toEqual([]);
     expect(result.canImport).toBe(true);
-    expect(result.settings).toEqual({ currencyUnit: '점', appTitle: '시험 매점', bankTitle: '시험 은행', themeColor: 'blue',
+    expect(result.settings).toEqual({ currencyUnit: '점', appTitle: '시험 매점', bankTitle: '시험 은행', themeColor: 'white',
       fontFamily: 'default', qrManualInputEnabled: true });
     expect(result.students).toEqual([
       { studentId: '0101', name: '바다', balance: 1, status: 'ACTIVE' },

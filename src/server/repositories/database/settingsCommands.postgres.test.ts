@@ -19,7 +19,7 @@ vi.mock('@/server/db/client', () => ({ getDatabaseClient: () => {
 vi.mock('@/server/googleSheets', () => ({ createConfiguredSheetsStore: destination.sheets, createConfiguredSheetsReader: destination.sheets }));
 const suite = process.env.RUN_REAL_POSTGRES === '1' ? describe : describe.skip;
 const origin = 'https://settings.example.invalid';
-const values = { currencyUnit: '별', appTitle: '우리 반 매점', bankTitle: '우리 반 은행', themeColor: 'purple', fontFamily: 'default', qrManualInputEnabled: true };
+const values = { currencyUnit: '별', appTitle: '우리 반 매점', bankTitle: '우리 반 은행', themeColor: 'white', fontFamily: 'default', qrManualInputEnabled: true };
 let db: DisposablePostgres;
 let tenantId: string;
 let otherId: string;

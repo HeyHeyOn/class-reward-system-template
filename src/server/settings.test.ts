@@ -96,11 +96,11 @@ describe('settings', () => {
       },
     });
 
-    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '별', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'purple', fontFamily: 'school-safe-notice', qrManualInputEnabled: true, classTimeZone: 'America/New_York', schemaVersion: 7, systemVersion: '0.2.0-phase1', systemName: '햇살반 보상 시스템', source: 'sheet' });
+    expect(settings).toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '별', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'white', fontFamily: 'school-safe-notice', qrManualInputEnabled: true, classTimeZone: 'America/New_York', schemaVersion: 7, systemVersion: '0.2.0-phase1', systemName: '햇살반 보상 시스템', source: 'sheet' });
   });
 
-  it('accepts white, black, and navy theme colors from Settings sheet', async () => {
-    for (const themeColor of ['white', 'black', 'navy'] as const) {
+  it('reads every theme in the Settings sheet as the one theme', async () => {
+    for (const themeColor of ['white', 'black', 'navy', 'pink', 'rainbow'] as const) {
       const settings = await getAppSettings({
         env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
         settingsReader: {
@@ -113,7 +113,7 @@ describe('settings', () => {
         },
       });
 
-      expect(settings.themeColor).toBe(themeColor);
+      expect(settings.themeColor).toBe('white');
     }
   });
 
@@ -176,14 +176,14 @@ describe('settings', () => {
         classTimeZone: 'Asia/Tokyo',
         env: { GOOGLE_SHEET_ID: 'env-sheet-id' },
       }),
-    ).resolves.toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '달란트', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'green', fontFamily: 'school-safe-board-marker', qrManualInputEnabled: true, classTimeZone: 'Asia/Tokyo', schemaVersion: 1, systemVersion: SYSTEM_VERSION, systemName: '학급 보상 시스템', source: 'sheet' });
+    ).resolves.toEqual({ spreadsheetId: 'env-sheet-id', currencyUnit: '달란트', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'white', fontFamily: 'school-safe-board-marker', qrManualInputEnabled: true, classTimeZone: 'Asia/Tokyo', schemaVersion: 1, systemVersion: SYSTEM_VERSION, systemName: '학급 보상 시스템', source: 'sheet' });
 
     expect(reads).toBe(1);
     expect(updates).toEqual([{ sheetName: 'Settings', rowNumber: 2, columnName: ' value ', value: '달란트' }]);
     expect(appendedBatches).toEqual([{ sheetName: 'Settings', rows: [
       ['appTitle', '햇살반 매점', ''],
       ['bankTitle', '햇살반 은행', ''],
-      ['themeColor', 'green', ''],
+      ['themeColor', 'white', ''],
       ['fontFamily', 'school-safe-board-marker', ''],
       ['qrManualInputEnabled', 'TRUE', ''],
       ['classTimeZone', 'Asia/Tokyo', ''],

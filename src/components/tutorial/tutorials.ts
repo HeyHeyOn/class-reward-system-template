@@ -252,12 +252,10 @@ export const TUTORIALS: readonly Tutorial[] = [
   },
   {
     id: '2-2',
-    title: '화면 색과 글꼴 바꾸기',
-    goal: '학생이 보는 매점, 은행 화면의 테마 색과 글꼴을 정해요.',
+    title: '글꼴 바꾸기',
+    goal: '학생이 보는 매점, 은행 화면의 글꼴을 정해요.',
     steps: [
-      menu('settings', '화면 색과 글꼴은'),
-      { tab: 'settings', target: '[role="radiogroup"][aria-label="테마 색상"]', area: [{ closest: 'fieldset' }], title: '테마 색상',
-        text: '**테마 색상**을 고르세요. 매점, 은행 화면의 바탕과 버튼 색이 바뀌어요.', sub: '작은 그림으로 바뀐 화면을 미리 볼 수 있어요.' },
+      menu('settings', '글꼴은'),
       { tab: 'settings', target: '#settings-font', area: ['@field', '[data-tour="settings-font-preview"]'], title: '글꼴',
         text: '**글꼴**을 고르세요. 아래 글자로 어떻게 보일지 확인해요.' },
       { tab: 'settings', target: '[data-tour="settings-save"]', area: ['[data-tour="settings-save-bar"]'], title: '저장하기',
@@ -961,7 +959,7 @@ export function tutorialAfter(tutorial: Tutorial, place: TutorialPlace): Tutoria
 export const TUTORIAL_CHAPTERS: ReadonlyArray<Readonly<{ no: number; title: string; items: ReadonlyArray<readonly [string, string]> }>> = [
   { no: 0, title: '처음 시작하기', items: [['0-1', '딴쌤 클래스 한 바퀴 둘러보기']] },
   { no: 1, title: '시작하기', items: [['1-1', '내 학급 열기'], ['1-2', '관리자 화면 둘러보기']] },
-  { no: 2, title: '학급 설정', items: [['2-1', '매점, 은행 이름과 화폐 단위 정하기'], ['2-2', '화면 색과 글꼴 바꾸기']] },
+  { no: 2, title: '학급 설정', items: [['2-1', '매점, 은행 이름과 화폐 단위 정하기'], ['2-2', '글꼴 바꾸기']] },
   { no: 3, title: '학생 관리', items: [['3-1', '학생 한 명씩 추가하기'], ['3-2', '엑셀로 여러 학생 한꺼번에 추가하기'], ['3-3', '학생 정보 고치기, 이용 멈추기, 삭제하기'],
     ['3-4', '여러 학생을 골라 한꺼번에 처리하기'], ['3-5', '학생 QR 카드 인쇄하기'], ['3-6', '보관함에 아이템 넣기, 사용 처리하기']] },
   { no: 4, title: '매점 관리', items: [['4-1', '매점에 상품 추가하기'], ['4-2', '상품 고치기, 판매 멈추기, 지우기'], ['4-3', '할인 행사 만들기'], ['4-4', '행사 고치기, 끄기, 지우기']] },

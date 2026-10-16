@@ -21,7 +21,8 @@ export type XlsxImportIssue = Readonly<{
   message: string;
 }>;
 
-export const THEME_COLORS = ['blue', 'pink', 'yellow', 'green', 'purple', 'white', 'black', 'navy'] as const;
+/** One theme now (the white page with the brand blue); the theme in a file is not carried over. */
+export const THEME_COLORS = ['white'] as const;
 export type XlsxSettingsPlan = Readonly<{
   currencyUnit: string; appTitle: string; bankTitle: string; themeColor: typeof THEME_COLORS[number];
   fontFamily: FontFamily; qrManualInputEnabled: boolean;
@@ -272,10 +273,7 @@ function settingsFrom(rows: readonly TabRow[], keyIndex: number, valueIndex: num
     }
     return value;
   };
-  const theme = values.get('themeColor');
-  const themeColor = theme && (THEME_COLORS as readonly string[]).includes(theme.value)
-    ? theme.value as XlsxSettingsPlan['themeColor'] : DEFAULT_SETTINGS.themeColor;
-  if (theme && themeColor !== theme.value) issues.warning('Settings', theme.row, `${SETTING_LABELS.themeColor}(themeColor) '${theme.value}'은 쓸 수 없어 파랑으로 정했어요.`);
+  const themeColor = DEFAULT_SETTINGS.themeColor;
   const font = values.get('fontFamily');
   const fontFamily = font && FONT_FAMILY_OPTIONS.some(option => option.value === font.value)
     ? font.value as FontFamily : DEFAULT_SETTINGS.fontFamily;

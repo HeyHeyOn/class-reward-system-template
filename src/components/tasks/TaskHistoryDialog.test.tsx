@@ -213,8 +213,8 @@ describe('TaskHistoryDialog', () => {
   });
 
   it.each([
-    ...(['white', 'black', 'navy'] as const).map((name) => [name, THEME_PALETTES[name].surface, THEME_PALETTES[name].border, THEME_PALETTES[name].text] as const),
-  ] as const)('uses semantic %s theme surfaces, boundaries, and text', (themeColor, surface, border, text) => {
+    ...(['white'] as const).map((name) => [name, THEME_PALETTES.white.surface, THEME_PALETTES.white.border, THEME_PALETTES.white.text] as const),
+  ] as const)('uses the %s theme surfaces, boundaries, and text', (themeColor, surface, border, text) => {
     const onClose = vi.fn();
     render(<TaskHistoryDialog history={loadingHistory} onClose={onClose} themeColor={themeColor} />);
 
@@ -238,7 +238,7 @@ describe('TaskHistoryDialog', () => {
   });
 
   it('colours the loaded history only with theme and status tokens', () => {
-    const { dialog } = renderDetail({ themeColor: 'navy' });
+    const { dialog } = renderDetail({ themeColor: 'white' });
     expect(dialog.innerHTML).not.toMatch(/bg-white|bg-slate-|text-slate-|border-slate-|#[0-9a-fA-F]{3,6}\b/);
     const kinds = within(dialog).getAllByTestId('task-history-entry').map((entry) => entry.getAttribute('data-kind'));
     expect(kinds).toEqual(['reset', 'adminComplete', 'complete', 'toReady', 'assignPending']);

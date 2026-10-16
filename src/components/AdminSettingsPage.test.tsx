@@ -78,7 +78,7 @@ describe('AdminSettingsPage Seoul-only policy', () => {
     await screen.findByDisplayValue('sheet');
     const save = screen.getByRole('button', { name: '설정 저장' }) as HTMLButtonElement;
     expect(save.disabled).toBe(true);
-    fireEvent.click(screen.getByRole('radio', { name: '초록' }));
+    fireEvent.change(screen.getByLabelText('학급 화폐 단위'), { target: { value: '점' } });
     expect(save.disabled).toBe(false);
     fireEvent.click(save);
 
@@ -86,7 +86,7 @@ describe('AdminSettingsPage Seoul-only policy', () => {
     const post = vi.mocked(fetch).mock.calls.find(([, init]) => init?.method === 'POST');
     const body = JSON.parse(String(post?.[1]?.body));
     expect(body).not.toHaveProperty('classTimeZone');
-    expect(body).toMatchObject({ spreadsheetIdOrUrl: 'sheet', themeColor: 'green', currencyUnit: '별', appTitle: '매점', bankTitle: '은행' });
+    expect(body).toMatchObject({ spreadsheetIdOrUrl: 'sheet', themeColor: 'white', currencyUnit: '점', appTitle: '매점', bankTitle: '은행' });
     expect(vi.mocked(fetch).mock.calls.some(([, init]) => init?.method === 'PATCH')).toBe(false);
   });
 });

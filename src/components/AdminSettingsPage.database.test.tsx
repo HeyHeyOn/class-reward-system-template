@@ -17,19 +17,17 @@ it('saves central display settings without asking for Sheets or administrator pa
   await screen.findByText(SAVED_STATUS);
   expect(screen.queryByLabelText('Google Sheets 주소 또는 시트 ID')).toBeNull();
   expect(screen.queryByLabelText('관리자 암호 설정')).toBeNull();
-  expect((screen.getByRole('radio', { name: '파랑' }) as HTMLInputElement).checked).toBe(true);
+  expect(screen.queryByRole('radiogroup', { name: '테마 색상' })).toBeNull();
   expect(saveButton().disabled).toBe(true);
   fireEvent.change(screen.getByLabelText('학급 화폐 단위'), { target: { value: '별' } });
-  fireEvent.click(screen.getByRole('radio', { name: '남색' }));
   fireEvent.click(screen.getByRole('switch', { name: 'QR 값 직접 입력 허용' }));
-  expect((screen.getByRole('radio', { name: '남색' }) as HTMLInputElement).checked).toBe(true);
   expect(screen.getByText('저장하지 않은 변경 사항이 있어요.')).toBeTruthy();
   expect(saveButton().disabled).toBe(false);
   fireEvent.click(saveButton());
   await screen.findByText('학급 설정을 저장했어요.');
   const input = JSON.parse(String(fetcher.mock.calls.find(([, init]) => init?.method === 'POST')![1]!.body));
   expect(input).toEqual({ operationId: expect.any(String), expectedSettingsVersion: 1, currencyUnit: '별',
-    appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'navy', fontFamily: 'default', qrManualInputEnabled: true });
+    appTitle: '학급 매점', bankTitle: '학급 은행', themeColor: 'white', fontFamily: 'default', qrManualInputEnabled: true });
 });
 
 it('locks edits after an uncertain response and resends the exact request', async () => {

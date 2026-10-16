@@ -1405,13 +1405,13 @@ describe('PromotionAdminPanel', () => {
     });
   });
 
-  it.each(['white', 'black', 'navy'] as const)('applies semantic %s theme variables to panel, list, fields, and modal', async (themeColor) => {
+  it.each(['white'] as const)('applies the %s theme variables to panel, list, fields, and modal', async (themeColor) => {
     vi.stubGlobal('fetch', vi.fn(async () => response([percent])));
     render(<PromotionAdminPanel products={products} currencyUnit="별" timeZone="Asia/Seoul" themeColor={themeColor} />);
     const panel = screen.getByLabelText('행사 관리');
     await screen.findByText(percent.name);
     expect(panel.getAttribute('data-theme')).toBe(themeColor);
-    const palette = THEME_PALETTES[themeColor];
+    const palette = THEME_PALETTES.white;
     expect(panel.style.getPropertyValue('--theme-surface')).toBe(palette.surface);
     expect(panel.style.getPropertyValue('--theme-text')).toBe(palette.text);
     expect(panel.style.getPropertyValue('--theme-input')).toBe(palette.input);

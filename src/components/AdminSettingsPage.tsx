@@ -2,8 +2,8 @@
 
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { FONT_FAMILY_OPTIONS, getFontFamilyCss, normalizeFontFamily, type FontFamily } from '@/lib/fontSettings';
-import { THEME_PALETTES, type ThemeColor } from './uiTheme';
-import { Button, Card, CardHeader, Field, Icon, Input, Select, Switch, cx } from './ui';
+import { normalizeThemeColor } from './uiTheme';
+import { Button, Card, CardHeader, Field, Input, Select, Switch, cx } from './ui';
 import { useQrObjectUrl } from '@/lib/qrCodeClient';
 import { tenantApiPath, tenantFetch } from '@/lib/tenantApiPath';
 
@@ -31,7 +31,8 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
   const [currencyUnit, setCurrencyUnit] = useState('원');
   const [appTitle, setAppTitle] = useState('학급 매점');
   const [bankTitle, setBankTitle] = useState('학급 은행');
-  const [themeColor, setThemeColor] = useState('blue');
+  // One theme (the brand's); saving writes it over any earlier theme.
+  const themeColor = normalizeThemeColor();
   const [fontFamily, setFontFamily] = useState<FontFamily>('default');
   const [qrManualInputEnabled, setQrManualInputEnabled] = useState(false);
   const [currentSettings, setCurrentSettings] = useState<SettingsResponse | null>(null);
@@ -69,7 +70,6 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
         setCurrencyUnit(settings.currencyUnit ?? '원');
         setAppTitle(settings.appTitle ?? '학급 매점');
         setBankTitle(settings.bankTitle ?? '학급 은행');
-        setThemeColor(settings.themeColor ?? 'blue');
         setFontFamily(normalizeFontFamily(settings.fontFamily));
         setQrManualInputEnabled(Boolean(settings.qrManualInputEnabled));
       }
@@ -130,7 +130,6 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
       setCurrencyUnit(payload.currencyUnit ?? '원');
       setAppTitle(payload.appTitle ?? '학급 매점');
       setBankTitle(payload.bankTitle ?? '학급 은행');
-      setThemeColor(payload.themeColor ?? 'blue');
       setFontFamily(normalizeFontFamily(payload.fontFamily));
       setQrManualInputEnabled(Boolean(payload.qrManualInputEnabled));
       if (adminPassword.trim()) {
@@ -151,7 +150,7 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
   }
 
   const unchanged = Boolean(currentSettings) && currencyUnit === (currentSettings?.currencyUnit ?? '원') && appTitle === (currentSettings?.appTitle ?? '학급 매점')
-    && bankTitle === (currentSettings?.bankTitle ?? '학급 은행') && themeColor === (currentSettings?.themeColor ?? 'blue')
+    && bankTitle === (currentSettings?.bankTitle ?? '학급 은행')
     && fontFamily === normalizeFontFamily(currentSettings?.fontFamily) && qrManualInputEnabled === Boolean(currentSettings?.qrManualInputEnabled)
     && (isDatabase || (spreadsheetIdOrUrl === (currentSettings?.spreadsheetId ?? '') && !adminPassword.trim()));
   const fontCss = getFontFamilyCss(fontFamily);
@@ -186,32 +185,7 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
         </Card>
 
         <Card>
-          <CardHeader title="화면 모양" description="학생이 보는 매점과 은행 화면의 색상과 글꼴이에요." />
-          <fieldset className="mt-5">
-            <legend className="mb-2 text-[13px] font-bold">테마 색상</legend>
-            <div role="radiogroup" aria-label="테마 색상" className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-              {THEME_OPTIONS.map((option) => {
-                const palette = THEME_PALETTES[option.value];
-                const selected = themeColor === option.value;
-                return (
-                  <label key={option.value} className={cx('relative flex cursor-pointer flex-col gap-2.5 rounded-[14px] border p-2.5 transition-colors',
-                    selected ? 'border-[var(--theme-accent-text)] ring-2 ring-[color-mix(in_srgb,var(--theme-accent-text)_25%,transparent)]' : 'border-[var(--crs-line)] hover:border-[var(--crs-line-strong)]')}>
-                    <input type="radio" name="theme-color" value={option.value} checked={selected} onChange={() => setThemeColor(option.value)} aria-label={option.label} className="sr-only" />
-                    <span aria-hidden="true" className="flex h-14 overflow-hidden rounded-[10px] border border-black/5" style={{ background: palette.shell }}>
-                      <span className="m-2 flex flex-1 flex-col justify-between rounded-md p-1.5" style={{ background: palette.surface }}>
-                        <span className="h-1.5 w-8 rounded-full" style={{ background: palette.text, opacity: 0.8 }} />
-                        <span className="h-3 w-full rounded" style={{ background: palette.accentSolid }} />
-                      </span>
-                    </span>
-                    <span className="flex items-center justify-between px-0.5 text-[13px] font-bold">
-                      {option.label}
-                      {selected ? <Icon name="check" size={15} className="text-[var(--theme-accent-text)]" /> : null}
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          </fieldset>
+          <CardHeader title="글꼴" description="학생이 보는 매점과 은행 화면의 글꼴이에요." />
           <Field label="글꼴" htmlFor="settings-font" className="mt-5">
             <Select id="settings-font" aria-label="글꼴" value={fontFamily} onChange={(event) => setFontFamily(normalizeFontFamily(event.target.value))}>
               {FONT_FAMILY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -270,16 +244,3 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
     </form>
   );
 }
-
-// Stored values stay as they were; only the names changed: 'white' is the white page with blue
-// accents (파랑), 'blue' the pastel blue (하늘).
-const THEME_OPTIONS: Array<{ value: ThemeColor; label: string }> = [
-  { value: 'white', label: '파랑' },
-  { value: 'blue', label: '하늘' },
-  { value: 'pink', label: '분홍' },
-  { value: 'yellow', label: '노랑' },
-  { value: 'green', label: '초록' },
-  { value: 'purple', label: '보라' },
-  { value: 'navy', label: '남색' },
-  { value: 'black', label: '검은색' },
-];

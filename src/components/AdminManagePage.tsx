@@ -2199,7 +2199,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
   const nestedOverTaskSheet = Boolean(taskHistory || taskDeleteConfirmation || taskResetConfirmation || confirmState || isSavingChanges || isSavingTaskSchedule);
 
   if (isInitialLoading) {
-    return <LoadingScreen title="학급 정보 불러오는 중" message="관리자 데이터와 테마 설정을 불러오는 중이에요." />;
+    return <LoadingScreen title="학급 정보 불러오는 중" message="관리자 데이터와 설정을 불러오는 중이에요." />;
   }
 
   const storeHref = tenantPagePath('/');
@@ -2379,7 +2379,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
 
             {activeTab === 'settings' ? (
               <section id="admin-panel-settings" role="tabpanel" aria-labelledby="admin-tab-settings" aria-label="설정" className="space-y-6">
-                <PageHeader title="설정" description="매점과 은행 화면의 이름, 화폐 단위, 테마와 글꼴을 정해요." />
+                <PageHeader title="설정" description="매점과 은행 화면의 이름, 화폐 단위, 글꼴을 정해요." />
                 <SettingsForm
                   linkedStudentCount={students.length}
                   linkedProductCount={products.length}

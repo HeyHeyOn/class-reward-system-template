@@ -7,7 +7,8 @@ import { normalizeFontFamily, type FontFamily } from '@/lib/fontSettings';
 import { DEFAULT_CLASS_TIME_ZONE, normalizeLegacyTimeZone } from '@/domain/taskSchedule';
 import { isValidNamedTimeZone } from '@/domain/timeZone';
 
-export type ThemeColor = 'blue' | 'pink' | 'yellow' | 'green' | 'purple' | 'white' | 'black' | 'navy';
+/** One theme (the white page with the brand blue); earlier themes read as it. */
+export type ThemeColor = 'white';
 
 export type LegacyAppSettings = {
   spreadsheetId: string;
@@ -78,7 +79,6 @@ const LEGACY_DEFAULT_SCHEMA_VERSION = 1;
 const DEFAULT_SYSTEM_VERSION = SYSTEM_VERSION;
 const DEFAULT_SYSTEM_NAME = SYSTEM_NAME_KO;
 const DEFAULT_QR_MANUAL_INPUT_ENABLED = false;
-const THEME_COLORS = new Set<ThemeColor>(['blue', 'pink', 'yellow', 'green', 'purple', 'white', 'black', 'navy']);
 
 export function extractSpreadsheetId(value: string): string | null {
   const trimmed = value.trim();
@@ -312,8 +312,7 @@ function isMissingSettingsSheetError(error: unknown): boolean {
   return /Settings|Unable to parse range|not found/i.test(error.message);
 }
 
-export function normalizeThemeColor(value: unknown): ThemeColor {
-  if (typeof value !== 'string') return DEFAULT_THEME_COLOR;
-  const trimmed = value.trim() as ThemeColor;
-  return THEME_COLORS.has(trimmed) ? trimmed : DEFAULT_THEME_COLOR;
+export function normalizeThemeColor(value?: unknown): ThemeColor {
+  void value;
+  return DEFAULT_THEME_COLOR;
 }

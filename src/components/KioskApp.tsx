@@ -293,7 +293,7 @@ export function KioskApp() {
   const fontFamilyStyle = fontFamilyCss ? { fontFamily: fontFamilyCss } : {};
 
   if (isLoadingProducts) {
-    return <LoadingScreen title="매점 정보 불러오는 중" message="매점 상품과 테마 설정을 불러오는 중이에요." />;
+    return <LoadingScreen title="매점 정보 불러오는 중" message="매점 상품과 설정을 불러오는 중이에요." />;
   }
 
   const quantityButtonClass = 'relative z-10 flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full bg-[var(--theme-surface)] text-[var(--theme-text)] shadow-[var(--crs-shadow-sm)] transition-colors hover:bg-[var(--theme-accent-soft)]';

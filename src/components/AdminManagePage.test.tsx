@@ -634,8 +634,8 @@ describe('AdminManagePage', () => {
   });
 
   it.each([
-    ...(['white', 'black', 'navy'] as const).map((name) => [name, THEME_PALETTES[name].shell, THEME_PALETTES[name].surface, THEME_PALETTES[name].border] as const),
-  ] as const)('applies semantic %s theme variables to admin-owned surfaces and controls', async (themeColor, shellColor, surfaceColor, borderColor) => {
+    ...(['white', 'black', 'navy'] as const).map((name) => [name, THEME_PALETTES.white.shell, THEME_PALETTES.white.surface, THEME_PALETTES.white.border] as const),
+  ] as const)('shows the one theme on admin-owned surfaces and controls for a class saved with %s', async (themeColor, shellColor, surfaceColor, borderColor) => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/students') return jsonResponse(students);
@@ -686,7 +686,7 @@ describe('AdminManagePage', () => {
     fireEvent.click(within(panel).getByRole('button', { name: 'T001 기록 보기' }));
 
     const dialog = screen.getByRole('dialog', { name: '과제 기록' });
-    expect(dialog.style.getPropertyValue('--theme-shell')).toBe(THEME_PALETTES[themeColor].shell);
+    expect(dialog.style.getPropertyValue('--theme-shell')).toBe(THEME_PALETTES.white.shell);
     expect(dialog.className).toContain('border-[var(--theme-border)]');
     expect(dialog.className).toContain('bg-[var(--theme-surface)]');
     expect(dialog.className).toContain('text-[var(--theme-text)]');
@@ -1659,7 +1659,7 @@ describe('AdminManagePage', () => {
       fireEvent.click(await screen.findByRole('button', { name: '상품 삭제 확인', hidden: true }));
       await waitFor(() => expect(screen.queryByRole('button', { name: 'P001 연필 편집', hidden: true })).toBeNull());
       staleProducts.resolve();
-      await waitFor(() => expect((container.querySelector('[data-testid="admin-shell"]') as HTMLElement).style.getPropertyValue('--theme-shell')).toBe(THEME_PALETTES.purple.shell));
+      await waitFor(() => expect((container.querySelector('[data-testid="admin-shell"]') as HTMLElement).style.getPropertyValue('--theme-shell')).toBe(THEME_PALETTES.white.shell));
       expect(screen.queryByRole('button', { name: 'P001 연필 편집', hidden: true })).toBeNull();
     });
 
@@ -1709,7 +1709,7 @@ describe('AdminManagePage', () => {
     expect(screen.getByRole('link', { name: '학생 QR 인쇄 새 탭 열림' }).getAttribute('href')).toBe('/admin/student-qrs');
     const shell = container.querySelector('[data-testid="admin-shell"]') as HTMLElement;
     expect(shell.className).toContain('bg-[var(--theme-shell)]');
-    expect(shell.style.getPropertyValue('--theme-shell')).toBe(THEME_PALETTES.blue.shell);
+    expect(shell.style.getPropertyValue('--theme-shell')).toBe(THEME_PALETTES.white.shell);
     expect(shell.getAttribute('style')).toContain('SchoolSafeBoardMarker');
 
     await openAdminMenu('설정');
@@ -1717,8 +1717,7 @@ describe('AdminManagePage', () => {
     expect(await screen.findByDisplayValue('별')).toBeTruthy();
     expect(screen.getByDisplayValue('학급 매점')).toBeTruthy();
     expect(screen.getByDisplayValue('학급 은행')).toBeTruthy();
-    expect(screen.getByRole('radiogroup', { name: '테마 색상' })).toBeTruthy();
-    expect(screen.getByRole('radio', { name: '하늘' })).toHaveProperty('checked', true);
+    expect(screen.queryByRole('radiogroup', { name: '테마 색상' })).toBeNull();
     expect(screen.getByLabelText('글꼴')).toBeTruthy();
     expect(screen.getByDisplayValue('학교안심 보드마카')).toBeTruthy();
     expect(screen.getByRole('button', { name: '설정 저장' })).toHaveProperty('disabled', true);
@@ -1804,7 +1803,7 @@ describe('AdminManagePage', () => {
     const { container, unmount } = render(<AdminManagePage />);
 
     expect(await screen.findByRole('heading', { level: 1, name: '학급 매점' })).toBeTruthy();
-    expect((container.querySelector('[data-testid="admin-shell"]') as HTMLElement).style.getPropertyValue('--theme-shell')).toBe(THEME_PALETTES.green.shell);
+    expect((container.querySelector('[data-testid="admin-shell"]') as HTMLElement).style.getPropertyValue('--theme-shell')).toBe(THEME_PALETTES.white.shell);
     expect(container.querySelector('[data-testid="admin-shell"]')?.className).not.toContain('bg-green-50');
     unmount();
 
@@ -1821,7 +1820,7 @@ describe('AdminManagePage', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: '학급 매점' })).toBeTruthy();
     const shell = secondRender.container.querySelector('[data-testid="admin-shell"]') as HTMLElement;
-    expect(shell.style.getPropertyValue('--theme-shell')).toBe(THEME_PALETTES.black.shell);
+    expect(shell.style.getPropertyValue('--theme-shell')).toBe(THEME_PALETTES.white.shell);
     expect(shell.className).toContain('text-[var(--theme-text)]');
     expect(shell.className).not.toContain('bg-slate-100');
     await openAdminMenu('학생');
@@ -1831,7 +1830,7 @@ describe('AdminManagePage', () => {
     expect(within(panel).getByLabelText('S001 이름').className).not.toMatch(/bg-slate-50|text-slate-950/);
   });
 
-  it('uses a blue-leaning low-saturation navy admin palette', async () => {
+  it('shows the one theme for a class saved with the earlier navy theme', async () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/students') return jsonResponse(students);
@@ -1844,7 +1843,7 @@ describe('AdminManagePage', () => {
     const { container } = render(<AdminManagePage />);
 
     expect(await screen.findByRole('heading', { level: 1, name: '학급 매점' })).toBeTruthy();
-    expect((container.querySelector('[data-testid="admin-shell"]') as HTMLElement).style.getPropertyValue('--theme-shell')).toBe(THEME_PALETTES.navy.shell);
+    expect((container.querySelector('[data-testid="admin-shell"]') as HTMLElement).style.getPropertyValue('--theme-shell')).toBe(THEME_PALETTES.white.shell);
     expect(screen.getByRole('tab', { name: '홈' }).className).toContain('bg-[var(--theme-accent-solid)]');
     expect(container.querySelector('[data-testid="admin-shell"]')?.className).not.toContain('bg-[#8F97CF]');
   });
@@ -1973,7 +1972,7 @@ describe('AdminManagePage', () => {
       expect(fetch).toHaveBeenCalledWith('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ spreadsheetIdOrUrl: 'sheet-new', currencyUnit: '별', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'blue', fontFamily: 'school-safe-board-marker', qrManualInputEnabled: false }),
+        body: JSON.stringify({ spreadsheetIdOrUrl: 'sheet-new', currencyUnit: '별', appTitle: '햇살반 매점', bankTitle: '햇살반 은행', themeColor: 'white', fontFamily: 'school-safe-board-marker', qrManualInputEnabled: false }),
       });
       expect(fetch).toHaveBeenCalledWith('/api/students', { cache: 'no-store' });
       expect(fetch).toHaveBeenCalledWith('/api/products?includeInactive=1', { cache: 'no-store' });
