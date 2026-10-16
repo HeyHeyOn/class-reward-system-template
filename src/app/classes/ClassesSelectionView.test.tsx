@@ -36,7 +36,7 @@ describe('ClassesSelectionView', () => {
       expect(screen.queryByText(removed, { exact: false })).toBeNull();
     }
     expect(screen.getByText('© 2026 환잇쌤. All rights reserved.')).toBeTruthy();
-    expect(screen.getByRole('link', { name: '개인정보처리방침' }).getAttribute('href')).toBe('/privacy');
+    expect(screen.getByRole('link', { name: '개인정보처리방침' }).getAttribute('href')).toBe('https://ddanssaem.com/privacy');
   });
   it('reports logout failure and allows another attempt', async () => {
     const fetcher=vi.fn().mockRejectedValue(new Error('offline'));vi.stubGlobal('fetch',fetcher);

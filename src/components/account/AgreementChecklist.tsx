@@ -3,6 +3,7 @@
 import { useId, useState } from 'react';
 import { cx } from '../ui/classes';
 import { Icon } from '../ui/icons';
+import { PRIVACY_URL, TERMS_URL } from '@/lib/brand';
 
 export type AgreementChoices = Readonly<{ age: boolean; terms: boolean; privacy: boolean }>;
 export const NO_AGREEMENT: AgreementChoices = { age: false, terms: false, privacy: false };
@@ -41,7 +42,7 @@ export function AgreementChecklist({ value, onChange }: Readonly<{ value: Agreem
         <CheckRow checked={value.age} onChange={(age) => onChange({ ...value, age })}>{required} 만 14세 이상이에요.</CheckRow>
         <div className="flex items-start justify-between gap-2">
           <CheckRow checked={value.terms} onChange={(terms) => onChange({ ...value, terms })}>{required} 이용약관에 동의해요.</CheckRow>
-          <a href="/terms" target="_blank" rel="noopener noreferrer" aria-label="이용약관 전문 보기 새 탭 열림"
+          <a href={TERMS_URL} target="_blank" rel="noopener noreferrer" aria-label="이용약관 전문 보기 새 탭 열림"
             className="inline-flex shrink-0 items-center gap-1 text-[12.5px] font-semibold text-[var(--theme-accent-text)] underline-offset-2 hover:underline">
             전문 보기<Icon name="external" size={13} />
           </a>
@@ -67,7 +68,7 @@ export function AgreementChecklist({ value, onChange }: Readonly<{ value: Agreem
         </div>
         <p className="rounded-[12px] bg-[var(--crs-subtle)] px-3 py-2.5 text-[12.5px] leading-relaxed text-[var(--theme-muted-text)]">
           서비스 운영을 위해 개인정보가 싱가포르와 미국에 있는 서버 업체(Vercel, Neon)에 맡겨져 보관돼요. 자세한 내용은{' '}
-          <a href="/privacy" target="_blank" rel="noopener noreferrer" className="font-semibold text-[var(--theme-accent-text)] underline underline-offset-2">개인정보처리방침</a>에서 확인할 수 있어요.
+          <a href={PRIVACY_URL} target="_blank" rel="noopener noreferrer" className="font-semibold text-[var(--theme-accent-text)] underline underline-offset-2">개인정보처리방침</a>에서 확인할 수 있어요.
         </p>
       </div>
     </div>

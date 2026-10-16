@@ -51,7 +51,7 @@ describe('SignupAgreementView', () => {
     fireEvent.click(screen.getByLabelText(/개인정보 수집·이용에 동의해요/));
     expect(submit.disabled).toBe(false);
     expect((screen.getByLabelText('아래 내용에 모두 동의해요') as HTMLInputElement).checked).toBe(true);
-    expect(screen.getByRole('link', { name: '이용약관 전문 보기 새 탭 열림' }).getAttribute('href')).toBe('/terms');
+    expect(screen.getByRole('link', { name: '이용약관 전문 보기 새 탭 열림' }).getAttribute('href')).toBe('https://ddanssaem.com/terms');
     fireEvent.click(screen.getByRole('button', { name: '내용 보기' }));
     expect(screen.getByText('회원 탈퇴 시까지 (탈퇴하면 지체 없이 파기)')).toBeTruthy();
 

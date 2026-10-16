@@ -12,6 +12,7 @@ import { themeStyles } from '../uiTheme';
 import { accountRequest } from './accountApi';
 import { LegalAgreementGate, type LegalNoticeView } from './LegalAgreementGate';
 import { WithdrawalConfirm } from './WithdrawalConfirm';
+import { PRIVACY_URL, TERMS_URL } from '@/lib/brand';
 
 const theme = themeStyles('white');
 
@@ -128,8 +129,8 @@ export function ProfileView({ model }: Readonly<{ model: ProfileViewModel }>) {
                     ? <>{model.agreement.effectiveLabel} 시행 이용약관과 개인정보처리방침 ({model.agreement.agreedAtLabel} 동의)</>
                     : '동의 기록이 없어요.'}
                 <span className="mt-1 flex gap-3 text-[13px]">
-                  <a href="/terms" className="font-semibold text-[var(--theme-accent-text)] underline underline-offset-2">이용약관</a>
-                  <a href="/privacy" className="font-semibold text-[var(--theme-accent-text)] underline underline-offset-2">개인정보처리방침</a>
+                  <a href={TERMS_URL} className="font-semibold text-[var(--theme-accent-text)] underline underline-offset-2">이용약관</a>
+                  <a href={PRIVACY_URL} className="font-semibold text-[var(--theme-accent-text)] underline underline-offset-2">개인정보처리방침</a>
                 </span>
               </dd>
             </dl>

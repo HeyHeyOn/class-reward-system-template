@@ -9,6 +9,7 @@ import { accountRequest } from './accountApi';
 import { AgreementChecklist, allAgreed, NO_AGREEMENT } from './AgreementChecklist';
 import { WithdrawalConfirm } from './WithdrawalConfirm';
 import { hideLegalNotice, legalNoticeHidden, subscribeLegalNotice } from './legalNoticeDismissal';
+import { PRIVACY_URL, TERMS_URL } from '@/lib/brand';
 
 // The gate may be rendered outside a themed page (e.g. next to the admin screen), so it carries its
 // own theme: without it the dialog has no surface colour and the page shows through.
@@ -34,8 +35,8 @@ export function LegalChanges({ changes }: Readonly<{ changes: readonly LegalRevi
       ))}
       <p className="text-[12.5px] text-[var(--theme-muted-text)]">
         전문:{' '}
-        <a href="/terms" target="_blank" rel="noopener noreferrer" className="font-semibold text-[var(--theme-accent-text)] underline underline-offset-2">이용약관</a>{', '}
-        <a href="/privacy" target="_blank" rel="noopener noreferrer" className="font-semibold text-[var(--theme-accent-text)] underline underline-offset-2">개인정보처리방침</a>
+        <a href={TERMS_URL} target="_blank" rel="noopener noreferrer" className="font-semibold text-[var(--theme-accent-text)] underline underline-offset-2">이용약관</a>{', '}
+        <a href={PRIVACY_URL} target="_blank" rel="noopener noreferrer" className="font-semibold text-[var(--theme-accent-text)] underline underline-offset-2">개인정보처리방침</a>
       </p>
     </div>
   );
@@ -80,8 +81,8 @@ export function LegalAgreementGate({ notice, classNames }: Readonly<{ notice: Le
           <strong className="font-bold">{notice.upcoming.effectiveLabel}</strong>부터 이용약관과 개인정보처리방침이 바뀌어요. {notice.upcoming.changes[0]}
         </p>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px]">
-          <a href="/terms" className={linkClass}>이용약관</a>
-          <a href="/privacy" className={linkClass}>개인정보처리방침</a>
+          <a href={TERMS_URL} className={linkClass}>이용약관</a>
+          <a href={PRIVACY_URL} className={linkClass}>개인정보처리방침</a>
           <button type="button" onClick={() => hideLegalNotice(upcomingVersion, true)} className="ml-auto rounded-md px-1.5 py-0.5 font-semibold text-[var(--theme-muted-text)] hover:bg-[var(--crs-subtle)] hover:text-[var(--theme-text)]">다시 보지 않기</button>
         </div>
       </div>

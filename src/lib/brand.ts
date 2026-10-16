@@ -10,3 +10,6 @@ export const CLASS_HOME = '/classes';
 export const BOARD_URL = 'https://board.ddanssaem.com';
 export const TOOLS_READY = false;
 export const TOOLS_URL = `${HUB_URL}/#tools`;
+/** The terms and privacy policy are the 딴쌤 hub's, one for every 딴쌤 app (in force from 2026-10-16). */
+export const TERMS_URL = `${HUB_URL}/terms`;
+export const PRIVACY_URL = `${HUB_URL}/privacy`;

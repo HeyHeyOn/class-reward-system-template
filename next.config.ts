@@ -8,6 +8,15 @@ const nextConfig: NextConfig = {
     HUB_READY: process.env.HUB_READY ?? '',
     HUB_HOME_URL: process.env.DDANSSAEM_HUB_URL ?? '',
   },
+  // The 딴쌤 hub's terms and privacy policy apply to the class since 2026-10-16; the class's own earlier
+  // editions are kept on the hub under 이전 판.
+  async redirects() {
+    const hub = (process.env.DDANSSAEM_HUB_URL || 'https://ddanssaem.com').replace(/\/+$/, '');
+    return [
+      { source: '/terms', destination: `${hub}/terms`, permanent: true },
+      { source: '/privacy', destination: `${hub}/privacy`, permanent: true },
+    ];
+  },
   async headers() {
     return [{
       source: '/:path*',
