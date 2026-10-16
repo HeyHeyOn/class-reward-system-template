@@ -2,6 +2,8 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { ProfileView } from '@/components/account/ProfileView';
 import { TeacherHeader } from '@/components/brand/TeacherHeader';
+import { hubAccountUrl, hubLoginEnabled } from '@/server/ddanssaem/hub';
+import { followHubSignIn } from '@/server/ddanssaem/teacherGate';
 import { LEGAL_REVISIONS } from '@/lib/legalDocuments';
 import { getTeacherGoogleSessionFromRequest } from '@/server/teacherSession';
 import { getProductionClassDashboardRepository } from '@/server/repositories/database/classDashboard';
@@ -20,7 +22,9 @@ function seoulDateTime(iso: string) {
 
 export default async function ProfilePage() {
   if (!teacherAccountsEnabled()) redirect('/classes');
-  const session = await getTeacherGoogleSessionFromRequest(new Request('http://classes.internal/profile', { headers: await headers() }), { requireAgreement: false });
+  const requestHeaders = await headers();
+  const session = await getTeacherGoogleSessionFromRequest(new Request('http://classes.internal/profile', { headers: requestHeaders }), { requireAgreement: false });
+  followHubSignIn('/profile', session, requestHeaders.get('cookie'));
   if (!session) redirect('/classes');
   const accounts = getProductionTeacherAccountStore();
   const [stored, agreement, memberships] = await Promise.all([
@@ -39,6 +43,7 @@ export default async function ProfilePage() {
       agreement: agreement && effectiveLabel ? { effectiveLabel, agreedAtLabel: seoulDateTime(agreement.agreedAt) } : null,
       classNames: memberships.filter((membership) => membership.role === 'OWNER').map((membership) => membership.displayName),
       notice: legalNoticeFor(session),
+      ...(hubLoginEnabled() ? { hubAccountUrl: hubAccountUrl() } : {}),
     }} />
     </>
   );

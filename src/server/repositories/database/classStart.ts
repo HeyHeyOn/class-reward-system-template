@@ -2,7 +2,7 @@ import 'server-only';
 import { getDatabaseClient } from '@/server/db/client';
 import { parseTenantSlug } from '@/server/tenantContext';
 import type { TeacherSessionBinding } from '@/server/teacherSession';
-import { currentLegalRevision } from '@/lib/legalDocuments';
+import { requiredAgreementVersion } from '@/server/requiredAgreement';
 
 export type NewClassSetup = Readonly<{ slug: string; displayName: string; lifecycle: 'DRAFT' | 'ACTIVE' }>;
 export type ClassStartResult = NewClassSetup & Readonly<{ lifecycle: 'ACTIVE'; replayed: boolean }>;
@@ -30,7 +30,7 @@ export function createClassStartRepository(queryable: Queryable): ClassStartRepo
     },
     async start({ operationId, slug, subject, accountGeneration, sessionId }) {
       const { rows } = await queryable.query('SELECT * FROM public.platform_start_new_class_authenticated($1::uuid,$2,$3,$4::uuid,$5::uuid,$6)',
-        [operationId, slug, subject, accountGeneration, sessionId, currentLegalRevision().version]);
+        [operationId, slug, subject, accountGeneration, sessionId, requiredAgreementVersion()]);
       if (rows.length !== 1) throw new Error('Invalid class start result.');
       const result = project(rows[0], slug);
       const replayed = (rows[0] as Record<string, unknown>).replayed;

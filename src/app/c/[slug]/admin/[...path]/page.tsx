@@ -9,6 +9,7 @@ import { tenantPagePath } from '@/lib/tenantApiPath';
 import { requireTenantAdminPage } from '@/server/tenantAdminPageAccess';
 import { TeacherHeader } from '@/components/brand/TeacherHeader';
 import { loadTeacherAccountView, teacherAccountsEnabled } from '@/server/teacherAccounts';
+import { hubLoginEnabled } from '@/server/ddanssaem/hub';
 
 export const metadata = { title: '딴쌤 클래스' };
 
@@ -18,6 +19,8 @@ export default async function TenantAdminSubroute({
   const { slug, path = [] } = await params;
   if (path.length !== 1) notFound();
 
+  // With the 딴쌤 hub the class has no sign-in screen: the admin page sends a signed-out teacher to the hub.
+  if (path[0] === 'login' && hubLoginEnabled()) redirect(`/c/${slug}/admin`);
   const access = path[0] !== 'login' ? await requireTenantAdminPage(slug) : null;
 
   switch (path[0]) {

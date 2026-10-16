@@ -1,6 +1,6 @@
 import 'server-only';
 import { getDatabaseClient } from '@/server/db/client';
-import { currentLegalRevision } from '@/lib/legalDocuments';
+import { requiredAgreementVersion } from '@/server/requiredAgreement';
 import type { TeacherSessionBinding } from '@/server/teacherSession';
 import { parseTenantSlug } from '@/server/tenantContext';
 
@@ -21,7 +21,7 @@ export function createClassCreationCommand(queryable: Queryable): ClassCreationC
       // One SQL statement is one atomic transaction. Never retry uncertain commits.
       const { rows } = await queryable.query(
         'SELECT * FROM public.platform_create_draft_class_authenticated($1::uuid, $2, $3, $4, $5::uuid, $6::uuid, $7)',
-        [input.operationId, input.subject, input.email, input.displayName, input.accountGeneration, input.sessionId, currentLegalRevision().version],
+        [input.operationId, input.subject, input.email, input.displayName, input.accountGeneration, input.sessionId, requiredAgreementVersion()],
       );
       const row = rows[0];
       if (rows.length !== 1 || !row || typeof row !== 'object') throw new Error('Invalid class creation result.');

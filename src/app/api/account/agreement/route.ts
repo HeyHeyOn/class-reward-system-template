@@ -2,6 +2,7 @@ import { accountReply, readAccountIdentity, readAccountRequest, SIGN_IN_AGAIN, T
 import { clearPendingAgreementCookie, getPendingAgreementFromRequest, setGoogleSessionCookie } from '@/server/googleOAuth';
 import { getProductionTeacherSessionStore, hasTeacherSessionBinding } from '@/server/teacherSession';
 import { currentLegalRevision } from '@/lib/legalDocuments';
+import { hubLoginEnabled } from '@/server/ddanssaem/hub';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +12,7 @@ export const dynamic = 'force-dynamic';
  * agreement without extending the original authentication lifetime.
  */
 export async function POST(request: Request) {
+  if (hubLoginEnabled()) return accountReply(409, { error: '약관 동의는 딴쌤 계정에서 해요.', code: 'HUB_ACCOUNT' });
   const body = await readAccountRequest(request);
   if (body instanceof Response) return body;
   if (Object.keys(body).some((key) => !['terms', 'privacy', 'age', 'expectedSessionId'].includes(key))

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { googleIdentityLoginPath, parseGoogleIdentityReturnTo } from '@/lib/googleIdentityReturnTo';
 import { isGeneratorDeployment, isSystemDeployment } from '@/server/deploymentMode';
+import { hubLoginEnabled } from '@/server/ddanssaem/hub';
 import {
   createGeneratorConsentAuthUrl,
   createGoogleAuthUrl,
@@ -19,6 +20,11 @@ export async function GET(request: Request) {
     ?? (isSystemDeployment() && process.env.CLASS_STORE_STORAGE === 'postgresql' ? '/classes' : undefined);
   try {
     const purpose = url.searchParams.get('purpose');
+
+    // With the 딴쌤 hub, every class sign-in button leads to the hub (its own Google sign-in and terms).
+    if (!purpose && hubLoginEnabled()) {
+      return NextResponse.redirect(new URL(`/api/auth/ddanssaem/start?next=${encodeURIComponent(returnTo ?? '/classes')}`, request.url));
+    }
 
     if (purpose === 'generator') {
       if (!isGeneratorDeployment()) {

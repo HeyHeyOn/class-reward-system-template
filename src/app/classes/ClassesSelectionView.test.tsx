@@ -56,6 +56,13 @@ describe('ClassesSelectionView', () => {
     expect(screen.queryByRole('link', { name: '새 학급' })).toBeNull();
   });
 
+  it('offers to sign in again through the 딴쌤 hub after a failed sign-in, without its own Google button', () => {
+    render(<ClassesSelectionView model={{ kind: 'LOGIN_REQUIRED', loginHref: '/api/auth/ddanssaem/start?next=%2Fclasses' }} loginFailed />);
+    expect(screen.getByRole('heading', { name: '로그인하지 못했어요' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: '다시 로그인' }).getAttribute('href')).toBe('/api/auth/ddanssaem/start?next=%2Fclasses');
+    expect(screen.queryByText('Google 계정으로 로그인하면 내 학급을 확인하거나 새 학급을 만들 수 있어요.')).toBeNull();
+  });
+
   it('links the signed-in teacher to the profile page and asks for a pending agreement', () => {
     const revision = { version: '2026-10-08', effectiveAt: '2026-10-08T00:00:00+09:00', effectiveLabel: '2026년 10월 8일', changes: ['이용약관을 새로 마련했어요.'] };
     const avatar = { v: 1 as const, background: 'sky', face: 'bear', eyes: 'smile', mouth: 'smile', accessory: 'none' };

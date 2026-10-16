@@ -41,6 +41,8 @@ export type GoogleSession = {
   /** Durable PostgreSQL identity binding; absent only on legacy Sheets cookies. */
   accountGeneration?: string;
   sessionId?: string;
+  /** The 딴쌤 hub session this class session came from (account protocol 8-3 compares it with dd_hub). */
+  hubSid?: string;
 };
 
 /**
@@ -499,9 +501,11 @@ function getStrongGeneratorCookieKey(env: GoogleAuthEnv, kind: 'state' | 'grant'
 }
 
 function isGoogleSession(value: unknown): value is GoogleSession {
-  if (!isRecord(value) || Object.keys(value).some((key) => !['subject', 'email', 'name', 'issuedAt', 'agreement', 'accountGeneration', 'sessionId'].includes(key))) return false;
+  if (!isRecord(value) || Object.keys(value).some((key) => !['subject', 'email', 'name', 'issuedAt', 'agreement', 'accountGeneration', 'sessionId', 'hubSid'].includes(key))) return false;
   if (!validSubject(value.subject) || !validEmail(value.email) || (value.name !== undefined && !validString(value.name, 1, 200))) return false;
-  if (value.agreement !== undefined && (typeof value.agreement !== 'string' || !AGREEMENT_VERSION_PATTERN.test(value.agreement))) return false;
+  if (value.hubSid !== undefined && (!validString(value.hubSid, 1, 200) || value.agreement !== 'hub')) return false;
+  // A class terms version, or 'hub' for a session that signed in through the 딴쌤 hub.
+  if (value.agreement !== undefined && (typeof value.agreement !== 'string' || !(value.agreement === 'hub' || AGREEMENT_VERSION_PATTERN.test(value.agreement)))) return false;
   return validIdentityBinding(value) && validIssuedAt(value.issuedAt, MAX_AGE_SECONDS);
 }
 

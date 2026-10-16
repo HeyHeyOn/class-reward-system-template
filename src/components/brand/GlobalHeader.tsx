@@ -3,18 +3,18 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { AvatarConfig } from '../profile/avatar';
 import { UserAvatar } from '../profile/UserAvatar';
-import { BOARD_URL, CLASS_HOME, HUB_READY, HUB_URL, TOOLS_URL } from '@/lib/brand';
+import { BOARD_URL, CLASS_HOME, HUB_READY, HUB_URL, TOOLS_READY, TOOLS_URL } from '@/lib/brand';
 import { DdanssaemLockup } from './DdanssaemLogo';
 import styles from './GlobalHeader.module.css';
 
 // Until the ddanssaem.com hub opens (HUB_READY), the logo goes to this app's first screen and the menu
-// holds only the features that exist (클래스, 보드).
+// holds only the features that exist (클래스, 보드). 수업 도구 stays hidden until the first tool exists.
 const LOGO_HREF = HUB_READY ? HUB_URL : CLASS_HOME;
 const MENU = [
   ...(HUB_READY ? [{ key: 'home', label: '홈', href: HUB_URL }] : []),
   { key: 'class', label: '클래스', href: CLASS_HOME },
   { key: 'board', label: '보드', href: BOARD_URL },
-  ...(HUB_READY ? [{ key: 'tools', label: '수업 도구', href: TOOLS_URL }] : []),
+  ...(HUB_READY && TOOLS_READY ? [{ key: 'tools', label: '수업 도구', href: TOOLS_URL }] : []),
 ];
 
 export type HeaderAccount = Readonly<{ nickname: string; avatar?: AvatarConfig }>;
@@ -81,7 +81,9 @@ function AccountMenu({ account }: Readonly<{ account: HeaderAccount }>) {
     try {
       const response = await fetch('/api/google/logout', { method: 'POST', credentials: 'same-origin', cache: 'no-store', redirect: 'error' });
       if (!response.ok) throw new Error();
-      window.location.replace(CLASS_HOME);
+      // With the 딴쌤 hub the reply names the hub's logout, which comes back to the class list.
+      const reply: unknown = await response.json().catch(() => null);
+      window.location.replace(reply && typeof reply === 'object' && 'next' in reply && typeof reply.next === 'string' ? reply.next : CLASS_HOME);
     } catch {
       setLeaving(false); setFailed(true);
     }

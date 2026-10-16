@@ -109,6 +109,8 @@ export type LegalNotice = Readonly<{
 
 /** What a signed-in teacher must be told: a revision to agree to now, and/or one coming later. */
 export function legalNoticeFor(session: Pick<GoogleSession, 'agreement' | 'sessionId'>, now: number = Date.now()): LegalNotice {
+  // The 딴쌤 hub asks for its own terms before it signs a teacher in; the class has nothing to ask.
+  if (session.agreement === 'hub') return { required: null, upcoming: null, ...(session.sessionId ? { expectedSessionId: session.sessionId } : {}) };
   const current = currentLegalRevision(now);
   const required = session.agreement === current.version
     ? null

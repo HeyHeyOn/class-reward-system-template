@@ -1,9 +1,12 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GlobalHeader, teacherLabel } from './GlobalHeader';
 import { GoogleLoginButton } from './GoogleLoginButton';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllEnvs();
+});
 
 describe('GlobalHeader', () => {
   it('shows 딴쌤 / 클래스 with only the features that exist until the hub opens', () => {
@@ -16,6 +19,18 @@ describe('GlobalHeader', () => {
     expect(screen.queryByText('홈')).toBeNull();
     expect(screen.queryByText('수업 도구')).toBeNull();
     expect(screen.getByRole('link', { name: '로그인' }).getAttribute('href')).toBe('/api/google/login?returnTo=%2Fclasses');
+  });
+
+  it('adds 홈 and sends the logo to the hub with HUB_READY=1, and keeps 수업 도구 hidden until a tool exists', async () => {
+    vi.stubEnv('HUB_READY', '1');
+    vi.stubEnv('HUB_HOME_URL', 'https://beta.ddanssaem.com/');
+    vi.resetModules();
+    const { GlobalHeader: HubHeader } = await import('./GlobalHeader');
+    render(<HubHeader audience="teacher" account={null} />);
+    expect(screen.getByRole('link', { name: '딴쌤 홈' }).getAttribute('href')).toBe('https://beta.ddanssaem.com');
+    const menu = screen.getByRole('navigation', { name: '딴쌤 메뉴' });
+    expect(within(menu).getAllByRole('link').map((link) => link.textContent)).toEqual(['홈', '클래스', '보드']);
+    expect(screen.queryByText('수업 도구')).toBeNull();
   });
 
   it('opens the account menu with the profile and sign-out for a signed-in teacher', () => {

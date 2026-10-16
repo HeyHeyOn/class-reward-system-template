@@ -2,6 +2,12 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // The shared header (src/lib/brand.ts) is drawn in the browser too, so these are fixed when the app is built:
+  // set HUB_READY=1 (and DDANSSAEM_HUB_URL) and redeploy to show the 딴쌤 hub links.
+  env: {
+    HUB_READY: process.env.HUB_READY ?? '',
+    HUB_HOME_URL: process.env.DDANSSAEM_HUB_URL ?? '',
+  },
   async headers() {
     return [{
       source: '/:path*',

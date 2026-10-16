@@ -3,10 +3,12 @@ import 'server-only';
 import { headers } from 'next/headers';
 import { getTeacherGoogleSessionFromRequest } from '@/server/teacherSession';
 import { loadTeacherAccountView, teacherAccountsEnabled } from '@/server/teacherAccounts';
+import { hubLoginEnabled } from '@/server/ddanssaem/hub';
+import { hubStartPath } from '@/server/ddanssaem/teacherGate';
 import { GlobalHeader, type HeaderAccount } from './GlobalHeader';
 
 /** The teacher's header for a server page: reads who is signed in unless the page already knows it.
- *  `returnTo` is where Google sign-in comes back to from the 로그인 button. */
+ *  `returnTo` is where sign-in comes back to from the 로그인 button (the 딴쌤 hub's sign-in page in hub mode). */
 export async function TeacherHeader({ account, returnTo = '/classes', showLogin = true }: Readonly<{
   account?: HeaderAccount | null;
   returnTo?: string;
@@ -15,7 +17,8 @@ export async function TeacherHeader({ account, returnTo = '/classes', showLogin 
   const signedIn = account !== undefined ? account : await currentTeacher();
   return (
     <GlobalHeader audience="teacher" account={signedIn}
-      loginHref={showLogin ? `/api/google/login?returnTo=${encodeURIComponent(returnTo)}` : undefined} />
+      loginHref={!showLogin ? undefined
+        : hubLoginEnabled() ? hubStartPath(returnTo) : `/api/google/login?returnTo=${encodeURIComponent(returnTo)}`} />
   );
 }
 

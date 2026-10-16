@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('server-only', () => ({}));
+
 const oauthMocks = vi.hoisted(() => ({
   createGoogleAuthUrl: vi.fn(() => 'https://accounts.google.com/o/oauth2/v2/auth?purpose=identity'),
   createGeneratorConsentAuthUrl: vi.fn(() => 'https://accounts.google.com/o/oauth2/v2/auth?purpose=generator'),
@@ -23,6 +25,18 @@ describe('GET /api/google/login', () => {
     oauthMocks.createGeneratorConsentAuthUrl.mockClear();
     oauthMocks.setGoogleStateCookie.mockClear();
     oauthMocks.setGeneratorConsentStateCookie.mockClear();
+  });
+
+  it('sends every class sign-in to the 딴쌤 hub when DDANSSAEM_LOGIN is 1', async () => {
+    vi.stubEnv('DDANSSAEM_LOGIN', '1');
+    vi.stubEnv('DDANSSAEM_HUB_URL', 'https://beta.ddanssaem.com');
+    vi.stubEnv('DDANSSAEM_CLIENT_SECRET', 's'.repeat(40));
+    vi.stubEnv('CLASS_STORE_STORAGE', 'postgresql');
+
+    const response = await GET(new Request('https://class.example/api/google/login?returnTo=%2Fclasses'));
+
+    expect(response.headers.get('location')).toBe('https://class.example/api/auth/ddanssaem/start?next=%2Fclasses');
+    expect(oauthMocks.createGoogleAuthUrl).not.toHaveBeenCalled();
   });
 
   it('does not start OAuth in self-deployed system apps that already have a Sheets refresh token', async () => {

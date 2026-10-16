@@ -6,7 +6,7 @@ import { AvatarEditor } from '../profile/AvatarEditor';
 import { isSameAvatar, type AvatarConfig } from '../profile/avatar';
 import { UserAvatar } from '../profile/UserAvatar';
 import { Button, Modal } from '../ui';
-import { controlClass, cx } from '../ui/classes';
+import { buttonClass, controlClass, cx } from '../ui/classes';
 import { Icon } from '../ui/icons';
 import { themeStyles } from '../uiTheme';
 import { accountRequest } from './accountApi';
@@ -22,6 +22,8 @@ export type ProfileViewModel = Readonly<{
   agreement: Readonly<{ effectiveLabel: string; agreedAtLabel: string }> | null;
   classNames: readonly string[];
   notice: LegalNoticeView;
+  /** Set when teachers sign in with a 딴쌤 account: its name, terms and withdrawal live there. */
+  hubAccountUrl?: string;
 }>;
 
 function Section({ title, description, children, tone }: Readonly<{ title: string; description?: string; children: React.ReactNode; tone?: 'danger' }>) {
@@ -68,7 +70,9 @@ export function ProfileView({ model }: Readonly<{ model: ProfileViewModel }>) {
     try {
       const response = await fetch('/api/google/logout', { method: 'POST', credentials: 'same-origin', cache: 'no-store' });
       if (!response.ok) throw new Error();
-      window.location.replace('/classes');
+      const reply: unknown = await response.json().catch(() => null);
+      const next = reply && typeof reply === 'object' && 'next' in reply && typeof reply.next === 'string' ? reply.next : '/classes';
+      window.location.replace(next);
     } catch {
       setLogoutBusy(false);
       setError('로그아웃하지 못했어요. 연결을 확인하고 다시 시도해 주세요.');
@@ -93,10 +97,16 @@ export function ProfileView({ model }: Readonly<{ model: ProfileViewModel }>) {
           <Section title="프로필" description="학급 화면과 메인 화면에 보이는 이름과 아이콘이에요.">
             <label htmlFor="profile-nickname" className="mb-1.5 block text-[13px] font-bold">닉네임</label>
             <input id="profile-nickname" value={nickname} maxLength={20} onChange={(event) => setNickname(event.target.value)}
-              aria-invalid={!nicknameValid} className={cx(controlClass, 'h-11 max-w-sm text-[15px]')} />
-            <p className={cx('mt-1.5 text-[12px]', nicknameValid ? 'text-[var(--theme-muted-text)]' : 'text-[var(--crs-danger-text)]')}>
-              {nicknameValid ? `1~20자 (${[...trimmed].length}/20)` : '닉네임은 1~20자로 써 주세요.'}
-            </p>
+              readOnly={Boolean(model.hubAccountUrl)} aria-invalid={!nicknameValid} className={cx(controlClass, 'h-11 max-w-sm text-[15px]')} />
+            {model.hubAccountUrl ? (
+              <p className="mt-1.5 text-[12px] text-[var(--theme-muted-text)]">
+                딴쌤 계정 이름이에요. <a href={model.hubAccountUrl} className="font-semibold text-[var(--theme-accent-text)] underline underline-offset-2">딴쌤 계정에서 바꾸기</a>
+              </p>
+            ) : (
+              <p className={cx('mt-1.5 text-[12px]', nicknameValid ? 'text-[var(--theme-muted-text)]' : 'text-[var(--crs-danger-text)]')}>
+                {nicknameValid ? `1~20자 (${[...trimmed].length}/20)` : '닉네임은 1~20자로 써 주세요.'}
+              </p>
+            )}
             <h3 className="mb-2 mt-5 text-[13px] font-bold">프로필 아이콘</h3>
             <AvatarEditor value={avatar} onChange={setAvatar} />
             <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
@@ -109,12 +119,14 @@ export function ProfileView({ model }: Readonly<{ model: ProfileViewModel }>) {
           <Section title="계정">
             <dl className="grid gap-y-3 text-[14px] sm:grid-cols-[140px_minmax(0,1fr)]">
               <dt className="font-bold">로그인 계정</dt>
-              <dd className="min-w-0 break-all text-[var(--theme-muted-text)]">{model.email} (Google)</dd>
+              <dd className="min-w-0 break-all text-[var(--theme-muted-text)]">{model.email} ({model.hubAccountUrl ? '딴쌤 계정' : 'Google'})</dd>
               <dt className="font-bold">약관 동의</dt>
               <dd className="text-[var(--theme-muted-text)]">
-                {model.agreement
-                  ? <>{model.agreement.effectiveLabel} 시행 이용약관과 개인정보처리방침 ({model.agreement.agreedAtLabel} 동의)</>
-                  : '동의 기록이 없어요.'}
+                {model.hubAccountUrl
+                  ? <>딴쌤 계정에서 동의했어요.</>
+                  : model.agreement
+                    ? <>{model.agreement.effectiveLabel} 시행 이용약관과 개인정보처리방침 ({model.agreement.agreedAtLabel} 동의)</>
+                    : '동의 기록이 없어요.'}
                 <span className="mt-1 flex gap-3 text-[13px]">
                   <a href="/terms" className="font-semibold text-[var(--theme-accent-text)] underline underline-offset-2">이용약관</a>
                   <a href="/privacy" className="font-semibold text-[var(--theme-accent-text)] underline underline-offset-2">개인정보처리방침</a>
@@ -126,9 +138,15 @@ export function ProfileView({ model }: Readonly<{ model: ProfileViewModel }>) {
             </div>
           </Section>
 
-          <Section title="회원 탈퇴" tone="danger" description="탈퇴하면 계정과 내가 만든 학급이 모두 정리되고, 되살릴 수 없어요.">
-            <Button variant="dangerGhost" icon="alert" onClick={() => setWithdrawOpen(true)}>탈퇴하기</Button>
-          </Section>
+          {model.hubAccountUrl ? (
+            <Section title="회원 탈퇴" tone="danger" description="탈퇴는 딴쌤 계정에서 해요. 클래스와 보드의 기록이 함께 정리되고, 되살릴 수 없어요.">
+              <a href={model.hubAccountUrl} className={buttonClass({ variant: 'dangerGhost' })}>딴쌤 계정 열기</a>
+            </Section>
+          ) : (
+            <Section title="회원 탈퇴" tone="danger" description="탈퇴하면 계정과 내가 만든 학급이 모두 정리되고, 되살릴 수 없어요.">
+              <Button variant="dangerGhost" icon="alert" onClick={() => setWithdrawOpen(true)}>탈퇴하기</Button>
+            </Section>
+          )}
         </div>
         <SiteFooter className="mt-8 border-t border-[var(--crs-line)] px-1 pt-6 pb-3 text-[11px] text-[var(--theme-muted-text)]" />
       </div>

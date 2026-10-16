@@ -33,11 +33,13 @@ function Icon({ name }: { name: keyof typeof paths }) {
 }
 const dateLabel = (value: string) => new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Seoul' }).format(new Date(value));
 
-export function ClassesSelectionView({ model, account, withdrawn = false }: Readonly<{
+export function ClassesSelectionView({ model, account, withdrawn = false, loginFailed = false }: Readonly<{
   model: ClassMembershipPageModel;
   /** The signed-in teacher's profile and legal notice (PostgreSQL classes). */
   account?: TeacherAccountView;
   withdrawn?: boolean;
+  /** Back from the 딴쌤 hub without signing in: offer to try again instead of sending the browser round. */
+  loginFailed?: boolean;
 }>) {
   const router = useRouter();
   const ready = useSyncExternalStore(subscribe, () => true, () => false);
@@ -71,7 +73,9 @@ export function ClassesSelectionView({ model, account, withdrawn = false }: Read
       {model.kind === 'LOGIN_REQUIRED' && withdrawn ? <p role="status" className={styles.notice}>회원 탈퇴가 끝났어요. 그동안 딴쌤 클래스를 이용해 주셔서 고마워요.</p> : null}
       {model.kind === 'LOGIN_REQUIRED' ? <section className={styles.welcome}>
         <div><h1>우리 반의 성장과<br/>보상을 함께 관리해요.</h1><p className={styles.intro}>학급마다 매점과 은행을 운영하고,<br/>학생들의 작은 도전을 보상으로 연결하세요.</p><div className={styles.features}>{['여러 학급 관리','학급 매점과 은행','과제와 보상'].map(s => <span key={s}>{s}</span>)}</div></div>
-        <div className={styles.loginCard}><span className={styles.classIcon}><Icon name="school"/></span><h2>내 학급으로 시작하기</h2><p>Google 계정으로 로그인하면 내 학급을 확인하거나 새 학급을 만들 수 있어요.</p><GoogleLoginButton href={model.loginHref} block className={styles.googleLogin} /><small>이미 만든 학급이 있다면<br/>그 학급을 만든 Google 계정으로 로그인해 주세요.</small></div>
+        {loginFailed
+          ? <div className={styles.loginCard}><span className={styles.classIcon}><Icon name="school"/></span><h2>로그인하지 못했어요</h2><p>잠시 뒤 다시 시도해 주세요.</p><a href={model.loginHref} className={styles.primary}>다시 로그인</a></div>
+          : <div className={styles.loginCard}><span className={styles.classIcon}><Icon name="school"/></span><h2>내 학급으로 시작하기</h2><p>Google 계정으로 로그인하면 내 학급을 확인하거나 새 학급을 만들 수 있어요.</p><GoogleLoginButton href={model.loginHref} block className={styles.googleLogin} /><small>이미 만든 학급이 있다면<br/>그 학급을 만든 Google 계정으로 로그인해 주세요.</small></div>}
       </section> : <>
         <section className={styles.hero}><div><h1>내 학급</h1><p>학급을 선택하고 오늘의 활동을 시작하세요.</p></div><Link href="/classes/new" aria-label="새 학급" className={styles.primary}><Icon name="plus"/>새 학급 만들기</Link></section>
         <section aria-label="학급 현황" className={styles.stats}>

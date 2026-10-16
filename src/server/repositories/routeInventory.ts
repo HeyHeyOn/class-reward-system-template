@@ -100,6 +100,12 @@ export const TENANT_ROUTE_INVENTORY: readonly TenantRouteInventoryEntry[] = [
   platform('/google/login', 'GET', 'read'),
   platform('/google/logout', 'POST', 'mutation'),
   platform('/google/session', 'GET', 'read'),
+  // 딴쌤 hub accounts (DDANSSAEM_LOGIN=1): sign-in through the hub, its signed events and summary.
+  platform('/auth/ddanssaem/start', 'GET', 'read'),
+  platform('/auth/ddanssaem/callback', 'GET', 'read'),
+  platform('/auth/ddanssaem/events', 'POST', 'mutation'),
+  platform('/ddanssaem/summary', 'POST', 'read'),
+  platform('/cron/withdrawal-retention', 'GET', 'mutation'),
   tenantMutation('/products/[productId]', 'DELETE'),
   tenantMutation('/products/[productId]', 'PATCH'),
   tenantMutation('/products/batch', 'DELETE'),

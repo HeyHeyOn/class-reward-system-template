@@ -69,7 +69,11 @@ GRANT EXECUTE ON FUNCTION
   public.platform_begin_teacher_session(text,text),
   public.platform_validate_teacher_session(text,uuid,uuid,boolean,text),
   public.platform_mutate_teacher_account(text,text,uuid,uuid,jsonb),
-  public.platform_end_teacher_session(text,uuid,uuid) TO crs_app_runtime;
+  public.platform_end_teacher_session(text,uuid,uuid),
+  public.platform_begin_hub_teacher_session(text,text,text,text,jsonb),
+  public.platform_end_hub_teacher_sessions(text),
+  public.platform_hub_account_deleted(text),
+  public.platform_expire_withdrawal_records() TO crs_app_runtime;
 -- Mutations require a durable, unexpired account session; the old helpers remain private to
 -- the generation-checked definer wrapper. Erasure helpers/context are never runtime-accessible.
 REVOKE ALL ON FUNCTION public.platform_create_draft_class(uuid,text,text,text),

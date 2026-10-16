@@ -69,12 +69,12 @@ describe('tenant route inventory', () => {
       { route: '/exports/[slug]/historical-local-generation-metadata.csv', method: 'GET' },
       { route: '/exports/[slug]/historical-local-generation-metadata.csv', method: 'HEAD' },
     ]);
-    expect(inventory).toHaveLength(140);
+    expect(inventory).toHaveLength(145);
     expect(new Set(inventory.map(({ route, method }) => `${method} ${route}`)).size).toBe(inventory.length);
   });
 
   it('preserves the current authority boundary counts and isolates the status read', () => {
-    expect(TENANT_ROUTE_INVENTORY).toHaveLength(140);
+    expect(TENANT_ROUTE_INVENTORY).toHaveLength(145);
     expect(TENANT_ROUTE_INVENTORY.filter((entry) => entry.scope === 'tenant-status')).toEqual([
       { route: '/migrations/status/[slug]', method: 'GET', scope: 'tenant-status', effect: 'read' },
       { route: '/migrations/status/[slug]/preflight', method: 'GET', scope: 'tenant-status', effect: 'read' },
@@ -104,6 +104,6 @@ describe('tenant route inventory', () => {
       { route: '/tasks', method: 'POST', scope: 'unsupported', effect: 'none' },
       { route: '/tasks/schedules/batch', method: 'POST', scope: 'unsupported', effect: 'none' },
     ].sort((left, right) => `${left.route} ${left.method}`.localeCompare(`${right.route} ${right.method}`)));
-    expect(TENANT_ROUTE_INVENTORY.filter((entry) => entry.scope === 'platform')).toHaveLength(18);
+    expect(TENANT_ROUTE_INVENTORY.filter((entry) => entry.scope === 'platform')).toHaveLength(23);
   });
 });

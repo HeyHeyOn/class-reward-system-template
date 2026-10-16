@@ -9,7 +9,7 @@ import type { TenantLifecycle } from '@/server/tenantContext';
 import type { TenantMembershipRole } from '@/server/tenantAuth';
 
 export type ClassMembershipPageModel =
-  | Readonly<{ kind: 'LOGIN_REQUIRED'; loginHref: '/api/google/login?returnTo=%2Fclasses' }>
+  | Readonly<{ kind: 'LOGIN_REQUIRED'; loginHref: string }>
   | Readonly<{
       kind: 'MEMBERSHIPS';
       accountLabel: string;

@@ -3,7 +3,7 @@ import { getDatabaseClient } from '@/server/db/client';
 import { parseTenantSlug, type TenantLifecycle } from '@/server/tenantContext';
 import type { ClassMembershipRepository } from './classMemberships';
 import type { TeacherSessionBinding } from '@/server/teacherSession';
-import { currentLegalRevision } from '@/lib/legalDocuments';
+import { requiredAgreementVersion } from '@/server/requiredAgreement';
 
 /** PURGE erases a class in the trash for good (every row of it), unlike DELETE (the trash). */
 export type ClassManagementAction = 'RENAME' | 'DUPLICATE' | 'DELETE' | 'RESTORE' | 'PURGE';
@@ -54,10 +54,10 @@ export function createClassManagementCommand(db: Queryable): ClassManagementComm
     const { rows } = input.action === 'PURGE'
       ? await db.query('SELECT public.platform_purge_class_authenticated($1::uuid,$2,$3,$4,$5::bigint,$6::uuid,$7::uuid,$8) AS result',
         [input.operationId, input.slug, input.subject, input.name, input.expectedVersion,
-          input.accountGeneration, input.sessionId, currentLegalRevision().version])
+          input.accountGeneration, input.sessionId, requiredAgreementVersion()])
       : await db.query('SELECT public.platform_manage_class_authenticated($1::uuid,$2,$3,$4,$5,$6::bigint,$7::uuid,$8::uuid,$9) AS result',
         [input.operationId, input.slug, input.subject, input.action, input.name, input.expectedVersion,
-          input.accountGeneration, input.sessionId, currentLegalRevision().version]);
+          input.accountGeneration, input.sessionId, requiredAgreementVersion()]);
     const row = rows[0]?.result as Partial<ClassManagementResult> | undefined;
     if (rows.length !== 1 || !row || parseTenantSlug(row.slug).needsRedirect
       || typeof row.displayName !== 'string' || !row.displayName.trim() || row.action !== input.action

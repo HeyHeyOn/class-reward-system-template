@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { ADMIN_SESSION_COOKIE } from '@/server/adminAuth';
 import { clearGeneratorGrantCookie, clearGoogleSessionCookie, clearPendingAgreementCookie } from '@/server/googleOAuth';
 import { teacherAccountsEnabled } from '@/server/teacherAccounts';
+import { hubLoginEnabled, hubLogoutUrl } from '@/server/ddanssaem/hub';
 import { endRequestTeacherSessions } from '@/server/teacherSession';
 import { clearTenantAdminSessionCookie, readTenantAdminSessionCookie } from '@/server/tenantAdminSessionCookie';
 
@@ -28,7 +29,12 @@ export async function logoutAdministrator(request: Request): Promise<NextRespons
       });
     }
   }
-  const response = NextResponse.json({ ok: true }, { headers: { 'cache-control': 'no-store' } });
+  // With the 딴쌤 hub, the browser then signs out of the hub too (2-1) and comes back to the class list.
+  let next: string | undefined;
+  if (hubLoginEnabled()) {
+    try { next = hubLogoutUrl(new URL(request.url).origin); } catch { next = undefined; }
+  }
+  const response = NextResponse.json(next ? { ok: true, next } : { ok: true }, { headers: { 'cache-control': 'no-store' } });
   clearGoogleSessionCookie(response);
   clearPendingAgreementCookie(response);
   clearGeneratorGrantCookie(response);

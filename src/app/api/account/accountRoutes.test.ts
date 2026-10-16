@@ -7,6 +7,7 @@ const store = vi.hoisted(() => ({
   recordAgreement: vi.fn<(subject: string, version: string) => Promise<string>>(async () => '2026-10-08T03:00:00.000Z'),
   saveProfile: vi.fn<(subject: string, profile: unknown) => Promise<void>>(async () => undefined),
   withdraw: vi.fn<(subject: string) => Promise<number>>(async () => 2),
+  getProfile: vi.fn(async () => ({ nickname: '별빛쌤', avatar: {} })),
 }));
 vi.mock('@/server/teacherAccounts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/server/teacherAccounts')>()),
@@ -159,5 +160,34 @@ describe('POST /api/account/profile', () => {
     expect((await response.json()).code).toBe('AGREEMENT_REQUIRED');
     expect((await saveProfile(request('/api/account/profile', { body: { nickname: '햇살쌤', avatar }, cookie: pendingCookie() }))).status).toBe(401);
     expect(store.saveProfile).not.toHaveBeenCalled();
+  });
+});
+
+describe('with the 딴쌤 hub (DDANSSAEM_LOGIN=1)', () => {
+  beforeEach(() => {
+    vi.stubEnv('DDANSSAEM_LOGIN', '1');
+    vi.stubEnv('DDANSSAEM_HUB_URL', 'https://beta.ddanssaem.com');
+    vi.stubEnv('DDANSSAEM_CLIENT_SECRET', 's'.repeat(40));
+  });
+
+  it('leaves the terms and withdrawal to the 딴쌤 account', async () => {
+    const cookie = sessionCookie({ subject: 'google-1', email: 'kim@example.com', issuedAt: Date.now(), agreement: 'hub' });
+    const agreed = await agree(request('/api/account/agreement', { body: ALL, cookie: pendingCookie() }));
+    expect(agreed.status).toBe(409);
+    expect((await agreed.json()).code).toBe('HUB_ACCOUNT');
+    const withdrawn = await withdraw(request('/api/account/withdraw', { body: { confirm: true, expectedSessionId: binding.sessionId }, cookie }));
+    expect(withdrawn.status).toBe(409);
+    expect(await withdrawn.json()).toMatchObject({ code: 'HUB_ACCOUNT', next: 'https://beta.ddanssaem.com/account' });
+    expect(store.recordAgreement).not.toHaveBeenCalled();
+    expect(store.withdraw).not.toHaveBeenCalled();
+  });
+
+  it('changes only the icon: the nickname stays the 딴쌤 account name', async () => {
+    const cookie = sessionCookie({ subject: 'google-1', email: 'kim@example.com', issuedAt: Date.now(), agreement: 'hub' });
+    const response = await saveProfile(request('/api/account/profile', { body: { nickname: '다른이름', avatar, expectedSessionId: binding.sessionId }, cookie }));
+    expect(response.status).toBe(200);
+    expect(store.saveProfile).toHaveBeenCalledWith('google-1', { nickname: '별빛쌤', avatar });
+    const classAgreed = sessionCookie({ subject: 'google-1', email: 'kim@example.com', issuedAt: Date.now(), agreement: version });
+    expect((await saveProfile(request('/api/account/profile', { body: { nickname: '다른이름', avatar, expectedSessionId: binding.sessionId }, cookie: classAgreed }))).status).toBe(403);
   });
 });

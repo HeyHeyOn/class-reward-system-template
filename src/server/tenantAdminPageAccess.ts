@@ -10,6 +10,8 @@ import {
 } from '@/server/tenantAuth';
 import { TenantContextError } from '@/server/tenantContext';
 import { getProductionTenantAccessDependencies } from '@/server/tenantAccess';
+import { hubLoginEnabled } from '@/server/ddanssaem/hub';
+import { followHubSignIn, teacherScreenRedirect } from '@/server/ddanssaem/teacherGate';
 
 export type TenantAdminPageNavigation = Readonly<{
   redirect(path: string): never;
@@ -37,10 +39,16 @@ export async function authorizeTenantAdminPage(
 
 export async function requireTenantAdminPage(slug: string): Promise<TenantAdminContext> {
   const requestHeaders = await headers();
-  return authorizeTenantAdminPage(
+  const path = `/c/${slug}/admin`;
+  // With the 딴쌤 hub, a signed-out teacher goes to the hub's sign-in page, not the class's own.
+  const hub = hubLoginEnabled();
+  const access = await authorizeTenantAdminPage(
     slug,
-    new Request(`http://tenant.internal/c/${slug}/admin`, { headers: requestHeaders }),
+    new Request(`http://tenant.internal${path}`, { headers: requestHeaders }),
     getProductionTenantAccessDependencies(),
-    { redirect, notFound },
+    { redirect: (target) => redirect(hub && target === `${path}/login`
+      ? teacherScreenRedirect({ path, session: null, cookieHeader: requestHeaders.get('cookie') }) ?? target : target), notFound },
   );
+  if (hub) followHubSignIn(path, access.session, requestHeaders.get('cookie'));
+  return access;
 }

@@ -1,0 +1,133 @@
+// @vitest-environment node
+import { readFile, readdir } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { PGlite } from '@electric-sql/pglite';
+import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+// 0058: sessions and agreements for teachers the 딴쌤 hub signs in, called as the runtime role.
+let db: PGlite;
+const AVATAR = '{"animal":"cat","color":"sky"}';
+
+async function runtime<T>(callback: () => Promise<T>): Promise<T> {
+  await db.exec('BEGIN; SET LOCAL ROLE crs_app_runtime;');
+  try {
+    const result = await callback();
+    await db.exec('COMMIT');
+    return result;
+  } catch (error) {
+    await db.exec('ROLLBACK');
+    throw error;
+  }
+}
+const call = <T>(sql: string, values: unknown[]) => runtime(async () => (await db.query<T>(sql, values)).rows);
+type Session = { generation: string; session_id: string };
+const begin = async (subject: string, sid: string, nickname = '별빛쌤', terms = '2026-12-05') =>
+  (await call<Session>('SELECT * FROM platform_begin_hub_teacher_session($1,$2,$3,$4,$5::jsonb)', [subject, terms, sid, nickname, AVATAR]))[0];
+const valid = async (subject: string, session: Session, version: string | null = 'hub') =>
+  (await call<{ ok: boolean }>('SELECT platform_validate_teacher_session($1,$2,$3,false,$4) AS ok',
+    [subject, session.generation, session.session_id, version]))[0].ok;
+const one = async <T>(sql: string, values: unknown[]) => (await db.query<T>(sql, values)).rows[0];
+
+beforeAll(async () => {
+  db = new PGlite({ extensions: { pgcrypto } });
+  const directory = resolve('src/server/db/migrations');
+  for (const file of (await readdir(directory)).filter((file) => /^\d{4}_.*\.sql$/.test(file)).sort()) {
+    await db.exec(await readFile(resolve(directory, file), 'utf8'));
+  }
+  await db.exec('CREATE ROLE crs_app_runtime NOSUPERUSER NOBYPASSRLS;');
+  await db.exec(await readFile(resolve('src/server/db/provisioning/runtimeGrants.sql'), 'utf8'));
+}, 120000);
+afterAll(async () => { await db?.close(); });
+
+describe('딴쌤 accounts (0058)', () => {
+  it('starts an agreed class session bound to the hub session and records the hub agreement apart', async () => {
+    const subject = `hub-${randomUUID()}`;
+    const session = await begin(subject, 'sid-a');
+    expect(await valid(subject, session)).toBe(true);
+    expect(await valid(subject, session, '2026-10-08')).toBe(false);
+    expect((await call<{ has: boolean }>("SELECT platform_has_user_agreement($1,'hub') AS has", [subject]))[0].has).toBe(true);
+    expect(await call('SELECT * FROM platform_latest_user_agreement($1)', [subject])).toEqual([]);
+    expect((await one<{ v: string }>('SELECT agreement_version AS v FROM user_agreements WHERE google_subject=$1', [subject])).v).toBe('hub:2026-12-05');
+    expect((await one<{ hub_sid: string; pending: boolean }>('SELECT hub_sid,pending FROM teacher_auth_sessions WHERE session_id=$1', [session.session_id])))
+      .toEqual({ hub_sid: 'sid-a', pending: false });
+    const create = (version: string) => call<{ lifecycle: string }>('SELECT * FROM platform_create_draft_class_authenticated($1,$2,$3,$4,$5,$6,$7)',
+      [randomUUID(), subject, `${session.session_id}@example.test`, '별빛쌤', session.generation, session.session_id, version]);
+    await expect(create('2026-10-08')).rejects.toThrow(/agreement required/);
+    expect((await create('hub'))[0].lifecycle).toBe('DRAFT');
+  });
+
+  it('keeps a Google teacher\'s class agreement working beside a hub agreement', async () => {
+    const subject = `both-${randomUUID()}`;
+    await db.query("SELECT platform_record_user_agreement($1,'2026-10-08')", [subject]);
+    await begin(subject, 'sid-b');
+    expect((await call<{ has: boolean }>("SELECT platform_has_user_agreement($1,'2026-10-08') AS has", [subject]))[0].has).toBe(true);
+    expect((await call<{ agreement_version: string }>('SELECT * FROM platform_latest_user_agreement($1)', [subject]))[0].agreement_version).toBe('2026-10-08');
+    await expect(db.query("SELECT platform_record_user_agreement($1,'hub:2026-12-05')", [subject])).rejects.toThrow(/invalid agreement version/);
+  });
+
+  it('sets the nickname to the 딴쌤 account name on each sign-in and keeps the class avatar', async () => {
+    const subject = `nick-${randomUUID()}`;
+    await begin(subject, 'sid-c1', '첫이름');
+    expect(await one('SELECT nickname,avatar FROM user_profiles WHERE google_subject=$1', [subject]))
+      .toEqual({ nickname: '첫이름', avatar: JSON.parse(AVATAR) });
+    await db.query(`UPDATE user_profiles SET avatar='{"animal":"fox","color":"mint"}' WHERE google_subject=$1`, [subject]);
+    await begin(subject, 'sid-c2', '바뀐이름', '2027-03-01');
+    expect(await one('SELECT nickname,avatar FROM user_profiles WHERE google_subject=$1', [subject]))
+      .toEqual({ nickname: '바뀐이름', avatar: { animal: 'fox', color: 'mint' } });
+    expect((await db.query('SELECT 1 FROM user_agreements WHERE google_subject=$1', [subject])).rows).toHaveLength(2);
+  });
+
+  it('refuses a malformed terms version or hub session', async () => {
+    await expect(begin('bad-terms', 'sid', '이름', '12/05')).rejects.toThrow(/invalid hub terms version/);
+    await expect(begin('bad-sid', ' sid', '이름')).rejects.toThrow(/invalid hub session/);
+    await expect(begin('bad-sid', '', '이름')).rejects.toThrow(/invalid hub session/);
+    await expect(begin(' padded', 'sid', '이름')).rejects.toThrow(/invalid google subject/);
+  });
+
+  it('ends only the class sessions made from the hub session that signed out', async () => {
+    const subject = `logout-${randomUUID()}`;
+    const phone = await begin(subject, `sid-phone-${subject}`);
+    const laptop = await begin(subject, `sid-laptop-${subject}`);
+    expect((await call<{ n: number }>('SELECT platform_end_hub_teacher_sessions($1) AS n', [`sid-phone-${subject}`]))[0].n).toBe(1);
+    expect(await valid(subject, phone)).toBe(false);
+    expect(await valid(subject, laptop)).toBe(true);
+    expect((await call<{ n: number }>('SELECT platform_end_hub_teacher_sessions($1) AS n', [`sid-phone-${subject}`]))[0].n).toBe(0);
+    expect((await call<{ n: number }>('SELECT platform_end_hub_teacher_sessions($1) AS n', [' padded']))[0].n).toBe(0);
+  });
+
+  it('withdraws the teacher by the class rules when the 딴쌤 account is deleted, once', async () => {
+    const subject = `deleted-${randomUUID()}`;
+    const userId = randomUUID();
+    const tenant = randomUUID();
+    const session = await begin(subject, `sid-${subject}`);
+    await db.query("INSERT INTO users(id,google_subject,canonical_email,display_name) VALUES ($1,$2,$3,'별빛쌤')", [userId, subject, `${userId}@example.test`]);
+    await db.query("INSERT INTO tenants(id,slug,display_name,lifecycle) VALUES ($1,$2,'4학년 2반','ACTIVE')", [tenant, `hub-${tenant}`]);
+    await db.query("INSERT INTO tenant_memberships(tenant_id,user_id,role) VALUES ($1,$2,'OWNER')", [tenant, userId]);
+    await db.query("INSERT INTO students(tenant_id,student_id,name) VALUES ($1,'S1','합성 학생')", [tenant]);
+
+    expect((await call<{ n: number }>('SELECT platform_hub_account_deleted($1) AS n', [subject]))[0].n).toBe(1);
+    expect(await valid(subject, session)).toBe(false);
+    expect((await db.query('SELECT 1 FROM user_agreements WHERE google_subject=$1 UNION ALL SELECT 1 FROM user_profiles WHERE google_subject=$1', [subject])).rows).toEqual([]);
+    expect(await one('SELECT display_name,deleted_at IS NOT NULL AS trashed FROM tenants WHERE id=$1', [tenant]))
+      .toEqual({ display_name: '탈퇴로 삭제된 학급', trashed: true });
+    expect((await db.query('SELECT name FROM students WHERE tenant_id=$1', [tenant])).rows).toEqual([]);
+    expect((await one<{ s: string }>('SELECT google_subject AS s FROM users WHERE id=$1', [userId])).s).toBe(`withdrawn:${userId}`);
+    // The hub may send the event again: nothing is left to close.
+    const withdrawals = (await one<{ n: number }>('SELECT count(*)::int AS n FROM account_withdrawals', [])).n;
+    expect((await call<{ n: number }>('SELECT platform_hub_account_deleted($1) AS n', [subject]))[0].n).toBe(0);
+    expect((await one<{ n: number }>('SELECT count(*)::int AS n FROM account_withdrawals', [])).n).toBe(withdrawals);
+  });
+
+  it('only ends stray sessions for a 딴쌤 account the class never kept', async () => {
+    const withdrawals = (await one<{ n: number }>('SELECT count(*)::int AS n FROM account_withdrawals', [])).n;
+    expect((await call<{ n: number }>('SELECT platform_hub_account_deleted($1) AS n', [`never-${randomUUID()}`]))[0].n).toBe(0);
+    expect((await one<{ n: number }>('SELECT count(*)::int AS n FROM account_withdrawals', [])).n).toBe(withdrawals);
+  });
+
+  it('keeps the runtime away from the session table itself', async () => {
+    await expect(call('SELECT hub_sid FROM teacher_auth_sessions', [])).rejects.toThrow();
+    await expect(call("UPDATE teacher_auth_sessions SET hub_sid='x'", [])).rejects.toThrow();
+  });
+});

@@ -2,7 +2,7 @@ import 'server-only';
 
 import { getDatabaseClient } from '@/server/db/client';
 import { getGoogleSessionFromRequest, getPendingAgreementFromRequest, type GoogleSession } from '@/server/googleOAuth';
-import { currentLegalRevision } from '@/lib/legalDocuments';
+import { requiredAgreementVersion } from '@/server/requiredAgreement';
 import { teacherAccountsEnabled, type TeacherProfile } from '@/server/teacherAccounts';
 
 export type TeacherSessionBinding = Readonly<{ accountGeneration: string; sessionId: string }>;
@@ -57,18 +57,18 @@ export async function getTeacherGoogleSessionFromRequest(request: Request, optio
   if (!session || !hasTeacherSessionBinding(session)) return null;
   const pending = getPendingAgreementFromRequest(request);
   if (pending && (pending.subject !== session.subject || pending.sessionId !== session.sessionId || pending.accountGeneration !== session.accountGeneration)) return null;
-  const version = options.requireAgreement === false ? null : currentLegalRevision().version;
+  const version = options.requireAgreement === false ? null : requiredAgreementVersion();
   if (version && session.agreement !== version) return null;
   return await getProductionTeacherSessionStore().valid(session, false, version) ? session : null;
 }
 
 export async function isCurrentTeacherSession(session: Pick<GoogleSession, 'subject'> & Partial<GoogleSession>, queryable?: TeacherSessionQueryable): Promise<boolean> {
   if (!teacherAccountsEnabled()) return true;
-  const version = currentLegalRevision().version;
+  const version = requiredAgreementVersion();
   return hasTeacherSessionBinding(session) && session.agreement === version
     && await (queryable ? createTeacherSessionStore(queryable) : getProductionTeacherSessionStore()).valid(session, false, version);
 }
 
 export async function saveTeacherProfile(identity: Identity, profile: TeacherProfile) {
-  return getProductionTeacherSessionStore().mutate(identity, 'PROFILE', { ...profile, version: currentLegalRevision().version });
+  return getProductionTeacherSessionStore().mutate(identity, 'PROFILE', { ...profile, version: requiredAgreementVersion() });
 }

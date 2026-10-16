@@ -8,6 +8,7 @@ vi.mock('next/navigation', () => ({ notFound: () => { throw Error('not-found'); 
 vi.mock('@/components/AdminManagePage', () => ({ AdminManagePage: ({ migrationsHref }: { migrationsHref?: string }) => <a href={migrationsHref}>마이그레이션</a> }));
 vi.mock('@/components/AdminLoginPage', () => ({ AdminLoginPage: () => null }));
 vi.mock('@/server/teacherAccounts', () => ({ teacherAccountsEnabled: () => false, loadTeacherAccountView: vi.fn() }));
+vi.mock('@/server/ddanssaem/hub', () => ({ hubLoginEnabled: () => false }));
 vi.mock('@/components/StudentQrPrintPage', () => ({ StudentQrPrintPage: () => null }));
 vi.mock('@/components/TransactionsPage', () => ({ TransactionsPage: () => null }));
 vi.mock('@/components/brand/TeacherHeader', () => ({ TeacherHeader: () => null }));

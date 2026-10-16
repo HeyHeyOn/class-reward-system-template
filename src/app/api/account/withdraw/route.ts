@@ -3,6 +3,7 @@ import { accountReply, readAccountIdentity, readAccountRequest, SIGN_IN_AGAIN, T
 import { clearGeneratorGrantCookie, clearGoogleSessionCookie, clearPendingAgreementCookie } from '@/server/googleOAuth';
 import { clearTenantAdminSessionCookie } from '@/server/tenantAdminSessionCookie';
 import { getProductionTeacherSessionStore } from '@/server/teacherSession';
+import { hubAccountUrl, hubLoginEnabled } from '@/server/ddanssaem/hub';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +13,7 @@ export const dynamic = 'force-dynamic';
  * browser is signed out.
  */
 export async function POST(request: Request) {
+  if (hubLoginEnabled()) return accountReply(409, { error: '탈퇴는 딴쌤 계정에서 해요.', code: 'HUB_ACCOUNT', next: hubAccountUrl() });
   const body = await readAccountRequest(request);
   if (body instanceof Response) return body;
   if (Object.keys(body).some(key => !['confirm', 'expectedSessionId'].includes(key)) || body.confirm !== true) {
