@@ -241,4 +241,52 @@ describe('TutorialRunner', () => {
     await waitFor(() => expect(tour().getAttribute('data-tutorial-state')).toBe('shown'));
     expect(document.getElementById('in-b')).toBeTruthy();
   });
+
+  describe('a target cut off at the bottom of a scrolling body (a sheet above its bottom bar)', () => {
+    const SHEET: Tutorial = { id: '9-8', title: '시트', goal: '시험용', steps: [
+      { target: '#deep', area: ['@target'], title: '저장', text: '[저장]을 누르세요.' },
+    ] };
+    function Sheet() {
+      return (
+        <div id="sheet-body" style={{ overflowY: 'auto' }}>
+          <div style={{ height: 600 }} />
+          <button id="deep" type="button">저장</button>
+        </div>
+      );
+    }
+    function layOut(scrolls: boolean) {
+      let scrolled = 0;
+      const box = (top: number, height: number, left = 0, width = 375) =>
+        ({ x: left, y: top, left, top, width, height, right: left + width, bottom: top + height, toJSON: () => ({}) }) as DOMRect;
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function rect(this: HTMLElement) {
+        if (this.style.visibility === 'hidden') return box(0, 1, 0, 1);
+        if (this.id === 'sheet-body') return box(120, 440);
+        if (this.id === 'deep') return box(600 - scrolled, 40, 20, 120);
+        return box(100, 40, 100, 200);
+      });
+      const body = document.getElementById('sheet-body')!;
+      Object.defineProperty(body, 'scrollHeight', { configurable: true, value: 1000 });
+      Object.defineProperty(body, 'clientHeight', { configurable: true, value: 440 });
+      const scrollBy = vi.fn(({ top }: { top: number }) => { if (scrolls) scrolled += top; });
+      body.scrollBy = scrollBy as unknown as typeof body.scrollBy;
+      return scrollBy;
+    }
+
+    it('scrolls the body so the target shows clear of the edge before lighting it', async () => {
+      render(<><Sheet /><TutorialRunner tutorial={SHEET} onNavigate={vi.fn()} onClose={vi.fn()} /></>);
+      const scrollBy = layOut(true);
+      await waitFor(() => expect(tour().getAttribute('data-tutorial-state')).toBe('shown'));
+      expect(scrollBy).toHaveBeenCalledWith({ top: 640 - (560 - 12) });
+      expect(tour().getAttribute('data-tutorial-hidden')).toBeNull();
+    });
+
+    it('says which way to scroll when the target cannot be brought into sight', async () => {
+      render(<><Sheet /><TutorialRunner tutorial={SHEET} onNavigate={vi.fn()} onClose={vi.fn()} /></>);
+      const scrollBy = layOut(false);
+      await waitFor(() => expect(tour().getAttribute('data-tutorial-hidden')).toBe('down'), { timeout: 3000 });
+      expect(scrollBy.mock.calls.length).toBeLessThanOrEqual(3);
+      expect(screen.getByRole('status').textContent).toContain('아래로 내려');
+      expect(screen.getByRole('status').textContent).toContain('찾아요.');
+    });
+  });
 });

@@ -118,6 +118,12 @@ export function place(area: Box, target: Box, size: Readonly<{ w: number; h: num
     sized(alignedX, Math.min(target.y, side === 'top' ? arrow.y : Infinity) - GAP - size.h),
   ].filter((box) => inside(box) && !overlaps(box, target, 2) && clearOfArrow(box));
   if (byTarget.length) return { arrow, box: nearest(byTarget) };
+  // A small screen (a phone): the top or bottom edge, whichever has the room clear of the control and the
+  // arrow; the one farther from the control when both do.
+  const edges = [sized(alignedX, 8), sized(alignedX, arrow.y + arrow.h + GAP), sized(alignedX, vh - size.h - 8), sized(alignedX, arrow.y - GAP - size.h)]
+    .filter((box) => inside(box) && !overlaps(box, target, 2) && clearOfArrow(box))
+    .sort((a, b) => Math.abs(b.y + b.h / 2 - cy) - Math.abs(a.y + a.h / 2 - cy));
+  if (edges.length) return { arrow, box: edges[0] };
   return { arrow, box: sized(alignedX, clampY(below, size.h)) };
 }
 
@@ -131,4 +137,126 @@ export function inFixedLayer(element: Element): boolean {
     if (position === 'fixed' || position === 'sticky') return true;
   }
   return false;
+}
+
+export function intersect(a: Box, b: Box): Box {
+  const x0 = Math.max(a.x, b.x), y0 = Math.max(a.y, b.y);
+  const x1 = Math.min(a.x + a.w, b.x + b.w), y1 = Math.min(a.y + a.h, b.y + b.h);
+  return { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) };
+}
+
+/**
+ * The part of the screen where `element` can show at all: inside every ancestor that clips its content (a
+ * sheet's scrolling body ends above the sheet's bottom bar), within their borders and scrollbars. Null when
+ * nothing clips it.
+ */
+export function clipBox(element: Element): Box | null {
+  let clip: Box | null = null;
+  for (let node = element.parentElement; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
+    const style = getComputedStyle(node);
+    if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+    const rect = node.getBoundingClientRect();
+    const inner = { x: rect.left + node.clientLeft, y: rect.top + node.clientTop, w: node.clientWidth || rect.width, h: node.clientHeight || rect.height };
+    clip = clip ? intersect(clip, inner) : inner;
+  }
+  return clip;
+}
+
+/** The closest ancestor that scrolls up and down (a sheet's body), or the page. */
+export function scrollerOf(element: Element): Element {
+  for (let node = element.parentElement; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
+    const overflow = getComputedStyle(node).overflowY;
+    if ((overflow === 'auto' || overflow === 'scroll') && node.scrollHeight > node.clientHeight + 1) return node;
+  }
+  return document.scrollingElement ?? document.documentElement;
+}
+
+/**
+ * What stays put over the target where the teacher would look at it (a bar fixed to the screen's bottom, the
+ * notices, a sticky header or save bar): for each, the box of the whole thing on top (the part of its tree
+ * that is not also the target's). Only fixed or sticky things count: a control's own styled parts drawn over
+ * it do not, and a sheet's bottom bar clips the target (clipBox) rather than covering it. `own` tells the
+ * tutorial's own layers.
+ */
+export function coversOf(target: HTMLElement, own: (element: Element) => boolean, probe: Box = boxOf(target),
+  remembered?: Set<Element>): Box[] {
+  if (typeof document.elementsFromPoint !== 'function') return [];
+  const box = boxOf(target);
+  const x = Math.min(Math.max(box.x + box.w / 2, 1), window.innerWidth - 1);
+  const covers = new Map<Element, Box>();
+  // Down the target and, when given, the lit unit around it (whose ring must not run under a bar either).
+  const ys = [box.y + Math.min(4, box.h / 4), box.y + box.h / 2, box.y + box.h - Math.min(4, box.h / 4)];
+  if (probe !== box) ys.push(probe.y + Math.min(6, probe.h / 4), probe.y + probe.h - Math.min(6, probe.h / 4));
+  for (const y of ys) {
+    if (y < 0 || y > window.innerHeight) continue;
+    const top = document.elementsFromPoint(x, y).find((element) => !own(element));
+    if (!top || target === top || target.contains(top) || top.contains(target)) continue;
+    let cover: Element = top;
+    let stays = ['fixed', 'sticky'].includes(getComputedStyle(cover).position);
+    while (cover.parentElement && !cover.parentElement.contains(target)) {
+      cover = cover.parentElement;
+      stays ||= ['fixed', 'sticky'].includes(getComputedStyle(cover).position);
+    }
+    if (stays) covers.set(cover, boxOf(cover));
+  }
+  // What covered the target once in this step (a sticky header) still bounds where it can be seen after a
+  // scroll moved the target clear of it; otherwise the next try would scroll it back under.
+  if (remembered) {
+    for (const element of covers.keys()) remembered.add(element);
+    for (const element of remembered) if (!covers.has(element) && element.isConnected && isShown(element)) covers.set(element, boxOf(element));
+  }
+  return [...covers.values()];
+}
+
+/**
+ * The band of the screen (top, bottom) where the target can be seen: `seen`, less what covers it from above
+ * (things in the upper half, a sticky header) and from below (things in the lower half, a bottom bar), even
+ * when the target sits wholly past one.
+ */
+/** A cover as tall as most of the screen is an open window over the page, not a bar: scrolling never clears it. */
+const isWindow = (cover: Box, seen: Box) => cover.h > seen.h * 0.6;
+
+export function freeBand(target: Box, seen: Box, covers: readonly Box[]): Readonly<{ top: number; bottom: number }> {
+  let top = seen.y, bottom = seen.y + seen.h;
+  const middle = seen.y + seen.h / 2;
+  for (const cover of covers) {
+    if (cover.x >= target.x + target.w || cover.x + cover.w <= target.x || isWindow(cover, seen)) continue;
+    if (cover.y + cover.h / 2 > middle) bottom = Math.min(bottom, cover.y);
+    else top = Math.max(top, cover.y + cover.h);
+  }
+  return { top, bottom };
+}
+
+/**
+ * How far the target must scroll up (positive) or down (negative) to be seen whole, `margin` clear of the
+ * edges of where it can be seen (`seen`) and of whatever is drawn over it there. 0 when it is seen whole
+ * already. Taller than the room left: its top is lined up.
+ */
+export function revealShift(target: Box, seen: Box, covers: readonly Box[], margin = 12): number {
+  const { top, bottom } = freeBand(target, seen, covers);
+  const band = bottom - top;
+  if (target.h > band) return target.y - (top + margin);
+  // A target that only just fits where it is (a tab in a bar) needs no room around it.
+  const edge = Math.min(margin, (band - target.h) / 2);
+  if (edge < margin && target.y >= top && target.y + target.h <= bottom) return 0;
+  if (target.y < top + edge) return target.y - (top + edge);
+  if (target.y + target.h > bottom - edge) return target.y + target.h - (bottom - edge);
+  return 0;
+}
+
+/**
+ * Whether the target is out of sight, and which way to scroll to find it: part of it is under a bar or past
+ * an edge (a target taller than the room: almost none of it shows). 'covered': an open window is over it.
+ */
+export function hiddenSide(target: Box, seen: Box, covers: readonly Box[]): 'down' | 'up' | 'covered' | null {
+  if (covers.some((cover) => isWindow(cover, seen) && overlaps(cover, target))) return 'covered';
+  const { top, bottom } = freeBand(target, seen, covers);
+  if (target.h > bottom - top) {
+    if (target.y > bottom - 40) return 'down';
+    if (target.y + target.h < top + 40) return 'up';
+    return null;
+  }
+  if (target.y + target.h > bottom + 1) return 'down';
+  if (target.y < top - 1) return 'up';
+  return null;
 }

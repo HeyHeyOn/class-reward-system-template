@@ -3,7 +3,10 @@
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { AdminTab } from '../admin/adminTypes';
 import { Button, Icon, IconButton, cx, useBottomDock } from '../ui';
-import { areaElements, boxOf, firstShown, inFixedLayer, place, unionBox, type ArrowSide, type Box } from './tutorialDom';
+import {
+  areaElements, boxOf, clipBox, coversOf, firstShown, freeBand, hiddenSide, inFixedLayer, intersect, place, revealShift, scrollerOf, unionBox,
+  type ArrowSide, type Box,
+} from './tutorialDom';
 import { ButtonChip } from './ButtonChip';
 import { clearQueuedTutorial, queueTutorial } from './tutorialQueue';
 import type { Tutorial } from './tutorials';
@@ -17,7 +20,10 @@ type Anchor = 'fixed' | 'page';
 type View =
   | Readonly<{ step: number; kind: 'searching' }>
   | Readonly<{ step: number; kind: 'missing' }>
-  | Readonly<{ step: number; kind: 'shown'; anchor: Anchor; area: Box; arrow: Box & { side: ArrowSide }; box: Box; canvas: Readonly<{ w: number; h: number }> }>;
+  | Readonly<{ step: number; kind: 'shown'; anchor: Anchor; area: Box; arrow: Box & { side: ArrowSide }; box: Box; canvas: Readonly<{ w: number; h: number }>;
+    /** The target is still out of sight (below or above what can be seen, or under an open window) after the
+     *  step tried to bring it in. */
+    hidden: 'down' | 'up' | 'covered' | null }>;
 
 const BOX_WIDTH = 360;
 
@@ -30,6 +36,27 @@ const SKIP_LOADING_MAX_MS = 5000;
 /** How long a step waits before clicking `reveal` (its menu may still be switching). */
 const REVEAL_AFTER_MS = 150;
 const AREA_PAD = 8;
+/** Bringing the target out from under a bar: this many tries, while the step opens. */
+const REVEAL_TRIES = 3;
+const REVEAL_WINDOW_MS = 1500;
+
+/** Scrolls by `top` pixels (positive: the content goes up). */
+function scrollByTop(scroller: Element, top: number) {
+  if (typeof scroller.scrollBy === 'function') scroller.scrollBy({ top });
+  else scroller.scrollTop += top;
+}
+
+/** '아래로 내려 [저장]을 찾아요.', '열린 창을 닫으면 [모둠 지정]이 보여요.': the target's own words, with the
+ *  particle as they end. */
+function findHint(target: HTMLElement | null, hidden: 'down' | 'up' | 'covered'): string {
+  const words = (target?.getAttribute('aria-label') || target?.textContent || '').trim().replace(/\s+/g, ' ');
+  const last = words.charCodeAt(words.length - 1);
+  const batchim = last >= 0xAC00 && last <= 0xD7A3 ? (last - 0xAC00) % 28 !== 0 : true;
+  const named = words && words.length <= 20;
+  if (hidden === 'covered') return named ? `열린 창을 닫으면 [${words}]${batchim ? '이' : '가'} 보여요.` : '열린 창을 닫으면 밝힌 곳이 보여요.';
+  const way = hidden === 'down' ? '아래로 내려' : '위로 올려';
+  return named ? `${way} [${words}]${batchim ? '을' : '를'} 찾아요.` : `${way} 밝힌 곳을 찾아요.`;
+}
 
 /** Where the admin menu is: down the left on a wide screen, across the top on a narrow one (lg). */
 function menuWord(): string {
@@ -102,6 +129,7 @@ export function TutorialRunner({ tutorial, onNavigate, onClose, firstStep = 0, a
   // Counts clicks on the dimmed page: each one nudges the box, so the teacher sees where to look.
   const [nudges, setNudges] = useState(0);
   const boxRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   // Invisible marks at 0,0 of the two layers the tutorial draws on (the screen and the page). Where
   // they really are tells how to turn measured positions into drawn ones, whatever the browser does.
   const fixedProbe = useRef<HTMLDivElement>(null);
@@ -144,6 +172,13 @@ export function TutorialRunner({ tutorial, onNavigate, onClose, firstStep = 0, a
     let frame = 0;
     let lastKey = '';
     let revealed = false;
+    let revealedAt = 0;
+    let revealTries = 0;
+    let lastTry = 0;
+    // The tutorial's own layers are never what hides a target.
+    const own = (element: Element) => Boolean(rootRef.current?.contains(element));
+    const seenCovers = new Set<Element>();
+    if (rootRef.current) { delete rootRef.current.dataset.tutorialReveals; delete rootRef.current.dataset.tutorialWasHidden; }
     let anchorOf: { element: HTMLElement; anchor: Anchor } | null = null;
     // A step that only applies sometimes is undecided until its sign shows up (or does not, in time).
     let applies = !step.skipUnless;
@@ -191,23 +226,57 @@ export function TutorialRunner({ tutorial, onNavigate, onClose, firstStep = 0, a
       }
       const parts = areaElements(step, target);
       let area = unionBox(parts.map(boxOf), AREA_PAD);
+      // Where the target can be seen: the screen, within the scrolling body it sits in (a sheet's body ends
+      // above the sheet's bottom bar).
+      const seenNow = () => { const clip = clipBox(target); return clip ? intersect(visible, clip) : visible; };
       if (!revealed) {
         revealed = true;
-        if (!fullyVisible(area, visible)) {
+        revealedAt = performance.now();
+        const seen = seenNow();
+        // For checks of the help: what this step used to light. It scrolled only when the lit unit was off the
+        // screen, so a target cut off by a sheet's body stayed so, and one scrolled to the edge could end under a bar.
+        const cutOff = fullyVisible(area, visible) ? hiddenSide(boxOf(target), seen, coversOf(target, own)) : null;
+        if (!fullyVisible(area, seen)) {
           const big = area.h > visible.h * 0.8;
           (big ? target : parts[0]).scrollIntoView({ block: big ? 'center' : 'nearest', inline: 'nearest' });
           area = unionBox(parts.map(boxOf), AREA_PAD);
         }
         // The target itself may still be out of sight inside a row that scrolls sideways (the phone menu).
-        if (!fullyVisible(boxOf(target), visible)) {
+        if (!fullyVisible(boxOf(target), seenNow())) {
           target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
           area = unionBox(parts.map(boxOf), AREA_PAD);
         }
+        const before = cutOff ?? hiddenSide(boxOf(target), seenNow(), coversOf(target, own));
+        if (before && rootRef.current) rootRef.current.dataset.tutorialWasHidden = before;
         // Only with a mouse: on a touch screen a focused field pops up the keyboard (and zooms) uninvited.
         if (step.focus && !step.peek && window.matchMedia?.('(pointer: fine)').matches) {
           window.setTimeout(() => { if (alive) target.focus({ preventScroll: true }); }, 180);
         }
       }
+      // Then out from under what stays put over it (a bar at the bottom, the notices, a sticky header) and
+      // clear of the scrolling body's edges; measured again after each try.
+      const seen = seenNow();
+      const covers = coversOf(target, own, area, seenCovers);
+      const reveal = revealShift(boxOf(target), seen, covers);
+      const now = performance.now();
+      // Scrolling the page does not move a target that stays put on the screen (a sticky menu, a dialog's bar).
+      const scroller = scrollerOf(target);
+      const moves = !(scroller === (document.scrollingElement ?? document.documentElement) && inFixedLayer(target));
+      if (moves && Math.abs(reveal) > 1 && revealTries < REVEAL_TRIES && now - revealedAt < REVEAL_WINDOW_MS && now - lastTry > 100) {
+        revealTries += 1;
+        lastTry = now;
+        scrollByTop(scroller, reveal);
+        // How many times this step brought its target out from under something (read by checks of the help).
+        if (rootRef.current) rootRef.current.dataset.tutorialReveals = String(revealTries);
+        return;
+      }
+      const hidden = hiddenSide(boxOf(target), seen, covers);
+      const clip = clipBox(target);
+      // The ring stays within where the unit can be seen: not drawn over a sheet's bottom bar, nor under a bar
+      // that stays on the screen (the settings save bar).
+      if (clip) area = intersect(area, { x: clip.x - AREA_PAD, y: clip.y - AREA_PAD, w: clip.w + 2 * AREA_PAD, h: clip.h + 2 * AREA_PAD });
+      const band = covers.length ? freeBand(boxOf(target), seen, covers) : null;
+      if (band) area = intersect(area, { x: area.x, y: band.top, w: area.w, h: Math.max(0, band.bottom - band.top) });
       if (anchorOf?.element !== target) anchorOf = { element: target, anchor: inFixedLayer(target) ? 'fixed' : 'page' };
       const anchor = anchorOf.anchor;
       if (anchor === 'fixed') {
@@ -228,17 +297,19 @@ export function TutorialRunner({ tutorial, onNavigate, onClose, firstStep = 0, a
         ? { w: document.documentElement.scrollWidth, h: document.documentElement.scrollHeight }
         : { w: vw, h: vh };
       // On the page, where the visible part is (scrolling) must not re-place anything: it all moves with the page.
-      const seen = anchor === 'page' ? [visible.w, visible.h] : [visible.x + dx, visible.y + dy, visible.w, visible.h];
+      const seenKey = anchor === 'page' ? [visible.w, visible.h] : [visible.x + dx, visible.y + dy, visible.w, visible.h];
       const key = [anchor, area.x + dx, area.y + dy, area.w, area.h, targetBox.x + dx, targetBox.y + dy, targetBox.w, targetBox.h,
-        ...seen, canvas.w, canvas.h, size.w, size.h]
+        ...seenKey, canvas.w, canvas.h, size.w, size.h, hidden ?? '']
         .map((value) => (typeof value === 'number' ? Math.round(value) : value)).join(',');
       if (key === lastKey) return;
       lastKey = key;
       // Arrow and box go where the teacher can see them: placed within the visible part. An arrow
       // means "press this", so a step only to look at (or an option) has none.
-      const local = place(shift(area, -visible.x, -visible.y), shift(targetBox, -visible.x, -visible.y), size, visible.w, visible.h, pointing(step));
-      const placed = { arrow: { ...shift(local.arrow, visible.x, visible.y), side: local.arrow.side }, box: shift(local.box, visible.x, visible.y) };
-      setView({ step: index, kind: 'shown', anchor, canvas, area: shift(area, dx, dy),
+      // Between the bars that stay on the screen when there is room there, so the arrow does not sit on one.
+      const region = band && band.bottom - band.top > size.h + 60 ? { x: visible.x, y: band.top, w: visible.w, h: band.bottom - band.top } : visible;
+      const local = place(shift(area, -region.x, -region.y), shift(targetBox, -region.x, -region.y), size, region.w, region.h, pointing(step));
+      const placed = { arrow: { ...shift(local.arrow, region.x, region.y), side: local.arrow.side }, box: shift(local.box, region.x, region.y) };
+      setView({ step: index, kind: 'shown', anchor, canvas, area: shift(area, dx, dy), hidden,
         arrow: { ...shift(placed.arrow, dx, dy), side: placed.arrow.side }, box: shift(placed.box, dx, dy) });
     };
     // A menu or tab step: pressing it moves on even if its screen is open already (nothing new appears).
@@ -322,7 +393,8 @@ export function TutorialRunner({ tutorial, onNavigate, onClose, firstStep = 0, a
   const missingText = step.missing ?? '이 단계에서 가리킬 곳이 지금 화면에 없어요. 창을 닫았다면 [이전]으로 돌아가 다시 열거나, [다음]으로 넘어가세요.';
 
   return (
-    <div data-testid="tutorial" data-tutorial-step={`${tutorial.id}:${index + 1}`} data-tutorial-state={current.kind} className="crs-tutorial">
+    <div ref={rootRef} data-testid="tutorial" data-tutorial-step={`${tutorial.id}:${index + 1}`} data-tutorial-state={current.kind}
+      data-tutorial-hidden={shown?.hidden ?? undefined} className="crs-tutorial">
       <div ref={fixedProbe} aria-hidden="true" style={{ position: 'fixed', left: 0, top: 0, width: 1, height: 1, visibility: 'hidden', pointerEvents: 'none' }} />
       <div ref={pageProbe} aria-hidden="true" style={{ position: 'absolute', left: 0, top: 0, width: 1, height: 1, visibility: 'hidden', pointerEvents: 'none' }} />
       <style>{`
@@ -377,6 +449,12 @@ export function TutorialRunner({ tutorial, onNavigate, onClose, firstStep = 0, a
               ) : null}
               <p><TutorialText text={step.text} near={near} /></p>
               {step.sub ? <p className="text-[12.5px] text-[var(--theme-muted-text)]"><TutorialText text={step.sub} near={near} /></p> : null}
+              {shown?.hidden ? (
+                <p role="status" className="flex gap-1.5 rounded-[10px] bg-[var(--theme-accent-soft)] px-2.5 py-2 text-[12.5px] font-semibold text-[var(--theme-accent-text)]">
+                  <span className="mt-0.5 shrink-0"><Icon name={shown.hidden === 'down' ? 'chevronDown' : shown.hidden === 'up' ? 'chevronRight' : 'info'} size={14} /></span>
+                  <span><TutorialText text={findHint(near, shown.hidden)} near={near} /></span>
+                </p>
+              ) : null}
               {step.warn ? (
                 <p className="mt-1 flex gap-1.5 rounded-[10px] bg-[var(--crs-warning-bg)] px-2.5 py-2 text-[12.5px] font-semibold text-[var(--crs-warning-text)]">
                   <span className="mt-0.5 shrink-0"><Icon name="alert" size={14} /></span><span><TutorialText text={step.warn} near={near} /></span>

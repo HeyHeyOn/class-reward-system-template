@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { overlaps, place, unionBox } from './tutorialDom';
+import { hiddenSide, overlaps, place, revealShift, unionBox } from './tutorialDom';
 
 describe('tutorial geometry', () => {
   it('unites the parts of an understanding unit with room around them', () => {
@@ -57,5 +57,66 @@ describe('tutorial geometry', () => {
     const area = { x: 0, y: 0, w: 1280, h: 860 };
     const { box } = place(area, { x: 600, y: 400, w: 80, h: 40 }, { w: 360, h: 200 }, 1280, 860);
     expect(box.x >= 0 && box.y >= 0 && box.x + box.w <= 1280 && box.y + box.h <= 860).toBe(true);
+  });
+});
+
+describe('a target under a bar or past a scrolling body', () => {
+  // A phone (375×667): a sheet whose scrolling body ends at 560, above its bottom bar.
+  const screenBox = { x: 0, y: 0, w: 375, h: 667 };
+  const body = { x: 0, y: 120, w: 375, h: 440 };
+
+  it('scrolls a target cut off at the bottom of a sheet body up into it, clear of the edge', () => {
+    const target = { x: 20, y: 600, w: 120, h: 40 };
+    expect(hiddenSide(target, body, [])).toBe('down');
+    expect(revealShift(target, body, [])).toBe(640 - (560 - 12));
+    const after = { ...target, y: target.y - revealShift(target, body, []) };
+    expect(hiddenSide(after, body, [])).toBeNull();
+    expect(revealShift(after, body, [])).toBe(0);
+  });
+
+  it('keeps a target clear of a bar that stays at the bottom of the screen and of a sticky header', () => {
+    const selectionBar = { x: 0, y: 603, w: 375, h: 48 };
+    const target = { x: 20, y: 580, w: 120, h: 40 };
+    expect(hiddenSide(target, screenBox, [selectionBar])).toBe('down');
+    expect(revealShift(target, screenBox, [selectionBar])).toBe(620 - (603 - 12));
+    // A target wholly under the bar (past it) still scrolls up above it.
+    const past = { x: 20, y: 640, w: 120, h: 40 };
+    expect(hiddenSide(past, screenBox, [selectionBar])).toBe('down');
+    expect(revealShift(past, screenBox, [selectionBar])).toBe(680 - (603 - 12));
+    // A bar beside the target, not over it, does not count.
+    expect(revealShift(target, screenBox, [{ ...selectionBar, x: 200, w: 100 }])).toBe(0);
+    const header = { x: 0, y: 0, w: 375, h: 64 };
+    const under = { x: 20, y: 40, w: 120, h: 40 };
+    expect(hiddenSide(under, screenBox, [header])).toBe('up');
+    expect(revealShift(under, screenBox, [header])).toBe(40 - (64 + 12));
+  });
+
+  it('tells an open window over the target apart from a bar: scrolling never clears it', () => {
+    const target = { x: 270, y: 613, w: 92, h: 32 };
+    const dialog = { x: 0, y: 0, w: 375, h: 667 };
+    expect(hiddenSide(target, screenBox, [dialog])).toBe('covered');
+    expect(revealShift(target, screenBox, [dialog])).toBe(0);
+  });
+
+  it('leaves alone a target that only just fits where it is (a tab in a sticky bar)', () => {
+    const bar = { x: 0, y: 104, w: 375, h: 46 };
+    expect(revealShift({ x: 90, y: 108, w: 80, h: 38 }, bar, [])).toBe(0);
+    expect(revealShift({ x: 90, y: 104, w: 80, h: 46 }, bar, [])).toBe(0);
+  });
+
+  it('lines up the top of a target taller than the room, and calls it hidden only when almost none shows', () => {
+    const tall = { x: 0, y: 300, w: 375, h: 900 };
+    expect(revealShift(tall, body, [])).toBe(300 - (120 + 12));
+    expect(hiddenSide(tall, body, [])).toBeNull();
+    expect(hiddenSide({ ...tall, y: 540 }, body, [])).toBe('down');
+  });
+
+  it('puts the message box on the free top or bottom of a phone screen, never over the control', () => {
+    const area = { x: 0, y: 60, w: 375, h: 580 };
+    const button = { x: 20, y: 520, w: 335, h: 44 };
+    const { box, arrow } = place(area, button, { w: 340, h: 220 }, 375, 667);
+    expect(overlaps(box, button, 2)).toBe(false);
+    expect(overlaps(box, arrow, 2)).toBe(false);
+    expect(box.y >= 4 && box.y + box.h <= 663).toBe(true);
   });
 });
