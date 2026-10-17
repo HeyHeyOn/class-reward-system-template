@@ -15,7 +15,10 @@ export function DdanssaemMark({ size }: Readonly<{ size: number }>) {
 /** The logotype '딴쌤' in one color (#2B2D31, or white on a dark ground). */
 export function DdanssaemLogotype({ height, color = '#2B2D31' }: Readonly<{ height: number; color?: string }>) {
   return (
-    <svg width={Math.round(height * 111 / 54 * 10) / 10} height={height} viewBox="0 0 111 54" aria-hidden="true" focusable="false" style={{ flexShrink: 0 }}>
+    // The strokes reach the drawing's very edges: drawn past them, so a rounded row on a sharp phone screen
+    // is not cut off at the bottom.
+    <svg width={Math.round(height * 111 / 54 * 10) / 10} height={height} viewBox="0 0 111 54" aria-hidden="true" focusable="false"
+      overflow="visible" style={{ flexShrink: 0, overflow: 'visible' }}>
       <g fill="none" stroke={color} strokeWidth="7" strokeLinecap="round" strokeLinejoin="round">
         <path d="M15.5 3.5H3.5V27.5H15.5" />
         <path d="M34.5 3.5H22.5V27.5H34.5" />
@@ -30,12 +33,14 @@ export function DdanssaemLogotype({ height, color = '#2B2D31' }: Readonly<{ heig
   );
 }
 
-/** Mark and logotype side by side at the brand's spacing: text height mark × 54/64, gap mark × 17/64. */
+/** Mark and logotype side by side at the brand's spacing: text height mark × 54/64 (the phone's 26px mark: 22px,
+ *  whole pixels so the letters sit on the pixel grid), gap mark × 17/64. */
 export function DdanssaemLockup({ markSize }: Readonly<{ markSize: number }>) {
+  const textHeight = markSize < 28 ? Math.round(markSize * 54 / 64) : Math.round(markSize * 54 / 64 * 10) / 10;
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: Math.round(markSize * 17 / 64) }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: Math.round(markSize * 17 / 64), lineHeight: 0 }}>
       <DdanssaemMark size={markSize} />
-      <DdanssaemLogotype height={Math.round(markSize * 54 / 64 * 10) / 10} />
+      <DdanssaemLogotype height={textHeight} />
     </span>
   );
 }
