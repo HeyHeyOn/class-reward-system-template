@@ -52,8 +52,8 @@
 .empty { display:flex; flex-direction:column; align-items:center; gap:16px; border:1px dashed var(--theme-border); border-radius:20px; background:#fff; padding:64px 24px; text-align:center; }
 .empty p { font-size:15px; color:var(--theme-muted-text); }
 
-/* 알림 (README '공통 부품'): top centre, a check for done, red for failed. */
-.toast { position:fixed; top:76px; left:50%; z-index:60; transform:translateX(-50%); display:flex; align-items:center; gap:10px; width:max-content; max-width:calc(100% - 32px); padding:10px 8px 10px 16px; border-radius:14px; background:#fff; box-shadow:0 12px 32px rgba(15,23,42,.14); font-size:14px; font-weight:650; line-height:1.5; }
+/* 알림 (README '창 고르기와 상호작용'): bottom centre, a check for done, red for failed. */
+.toast { position:fixed; bottom:calc(max(1rem, env(safe-area-inset-bottom)) + var(--crs-bottom-dock, 0px)); left:50%; z-index:60; transform:translateX(-50%); display:flex; align-items:center; gap:10px; width:max-content; max-width:calc(100% - 32px); padding:10px 8px 10px 16px; border-radius:14px; background:#fff; box-shadow:0 12px 32px rgba(15,23,42,.14); font-size:14px; font-weight:650; line-height:1.5; }
 .toast svg { width:18px; height:18px; flex-shrink:0; }
 .toast button { display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; border-radius:9px; font-size:20px; line-height:1; color:#5C6370; cursor:pointer; }
 .toast button:hover { background:#F2F3F5; }

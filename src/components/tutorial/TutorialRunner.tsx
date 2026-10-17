@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { AdminTab } from '../admin/adminTypes';
-import { Button, Icon, IconButton, cx } from '../ui';
+import { Button, Icon, IconButton, cx, useBottomDock } from '../ui';
 import { areaElements, boxOf, firstShown, inFixedLayer, place, unionBox, type ArrowSide, type Box } from './tutorialDom';
 import { ButtonChip } from './ButtonChip';
 import { clearQueuedTutorial, queueTutorial } from './tutorialQueue';
@@ -406,9 +406,11 @@ function TutorialDone({ tutorial, next, onNext, onMenu, onClose }: {
   onMenu: () => void;
   onClose: () => void;
 }) {
+  const card = useRef<HTMLDivElement>(null);
+  useBottomDock(card, 20);
   return (
     <div data-testid="tutorial" data-tutorial-step={`${tutorial.id}:done`} data-tutorial-state="done" className="crs-tutorial">
-      <div role="dialog" aria-modal="false" aria-label={`도움말 ${tutorial.id} 마침`}
+      <div ref={card} role="dialog" aria-modal="false" aria-label={`도움말 ${tutorial.id} 마침`}
         className="fixed bottom-5 left-1/2 z-[78] w-[min(380px,calc(100vw-24px))] -translate-x-1/2 rounded-[18px] border border-[var(--crs-line)] bg-[var(--theme-surface)] text-[var(--theme-text)] shadow-[0_18px_48px_rgb(15_23_42/0.35)] [animation:crs-pop-in_.18s_ease-out]">
         <div className="flex items-start gap-3 px-4 pt-4">
           <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--crs-success-bg)] text-[var(--crs-success-text)]"><Icon name="check" size={18} /></span>

@@ -21,7 +21,7 @@ import { normalizeThemeColor, themeStyles } from './uiTheme';
 import {
   Badge, Button, Callout, Card, CardHeader, Checkbox, EmptyState, Field, Icon, IconButton, Input, LoadingOverlay, Modal,
   PageHeader, ProgressBar, SearchInput, SegmentedControl, Select, SelectionBar, SelectionBarButton, Sheet, StatCard, Switch,
-  Textarea, buttonClass, cx, type IconName,
+  Textarea, buttonClass, cx, NOTICE_DOCK_STYLE, type IconName,
 } from './ui';
 import { classifyTaskAvailability } from '@/domain/taskAvailability';
 import { TaskLedgerHomeCard, TaskLedgerOverlays, TaskLedgerPanel, isTaskLedgerMode, ledgerTaskSummary, useTaskLedger } from './tasks/ledger';
@@ -2216,7 +2216,9 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
   const bankHref = tenantPagePath('/bank');
   const classLabel = settings.className ?? settings.appTitle ?? '학급 매점';
   const openShare = (target: ShareTarget) => (event: React.MouseEvent<HTMLElement>) => setShareState({ target, opener: event.currentTarget });
-  const messageTone = isSuccessNotice(message) ? 'success' : 'danger';
+  // The page's own state line (loading, a load error) shows with the notices: a check when done, red when it
+  // failed, plain while something is still on its way.
+  const messageTone = isSuccessNotice(message) ? 'success' : /중이에요/.test(message) ? 'progress' : 'danger';
 
   return (
     <main data-testid="admin-shell" style={rootStyle} className={cx(styles.admin, 'min-h-screen bg-[var(--theme-shell)] text-[15px] text-[var(--theme-text)] antialiased')}>
@@ -2283,14 +2285,6 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
 
         <div className="min-w-0">
           <header data-testid="admin-header" className="mx-auto w-full max-w-[1200px] px-4 pt-5 sm:px-6 lg:px-10 lg:pt-8">
-            {message ? (
-              <div role="status" className={cx('flex items-start gap-3 rounded-[var(--crs-radius)] px-4 py-3 text-[13px] font-semibold leading-relaxed [animation:crs-pop-in_.18s_ease-out]',
-                messageTone === 'success' ? 'bg-[var(--crs-success-bg)] text-[var(--crs-success-text)]' : 'bg-[var(--crs-danger-bg)] text-[var(--crs-danger-text)]')}>
-                <span className="mt-[1px] shrink-0"><Icon name={messageTone === 'success' ? 'check' : 'alert'} size={17} /></span>
-                <p className="min-w-0 flex-1">{message}</p>
-                <button type="button" aria-label="알림 닫기" onClick={() => setMessage('')} className="-mr-1 shrink-0 rounded-md p-0.5 opacity-70 hover:opacity-100"><Icon name="close" size={16} /></button>
-              </div>
-            ) : null}
           </header>
 
           <div className="mx-auto w-full max-w-[1200px] px-4 pb-32 pt-5 sm:px-6 lg:px-10 lg:pt-6">
@@ -3221,7 +3215,20 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
           }} />
       ) : null}
 
-      <div aria-live="polite" className="pointer-events-none fixed inset-x-0 top-4 z-[80] flex flex-col items-center gap-2 px-4">
+      {/* 알림 (ddanssaem-brand README '창 고르기와 상호작용'): the bottom centre, above whatever is docked there. */}
+      <div aria-live="polite" style={NOTICE_DOCK_STYLE} className="pointer-events-none fixed inset-x-0 z-[80] flex flex-col items-center gap-2 px-4">
+        {message ? (
+          <div role={messageTone === 'danger' ? 'alert' : 'status'}
+            className={cx('pointer-events-auto flex w-full max-w-md items-start gap-3 rounded-[14px] border bg-[var(--theme-surface)] px-4 py-3 text-[13px] font-semibold leading-relaxed shadow-[var(--crs-shadow-lg)] [animation:crs-pop-in_.18s_ease-out]',
+              messageTone === 'success' ? 'border-[color-mix(in_srgb,var(--crs-success-text)_25%,transparent)] text-[var(--theme-text)]'
+                : messageTone === 'danger' ? 'border-[color-mix(in_srgb,var(--crs-danger-text)_30%,transparent)] text-[var(--crs-danger-text)]'
+                  : 'border-[var(--crs-line)] text-[var(--theme-text)]')}>
+            <span className={cx('mt-[1px] shrink-0', messageTone === 'success' ? 'text-[var(--crs-success-text)]' : messageTone === 'danger' ? 'text-[var(--crs-danger-text)]' : 'text-[var(--theme-muted-text)]')}>
+              <Icon name={messageTone === 'success' ? 'check' : messageTone === 'danger' ? 'alert' : 'clock'} size={17} /></span>
+            <p className="min-w-0 flex-1">{message}</p>
+            <button type="button" aria-label="알림 닫기" onClick={() => setMessage('')} className="-mr-1 shrink-0 rounded-md p-0.5 opacity-60 hover:opacity-100"><Icon name="close" size={15} /></button>
+          </div>
+        ) : null}
         {toasts.map((toast) => (
           <div key={toast.id} role={toast.tone === 'success' ? 'status' : 'alert'}
             className={cx('pointer-events-auto flex w-full max-w-md items-start gap-3 rounded-[14px] border px-4 py-3 text-[13px] font-semibold leading-relaxed shadow-[var(--crs-shadow-lg)] [animation:crs-pop-in_.18s_ease-out]',

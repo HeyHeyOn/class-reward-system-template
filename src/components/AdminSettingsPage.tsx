@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { FONT_FAMILY_OPTIONS, getFontFamilyCss, normalizeFontFamily, type FontFamily } from '@/lib/fontSettings';
 import { normalizeThemeColor } from './uiTheme';
-import { Button, Card, CardHeader, Field, Input, Select, Switch, cx } from './ui';
+import { Button, Card, CardHeader, Field, Input, Select, Switch, cx, useBottomDock } from './ui';
 import { useQrObjectUrl } from '@/lib/qrCodeClient';
 import { tenantApiPath, tenantFetch } from '@/lib/tenantApiPath';
 
@@ -43,6 +43,9 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
   const [loadStatus, setLoadStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [loadAttempt, setLoadAttempt] = useState(0);
   const isDatabase = currentSettings?.source === 'database';
+  const saveBar = useRef<HTMLDivElement>(null);
+  // Notices rise above the save bar (README '창 고르기와 상호작용').
+  useBottomDock(saveBar, 16);
   const saveAttempt = useRef<string | null>(null);
   const saveInFlight = useRef(false);
   const [uncertain, setUncertain] = useState(false);
@@ -225,7 +228,7 @@ export function AdminSettingsPage({ linkedStudentCount, linkedProductCount, onSe
         </Card>
       </fieldset>
 
-      <div data-tour="settings-save-bar" className="sticky bottom-4 z-40 flex flex-wrap items-center gap-3 rounded-[18px] border border-[var(--crs-line)] bg-[color-mix(in_srgb,var(--theme-surface)_92%,transparent)] px-4 py-3 shadow-[var(--crs-shadow)] backdrop-blur-md">
+      <div ref={saveBar} data-tour="settings-save-bar" className="sticky bottom-4 z-40 flex flex-wrap items-center gap-3 rounded-[18px] border border-[var(--crs-line)] bg-[color-mix(in_srgb,var(--theme-surface)_92%,transparent)] px-4 py-3 shadow-[var(--crs-shadow)] backdrop-blur-md">
         <p role="status" className={cx('min-w-0 flex-1 text-[13px] font-semibold', message ? (success ? 'text-[var(--crs-success-text)]' : 'text-[var(--crs-warning-text)]') : 'text-[var(--theme-muted-text)]')}>
           {message || (loadStatus === 'loading' ? '설정을 불러오는 중이에요.' : unchanged ? '모든 변경 사항이 저장되어 있어요.' : '저장하지 않은 변경 사항이 있어요.')}
           {!isDatabase && loadStatus === 'ready' ? <span className="ml-2 font-medium text-[var(--theme-muted-text)]">학생 {linkedStudentCount ?? 0}명, 상품 {linkedProductCount ?? 0}개 연결됨</span> : null}

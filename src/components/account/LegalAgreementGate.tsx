@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useSyncExternalStore } from 'react';
+import { useRef, useState, useSyncExternalStore } from 'react';
 import type { LegalRevision } from '@/lib/legalDocuments';
-import { Button, Modal } from '../ui';
+import { Button, Modal, useBottomDock } from '../ui';
 import { Icon } from '../ui/icons';
 import { themeStyles } from '../uiTheme';
 import { accountRequest } from './accountApi';
@@ -48,6 +48,7 @@ export function LegalChanges({ changes }: Readonly<{ changes: readonly LegalRevi
  * announced for later is shown as a notice, which the teacher can close or stop seeing.
  */
 export function LegalAgreementGate({ notice, classNames }: Readonly<{ notice: LegalNoticeView; classNames?: readonly string[] }>) {
+  const upcomingRef = useRef<HTMLDivElement>(null);
   const [choices, setChoices] = useState(NO_AGREEMENT);
   const [declining, setDeclining] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -72,9 +73,11 @@ export function LegalAgreementGate({ notice, classNames }: Readonly<{ notice: Le
   }
 
   const linkClass = 'font-semibold text-[var(--theme-accent-text)] underline underline-offset-2';
+  const showUpcoming = Boolean(notice.upcoming && !upcomingHidden);
+  useBottomDock(upcomingRef, 12, showUpcoming);
   // z-30: under the page's own bottom bars (selection z-40, settings save), which must stay usable.
   const upcoming = notice.upcoming && !upcomingHidden ? (
-    <div role="status" className="fixed inset-x-3 bottom-3 z-30 mx-auto flex max-w-xl items-start gap-3 rounded-[16px] border border-[var(--crs-line)] bg-[var(--theme-surface)] px-4 py-3 text-[13px] leading-relaxed text-[var(--theme-text)] shadow-[var(--crs-shadow-lg)]">
+    <div ref={upcomingRef} role="status" className="fixed inset-x-3 bottom-3 z-30 mx-auto flex max-w-xl items-start gap-3 rounded-[16px] border border-[var(--crs-line)] bg-[var(--theme-surface)] px-4 py-3 text-[13px] leading-relaxed text-[var(--theme-text)] shadow-[var(--crs-shadow-lg)]">
       <span className="mt-0.5 shrink-0 text-[var(--theme-accent-text)]"><Icon name="info" size={17} /></span>
       <div className="min-w-0 flex-1">
         <p>

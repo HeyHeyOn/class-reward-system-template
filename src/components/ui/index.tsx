@@ -6,9 +6,11 @@ import {
   type SelectHTMLAttributes, type TextareaHTMLAttributes,
 } from 'react';
 import { Icon, type IconName } from './icons';
+import { useBottomDock } from './bottomDock';
 
 export { Icon, type IconName } from './icons';
 export { MoreMenu, type MoreMenuItem } from './MoreMenu';
+export { NOTICE_DOCK_STYLE, useBottomDock } from './bottomDock';
 
 /* ------------------------------------------------------------------ */
 /* Class helpers                                                       */
@@ -361,12 +363,17 @@ export function Modal({ title, ariaLabel, description, onClose, footer, children
   );
 }
 
-/** Floating action bar shown while list rows are selected. */
-export function SelectionBar({ count, onClear, children, label = '개 선택됨' }: { count: number; onClear: () => void; children: ReactNode; label?: string }) {
-  if (count === 0) return null;
+/** Floating action bar shown while list rows are selected; notices rise above it. */
+export function SelectionBar(props: { count: number; onClear: () => void; children: ReactNode; label?: string }) {
+  return props.count === 0 ? null : <ShownSelectionBar {...props} />;
+}
+
+function ShownSelectionBar({ count, onClear, children, label = '개 선택됨' }: { count: number; onClear: () => void; children: ReactNode; label?: string }) {
+  const bar = useRef<HTMLDivElement>(null);
+  useBottomDock(bar, 16);
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-4 z-40 flex justify-center px-3 lg:pl-[260px]">
-      <div role="toolbar" aria-label="선택 항목 작업" className="pointer-events-auto flex max-w-full items-center gap-1.5 overflow-x-auto rounded-[16px] bg-[var(--theme-text)] p-1.5 pl-4 text-[var(--theme-surface)] shadow-[var(--crs-shadow-lg)] [animation:crs-rise-in_.18s_ease-out]">
+      <div ref={bar} role="toolbar" aria-label="선택 항목 작업" className="pointer-events-auto flex max-w-full items-center gap-1.5 overflow-x-auto rounded-[16px] bg-[var(--theme-text)] p-1.5 pl-4 text-[var(--theme-surface)] shadow-[var(--crs-shadow-lg)] [animation:crs-rise-in_.18s_ease-out]">
         <span className="whitespace-nowrap pr-2 text-[13px] font-bold tabular-nums">{count}{label}</span>
         {children}
         <button type="button" onClick={onClear} aria-label="선택 해제" className="ml-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] opacity-70 hover:bg-[color-mix(in_srgb,var(--theme-surface)_14%,transparent)] hover:opacity-100"><Icon name="close" size={16} /></button>
