@@ -21,7 +21,7 @@ describe('GlobalHeader', () => {
     expect(screen.getByRole('link', { name: '로그인' }).getAttribute('href')).toBe('/api/google/login?returnTo=%2Fclasses');
   });
 
-  it('adds 홈 and sends the logo to the hub with HUB_READY=1, and keeps 수업 도구 hidden until a tool exists', async () => {
+  it('adds 홈 and 문제 은행 and sends the logo to the hub with HUB_READY=1, and keeps 수업 도구 hidden until a tool exists', async () => {
     vi.stubEnv('HUB_READY', '1');
     vi.stubEnv('HUB_HOME_URL', 'https://beta.ddanssaem.com/');
     vi.resetModules();
@@ -29,7 +29,12 @@ describe('GlobalHeader', () => {
     render(<HubHeader audience="teacher" account={null} />);
     expect(screen.getByRole('link', { name: '딴쌤 홈' }).getAttribute('href')).toBe('https://beta.ddanssaem.com');
     const menu = screen.getByRole('navigation', { name: '딴쌤 메뉴' });
-    expect(within(menu).getAllByRole('link').map((link) => link.textContent)).toEqual(['홈', '클래스', '보드']);
+    expect(within(menu).getAllByRole('link').map((link) => link.textContent)).toEqual(['홈', '클래스', '보드', '문제 은행']);
+    expect(within(menu).getByRole('link', { name: '문제 은행' }).getAttribute('href')).toBe('https://beta.ddanssaem.com/bank');
+    // The phone's ☰ menu has the same items.
+    fireEvent.click(screen.getByRole('button', { name: '메뉴' }));
+    const phone = screen.getAllByRole('navigation', { name: '딴쌤 메뉴' })[1];
+    expect(within(phone).getAllByRole('link').map((link) => link.textContent)).toEqual(['홈', '클래스', '보드', '문제 은행']);
     expect(screen.queryByText('수업 도구')).toBeNull();
   });
 

@@ -1,17 +1,19 @@
 'use client';
 
 import { useEffect, useId, useRef, useState } from 'react';
-import { BOARD_URL, CLASS_HOME, HUB_READY, HUB_URL, TOOLS_READY, TOOLS_URL } from '@/lib/brand';
+import { BANK_READY, BANK_URL, BOARD_URL, CLASS_HOME, HUB_READY, HUB_URL, TOOLS_READY, TOOLS_URL } from '@/lib/brand';
 import { DdanssaemLockup } from './DdanssaemLogo';
 import styles from './GlobalHeader.module.css';
 
 // Until the ddanssaem.com hub opens (HUB_READY), the logo goes to this app's first screen and the menu
-// holds only the features that exist (클래스, 보드). 수업 도구 stays hidden until the first tool exists.
+// holds only the features that exist (클래스, 보드; with the hub also 홈 and 문제 은행). 수업 도구 stays hidden until the
+// first tool exists.
 const LOGO_HREF = HUB_READY ? HUB_URL : CLASS_HOME;
 const MENU = [
   ...(HUB_READY ? [{ key: 'home', label: '홈', href: HUB_URL }] : []),
   { key: 'class', label: '클래스', href: CLASS_HOME },
   { key: 'board', label: '보드', href: BOARD_URL },
+  ...(HUB_READY && BANK_READY ? [{ key: 'bank', label: '문제 은행', href: BANK_URL }] : []),
   ...(HUB_READY && TOOLS_READY ? [{ key: 'tools', label: '수업 도구', href: TOOLS_URL }] : []),
 ];
 
