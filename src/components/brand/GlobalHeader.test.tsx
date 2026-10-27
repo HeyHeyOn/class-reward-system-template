@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GlobalHeader, teacherLabel } from './GlobalHeader';
 import { GoogleLoginButton } from './GoogleLoginButton';
 
@@ -63,6 +63,38 @@ describe('GlobalHeader', () => {
     expect(screen.getByRole('link', { name: '딴쌤 계정' }).getAttribute('href')).toBe('https://ddanssaem.com/account');
     expect(screen.queryByRole('link', { name: '내 프로필' })).toBeNull();
     expect(screen.getByRole('button', { name: '로그아웃' })).toBeTruthy();
+  });
+
+  describe('the 교사 인증 reminder (account-protocol 10-4)', () => {
+    const day = 86_400_000;
+    const account = (verifiedUntil: string | null) => ({ nickname: '햇살쌤', accountUrl: 'https://ddanssaem.com/account', verifyUrl: 'https://ddanssaem.com/account?verify=1',
+      verification: { verifiedUntil, requiredFrom: null } });
+    beforeEach(() => { try { localStorage.clear(); } catch { /* none */ } });
+
+    it('shows once a day when the verification ends within 30 days or ended, and [나중에] hides it until tomorrow', async () => {
+      render(<GlobalHeader audience="teacher" account={account(new Date(Date.now() + 12.5 * day).toISOString())} />);
+      const dialog = await screen.findByRole('dialog', { name: '교사 인증' });
+      expect(dialog.textContent).toContain('교사 인증이 13일 뒤에 끝나요.');
+      expect(within(dialog).getByRole('link', { name: '다시 인증' }).getAttribute('href')).toBe('https://ddanssaem.com/account?verify=1');
+      fireEvent.click(within(dialog).getByRole('button', { name: '나중에' }));
+      expect(screen.queryByRole('dialog', { name: '교사 인증' })).toBeNull();
+      cleanup();
+      render(<GlobalHeader audience="teacher" account={account(new Date(Date.now() + 12.5 * day).toISOString())} />);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(screen.queryByRole('dialog', { name: '교사 인증' })).toBeNull();
+    });
+
+    it('says it ended, and stays away far from the end, for a teacher never verified, and on student screens', async () => {
+      render(<GlobalHeader audience="teacher" account={account(new Date(Date.now() - day).toISOString())} />);
+      expect((await screen.findByRole('dialog', { name: '교사 인증' })).textContent).toContain('교사 인증이 끝났어요.');
+      cleanup();
+      try { localStorage.clear(); } catch { /* none */ }
+      render(<GlobalHeader audience="teacher" account={account(new Date(Date.now() + 90 * day).toISOString())} />);
+      render(<GlobalHeader audience="teacher" account={account(null)} />);
+      render(<GlobalHeader audience="student" place="6학년 2반" studentName="이서연" />);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(screen.queryByRole('dialog', { name: '교사 인증' })).toBeNull();
+    });
   });
 
   it('puts the menu behind ☰ on a phone', () => {

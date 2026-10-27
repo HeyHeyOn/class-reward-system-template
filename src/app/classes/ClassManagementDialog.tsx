@@ -2,13 +2,16 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { ClassMembershipPageItem } from '@/server/classMembershipPageAccess';
 import type { ClassManagementAction } from '@/server/repositories/database/classDashboard';
+import { NEW_CLASS_BLOCKED } from '@/lib/teacherVerification';
 const titles = { RENAME: '학급 이름 바꾸기', DUPLICATE: '학급 복제', DELETE: '휴지통으로 옮기기', RESTORE: '학급 복원', PURGE: '학급 완전히 삭제' };
 const labels = { RENAME: '저장', DUPLICATE: '새 학급으로 복제', DELETE: '휴지통으로', RESTORE: '학급 복원', PURGE: '완전히 삭제' };
 const completed = { RENAME: '학급 이름을 바꿨어요.', DUPLICATE: '새 학급으로 복제했어요. 관리자 페이지에서 복제된 내용을 확인해 주세요.', DELETE: '휴지통으로 옮겼어요. 휴지통에서 복원할 수 있어요.', RESTORE: '학급을 복원했어요.', PURGE: '학급을 완전히 삭제했어요. 이 학급의 자료는 복원할 수 없어요.' };
 /** Typing the class name again confirms these. */
 const confirmByName = (action: ClassManagementAction) => action === 'DELETE' || action === 'PURGE';
-export function ClassManagementDialog({ item, action, onClose, onSuccess }: {
+export function ClassManagementDialog({ item, action, onClose, onSuccess, verifyFirst }: {
   item: ClassMembershipPageItem; action: ClassManagementAction; onClose(): void; onSuccess(message: string): void;
+  /** 교사 인증 (account-protocol 10-4): a duplicate is a new class; when verification is required and missing, say so. */
+  verifyFirst?: Readonly<{ verifyUrl?: string }>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const attempt = useRef<{ operationId: string; action: ClassManagementAction; name: string; expectedVersion: string } | null>(null);
@@ -40,6 +43,23 @@ export function ClassManagementDialog({ item, action, onClose, onSuccess }: {
       else setUncertain(true);
     } catch { setUncertain(true); setMessage('연결이 끊겨 처리 결과를 확인하지 못했어요. 같은 요청으로 다시 확인하거나 목록을 새로고침해 주세요.'); }
     finally { inFlight.current = false; setBusy(false); }
+  }
+  if (verifyFirst) {
+    return <dialog ref={dialog} aria-labelledby="class-management-title" aria-describedby="class-management-description" onCancel={onClose}
+      className="fixed inset-0 m-auto max-h-[90dvh] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-3xl border border-[var(--theme-divider)] bg-[var(--theme-surface)] p-0 text-[var(--theme-text)] shadow-2xl backdrop:bg-black/35">
+      <div className="relative p-6 sm:p-8">
+        <button type="button" aria-label="닫기" onClick={onClose}
+          className="absolute right-3 top-3 inline-flex h-11 w-11 items-center justify-center rounded-xl text-[var(--theme-muted-text)] hover:bg-[var(--theme-surface-raised)] hover:text-[var(--theme-text)]">
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+        <p className="mb-2 break-words pr-10 text-sm font-medium text-[var(--theme-muted-text)]">{item.displayName}</p><h2 id="class-management-title" className="text-2xl font-black tracking-tight">{titles[action]}</h2>
+        <p id="class-management-description" className="mt-4 text-[15px] font-semibold leading-relaxed">{NEW_CLASS_BLOCKED}</p>
+        <div className="mt-7 flex flex-wrap justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-xl border border-[var(--theme-divider)] px-4 py-3 text-sm font-bold hover:bg-[var(--theme-surface-raised)]">취소</button>
+          {verifyFirst.verifyUrl ? <a href={verifyFirst.verifyUrl} className="rounded-xl bg-[var(--theme-accent-solid)] px-5 py-3 text-sm font-bold text-[var(--theme-accent-on-solid)] hover:bg-[var(--theme-hover)]">인증하기</a> : null}
+        </div>
+      </div>
+    </dialog>;
   }
   return <dialog ref={dialog} aria-labelledby="class-management-title" aria-describedby="class-management-description"
     onCancel={event => { if (busy || uncertain) event.preventDefault(); else onClose(); }}

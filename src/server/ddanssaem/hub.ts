@@ -2,6 +2,7 @@ import 'server-only';
 
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { AVATAR_PART_KEYS, parseAvatarJson, type AvatarConfig } from '@/components/profile/avatar';
+import { VERIFY_PATH, type TeacherVerification } from '@/lib/teacherVerification';
 
 // The 딴쌤 hub protocol (ddanssaem-hub/docs/account-protocol.md) from the class's side: sign-in through the
 // hub with a one-time code and PKCE (1), the hub's signed logout and account-deleted events (2, 3) and the
@@ -114,7 +115,26 @@ export function openHubLogin(cookie: string | undefined, env: Env = process.env,
 /** What the hub tells the class about the teacher who signed in (1-3). */
 /** 9-1: the 딴쌤 account icon, its value and the hub's picture address for it. */
 export type HubIcon = Readonly<{ avatar: AvatarConfig; avatarUrl: string }>;
-export type HubProfile = Readonly<{ sub: string; email: string; name: string; termsVersion: string; sid: string; icon: HubIcon | null }>;
+export type HubProfile = Readonly<{ sub: string; email: string; name: string; termsVersion: string; sid: string; icon: HubIcon | null;
+  /** 10-2: when the teacher's verification ends and from when it is required; null when the hub sent none. */
+  verification: TeacherVerification | null }>;
+
+const instantOrNull = (value: unknown): string | null | undefined => {
+  if (value === null) return null;
+  if (typeof value !== 'string' || value.length > 40) return undefined;
+  const at = Date.parse(value);
+  return Number.isFinite(at) ? new Date(at).toISOString() : undefined;
+};
+
+/** 10-2: `teacher_verification` { verified_until, required, required_from }, or null when missing or malformed. */
+export function parseTeacherVerification(value: unknown): TeacherVerification | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const body = value as Record<string, unknown>;
+  const verifiedUntil = instantOrNull(body.verified_until);
+  const requiredFrom = instantOrNull(body.required_from);
+  if (verifiedUntil === undefined || requiredFrom === undefined) return null;
+  return { verifiedUntil, requiredFrom };
+}
 
 const AVATAR_URL = /^https?:\/\/[^\s"'<>]+$/;
 
@@ -147,7 +167,8 @@ export function parseHubProfile(value: unknown): HubProfile | null {
   const termsVersion = typeof body.terms_version === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.terms_version) ? body.terms_version : null;
   const sid = text(body.sid, 200);
   if (!sub || sub.startsWith('withdrawn:') || !email || !email.includes('@') || !termsVersion || !sid) return null;
-  return { sub, email, name, termsVersion, sid, icon: parseHubIcon(body.avatar, body.avatar_url) };
+  return { sub, email, name, termsVersion, sid, icon: parseHubIcon(body.avatar, body.avatar_url),
+    verification: parseTeacherVerification(body.teacher_verification) };
 }
 
 /** 1-3: the server trades the one-time code (with the PKCE verifier) for the teacher's profile. */
@@ -203,9 +224,10 @@ function parseObject(body: string): Record<string, unknown> | null {
 }
 
 export type HubEvent = Readonly<{ type: 'logout'; sid: string }> | Readonly<{ type: 'account_deleted'; sub: string }>
-  | Readonly<{ type: 'profile_updated'; sub: string; name: string; icon: HubIcon | null }>;
+  | Readonly<{ type: 'profile_updated'; sub: string; name: string; icon: HubIcon | null }>
+  | Readonly<{ type: 'verification_updated'; sub: string; verification: TeacherVerification }>;
 
-/** 2-2, 3, 9-3: a signed event less than five minutes old. */
+/** 2-2, 3, 9-3, 10-3: a signed event less than five minutes old. */
 export function parseHubEvent(body: string, now = Date.now()): HubEvent | null {
   const event = parseObject(body);
   if (!event || !recent(event.iat, now)) return null;
@@ -221,6 +243,11 @@ export function parseHubEvent(body: string, now = Date.now()): HubEvent | null {
     const sub = text(event.sub, 255);
     const name = typeof event.name === 'string' ? event.name.trim().slice(0, 100) : '';
     return sub && !sub.startsWith('withdrawn:') ? { type: 'profile_updated', sub, name, icon: parseHubIcon(event.avatar, event.avatar_url) } : null;
+  }
+  if (event.type === 'verification_updated') {
+    const sub = text(event.sub, 255);
+    const verification = parseTeacherVerification(event.teacher_verification);
+    return sub && !sub.startsWith('withdrawn:') && verification ? { type: 'verification_updated', sub, verification } : null;
   }
   return null;
 }
@@ -270,4 +297,9 @@ export function hubLogoutUrl(origin: string, env: Env = process.env): string {
 /** 3: the account (name, terms, withdrawal) lives on the hub. */
 export function hubAccountUrl(env: Env = process.env): string {
   return new URL('/account', hubOrigin(env)).toString();
+}
+
+/** 10-4: the hub's '내 계정' with the teacher verification box open. */
+export function hubVerifyUrl(env: Env = process.env): string {
+  return `${hubOrigin(env)}${VERIFY_PATH}`;
 }

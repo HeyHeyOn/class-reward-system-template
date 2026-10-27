@@ -2,7 +2,9 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { BANK_READY, BANK_URL, BOARD_URL, CLASS_HOME, HUB_READY, HUB_URL, TOOLS_READY, TOOLS_URL } from '@/lib/brand';
+import type { TeacherVerification } from '@/lib/teacherVerification';
 import { DdanssaemLockup } from './DdanssaemLogo';
+import { VerificationReminder } from './VerificationReminder';
 import styles from './GlobalHeader.module.css';
 
 // Until the ddanssaem.com hub opens (HUB_READY), the logo goes to this app's first screen and the menu
@@ -19,7 +21,9 @@ const MENU = [
 
 /** The signed-in teacher: the 딴쌤 account's name, e-mail and icon picture (account-protocol 9-2), and where the account
  *  is managed (the hub's '내 계정'; without the hub, the class's own profile page). */
-export type HeaderAccount = Readonly<{ nickname: string; email?: string; avatarUrl?: string | null; accountUrl?: string }>;
+export type HeaderAccount = Readonly<{ nickname: string; email?: string; avatarUrl?: string | null; accountUrl?: string;
+  /** 교사 인증 (account-protocol 10): the hub's verification box, and the teacher's verification for the reminder. */
+  verifyUrl?: string; verification?: TeacherVerification }>;
 
 type TeacherProps = Readonly<{
   audience: 'teacher';
@@ -181,6 +185,8 @@ export function GlobalHeader(props: TeacherProps | StudentProps) {
         <div className={styles.right}>
           {props.account ? <AccountMenu account={props.account} />
             : props.loginHref ? <a href={props.loginHref} className={styles.login}>로그인</a> : null}
+          {props.account?.verification && props.account.verifyUrl
+            ? <VerificationReminder verification={props.account.verification} verifyUrl={props.account.verifyUrl} /> : null}
           <PhoneMenu />
         </div>
       </div>

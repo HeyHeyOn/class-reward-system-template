@@ -60,6 +60,10 @@
 .toastOk { border:1px solid #cfe9d8; color:#1d6b3a; }
 .toastFail { border:1px solid #f5c2c0; color:#b42318; }
 
+/* 교사 인증 (account-protocol 10-4): one line about new classes, with where to verify. */
+.verifyNote { display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; margin:-6px 0 18px; padding:10px 14px; border-radius:12px; background:#EEF4FE; color:#1D58C6; font-size:14px; font-weight:700; }
+.verifyNote a { margin-left:auto; display:inline-flex; align-items:center; min-height:36px; padding:0 14px; border-radius:10px; background:#2B6DE8; color:#fff; font-size:13px; font-weight:750; }
+.verifyNote a:hover { background:#1D58C6; }
 .notice { margin-bottom:20px; border:1px solid var(--theme-divider); border-radius:14px; background:var(--theme-surface-raised); font-size:13px; line-height:1.8; padding:14px 18px; }
 .footer { margin-top:auto; }
 

@@ -6,7 +6,7 @@ import type { ClassMembership } from '@/server/repositories/database/classMember
 vi.mock('server-only', () => ({}));
 
 const mocks = vi.hoisted(() => ({
-  store: { begin: vi.fn(), endSessions: vi.fn(), accountDeleted: vi.fn(), profile: vi.fn(), profileUpdated: vi.fn() },
+  store: { begin: vi.fn(), endSessions: vi.fn(), accountDeleted: vi.fn(), profile: vi.fn(), profileUpdated: vi.fn(), verificationUpdated: vi.fn() },
   listByGoogleSubject: vi.fn(),
   endRequestTeacherSessions: vi.fn(),
 }));
@@ -71,7 +71,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   fetchMock.mockReset();
-  for (const mock of [mocks.store.begin, mocks.store.endSessions, mocks.store.accountDeleted, mocks.store.profile, mocks.store.profileUpdated,
+  for (const mock of [mocks.store.begin, mocks.store.endSessions, mocks.store.accountDeleted, mocks.store.profile, mocks.store.profileUpdated, mocks.store.verificationUpdated,
     mocks.listByGoogleSubject, mocks.endRequestTeacherSessions]) mock.mockReset();
 });
 
@@ -116,7 +116,7 @@ describe('딴쌤 sign-in routes', () => {
     expect(response.headers.get('location')).toBe(`${ORIGIN}/c/alpha/admin`);
     expect(mocks.endRequestTeacherSessions).toHaveBeenCalledOnce();
     const fallback = defaultAvatarFor('1234567890');
-    expect(mocks.store.begin).toHaveBeenCalledWith({ sub: '1234567890', email: 'teacher@example.com', name: '별빛쌤', termsVersion: '2026-12-05', sid: 'hub-sid-1', icon: null },
+    expect(mocks.store.begin).toHaveBeenCalledWith({ sub: '1234567890', email: 'teacher@example.com', name: '별빛쌤', termsVersion: '2026-12-05', sid: 'hub-sid-1', icon: null, verification: null },
       { avatar: fallback, avatarUrl: `https://beta.ddanssaem.com/api/avatar/${[fallback.background, fallback.face, fallback.eyes, fallback.mouth, fallback.accessory].join('.')}.svg`, fromHub: false });
     expect(cookieFrom(response, HUB_LOGIN_COOKIE)).toBe('');
     const session = getGoogleSessionFromRequest(new Request(ORIGIN, { headers: { cookie: `${GOOGLE_AUTH_COOKIE}=${cookieFrom(response, GOOGLE_AUTH_COOKIE)}` } }));
@@ -159,6 +159,21 @@ describe('딴쌤 sign-in routes', () => {
     const response = await back(`code=c4&state=${login.state}`, login.cookie);
     expect(response.headers.get('location')).toBe(`${ORIGIN}/c/alpha/admin`);
     expect(mocks.store.begin.mock.calls[3][1]).toMatchObject({ avatar: picked, fromHub: false });
+  });
+
+  it('keeps the 교사 인증 values each sign-in (10-4), and none when the hub sends none', async () => {
+    const login = await startLogin();
+    fetchMock.mockResolvedValueOnce(Response.json({ ...PROFILE,
+      teacher_verification: { verified_until: '2027-10-27T03:00:00.000Z', required: false, required_from: '2026-11-25T15:00:00.000Z' } }));
+    const response = await back(`code=v1&state=${login.state}`, login.cookie);
+    expect(response.headers.get('location')).toBe(`${ORIGIN}/c/alpha/admin`);
+    expect(mocks.store.verificationUpdated).toHaveBeenCalledWith('1234567890', { verifiedUntil: '2027-10-27T03:00:00.000Z', requiredFrom: '2026-11-25T15:00:00.000Z' });
+    expect(mocks.store.begin.mock.invocationCallOrder[0]).toBeLessThan(mocks.store.verificationUpdated.mock.invocationCallOrder[0]);
+    mocks.store.verificationUpdated.mockClear();
+    const again = await startLogin();
+    fetchMock.mockResolvedValueOnce(Response.json(PROFILE));
+    await back(`code=v2&state=${again.state}`, again.cookie);
+    expect(mocks.store.verificationUpdated).not.toHaveBeenCalled();
   });
 
   it('asks the hub quietly with prompt=none, and once with a prompt when the hub answers that it cannot', async () => {
@@ -235,6 +250,18 @@ describe('the hub signed events', () => {
     expect(await (await events(signed('/api/auth/ddanssaem/events', event))).json()).toEqual({ ok: true, updated: true });
     expect(mocks.store.profileUpdated).toHaveBeenCalledWith('1234567890', '새이름쌤', { avatar: icon, avatarUrl: event.avatar_url, fromHub: true });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('keep the new 교사 인증 values of a teacher, leaving the sessions alone (10-3)', async () => {
+    mocks.store.verificationUpdated.mockResolvedValueOnce(true);
+    const event = { type: 'verification_updated', sub: '1234567890', account_id: 'acc',
+      teacher_verification: { verified_until: '2027-10-27T03:00:00.000Z', required: false, required_from: null }, iat: iat() };
+    const response = await events(signed('/api/auth/ddanssaem/events', event));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, updated: true });
+    expect(mocks.store.verificationUpdated).toHaveBeenCalledWith('1234567890', { verifiedUntil: '2027-10-27T03:00:00.000Z', requiredFrom: null });
+    expect(mocks.store.endSessions).not.toHaveBeenCalled();
+    expect((await events(signed('/api/auth/ddanssaem/events', event, 'w'.repeat(40)))).status).toBe(401);
   });
 
   it('refuse unsigned, stale or unknown events, and ask the hub to retry when the database fails', async () => {

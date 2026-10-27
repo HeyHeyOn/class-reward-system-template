@@ -2,13 +2,16 @@ import 'server-only';
 import { hasTeacherSessionBinding } from '@/server/teacherSession';
 import type { ClassCreationCommand } from '@/server/repositories/database/classCreation';
 import { readClassMutationRequest, classMutationReply as reply, UUID_V4 } from './classMutationRequest';
+import { newClassRefusal, type VerificationOf } from './teacherVerificationGate';
 
 const forbiddenName = /[\p{Cc}\p{Cf}\p{Cs}]/u;
-export async function handleClassCreation(request: Request, command: ClassCreationCommand): Promise<Response> {
+export async function handleClassCreation(request: Request, command: ClassCreationCommand, verificationOf?: VerificationOf): Promise<Response> {
   const parsed = await readClassMutationRequest(request);
   if (parsed instanceof Response) return parsed;
   const { body: value, session } = parsed;
   if (!hasTeacherSessionBinding(session)) return reply(401, { error: '다시 로그인해 주세요.' });
+  const refused = await newClassRefusal(session.subject, verificationOf);
+  if (refused) return refused;
   if (Object.keys(value).length !== 2 || Object.keys(value).some(key => key !== 'operationId' && key !== 'displayName')
     || typeof value.operationId !== 'string' || !UUID_V4.test(value.operationId)
     || typeof value.displayName !== 'string' || value.displayName !== value.displayName.trim()

@@ -3,8 +3,9 @@ import { parseTenantSlug } from './tenantContext';
 import { readClassMutationRequest, classMutationReply as reply, UUID_V4 } from './classMutationRequest';
 import type { ClassManagementAction, ClassManagementCommand } from './repositories/database/classDashboard';
 import { hasTeacherSessionBinding } from './teacherSession';
+import { newClassRefusal, type VerificationOf } from './teacherVerificationGate';
 
-export async function handleClassManagement(request: Request, slug: unknown, command: ClassManagementCommand) {
+export async function handleClassManagement(request: Request, slug: unknown, command: ClassManagementCommand, verificationOf?: VerificationOf) {
   const parsed = await readClassMutationRequest(request);
   if (parsed instanceof Response) return parsed;
   try { if (parseTenantSlug(slug).needsRedirect) throw new Error(); }
@@ -19,6 +20,11 @@ export async function handleClassManagement(request: Request, slug: unknown, com
     || !/^[1-9][0-9]*$/.test(body.expectedVersion) || !Number.isSafeInteger(Number(body.expectedVersion))
     || Number(body.expectedVersion) >= Number.MAX_SAFE_INTEGER) {
     return reply(400, { error: '학급 이름과 요청을 확인해 주세요. 이름은 1~80자로 입력할 수 있어요.' });
+  }
+  // A duplicate is a new class: 교사 인증 (account-protocol 10-4) applies to it too.
+  if (body.action === 'DUPLICATE') {
+    const refused = await newClassRefusal(session.subject, verificationOf);
+    if (refused) return refused;
   }
   try {
     return reply(200, await command.execute({ operationId: body.operationId, slug: slug as string,

@@ -5,6 +5,7 @@ import { getDatabaseClient } from '@/server/db/client';
 import type { ClassMembership } from '@/server/repositories/database/classMemberships';
 import { defaultNickname, normalizeNickname } from '@/server/teacherAccounts';
 import { hasTeacherSessionBinding, type TeacherSessionBinding } from '@/server/teacherSession';
+import type { TeacherVerification } from '@/lib/teacherVerification';
 import { hubAvatarUrl, importHubAvatar, type AvatarImportResult, type HubIcon, type HubProfile } from './hub';
 
 type Queryable = Readonly<{ query(text: string, values: unknown[]): Promise<{ rows: unknown[] }> }>;
@@ -71,6 +72,12 @@ export function createHubAccountStore(db: Queryable) {
     async profileUpdated(sub: string, nickname: string, icon: SettledIcon): Promise<boolean> {
       const { rows } = await db.query('SELECT public.platform_hub_profile_updated($1,$2,$3::jsonb,$4,$5) AS updated',
         [sub, nickname, JSON.stringify(icon.avatar), icon.avatarUrl, icon.fromHub]);
+      return (rows[0] as { updated?: unknown } | undefined)?.updated === true;
+    },
+    /** 10-2, 10-3: when the teacher's verification ends and from when it is required; false without a profile. */
+    async verificationUpdated(sub: string, verification: TeacherVerification): Promise<boolean> {
+      const { rows } = await db.query('SELECT public.platform_hub_verification_updated($1,$2::timestamptz,$3::timestamptz) AS updated',
+        [sub, verification.verifiedUntil, verification.requiredFrom]);
       return (rows[0] as { updated?: unknown } | undefined)?.updated === true;
     },
     /** 2-2: the class sessions made from this hub session end; returns how many. */

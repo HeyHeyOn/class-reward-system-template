@@ -167,3 +167,24 @@ describe('딴쌤 account name and icon, and the class list activity (0062)', () 
     expect(new Date(rows[0].last_activity_at).getTime()).toBeGreaterThanOrEqual(new Date(rows[0].created_at).getTime());
   });
 });
+
+describe('교사 인증 values (0063)', () => {
+  it('keeps when the verification ends and from when it is required, for a teacher the class keeps only', async () => {
+    const subject = `hub-${randomUUID()}`;
+    await begin(subject, 'sid-verify');
+    const read = () => call<{ verified_until: Date | null; required_from: Date | null }>('SELECT * FROM platform_get_teacher_verification($1)', [subject]);
+    expect(await read()).toEqual([{ verified_until: null, required_from: null }]);
+    const update = (sub: string, until: string | null, from: string | null) =>
+      call<{ updated: boolean }>('SELECT platform_hub_verification_updated($1,$2::timestamptz,$3::timestamptz) AS updated', [sub, until, from]);
+    expect((await update(subject, '2027-10-27T03:00:00Z', '2026-11-25T15:00:00Z'))[0].updated).toBe(true);
+    const [row] = await read();
+    expect(new Date(row.verified_until!).toISOString()).toBe('2027-10-27T03:00:00.000Z');
+    expect(new Date(row.required_from!).toISOString()).toBe('2026-11-25T15:00:00.000Z');
+    expect((await update(subject, null, null))[0].updated).toBe(true);
+    expect(await read()).toEqual([{ verified_until: null, required_from: null }]);
+    expect((await update(`hub-${randomUUID()}`, null, null))[0].updated).toBe(false);
+    expect(await call('SELECT * FROM platform_get_teacher_verification($1)', [`hub-${randomUUID()}`])).toEqual([]);
+    // The runtime cannot read or write the profile table itself.
+    await expect(call('SELECT verified_until FROM user_profiles LIMIT 1', [])).rejects.toThrow(/permission denied/);
+  });
+});

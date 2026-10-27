@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ClassesSelectionView } from './ClassesSelectionView';
 
@@ -103,7 +103,7 @@ describe('ClassesSelectionView', () => {
     const avatar = { v: 1 as const, background: 'sky', face: 'bear', eyes: 'smile', mouth: 'smile', accessory: 'none' };
     const header = { nickname: '햇살쌤', email: 'sun@example.test', avatarUrl: 'https://ddanssaem.com/api/avatar/sky.bear.smile.smile.none.svg', accountUrl: 'https://ddanssaem.com/account' };
     render(<ClassesSelectionView model={{ kind: 'MEMBERSHIPS', accountLabel: 'Teacher', memberships: [] }} header={header}
-      account={{ profile: { nickname: '햇살쌤', avatar, avatarUrl: header.avatarUrl }, header, notice: { required: { current: revision, changes: [revision] }, upcoming: null } }} />);
+      account={{ profile: { nickname: '햇살쌤', avatar, avatarUrl: header.avatarUrl }, header, verification: null, notice: { required: { current: revision, changes: [revision] }, upcoming: null } }} />);
     fireEvent.click(screen.getByRole('button', { name: '계정 메뉴' }));
     expect(screen.getByText('햇살쌤', { selector: 'p' })).toBeTruthy();
     expect(screen.getByRole('link', { name: '딴쌤 계정' }).getAttribute('href')).toBe('https://ddanssaem.com/account');
@@ -138,5 +138,29 @@ describe('ClassesSelectionView', () => {
     expect(screen.queryByRole('link', { name: /중지 학급/ })).toBeNull();
     expect(screen.getByText('지금은 선택할 수 없어요.')).not.toBeNull();
     expect(screen.getByRole('link', { name: '새 학급' }).getAttribute('href')).toBe('/classes/new');
+  });
+
+  it('says new classes wait for 교사 인증, with where to verify, and asks for it before a duplicate (10-4)', () => {
+    const dashboard = { role: 'OWNER' as const, lifecycle: 'ACTIVE' as const, deletedAt: null, managementVersion: '1', createdAt: '2026-01-01T00:00:00Z', studentCount: 24, productCount: 3, taskCount: 2 };
+    HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+    HTMLDialogElement.prototype.close = function () { this.open = false; };
+    const model = { kind: 'MEMBERSHIPS' as const, accountLabel: 'Teacher', memberships: [
+      { slug: 'owned', displayName: '우리 반', roleLabel: '소유자', lifecycleLabel: '사용 중', href: '/c/owned' as const, selectable: true, dashboard },
+    ] };
+    const verifyUrl = 'https://ddanssaem.com/account?verify=1';
+    render(<ClassesSelectionView model={model} newClass={{ note: { kind: 'blocked' }, verifyUrl }} />);
+    const note = screen.getByTestId('new-class-note');
+    expect(note.textContent).toContain('교사 인증을 하면 새 학급을 만들 수 있어요.');
+    expect(within(note).getByRole('link', { name: '인증하기' }).getAttribute('href')).toBe(verifyUrl);
+    fireEvent.click(screen.getByRole('button', { name: '우리 반 학급 관리' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '복제' }));
+    expect(screen.getByText('교사 인증을 하면 새 학급을 만들 수 있어요.', { selector: 'p#class-management-description' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '새 학급으로 복제' })).toBeNull();
+    cleanup();
+    render(<ClassesSelectionView model={model} newClass={{ note: { kind: 'soon', days: 25 }, verifyUrl }} />);
+    expect(screen.getByTestId('new-class-note').textContent).toContain('교사 인증 전까지 25일');
+    cleanup();
+    render(<ClassesSelectionView model={model} newClass={{ note: null, verifyUrl }} />);
+    expect(screen.queryByTestId('new-class-note')).toBeNull();
   });
 });

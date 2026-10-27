@@ -14,6 +14,7 @@ import { GlobalHeader, type HeaderAccount } from '@/components/brand/GlobalHeade
 import { GoogleLoginButton } from '@/components/brand/GoogleLoginButton';
 import { LegalAgreementGate } from '@/components/account/LegalAgreementGate';
 import type { TeacherAccountView } from '@/server/teacherAccounts';
+import { NEW_CLASS_BLOCKED, type NewClassNote } from '@/lib/teacherVerification';
 import { PendingTutorial } from '@/components/tutorial/PendingTutorial';
 
 const theme = themeStyles('white');
@@ -69,12 +70,14 @@ function Icon({ name }: { name: keyof typeof paths }) {
 }
 const dateLabel = (value: string) => new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Seoul' }).format(new Date(value));
 
-export function ClassesSelectionView({ model, account, header, withdrawn = false, loginFailed = false }: Readonly<{
+export function ClassesSelectionView({ model, account, header, newClass, withdrawn = false, loginFailed = false }: Readonly<{
   model: ClassMembershipPageModel;
   /** The signed-in teacher's legal notice (PostgreSQL classes). */
   account?: TeacherAccountView;
   /** The header's account button; without it the header shows the membership label. */
   header?: HeaderAccount;
+  /** 교사 인증 (account-protocol 10-4): new classes blocked, or a grace running out, and where to verify. */
+  newClass?: Readonly<{ note: NewClassNote; verifyUrl?: string }>;
   withdrawn?: boolean;
   /** Back from the 딴쌤 hub without signing in: offer to try again instead of sending the browser round. */
   loginFailed?: boolean;
@@ -134,6 +137,12 @@ export function ClassesSelectionView({ model, account, header, withdrawn = false
             <Link href="/classes/new" aria-label="새 학급" className={styles.primary}><Icon name="plus"/>새 학급</Link>
           </div>
         </section>
+        {newClass?.note ? (
+          <p role="status" data-testid="new-class-note" className={styles.verifyNote}>
+            <span>{newClass.note.kind === 'blocked' ? NEW_CLASS_BLOCKED : `교사 인증 전까지 ${newClass.note.days}일`}</span>
+            {newClass.verifyUrl ? <a href={newClass.verifyUrl}>인증하기</a> : null}
+          </p>
+        ) : null}
         <div role="tablist" aria-label="학급 나누어 보기" className={styles.tabs}>
           {([['ALL','전체'],['ACTIVE','사용 중'],['DRAFT','준비 중'],['TRASH','휴지통']] as const).map(([value, label]) => (
             <button key={value} type="button" role="tab" aria-selected={filter === value} onClick={() => setFilter(value)}>{label} {groups[value].length}</button>
@@ -149,7 +158,9 @@ export function ClassesSelectionView({ model, account, header, withdrawn = false
     </div>
     <SiteFooter className={styles.footer}/>
     {model.kind === 'MEMBERSHIPS' ? <PendingTutorial/> : null}
-    {dialog && <ClassManagementDialog key={`${dialog.item.slug}-${dialog.action}`} item={dialog.item} action={dialog.action} onClose={() => setDialog(null)} onSuccess={message => { setDialog(null); say(message, true); router.refresh(); }}/> }
+    {dialog && <ClassManagementDialog key={`${dialog.item.slug}-${dialog.action}`} item={dialog.item} action={dialog.action}
+      verifyFirst={dialog.action === 'DUPLICATE' && newClass?.note?.kind === 'blocked' ? { verifyUrl: newClass.verifyUrl } : undefined}
+      onClose={() => setDialog(null)} onSuccess={message => { setDialog(null); say(message, true); router.refresh(); }}/> }
     {account ? <LegalAgreementGate notice={account.notice} classNames={memberships.filter((item) => item.roleLabel === '소유자').map((item) => item.displayName)} /> : null}
   </main>
   </>;

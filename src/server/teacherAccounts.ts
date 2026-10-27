@@ -6,7 +6,8 @@ import type { GoogleSession } from '@/server/googleOAuth';
 import { AVATAR_JSON_MAX_LENGTH, defaultAvatarFor, normalizeAvatar, type AvatarConfig } from '@/components/profile/avatar';
 import { currentLegalRevision, LEGAL_VERSION_PATTERN, revisionsSince, upcomingLegalRevision, type LegalRevision } from '@/lib/legalDocuments';
 import type { HeaderAccount } from '@/components/brand/GlobalHeader';
-import { hubAccountUrl, hubAvatarUrl, hubLoginEnabled } from '@/server/ddanssaem/hub';
+import { hubAccountUrl, hubAvatarUrl, hubLoginEnabled, hubVerifyUrl } from '@/server/ddanssaem/hub';
+import type { TeacherVerification } from '@/lib/teacherVerification';
 
 type Queryable = Readonly<{ query(text: string, values: unknown[]): Promise<{ rows: unknown[] }> }>;
 
@@ -21,6 +22,8 @@ export type TeacherAccountStore = Readonly<{
   recordAgreement(subject: string, version: string): Promise<string>;
   getProfile(subject: string): Promise<StoredProfile | null>;
   saveProfile(subject: string, profile: Pick<TeacherProfile, 'nickname' | 'avatar'>): Promise<void>;
+  /** 교사 인증 (account-protocol 10): null when the class keeps no profile for this teacher. */
+  getVerification(subject: string): Promise<TeacherVerification | null>;
   /** Returns how many classes were closed. */
   withdraw(subject: string): Promise<number>;
 }>;
@@ -62,6 +65,13 @@ export function createTeacherAccountStore(queryable: Queryable): TeacherAccountS
     },
     async saveProfile(subject, profile) {
       await queryable.query('SELECT public.platform_save_user_profile($1, $2, $3::jsonb)', [subject, profile.nickname, JSON.stringify(profile.avatar)]);
+    },
+    async getVerification(subject) {
+      const { rows } = await queryable.query('SELECT verified_until, required_from FROM public.platform_get_teacher_verification($1)', [subject]);
+      const row = rows[0] as { verified_until?: unknown; required_from?: unknown } | undefined;
+      if (!row) return null;
+      const instant = (value: unknown) => (value === null || value === undefined ? null : iso(value));
+      return { verifiedUntil: instant(row.verified_until), requiredFrom: instant(row.required_from) };
     },
     async withdraw(subject) {
       const { rows } = await queryable.query('SELECT public.platform_withdraw_user($1) AS closed', [subject]);
@@ -127,13 +137,15 @@ export function legalNoticeFor(session: Pick<GoogleSession, 'agreement' | 'sessi
   return { required, upcoming: upcomingLegalRevision(now), ...(session.sessionId ? { expectedSessionId: session.sessionId } : {}) };
 }
 
-export type TeacherAccountView = Readonly<{ profile: TeacherProfile; notice: LegalNotice; header: HeaderAccount }>;
+export type TeacherAccountView = Readonly<{ profile: TeacherProfile; notice: LegalNotice; header: HeaderAccount;
+  /** 교사 인증 as the hub last said (none: nothing is blocked, no reminder). */
+  verification: TeacherVerification | null }>;
 
 /** The account button of the header: the name, the e-mail, the icon and where the account is managed (the 딴쌤 hub). */
 export function headerAccountFor(session: Pick<GoogleSession, 'email'>, profile: Pick<TeacherProfile, 'nickname' | 'avatarUrl'>,
-  env: Readonly<Record<string, string | undefined>> = process.env): HeaderAccount {
+  env: Readonly<Record<string, string | undefined>> = process.env, verification: TeacherVerification | null = null): HeaderAccount {
   return { nickname: profile.nickname, email: session.email, avatarUrl: profile.avatarUrl,
-    ...(hubLoginEnabled(env) ? { accountUrl: hubAccountUrl(env) } : {}) };
+    ...(hubLoginEnabled(env) ? { accountUrl: hubAccountUrl(env), verifyUrl: hubVerifyUrl(env), ...(verification ? { verification } : {}) } : {}) };
 }
 
 /** The header profile and the legal notice for a signed-in teacher; the profile falls back to defaults. */
@@ -143,5 +155,15 @@ export async function loadTeacherAccountView(session: GoogleSession, store: Teac
     return null;
   });
   const profile = resolveTeacherProfile(session, stored);
-  return { profile, notice: legalNoticeFor(session), header: headerAccountFor(session, profile) };
+  const verification = await teacherVerificationOf(session.subject, store);
+  return { profile, notice: legalNoticeFor(session), header: headerAccountFor(session, profile, process.env, verification), verification };
+}
+
+/** The teacher's verification as the hub last said, with the 딴쌤 hub only; null (nothing blocked) when unreadable. */
+export async function teacherVerificationOf(subject: string, store: TeacherAccountStore = getProductionTeacherAccountStore()): Promise<TeacherVerification | null> {
+  if (!hubLoginEnabled()) return null;
+  return store.getVerification(subject).catch((error: unknown) => {
+    console.error('[account] teacher verification could not be read', error instanceof Error ? error.message : 'unknown');
+    return null;
+  });
 }

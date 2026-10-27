@@ -8,6 +8,7 @@ import { loadTeacherAccountView, teacherAccountsEnabled } from '@/server/teacher
 import type { GoogleSession } from '@/server/googleOAuth';
 import { hubLoginEnabled } from '@/server/ddanssaem/hub';
 import { hubStartPath, teacherScreenRedirect } from '@/server/ddanssaem/teacherGate';
+import { newClassNote } from '@/lib/teacherVerification';
 
 export const metadata = { title: '내 학급' };
 export const dynamic = 'force-dynamic';
@@ -31,5 +32,6 @@ export default async function ClassesPage({ searchParams }: Readonly<{ searchPar
   const session = model.kind === 'MEMBERSHIPS' && teacherAccountsEnabled() ? await getSession(request) : null;
   const account = session ? await loadTeacherAccountView(session) : undefined;
   const withdrawn = params.withdrawn === '1';
-  return <ClassesSelectionView model={model} account={account} header={account?.header} withdrawn={withdrawn} loginFailed={loginFailed} />;
+  const newClass = account ? { note: newClassNote(account.verification), verifyUrl: account.header.verifyUrl } : undefined;
+  return <ClassesSelectionView model={model} account={account} header={account?.header} newClass={newClass} withdrawn={withdrawn} loginFailed={loginFailed} />;
 }

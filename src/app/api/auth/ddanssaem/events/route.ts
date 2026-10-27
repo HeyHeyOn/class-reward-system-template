@@ -7,8 +7,9 @@ export const dynamic = 'force-dynamic';
 
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'cache-control': 'no-store' } });
 
-/** 2-2, 3, 9-3: the hub's signed events. logout ends the class sessions made from that hub session;
- *  account_deleted withdraws the teacher by the class's own rules; profile_updated takes the account's new name and icon. */
+/** 2-2, 3, 9-3, 10-3: the hub's signed events. logout ends the class sessions made from that hub session;
+ *  account_deleted withdraws the teacher by the class's own rules; profile_updated takes the account's new name and icon;
+ *  verification_updated keeps when the teacher verification ends and from when it is required. Sessions stay. */
 export async function POST(request: Request) {
   if (!hubConnected() || !teacherAccountsEnabled()) return json({ error: 'Not found' }, 404);
   let body: string;
@@ -23,6 +24,9 @@ export async function POST(request: Request) {
   try {
     const accounts = getProductionHubAccountStore();
     if (event.type === 'logout') return json({ ok: true, ended: await accounts.endSessions(event.sid) });
+    if (event.type === 'verification_updated') {
+      return json({ ok: true, updated: await accounts.verificationUpdated(event.sub, event.verification) });
+    }
     if (event.type === 'profile_updated') {
       const stored = await accounts.profile(event.sub);
       if (!stored) return json({ ok: true, updated: false });

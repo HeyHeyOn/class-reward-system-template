@@ -14,6 +14,7 @@ import {
   startHubLogin,
   verifyHubSignature,
   hubAvatarUrl, parseHubIcon,
+  parseTeacherVerification,
 } from './hub';
 
 vi.mock('server-only', () => ({}));
@@ -66,7 +67,7 @@ describe('signing in through the hub', () => {
   it('trades the code server to server with the secret and the verifier, and reads the teacher', async () => {
     const fetchImpl = vi.fn(async () => Response.json(profile));
     await expect(exchangeHubCode({ origin, code: 'code-1', verifier: 'verifier-1' }, env, fetchImpl as never)).resolves.toEqual({
-      sub: '1234567890', email: 'teacher@example.com', name: '별빛쌤', termsVersion: '2026-12-05', sid: 'hub-sid-1', icon: null,
+      sub: '1234567890', email: 'teacher@example.com', name: '별빛쌤', termsVersion: '2026-12-05', sid: 'hub-sid-1', icon: null, verification: null,
     });
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe('https://beta.ddanssaem.com/api/token');
@@ -138,5 +139,24 @@ describe('the 딴쌤 account icon (9)', () => {
   it('builds the hub picture address for an icon the hub sent none for, or none without a hub', () => {
     expect(hubAvatarUrl(icon as never, { DDANSSAEM_HUB_URL: 'https://beta.ddanssaem.com/' })).toBe('https://beta.ddanssaem.com/api/avatar/mint.cat.basic.smile.none.svg');
     expect(hubAvatarUrl(icon as never, {})).toBeNull();
+  });
+});
+
+describe('the 교사 인증 values (10-2, 10-3)', () => {
+  it('reads when the verification ends and from when it is required, and refuses anything else', () => {
+    expect(parseTeacherVerification({ verified_until: '2027-10-27T03:00:00Z', required: false, required_from: '2026-11-25T15:00:00.000Z' }))
+      .toEqual({ verifiedUntil: '2027-10-27T03:00:00.000Z', requiredFrom: '2026-11-25T15:00:00.000Z' });
+    expect(parseTeacherVerification({ verified_until: null, required: true, required_from: '2026-10-27T00:00:00+09:00' }))
+      .toEqual({ verifiedUntil: null, requiredFrom: '2026-10-26T15:00:00.000Z' });
+    expect(parseTeacherVerification({ verified_until: 'soon', required_from: null })).toBeNull();
+    expect(parseTeacherVerification(undefined)).toBeNull();
+  });
+
+  it('takes a signed verification_updated event', () => {
+    const iat = Math.floor(Date.now() / 1000);
+    expect(parseHubEvent(JSON.stringify({ type: 'verification_updated', sub: '123', account_id: 'a',
+      teacher_verification: { verified_until: '2027-10-27T03:00:00.000Z', required: false, required_from: null }, iat })))
+      .toEqual({ type: 'verification_updated', sub: '123', verification: { verifiedUntil: '2027-10-27T03:00:00.000Z', requiredFrom: null } });
+    expect(parseHubEvent(JSON.stringify({ type: 'verification_updated', sub: '123', iat }))).toBeNull();
   });
 });
