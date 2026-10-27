@@ -78,12 +78,17 @@ describe('signing in through the hub', () => {
     });
   });
 
+  it('keeps a second edition of the same day as the hub gives it', () => {
+    expect(parseHubProfile({ ...profile, terms_version: '2026-10-27.2' })?.termsVersion).toBe('2026-10-27.2');
+  });
+
   it('refuses a refused code, a hub that does not answer and an incomplete profile', async () => {
     await expect(exchangeHubCode({ origin, code: 'c', verifier: 'v' }, env, (async () => Response.json({ error: 'invalid_grant' }, { status: 400 })) as never))
       .rejects.toMatchObject({ code: 'INVALID_GRANT' });
     await expect(exchangeHubCode({ origin, code: 'c', verifier: 'v' }, env, (async () => { throw new Error('down'); }) as never))
       .rejects.toMatchObject({ code: 'UNAVAILABLE' });
     expect(parseHubProfile({ ...profile, terms_version: '12/05' })).toBeNull();
+    expect(parseHubProfile({ ...profile, terms_version: '2026-10-27.x' })).toBeNull();
     expect(parseHubProfile({ ...profile, sid: '' })).toBeNull();
     expect(parseHubProfile({ ...profile, sub: 'withdrawn:x' })).toBeNull();
   });

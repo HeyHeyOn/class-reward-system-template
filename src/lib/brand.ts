@@ -20,4 +20,4 @@ export const PRIVACY_URL = `${HUB_URL}/privacy`;
 
 /** The footer, as the hub's: the operator and where to write (ddanssaem-brand README '공통 부품'). */
 export const OPERATOR_NAME = '환잇쌤';
-export const CONTACT_EMAIL = 'hwanit1105@gmail.com';
+export const CONTACT_EMAIL = 'help@ddanssaem.com';

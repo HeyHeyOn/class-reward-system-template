@@ -164,7 +164,8 @@ export function parseHubProfile(value: unknown): HubProfile | null {
   const sub = text(body.sub, 255);
   const email = text(body.email, 320);
   const name = typeof body.name === 'string' ? body.name.trim().slice(0, 100) : '';
-  const termsVersion = typeof body.terms_version === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.terms_version) ? body.terms_version : null;
+  // A date, or a second edition of the same day ('2026-10-27.2'); kept as the hub gives it.
+  const termsVersion = typeof body.terms_version === 'string' && /^\d{4}-\d{2}-\d{2}(\.\d{1,2})?$/.test(body.terms_version) ? body.terms_version : null;
   const sid = text(body.sid, 200);
   if (!sub || sub.startsWith('withdrawn:') || !email || !email.includes('@') || !termsVersion || !sid) return null;
   return { sub, email, name, termsVersion, sid, icon: parseHubIcon(body.avatar, body.avatar_url),

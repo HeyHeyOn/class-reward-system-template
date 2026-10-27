@@ -188,3 +188,18 @@ describe('교사 인증 values (0063)', () => {
     await expect(call('SELECT verified_until FROM user_profiles LIMIT 1', [])).rejects.toThrow(/permission denied/);
   });
 });
+
+describe('hub terms editions (0064)', () => {
+  it('records a second edition of the same day as the hub agreement and keeps refusing other shapes', async () => {
+    const subject = `hub-${randomUUID()}`;
+    const start = (terms: string) => call<Session>('SELECT * FROM platform_begin_hub_teacher_session($1,$2,$3,$4,$5::jsonb,$6,$7)',
+      [subject, terms, 'sid-edition', '별빛쌤', AVATAR, null, true]);
+    const [session] = await start('2026-10-27.2');
+    expect(await valid(subject, session)).toBe(true);
+    expect((await one<{ v: string }>('SELECT agreement_version AS v FROM user_agreements WHERE google_subject=$1', [subject])).v).toBe('hub:2026-10-27.2');
+    await expect(start('2026-10-27.x')).rejects.toThrow(/invalid hub terms version/);
+    // The class's own versions stay plain dates.
+    await expect(db.query("INSERT INTO user_agreements(google_subject, agreement_version) VALUES ($1,'2026-10-27.2')", [subject]))
+      .rejects.toThrow(/user_agreements_version_check/);
+  });
+});

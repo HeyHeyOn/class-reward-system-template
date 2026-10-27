@@ -71,7 +71,7 @@ describe('ClassesSelectionView', () => {
     expect(screen.getByText('© 2026 환잇쌤')).toBeTruthy();
     expect(screen.getByRole('link', { name: '이용약관' }).getAttribute('href')).toBe('https://ddanssaem.com/terms');
     expect(screen.getByRole('link', { name: '개인정보 처리방침' }).getAttribute('href')).toBe('https://ddanssaem.com/privacy');
-    expect(screen.getByRole('link', { name: '문의 hwanit1105@gmail.com' }).getAttribute('href')).toBe('mailto:hwanit1105@gmail.com');
+    expect(screen.getByRole('link', { name: '문의 help@ddanssaem.com' }).getAttribute('href')).toBe('mailto:help@ddanssaem.com');
   });
   it('reports logout failure and allows another attempt', async () => {
     const fetcher=vi.fn().mockRejectedValue(new Error('offline'));vi.stubGlobal('fetch',fetcher);
