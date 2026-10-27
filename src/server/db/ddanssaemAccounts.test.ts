@@ -203,3 +203,65 @@ describe('hub terms editions (0064)', () => {
       .rejects.toThrow(/user_agreements_version_check/);
   });
 });
+
+describe('review fixes (0065)', () => {
+  type Begin8 = (subject: string, sid: string, signedInAt: string | null) => Promise<Session>;
+  const begin8: Begin8 = async (subject, sid, signedInAt) => (await call<Session>(
+    'SELECT * FROM platform_begin_hub_teacher_session($1,$2,$3,$4,$5::jsonb,$6,$7,$8::timestamptz)',
+    [subject, '2026-10-27.2', sid, '별빛쌤', AVATAR, null, true, signedInAt]))[0];
+  const end = async (sid: string) => (await call<{ n: number }>('SELECT platform_end_hub_teacher_sessions($1) AS n', [sid]))[0].n;
+
+  it('refuses a sign-in for a hub session that signed out while it was running, in either form', async () => {
+    const subject = `late-${randomUUID()}`;
+    const sid = `sid-late-${subject}`;
+    expect(await end(sid)).toBe(0);
+    await expect(begin8(subject, sid, new Date().toISOString())).rejects.toThrow(/hub session ended/);
+    await expect(call('SELECT * FROM platform_begin_hub_teacher_session($1,$2,$3,$4,$5::jsonb,$6,$7)',
+      [subject, '2026-10-27', sid, '별빛쌤', AVATAR, null, true])).rejects.toThrow(/hub session ended/);
+    // Another hub session of the same teacher still signs in, and its sign-out ends it.
+    const other = await begin8(subject, `sid-other-${subject}`, new Date().toISOString());
+    expect(await valid(subject, other)).toBe(true);
+    expect(await end(`sid-other-${subject}`)).toBe(1);
+    expect(await valid(subject, other)).toBe(false);
+    // Only a hash of the hub session is kept, and the runtime cannot read it.
+    expect((await one<{ n: number }>("SELECT count(*)::int AS n FROM ended_hub_sessions WHERE hub_sid_hash ~ '^[0-9a-f]{64}$'", [])).n).toBeGreaterThanOrEqual(2);
+    await expect(call('SELECT 1 FROM ended_hub_sessions', [])).rejects.toThrow(/permission denied/);
+  });
+
+  it('refuses a sign-in that began before the account was withdrawn, not one that began after', async () => {
+    const subject = `withdrawn-${randomUUID()}`;
+    await begin8(subject, `sid-a-${subject}`, null);
+    const before = new Date(Date.now() - 1000).toISOString();
+    expect((await call<{ n: number }>('SELECT platform_hub_account_deleted($1) AS n', [subject]))[0].n).toBe(0);
+    await expect(begin8(subject, `sid-b-${subject}`, before)).rejects.toThrow(/account withdrawn/);
+    expect((await db.query('SELECT 1 FROM user_profiles WHERE google_subject=$1', [subject])).rows).toEqual([]);
+    const again = await begin8(subject, `sid-c-${subject}`, new Date(Date.now() + 1000).toISOString());
+    expect(await valid(subject, again)).toBe(true);
+  });
+
+  it('keeps digital products digital in a copied class', async () => {
+    const tenant = randomUUID(), user = randomUUID(), subject = `copy-${user}`;
+    await db.query('INSERT INTO users(id,google_subject,canonical_email) VALUES ($1,$2,$3)', [user, subject, `${user}@example.test`]);
+    await db.query("INSERT INTO tenants(id,slug,display_name,lifecycle) VALUES ($1,$2,'원본','ACTIVE')", [tenant, `copy-${tenant}`]);
+    await db.query("INSERT INTO tenant_memberships(tenant_id,user_id,role) VALUES ($1,$2,'OWNER')", [tenant, user]);
+    await db.query(`INSERT INTO products(tenant_id,product_id,name,price,stock) VALUES ($1,'P1','연필',10,5),($1,'P2','쿠폰',20,5),
+      ($1,'P3','배지',30,5),($1,'P4','지운 상품',40,5),($1,'P5','지운 상품 교환권',50,5)`, [tenant]);
+    await db.query(`INSERT INTO coupon_products(tenant_id,product_id,digital_kind,voucher_product_id,description) VALUES
+      ($1,'P2','CONSUMABLE','P1','연필 한 자루'),($1,'P3','COLLECTIBLE',NULL,'반짝 배지'),($1,'P5','CONSUMABLE','P4','')`, [tenant]);
+    await db.query("UPDATE products SET is_active=false, deleted_at=clock_timestamp() WHERE tenant_id=$1 AND product_id='P4'", [tenant]);
+    const version = (await one<{ v: string }>('SELECT management_version::text AS v FROM tenants WHERE id=$1', [tenant])).v;
+    const result = (await one<{ r: { slug: string } }>("SELECT platform_manage_class($1,$2,$3,'DUPLICATE','복제',$4) AS r",
+      [randomUUID(), `copy-${tenant}`, subject, version])).r;
+    const copy = (await one<{ id: string }>('SELECT id FROM tenants WHERE slug=$1', [result.slug])).id;
+    expect((await db.query('SELECT product_id,digital_kind,voucher_product_id,description FROM coupon_products WHERE tenant_id=$1 ORDER BY product_id', [copy])).rows)
+      .toEqual([{ product_id: 'P2', digital_kind: 'CONSUMABLE', voucher_product_id: 'P1', description: '연필 한 자루' },
+        { product_id: 'P3', digital_kind: 'COLLECTIBLE', voucher_product_id: null, description: '반짝 배지' },
+        // Its 교환권 product was deleted, so it is not copied: the copy stays a plain 소모품.
+        { product_id: 'P5', digital_kind: 'CONSUMABLE', voucher_product_id: null, description: '' }]);
+  });
+
+  it('adds the board read position and the latest-operation index', async () => {
+    expect((await one<{ n: number }>("SELECT count(*)::int AS n FROM information_schema.columns WHERE table_name='board_link_syncs' AND column_name='evidence_after'", [])).n).toBe(1);
+    expect((await one<{ n: number }>("SELECT count(*)::int AS n FROM pg_indexes WHERE indexname='operations_tenant_created_at_idx'", [])).n).toBe(1);
+  });
+});

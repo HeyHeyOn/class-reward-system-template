@@ -2,6 +2,7 @@ import 'server-only';
 
 import { TaskRewardCommandError } from '@/server/repositories/database/taskCompletionCommands';
 import { studentBankJson } from '@/server/studentBankSession';
+import { logFailure } from '@/server/log';
 
 /**
  * Maps a configured task-completion failure to the personal bank's response. The categories
@@ -90,7 +91,7 @@ export function studentBankCompletionErrorResponse(error: unknown, operationId: 
     }, { status: 409 });
   }
   // Unexpected: keep a trace (no student data) so a recurring failure is visible in the logs.
-  console.error('[bank-completion] unexpected failure', error instanceof Error ? `${error.name}: ${error.message}` : 'unknown');
+  logFailure('[bank-completion] unexpected failure', error);
   return studentBankCompletionStatusUnknown(operationId);
 }
 

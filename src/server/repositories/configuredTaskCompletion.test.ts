@@ -375,7 +375,7 @@ describe('configured task completion command root', () => {
       // The reward is committed: the invalid list is withheld (empty), never the outcome.
       await expect(result).resolves.toMatchObject({ tasks: [], operation: { operationId: OPERATION_ID, state: 'SUCCESS' } });
       expect(errors).toHaveBeenCalledWith('[task-completion] task list after a committed completion could not be built',
-        'T001', expect.stringMatching(/integrity/i));
+        expect.stringMatching(/^[A-Za-z]+$/));
     }
     errors.mockRestore();
   });
@@ -407,8 +407,7 @@ describe('configured task completion command root', () => {
     const { command } = await configured('postgresql', deps);
     // A projection failure after the commit still reports the completion; the client re-reads its list.
     await expect(command.execute(INPUT)).resolves.toMatchObject({ tasks: [], operation: { operationId: OPERATION_ID, state: 'SUCCESS' } });
-    expect(errors).toHaveBeenCalledWith('[task-completion] task list after a committed completion could not be built',
-      'T001', 'projection unavailable');
+    expect(errors).toHaveBeenCalledWith('[task-completion] task list after a committed completion could not be built', 'Error');
     errors.mockRestore();
     await expect(command.execute(INPUT)).resolves.toEqual({
       task: { taskId: 'T001', title: '읽기', reward: 100 },

@@ -210,7 +210,7 @@ describe('task ledger: bank completion', () => {
     const result = await studentComplete('T001', () => { throw new Error('list unavailable'); });
     expect(result).toMatchObject({ task: { taskId: 'T001', reward: 30 }, tasks: [], operation: { state: 'SUCCESS' } });
     expect(parseConfiguredTaskCompletionResult(result, { taskId: 'T001', studentId: 'S1', operationId: result.operation.operationId }).tasks).toEqual([]);
-    expect(errors).toHaveBeenCalledWith('[task-completion] task list after a committed completion could not be built', 'T001', 'list unavailable');
+    expect(errors).toHaveBeenCalledWith('[task-completion] task list after a committed completion could not be built', 'Error');
     errors.mockRestore();
     expect(await balance('S1')).toBe(130);
   }, 120_000);

@@ -24,6 +24,7 @@ import {
   ledgerEventId,
   readBalances,
 } from './writes';
+import { logFailure } from '@/server/log';
 
 export type RunTenantTransaction = <T>(tenantId: string, run: (tx: TenantTransaction) => Promise<T>) => Promise<T>;
 
@@ -132,13 +133,12 @@ async function earlierStages(tx: TenantTransaction, tenantId: string, now: strin
           heldStage: !student.assigned ? 'UNASSIGNED' as const : student.ready ? 'READY' as const : 'PENDING' as const,
         }])));
       } catch (error) {
-        console.error('[task-ledger] earlier stage of a task unreadable; using the event order', task.taskInstanceId,
-          error instanceof Error ? error.message : 'unknown');
+        logFailure('[task-ledger] earlier stage of a task unreadable; using the event order', error);
         fallbackTasks.push(task.taskInstanceId);
       }
     }
   } catch (error) {
-    console.error('[task-ledger] earlier history unreadable; using the event order', error instanceof Error ? error.message : 'unknown');
+    logFailure('[task-ledger] earlier history unreadable; using the event order', error);
     fallbackTasks = (await readLedgerTasks(tx, tenantId)).map((task) => task.taskInstanceId);
   }
   if (fallbackTasks.length > 0) {

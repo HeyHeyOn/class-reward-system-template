@@ -290,8 +290,9 @@ export function createDatabaseTransactionCommands(
         `);
         const restoredStock = new Map<string, { before: number; after: number }>();
         for (const item of state.restoredItems) {
+          // The product is the same row by ID (renaming keeps it, a deleted ID is never reused); its name may have changed.
           const product = productById.get(item.productId);
-          if (!product || product.name !== item.productName) {
+          if (!product) {
             throw new TransactionCancellationError('MANUAL_RECONCILIATION_REQUIRED');
           }
           if (product.deleted_at !== null) {

@@ -2,6 +2,7 @@ import 'server-only';
 
 import { readBoundedRequestText, RequestBodyError } from '@/server/boundedRequestBody';
 import { PetError } from '@/server/repositories/database/pets';
+import { logFailure } from '@/server/log';
 
 const NO_STORE = { 'Cache-Control': 'no-store' } as const;
 
@@ -37,6 +38,6 @@ export function hasExactKeys(value: Record<string, unknown>, keys: readonly stri
 /** Maps a failure to a Korean message; unexpected errors are logged with their site. */
 export function petFailure(error: unknown, label: string): Response {
   if (error instanceof PetError) return petJson({ error: error.message, code: error.code }, error.status);
-  console.error(`[pet:${label}] unexpected failure`, error instanceof Error ? `${error.name}: ${error.message}` : 'unknown');
+  logFailure(`[pet:${label}] unexpected failure`, error);
   return petJson({ error: '처리하지 못했어요. 잠시 후 다시 눌러 주세요.', code: 'UNEXPECTED' }, 500);
 }

@@ -69,3 +69,24 @@ it('both importers read merged values without materializing formatting-only cell
     expect(merge).not.toHaveBeenCalled();
   } finally { merge.mockRestore(); }
 });
+
+it('reads only the rows a file has, not every row number up to the last one', async () => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('학생 명단');
+  sheet.addRow(['학생 번호', '이름']);
+  sheet.addRow(['01', '첫 학생']);
+  sheet.getCell('A100000').value = '02';
+  sheet.getCell('B100000').value = '먼 학생';
+  const bytes = new Uint8Array(await workbook.xlsx.writeBuffer());
+  // ExcelJS makes a row for every number it is asked for: the reader may ask only for the header search.
+  const prototype = Object.getPrototypeOf(new ExcelJS.Workbook().addWorksheet('probe')) as { getRow: (...args: unknown[]) => unknown };
+  const getRow = vi.spyOn(prototype, 'getRow');
+  try {
+    const imported = await readImportSheet(bytes, [
+      { field: 'id', label: '학생 번호', required: true, aliases: [] },
+      { field: 'name', label: '이름', required: true, aliases: [] },
+    ], '학생 명단');
+    expect(imported.rows.map((row) => row.rowNumber)).toEqual([2, 100000]);
+    expect(getRow.mock.calls.length).toBeLessThanOrEqual(10);
+  } finally { getRow.mockRestore(); }
+});

@@ -3,6 +3,7 @@ import { getTeacherGoogleSessionFromRequest, hasTeacherSessionBinding, saveTeach
 import { requiredAgreementVersion } from '@/server/requiredAgreement';
 import { parseProfileInput } from '@/server/teacherAccounts';
 import { hubLoginEnabled } from '@/server/ddanssaem/hub';
+import { logFailure } from '@/server/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +26,7 @@ export async function POST(request: Request) {
   try {
     await saveTeacherProfile(session, profile);
   } catch (error) {
-    console.error('[account] profile could not be saved', error instanceof Error ? error.message : 'unknown');
+    logFailure('[account] profile could not be saved', error);
     return accountReply(503, { error: `프로필을 저장하지 못했어요. ${TRY_AGAIN_LATER}` });
   }
   return accountReply(200, { ok: true, profile });

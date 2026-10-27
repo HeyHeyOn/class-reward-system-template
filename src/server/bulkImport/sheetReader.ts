@@ -149,8 +149,10 @@ function readDataRows<TField extends string>(
   columns: ReadonlyArray<ImportColumn<TField>>,
 ): SheetRow<TField>[] {
   const rows: SheetRow<TField>[] = [];
-  for (let rowNumber = headerRowNumber + 1; rowNumber <= sheet.rowCount; rowNumber += 1) {
-    const row = sheet.getRow(rowNumber);
+  // Only the rows the file has: walking to the last row number (getRow) would make every missing row and cell, so a
+  // small file with one value on row 100000 took over 100MB.
+  sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    if (rowNumber <= headerRowNumber) return;
     const cells = {} as Record<TField, RawCell>;
     const hyperlinks: Partial<Record<TField, string>> = {};
     let empty = true;
@@ -163,7 +165,7 @@ function readDataRows<TField extends string>(
       if (read.cell.kind !== 'empty') empty = false;
     }
     if (!empty) rows.push({ rowNumber, cells, hyperlinks });
-  }
+  });
   return rows;
 }
 

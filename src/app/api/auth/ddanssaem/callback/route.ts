@@ -5,6 +5,7 @@ import { getProductionHubAccountStore, settleHubIcon } from '@/server/ddanssaem/
 import { HUB_TRIED_COOKIE, hubStartPath } from '@/server/ddanssaem/teacherGate';
 import { teacherAccountsEnabled } from '@/server/teacherAccounts';
 import { endRequestTeacherSessions } from '@/server/teacherSession';
+import { logFailure } from '@/server/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,12 +38,14 @@ export async function GET(request: Request) {
     return finish(`/classes?login_error=${encodeURIComponent(error && /^[a-z_]{1,40}$/.test(error) ? error : 'state')}`);
   }
   try {
+    // Before the code is traded: a sign-out or withdrawal the hub reports after this moment wins over this sign-in.
+    const signedInAt = new Date();
     const profile = await exchangeHubCode({ origin: url.origin, code, verifier: login.verifier });
     const accounts = getProductionHubAccountStore();
     // 9-3, 9-4: the account's name and icon each sign-in; an icon picked here before goes to the hub first.
     const icon = await settleHubIcon({ sub: profile.sub, stored: await accounts.profile(profile.sub), hub: profile.icon });
     await endRequestTeacherSessions(request);
-    const binding = await accounts.begin(profile, icon);
+    const binding = await accounts.begin(profile, icon, signedInAt);
     // 10-4: the verification is saved at each sign-in too (an event may have been missed).
     if (profile.verification) await accounts.verificationUpdated(profile.sub, profile.verification);
     const response = finish(login.next);
@@ -54,7 +57,7 @@ export async function GET(request: Request) {
     response.cookies.set(HUB_TRIED_COOKIE, '', { path: '/', maxAge: 0 });
     return response;
   } catch (failure) {
-    console.error('[ddanssaem] sign-in failed', failure instanceof Error ? `${failure.name}: ${failure.message}` : 'unknown');
+    logFailure('[ddanssaem] sign-in failed', failure);
     return finish('/classes?login_error=exchange');
   }
 }

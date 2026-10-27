@@ -3,6 +3,7 @@ import { readBoundedRequestText, RequestBodyError } from '@/server/boundedReques
 import { legacyWriteFreezeResponse } from '@/server/legacyDeploymentMode';
 import { createConfiguredStudentQrCodes } from '@/server/repositories/configuredStudentQrCodes';
 import { StudentQrCodeError } from '@/server/repositories/database/studentQrCodes';
+import { logFailure } from '@/server/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +30,7 @@ export async function POST(request: Request) {
     return json(await codes.reissue((body as { studentIds: unknown }).studentIds));
   } catch (error) {
     if (error instanceof StudentQrCodeError) return json({ error: error.message, code: error.code }, error.status);
-    console.error('[student-qr:reissue] unexpected failure', error instanceof Error ? `${error.name}: ${error.message}` : 'unknown');
+    logFailure('[student-qr:reissue] unexpected failure', error);
     return json({ error: 'QR을 새로 발급하지 못했어요. 잠시 후 다시 시도해 주세요.', code: 'UNEXPECTED' }, 500);
   }
 }

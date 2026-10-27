@@ -3,6 +3,7 @@ import { readBoundedRequestText, RequestBodyError } from '@/server/boundedReques
 import { legacyWriteFreezeResponse } from '@/server/legacyDeploymentMode';
 import { createConfiguredStudentGroups } from '@/server/repositories/configuredStudentGroups';
 import { StudentGroupError } from '@/server/repositories/database/studentGroups';
+import { logFailure } from '@/server/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +12,7 @@ const json = (body: unknown, status = 200) => Response.json(body, { status, head
 
 function failure(error: unknown, label: string) {
   if (error instanceof StudentGroupError) return json({ error: error.message, code: error.code }, error.status);
-  console.error(`[student-groups:${label}] unexpected failure`, error instanceof Error ? `${error.name}: ${error.message}` : 'unknown');
+  logFailure(`[student-groups:${label}] unexpected failure`, error);
   return json({ error: '모둠을 처리하지 못했어요. 잠시 후 다시 시도해 주세요.', code: 'UNEXPECTED' }, 500);
 }
 

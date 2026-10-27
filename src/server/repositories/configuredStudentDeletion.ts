@@ -6,6 +6,7 @@ import { deleteStudent, deleteStudentsBatch } from '@/server/repositories/sheets
 import { getOptionalTrustedTenantRequestContext } from '@/server/trustedTenantRequestContext';
 import { parseStorageSelection } from './context';
 import { createDatabaseStudentCommands, StudentAdminConflictError, StudentAdminRefusalError } from './database/studentCommands';
+import { logFailure } from '@/server/log';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -96,7 +97,7 @@ export function studentDeletionFailure(error: unknown): Response {
     // Sheets keeps its own messages, as before.
     return Response.json({ error: error instanceof Error ? error.message : '학생을 삭제하지 못했어요.' }, { status: 400 });
   }
-  console.error('[student-deletion] unexpected failure', error instanceof Error ? error.message : 'unknown');
+  logFailure('[student-deletion] unexpected failure', error);
   return Response.json({ error: '학생을 삭제하지 못했어요. 잠시 뒤 다시 시도해 주세요.' }, { status: 500 });
 }
 

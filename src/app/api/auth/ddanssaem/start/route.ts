@@ -3,6 +3,7 @@ import { clearGoogleSessionCookie, getGoogleSessionFromRequest } from '@/server/
 import { HUB_CALLBACK_PATH, HUB_LOGIN_COOKIE, HUB_LOGIN_MAX_AGE_SECONDS, hubLoginEnabled, startHubLogin } from '@/server/ddanssaem/hub';
 import { HUB_TRIED_COOKIE, HUB_TRIED_MAX_AGE_SECONDS, hubSignInState } from '@/server/ddanssaem/teacherGate';
 import { endRequestTeacherSessions } from '@/server/teacherSession';
+import { logFailure } from '@/server/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,14 +28,14 @@ export async function GET(request: Request) {
       try {
         await endRequestTeacherSessions(request);
       } catch (error) {
-        console.error('[ddanssaem] class session could not be ended', error instanceof Error ? error.message : 'unknown');
+        logFailure('[ddanssaem] class session could not be ended', error);
       }
       clearGoogleSessionCookie(response);
     }
     response.headers.set('cache-control', 'no-store');
     return response;
   } catch (error) {
-    console.error('[ddanssaem] sign-in could not start', error instanceof Error ? error.message : 'unknown');
+    logFailure('[ddanssaem] sign-in could not start', error);
     return NextResponse.redirect(new URL('/classes?login_error=start', request.url));
   }
 }

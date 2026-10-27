@@ -14,6 +14,7 @@ import {
   parsePatchPromotionPayload,
   PromotionPayloadError,
 } from '../payload';
+import { logFailure } from '@/server/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +40,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     if (error instanceof PromotionPayloadError || error instanceof SyntaxError) {
       return safeErrorResponse(400, '행사 요청 형식이 올바르지 않아요.');
     }
-    console.error('Unexpected promotion payload parsing failure', error);
+    logFailure('Unexpected promotion payload parsing failure', error);
     return safeErrorResponse(500, '행사를 수정하지 못했어요.');
   }
 
@@ -55,7 +56,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     const acknowledgement = configuredMutationAcknowledgement(result, promotionId);
     return Response.json(acknowledgement);
   } catch (error) {
-    console.error('Failed to update promotion', error);
+    logFailure('Failed to update promotion', error);
     if (error instanceof PromotionMutationTargetPartialFailure) {
       return safeErrorResponse(500, PROMOTION_MUTATION_TARGET_PARTIAL_FAILURE_MESSAGE);
     }
@@ -121,7 +122,7 @@ export async function DELETE(request: Request, { params }: RouteContext) {
     if (error instanceof SyntaxError) {
       return safeErrorResponse(400, '행사 삭제 요청 형식이 올바르지 않아요.');
     }
-    console.error('Unexpected promotion deletion payload parsing failure', error);
+    logFailure('Unexpected promotion deletion payload parsing failure', error);
     return safeErrorResponse(500, '행사를 삭제하지 못했어요.');
   }
 
@@ -135,7 +136,7 @@ export async function DELETE(request: Request, { params }: RouteContext) {
     });
     return Response.json({ promotionId: deleted.promotionId });
   } catch (error) {
-    console.error('Failed to delete promotion', error);
+    logFailure('Failed to delete promotion', error);
     if (error instanceof PromotionDeletePartialFailure) {
       return safeErrorResponse(500, PROMOTION_DELETE_PARTIAL_FAILURE_MESSAGE);
     }

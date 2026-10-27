@@ -7,6 +7,7 @@ import { defaultNickname, normalizeNickname } from '@/server/teacherAccounts';
 import { hasTeacherSessionBinding, type TeacherSessionBinding } from '@/server/teacherSession';
 import type { TeacherVerification } from '@/lib/teacherVerification';
 import { hubAvatarUrl, importHubAvatar, type AvatarImportResult, type HubIcon, type HubProfile } from './hub';
+import { logFailure } from '@/server/log';
 
 type Queryable = Readonly<{ query(text: string, values: unknown[]): Promise<{ rows: unknown[] }> }>;
 
@@ -40,7 +41,7 @@ export async function settleHubIcon(input: Readonly<{
       if (result === 'stored') return { avatar: picked, avatarUrl: hubAvatarUrl(picked, env), fromHub: true };
       if (result === 'kept' && hub) return { ...hub, fromHub: true };
     } catch (error) {
-      console.error('[ddanssaem] icon import failed', error instanceof Error ? error.message : 'unknown');
+      logFailure('[ddanssaem] icon import failed', error);
     }
     return { avatar: picked, avatarUrl: hubAvatarUrl(picked, env), fromHub: false };
   }
@@ -59,10 +60,15 @@ export function createHubAccountStore(db: Queryable) {
       return { nickname: row.nickname, avatar: normalizeAvatar(row.avatar), avatarUrl: typeof row.avatar_url === 'string' ? row.avatar_url : null,
         avatarFromHub: row.avatar_from_hub === true };
     },
-    /** 1-4: a class session for the teacher the hub vouched for, bound to the hub session, with the account's name and icon. */
-    async begin(profile: HubProfile, icon: SettledIcon): Promise<TeacherSessionBinding> {
-      const { rows } = await db.query('SELECT * FROM public.platform_begin_hub_teacher_session($1,$2,$3,$4,$5::jsonb,$6,$7)',
-        [profile.sub, profile.termsVersion, profile.sid, hubNickname(profile), JSON.stringify(icon.avatar), icon.avatarUrl, icon.fromHub]);
+    /**
+     * 1-4: a class session for the teacher the hub vouched for, bound to the hub session, with the account's name and
+     * icon. Refused when the hub session signed out meanwhile, or the account was withdrawn after `signedInAt` (when
+     * this sign-in began).
+     */
+    async begin(profile: HubProfile, icon: SettledIcon, signedInAt: Date): Promise<TeacherSessionBinding> {
+      const { rows } = await db.query('SELECT * FROM public.platform_begin_hub_teacher_session($1,$2,$3,$4,$5::jsonb,$6,$7,$8::timestamptz)',
+        [profile.sub, profile.termsVersion, profile.sid, hubNickname(profile), JSON.stringify(icon.avatar), icon.avatarUrl, icon.fromHub,
+          signedInAt.toISOString()]);
       const row = rows[0] as { generation?: unknown; session_id?: unknown } | undefined;
       const binding = { accountGeneration: row?.generation, sessionId: row?.session_id };
       if (rows.length !== 1 || !hasTeacherSessionBinding(binding as TeacherSessionBinding)) throw new Error('Invalid hub teacher session.');

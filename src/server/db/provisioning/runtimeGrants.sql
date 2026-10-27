@@ -79,6 +79,7 @@ GRANT EXECUTE ON FUNCTION
   public.platform_begin_hub_teacher_session(text,text,text,text,jsonb),
   public.platform_get_hub_profile(text),
   public.platform_begin_hub_teacher_session(text,text,text,text,jsonb,text,boolean),
+  public.platform_begin_hub_teacher_session(text,text,text,text,jsonb,text,boolean,timestamptz),
   public.platform_hub_profile_updated(text,text,jsonb,text,boolean),
   public.platform_hub_verification_updated(text,timestamptz,timestamptz),
   public.platform_get_teacher_verification(text),

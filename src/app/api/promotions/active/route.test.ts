@@ -53,6 +53,6 @@ describe('GET /api/promotions/active', () => {
     expect(response.status).toBe(500);
     expect(body).toEqual({ error: '진행 중인 행사를 불러오지 못했어요.' });
     expect(JSON.stringify(body)).not.toContain('private credential');
-    expect(consoleError).toHaveBeenCalledWith('Failed to get active promotions', error);
+    expect(consoleError).toHaveBeenCalledWith('Failed to get active promotions', 'Error');
   });
 });

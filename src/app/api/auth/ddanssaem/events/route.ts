@@ -2,6 +2,7 @@ import { readBoundedRequestText, RequestBodyError } from '@/server/boundedReques
 import { HUB_SIGNATURE_HEADER, hubConnected, parseHubEvent, verifyHubSignature } from '@/server/ddanssaem/hub';
 import { getProductionHubAccountStore, settleHubIcon } from '@/server/ddanssaem/hubAccounts';
 import { normalizeNickname, teacherAccountsEnabled } from '@/server/teacherAccounts';
+import { logFailure } from '@/server/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,7 +37,7 @@ export async function POST(request: Request) {
     }
     return json({ ok: true, closedClasses: await accounts.accountDeleted(event.sub) });
   } catch (error) {
-    console.error(`[ddanssaem] ${event.type} event failed`, error instanceof Error ? error.message : 'unknown');
+    logFailure(`[ddanssaem] ${event.type} event failed`, error);
     return json({ error: 'unavailable' }, 503);
   }
 }

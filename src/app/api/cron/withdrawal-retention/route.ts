@@ -1,5 +1,6 @@
 import { teacherAccountsEnabled } from '@/server/teacherAccounts';
 import { cronSecretConfigured, expireWithdrawalRecords, isCronRequest } from '@/server/withdrawalRetention';
+import { logFailure } from '@/server/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +16,7 @@ export async function GET(request: Request) {
     console.info('[retention] withdrawal records erased', JSON.stringify(result));
     return json({ ok: true, ...result });
   } catch (error) {
-    console.error('[retention] withdrawal records could not be erased', error instanceof Error ? error.message : 'unknown');
+    logFailure('[retention] withdrawal records could not be erased', error);
     return json({ error: 'unavailable' }, 503);
   }
 }

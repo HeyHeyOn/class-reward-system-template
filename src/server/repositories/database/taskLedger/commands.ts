@@ -607,7 +607,9 @@ export function createTaskLedgerCommands(dependencies: TaskLedgerCommandDependen
     async setRepeat(request: SetRepeatRequest): Promise<{ tasks: AdminTaskDto[] }> {
       await withOperation('repeat', request.operationId, request, async (context) => {
         const tasks = await lockTasks(context, request.taskIds);
-        const students = await readLedgerStudents(context.tx, tenantId);
+        // Students before their accounts, the order a pet or bank write takes (else the reset history's student check
+        // could wait on a student that write holds while it waits on an account held here).
+        const students = await readLedgerStudents(context.tx, tenantId, { lock: true });
         const balances = await readBalances(context.tx, tenantId, students.map((student) => student.studentId), true);
         const events = await ledgerEventsFor(context, [...tasks.values()]);
         let changed = 0;

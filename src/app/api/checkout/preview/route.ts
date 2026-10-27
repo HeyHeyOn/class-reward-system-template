@@ -1,5 +1,6 @@
 import type { CartItem } from '@/domain/types';
 import { createConfiguredCheckoutPreviewService } from '@/server/repositories/configuredCheckoutPreview';
+import { logFailure } from '@/server/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,7 +39,7 @@ export async function POST(request: Request) {
       items: result.items,
     });
   } catch (error) {
-    console.error('Failed to preview checkout', error);
+    logFailure('Failed to preview checkout', error);
     return checkoutPreviewFailureResponse();
   }
 }

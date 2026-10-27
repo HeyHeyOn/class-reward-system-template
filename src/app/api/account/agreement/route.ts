@@ -3,6 +3,7 @@ import { clearPendingAgreementCookie, getPendingAgreementFromRequest, setGoogleS
 import { getProductionTeacherSessionStore, hasTeacherSessionBinding } from '@/server/teacherSession';
 import { currentLegalRevision } from '@/lib/legalDocuments';
 import { hubLoginEnabled } from '@/server/ddanssaem/hub';
+import { logFailure } from '@/server/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
   try {
     await getProductionTeacherSessionStore().mutate(who, 'AGREE', { version });
   } catch (error) {
-    console.error('[account] agreement could not be recorded', error instanceof Error ? error.message : 'unknown');
+    logFailure('[account] agreement could not be recorded', error);
     return accountReply(503, { error: `동의를 저장하지 못했어요. ${TRY_AGAIN_LATER}` });
   }
   const redirectTo = identity.kind === 'pending' ? identity.pending.returnTo ?? '/classes' : null;

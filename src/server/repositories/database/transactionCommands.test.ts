@@ -251,6 +251,20 @@ describe('database transaction cancellation commands', () => {
     expect(state.items).toHaveLength(2);
   });
 
+  it('cancels a purchase whose product was renamed since: the product is the same row by ID', async () => {
+    await harness.database.query("UPDATE products SET name='연필(노랑)' WHERE product_id='P001'");
+    const result = await commands().cancel({ operationId: OPERATION_ID, transactionId: ORIGINAL_ID });
+    // What was bought keeps its name at the time of the purchase.
+    expect(result.restoredItems).toEqual([
+      { productId: 'P001', productName: '연필', quantity: 2 },
+      { productId: 'P002', productName: '지우개', quantity: 1 },
+    ]);
+    expect((await snapshot()).products).toEqual([
+      { product_id: 'P001', stock: '20', version: '2' },
+      { product_id: 'P002', stock: '15', version: '2' },
+    ]);
+  });
+
   it('returns the exact stored result on retry without another mutation', async () => {
     const first = await commands().cancel({ operationId: OPERATION_ID, transactionId: ORIGINAL_ID });
     const second = await commands().cancel({ operationId: OPERATION_ID, transactionId: ORIGINAL_ID });

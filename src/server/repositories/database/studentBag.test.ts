@@ -154,6 +154,19 @@ describe('teacher gives and takes back', () => {
     expect((await bag().studentBag('S001', { includeUsed: false })).items).toHaveLength(2);
   });
 
+  it('gives 20 items to 30 students in batched inserts, once per operation', async () => {
+    const students = Array.from({ length: 30 }, (_, index) => `S${String(index + 1).padStart(3, '0')}`);
+    for (const studentId of students.slice(2)) {
+      await harness.database.query(`INSERT INTO students (tenant_id, student_id, name, status) VALUES ($1, $2, '합성 학생', 'ACTIVE')`, [harness.tenantOneId, studentId]);
+    }
+    const operationId = op();
+    expect(await give(students, 'P005', 20, operationId)).toBe(600);
+    expect(await give([...students].reverse(), 'P005', 20, operationId)).toBe(0);
+    const { rows } = await harness.database.query<{ n: number; ids: number; last: string }>(`SELECT count(*)::int AS n, count(DISTINCT item_id)::int AS ids,
+      max(item_id) FILTER (WHERE student_id='S030') AS last FROM student_items WHERE tenant_id=$1 AND operation_id=$2`, [harness.tenantOneId, operationId]);
+    expect(rows[0]).toEqual({ n: 600, ids: 600, last: `give:${operationId}:S030:9` });
+  });
+
   it('takes back an unused item but not a used one', async () => {
     await markDigital();
     await give(['S001'], 'P002', 2);

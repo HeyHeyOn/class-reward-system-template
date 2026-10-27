@@ -7,6 +7,7 @@ import { getProductionClassDashboardRepository } from '@/server/repositories/dat
 import { databaseStudentQrLookup, resolveStudentQr } from '@/server/studentQr';
 import { teacherAccountsEnabled } from '@/server/teacherAccounts';
 import { createLinkStore, LINK_SIGNATURE_HEADER, linksEnabled, parseLinkRequest, verifyLinkSignature, type LinkCall, type LinkRequest, type LinkStore } from './links';
+import { logFailure } from '@/server/log';
 
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'cache-control': 'no-store' } });
 
@@ -45,7 +46,7 @@ export async function answerLinkCall(request: Request, call: LinkCall,
     const result = await answer(asked);
     return result === null ? json({ error: 'not_found' }, 404) : json(result);
   } catch (error) {
-    console.error(`[ddanssaem] link ${call} failed`, error instanceof Error ? error.message : 'unknown');
+    logFailure(`[ddanssaem] link ${call} failed`, error);
     return json({ error: 'unavailable' }, 503);
   }
 }

@@ -117,7 +117,10 @@ describe('딴쌤 sign-in routes', () => {
     expect(mocks.endRequestTeacherSessions).toHaveBeenCalledOnce();
     const fallback = defaultAvatarFor('1234567890');
     expect(mocks.store.begin).toHaveBeenCalledWith({ sub: '1234567890', email: 'teacher@example.com', name: '별빛쌤', termsVersion: '2026-12-05', sid: 'hub-sid-1', icon: null, verification: null },
-      { avatar: fallback, avatarUrl: `https://beta.ddanssaem.com/api/avatar/${[fallback.background, fallback.face, fallback.eyes, fallback.mouth, fallback.accessory].join('.')}.svg`, fromHub: false });
+      { avatar: fallback, avatarUrl: `https://beta.ddanssaem.com/api/avatar/${[fallback.background, fallback.face, fallback.eyes, fallback.mouth, fallback.accessory].join('.')}.svg`, fromHub: false },
+      expect.any(Date));
+    // When the sign-in began: before the code was traded, so a sign-out the hub reports after it wins.
+    expect((mocks.store.begin.mock.calls[0][2] as Date).getTime()).toBeLessThanOrEqual(Date.now());
     expect(cookieFrom(response, HUB_LOGIN_COOKIE)).toBe('');
     const session = getGoogleSessionFromRequest(new Request(ORIGIN, { headers: { cookie: `${GOOGLE_AUTH_COOKIE}=${cookieFrom(response, GOOGLE_AUTH_COOKIE)}` } }));
     expect(session).toMatchObject({ subject: '1234567890', email: 'teacher@example.com', name: '별빛쌤', agreement: 'hub', ...BINDING, hubSid: 'hub-sid-1' });

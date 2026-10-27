@@ -6,6 +6,7 @@ import { loadTeacherAccountView, teacherAccountsEnabled } from '@/server/teacher
 import { hubLoginEnabled } from '@/server/ddanssaem/hub';
 import { hubStartPath } from '@/server/ddanssaem/teacherGate';
 import { GlobalHeader, type HeaderAccount } from './GlobalHeader';
+import { logFailure } from '@/server/log';
 
 /** The teacher's header for a server page: reads who is signed in unless the page already knows it.
  *  `returnTo` is where sign-in comes back to from the 로그인 button (the 딴쌤 hub's sign-in page in hub mode). */
@@ -30,7 +31,7 @@ async function currentTeacher(): Promise<HeaderAccount | null> {
     return (await loadTeacherAccountView(session)).header;
   } catch (error) {
     // The header never breaks the page under it; it shows the signed-out state instead.
-    console.error('[header] teacher could not be read', error instanceof Error ? error.message : 'unknown');
+    logFailure('[header] teacher could not be read', error);
     return null;
   }
 }

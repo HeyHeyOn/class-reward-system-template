@@ -21,6 +21,7 @@ import { listTaskCycleProjections } from '@/server/repositories/sheets/lazy';
 import { buildStudentTaskProjection,
   type StudentTaskProjectionDto } from '@/server/studentTaskProjection';
 import { completeTaskForStudent } from '@/server/repositories/sheets/lazy';
+import { logFailure } from '@/server/log';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -153,8 +154,7 @@ export function createTaskCompletionRepositoryCreators(
             );
             tasks = parseSafeTasks(projected, input);
           } catch (error) {
-            console.error('[task-completion] task list after a committed completion could not be built',
-              input.taskId, error instanceof Error ? error.message : 'unknown');
+            logFailure('[task-completion] task list after a committed completion could not be built', error);
             tasks = [];
           }
           return safeResult(result.taskTitle, result.reward, result.studentName, tasks, input);

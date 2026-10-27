@@ -234,7 +234,7 @@ describe('POST /api/checkout/preview', () => {
     expect(response.status).toBe(500);
     expect(body).toEqual({ error: '결제 예상 금액을 계산하지 못했어요.' });
     expect(JSON.stringify(body)).not.toContain('private provider credential');
-    expect(consoleError).toHaveBeenCalledWith('Failed to preview checkout', error);
+    expect(consoleError).toHaveBeenCalledWith('Failed to preview checkout', 'Error');
   });
 
   it('sanitizes malformed promotion schemas as 500 and never writes', async () => {

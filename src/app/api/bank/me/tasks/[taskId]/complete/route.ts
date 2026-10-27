@@ -17,6 +17,7 @@ import {
   studentBankCompletionErrorResponse,
 } from '@/server/studentBankTaskCompletion';
 import { projectStudentBankTasks } from '@/server/studentBankViews';
+import { logFailure } from '@/server/log';
 
 type RouteContext = { params: Promise<{ taskId: string }> };
 
@@ -95,8 +96,7 @@ export async function POST(request: Request, context: RouteContext) {
   try {
     tasks = projectStudentBankTasks(result.tasks, new Date().toISOString(), await padletBoardsForStudent(request, { sync: false }));
   } catch (error) {
-    console.error('[bank-completion] task list after a committed completion could not be shaped',
-      error instanceof Error ? error.message : 'unknown');
+    logFailure('[bank-completion] task list after a committed completion could not be shaped', error);
   }
   // What the task gave the class tree and the student's pet, for the completion message. Without it
   // (a Sheets class, a failed read) the message simply leaves it out.

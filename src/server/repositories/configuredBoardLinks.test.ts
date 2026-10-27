@@ -68,7 +68,8 @@ async function fixture() {
     evidence: vi.fn(async (request: { studentId: string }) => evidence[request.studentId] ?? []),
   } satisfies BoardClient;
   const service = createBoardLinkService({ tenantId: tenant, runTenantTransaction: run, runTenantSnapshot: run, client, env: ENV });
-  return { tenant, boards, evidence, client, service };
+  const batched = (evidenceStudents: number) => createBoardLinkService({ tenantId: tenant, runTenantTransaction: run, runTenantSnapshot: run, client, env: ENV, evidenceStudents });
+  return { tenant, boards, evidence, client, service, batched };
 }
 
 describe('딴쌤 board links of a class', () => {
@@ -96,6 +97,29 @@ describe('딴쌤 board links of a class', () => {
     expect(uses.rows).toEqual([{ evidence_id: 'post-1', student_id: 'S1' }]);
     const history = await owner("SELECT count(*)::int AS n FROM task_assignments WHERE tenant_id=$1 AND assignment_id LIKE 'tl-b:%'", [f.tenant]);
     expect(history.rows[0]).toEqual({ n: 1 });
+  });
+
+  it('reads a batch of 미완료 students at a time and goes on from where the last read stopped', async () => {
+    const f = await fixture();
+    // Only S2 posted; one student per read: the first read asks S1, the next goes on to S2.
+    delete f.evidence.S1;
+    f.evidence.S2 = [{ id: 'post-2', createdAt: new Date().toISOString() }];
+    const service = f.batched(1);
+    const first = await service.link('teacher-sub', { taskIds: ['T001'], boardId: 'board-free', groupId: null });
+    expect(f.client.evidence.mock.calls.map(([request]) => request.studentId)).toEqual(['S1']);
+    expect(first.tasks[0].students.find((student) => student.studentId === 'S2')?.stage).toBe('PENDING');
+    expect((await owner('SELECT evidence_after FROM board_link_syncs WHERE tenant_id=$1', [f.tenant])).rows).toEqual([{ evidence_after: 'S1' }]);
+    await owner("UPDATE board_link_syncs SET checked_at=clock_timestamp() - interval '1 minute' WHERE tenant_id=$1", [f.tenant]);
+    await service.syncIfStale();
+    expect(f.client.evidence.mock.calls.map(([request]) => request.studentId)).toEqual(['S1', 'S2']);
+    const history = await owner("SELECT student_id FROM task_assignments WHERE tenant_id=$1 AND assignment_id LIKE 'tl-b:%'", [f.tenant]);
+    expect(history.rows).toEqual([{ student_id: 'S2' }]);
+    expect((await owner('SELECT evidence_after FROM board_link_syncs WHERE tenant_id=$1', [f.tenant])).rows).toEqual([{ evidence_after: 'S2' }]);
+    // Now only S1 is at 미완료, which fits one read: it is asked again and the position starts over.
+    await owner("UPDATE board_link_syncs SET checked_at=clock_timestamp() - interval '1 minute' WHERE tenant_id=$1", [f.tenant]);
+    await service.syncIfStale();
+    expect(f.client.evidence.mock.calls.map(([request]) => request.studentId)).toEqual(['S1', 'S2', 'S1']);
+    expect((await owner('SELECT evidence_after FROM board_link_syncs WHERE tenant_id=$1', [f.tenant])).rows).toEqual([{ evidence_after: null }]);
   });
 
   it('refuses a board linked to another class or a group the board does not have', async () => {

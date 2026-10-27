@@ -159,6 +159,20 @@ export async function lockBoardLinkSyncAttempt(tx: TenantTransaction, tenantId: 
   return result.rows.length > 0;
 }
 
+/** Where the last read of this board key stopped among the class's 미완료 students (null: from the first). */
+export async function readBoardEvidenceAfter(tx: TenantTransaction, tenantId: string, boardKey: string): Promise<string | null> {
+  const result = await tx.execute(sql`SELECT evidence_after FROM board_link_syncs WHERE tenant_id=${tenantId} AND board_key=${boardKey}`);
+  const value = (result.rows[0] as { evidence_after?: unknown } | undefined)?.evidence_after;
+  return typeof value === 'string' ? value : null;
+}
+
+/** Saves where this read stopped, if the read still holds the board key's sync attempt. */
+export async function saveBoardEvidenceAfter(tx: TenantTransaction, tenantId: string, boardKey: string, attemptId: string,
+  after: string | null): Promise<void> {
+  await tx.execute(sql`UPDATE board_link_syncs SET evidence_after=${after}
+    WHERE tenant_id=${tenantId} AND board_key=${boardKey} AND sync_attempt_id=${attemptId}::uuid`);
+}
+
 export async function recordBoardLinkSync(tx: TenantTransaction, tenantId: string, boardKey: string,
   outcome: Readonly<{ ok: true } | { ok: false; errorCode: string }>, attemptId: string): Promise<boolean> {
   if (!await lockBoardLinkSyncAttempt(tx, tenantId, boardKey, attemptId)) return false;

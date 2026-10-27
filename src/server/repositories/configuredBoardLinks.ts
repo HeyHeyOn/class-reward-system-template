@@ -10,7 +10,8 @@ import {
   boardLinkError, boardLinksEnabled, BoardLinkError, createBoardClient, type BoardClient, type BoardEvidenceItem,
 } from '@/server/ddanssaem/boardClient';
 import {
-  boardKeyOf, claimBoardLinkSync, deleteBoardLinks, readBoardLinks, recordBoardLinkSync, writeBoardLinks,
+  boardKeyOf, claimBoardLinkSync, deleteBoardLinks, readBoardEvidenceAfter, readBoardLinks, recordBoardLinkSync,
+  saveBoardEvidenceAfter, writeBoardLinks,
 } from '@/server/repositories/database/boardStore';
 import { deletePadletLinks } from '@/server/repositories/database/padletStore';
 import { createTaskLedgerCommands, type BoardEvidence } from '@/server/repositories/database/taskLedger/commands';
@@ -18,6 +19,7 @@ import { ensureTaskLedger, type RunTenantTransaction } from '@/server/repositori
 import type { StudentBankBoardDto } from '@/server/studentBankViews';
 import { readLedgerTasks, TaskLedgerError } from '@/server/repositories/database/taskLedger/store';
 import { getOptionalTrustedTenantRequestContext } from '@/server/trustedTenantRequestContext';
+import { logFailure } from '@/server/log';
 
 // 딴쌤 board links of one class (ddanssaem-hub/docs/app-links.md 8): the teacher's boards from the board server,
 // linking tasks to a board (and the board's roster to the class), and reading what counts as done. A read of a
@@ -36,6 +38,8 @@ type Dependencies = Readonly<{
   runTenantSnapshot: RunTenantTransaction;
   client?: BoardClient;
   env?: Readonly<Record<string, string | undefined>>;
+  /** Students asked about in one read (MAX_EVIDENCE_STUDENTS; smaller in tests). */
+  evidenceStudents?: number;
 }>;
 
 export function createBoardLinkService(dependencies: Dependencies) {
@@ -56,12 +60,17 @@ export function createBoardLinkService(dependencies: Dependencies) {
     const attempt = await dependencies.runTenantTransaction(tenantId, (tx) => claimBoardLinkSync(tx, tenantId, boardKey, BOARD_STALE_SECONDS, manual));
     if (!attempt) return;
     try {
-      const links = await dependencies.runTenantSnapshot(tenantId, (tx) => readBoardLinks(tx, tenantId, boardKey));
+      const { links, after } = await dependencies.runTenantSnapshot(tenantId, async (tx) => ({
+        links: await readBoardLinks(tx, tenantId, boardKey), after: await readBoardEvidenceAfter(tx, tenantId, boardKey) }));
       if (links.length === 0) return;
       const tasks = await ledger.readTasks(links.map((link) => link.taskId));
-      // Only students still at 미완료 on a linked task can be moved: ask the board for theirs.
-      const pending = [...new Set(tasks.flatMap((task) => task.students.filter((student) => student.stage === 'PENDING').map((student) => student.studentId)))]
-        .slice(0, MAX_EVIDENCE_STUDENTS);
+      // Only students still at 미완료 on a linked task can be moved: ask the board for theirs, a batch at a time,
+      // going on after the student the last read stopped at (then from the first again).
+      const all = [...new Set(tasks.flatMap((task) => task.students.filter((student) => student.stage === 'PENDING').map((student) => student.studentId)))].sort();
+      const batch = dependencies.evidenceStudents ?? MAX_EVIDENCE_STUDENTS;
+      const start = after === null ? 0 : Math.max(0, all.findIndex((studentId) => studentId > after));
+      const pending = [...all.slice(start), ...all.slice(0, start)].slice(0, batch);
+      const nextAfter = all.length > batch ? pending[pending.length - 1] : null;
       const from = tasks.map((task) => task.availableFrom ?? task.createdAt).sort()[0] ?? new Date(0).toISOString();
       const { boardId, groupId, linkedBySub } = links[0];
       const evidence: BoardEvidence[] = [];
@@ -75,9 +84,12 @@ export function createBoardLinkService(dependencies: Dependencies) {
       }
       await Promise.all(Array.from({ length: Math.min(EVIDENCE_CONCURRENCY, pending.length) }, worker));
       await ledger.applyBoardEvidence({ operationId: randomUUID(), boardKey, evidence, syncAttemptId: attempt });
+      // Only after a read that counted: a failed one asks the same students again.
+      await dependencies.runTenantTransaction(tenantId, (tx) => saveBoardEvidenceAfter(tx, tenantId, boardKey, attempt, nextAfter))
+        .catch((error) => logFailure('[board-links] read position not saved', error));
     } catch (error) {
       const code = error instanceof BoardLinkError ? error.code : 'UNAVAILABLE';
-      if (!(error instanceof BoardLinkError)) console.error('[board-links] read failed', error instanceof Error ? error.message : 'unknown');
+      if (!(error instanceof BoardLinkError)) logFailure('[board-links] read failed', error);
       await dependencies.runTenantTransaction(tenantId, (tx) => recordBoardLinkSync(tx, tenantId, boardKey, { ok: false, errorCode: code }, attempt))
         .catch(() => undefined);
     }
@@ -143,7 +155,7 @@ export function createBoardLinkService(dependencies: Dependencies) {
       try {
         for (const key of await linkedKeys()) await syncKey(key, false);
       } catch (error) {
-        console.error('[board-links] sync failed', error instanceof Error ? error.message : 'unknown');
+        logFailure('[board-links] sync failed', error);
       }
     },
 

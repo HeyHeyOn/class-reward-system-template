@@ -3,6 +3,7 @@ import { HUB_SIGNATURE_HEADER, hubConnected, parseSummaryRequest, verifyHubSigna
 import { hubSummary } from '@/server/ddanssaem/hubAccounts';
 import { getProductionClassDashboardRepository } from '@/server/repositories/database/classDashboard';
 import { teacherAccountsEnabled } from '@/server/teacherAccounts';
+import { logFailure } from '@/server/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,7 +25,7 @@ export async function POST(request: Request) {
     const memberships = await getProductionClassDashboardRepository().listByGoogleSubject(asked.sub);
     return json(hubSummary(memberships, new URL(request.url).origin));
   } catch (error) {
-    console.error('[ddanssaem] summary failed', error instanceof Error ? error.message : 'unknown');
+    logFailure('[ddanssaem] summary failed', error);
     return json({ error: 'unavailable' }, 503);
   }
 }

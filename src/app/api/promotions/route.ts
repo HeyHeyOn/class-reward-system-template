@@ -9,6 +9,7 @@ import {
   parseCreatePromotionPayload,
   PromotionPayloadError,
 } from './payload';
+import { logFailure } from '@/server/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +20,7 @@ export async function GET(request: Request) {
     const catalog = await createConfiguredCatalogReader(request);
     return Response.json(await catalog.getPromotionsForAdminMutation());
   } catch (error) {
-    console.error('Failed to get promotions', error);
+    logFailure('Failed to get promotions', error);
     return safeErrorResponse(500, '행사 목록을 불러오지 못했어요.');
   }
 }
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
     if (error instanceof PromotionPayloadError || error instanceof SyntaxError) {
       return safeErrorResponse(400, '행사 요청 형식이 올바르지 않아요.');
     }
-    console.error('Unexpected promotion payload parsing failure', error);
+    logFailure('Unexpected promotion payload parsing failure', error);
     return safeErrorResponse(500, '행사를 추가하지 못했어요.');
   }
 
@@ -57,7 +58,7 @@ export async function POST(request: Request) {
     });
     return Response.json(promotion, { status: 201 });
   } catch (error) {
-    console.error('Failed to create promotion', error);
+    logFailure('Failed to create promotion', error);
     if (error instanceof PromotionCreationTargetPartialFailure) {
       return safeErrorResponse(
         500,

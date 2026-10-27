@@ -271,6 +271,8 @@ export async function checkoutVoucherCount(tx: TenantTransaction, tenantId: stri
 /* ------------------------------------------------------------------ */
 
 const ID_LIMIT = 200;
+/** Rows per insert when a teacher gives items (10 values a row, well under the 65,535 bound parameters). */
+const GIVE_BATCH = 500;
 const isId = (value: unknown): value is string => typeof value === 'string' && value.trim() === value && value.length > 0 && value.length <= ID_LIMIT;
 
 async function readDigitalProducts(tx: TenantTransaction, tenantId: string): Promise<DigitalProductDto[]> {
@@ -377,16 +379,16 @@ export function createStudentBagCommands(dependencies: StudentBagDependencies) {
         const product = (await readStorageProducts(tx, tenantId, [productId])).get(productId);
         if (!product) throw new StudentBagError('PRODUCT_NOT_FOUND', '상품을 찾지 못했어요. 목록을 새로 불러와 주세요.', 404);
         const shape = storageItemShape(product);
+        const rows = (students as string[]).sort().flatMap((studentId) => Array.from({ length: count }, (_, index) => ({ studentId, n: index + 1 })));
         let given = 0;
-        for (const studentId of (students as string[]).sort()) {
-          for (let n = 1; n <= count; n++) {
-            const result = await tx.execute(sql`
-              INSERT INTO student_items (tenant_id, item_id, student_id, kind, title, source, source_ref, product_id, voucher_product_id, operation_id)
-              VALUES (${tenantId}, ${`give:${operationId}:${studentId}:${n}`}, ${studentId}, ${shape.kind}, ${shape.title},
-                      'TEACHER', ${productId}, ${productId}, ${shape.voucherProductId}, ${operationId})
-              ON CONFLICT (tenant_id, item_id) DO NOTHING RETURNING item_id`);
-            given += result.rows.length;
-          }
+        // Up to 4,000 items: GIVE_BATCH rows per insert instead of one round trip each.
+        for (let start = 0; start < rows.length; start += GIVE_BATCH) {
+          const result = await tx.execute(sql`
+            INSERT INTO student_items (tenant_id, item_id, student_id, kind, title, source, source_ref, product_id, voucher_product_id, operation_id)
+            VALUES ${sql.join(rows.slice(start, start + GIVE_BATCH).map(({ studentId, n }) => sql`(${tenantId}, ${`give:${operationId}:${studentId}:${n}`},
+              ${studentId}, ${shape.kind}, ${shape.title}, 'TEACHER', ${productId}, ${productId}, ${shape.voucherProductId}, ${operationId})`), sql`, `)}
+            ON CONFLICT (tenant_id, item_id) DO NOTHING RETURNING item_id`);
+          given += result.rows.length;
         }
         return given;
       });

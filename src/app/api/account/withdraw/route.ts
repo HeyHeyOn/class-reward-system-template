@@ -4,6 +4,7 @@ import { clearGeneratorGrantCookie, clearGoogleSessionCookie, clearPendingAgreem
 import { clearTenantAdminSessionCookie } from '@/server/tenantAdminSessionCookie';
 import { getProductionTeacherSessionStore } from '@/server/teacherSession';
 import { hubAccountUrl, hubLoginEnabled } from '@/server/ddanssaem/hub';
+import { logFailure } from '@/server/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +29,7 @@ export async function POST(request: Request) {
     const result = await getProductionTeacherSessionStore().mutate(who, 'WITHDRAW', {});
     closedClasses = result.closedClasses!;
   } catch (error) {
-    console.error('[account] withdrawal failed', error instanceof Error ? error.message : 'unknown');
+    logFailure('[account] withdrawal failed', error);
     return accountReply(503, { error: `탈퇴를 마치지 못했어요. ${TRY_AGAIN_LATER}` });
   }
   const response = accountReply(200, { ok: true, closedClasses, redirectTo: '/classes?withdrawn=1' });

@@ -3,6 +3,7 @@ import 'server-only';
 import { TaskLedgerRequestError } from '@/lib/taskLedgerApi';
 import { BoardLinkError } from '@/server/ddanssaem/boardClient';
 import { TaskLedgerError } from '@/server/repositories/database/taskLedger/store';
+import { logFailure } from '@/server/log';
 
 const NO_STORE = { 'Cache-Control': 'no-store' } as const;
 
@@ -35,6 +36,6 @@ export function taskLedgerFailure(error: unknown, label: string): Response {
   if (error instanceof TaskLedgerRequestError) return taskLedgerJson({ error: error.message, code: 'INVALID_REQUEST' }, 400);
   if (error instanceof TaskLedgerError) return taskLedgerJson({ error: error.message, code: error.code }, error.status);
   if (error instanceof BoardLinkError) return taskLedgerJson({ error: error.message, code: `BOARD_${error.code}` }, error.status);
-  console.error(`[task-ledger:${label}] unexpected failure`, error instanceof Error ? `${error.name}: ${error.message}` : 'unknown');
+  logFailure(`[task-ledger:${label}] unexpected failure`, error);
   return taskLedgerJson({ error: '저장하지 못했어요. 잠시 후 다시 눌러 주세요.', code: 'UNEXPECTED' }, 500);
 }

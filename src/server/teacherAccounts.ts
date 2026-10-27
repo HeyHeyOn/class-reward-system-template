@@ -8,6 +8,7 @@ import { currentLegalRevision, LEGAL_VERSION_PATTERN, revisionsSince, upcomingLe
 import type { HeaderAccount } from '@/components/brand/GlobalHeader';
 import { hubAccountUrl, hubAvatarUrl, hubLoginEnabled, hubVerifyUrl } from '@/server/ddanssaem/hub';
 import type { TeacherVerification } from '@/lib/teacherVerification';
+import { logFailure } from '@/server/log';
 
 type Queryable = Readonly<{ query(text: string, values: unknown[]): Promise<{ rows: unknown[] }> }>;
 
@@ -151,7 +152,7 @@ export function headerAccountFor(session: Pick<GoogleSession, 'email'>, profile:
 /** The header profile and the legal notice for a signed-in teacher; the profile falls back to defaults. */
 export async function loadTeacherAccountView(session: GoogleSession, store: TeacherAccountStore = getProductionTeacherAccountStore()): Promise<TeacherAccountView> {
   const stored = await store.getProfile(session.subject).catch((error: unknown) => {
-    console.error('[account] profile could not be read', error instanceof Error ? error.message : 'unknown');
+    logFailure('[account] profile could not be read', error);
     return null;
   });
   const profile = resolveTeacherProfile(session, stored);
@@ -163,7 +164,7 @@ export async function loadTeacherAccountView(session: GoogleSession, store: Teac
 export async function teacherVerificationOf(subject: string, store: TeacherAccountStore = getProductionTeacherAccountStore()): Promise<TeacherVerification | null> {
   if (!hubLoginEnabled()) return null;
   return store.getVerification(subject).catch((error: unknown) => {
-    console.error('[account] teacher verification could not be read', error instanceof Error ? error.message : 'unknown');
+    logFailure('[account] teacher verification could not be read', error);
     return null;
   });
 }
