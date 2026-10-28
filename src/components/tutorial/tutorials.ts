@@ -314,7 +314,7 @@ export const TUTORIALS: readonly Tutorial[] = [
       { target: '[data-tour="student-qr"]', area: ['@parent'], peek: true, title: 'QR 카드', text: '[QR 카드]로 이 학생의 카드만 다시 인쇄해요.' },
       { target: `${STUDENT_SHEET} [aria-label$=" 학생 삭제"]`, area: ['@footer'], peek: true, title: '삭제하기',
         text: '[삭제]는 학생을 명단에서 지워요. 누르면 한 번 더 물어봐요.',
-        warn: '지운 학생은 되돌릴 수 없고, 그 번호는 다시 쓸 수 없어요. 거래 기록은 남아요. 이용만 멈추려면 삭제 대신 **활성 학생**을 끄세요.' },
+        warn: '지운 학생은 되돌릴 수 없고, 그 번호는 다시 쓸 수 없어요. 이름과 활동 기록은 학급을 완전히 삭제할 때까지 남아요. 이용만 멈추려면 삭제 대신 **활성 학생**을 끄세요.' },
       { target: '[data-tour="student-save"]', area: ['@footer'], title: '저장하기',
         text: '고친 뒤 [저장]을 누르세요. 바꾼 것이 없으면 버튼이 흐려요.', warn: '저장하면 매점, 은행에 바로 반영돼요.' },
     ],

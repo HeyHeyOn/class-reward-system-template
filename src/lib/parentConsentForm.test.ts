@@ -81,6 +81,15 @@ describe('buildParentConsentForm', () => {
     expect(text).toContain('※ 3월 15일까지 담임교사에게 제출해 주세요.');
     expect(text).toContain(`햇살 초등학교 5학년 2반 담임교사 ${BLANK} 귀하`);
   });
+
+  it('keeps what it says about retention true to the class', () => {
+    // A student deleted from the roster or set inactive keeps their row (name, number, records) until the
+    // class is erased for good; the trash keeps everything too.
+    const retention = blocksOf('table')[0].rows.find(([label]) => label === '보유·이용 기간')![1];
+    expect(retention).toContain('담임교사가 학급을 완전히 삭제하거나 탈퇴하면 지체 없이 파기합니다.');
+    expect(retention).toContain('명단에서 삭제하거나 이용을 멈춘 학생의 이름, 번호와 활동 기록도 학급을 완전히 삭제할 때까지 남습니다.');
+    expect(retention).not.toMatch(/즉시|학년도 학급 운영이 끝날 때까지/);
+  });
 });
 
 describe('consentFormFileName', () => {

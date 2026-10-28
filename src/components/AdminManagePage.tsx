@@ -2467,7 +2467,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
                   <SelectionBarButton icon="qr" data-tour="student-qr-bulk" onClick={() => setQrPrintStudents(students.filter((student) => selectedStudentIds.includes(student.studentId)))}>QR 카드 발급</SelectionBarButton>
                   {tenantScoped ? <SelectionBarButton icon="package" data-tour="student-bulk-give" onClick={(event) => setBulkGiveOpener(event.currentTarget)}>보관함에 넣기</SelectionBarButton> : null}
                   {tenantScoped ? <SelectionBarButton icon="users" data-tour="student-bulk-group" onClick={(event) => setGroupAssignOpener(event.currentTarget)}>모둠 지정</SelectionBarButton> : null}
-                  <SelectionBarButton icon="trash" danger data-tour="student-bulk-delete" onClick={() => confirmDelete(`학생 ${selectedStudentIds.length}명을 삭제할까요?`, '삭제한 학생은 명단에서 사라져요. 거래 기록은 그대로 남아요.', deleteSelectedStudents)}>삭제</SelectionBarButton>
+                  <SelectionBarButton icon="trash" danger data-tour="student-bulk-delete" onClick={() => confirmDelete(`학생 ${selectedStudentIds.length}명을 삭제할까요?`, '삭제한 학생은 명단에서 사라져요. 이름과 활동 기록은 학급을 완전히 삭제할 때까지 남아요.', deleteSelectedStudents)}>삭제</SelectionBarButton>
                 </SelectionBar>
               </section>
             ) : null}
@@ -2843,7 +2843,7 @@ export function AdminManagePage({ migrationsHref, account }: { migrationsHref?: 
           ) : sheetStudent ? (
             <>
               <Button variant="dangerGhost" icon="trash" aria-label={`${sheetStudent.studentId} 학생 삭제`}
-                onClick={() => confirmDelete(`${sheetStudent.name} 학생을 삭제할까요?`, '삭제한 학생은 명단에서 사라져요. 거래 기록은 그대로 남아요.', async () => { await deleteStudentRow(sheetStudent.studentId); setStudentSheet(null); })}>삭제</Button>
+                onClick={() => confirmDelete(`${sheetStudent.name} 학생을 삭제할까요?`, '삭제한 학생은 명단에서 사라져요. 이름과 활동 기록은 학급을 완전히 삭제할 때까지 남아요.', async () => { await deleteStudentRow(sheetStudent.studentId); setStudentSheet(null); })}>삭제</Button>
               <div className="ml-auto" />
               <Button variant="ghost" onClick={() => closeStudentSheet()}>취소</Button>
               <Button variant="primary" icon="check" data-tour="student-save" disabled={!studentDirty} onClick={async () => { if (await saveStudentRows([sheetStudent], '학생')) setStudentSheet(null); }}>저장</Button>
